@@ -5,7 +5,7 @@
 #include "core/common/common.h"
 #include "core/common/exceptions.h"
 #include "core/framework/op_kernel.h"
-#include "core/providers/cpu/nn/autopad_type.h"
+#include "core/providers/common.h"
 #include "core/framework/tensor.h"
 #include "core/util/math_cpuonly.h"
 
@@ -46,6 +46,11 @@ Status BatchNorm<T>::Compute(OpKernelContext* context) const {
   const Tensor* V = context->Input<Tensor>(4);//var
 
   ORT_RETURN_IF_ERROR(BatchNormHelper::ValidateInputs(X, S, B, M, V));
+
+  LOGS_DEFAULT(VERBOSE) << "BatchNorm ACL:";  
+  LOGS_DEFAULT(VERBOSE) << "X " << X->Shape().ToString().c_str();
+  LOGS_DEFAULT(VERBOSE) << "params " << S->Shape().ToString().c_str();
+  LOGS_DEFAULT(VERBOSE) << std::endl;
 
   const T* x_data = X->template Data<T>();
 

@@ -217,6 +217,18 @@ int32_t IndexOfNodeInput(const Node& node, const NodeArg& node_arg) {
   return -1;
 }
 
+int32_t IndexOfNodeOutput(const Node& node, const NodeArg& node_arg) {
+  int32_t index = 0;
+  for (auto& output_arg : node.OutputDefs()) {
+    if (output_arg->Name().compare(node_arg.Name()) == 0) {
+      return index;
+    }
+    index++;
+  }
+
+  return -1;
+}
+
 bool IsSupportedDataType(const Node& node, const std::vector<std::string>& supported_data_types) {
   for (const auto& input_arg : node.InputDefs()) {
     if (std::find(supported_data_types.begin(), supported_data_types.end(),

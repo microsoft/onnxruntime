@@ -29,7 +29,7 @@ class Concat : public onnxruntime::Concat {
   explicit Concat(const OpKernelInfo& info) : onnxruntime::Concat(info) {
 
     provider_ = (const_cast<ACLExecutionProvider*>(
-        dynamic_cast<const ACLExecutionProvider*>(info.GetExecutionProvider())));
+        static_cast<const ACLExecutionProvider*>(info.GetExecutionProvider())));
   }
 
   ~Concat() {}

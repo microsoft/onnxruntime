@@ -21,8 +21,7 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
   bool is_sealed_ = false;
   const ExecutionPlanBase& seq_plan_;
 
-  common::Status AllocatePlannedBuffersAndReportTotalSize(
-      std::unordered_map<std::string, size_t>& planned_memory_sizes_in_byte) {
+  common::Status AllocatePlannedBuffersAndReportTotalSize() {
     const size_t location_len = mem_patterns_.locations.size();
     for (size_t i = 0; i < location_len; ++i) {
       auto& location = mem_patterns_.locations[i];
@@ -41,8 +40,7 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
       if (alloc->Info().alloc_type == OrtArenaAllocator) {
         // Arena has a specific way to store static memory.
         // Arena does not reuse static memory allocated by Reserve.
-        buffer = static_cast<IArenaAllocator*>(
-          alloc.get())->Reserve(peak_size);
+        buffer = static_cast<IArenaAllocator*>(alloc.get())->Reserve(peak_size);
       }
       else {
         buffer = alloc->Alloc(peak_size);
@@ -53,23 +51,21 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
         alloc->Free(buffer);
         return Status(common::ONNXRUNTIME, common::FAIL, "duplicated location");
       }
-
-      planned_memory_sizes_in_byte[location.name] += peak_size;
     }
     return Status::OK();
   }
 
  public:
-  TensorAllocatorWithMemPattern(const ExecutionPlanBase& execution_plan, const ExecutionProviders& exec_providers,
+  TensorAllocatorWithMemPattern(const ExecutionPlanBase& execution_plan, const SessionState& session_state,
                                 std::vector<BufferUniquePtr>& weights_buffers)
-      : ITensorAllocator(exec_providers),
+      : ITensorAllocator(session_state),
         planner_(execution_plan),
         weights_buffers_(weights_buffers),
         seq_plan_(execution_plan) {}
 
-  common::Status FinalizePlan(std::unordered_map<std::string, size_t>& planned_memory_sizes_in_byte) override {
+  common::Status FinalizePlan() override {
     ORT_RETURN_IF_ERROR(planner_.GeneratePatterns(&mem_patterns_));
-    ORT_RETURN_IF_ERROR(AllocatePlannedBuffersAndReportTotalSize(planned_memory_sizes_in_byte));
+    ORT_RETURN_IF_ERROR(AllocatePlannedBuffersAndReportTotalSize());
     is_sealed_ = true;
     return Status::OK();
   }

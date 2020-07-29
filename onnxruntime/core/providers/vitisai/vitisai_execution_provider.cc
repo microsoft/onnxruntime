@@ -24,7 +24,7 @@ using namespace ::onnxruntime::logging;
 
 namespace onnxruntime {
 
-constexpr const char* PREFIX = "VITISAI";
+constexpr const char* VITISAI = "VITISAI";
 
 typedef std::shared_ptr<pyxir::graph::XGraph> XGraphHolder;
 typedef std::shared_ptr<pyxir::graph::XLayer> XLayerHolder;
@@ -33,14 +33,11 @@ VitisAIExecutionProvider::VitisAIExecutionProvider(const VitisAIExecutionProvide
     : IExecutionProvider{onnxruntime::kVitisAIExecutionProvider}, backend_type_(info.backend_type),
       device_id_(info.device_id) {
 
-  auto default_allocator_factory = [](int) {
-    auto memory_info = onnxruntime::make_unique<OrtMemoryInfo>(PREFIX, OrtAllocatorType::OrtDeviceAllocator);
-    return onnxruntime::make_unique<CPUAllocator>(std::move(memory_info));
-  };
-
   DeviceAllocatorRegistrationInfo default_memory_info{
     OrtMemTypeDefault,
-    std::move(default_allocator_factory),
+    [](int) {
+        return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo(VITISAI, OrtAllocatorType::OrtDeviceAllocator));
+    },
     std::numeric_limits<size_t>::max()
   };
 

@@ -175,15 +175,6 @@
       },
       {
          "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "647d4c3f4d47d9cf63fb90ec175c414a005adea7",
-               "repositoryUrl": "https://github.com/JDAI-CV/DNNLibrary.git"
-            }
-         }
-      },
-      {
-         "component": {
             "Type": "other",
             "Other": {
                "Name": "Boost",
@@ -294,6 +285,16 @@
                "Version": "2.4.8",
                "DownloadUrl": "https://docs.nvidia.com/deeplearning/sdk/nccl-install-guide/index.html"
             }
+         }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "67afac65ce64fd4dce1494f43e565e8fe34bdffb",
+               "repositoryUrl": "https://android.googlesource.com/platform/frameworks/ml"
+            },
+            "comments": "used by onnxruntime"
          }
       }
    ],

@@ -21,7 +21,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     Concat);
 
-// this method will be shared between 'Concat' (CPU and GPU) and 
+// this method will be shared between 'Concat' (CPU and GPU) and
 // 'ConcatFromSequence' ('concat' and 'stack' modes) to validate inputs
 Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
                                      const std::vector<const Tensor*>& input_tensors,
@@ -169,7 +169,7 @@ Status ConcatBase::ComputeImpl(Prepare& p) const {
     auto input_size = prep.num_elements;
 
     // Copy the data across. For every 'input_axis_pitch' values copied, we move over by the 'output_axis_pitch'
-    // TODO: Optimization possibility: There are cases where we simply need to "merge" raw buffers and this 
+    // TODO: Optimization possibility: There are cases where we simply need to "merge" raw buffers and this
     // could be done without the pointer house-keeping as below. Some scenarios whether this is possible are:
     // 1) Concatenating on input axis = 0
     // 2) Stacking on output axis = 0

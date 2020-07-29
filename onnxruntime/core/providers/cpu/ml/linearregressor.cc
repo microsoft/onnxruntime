@@ -81,7 +81,7 @@ Status LinearRegressor::Compute(OpKernelContext* ctx) const {
 
   int64_t num_batches = input_shape.NumDimensions() <= 1 ? 1 : input_shape[0];
   int64_t num_features = input_shape.NumDimensions() <= 1 ? input_shape.Size() : input_shape[1];
-  Tensor& Y = *ctx->Output(0, TensorShape({num_batches, num_targets_}));
+  Tensor& Y = *ctx->Output(0, {num_batches, num_targets_});
   concurrency::ThreadPool* tp = ctx->GetOperatorThreadPool();
 
   auto element_type = X.GetElementType();

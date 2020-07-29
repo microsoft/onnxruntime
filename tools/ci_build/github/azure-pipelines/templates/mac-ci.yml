@@ -24,9 +24,7 @@ jobs:
       inputs:
         versionSpec: '12.x'
     - script: |
-        export JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-11.jdk/Contents/Home
-        java --version
-        javac --version
+        export JAVA_HOME=$(java_home -v 11)
 
         sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer

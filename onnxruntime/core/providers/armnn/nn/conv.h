@@ -22,7 +22,7 @@ class Conv : public onnxruntime::Conv<T> {
  public:
   explicit Conv(const OpKernelInfo& info) : onnxruntime::Conv<T>(info), conv_attrs_(info) {
     provider_ = (const_cast<ArmNNExecutionProvider*>(
-        dynamic_cast<const ArmNNExecutionProvider*>(info.GetExecutionProvider())));
+        static_cast<const ArmNNExecutionProvider*>(info.GetExecutionProvider())));
   }
 
   ~Conv() {

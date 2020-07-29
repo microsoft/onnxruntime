@@ -18,5 +18,15 @@ class LayerNormGrad final : public OpKernel {
   int64_t axis_;
 };
 
+template <typename T>
+class InvertibleLayerNormGrad final : public OpKernel {
+ public:
+  InvertibleLayerNormGrad(const OpKernelInfo& op_kernel_info);
+  Status Compute(OpKernelContext* op_kernel_context) const override;
+
+ private:
+  int64_t axis_;
+};
+
 }  // namespace contrib
 }  // namespace onnxruntime

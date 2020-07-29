@@ -80,6 +80,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   int GetDeviceId() const { return device_id_; }
   const cudaDeviceProp& GetDeviceProp() const { return device_prop_; };
+  void UpdateProviderOptionsInfo();
 
  private:
   OrtDevice::DeviceId device_id_;
