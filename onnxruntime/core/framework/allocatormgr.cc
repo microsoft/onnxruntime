@@ -8,6 +8,7 @@
 #include <sstream>
 #include <unordered_map>
 #include <limits>
+#include "core/platform/env.h"
 
 namespace onnxruntime {
 using namespace common;
@@ -21,7 +22,14 @@ AllocatorPtr CreateAllocator(const DeviceAllocatorRegistrationInfo& info,
     return std::shared_ptr<IArenaAllocator>(
         onnxruntime::make_unique<MiMallocArena>(std::move(device_allocator), info.max_mem));
 #else
-    return BFCArena::GetInstance(std::move(device_allocator), info.max_mem, info.arena_extend_strategy, info.session_id);
+    const std::string& env_var = Env::Default().GetEnvironmentVar("SHARE_ARENA");
+    assert(!env_var.empty());
+    if (env_var == "1") {
+      return BFCArena::GetInstance(std::move(device_allocator), info.max_mem, info.arena_extend_strategy, info.session_id);
+    } else {
+      return std::shared_ptr<IArenaAllocator>(
+          onnxruntime::make_unique<BFCArena>(std::move(device_allocator), info.max_mem, info.arena_extend_strategy));
+    }
 #endif
   }
 
