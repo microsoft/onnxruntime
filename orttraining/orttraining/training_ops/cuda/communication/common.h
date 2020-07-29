@@ -60,7 +60,7 @@ inline void GetTensorShapesAndSizes(
 
 // Compute shape-related information from given tensor shapes.
 inline void ComputeShapeRelatedInfo(
-    // tensor_shapes[i] is the size of i-th sent/received tensor in byte.
+    // tensor_sizes[i] is the size of i-th sent/received tensor in byte.
     const std::vector<size_t> tensor_sizes,
     // tensor_shapes[i] is the i-th sent/received tensor.
     const std::vector<TensorShape> tensor_shapes,
@@ -74,7 +74,8 @@ inline void ComputeShapeRelatedInfo(
     // Assume that there are two tensors A and B with rank NA and NB, respectively.
     // aggregated_tensor_shapes = [A_shape[0], A_shape[1], ..., A_shape[NA-1], B_shape[0], B_shape[1], ..., B_shape[NB-1]].
     std::vector<int64_t>& aggregated_tensor_shapes,
-    // tensor_offsets_in_bytes[i] is the starting byte of the i-th tensor in the send tensor buffer
+    // tensor_offsets_in_bytes[i] is the offset of the starting byte of the i-th tensor in the communicated tensor buffer.
+    // That is, i-th tensor's first element is tensor_buffer[tensor_offsets_in_bytes[i]].
     std::vector<size_t>& tensor_offsets_in_bytes) {
   // Initialize outputs.
   aggregated_aligned_tensor_bytes = 0;
@@ -85,7 +86,7 @@ inline void ComputeShapeRelatedInfo(
   // Compute shape information.
   size_t prefix_tensor_shape_size_sum = 0;
   for (int i = 0; static_cast<size_t>(i) < tensor_shapes.size(); ++i) {
-    const auto shape = tensor_shapes[i];
+    const auto& shape = tensor_shapes[i];
     prefix_tensor_shape_size_sum += shape.NumDimensions();
     prefix_tensor_shape_sizes.push_back(prefix_tensor_shape_size_sum);
     aggregated_tensor_shapes.insert(aggregated_tensor_shapes.end(),

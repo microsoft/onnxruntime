@@ -61,24 +61,19 @@ void Send::SendShapeInfo(
                          dst,
                          static_cast<int>(tag_)};
 
-  int mpi_code = 0;
-
   // Directly use CPU to wait MPI_Send. We cannot use GPU callback because
   // MPI_Send may block the entire GPU until it returns.
-  mpi_code = MPI_Send(
+  MPI_CHECK(MPI_Send(
       info_shape_sizes.buffer, info_shape_sizes.size, MPI_CHAR,
-      info_shape_sizes.rank, info_shape_sizes.tag, MPI_COMM_WORLD);
-  ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Send fails.");
+      info_shape_sizes.rank, info_shape_sizes.tag, MPI_COMM_WORLD));
 
-  mpi_code = MPI_Send(
+  MPI_CHECK(MPI_Send(
       info_aggregated_size.buffer, info_aggregated_size.size, MPI_CHAR,
-      info_aggregated_size.rank, info_aggregated_size.tag, MPI_COMM_WORLD);
-  ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Send fails.");
+      info_aggregated_size.rank, info_aggregated_size.tag, MPI_COMM_WORLD));
 
-  mpi_code = MPI_Send(
+  MPI_CHECK(MPI_Send(
       info_shapes.buffer, info_shapes.size, MPI_CHAR,
-      info_shapes.rank, info_shapes.tag, MPI_COMM_WORLD);
-  ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Send fails.");
+      info_shapes.rank, info_shapes.tag, MPI_COMM_WORLD));
 }
 
 void Send::SendData(
@@ -124,16 +119,14 @@ void Send::SendData(
                        dst,
                        static_cast<int>(tag_)};
 
-  auto mpi_code = MPI_Send(
+  MPI_CHECK(MPI_Send(
       info_data.buffer, info_data.size, MPI_CHAR,
-      info_data.rank, info_data.tag, MPI_COMM_WORLD);
-  ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Send fails.");
+      info_data.rank, info_data.tag, MPI_COMM_WORLD));
 
 #ifdef ENABLE_NVTX_PROFILE
   // End of major communication tasks.
   sendRange.End();
 #endif
-
 }
 
 Status Send::ComputeInternal(OpKernelContext* ctx) const {
@@ -149,7 +142,7 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
 
   // Same-rank communication is not allowed because we currently don't have async Send/Recv.
   int world_rank;
-  MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+  MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &world_rank));
   ORT_ENFORCE(world_rank != dst, "Sending data to rank ", dst, " on the rank ", world_rank, ".");
 
 #ifdef ENABLE_NVTX_PROFILE

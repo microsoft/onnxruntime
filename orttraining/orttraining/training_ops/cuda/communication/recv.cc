@@ -29,19 +29,15 @@ void Recv::ReceiveShapeInfo(
                                   static_cast<int>(sizeof(size_t)),
                                   src,
                                   static_cast<int>(tag_)};
-  int mpi_code = 0;
-
   // Directly use CPU to wait MPI_Recv. We cannot use GPU callback because
   // MPI_Recv may block the entire GPU until it returns.
-  mpi_code = MPI_Recv(
+  MPI_CHECK(MPI_Recv(
       info_shape_sizes.buffer, info_shape_sizes.size, MPI_CHAR,
-      info_shape_sizes.rank, info_shape_sizes.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Recv fails.");
+      info_shape_sizes.rank, info_shape_sizes.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
 
-  mpi_code = MPI_Recv(
+  MPI_CHECK(MPI_Recv(
       info_aggregated_size.buffer, info_aggregated_size.size, MPI_CHAR,
-      info_aggregated_size.rank, info_aggregated_size.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Recv fails.");
+      info_aggregated_size.rank, info_aggregated_size.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
 
   // prefix_tensor_shape_sizes's last element is the number of total dimensions.
   // If a 3-D tensor and a 2-D tensor are sent, its value is 2 + 3 = 5.
@@ -50,10 +46,9 @@ void Recv::ReceiveShapeInfo(
                          static_cast<int>(aggregated_tensor_shapes.size()) * static_cast<int>(sizeof(int64_t)),
                          src,
                          static_cast<int>(tag_)};
-  mpi_code = MPI_Recv(
+  MPI_CHECK(MPI_Recv(
       info_shapes.buffer, info_shapes.size, MPI_CHAR,
-      info_shapes.rank, info_shapes.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Recv fails.");
+      info_shapes.rank, info_shapes.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
 }
 
 void Recv::ReceiveData(
@@ -76,10 +71,9 @@ void Recv::ReceiveData(
                        src,
                        static_cast<int>(tag_)};
 
-  auto mpi_code = MPI_Recv(
+  MPI_CHECK(MPI_Recv(
       info_data.buffer, info_data.size, MPI_CHAR,
-      info_data.rank, info_data.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Recv fails.");
+      info_data.rank, info_data.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
 
 #ifdef ENABLE_NVTX_PROFILE
   // End of actual communication.
@@ -148,7 +142,7 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
 
   // Start communication
   int world_rank;
-  MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+  MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &world_rank));
   ORT_ENFORCE(world_rank != src, "Receive data from rank ", src, " on the rank ", world_rank, ".");
 
   const int num_tensors = static_cast<int>(element_types_.size());

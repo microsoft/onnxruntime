@@ -316,20 +316,15 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
     auto* node = graph_viewer_->GetNode(node_plan.node_index);
     int output_start = node_index + static_cast<int>(node->InputDefs().size()) + static_cast<int>(node->ImplicitInputDefs().size());
     //allocate output
-    std::cout << "[session_state.cc, GeneratePatternGroupCache] plan for node " << node->Name() << std::endl;
     for (int i = 0, end = static_cast<int>(node->OutputDefs().size()); i < end; ++i) {
-      // std::cout << "[session_state.cc, GeneratePatternGroupCache] plan for node " << node->Name() << ", " << node->OutputDefs()[i]->Name() << ", " << node->OutputDefs()[i]->TypeAsProto()->DebugString() << std::endl;
       const auto ml_value_idx = node_index_info.GetMLValueIndex(output_start + i);
       if (ml_value_idx == NodeIndexInfo::kInvalidEntry)
         continue;
-      // std::cout << "[session_state.cc, GeneratePatternGroupCache] plan for node " << node->Name() << ", " << node->OutputDefs()[i]->Name() << ", valid key" << std::endl;
       const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
       if (!ml_type->IsTensorType())
         continue;
-      // std::cout << "[session_state.cc, GeneratePatternGroupCache] plan for node " << node->Name() << ", " << node->OutputDefs()[i]->Name() << ", is tensor" << std::endl;
       const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
 
-      // std::cout << "[session_state.cc, GeneratePatternGroupCache] plan for node " << node->Name() << ", " << node->OutputDefs()[i]->Name() << ", resolve shape" << std::endl;
       auto* arg = node->OutputDefs()[i];
       size_t size = 0;
       std::vector<int64_t> resolved_shape;
