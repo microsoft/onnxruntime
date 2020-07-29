@@ -90,65 +90,65 @@ optional<std::pair<float, int>> GetScaleFromNode(
   return {};
 }
 
-struct ScaleFusionInfo {
-  // the index of the original node
-  NodeIndex node_to_fuse_index;
+struct ScaleMergeInfo {
+  // the edge from the base node to the original node
+  Node::EdgeConstIterator node_to_merge_edge;
   // the scale of the original node
   float scale;
   // the index of the input or output def on the original node
   // this def is moved to the fused node
   // for a leading scale (scale -> MatMul), it will be the unscaled input
   // for a trailing scale (MatMul -> scale), it will be the scaled output
-  int node_to_fuse_def_index;
+  int node_to_merge_def_index;
   // the index of the input or output def on the fused node
   int fused_node_def_index;
 };
 
-std::vector<ScaleFusionInfo> GetInputNodeFusions(Graph& graph, Node& node) {
-  std::vector<ScaleFusionInfo> input_node_fusions{};
+std::vector<ScaleMergeInfo> GetInputNodeMerges(Graph& graph, Node& node) {
+  std::vector<ScaleMergeInfo> input_node_merges{};
   for (auto input_edge = node.InputEdgesBegin(); input_edge != node.InputEdgesEnd(); ++input_edge) {
     const Node& input_node = input_edge->GetNode();
-
-    if (!optimizer_utils::CheckOutputEdges(graph, input_node, 1)) continue;
 
     if (input_node.GetExecutionProviderType() != node.GetExecutionProviderType()) continue;
     const auto scale_and_index = GetScaleFromNode(graph, input_node);
     if (!scale_and_index.has_value()) continue;
 
-    // assuming scale nodes have 2 input defs, so to_scale_index == 1 - scale_index
+    // assume scale nodes have 2 input defs, so to_scale_index == 1 - scale_index
     ORT_ENFORCE(input_node.InputDefs().size() == 2 && scale_and_index.value().second < 2);
     const int to_scale_index = 1 - scale_and_index.value().second;
 
-    input_node_fusions.push_back(
-        {input_node.Index(),
+    input_node_merges.push_back(
+        {input_edge,
          scale_and_index.value().first,
          to_scale_index,
          input_edge->GetDstArgIndex()});
   }
-  return input_node_fusions;
+  return input_node_merges;
 }
 
-std::vector<ScaleFusionInfo> GetOutputNodeFusions(Graph& graph, Node& node) {
-  std::vector<ScaleFusionInfo> output_node_fusions{};
-  if (optimizer_utils::CheckOutputEdges(graph, node, 1)) {
-    for (auto output_edge = node.OutputEdgesBegin(); output_edge != node.OutputEdgesEnd(); ++output_edge) {
-      const Node& output_node = output_edge->GetNode();
-
-      if (output_node.GetExecutionProviderType() != node.GetExecutionProviderType()) continue;
-      const auto scale_and_index = GetScaleFromNode(graph, output_node);
-      if (!scale_and_index.has_value()) continue;
-
-      ORT_ENFORCE(output_node.OutputDefs().size() == 1);
-      const int scaled_index = 0;
-
-      output_node_fusions.push_back(
-          {output_node.Index(),
-           scale_and_index.value().first,
-           scaled_index,
-           output_edge->GetSrcArgIndex()});
-    }
+std::vector<ScaleMergeInfo> GetOutputNodeMerges(Graph& graph, Node& node) {
+  if (!optimizer_utils::CheckOutputEdges(graph, node, 1)) {
+    return {};
   }
-  return output_node_fusions;
+
+  std::vector<ScaleMergeInfo> output_node_merges{};
+  for (auto output_edge = node.OutputEdgesBegin(); output_edge != node.OutputEdgesEnd(); ++output_edge) {
+    const Node& output_node = output_edge->GetNode();
+
+    if (output_node.GetExecutionProviderType() != node.GetExecutionProviderType()) continue;
+    const auto scale_and_index = GetScaleFromNode(graph, output_node);
+    if (!scale_and_index.has_value()) continue;
+
+    ORT_ENFORCE(output_node.OutputDefs().size() == 1);
+    const int scaled_index = 0;
+
+    output_node_merges.push_back(
+        {output_edge,
+         scale_and_index.value().first,
+         scaled_index,
+         output_edge->GetSrcArgIndex()});
+  }
+  return output_node_merges;
 }
 
 Status ProcessNode(Graph& graph, Node& node, bool& modified) {
@@ -157,10 +157,10 @@ Status ProcessNode(Graph& graph, Node& node, bool& modified) {
     return Status::OK();
   }
 
-  const std::vector<ScaleFusionInfo> input_node_fusions = GetInputNodeFusions(graph, node);
-  const std::vector<ScaleFusionInfo> output_node_fusions = GetOutputNodeFusions(graph, node);
+  const std::vector<ScaleMergeInfo> input_node_merges = GetInputNodeMerges(graph, node);
+  const std::vector<ScaleMergeInfo> output_node_merges = GetOutputNodeMerges(graph, node);
 
-  if (input_node_fusions.empty() && output_node_fusions.empty()) {
+  if (input_node_merges.empty() && output_node_merges.empty()) {
     return Status::OK();
   }
 
@@ -173,50 +173,38 @@ Status ProcessNode(Graph& graph, Node& node, bool& modified) {
         alpha_attr.has_type() && alpha_attr.type() == ONNX_NAMESPACE::AttributeProto_AttributeType_FLOAT
             ? alpha_attr.f()
             : 1.0f;
-    auto accumulate_scale = [&total_scale](const ScaleFusionInfo& fusion) {
+    auto accumulate_scale = [&total_scale](const ScaleMergeInfo& fusion) {
       total_scale *= fusion.scale;
     };
 
-    std::for_each(input_node_fusions.begin(), input_node_fusions.end(), accumulate_scale);
-    std::for_each(output_node_fusions.begin(), output_node_fusions.end(), accumulate_scale);
+    std::for_each(input_node_merges.begin(), input_node_merges.end(), accumulate_scale);
+    std::for_each(output_node_merges.begin(), output_node_merges.end(), accumulate_scale);
 
     alpha_attr = ONNX_NAMESPACE::MakeAttribute("alpha", total_scale);
   }
 
-  auto get_node = [&graph](int node_index) -> Node& {
-    Node* node = graph.GetNode(node_index);
-    ORT_ENFORCE(node);
-    return *node;
+  auto get_mutable_node_to_merge = [&graph](const ScaleMergeInfo& merge) -> Node& {
+    return *graph.GetNode(merge.node_to_merge_edge->GetNode().Index());
   };
 
-  std::vector<std::reference_wrapper<Node>> nodes_to_fuse{node};
-  {
-    auto add_fused_nodes = [&graph, &nodes_to_fuse, get_node](const ScaleFusionInfo& fusion) {
-      nodes_to_fuse.push_back(std::ref(get_node(fusion.node_to_fuse_index)));
-    };
-
-    std::for_each(input_node_fusions.begin(), input_node_fusions.end(), add_fused_nodes);
-    std::for_each(output_node_fusions.begin(), output_node_fusions.end(), add_fused_nodes);
-  }
-
   std::vector<NodeArg*> fused_node_inputs = node.MutableInputDefs();
-  for (const auto& input_node_fusion : input_node_fusions) {
-    Node& input_node = get_node(input_node_fusion.node_to_fuse_index);
-    fused_node_inputs[input_node_fusion.fused_node_def_index] =
-        input_node.MutableInputDefs()[input_node_fusion.node_to_fuse_def_index];
+  for (const auto& input_node_merge : input_node_merges) {
+    Node& input_node = get_mutable_node_to_merge(input_node_merge);
+    fused_node_inputs[input_node_merge.fused_node_def_index] =
+        input_node.MutableInputDefs()[input_node_merge.node_to_merge_def_index];
   }
 
   std::vector<NodeArg*> fused_node_outputs = node.MutableOutputDefs();
-  for (const auto& output_node_fusion : output_node_fusions) {
-    Node& output_node = get_node(output_node_fusion.node_to_fuse_index);
-    fused_node_outputs[output_node_fusion.fused_node_def_index] =
-        output_node.MutableOutputDefs()[output_node_fusion.node_to_fuse_def_index];
+  for (const auto& output_node_merge : output_node_merges) {
+    Node& output_node = get_mutable_node_to_merge(output_node_merge);
+    fused_node_outputs[output_node_merge.fused_node_def_index] =
+        output_node.MutableOutputDefs()[output_node_merge.node_to_merge_def_index];
   }
 
   Node& matmul_scale_node = graph.AddNode(
       graph.GenerateNodeName("MatMul_With_Scale"),
       "TransposeScaleMatMul",
-      MakeString("Fused MatMul and Scale"),
+      "Fused MatMul and Scale",
       fused_node_inputs,
       fused_node_outputs,
       &fused_node_attrs,
@@ -224,10 +212,31 @@ Status ProcessNode(Graph& graph, Node& node, bool& modified) {
 
   matmul_scale_node.SetExecutionProviderType(node.GetExecutionProviderType());
 
-  // remove nodes that were fused
-  for (Node& node : nodes_to_fuse) {
-    graph_utils::RemoveNodeOutputEdges(graph, node);
-    graph.RemoveNode(node.Index());
+  {
+    std::vector<std::reference_wrapper<Node>> nodes_to_remove{node};
+
+    for (const auto& input_node_merge : input_node_merges) {
+      // remove merged input node's output edge
+      auto input_node_edge = input_node_merge.node_to_merge_edge;
+      Node& input_node = get_mutable_node_to_merge(input_node_merge);
+      graph.RemoveEdge(
+          input_node.Index(), node.Index(),
+          input_node_edge->GetSrcArgIndex(), input_node_edge->GetDstArgIndex());
+
+      // only remove merged input node if it has no more outputs
+      if (!optimizer_utils::CheckOutputEdges(graph, input_node, 0)) continue;
+
+      nodes_to_remove.push_back(input_node);
+    }
+
+    for (const auto& output_node_merge : output_node_merges) {
+      nodes_to_remove.push_back(get_mutable_node_to_merge(output_node_merge));
+    }
+
+    for (Node& node_to_remove : nodes_to_remove) {
+      graph_utils::RemoveNodeOutputEdges(graph, node_to_remove);
+      graph.RemoveNode(node_to_remove.Index());
+    }
   }
 
   modified = true;
