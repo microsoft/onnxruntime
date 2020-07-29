@@ -449,7 +449,7 @@ TEST(CApiTest, io_binding) {
 
   session.Run(Ort::RunOptions(), binding);
   // Check the values against the bound raw memory
-  ASSERT_TRUE(std::equal(std::cbegin(y_values), std::cend(y_values), std::cbegin(expected_y)));
+  ASSERT_TRUE(std::equal(std::begin(y_values), std::end(y_values), std::begin(expected_y)));
 
   // Now compare values via GetOutputValues
   {
@@ -462,7 +462,7 @@ TEST(CApiTest, io_binding) {
     auto count = type_info.GetElementCount();
     ASSERT_EQ(expected_y.size(), count);
     const float* values = Y_value.GetTensorData<float>();
-    ASSERT_TRUE(std::equal(values, values + count, std::cbegin(expected_y)));
+    ASSERT_TRUE(std::equal(values, values + count, std::begin(expected_y)));
   }
 
   {
@@ -490,7 +490,7 @@ TEST(CApiTest, io_binding) {
     auto count = type_info.GetElementCount();
     ASSERT_EQ(expected_y.size(), count);
     const float* values = Y_value.GetTensorData<float>();
-    ASSERT_TRUE(std::equal(values, values + count, std::cbegin(expected_y)));
+    ASSERT_TRUE(std::equal(values, values + count, std::begin(expected_y)));
   }
 
   binding.ClearBoundInputs();

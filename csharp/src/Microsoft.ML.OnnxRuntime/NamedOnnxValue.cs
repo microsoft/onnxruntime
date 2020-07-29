@@ -1,14 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-using System;
-using System.Collections.Generic;
-using System.Text;
 using Microsoft.ML.OnnxRuntime.Tensors;
+using System;
 using System.Buffers;
-using System.Collections;
-using System.Diagnostics;
-using System.Runtime.InteropServices;
+using System.Collections.Generic;
 
 namespace Microsoft.ML.OnnxRuntime
 {

@@ -48,7 +48,7 @@ struct OrtAllocatorForDevice : public OrtAllocator {
 ORT_API_STATUS_IMPL(OrtApis::CreateAllocator, const OrtSession* sess, const OrtMemoryInfo* mem_info, _Outptr_ OrtAllocator** out) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
-  auto allocator_ptr = session->GetAllocator(mem_info);
+  auto allocator_ptr = session->GetAllocator(*mem_info);
   if (!allocator_ptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "No requested allocator available");
   }
