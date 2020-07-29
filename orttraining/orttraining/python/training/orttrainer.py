@@ -246,6 +246,22 @@ class ORTTrainer(object):
                 self.model_desc.inputs, None, None, *input, **kwargs)
             self._init_onnx_model(sample_input)
 
+        # update learning rate
+        prepared_input = self._prepare_model_input(self.model_desc.inputs,
+                self.optim_config.lr, None, *input, **kwargs)
+
+        # run options and ouput desc
+        run_options = None
+
+        if not isinstance(input, (list, tuple)):
+            input = (input,)
+
+        session_run_results = self._training_session_run_helper(True, prepared_input, self.model_desc.inputs,
+                                                                self.model_desc.outputs, run_options)
+        results = [session_run_results[output_desc.name] for output_desc in self.model_desc.outputs]
+
+        return results
+
     def _combine_torch_model_with_loss_fn(self):
         # Don't need to wrap model when loss_fn is not set
         if not self.loss_fn:
@@ -486,6 +502,13 @@ class ORTTrainer(object):
         for input_desc in inputs_desc:
             if input_desc[0] in kwargs:
                 input = input + (kwargs[input_desc[0]],)
+
+        # Append learning rate
+        extra_inputs = 0
+        if lr:
+            input = input + (lr,)
+            extra_inputs += 1
+        assert len(self.model_desc.inputs) + extra_inputs == len(input)
 
         return input
 
