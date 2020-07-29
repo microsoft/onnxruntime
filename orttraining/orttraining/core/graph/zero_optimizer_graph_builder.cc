@@ -62,17 +62,26 @@ static int WorkersPartition(std::vector<int>& size_arr, int dp_group, int max_si
 static Status AddNcclReduceForGradients(
     std::vector<ArgDef>& gradient_argdefs,
     std::vector<int>& partitions,
+    std::vector<OptimizerNodeConfig>& opt_configs,
+    const OptimizerGraphConfig& opt_graph_config,
     GraphAugmenter::GraphDefs& graph_defs) {
-  for (size_t i = 0; i < partitions.size(); ++i) {
+  const int data_parallel_group_rank = opt_graph_config.data_parallel_group_rank;
+  for (int i = 0; i < (int)(partitions.size()); ++i) {
     int ub = partitions[i];
     int lb = i == 0 ? 0 : partitions[i - 1];
+    bool current_rank = (i == data_parallel_group_rank);
     std::vector<ArgDef> reduce_outputs;
     std::vector<ArgDef> reduce_inputs;
     for (int j = lb; j <= ub; ++j) {
       reduce_inputs.push_back(gradient_argdefs[j]);
-      auto reduce_output = ArgDef(gradient_argdefs[j].name + "_Reduce_Out", gradient_argdefs[j].type_proto);
-      reduce_outputs.push_back(reduce_output);
-      gradient_argdefs[j] = reduce_output;
+      if (current_rank) {
+        auto reduce_output = ArgDef(gradient_argdefs[j].name + "_Reduce_Out", gradient_argdefs[j].type_proto);
+        reduce_outputs.push_back(reduce_output);
+        gradient_argdefs[j] = reduce_output;
+        opt_configs[j].enabled = true;
+      } else {
+        opt_configs[j].enabled = false;
+      }
     }
     graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclReduce", kMSDomain, 1},
                                     reduce_inputs,
@@ -378,14 +387,19 @@ static std::vector<ArgDef> GetGradientNormInputs(
 
 static Status GetGradientArgsInTopoOrder(
     Graph& graph,
-    std::vector<ArgDef>& gradient_argdefs,
-    std::vector<ArgDef>& gradient_argdefs_in_topo_order) {
+    std::vector<ArgDef>& weight_argdefs,
+    std::vector<OptimizerNodeConfig>& opt_configs,
+    std::vector<ArgDef>& gradient_argdefs) {
   GraphViewer gv(graph);
   const auto& node_indices = gv.GetNodesInTopologicalOrder();
   std::vector<std::string> gradient_names;
-  for(auto& g_argdef : gradient_argdefs){
+  for (auto& g_argdef : gradient_argdefs) {
     gradient_names.push_back(g_argdef.name);
   }
+
+  std::vector<ArgDef> weight_argdefs_in_topo_order;
+  std::vector<ArgDef> gradient_argdefs_in_topo_order;
+  std::vector<OptimizerNodeConfig> opt_configs_in_topo_order;
 
   for (auto& n_idx : node_indices) {
     auto n_output_defs = gv.GetNode(n_idx)->OutputDefs();
@@ -393,11 +407,18 @@ static Status GetGradientArgsInTopoOrder(
       auto itr = std::find(gradient_names.begin(), gradient_names.end(), output_def->Name());
       if (itr != gradient_names.end()) {
         gradient_argdefs_in_topo_order.push_back(gradient_argdefs.at(std::distance(gradient_names.begin(), itr)));
+        weight_argdefs_in_topo_order.push_back(weight_argdefs.at(std::distance(gradient_names.begin(), itr)));
+        opt_configs_in_topo_order.push_back(opt_configs.at(std::distance(gradient_names.begin(), itr)));
         break;
       }
     }
   }
   ORT_ENFORCE(gradient_argdefs_in_topo_order.size() == gradient_argdefs.size());
+  ORT_ENFORCE(weight_argdefs_in_topo_order.size() == gradient_argdefs.size());
+  ORT_ENFORCE(opt_configs_in_topo_order.size() == opt_configs.size());
+  gradient_argdefs = std::move(gradient_argdefs_in_topo_order);
+  weight_argdefs = std::move(weight_argdefs_in_topo_order);
+  opt_configs = std::move(opt_configs_in_topo_order);
   return Status::OK();
 }
 
@@ -421,72 +442,107 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
     std::vector<ArgDef>& gradient_argdefs,
     std::unordered_set<std::string>& optimizer_state_initializer_names,
     OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs) {
-  auto nodearg_name_generator = [&graph](const std::string& base_name) {
-    return graph.GenerateNodeArgName(base_name);
-  };
   ORT_ENFORCE(stage_ == 1 || stage_ == 2);
-  if (stage_ == 2) {
-    ORT_ENFORCE(opt_graph_config_.gradient_accumulation_steps == 1);
-  }
-
-  //Get the gradients in topological order
-  std::vector<ArgDef> gradient_argdefs_in_topo_order;
-  std::vector<int> partitions;
-  if (stage_ == 2) {
-    ORT_RETURN_IF_ERROR(GetGradientArgsInTopoOrder(graph, gradient_argdefs, gradient_argdefs_in_topo_order));
-  }
-
-  // handle optimizer partitioning
   if (stage_ == 1) {
+    auto nodearg_name_generator = [&graph](const std::string& base_name) {
+      return graph.GenerateNodeArgName(base_name);
+    };
+    // handle optimizer partitioning
     ORT_RETURN_IF_ERROR(ModifyParametersForOptimizerPartitioning(
         graph, graph_defs, opt_graph_config_, opt_configs_, weight_argdefs, gradient_argdefs));
-  } else {
-    ORT_RETURN_IF_ERROR(ModifyParametersForOptimizerPartitioningByBoundary(opt_graph_config_, gradient_argdefs_in_topo_order, partitions));
-  }
 
-  ArgDef fused_gradient_argdef;
-  const auto total_num_accumulations = opt_graph_config_.gradient_accumulation_steps * opt_graph_config_.data_parallel_group_size;
-  ORT_RETURN_IF_NOT(total_num_accumulations > 0);
-  const float scale = 1.0f / total_num_accumulations;
-  ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs,
-                                              opt_graph_config_.allreduce_in_fp16, false));
+    ArgDef fused_gradient_argdef;
+    const auto total_num_accumulations = opt_graph_config_.gradient_accumulation_steps * opt_graph_config_.data_parallel_group_size;
+    ORT_RETURN_IF_NOT(total_num_accumulations > 0);
+    const float scale = 1.0f / total_num_accumulations;
+    ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs,
+                                                opt_graph_config_.allreduce_in_fp16, false));
 
-  if (stage_ == 1) {
     // add Reducescatter for gradients
     ORT_RETURN_IF_ERROR(AddNcclReduceScatterForGradients(gradient_argdefs, graph_defs));
-  } else if (stage_ == 2) {
-    //add Reduce for gradients
-    ORT_RETURN_IF_ERROR(AddNcclReduceForGradients(gradient_argdefs_in_topo_order, partitions, graph_defs));
+
+    // check if all gradients are finite
+    ArgDef global_grad_norm_argdef;
+    ArgDef global_grad_norm_finite_argdef;
+    if (opt_graph_config_.use_mixed_precision) {
+      auto gradient_norm_inputs = GetGradientNormInputs(gradient_argdefs, opt_configs_);
+      ORT_RETURN_IF_ERROR(AddGradientNorm(
+          nodearg_name_generator, gradient_norm_inputs, graph_defs, global_grad_norm_argdef));
+      optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
+
+      ORT_RETURN_IF_ERROR(AddL2NormNcclAllReduce(global_grad_norm_argdef, graph_defs));
+
+      ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
+          nodearg_name_generator, {global_grad_norm_argdef}, graph_defs, global_grad_norm_finite_argdef));
+      optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite] = global_grad_norm_finite_argdef.name;
+    }
+
+    // add weight update
+    ORT_RETURN_IF_ERROR(AddDirectWeightUpdate(
+        opt_builder_registry_, weight_argdefs, gradient_argdefs,
+        &global_grad_norm_argdef,
+        &global_grad_norm_finite_argdef,
+        opt_configs_, graph_defs,
+        optimizer_state_initializer_names));
+
+    // add Allgather for weights
+    ORT_RETURN_IF_ERROR(AddNcclAllGatherForWeights(weight_argdefs, graph_defs));
+
+    return Status::OK();
+  } else /*(stage_ == 2) */ {
+    auto nodearg_name_generator = [&graph](const std::string& base_name) {
+      return graph.GenerateNodeArgName(base_name);
+    };
+    ORT_ENFORCE(opt_graph_config_.gradient_accumulation_steps == 1);
+
+    //Get the gradients in topological order
+    std::vector<int> partitions;
+
+    //Get gradients in topological order, updates the weight, gradients and opt_configs_ following that order
+    ORT_RETURN_IF_ERROR(GetGradientArgsInTopoOrder(graph, weight_argdefs, opt_configs_, gradient_argdefs));
+
+    // handle optimizer partitioning
+    ORT_RETURN_IF_ERROR(ModifyParametersForOptimizerPartitioningByBoundary(opt_graph_config_, gradient_argdefs, partitions));
+
+    ArgDef fused_gradient_argdef;
+    const auto total_num_accumulations = opt_graph_config_.gradient_accumulation_steps * opt_graph_config_.data_parallel_group_size;
+    ORT_RETURN_IF_NOT(total_num_accumulations > 0);
+    const float scale = 1.0f / total_num_accumulations;
+    ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs,
+                                                opt_graph_config_.allreduce_in_fp16, false));
+
+    //add Reduce for gradients, update the "enabled" flag in opt_configs_ based on rank. Update the gradient args to reduce outputs
+    ORT_RETURN_IF_ERROR(AddNcclReduceForGradients(gradient_argdefs, partitions, opt_configs_, opt_graph_config_, graph_defs));
+
+    // check if all gradients are finite
+    ArgDef global_grad_norm_argdef;
+    ArgDef global_grad_norm_finite_argdef;
+    if (opt_graph_config_.use_mixed_precision) {
+      auto gradient_norm_inputs = GetGradientNormInputs(gradient_argdefs, opt_configs_);
+      ORT_RETURN_IF_ERROR(AddGradientNorm(
+          nodearg_name_generator, gradient_norm_inputs, graph_defs, global_grad_norm_argdef));
+      optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
+
+      ORT_RETURN_IF_ERROR(AddL2NormNcclAllReduce(global_grad_norm_argdef, graph_defs));
+
+      ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
+          nodearg_name_generator, {global_grad_norm_argdef}, graph_defs, global_grad_norm_finite_argdef));
+      optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite] = global_grad_norm_finite_argdef.name;
+    }
+
+    // add weight update
+    ORT_RETURN_IF_ERROR(AddDirectWeightUpdate(
+        opt_builder_registry_, weight_argdefs, gradient_argdefs,
+        &global_grad_norm_argdef,
+        &global_grad_norm_finite_argdef,
+        opt_configs_, graph_defs,
+        optimizer_state_initializer_names));
+
+    // add Allgather for weights
+    ORT_RETURN_IF_ERROR(AddNcclAllGatherForWeights(weight_argdefs, graph_defs));
+
+    return Status::OK();
   }
-
-  // check if all gradients are finite
-  ArgDef global_grad_norm_argdef;
-  ArgDef global_grad_norm_finite_argdef;
-  if (opt_graph_config_.use_mixed_precision) {
-    auto gradient_norm_inputs = GetGradientNormInputs(gradient_argdefs, opt_configs_);
-    ORT_RETURN_IF_ERROR(AddGradientNorm(
-        nodearg_name_generator, gradient_norm_inputs, graph_defs, global_grad_norm_argdef));
-    optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
-
-    ORT_RETURN_IF_ERROR(AddL2NormNcclAllReduce(global_grad_norm_argdef, graph_defs));
-
-    ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
-        nodearg_name_generator, {global_grad_norm_argdef}, graph_defs, global_grad_norm_finite_argdef));
-    optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite] = global_grad_norm_finite_argdef.name;
-  }
-
-  // add weight update
-  ORT_RETURN_IF_ERROR(AddDirectWeightUpdate(
-      opt_builder_registry_, weight_argdefs, gradient_argdefs,
-      &global_grad_norm_argdef,
-      &global_grad_norm_finite_argdef,
-      opt_configs_, graph_defs,
-      optimizer_state_initializer_names));
-
-  // add Allgather for weights
-  ORT_RETURN_IF_ERROR(AddNcclAllGatherForWeights(weight_argdefs, graph_defs));
-
-  return Status::OK();
 }
 
 }  // namespace training
