@@ -1,10 +1,14 @@
+import inspect
+import onnx
+import os
 import pytest
 import torch
+
 from numpy.testing import assert_allclose
 
 from onnxruntime.capi.training import orttrainer_options as orttrainer_options
 from onnxruntime.capi.training import model_desc_validation as md_val
-from onnxruntime.capi.training import orttrainer, amp, optim, TrainStepInfo
+from onnxruntime.capi.training import orttrainer, amp, optim, TrainStepInfo, _utils
 
 
 @pytest.mark.parametrize("test_input", [
@@ -442,3 +446,71 @@ def testLRSchedulerUpdateImpl(lr_scheduler, expected_values):
         assert len(lr_list) == 1
         assert_allclose(lr_list[0],
                         expected_values[step], rtol=rtol, err_msg="lr mismatch")
+
+
+@pytest.mark.parametrize("step_fn", [
+    ('train_step'),
+    ('eval_step')
+])
+def testInstantiateORTTrainer(step_fn):
+    # Loading external TransformerModel model for testing
+    # A manual import is done as this example is not part of onnxruntime package,
+    # but resides on the onnxruntime repo
+    pytorch_transformer_path = os.path.join('..', '..', '..', 'samples', 'python', 'pytorch_transformer')
+    pt_model_path = os.path.join(pytorch_transformer_path, 'pt_model.py')
+    pt_model_name = 'pt_model'
+    pt_model = _utils.import_module_from_file(pt_model_path, pt_model_name)
+    ort_utils_path = os.path.join(pytorch_transformer_path, 'ort_utils.py')
+    ort_utils_name = 'ort_utils'
+    ort_utils = _utils.import_module_from_file(ort_utils_path, ort_utils_name)
+    utils_path = os.path.join(pytorch_transformer_path, 'utils.py')
+    utils_name = 'utils'
+    utils = _utils.import_module_from_file(utils_path, utils_name)
+
+    # Modeling
+    model = pt_model.TransformerModel(28785, 200, 2, 200, 2, 0.2)
+    my_loss = ort_utils.my_loss
+    model_desc = ort_utils.transformer_model_description()
+    optim_config = optim.LambConfig()
+    options = orttrainer.ORTTrainerOptions({'device': {'id': 'cpu'}})
+
+    # Create ORTTrainer
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
+
+    # Preparing data
+    train_data, val_data, test_data = utils.prepare_data('cpu', 20, 20)
+
+    # Export model to ONNX
+    data, targets = utils.get_batch(train_data, 0)
+    if step_fn == 'eval_step':
+        trainer.eval_step(data, targets)
+    elif step_fn == 'train_step':
+        trainer.train_step(data, targets)
+    else:
+        raise ValueError('Invalid step_fn')
+    assert trainer._onnx_model is not None
+
+    # Check name, shape and dtype of the first len(forward.parameters) ORT graph inputs
+    sig = inspect.signature(model.forward)
+    for i in range(len(sig.parameters.keys())):
+        input_name = trainer.model_desc.inputs[i][0]
+        input_dim = trainer.model_desc.inputs[i][1]
+        input_type = trainer.model_desc.inputs[i][2]
+
+        assert trainer._onnx_model.graph.input[i].name == input_name
+        for dim_idx, dim in enumerate(trainer._onnx_model.graph.input[i].type.tensor_type.shape.dim):
+            assert input_dim[dim_idx] == dim.dim_value
+            assert input_type == _utils.dtype_onnx_to_torch(
+                trainer._onnx_model.graph.input[i].type.tensor_type.elem_type)
+
+    # Check name, shape and dtype of the ORT graph outputs
+    for i in range(len(trainer.model_desc.outputs)):
+        output_name = trainer.model_desc.outputs[i][0]
+        output_dim = trainer.model_desc.outputs[i][1]
+        output_type = trainer.model_desc.outputs[i][3]
+
+        assert trainer._onnx_model.graph.output[i].name == output_name
+        for dim_idx, dim in enumerate(trainer._onnx_model.graph.output[i].type.tensor_type.shape.dim):
+            assert output_dim[dim_idx] == dim.dim_value
+            assert output_type == _utils.dtype_onnx_to_torch(
+                trainer._onnx_model.graph.output[i].type.tensor_type.elem_type)
