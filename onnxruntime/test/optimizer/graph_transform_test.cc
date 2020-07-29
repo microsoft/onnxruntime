@@ -2847,6 +2847,21 @@ static void TestMatMulScaleFusion(
     EXPECT_EQ(transformed_op_counts["Div"], 0);
     EXPECT_EQ(transformed_op_counts["MatMul"], 0);
     EXPECT_EQ(transformed_op_counts["TransposeScaleMatMul"], 1);
+
+    // check combined scale, individual scales should all have the same value
+    const float scale_value = 3.0f;
+
+    const int num_scales =
+        original_op_counts["Mul"] + original_op_counts["Div"] + original_op_counts["TransposeScaleMatMul"];
+
+    auto fused_node = std::find_if(
+        graph.Nodes().cbegin(), graph.Nodes().cend(),
+        [](const Node& node) { return node.OpType() == "TransposeScaleMatMul"; });
+
+    auto alpha_attr = fused_node->GetAttributes().find("alpha");
+    ASSERT_NE(alpha_attr, fused_node->GetAttributes().end());
+
+    EXPECT_EQ(alpha_attr->second.f(), pow(scale_value, num_scales));
   } else {
     EXPECT_EQ(original_op_counts, transformed_op_counts);
   }
