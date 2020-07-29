@@ -388,12 +388,12 @@ static void CloseSession()
 static void SetIntraOpNumThreads() {
     auto shape = std::vector<int64_t>{1, 1000};
     auto model = ProtobufHelpers::CreateModel(TensorKind::Float, shape, 1000);
-    auto device = LearningModelDevice(LearningModelDeviceKind::DirectX);
+    auto device = LearningModelDevice(LearningModelDeviceKind::Cpu);
     auto options = LearningModelSessionOptions();
     auto nativeOptions = options.as<ILearningModelSessionOptionsNative>();
-    uint32_t desiredThreads = std::thread::hardware_concurrency() / 2;
 
     // Set the number of intra op threads to half of logical cores.
+    uint32_t desiredThreads = std::thread::hardware_concurrency() / 2;
     WINML_EXPECT_NO_THROW(nativeOptions->OverrideIntraOpNumThreads(desiredThreads));
     // Create session and grab the number of intra op threads to see if is set properly
     LearningModelSession session = nullptr;
