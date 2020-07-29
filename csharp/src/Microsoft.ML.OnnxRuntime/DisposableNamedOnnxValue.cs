@@ -1,11 +1,10 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Buffers;
 using System.Collections.Generic;
-using Microsoft.ML.OnnxRuntime.Tensors;
-using System.Runtime.InteropServices;
 
 
 namespace Microsoft.ML.OnnxRuntime
@@ -304,12 +303,6 @@ namespace Microsoft.ML.OnnxRuntime
                 // set large fields to null.
                 disposedValue = true;
             }
-        }
-
-        ~DisposableNamedOnnxValue()
-        {
-            // Do not change this code. Put cleanup code in Dispose(bool disposing) above.
-            Dispose(false);
         }
 
         // This code added to correctly implement the disposable pattern.

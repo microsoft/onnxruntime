@@ -51,6 +51,9 @@ namespace Microsoft.ML.OnnxRuntime
             return new OrtMemoryInfo(memoryInfo, true);
         }
 
+        /// <summary>
+        /// Default CPU based instance
+        /// </summary>
         public static OrtMemoryInfo DefaultInstance
         {
             get
@@ -81,7 +84,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         // Predefined utf8 encoded allocator names. Use them to construct an instance of
-        // OrtMemoryInfo
+        // OrtMemoryInfo to avoid UTF-16 to UTF-8 conversion
         public static readonly byte[] allocatorCPU = Encoding.UTF8.GetBytes("Cpu" + Char.MinValue);
         public static readonly byte[] allocatorCUDA = Encoding.UTF8.GetBytes("Cuda" + Char.MinValue);
         public static readonly byte[] allocatorCUDA_PINNED = Encoding.UTF8.GetBytes("CudaPinned" + Char.MinValue);
@@ -121,6 +124,9 @@ namespace Microsoft.ML.OnnxRuntime
         {
         }
 
+        /// <summary>
+        /// Name of the allocator associated with the OrtMemoryInfo instance
+        /// </summary>
         public string Name
         {
             get
@@ -131,6 +137,9 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        /// <summary>
+        /// Returns device ID
+        /// </summary>
         public int Id
         {
             get
@@ -154,6 +163,10 @@ namespace Microsoft.ML.OnnxRuntime
             return memoryType;
         }
 
+        /// <summary>
+        /// Returns alloctor type
+        /// </summary>
+        /// <returns></returns>
         public OrtAllocatorType GetAllocatorType()
         {
             OrtAllocatorType allocatorType = OrtAllocatorType.ArenaAllocator;
@@ -215,14 +228,16 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// This an instance with a piece of memory allocated
-        /// by onnxruntime OrtAllocator. The same allocator will be used for
-        /// for memory disposal.
+        /// This constructs an instance representing an native memory allocation.
+        /// Typically returned by OrtAllocator.Allocate(). However, some APIs return
+        /// natively allocated IntPtr using a specific allocator. It is a good practice
+        /// to wrap such a memory into OrtAllocation for proper disposal. You can set
+        /// size to zero if not known, which is not important for disposing.
         /// </summary>
         /// <param name="allocator"></param>
         /// <param name="pointer"></param>
         /// <param name="size"></param>
-        internal OrtMemoryAllocation(OrtAllocator allocator, IntPtr pointer, uint size)
+        public OrtMemoryAllocation(OrtAllocator allocator, IntPtr pointer, uint size)
         {
             _allocator = allocator;
             Pointer = pointer;
@@ -267,6 +282,11 @@ namespace Microsoft.ML.OnnxRuntime
         #endregion
     }
 
+    /// <summary>
+    /// The class exposes native internal allocator for Onnxruntime.
+    /// This allocator enables you to allocate memory from the internal
+    /// memory pools including device allocations. Useful for binding.
+    /// </summary>
     public class OrtAllocator : IDisposable
     {
         private static readonly Lazy<OrtAllocator> _defaultInstance = new Lazy<OrtAllocator>(GetDefaultCpuAllocator);
@@ -282,6 +302,9 @@ namespace Microsoft.ML.OnnxRuntime
             return new OrtAllocator(allocator, false);
         }
 
+        /// <summary>
+        /// Default CPU allocator instance
+        /// </summary>
         public static OrtAllocator DefaultInstance // May throw exception in every access, if the constructor have thrown an exception
         {
             get
@@ -309,12 +332,23 @@ namespace Microsoft.ML.OnnxRuntime
             this._owned = owned;
         }
 
+        /// <summary>
+        /// Creates an instance of OrtAllocator according to the specifications in OrtMemorInfo.
+        /// The requested allocator should be available within the given session instance. This means
+        /// both, the native library was build with specific allocators (for instance CUDA) and the corresponding
+        /// provider was added to SessionsOptions before instantiating the session object.
+        /// </summary>
+        /// <param name="session"></param>
+        /// <param name="memInfo"></param>
         public OrtAllocator(InferenceSession session, OrtMemoryInfo memInfo)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateAllocator(session.Handle, memInfo.Pointer, out _pointer));
             _owned = true;
         }
 
+        /// <summary>
+        /// OrtMemoryInfo instance owned by the allocator
+        /// </summary>
         public OrtMemoryInfo Info
         {
             get
@@ -327,7 +361,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Allocate native memory
+        /// Allocate native memory. Returns a disposable instance of OrtMemoryAllocation
         /// </summary>
         /// <param name="size"></param>
         /// <returns></returns>

@@ -1397,8 +1397,8 @@ std::string InferenceSession::EndProfiling() {
   return std::string();
 }
 
-AllocatorPtr InferenceSession::GetAllocator(const OrtMemoryInfo* mem_info) const {
-  return session_state_->GetAllocator(*mem_info);
+AllocatorPtr InferenceSession::GetAllocator(const OrtMemoryInfo& mem_info) const {
+  return session_state_->GetAllocator(mem_info);
  }
 
 // assumes model has already been loaded before

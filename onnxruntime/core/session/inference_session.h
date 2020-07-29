@@ -360,10 +360,10 @@ class InferenceSession {
   /**
     * Search registered execution providers for an allocator that has characteristics
     * specified within mem_info
-    * @param mem_info is a pointer to OrtMemoryInfo that contains requires specs
+    * @param mem_info is a reference to OrtMemoryInfo that contains required specs
     * @return a ptr to the allocator or nullptr if not available
     */
-  AllocatorPtr GetAllocator(const OrtMemoryInfo* mem_info) const;
+  AllocatorPtr GetAllocator(const OrtMemoryInfo& mem_info) const;
   
    /** 
     *Get InferenceSession logger.

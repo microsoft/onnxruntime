@@ -679,11 +679,11 @@ ORT_API_STATUS_IMPL(OrtApis::GetBoundOutputValues, _In_ const OrtIoBinding* bind
 }
 
 
-void OrtApis::ClearBoundInputs(_Inout_ OrtIoBinding* binding_ptr) NO_EXCEPTION {
+ORT_API(void, OrtApis::ClearBoundInputs, _Inout_ OrtIoBinding* binding_ptr) {
   binding_ptr->binding_->ClearInputs();
 }
 
-void OrtApis::ClearBoundOutputs(_Inout_ OrtIoBinding* binding_ptr) NO_EXCEPTION {
+ORT_API(void, OrtApis::ClearBoundOutputs, _Inout_ OrtIoBinding* binding_ptr) {
   binding_ptr->binding_->ClearOutputs();
 }
 
