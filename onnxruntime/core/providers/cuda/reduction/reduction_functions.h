@@ -32,5 +32,9 @@ bool is_matrix_row_reduction(
 template <typename TIn, typename TOut>
 void reduce_matrix_rows(const TIn* data, TOut* output, int m, int n);
 
+void torch_reduce_matrix_rows(const float* data, float* output, int m, int n);
+void torch_reduce_matrix_rows(const half* data, half* output, int m, int n);
+void torch_reduce_matrix_rows(const double* data, double* output, int m, int n);
+
 }  // namespace cuda
 }  // namespace onnxruntime

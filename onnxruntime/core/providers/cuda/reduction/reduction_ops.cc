@@ -119,7 +119,7 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
       is_matrix_row_reduction(cudnn_reduce_op,
                               static_cast<int>(reduction_size),
                               static_cast<int>(stride), rank, axes_)) {
-    reduce_matrix_rows(
+    torch_reduce_matrix_rows(
         reinterpret_cast<const CudaT*>(X),
         reinterpret_cast<CudaT*>(Y),
         static_cast<int>(reduction_size),
@@ -416,7 +416,7 @@ static Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& in
         is_matrix_row_reduction(cudnn_reduce_op,
                                 static_cast<int>(reduction_size),
                                 static_cast<int>(stride), rank, axes)) {
-      reduce_matrix_rows(
+      torch_reduce_matrix_rows(
           reinterpret_cast<const CudaT*>(input.template Data<T>()),
           reinterpret_cast<CudaT*>(output.template MutableData<T>()),
           static_cast<int>(reduction_size),

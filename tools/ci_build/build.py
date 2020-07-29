@@ -109,6 +109,10 @@ def parse_arguments():
         "--mpi_home", help="Path to MPI installation dir")
     parser.add_argument(
         "--nccl_home", help="Path to NCCL installation dir")
+    parser.add_argument(
+        "--use_libtorch", action='store_true', help="Build with libtorch so that Pytorch implementation can be called in CUDA kernels")
+    parser.add_argument(
+        "--libtorch_home", help="Path to libtorch dir")
 
     # enable ONNX tests
     parser.add_argument(
@@ -525,6 +529,7 @@ def setup_test_data(build_dir, configs):
 
 def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home,
                         mpi_home, nccl_home, tensorrt_home, migraphx_home,
+                        libtorch_home,
                         path_to_protoc_exe, configs, cmake_extra_defines, args, cmake_extra_args):
     log.info("Generating CMake build tree")
     cmake_dir = os.path.join(source_dir, "cmake")
@@ -533,6 +538,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     # for now, disable jemalloc if pybind is also enabled.
     cmake_args = [
         cmake_path, cmake_dir,
+        "--trace and --debug-output",
         "-Donnxruntime_RUN_ONNX_TESTS=" + (
             "ON" if args.enable_onnx_tests else "OFF"),
         "-Donnxruntime_BUILD_WINML_TESTS=" + (
@@ -634,6 +640,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "ON" if args.use_armnn else "OFF"),
         "-Donnxruntime_ARMNN_RELU_USE_CPU=" + (
             "OFF" if args.armnn_relu else "ON"),
+        "-Donnxruntime_USE_LIBTORCH=" + (
+            "ON" if args.use_libtorch else "OFF"),
         # Training related flags
         "-Donnxruntime_ENABLE_NVTX_PROFILE=" + (
             "ON" if args.enable_nvtx_profile else "OFF"),
@@ -648,6 +656,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
 
     if nccl_home and os.path.exists(nccl_home):
         cmake_args += ["-Donnxruntime_NCCL_HOME=" + nccl_home]
+
+    if libtorch_home and os.path.exists(libtorch_home):
+        cmake_args += ["-Donnxruntime_LIBTORCH_HOME=" + libtorch_home]
 
     if args.winml_root_namespace_override:
         cmake_args += ["-Donnxruntime_WINML_NAMESPACE_OVERRIDE="
@@ -897,6 +908,8 @@ def setup_cuda_vars(args):
             "CUDA_HOME")
         cudnn_home = args.cudnn_home if args.cudnn_home else os.getenv(
             "CUDNN_HOME")
+        cuda_home = args.cuda_home if args.cuda_home else os.getenv(
+            "CUDA_HOME")
 
         cuda_home_valid = (cuda_home is not None and os.path.exists(cuda_home))
         cudnn_home_valid = (cudnn_home is not None and os.path.exists(
@@ -1638,6 +1651,7 @@ def main():
 
     mpi_home = args.mpi_home
     nccl_home = args.nccl_home
+    libtorch_home = args.libtorch_home
 
     # if using tensorrt, setup tensorrt paths
     tensorrt_home = setup_tensorrt_vars(args)
@@ -1729,7 +1743,7 @@ def main():
             setup_test_data(build_dir, configs)
         generate_build_tree(
             cmake_path, source_dir, build_dir, cuda_home, cudnn_home, mpi_home, nccl_home,
-            tensorrt_home, migraphx_home, path_to_protoc_exe, configs, cmake_extra_defines,
+            tensorrt_home, migraphx_home, libtorch_home, path_to_protoc_exe, configs, cmake_extra_defines,
             args, cmake_extra_args)
 
     if args.clean:
