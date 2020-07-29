@@ -788,6 +788,11 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceMeanGradient) {
   return result;
 }
 
+// Reference computation is pytorch's logsumexp_backward
+// dx_i = exp(xi) / reduceSum(exp(xi))
+// O(0) = log(reduceSum(exp(xi)))
+// Self_Sub_Result = I(0) - O(0) = xi - log(sum(exp(xi))) = log( xi / reduceSum(exp(xi)))
+// Gradient computation is re-using output and input from forward op, can be a recomputation candidate.
 IMPLEMENT_GRADIENT_BUILDER(GetReduceLogSumExpGradient) {
   std::vector<NodeDef> result;
   auto attributes = SrcNodeAttributes();
