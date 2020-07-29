@@ -122,7 +122,7 @@ class ORTTrainer(object):
             "'optim_config' is required and must be any of 'AdamConfig', 'LambConfig' or 'SGDConfig'"
         assert loss_fn is None or (callable(loss_fn) and len(signature(loss_fn).parameters) == 2),\
             "'loss_fn' must be either 'None' or a callable with two parameters"
-        assert options is None or isinstance(options, dict),\
+        assert options is None or isinstance(options, ORTTrainerOptions),\
             "'loss_fn' must be either 'None' or 'ORTTrainerOptions'"
 
         #            Model + Loss validation
@@ -180,7 +180,7 @@ class ORTTrainer(object):
             if self._torch_model is not None:
                 self._init_onnx_model(sample_input)
             else:
-                raise RuntimeError("Model is uninitialized. Please ensure a valid ONNX model or PyTorch model is provided to this Trainer.")
+                raise RuntimeError("Model is uninitialized. Only ONNX and PyTorch models are supported")
 
         input_desc = self.model_desc.inputs[0:len(sample_input)]
         output_desc = self.model_desc.outputs

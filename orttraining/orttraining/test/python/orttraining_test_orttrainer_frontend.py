@@ -481,10 +481,9 @@ def testInstantiateORTTrainer(step_fn):
     my_loss = ort_utils.my_loss
     model_desc = ort_utils.transformer_model_description()
     optim_config = optim.LambConfig()
-    options = orttrainer.ORTTrainerOptions({'device': {'id': 'cpu'}})
 
     # Create ORTTrainer
-    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss)
 
     # Preparing data
     train_data, val_data, test_data = utils.prepare_data('cpu', 20, 20)
@@ -562,11 +561,8 @@ def testEvalStep():
     model_desc = ort_utils.transformer_model_description()
     optim_config = optim.LambConfig()
 
-    device = "cpu"
-    opts = {'device' : {'id' : device}}
-
     # Create ORTTrainer
-    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=opts)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss)
 
     # Prep data
     train_data, val_data, test_data = utils.prepare_data('cpu', 20, 20)
