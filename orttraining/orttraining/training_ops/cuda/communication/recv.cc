@@ -6,6 +6,7 @@
 #include "orttraining/training_ops/cuda/communication/recv.h"
 #include "orttraining/training_ops/cuda/communication/common.h"
 #include "core/profile/profile.h"
+#include "core/providers/cuda/cuda_common.h"
 #include <mpi.h>
 
 #include "orttraining/core/framework/mpi_setup.h"
@@ -88,6 +89,8 @@ void Recv::ReceiveData(
 #endif
 
   // Copy tensors from buffer to outputs.
+  cudaStream_t copyStream;
+  CUDA_CALL(cudaStreamCreate(&copyStream));
   size_t tensor_offset_in_bytes = 0;
   for (int i = 0; i < num_tensors; ++i) {
     Tensor* tensor = received_tensors[i];
@@ -97,10 +100,12 @@ void Recv::ReceiveData(
 
     // Keep the sync copy in the previous design
     // TODO they can be moved to async call after global stream becoming accessible
-    ORT_ENFORCE(cudaMemcpy(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
-                           tensor->SizeInBytes(), cudaMemcpyHostToDevice) == cudaSuccess);
+    CUDA_CALL(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
+                                tensor->SizeInBytes(), cudaMemcpyHostToDevice, copyStream));
     tensor_offset_in_bytes += tensor->SizeInBytes();
   }
+  CUDA_CALL(cudaStreamSynchronize(copyStream));
+  CUDA_CALL(cudaStreamDestroy(copyStream));
 
 #ifdef ENABLE_NVTX_PROFILE
   // End of host-to-device copy.
@@ -182,7 +187,7 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
     }
 
     GetTensorShapesAndSizes(
-        false,
+        false,        // value of "is_index_input". Received tensors are "output"s so this flag is "false".
         1,            // First received tensor's index.
         num_tensors,  // Number of tensors to received.
         ctx,

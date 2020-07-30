@@ -642,10 +642,14 @@ bool ExecutionFrame::TryGetInferredShape(int index, TensorShape& shape) const {
   
   // Search for inferred shape.
   // If inferred shape is found, it's assigned to "shape" so that caller can use it.
-  auto is_found = inferred_shapes_.TryFind(ort_value_idx, shape);
+  auto it = inferred_shapes_.find(ort_value_idx);
+  if (it != inferred_shapes_.end()) {
+    shape = it->second;
+    return true;
+  }
 
   // Tell the caller if the search is successful or not.
-  return is_found;
+  return false;
 }
 
 }  // namespace onnxruntime

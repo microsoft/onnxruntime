@@ -23,7 +23,6 @@
 #include "core/framework/callback.h"
 #include "core/framework/ort_value_name_idx_map.h"
 #include "core/framework/node_index_info.h"
-#include "core/framework/thread_safe_map.h"
 #include "core/graph/graph_viewer.h"
 #include "core/framework/fuse_nodes_funcs.h"
 #include "core/platform/threadpool.h"
@@ -189,7 +188,7 @@ class SessionState {
   const MemoryPatternGroup* GetMemoryPatternGroup(
       const std::vector<std::reference_wrapper<const TensorShape>>& input_shapes,
       const std::vector<int>& feed_mlvalue_idxs,
-      ThreadSafeUnorderedMap<int, TensorShape>& inferred_shapes) const;
+      std::unordered_map<int, TensorShape>& inferred_shapes) const;
 
   /**
   Set generated memory pattern with a given input shapes.
@@ -281,7 +280,7 @@ class SessionState {
       const std::vector<std::reference_wrapper<const TensorShape>>& input_shape,
       const std::vector<int>& feed_mlvalue_idxs,
       MemoryPatternGroup* output,
-      ThreadSafeUnorderedMap<int, TensorShape>& inferred_shapes) const;
+      std::unordered_map<int, TensorShape>& inferred_shapes) const;
 #endif
 
   // cache of the constructed kernels to avoid spending construction time per executor
@@ -349,7 +348,7 @@ class SessionState {
 
   // cache for the generated mem_patterns. key is calculated based on input shapes.
   mutable std::map<int64_t, std::unique_ptr<MemoryPatternGroup>> mem_patterns_;
-  mutable std::map<int64_t, ThreadSafeUnorderedMap<int, TensorShape>> shape_patterns_;
+  mutable std::map<int64_t, std::unordered_map<int, TensorShape>> shape_patterns_;
 
   NameNodeInfoMapType input_names_to_nodeinfo_mapping_;
   NameNodeInfoMapType output_names_to_nodeinfo_mapping_;

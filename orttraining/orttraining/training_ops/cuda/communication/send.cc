@@ -6,6 +6,7 @@
 #include "orttraining/training_ops/cuda/communication/send.h"
 #include "orttraining/training_ops/cuda/communication/common.h"
 #include "core/profile/profile.h"
+#include "core/providers/cuda/cuda_common.h"
 #include <limits>
 #include <mpi.h>
 
@@ -95,11 +96,15 @@ void Send::SendData(
   IAllocatorUniquePtr<char> buffer = AllocateBufferOnCPUPinned<char>(
       aggregated_aligned_tensor_bytes);
 
+  cudaStream_t copyStream;
+  CUDA_CALL(cudaStreamCreate(&copyStream));
   for (int i = 0; i < num_tensors; ++i) {
     const Tensor* tensor = ctx->Input<Tensor>(i + 2);
-    ORT_ENFORCE(cudaMemcpy(buffer.get() + tensor_offsets_in_bytes[i], tensor->DataRaw(),
-                           tensor_sizes_in_bytes[i], cudaMemcpyDeviceToHost) == cudaSuccess);
+    CUDA_CALL(cudaMemcpyAsync(buffer.get() + tensor_offsets_in_bytes[i], tensor->DataRaw(),
+                              tensor_sizes_in_bytes[i], cudaMemcpyDeviceToHost, copyStream));
   }
+  CUDA_CALL(cudaStreamSynchronize(copyStream));
+  CUDA_CALL(cudaStreamDestroy(copyStream));
 
 #ifdef ENABLE_NVTX_PROFILE
   memcpyRange.End();

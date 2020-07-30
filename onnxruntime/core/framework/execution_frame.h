@@ -4,6 +4,7 @@
 #pragma once
 
 #include <vector>
+#include <unordered_map>
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
@@ -13,7 +14,6 @@
 #include "core/framework/node_index_info.h"
 #include "core/framework/sequential_execution_plan.h"
 #include "core/framework/tensor.h"
-#include "core/framework/thread_safe_map.h"
 #include "core/graph/graph_viewer.h"
 
 namespace onnxruntime {
@@ -179,9 +179,9 @@ class ExecutionFrame final : public IExecutionFrame {
   std::map<OrtMemoryInfo, BufferUniquePtr> buffers_;
 
   // Given the input shapes of the executed graph, ExecutionFrame tries inferring
-  // all symbolic shapes. inferred_shapes_.map_[i] is the shape of OrtValue indexed
+  // all symbolic shapes. inferred_shapes_[i] is the shape of OrtValue indexed
   // by i, if the key i exists.
   // inferred_shapes_ is generated togehter with mem_patterns_.
-  ThreadSafeUnorderedMap<int, TensorShape> inferred_shapes_;
+  std::unordered_map<int, TensorShape> inferred_shapes_;
 };
 }  // namespace onnxruntime

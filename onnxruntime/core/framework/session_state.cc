@@ -298,7 +298,7 @@ Status ResolveSizeAndShape(
 Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_wrapper<const TensorShape>>& input_shape,
                                                const std::vector<int>& feed_mlvalue_idxs,
                                                MemoryPatternGroup* output,
-                                               ThreadSafeUnorderedMap<int, TensorShape>& resolved_shapes) const {
+                                               std::unordered_map<int, TensorShape>& resolved_shapes) const {
   std::map<std::string, TensorShape> feeds;
   for (size_t i = 0, end = feed_mlvalue_idxs.size(); i < end; ++i) {
     std::string name;
@@ -333,7 +333,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
       // Store all valid resolved shapes. They will be queried in, for example,
       // Recv operator to bypass the dependency of output shapes on inputs.
       if (size != 0) {
-        resolved_shapes.Set(ml_value_idx, resolved_shape);
+        resolved_shapes[ml_value_idx] = resolved_shape;
       }
 
       // Plan memory if conditions are met.
@@ -369,7 +369,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
 
 const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(const std::vector<std::reference_wrapper<const TensorShape>>& input_shapes,
                                                               const std::vector<int>& feed_mlvalue_idxs,
-                                                              ThreadSafeUnorderedMap<int, TensorShape>& inferred_shapes) const {
+                                                              std::unordered_map<int, TensorShape>& inferred_shapes) const {
   int64_t key = CalculateMemoryPatternsKey(input_shapes);
 
   std::lock_guard<OrtMutex> lock(mem_patterns_lock_);
