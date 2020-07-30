@@ -8,6 +8,8 @@ from . import ORTTrainerOptions
 from . import optim
 from .model_desc_validation import _ORTTrainerModelDesc
 from .. import postprocess
+from onnxruntime.capi._pybind_state import set_cuda_mem_limit
+from onnxruntime.capi._pybind_state import set_cuda_device_id
 
 
 class TrainStepInfo(object):
@@ -147,6 +149,13 @@ class ORTTrainer(object):
         self.optim_config = optim_config
         self.options = options
 
+        # Set GPU device and memory limit
+        device_id = self.options.device.id
+        if 'cuda' in device_id.lower():
+            set_cuda_mem_limit(int(self.options.device.mem_limit))
+            if ':' in device_id:
+                set_cuda_device_id(device_id.split(':')[1])
+
     def eval_step(self, *input, **kwargs):
         r"""Evaluation step method
 
@@ -260,18 +269,16 @@ class ORTTrainer(object):
 
         return CombineTorchModelLossFn(self._torch_model, self.loss_fn, input_names)
 
-    def _convert_torch_model_loss_fn_to_onnx(self, device, inputs):
+    def _convert_torch_model_loss_fn_to_onnx(self, inputs):
+        device = torch.device(self.options.device.id)
         if isinstance(inputs, torch.Tensor):
             inputs = [inputs]
         if isinstance(inputs, dict):
-            sample_inputs = [inputs[k.name_].to(
-                device=device) for k in self.model_desc.inputs]
+            sample_inputs = [inputs[k.name_].to(device=device) for k in self.model_desc.inputs]
         elif isinstance(inputs, (list, tuple)):
-            sample_inputs = [input.to(device=device) for i, input in enumerate(
-                inputs) if i < len(self.model_desc.inputs)]
+            sample_inputs = [input.to(device=device) for i, input in enumerate(inputs) if i < len(self.model_desc.inputs)]
         else:
-            raise RuntimeError(
-                "Unexpected input type. Only torch.Tensor, or dict/list/tuple of torch.Tensor is supported.")
+            raise RuntimeError("Unexpected input type. Only torch.Tensor, or dict/list/tuple of torch.Tensor is supported.")
 
         # PyTorch ONNX exporter does not match argument names
         # This is an issue because the ONNX graph depends on all inputs to be specified
@@ -341,7 +348,7 @@ class ORTTrainer(object):
             self.options.utils.frozen_weights.extend(torch_buffers)
 
             # Export to ONNX
-            self._onnx_model = self._convert_torch_model_loss_fn_to_onnx(torch.device('cpu'), inputs)
+            self._onnx_model = self._convert_torch_model_loss_fn_to_onnx(inputs)
 
         self._init_session()
 
@@ -356,17 +363,17 @@ class ORTTrainer(object):
         # Perform user-specified post-processing
         if self.options._internal_use.extra_postprocess:
             self.options._internal_use.extra_postprocess(self._onnx_model)
-        
-        # TODO: Pass debug flag from ORTTrainerOptions._internal_use
+
+        # Create training session used by train_step
         self._create_ort_training_session()
         return
 
-    def _prepare_model_input(self, inputs_desc, lr, loss_scale, *args, **kwargs):
+    def _prepare_model_input(self, inputs_desc, lr, loss_scale, *inputs, **kwargs):
         # Normalize input to tuple of samples
-        if type(args) == tuple and len(args) == 1 and type(args[0]) == list:
-            input = tuple(args[0])
+        if type(inputs) == tuple and len(inputs) == 1 and type(inputs[0]) == list:
+            input = tuple(inputs[0])
         else:
-            input = args
+            input = inputs
 
         # Append input from 'kwargs'
         for input_desc in inputs_desc:
@@ -377,7 +384,7 @@ class ORTTrainer(object):
 
     # TODO: Test this througly along with train step, including
     #       various optimizer parameter groups, frozen weights, loss and lr
-    def _create_ort_training_session(self, use_deterministic_compute=False):
+    def _create_ort_training_session(self):
         # Validating frozen_weights names
         unused_frozen_weights = [n for n in self.options.utils.frozen_weights\
             if n not in [i.name for i in self._onnx_model.graph.initializer]]
@@ -403,8 +410,6 @@ class ORTTrainer(object):
             for param_group in self.optim_config.params:
                 if initializer.name not in param_group['params']:
                     continue  # keep looking for a matching param_group
-                optimizer_attributes_map[initializer.name] = {}
-                optimizer_int_attributes_map[initializer.name] = {}
                 for k, v in param_group.items():
                     if k == 'params':
                         continue  # 'params' is not a hyper parameter, skip it
@@ -413,8 +418,7 @@ class ORTTrainer(object):
                     elif isinstance(v, int):
                         optimizer_int_attributes_map[initializer.name][k] = v
                     else:
-                        raise ValueError(
-                            "Optimizer attributes must be either float or int.")
+                        raise ValueError("Optimizer attributes must be either float or int.")
 
         # TrainingParameters
         ort_parameters = ort.TrainingParameters()
@@ -435,7 +439,7 @@ class ORTTrainer(object):
 
         # SessionOptions
         session_options = ort.SessionOptions()
-        session_options.use_deterministic_compute = use_deterministic_compute
+        session_options.use_deterministic_compute = self.options.debug.deterministic_compute
 
         # TrainingSession
         self._training_session = ort.TrainingSession(self._onnx_model.SerializeToString(), ort_parameters, session_options)

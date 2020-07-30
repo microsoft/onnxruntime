@@ -48,6 +48,9 @@ def testORTTrainerOptionsDefaultValues(test_input):
             'frozen_weights': [],
             'grad_norm_clip': False
         },
+        'debug': {
+            'deterministic_compute': False
+        },
         '_internal_use': {
             'enable_internal_postprocess': True,
             'extra_postprocess': None,

@@ -124,6 +124,17 @@ class ORTTrainerOptions(object):
                         }
                     }
                 },
+                'debug' : {
+                    'type' : 'dict',
+                    'required': False,
+                    'default' : {},
+                    'schema' : {
+                        'deterministic_compute' : {
+                            'type' : 'boolean',
+                            'default' : False
+                        },
+                    }
+                },
                 '_internal_use' : {
                     'type' : 'dict',
                     'required': False,
@@ -191,6 +202,10 @@ class ORTTrainerOptions(object):
             list of model parameter names to skip training (weights don't change)
         utils.grad_norm_clip (bool, default is False):
             enables gradient norm clipping for 'AdamOptimizer' and 'LambOptimizer'
+        debug (dict):
+            debug options
+        debug.deterministic_compute (bool, default is False)
+            forces compute to be deterministic accross runs
         _internal_use (dict):
             internal options, possibly undocumented, that might be removed without notice
         _internal_use.enable_internal_postprocess (bool, default is True):
@@ -404,6 +419,17 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'type': 'boolean',
                 'default': False
             }
+        }
+    },
+    'debug': {
+        'type': 'dict',
+        'default_setter': lambda _: {},
+        'required': False,
+        'schema': {
+            'deterministic_compute': {
+                'type': 'boolean',
+                'default': False
+            },
         }
     },
     '_internal_use': {
