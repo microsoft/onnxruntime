@@ -138,7 +138,8 @@ RUN cd /stage && git clone https://github.com/microsoft/onnxruntime.git &&\
         --build_dir build \
         --build \
         --build_wheel \
-        --skip_tests &&\
+        #--skip_tests &&\
+        --enable_onnx_tests && \
     pip install build/Release/dist/*.whl
 
 # switch to cuda runtime environment
