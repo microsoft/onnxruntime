@@ -1117,6 +1117,23 @@ def run_training_python_frontend_e2e_tests(cwd):
     # frontend tests are to be added here:
     log.info("Running python frontend e2e tests.")
 
+    def mpirun_subprocess(mpicmd, cwd):
+        mpi = subprocess.Popen(
+            mpicmd,
+            executable=sys.executable,
+            cwd=cwd,
+            shell=True)
+        mpi.wait()
+        if mpi.returncode != 0:
+            raise TestFailure(mpicmd, "Test failed with returncode={}.".format(mpi.returncode))
+
+    import torch
+    ngpus = torch.cuda.device_count()
+    if ngpus > 1:
+        run_glue_mpicmd = 'mpirun -n {} python orttraining_run_glue.py'.format(ngpus)
+        print("RUN: ", run_glue_mpicmd)
+        mpirun_subprocess(run_glue_mpicmd, cwd)
+
     # with orttraining_run_glue.py.
     # 1. we like to force to use single GPU (with CUDA_VISIBLE_DEVICES)
     #   for fine-tune tests.
@@ -1147,22 +1164,6 @@ def run_training_python_frontend_e2e_tests(cwd):
     run_subprocess([
         sys.executable, 'orttraining_test_transformers.py',
         'BertModelTest.test_for_pretraining_mixed_precision_all'], cwd=cwd)
-
-    def mpirun_subprocess(mpicmd, cwd):
-        mpi = subprocess.Popen(
-            mpicmd,
-            cwd=cwd,
-            shell=True)
-        mpi.wait()
-        if mpi.returncode != 0:
-            raise TestFailure(mpicmd, "Test failed with returncode={}.".format(mpi.returncode))
-
-    import torch
-    ngpus = torch.cuda.device_count()
-    if ngpus > 1:
-        run_glue_mpicmd = 'mpirun -n {} python orttraining_run_glue.py'.format(ngpus)
-        print("RUN: ", run_glue_mpicmd)
-        mpirun_subprocess(run_glue_mpicmd, cwd)
 
 
 def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
