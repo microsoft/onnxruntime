@@ -418,8 +418,7 @@ class ORTTrainer(object):
                     elif isinstance(v, int):
                         optimizer_int_attributes_map[initializer.name][k] = v
                     else:
-                        raise ValueError(
-                            "Optimizer attributes must be either float or int.")
+                        raise ValueError("Optimizer attributes must be either float or int.")
 
         # TrainingParameters
         ort_parameters = ort.TrainingParameters()
