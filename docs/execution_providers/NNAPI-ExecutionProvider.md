@@ -1,14 +1,14 @@
 # NNAPI Execution Provider
 
-[Android Neural Networks API (NNAPI)](https://developer.android.com/ndk/guides/neuralnetworks) is a unified interface to CPU, GPU, and NN accelerators on Android. It is supported by onnxruntime via [DNNLibrary](https://github.com/JDAI-CV/DNNLibrary).
+[Android Neural Networks API (NNAPI)](https://developer.android.com/ndk/guides/neuralnetworks) is a unified interface to CPU, GPU, and NN accelerators on Android.
 
 ## Minimum requirements
 
-The NNAPI EP requires Android devices with Android 8.1 or higher.
+The NNAPI EP requires Android devices with Android 8.1 or higher, it is recommended to use Android devices with Android 9 or higher to achieve optimal performance.
 
 ## Build NNAPI EP
 
-For build instructions, please see the [BUILD page](../../BUILD.md#Android-NNAPI).
+For build instructions, please see the [BUILD page](../../BUILD.md#Android-NNAPI-Execution-Provider).
 
 ## Using NNAPI EP in C/C++
 
@@ -27,11 +27,3 @@ session_object.RegisterExecutionProvider(std::make_unique<::onnxruntime::NnapiEx
 status = session_object.Load(model_file_name);
 ```
 The C API details are [here](../C_API.md#c-api).
-
-## Performance
-
-![NNAPI EP on RK3399](./images/nnapi-ep-rk3399.png)
-
-![NNAPI EP on OnePlus 6T](./images/nnapi-ep-oneplus6t.png)
-
-![NNAPI EP on Huawei Honor V10](./images/nnapi-ep-huaweihonorv10.png)
