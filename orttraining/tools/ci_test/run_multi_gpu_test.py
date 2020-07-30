@@ -34,7 +34,8 @@ def main():
     multigpu_test_output_path = "log-mem-many-p3-s128-b1-a16"
     # run BERT training
     subprocess.run([
-        "/bert_ort/openmpi/bin/mpirun",
+        #"/bert_ort/openmpi/bin/mpirun",
+        "mpirun",
         "-n", "2",
         "--tag-output",
         "-merge-stderr-to-stdout",
@@ -68,7 +69,7 @@ def main():
         #"--allreduce_in_fp16",
         #"--lambda", "0",
         "--use_nccl",
-        "--convergence_test_output_file", convergence_test_output_path,
+        #"--convergence_test_output_file", convergence_test_output_path,
         "--seed", "42",
         #"--enable_grad_norm_clip=false",
         "--data_parallel_size", "2"

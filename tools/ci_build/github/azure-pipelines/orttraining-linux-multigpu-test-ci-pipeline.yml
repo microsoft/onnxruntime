@@ -2,7 +2,8 @@ trigger: none
 
 jobs:
 - job: Onnxruntime_Linux_Multi_GPU_Test
-  pool: Linux-Multi-GPU-V100
+  #pool: Linux-Multi-GPU-V100
+  pool: ORT-Training-Frontend-Linux-MultiGPU
 
   timeoutInMinutes: 0
 
@@ -23,14 +24,13 @@ jobs:
 
   - script: |
       docker run \
-      hello-world
-  #       --gpus all \
-  #       --rm \
-  #       --volume $(Build.SourcesDirectory):/onnxruntime_src \
-  #       --volume $(Build.BinariesDirectory):/build \
-  #       onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
-  #         /onnxruntime_src/orttraining/tools/ci_test/run_multi_gpu_test.py \
-  #           --binary_dir /build/RelWithDebInfo 
+        --gpus all \
+        --rm \
+        --volume $(Build.SourcesDirectory):/onnxruntime_src \
+        --volume $(Build.BinariesDirectory):/build \
+        onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
+          /onnxruntime_src/orttraining/tools/ci_test/run_multi_gpu_test.py \
+            --binary_dir /build/RelWithDebInfo 
     displayName: 'Run convergence test'
     condition: succeededOrFailed() # ensure all tests are run
 
