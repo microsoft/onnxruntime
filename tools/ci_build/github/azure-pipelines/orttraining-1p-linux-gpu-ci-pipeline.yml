@@ -1,8 +1,8 @@
-parameters:
-  - name: conda_version
-    displayName: Conda Version
-    type: string
-    default: 4.8.0
+# parameters:
+#   - name: conda_version
+#     displayName: Conda Version
+#     type: string
+#     default: 4.8.0
 
 stages:
 - stage: Python_Packaging
@@ -62,7 +62,7 @@ stages:
       - task: CmdLine@2
         inputs:
           script: |
-            --preserve-env docker run \
+            docker run \
               --gpus all \
               --rm \
               --volume $(Build.SourcesDirectory):/onnxruntime_src \
