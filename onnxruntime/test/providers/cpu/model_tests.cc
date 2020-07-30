@@ -609,7 +609,7 @@ TEST_P(ModelTest, Run) {
   provider_names.push_back(ORT_TSTR("acl"));
 #endif
 #ifdef USE_ARMNN
-  provider_names.push_back(ORT_TSTR("armnn");
+  provider_names.push_back(ORT_TSTR("armnn"));
 #endif
   std::vector<std::basic_string<ORTCHAR_T>> v;
   // Permanently exclude following tests because ORT support only opset starting from 7,

@@ -12,7 +12,7 @@ steps:
 
     - powershell: |
         $length = $env:TELEMETRYGUID.length
-        $fileContent = "#define ENABLE_TELEMETRY`n#define TraceLoggingOptionMicrosoftTelemetry() \
+        $fileContent = "#define TraceLoggingOptionMicrosoftTelemetry() \
           TraceLoggingOptionGroup("+$env:TELEMETRYGUID.substring(1, $length-2)+")"
         New-Item -Path "$(Build.SourcesDirectory)\include\onnxruntime\core\platform\windows\TraceLoggingConfigPrivate.h" -ItemType "file" -Value "$fileContent" -Force
       displayName: 'Create TraceLoggingConfigPrivate.h For WinML Telemetry'

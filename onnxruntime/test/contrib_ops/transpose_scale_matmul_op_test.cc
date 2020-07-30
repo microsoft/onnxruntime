@@ -84,6 +84,13 @@ std::vector<MatMulTestData<T>> GenerateSimpleTestCases() {
        {1, 2, 4},
        {20, 23, 26, 29, 56, 68, 80, 92}});
 
+  test_cases.push_back(
+      {"test 2D with empty input",
+       {0, 3},
+       {3, 4},
+       {0, 4},
+       {}});
+
   return test_cases;
 }
 

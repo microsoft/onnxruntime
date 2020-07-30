@@ -92,7 +92,11 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   Tensor* Y = ctx->Output(0, helper.OutputShape());
 
-  const CudaT alpha = ToCudaType<T>::FromFloat(alpha_);
+  // Bail out early if the output is going to be empty
+  if (Y->Shape().Size() == 0)
+    return Status::OK();
+
+  const CudaT one = ToCudaType<T>::FromFloat(1.0f);
   const CudaT zero = ToCudaType<T>::FromFloat(0.0f);
 
   cublasOperation_t transA = transa ? CUBLAS_OP_T : CUBLAS_OP_N;

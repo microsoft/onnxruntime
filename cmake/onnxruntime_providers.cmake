@@ -59,7 +59,7 @@ if(onnxruntime_USE_TENSORRT)
   set(PROVIDERS_TENSORRT onnxruntime_providers_tensorrt)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES tensorrt)
 endif()
-if(onnxruntime_USE_NNAPI_DNNLIBRARY OR onnxruntime_USE_NNAPI_BUILTIN)
+if(onnxruntime_USE_NNAPI_BUILTIN)
   set(PROVIDERS_NNAPI onnxruntime_providers_nnapi)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES nnapi)
 endif()
@@ -159,7 +159,7 @@ if (onnxruntime_ENABLE_TRAINING)
   if (onnxruntime_USE_HOROVOD)
     target_include_directories(onnxruntime_providers PRIVATE ${HOROVOD_INCLUDE_DIRS})
   endif()
-  if (onnxruntime_USE_NCCL OR onnxruntime_USE_HOROVOD) 
+  if (onnxruntime_USE_NCCL OR onnxruntime_USE_HOROVOD)
     target_include_directories(onnxruntime_providers PUBLIC ${MPI_INCLUDE_DIRS})
   endif()
 endif()
@@ -509,36 +509,8 @@ if (onnxruntime_USE_OPENVINO)
 
 endif()
 
-if (onnxruntime_USE_NNAPI_DNNLIBRARY)
+if (onnxruntime_USE_NNAPI_BUILTIN)
   add_definitions(-DUSE_NNAPI=1)
-  add_definitions(-DUSE_NNAPI_DNNLIBRARY=1)
-  option(DNN_READ_ONNX "" ON)
-  set(DNN_CUSTOM_PROTOC_EXECUTABLE ${ONNX_CUSTOM_PROTOC_EXECUTABLE})
-  option(DNN_CMAKE_INSTALL "" OFF)
-  option(DNN_BUILD_BIN "" OFF)
-  add_subdirectory(${REPO_ROOT}/cmake/external/DNNLibrary)
-  file(GLOB
-    onnxruntime_providers_nnapi_cc_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/nnapi/*.cc"
-    "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_dnnlibrary/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_dnnlibrary/*.cc"
-  )
-  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_nnapi_cc_srcs})
-  add_library(onnxruntime_providers_nnapi ${onnxruntime_providers_nnapi_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_nnapi onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf-lite dnnlibrary::dnnlibrary)
-  target_link_libraries(onnxruntime_providers_nnapi dnnlibrary::dnnlibrary)
-  add_dependencies(onnxruntime_providers_nnapi
-    dnnlibrary::dnnlibrary
-    onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  # Header files of DNNLibrary requires C++17, fortunately, all modern Android NDKs support C++17
-  set_target_properties(onnxruntime_providers_nnapi PROPERTIES CXX_STANDARD 17)
-  set_target_properties(onnxruntime_providers_nnapi PROPERTIES CXX_STANDARD_REQUIRED ON)
-  set_target_properties(onnxruntime_providers_nnapi PROPERTIES FOLDER "ONNXRuntime")
-  target_include_directories(onnxruntime_providers_nnapi PRIVATE ${ONNXRUNTIME_ROOT} ${nnapi_INCLUDE_DIRS})
-  set_target_properties(onnxruntime_providers_nnapi PROPERTIES LINKER_LANGUAGE CXX)
-elseif (onnxruntime_USE_NNAPI_BUILTIN)
-  add_definitions(-DUSE_NNAPI=1)
-  add_definitions(-DUSE_NNAPI_BUILTIN=1)
   file(GLOB
     onnxruntime_providers_nnapi_cc_srcs_top CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/nnapi/*.cc"
