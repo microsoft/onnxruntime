@@ -114,6 +114,7 @@ void GradientOpTester::Run(
     static const std::string all_provider_types[] = {
         kCpuExecutionProvider,
         kCudaExecutionProvider,
+        kHipExecutionProvider,
         kDnnlExecutionProvider,
         kNupharExecutionProvider,
         kTensorrtExecutionProvider,
