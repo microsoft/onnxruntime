@@ -375,10 +375,12 @@ class ORTTrainer(object):
 
         return input
 
-
+    # TODO: Test this througly along with train step, including
+    #       various optimizer parameter groups, frozen weights, loss and lr
     def _create_ort_training_session(self, use_deterministic_compute=False):
         # Validating frozen_weights names
-        unused_frozen_weights = [n for n in self.options.utils.frozen_weights if n not in [i.name for i in self._onnx_model.graph.initializer]]
+        unused_frozen_weights = [n for n in self.options.utils.frozen_weights\
+            if n not in [i.name for i in self._onnx_model.graph.initializer]]
         if unused_frozen_weights:
             raise RuntimeError("{} params from 'frozen_weights' not found in the ONNX model.".format(
                 unused_frozen_weights))
@@ -426,9 +428,7 @@ class ORTTrainer(object):
         ort_parameters.enable_grad_norm_clip = self.options.utils.grad_norm_clip
         ort_parameters.set_gradients_as_graph_outputs = False
         ort_parameters.training_optimizer_name = self.optim_config.name
-        
-        ort_parameters.lr_params_feed_name = str(self.optim_config.lr)
-        #ort_parameters.trainable_params = trainable_params
+        ort_parameters.lr_params_feed_name = self.model_desc.learning_rate.name
         ort_parameters.weights_to_train = trainable_params
         ort_parameters.optimizer_attributes_map = optimizer_attributes_map
         ort_parameters.optimizer_int_attributes_map = optimizer_int_attributes_map

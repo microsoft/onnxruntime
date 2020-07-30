@@ -43,8 +43,7 @@ class ORTTrainerOptions(object):
                     'schema' : {
                         'id' : {
                             'type' : 'string',
-                            'nullable' : True,
-                            'default' : None
+                            'default' : 'cpu'
                         },
                         'mem_limit' : {
                             'type' : 'integer',
@@ -156,7 +155,7 @@ class ORTTrainerOptions(object):
             number of steps to accumulate before do collective gradient reduction
         device (dict):
             compute device related settings
-        device.id (string, default is None):
+        device.id (string, default is 'cpu'):
             device to run training
         device.mem_limit (int):
             maximum memory size (in bytes) used by device.id
@@ -325,8 +324,7 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
         'schema': {
             'id': {
                 'type': 'string',
-                'nullable': True,
-                'default': None
+                'default': 'cpu'
             },
             'mem_limit': {
                 'type': 'integer',
