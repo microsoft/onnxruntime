@@ -49,15 +49,15 @@ Status PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs
     // populate split_sizes with the same size for each output
     split_sizes = std::vector<int64_t>(static_cast<size_t>(num_outputs), split_dim_size / num_outputs);
   } else {
-    if (split_sizes_values.size() != static_cast<size_t>(num_outputs) || split_size_sum != split_dim_size)
+    if (split_sizes_values.size() != static_cast<size_t>(num_outputs) || split_size_sum != split_dim_size) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                              "Cannot split using values in 'split' input. Axis=", axis_value,
                              " Input shape=", input_shape,
                              " NumOutputs=", num_outputs,
                              " Num entries in 'split' (must equal number of outputs) was ", split_sizes_values.size(),
                              " Sum of sizes in 'split' (must equal size of selected axis) was ", split_size_sum);
-
-      split_sizes = split_sizes_values;
+    }
+    split_sizes = split_sizes_values;
   }
 
   return Status::OK();
