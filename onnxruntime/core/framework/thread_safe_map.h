@@ -15,12 +15,15 @@ class ThreadSafeUnorderedMap final {
   ThreadSafeUnorderedMap(const ThreadSafeUnorderedMap& another) {
     // Get a fork of map_ from another instance.
     // For mutex, we use a new one initialized by its default ctor.
+    std::unique_lock<std::mutex> lock(another.mtx_);
     map_ = another.map_;
   }
 
   ThreadSafeUnorderedMap& operator=(const ThreadSafeUnorderedMap& another) {
     // Get a fork of map_ from another instance.
     // For mutex, we use a new one initialized by its default ctor.
+    std::unique_lock<std::mutex> lock(mtx_);
+    std::unique_lock<std::mutex> another_lock(another.mtx_);
     map_ = another.map_;
     return *this;
   }
