@@ -286,6 +286,11 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
         for (const auto& dim : ort.GetTensorShape(tensor_info))
           dimensions.push_back(static_cast<uint32_t>(dim));
 
+        // NNAPI has strict input type requirements which separates tensor inputs and scalar inputs
+        // For ONNX the we do not have clear line between scalar inputs and tensor inputs
+        // Also NNAPI treats a tensor input with empty shape as dynamic shape input
+        // Disable support of the scalar input (tensor input with an empty shape) for now
+        // TODO, add support for ONNX scalar input (tensor input with an empty shape)
         if (dimensions.empty())
           return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "NNAPI does not support scalar input");
 
