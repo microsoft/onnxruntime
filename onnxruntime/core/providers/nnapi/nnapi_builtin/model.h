@@ -137,8 +137,6 @@ class Model {
 };
 
 class Execution {
-  friend class Model;
-
  public:
   struct InputBuffer {
     const std::string& name;
@@ -153,9 +151,11 @@ class Execution {
   };
 
  public:
+  explicit Execution(ANeuralNetworksExecution& execution, const Shaper& shaper);
+  ~Execution();
   Execution(const Execution&) = delete;
   Execution& operator=(const Execution&) = delete;
-  ~Execution();
+
   const Shaper& GetShaper() const { return shaper_; }
 
   // Set the input/output data buffers
@@ -168,8 +168,6 @@ class Execution {
   Status Predict(const std::vector<int32_t>& dynamic_outputs, std::vector<Shaper::Shape>& dynamic_output_shapes);
 
  private:
-  explicit Execution(ANeuralNetworksExecution& execution, const Shaper& shaper);
-
   Status SetInputBuffer(const int32_t index, const InputBuffer& input);
   Status SetOutputBuffer(const int32_t index, const OutputBuffer& output);
 
