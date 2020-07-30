@@ -189,8 +189,10 @@ class FusionEmbedLayerNoMask(Fusion):
         else:
             embed_node_inputs=[
                 input_ids,
+                '',
                 word_embedding_gather.input[0],
                 position_embedding_weight_node.input[0],
+                '',
                 normalize_node.input[2],
                 normalize_node.input[3]  # gamma and beta
             ]
