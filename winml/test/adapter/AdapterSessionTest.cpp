@@ -320,5 +320,8 @@ const AdapterSessionTestAPI& getapi() {
     api.RegisterCustomRegistry_DML = SkipTest;
     api.CopyInputAcrossDevices_DML = SkipTest;
   }
+  if (SkipTestsImpactedByOpenMP()) {
+    api.GetNumberOfIntraOpThreads = SkipTest;
+  }
   return api;
 }

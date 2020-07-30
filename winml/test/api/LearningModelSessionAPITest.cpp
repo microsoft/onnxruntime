@@ -455,5 +455,8 @@ const LearningModelSessionAPITestsApi& getapi() {
     api.CreateSessionDeviceDirectXMinimumPower = SkipTest;
     api.AdapterIdAndDevice = SkipTest;
   }
+  if (SkipTestsImpactedByOpenMP()) {
+      api.SetIntraOpNumThreads = SkipTest;
+  }
  return api;
 }
