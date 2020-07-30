@@ -87,7 +87,7 @@ def create_test_dir(model_path, root_path, test_name,
     if not os.path.exists(test_dir) or not os.path.exists(test_data_dir):
         os.makedirs(test_data_dir)
 
-    model_filename = model_path.split('\\')[-1]
+    model_filename = os.path.split(model_path)[-1]
     test_model_filename = os.path.join(test_dir, model_filename)
     shutil.copy(model_path, test_model_filename)
 
