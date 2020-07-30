@@ -20,8 +20,8 @@ models that are stamped with ONNX opset versions in the range [7-9].
 
 
 ### Version matrix
-Following table summarizes the relationship between the ONNX Runtime version and the ONNX
-opset version implemented in that release. Please note the Backwards and Forward compatibility notes above.
+The following table summarizes the relationship between the ONNX Runtime version and the ONNX opset version implemented in that release. 
+Please note the backward compatibility notes above..
 For more details on ONNX Release versions, see [this page](https://github.com/onnx/onnx/blob/master/docs/Versioning.md).
 
 | ONNX Runtime release version | ONNX release version | ONNX opset version | ONNX ML opset version | Supported ONNX IR version | [WinML compatibility](https://docs.microsoft.com/en-us/windows/ai/windows-ml/release-notes/)|
