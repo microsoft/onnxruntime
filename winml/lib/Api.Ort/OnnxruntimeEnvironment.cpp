@@ -31,9 +31,9 @@ static bool IsCurrentModuleInSystem32() {
 
 static HRESULT GetOnnxruntimeLibrary(HMODULE& module) {
   DWORD flags = 0;
-//#ifdef BUILD_INBOX
+#ifdef BUILD_INBOX
   flags |= IsCurrentModuleInSystem32() ? LOAD_LIBRARY_SEARCH_SYSTEM32 : 0;
-//#endif
+#endif
 
   auto out_module = LoadLibraryExA("onnxruntime.dll", nullptr, flags);
   if (out_module == nullptr) {
