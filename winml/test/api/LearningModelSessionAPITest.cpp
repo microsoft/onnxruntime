@@ -394,7 +394,7 @@ static void SetIntraOpNumThreads() {
 
     // Set the number of intra op threads to half of logical cores.
     uint32_t desiredThreads = std::thread::hardware_concurrency() / 2;
-    WINML_EXPECT_NO_THROW(nativeOptions->OverrideIntraOpNumThreads(desiredThreads));
+    WINML_EXPECT_NO_THROW(nativeOptions->IntraOpNumThreadsOverride(desiredThreads));
     // Create session and grab the number of intra op threads to see if is set properly
     LearningModelSession session = nullptr;
     WINML_EXPECT_NO_THROW(session = LearningModelSession(model, device, options));

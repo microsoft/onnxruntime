@@ -28,7 +28,7 @@ uint32_t LearningModelSessionOptions::GetIntraOpNumThreads() {
   return intra_op_num_threads_override_;
 }
 
-STDMETHODIMP LearningModelSessionOptions::OverrideIntraOpNumThreads(uint32_t intraOpNumThreads) noexcept {
+STDMETHODIMP LearningModelSessionOptions::IntraOpNumThreadsOverride(uint32_t intraOpNumThreads) noexcept {
   intra_op_num_threads_override_ = intraOpNumThreads;
   return S_OK;
 }
