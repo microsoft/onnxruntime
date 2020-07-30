@@ -37,12 +37,12 @@ struct ZeROConfig {
 // configuration per optimizer node
 struct OptimizerNodeConfig {
   std::string name{};
-  const NodeArg* fp16_weight_arg{};
+  const NodeArg* mixed_precision_weight_arg{};
   std::string lr_feed_name{};
   std::unordered_map<std::string, float> attributes{};
   std::unordered_map<std::string, int64_t> int_attributes{};
   std::string loss_scale_input_name{};
-  bool use_fp16_moments{false};
+  bool use_mixed_precision_moments{false};
   bool update_weight{true};  // indicates whether Optimizer should do weight update, or output new gradient
   bool enabled{true};        // indicates whether this weight is included in the Optimizer
 };
@@ -54,7 +54,8 @@ struct OptimizerGraphConfig {
   int local_rank{0};
   int local_size{1};
   bool use_mixed_precision{false};
-  bool allreduce_in_fp16{false};
+  ONNX_NAMESPACE::TensorProto_DataType mixed_precision_type{ONNX_NAMESPACE::TensorProto_DataType_FLOAT16};
+  bool allreduce_in_mixed_precision_type{false};
   bool use_nccl{false};
   ZeROConfig deepspeed_zero{0};
   int gradient_accumulation_steps{1};

@@ -5,6 +5,7 @@
 
 #include <vector>
 #include <string>
+#include "core/util/math.h"
 #include "core/graph/graph.h"
 #include "orttraining/core/graph/graph_augmenter.h"
 #include "orttraining/core/graph/gradient_config.h"
@@ -149,11 +150,17 @@ class GradientBuilderBase {
                    {ONNX_NAMESPACE::MakeAttribute("value", t_proto)});
   }
 
-  static NodeDef ConstantValueNode(float value, const std::string& arg_name) {
+  static NodeDef ConstantValueNode(float value, const std::string& arg_name, int elem_type) {
     ONNX_NAMESPACE::TensorProto t_proto;
     t_proto.add_dims(1);
-    t_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-    t_proto.add_float_data(value);
+    t_proto.set_data_type(elem_type);
+    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+      t_proto.add_int32_data(math::floatToHalf(value));
+    } else if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) {
+      t_proto.add_int32_data(BFloat16(value).val);
+    } else {
+      t_proto.add_float_data(value);
+    }
 
     return NodeDef("Constant",
                    {},
@@ -161,12 +168,16 @@ class GradientBuilderBase {
                    {ONNX_NAMESPACE::MakeAttribute("value", t_proto)});
   }
 
-  static NodeDef ZeroConstantNode() {
-    return ConstantValueNode(0.0f, "ZeroConstant");
+  static NodeDef ZeroConstantNode(int elem_type) {
+    return ConstantValueNode(0.0f, "ZeroConstant", elem_type);
   }
 
-  static NodeDef OneConstantNode() {
-    return ConstantValueNode(1.0f, "OneConstant");
+  static NodeDef HalfConstantNode(int elem_type) {
+    return ConstantValueNode(0.5f, "HalfConstant", elem_type);
+  }
+
+  static NodeDef OneConstantNode(int elem_type) {
+    return ConstantValueNode(1.0f, "OneConstant", elem_type);
   }
 
   void HandleBroadcasting(const ArgDef& input_grad,

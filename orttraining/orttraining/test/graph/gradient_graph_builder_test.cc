@@ -1139,7 +1139,7 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_bert_tiny) {
   pipe.cut_list.emplace_back(cut1);
 
   TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mixed_precision_config{};
-  mixed_precision_config.use_fp16_initializers = true;
+  mixed_precision_config.use_mixed_precision_initializers = true;
 
   // 2 test variations - full precision and mixed precision
   const std::vector<bool> test_with_fp32{true, false};
@@ -1232,7 +1232,7 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_MLP) {
   pipe.cut_list.emplace_back(cut1);
 
   TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mixed_precision_config{};
-  mixed_precision_config.use_fp16_initializers = true;
+  mixed_precision_config.use_mixed_precision_initializers = true;
 
   // 2 test variations - full precision and mixed precision
   const std::vector<bool> test_with_fp32{true, false};

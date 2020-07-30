@@ -428,6 +428,8 @@ class InferenceSession {
                                          TransformerLevel graph_optimization_level,
                                          const std::vector<std::string>& custom_list);
 
+  virtual void Debug();
+
   void InitLogger(logging::LoggingManager* logging_manager);
 
   common::Status CheckShapes(const std::string& input_name, const TensorShape& input_shape,

@@ -303,6 +303,10 @@ Status OptimizerGraphBuilder::AddFiniteGradientCheck(
   return Status::OK();
 }
 
+static std::string GradientName(const std::string& name) {
+  return name + "_fp16_grad";
+}
+
 OptimizerGraphBuilder::OptimizerGraphBuilder(
     const OptimizerBuilderRegistry& opt_builder_registry,
     const OptimizerGraphConfig& opt_graph_config,
@@ -325,7 +329,7 @@ OptimizerGraphBuilder::OptimizerGraphBuilder(
   gradient_names_.reserve(weight_names_.size());
   std::transform(
       weight_names_.begin(), weight_names_.end(), std::back_inserter(gradient_names_),
-      GradientBuilderBase::GradientName);
+      GradientName);
 
   // add optimizer configurations
   opt_configs_.reserve(weight_names_.size());
@@ -398,7 +402,7 @@ Status OptimizerGraphBuilder::BuildInternal(
   if (is_gradient_accumulation_enabled) {
     const float scale = 1.0f / opt_graph_config_.gradient_accumulation_steps;
     ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs,
-                                                opt_graph_config_.allreduce_in_fp16, false));
+                                                opt_graph_config_.allreduce_in_mixed_precision_type, false));
   }
 
   // check if all gradients are finite
@@ -409,9 +413,11 @@ Status OptimizerGraphBuilder::BuildInternal(
         nodearg_name_generator, gradient_argdefs, graph_defs, global_grad_norm_argdef));
     optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
 
-    ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
-        nodearg_name_generator, {global_grad_norm_argdef}, graph_defs, global_grad_norm_finite_argdef));
-    optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite] = global_grad_norm_finite_argdef.name;
+    if (opt_graph_config_.mixed_precision_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+      ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
+          nodearg_name_generator, {global_grad_norm_argdef}, graph_defs, global_grad_norm_finite_argdef));
+      optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite] = global_grad_norm_finite_argdef.name;
+    }
   }
 
   // add weight update

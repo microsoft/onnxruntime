@@ -62,7 +62,7 @@ class GradientGraphBuilder {
                        const GradientGraphConfiguration& gradient_graph_config,
                        const bool set_gradient_as_graph_output = false);
 
-  Status Build();
+  Status Build(const std::unordered_set<std::string>* p_weights_to_train = nullptr);
 
  private:
   std::unordered_set<const NodeArg*> y_node_args_;

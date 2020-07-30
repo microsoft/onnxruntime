@@ -41,7 +41,7 @@ Status AddToExistingNodeArgs(
 };
 }  // namespace
 
-Status GraphAugmenter::AugmentGraph(Graph& graph, const GraphDefs& graph_element_defs) {
+Status GraphAugmenter::AugmentGraph(Graph& graph, const GraphDefs& graph_element_defs, const std::unordered_set<std::string>* p_weights_to_train) {
   // Add new initializers to the graph. - no op if it already exists
   for (const auto& tensor_proto : graph_element_defs.Initializers()) {
     const ONNX_NAMESPACE::TensorProto* exist_initializer = nullptr;
@@ -92,7 +92,11 @@ Status GraphAugmenter::AugmentGraph(Graph& graph, const GraphDefs& graph_element
   }
 
   graph.SetGraphResolveNeeded();
-  return graph.Resolve();
+
+  Graph::ResolveOptions options;
+  options.initializer_names_to_preserve = p_weights_to_train;
+
+  return graph.Resolve(options);
 }
 
 Status GraphAugmenter::OverrideGraphOutputs(Graph& graph, const std::vector<std::string>& graph_outputs) {

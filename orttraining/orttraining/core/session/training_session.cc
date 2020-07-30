@@ -38,7 +38,7 @@ namespace training {
 namespace {
 Status SetupOptimizerParams(
     const std::unordered_set<std::string>& weight_names_to_train,
-    const std::unordered_map<std::string, NodeArg*>& fp32_weight_names_to_fp16_node_args,
+    const std::unordered_map<std::string, NodeArg*>& fp32_weight_names_to_mixed_precision_node_args,
     const optional<std::string>& loss_scale_input_name,
     const TrainingSession::TrainingConfiguration& config,
     OptimizerGraphConfig& opt_graph_config_result,
@@ -67,11 +67,11 @@ Status SetupOptimizerParams(
     // TODO make OptimizerNodeConfig::loss_scale_input_name optional<string>
     opt_node_config.loss_scale_input_name =
         loss_scale_input_name.has_value() ? loss_scale_input_name.value() : "";
-    opt_node_config.use_fp16_moments = optimizer_config.use_fp16_moments;
+    opt_node_config.use_mixed_precision_moments = optimizer_config.use_mixed_precision_moments;
 
-    const auto fp16_weight_name_it = fp32_weight_names_to_fp16_node_args.find(weight_name);
-    if (fp16_weight_name_it != fp32_weight_names_to_fp16_node_args.end()) {
-      opt_node_config.fp16_weight_arg = fp16_weight_name_it->second;
+    const auto mixed_precision_weight_name_it = fp32_weight_names_to_mixed_precision_node_args.find(weight_name);
+    if (mixed_precision_weight_name_it != fp32_weight_names_to_mixed_precision_node_args.end()) {
+      opt_node_config.mixed_precision_weight_arg = mixed_precision_weight_name_it->second;
     }
     opt_node_configs.emplace(weight_name, std::move(opt_node_config));
   }
@@ -87,7 +87,7 @@ Status SetupOptimizerParams(
   opt_graph_config.data_parallel_group_rank = DistributedRunContext::RankInGroup(WorkerGroupType::DataParallel);
   opt_graph_config.data_parallel_group_size = DistributedRunContext::GroupSize(WorkerGroupType::DataParallel);
   opt_graph_config.gradient_accumulation_steps = config.gradient_accumulation_steps;
-  opt_graph_config.allreduce_in_fp16 = optimizer_config.do_all_reduce_in_fp16;
+  opt_graph_config.allreduce_in_mixed_precision_type = optimizer_config.do_all_reduce_in_mixed_precision_type;
   opt_graph_config.use_nccl = optimizer_config.use_nccl;
   opt_graph_config.adasum_reduction_type = optimizer_config.adasum_reduction_type;
   opt_graph_config.enable_grad_norm_clip = optimizer_config.enable_grad_norm_clip;
@@ -235,16 +235,28 @@ Status TrainingSession::ConfigureForTraining(
                                  << weight_names_stream.str();
   }
 
-  ORT_RETURN_IF_ERROR(BuildGradientGraph(
-      weight_names_to_train, loss_name, config.gradient_graph_config, config.set_gradients_as_graph_outputs));
+  for (auto name : weight_names_to_train) {
+    printf("weight name to train: %s\n", name.c_str());
+  }
+
+  Save(PathString("bert_fw.onnx"), SaveOption::NO_RELOAD);
 
   // transform for mixed precision
-  std::unordered_map<std::string, NodeArg*> fp32_weight_name_to_fp16_node_arg{};
+  std::unordered_map<std::string, NodeArg*> fp32_weight_name_to_mixed_precision_node_arg{};
   if (is_mixed_precision_enabled_) {
     const auto& mixed_precision_config = config.mixed_precision_config.value();
-    ORT_RETURN_IF_ERROR(EnableMixedPrecision(
-        weight_names_to_train, mixed_precision_config.use_fp16_initializers, fp32_weight_name_to_fp16_node_arg));
+    ORT_RETURN_IF_ERROR(EnableMixedPrecision(weight_names_to_train,
+                                             mixed_precision_config.use_mixed_precision_initializers,
+                                             mixed_precision_config.mixed_precision_type,
+                                             fp32_weight_name_to_mixed_precision_node_arg));
   }
+
+  Save(PathString("bert_fw_fp16.onnx"), SaveOption::NO_RELOAD);
+
+  ORT_RETURN_IF_ERROR(BuildGradientGraph(
+      weight_names_to_train, fp32_weight_name_to_mixed_precision_node_arg, loss_name, config.gradient_graph_config, config.set_gradients_as_graph_outputs));
+
+  Save(PathString("bert_bw_fp16.onnx"), SaveOption::NO_RELOAD);
 
   if (config.pipeline_config.has_value()) {
     TrainingConfigurationResult::PipelineConfigurationResult pipeline_result{};
@@ -296,7 +308,7 @@ Status TrainingSession::ConfigureForTraining(
     OptimizerGraphConfig opt_graph_config{};
     std::unordered_map<std::string, OptimizerNodeConfig> opt_node_configs{};
     ORT_RETURN_IF_ERROR(SetupOptimizerParams(
-        weights_to_train_, fp32_weight_name_to_fp16_node_arg,
+        weights_to_train_, fp32_weight_name_to_mixed_precision_node_arg,
         loss_scale_input_name, config, opt_graph_config, opt_node_configs));
 
     TrainingConfigurationResult::OptimizerConfigurationResult optimizer_config_result{};
@@ -441,7 +453,12 @@ static Status BuildGradientGraphInternal(Graph& graph,
                                          const std::string& loss_function_output_name,
                                          const std::unordered_set<std::string>& node_arg_names_to_train,
                                          const GradientGraphConfiguration& gradient_graph_config,
-                                         const bool set_gradient_as_graph_output = false) {
+                                         const bool set_gradient_as_graph_output = false,
+                                         const std::unordered_set<std::string>* p_weights_to_train = nullptr) {
+  /*for (auto name : node_arg_names_to_train) {
+    printf("node arg to train: %s\n", name.c_str());
+  }*/
+
   // Compute the gradient graph def.
   GradientGraphBuilder grad_graph_builder(&graph,
                                           {loss_function_output_name},
@@ -449,7 +466,7 @@ static Status BuildGradientGraphInternal(Graph& graph,
                                           loss_function_output_name,
                                           gradient_graph_config,
                                           set_gradient_as_graph_output);
-  return grad_graph_builder.Build();
+  return grad_graph_builder.Build(p_weights_to_train);
 }
 
 static Status BuildOptimizerInternal(Graph& graph,
@@ -548,6 +565,11 @@ void TrainingSession::AddPredefinedTransformers(GraphTransformerManager& transfo
   }
 }
 
+void TrainingSession::Debug() {
+  printf("TrainingSession::Debug\n");
+  Save(PathString("bert_bw_fp16_running.onnx"), SaveOption::NO_RELOAD);
+}
+
 Status TrainingSession::AddGistEncoding() {
   try {
     Graph& graph = model_->MainGraph();
@@ -637,13 +659,18 @@ Status TrainingSession::ConfigureLossFunction(
 }
 
 Status TrainingSession::EnableMixedPrecision(const std::unordered_set<std::string>& weights_to_train,
-                                             bool use_fp16_initializer,
-                                             std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_fp16_node_arg) {
-  ORT_RETURN_IF_ERROR(TransformGraphForMixedPrecision(model_->MainGraph(), weights_to_train, use_fp16_initializer, fp32_weight_name_to_fp16_node_arg));
+                                             bool use_mixed_precision_initializer,
+                                             ONNX_NAMESPACE::TensorProto_DataType mixed_precision_type,
+                                             std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_mixed_precision_node_arg) {
+  ORT_RETURN_IF_ERROR(TransformGraphForMixedPrecision(model_->MainGraph(),
+                                                      weights_to_train,
+                                                      use_mixed_precision_initializer,
+                                                      mixed_precision_type,
+                                                      fp32_weight_name_to_mixed_precision_node_arg));
 
   std::unordered_set<std::string> fp16_weight_initializer_names{};
   std::transform(
-      fp32_weight_name_to_fp16_node_arg.cbegin(), fp32_weight_name_to_fp16_node_arg.cend(),
+      fp32_weight_name_to_mixed_precision_node_arg.cbegin(), fp32_weight_name_to_mixed_precision_node_arg.cend(),
       std::inserter(fp16_weight_initializer_names, fp16_weight_initializer_names.begin()),
       [](const std::pair<std::string, NodeArg*>& p) {
         return p.second->Name();
@@ -654,6 +681,7 @@ Status TrainingSession::EnableMixedPrecision(const std::unordered_set<std::strin
 }
 
 Status TrainingSession::BuildGradientGraph(const std::unordered_set<std::string>& weights_to_train,
+                                           std::unordered_map<std::string, NodeArg*> fp32_weight_name_to_mixed_precision_node_arg,
                                            const std::string& loss_function_output_name,
                                            const GradientGraphConfiguration& gradient_graph_config,
                                            const bool set_gradient_as_graph_output) {
@@ -661,11 +689,21 @@ Status TrainingSession::BuildGradientGraph(const std::unordered_set<std::string>
   weights_to_train_ = weights_to_train;
   gradient_graph_config_ = gradient_graph_config;
 
+  std::unordered_set<std::string> weights_to_train_in_graph;
+  for (auto it = weights_to_train.begin(); it != weights_to_train.end(); it++) {
+    if (fp32_weight_name_to_mixed_precision_node_arg.find(*it) != fp32_weight_name_to_mixed_precision_node_arg.end()) {
+      weights_to_train_in_graph.insert(fp32_weight_name_to_mixed_precision_node_arg[*it]->Name());
+    } else {
+      weights_to_train_in_graph.insert(*it);
+    }
+  }
+
   ORT_RETURN_IF_ERROR(BuildGradientGraphInternal(model_->MainGraph(),
                                                  loss_function_output_name,
-                                                 weights_to_train_,
+                                                 weights_to_train_in_graph,
                                                  gradient_graph_config_,
-                                                 set_gradient_as_graph_output));
+                                                 set_gradient_as_graph_output,
+                                                 &weights_to_train));
 
   return DoPostLoadProcessing(*model_);
 }

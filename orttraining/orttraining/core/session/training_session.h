@@ -73,7 +73,8 @@ class TrainingSession : public InferenceSession {
 
     struct MixedPrecisionConfiguration {
       // Whether to use FP16 initializers.
-      bool use_fp16_initializers{};
+      bool use_mixed_precision_initializers{};
+      ONNX_NAMESPACE::TensorProto_DataType mixed_precision_type{ONNX_NAMESPACE::TensorProto_DataType_FLOAT16};
     };
     // The mixed precision configuration.
     // If not provided, mixed precision is disabled.
@@ -122,10 +123,10 @@ class TrainingSession : public InferenceSession {
       std::function<std::unordered_map<std::string, float>(const std::string&)> weight_attributes_generator{};
       std::function<std::unordered_map<std::string, int64_t>(const std::string&)> weight_int_attributes_generator{};
 
-      // Whether to use FP16 moments.
-      bool use_fp16_moments{};
+      // Whether to use mixed precision moments.
+      bool use_mixed_precision_moments{};
       // Whether to use FP16 for the all reduce.
-      bool do_all_reduce_in_fp16{};
+      bool do_all_reduce_in_mixed_precision_type{};
       // Whether to use NCCL.
       bool use_nccl{};
       // Whether to partition the optimizer state.
@@ -405,12 +406,15 @@ class TrainingSession : public InferenceSession {
                                  TransformerLevel graph_optimization_level,
                                  const std::vector<std::string>& custom_list) override;
 
+  void Debug();
+
   /** Perform auto-diff to add backward graph into the model.
   @param weights_to_train a set of weights to be training.
   @param loss_function_output_name the name of the loss function's output.
   @param set_gradient_as_graph_output if it is true, set gradient of trainable weight as graph output
   */
   common::Status BuildGradientGraph(const std::unordered_set<std::string>& weights_to_train,
+                                    std::unordered_map<std::string, NodeArg*> fp32_weight_name_to_mixed_precision_node_arg,
                                     const std::string& loss_function_output_name,
                                     const GradientGraphConfiguration& gradient_graph_config,
                                     const bool set_gradient_as_graph_output = false);
@@ -429,12 +433,14 @@ class TrainingSession : public InferenceSession {
 
   /** Enable mixed precision training
   @param weights_to_train a set of weights to be training.
-  @param use_fp16_initializer specify whether fp16 initialier is created.
-  @param fp32_weight_name_to_fp16_node_arg the map between weights and FP16 weights.
+  @param use_mixed_precision_initializer specify whether mixed precision initialier is created.
+  @param mixed_precision_type specify the mixed precision type.
+  @param fp32_weight_name_to_mixed_precision_node_arg the map between weights and mixed precision weights.
   */
   common::Status EnableMixedPrecision(const std::unordered_set<std::string>& weights_to_train,
-                                      bool use_fp16_initializer,
-                                      std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_fp16_node_arg);
+                                      bool use_mixed_precision_initializer,
+                                      ONNX_NAMESPACE::TensorProto_DataType mixed_precision_type,
+                                      std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_mixed_precision_node_arg);
 
   /** Discover all trainable initializers by reverse DFS starting from a given tensor (for example, the loss value)
   @param immutable_weights do not include initializers matching an (op_type, input_index, value) entry from this table

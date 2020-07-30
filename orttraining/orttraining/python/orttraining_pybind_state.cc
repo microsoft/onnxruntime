@@ -129,8 +129,8 @@ TrainingConfigurationResult ConfigureSessionForTraining(
           "Failed to find int attribute map for weight ", weight_name);
       return it->second;
     };
-    opt.use_fp16_moments = parameters.use_fp16_moments;
-    opt.do_all_reduce_in_fp16 = true;
+    opt.use_mixed_precision_moments = parameters.use_fp16_moments;
+    opt.do_all_reduce_in_mixed_precision_type = true;
     // TODO: this mapping is temporary.
     // For now, nccl allreduce kernel only implements for allreduce_post_accumulation
     // hovorod allreduce kernel only implements for not allreduce_post_accumulation.
