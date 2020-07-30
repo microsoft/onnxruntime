@@ -2825,6 +2825,7 @@ TEST_F(GraphTransformationTests, ComputationReductionTransformer_GatherND_E2E) {
 }
 #endif
 
+#ifndef DISABLE_CONTRIB_OPS
 template <typename GraphTransformationCheckFn>
 static void TestMatMulScaleFusion(
     const PathString& model_path, const Logger& logger,
@@ -2909,6 +2910,7 @@ TEST_F(GraphTransformationTests, MatMulScaleFusion) {
         EXPECT_EQ(transformed_op_counts["TransposeScaleMatMul"], 2);
       });
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
