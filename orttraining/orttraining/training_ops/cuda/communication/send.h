@@ -6,7 +6,6 @@
 #pragma once
 #include "core/common/common.h"
 #include "core/providers/cuda/cuda_common.h"
-#include "orttraining/training_ops/cuda/communication/nccl_service.h"
 
 
 namespace onnxruntime {
