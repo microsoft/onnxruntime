@@ -89,8 +89,6 @@ void Recv::ReceiveData(
 #endif
 
   // Copy tensors from buffer to outputs.
-  cudaStream_t copyStream;
-  CUDA_CALL(cudaStreamCreate(&copyStream));
   size_t tensor_offset_in_bytes = 0;
   for (int i = 0; i < num_tensors; ++i) {
     Tensor* tensor = received_tensors[i];
@@ -101,11 +99,10 @@ void Recv::ReceiveData(
     // Keep the sync copy in the previous design
     // TODO they can be moved to async call after global stream becoming accessible
     CUDA_CALL(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
-                                tensor->SizeInBytes(), cudaMemcpyHostToDevice, copyStream));
+                              tensor->SizeInBytes(), cudaMemcpyHostToDevice));
     tensor_offset_in_bytes += tensor->SizeInBytes();
   }
-  CUDA_CALL(cudaStreamSynchronize(copyStream));
-  CUDA_CALL(cudaStreamDestroy(copyStream));
+  AddDeferredReleaseCPUPtr(buffer.release());
 
 #ifdef ENABLE_NVTX_PROFILE
   // End of host-to-device copy.
