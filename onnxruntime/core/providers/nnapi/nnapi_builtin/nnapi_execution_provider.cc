@@ -8,7 +8,6 @@
 #include "core/framework/compute_capability.h"
 #include "core/graph/model.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/session/inference_session.h"
 
 namespace onnxruntime {
 
@@ -259,7 +258,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
     };
 
     compute_info.release_state_func = [](FunctionState state) {
-      // the `state` is a dnn::model managed by unique_ptr
+      // the `state` is a nnapi::model managed by unique_ptr
       ORT_UNUSED_PARAMETER(state);
     };
 
@@ -274,7 +273,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
       ORT_ENFORCE(model_inputs.size() <= num_inputs, "Inconsistent input sizes");
       ORT_ENFORCE(model_outputs.size() == num_outputs, "Inconsistent output sizes");
 
-      std::vector<nnapi::Model::InputBuffer> inputs;
+      std::vector<nnapi::Execution::InputBuffer> inputs;
       inputs.reserve(model_inputs.size());
       for (size_t i = 0; i < model_inputs.size(); i++) {
         const auto& input_name = model_inputs[i];
@@ -306,24 +305,28 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
         }
 
         const void* inputBuffer = ort.GetTensorData<void>(input_tensor);
-        inputs.push_back({inputBuffer, std::move(input_type)});
+        inputs.push_back({input_name, inputBuffer, std::move(input_type)});
 
         ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
       }
 
       // From this point we will need to take the exclusive lock on the model until the Predict is
-      // performed, to block other threads (if any) to modify this particular model
+      // performed, to block other threads to perform Predict on the same model
+      // TODO, investigate concurrent runs for different executions from the same model
       {
+        std::unique_ptr<nnapi::Execution> execution;
         std::unique_lock<OrtMutex> lock(model->GetMutex());
-        ORT_RETURN_IF_ERROR(model->SetInputBuffers(inputs));
-        std::vector<nnapi::Model::OutputBuffer> outputs;
+        model->PrepareForExecution(execution);
+
+        ORT_RETURN_IF_ERROR(execution->SetInputBuffers(inputs));
+        std::vector<nnapi::Execution::OutputBuffer> outputs;
         outputs.reserve(num_outputs);
         std::vector<int32_t> dynamic_shape_output_indices;
         std::vector<OperandType> dynamic_shape_output_types;
         std::vector<std::unique_ptr<uint8_t[]>> dynamic_shape_output_buffers;
         for (size_t i = 0; i < num_outputs; i++) {
           const auto output_name = model_outputs[i];
-          const auto model_output_type = model->GetOutputType(output_name);
+          const auto model_output_type = model->GetOutputType(output_name, *execution);
           const auto output_shape = model_output_type.dimensions;
 
           bool is_dynamic_shape_output = false;
@@ -358,10 +361,10 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
           outputs.push_back({output_buffer, std::move(model_output_type), output_buffer_byte_size});
         }
 
-        ORT_RETURN_IF_ERROR(model->SetOutputBuffers(outputs));
+        ORT_RETURN_IF_ERROR(execution->SetOutputBuffers(outputs));
         std::vector<std::vector<uint32_t>> dynamic_output_shapes;
         ORT_RETURN_IF_ERROR(
-            model->Predict(dynamic_shape_output_indices, dynamic_output_shapes));
+            execution->Predict(dynamic_shape_output_indices, dynamic_output_shapes));
 
         // We have dynamic output buffers, need to copy the content from temp buffers to ORT output tensors
         for (size_t i = 0; i < dynamic_shape_output_indices.size(); i++) {
@@ -384,7 +387,6 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
           memcpy(onnx_output_buffer, model_output_buffer, output_buffer_byte_size);
         }
       }
-
       return Status::OK();
     };
 

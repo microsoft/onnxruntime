@@ -12,21 +12,12 @@ namespace nnapi {
 
 #define USENNAPISHAREDMEM 1
 
+class Execution;
+
 class Model {
   friend class ModelBuilder;
 
  public:
-  struct InputBuffer {
-    const void* buffer{nullptr};
-    android::nn::wrapper::OperandType type;
-  };
-
-  struct OutputBuffer {
-    void* buffer{nullptr};
-    android::nn::wrapper::OperandType type;
-    size_t buffer_byte_size;
-  };
-
   // Memory for persist data such as initializers and intermediate result
 #ifdef USENNAPISHAREDMEM
   // Use NNAPI shared memory
@@ -73,7 +64,7 @@ class Model {
   // Returns the data type and dimension of the given input/output
   // Please note the output type will have updated dimensions
   const android::nn::wrapper::OperandType& GetInputType(const std::string& name) const;
-  const android::nn::wrapper::OperandType GetOutputType(const std::string& name) const;
+  android::nn::wrapper::OperandType GetOutputType(const std::string& name, const Execution& execution) const;
 
   // Set the mapping between input/output name and ORT kernel context
   // input/output index, at execution time
@@ -83,11 +74,6 @@ class Model {
   // Get the ORT kernel context input/output index with given name
   size_t GetMappedInputIdx(const std::string& name) const;
   size_t GetMappedOutputIdx(const std::string& name) const;
-
-  // Set the input/output data buffers
-  // These need to be called before calling Predict()
-  Status SetInputBuffers(const std::vector<InputBuffer>& inputs);
-  Status SetOutputBuffers(const std::vector<OutputBuffer>& outputs);
 
   // If we support the dynamic output shape,
   // This is only for the case where output size cannot be determined at model execution time
@@ -100,22 +86,16 @@ class Model {
   size_t GetDynamicOutputBufferSize() const { return dynamic_output_buffer_size_; }
   void SetDynamicOutputBufferSize(size_t size) { dynamic_output_buffer_size_ = size; }
 
-  // Execute the NNAPI model
-  // if there is dynamic output shape, will output the actual output shapes
-  Status Predict(const std::vector<int32_t>& dynamic_outputs, std::vector<Shaper::Shape>& dynamic_output_shapes);
-
   // Mutex for exclusive lock to this model object
   OrtMutex& GetMutex() { return mutex_; }
 
+  Status PrepareForExecution(std::unique_ptr<Execution>& execution);
+
  private:
   const NnApi* nnapi_{nullptr};
-  bool prepared_for_exe_ = false;
 
   ANeuralNetworksModel* model_{nullptr};
   ANeuralNetworksCompilation* compilation_{nullptr};
-
-  // TODO split the execution_ into a separated Execution class
-  ANeuralNetworksExecution* execution_{nullptr};
 
   size_t dynamic_output_buffer_size_{1024};
 
@@ -124,11 +104,9 @@ class Model {
 
   std::vector<std::string> input_names_;
   std::vector<std::string> output_names_;
-  std::unordered_map<std::string, android::nn::wrapper::OperandType>
-      operand_types_;
+  std::unordered_map<std::string, android::nn::wrapper::OperandType> operand_types_;
 
   Shaper shaper_;
-  Shaper shaper_for_execution_;
 
   std::unordered_map<std::string, size_t> input_map_;
   std::unordered_map<std::string, size_t> output_map_;
@@ -150,13 +128,49 @@ class Model {
 
   void SetShaper(const Shaper shaper) { shaper_ = shaper; }
 
+  int32_t GetAndroidSdkVer() const;
+};
+
+class Execution {
+  friend class Model;
+
+ public:
+  struct InputBuffer {
+    const std::string& name;
+    const void* buffer{nullptr};
+    android::nn::wrapper::OperandType type;
+  };
+
+  struct OutputBuffer {
+    void* buffer{nullptr};
+    android::nn::wrapper::OperandType type;
+    size_t buffer_byte_size;
+  };
+
+ public:
+  Execution(const Execution&) = delete;
+  Execution& operator=(const Execution&) = delete;
+  ~Execution();
+  const Shaper& GetShaper() const { return shaper_; }
+
+  // Set the input/output data buffers
+  // These need to be called before calling Predict()
+  Status SetInputBuffers(const std::vector<InputBuffer>& inputs);
+  Status SetOutputBuffers(const std::vector<OutputBuffer>& outputs);
+
+  // Execute the NNAPI model
+  // if there is dynamic output shape, will output the actual output shapes
+  Status Predict(const std::vector<int32_t>& dynamic_outputs, std::vector<Shaper::Shape>& dynamic_output_shapes);
+
+ private:
+  explicit Execution(ANeuralNetworksExecution& execution, const Shaper& shaper);
+
   Status SetInputBuffer(const int32_t index, const InputBuffer& input);
   Status SetOutputBuffer(const int32_t index, const OutputBuffer& output);
 
-  Status PrepareForExecution();
-  void ResetExecution();
-
-  int32_t GetAndroidSdkVer() const;
+  const NnApi* nnapi_{nullptr};
+  ANeuralNetworksExecution* execution_;
+  Shaper shaper_;
 };
 
 }  // namespace nnapi
