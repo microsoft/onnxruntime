@@ -96,7 +96,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (Y->Shape().Size() == 0)
     return Status::OK();
 
-  const CudaT one = ToCudaType<T>::FromFloat(1.0f);
+  const CudaT alpha = ToCudaType<T>::FromFloat(alpha_);
   const CudaT zero = ToCudaType<T>::FromFloat(0.0f);
 
   cublasOperation_t transA = transa ? CUBLAS_OP_T : CUBLAS_OP_N;
