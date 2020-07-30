@@ -1,8 +1,8 @@
-# parameters:
-#   - name: conda_version
-#     displayName: Conda Version
-#     type: string
-#     default: 4.8.0
+parameters:
+  - name: conda_version
+    displayName: Conda Version
+    type: string
+    default: 4.8.0
 
 stages:
 - stage: Python_Packaging
