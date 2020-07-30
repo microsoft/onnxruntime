@@ -426,7 +426,7 @@ jobs:
         $input_nuget_config = [System.IO.Path]::Combine($src_dir, 'NuGet.config.pp')
         $nuget_config = [System.IO.Path]::Combine($src_dir, 'NuGet.config')
         $input_nuget_config_content = Get-Content -Path $input_nuget_config
-        $nuget_config_content = $input_nuget_config_content -replace '\[BuildPackageSource\]', $package_version
+        $nuget_config_content = $input_nuget_config_content -replace '\[BuildPackageSource\]', $merged_nuget_path
         Set-Content -Path $nuget_config -Value $nuget_config_content
       workingDirectory: $(Build.ArtifactStagingDirectory)\merged
 
