@@ -185,17 +185,11 @@ if (onnxruntime_ENABLE_TRAINING)
     )
   list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_cpu_src})
 
-  if (onnxruntime_USE_CUDA)
+  if (onnxruntime_USE_CUDA OR onnxruntime_USE_HIP)
     file(GLOB_RECURSE orttraining_test_trainingops_cuda_src CONFIGURE_DEPENDS
       "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cuda/*"
       )
     list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_cuda_src})
-  endif()
-  if (onnxruntime_USE_HIP)
-    file(GLOB_RECURSE orttraining_test_trainingops_hip_src CONFIGURE_DEPENDS
-      "${ORTTRAINING_SOURCE_DIR}/test/training_ops/hip/*"
-      )
-    list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_hip_src})
   endif()
 endif()
 
