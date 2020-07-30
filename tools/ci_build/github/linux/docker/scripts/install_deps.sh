@@ -119,14 +119,14 @@ elif [ $DEVICE_TYPE = "gpu" ]; then
       # transformers requires sklearn
       ${PYTHON_EXE} -m pip install sklearn
 
-      echo "install openmpi"
-      curl -fsSL https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.0.tar.gz -O
-      tar zxf openmpi-4.0.0.tar.gz
-      cd openmpi-4.0.0
-      ./configure --enable-orterun-prefix-by-default
-      make all
-      make install
-      ldconfig
+      # echo "install openmpi"
+      # curl -fsSL https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.0.tar.gz -O
+      # tar zxf openmpi-4.0.0.tar.gz
+      # cd openmpi-4.0.0
+      # ./configure --enable-orterun-prefix-by-default
+      # make all
+      # make install
+      # ldconfig
     fi
 fi
 

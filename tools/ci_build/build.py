@@ -1120,7 +1120,6 @@ def run_training_python_frontend_e2e_tests(cwd):
     def mpirun_subprocess(mpicmd, cwd):
         mpi = subprocess.Popen(
             mpicmd,
-            executable=sys.executable,
             cwd=cwd,
             shell=True)
         mpi.wait()
@@ -1130,7 +1129,7 @@ def run_training_python_frontend_e2e_tests(cwd):
     import torch
     ngpus = torch.cuda.device_count()
     if ngpus > 1:
-        run_glue_mpicmd = 'mpirun -n {} python orttraining_run_glue.py'.format(ngpus)
+        run_glue_mpicmd = 'mpirun -n {} {} orttraining_run_glue.py'.format(ngpus, sys.executable)
         print("RUN: ", run_glue_mpicmd)
         mpirun_subprocess(run_glue_mpicmd, cwd)
 

@@ -48,6 +48,7 @@ if [ "$OS_VERSION" = "16.04" ]; then
         libtinfo-dev \
         libtool \
         openssh-server \
+        libopenmpi-dev \
         aria2 \
         bzip2 \
         unzip \
@@ -82,6 +83,7 @@ else # ubuntu18.04
         libtinfo-dev \
         libtool \
         openssh-server \
+        libopenmpi-dev \
         aria2 \
         bzip2 \
         unzip \
