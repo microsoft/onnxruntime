@@ -11,25 +11,34 @@
 namespace onnxruntime {
 namespace nnapi {
 
-#define THROW_ON_ERROR(val)                                               \
-  {                                                                       \
-    const auto ret = (val);                                               \
-    ORT_ENFORCE(                                                          \
-        ret == ANEURALNETWORKS_NO_ERROR,                                  \
-        std::string("Error in ") + __FILE__ + std::string(":") +          \
-            std::to_string(__LINE__) + std::string(", function name: ") + \
-            std::string(__func__) + "error, ret: " + GetErrorCause(ret)); \
+#define THROW_ON_ERROR(val)                                                    \
+  {                                                                            \
+    const auto ret = (val);                                                    \
+    ORT_ENFORCE(                                                               \
+        ret == ANEURALNETWORKS_NO_ERROR, "ResultCode: " + GetErrorCause(ret)); \
   }
 
-#define THROW_ON_ERROR_WITH_NOTE(val, note)                               \
-  {                                                                       \
-    const auto ret = (val);                                               \
-    ORT_ENFORCE(                                                          \
-        ret == ANEURALNETWORKS_NO_ERROR,                                  \
-        std::string("Error in ") + __FILE__ + std::string(":") +          \
-            std::to_string(__LINE__) + std::string(", function name: ") + \
-            std::string(__func__) + "error, ret: " + GetErrorCause(ret) + \
-            std::string(", ") + (note));                                  \
+#define THROW_ON_ERROR_WITH_NOTE(val, note)                                    \
+  {                                                                            \
+    const auto ret = (val);                                                    \
+    ORT_ENFORCE(                                                               \
+        ret == ANEURALNETWORKS_NO_ERROR, "ResultCode: " + GetErrorCause(ret) + \
+                                             ", " + (note));                   \
+  }
+
+#define RETURN_STATUS_ON_ERROR(val)                                            \
+  {                                                                            \
+    const auto ret = (val);                                                    \
+    ORT_RETURN_IF_NOT(                                                         \
+        ret == ANEURALNETWORKS_NO_ERROR, "ResultCode: " + GetErrorCause(ret)); \
+  }
+
+#define RETURN_STATUS_ON_ERROR_WITH_NOTE(val, note)                            \
+  {                                                                            \
+    const auto ret = (val);                                                    \
+    ORT_RETURN_IF_NOT(                                                         \
+        ret == ANEURALNETWORKS_NO_ERROR, "ResultCode: " + GetErrorCause(ret) + \
+                                             ", " + (note));                   \
   }
 
 template <class Map, class Key>
