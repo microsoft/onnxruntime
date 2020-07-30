@@ -1,6 +1,5 @@
 import io
 import os
-import numpy as np
 import onnx
 import torch
 from inspect import signature
@@ -11,7 +10,6 @@ from .model_desc_validation import _ORTTrainerModelDesc
 from .. import postprocess
 from onnxruntime.capi._pybind_state import set_cuda_mem_limit
 from onnxruntime.capi._pybind_state import set_cuda_device_id
-
 
 class TrainStepInfo(object):
     r"""Private class used to store runtime information from current train step.
@@ -160,41 +158,50 @@ class ORTTrainer(object):
             if ':' in device_id:
                 set_cuda_device_id(device_id.split(':')[1])
 
-    def eval_step(self, *input, **kwargs):
+        self._train_step_info = TrainStepInfo(all_finite=True, step=0, optimizer_config=self.optim_config)
+
+    def eval_step(self, *args, **kwargs):
         r"""Evaluation step method
 
         Args:
-            *input: Arbitrary arguments that are used as model input (data only)
+            *args: Arbitrary arguments that are used as model input (data only)
             **kwargs: Arbitrary keyword arguments that are used as model input (data only)
 
         Returns:
             ordered :py:obj:`list` with model outputs as described by :py:attr:`.ORTTrainer.model_desc`
         """
-        # with model_loss_cls, the last input is label, first output is loss
+        # Get data. CombineTorchModelLossFn takes label as last input and outputs loss first
         sample_input = self._prepare_model_input(self.model_desc.inputs,
-                                                 None, None, *input, **kwargs)
+                                                 None, None, *args, **kwargs)
 
+        # Export model to ONNX
         if self._onnx_model is None:
             if self._torch_model is not None:
                 self._init_onnx_model(sample_input)
             else:
                 raise RuntimeError("Model is uninitialized. Only ONNX and PyTorch models are supported")
 
-        input_desc = self.model_desc.inputs[0:len(sample_input)]
+        # Prepare input/output description
+        input_desc = self.model_desc.inputs[:len(sample_input)]
         output_desc = self.model_desc.outputs
 
+        # Normalize input
         if not isinstance(sample_input, (list, tuple)):
             sample_input = (sample_input,)
 
+        # RunOptions
         run_options = ort.RunOptions()
         run_options.only_execute_path_to_fetches = True
         run_options.training_mode = False
+
+        # Run a eval step and return
         session_run_results = self._training_session_run_helper(False,
                                                                 sample_input,
                                                                 input_desc,
                                                                 output_desc,
                                                                 run_options)
-        return [session_run_results[output_desc.name] for output_desc in output_desc]
+        return session_run_results[output_desc.name][0] if len (session_run_results) == 1\
+            else [session_run_results[output_desc.name] for output_desc in output_desc]
 
     def save_as_onnx(self, path):
         r"""Persists ONNX model into :py:attr:`path`
@@ -224,7 +231,7 @@ class ORTTrainer(object):
         with open(path, "wb") as f:
             f.write(self._onnx_model.SerializeToString())
 
-    def train_step(self, *input, **kwargs):
+    def train_step(self, *args, **kwargs):
         r"""Train step method
 
         After forward pass, an ordered list with all outputs described at :py:attr:`ORTTrainer.model_desc` is returned.
@@ -232,34 +239,36 @@ class ORTTrainer(object):
         See :py:class:`.TrainStepInfo` for details.
 
         Args:
-            *input: Arbitrary arguments that are used as model input (data only)
+            *args: Arbitrary arguments that are used as model input (data only)
             **kwargs: Arbitrary keyword arguments that are used as model input (data only)
 
         Returns:
             ordered :py:obj:`list` with model outputs as described by :py:attr:`ORTTrainer.model_desc`
         """
-
         # Export model to ONNX
         if self._onnx_model is None:
-            sample_input = self._prepare_model_input(
-                self.model_desc.inputs, None, None, *input, **kwargs)
+            sample_input = self._prepare_model_input(self.model_desc.inputs, None, None, *args, **kwargs)
             self._init_onnx_model(sample_input)
 
-        # update learning rate
-        prepared_input = self._prepare_model_input(self.model_desc.inputs,
-                self.optim_config.lr, None, *input, **kwargs)
+        # Prepare input/output description
+        input_desc = [*self.model_desc.inputs, self.model_desc.learning_rate]
+        output_desc = self.model_desc.outputs
 
-        # run options and ouput desc
+        # Get data. CombineTorchModelLossFn takes label as last input and outputs loss first
+        input = self._prepare_model_input(input_desc, self.optim_config.lr, None, *args, **kwargs)
+
+        # RunOptions
         run_options = None
 
-        if not isinstance(input, (list, tuple)):
-            input = (input,)
+        # Normalize input
+        if not isinstance(args, (list, tuple)):
+            args = (args,)
 
-        session_run_results = self._training_session_run_helper(True, prepared_input, self.model_desc.inputs,
-                                                                self.model_desc.outputs, run_options)
-        results = [session_run_results[output_desc.name] for output_desc in self.model_desc.outputs]
-
-        return results
+        # Run a train step and return
+        session_run_results = self._training_session_run_helper(True, input, input_desc,
+                                                                output_desc, run_options)
+        return session_run_results[output_desc.name][0] if len (session_run_results) == 1\
+            else [session_run_results[output_desc.name] for output_desc in self.model_desc.outputs]
 
     def _combine_torch_model_with_loss_fn(self):
         # Don't need to wrap model when loss_fn is not set
@@ -505,6 +514,7 @@ class ORTTrainer(object):
         # Append learning rate
         extra_inputs = 0
         if lr:
+            lr = torch.tensor([lr])
             input = input + (lr,)
             extra_inputs += 1
         assert len(self.model_desc.inputs) + extra_inputs == len(input)

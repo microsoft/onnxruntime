@@ -496,7 +496,7 @@ def testInstantiateORTTrainer(step_fn):
     elif step_fn == 'train_step':
         step_fn = trainer.train_step
         data, targets = utils.get_batch(train_data, 0)
-        _ = trainer.train_step(data, targets)
+        output = trainer.train_step(data, targets)
     else:
         raise ValueError('Invalid step_fn')
     assert trainer._onnx_model is not None
