@@ -24,7 +24,7 @@ The following table summarizes the relationship between the ONNX Runtime version
 Please note the backward compatibility notes above..
 For more details on ONNX Release versions, see [this page](https://github.com/onnx/onnx/blob/master/docs/Versioning.md).
 
-| ONNX Runtime release version | ONNX release version | ONNX opset version | ONNX ML opset version | Supported ONNX IR version | [WinML compatibility](https://docs.microsoft.com/en-us/windows/ai/windows-ml/release-notes/)|
+| ONNX Runtime release version | ONNX release version | ONNX opset version | ONNX ML opset version | Supported ONNX IR version | [Windows ML Availability](https://docs.microsoft.com/en-us/windows/ai/windows-ml/release-notes/)|
 |------------------------------|--------------------|--------------------|----------------------|------------------|------------------|
 | 1.4.0 | **1.7** down to 1.2 | 12 | 2 | 6 | Windows AI 1.4+ |
 | 1.3.1 | **1.7** down to 1.2 | 12 | 2 | 6 | Windows AI 1.4+ |
