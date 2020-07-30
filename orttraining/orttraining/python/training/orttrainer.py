@@ -162,7 +162,6 @@ class ORTTrainer(object):
                 self.model_desc.inputs, None, None, *input, **kwargs)
             self._init_onnx_model(sample_input)
 
-
     def save_as_onnx(self, path):
         r"""Persists ONNX model into :py:attr:`path`
 
@@ -173,27 +172,6 @@ class ORTTrainer(object):
             path (str): Full path, including filename, to save the model in the filesystem
         """
         pass
-
-
-    def _init_onnx_model_(self, *input):
-        if self._onnx_model is not None:
-            return
-
-        if self._torch_model is not None:
-            self.torch_model_.cpu()
-            # convert the model
-            # get input, outputs, export model
-            self.onnx_model = self.convert_model_loss_fn_to_onnx(self._torch_model, self.loss_fn, self.model_desc, torch.device('cpu'), inputs, opset_version=self.opset_version, _enable_internal_postprocess=self._enable_internal_postprocess)
-            
-            # selected tasks from init_sesion
-            if self._enable_internal_postprocess:
-                self._onnx_model_ = postprocess.run_postprocess(self.onnx_model_)
-
-            if self._extra_postprocess:
-                self._extra_postprocess(self.onnx_model_)
-
-            self._verify_fully_optimized_model(self.onnx_model_)
-        
 
     def train_step(self, *input, **kwargs):
         r"""Train step method
@@ -349,7 +327,6 @@ class ORTTrainer(object):
 
         return onnx_model
 
-
     def _init_onnx_model(self, inputs):
         if self._onnx_model is not None:
             return
@@ -392,19 +369,21 @@ class ORTTrainer(object):
             if input_desc[0] in kwargs:
                 input = input + (kwargs[input_desc[0]],)
 
-
         return input
-
 
     def _create_ort_training_session(self):
         # Validating frozen_weights names
-        unused_frozen_weights = [n for n in options.utils.frozen_weights if n not in [i.name for i in model.graph.initializer]]
+        unused_frozen_weights = [n for n in options.utils.frozen_weights if n not in [
+            i.name for i in model.graph.initializer]]
         if unused_frozen_weights:
-            raise RuntimeError("{} params from 'frozen_weights' not found in the ONNX model.".format(unused_frozen_weights))
+            raise RuntimeError("{} params from 'frozen_weights' not found in the ONNX model.".format(
+                unused_frozen_weights))
 
         # Get loss name from model description
-        loss_name = [name for item in self.model_desc.outputs if len(item) == 3 and item[2]]
-        assert len(loss_name) == 1, f"Only one loss output is supported ({len(loss_name)} were specified)"
+        loss_name = [name for item in self.model_desc.outputs if len(
+            item) == 3 and item[2]]
+        assert len(
+            loss_name) == 1, f"Only one loss output is supported ({len(loss_name)} were specified)"
         loss_name = loss[0]
 
         # Parse optimizer parameters
@@ -430,7 +409,8 @@ class ORTTrainer(object):
                     elif isinstance(v, int):
                         optimizer_int_attributes_map[initializer.name][k] = v
                     else:
-                        raise ValueError("Optimizer attributes must be either float or int.")
+                        raise ValueError(
+                            "Optimizer attributes must be either float or int.")
 
         # TrainingParameters
         ort_parameters = ort.TrainingParameters()
@@ -454,7 +434,8 @@ class ORTTrainer(object):
         session_options.use_deterministic_compute = use_deterministic_compute
 
         # TrainingSession
-        self._training_session = ort.TrainingSession(model.SerializeToString(), ort_parameters, session_options)
+        self._training_session = ort.TrainingSession(
+            model.SerializeToString(), ort_parameters, session_options)
 
         # I/O bindings
         self._train_io_binding = session.io_binding()
