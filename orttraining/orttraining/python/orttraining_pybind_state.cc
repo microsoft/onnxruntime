@@ -104,7 +104,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
 
   if (parameters.use_mixed_precision) {
     training::TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mp{};
-    mp.use_fp16_initializers = true;
+    mp.use_mixed_precision_initializers = true;
 
     config.mixed_precision_config = mp;
   }

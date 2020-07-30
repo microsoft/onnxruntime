@@ -406,15 +406,12 @@ class TrainingSession : public InferenceSession {
                                  TransformerLevel graph_optimization_level,
                                  const std::vector<std::string>& custom_list) override;
 
-  void Debug();
-
   /** Perform auto-diff to add backward graph into the model.
   @param weights_to_train a set of weights to be training.
   @param loss_function_output_name the name of the loss function's output.
   @param set_gradient_as_graph_output if it is true, set gradient of trainable weight as graph output
   */
   common::Status BuildGradientGraph(const std::unordered_set<std::string>& weights_to_train,
-                                    std::unordered_map<std::string, NodeArg*> fp32_weight_name_to_mixed_precision_node_arg,
                                     const std::string& loss_function_output_name,
                                     const GradientGraphConfiguration& gradient_graph_config,
                                     const bool set_gradient_as_graph_output = false);
@@ -472,7 +469,7 @@ class TrainingSession : public InferenceSession {
   std::unordered_set<std::string> weights_to_train_;
   // names of additional initializers to be included in checkpoints
   std::unordered_set<std::string> opt_state_initializer_names_;
-  std::unordered_set<std::string> fp16_weight_initializer_names_;
+  std::unordered_set<std::string> mixed_precision_weight_initializer_names_;
 
   bool is_mixed_precision_enabled_;
   optional<std::string> external_loss_name_;

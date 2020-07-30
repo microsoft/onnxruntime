@@ -38,7 +38,6 @@ namespace cuda {
       AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM, T_MIXED_PRECISION_FP>);
 
 REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, float, float, float, MLFloat16)
-//REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, float, float, float, BFloat16)
 REGISTER_ADAM_KERNEL_TYPED(MLFloat16, int64_t, float, MLFloat16, float, float, MLFloat16)
 REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, MLFloat16, float, float, MLFloat16)
 REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, float, MLFloat16, MLFloat16, MLFloat16)

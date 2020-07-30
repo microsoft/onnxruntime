@@ -303,10 +303,6 @@ Status OptimizerGraphBuilder::AddFiniteGradientCheck(
   return Status::OK();
 }
 
-static std::string GradientName(const std::string& name) {
-  return name + "_fp16_grad";
-}
-
 OptimizerGraphBuilder::OptimizerGraphBuilder(
     const OptimizerBuilderRegistry& opt_builder_registry,
     const OptimizerGraphConfig& opt_graph_config,
@@ -329,7 +325,10 @@ OptimizerGraphBuilder::OptimizerGraphBuilder(
   gradient_names_.reserve(weight_names_.size());
   std::transform(
       weight_names_.begin(), weight_names_.end(), std::back_inserter(gradient_names_),
-      GradientName);
+      [&weight_names_to_opt_configs](const std::string& weight_name) {
+        return GradientBuilderBase::GradientName(weight_names_to_opt_configs.at(weight_name).mixed_precision_weight_arg != nullptr ?
+                                                 weight_names_to_opt_configs.at(weight_name).mixed_precision_weight_arg->Name() : weight_name);
+      });
 
   // add optimizer configurations
   opt_configs_.reserve(weight_names_.size());
