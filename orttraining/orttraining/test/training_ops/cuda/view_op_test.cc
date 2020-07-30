@@ -7,6 +7,12 @@
 namespace onnxruntime {
 namespace test {
 
+#if USE_CUDA
+constexpr const char* kGpuExecutionProvider = kCudaExecutionProvider;
+#elif USE_HIP
+constexpr const char* kGpuExecutionProvider = kHipExecutionProvider;
+#endif
+
 template <class T>
 using ShapeAndData = std::pair<const std::vector<int64_t>, const std::vector<T>>;
 

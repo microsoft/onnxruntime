@@ -6,6 +6,12 @@
 namespace onnxruntime {
 namespace test {
 
+#if USE_CUDA
+constexpr const char* kGpuExecutionProvider = kCudaExecutionProvider;
+#elif USE_HIP
+constexpr const char* kGpuExecutionProvider = kHipExecutionProvider;
+#endif
+
 static void TestSoftmax(const std::vector<int64_t>& X_dims,
                         const std::vector<int64_t>& Y_dims,
                         bool is_log_softmax=false,
@@ -23,7 +29,7 @@ static void TestSoftmax(const std::vector<int64_t>& X_dims,
   std::vector<float> Y_data = FillZeros<float>(Y_dims);
   test.AddOutput<float>("Y", Y_dims, Y_data);
 
-  test.CompareWithCPU(kCudaExecutionProvider, per_sample_tolerance, relative_per_sample_tolerance);
+  test.CompareWithCPU(kGpuExecutionProvider, per_sample_tolerance, relative_per_sample_tolerance);
 }
 
 TEST(CudaKernelTest, Softmax_SmallTensor) {
@@ -72,7 +78,7 @@ static void TestSoftmaxGrad(const std::vector<int64_t>& dY_dims,
   std::vector<float> dX_data = FillZeros<float>(dX_dims);
   test.AddOutput<float>("dX", dX_dims, dX_data);
 
-  test.CompareWithCPU(kCudaExecutionProvider, per_sample_tolerance, relative_per_sample_tolerance);
+  test.CompareWithCPU(kGpuExecutionProvider, per_sample_tolerance, relative_per_sample_tolerance);
 }
 
 TEST(CudaKernelTest, SoftmaxGrad_SmallTensor) {

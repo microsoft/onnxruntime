@@ -3,16 +3,19 @@
 
 #ifdef USE_CUDA
 
-#include "core/providers/cuda/shared_inc/cuda_utils.h"
-
 #include <memory>
 #include <vector>
 
 #include "gtest/gtest.h"
 
 #include "core/common/common.h"
+#ifdef USE_CUDA
 #include "core/providers/cuda/shared_inc/cuda_call.h"
-
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
+#elif USE_HIP
+#include "core/providers/hip/shared_inc/hip_call.h"
+#include "core/providers/hip/shared_inc/hip_utils.h"
+#endif
 namespace onnxruntime {
 namespace cuda {
 namespace test {
