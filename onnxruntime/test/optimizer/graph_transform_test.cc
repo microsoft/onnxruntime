@@ -2825,9 +2825,10 @@ TEST_F(GraphTransformationTests, ComputationReductionTransformer_GatherND_E2E) {
 }
 #endif
 
+template <typename GraphTransformationCheckFn>
 static void TestMatMulScaleFusion(
     const PathString& model_path, const Logger& logger,
-    bool expect_fusion) {
+    GraphTransformationCheckFn graph_transformation_check) {
   SCOPED_TRACE(ORT_TSTR("model path: ") + model_path);
 
   std::shared_ptr<Model> model;
@@ -2842,41 +2843,43 @@ static void TestMatMulScaleFusion(
 
   auto transformed_op_counts = CountOpsInGraph(graph);
 
-  if (expect_fusion) {
-    EXPECT_EQ(transformed_op_counts["Mul"], 0);
-    EXPECT_EQ(transformed_op_counts["Div"], 0);
-    EXPECT_EQ(transformed_op_counts["MatMul"], 0);
-    EXPECT_EQ(transformed_op_counts["TransposeScaleMatMul"], 1);
-
-    // check combined scale, individual scales should all have the same value
-    const float scale_value = 3.0f;
-
-    const int num_scales =
-        original_op_counts["Mul"] + original_op_counts["Div"] + original_op_counts["TransposeScaleMatMul"];
-
-    auto fused_node = std::find_if(
-        graph.Nodes().cbegin(), graph.Nodes().cend(),
-        [](const Node& node) { return node.OpType() == "TransposeScaleMatMul"; });
-
-    auto alpha_attr = fused_node->GetAttributes().find("alpha");
-    ASSERT_NE(alpha_attr, fused_node->GetAttributes().end());
-
-    EXPECT_EQ(alpha_attr->second.f(), pow(scale_value, num_scales));
-  } else {
-    EXPECT_EQ(original_op_counts, transformed_op_counts);
-  }
+  graph_transformation_check(graph, original_op_counts, transformed_op_counts);
 }
 
 TEST_F(GraphTransformationTests, MatMulScaleFusion) {
-  const std::vector<PathString> fusable_model_paths{
+  const std::vector<PathString> one_fusion_model_paths{
       MODEL_FOLDER "fusion/matmul_scale_in0.onnx",
       MODEL_FOLDER "fusion/matmul_scale_in0_in1.onnx",
       MODEL_FOLDER "fusion/matmul_scale_in0_in1_out.onnx",
       MODEL_FOLDER "fusion/matmul_scale_transposescalematmul_in0_in1_out.onnx",
   };
 
-  for (const auto& path : fusable_model_paths) {
-    TestMatMulScaleFusion(path, *logger_, true);
+  for (const auto& path : one_fusion_model_paths) {
+    TestMatMulScaleFusion(
+        path, *logger_,
+        [](const Graph& graph,
+           std::map<std::string, int> original_op_counts,
+           std::map<std::string, int> transformed_op_counts) {
+          EXPECT_EQ(transformed_op_counts["Mul"], 0);
+          EXPECT_EQ(transformed_op_counts["Div"], 0);
+          EXPECT_EQ(transformed_op_counts["MatMul"], 0);
+          EXPECT_EQ(transformed_op_counts["TransposeScaleMatMul"], 1);
+
+          // check combined scale, individual scales should all have the same value
+          const float scale_value = 3.0f;
+
+          const int num_scales =
+              original_op_counts["Mul"] + original_op_counts["Div"] + original_op_counts["TransposeScaleMatMul"];
+
+          auto fused_node = std::find_if(
+              graph.Nodes().cbegin(), graph.Nodes().cend(),
+              [](const Node& node) { return node.OpType() == "TransposeScaleMatMul"; });
+
+          auto alpha_attr = fused_node->GetAttributes().find("alpha");
+          ASSERT_NE(alpha_attr, fused_node->GetAttributes().end());
+
+          EXPECT_EQ(alpha_attr->second.f(), pow(scale_value, num_scales));
+        });
   }
 
   const std::vector<PathString> unfusable_model_paths{
@@ -2886,8 +2889,25 @@ TEST_F(GraphTransformationTests, MatMulScaleFusion) {
   };
 
   for (const auto& path : unfusable_model_paths) {
-    TestMatMulScaleFusion(path, *logger_, false);
+    TestMatMulScaleFusion(
+        path, *logger_,
+        [](const Graph&,
+           const std::map<std::string, int>& original_op_counts,
+           const std::map<std::string, int>& transformed_op_counts) {
+          EXPECT_EQ(original_op_counts, transformed_op_counts);
+        });
   }
+
+  TestMatMulScaleFusion(
+      MODEL_FOLDER "fusion/matmul_scale_reused_input_scale.onnx", *logger_,
+      [](const Graph&,
+         const std::map<std::string, int>&,
+         std::map<std::string, int> transformed_op_counts) {
+        EXPECT_EQ(transformed_op_counts["Mul"], 0);
+        EXPECT_EQ(transformed_op_counts["Div"], 0);
+        EXPECT_EQ(transformed_op_counts["MatMul"], 0);
+        EXPECT_EQ(transformed_op_counts["TransposeScaleMatMul"], 2);
+      });
 }
 
 }  // namespace test

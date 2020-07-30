@@ -113,7 +113,7 @@ def gen_unfusable(model_path, unfusable_type):
     nodes = [
         scale_node,
         helper.make_node(
-            matmul_op, ["scaled_input_0", "input_1"], ["output"], matmul_op),
+            matmul_op, ["scaled_input_0", "input_1"], ["output"], matmul_op)
     ]
 
     initializers = [
@@ -143,3 +143,44 @@ gen_unfusable("matmul_scale_unfusable_scale_not_scalar.onnx",
               UNFUSABLE_SCALE_NOT_SCALAR)
 gen_unfusable("matmul_scale_unfusable_scale_not_constant.onnx",
               UNFUSABLE_SCALE_NOT_CONSTANT)
+
+
+def gen_reused_input_scale(model_path):
+    matmul_op = "MatMul"
+
+    nodes = [
+        helper.make_node(
+            "Mul", ["input_0", "scale"], ["scaled_input_0"],
+            "scale input_0"),
+        helper.make_node(
+            matmul_op, ["scaled_input_0", "input_1"], ["output_0"],
+            "MatMul input_0 and input_1"),
+        helper.make_node(
+            matmul_op, ["scaled_input_0", "input_2"], ["output_1"],
+            "MatMul input_0 and input_2")
+    ]
+
+    initializers = [
+        helper.make_tensor("scale", TensorProto.FLOAT, [], [scale_value])
+    ]
+
+    inputs = [
+        helper.make_tensor_value_info(
+            "input_0", TensorProto.FLOAT, [2, 'M', 'K']),
+        helper.make_tensor_value_info(
+            "input_1", TensorProto.FLOAT, [2, 'K', 'N']),
+        helper.make_tensor_value_info(
+            "input_2", TensorProto.FLOAT, [2, 'K', 'N'])
+    ]
+
+    outputs = [
+        helper.make_tensor_value_info(
+            "output_0", TensorProto.FLOAT, [2, 'M', 'N']),
+        helper.make_tensor_value_info(
+            "output_1", TensorProto.FLOAT, [2, 'M', 'N'])
+    ]
+
+    save(model_path, nodes, inputs, outputs, initializers)
+
+
+gen_reused_input_scale("matmul_scale_reused_input_scale.onnx")
