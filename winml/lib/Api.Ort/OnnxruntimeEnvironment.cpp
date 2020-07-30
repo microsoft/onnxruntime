@@ -13,17 +13,12 @@ using namespace _winml;
 
 static bool debug_output_ = false;
 
+EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 
 static bool IsCurrentModuleInSystem32() {
-  wil::unique_hmodule current_module;
-  FAIL_FAST_IF(0 == GetModuleHandleEx(
-                        GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
-                        (LPCTSTR)IsCurrentModuleInSystem32,
-                        &current_module));
-
   std::string current_module_path;
   current_module_path.reserve(MAX_PATH);
-  auto size_module_path = GetModuleFileNameA(current_module.get(), current_module_path.data(), MAX_PATH);
+  auto size_module_path = GetModuleFileNameA((HINSTANCE)&__ImageBase, current_module_path.data(), MAX_PATH);
   FAIL_FAST_IF(size_module_path == 0);
 
   std::string system32_path;
@@ -36,9 +31,9 @@ static bool IsCurrentModuleInSystem32() {
 
 static HRESULT GetOnnxruntimeLibrary(HMODULE& module) {
   DWORD flags = 0;
-#ifdef BUILD_INBOX
+//#ifdef BUILD_INBOX
   flags |= IsCurrentModuleInSystem32() ? LOAD_LIBRARY_SEARCH_SYSTEM32 : 0;
-#endif
+//#endif
 
   auto out_module = LoadLibraryExA("onnxruntime.dll", nullptr, flags);
   if (out_module == nullptr) {
