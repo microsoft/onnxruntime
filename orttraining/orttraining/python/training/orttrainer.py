@@ -149,6 +149,9 @@ class ORTTrainer(object):
 
         self.model_desc = _ORTTrainerModelDesc(model_desc)
         self.optim_config = optim_config
+
+        if not options:
+            options = ORTTrainerOptions()
         self.options = options
 
         # Set GPU device and memory limit
@@ -197,7 +200,7 @@ class ORTTrainer(object):
         dir_name = os.path.dirname(path)
         file_name = os.path.basename(path)
         if not dir_name or not os.path.exists(dir_name) or not file_name:
-            raise ValueError("'path' must be a valid path string")
+            raise ValueError("'path' is not valid. It must contain an existing folder + filename")
 
         with open(path, "wb") as f:
             f.write(self._onnx_model.SerializeToString())

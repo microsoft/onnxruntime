@@ -524,25 +524,20 @@ def testInstantiateORTTrainer(step_fn):
             assert output_type == _utils.dtype_onnx_to_torch(
                 trainer._onnx_model.graph.output[i].type.tensor_type.elem_type)
 
-    # Save model as ONNX
+    # Save current model as ONNX as a file
     file_name = os.path.join('..','..','..','temp_onnx_model.onnx')
     trainer.save_as_onnx(file_name)
     assert os.path.exists(file_name)
-
-    # Reload O_onnx_model = onnx.load_from_file(file_name)
     with open(file_name, "rb") as f:
         bin_str = f.read()
         reload_onnx_model = onnx.load_model_from_string(bin_str)
-
-    reload_trainer = orttrainer.ORTTrainer(reload_onnx_model, model_desc, optim_config)
-    for batch, i in enumerate(range(0, train_data.size(0)-1, 35)):
-        data, targets = utils.get_batch(train_data, i)
-        learning_rate = 0.001
-        reload_trainer.train_step(data, targets, learning_rate) # removed learning rate here and in model desc
-        break
-    #print(onnx.helper.printable_graph(reload_trainer._onnx_model.graph))
-    assert (reload_trainer._onnx_model == onnx_model)
-    assert (reload_trainer._onnx_model.graph == onnx_model.graph)
-    assert (onnx.helper.printable_graph(reload_trainer._onnx_model.graph) == onnx.helper.printable_graph(onnx_model.graph))
-
     os.remove(file_name)
+
+    # Create a new trainer from persisted ONNX model and compare with original ONNX model
+    trainer_from_onnx = orttrainer.ORTTrainer(reload_onnx_model, model_desc, optim_config)
+    trainer_from_onnx.train_step(data, targets)
+    assert trainer_from_onnx._onnx_model is not None
+    assert (id(trainer_from_onnx._onnx_model) != id(trainer._onnx_model))
+    assert (trainer_from_onnx._onnx_model == trainer._onnx_model)
+    assert (trainer_from_onnx._onnx_model.graph == trainer._onnx_model.graph)
+    assert (onnx.helper.printable_graph(trainer_from_onnx._onnx_model.graph) == onnx.helper.printable_graph(trainer._onnx_model.graph))
