@@ -24,7 +24,7 @@
 #include "orttraining/core/optimizer/gist_encode_decode.h"
 
 //Memory Swap
-#include "orttraining/core/optimizer/memory_swap_rewriter.h"
+#include "orttraining/core/optimizer/memory_swap.h"
 
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_common.h"
@@ -354,11 +354,6 @@ Status TrainingSession::ConfigureForTraining(
     ORT_RETURN_IF_ERROR(AddGistEncoding());
   }
 
-  // add mem swap, note this needs to be the last transform
-  if (config.memswap_config.has_value()) {
-    ORT_RETURN_IF_ERROR(AddMemorySwap(config.memswap_config.value().memory_swap_stop_at));
-  }
-
   // If the current node is in rank0 or if the current session is running pipeline (in which case different rank would
   // store different model partition), and if model_with_training_graph_path is specified, save the model.
   // Note: in the pipeline case, different ranks may resident in the same node. This could lead to a potential write
@@ -553,6 +548,11 @@ void TrainingSession::AddPredefinedTransformers(GraphTransformerManager& transfo
       add_transformers(level);
     }
   }
+
+  if (!memory_swap_stop_at_.empty()) {
+    // register memory swap as the last transformer so no further optimizations after inserted swap nodes
+    transformer_manager.Register(onnxruntime::make_unique<MemorySwap>(memory_swap_stop_at_), TransformerLevel::MaxLevel);
+  }
 }
 
 Status TrainingSession::AddGistEncoding() {
@@ -568,49 +568,6 @@ Status TrainingSession::AddGistEncoding() {
   } catch (const OnnxRuntimeException& exp) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to add Gist Encoding:", exp.what());
   }
-  return DoPostLoadProcessing(*model_);
-}
-
-Status TrainingSession::AddMemorySwap(const std::string& memory_swap_stop_at) {
-  try {
-    Graph& graph = model_->MainGraph();
-
-    auto transformer1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleMemSwapTransformer");
-    ORT_RETURN_IF_ERROR(transformer1->Register(onnxruntime::make_unique<MemorySwapRewriter>(memory_swap_stop_at)));
-    onnxruntime::GraphTransformerManager memswap_graph_transformation_mgr{1};
-    ORT_RETURN_IF_ERROR(memswap_graph_transformation_mgr.Register(std::move(transformer1), TransformerLevel::Level3));
-    ORT_RETURN_IF_ERROR(memswap_graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level3, *session_logger_));
-
-#if 1
-    std::cout << "Topo order after memory swap:" << std::endl;
-    GraphViewer gv(graph);
-    for (auto i : gv.GetNodesInTopologicalOrder()) {
-      const auto& node = *gv.GetNode(i);
-      std::cout << node.Name() << "(" << node.OpType() << ") [";
-      const auto* shape_proto = node.OutputDefs()[0]->Shape();
-      if (shape_proto) {
-        for (auto dim : shape_proto->dim()) {
-          if (dim.has_dim_value())
-            std::cout << dim.dim_value();
-          else if (dim.has_dim_param())
-            std::cout << dim.dim_param();
-          else
-            std::cout << "?";
-
-          std::cout << ",";
-        }
-      } else {
-        std::cout << "*";
-      }
-      std::cout << "]" << std::endl;
-    }
-    std::cout << std::endl;
-#endif
-
-  } catch (const OnnxRuntimeException& exp) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to add memory swap:", exp.what());
-  }
-
   return DoPostLoadProcessing(*model_);
 }
 

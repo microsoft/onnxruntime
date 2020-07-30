@@ -96,13 +96,6 @@ class TrainingSession : public InferenceSession {
     // If not provided, GIST is disabled.
     optional<GistConfiguration> gist_config{};
 
-    struct MemorySwapConfiguration {
-      std::string memory_swap_stop_at;
-    };
-    // The memory swap configuration.
-    // If not provided, memory swap is disabled.
-    optional<MemorySwapConfiguration> memswap_config{};
-
     struct TensorboardConfiguration {
       // The summary name.
       std::string summary_name{};
@@ -313,6 +306,13 @@ class TrainingSession : public InferenceSession {
   using InferenceSession::Run;  // For overload resolution.
   common::Status Run(const RunOptions& run_options, IOBinding& io_binding) override;
 
+  /** set the output node arg name of the node for memory swap to stop at
+   * Note this cannot be part of gradient graph builder as it needs to be the final graph transformer
+   */
+  void SetMemorySwapStopAt(const std::string& memory_swap_stop_at) {
+    memory_swap_stop_at_ = memory_swap_stop_at;
+  }
+
  private:
   /** Configures the loss function.
   The loss function can either be provided externally or built from the provided loss function information.
@@ -349,11 +349,6 @@ class TrainingSession : public InferenceSession {
       std::string& actual_loss_name);
 
   common::Status AddGistEncoding();
-
-  /** Add memory swap to graph.
-  @param memory_swap_stop_at the output node arg of the node for memory swap to stop at.
-  */
-  common::Status AddMemorySwap(const std::string& memory_swap_stop_at);
 
   /** Add tensorboard summary nodes to the graph.
   @param summary_name name for the merged summary node.
@@ -489,9 +484,10 @@ class TrainingSession : public InferenceSession {
   OptimizerGraphConfig opt_graph_config_;
   std::unordered_map<std::string, OptimizerNodeConfig> opt_configs_;
 
-  optional<int> memswap_min_topo_distance_;
   GradientGraphConfiguration gradient_graph_config_;
   static const std::string training_mode_string_;
+
+  std::string memory_swap_stop_at_;
 };
 }  // namespace training
 }  // namespace onnxruntime

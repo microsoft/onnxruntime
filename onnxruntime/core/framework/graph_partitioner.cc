@@ -72,6 +72,7 @@ static Node* PlaceNode(Graph& graph, std::unique_ptr<IndexedSubGraph> capability
     ORT_ENFORCE(1 == capability->nodes.size());
 
     auto* node = graph.GetNode(capability->nodes[0]);
+
     if (nullptr != node && node->GetExecutionProviderType().empty()) {
       // The node was not fused or assigned. Assign it to this <provider>.
       node->SetExecutionProviderType(provider_type);
@@ -197,9 +198,9 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
       if (nullptr == node_func) {
         continue;
       }
-      nodes_need_inline.push_back(&node);      
+      nodes_need_inline.push_back(&node);
     }
-  }  
+  }
 
   for (auto* node : nodes_need_inline) {
     // If the node has a functionbody with no kernel and cannot be inlined
@@ -213,10 +214,10 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
     ORT_RETURN_IF_ERROR(Partition(graph, export_dll, func_mgr));
   }
 
-  //For some cases, like fp16 on cpu, right now we don't have any kernel support that.
-  //But we will insert cast op to run the model, so skip the error checking here.
-  //If after graph transform phase, the node still not assigned, we will report error
-  //during kernel creation phase.
+//For some cases, like fp16 on cpu, right now we don't have any kernel support that.
+//But we will insert cast op to run the model, so skip the error checking here.
+//If after graph transform phase, the node still not assigned, we will report error
+//during kernel creation phase.
 #ifdef COUNT_NON_CUDA_OPS
   for (auto& node : graph.Nodes()) {
     if (node.GetExecutionProviderType() != kCudaExecutionProvider &&

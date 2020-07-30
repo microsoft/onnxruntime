@@ -164,12 +164,6 @@ Status TrainingRunner::Initialize() {
     config.pipeline_config = pipe;
   }
 
-  // memory swap
-  if (!params_.memory_swap_stop_at.empty()) {
-    TrainingSession::TrainingConfiguration::MemorySwapConfiguration memswap{};
-    memswap.memory_swap_stop_at = params_.memory_swap_stop_at;
-    config.memswap_config = memswap;
-  }
   config.enable_gelu_approximation = params_.enable_gelu_approximation;
 
   TrainingSession::TrainingConfigurationResult config_result{};
@@ -310,6 +304,9 @@ Status TrainingRunner::Initialize() {
     // Profiling has not already been enabled, so override from command line options.
     session_.StartProfiling(session_options_.profile_file_prefix);
   }
+
+  // set memory swap
+  session_.SetMemorySwapStopAt(params_.memory_swap_stop_at);
 
   ORT_RETURN_IF_ERROR(session_.Initialize());
 
@@ -701,7 +698,7 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
   // We must join here because main thread needs to access thread-produced
   // fetches and those fetches must be ready.
   pipeline_worker_pool_.JoinAll();
-  for(auto& status : pipeline_worker_pool_.worker_states){
+  for (auto& status : pipeline_worker_pool_.worker_states) {
     CheckWorkerException(status.execution_exception);
   }
 
@@ -736,7 +733,7 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
   // Wait all workers to finish this around of pipeline parallism.
   // The last batch in a pipeline collects gradient and update the model.
   pipeline_worker_pool_.JoinAll();
-  for(auto& status : pipeline_worker_pool_.worker_states){
+  for (auto& status : pipeline_worker_pool_.worker_states) {
     CheckWorkerException(status.execution_exception);
   }
 

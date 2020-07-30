@@ -79,11 +79,12 @@ static Status BuildBackPropGraph(
  * @return TrainingSession for this run.
  */
 static std::unique_ptr<TrainingSession> RunTrainingSessionWithChecks(
-    const SessionOptions& so, const PathString& backprop_model_file, bool use_cuda = false) {
+    const SessionOptions& so, const PathString& backprop_model_file, bool use_cuda = false, const std::string& memory_swap_stop_at = "") {
   std::unique_ptr<Environment> env;
   ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
 
   std::unique_ptr<TrainingSession> training_session = onnxruntime::make_unique<TrainingSession>(so, *env);
+  training_session->SetMemorySwapStopAt(memory_swap_stop_at);
 
 #ifdef USE_CUDA
   if (use_cuda) {
@@ -219,15 +220,12 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithGist) {
 #ifdef USE_CUDA
 TEST(GradientGraphBuilderTest, TrainingSession_WithMemSwap) {
   auto config = MakeBasicTrainingConfig();
-  // config to enable memory swap
-  config.memswap_config = TrainingSession::TrainingConfiguration::MemorySwapConfiguration{};
-  config.memswap_config.value().memory_swap_stop_at = "T3";
 
   PathString backprop_model_file;
   ASSERT_STATUS_OK(BuildBackPropGraph(ORIGINAL_MODEL_PATH, config, backprop_model_file));
 
   SessionOptions so{};
-  RunTrainingSessionWithChecks(so, backprop_model_file, /*use_cuda*/ true);
+  RunTrainingSessionWithChecks(so, backprop_model_file, /*use_cuda*/ true, "T5");
 }
 #endif
 
@@ -322,11 +320,13 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithProfiler) {
 #ifdef USE_CUDA
 static void RunBertTrainingWithChecks(
     const SessionOptions& so,
-    const PathString& backprop_model_file) {
+    const PathString& backprop_model_file,
+    const std::string& memory_swap_stop_at = "") {
   std::unique_ptr<Environment> env;
   ASSERT_STATUS_OK(Environment::Create(nullptr, env));
 
   std::unique_ptr<TrainingSession> training_session = onnxruntime::make_unique<TrainingSession>(so, *env);
+  training_session->SetMemorySwapStopAt(memory_swap_stop_at);
 
   ASSERT_STATUS_OK(training_session->Load(backprop_model_file));
 
@@ -511,16 +511,12 @@ TEST(GradientGraphBuilderTest, TrainingSession_BertToy) {
       {"Mul", {{1, 0.5f}, {1, -10000.0f}}},
       {"Sub", {{0, 1.0f}}}};
 
-  // config to enable memory swap
-  config.memswap_config = TrainingSession::TrainingConfiguration::MemorySwapConfiguration{};
-  config.memswap_config.value().memory_swap_stop_at = "678";
-
   PathString backprop_model_file;
   ASSERT_STATUS_OK(BuildBackPropGraph(model_path, config, backprop_model_file));
 
 #ifdef USE_CUDA
   SessionOptions so;
-  RunBertTrainingWithChecks(so, backprop_model_file);
+  RunBertTrainingWithChecks(so, backprop_model_file, "678");
 #endif
 }
 
