@@ -7,8 +7,7 @@ import torch
 from inspect import signature
 
 import onnxruntime as ort
-from . import ORTTrainerOptions
-from . import optim
+from . import optim, ORTTrainerOptions, _utils
 from .model_desc_validation import _ORTTrainerModelDesc
 from .. import postprocess
 from onnxruntime.capi._pybind_state import set_cuda_mem_limit
@@ -173,8 +172,8 @@ class ORTTrainer(object):
             ordered :py:obj:`list` with model outputs as described by :py:attr:`.ORTTrainer.model_desc`
         """
         # with model_loss_cls, the last input is label, first output is loss
-        sample_input = self._prepare_input_and_fetches(self.model_desc.inputs,
-                                                         None, None, *input, **kwargs)
+        sample_input = self._prepare_model_input(self.model_desc.inputs,
+                                                 None, None, *input, **kwargs)
 
         if self._onnx_model is None:
             if self._torch_model is not None:
@@ -191,11 +190,12 @@ class ORTTrainer(object):
         run_options = ort.RunOptions()
         run_options.only_execute_path_to_fetches = True
         run_options.training_mode = False
-        session_run_results = self.ort_training_session_run_helper(self._training_session, self._eval_io_binding, sample_input,
-                                                              input_desc,
-                                                              output_desc,
-                                                              self.options.device.id,
-                                                              run_options)
+        session_run_results = self._training_session_run_helper(False,
+                                                                sample_input,
+                                                                input_desc,
+                                                                output_desc,
+                                                                self.options.device.id,
+                                                                run_options)
 
         if len(session_run_results) == 1:
             return session_run_results[list(session_run_results.keys())[0]]
@@ -250,34 +250,6 @@ class ORTTrainer(object):
             sample_input = self._prepare_model_input(
                 self.model_desc.inputs, None, None, *input, **kwargs)
             self._init_onnx_model(sample_input)
-
-    
-    def ort_training_session_run_helper(self, session, iobinding, inputs, input_descs, output_descs, device, run_options=None):
-        for input, input_desc in zip(inputs, input_descs):
-            device_index = self.input_get_device_index(input)
-            iobinding.bind_input(input_desc.name, input.device.type, device_index, self.dtype_torch_to_numpy(input.dtype),
-                                 list(input.size()), input.data_ptr())
-
-        output_descs_resolved = output_descs#resolve_symbolic_dimensions(inputs, input_descs, output_descs)
-        torch_outputs = {}
-        for output_desc in output_descs_resolved:
-            torch_tensor = torch.zeros(output_desc.shape, device=device,
-                                       dtype=output_desc.dtype)
-            iobinding.bind_output(output_desc.name, torch_tensor.device.type, self.get_device_index(device),
-                                  self.dtype_torch_to_numpy(torch_tensor.dtype),
-                                  list(torch_tensor.size()), torch_tensor.data_ptr())
-            torch_outputs[output_desc.name] = torch_tensor
-
-        session.run_with_iobinding(iobinding, run_options)
-        return torch_outputs
-
-    def input_get_device_index(self, input):
-        if isinstance(input, (list, tuple)):
-            device_index = self.get_device_index(input[0].device)
-        else:
-            device_index = self.get_device_index(input.device)
-
-        return device_index
 
     def _combine_torch_model_with_loss_fn(self):
         # Don't need to wrap model when loss_fn is not set
@@ -521,6 +493,30 @@ class ORTTrainer(object):
                 input = input + (kwargs[input_desc[0]],)
 
         return input
+
+    def _training_session_run_helper(self, is_train, inputs, input_descs, output_descs, device, run_options=None):
+        if is_train:
+            iobinding = self._train_io_binding
+        else:
+            iobinding = self._eval_io_binding
+
+        for input, input_desc in zip(inputs, input_descs):
+            device_index = _utils.get_device_index_from_input(input)
+            iobinding.bind_input(input_desc.name, input.device.type, device_index, _utils.dtype_torch_to_numpy(input.dtype),
+                                 list(input.size()), input.data_ptr())
+
+        output_descs_resolved = output_descs#resolve_symbolic_dimensions(inputs, input_descs, output_descs)
+        result = {}
+        for output_desc in output_descs_resolved:
+            torch_tensor = torch.zeros(output_desc.shape, device=device,
+                                       dtype=output_desc.dtype)
+            iobinding.bind_output(output_desc.name, torch_tensor.device.type, _utils.get_device_index(device),
+                                  _utils.dtype_torch_to_numpy(torch_tensor.dtype),
+                                  list(torch_tensor.size()), torch_tensor.data_ptr())
+            result[output_desc.name] = torch_tensor
+
+        self._training_session.run_with_iobinding(iobinding, run_options)
+        return result
 
     def _update_onnx_model_initializers(self, state_tensors):
         r""" Updates ONNX graph initializers with state_tensors's values
