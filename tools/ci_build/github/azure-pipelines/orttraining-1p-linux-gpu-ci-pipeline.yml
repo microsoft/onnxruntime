@@ -29,8 +29,8 @@ stages:
     timeoutInMinutes: 0
     workspace:
       clean: all
-    #pool: Linux-GPU-CUDA10
-    pool: Linux-Multi-GPU-V100
+    pool: Linux-GPU-CUDA10
+    #pool: Linux-Multi-GPU-V100
     strategy: 
       maxParallel: 2
       matrix:
