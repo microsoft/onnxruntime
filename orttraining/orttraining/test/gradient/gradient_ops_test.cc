@@ -38,6 +38,70 @@ static bool IsErrorWithinTolerance(float error, float tolerance) {
 #define EXPECT_IS_TINY(max_error) \
   EXPECT_IS_TINIER_THAN(max_error, 1.5e-2f)
 
+static void RunReductionTests(const OpDef& op_def) {
+
+  TestDataVector test_data(
+                            // Input X
+                            {
+                              {{4, 3, 2}},
+                              {{4, 3, 2}},
+                              {{4, 3, 2}},
+                              {{4, 3, 2}},
+                              {{4, 3, 2}},
+                              {{4, 3, 2}},
+                              {{4, 3, 2}},
+                              {{4, 3, 2}},
+                            },
+                            // Input Y
+                            {
+                              {{1, 1, 1}},
+                              {{}},
+                              {{1, 3, 1}},
+                              {{2}},
+                              {{4, 1, 2}},
+                              {{4, 3}},
+                              {{4, 1, 2}},
+                              {{4}}
+                            },
+                            // Attributes
+                            {
+                              // default
+                              {},
+                              // axes = [0, 1, 2], keepdims = 0
+                              {MakeAttribute("axes", std::vector<int64_t>{0, 1, 2}),
+                               MakeAttribute("keepdims", int64_t(0))},
+                              // axes = [0, 2], keepdims = 1
+                              {MakeAttribute("axes", std::vector<int64_t>{0, 2})},
+                              // axes = [0, 1], keepdims = 0
+                              {MakeAttribute("axes", std::vector<int64_t>{0, 1}),
+                               MakeAttribute("keepdims", int64_t(0))},
+                              // axes = [1], keepdims = 1
+                              {MakeAttribute("axes", std::vector<int64_t>{1}),
+                               MakeAttribute("keepdims", int64_t(1))},
+                              // axes = [2], keepdims = 0
+                              {MakeAttribute("axes", std::vector<int64_t>{2}),
+                               MakeAttribute("keepdims", int64_t(0))},
+                              // axes = [-2], keepdims = 1
+                              {MakeAttribute("axes", std::vector<int64_t>{-2}),
+                               MakeAttribute("keepdims", int64_t(1))},
+                              // axes = [-2, -1], keepdims = 0
+                              {MakeAttribute("axes", std::vector<int64_t>{-2, -1}),
+                               MakeAttribute("keepdims", int64_t(0))}
+                            });
+
+  GradientChecker<float, float, float> gradient_checker;
+
+  float max_error;
+
+  for (size_t i = 0; i < std::get<0>(test_data).size(); i++) {
+    max_error = 0;
+    gradient_checker.ComputeGradientError(op_def, std::get<0>(test_data)[i],
+                                          std::get<1>(test_data)[i], &max_error,
+                                          std::get<2>(test_data)[i]);
+    EXPECT_IS_TINY(max_error);
+  }
+}
+
 template <typename T>
 void GenerateRandomDataWithOneHot(
     std::vector<std::vector<float>>& x_datas,
@@ -426,149 +490,24 @@ TEST(GradientCheckerTest, GemmGrad) {
 }
 
 TEST(GradientCheckerTest, ReduceMeanGrad) {
-  float max_error;
-  GradientChecker<float, float, float> gradient_checker;
   // Attribute axes supports negative values from opset 11.
   OpDef op_def{"ReduceMean", kOnnxDomain, 11};
 
-  // default
-  {
-    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{1, 1, 1}}, &max_error);
-    EXPECT_IS_TINY(max_error);
-  }
-
-  // TODO: Fix forward kernel behavior for default axes
-  // default axes, keepdims = 0
-  /*
-  {
-    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{}}, &max_error,
-                                          {MakeAttribute("keepdims", int64_t(0))});
-    EXPECT_IS_TINY(max_error);
-  }
-  */
-
-  // axes = [0, 1, 2], keepdims = 0
-  {
-    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{}}, &max_error,
-                                          {MakeAttribute("axes", std::vector<int64_t>{0, 1, 2}),
-                                           MakeAttribute("keepdims", int64_t(0))});
-    EXPECT_IS_TINY(max_error);
-  }
-
-  // axes = [0, 2], keepdims = 1
-  {
-    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{1, 3, 1}}, &max_error,
-                                          {MakeAttribute("axes", std::vector<int64_t>{0, 2})});
-    EXPECT_IS_TINY(max_error);
-  }
-
-  // axes = [0, 1], keepdims = 0
-  {
-    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{2}}, &max_error,
-                                          {MakeAttribute("axes", std::vector<int64_t>{0, 1}),
-                                           MakeAttribute("keepdims", int64_t(0))});
-    EXPECT_IS_TINY(max_error);
-  }
-
-  // axes = [1], keepdims = 1
-  {
-    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{4, 1, 2}}, &max_error,
-                                          {MakeAttribute("axes", std::vector<int64_t>{1}),
-                                           MakeAttribute("keepdims", int64_t(1))});
-    EXPECT_IS_TINY(max_error);
-  }
-
-  // axes = [2], keepdims = 0
-  {
-    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{4, 3}}, &max_error,
-                                          {MakeAttribute("axes", std::vector<int64_t>{2}),
-                                           MakeAttribute("keepdims", int64_t(0))});
-    EXPECT_IS_TINY(max_error);
-  }
-
-  // axes = [-2], keepdims = 1
-  {
-    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{4, 1, 2}}, &max_error,
-                                          {MakeAttribute("axes", std::vector<int64_t>{-2}),
-                                           MakeAttribute("keepdims", int64_t(1))});
-    EXPECT_IS_TINY(max_error);
-  }
-
-  // axes = [-2, -1], keepdims = 0
-  {
-    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{4}}, &max_error,
-                                          {MakeAttribute("axes", std::vector<int64_t>{-2, -1}),
-                                           MakeAttribute("keepdims", int64_t(0))});
-    EXPECT_IS_TINY(max_error);
-  }
+  RunReductionTests(op_def);
 }
 
 TEST(GradientCheckerTest, ReduceSumGrad) {
-  float max_error;
-  GradientChecker<float, float, float> gradient_checker;
   // Attribute axes supports negative values from opset 11.
   OpDef op_def{"ReduceSum", kOnnxDomain, 11};
 
-  // default
-  {
-    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{1, 1, 1}}, &max_error);
-    EXPECT_IS_TINY(max_error);
-  }
+  RunReductionTests(op_def);
+}
 
-  // axes = [0, 1, 2], keepdims = 0
-  {
-    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{}}, &max_error,
-                                          {MakeAttribute("axes", std::vector<int64_t>{0, 1, 2}),
-                                           MakeAttribute("keepdims", int64_t(0))});
-    EXPECT_IS_TINY(max_error);
-  }
+TEST(GradientCheckerTest, ReduceLogSumExpGrad) {
+  // Attribute axes supports negative values from opset 11.
+  OpDef op_def{"ReduceLogSumExp", kOnnxDomain, 11};
 
-  // axes = [0, 2], keepdims = 1
-  {
-    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{1, 3, 1}}, &max_error,
-                                          {MakeAttribute("axes", std::vector<int64_t>{0, 2})});
-    EXPECT_IS_TINY(max_error);
-  }
-
-  // axes = [0, 1], keepdims = 0
-  {
-    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{2}}, &max_error,
-                                          {MakeAttribute("axes", std::vector<int64_t>{0, 1}),
-                                           MakeAttribute("keepdims", int64_t(0))});
-    EXPECT_IS_TINY(max_error);
-  }
-
-  // axes = [1], keepdims = 1
-  {
-    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{4, 1, 2}}, &max_error,
-                                          {MakeAttribute("axes", std::vector<int64_t>{1}),
-                                           MakeAttribute("keepdims", int64_t(1))});
-    EXPECT_IS_TINY(max_error);
-  }
-
-  // axes = [2], keepdims = 0
-  {
-    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{4, 3}}, &max_error,
-                                          {MakeAttribute("axes", std::vector<int64_t>{2}),
-                                           MakeAttribute("keepdims", int64_t(0))});
-    EXPECT_IS_TINY(max_error);
-  }
-
-  // axes = [-2], keepdims = 1
-  {
-    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{4, 1, 2}}, &max_error,
-                                          {MakeAttribute("axes", std::vector<int64_t>{-2}),
-                                           MakeAttribute("keepdims", int64_t(1))});
-    EXPECT_IS_TINY(max_error);
-  }
-
-  // axes = [-1, -3], keepdims = 0
-  {
-    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{3}}, &max_error,
-                                          {MakeAttribute("axes", std::vector<int64_t>{-1, -3}),
-                                           MakeAttribute("keepdims", int64_t(0))});
-    EXPECT_IS_TINY(max_error);
-  }
+  RunReductionTests(op_def);
 }
 
 #ifndef USE_CUDA
@@ -1960,3 +1899,4 @@ TEST(GradientCheckerTest, ExpandGrad) {
 }  // namespace onnxruntime
 
 #endif  // NDEBUG
+
