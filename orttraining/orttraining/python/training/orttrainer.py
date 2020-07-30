@@ -245,34 +245,6 @@ class ORTTrainer(object):
                 self.model_desc.inputs, None, None, *input, **kwargs)
             self._init_onnx_model(sample_input)
 
-    
-    def ort_training_session_run_helper(self, session, iobinding, inputs, input_descs, output_descs, device, run_options=None):
-        for input, input_desc in zip(inputs, input_descs):
-            device_index = self.input_get_device_index(input)
-            iobinding.bind_input(input_desc.name, input.device.type, device_index, self.dtype_torch_to_numpy(input.dtype),
-                                 list(input.size()), input.data_ptr())
-
-        output_descs_resolved = output_descs#resolve_symbolic_dimensions(inputs, input_descs, output_descs)
-        torch_outputs = {}
-        for output_desc in output_descs_resolved:
-            torch_tensor = torch.zeros(output_desc.shape, device=device,
-                                       dtype=output_desc.dtype)
-            iobinding.bind_output(output_desc.name, torch_tensor.device.type, self.get_device_index(device),
-                                  self.dtype_torch_to_numpy(torch_tensor.dtype),
-                                  list(torch_tensor.size()), torch_tensor.data_ptr())
-            torch_outputs[output_desc.name] = torch_tensor
-
-        session.run_with_iobinding(iobinding, run_options)
-        return torch_outputs
-
-    def input_get_device_index(self, input):
-        if isinstance(input, (list, tuple)):
-            device_index = self.get_device_index(input[0].device)
-        else:
-            device_index = self.get_device_index(input.device)
-
-        return device_index
-
     def _combine_torch_model_with_loss_fn(self):
         # Don't need to wrap model when loss_fn is not set
         if not self.loss_fn:
