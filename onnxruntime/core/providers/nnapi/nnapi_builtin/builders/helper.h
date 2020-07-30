@@ -8,6 +8,9 @@
 
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
 
+namespace onnxruntime {
+namespace nnapi {
+
 #define THROW_ON_ERROR(val)                                               \
   {                                                                       \
     const auto ret = (val);                                               \
@@ -36,12 +39,31 @@ inline bool Contains(const Map& map, const Key& key) {
 
 std::string GetErrorCause(int error_code);
 
+enum class QLinearOpType : uint8_t {
+  Unknown,  // Unknown or not a linear quantized op
+  DequantizeLinear,
+  QuantizeLinear,
+  QLinearConv,
+  QLinearMatMul,
+  QLinearAdd,
+  // Not yet supported
+  // QLinearAveragePool,
+  // QLinearMul,
+  // QLinearReduceMean,
+};
+
+QLinearOpType GetQLinearOpType(const onnxruntime::Node& node);
+
+// This qlinear op is an operator takes 2 input and producce 1 output
+// Such as QLinearConv, QLinearMatMul, QLinearAdd, ...
+bool IsQLinearBinaryOp(QLinearOpType qlinear_op_type);
+
 /**
  * Wrapping onnxruntime::Node for retrieving attribute values
  */
 class NodeAttrHelper {
  public:
-  NodeAttrHelper(const onnxruntime::Node& proto);
+  NodeAttrHelper(const onnxruntime::Node& node);
 
   float Get(const std::string& key, float def_val) const;
   int32_t Get(const std::string& key, int32_t def_val) const;
@@ -54,3 +76,6 @@ class NodeAttrHelper {
  private:
   const onnxruntime::NodeAttributes& node_attributes_;
 };
+
+}  // namespace nnapi
+}  // namespace onnxruntime

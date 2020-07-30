@@ -192,8 +192,8 @@ std::unordered_map<std::string, vector<const Node*>> GetAllQuantizedOpInputs(con
   const auto& node_indices = graph_view.GetNodesInTopologicalOrder();
   for (const auto& node_idx : node_indices) {
     const auto* node(graph_view.GetNode(node_idx));
-    const auto& op_type = node->OpType();
-    if (op_type == "DequantizeLinear" || op_type == "QLinearMatMul" || op_type == "QLinearConv") {
+    auto qlinear_op_type = GetQLinearOpType(*node);
+    if (qlinear_op_type == QLinearOpType::DequantizeLinear || IsQLinearBinaryOp(qlinear_op_type)) {
       const auto& input_name = node->InputDefs()[0]->Name();
       if (Contains(all_quantized_op_inputs, input_name))
         all_quantized_op_inputs.at(input_name).push_back(node);
@@ -201,7 +201,7 @@ std::unordered_map<std::string, vector<const Node*>> GetAllQuantizedOpInputs(con
         all_quantized_op_inputs.emplace(input_name, vector<const Node*>{node});
     }
 
-    if (op_type == "QLinearMatMul" || op_type == "QLinearConv") {
+    if (IsQLinearBinaryOp(qlinear_op_type)) {
       const auto& input_name = node->InputDefs()[3]->Name();
       if (Contains(all_quantized_op_inputs, input_name))
         all_quantized_op_inputs.at(input_name).push_back(node);
@@ -328,8 +328,8 @@ void ModelBuilder::RegisterModelInputs() {
           }
 
           // TODO, verify the scale and zero point match if there are multiple op using same input
-          std::tie(scale, zero_point) =
-              GetQuantizedInputScaleAndZeroPoint(*this, *all_quantized_op_inputs.at(input_name)[0], input_name);
+          ORT_THROW_IF_ERROR(GetQuantizedInputScaleAndZeroPoint(
+              *this, *all_quantized_op_inputs.at(input_name)[0], input_name, scale, zero_point));
           break;
         }
         default:
