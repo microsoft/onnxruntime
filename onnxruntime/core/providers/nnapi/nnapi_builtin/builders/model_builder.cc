@@ -231,6 +231,8 @@ void ModelBuilder::RegisterInitializers() {
       shape.push_back(SafeInt<uint32_t>(dim));
     }
 
+    ORT_ENFORCE(!shape.empty(), "NNAPI does not support scalar initializer");
+
     Type type = Type::TENSOR_FLOAT32;
     switch (tensor.data_type()) {
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
@@ -304,6 +306,9 @@ void ModelBuilder::RegisterModelInputs() {
       shape.push_back(SafeInt<uint32_t>(dim.dim_value()));
     }
 
+    ORT_ENFORCE(GetAndroidSdkVer() >= 29 || !shape.empty(),
+                "0-rank input is only supported on Android API level 29+");
+
     Type type = Type::TENSOR_FLOAT32;
     float scale = 0.0f;
     int32_t zero_point = 0;
@@ -370,7 +375,6 @@ void ModelBuilder::RegisterModelOutputs() {
 }
 
 void ModelBuilder::RegisterModelShaper() {
-  shaper_.Finalize();
   nnapi_model_->SetShaper(shaper_);
 }
 
