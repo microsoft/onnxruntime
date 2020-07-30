@@ -18,7 +18,7 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelS
   bool CloseModelOnSessionCreation();
   void CloseModelOnSessionCreation(bool value);
 
-  STDMETHOD(OverrideIntraOpNumThreads)
+  STDMETHOD(SetIntraOpNumThreadsOverride)
   (uint32_t intraOpNumThreads);
 
   uint32_t GetIntraOpNumThreads();
