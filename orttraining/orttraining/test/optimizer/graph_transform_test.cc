@@ -14,7 +14,7 @@
 #include "orttraining/core/optimizer/gist_encode_decode.h"
 #include "orttraining/core/optimizer/nonzero_shape_setter.h"
 #include "orttraining/core/optimizer/megatron_transformer.h"
-#include "orttraining/core/optimizer/concat_training_rewrite.h"
+#include "orttraining/core/optimizer/concat_training_rewriter.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/asserts.h"

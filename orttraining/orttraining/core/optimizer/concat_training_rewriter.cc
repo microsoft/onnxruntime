@@ -11,7 +11,6 @@
 namespace onnxruntime {
 
 Status ConcatTrainingRewriter::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger&) const {
-  std::cout << "ConcatTrainingRewriter: Apply\n";
   auto& concat_node = node;
   const auto& concat_inputs = concat_node.MutableInputDefs();
   auto& concat_outputs = concat_node.MutableOutputDefs();
@@ -40,8 +39,6 @@ Status ConcatTrainingRewriter::Apply(Graph& graph, Node& node, RewriteRuleEffect
 }
 
 bool ConcatTrainingRewriter::SatisfyCondition(const Graph&, const Node&, const logging::Logger&) const {
-  std::cout << "ConcatTrainingRewriter: SatisfyCondition\n";
-
   return true;
 }
 
