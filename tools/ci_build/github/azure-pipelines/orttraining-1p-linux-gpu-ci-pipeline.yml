@@ -31,13 +31,13 @@ stages:
       clean: all
     pool: Linux-GPU-CUDA10
     #pool: Linux-Multi-GPU-V100
-    strategy: 
-      maxParallel: 2
-      matrix:
-        Debug:
-          buildConfig: Debug
-        Release:
-          buildConfig: Release
+    # strategy: 
+    #   maxParallel: 2
+    #   matrix:
+    #     Debug:
+    #       buildConfig: Debug
+    #     Release:
+    #       buildConfig: Release
     steps:
       - checkout: self
         clean: true
@@ -45,70 +45,56 @@ stages:
 
       - template: templates/set-py-packaging-variables-step.yml
 
-      - task: CmdLine@2
-        inputs:
-          script: |
-            docker build \
-              --pull \
-              -t ${{ variables.docker_image_prefix }}-manylinux-gpu-release \
-              --build-arg TEST_FLAG="${{ parameters.test_flag }}" \
-              -f ${{ variables.linux_gpu_dockerfile }} .
-          workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
+      # - task: CmdLine@2
+      #   inputs:
+      #     script: |
+      #       docker build \
+      #         --pull \
+      #         -t ${{ variables.docker_image_prefix }}-manylinux-gpu-release \
+      #         --build-arg TEST_FLAG="${{ parameters.test_flag }}" \
+      #         -f ${{ variables.linux_gpu_dockerfile }} .
+      #     workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
+
+      # - task: AzureKeyVault@1
+      #   inputs:
+      #     azureSubscription: 'AIInfraBuild'
+      #     KeyVaultName: 'jingywatest'
+      #     SecretsFilter: '*'
+      #     RunAsPreJob: false
 
       # - task: CmdLine@2
       #   inputs:
       #     script: |
-      #       docker run \
-      #         --gpus all \
-      #         --rm \
-      #         --volume $(Build.SourcesDirectory):/onnxruntime_src \
-      #         --volume $(Build.BinariesDirectory):/build \
-      #         --volume /data/models:/build/models:ro \
-      #         -e NVIDIA_VISIBLE_DEVICES=all \
-      #         -e NIGHTLY_BUILD \
-      #         -e BUILD_BUILDNUMBER \
-      #         ${{ variables.docker_image_prefix }}-manylinux-gpu-$(python.version) \
-      #         $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-      #           --build_dir /build \
-      #           --config Release \
-      #           --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.manylinux.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so \
-      #           --skip_submodule_sync \
-      #           --parallel \
-      #           --build_wheel \
-      #           --enable_onnx_tests \
-      #           --use_cuda \
-      #           ${{ variables.actual_extra_build_py_parameters }}
-      #     workingDirectory: $(Build.SourcesDirectory)
-      # --cuda_version=10.1 --cuda_home=/usr/local/cuda-10.1 --cudnn_home=/usr/local/cuda-10.1 \
-      # - script: ${{ variables.BuildCommand }}
-      #   displayName: 'Command Line Script'
-
-      - task: AzureKeyVault@1
+      #       echo $(DockerPassword) > password.txt
+      #       cat password.txt | docker login --username jingywatest --password-stdin jingywatest.azurecr.io
+      #       docker tag onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 jingywatest.azurecr.io/test/onnxruntime-training-1p:$(Build.BuildId)
+      #       docker push jingywatest.azurecr.io/test/onnxruntime-training-1p:$(Build.BuildId)
+      - task: Docker@2
+        displayName: Login to ACR
         inputs:
-          azureSubscription: 'AIInfraBuild'
-          KeyVaultName: 'jingywatest'
-          SecretsFilter: '*'
-          RunAsPreJob: false
-
-      - task: CmdLine@2
+          command: login
+          containerRegistry: jingywatest
+      
+      - task: Docker@2
+        displayName: Build
         inputs:
-          script: |
-            echo $(DockerPassword) > password.txt
-            cat password.txt | docker login --username jingywatest --password-stdin jingywatest.azurecr.io
-            docker tag onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 jingywatest.azurecr.io/test/onnxruntime-training-1p:$(Build.BuildId)
-            docker push jingywatest.azurecr.io/test/onnxruntime-training-1p:$(Build.BuildId)
+          command: build
+          repository: test/onnxruntime-training-1p
+          dockerfile: ${{ variables.linux_gpu_dockerfile }}
+          tags: |
+            $(Build.BuildId)
+            latest
+          arguments: --build-arg TEST_FLAG="${{ parameters.test_flag }}"
 
-      - task: CopyFiles@2
-        displayName: 'Copy Python Wheel to:  $(Build.ArtifactStagingDirectory)'
+      - task: Docker@2
+        displayName: Push
         inputs:
-          SourceFolder: '$(Build.BinariesDirectory)'
-          Contents: 'Release/dist/*.whl'
-          TargetFolder: '$(Build.ArtifactStagingDirectory)'
-
-      - task: PublishBuildArtifacts@1
-        displayName: 'Publish Artifact: ONNXRuntime python wheel'
-        inputs:
-          ArtifactName: onnxruntime_gpu_1p
+          command: push
+          containerRegistry: jingywatest
+          repository: test/onnxruntime-training-1p
+          tags: |
+            $(Build.BuildId)
+            latest
 
       - template: templates/component-governance-component-detection-steps.yml
 
