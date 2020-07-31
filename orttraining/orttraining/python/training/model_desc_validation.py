@@ -40,6 +40,9 @@ class _ORTTrainerModelDesc(object):
             else:
                 self._validated['outputs'][idx] = self._OutputDescription(*output)
 
+        # Hard-code learning rate descriptor for the model
+        self._validated['learning_rate'] = self._InputDescriptionTyped('Learning_Rate', [1], torch.float32)
+
         # Convert dict in object
         for k, v in self._validated.items():
             setattr(self, k, self._wrap(v))
