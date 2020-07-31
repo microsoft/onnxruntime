@@ -58,7 +58,7 @@ TEST_P(ModelTest, Run) {
     // them is enabled here to save CI build time.
     return;
   }
-  if (model_info->GetONNXOpSetVersion() != 12 && provider_name == "dnnl") {
+  if (model_info->GetONNXOpSetVersion() == 10 && provider_name == "dnnl") {
     // DNNL can run most of the model tests, but only part of
     // them is enabled here to save CI build time.
     return;

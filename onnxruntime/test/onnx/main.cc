@@ -39,6 +39,7 @@ void usage() {
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', 'ngraph', "
       "'openvino', 'nuphar', 'migraphx', 'acl' or 'armnn'. "
       "Default: 'cpu'.\n"
+      "\t-p: Pause after launch, can attach debugger and continue\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
       "\t-d [device_id]: Specifies the device id for multi-device (e.g. GPU). The value should > 0\n"
       "\t-o [optimization level]: Default is 99. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
@@ -109,9 +110,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   int verbosity_option_count = 0;
 
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_ERROR;
+  bool pause = false;
   {
     int ch;
-    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:xvo:d:"))) != -1) {
+    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:xvo:d:p"))) != -1) {
       switch (ch) {
         case 'A':
           enable_cpu_mem_arena = false;
@@ -181,6 +183,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
         case 'x':
           execution_mode = ExecutionMode::ORT_PARALLEL;
           break;
+        case 'p':
+          pause = true;
+          break;
         case 'o': {
           int tmp = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
           switch (tmp) {
@@ -241,6 +246,12 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     fprintf(stderr, "please specify a test data dir\n");
     usage();
     return -1;
+  }
+
+  if (pause) {
+    printf("Enter to continue...\n");
+    fflush(stdout);
+    getchar();
   }
 
   try {
