@@ -194,7 +194,6 @@ class ORTTrainer(object):
                                                                 sample_input,
                                                                 input_desc,
                                                                 output_desc,
-                                                                self.options.device.id,
                                                                 run_options)
         return [session_run_results[output_desc.name] for output_desc in output_desc]
 
@@ -490,7 +489,7 @@ class ORTTrainer(object):
 
         return input
 
-    def _training_session_run_helper(self, is_train, inputs, input_descs, output_descs, device, run_options=None):
+    def _training_session_run_helper(self, is_train, inputs, input_descs, output_descs, run_options=None):
         # Select IO binding
         if is_train:
             iobinding = self._train_io_binding
@@ -512,9 +511,9 @@ class ORTTrainer(object):
         output_descs_resolved = output_descs
         result = {}
         for output_desc in output_descs_resolved:
-            torch_tensor = torch.zeros(output_desc.shape, device=device,
+            torch_tensor = torch.zeros(output_desc.shape, device=self.options.device.id,
                                        dtype=output_desc.dtype)
-            iobinding.bind_output(output_desc.name, torch_tensor.device.type, _utils.get_device_index(device),
+            iobinding.bind_output(output_desc.name, torch_tensor.device.type, _utils.get_device_index(self.options.device.id),
                                   _utils.dtype_torch_to_numpy(torch_tensor.dtype),
                                   list(torch_tensor.size()), torch_tensor.data_ptr())
             result[output_desc.name] = torch_tensor
