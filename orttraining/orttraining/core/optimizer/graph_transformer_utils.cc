@@ -8,6 +8,7 @@
 #include "orttraining/core/optimizer/megatron_transformer.h"
 #include "orttraining/core/optimizer/bias_dropout_fusion.h"
 #include "orttraining/core/optimizer/nonzero_shape_setter.h"
+#include "orttraining/core/optimizer/concat_training_rewriter.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/conv_mul_fusion.h"
@@ -92,6 +93,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(T
     case TransformerLevel::Level2: {
       // Put ReshapeFusion as level-2 optimization after all level-1 graph rewriters are run.
       transformers.emplace_back(onnxruntime::make_unique<ReshapeFusion>(compatible_eps));
+      rule_transformer =
+          onnxruntime::make_unique<RuleBasedGraphTransformer>(optimizer_utils::GenerateRuleBasedTransformerName(level),
+                                                              compatible_eps);
+      rule_transformer->Register(onnxruntime::make_unique<ConcatTrainingRewriter>());
     } break;
 
     case TransformerLevel::Level3: {
