@@ -1,0 +1,30 @@
+
+pyop_model:Ð
+‡
+XY"PyOp*	
+A"1 *	
+B"2 *
+
+class_name"
+MyKernel_3 *
+input_types@ *
+module"mymodule *
+output_types@ :PyOp_1
+‡
+YZ"PyOp*	
+A"2 *	
+B"1 *
+
+class_name"
+MyKernel_3 *
+input_types@ *
+module"mymodule *
+output_types@ :PyOp_2multi_pyop_graphZ
+X
+
+
+b
+Z
+
+
+B

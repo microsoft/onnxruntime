@@ -144,6 +144,8 @@ static constexpr PATH_TYPE MODEL_WITH_CUSTOM_MODEL_METADATA = TSTR("testdata/mod
 
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 static constexpr PATH_TYPE PYOP_FLOAT_MODEL_URI = TSTR("testdata/pyop_1.onnx");
+static constexpr PATH_TYPE PYOP_MULTI_MODEL_URI = TSTR("testdata/pyop_2.onnx");
+static constexpr PATH_TYPE PYOP_KWARG_MODEL_URI = TSTR("testdata/pyop_3.onnx");
 #endif
 
 class CApiTestWithProvider : public testing::Test, public ::testing::WithParamInterface<int> {
@@ -380,6 +382,61 @@ TEST(CApiTest, test_pyop) {
   std::vector<int64_t> expected_dims_y = {2, 2};
   std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f};
   TestInference<PATH_TYPE, float>(*ort_env, PYOP_FLOAT_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
+}
+
+TEST(CApiTest, test_pyop_multi) {
+  std::cout << "Test model with multiple pyop" << std::endl;
+  std::ofstream module("mymodule.py");
+  module << "class MyKernel:" << std::endl;
+  module << "\t"
+         << "def __init__(self,A,B,C):" << std::endl;
+  module << "\t\t"
+         << "self.a,self.b,self.c = A,B,C" << std::endl;
+  module << "\t"
+         << "def compute(self,x):" << std::endl;
+  module << "\t\t"
+         << "return x * 2" << std::endl;
+  module << "class MyKernel_2:" << std::endl;
+  module << "\t"
+         << "def __init__(self,A,B):" << std::endl;
+  module << "\t\t"
+         << "self.a,self.b = A,B" << std::endl;
+  module << "\t"
+         << "def compute(self,x):" << std::endl;
+  module << "\t\t"
+         << "return x * 4" << std::endl;
+  module.close();
+  std::vector<Input> inputs(1);
+  Input& input = inputs[0];
+  input.name = "X";
+  input.dims = {2, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f};
+  std::vector<int64_t> expected_dims_y = {2, 2};
+  std::vector<float> expected_values_y = {8.0f, 16.0f, 24.0f, 32.0f};
+  TestInference<PATH_TYPE, float>(*ort_env, PYOP_MULTI_MODEL_URI, inputs, "Z", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
+}
+
+TEST(CApiTest, test_pyop_kwarg) {
+  std::cout << "Test model with pyop *kwargs" << std::endl;
+  std::ofstream module("mymodule.py");
+  module << "class MyKernel_3:" << std::endl;
+  module << "\t"
+         << "def __init__(self,A,B):" << std::endl;
+  module << "\t\t"
+         << "self.a,self.b = A,B" << std::endl;
+  module << "\t"
+         << "def compute(self, *kwargs):" << std::endl;
+  module << "\t\t"
+         << "return kwargs[0] * 5" << std::endl;
+  module.close();
+  std::vector<Input> inputs(1);
+  Input& input = inputs[0];
+  input.name = "X";
+  input.dims = {2, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f};
+  std::vector<int64_t> expected_dims_y = {2, 2};
+  std::vector<float> expected_values_y = {25.0f, 50.0f, 75.0f, 100.0f};
+  TestInference<PATH_TYPE, float>(*ort_env, PYOP_KWARG_MODEL_URI, inputs, "Z", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
 }
 #endif
 
