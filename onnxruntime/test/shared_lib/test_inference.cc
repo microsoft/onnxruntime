@@ -361,8 +361,10 @@ TEST(CApiTest, test_custom_op_library) {
 }
 
 #if defined(ENABLE_LANGUAGE_INTEROP_OPS)
-TEST(CApiTest, test_pyop) {
-  std::cout << "Test model with pyop" << std::endl;
+std::once_flag my_module_flag;
+
+void PrepareModule()
+{
   std::ofstream module("mymodule.py");
   module << "class MyKernel:" << std::endl;
   module << "\t"
@@ -373,7 +375,29 @@ TEST(CApiTest, test_pyop) {
          << "def compute(self,x):" << std::endl;
   module << "\t\t"
          << "return x*2" << std::endl;
+  module << "class MyKernel_2:" << std::endl;
+  module << "\t"
+         << "def __init__(self,A,B):" << std::endl;
+  module << "\t\t"
+         << "self.a,self.b = A,B" << std::endl;
+  module << "\t"
+         << "def compute(self,x):" << std::endl;
+  module << "\t\t"
+         << "return x*4" << std::endl;
+  module << "class MyKernel_3:" << std::endl;
+  module << "\t"
+         << "def __init__(self,A,B):" << std::endl;
+  module << "\t\t"
+         << "self.a,self.b = A,B" << std::endl;
+  module << "\t"
+         << "def compute(self, *kwargs):" << std::endl;
+  module << "\t\t"
+         << "return kwargs[0]*5" << std::endl;
   module.close();
+}
+
+TEST(CApiTest, test_pyop) {
+  std::call_once(my_module_flag, PrepareModule);
   std::vector<Input> inputs(1);
   Input& input = inputs[0];
   input.name = "X";
@@ -385,27 +409,7 @@ TEST(CApiTest, test_pyop) {
 }
 
 TEST(CApiTest, test_pyop_multi) {
-  std::cout << "Test model with multiple pyop" << std::endl;
-  std::ofstream module("mymodule.py");
-  module << "class MyKernel:" << std::endl;
-  module << "\t"
-         << "def __init__(self,A,B,C):" << std::endl;
-  module << "\t\t"
-         << "self.a,self.b,self.c = A,B,C" << std::endl;
-  module << "\t"
-         << "def compute(self,x):" << std::endl;
-  module << "\t\t"
-         << "return x * 2" << std::endl;
-  module << "class MyKernel_2:" << std::endl;
-  module << "\t"
-         << "def __init__(self,A,B):" << std::endl;
-  module << "\t\t"
-         << "self.a,self.b = A,B" << std::endl;
-  module << "\t"
-         << "def compute(self,x):" << std::endl;
-  module << "\t\t"
-         << "return x * 4" << std::endl;
-  module.close();
+  std::call_once(my_module_flag, PrepareModule);
   std::vector<Input> inputs(1);
   Input& input = inputs[0];
   input.name = "X";
@@ -417,18 +421,7 @@ TEST(CApiTest, test_pyop_multi) {
 }
 
 TEST(CApiTest, test_pyop_kwarg) {
-  std::cout << "Test model with pyop *kwargs" << std::endl;
-  std::ofstream module("mymodule.py");
-  module << "class MyKernel_3:" << std::endl;
-  module << "\t"
-         << "def __init__(self,A,B):" << std::endl;
-  module << "\t\t"
-         << "self.a,self.b = A,B" << std::endl;
-  module << "\t"
-         << "def compute(self, *kwargs):" << std::endl;
-  module << "\t\t"
-         << "return kwargs[0] * 5" << std::endl;
-  module.close();
+  std::call_once(my_module_flag, PrepareModule);
   std::vector<Input> inputs(1);
   Input& input = inputs[0];
   input.name = "X";
