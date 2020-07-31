@@ -28,7 +28,7 @@ def testORTTrainerOptionsDefaultValues(test_input):
             'gradient_accumulation_steps': 0
         },
         'device': {
-            'id': None,
+            'id': 'cpu',
             'mem_limit': 0
         },
         'distributed': {
@@ -47,6 +47,9 @@ def testORTTrainerOptionsDefaultValues(test_input):
         'utils': {
             'frozen_weights': [],
             'grad_norm_clip': False
+        },
+        'debug': {
+            'deterministic_compute': False
         },
         '_internal_use': {
             'enable_internal_postprocess': True,
@@ -81,8 +84,14 @@ def testORTTrainerOptionsInvalidMixedPrecisionEnabledSchema():
 def testORTTrainerModelDescValidSchemas(input_dict, input_dtype, output_dtype):
     r''' Test different ways of using default values for incomplete input'''
 
-    # Validating model description from user
     model_description = md_val._ORTTrainerModelDesc(input_dict)
+
+    # Validating hard-coded learning rate description
+    assert model_description.learning_rate.name == "Learning_Rate"
+    assert model_description.learning_rate.shape == [1]
+    assert model_description.learning_rate.dtype == torch.float32
+
+    # Validating model description from user
     for idx, i_desc in enumerate(model_description.inputs):
         assert isinstance(i_desc, model_description._InputDescription)
         assert len(i_desc) == 2
@@ -514,3 +523,4 @@ def testInstantiateORTTrainer(step_fn):
             assert output_dim[dim_idx] == dim.dim_value
             assert output_type == _utils.dtype_onnx_to_torch(
                 trainer._onnx_model.graph.output[i].type.tensor_type.elem_type)
+
