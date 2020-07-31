@@ -196,11 +196,7 @@ class ORTTrainer(object):
                                                                 output_desc,
                                                                 self.options.device.id,
                                                                 run_options)
-
-        if len(session_run_results) == 1:
-            return session_run_results[list(session_run_results.keys())[0]]
-        else:
-            return [session_run_results[output_desc.name] for output_desc in output_desc]
+        return [session_run_results[output_desc.name] for output_desc in output_desc]
 
     def save_as_onnx(self, path):
         r"""Persists ONNX model into :py:attr:`path`
@@ -495,17 +491,25 @@ class ORTTrainer(object):
         return input
 
     def _training_session_run_helper(self, is_train, inputs, input_descs, output_descs, device, run_options=None):
+        # Select IO binding
         if is_train:
             iobinding = self._train_io_binding
         else:
             iobinding = self._eval_io_binding
 
+        # Bind input tensors
         for input, input_desc in zip(inputs, input_descs):
             device_index = _utils.get_device_index_from_input(input)
-            iobinding.bind_input(input_desc.name, input.device.type, device_index, _utils.dtype_torch_to_numpy(input.dtype),
-                                 list(input.size()), input.data_ptr())
+            iobinding.bind_input(input_desc.name,
+                                 input.device.type,
+                                 device_index,
+                                 _utils.dtype_torch_to_numpy(input.dtype),
+                                 list(input.size()),
+                                 input.data_ptr())
 
-        output_descs_resolved = output_descs#resolve_symbolic_dimensions(inputs, input_descs, output_descs)
+        # Bind output tensors
+        # TODO: Add support to symbolic dimensions
+        output_descs_resolved = output_descs
         result = {}
         for output_desc in output_descs_resolved:
             torch_tensor = torch.zeros(output_desc.shape, device=device,
@@ -515,7 +519,9 @@ class ORTTrainer(object):
                                   list(torch_tensor.size()), torch_tensor.data_ptr())
             result[output_desc.name] = torch_tensor
 
+        # Run a train/eval step
         self._training_session.run_with_iobinding(iobinding, run_options)
+
         return result
 
     def _update_onnx_model_initializers(self, state_tensors):
