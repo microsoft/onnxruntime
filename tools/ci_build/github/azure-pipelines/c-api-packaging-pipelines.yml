@@ -63,6 +63,7 @@ jobs:
     clean: all
   pool: 
     vmImage: 'macOS-10.14'
+  timeoutInMinutes:  120
   steps:
     - template: templates/set-version-number-variables-step.yml
 
