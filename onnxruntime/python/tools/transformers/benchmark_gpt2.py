@@ -86,8 +86,8 @@ def parse_arguments():
 
     parser.add_argument('-b', '--batch_sizes', nargs='+', type=int, default=[1], help="batch size")
 
-    parser.add_argument('-s',
-                        '--past_sequence_lengths',
+    parser.add_argument('--past_sequence_lengths',
+                        '-s',
                         nargs='+',
                         type=int,
                         default=[8, 16, 32, 64, 128, 256],
@@ -96,6 +96,9 @@ def parse_arguments():
     parser.add_argument("-r", "--result_csv", required=False, default=None, help="CSV file for saving summary results.")
 
     parser.add_argument("--thread_num", required=False, type=int, default=-1, help="Threads to use")
+
+    parser.add_argument('--include_copy_output_latency', required=False, action='store_true')
+    parser.set_defaults(include_copy_output_latency=False)
 
     parser.add_argument('--verbose', required=False, action='store_true')
     parser.set_defaults(verbose=False)
@@ -195,7 +198,14 @@ def main():
                     outputs, torch_latency = Gpt2Helper.pytorch_inference(model, dummy_inputs, args.test_times)
                     ort_outputs, ort_latency = Gpt2Helper.onnxruntime_inference(session, dummy_inputs, args.test_times)
                     ort_io_outputs, ort_io_latency = Gpt2Helper.onnxruntime_inference_with_binded_io(
-                        session, dummy_inputs, output_buffers, output_shapes, args.test_times)
+                        session,
+                        dummy_inputs,
+                        output_buffers,
+                        output_shapes,
+                        args.test_times,
+                        return_numpy=False,
+                        include_copy_output_latency=args.include_copy_output_latency)
+
                     if args.validate_onnx:
                         if Gpt2Helper.compare_outputs(outputs,
                                                       ort_outputs,
@@ -204,6 +214,9 @@ def main():
                             logger.info(
                                 f'Pytorch and ONNX Runtime outputs are all close (tolerance={DEFAULT_TOLERANCE[args.precision]}).'
                             )
+
+                        for i in ort_io_outputs:
+                            ort_io_outputs[i] = ort_io_outputs[i].cpu().numpy()
                         if Gpt2Helper.compare_outputs(outputs,
                                                       ort_io_outputs,
                                                       rtol=DEFAULT_TOLERANCE[args.precision],
