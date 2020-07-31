@@ -68,6 +68,42 @@ inline const OrtMemoryInfo* AllocatorWithDefaultOptions::GetInfo() const {
   return out;
 }
 
+template<typename B>
+inline std::string BaseMemoryInfo<B>::GetAllocatorName() const {
+  const char* name = nullptr;
+  ThrowOnError(GetApi().MemoryInfoGetName(p_, &name));
+  return std::string(name);
+}
+
+template <typename B>
+inline OrtAllocatorType BaseMemoryInfo<B>::GetAllocatorType() const {
+  OrtAllocatorType type;
+  ThrowOnError(GetApi().MemoryInfoGetType(p_, &type));
+  return type;
+}
+
+template <typename B>
+int BaseMemoryInfo<B>::GetDeviceId() const {
+  int id = 0;
+  ThrowOnError(GetApi().MemoryInfoGetId(p_, &id));
+  return id;
+}
+
+template <typename B>
+inline OrtMemType BaseMemoryInfo<B>::GetMemoryType() const {
+  OrtMemType type;
+  ThrowOnError(GetApi().MemoryInfoGetMemType(p_, &type));
+  return type;
+}
+
+template <typename B>
+template <typename U>
+inline bool BaseMemoryInfo<B>::operator==(const BaseMemoryInfo<U>& o) const {
+  int comp_result = 0;
+  ThrowOnError(Ort::GetApi().CompareMemoryInfo(p_, o, &comp_result));
+  return comp_result == 0;
+}
+
 inline MemoryInfo MemoryInfo::CreateCpu(OrtAllocatorType type, OrtMemType mem_type) {
   OrtMemoryInfo* p;
   ThrowOnError(GetApi().CreateCpuMemoryInfo(type, mem_type, &p));
@@ -79,8 +115,7 @@ inline MemoryInfo::MemoryInfo(const char* name, OrtAllocatorType type, int id, O
 }
 
 inline Allocator::Allocator(const Session& sess, const MemoryInfo& mem_info) {
-  ThrowOnError(GetApi().CreateAllocator(sess.operator const OrtSession*(),
-                                        mem_info.operator const OrtMemoryInfo*(), &p_));
+  ThrowOnError(GetApi().CreateAllocator(sess, mem_info, &p_));
 }
 
 inline void* Allocator::Alloc(size_t size) const {
@@ -93,10 +128,10 @@ inline void Allocator::Free(void* p) const {
   ThrowOnError(GetApi().AllocatorFree(p_, p));
 }
 
-inline const OrtMemoryInfo* Allocator::GetInfo() const {
+inline UnownedMemoryInfo Allocator::GetInfo() const {
   const OrtMemoryInfo* out = nullptr;
   ThrowOnError(GetApi().AllocatorGetInfo(p_, &out));
-  return out;
+  return UnownedMemoryInfo(out);
 }
 
 inline IoBinding::IoBinding(Session& session) {
@@ -524,7 +559,7 @@ inline std::vector<int64_t> TensorTypeAndShapeInfo::GetShape() const {
 inline Unowned<TensorTypeAndShapeInfo> TypeInfo::GetTensorTypeAndShapeInfo() const {
   const OrtTensorTypeAndShapeInfo* out;
   ThrowOnError(GetApi().CastTypeInfoToTensorInfo(p_, &out));
-  return Unowned<TensorTypeAndShapeInfo>{const_cast<OrtTensorTypeAndShapeInfo*>(out)};
+  return Unowned<TensorTypeAndShapeInfo>(const_cast<OrtTensorTypeAndShapeInfo*>(out));
 }
 
 inline ONNXType TypeInfo::GetONNXType() const {
@@ -578,7 +613,7 @@ inline Value Value::CreateOpaque(const char* domain, const char* type_name, cons
 }
 
 template <typename T>
-inline void Value::GetOpaqueData(const char* domain, const char* type_name, T& out) {
+inline void Value::GetOpaqueData(const char* domain, const char* type_name, T& out) const {
   ThrowOnError(GetApi().GetOpaqueValue(domain, type_name, p_, &out, sizeof(T)));
 }
 

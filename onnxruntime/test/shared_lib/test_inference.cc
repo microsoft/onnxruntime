@@ -448,9 +448,13 @@ TEST(CApiTest, get_allocator_cpu) {
   Ort::MemoryInfo info_cpu = Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtArenaAllocator, OrtMemTypeDefault);
   Ort::Allocator cpu_allocator(session, info_cpu);
 
-  int com_result = 0;
-  Ort::ThrowOnError(Ort::GetApi().CompareMemoryInfo(info_cpu, cpu_allocator.GetInfo(), &com_result));
-  ASSERT_EQ(com_result, 0);
+  // CPU OrtMemoryInfo does not return OrtArenaAllocator on x86 but rather a device allocator
+  // which causes MemoryInfo that is used to request the allocator and the actual instance
+  // of MemoryInfo returned from the allocator exactly match, although they are functionally equivalent.
+  auto allocator_info = cpu_allocator.GetInfo();
+  ASSERT_EQ(info_cpu.GetAllocatorName(), allocator_info.GetAllocatorName());
+  ASSERT_EQ(info_cpu.GetDeviceId(), allocator_info.GetDeviceId());
+  ASSERT_EQ(info_cpu.GetMemoryType(), allocator_info.GetDeviceId());
   void* p = cpu_allocator.Alloc(1024);
   ASSERT_NE(p, nullptr);
   cpu_allocator.Free(p);
@@ -465,9 +469,8 @@ TEST(CApiTest, get_allocator_cuda) {
   Ort::MemoryInfo info_cuda("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
   Ort::Allocator cuda_allocator(session, info_cuda);
 
-  int com_result = 0;
-  Ort::ThrowOnError(Ort::GetApi().CompareMemoryInfo(info_cuda, cuda_allocator.GetInfo(), &com_result));
-  ASSERT_EQ(com_result, 0);
+  auto allocator_info = cuda_allocator.GetInfo();
+  ASSERT_TRUE(info_cuda == allocator_info);
   void* p = cuda_allocator.Alloc(1024);
   ASSERT_NE(p, nullptr);
   cuda_allocator.Free(p);
