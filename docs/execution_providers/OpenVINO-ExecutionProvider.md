@@ -137,3 +137,32 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO Execut
 | tiny_yolov2 | Yes | Yes | Yes | Yes* |
 
 *FPGA only runs in HETERO mode wherein the layers that are not supported on FPGA fall back to OpenVINO CPU.
+
+## CSharp API
+
+*To use csharp api for openvino execution provider create a custom nuget package.
+
+#Windows
+
+Build windows build with --build_csharp option. 
+.\build.bat --config Debug --build --use_openvino $Device --build_csharp
+
+Build Custom Nuget Package
+msbuild csharp\OnnxRuntime.CSharp.proj /p:Configuration=Debug /t:CreatePackage
+
+#Linux
+We do not have a current build process to build directly in Linux. But we can
+copy shared library libonnxruntime.so to onnxruntime repository in windows
+and execute the same commands above to get custom nuget package with linux shared library 
+
+Build windows build with --build_csharp option.
+.\build.bat --config Debug --build --use_openvino $Device --build_csharp
+
+Build Custom Nuget Package
+msbuild csharp\OnnxRuntime.CSharp.proj /p:Configuration=Debug /t:CreatePackage
+
+
+ 
+
+
+
