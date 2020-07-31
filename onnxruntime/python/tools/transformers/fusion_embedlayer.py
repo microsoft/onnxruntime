@@ -175,17 +175,21 @@ class FusionEmbedLayerNoMask(Fusion):
 
         embed_node_inputs = None
         if is_distill == False:
-            segment_ids, segment_embedding_gather = self.match_segment_path(normalize_node, input_name_to_nodes, output_name_to_node, input_ids_cast_node)
+            segment_path = self.match_segment_path(normalize_node, input_name_to_nodes, output_name_to_node, input_ids_cast_node)
+            if segment_path is None:
+                return
+            else:
+                segment_ids, segment_embedding_gather = segment_path
 
-            embed_node_inputs=[
-                input_ids,
-                segment_ids,
-                word_embedding_gather.input[0],
-                position_embedding_weight_node.input[0],
-                segment_embedding_gather.input[0],
-                normalize_node.input[2],
-                normalize_node.input[3]  # gamma and beta
-            ]
+                embed_node_inputs=[
+                    input_ids,
+                    segment_ids,
+                    word_embedding_gather.input[0],
+                    position_embedding_weight_node.input[0],
+                    segment_embedding_gather.input[0],
+                    normalize_node.input[2],
+                    normalize_node.input[3]  # gamma and beta
+                ]
         else:
             embed_node_inputs=[
                 input_ids,
