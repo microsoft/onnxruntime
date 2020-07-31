@@ -140,7 +140,7 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO Execut
 
 ## CSharp API
 
-*To use csharp api for openvino execution provider create a custom nuget package.
+To use csharp api for openvino execution provider create a custom nuget package.
 
 1.Windows
 
