@@ -109,11 +109,10 @@ bool IsRootNode(const TrainingSession::TrainingConfiguration& config) {
 }
 }  // namespace
 
-
 void TrainingSession::FilterUnusedWeights(const std::unordered_set<std::string>& weight_names_to_train,
-  std::unordered_set<std::string>& filtered_weight_names_to_train) {
+                                          std::unordered_set<std::string>& filtered_weight_names_to_train) {
   filtered_weight_names_to_train.clear();
-  for (const auto& name: weight_names_to_train) {
+  for (const auto& name : weight_names_to_train) {
     auto nodes = model_->MainGraph().GetConsumerNodes(name);
     if (!nodes.empty())
       filtered_weight_names_to_train.insert(name);
@@ -530,7 +529,7 @@ void TrainingSession::AddPredefinedTransformers(GraphTransformerManager& transfo
                                                 const std::vector<std::string>& custom_list) {
   auto add_transformers = [&](TransformerLevel level) {
     // Generate and register transformers for level
-    auto transformers_to_register = transformer_utils::GenerateTransformers(level, GetSessionOptions().free_dimension_overrides, custom_list);
+    auto transformers_to_register = transformer_utils::GenerateTransformers(level, weights_to_train_, GetSessionOptions().free_dimension_overrides, custom_list);
     for (auto& entry : transformers_to_register) {
       transformer_manager.Register(std::move(entry), level);
     }
@@ -817,8 +816,8 @@ bool TrainingSession::IsGraphOutputFp32Node(const std::string& output_name) cons
   ORT_ENFORCE(output_producer_node != nullptr, "Output: " + output_name + " is not produced by any node.");
 
   for (auto output : output_producer_node->OutputDefs()) {
-    if (output->Name() == output_name && output->TypeAsProto() != nullptr && output->TypeAsProto()->has_tensor_type()
-        && output->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    if (output->Name() == output_name && output->TypeAsProto() != nullptr && output->TypeAsProto()->has_tensor_type() &&
+        output->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
       return true;
     }
   }
@@ -835,24 +834,19 @@ common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io
       for (auto& drop_ratio : dropout_eval_feeds_) {
         OrtValue feed_value;
         // We allocate on CPU first, copy will be taken care of downstream.
-        auto cpu_allocator = GetSessionState().GetExecutionProviders()
-                            .Get(onnxruntime::kCpuExecutionProvider)
-                            ->GetAllocator(0, OrtMemTypeDefault);
+        auto cpu_allocator = GetSessionState().GetExecutionProviders().Get(onnxruntime::kCpuExecutionProvider)->GetAllocator(0, OrtMemTypeDefault);
         feed_value = onnxruntime::MakeScalarMLValue<float>(cpu_allocator, 0.f, true /*is_1d*/);
         // Bind new feed to graph input.
         new_feeds.emplace_back(drop_ratio, feed_value);
       }
-    }
-    else {
+    } else {
       auto& input_names = io_binding.GetInputNames();
       if (GetSessionState().GetInputNodeInfoMap().find(training_mode_string_) != GetSessionState().GetInputNodeInfoMap().end() &&
           std::find(input_names.begin(), input_names.end(), training_mode_string_) == input_names.end()) {
         // Set training_mode input to false
         OrtValue training_mode_feed_value;
         // We allocate on CPU first, copy will be taken care of downstream.
-        auto cpu_allocator = GetSessionState().GetExecutionProviders()
-                            .Get(onnxruntime::kCpuExecutionProvider)
-                            ->GetAllocator(0, OrtMemTypeDefault);
+        auto cpu_allocator = GetSessionState().GetExecutionProviders().Get(onnxruntime::kCpuExecutionProvider)->GetAllocator(0, OrtMemTypeDefault);
         training_mode_feed_value = onnxruntime::MakeScalarMLValue<bool>(cpu_allocator, false, true /*is_1d*/);
         new_feeds.emplace_back(training_mode_string_, training_mode_feed_value);
       }
@@ -879,18 +873,18 @@ Status TrainingSession::SetEvalFeedNames() {
 
   for (auto& node : graph.Nodes()) {
     auto it = Nodes_Need_Eval_Feeds.find(node.OpType());
-    if(it != Nodes_Need_Eval_Feeds.cend()) {
+    if (it != Nodes_Need_Eval_Feeds.cend()) {
       // The opset is < 12, add each ratio input to graph inputs for overriding.
       // Needs to be removed when TrainableDropout is deprecated.
-      if(it->compare("TrainableDropout") == 0) {
+      if (it->compare("TrainableDropout") == 0) {
         auto& ratio_name = node.InputDefs()[1]->Name();
         dropout_eval_feeds_.insert(ratio_name);
         ORT_ENFORCE(model_->MainGraph().GetProducerNode(ratio_name) == nullptr,
-        "Input: " + ratio_name + " should not have any producer node.");
+                    "Input: " + ratio_name + " should not have any producer node.");
         defs.AddGraphInputs({ratio_name});
       }
       // Found an opset-12 dropout node, replace initializer name.
-      else if(node.InputArgCount().size() > 2) {
+      else if (node.InputArgCount().size() > 2) {
         auto& mode_input = node.MutableInputDefs()[2];
         const ONNX_NAMESPACE::TensorProto* mode_initializer = nullptr;
         if (!graph.GetInitializedTensor(training_mode_string_, mode_initializer)) {
@@ -910,7 +904,7 @@ Status TrainingSession::SetEvalFeedNames() {
       }
     }
   }
-  
+
   ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(graph, defs));
   return DoPostLoadProcessing(*model_);
 }

@@ -45,10 +45,11 @@ namespace onnxruntime {
 namespace training {
 namespace transformer_utils {
 
-std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(TransformerLevel level,
-                                                                               const std::unordered_set<std::string>& weights_to_train,
-                                                                               bool enable_gelu_approximation,
-                                                                               const std::vector<std::string>& transformers_and_rules_to_enable) {
+std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
+    TransformerLevel level,
+    const std::unordered_set<std::string>& weights_to_train,
+    bool enable_gelu_approximation,
+    const std::vector<std::string>& transformers_and_rules_to_enable) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
 
@@ -131,9 +132,11 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(T
   return filtered_list;
 }
 
-std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerLevel level,
-                                                                    gsl::span<const FreeDimensionOverride> free_dimension_overrides,
-                                                                    const std::vector<std::string>& transformers_and_rules_to_enable) {
+std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
+    TransformerLevel level,
+    const std::unordered_set<std::string>& weights_to_train,
+    gsl::span<const FreeDimensionOverride> free_dimension_overrides,
+    const std::vector<std::string>& transformers_and_rules_to_enable) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
   switch (level) {
@@ -147,7 +150,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       transformers.emplace_back(onnxruntime::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));
       transformers.emplace_back(onnxruntime::make_unique<MatmulTransposeFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<BiasDropoutFusion>(l1_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<MatMulScaleFusion>(l1_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<MatMulScaleFusion>(l1_execution_providers, weights_to_train));
 
       rule_transformer = optimizer_utils::GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable, l1_execution_providers);
     } break;

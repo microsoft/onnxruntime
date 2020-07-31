@@ -55,20 +55,28 @@ optional<float> GetScalarConstantInitializer(const Graph& graph, const NodeArg& 
 
 // gets the scale value and its input index if node is a fusable scale (Mul or Div by scalar constant)
 optional<std::pair<float, int>> GetScaleFromNode(
-    const Graph& graph, const Node& scale_node) {
+    const Graph& graph, const Node& scale_node,
+    const std::unordered_set<std::string>& excluded_initializer_names) {
+  const auto is_excluded_initializer =
+      [&excluded_initializer_names](const NodeArg& node_arg) {
+        return excluded_initializer_names.find(node_arg.Name()) != excluded_initializer_names.end();
+      };
+
   if (graph_utils::IsSupportedOptypeVersionAndDomain(scale_node, "Div", {7})) {
     // (x / scale_reciprocal)
     const auto div_inputs = scale_node.InputDefs();
     ORT_ENFORCE(div_inputs.size() == 2);
 
     const int scale_reciprocal_arg_index = 1;
-    const auto divisor = GetScalarConstantInitializer(graph, *div_inputs[scale_reciprocal_arg_index]);
+    const NodeArg& scale_reciprocal_node_arg = *div_inputs[scale_reciprocal_arg_index];
 
-    if (divisor.has_value()) {
-      return {std::make_pair(1.0f / divisor.value(), scale_reciprocal_arg_index)};
-    }
+    if (is_excluded_initializer(scale_reciprocal_node_arg)) return {};
 
-    return {};
+    const auto divisor = GetScalarConstantInitializer(graph, scale_reciprocal_node_arg);
+
+    if (!divisor.has_value()) return {};
+
+    return {std::make_pair(1.0f / divisor.value(), scale_reciprocal_arg_index)};
   }
 
   if (graph_utils::IsSupportedOptypeVersionAndDomain(scale_node, "Mul", {7})) {
@@ -77,11 +85,15 @@ optional<std::pair<float, int>> GetScaleFromNode(
     ORT_ENFORCE(mul_inputs.size() == 2);
 
     for (int scale_arg_index = 0; scale_arg_index < 2; ++scale_arg_index) {
-      const auto multiplier = GetScalarConstantInitializer(graph, *mul_inputs[scale_arg_index]);
+      const NodeArg& scale_node_arg = *mul_inputs[scale_arg_index];
 
-      if (multiplier.has_value()) {
-        return {std::make_pair(multiplier.value(), scale_arg_index)};
-      }
+      if (is_excluded_initializer(scale_node_arg)) continue;
+
+      const auto multiplier = GetScalarConstantInitializer(graph, scale_node_arg);
+
+      if (!multiplier.has_value()) continue;
+
+      return {std::make_pair(multiplier.value(), scale_arg_index)};
     }
 
     return {};
@@ -104,13 +116,15 @@ struct ScaleMergeInfo {
   int fused_node_def_index;
 };
 
-std::vector<ScaleMergeInfo> GetInputNodeMerges(Graph& graph, Node& node) {
+std::vector<ScaleMergeInfo> GetInputNodeMerges(
+    Graph& graph, Node& node,
+    const std::unordered_set<std::string>& excluded_initializer_names) {
   std::vector<ScaleMergeInfo> input_node_merges{};
   for (auto input_edge = node.InputEdgesBegin(); input_edge != node.InputEdgesEnd(); ++input_edge) {
     const Node& input_node = input_edge->GetNode();
 
     if (input_node.GetExecutionProviderType() != node.GetExecutionProviderType()) continue;
-    const auto scale_and_index = GetScaleFromNode(graph, input_node);
+    const auto scale_and_index = GetScaleFromNode(graph, input_node, excluded_initializer_names);
     if (!scale_and_index.has_value()) continue;
 
     // assume scale nodes have 2 input defs, so to_scale_index == 1 - scale_index
@@ -126,7 +140,9 @@ std::vector<ScaleMergeInfo> GetInputNodeMerges(Graph& graph, Node& node) {
   return input_node_merges;
 }
 
-std::vector<ScaleMergeInfo> GetOutputNodeMerges(Graph& graph, Node& node) {
+std::vector<ScaleMergeInfo> GetOutputNodeMerges(
+    Graph& graph, Node& node,
+    const std::unordered_set<std::string>& excluded_initializer_names) {
   if (!optimizer_utils::CheckOutputEdges(graph, node, 1)) {
     return {};
   }
@@ -136,7 +152,7 @@ std::vector<ScaleMergeInfo> GetOutputNodeMerges(Graph& graph, Node& node) {
     const Node& output_node = output_edge->GetNode();
 
     if (output_node.GetExecutionProviderType() != node.GetExecutionProviderType()) continue;
-    const auto scale_and_index = GetScaleFromNode(graph, output_node);
+    const auto scale_and_index = GetScaleFromNode(graph, output_node, excluded_initializer_names);
     if (!scale_and_index.has_value()) continue;
 
     ORT_ENFORCE(output_node.OutputDefs().size() == 1);
@@ -151,14 +167,18 @@ std::vector<ScaleMergeInfo> GetOutputNodeMerges(Graph& graph, Node& node) {
   return output_node_merges;
 }
 
-Status ProcessNode(Graph& graph, Node& node, bool& modified) {
+Status ProcessNode(
+    Graph& graph, Node& node, bool& modified,
+    const std::unordered_set<std::string>& excluded_initializer_names) {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", {9}) &&
       !graph_utils::IsSupportedOptypeVersionAndDomain(node, "TransposeScaleMatMul", {1}, kMSDomain)) {
     return Status::OK();
   }
 
-  const std::vector<ScaleMergeInfo> input_node_merges = GetInputNodeMerges(graph, node);
-  const std::vector<ScaleMergeInfo> output_node_merges = GetOutputNodeMerges(graph, node);
+  const std::vector<ScaleMergeInfo> input_node_merges = GetInputNodeMerges(
+      graph, node, excluded_initializer_names);
+  const std::vector<ScaleMergeInfo> output_node_merges = GetOutputNodeMerges(
+      graph, node, excluded_initializer_names);
 
   if (input_node_merges.empty() && output_node_merges.empty()) {
     return Status::OK();
@@ -169,10 +189,7 @@ Status ProcessNode(Graph& graph, Node& node, bool& modified) {
 
   {
     ONNX_NAMESPACE::AttributeProto& alpha_attr = fused_node_attrs["alpha"];
-    float total_scale =
-        alpha_attr.has_type() && alpha_attr.type() == ONNX_NAMESPACE::AttributeProto_AttributeType_FLOAT
-            ? alpha_attr.f()
-            : 1.0f;
+    float total_scale = utils::HasFloat(alpha_attr) ? alpha_attr.f() : 1.0f;
     auto accumulate_scale = [&total_scale](const ScaleMergeInfo& fusion) {
       total_scale *= fusion.scale;
     };
@@ -256,7 +273,7 @@ Status MatMulScaleFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
 
     ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level, logger));
 
-    ORT_RETURN_IF_ERROR(ProcessNode(graph, *node, modified));
+    ORT_RETURN_IF_ERROR(ProcessNode(graph, *node, modified, excluded_initializer_names_));
   }
 
   return Status::OK();

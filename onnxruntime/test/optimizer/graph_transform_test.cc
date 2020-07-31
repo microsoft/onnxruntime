@@ -2829,7 +2829,8 @@ TEST_F(GraphTransformationTests, ComputationReductionTransformer_GatherND_E2E) {
 template <typename GraphTransformationCheckFn>
 static void TestMatMulScaleFusion(
     const PathString& model_path, const Logger& logger,
-    GraphTransformationCheckFn graph_transformation_check) {
+    GraphTransformationCheckFn graph_transformation_check,
+    const std::unordered_set<std::string>& excluded_initializer_names = {}) {
   SCOPED_TRACE(ORT_TSTR("model path: ") + model_path);
 
   std::shared_ptr<Model> model;
@@ -2839,7 +2840,9 @@ static void TestMatMulScaleFusion(
   auto original_op_counts = CountOpsInGraph(graph);
 
   onnxruntime::GraphTransformerManager graph_transformer_manager{5};
-  ASSERT_STATUS_OK(graph_transformer_manager.Register(make_unique<MatMulScaleFusion>(), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformer_manager.Register(
+      make_unique<MatMulScaleFusion>(std::unordered_set<std::string>{}, excluded_initializer_names),
+      TransformerLevel::Level2));
   ASSERT_STATUS_OK(graph_transformer_manager.ApplyTransformers(graph, TransformerLevel::Level2, logger));
 
   auto transformed_op_counts = CountOpsInGraph(graph);
@@ -2847,7 +2850,7 @@ static void TestMatMulScaleFusion(
   graph_transformation_check(graph, original_op_counts, transformed_op_counts);
 }
 
-TEST_F(GraphTransformationTests, MatMulScaleFusion) {
+TEST_F(GraphTransformationTests, MatMulScaleFusionFusableModels) {
   const std::vector<PathString> one_fusion_model_paths{
       MODEL_FOLDER "fusion/matmul_scale_in0.onnx",
       MODEL_FOLDER "fusion/matmul_scale_in0_in1.onnx",
@@ -2882,7 +2885,9 @@ TEST_F(GraphTransformationTests, MatMulScaleFusion) {
           EXPECT_EQ(alpha_attr->second.f(), pow(scale_value, num_scales));
         });
   }
+}
 
+TEST_F(GraphTransformationTests, MatMulScaleFusionUnfusableModels) {
   const std::vector<PathString> unfusable_model_paths{
       MODEL_FOLDER "fusion/matmul_scale_unfusable_div_not_scale.onnx",
       MODEL_FOLDER "fusion/matmul_scale_unfusable_scale_not_scalar.onnx",
@@ -2898,7 +2903,9 @@ TEST_F(GraphTransformationTests, MatMulScaleFusion) {
           EXPECT_EQ(original_op_counts, transformed_op_counts);
         });
   }
+}
 
+TEST_F(GraphTransformationTests, MatMulScaleFusionReusedInputScale) {
   TestMatMulScaleFusion(
       MODEL_FOLDER "fusion/matmul_scale_reused_input_scale.onnx", *logger_,
       [](const Graph&,
@@ -2909,6 +2916,17 @@ TEST_F(GraphTransformationTests, MatMulScaleFusion) {
         EXPECT_EQ(transformed_op_counts["MatMul"], 0);
         EXPECT_EQ(transformed_op_counts["TransposeScaleMatMul"], 2);
       });
+}
+
+TEST_F(GraphTransformationTests, MatMulScaleFusionExcludedInitializerName) {
+  TestMatMulScaleFusion(
+      MODEL_FOLDER "fusion/matmul_scale_in0.onnx", *logger_,
+      [](const Graph&,
+         const std::map<std::string, int>& original_op_counts,
+         const std::map<std::string, int>& transformed_op_counts) {
+        EXPECT_EQ(original_op_counts, transformed_op_counts);
+      },
+      {"scale"});
 }
 #endif
 
