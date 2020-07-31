@@ -10,7 +10,7 @@
 - OpenVINO: [Dockerfile](Dockerfile.openvino), [Instructions](#openvino)
 - Nuphar: [Dockerfile](Dockerfile.nuphar), [Instructions](#nuphar)
 - ARM 32v7: [Dockerfile](Dockerfile.arm32v7), [Instructions](#arm-32v7)
-- NVIDIA Jetson TX1/TX2/Nano/N: [Dockerfile](Dockerfile.jetson), [Instructions](#nvidia-jetson-tx1tx2nanon)
+- NVIDIA Jetson TX1/TX2/Nano/Xavier: [Dockerfile](Dockerfile.jetson), [Instructions](#nvidia-jetson-tx1tx2nanoxavier)
 - ONNX-Ecosystem (CPU + Converters): [Dockerfile](https://github.com/onnx/onnx-docker/blob/master/onnx-ecosystem/Dockerfile), [Instructions](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem)
 - ONNX Runtime Server: [Dockerfile](Dockerfile.server), [Instructions](#onnx-runtime-server)
 - MIGraphX: [Dockerfile](Dockerfile.migraphx), [Instructions](#migraphx)
@@ -247,7 +247,7 @@ The Dockerfile used in these instructions specifically targets Raspberry Pi 3/3+
     ```
 10. Test installation by following the instructions [here](https://microsoft.github.io/onnxruntime/)
 
-## NVIDIA Jetson TX1/TX2/Nano/N:
+## NVIDIA Jetson TX1/TX2/Nano/Xavier:
 
 These instructions are for [JetPack SDK 4.4](https://developer.nvidia.com/embedded/jetpack).
 The Dockerfile.jetson is using [NVIDIA L4T 32.4.3](https://developer.nvidia.com/embedded/linux-tegra) as base image.
@@ -256,12 +256,12 @@ Instructions assume you are on Jetson host in the root of onnxruntime git projec
 
 Two-step installation is required:
 
-1. Build Python 'wheel' for ONNXruntime on host Jetson system;
-2. Build Docker image using ONNXruntime wheel from step 1. You can also install the wheel on the host directly.
+1. Build Python 'wheel' for ONNX Runtime on host Jetson system;
+2. Build Docker image using ONNX Runtime wheel from step 1. You can also install the wheel on the host directly.
 
 Here are the build commands for each step:
 
-1.1 Install ONNXruntime build dependencies on Jetpack 4.4 host:
+1.1 Install ONNX Runtime build dependencies on Jetpack 4.4 host:
 ```
    sudo apt install -y --no-install-recommends \
     	build-essential software-properties-common cmake libopenblas-dev \
@@ -278,8 +278,8 @@ Note: You may add --use_tensorrt and --tensorrt_home options if you wish to use 
 ```
    find . -name '*.whl' -print -exec sudo -H DOCKER_BUILDKIT=1 nvidia-docker build --build-arg WHEEL_FILE={} -f ./dockerfiles/Dockerfile.jetson . \;
 ```
-Note: Resulting Docker image will have ONNXruntime installed in /usr, and ONNXruntime wheel copied to /onnxruntime directory.
-Nothing else from ONNXruntime source tree will be copied/installed to the image.
+Note: Resulting Docker image will have ONNX Runtime installed in /usr, and ONNX Runtime wheel copied to /onnxruntime directory.
+Nothing else from ONNX Runtime source tree will be copied/installed to the image.
 
 Note: When running the container you built in Docker, please either use 'nvidia-docker' command instead of 'docker', or use Docker command-line options to make sure NVIDIA runtime will be used and appropiate files mounted from host. Otherwise, CUDA libraries won't be found. You can also [set NVIDIA runtime as default in Docker](https://github.com/dusty-nv/jetson-containers#docker-default-runtime).
 

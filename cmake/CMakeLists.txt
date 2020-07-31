@@ -891,8 +891,7 @@ if (onnxruntime_USE_CUDA)
   endif()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${ONNXRUNTIME_CUDA_LIBRARIES})
 
-  if(${CMAKE_LIBRARY_ARCHITECTURE} STREQUAL "aarch64-linux-gnu")
-    message("Setting CUDA architecture flags for 5.3, 6.2, 7.2")
+  if(CMAKE_LIBRARY_ARCHITECTURE STREQUAL "aarch64-linux-gnu")
     string (APPEND CMAKE_CUDA_FLAGS "-gencode=arch=compute_53,code=sm_53 -gencode=arch=compute_62,code=sm_62") #nano, TX1, TX2 
     string (APPEND CMAKE_CUDA_FLAGS "-gencode=arch=compute_72,code=sm_72") # Jetson N
   else()
