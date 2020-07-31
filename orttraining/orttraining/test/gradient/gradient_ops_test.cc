@@ -1,7 +1,7 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef NDEBUG  // disable for debug builds because some of these tests are slow
+// #ifdef NDEBUG  // disable for debug builds because some of these tests are slow
 
 #include <algorithm>
 #include <bitset>
@@ -570,7 +570,7 @@ TEST(GradientCheckerTest, MaxPoolGrad) {
   {
     gradient_checker.ComputeGradientError(op_def, {{2, 2, 9}}, {{2, 2, 8}}, &max_error,
                                           GetRandomValuesForMaxPool<float>({{2, 2, 9}}),
-                                          {MakeAttribute("kernel_shape", std::vector<int64_t>{2})});
+                                          {MakeAttribute("kernel_shape", std::vector<int64_t>{2})},true,true);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -1974,4 +1974,4 @@ TEST(GradientCheckerTest, ExpandGrad) {
 }  // namespace test
 }  // namespace onnxruntime
 
-#endif  // NDEBUG
+// #endif  // NDEBUG
