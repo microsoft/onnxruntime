@@ -122,6 +122,8 @@ option(onnxruntime_RUN_MODELTEST_IN_DEBUG_MODE "Run model tests even in debug mo
 # build configuration for fuzz testing is in onnxruntime_fuzz_test.cmake
 option(onnxruntime_FUZZ_TEST "Enable Fuzz testing" OFF)
 
+add_definitions(-D_GLIBCXX_USE_CXX11_ABI=1)
+
 # Fuzz test has only been tested with BUILD_SHARED_LIB option,
 # using the MSVC compiler and on windows OS.
 if(MSVC AND WIN32 AND onnxruntime_FUZZ_TEST AND onnxruntime_BUILD_SHARED_LIB AND onnxruntime_USE_FULL_PROTOBUF)

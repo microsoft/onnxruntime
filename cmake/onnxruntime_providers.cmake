@@ -228,11 +228,34 @@ if (onnxruntime_USE_CUDA)
   add_library(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_src})
 
   if (onnxruntime_USE_LIBTORCH)
-    list(APPEND CMAKE_PREFIX_PATH "${onnxruntime_LIBTORCH_HOME}")
-    find_package(Torch REQUIRED PATHS "${onnxruntime_LIBTORCH_HOME}")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS} -Wno-unused-parameter")
-    target_include_directories(onnxruntime_providers_cuda PRIVATE ${TORCH_INCLUDE_DIRS})
-    target_link_libraries(onnxruntime_providers_cuda PRIVATE onnxruntime_training ${TORCH_LIBRARIES})
+    find_library(C10_CUDA NAMES c10_cuda
+                 PATHS ${onnxruntime_LIBTORCH_HOME}/lib)
+    find_library(CAFE2_DETECTRON_OPS_GPU NAMES caffe2_detectron_ops_gpu
+                 PATHS ${onnxruntime_LIBTORCH_HOME}/lib)
+    find_library(CAFFE2_NVRTC caffe2_nvrtc
+                 PATHS ${onnxruntime_LIBTORCH_HOME}/lib)
+    find_library(SHM shm
+                 PATHS ${onnxruntime_LIBTORCH_HOME}/lib)
+    find_library(TORCH_CUDA torch_cuda
+                 PATHS ${onnxruntime_LIBTORCH_HOME}/lib)
+    find_library(TORCH_PYTHON torch_python
+                 PATHS ${onnxruntime_LIBTORCH_HOME}/lib)
+    find_library(C10 c10
+                 PATHS ${onnxruntime_LIBTORCH_HOME}/lib)
+    find_library(CAFFE2_MODULE_TEST_DYNAMIC caffe2_module_test_dynamic
+                 PATHS ${onnxruntime_LIBTORCH_HOME}/lib)
+    find_library(CAFFE2_OBSERVERS caffe2_observers
+                 PATHS ${onnxruntime_LIBTORCH_HOME}/lib)
+    find_library(TORCH_CPU torch_cpu
+                 PATHS ${onnxruntime_LIBTORCH_HOME}/lib)
+    find_library(TORCH_GLOBAL_DEPS torch_global_deps
+                 PATHS ${onnxruntime_LIBTORCH_HOME}/lib)
+    find_library(LIBTORCH torch
+                 PATHS ${onnxruntime_LIBTORCH_HOME}/lib)
+    add_definitions(-D_GLIBCXX_USE_CXX11_ABI=1)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
+    target_include_directories(onnxruntime_providers_cuda PRIVATE "${onnxruntime_LIBTORCH_HOME}/include" "${onnxruntime_LIBTORCH_HOME}/include/torch/csrc/api/include")
+    target_link_libraries(onnxruntime_providers_cuda PRIVATE onnxruntime_training ${C10_CUDA} ${CAFE2_DETECTRON_OPS_GPU} ${SHM} ${TORCH_CUDA} ${C10} ${CAFFE2_MODULE_TEST_DYNAMIC} ${TORCH_CPU} ${TORCH_GLOBAL_DEPS} ${LIBTORCH})
   endif()
 
   if (UNIX)
