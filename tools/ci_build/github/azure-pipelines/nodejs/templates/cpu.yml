@@ -25,7 +25,7 @@ jobs:
     AgentPool : $(AgentPoolMacOS)
     ArtifactName: 'drop-nodejs-darwin'
     JobName: 'Mac_CI'
-    BuildCommand: 'python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_featurizers --parallel --build_nodejs --config Release'
+    BuildCommand: 'python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_nodejs --config Release'
     DoNodejsPack : 'true'
     DoNugetPack: 'false'
     DoEsrp: ${{ parameters.DoEsrp }}
@@ -33,6 +33,7 @@ jobs:
 - job: 'Linux_CI'
   workspace:
     clean: all
+  timeoutInMinutes: 120
   pool: $(AgentPoolLinux)
   steps:    
     - template: ../../templates/set-version-number-variables-step.yml

@@ -252,11 +252,53 @@ Status ResolveDimParams(const GraphViewer& graph,
   }
   return Status::OK();
 }
+
+Status ResolveSizeAndShape(
+    const NodeArg* arg,
+    const std::unordered_map<std::string, int64_t>& symbolic_dimensions,
+    size_t& size, // total number of elements. It's 0 if shape is unknown.
+    std::vector<int64_t>& resolved_shape) {
+  if (!arg->Shape()) {
+    // 0 means no shape information.
+    size = 0;
+    return Status::OK();
+  }
+
+  std::vector<int64_t> shape;
+
+  SafeInt<size_t> safe_size = 1;
+  for (auto& dim : arg->Shape()->dim()) {
+    if (dim.has_dim_param()) {
+      auto it = symbolic_dimensions.find(dim.dim_param());
+      if (it == symbolic_dimensions.end()) {
+        return Status(ONNXRUNTIME, FAIL, "Unknown symbolic dimension, " + dim.dim_param() + ", found in memory pattern compute.");
+      }
+      safe_size *= it->second;
+      shape.push_back(it->second);
+    } else if (dim.has_dim_value() && dim.dim_value() > 0) {
+      safe_size *= dim.dim_value();
+      shape.push_back(dim.dim_value());
+    } else {
+      // tensor shape is unknown.
+      safe_size = 0;
+    }
+  }
+
+  size = safe_size;
+
+  // Only assign shape if all symbolic dimensions are resolved.
+  if (size != 0) {
+    resolved_shape = std::move(shape);
+  }
+
+  return Status::OK();
+}
 }  // namespace
 
 Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_wrapper<const TensorShape>>& input_shape,
                                                const std::vector<int>& feed_mlvalue_idxs,
-                                               MemoryPatternGroup* output) const {
+                                               MemoryPatternGroup* output,
+                                               std::unordered_map<int, TensorShape>& resolved_shapes) const {
   std::map<std::string, TensorShape> feeds;
   for (size_t i = 0, end = feed_mlvalue_idxs.size(); i < end; ++i) {
     std::string name;
@@ -282,38 +324,27 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
       if (!ml_type->IsTensorType())
         continue;
       const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
+
+      auto* arg = node->OutputDefs()[i];
+      size_t size = 0;
+      std::vector<int64_t> resolved_shape;
+      ORT_RETURN_IF_ERROR(ResolveSizeAndShape(arg, map, size, resolved_shape));
+
+      // Store all valid resolved shapes. They will be queried in, for example,
+      // Recv operator to bypass the dependency of output shapes on inputs.
+      if (size != 0) {
+        resolved_shapes[ml_value_idx] = resolved_shape;
+      }
+
+      // Plan memory if conditions are met.
       if (exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate &&
-          ml_data_type != DataTypeImpl::GetType<std::string>()) {
-        //calculate size
-        auto* arg = node->OutputDefs()[i];
-        if (!arg->Shape())
-          continue;
-        size_t size = 0;
-        SafeInt<size_t> len = 1;
-        for (auto& dim : arg->Shape()->dim()) {
-          if (dim.has_dim_param()) {
-            auto it = map.find(dim.dim_param());
-            if (it == map.end()) {
-              return Status(ONNXRUNTIME, FAIL, "Unknown shape found in memory pattern compute");
-            }
-            len *= it->second;
-          } else if (dim.has_dim_value()) {
-            len *= dim.dim_value();
-          } else {
-            // tensor shape is unknown
-            len = 0;
-          }
-        }
-
-        // Skip planning for this tensor if shape is unknown
-        if (len == 0) {
-          continue;
-        }
-
-        if (!IAllocator::CalcMemSizeForArrayWithAlignment<64>(len, ml_data_type->Size(), &size)) {
+          ml_data_type != DataTypeImpl::GetType<std::string>() && size != 0) {
+        size_t aligned_size = 0;
+        if (!IAllocator::CalcMemSizeForArrayWithAlignment<64>(size, ml_data_type->Size(), &aligned_size)) {
           return Status(ONNXRUNTIME, FAIL, "Size overflow");
         }
-        mem_planner.TraceAllocation(ml_value_idx, size);
+
+        mem_planner.TraceAllocation(ml_value_idx, aligned_size);
       }
     }
     //release nodes
@@ -337,7 +368,8 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
 #endif
 
 const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(const std::vector<std::reference_wrapper<const TensorShape>>& input_shapes,
-                                                              const std::vector<int>& feed_mlvalue_idxs) const {
+                                                              const std::vector<int>& feed_mlvalue_idxs,
+                                                              std::unordered_map<int, TensorShape>& inferred_shapes) const {
   int64_t key = CalculateMemoryPatternsKey(input_shapes);
 
   std::lock_guard<OrtMutex> lock(mem_patterns_lock_);
@@ -345,10 +377,11 @@ const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(const std::vector<
   if (it == mem_patterns_.end()) {
 #ifdef ENABLE_TRAINING
     auto mem_patterns = onnxruntime::make_unique<MemoryPatternGroup>();
-    if (GeneratePatternGroupCache(input_shapes, feed_mlvalue_idxs, mem_patterns.get()).IsOK()) {
+    if (GeneratePatternGroupCache(input_shapes, feed_mlvalue_idxs, mem_patterns.get(), inferred_shapes).IsOK()) {
       key = CalculateMemoryPatternsKey(input_shapes);
       auto ptr = mem_patterns.get();
       mem_patterns_[key] = std::move(mem_patterns);
+      shape_patterns_[key] = inferred_shapes;
       return ptr;
     }
     return nullptr;
@@ -358,6 +391,7 @@ const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(const std::vector<
 #endif
   }
 
+  inferred_shapes = shape_patterns_[key];
   return it->second.get();
 }
 
