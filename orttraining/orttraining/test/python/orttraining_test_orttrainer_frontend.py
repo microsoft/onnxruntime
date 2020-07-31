@@ -486,14 +486,22 @@ def testInstantiateORTTrainer(step_fn):
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss)
 
     # Preparing data
-    train_data, val_data, test_data = utils.prepare_data('cpu', 20, 20)
+    train_data, val_data, _ = utils.prepare_data('cpu', 20, 20)
 
     # Export model to ONNX
-    data, targets = utils.get_batch(train_data, 0)
     if step_fn == 'eval_step':
-        trainer.eval_step(data, targets)
+        step_fn = trainer.eval_step
+        data, targets = utils.get_batch(val_data, 0)
+        output = trainer.eval_step(data, targets)
+        # TODO: move this test outside when train_step is implemented
+        for out, desc in zip(output, trainer.model_desc.outputs):
+            if trainer.loss_fn and desc.is_loss:
+                continue
+            assert list(out.size()) == desc.shape
     elif step_fn == 'train_step':
-        trainer.train_step(data, targets)
+        step_fn = trainer.train_step
+        data, targets = utils.get_batch(train_data, 0)
+        _ = trainer.train_step(data, targets)
     else:
         raise ValueError('Invalid step_fn')
     assert trainer._onnx_model is not None
@@ -534,43 +542,9 @@ def testInstantiateORTTrainer(step_fn):
 
     # Create a new trainer from persisted ONNX model and compare with original ONNX model
     trainer_from_onnx = orttrainer.ORTTrainer(reload_onnx_model, model_desc, optim_config)
-    trainer_from_onnx.train_step(data, targets)
+    step_fn(data, targets)
     assert trainer_from_onnx._onnx_model is not None
     assert (id(trainer_from_onnx._onnx_model) != id(trainer._onnx_model))
     assert (trainer_from_onnx._onnx_model == trainer._onnx_model)
     assert (trainer_from_onnx._onnx_model.graph == trainer._onnx_model.graph)
     assert (onnx.helper.printable_graph(trainer_from_onnx._onnx_model.graph) == onnx.helper.printable_graph(trainer._onnx_model.graph))
-
-
-def testEvalStep():
-    # Loading external samples for testing
-    pytorch_transformer_path = os.path.join('..','..','..','samples','python','pytorch_transformer')
-    pt_model_path = os.path.join(pytorch_transformer_path,'pt_model.py')
-    pt_model_name = 'pt_model'
-    pt_model = _utils.import_module_from_file(pt_model_path, pt_model_name)
-    ort_utils_path = os.path.join(pytorch_transformer_path,'ort_utils.py')
-    ort_utils_name = 'ort_utils'
-    ort_utils = _utils.import_module_from_file(ort_utils_path, ort_utils_name)
-    utils_path = os.path.join(pytorch_transformer_path,'utils.py')
-    utils_name = 'utils'
-    utils = _utils.import_module_from_file(utils_path, utils_name)
-
-    # Modeling
-    model = pt_model.TransformerModel(28785, 200, 2, 200, 2, 0.2)
-    my_loss = ort_utils.my_loss
-    model_desc = ort_utils.transformer_model_description()
-    optim_config = optim.LambConfig()
-
-    # Create ORTTrainer
-    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss)
-
-    # Prep data
-    train_data, val_data, test_data = utils.prepare_data('cpu', 20, 20)
-
-    # Train
-    for batch, i in enumerate(range(0, train_data.size(0)-1, 35)):
-        data, targets = utils.get_batch(train_data, i)
-        output = trainer.eval_step(data, targets) # removed learning rate here and in model desc
-        break
-    for output_elem, model_desc_output in zip(output, model_desc['outputs']):
-        assert list(output_elem.size()) == model_desc_output[1]
