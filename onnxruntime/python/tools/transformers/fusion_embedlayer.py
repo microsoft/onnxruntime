@@ -182,6 +182,7 @@ class FusionEmbedLayerNoMask(Fusion):
                 from packaging.version import Version
                 import onnxruntime
                 if Version(onnxruntime.__version__) <= Version("1.4.0"):
+                    logger.warning('Please install onnxruntime with version > 1.4.0 for embedlayer fusion support for distilbert')
                     return
 
                 segment_ids, segment_embedding_gather = segment_path
