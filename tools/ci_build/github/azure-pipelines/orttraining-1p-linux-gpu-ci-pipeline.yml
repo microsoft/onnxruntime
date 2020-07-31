@@ -73,12 +73,14 @@ stages:
         displayName: Login to ACR
         inputs:
           command: login
-          containerRegistry: jingywatest
+          #containerRegistry: jingywatest
+          containerRegistry: ortrelease
       
       - task: Docker@2
         displayName: Build
         inputs:
           command: build
+          containerRegistry: ortrelease
           repository: test/onnxruntime-training-1p
           dockerfile: ${{ variables.linux_gpu_dockerfile }}
           tags: |
@@ -90,7 +92,8 @@ stages:
         displayName: Push
         inputs:
           command: push
-          containerRegistry: jingywatest
+          #containerRegistry: jingywatest
+          containerRegistry: ortrelease
           repository: test/onnxruntime-training-1p
           tags: |
             $(Build.BuildId)
