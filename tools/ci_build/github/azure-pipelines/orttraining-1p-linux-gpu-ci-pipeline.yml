@@ -45,59 +45,61 @@ stages:
 
       - template: templates/set-py-packaging-variables-step.yml
 
-      # - task: CmdLine@2
-      #   inputs:
-      #     script: |
-      #       docker build \
-      #         --pull \
-      #         -t ${{ variables.docker_image_prefix }}-manylinux-gpu-release \
-      #         --build-arg TEST_FLAG="${{ parameters.test_flag }}" \
-      #         -f ${{ variables.linux_gpu_dockerfile }} .
-      #     workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
-
-      # - task: AzureKeyVault@1
-      #   inputs:
-      #     azureSubscription: 'AIInfraBuild'
-      #     KeyVaultName: 'jingywatest'
-      #     SecretsFilter: '*'
-      #     RunAsPreJob: false
-
-      # - task: CmdLine@2
-      #   inputs:
-      #     script: |
-      #       echo $(DockerPassword) > password.txt
-      #       cat password.txt | docker login --username jingywatest --password-stdin jingywatest.azurecr.io
-      #       docker tag onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 jingywatest.azurecr.io/test/onnxruntime-training-1p:$(Build.BuildId)
-      #       docker push jingywatest.azurecr.io/test/onnxruntime-training-1p:$(Build.BuildId)
-      - task: Docker@2
-        displayName: Login to ACR
+      - task: CmdLine@2
         inputs:
-          command: login
-          #containerRegistry: jingywatest
-          containerRegistry: ortrelease
-      
-      - task: Docker@2
-        displayName: Build
-        inputs:
-          command: build
-          containerRegistry: ortrelease
-          repository: test/onnxruntime-training-1p
-          dockerfile: ${{ variables.linux_gpu_dockerfile }}
-          tags: |
-            $(Build.BuildId)
-            latest
-          arguments: --build-arg TEST_FLAG="${{ parameters.test_flag }}"
+          script: |
+            docker build \
+              --pull \
+              -t ${{ variables.docker_image_prefix }}-manylinux-gpu-release \
+              --build-arg TEST_FLAG="${{ parameters.test_flag }}" \
+              -f ${{ variables.linux_gpu_dockerfile }} .
+          workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
 
-      - task: Docker@2
-        displayName: Push
+      - task: AzureKeyVault@1
         inputs:
-          command: push
-          #containerRegistry: jingywatest
-          containerRegistry: ortrelease
-          repository: test/onnxruntime-training-1p
-          tags: |
-            $(Build.BuildId)
-            latest
+          azureSubscription: 'AIInfraBuild'
+          KeyVaultName: 'jingywatest'
+          SecretsFilter: '*'
+          RunAsPreJob: false
+
+      - task: CmdLine@2
+        inputs:
+          script: |
+            echo $(DockerPassword) > password.txt
+            cat password.txt | docker login --username jingywatest --password-stdin jingywatest.azurecr.io
+            docker tag onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 jingywatest.azurecr.io/test/onnxruntime-training-1p:$(Build.BuildId)
+            docker push jingywatest.azurecr.io/test/onnxruntime-training-1p:$(Build.BuildId)
+
+      # There's some authentication issues with using Docker task
+      # - task: Docker@2
+      #   displayName: Login to ACR
+      #   inputs:
+      #     command: login
+      #     #containerRegistry: jingywatest
+      #     containerRegistry: ortrelease
+      #
+      # - task: Docker@2
+      #   displayName: Build
+      #   inputs:
+      #     command: build
+      #     containerRegistry: ortrelease
+      #     repository: test/onnxruntime-training-1p
+      #     dockerfile: ${{ variables.linux_gpu_dockerfile }}
+      #     tags: |
+      #       $(Build.BuildId)
+      #       latest
+      #     arguments: --build-arg TEST_FLAG="${{ parameters.test_flag }}"
+      # 
+      # - task: Docker@2
+      #   displayName: Push
+      #   inputs:
+      #     command: push
+      #     #containerRegistry: jingywatest
+      #     containerRegistry: ortrelease
+      #     repository: test/onnxruntime-training-1p
+      #     tags: |
+      #       $(Build.BuildId)
+      #       latest
 
       - template: templates/component-governance-component-detection-steps.yml
 

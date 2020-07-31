@@ -122,6 +122,7 @@ RUN pip install torch==${PYTORCH_VERSION}
 
 ARG TEST_FLAG
 # build onnxruntime wheel with cuda and mpi support
+RUN echo ${TEST_FLAG}
 RUN cd /stage && git clone https://github.com/microsoft/onnxruntime.git &&\
     cd onnxruntime &&\
     git checkout v1.4.0 &&\
