@@ -284,8 +284,11 @@ Status PrepareForReduce(const Tensor* X,
   std::vector<bool> reduced(rank, false);
   prepare_reduce_metadata.output_dims.reserve(input_dims.size());
   if (axes.size() > 0) {
+    int64_t reduced_axis;
+    std::vector<uint64_t> axes_(axes.size());
     prepare_reduce_metadata.output_dims = input_dims;
-    for (auto reduced_axis : axes) {
+    for (size_t i = 0; i < axes.size(); i++) {
+      reduced_axis = axes[i];
       const int64_t axis = HandleNegativeAxis(reduced_axis, rank);
       ORT_ENFORCE(axis < rank, "Reduced axis is greater than rank: ", axis);
       ORT_ENFORCE(input_dims[axis] != 0,
@@ -294,7 +297,22 @@ Status PrepareForReduce(const Tensor* X,
                   input_shape);
       prepare_reduce_metadata.output_dims[axis] = 1;
       reduced[axis] = true;
+      axes_[i] = axis;
     }
+    bool row_reduction = true;
+    std::sort(axes_.begin(), axes_.end());
+    for (size_t i = 0; i < axes_.size(); i++) {
+      if (axes_[i] != i)
+        row_reduction = false;
+    }
+    int64_t stride = 1;
+    if (row_reduction) {
+      for (size_t s = rank - 1; s >= axes_.size(); s--) {
+        stride *= input_dims[s];
+      }
+      prepare_reduce_metadata.stride = stride;
+    }
+
   } else {
     // no axes provided (i.e.) default axes  => reduce on all dims
     for (auto dim : input_dims) {
@@ -377,12 +395,13 @@ Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& input, Pr
         is_matrix_row_reduction(cudnn_reduce_op,
                                 static_cast<int>(reduction_size),
                                 static_cast<int>(stride), rank, axes)) {
+      std::cout << "Doing reduce_matrix_rows.\n";
       reduce_matrix_rows(
           reinterpret_cast<const CudaT*>(input.template Data<T>()),
           reinterpret_cast<CudaT*>(output.template MutableData<T>()),
           static_cast<int>(reduction_size),
           static_cast<int>(stride));
-
+      std::cout << "Done reduce_matrix_rows.\n";
       return Status::OK();
     }
   }
@@ -440,8 +459,8 @@ Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& input, Pr
         // Reduce max -- Max/Min will output indices data
         CudnnReduceDescriptor reduce_max_desc;
         cudnnDataType_t cudnn_reduce_max_type = cudnn_type_X;
-        if((std::is_same<T, MLFloat16>::value)) {
-            cudnn_reduce_max_type = CUDNN_DATA_FLOAT;
+        if ((std::is_same<T, MLFloat16>::value)) {
+          cudnn_reduce_max_type = CUDNN_DATA_FLOAT;
         }
         ORT_RETURN_IF_ERROR(reduce_max_desc.Set(CUDNN_REDUCE_TENSOR_MAX, cudnn_reduce_max_type, CUDNN_REDUCE_TENSOR_NO_INDICES));
         size_t indices_bytes_max = 0;
