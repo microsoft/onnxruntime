@@ -129,8 +129,6 @@ TEST_F(GraphTransformationTests, ConcatTrainingRewriter) {
 
   ASSERT_EQ(op_to_count["Concat"], 0);
   ASSERT_EQ(op_to_count["ConcatTraining"], 1);
-
-  Model::Save(*p_model, "concat_transformed.onnx");
 }
 
 TEST_F(GraphTransformationTests, MegatronMLPPartitionRank0) {
