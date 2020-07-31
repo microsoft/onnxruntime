@@ -153,13 +153,16 @@ class Gpt2Helper:
     def compare_outputs(torch_outputs, ort_outputs, rtol=1e-03, atol=1e-03):
         """ Returns True if torch and ORT outputs are close for given thresholds, and False otherwise.
         """
-        is_close = numpy.allclose(ort_outputs[0], torch_outputs[0].cpu(), rtol=rtol, atol=atol)
+        is_close = numpy.allclose(ort_outputs[0], torch_outputs[0].cpu().numpy(), rtol=rtol, atol=atol)
         logger.debug(f'PyTorch and OnnxRuntime output 0 (last_state) are close: {is_close}')
 
         is_all_close = is_close
         num_layers = len(ort_outputs) - 1
         for layer in range(num_layers):
-            is_close = numpy.allclose(ort_outputs[1 + layer], torch_outputs[1][layer].cpu(), rtol=rtol, atol=atol)
+            is_close = numpy.allclose(ort_outputs[1 + layer],
+                                      torch_outputs[1][layer].cpu().numpy(),
+                                      rtol=rtol,
+                                      atol=atol)
             logger.debug(f'PyTorch and OnnxRuntime layer {layer} state (present_{layer}) are close:{is_close}')
             is_all_close = is_all_close and is_close
 
@@ -376,7 +379,8 @@ class Gpt2Helper:
                                              output_buffers,
                                              output_shapes,
                                              total_runs=0,
-                                             return_numpy=True):
+                                             return_numpy=True,
+                                             include_copy_output_latency=False):
         """ Inference with IO binding. Returns outputs, and optional latency when total_runs > 0.
         """
         logger.debug(f"start onnxruntime_inference_with_binded_io")
@@ -401,7 +405,9 @@ class Gpt2Helper:
             start = time.time()
             # Run onnxruntime with io binding
             ort_session.run_with_iobinding(io_binding)
-            _ = Gpt2Helper.get_outputs_from_io_binding_buffer(ort_session, output_buffers, output_shapes, return_numpy)
+            if include_copy_output_latency:
+                _ = Gpt2Helper.get_outputs_from_io_binding_buffer(ort_session, output_buffers, output_shapes,
+                                                                  return_numpy)
             latency.append(time.time() - start)
 
         average_latency = sum(latency) * 1000 / len(latency)

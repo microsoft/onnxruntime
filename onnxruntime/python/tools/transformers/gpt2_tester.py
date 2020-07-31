@@ -186,21 +186,19 @@ class Gpt2Tester:
                 print(f'Max logits difference is too large: {max_io_diff}')
 
         if not torch.all(self.input_ids == baseline.input_ids):
-            print(f'Input_ids is different {self.input_ids} vs {baseline.input_ids}')
+            print('Input_ids is different', self.input_ids, baseline.input_ids)
 
         if not torch.all(self.position_ids == baseline.position_ids):
-            print(f'position_ids is different')
+            print('position_ids is different', self.position_ids, baseline.position_ids)
 
         if not torch.all(self.attention_mask == baseline.attention_mask):
-            print(f'attention_mask is different')
+            print('attention_mask is different', self.attention_mask, baseline.attention_mask)
 
-        if len(self.past) != len(baseline.past):
-            print("length of past not same")
+        assert len(self.past) == len(baseline.past)
 
         for i, past_i in enumerate(self.past):
-            if past_i.shape != baseline.past[i].shape:
-                print("shape of past not same", past_i.shape, baseline.past[i].shape)
-            elif past_i.nelement() > 0:
+            assert past_i.shape == baseline.past[i].shape
+            if past_i.nelement() > 0:
                 max_past_diff = (past_i - baseline.past[i]).abs().max()
                 if max_past_diff > 1e-4:
                     print(f"max_past_diff[{i}]={max_past_diff}")
@@ -341,12 +339,14 @@ class Gpt2Tester:
                     Gpt2Helper.auto_increase_buffer_size(output_buffers, output_shapes)
 
                     input_tuple = onnx_io_runner.get_input_tuple()
-                    onnx_io_output, avg_latency_ms = Gpt2Helper.onnxruntime_inference_with_binded_io(session,
-                                                                                                     input_tuple,
-                                                                                                     output_buffers,
-                                                                                                     output_shapes,
-                                                                                                     total_runs=1,
-                                                                                                     return_numpy=False)
+                    onnx_io_output, avg_latency_ms = Gpt2Helper.onnxruntime_inference_with_binded_io(
+                        session,
+                        input_tuple,
+                        output_buffers,
+                        output_shapes,
+                        total_runs=1,
+                        return_numpy=False,
+                        include_copy_output_latency=True)
                     onnx_io_metric.add_latency(past_seq_len, avg_latency_ms / 1000.0)
                     onnx_io_runner.update(onnx_io_output, step, device)
 

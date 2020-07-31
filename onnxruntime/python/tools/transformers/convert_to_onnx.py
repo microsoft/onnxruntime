@@ -179,7 +179,7 @@ def main():
                                    top_k=20,
                                    top_k_no_order=True,
                                    max_steps=24,
-                                   max_inputs=100,
+                                   max_inputs=0,
                                    verbose=args.verbose)
 
     logger.info(f"Done. Output model: {output_path}")
