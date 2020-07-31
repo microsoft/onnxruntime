@@ -374,46 +374,6 @@ TEST_F(OptimizerGraphBuilderTest, Allreduce_WithGradientAccumulation_WithMixedPr
   config.loss_scale_input_name = k_loss_scaling_factor_name;
   TestAllreduceOptimizerGraphBuilder(config, graph_);
 }
-TEST_F(OptimizerGraphBuilderTest, Adasum_Horovod_NoGradientAccumulation_NoMixedPrecision) {
-  OptimizerGraphConfig config;
-  config.data_parallel_group_size = 4;
-  config.use_nccl = false;
-  config.adasum_reduction_type = AdasumReductionType::GpuHierarchical;
-  config.gradient_accumulation_steps = 1;
-  config.use_mixed_precision = false;
-  TestAdasumOptimizerGraphBuilder(config, graph_);
-}
-TEST_F(OptimizerGraphBuilderTest, Adasum_Horovod_WithGradientAccumulation_NoMixedPrecision) {
-  OptimizerGraphConfig config;
-  config.data_parallel_group_size = 4;
-  config.use_nccl = false;
-  config.adasum_reduction_type = AdasumReductionType::GpuHierarchical;
-  config.gradient_accumulation_steps = 10;
-  config.use_mixed_precision = false;
-  TestAdasumOptimizerGraphBuilder(config, graph_);
-}
-
-TEST_F(OptimizerGraphBuilderTest, Adasum_Horovod_NoGradientAccumulation_WithMixedPrecision) {
-  OptimizerGraphConfig config;
-  config.data_parallel_group_size = 4;
-  config.use_nccl = false;
-  config.adasum_reduction_type = AdasumReductionType::GpuHierarchical;
-  config.gradient_accumulation_steps = 1;
-  config.use_mixed_precision = true;
-  config.loss_scale_input_name = k_loss_scaling_factor_name;
-  TestAdasumOptimizerGraphBuilder(config, graph_);
-}
-
-TEST_F(OptimizerGraphBuilderTest, Adasum_Horovod_WithGradientAccumulation_WithMixedPrecision) {
-  OptimizerGraphConfig config;
-  config.data_parallel_group_size = 4;
-  config.use_nccl = false;
-  config.adasum_reduction_type = AdasumReductionType::GpuHierarchical;
-  config.gradient_accumulation_steps = 10;
-  config.use_mixed_precision = true;
-  config.loss_scale_input_name = k_loss_scaling_factor_name;
-  TestAdasumOptimizerGraphBuilder(config, graph_);
-}
 
 static void TestZeROOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& graph) {
   ZeROOptimizerGraphBuilder optimizer_graph_builder(
