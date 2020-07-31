@@ -524,3 +524,20 @@ def testInstantiateORTTrainer(step_fn):
             assert output_type == _utils.dtype_onnx_to_torch(
                 trainer._onnx_model.graph.output[i].type.tensor_type.elem_type)
 
+    # Save current model as ONNX as a file
+    file_name = os.path.join('..','..','..','temp_onnx_model.onnx')
+    trainer.save_as_onnx(file_name)
+    assert os.path.exists(file_name)
+    with open(file_name, "rb") as f:
+        bin_str = f.read()
+        reload_onnx_model = onnx.load_model_from_string(bin_str)
+    os.remove(file_name)
+
+    # Create a new trainer from persisted ONNX model and compare with original ONNX model
+    trainer_from_onnx = orttrainer.ORTTrainer(reload_onnx_model, model_desc, optim_config)
+    trainer_from_onnx.train_step(data, targets)
+    assert trainer_from_onnx._onnx_model is not None
+    assert (id(trainer_from_onnx._onnx_model) != id(trainer._onnx_model))
+    assert (trainer_from_onnx._onnx_model == trainer._onnx_model)
+    assert (trainer_from_onnx._onnx_model.graph == trainer._onnx_model.graph)
+    assert (onnx.helper.printable_graph(trainer_from_onnx._onnx_model.graph) == onnx.helper.printable_graph(trainer._onnx_model.graph))
