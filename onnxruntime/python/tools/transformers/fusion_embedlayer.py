@@ -9,8 +9,6 @@ from onnx import helper
 from onnx_model import OnnxModel
 from fusion_base import Fusion
 from fusion_utils import FusionUtils
-# for checking ort version
-import onnxruntime
 
 logger = getLogger(__name__)
 
@@ -181,7 +179,11 @@ class FusionEmbedLayerNoMask(Fusion):
             if segment_path is None:
                 return
             else:
-                assert onnxruntime.__version__ > '1.4.0', "Please install onnxruntime with version > 1.4.0 for distilbert fusion support"
+                from packaging.version import Version
+                import onnxruntime
+                if Version(onnxruntime.__version__) <= Version("1.4.0"):
+                    return
+
                 segment_ids, segment_embedding_gather = segment_path
 
                 embed_node_inputs=[
