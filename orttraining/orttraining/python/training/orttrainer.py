@@ -256,6 +256,10 @@ class ORTTrainer(object):
         input_desc = [*self.model_desc.inputs, self.model_desc.learning_rate]
         output_desc = self.model_desc.outputs
 
+        # Update Learning Rate if Necessary
+        if self.options.lr_scheduler:
+            self.optim_config.lr = self.options.lr_scheduler.get_lr(self._train_step_info)[0]
+
         # Get data. CombineTorchModelLossFn takes label as last input and outputs loss first
         input = self._prepare_model_input(input_desc, self.optim_config.lr, None, *args, **kwargs)
 

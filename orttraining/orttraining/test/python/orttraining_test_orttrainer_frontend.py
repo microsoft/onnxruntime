@@ -457,11 +457,12 @@ def testLRSchedulerUpdateImpl(lr_scheduler, expected_values):
                         expected_values[step], rtol=rtol, err_msg="lr mismatch")
 
 
-@pytest.mark.parametrize("step_fn", [
-    ('train_step'),
-    ('eval_step')
+@pytest.mark.parametrize("step_fn, set_lr_scheduler", [
+    ('train_step', False),
+    ('eval_step', False),
+    ('train_step', True)
 ])
-def testInstantiateORTTrainer(step_fn):
+def testInstantiateORTTrainer(step_fn, set_lr_scheduler):
     # Loading external TransformerModel model for testing
     # A manual import is done as this example is not part of onnxruntime package,
     # but resides on the onnxruntime repo
@@ -480,10 +481,16 @@ def testInstantiateORTTrainer(step_fn):
     model = pt_model.TransformerModel(28785, 200, 2, 200, 2, 0.2)
     my_loss = ort_utils.my_loss
     model_desc = ort_utils.transformer_model_description()
-    optim_config = optim.LambConfig()
-
-    # Create ORTTrainer
-    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss)
+    
+    if set_lr_scheduler:
+        optim_config = optim.SGDConfig(lr=0.1)
+        opts = orttrainer.ORTTrainerOptions({'lr_scheduler' : optim.lr_scheduler.ConstantWarmupLRScheduler(10, 0.5)})
+        # Create ORTTrainer
+        trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=opts)
+    else:
+        optim_config = optim.LambConfig()
+        # Create ORTTrainer
+        trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss)
 
     # Preparing data
     train_data, val_data, _ = utils.prepare_data('cpu', 20, 20)
