@@ -1,13 +1,11 @@
 import onnx
-import unittest
 import os
-import numpy as np
 from onnx import numpy_helper
 import subprocess
 import shutil
 
 TOP_DIR = os.path.realpath(os.path.dirname(__file__))
-DATA_DIR = os.path.join(TOP_DIR, '..', 'testdata')
+DATA_DIR = os.path.join(TOP_DIR, '..', 'testdata/')
 
 
 def prepare_dir(path):
@@ -75,33 +73,4 @@ def expect(node,  # type: onnx.NodeProto
 
     cwd = os.getcwd()
     onnx_test_runner = os.path.join(cwd, 'onnx_test_runner')
-    subprocess.run([onnx_test_runner, "-n", name, DATA_DIR], check=True, cwd=cwd)
-
-
-class ONNXReferenceImplementationTest(unittest.TestCase):
-    def test_triu(self):
-        node = onnx.helper.make_node(
-            'Trilu',
-            inputs=['x'],
-            outputs=['y'],
-            domain="com.microsoft",
-        )
-
-        x = np.random.randn(3, 4, 5).astype(np.float32)
-        expect(node, inputs=[x], outputs=[np.triu(x)], name='test_triu')
-
-    def test_tril(self):
-        node = onnx.helper.make_node(
-            'Trilu',
-            inputs=['x'],
-            outputs=['y'],
-            upper=0,
-            domain="com.microsoft",
-        )
-
-        x = np.random.randn(3, 4, 5).astype(np.float32)
-        expect(node, inputs=[x], outputs=[np.tril(x)], name='test_tril')
-
-
-if __name__ == '__main__':
-    unittest.main(module=__name__, buffer=True)
+    subprocess.run([onnx_test_runner, DATA_DIR+name], check=True, cwd=cwd)
