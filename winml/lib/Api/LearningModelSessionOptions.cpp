@@ -23,4 +23,13 @@ bool LearningModelSessionOptions::CloseModelOnSessionCreation() {
 void LearningModelSessionOptions::CloseModelOnSessionCreation(bool value) {
   close_model_on_session_creation_ = value;
 }
+
+uint32_t LearningModelSessionOptions::GetIntraOpNumThreads() {
+  return intra_op_num_threads_override_;
+}
+
+STDMETHODIMP LearningModelSessionOptions::SetIntraOpNumThreadsOverride(uint32_t intraOpNumThreads) noexcept {
+  intra_op_num_threads_override_ = intraOpNumThreads;
+  return S_OK;
+}
 }  // namespace WINMLP
