@@ -1,7 +1,23 @@
 import importlib.util
+import numpy as np
 import os
 import sys
 import torch
+
+
+def get_device_index(device):
+    if type(device) == str:
+        # Could be 'cuda:0', 'cuda:1', or 'cpu'. with cpu, set index=0
+        device = torch.device(device)
+    return 0 if device.index is None else device.index
+
+
+def get_device_index_from_input(input):
+    if isinstance(input, (list, tuple)):
+        device_index = get_device_index(input[0].device)
+    else:
+        device_index = get_device_index(input.device)
+    return device_index
 
 
 def dtype_torch_to_numpy(torch_dtype):
@@ -22,7 +38,7 @@ def dtype_torch_to_numpy(torch_dtype):
         # NOTE: numpy doesn't support bfloat16
         return np.float16
     elif torch_dtype == torch.int64 or torch_dtype == torch.long:
-        return np.int64
+        return np.longlong # np.int64 doesn't work!?
     elif torch_dtype == torch.int32 or torch_dtype == torch.int:
         return np.int32
     elif torch_dtype == torch.int16 or torch_dtype == torch.short:
