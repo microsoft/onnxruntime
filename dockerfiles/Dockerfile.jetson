@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:experimental
 #
-# This Dockerfile just installs pre-built ONNXruntime wheel inside the image.
+# This Dockerfile just installs pre-built ONNX Runtime wheel inside the image.
 # Please make sure you have nvidia-runtime enabled in docker config and then build like:
 #
 # sudo -H DOCKER_BUILDKIT=1 nvidia-docker build --build-arg WHEEL_FILE=<path> -f Dockerfile.jetson
@@ -10,7 +10,7 @@ ARG BASE_IMAGE=nvcr.io/nvidia/l4t-base:r32.4.3
 FROM ${BASE_IMAGE} as onnxruntime
 
 ARG WHEEL_FILE
-RUN echo "Building ONNXruntime Docker image with ${WHEEL_FILE}..."
+RUN echo "Building ONNX Runtime Docker image with ${WHEEL_FILE}..."
 
 # Ensure apt-get won't prompt for selecting options
 ENV DEBIAN_FRONTEND=noninteractive

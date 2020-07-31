@@ -12,6 +12,7 @@
   * Execution Providers
     * [NVIDIA CUDA](#CUDA)
     * [NVIDIA TensorRT](#TensorRT)
+    * [NVIDIA Jetson TX1/TX2/Nano/Xavier](#nvidia-jetson-tx1tx2nanoxavier)
     * [Intel DNNL/MKL-ML](#DNNL-and-MKLML)
     * [Intel nGraph](#nGraph)
     * [Intel OpenVINO](#openvino)
@@ -210,14 +211,17 @@ Dockerfile instructions are available [here](./dockerfiles#tensorrt)
 
 ---
 
-#### Jetson TX1/TX2/Nano/Xavier (ARM64 Builds)
+#### NVIDIA Jetson TX1/TX2/Nano/Xavier
 
 1. Indicate CUDA compiler, or add its location to the PATH.
 Cmake can't automatically find the correct nvcc if it's not in the PATH.
 ```
 export CUDACXX="/usr/local/cuda/bin/nvcc"
+```
 or:
+```
 export PATH="/usr/local/cuda/bin:${PATH}"
+```
 2. Follow instructions in [Docker README](./dockerfiles/README.md) to build the wheel file. 
 
 ---

@@ -251,8 +251,8 @@ The Dockerfile used in these instructions specifically targets Raspberry Pi 3/3+
 
 These instructions are for [JetPack SDK 4.4](https://developer.nvidia.com/embedded/jetpack).
 The Dockerfile.jetson is using [NVIDIA L4T 32.4.3](https://developer.nvidia.com/embedded/linux-tegra) as base image.
-You can probably used those instructions with earlier/later versions with appropriate modifications.
-Instructions assume you are on Jetson host in the root of onnxruntime git project clone.
+Versions different from these may require modifications to these instructions.
+Instructions assume you are on Jetson host in the root of onnxruntime git project clone(`https://github.com/microsoft/onnxruntime`)
 
 Two-step installation is required:
 
