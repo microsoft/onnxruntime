@@ -163,13 +163,6 @@ if(NOT WIN32)
     message(WARNING "Instrument is only supported on Windows now")
     set(onnxruntime_ENABLE_INSTRUMENT OFF)
   endif()
-else()
-  add_compile_definitions(WINVER=0x0601)  # Support Windows 7 and newer
-  if(WINDOWS_STORE)
-    # cmake/external/protobuf/src/google/protobuf/compiler/subprocess.cc and onnxruntime/core/platform/windows/env.cc call a bunch of Win32 APIs.
-    # For now, we'll set the API family to desktop globally to expose Win32 symbols in headers; this must be fixed!
-    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/FI${CMAKE_CURRENT_SOURCE_DIR}/set_winapi_family_desktop.h>")
-  endif()
 endif()
 
 if(onnxruntime_USE_OPENMP)
@@ -1124,6 +1117,23 @@ if(WIN32)
 else()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES nsync_cpp)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${CMAKE_DL_LIBS} Threads::Threads)
+endif()
+
+if (WIN32)
+  if (WINDOWS_STORE)
+    if (WINDOWS_STORE_FOR_REAL)
+      #      add_compile_definitions(WINAPI_FAMILY=2 __cplusplus_winrt)
+      #      add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:SHELL:/FIvccorlib.h /ZW:nostdlib /FUplatform.winmd>")
+      add_compile_definitions(WINAPI_FAMILY=2)
+      add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:SHELL:/ZW:nostdlib /FUplatform.winmd>")
+      get_filename_component(msvc_path "${CMAKE_C_COMPILER}/../../../.." ABSOLUTE)
+      link_directories("${msvc_path}/lib/${onnxruntime_target_platform}/store")
+
+      add_link_options(/APPCONTAINER)
+    else()
+      add_compile_definitions(WINVER=0x0601)  # Support Windows 7 and newer
+    endif()
+  endif()
 endif()
 
 # Default version parts for Microsoft.AI.MachineLearning.dll and onnxruntime.dll in non-ADO pipeline local builds
