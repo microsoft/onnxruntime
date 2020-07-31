@@ -27,7 +27,7 @@ static void RunTest(
     int hidden_size,
     bool use_float16 = false,
     bool has_mask = true,
-    bool is_distill = false) {
+    bool has_segment = true) {
   int min_cuda_architecture = use_float16 ? 530 : 0;
 
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
@@ -66,7 +66,7 @@ static void RunTest(
 
     OpTester tester("EmbedLayerNormalization", 1, onnxruntime::kMSDomain);
     tester.AddInput<int32_t>("input_ids", input_ids_dims, input_ids_data);
-    if (is_distill) {
+    if (!has_segment) {
       tester.AddMissingOptionalInput<int32_t>();
     } else {
       tester.AddInput<int32_t>("segment_ids", segment_ids_dims, segment_ids_data);
@@ -74,7 +74,7 @@ static void RunTest(
     if (use_float16) {
       tester.AddInput<MLFloat16>("word_embedding", word_embedding_dims, ToFloat16(word_embedding_data));
       tester.AddInput<MLFloat16>("position_embedding", position_embedding_dims, ToFloat16(position_embedding_data));
-      if (is_distill) {
+      if (!has_segment) {
         tester.AddMissingOptionalInput<MLFloat16>();
       } else {
         tester.AddInput<MLFloat16>("segment_embedding", segment_embedding_dims, ToFloat16(segment_embedding_data));
@@ -89,7 +89,7 @@ static void RunTest(
     } else {
       tester.AddInput<float>("word_embedding", word_embedding_dims, word_embedding_data);
       tester.AddInput<float>("position_embedding", position_embedding_dims, position_embedding_data);
-      if (is_distill) {
+      if (!has_segment) {
         tester.AddMissingOptionalInput<MLFloat16>();
       } else {
         tester.AddInput<float>("segment_embedding", segment_embedding_dims, segment_embedding_data);
@@ -512,7 +512,7 @@ TEST(EmbedLayerNormTest, EmbedLayerNormBatch_Distill) {
           hidden_size,
           false,
           true,
-          true);
+          false);
 }
 }  // namespace test
 }  // namespace onnxruntime
