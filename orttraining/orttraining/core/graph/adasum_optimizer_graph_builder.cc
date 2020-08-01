@@ -13,10 +13,9 @@ ArgDef AdasumOptimizerGraphBuilder::BuildWeightUpdateNode(
     const ArgDef& gradient_finite_argdef,
     GraphAugmenter::GraphDefs& graph_defs) {
   TypeProto* gradient_fp32_type_proto = graph_defs.CopyTypeProto(weight);
-  ArgDef gradient_update_output = gradient;
   ArgDef weight_update_output = ArgDef(nodearg_name_generator(weight.name + "_update_out"), gradient_fp32_type_proto);
   graph_defs.AddNodeDefs({NodeDef(OpDef{"InPlaceAccumulator", kMSDomain, 1},
-                                  {weight, gradient_update_output, gradient_finite_argdef},
+                                  {weight, gradient, gradient_finite_argdef},
                                   {weight_update_output},
                                   NodeAttributes(),
                                   weight_update_output.name)});
@@ -227,7 +226,7 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
 
   // bugbug
   // If Adasum GPU hierarchical reduce is used, then scale resulting gradients by local size.
-  float adasum_scale = 1.0f / 65536.0f;
+  float adasum_scale = 1.0f / 1048576.0f;
   if (opt_graph_config_.adasum_reduction_type == AdasumReductionType::GpuHierarchical) {
     adasum_scale /= opt_graph_config_.local_size;
   }

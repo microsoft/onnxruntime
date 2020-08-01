@@ -32,7 +32,7 @@ Status HorovodAllReduce::ComputeInternal(OpKernelContext* context) const {
   void* data = nullptr;
   //bugbug
   if (adasum_type_ == training::AdasumReductionType::CpuReduction) {
-    allocator = Info().GetAllocator(0, OrtMemTypeCPUInput);
+    allocator = Info().GetAllocator(0, OrtMemTypeCPU);
     //IAllocatorUniquePtr<uint8_t> buffer = AllocateBufferOnCPUPinned<uint8_t>(
     //    static_cast<size_t>(input_tensor->SizeInBytes()));
     data = malloc(sizeof(uint8_t) * static_cast<size_t>(input_tensor->SizeInBytes()));

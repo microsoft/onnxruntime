@@ -93,7 +93,9 @@ Status OptimizerGraphBuilder::AddGradientScalingNodes(
 
   auto target_type = allreduce_in_fp16 ? ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
                                        : ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
-
+  if (allreduce_in_fp16) {
+    std::cout<<"########Doing allreduce in fp16."<<std::endl;
+  }
   if (fuse_scaling_outputs) {
     TypeProto* fused_gradient_type_proto = graph_defs.CreateTypeProto();
     fused_gradient_type_proto->mutable_tensor_type()->set_elem_type(target_type);
