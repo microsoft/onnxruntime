@@ -38,18 +38,18 @@ class ModelBuilder {
   int32_t GetAndroidSdkVer() const;
 
   // Add an NNAPI operation (operator)
-  void AddOperation(int op, const std::vector<uint32_t>& input_indices,
-                    const std::vector<std::string>& output_names,
-                    const std::vector<android::nn::wrapper::OperandType>& types,
-                    const std::vector<bool>& is_nhwc_vec);
+  Status AddOperation(int op, const std::vector<uint32_t>& input_indices,
+                      const std::vector<std::string>& output_names,
+                      const std::vector<android::nn::wrapper::OperandType>& types,
+                      const std::vector<bool>& is_nhwc_vec);
 
   // Find if an output has a fuseable activation (Relu)
   int32_t FindActivation(const Node& node, const NodeArg& output);
 
   // Add an NNAPI scalar operand
-  uint32_t AddOperandFromScalar(bool value);
-  uint32_t AddOperandFromScalar(float value);
-  uint32_t AddOperandFromScalar(int32_t value);
+  Status AddOperandFromScalar(bool value, uint32_t& index);
+  Status AddOperandFromScalar(float value, uint32_t& index);
+  Status AddOperandFromScalar(int32_t value, uint32_t& index);
 
   // Add an NNAPI tensor operand (and allocate persist buffer)
   uint32_t AddOperandFromPersistMemoryBuffer(const std::string& name, const void* buffer,
@@ -153,24 +153,25 @@ class ModelBuilder {
   bool IsNodeSupported(const Node& node);
 
   // Convert the onnx model to ANeuralNetworksModel
-  void Prepare();
+  Status Prepare();
 
-  void GetTargetDevices();
+  Status GetTargetDevices();
   void GetAllInitializers();
   void PreprocessInitializers();
-  void RegisterInitializers();
-  void RegisterModelInputs();
-  void AddOperations();
-  void RegisterModelOutputs();
+  Status RegisterInitializers();
+  Status RegisterModelInputs();
+  Status AddOperations();
+  Status RegisterModelOutputs();
   void RegisterModelShaper();
 
   void SetOperandValue(uint32_t index, Model::NNMemory* memory,
                        size_t size, size_t offset);
 
-  uint32_t AddNewNNAPIOperand(const android::nn::wrapper::OperandType& type);
-  uint32_t AddNewOperand(const std::string& name,
-                         const android::nn::wrapper::OperandType& operand_type,
-                         bool is_nhwc);
+  Status AddNewNNAPIOperand(const android::nn::wrapper::OperandType& type, uint32_t& index);
+  Status AddNewOperand(const std::string& name,
+                       const android::nn::wrapper::OperandType& operand_type,
+                       bool is_nhwc,
+                       uint32_t& index);
 
   IOpBuilder* GetOpBuilder(const Node& node);
 };

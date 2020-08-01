@@ -28,7 +28,7 @@ class IOpBuilder {
 std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> CreateOpBuilders();
 
 // Transpose the NHWC input to NCHW output
-void TransposeNHWCToNCHW(ModelBuilder& model_builder, const std::string& input, const std::string& output);
+Status TransposeNHWCToNCHW(ModelBuilder& model_builder, const std::string& input, const std::string& output);
 
 // Get the quantized input's scale and zero point for the given input
 Status GetQuantizedInputScaleAndZeroPoint(const ModelBuilder& model_builder,

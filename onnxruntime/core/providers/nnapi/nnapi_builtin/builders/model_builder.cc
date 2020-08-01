@@ -96,15 +96,15 @@ std::vector<std::vector<int>> ModelBuilder::GetSupportedNodes() {
 }
 
 // Scalar operand is copied into the model, no need to persist
-#define DEFINE_ADD_OPERAND_FROM_SCALAR(scalar_type, op_type)       \
-  uint32_t ModelBuilder::AddOperandFromScalar(scalar_type value) { \
-    OperandType operandType(Type::op_type);                        \
-    auto index = AddNewNNAPIOperand(operandType);                  \
-    THROW_ON_ERROR_WITH_NOTE(                                      \
-        nnapi_->ANeuralNetworksModel_setOperandValue(              \
-            nnapi_model_->model_, index, &value, sizeof(value)),   \
-        "value: " + std::to_string(value));                        \
-    return index;                                                  \
+#define DEFINE_ADD_OPERAND_FROM_SCALAR(scalar_type, op_type)                      \
+  Status ModelBuilder::AddOperandFromScalar(scalar_type value, uint32_t& index) { \
+    OperandType operandType(Type::op_type);                                       \
+    ORT_THROW_IF_ERROR(AddNewNNAPIOperand(operandType, index));                   \
+    RETURN_STATUS_ON_ERROR_WITH_NOTE(                                             \
+        nnapi_->ANeuralNetworksModel_setOperandValue(                             \
+            nnapi_model_->model_, index, &value, sizeof(value)),                  \
+        "value: " + std::to_string(value));                                       \
+    return Status::OK();                                                          \
   }
 
 DEFINE_ADD_OPERAND_FROM_SCALAR(bool, BOOL);
@@ -117,16 +117,18 @@ void ModelBuilder::AddInitializerToSkip(const std::string& tensor_name) {
   skipped_initializers_.insert(tensor_name);
 }
 
-void ModelBuilder::Prepare() {
+Status ModelBuilder::Prepare() {
   nnapi_model_ = std::unique_ptr<Model>(new Model());
-  THROW_ON_ERROR(nnapi_->ANeuralNetworksModel_create(&nnapi_model_->model_));
-  GetTargetDevices();
+  RETURN_STATUS_ON_ERROR(nnapi_->ANeuralNetworksModel_create(&nnapi_model_->model_));
+  ORT_RETURN_IF_ERROR(GetTargetDevices());
   PreprocessInitializers();
-  RegisterInitializers();
-  RegisterModelInputs();
-  AddOperations();
-  RegisterModelOutputs();
+  ORT_RETURN_IF_ERROR(RegisterInitializers());
+  ORT_RETURN_IF_ERROR(RegisterModelInputs());
+  ORT_RETURN_IF_ERROR(AddOperations());
+  ORT_RETURN_IF_ERROR(RegisterModelOutputs());
   RegisterModelShaper();
+
+  return Status::OK();
 }
 
 constexpr size_t kDefaultByteAlignmentForNNAPI = 16;
@@ -139,27 +141,27 @@ static size_t GetPaddedByteSize(size_t size) {
   return (size + kDefaultByteAlignmentForNNAPI - 1) & ~(kDefaultByteAlignmentForNNAPI - 1);
 }
 
-void ModelBuilder::GetTargetDevices() {
+Status ModelBuilder::GetTargetDevices() {
   // GetTargetDevices is only supported on API 29+
   if (GetAndroidSdkVer() < 29)
-    return;
+    return Status::OK();
 
   if (target_device_option_ == TargetDeviceOption::ALL_DEVICES)
-    return;
+    return Status::OK();
 
   const std::string nnapi_cpu("nnapi-reference");
   uint32_t num_devices = 0;
-  THROW_ON_ERROR_WITH_NOTE(nnapi_->ANeuralNetworks_getDeviceCount(&num_devices),
-                           "Getting count of available devices");
+  RETURN_STATUS_ON_ERROR_WITH_NOTE(
+      nnapi_->ANeuralNetworks_getDeviceCount(&num_devices), "Getting count of available devices");
 
   for (uint32_t i = 0; i < num_devices; i++) {
     ANeuralNetworksDevice* device = nullptr;
     const char* device_name = nullptr;
-    THROW_ON_ERROR_WITH_NOTE(nnapi_->ANeuralNetworks_getDevice(i, &device),
-                             "Getting " + std::to_string(i) + "th device");
+    RETURN_STATUS_ON_ERROR_WITH_NOTE(
+        nnapi_->ANeuralNetworks_getDevice(i, &device), "Getting " + std::to_string(i) + "th device");
 
-    THROW_ON_ERROR_WITH_NOTE(nnapi_->ANeuralNetworksDevice_getName(device, &device_name),
-                             "Getting " + std::to_string(i) + "th device's name");
+    RETURN_STATUS_ON_ERROR_WITH_NOTE(nnapi_->ANeuralNetworksDevice_getName(device, &device_name),
+                                     "Getting " + std::to_string(i) + "th device's name");
 
     bool device_is_cpu = nnapi_cpu == device_name;
     if ((target_device_option_ == TargetDeviceOption::CPU_DISABLED && !device_is_cpu) ||
@@ -168,6 +170,8 @@ void ModelBuilder::GetTargetDevices() {
       LOGS_DEFAULT(VERBOSE) << "Target device [" << device_name << "] added";
     }
   }
+
+  return Status::OK();
 }
 
 void ModelBuilder::GetAllInitializers() {
@@ -213,7 +217,7 @@ std::unordered_map<std::string, vector<const Node*>> GetAllQuantizedOpInputs(con
   return all_quantized_op_inputs;
 }
 
-void ModelBuilder::RegisterInitializers() {
+Status ModelBuilder::RegisterInitializers() {
   // First pass to get all the stats of the initializers
   auto initializer_size = initializers_.size();
   std::vector<std::tuple<uint32_t, size_t, size_t>> initializers(initializer_size);
@@ -231,7 +235,7 @@ void ModelBuilder::RegisterInitializers() {
       shape.push_back(SafeInt<uint32_t>(dim));
     }
 
-    ORT_ENFORCE(!shape.empty(), "NNAPI does not support scalar initializer");
+    ORT_RETURN_IF_NOT(!shape.empty(), "NNAPI does not support scalar initializer");
 
     Type type = Type::TENSOR_FLOAT32;
     switch (tensor.data_type()) {
@@ -240,15 +244,17 @@ void ModelBuilder::RegisterInitializers() {
         break;
       default:
         // TODO: support other type
-        ORT_THROW("The initializer of graph doesn't have valid type, name: " +
-                  name + " type: " + std::to_string(tensor.data_type()));
+        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                      "The initializer of graph doesn't have valid type, name: " +
+                          name + " type: " + std::to_string(tensor.data_type()));
         break;
     }
 
     OperandType operand_type(type, shape);
     shaper_.AddShape(name, operand_type.dimensions);
 
-    auto index = AddNewOperand(name, operand_type, false /* is_nhwc */);
+    uint32_t index = 0;
+    ORT_RETURN_IF_ERROR(AddNewOperand(name, operand_type, false /* is_nhwc */, index));
     const size_t size = operand_type.GetOperandBlobByteSize();
     const size_t padded_size = GetPaddedByteSize(size);
     sizeAll += padded_size;
@@ -282,9 +288,11 @@ void ModelBuilder::RegisterInitializers() {
     SetOperandValue(index, nnapi_model_->mem_initializers_.get(), size, offset);
     offset += padded_size;
   }
+
+  return Status::OK();
 }
 
-void ModelBuilder::RegisterModelInputs() {
+Status ModelBuilder::RegisterModelInputs() {
   const auto all_quantized_op_inputs = GetAllQuantizedOpInputs(graph_view_);
   for (const auto* node_arg : graph_view_.GetInputs()) {
     const auto& input_name = node_arg->Name();
@@ -314,7 +322,8 @@ void ModelBuilder::RegisterModelInputs() {
     int32_t zero_point = 0;
     const auto* type_proto = node_arg->TypeAsProto();
     if (!type_proto || !type_proto->tensor_type().has_elem_type()) {
-      ORT_THROW("The input of graph doesn't have elem_type: " + input_name);
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                    "The input of graph doesn't have elem_type: " + input_name);
     } else {
       switch (type_proto->tensor_type().elem_type()) {
         case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
@@ -327,39 +336,44 @@ void ModelBuilder::RegisterModelInputs() {
           type = Type::TENSOR_QUANT8_ASYMM;
           if (!Contains(all_quantized_op_inputs, input_name)) {
             // We current do not support uint8 input if it is not a quantized input
-            ORT_THROW("The input of graph doesn't have valid type, name: " +
-                      input_name + " type: " +
-                      std::to_string(type_proto->tensor_type().elem_type()));
+            return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                          "The input of graph doesn't have valid type, name: " + input_name + " type: " +
+                              std::to_string(type_proto->tensor_type().elem_type()));
           }
 
           // TODO, verify the scale and zero point match if there are multiple op using same input
-          ORT_THROW_IF_ERROR(GetQuantizedInputScaleAndZeroPoint(
+          ORT_RETURN_IF_ERROR(GetQuantizedInputScaleAndZeroPoint(
               *this, *all_quantized_op_inputs.at(input_name)[0], input_name, scale, zero_point));
           break;
         }
-        default:
+        default: {
           // TODO: support other type
-          ORT_THROW("The input of graph doesn't have valid type, name: " +
-                    input_name + " type: " +
-                    std::to_string(type_proto->tensor_type().elem_type()));
+          return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                        "The input of graph doesn't have valid type, name: " + input_name + " type: " +
+                            std::to_string(type_proto->tensor_type().elem_type()));
+        }
       }
     }
 
     OperandType operand_type(type, shape, scale, zero_point);
     shaper_.AddShape(input_name, operand_type.dimensions);
 
-    auto index = AddNewOperand(input_name, operand_type, false /* is_nhwc */);
+    uint32_t index = 0;
+    ORT_RETURN_IF_ERROR(AddNewOperand(input_name, operand_type, false /* is_nhwc */, index));
     input_index_vec_.push_back(index);
     nnapi_model_->AddInput(input_name, operand_type);
   }
+
+  return Status::OK();
 }
 
-void ModelBuilder::RegisterModelOutputs() {
+Status ModelBuilder::RegisterModelOutputs() {
   for (const auto* node_arg : graph_view_.GetOutputs()) {
     const auto& output_name = node_arg->Name();
 
     if (!Contains(operands_, output_name)) {
-      ORT_THROW("The output of graph is not registered" + output_name);
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                    "The output of graph is not registered" + output_name);
     }
 
     std::string nnapi_output_name = output_name;
@@ -372,24 +386,27 @@ void ModelBuilder::RegisterModelOutputs() {
     output_index_vec_.push_back(operand_indices_[nnapi_output_name]);
     nnapi_model_->AddOutput(output_name, nnapi_output_name, operand_types_.at(nnapi_output_name));
   }
+
+  return Status::OK();
 }
 
 void ModelBuilder::RegisterModelShaper() {
   nnapi_model_->SetShaper(shaper_);
 }
 
-uint32_t ModelBuilder::AddNewOperand(const std::string& name,
-                                     const OperandType& operand_type,
-                                     bool is_nhwc) {
-  auto idx = AddNewNNAPIOperand(operand_type);
-  RegisterOperand(name, idx, operand_type, is_nhwc);
-  return idx;
+Status ModelBuilder::AddNewOperand(const std::string& name,
+                                   const OperandType& operand_type,
+                                   bool is_nhwc, uint32_t& index) {
+  ORT_RETURN_IF_ERROR(AddNewNNAPIOperand(operand_type, index));
+  RegisterOperand(name, index, operand_type, is_nhwc);
+  return Status::OK();
 }
 
-uint32_t ModelBuilder::AddNewNNAPIOperand(const OperandType& operand_type) {
-  THROW_ON_ERROR(nnapi_->ANeuralNetworksModel_addOperand(
-      nnapi_model_->model_, &operand_type.operandType));
-  return next_index_++;
+Status ModelBuilder::AddNewNNAPIOperand(const OperandType& operand_type, uint32_t& index) {
+  RETURN_STATUS_ON_ERROR(
+      nnapi_->ANeuralNetworksModel_addOperand(nnapi_model_->model_, &operand_type.operandType));
+  index = next_index_++;
+  return Status::OK();
 }
 
 void ModelBuilder::RegisterOperand(const std::string& name, uint32_t index,
@@ -424,7 +441,8 @@ uint32_t ModelBuilder::AddOperandFromPersistMemoryBuffer(
     const std::string& name, const void* buffer,
     const android::nn::wrapper::OperandType& operand_type) {
   shaper_.AddShape(name, operand_type.dimensions);
-  auto index = AddNewOperand(name, operand_type, false /* is_nhwc */);
+  uint32_t index = 0;
+  ORT_THROW_IF_ERROR(AddNewOperand(name, operand_type, false /* is_nhwc */, index));
   const size_t size = operand_type.GetOperandBlobByteSize();
 
   // for small size operand, the value will be copied
@@ -446,32 +464,39 @@ uint32_t ModelBuilder::AddOperandFromPersistMemoryBuffer(
   return index;
 }
 
-void ModelBuilder::AddOperations() {
+Status ModelBuilder::AddOperations() {
   const auto& node_indices = graph_view_.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_view_.GetNode(node_indices[i]));
     if (auto* op_builder = GetOpBuilder(*node)) {
       op_builder->AddToModelBuilder(*this, *node);
     } else {
-      ORT_THROW("Node [" + node->Name() + "], type [" + node->OpType() + "] is not supported");
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                    "Node [" + node->Name() + "], type [" + node->OpType() + "] is not supported");
     }
   }
+
+  return Status::OK();
 }
 
-void ModelBuilder::AddOperation(int op, const std::vector<uint32_t>& input_indices,
-                                const std::vector<std::string>& output_names,
-                                const std::vector<OperandType>& types,
-                                const std::vector<bool>& is_nhwc_vec) {
+Status ModelBuilder::AddOperation(int op, const std::vector<uint32_t>& input_indices,
+                                  const std::vector<std::string>& output_names,
+                                  const std::vector<OperandType>& types,
+                                  const std::vector<bool>& is_nhwc_vec) {
   std::vector<uint32_t> output_indices;
   for (size_t i = 0; i < types.size(); i++) {
-    output_indices.push_back(AddNewOperand(output_names[i], types[i], is_nhwc_vec[i]));
+    uint32_t index = 0;
+    ORT_RETURN_IF_ERROR(AddNewOperand(output_names[i], types[i], is_nhwc_vec[i], index));
+    output_indices.push_back(index);
   }
 
-  THROW_ON_ERROR_WITH_NOTE(
+  RETURN_STATUS_ON_ERROR_WITH_NOTE(
       nnapi_->ANeuralNetworksModel_addOperation(
           nnapi_model_->model_, op, input_indices.size(), &input_indices[0],
           output_indices.size(), &output_indices[0]),
       "op = " + std::to_string(op));
+
+  return Status::OK();
 }
 
 std::unique_ptr<Model> ModelBuilder::Compile() {

@@ -74,12 +74,19 @@ static Status UnpackInitializerTensor(const onnx::TensorProto& initializer,
 }
 #undef CASE_UNPACK
 
-void AddTransposeOperator(ModelBuilder& model_builder,
-                          const std::string& input,
-                          const std::string& perm_name,
-                          vector<int32_t> perm,
-                          const std::string& output,
-                          bool output_is_nhwc) {
+#define ADD_SCALAR_OPERAND(model_builder, input_indices, scalar_value)           \
+  {                                                                              \
+    uint32_t index = 0;                                                          \
+    ORT_THROW_IF_ERROR(model_builder.AddOperandFromScalar(scalar_value, index)); \
+    input_indices.push_back(index);                                              \
+  }
+
+Status AddTransposeOperator(ModelBuilder& model_builder,
+                            const std::string& input,
+                            const std::string& perm_name,
+                            vector<int32_t> perm,
+                            const std::string& output,
+                            bool output_is_nhwc) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -96,20 +103,19 @@ void AddTransposeOperator(ModelBuilder& model_builder,
   shaper.Transpose(input, perm, output);
   OperandType output_operand_type = operand_types.at(input);
   output_operand_type.SetDimensions(shaper[output]);
-  model_builder.AddOperation(ANEURALNETWORKS_TRANSPOSE, input_indices, {output},
-                             {output_operand_type}, {output_is_nhwc});
+  return model_builder.AddOperation(ANEURALNETWORKS_TRANSPOSE, input_indices, {output},
+                                    {output_operand_type}, {output_is_nhwc});
 }
 
-void TransposeBetweenNCHWAndNHWC(ModelBuilder& model_builder,
-                                 const std::string& input,
-                                 const std::string& output,
-                                 bool nchw_to_nhwc) {
-  ORT_ENFORCE(!model_builder.UseNCHW(), "model_builder.UseNCHW() is on");
+Status TransposeBetweenNCHWAndNHWC(ModelBuilder& model_builder,
+                                   const std::string& input,
+                                   const std::string& output,
+                                   bool nchw_to_nhwc) {
+  ORT_RETURN_IF_NOT(!model_builder.UseNCHW(), "model_builder.UseNCHW() is on");
   const auto& shaper(model_builder.GetShaper());
-  ORT_ENFORCE(
-      4 == shaper[input].size(),
-      "TransposeNCHWToNHWC input has to be a 4d tensor, actual dimensions: " +
-          std::to_string(shaper[input].size()));
+  ORT_RETURN_IF_NOT(4 == shaper[input].size(),
+                    "TransposeNCHWToNHWC input has to be a 4d tensor, actual dimensions: " +
+                        std::to_string(shaper[input].size()));
 
   std::string perm_name;
   vector<int32_t> perm;
@@ -135,18 +141,20 @@ void TransposeBetweenNCHWAndNHWC(ModelBuilder& model_builder,
                         << (nchw_to_nhwc ? "nchw_to_nhwc" : "nhwc_to_nchw")
                         << " to [" << output << "] with shape "
                         << Shape2String(shaper[output]);
+
+  return Status::OK();
 }
 
-void TransposeNHWCToNCHW(ModelBuilder& model_builder,
-                         const std::string& input,
-                         const std::string& output) {
-  TransposeBetweenNCHWAndNHWC(model_builder, input, output, false /* nchw_to_nhwc */);
+Status TransposeNHWCToNCHW(ModelBuilder& model_builder,
+                           const std::string& input,
+                           const std::string& output) {
+  return TransposeBetweenNCHWAndNHWC(model_builder, input, output, false /* nchw_to_nhwc */);
 }
 
-void TransposeNCHWToNHWC(ModelBuilder& model_builder,
-                         const std::string& input,
-                         const std::string& output) {
-  TransposeBetweenNCHWAndNHWC(model_builder, input, output, true /* nchw_to_nhwc */);
+Status TransposeNCHWToNHWC(ModelBuilder& model_builder,
+                           const std::string& input,
+                           const std::string& output) {
+  return TransposeBetweenNCHWAndNHWC(model_builder, input, output, true /* nchw_to_nhwc */);
 }
 
 static void AddBinaryOperator(int32_t op_type,
@@ -165,7 +173,7 @@ static void AddBinaryOperator(int32_t op_type,
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input1));  // input 1
   input_indices.push_back(operand_indices.at(input2));  // input 2
-  input_indices.push_back(model_builder.AddOperandFromScalar(fuse_code));
+  ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
   shaper.Eltwise(input1, input2, output);
   const OperandType output_operand_type(operand_types.at(input1).type, shaper[output], output_scale, output_zero_point);
   model_builder.AddOperation(op_type, input_indices, {output}, {output_operand_type}, {output_is_nhwc});
@@ -1275,22 +1283,22 @@ void PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
   input_indices.push_back(operand_indices.at(input));
 
   if (use_auto_pad) {
-    input_indices.push_back(model_builder.AddOperandFromScalar(nnapi_padding_code));
+    ADD_SCALAR_OPERAND(model_builder, input_indices, nnapi_padding_code);
   } else {
-    input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[1]));
-    input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[3]));
-    input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[0]));
-    input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[2]));
+    ADD_SCALAR_OPERAND(model_builder, input_indices, onnx_pads[1]);
+    ADD_SCALAR_OPERAND(model_builder, input_indices, onnx_pads[3]);
+    ADD_SCALAR_OPERAND(model_builder, input_indices, onnx_pads[0]);
+    ADD_SCALAR_OPERAND(model_builder, input_indices, onnx_pads[2]);
   }
 
-  input_indices.push_back(model_builder.AddOperandFromScalar(onnx_strides[1]));
-  input_indices.push_back(model_builder.AddOperandFromScalar(onnx_strides[0]));
-  input_indices.push_back(model_builder.AddOperandFromScalar(kernel_shape[1]));
-  input_indices.push_back(model_builder.AddOperandFromScalar(kernel_shape[0]));
-  input_indices.push_back(model_builder.AddOperandFromScalar(fuse_code));
+  ADD_SCALAR_OPERAND(model_builder, input_indices, onnx_strides[1]);
+  ADD_SCALAR_OPERAND(model_builder, input_indices, onnx_strides[0]);
+  ADD_SCALAR_OPERAND(model_builder, input_indices, kernel_shape[1]);
+  ADD_SCALAR_OPERAND(model_builder, input_indices, kernel_shape[0]);
+  ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
 
   if (model_builder.GetAndroidSdkVer() > 28) {  // nchw only supported on api 29+
-    input_indices.push_back(model_builder.AddOperandFromScalar(use_nchw));
+    ADD_SCALAR_OPERAND(model_builder, input_indices, use_nchw);
   }
 
   shaper.Pool(input,
@@ -1574,31 +1582,31 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
   input_indices.push_back(operand_indices.at(bias));
 
   if (use_auto_pad) {
-    input_indices.push_back(model_builder.AddOperandFromScalar(nnapi_padding_code));
+    ADD_SCALAR_OPERAND(model_builder, input_indices, nnapi_padding_code);
   } else {
-    input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[1]));
-    input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[3]));
-    input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[0]));
-    input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[2]));
+    ADD_SCALAR_OPERAND(model_builder, input_indices, onnx_pads[1]);
+    ADD_SCALAR_OPERAND(model_builder, input_indices, onnx_pads[3]);
+    ADD_SCALAR_OPERAND(model_builder, input_indices, onnx_pads[0]);
+    ADD_SCALAR_OPERAND(model_builder, input_indices, onnx_pads[2]);
   }
 
-  input_indices.push_back(model_builder.AddOperandFromScalar(onnx_strides[1]));
-  input_indices.push_back(model_builder.AddOperandFromScalar(onnx_strides[0]));
+  ADD_SCALAR_OPERAND(model_builder, input_indices, onnx_strides[1]);
+  ADD_SCALAR_OPERAND(model_builder, input_indices, onnx_strides[0]);
 
   if (!conv_2d) {
     if (depthwise_conv_2d) {
       int32_t depthwiseMultiplier = shaper[weight][3] / group;
-      input_indices.push_back(model_builder.AddOperandFromScalar(depthwiseMultiplier));
+      ADD_SCALAR_OPERAND(model_builder, input_indices, depthwiseMultiplier);
     } else {  // grouped_conv_2d
-      input_indices.push_back(model_builder.AddOperandFromScalar(group));
+      ADD_SCALAR_OPERAND(model_builder, input_indices, group);
     }
   }
 
   int32_t fuse_code = model_builder.FindActivation(node, *node.OutputDefs()[0]);
-  input_indices.push_back(model_builder.AddOperandFromScalar(fuse_code));
+  ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
 
   if (model_builder.GetAndroidSdkVer() > 28) {
-    input_indices.push_back(model_builder.AddOperandFromScalar(use_nchw));
+    ADD_SCALAR_OPERAND(model_builder, input_indices, use_nchw);
 
     // 1. NNAPI Grouped Conv does not support dilations
     // 2. There is a bug in NNAPI (not sure NNAPI itself or Qualcomm Hexagon driver),
@@ -1606,8 +1614,8 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
     //    so if dilations == (1,1) we simply ignore it
     if (!grouped_conv_2d &&
         (onnx_dilations[1] != 1 || onnx_dilations[0] != 1)) {
-      input_indices.push_back(model_builder.AddOperandFromScalar(onnx_dilations[1]));
-      input_indices.push_back(model_builder.AddOperandFromScalar(onnx_dilations[0]));
+      ADD_SCALAR_OPERAND(model_builder, input_indices, onnx_dilations[1]);
+      ADD_SCALAR_OPERAND(model_builder, input_indices, onnx_dilations[0]);
     }
   }
 
@@ -1764,11 +1772,11 @@ void SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   float beta = 1.f;
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
-  input_indices.push_back(model_builder.AddOperandFromScalar(beta));
+  ADD_SCALAR_OPERAND(model_builder, input_indices, beta);
 
   if (android_skd_ver > 28) {
     // you can only specify axis for android api level 29+
-    input_indices.push_back(model_builder.AddOperandFromScalar(axis));
+    ADD_SCALAR_OPERAND(model_builder, input_indices, axis);
   }
 
   shaper.Identity(input, output);
@@ -2038,7 +2046,7 @@ void GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
   input_indices.push_back(input_2_idx);                 // B
   input_indices.push_back(bias_idx);                    // C
   int32_t fuse_code = model_builder.FindActivation(node, *node.OutputDefs()[0]);
-  input_indices.push_back(model_builder.AddOperandFromScalar(fuse_code));
+  ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
 
   shaper.FC(input1, input2, output);
   const OperandType output_operand_type(operand_types.at(input1).type, shaper[output], y_scale, y_zero_point);
@@ -2196,7 +2204,7 @@ void ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     const uint32_t axis_nchw_to_nhwc[4]{0, 3, 1, 2};
     axis = axis_nchw_to_nhwc[axis];
   }
-  input_indices.push_back(model_builder.AddOperandFromScalar(axis));
+  ADD_SCALAR_OPERAND(model_builder, input_indices, axis);
 
   const auto& output = node.OutputDefs()[0]->Name();
   shaper.Concat(inputs, axis, output);
@@ -2506,10 +2514,10 @@ void LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node
 
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
-  input_indices.push_back(model_builder.AddOperandFromScalar(radius));
-  input_indices.push_back(model_builder.AddOperandFromScalar(bias));
-  input_indices.push_back(model_builder.AddOperandFromScalar(alpha));
-  input_indices.push_back(model_builder.AddOperandFromScalar(beta));
+  ADD_SCALAR_OPERAND(model_builder, input_indices, radius);
+  ADD_SCALAR_OPERAND(model_builder, input_indices, bias);
+  ADD_SCALAR_OPERAND(model_builder, input_indices, alpha);
+  ADD_SCALAR_OPERAND(model_builder, input_indices, beta);
 
   // specify axis is only available on api level >= 29
   if (android_skd_ver > 28) {
@@ -2517,7 +2525,7 @@ void LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node
     int32_t axis = output_is_nhwc
                        ? 3   // nhwc
                        : 1;  // nchw
-    input_indices.push_back(model_builder.AddOperandFromScalar(axis));
+    ADD_SCALAR_OPERAND(model_builder, input_indices, axis);
   }
 
   shaper.Identity(input, output);
