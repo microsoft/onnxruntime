@@ -71,28 +71,28 @@ inline const OrtMemoryInfo* AllocatorWithDefaultOptions::GetInfo() const {
 template<typename B>
 inline std::string BaseMemoryInfo<B>::GetAllocatorName() const {
   const char* name = nullptr;
-  ThrowOnError(GetApi().MemoryInfoGetName(p_, &name));
+  ThrowOnError(GetApi().MemoryInfoGetName(*this, &name));
   return std::string(name);
 }
 
 template <typename B>
 inline OrtAllocatorType BaseMemoryInfo<B>::GetAllocatorType() const {
   OrtAllocatorType type;
-  ThrowOnError(GetApi().MemoryInfoGetType(p_, &type));
+  ThrowOnError(GetApi().MemoryInfoGetType(*this, &type));
   return type;
 }
 
 template <typename B>
 int BaseMemoryInfo<B>::GetDeviceId() const {
   int id = 0;
-  ThrowOnError(GetApi().MemoryInfoGetId(p_, &id));
+  ThrowOnError(GetApi().MemoryInfoGetId(*this, &id));
   return id;
 }
 
 template <typename B>
 inline OrtMemType BaseMemoryInfo<B>::GetMemoryType() const {
   OrtMemType type;
-  ThrowOnError(GetApi().MemoryInfoGetMemType(p_, &type));
+  ThrowOnError(GetApi().MemoryInfoGetMemType(*this, &type));
   return type;
 }
 
@@ -100,7 +100,7 @@ template <typename B>
 template <typename U>
 inline bool BaseMemoryInfo<B>::operator==(const BaseMemoryInfo<U>& o) const {
   int comp_result = 0;
-  ThrowOnError(Ort::GetApi().CompareMemoryInfo(p_, o, &comp_result));
+  ThrowOnError(Ort::GetApi().CompareMemoryInfo(*this, o, &comp_result));
   return comp_result == 0;
 }
 

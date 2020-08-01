@@ -112,6 +112,9 @@ struct Base {
   }
 
   T* p_{};
+
+  template <typename>
+  friend struct Unowned;  // This friend line is needed to keep the centos C++ compiler from giving an error
 };
 
 template <typename T>
