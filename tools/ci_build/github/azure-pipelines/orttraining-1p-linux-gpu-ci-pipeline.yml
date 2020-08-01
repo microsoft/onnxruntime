@@ -57,7 +57,8 @@ stages:
 
       - task: AzureKeyVault@1
         inputs:
-          azureSubscription: 'AIInfraBuild'
+          #azureSubscription: 'AIInfraBuild'
+          azureSubscription: 'AI Infra Build'
           KeyVaultName: 'jingywatest'
           SecretsFilter: '*'
           RunAsPreJob: false
@@ -69,37 +70,6 @@ stages:
             cat password.txt | docker login --username ortrelease --password-stdin ortrelease.azurecr.io
             docker tag onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 ortrelease.azurecr.io/onnxruntime-training:latest
             docker push ortrelease.azurecr.io/onnxruntime-training:latest
-
-      # There's some authentication issues with using Docker task
-      # - task: Docker@2
-      #   displayName: Login to ACR
-      #   inputs:
-      #     command: login
-      #     #containerRegistry: jingywatest
-      #     containerRegistry: ortrelease
-      #
-      # - task: Docker@2
-      #   displayName: Build
-      #   inputs:
-      #     command: build
-      #     containerRegistry: ortrelease
-      #     repository: test/onnxruntime-training-1p
-      #     dockerfile: ${{ variables.linux_gpu_dockerfile }}
-      #     tags: |
-      #       $(Build.BuildId)
-      #       latest
-      #     arguments: --build-arg TEST_FLAG="${{ parameters.test_flag }}"
-      # 
-      # - task: Docker@2
-      #   displayName: Push
-      #   inputs:
-      #     command: push
-      #     #containerRegistry: jingywatest
-      #     containerRegistry: ortrelease
-      #     repository: test/onnxruntime-training-1p
-      #     tags: |
-      #       $(Build.BuildId)
-      #       latest
 
       - template: templates/component-governance-component-detection-steps.yml
 
