@@ -56,17 +56,44 @@ class Shaper {
   // If the shape of certain input is dynamic
   // Use the following 2 functions to update the particular shape
   // and calculate the new output shape
-  void UpdateShape(const std::string& name, const Shape& new_shape);
+  // Only perform this when the NNAPI model is finalized!
+  Status UpdateShape(const std::string& name, const Shape& new_shape);
   void UpdateDynamicDimensions();
-
-  // Need to call Finalize() after the entire graph
-  // is converted to NNAPI
-  void Finalize() { shaper_finalized_ = true; }
 
   void Clear();
 
  private:
-  bool shaper_finalized_{false};
+  void ConvImpl(const std::string& input_name,
+                const std::string& weight_name,
+                const std::vector<int32_t>& onnx_pads,
+                const std::vector<int32_t>& onnx_strides,
+                const std::vector<int32_t>& onnx_dilations,
+                bool nchw,
+                const std::string& output_name);
+
+  void DepthwiseConvImpl(const std::string& input_name,
+                         const std::string& weight_name,
+                         const std::vector<int32_t>& onnx_pads,
+                         const std::vector<int32_t>& onnx_strides,
+                         const std::vector<int32_t>& onnx_dilations,
+                         bool nchw,
+                         const std::string& output_name);
+
+  void PoolImpl(const std::string& input_name,
+                const std::vector<int32_t>& onnx_pads,
+                const std::vector<int32_t>& onnx_strides,
+                const std::vector<int32_t>& kernel_shape,
+                bool nchw,
+                const std::string& output_name);
+
+  void ReshapeImpl(const std::string& input_name, const std::vector<int32_t>& shape, const std::string& output_name);
+  void TransposeImpl(const std::string& input_name, const std::vector<int32_t>& perm, const std::string& output_name);
+  void EltwiseImpl(const std::string& input1_name, const std::string& input2_name, const std::string& output_name);
+  void IdentityImpl(const std::string& input_name, const std::string& output_name);
+  void FCImpl(const std::string& input1_name, const std::string& input2_name, const std::string& output_name);
+  void ConcatImpl(const std::vector<std::string>& input_names, const int32_t axis, const std::string& output_name);
+  void SqueezeImpl(const std::string& input, const std::vector<int32_t>& axes, const std::string& output);
+
   std::unordered_map<std::string, Shape> shape_map_;
   std::vector<std::function<void(Shaper&)>> shape_ops_;
 };

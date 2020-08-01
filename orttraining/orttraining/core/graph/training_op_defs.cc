@@ -1128,8 +1128,8 @@ Example 4:
           }
         }
       });
-      
-    ONNX_CONTRIB_OPERATOR_SCHEMA(SplitTraining)
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SplitTraining)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
@@ -1166,7 +1166,7 @@ Example 4:
           return;
         }
         std::vector<int64_t> split = ParseData<int64_t>(split_proto);
-        
+
         if (!ctx.getInputType(0)->tensor_type().has_shape()) {
           return;
         }
@@ -1206,7 +1206,7 @@ Example 4:
               ->mutable_dim(axis)
               ->set_dim_value(split[i]);
         }
-        
+
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ConcatTraining)
@@ -1408,8 +1408,8 @@ Example 4:
           "Output is an empty vector when no reduction is necessary for the corresponding input.")
       .Input(0, "a_shape", "The 1st input shape as Tensor.", "T")
       .Input(1, "b_shape", "The 2nd input shape as Tensor.", "T")
-      .Output(0, "a_axes", "The reduction axes for 1st input, last to first.", "T")
-      .Output(1, "b_axes", "The reduction axes for 2nd input, last to first.", "T")
+      .Output(0, "a_axes", "The reduction axes for 1st input, last to first.", "T", OpSchema::Optional)
+      .Output(1, "b_axes", "The reduction axes for 2nd input, last to first.", "T", OpSchema::Optional)
       .TypeConstraint(
           "T",
           {"tensor(int64)"},
