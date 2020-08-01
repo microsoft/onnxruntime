@@ -174,12 +174,32 @@ namespace Microsoft.ML.OnnxRuntime
             return allocatorType;
         }
 
-        public bool CompareMemoryInfo(OrtMemoryInfo other)
+        public override bool Equals(object obj)
         {
+            var other = obj as OrtMemoryInfo;
+            if(other == null)
+            {
+                return false;
+            }
+            return Equals(other);
+        }
+
+        public bool Equals(OrtMemoryInfo other)
+        {
+            if(this == other)
+            {
+                return true;
+            }
             int result = -1;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCompareMemoryInfo(_pointer, other._pointer, out result));
             return (result == 0);
         }
+
+        public override int GetHashCode()
+        {
+            return Pointer.ToInt32();
+        }
+
         #region IDisposable Support
         protected virtual void Dispose(bool disposing)
         {
