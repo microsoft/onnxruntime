@@ -33,11 +33,11 @@ EXIT_CODE=1
 PYTHON_VER=${PYTHON_VER:=3.6}
 echo "bo=$BUILD_OS bd=$BUILD_DEVICE bdir=$BUILD_DIR pv=$PYTHON_VER bex=$BUILD_EXTR_PAR"
 
-# If in docker group, call "docker". Otherwise, call "docker".
+# If in docker group, call "docker". Otherwise, call "sudo docker".
 if id -Gnz | grep -zq "^docker$" ; then
     DOCKER_CMD=docker
 else
-    DOCKER_CMD="docker"
+    DOCKER_CMD="sudo --preserve-env docker"
 fi
 
 cd $SCRIPT_DIR/docker
