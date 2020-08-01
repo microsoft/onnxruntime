@@ -128,6 +128,16 @@ class OpKernelContext {
   // unless static optimization pre-allocates it.
   SparseTensor* Output(int index, size_t num_values, const TensorShape& shape);
 
+  // Retrieve indexed shape obtained from memory planning before actual
+  // computation. If the indexed shape cannot be inferred, this function returns
+  // false.
+  bool TryGetInferredInputShape(int index, TensorShape& shape) const;
+
+  // Retrieve indexed shape obtained from memory planning before actual
+  // computation. If the indexed shape cannot be inferred, this function returns
+  // false.
+  bool TryGetInferredOutputShape(int index, TensorShape& shape) const;
+
   const logging::Logger& Logger() const {
     return *logger_;
   }
