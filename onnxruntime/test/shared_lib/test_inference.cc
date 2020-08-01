@@ -390,7 +390,7 @@ void PrepareModule()
   module << "\t\t"
          << "self.a,self.b = A,B" << std::endl;
   module << "\t"
-         << "def compute(self, *kwargs):" << std::endl;
+         << "def compute(self,*kwargs):" << std::endl;
   module << "\t\t"
          << "return kwargs[0]*5" << std::endl;
   module.close();
