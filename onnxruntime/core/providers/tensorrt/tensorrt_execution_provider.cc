@@ -4,6 +4,7 @@
 #include <fstream>
 #include <unordered_set>
 #include "core/providers/shared_library/provider_api.h"
+#define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/common/safeint.h"
 //#include "core/graph/onnx_protobuf.h"
@@ -57,40 +58,59 @@ std::string GetEnginePath(const ::std::string& root, const std::string& name) {
 }
 }  // namespace
 
+namespace google {
+namespace protobuf {
+void ShutdownProtobufLibrary();
+}
+}  // namespace google
+
+struct ShutdownProtobuf {
+  ~ShutdownProtobuf() {
+    ::google::protobuf::ShutdownProtobufLibrary();
+  }
+} g_protobuf;
+
 namespace onnxruntime {
 
 //constexpr const char* TRT = "Tensorrt";
 //constexpr const char* TRT_PINNED = "TensorrtPinned";
 
-struct Provider_IDeviceAllocator_Impl : Provider_IDeviceAllocator {
-  Provider_IDeviceAllocator_Impl(std::unique_ptr<IDeviceAllocator> p) : p_{std::move(p)} {}
-
-  void* Alloc(size_t size) override { return p_->Alloc(size); }
-  void Free(void* p) override { return p_->Free(p); }
-
-  bool AllowsArena() const override { return p_->AllowsArena(); }
-
-  std::unique_ptr<IDeviceAllocator> p_;
-};
-
-std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCUDAAllocator(int16_t device_id, const char* name) {
-  return onnxruntime::make_unique<Provider_IDeviceAllocator_Impl>(onnxruntime::make_unique<CUDAAllocator>(device_id, name));
+namespace cuda {
+template <>
+void Impl_Cast(
+    const int64_t* input_data, int32_t* output_data,
+    size_t count) {
+  return g_host->cuda__Impl_Cast(input_data, output_data, count);
 }
 
-std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCUDAPinnedAllocator(int16_t device_id, const char* name) {
-  return onnxruntime::make_unique<Provider_IDeviceAllocator_Impl>(onnxruntime::make_unique<CUDAPinnedAllocator>(device_id, name));
+template <>
+void Impl_Cast(
+    const int32_t* input_data, int64_t* output_data,
+    size_t count) {
+  return g_host->cuda__Impl_Cast(input_data, output_data, count);
+}
+
+}  // namespace cuda
+
+#pragma warning(disable : 4100)
+template <>
+bool CudaCall<cudaError, false>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg) {
+  return g_host->CudaCall_false(retCode, exprString, libName, successCode, msg);
+}
+
+template <>
+bool CudaCall<cudaError, true>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg) {
+  return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg);
 }
 
 class Memcpy final : public Provider_OpKernel {
  public:
-  Memcpy(const Provider_OpKernelInfo& info) : Provider_OpKernel{info}, info_{info} {}
+  Memcpy(const Provider_OpKernelInfo& info) {}
 
-  const Provider_OpKernelInfo& info_;
-
-  Status Compute(Provider_OpKernelContext* ctx) const override {
+  Status Compute(Provider_OpKernelContext* ctx, const Provider_OpKernel_Base& base) const override {
     const auto* X = ctx->Input<Provider_Tensor>(0);
     Provider_Tensor* Y = ctx->Output(0, X->Shape());
-    Status retval = info_.GetDataTransferManager().CopyTensor(*X, *Y, info_.GetKernelDef_ExecQueueId());
+    Status retval = base.GetInfo().GetDataTransferManager().CopyTensor(*X, *Y, base.GetInfo().GetKernelDef_ExecQueueId());
     return retval;
   }
 };
@@ -193,13 +213,13 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     dump_subgraphs_ = (std::stoi(dump_subgraphs_env) == 0 ? false : true);
   }
 
-  const std::string engine_cache_enable_env = env_instance.GetEnvironmentVar(tensorrt_env_vars::kEngineCacheEnable);
+  const std::string engine_cache_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEngineCacheEnable);
   if (!engine_cache_enable_env.empty()) {
     engine_cache_enable_ = (std::stoi(engine_cache_enable_env) == 0 ? false : true);
   }
 
   if (engine_cache_enable_) {
-    engine_cache_path_ = env_instance.GetEnvironmentVar(tensorrt_env_vars::kEngineCachePath);
+    engine_cache_path_ = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEngineCachePath);
     if (!engine_cache_path_.empty() && !fs::is_directory(engine_cache_path_)) {
       if (!fs::create_directory(engine_cache_path_)) {
         throw std::runtime_error("Failed to create directory " + engine_cache_path_);
@@ -219,8 +239,8 @@ Provider_AllocatorPtr TensorrtExecutionProvider::Provider_GetAllocator(int id, O
   }
 }
 
-std::unique_ptr<onnxruntime::Provider_IDataTransfer> TensorrtExecutionProvider::GetDataTransfer() const {
-  return onnxruntime::CreateGPUDataTransfer();
+std::unique_ptr<onnxruntime::Provider_IDataTransfer> TensorrtExecutionProvider::Provider_GetDataTransfer() const {
+  return onnxruntime::Provider_CreateGPUDataTransfer();
 }
 
 // Convert GraphViewer graph to GraphProto
@@ -422,24 +442,24 @@ std::unique_ptr<Provider_IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph
   }
 
   // Assign inputs and outputs to subgraph's meta_def
-  auto meta_def = onnxruntime::make_unique<::onnxruntime::Provider_IndexedSubGraph::MetaDef>();
+  auto meta_def = Provider_IndexedSubGraph_MetaDef::Create();
   const std::string graph_type = graph.IsSubgraph() ? "subgraph" : "graph";
-  meta_def->name = "TRTKernel_" + graph_type + "_" + graph.Name() + "_" + std::to_string(kernels_index++);
-  meta_def->domain = kMSDomain;
+  meta_def->name() = "TRTKernel_" + graph_type + "_" + graph.Name() + "_" + std::to_string(kernels_index++);
+  meta_def->domain() = kMSDomain;
 
   for (const auto& input : inputs) {
     if (input.second->Exists()) {
-      meta_def->inputs.push_back(input.second->Name());
+      meta_def->inputs().push_back(input.second->Name());
     }
   }
 
   for (const auto& output : outputs) {
     if (output.second->Exists()) {
-      meta_def->outputs.push_back(output.second->Name());
+      meta_def->outputs().push_back(output.second->Name());
     }
   }
 
-  meta_def->since_version = 1;
+  meta_def->since_version() = 1;
   sub_graph->SetMetaDef(std::move(meta_def));
 
   return sub_graph;
@@ -606,17 +626,17 @@ void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& 
 
         // Create node to inputs/outputs/index maps
         const auto& meta_def = sub_graph->GetMetaDef();
-        const std::string node_name = meta_def->name;
+        const std::string node_name = meta_def->name();
         if (node_to_index_map.find(node_name) == node_to_index_map.end()) {
           index_to_node_map[id] = node_name;
           node_to_index_map[node_name] = id++;
         }
 
         if (meta_def != nullptr) {
-          for (const auto& input : meta_def->inputs) {
+          for (const auto& input : meta_def->inputs()) {
             input_to_nodes_map[input].insert(node_name);
           }
-          for (const auto& output : meta_def->outputs) {
+          for (const auto& output : meta_def->outputs()) {
             node_to_outputs_map[node_name].insert(output);
           }
         }
@@ -832,10 +852,10 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
     std::string trt_node_name_with_precision = fused_node->Name();
     if (fp16_enable_ && trt_builder->platformHasFastFp16()) {
       trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
-	  trt_node_name_with_precision += "_fp16";
-	  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 mode is enabled.";
+      trt_node_name_with_precision += "_fp16";
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 mode is enabled.";
     }
-	
+
     // Build TRT engine here if the graph doesn't have dynamic shape input. Otherwise engine will
     // be built at runtime
     tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine> trt_engine;
@@ -884,13 +904,13 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
     }
 
     //  Create output to index and type maps
-    const auto& graph_output = model_proto.graph().output();
+    const auto& graph_output = model_proto->graph().output();
     for (int i = 0; i < num_outputs; ++i) {
       const std::string& output_name = trt_network->getOutput(i)->getName();
       const auto& iter = output_map.find(output_name);
       if (iter != output_map.end()) {
         output_indexes[output_name] = iter->second;
-      }      
+      }
       const auto& tensor_type = graph_output[i].type().tensor_type();
       output_types[output_name] = tensor_type.elem_type();
     }
@@ -1173,12 +1193,12 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
             break;
           }
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: {
-            auto input_tensor_ptr = ort.GetTensorData<MLFloat16>(input_tensor);
+            auto input_tensor_ptr = ort.GetTensorData<uint16_t>(input_tensor);
             if (input_tensor_ptr == nullptr) {
-              CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(MLFloat16)));
+              CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(uint16_t)));
               binding_buffers_to_freeup.push_back(binding_index);
             } else {
-              buffers[binding_index] = const_cast<MLFloat16*>(input_tensor_ptr);
+              buffers[binding_index] = const_cast<uint16_t*>(input_tensor_ptr);
             }
             break;
           }
@@ -1283,9 +1303,9 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
             break;
           }
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: {
-            auto output_tensor_ptr = ort.GetTensorMutableData<MLFloat16>(output_tensor[i]);
+            auto output_tensor_ptr = ort.GetTensorMutableData<uint16_t>(output_tensor[i]);
             if (output_tensor_ptr == nullptr) {
-              CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(MLFloat16)));
+              CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(uint16_t)));
               binding_buffers_to_freeup.push_back(binding_index);
             } else {
               buffers[binding_index] = output_tensor_ptr;

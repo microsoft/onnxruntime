@@ -16,6 +16,7 @@
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
 #include "core/session/onnxruntime_c_api.h"
+enum cudaError;
 #include "provider_interfaces.h"
 
 namespace ONNX_NAMESPACE {
@@ -156,13 +157,12 @@ class TensorShape : private std::vector<int64_t> {
 template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
 
-std::unique_ptr<Provider_IDeviceAllocator> CreateCPUAllocator(std::unique_ptr<Provider_OrtMemoryInfo> memory_info);
-std::unique_ptr<Provider_IDeviceAllocator> CreateCUDAAllocator(int16_t device_id, const char* name);
-std::unique_ptr<Provider_IDeviceAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
-Provider_AllocatorPtr CreateDummyArenaAllocator(std::unique_ptr<Provider_IDeviceAllocator> resource_allocator);
-Provider_AllocatorPtr CreateAllocator(Provider_DeviceAllocatorRegistrationInfo& info, int16_t device_id = 0, bool use_arena = true);
+std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCPUAllocator(std::unique_ptr<Provider_OrtMemoryInfo> memory_info);
+std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCUDAAllocator(int16_t device_id, const char* name);
+std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
+Provider_AllocatorPtr CreateAllocator(const Provider_DeviceAllocatorRegistrationInfo& info, int16_t device_id = 0, bool use_arena = true);
 
-std::unique_ptr<Provider_IDataTransfer> CreateGPUDataTransfer();
+std::unique_ptr<Provider_IDataTransfer> Provider_CreateGPUDataTransfer();
 
 std::string GetEnvironmentVar(const std::string& var_name);
 
@@ -200,8 +200,6 @@ constexpr const char* SEVERITY_PREFIX = "VIWEF";
 class Logger {
  public:
   bool OutputIsEnabled(Severity severity, DataType data_type) const noexcept;
-
-  Logger() = delete;
 };
 
 class LoggingManager {
@@ -213,21 +211,11 @@ class Capture {
  public:
   Capture(const Logger& logger, logging::Severity severity, const char* category,
           logging::DataType dataType, const CodeLocation& location);
-  ~Capture();
 
   std::ostream& Stream() noexcept;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Capture);
-
-  // TODO: Remove this before shipping provider since this was needed because the reserved stack size was wrong without this definition matching the real one.. (as the real code exists while the libraries are still together)
-  const Logger* logger_;
-  const logging::Severity severity_;
-  const char* category_;
-  const logging::DataType data_type_;
-  const CodeLocation location_;
-
-  std::ostringstream stream_;
 };
 
 }  // namespace logging
@@ -269,6 +257,7 @@ constexpr T roundUpPow2(T a) {
   return (a + (b - 1)) & (~(b - 1));
 }
 }  // namespace math
+
 }  // namespace onnxruntime
 
 #define ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name) \

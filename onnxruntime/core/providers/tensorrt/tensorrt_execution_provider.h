@@ -85,7 +85,7 @@ class TensorrtExecutionProvider : public Provider_IExecutionProvider {
   virtual ~TensorrtExecutionProvider();
 
   virtual std::shared_ptr<Provider_KernelRegistry> Provider_GetKernelRegistry() const override;
-  std::unique_ptr<Provider_IDataTransfer> GetDataTransfer() const override;
+  std::unique_ptr<Provider_IDataTransfer> Provider_GetDataTransfer() const override;
 
   std::vector<std::unique_ptr<Provider_ComputeCapability>>
   Provider_GetCapability(const Provider_GraphViewer& graph,

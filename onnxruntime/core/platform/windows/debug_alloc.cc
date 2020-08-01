@@ -12,7 +12,7 @@
 //
 #ifndef NDEBUG
 #ifdef ONNXRUNTIME_ENABLE_MEMLEAK_CHECK
-constexpr int c_callstack_limit = 16;  // Maximum depth of callstack in leak trace
+constexpr int c_callstack_limit = 32;  // Maximum depth of callstack in leak trace
 #define VALIDATE_HEAP_EVERY_ALLOC 0    // Call HeapValidate on every new/delete
 
 #pragma warning(disable : 4073)  // initializers put in library initialization area (this is intentional)
@@ -35,7 +35,7 @@ constexpr int c_callstack_limit = 16;  // Maximum depth of callstack in leak tra
 #include <DbgHelp.h>
 #pragma comment(lib, "Dbghelp.lib")
 
-//If you are seeing errors of 
+//If you are seeing errors of
 //"Error LNK2005: "void __cdecl operator delete(void *)" (??3@YAXPEAX@Z) already defined in LIBCMTD.lib(delete_scalar.obj)"
 //Please read:https://developercommunity.visualstudio.com/content/problem/534202/visual-studio-2017-msvcrtlib-link-error.html
 

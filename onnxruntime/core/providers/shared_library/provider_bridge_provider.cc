@@ -12,13 +12,13 @@
 
 #define PROVIDER_NOT_IMPLEMENTED ORT_THROW("Unimplemented shared library provider method");
 
+extern "C" {
+void* Provider_GetHost();
+}
+
 namespace onnxruntime {
 
-ProviderHost* g_host{};
-
-void SetProviderHost(ProviderHost& host) {
-  g_host = &host;
-}
+ProviderHost* g_host = reinterpret_cast<ProviderHost*>(Provider_GetHost());
 
 static std::unique_ptr<std::vector<std::function<void()>>> s_run_on_unload_;
 
@@ -46,18 +46,26 @@ struct OnUnload {
 
 }  // namespace onnxruntime
 
-#if 0
 // Override default new/delete so that we match the host's allocator
-void* operator new(size_t n) { return g_host->HeapAllocate(n); }
-void operator delete(void* p) { return g_host->HeapFree(p); }
-void operator delete(void* p, size_t /*size*/) { return g_host->HeapFree(p); }
-#endif
+void* operator new(size_t n) {
+  return onnxruntime::g_host->HeapAllocate(n);
+}
 
+void operator delete(void* p) {
+  return onnxruntime::g_host->HeapFree(p);
+}
+
+void operator delete(void* p, size_t /*size*/) {
+  return onnxruntime::g_host->HeapFree(p);
+}
+
+#if 0
 namespace onnx {
 std::unique_ptr<ONNX_NAMESPACE::Provider_AttributeProto> Provider_AttributeProto::Create() {
-  return g_host->AttributeProto_Create();
+  return onnxruntime::g_host->AttributeProto_Create();
 }
 }  // namespace onnx
+#endif
 
 namespace onnxruntime {
 
@@ -85,6 +93,7 @@ std::unique_ptr<Provider_OrtMemoryInfo> Provider_OrtMemoryInfo::Create(
 std::unique_ptr<Provider_IndexedSubGraph> Provider_IndexedSubGraph::Create() {
   return g_host->IndexedSubGraph_Create();
 }
+#endif
 
 template <>
 MLDataType DataTypeImpl::GetType<float>() {
@@ -172,32 +181,24 @@ bool CPUIDInfo::HasAVX512f() const {
 Provider_AllocatorPtr CreateAllocator(Provider_DeviceAllocatorRegistrationInfo info, int16_t device_id) {
   return g_host->CreateAllocator(info, device_id);
 }
-#endif
 
-std::unique_ptr<Provider_IDeviceAllocator> CreateCPUAllocator(std::unique_ptr<Provider_OrtMemoryInfo> info) {
+std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCPUAllocator(std::unique_ptr<Provider_OrtMemoryInfo> info) {
   return g_host->CreateCPUAllocator(std::move(info));
 }
 
-#if 0
-std::unique_ptr<Provider_IDeviceAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) {
-  __assume(false);
+#ifdef USE_TENSORRT
+std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCUDAAllocator(int16_t device_id, const char* name) {
   return g_host->CreateCUDAAllocator(device_id, name);
 }
 
-std::unique_ptr<Provider_IDeviceAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) {
-  __assume(false);
-//  return g_host->CreateCUDAPinnedAllocator(device_id, name);
+std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCUDAPinnedAllocator(int16_t device_id, const char* name) {
+  return g_host->CreateCUDAPinnedAllocator(device_id, name);
+}
+
+std::unique_ptr<Provider_IDataTransfer> Provider_CreateGPUDataTransfer() {
+  return g_host->CreateGPUDataTransfer();
 }
 #endif
-
-Provider_AllocatorPtr CreateDummyArenaAllocator(std::unique_ptr<Provider_IDeviceAllocator> resource_allocator) {
-  return g_host->CreateDummyArenaAllocator(std::move(resource_allocator));
-}
-
-std::unique_ptr<Provider_IDataTransfer> CreateGPUDataTransfer() {
-  __assume(false);
-  //  return g_host->CreateGPUDataTransfer();
-}
 
 std::string GetEnvironmentVar(const std::string& var_name) {
   return g_host->GetEnvironmentVar(var_name);
@@ -207,7 +208,6 @@ Provider_IExecutionProvider::Provider_IExecutionProvider(const std::string& type
   p_ = g_host->Create_IExecutionProvider_Router(this, type).release();
 }
 
-#if 0
 namespace logging {
 
 bool Logger::OutputIsEnabled(Severity severity, DataType data_type) const noexcept {
@@ -238,7 +238,7 @@ std::ostream& Capture::Stream() noexcept {
   return std::cout;
 }
 
-const char* Category::onnxruntime = "foo";
+const char* Category::onnxruntime = "onnxruntime";
 
 }  // namespace logging
 
@@ -306,6 +306,5 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status,
                      const char* file, const char* function, uint32_t line) {
   return g_host->LogRuntimeError(session_id, status, file, function, line);
 }
-#endif
 
 }  // namespace onnxruntime
