@@ -177,11 +177,11 @@ def parse_arguments():
     return args
 
 
-def get_machine_info(silent=True):
+def get_machine_info(silent=True) -> str:
     machine = MachineInfo(silent)
-    return machine.machine_info
+    return json.dumps(machine.machine_info, indent=2)
 
 
 if __name__ == '__main__':
     args = parse_arguments()
-    print(json.dumps(get_machine_info(args.silent), indent=2))
+    print(get_machine_info(args.silent))
