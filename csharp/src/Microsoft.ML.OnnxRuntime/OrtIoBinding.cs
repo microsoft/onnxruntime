@@ -52,7 +52,7 @@ namespace Microsoft.ML.OnnxRuntime
                                                                     elementType,
                                                                     shape,
                                                                     allocation.Pointer, allocation.Size))
-                BindIntputOrOutput(name, ortValue.Handle, true);
+                BindInputOrOutput(name, ortValue.Handle, true);
         }
 
         /// <summary>
@@ -67,7 +67,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 throw new OnnxRuntimeException(ErrorCode.InvalidArgument, "Binding works only with Tensors");
             }
-            BindIntputOrOutput(name, fixedValue.Value, true);
+            BindInputOrOutput(name, fixedValue.Value, true);
         }
 
         /// <summary>
@@ -85,7 +85,7 @@ namespace Microsoft.ML.OnnxRuntime
                                                                     elementType,
                                                                     shape,
                                                                     allocation.Pointer, allocation.Size))
-                BindIntputOrOutput(name, ortValue.Handle, false);
+                BindInputOrOutput(name, ortValue.Handle, false);
         }
 
         /// <summary>
@@ -100,7 +100,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 throw new OnnxRuntimeException(ErrorCode.InvalidArgument, "Binding works only with Tensors");
             }
-            BindIntputOrOutput(name, fixedValue.Value, false);
+            BindInputOrOutput(name, fixedValue.Value, false);
         }
 
         /// <summary>
@@ -122,7 +122,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="name"></param>
         /// <param name="ortValue"></param>
         /// <param name="isInput"></param>
-        private void BindIntputOrOutput(string name, IntPtr ortValue, bool isInput)
+        private void BindInputOrOutput(string name, IntPtr ortValue, bool isInput)
         {
             var utf8NamePinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(name), GCHandleType.Pinned);
             using (var pinnedName = new PinnedGCHandle(utf8NamePinned))

@@ -1657,7 +1657,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        void TestCPUAllocator(InferenceSession session)
+        void TestCPUAllocatorInternal(InferenceSession session)
         {
             int device_id = 0;
             using (var info_cpu = new OrtMemoryInfo(OrtMemoryInfo.allocatorCPU, OrtAllocatorType.ArenaAllocator, device_id, OrtMemType.Default))
@@ -1672,13 +1672,17 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 {
                     Assert.NotEqual(allocator.Pointer, IntPtr.Zero);
                     var alloc_info = allocator.Info;
-                    Assert.True(info_cpu.CompareMemoryInfo(alloc_info));
+                    Assert.True(info_cpu.Equals(alloc_info));
 
                     uint size = 1024;
                     OrtMemoryAllocation chunk = allocator.Allocate(size);
                     Assert.NotEqual(chunk.Pointer, IntPtr.Zero);
                     Assert.Equal(chunk.Size, size);
-                    Assert.True(chunk.Info.CompareMemoryInfo(alloc_info));
+                    var chunk_info = chunk.Info;
+                    // Allocator type returned may be different on x86 so we don't compare.
+                    Assert.Equal(chunk_info.Name, alloc_info.Name);
+                    Assert.Equal(chunk_info.GetMemoryType(), alloc_info.GetMemoryType());
+                    Assert.Equal(chunk_info.Id, alloc_info.Id);
                     chunk.Dispose();
                     alloc_info.Dispose();
                 }
@@ -1686,7 +1690,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
 #if USE_CUDA
-        void TestCUDAAllocator(InferenceSession session)
+        void TestCUDAAllocatorInternal(InferenceSession session)
         {
             int device_id = 0;
             using (var info_cuda = new OrtMemoryInfo(OrtMemoryInfo.allocatorCUDA, OrtAllocatorType.ArenaAllocator, device_id, OrtMemType.Default))
@@ -1701,13 +1705,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 {
                     Assert.NotEqual(allocator.Pointer, IntPtr.Zero);
                     var alloc_info = allocator.Info;
-                    Assert.True(info_cuda.CompareMemoryInfo(alloc_info));
+                    Assert.True(info_cuda.Equals(alloc_info));
 
                     uint size = 1024;
                     OrtMemoryAllocation chunk = allocator.Allocate(size);
                     Assert.NotEqual(chunk.Pointer, IntPtr.Zero);
                     Assert.Equal(chunk.Size, size);
-                    Assert.True(chunk.Info.CompareMemoryInfo(alloc_info));
+                    Assert.True(chunk.Info.Equals(alloc_info));
                     chunk.Dispose();
                     alloc_info.Dispose();
                 }
@@ -1727,9 +1731,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #endif
                 using (var session = new InferenceSession(modelPath, options))
                 {
-                    TestCPUAllocator(session);
+                    TestCPUAllocatorInternal(session);
 #if USE_CUDA
-                    TestCUDAAllocator(session);
+                    TestCUDAAllocatorInternal(session);
 #endif
                 }
             }
