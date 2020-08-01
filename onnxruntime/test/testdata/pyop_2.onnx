@@ -1,6 +1,6 @@
 
-pyop_model:⁄
-ê
+pyop_model:Ê
+ñ
 XY"PyOp*	
 A"1†*	
 B"2†*	
@@ -9,8 +9,8 @@ pyop_model:⁄
 class_name"MyKernel†*
 input_types@†*
 module"mymodule†*
-output_types@†:PyOp_1
-à
+output_types@†:pyop_multi_1
+é
 YZ"PyOp*	
 A"1†*
 
@@ -20,7 +20,7 @@ class_name"
 MyKernel_2†*
 input_types@†*
 module"mymodule†*
-output_types@†:PyOp_2multi_pyop_graphZ
+output_types@†:pyop_multi_2multi_pyop_graphZ
 X
 
 
