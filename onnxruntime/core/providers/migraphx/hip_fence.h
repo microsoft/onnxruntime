@@ -12,8 +12,8 @@ class HIPFence : public IFence {
  public:
   HIPFence(const GPUDataTransfer* data_transfer);
   virtual ~HIPFence();
-  virtual void BeforeUsingAsInput(onnxruntime::ProviderType provider_type, int queue_id) override;
-  virtual void BeforeUsingAsOutput(onnxruntime::ProviderType provider_type, int queue_id) override;
+  virtual void BeforeUsingAsInput(bool sync_cpu, int queue_id) override;
+  virtual void BeforeUsingAsOutput(bool sync_cpu, int queue_id) override;
   virtual void AfterUsedAsInput(int queue_id) override;
   virtual void AfterUsedAsOutput(int queue_id) override;
   virtual bool CanRelease() override;

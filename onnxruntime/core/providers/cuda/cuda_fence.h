@@ -12,8 +12,8 @@ class CUDAFence : public IFence {
  public:
   CUDAFence(const GPUDataTransfer* data_transfer);
   virtual ~CUDAFence();
-  virtual void BeforeUsingAsInput(onnxruntime::ProviderType provider_type, int queue_id) override;
-  virtual void BeforeUsingAsOutput(onnxruntime::ProviderType provider_type, int queue_id) override;
+  virtual void BeforeUsingAsInput(bool sync_cpu, int queue_id) override;
+  virtual void BeforeUsingAsOutput(bool sync_cpu, int queue_id) override;
   virtual void AfterUsedAsInput(int queue_id) override;
   virtual void AfterUsedAsOutput(int queue_id) override;
   virtual bool CanRelease() override;

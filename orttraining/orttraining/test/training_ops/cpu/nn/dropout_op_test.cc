@@ -29,7 +29,7 @@ constexpr auto k_dropout_opset_version = 12;
 
 const Tensor& FetchTensor(const OrtValue& ort_value) {
   if (ort_value.Fence()) {
-    ort_value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, 0);
+    ort_value.Fence()->BeforeUsingAsInput(/*sync_cpu*/ true, 0);
   }
   return ort_value.Get<Tensor>();
 }
@@ -293,8 +293,8 @@ void RunDropoutGradTest(const char* op, float ratio, const std::vector<int64_t>&
   auto mask_buffer = onnxruntime::make_unique<bool[]>(input_shape.Size());
   std::generate_n(
       mask_buffer.get(), input_shape.Size(),
-      [ratio, rng = std::default_random_engine{42},
-       dist = std::uniform_real_distribution<float>{0.0f, 1.0f}]() mutable {
+      [ ratio, rng = std::default_random_engine{42},
+        dist = std::uniform_real_distribution<float>{0.0f, 1.0f} ]() mutable {
         return dist(rng) >= ratio;
       });
 

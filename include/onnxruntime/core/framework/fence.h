@@ -24,15 +24,15 @@ class IFence {
 
   /**
      Called by executor before OrtValue is used as input in a compute kernel in provider_type and exec queue_id
-     This should wait in the specified provider's exec queue for previous write to OrtValue to finish
+     This should wait in either CPU or device's exec queue for previous write to OrtValue to finish
   */
-  virtual void BeforeUsingAsInput(onnxruntime::ProviderType provider_type, int queue_id) = 0;
+  virtual void BeforeUsingAsInput(bool sync_cpu, int queue_id) = 0;
 
   /**
      Called by executor before OrtValue is used as output in a compute kernel in provider_type and exec queue_id
-     This should wait in the specified provider's exec queue for previous read to OrtValue to finish
+     This should wait in either CPU or device's exec queue for previous read to OrtValue to finish
   */
-  virtual void BeforeUsingAsOutput(onnxruntime::ProviderType provider_type, int queue_id) = 0;
+  virtual void BeforeUsingAsOutput(bool sync_cpu, int queue_id) = 0;
 
   /**
      Called by executor after OrtValue is used as input in a compute kernel in provider_type and exec queue_id

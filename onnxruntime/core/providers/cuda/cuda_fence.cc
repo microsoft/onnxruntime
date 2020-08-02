@@ -20,8 +20,8 @@ CUDAFence::~CUDAFence() {
   CUDA_CALL_THROW(cudaEventDestroy(write_event_));
 }
 
-void CUDAFence::BeforeUsingAsInput(onnxruntime::ProviderType provider_type, int async_queue_id) {
-  if (provider_type == onnxruntime::kCudaExecutionProvider) {
+void CUDAFence::BeforeUsingAsInput(bool sync_cpu, int async_queue_id) {
+  if (!sync_cpu) {
     // sync in GPU, the call is non-blocking on CPU
     CUDA_CALL_THROW(cudaStreamWaitEvent(data_transfer_->GetStream(async_queue_id), write_event_, 0));
   } else {
@@ -30,8 +30,8 @@ void CUDAFence::BeforeUsingAsInput(onnxruntime::ProviderType provider_type, int 
   }
 }
 
-void CUDAFence::BeforeUsingAsOutput(onnxruntime::ProviderType provider_type, int queue_id) {
-  if (provider_type == onnxruntime::kCudaExecutionProvider) {
+void CUDAFence::BeforeUsingAsOutput(bool sync_cpu, int queue_id) {
+  if (!sync_cpu) {
     // sync in GPU, the call is non-blocking on CPU
     cudaStream_t stream = data_transfer_->GetStream(queue_id);
     CUDA_CALL_THROW(cudaStreamWaitEvent(stream, read_event_, 0));

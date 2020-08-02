@@ -237,29 +237,21 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
         Fence_t fence = op_kernel_context.InputFence(input_index);
         if (fence) {
-          auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
-          if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
-            execution_provider_type = kCpuExecutionProvider;
-          }
-          fence->BeforeUsingAsInput(execution_provider_type, queue_id);
+          fence->BeforeUsingAsInput(OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index), queue_id);
         }
       }
 
       for (int input_index = 0; input_index < op_kernel_context.ImplicitInputCount(); ++input_index) {
         Fence_t fence = op_kernel_context.ImplicitInputFence(input_index);
         if (fence) {
-          auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
-          if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
-            execution_provider_type = kCpuExecutionProvider;
-          }
-          fence->BeforeUsingAsInput(execution_provider_type, queue_id);
+          fence->BeforeUsingAsInput(OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index), queue_id);
         }
       }
 
       for (int output_index = 0; output_index < op_kernel_context.OutputCount(); ++output_index) {
         Fence_t fence = op_kernel_context.OutputFence(output_index);
         if (fence) {
-          fence->BeforeUsingAsOutput(p_op_kernel->Node().GetExecutionProviderType(), queue_id);
+          fence->BeforeUsingAsOutput(/*sync_cpu*/ false, queue_id);
         }
       }
     }

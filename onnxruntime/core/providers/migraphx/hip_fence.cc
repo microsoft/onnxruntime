@@ -17,17 +17,17 @@ HIPFence::~HIPFence() {
   hipEventDestroy(write_event_);
 }
 
-void HIPFence::BeforeUsingAsInput(onnxruntime::ProviderType provider_type, int async_queue_id) {
-  (void)provider_type;
+void HIPFence::BeforeUsingAsInput(bool sync_cpu, int async_queue_id) {
+  (void)sync_cpu;
   (void)async_queue_id;
   // sync on CPU for all other providers, this is blocking
   hipEventSynchronize(write_event_);
 }
 
-void HIPFence::BeforeUsingAsOutput(onnxruntime::ProviderType provider_type, int queue_id) {
-  (void)provider_type;
+void HIPFence::BeforeUsingAsOutput(bool sync_cpu, int queue_id) {
+  (void)sync_cpu;
   (void)queue_id;
-  
+
   // sync on CPU for all other providers, this is blocking
   hipEventSynchronize(read_event_);
   hipEventSynchronize(write_event_);

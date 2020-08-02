@@ -479,7 +479,7 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
     feed_names[i] = input_names[i];
     auto& ort_value = feeds[i] = *reinterpret_cast<const ::OrtValue*>(input[i]);
 
-    if (ort_value.Fence()) ort_value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, queue_id);
+    if (ort_value.Fence()) ort_value.Fence()->BeforeUsingAsInput(/*sync_cpu*/ true, queue_id);
   }
 
   // Create output feed
@@ -496,7 +496,7 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
     if (output[i] != nullptr) {
       ::OrtValue& value = *(output[i]);
       if (value.Fence())
-        value.Fence()->BeforeUsingAsOutput(onnxruntime::kCpuExecutionProvider, queue_id);
+        value.Fence()->BeforeUsingAsOutput(/*sync_cpu*/ true, queue_id);
       fetches[i] = value;
     }
   }
@@ -513,7 +513,7 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
   for (size_t i = 0; i != output_names_len; ++i) {
     ::OrtValue& value = fetches[i];
     if (value.Fence())
-      value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, queue_id);
+      value.Fence()->BeforeUsingAsInput(/*sync_cpu*/ true, queue_id);
     if (output[i] == nullptr) {
       output[i] = new OrtValue(value);
     }

@@ -595,7 +595,7 @@ std::vector<MLValue> OpTester::ExecuteModel(
         OrtValue& ort_value = fetches[idx];
         if (ort_value.Fence())
           ort_value.Fence()->BeforeUsingAsInput(
-              onnxruntime::kCpuExecutionProvider, 0);
+              /*sync_cpu*/ true, 0);
 
         if (expected_data.def_.Exists()) {  // optional outputs won't exist
           if (expected_data.data_.IsTensor()) {

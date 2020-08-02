@@ -3,6 +3,7 @@
 
 #include "core/framework/allocation_planner.h"
 #include <list>
+#include <map>
 #include <unordered_map>
 #include <algorithm>
 #include <sstream>
@@ -40,8 +41,6 @@ std::ostream& operator<<(std::ostream& out, AllocKind alloc_kind) {
     case AllocKind::kShare:
       out << "Share";
       break;
-    case AllocKind::kGroupAllocate:
-      out << "GroupAllocate";
   }
   return out;
 }
@@ -57,10 +56,16 @@ std::ostream& operator<<(std::ostream& out, std::pair<const SequentialExecutionP
   out << "(ort_value_idx) output_name : <allocation plan>\n";
   auto plan_size = plan.allocation_plan.size();
 
-  for (auto& name_index : session_state.GetOrtValueNameIdxMap()) {
-    auto index = name_index.second;
-    index_to_name[index] = name_index.first;
-    out << "(" << index << ") " << name_index.first << " : ";
+  const auto& map = session_state.GetOrtValueNameIdxMap();
+  std::list<int> idx_list;
+  for (auto& name_index : map) {
+    idx_list.push_back(name_index.second);
+  }
+  idx_list.sort();
+
+  for (auto index : idx_list) {
+    session_state.GetOrtValueNameIdxMap().GetName(index, index_to_name[index]);
+    out << "(" << index << ") " << index_to_name[index] << " : ";
     if (0 <= index && static_cast<size_t>(index) < plan_size) {
       auto& elt_plan = plan.allocation_plan[index];
       out << elt_plan.alloc_kind;
@@ -70,14 +75,7 @@ std::ostream& operator<<(std::ostream& out, std::pair<const SequentialExecutionP
       out << ", " << loc.ToString();
 
       if (elt_plan.create_fence) out << ", use fence when async";
-      if (elt_plan.grouped_async_buffers) {
-        out << ", grouped {";
-        for (const auto& gab : *elt_plan.grouped_async_buffers) {
-          out << gab << ", ";
-        }
-        out << "}";
-      }
-
+      if (elt_plan.alloc_size) out << " , alloc_size=" << elt_plan.alloc_size;
     } else {
       out << "Index out-of-range!";
     }
@@ -107,6 +105,29 @@ std::ostream& operator<<(std::ostream& out, std::pair<const SequentialExecutionP
   }
 
   return out;
+}
+
+AllocSize::AllocSize(const ONNX_NAMESPACE::TensorShapeProto* tensor_shape_proto, size_t elem_size) {
+  static_size_ = elem_size;
+  symbolic_dims_.clear();
+  if (tensor_shape_proto) {
+    const auto& shape = *tensor_shape_proto;
+    all_dims_known_ = true;
+    for (int i = 0; i < shape.dim_size(); i++) {
+      const auto& val = shape.dim(i);
+      if (utils::HasDimValue(val)) {
+        static_size_ *= val.dim_value();
+      } else if (utils::HasDimParam(val)) {
+        symbolic_dims_.push_back(val.dim_param());
+      } else {
+        all_dims_known_ = false;
+      }
+    }
+    // sort the symbolic dims to make comparison easier
+    symbolic_dims_.sort();
+  } else {
+    all_dims_known_ = false;
+  }
 }
 
 class PlannerImpl {
@@ -147,9 +168,6 @@ class PlannerImpl {
 
   // ort_value_info_ is indexed by an OrtValueIndex
   std::vector<OrtValueInfo> ort_value_info_;
-
-  // lookup of node that generates output node arg
-  std::unordered_map<const NodeArg*, const Node*> node_arg_from_;
 
   // FreeBufferInfo is used to track information about ml-values whose buffers are
   // free to be reused.
@@ -247,9 +265,9 @@ class PlannerImpl {
           if (p_input_arg->Exists()) {
             auto input_arg_index = Index(p_input_arg->Name());
             auto original = Buffer(input_arg_index);
-            if (1 == UseCount(original)) {
+            if (1 == UseCount(original) && AllocPlan(input_arg_index).alloc_kind != AllocKind::kAllocateStatically) {
               if (SameSize(*p_input_arg, *p_output_arg)) {
-                // we can reuse this input since it is its last use and permitted for in-place update
+                // we can reuse this input since it is its last use, input is not static, and permitted for in-place update
                 *reusable_input = input_arg_index;  // or original; both should be okay
                 return true;
               }
@@ -259,27 +277,6 @@ class PlannerImpl {
       }
     }
     return false;
-  }
-
-  static bool SameShape(const TensorShapeProto& shape1, const TensorShapeProto& shape2) {
-    // TODO: This should probably be defined to be the equality operator on TensorShapeProto.
-    namespace on = ONNX_NAMESPACE;
-    int rank1 = shape1.dim_size();
-    if (shape2.dim_size() != rank1) return false;
-    for (int i = 0; i < rank1; i++) {
-      const auto& val1 = shape1.dim(i);
-      const auto& val2 = shape2.dim(i);
-      if (utils::HasDimValue(val1) && utils::HasDimValue(val2) &&
-          (val1.dim_value() == val2.dim_value()))
-        continue;  // same known dimension
-      if (utils::HasDimParam(val1) && utils::HasDimParam(val2)) {
-        const auto& val1_param = val1.dim_param();
-        if (val1_param == val2.dim_param() && !val1_param.empty())
-          continue;  // same unknown dimension
-      }
-      return false;
-    }
-    return true;
   }
 
   /*! \brief Given a tensor-type, return the size of an element of the tensor.
@@ -307,20 +304,8 @@ class PlannerImpl {
     // If either of the tensors is a string, don't treat them the same. Moreover, reusing a string tensor for a string
     // tensor without releasing the previous memory can cause memory leaks; hence we don't allow reuse across string
     // tensors as well.
-    return !(is_type1_string || is_type2_string) && (type1_size == type2_size) && SameShape(shape1, shape2);
-
-    /* TODO: we can improve this if the concrete shapes are known for both as below.
-       Unclear whether this is worthwhile though.
-    if (KnownSize(p_shape1) && KnownSize(p_shape2)) {
-      // Comparison of statically-known size
-      auto size1 = NumElements(p_shape1) * EltSize(ptype1);
-      auto size2 = NumElements(p_shape2) * EltSize(ptype2);
-      return size1 == size2;
-    } else {
-      // Comparison of statically-unknown size buffers
-      return SameElementSize(ptype1, ptype2) && SameShape(shape1, shape2);
-    }
-    */
+    return !(is_type1_string || is_type2_string) &&
+           AllocSize(&shape1, type1_size) == AllocSize(&shape2, type2_size);
   }
 
   bool SameSize(const onnxruntime::NodeArg& arg1, const onnxruntime::NodeArg& arg2) {
@@ -332,12 +317,12 @@ class PlannerImpl {
     return SameSize(*p_shape1, arg1, *p_shape2, arg2);
   }
 
-  bool FindMatchingTensorInFreeList(
-      const onnxruntime::NodeArg& output_arg,
-      std::function<bool(std::list<FreeBufferInfo>::const_iterator, bool&)> process_found) {
+  // Find if freelist contains a buffer of the same size as output_arg
+  bool FindReusableTensor(const onnxruntime::NodeArg& output_arg, OrtValueIndex* reusable_tensor) {
     auto p_required_buffer_shape = context_.GetShape(output_arg);
     if (nullptr == p_required_buffer_shape) return false;
     auto& required_memory_info = AllocPlan(output_arg.Name()).location;
+    if (HasFence(&output_arg)) return false;
 
     for (auto it = freelist_.begin(); it != freelist_.end(); ++it) {
       size_t reusable = static_cast<size_t>(it->ml_value);
@@ -346,49 +331,20 @@ class PlannerImpl {
         // TODO this should be an error case, needs more investigation
         continue;
       }
-
-      // Don't reuse between forward and backward, as it may hold in GPU for too long
-      // Besides, reusing across FW/BW might lead to wasted memory swap
-      if (node_arg_from_[p_node_arg]->Description() != node_arg_from_[&output_arg]->Description())
-        continue;
-
       auto& available_memory_info = AllocPlan(p_node_arg->Name()).location;
       if (!(available_memory_info == required_memory_info)) continue;
+      if (HasFence(p_node_arg)) continue;  // do not reuse async buffer here. Instead, it would be reused at runtime
       auto p_available_buffer_shape = context_.GetShape(*p_node_arg);
       if (nullptr != p_available_buffer_shape) {
         if (SameSize(*p_available_buffer_shape, *p_node_arg,
                      *p_required_buffer_shape, output_arg)) {
-          bool remove_from_freelist = false;
-          if (process_found(it, remove_from_freelist)) {
-            if (remove_from_freelist) {
-              freelist_.erase(it);
-            }
-            return true;  // stop searching
-          }
+          *reusable_tensor = it->ml_value;
+          freelist_.erase(it);
+          return true;
         }
       }
     }
     return false;
-  }
-
-  // Find if freelist contains a buffer of the same size as output_arg
-  bool FindReusableTensor(const onnxruntime::NodeArg& output_arg, OrtValueIndex* reusable_tensor) {
-    // fenced buffer should not try to reuse from freelist here
-    // instead, it may have its own group for reuse at runtime
-    if (HasFence(&output_arg)) return false;
-
-    return FindMatchingTensorInFreeList(
-        output_arg,
-        [&](std::list<FreeBufferInfo>::const_iterator it, bool& remove_from_freelist) {
-          if (!AllocPlan(it->ml_value).create_fence) {
-            // only reuse non-async buffer from free list
-            // since async buffer may still being used when in CPU's free list
-            *reusable_tensor = it->ml_value;
-            remove_from_freelist = true;
-            return true;
-          }
-          return false;
-        });
   }
 
   void Initialize(size_t num_graph_nodes, size_t num_ml_values) {
@@ -502,6 +458,7 @@ class PlannerImpl {
         ++UseCount(index);
         plan_.SetLocation(static_cast<size_t>(index),
                           exec_provider->GetAllocator(0, p_kernel_def->OutputMemoryType(i))->Info());
+        AllocPlan(index).exec_queue_id = p_kernel_def->ExecQueueId();
       }
 
       // if sync is needed, mark allocation plan as create_fence=true
@@ -597,6 +554,8 @@ class PlannerImpl {
 
     // Cached graph outputs.
     const auto& graph_outputs = graph_viewer_.GetOutputs();
+    // keep track of known alloc-sizes, since the ptr in AllocPlan is shared for the same size
+    std::map<AllocSize, std::shared_ptr<AllocSize>> known_alloc_sizes;
     for (size_t program_counter = 0; program_counter < execution_plan.size(); ++program_counter) {
       SequentialExecutionPlan::NodeExecutionPlan step = execution_plan[program_counter];
       // the node (aka operator) which carries the considered program (aka computation).
@@ -639,48 +598,28 @@ class PlannerImpl {
         } else if (FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused)) {
           // Reuse one of this node's input buffers as the output buffer (for in-place update)
           Reuse(reused, current, AllocKind::kReuse);
-          // note that reuse of async buffer input is OK,
-          // because this op would wait for input fence to be ready
-          // after that, the buffer should be no longer async
-          // so remove it from async group to prevent it being
-          // reused by other async buffers later
-          if (AllocPlan(reused).grouped_async_buffers != nullptr) {
-            AllocPlan(reused).grouped_async_buffers->erase(reused);
-            AllocPlan(reused).grouped_async_buffers = nullptr;
-            AllocPlan(reused).alloc_kind = AllocKind::kAllocate;
-          }
-        } else if (!context_.IsParallelExecutionEnabled() && FindReusableTensor(*node_output, &reused)) {
+        } else if (!context_.IsParallelExecutionEnabled() &&
+                   FindReusableTensor(*node_output, &reused)) {
           // Reuse an available (dead) buffer for this output, this is only for sequential execution.
           Reuse(reused, current, AllocKind::kReuse);
-        } else if (!context_.IsParallelExecutionEnabled() && AllocPlan(current).create_fence) {
-          // Reuse an async buffer by setting up its group, this is only for sequential execution.
-          // actual reuse of async buffer happens at runtime in ExecutionFrame
-          auto& grouped_buffers = AllocPlan(current).grouped_async_buffers;
-          if (!FindMatchingTensorInFreeList(
-                  *node_output,
-                  [&](std::list<FreeBufferInfo>::const_iterator it, bool& remove_from_freelist) {
-                    auto& found_grouped_buffers = AllocPlan(it->ml_value).grouped_async_buffers;
-                    if (found_grouped_buffers != nullptr) {
-                      ORT_ENFORCE(grouped_buffers == nullptr);  // should have not been assigned yet
-                      grouped_buffers = found_grouped_buffers;
-                      // Note: do not delete entry from freelist
-                      // since the grouped async buffers will go through ReleaseMLValue at runtime
-                      // for reusing dynamically
-                      remove_from_freelist = false;
-                      return true;
-                    }
-                    // other than grouped buffers, fenced buffers won't be reused
-                    return false;
-                  })) {
-            // not found in free list, this is the first in its group
-            grouped_buffers = std::make_shared<std::unordered_set<int>>();
-          }
-          // add self into group
-          grouped_buffers->insert(current);
-          AllocPlan(current).alloc_kind = AllocKind::kGroupAllocate;
         } else {
           // otherwise: allocate a new buffer for this output
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
+        }
+        if (AllocPlan(current).alloc_kind == AllocKind::kAllocate &&
+            AllocPlan(current).create_fence) {
+          //compute alloc size for non-string type if allocation is needed for async buffer
+          if (node_output->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_STRING) {
+            auto alloc_size = std::make_shared<AllocSize>(node_output->Shape(), GetElementSize(node_output->Type()));
+            if (alloc_size->AllDimsKnown()) {
+              if (known_alloc_sizes.count(*alloc_size)) {
+                AllocPlan(current).alloc_size = known_alloc_sizes.at(*alloc_size);
+              } else {
+                AllocPlan(current).alloc_size = alloc_size;
+                known_alloc_sizes.insert(std::make_pair(*alloc_size, alloc_size));
+              }
+            }
+          }
         }
       }
 
@@ -713,6 +652,15 @@ class PlannerImpl {
         }
       }
     }
+    // debug info for alloc_size checking
+    for (const auto& pair : known_alloc_sizes) {
+      const auto& alloc_size = pair.first;
+      std::cout << "Alloc size " << pair.second << " : static size " << alloc_size.StaticSize() << ", Symbolic dims: ";
+      for (const auto& s : alloc_size.SymbolicDims())
+        std::cout << s << ", ";
+      std::cout << std::endl;
+    }
+
     return Status::OK();
   }
 
@@ -801,13 +749,6 @@ Status PlannerImpl::CreatePlan() {
   // explore more efficient orderings (from a memory usage perspective).
   for (auto n : p_graph_nodes) {
     plan_.execution_plan.emplace_back(n);
-    const Node* node = graph_viewer_.GetNode(n);
-    node->ForEachWithIndex(
-        node->OutputDefs(),
-        [this, node](const NodeArg& arg, size_t) {
-          node_arg_from_.insert(std::make_pair(&arg, node));
-          return Status::OK();
-        });
   }
 
   // compute use counts for all ml-values

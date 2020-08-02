@@ -83,6 +83,14 @@ Status IExecutionFrame::ReleaseMLValueImpl(int ort_value_idx) {
   if (ort_value_idx == NodeIndexInfo::kInvalidEntry || static_cast<size_t>(ort_value_idx) >= all_values_size_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index ", ort_value_idx);
   }
+
+  // If fence is available, check whether async read has completed or not.
+  Fence_t fence = GetMLValue(ort_value_idx).Fence();
+  if (fence && !fence->CanRelease()) {
+    // Async data reading is not done yet, defer mem release until Session.run() end.
+    return Status::OK();
+  }
+
   all_values_[ort_value_idx] = OrtValue();
   return Status::OK();
 }
@@ -246,7 +254,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
             // it's less efficient (the arena will add some overhead to coalesce individual allocations
             // back into blocks on 'free'), but better than failing completely.
             try {
-              // static_activation_memory_in_bytes_ is max virtual memory size the planner computes 
+              // static_activation_memory_in_bytes_ is max virtual memory size the planner computes
               auto peak_size = mem_patterns_->patterns[i].PeakSize();
               // Planning of one memory type should only happen once.
               buffer = alloc->Alloc(peak_size);
@@ -311,7 +319,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
 
   // Lazily get the allocator only if needed.
   AllocatorPtr alloc = nullptr;
-  
+
   // create fence if needed
   if (create_fence) {
     ORT_ENFORCE(ort_value.Fence() == nullptr);
@@ -500,8 +508,41 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
       // In the future we may want to have different way to handle it.
       case AllocKind::kAllocateOutput:
       case AllocKind::kAllocate: {
-        ORT_RETURN_IF_ERROR(AllocateMLValueTensorSelfOwnBuffer(ort_value, ort_value_index, ml_data_type, alloc_info,
-                                                               *shape, per_alloc_plan.create_fence));
+        bool async_buffer_reused = false;
+        std::deque<int>* queue = nullptr;
+        if (alloc_kind != AllocKind::kAllocateOutput &&
+            per_alloc_plan.create_fence &&
+            nullptr != per_alloc_plan.alloc_size.get()) {
+          // Get async buffer from head of queue for async-buffers.
+          // The queue is created if not exist, so later when async buffer being released
+          // it would enter tail of the queue
+          queue = FindOrCreateQueueForAsyncBuffers(per_alloc_plan.location, per_alloc_plan.alloc_size.get(), /*create*/ true);
+          if (!queue->empty()) {
+            // when max queue length is reached, do not allocate new buffer but reuse instead.
+            // The buffer shares the fence object of buffer in queue front
+            static size_t max_queue_length = 1;
+            int reuse_mlvalue_index = queue->front();
+            if (queue->size() >= max_queue_length || GetMLValue(reuse_mlvalue_index).Fence()->CanRelease()) {
+              queue->pop_front();
+              ORT_RETURN_IF_ERROR(AllocateMLValueTensorPreAllocateBuffer(
+                  ort_value, reuse_mlvalue_index, ml_data_type, alloc_info, *shape));
+              ort_value.ShareFenceWith(GetMutableMLValue(reuse_mlvalue_index));
+              async_buffer_reused = true;
+              // Note that at this point it's already inside kernel creating output tensor
+              // so need a manual wait for the reused tensor to finish its previous fence
+              ort_value.Fence()->BeforeUsingAsOutput(alloc_info.device.Type() == OrtDevice::CPU, per_alloc_plan.exec_queue_id);
+              std::cout << "Async buffer reused: " << ort_value_index << " from " << reuse_mlvalue_index << " in queue " << queue << ", fence " << ort_value.Fence() << std::endl;
+            }
+          }
+        }
+        if (!async_buffer_reused) {
+          // nothing to reuse from the queue, create a new buffer with a new fence
+          ORT_RETURN_IF_ERROR(AllocateMLValueTensorSelfOwnBuffer(ort_value, ort_value_index, ml_data_type, alloc_info,
+                                                                 *shape, per_alloc_plan.create_fence));
+          if (per_alloc_plan.create_fence) {
+            std::cout << "Async buffer create: " << ort_value_index << ", queue=" << queue << " alloc_size=" << per_alloc_plan.alloc_size << ", fence " << ort_value.Fence() << std::endl;
+          }
+        }
         break;
       }
       case AllocKind::kReuse: {
@@ -522,33 +563,6 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
         int reuse_mlvalue_index = per_alloc_plan.reused_buffer;
         // copy at the OrtValue level so the shared_ptr for the data is shared between the two OrtValue instances
         ort_value = GetMutableMLValue(reuse_mlvalue_index);
-        break;
-      }
-      case AllocKind::kGroupAllocate: {
-        // Async buffers with fence would be added to tail of its group queue
-        bool async_buffer_reused = false;
-        auto* queue = FindOrCreateQueueForGroupedAsyncBuffers(per_alloc_plan.grouped_async_buffers.get(), /*create*/ true);
-        if (!queue->empty()) {
-          // when max queue length is reached, do not allocate new buffer
-          // but wait for queue head's fence instead
-          static size_t max_queue_length = 1;
-
-          int reuse_mlvalue_index = queue->front();
-          OrtValue& reuse_value = GetMutableMLValue(reuse_mlvalue_index);
-          if (queue->size() >= max_queue_length ||
-              reuse_value.Fence()->CanRelease()) {
-            queue->pop_front();
-            ORT_RETURN_IF_ERROR(AllocateMLValueTensorPreAllocateBuffer(
-                ort_value, reuse_mlvalue_index, ml_data_type, alloc_info, *shape));
-            ort_value.ShareFenceWith(reuse_value);
-            async_buffer_reused = true;
-          }
-        }
-        if (!async_buffer_reused) {
-          // nothing to reuse from the queue, create a new buffer with a new fence
-          ORT_RETURN_IF_ERROR(AllocateMLValueTensorSelfOwnBuffer(ort_value, ort_value_index, ml_data_type, alloc_info,
-                                                                 *shape, /*create_fence*/ true));
-        }
         break;
       }
       default: {
@@ -581,23 +595,23 @@ Status ExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_
 }
 
 Status ExecutionFrame::ReleaseMLValueImpl(int ort_value_idx) {
-  Fence_t fence = GetMLValue(ort_value_idx).Fence();
-  if (fence && !fence->CanRelease()) {
-    // Async buffers with fence would be added to tail of grouped_async_buffer's queue
-    const auto& alloc_plan = session_state_.GetExecutionPlan()->allocation_plan;
-    ORT_ENFORCE(ort_value_idx >= 0 && static_cast<size_t>(ort_value_idx) < alloc_plan.size());
-    const auto& per_alloc_plan = alloc_plan[ort_value_idx];
-    if (per_alloc_plan.alloc_kind == AllocKind::kGroupAllocate) {
-      auto* queue = FindOrCreateQueueForGroupedAsyncBuffers(per_alloc_plan.grouped_async_buffers.get(), false);
-      // put this buffer to queue tail
-      queue->push_back(ort_value_idx);
-    }
-    // For non-kGroupAllocate buffers with fence,
-    // it will be reused because of input reuse/alias
-    // and will be released as non-fenced buffer later.
-  } else {
-    ORT_RETURN_IF_ERROR(IExecutionFrame::ReleaseMLValueImpl(ort_value_idx));
+  // Async buffers with fence would be added to tail of grouped_async_buffer's queue
+  const auto& alloc_plan = session_state_.GetExecutionPlan()->allocation_plan;
+  ORT_ENFORCE(ort_value_idx >= 0 && static_cast<size_t>(ort_value_idx) < alloc_plan.size());
+  const auto& per_alloc_plan = alloc_plan[ort_value_idx];
+  if (per_alloc_plan.alloc_kind != AllocKind::kAllocateOutput &&
+      per_alloc_plan.create_fence &&
+      nullptr != per_alloc_plan.alloc_size.get()) {
+    auto* queue = FindOrCreateQueueForAsyncBuffers(per_alloc_plan.location, per_alloc_plan.alloc_size.get(), /*create*/ false);
+    std::cout << "Async buffer retired to queue: " << ort_value_idx << ", queue=" << queue << std::endl;
+    // put this buffer to queue tail, it is not counted as free
+    queue->push_back(ort_value_idx);
+    return Status::OK();
   }
+  if (per_alloc_plan.create_fence) {
+    std::cout << "Async buffer released: " << ort_value_idx << std::endl;
+  }
+  ORT_RETURN_IF_ERROR(IExecutionFrame::ReleaseMLValueImpl(ort_value_idx));
   TraceFree(ort_value_idx);
   return Status::OK();
 }
@@ -609,15 +623,22 @@ const AllocPlanPerValue& ExecutionFrame::GetAllocationPlan(int ort_value_idx) {
   return alloc_plan[ort_value_idx];
 }
 
-std::deque<int>* ExecutionFrame::FindOrCreateQueueForGroupedAsyncBuffers(const void* p, bool create) {
-  if (queues_for_grouped_async_buffers_.count(p) == 0) {
+std::deque<int>* ExecutionFrame::FindOrCreateQueueForAsyncBuffers(const OrtMemoryInfo& location, const void* p, bool create) {
+  if (create && 0 == queues_for_async_buffers_.count(location)) {
+    queues_for_async_buffers_.insert(std::make_pair(location, std::unordered_map<const void*, std::deque<int>>()));
+  } else {
+    ORT_ENFORCE(queues_for_async_buffers_.count(location));
+  }
+  auto& queue = queues_for_async_buffers_.at(location);
+  if (queue.count(p) == 0) {
     if (!create) {
       return nullptr;
     } else {
-      queues_for_grouped_async_buffers_.emplace(p, std::deque<int>());
+      queue.emplace(p, std::deque<int>());
+      std::cout << "FindOrCreateQueueForAsyncBuffer: " << location.name << ", alloc_size=" << p << ", ptr=" << &queue.at(p) << std::endl
     }
   }
-  return &queues_for_grouped_async_buffers_[p];
+  return &queue.at(p);
 }
 
 void ExecutionFrame::TraceAllocate(int ort_value_idx, size_t size) {

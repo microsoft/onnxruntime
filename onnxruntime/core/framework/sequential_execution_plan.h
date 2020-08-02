@@ -3,12 +3,11 @@
 
 #pragma once
 
-#include <unordered_set>
-
 #include "core/graph/basic_types.h"
 #include "core/framework/alloc_kind.h"
 #include "core/framework/data_types.h"
 #include "core/framework/execution_plan_base.h"
+#include <list>
 
 namespace onnxruntime {
 // Every ml-value has a unique name and is assigned a unique integral number.
@@ -21,6 +20,45 @@ using OrtValueName = std::string;
 
 class SessionState;
 
+// shape_size contains product of static dimensions, and sorted list of symbolic dimensions
+class AllocSize {
+ private:
+  bool all_dims_known_;
+  size_t static_size_;
+  std::list<std::string> symbolic_dims_;
+
+ public:
+  AllocSize(const ONNX_NAMESPACE::TensorShapeProto* tensor_shape_proto, size_t elem_size);
+
+  inline bool operator==(const AllocSize& other) const {
+    return all_dims_known_ &&
+           other.all_dims_known_ &&
+           static_size_ == other.static_size_ &&
+           symbolic_dims_ == other.symbolic_dims_;
+  }
+
+  inline bool operator<(const AllocSize& other) const {
+    ORT_ENFORCE(all_dims_known_ && other.all_dims_known_);
+    if (static_size_ != other.static_size_) {
+      return static_size_ < other.static_size_;
+    } else {
+      return symbolic_dims_ < other.symbolic_dims_;
+    }
+  }
+
+  inline bool AllDimsKnown() const {
+    return all_dims_known_;
+  }
+
+  size_t StaticSize() const {
+    return static_size_;
+  }
+
+  const std::list<std::string>& SymbolicDims() const {
+    return symbolic_dims_;
+  }
+};
+
 // AllocPlanPerValue: (a simplified form of AllocationPlanPerValue above)
 // Captures information required to allocate/reuse buffer for a ml-value
 struct AllocPlanPerValue {
@@ -30,15 +68,12 @@ struct AllocPlanPerValue {
   // reused_buffer is valid only if alloc_kind == kReuse. It indicates
   // which OrtValue's buffer must be reused for this OrtValue.
   OrtValueIndex reused_buffer{0};
-  // grouped_async_buffers is non-empty only if alloc_kind == kGroupAllocate, when the value is used in async kernels.
-  // 1. In allocation planning, fenced values with the same shape and device would be put in grouped_async_buffers
-  //    note it requires shape inference info, and undetermined shapes would not be treated as the same group
-  // 2. ExecFrame maintains a async group queue of pending buffers for each async group
-  // 3. when trying to allocate value, ORT would check the head of async group queue (oldest) to see
-  //    if the head buffer's fence has passed. If so, pop the head to reuse; if not, allocate a new value
-  // 4. When the aync kernel's compute is done, put the value at the tail of the group queue
-  bool create_fence{false};  // note that kAllocateOutput may have fence but no group
-  std::shared_ptr<std::unordered_set<OrtValueIndex>> grouped_async_buffers;
+  // if the value is used in async kernel, a fence object would be created
+  bool create_fence{false};
+  // tensors of the same alloc_size would share the same pointer
+  std::shared_ptr<AllocSize> alloc_size;
+  // exec queue id when using the buffer as output
+  int exec_queue_id;
 
  public:
   AllocPlanPerValue() : location(CPU, Invalid) {}

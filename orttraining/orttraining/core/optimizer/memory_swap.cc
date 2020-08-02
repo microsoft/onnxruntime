@@ -17,8 +17,16 @@ std::ostream& operator<<(std::ostream& out, const TensorShapeProto& shape_proto)
 namespace onnxruntime {
 
 Status MemorySwap::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, const logging::Logger& /*logger*/) const {
+  // Skip following ops that do not rely on tensor content (Shape),
+  // and tensor being aliased (Flatten, Identity, Reshape, Squeeze, Unsqueeze),
+  // and don't swap more than once (SwapFromHost, SwapToHost)
   static const std::unordered_set<std::string> ignore_op_types =
       {"Shape",
+       "Flatten",
+       "Identity",
+       "Reshape",
+       "Squeeze",
+       "Unsqueeze",
        "SwapFromHost",
        "SwapToHost"};
 

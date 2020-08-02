@@ -24,6 +24,7 @@
 #include "core/framework/utils.h"
 #include "core/framework/mem_buffer.h"
 #include "core/framework/tensor_allocator.h"
+#include "core/framework/utils.h"
 
 namespace onnxruntime {
 
@@ -86,6 +87,33 @@ Status FinalizeSessionState(SessionState& session_state,
   session_state.SetExecutionPlan(std::move(exec_plan));
 
 #ifdef PRINT_EXECUTION_PLAN
+  std::cout << "Topo order of execution:" << std::endl;
+  for (auto i : graph_viewer.GetNodesInTopologicalOrder()) {
+    const auto& node = *graph_viewer.GetNode(i);
+    std::cout << node.Name() << "(" << node.OpType() << "): Inputs (";
+    node.ForEachWithIndex(
+        node.InputDefs(),
+        [](const NodeArg& def, size_t) {
+          std::cout << def.Name() << ", ";
+          return Status::OK();
+        });
+    std::cout << ")" << std::endl;
+    std::cout << "  Outputs: (";
+    node.ForEachWithIndex(
+        node.OutputDefs(),
+        [](const NodeArg& def, size_t) {
+          const auto* shape_proto = def.Shape();
+          std::cout << def.Name() << " ";
+          if (shape_proto) {
+            std::cout << *shape_proto;
+          }
+          std::cout << ", ";
+          return Status::OK();
+        });
+    std::cout << ")" << std::endl;
+  }
+  std::cout << std::endl;
+
   std::cout << std::make_pair(exec_plan_ptr, &session_state) << std::endl;
 #endif
 

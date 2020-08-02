@@ -10,8 +10,8 @@
 
 namespace onnxruntime {
 
-static const GPUDataTransfer* GetGPUDataTransfer(const SessionState* session_state) {
-  OrtDevice gpu_device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0);
+static const GPUDataTransfer* GetGPUDataTransfer(const SessionState* session_state, OrtDevice::DeviceId device_id) {
+  OrtDevice gpu_device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, device_id);
   OrtDevice cpu_device;
   return static_cast<const GPUDataTransfer*>(session_state->GetDataTransferMgr().GetDataTransfer(gpu_device, cpu_device));
 }
@@ -48,7 +48,7 @@ void CUDAAllocator::Free(void* p) {
 }
 
 FencePtr CUDAAllocator::CreateFence(const SessionState* session_state) {
-  return std::make_shared<CUDAFence>(GetGPUDataTransfer(session_state));
+  return std::make_shared<CUDAFence>(GetGPUDataTransfer(session_state, Info().id));
 }
 
 void* CUDAPinnedAllocator::Alloc(size_t size) {
@@ -64,7 +64,7 @@ void CUDAPinnedAllocator::Free(void* p) {
 }
 
 FencePtr CUDAPinnedAllocator::CreateFence(const SessionState* session_state) {
-  return std::make_shared<CUDAFence>(GetGPUDataTransfer(session_state));
+  return std::make_shared<CUDAFence>(GetGPUDataTransfer(session_state, Info().id));
 }
 
 }  // namespace onnxruntime

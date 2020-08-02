@@ -286,6 +286,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
         continue;
       const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
       if (exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate &&
+          !exe_plan->allocation_plan[ml_value_idx].create_fence &&  // do not create memory pattern for async buffer
           ml_data_type != DataTypeImpl::GetType<std::string>()) {
         //calculate size
         auto* arg = node->OutputDefs()[i];
