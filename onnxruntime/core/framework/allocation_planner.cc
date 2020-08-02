@@ -652,14 +652,6 @@ class PlannerImpl {
         }
       }
     }
-    // debug info for alloc_size checking
-    for (const auto& pair : known_alloc_sizes) {
-      const auto& alloc_size = pair.first;
-      std::cout << "Alloc size " << pair.second << " : static size " << alloc_size.StaticSize() << ", Symbolic dims: ";
-      for (const auto& s : alloc_size.SymbolicDims())
-        std::cout << s << ", ";
-      std::cout << std::endl;
-    }
 
     return Status::OK();
   }
