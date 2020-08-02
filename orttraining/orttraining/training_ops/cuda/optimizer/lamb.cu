@@ -49,18 +49,18 @@ __device__ __forceinline__ void _LambComputeDirectionRule(
   const T3 m2_new_tmp_corrected = m2_new_tmp / beta_correction;
 
   // Save regularized update direction to output.
-  const T2 d_tmp = lambda * w + 
+  const T2 d_tmp = lambda * T1(half(w)) + 
     T1(m1_new_tmp_corrected / (_Sqrt(m2_new_tmp_corrected) + epsilon));
 
   // Things are updated only if the direction is finite.
   if (_IsFiniteScalar(d_tmp)) {
     d = d_tmp;
-    m1_new = m1_new_tmp;
-    m2_new = m2_new_tmp;
+    m1_new = T3(half(m1_new_tmp));
+    m2_new = T3(half(m2_new_tmp));
   } else {
     d = T2(0);
-    m1_new = m1;
-    m2_new = m2;
+    m1_new = T3(half(m1));
+    m2_new = T3(half(m2));
   }
 }
 
@@ -187,7 +187,7 @@ __device__ __forceinline__ void _LambUpdateRule(
 
   // Compute delta using the saved update direction.
   const T2 delta = -ratio * T2(d);
-  const T2 w_new_tmp = w + delta;
+  const T2 w_new_tmp = T2(half(w)) + delta;
 
   if (_IsFiniteScalar(w_new_tmp)) {
     if (g_new) {
