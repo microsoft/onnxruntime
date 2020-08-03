@@ -99,7 +99,7 @@ std::vector<std::vector<int>> ModelBuilder::GetSupportedNodes() {
 #define DEFINE_ADD_OPERAND_FROM_SCALAR(scalar_type, op_type)                      \
   Status ModelBuilder::AddOperandFromScalar(scalar_type value, uint32_t& index) { \
     OperandType operandType(Type::op_type);                                       \
-    ORT_THROW_IF_ERROR(AddNewNNAPIOperand(operandType, index));                   \
+    ORT_RETURN_IF_ERROR(AddNewNNAPIOperand(operandType, index));                  \
     RETURN_STATUS_ON_ERROR_WITH_NOTE(                                             \
         nnapi_->ANeuralNetworksModel_setOperandValue(                             \
             nnapi_model_->model_, index, &value, sizeof(value)),                  \
@@ -285,7 +285,7 @@ Status ModelBuilder::RegisterInitializers() {
 
     uint8_t* dest = nnapi_model_->mem_initializers_->GetDataPtr() + offset;
     memcpy(dest, src, size);
-    SetOperandValue(index, nnapi_model_->mem_initializers_.get(), size, offset);
+    ORT_RETURN_IF_ERROR(SetOperandValue(index, nnapi_model_->mem_initializers_.get(), size, offset));
     offset += padded_size;
   }
 
@@ -306,7 +306,7 @@ Status ModelBuilder::RegisterModelInputs() {
     }
 
     const auto* shape_proto = node_arg->Shape();
-    ORT_ENFORCE(shape_proto != nullptr, "shape_proto cannot be null for input: " + input_name);
+    ORT_RETURN_IF_NOT(shape_proto != nullptr, "shape_proto cannot be null for input: " + input_name);
     Shaper::Shape shape;
 
     for (const auto& dim : shape_proto->dim()) {
@@ -314,8 +314,8 @@ Status ModelBuilder::RegisterModelInputs() {
       shape.push_back(SafeInt<uint32_t>(dim.dim_value()));
     }
 
-    ORT_ENFORCE(GetAndroidSdkVer() >= 29 || !shape.empty(),
-                "0-rank input is only supported on Android API level 29+");
+    ORT_RETURN_IF_NOT(GetAndroidSdkVer() >= 29 || !shape.empty(),
+                      "0-rank input is only supported on Android API level 29+");
 
     Type type = Type::TENSOR_FLOAT32;
     float scale = 0.0f;
@@ -419,36 +419,38 @@ void ModelBuilder::RegisterOperand(const std::string& name, uint32_t index,
     RegisterNHWCOperand(name);
 }
 
-void ModelBuilder::SetOperandValue(uint32_t index,
-                                   Model::NNMemory* memory,
-                                   size_t size, size_t offset) {
+Status ModelBuilder::SetOperandValue(uint32_t index,
+                                     Model::NNMemory* memory,
+                                     size_t size, size_t offset) {
 #ifdef USENNAPISHAREDMEM
-  THROW_ON_ERROR(
+  RETURN_STATUS_ON_ERROR(
       nnapi_->ANeuralNetworksModel_setOperandValueFromMemory(
           nnapi_model_->model_, index,
           memory->GetHandle(),
           offset, size));
 #else
-  THROW_ON_ERROR(
+  RETURN_STATUS_ON_ERROR(
       nnapi_->ANeuralNetworksModel_setOperandValue(
           nnapi_model_->model_, index,
           memory->GetDataPtr() + offset,
           size));
 #endif
+
+  return Status::OK();
 }
 
-uint32_t ModelBuilder::AddOperandFromPersistMemoryBuffer(
+Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
     const std::string& name, const void* buffer,
     const android::nn::wrapper::OperandType& operand_type) {
   shaper_.AddShape(name, operand_type.dimensions);
   uint32_t index = 0;
-  ORT_THROW_IF_ERROR(AddNewOperand(name, operand_type, false /* is_nhwc */, index));
+  ORT_RETURN_IF_ERROR(AddNewOperand(name, operand_type, false /* is_nhwc */, index));
   const size_t size = operand_type.GetOperandBlobByteSize();
 
   // for small size operand, the value will be copied
   // no need to persist
   if (size < ANEURALNETWORKS_MAX_SIZE_OF_IMMEDIATELY_COPIED_VALUES) {
-    THROW_ON_ERROR(
+    RETURN_STATUS_ON_ERROR(
         nnapi_->ANeuralNetworksModel_setOperandValue(
             nnapi_model_->model_, index,
             buffer, size));
@@ -457,11 +459,11 @@ uint32_t ModelBuilder::AddOperandFromPersistMemoryBuffer(
     auto persist_buffer = std::make_unique<Model::NNMemory>(nnapi_, name.c_str(), padded_size);
     uint8_t* dest = persist_buffer->GetDataPtr();
     memcpy(dest, buffer, size);
-    SetOperandValue(index, persist_buffer.get(), size, 0);
+    ORT_RETURN_IF_ERROR(SetOperandValue(index, persist_buffer.get(), size, 0));
     nnapi_model_->mem_persist_buffers_.push_back(std::move(persist_buffer));
   }
 
-  return index;
+  return Status::OK();
 }
 
 Status ModelBuilder::AddOperations() {
@@ -499,10 +501,10 @@ Status ModelBuilder::AddOperation(int op, const std::vector<uint32_t>& input_ind
   return Status::OK();
 }
 
-std::unique_ptr<Model> ModelBuilder::Compile() {
-  Prepare();
+Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
+  ORT_RETURN_IF_ERROR(Prepare());
 
-  THROW_ON_ERROR_WITH_NOTE(
+  RETURN_STATUS_ON_ERROR_WITH_NOTE(
       nnapi_->ANeuralNetworksModel_identifyInputsAndOutputs(
           nnapi_model_->model_, static_cast<uint32_t>(input_index_vec_.size()),
           &input_index_vec_[0],
@@ -512,38 +514,39 @@ std::unique_ptr<Model> ModelBuilder::Compile() {
 
   // relax fp32tofp16 is only available on API 28+
   if (use_fp16_ && GetAndroidSdkVer() > 27) {
-    THROW_ON_ERROR_WITH_NOTE(
+    RETURN_STATUS_ON_ERROR_WITH_NOTE(
         nnapi_->ANeuralNetworksModel_relaxComputationFloat32toFloat16(
             nnapi_model_->model_, true),
         "Set fp16");
   }
 
-  THROW_ON_ERROR_WITH_NOTE(
+  RETURN_STATUS_ON_ERROR_WITH_NOTE(
       nnapi_->ANeuralNetworksModel_finish(nnapi_model_->model_),
       "on model finish");
 
   if (!nnapi_target_devices_.empty()) {
-    THROW_ON_ERROR_WITH_NOTE(
+    RETURN_STATUS_ON_ERROR_WITH_NOTE(
         nnapi_->ANeuralNetworksCompilation_createForDevices(
             nnapi_model_->model_, nnapi_target_devices_.data(),
             nnapi_target_devices_.size(), &nnapi_model_->compilation_),
         "on createForDevices");
   } else {
-    THROW_ON_ERROR_WITH_NOTE(
+    RETURN_STATUS_ON_ERROR_WITH_NOTE(
         nnapi_->ANeuralNetworksCompilation_create(nnapi_model_->model_, &nnapi_model_->compilation_),
         "on create");
   }
 
-  THROW_ON_ERROR_WITH_NOTE(
+  RETURN_STATUS_ON_ERROR_WITH_NOTE(
       nnapi_->ANeuralNetworksCompilation_setPreference(
           nnapi_model_->compilation_, static_cast<int32_t>(exe_pref_)),
       "on setPreference");
 
-  THROW_ON_ERROR_WITH_NOTE(
+  RETURN_STATUS_ON_ERROR_WITH_NOTE(
       nnapi_->ANeuralNetworksCompilation_finish(nnapi_model_->compilation_),
       "on compilation finish");
 
-  return std::move(nnapi_model_);
+  model.reset(nnapi_model_.release());
+  return Status::OK();
 }
 
 int32_t ModelBuilder::FindActivation(const Node& node, const NodeArg& output) {
@@ -621,16 +624,18 @@ bool ModelBuilder::GetNHWCOperand(const std::string& nchw_name, std::string& nhw
   return false;
 }
 
-void ModelBuilder::SetNHWCToNCHWOperandMap(const std::string& nhwc_name,
-                                           const std::string& nchw_name) {
-  ORT_ENFORCE(!Contains(nhwc_to_nchw_map_, nhwc_name), "A previous nchw to nhwc map exists");
+Status ModelBuilder::SetNHWCToNCHWOperandMap(const std::string& nhwc_name,
+                                             const std::string& nchw_name) {
+  ORT_RETURN_IF_NOT(!Contains(nhwc_to_nchw_map_, nhwc_name), "A previous nchw to nhwc map exists");
   nhwc_to_nchw_map_[nhwc_name] = nchw_name;
+  return Status::OK();
 }
 
-void ModelBuilder::SetNCHWToNHWCOperandMap(const std::string& nchw_name,
-                                           const std::string& nhwc_name) {
-  ORT_ENFORCE(!Contains(nchw_to_nhwc_map_, nchw_name), "A previous nchw to nhwc map exists");
+Status ModelBuilder::SetNCHWToNHWCOperandMap(const std::string& nchw_name,
+                                             const std::string& nhwc_name) {
+  ORT_RETURN_IF_NOT(!Contains(nchw_to_nhwc_map_, nchw_name), "A previous nchw to nhwc map exists");
   nchw_to_nhwc_map_[nchw_name] = nhwc_name;
+  return Status::OK();
 }
 
 }  // namespace nnapi

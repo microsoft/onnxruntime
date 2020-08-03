@@ -224,7 +224,8 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
       nnapi::ModelBuilder builder(graph_viewer);
       builder.SetUseNCHW(false);
       builder.SetUseFp16(false);
-      std::unique_ptr<nnapi::Model> nnapi_model = builder.Compile();
+      std::unique_ptr<nnapi::Model> nnapi_model;
+      ORT_RETURN_IF_ERROR(builder.Compile(nnapi_model));
 
       // Build map from input name to its index in input definitions
       {
@@ -270,8 +271,8 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
       const auto& model_inputs = model->GetInputs();
       const auto& model_outputs = model->GetOutputs();
 
-      ORT_ENFORCE(model_inputs.size() <= num_inputs, "Inconsistent input sizes");
-      ORT_ENFORCE(model_outputs.size() == num_outputs, "Inconsistent output sizes");
+      ORT_RETURN_IF_NOT(model_inputs.size() <= num_inputs, "Inconsistent input sizes");
+      ORT_RETURN_IF_NOT(model_outputs.size() == num_outputs, "Inconsistent output sizes");
 
       std::vector<nnapi::Execution::InputBuffer> inputs;
       inputs.reserve(model_inputs.size());

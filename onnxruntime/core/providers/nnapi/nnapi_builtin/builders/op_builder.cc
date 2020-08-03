@@ -96,8 +96,8 @@ Status AddTransposeOperator(ModelBuilder& model_builder,
 
   Shape perm_dimen = {SafeInt<uint32_t>(perm.size())};
   OperandType perm_operand_type(Type::TENSOR_INT32, perm_dimen);
-  uint32_t perm_idx = model_builder.AddOperandFromPersistMemoryBuffer(
-      perm_name, perm.data(), perm_operand_type);
+  ORT_THROW_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(perm_name, perm.data(), perm_operand_type));
+  uint32_t perm_idx = operand_indices.at(perm_name);
 
   input_indices.push_back(perm_idx);  // permutation
   shaper.Transpose(input, perm, output);
@@ -130,9 +130,9 @@ Status TransposeBetweenNCHWAndNHWC(ModelBuilder& model_builder,
   AddTransposeOperator(model_builder, input, perm_name, perm, output, nchw_to_nhwc);
 
   if (nchw_to_nhwc) {
-    model_builder.SetNCHWToNHWCOperandMap(input, output);
+    ORT_RETURN_IF_ERROR(model_builder.SetNCHWToNHWCOperandMap(input, output));
   } else {  // nhwc_to_nchw
-    model_builder.SetNHWCToNCHWOperandMap(input, output);
+    ORT_RETURN_IF_ERROR(model_builder.SetNHWCToNCHWOperandMap(input, output));
   }
 
   LOGS_DEFAULT(VERBOSE) << "Operand [" << input << "] with shape "
@@ -213,15 +213,14 @@ enum DataLayout {
 };
 
 // TODO, replace this with more efficient code in optimizers
-static uint32_t AddInitializerInNewLayout(ModelBuilder& model_builder,
-                                          const std::string& name,
-                                          const OperandType& source_operand_type,
-                                          DataLayout new_layout) {
+static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
+                                        const std::string& name,
+                                        const OperandType& source_operand_type,
+                                        DataLayout new_layout) {
   const auto& tensor = model_builder.GetInitializerTensors().at(name);
   const Shape& shape = source_operand_type.dimensions;
-  ORT_ENFORCE(shape.size() == 4, "The initializer is not 4D: " +
-                                     name + " actual dim " +
-                                     std::to_string(shape.size()));
+  ORT_RETURN_IF_NOT(shape.size() == 4, "The initializer is not 4D: " + name + " actual dim " +
+                                           std::to_string(shape.size()));
 
   // TODO support other data types
   const uint8_t* src = nullptr;
@@ -234,14 +233,15 @@ static uint32_t AddInitializerInNewLayout(ModelBuilder& model_builder,
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
-      ORT_THROW_IF_ERROR(
+      ORT_RETURN_IF_ERROR(
           UnpackInitializerTensor(tensor, unpacked_tensor, tensor_byte_size));
       src = unpacked_tensor.get();
       break;
     }
     default:
-      ORT_THROW("The initializer of graph " + name +
-                " doesn't have valid type: " + std::to_string(tensor.data_type()));
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                    "The initializer of graph " + name + " doesn't have valid type: " +
+                        std::to_string(tensor.data_type()));
   }
 
   const auto out_t = shape[0], in_t = shape[1],
@@ -291,15 +291,14 @@ static uint32_t AddInitializerInNewLayout(ModelBuilder& model_builder,
 }
 
 // TODO, replace this with more efficient code in optimizers
-static uint32_t AddInitializerTransposed(ModelBuilder& model_builder,
-                                         const OperandType& source_operand_type,
-                                         const std::string& name) {
+static Status AddInitializerTransposed(ModelBuilder& model_builder,
+                                       const OperandType& source_operand_type,
+                                       const std::string& name) {
   const auto& tensor = model_builder.GetInitializerTensors().at(name);
   const Shape& shape = source_operand_type.dimensions;
 
-  ORT_ENFORCE(shape.size() == 2, "The initializer is not 2D: " +
-                                     name + " actual dim " +
-                                     std::to_string(shape.size()));
+  ORT_RETURN_IF_NOT(shape.size() == 2, "The initializer is not 2D: " + name + " actual dim " +
+                                           std::to_string(shape.size()));
 
   // TODO support other data types
   const uint8_t* src = nullptr;
@@ -311,14 +310,15 @@ static uint32_t AddInitializerTransposed(ModelBuilder& model_builder,
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
-      ORT_THROW_IF_ERROR(
+      ORT_RETURN_IF_ERROR(
           UnpackInitializerTensor(tensor, unpacked_tensor, tensor_byte_size));
       src = unpacked_tensor.get();
       break;
     }
     default:
-      ORT_THROW("The initializer of graph " + name +
-                " doesn't have valid type: " + std::to_string(tensor.data_type()));
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                    "The initializer of graph " + name + " doesn't have valid type: " +
+                        std::to_string(tensor.data_type()));
   }
 
   const auto x_t = shape[0], y_t = shape[1];
@@ -1010,8 +1010,8 @@ void ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   Shape shape_dimen = {size};
   std::string shape_name = model_builder.GetUniqueName(node.Name() + input + "newshape");
   OperandType shape_operand_type(Type::TENSOR_INT32, shape_dimen);
-  uint32_t shape_idx = model_builder.AddOperandFromPersistMemoryBuffer(shape_name, shape.data(), shape_operand_type);
-  input_indices.push_back(shape_idx);
+  ORT_THROW_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(shape_name, shape.data(), shape_operand_type));
+  input_indices.push_back(operand_indices.at(shape_name));
 
   shaper.Reshape(input, shape, output);
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
@@ -1121,9 +1121,9 @@ void BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
   shaper.AddShape(tensor_a_name, tensor_a_dimen);
   shaper.AddShape(tensor_b_name, tensor_a_dimen);
   const OperandType a_operand_type(operand_types.at(input).type, tensor_a_dimen);
-  model_builder.AddOperandFromPersistMemoryBuffer(tensor_a_name, a.data(), a_operand_type);
+  ORT_THROW_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(tensor_a_name, a.data(), a_operand_type));
   const OperandType b_operand_type(operand_types.at(input).type, tensor_a_dimen);
-  model_builder.AddOperandFromPersistMemoryBuffer(tensor_b_name, b.data(), b_operand_type);
+  ORT_THROW_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(tensor_b_name, b.data(), b_operand_type));
 
   // Mul
   AddBinaryOperator(ANEURALNETWORKS_MUL,
@@ -1543,11 +1543,11 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
     if (weight_type == Type::TENSOR_FLOAT32) {
       vector<float> buffer(bias_dimen[0], 0.0f);
       OperandType bias_operand_type(Type::TENSOR_FLOAT32, bias_dimen, x_scale * w_scale);
-      model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer.data(), bias_operand_type);
+      ORT_THROW_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer.data(), bias_operand_type));
     } else if (weight_type == Type::TENSOR_QUANT8_ASYMM) {
       vector<int32_t> buffer(bias_dimen[0], 0);
       OperandType bias_operand_type(Type::TENSOR_INT32, bias_dimen, x_scale * w_scale);
-      model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer.data(), bias_operand_type);
+      ORT_THROW_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer.data(), bias_operand_type));
     } else {
       ORT_THROW("Unknown weight type " + TypeToStr(weight_type));
     }
@@ -1561,7 +1561,7 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
 
     const void* buffer = GetTensorInt32Data(bias_tensor);
     OperandType bias_operand_type(Type::TENSOR_INT32, bias_dimen, x_scale * w_scale);
-    model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer, bias_operand_type);
+    ORT_THROW_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer, bias_operand_type));
   }
 
   const auto auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
@@ -2006,10 +2006,10 @@ void GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
       onnx_mat_b_shape.push_back(SafeInt<uint32_t>(dim));
 
     const OperandType onnx_mat_b_operand_type(onnx_mat_b_type, onnx_mat_b_shape, b_scale, b_zero_point);
-    input_2_idx = AddInitializerTransposed(model_builder, onnx_mat_b_operand_type, input2);
-  } else {
-    input_2_idx = operand_indices.at(input2);
+    AddInitializerTransposed(model_builder, onnx_mat_b_operand_type, input2);
   }
+
+  input_2_idx = operand_indices.at(input2);
 
   // Verify if the scale and zero point matchs from onnx input and nnapi input
   if (is_qlinear_matmul) {
@@ -2029,16 +2029,16 @@ void GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
     if (bias_type == Type::TENSOR_FLOAT32) {
       std::vector<float> buffer(bias_dimen[0], 0.f);
       OperandType bias_operand_type(Type::TENSOR_FLOAT32, bias_dimen);
-      bias_idx = model_builder.AddOperandFromPersistMemoryBuffer(
-          bias, buffer.data(), bias_operand_type);
+      ORT_THROW_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer.data(), bias_operand_type));
     } else if (bias_type == Type::TENSOR_QUANT8_ASYMM) {
       std::vector<int32_t> buffer(bias_dimen[0], 0);
       OperandType bias_operand_type(Type::TENSOR_INT32, bias_dimen, a_scale * b_scale, 0);
-      bias_idx = model_builder.AddOperandFromPersistMemoryBuffer(
-          bias, buffer.data(), bias_operand_type);
+      ORT_THROW_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer.data(), bias_operand_type));
     } else {
       ORT_THROW("Unknown weight type " + TypeToStr(bias_type));
     }
+
+    bias_idx = operand_indices.at(bias);
   }
 
   std::vector<uint32_t> input_indices;
@@ -2278,7 +2278,7 @@ void SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   Shape axes_dimen = {static_cast<uint32_t>(axes.size())};
   shaper.AddShape(axes_name, axes_dimen);
   const OperandType axes_operand_type(Type::TENSOR_INT32, axes_dimen);
-  model_builder.AddOperandFromPersistMemoryBuffer(axes_name, axes.data(), axes_operand_type);
+  ORT_THROW_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(axes_name, axes.data(), axes_operand_type));
 
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));      // input

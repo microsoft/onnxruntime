@@ -33,7 +33,7 @@ class ModelBuilder {
 
   std::vector<std::vector<int>> GetSupportedNodes();
 
-  std::unique_ptr<Model> Compile();
+  Status Compile(std::unique_ptr<Model>& model);
 
   int32_t GetAndroidSdkVer() const;
 
@@ -52,8 +52,8 @@ class ModelBuilder {
   Status AddOperandFromScalar(int32_t value, uint32_t& index);
 
   // Add an NNAPI tensor operand (and allocate persist buffer)
-  uint32_t AddOperandFromPersistMemoryBuffer(const std::string& name, const void* buffer,
-                                             const android::nn::wrapper::OperandType& operand_type);
+  Status AddOperandFromPersistMemoryBuffer(const std::string& name, const void* buffer,
+                                           const android::nn::wrapper::OperandType& operand_type);
 
   // The initializer will be processed separately, skip it as an initializer
   void AddInitializerToSkip(const std::string& tensor_name);
@@ -103,10 +103,10 @@ class ModelBuilder {
   bool GetNCHWOperand(const std::string& nhwc_name, std::string& nchw_name);
   bool GetNHWCOperand(const std::string& nchw_name, std::string& nhwc_name);
 
-  void SetNHWCToNCHWOperandMap(const std::string& nhwc_name,
-                               const std::string& nchw_name);
-  void SetNCHWToNHWCOperandMap(const std::string& nchw_name,
-                               const std::string& nhwc_name);
+  Status SetNHWCToNCHWOperandMap(const std::string& nhwc_name,
+                                 const std::string& nchw_name);
+  Status SetNCHWToNHWCOperandMap(const std::string& nchw_name,
+                                 const std::string& nhwc_name);
 
  private:
   const NnApi* nnapi_{nullptr};
@@ -164,8 +164,8 @@ class ModelBuilder {
   Status RegisterModelOutputs();
   void RegisterModelShaper();
 
-  void SetOperandValue(uint32_t index, Model::NNMemory* memory,
-                       size_t size, size_t offset);
+  Status SetOperandValue(uint32_t index, Model::NNMemory* memory,
+                         size_t size, size_t offset);
 
   Status AddNewNNAPIOperand(const android::nn::wrapper::OperandType& type, uint32_t& index);
   Status AddNewOperand(const std::string& name,
