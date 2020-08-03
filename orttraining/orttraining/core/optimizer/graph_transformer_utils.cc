@@ -37,7 +37,7 @@
 #include "core/session/inference_session.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/optimizer/bias_dropout_fusion.h"
-#include "orttraining/core/optimizer/concat_training_rewriter.h"
+#include "orttraining/core/optimizer/concat_replacement.h"
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
 #include "orttraining/core/optimizer/localized_recompute.h"
 #include "orttraining/core/optimizer/megatron_transformer.h"
@@ -105,7 +105,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       rule_transformer =
           onnxruntime::make_unique<RuleBasedGraphTransformer>(optimizer_utils::GenerateRuleBasedTransformerName(level),
                                                               compatible_eps);
-      rule_transformer->Register(onnxruntime::make_unique<ConcatTrainingRewriter>());
+      rule_transformer->Register(onnxruntime::make_unique<ConcatReplacement>());
     } break;
 
     case TransformerLevel::Level3: {

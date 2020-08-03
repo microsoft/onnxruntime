@@ -14,7 +14,7 @@
 #include "orttraining/core/optimizer/gist_encode_decode.h"
 #include "orttraining/core/optimizer/nonzero_shape_setter.h"
 #include "orttraining/core/optimizer/megatron_transformer.h"
-#include "orttraining/core/optimizer/concat_training_rewriter.h"
+#include "orttraining/core/optimizer/concat_replacement.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/asserts.h"
@@ -111,14 +111,14 @@ TEST_F(GraphTransformationTests, NonZeroShapeSetter) {
 
 // MegatronF/G and ConcatTraining is defined only for training, and in msdomain.
 #ifndef DISABLE_CONTRIB_OPS
-TEST_F(GraphTransformationTests, ConcatTrainingRewriter) {
+TEST_F(GraphTransformationTests, ConcatReplacement) {
   auto model_uri = MODEL_FOLDER "concat_trainable.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, *logger_).IsOK());
   Graph& graph = p_model->MainGraph();
 
-  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("ConcatTrainingRewriter");
-  rule_transformer_L1->Register(onnxruntime::make_unique<ConcatTrainingRewriter>());
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("ConcatReplacement");
+  rule_transformer_L1->Register(onnxruntime::make_unique<ConcatReplacement>());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
   graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
 

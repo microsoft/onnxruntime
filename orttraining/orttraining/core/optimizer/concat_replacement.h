@@ -8,16 +8,16 @@
 namespace onnxruntime {
 
 /**
-@Class ConcatTrainingRewriter
+@Class ConcatReplacement
 
 Rewrite rule that replaces Concat with ConcatTraining, that has an additional output 
 used in building the gradient for Concat node.
 
 It is attempted to be triggered only on nodes with op type "Concat".
 */
-class ConcatTrainingRewriter : public RewriteRule {
+class ConcatReplacement : public RewriteRule {
  public:
-  ConcatTrainingRewriter() noexcept : RewriteRule("ConcatTrainingRewriter") {}
+  ConcatReplacement() noexcept : RewriteRule("ConcatReplacement") {}
 
   std::vector<std::string> TargetOpTypes() const noexcept override {
     return {"Concat"};
