@@ -142,7 +142,7 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO Execut
 
 To use csharp api for openvino execution provider create a custom nuget package.
 
-1.Windows
+1. Windows
 
 Build a custom nuget package for windows.
 ```
@@ -151,11 +151,19 @@ msbuild csharp\OnnxRuntime.CSharp.proj /p:Configuration=Debug /t:CreatePackage
 
 ```
 
-2.Linux
+2. Linux
 
 We currently do not have a process to build directly in Linux. But we can
 copy shared library libonnxruntime.so to onnxruntime repository in windows
 and execute the same commands above to get custom nuget package for linux 
+
+On Linux Server
+```
+./build.sh --config Debug --build_shared_lib --use_openvino $Device 
+
+```
+
+On Windows Server
 
 ```
 cp libonnxruntime.so $PATH/onnxruntime/ 
