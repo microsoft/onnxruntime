@@ -57,8 +57,7 @@ stages:
 
       - task: AzureKeyVault@1
         inputs:
-          #azureSubscription: 'AIInfraBuild'
-          azureSubscription: 'AI Infra Build'
+          azureSubscription: 'AIInfraBuild'
           KeyVaultName: 'jingywatest'
           SecretsFilter: '*'
           RunAsPreJob: false
