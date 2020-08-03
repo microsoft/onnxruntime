@@ -3,14 +3,15 @@ parameters:
     displayName: Test Flag
     type: string
     default: --enable_onnx_tests
+  - name: image_tag
+    displayName: Image Tag
+    type: string
+    default: latest
 
 stages:
 - stage: Python_Packaging
 
   variables:
-    actual_extra_build_py_parameters: >
-      --enable_training
-      --wheel_name_suffix training
     docker_image_prefix: onnxruntime-training
     linux_gpu_dockerfile: ../../../../../dockerfiles/Dockerfile.training
     python.version: 3.6
@@ -31,13 +32,6 @@ stages:
       clean: all
     pool: Linux-GPU-CUDA10
     #pool: Linux-Multi-GPU-V100
-    # strategy: 
-    #   maxParallel: 2
-    #   matrix:
-    #     Debug:
-    #       buildConfig: Debug
-    #     Release:
-    #       buildConfig: Release
     steps:
       - checkout: self
         clean: true
@@ -67,8 +61,8 @@ stages:
           script: |
             echo $(OrtreleasePassword) > password.txt
             cat password.txt | docker login --username ortrelease --password-stdin ortrelease.azurecr.io
-            docker tag onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 ortrelease.azurecr.io/onnxruntime-training:latest
-            docker push ortrelease.azurecr.io/onnxruntime-training:latest
+            docker tag onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 ortrelease.azurecr.io/onnxruntime-training:${{ parameters.image_tag }}
+            docker push ortrelease.azurecr.io/onnxruntime-training:${{ parameters.image_tag }}
 
       - template: templates/component-governance-component-detection-steps.yml
 
