@@ -493,18 +493,19 @@ def testInstantiateORTTrainer(step_fn):
         step_fn = trainer.eval_step
         data, targets = utils.get_batch(val_data, 0)
         output = trainer.eval_step(data, targets)
-        # TODO: move this test outside when train_step is implemented
-        for out, desc in zip(output, trainer.model_desc.outputs):
-            if trainer.loss_fn and desc.is_loss:
-                continue
-            assert list(out.size()) == desc.shape
     elif step_fn == 'train_step':
         step_fn = trainer.train_step
         data, targets = utils.get_batch(train_data, 0)
-        _ = trainer.train_step(data, targets)
+        output = trainer.train_step(data, targets)
     else:
         raise ValueError('Invalid step_fn')
     assert trainer._onnx_model is not None
+
+    # Check output shape after train/eval step
+    for out, desc in zip(output, trainer.model_desc.outputs):
+        if trainer.loss_fn and desc.is_loss:
+            continue
+        assert list(out.size()) == desc.shape
 
     # Check name, shape and dtype of the first len(forward.parameters) ORT graph inputs
     sig = inspect.signature(model.forward)
