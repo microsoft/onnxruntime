@@ -1,9 +1,6 @@
 FROM nvidia/cuda:10.1-cudnn7-devel-ubuntu16.04
 
 ARG PYTHON_VERSION=3.6
-ARG MOFED_VERSION=4.7-3.2.9.0
-ARG OPENMPI_VERSION=4.0.4
-ARG CONDA_VERSION=4.7.10
 ARG BUILD_EXTR_PAR
 
 ADD scripts /tmp/scripts
@@ -26,51 +23,6 @@ ENV LD_LIBRARY_PATH /usr/local/openblas/lib:$LD_LIBRARY_PATH
 
 ARG BUILD_USER=onnxruntimedev
 ARG BUILD_UID=1000
-#RUN adduser --gecos 'onnxruntime Build User' --disabled-password $BUILD_USER --uid $BUILD_UID
-#WORKDIR /home/$BUILD_USER
-#USER $BUILD_USER
-
-WORKDIR /stage
-
-# install mellanox libraries for ib etc.
-#ARG MOFED_VERSION
-ARG MOFED_VERSION=4.7-3.2.9.0
-#ARG MOFED_OS=ubuntu18.04
-ARG MOFED_OS=ubuntu16.04
-ARG MOFED_TARNAME=MLNX_OFED_LINUX-${MOFED_VERSION}-${MOFED_OS}-x86_64
-ARG MOFED_URL=https://www.mellanox.com/downloads/ofed/MLNX_OFED-${MOFED_VERSION}/${MOFED_TARNAME}.tgz
-RUN cd /stage && curl -fSsL ${MOFED_URL} | tar -zxpf - &&\
-    mv ${MOFED_TARNAME} mofed-${MOFED_VERSION} &&\
-    cd mofed-${MOFED_VERSION} && \
-    ./mlnxofedinstall --basic --force --user-space-only --without-fw-update
-
-# build openmpi (use --prefix /opt/ompi4 to move to runtime image)
-# note: require --enable-orterun-prefix-by-default for Azure machine learning compute
-#ARG OPENMPI_VERSION
-ARG OPENMPI_VERSION=4.0.4
-ARG OPENMPI_TARNAME=openmpi-${OPENMPI_VERSION}
-ARG OPENMPI_URL=https://download.open-mpi.org/release/open-mpi/v%OMPI_BASE%/${OPENMPI_TARNAME}.tar.gz
-RUN echo ${OPENMPI_URL} | sed s/%OMPI_BASE%/$OMPI_BASE/
-RUN apt-get -y install \
-    libnuma-dev &&\ 
-    export OMPI_BASE=${OPENMPI_VERSION%.*} &&\
-    cd /stage && curl -fSsL `echo ${OPENMPI_URL} | sed s/%OMPI_BASE%/$OMPI_BASE/` | tar xzf - &&\
-    cd ${OPENMPI_TARNAME} &&\
-    ./configure \
-        --prefix=/opt/ompi4 \
-        --with-cuda=/usr/local/cuda \
-        --enable-mpirun-prefix-by-default \
-        --enable-orterun-prefix-by-default \
-        --enable-mca-no-build=btl-uct &&\
-    make -j"$(nproc)" install &&\
-    ldconfig
-ENV PATH=/opt/ompi4/bin:$PATH
-ENV LD_LIBRARY_PATH=/opt/ompi4/lib:$LD_LIBRARY_PATH
-
-# install mpi4py (be sure to link existing /opt/ompi4)
-RUN CC=mpicc MPICC=mpicc pip install mpi4py --no-binary mpi4py
-
-# permit mpirun as root for Azure cluster submissions
-ENV OMPI_ALLOW_RUN_AS_ROOT=1
-ENV OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1
-
+RUN adduser --gecos 'onnxruntime Build User' --disabled-password $BUILD_USER --uid $BUILD_UID
+WORKDIR /home/$BUILD_USER
+USER $BUILD_USER
