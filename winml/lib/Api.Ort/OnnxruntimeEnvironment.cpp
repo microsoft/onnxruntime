@@ -13,10 +13,26 @@ using namespace _winml;
 
 static bool debug_output_ = false;
 
+EXTERN_C IMAGE_DOS_HEADER __ImageBase;
+
+static bool IsCurrentModuleInSystem32() {
+  std::string current_module_path;
+  current_module_path.reserve(MAX_PATH);
+  auto size_module_path = GetModuleFileNameA((HINSTANCE)&__ImageBase, current_module_path.data(), MAX_PATH);
+  FAIL_FAST_IF(size_module_path == 0);
+
+  std::string system32_path;
+  system32_path.reserve(MAX_PATH);
+  auto size_system32_path = GetSystemDirectoryA(system32_path.data(), MAX_PATH);
+  FAIL_FAST_IF(size_system32_path == 0);
+
+  return _strnicmp(system32_path.c_str(), current_module_path.c_str(), size_system32_path) == 0;
+}
+
 static HRESULT GetOnnxruntimeLibrary(HMODULE& module) {
   DWORD flags = 0;
 #ifdef BUILD_INBOX
-  flags = LOAD_LIBRARY_SEARCH_SYSTEM32;
+  flags |= IsCurrentModuleInSystem32() ? LOAD_LIBRARY_SEARCH_SYSTEM32 : 0;
 #endif
 
   auto out_module = LoadLibraryExA("onnxruntime.dll", nullptr, flags);

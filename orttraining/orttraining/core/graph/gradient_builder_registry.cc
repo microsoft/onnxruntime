@@ -51,6 +51,7 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("Pow", GetPowGradient);
   REGISTER_GRADIENT_BUILDER("ReduceMean", GetReduceMeanGradient);
   REGISTER_GRADIENT_BUILDER("ReduceSum", GetReduceSumGradient);
+  REGISTER_GRADIENT_BUILDER("ReduceLogSumExp", GetReduceLogSumExpGradient);
   REGISTER_GRADIENT_BUILDER("Add", GetAddSubGradient);
   REGISTER_GRADIENT_BUILDER("Sub", GetAddSubGradient);
   REGISTER_GRADIENT_BUILDER("Mul", GetMulGradient);
