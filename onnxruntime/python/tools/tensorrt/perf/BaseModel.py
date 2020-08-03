@@ -7,11 +7,13 @@ class BaseModel(object):
     def __init__(self, model_name, providers):
         self.model_name_ = model_name 
         self.providers_ = providers
+        self.model_zoo_source_ = 'onnx'
         self.model_path_ = None
+        self.cvs_model_path_ = None
         self.session_ = None
         self.session_options_ = onnxruntime.SessionOptions()
         self.onnx_zoo_test_data_dir_ = None
-        self.test_data_num_ = 1
+        self.cvs_model_test_data_dir_ = None
         self.inputs_ = None
         self.outputs_ = []
         self.validate_decimal_ = 4
@@ -23,8 +25,17 @@ class BaseModel(object):
     def get_session(self):
         return self.session_
 
+    def set_model_zoo_source(self, source):
+        self.model_zoo_source_ = source
+
     def get_onnx_zoo_test_data_dir(self):
         return self.onnx_zoo_test_data_dir_
+
+    def get_cvs_model_test_data_dir(self):
+        return self.cvs_model_test_data_dir_
+
+    def get_cvs_model_path(self):
+        return self.cvs_model_path_
 
     def get_outputs(self):
         return self.outputs_

@@ -23,7 +23,7 @@ from Resnet50v2 import *
 from Resnet101 import *
 from Resnet152v1 import *
 from Resnet152v2 import *
-from FastRCNN import *
+from FasterRCNN import *
 from MaskRCNN import *
 from SSD import *
 from InceptionV1 import *
@@ -52,47 +52,63 @@ from ArcFace import *
 from FastNeural import *
 from BiDAF import *
 from GPT2 import *
+from VehicleDetector import *
+from TwoStageProductReco import *
+from SeresnextGeneral import *
+from YoloV2V2LOGO import *
+from YoloV2V3 import *
+from YoloV3PyTorch import *
 
 logger = logging.getLogger('')
 
 MODELS = {
-    "bert-squad": (BERTSquad, "bert-squad"),
-    "fast-rcnn": (FastRCNN, "fast-rcnn"),
-    "mask-rcnn": (MaskRCNN, "mask-rcnn"),
-    "ssd": (SSD, "ssd"),
+    # "bert-squad": (BERTSquad, "bert-squad"),
+    "faster-rcnn": (FasterRCNN, "faster-rcnn"),
+    # "mask-rcnn": (MaskRCNN, "mask-rcnn"),
+    # "ssd": (SSD, "ssd"),
     "tiny-yolov2": (TinyYolov2, "tiny-yolov2"),
-    "tiny-yolov3": (TinyYolov3, "tiny-yolov3"),
-    "resnet152v1": (Resnet152v1, "resnet152v1"),
-    "resnet152v2": (Resnet152v2, "resnet152v2"),
-    "inception-v2": (InceptionV2, "inception-v2"),
+    # "tiny-yolov3": (TinyYolov3, "tiny-yolov3"),
+    # "resnet152v1": (Resnet152v1, "resnet152v1"),
+    # "resnet152v2": (Resnet152v2, "resnet152v2"),
+    # "inception-v2": (InceptionV2, "inception-v2"),
     "mobilenet-v2": (Mobilenet, "mobilenet-v2"),
-    "zfnet512": (Zfnet512, "zfnet512"),
-    "vgg16": (Vgg16, "vgg16"),
-    "vgg19-bn": (Vgg19bn, "vgg19-bn"),
-    "resnet18v1": (Resnet18v1, "resnet18v1"),
-    "resnet18v2": (Resnet18v2, "resnet18v2"),
-    "resnet50v1": (Resnet50v1, "resnet50v1"),
-    "resnet50v2": (Resnet50v2, "resnet50v2"),
-    "resnet101": (Resnet101, "resnet101"),
-    "inception-v1": (InceptionV1, "inception-v1"),
-    "shufflenet-v1": (ShufflenetV1, "shufflenet-v1"),
+    # "zfnet512": (Zfnet512, "zfnet512"),
+    # "vgg16": (Vgg16, "vgg16"),
+    # "vgg19-bn": (Vgg19bn, "vgg19-bn"),
+    # "resnet18v1": (Resnet18v1, "resnet18v1"),
+    # "resnet18v2": (Resnet18v2, "resnet18v2"),
+    # "resnet50v1": (Resnet50v1, "resnet50v1"),
+    # "resnet50v2": (Resnet50v2, "resnet50v2"),
+    # "resnet101": (Resnet101, "resnet101"),
+    # "inception-v1": (InceptionV1, "inception-v1"),
+    # "shufflenet-v1": (ShufflenetV1, "shufflenet-v1"),
     "shufflenet-v2": (ShufflenetV2, "shufflenet-v2"),
-    "squeezenet1.1": (Squeezenet, "squeezenet1.1"),
-    "emotion-ferplus": (EmotionFerplus, "emotion-ferplus"),
-    "bvlc-googlenet": (Googlenet, "bvlc-googlenet"),
-    "bvlc-alexnet": (Alexnet, "bvlc-alexnet"),
-    "bvlc-caffenet": (Caffenet, "bvlc-caffenet"),
-    "bvlc-rcnn-ilvscr13": (RcnnIlsvrc13, "bvlc-rcnn-ilvscr13"),
-    "retinanet": (Retinanet, "retinanet"),
-    "densenet": (Densenet, "densenet"),
-    ##### "yolov3": (YoloV3, "yolov3"), # TRT runtime error
-    "yolov4": (YoloV4, "yolov4"),
-    "Resnet101-DUC": (Resnet101DucHdc, "Resnet101-DUC"),
-    "Arc-Face": (ArcFace, "arc-face"),
-    #### "Super-Resolution": (SuperResolution, "super-resolution"), # can't read output
-    "Fast-Neural": (FastNeural, "Fast-Neural"),
-    "BiDAF": (BiDAF, "BiDAF"),
-    ### "GPT2": (GPT2, "GPT2"), # OOM
+    # "squeezenet1.1": (Squeezenet, "squeezenet1.1"),
+    # "emotion-ferplus": (EmotionFerplus, "emotion-ferplus"),
+    # "bvlc-googlenet": (Googlenet, "bvlc-googlenet"),
+    # "bvlc-alexnet": (Alexnet, "bvlc-alexnet"),
+    # "bvlc-caffenet": (Caffenet, "bvlc-caffenet"),
+    # "bvlc-rcnn-ilvscr13": (RcnnIlsvrc13, "bvlc-rcnn-ilvscr13"),
+    # "retinanet": (Retinanet, "retinanet"),
+    # "densenet": (Densenet, "densenet"),
+    # "yolov3": (YoloV3, "yolov3"), # TRT runtime error
+    # "yolov4": (YoloV4, "yolov4"),
+    # "Resnet101-DUC": (Resnet101DucHdc, "Resnet101-DUC"),
+    # "Arc-Face": (ArcFace, "arc-face"),
+    # #### "Super-Resolution": (SuperResolution, "super-resolution"), # can't read output
+    # "Fast-Neural": (FastNeural, "Fast-Neural"),
+    # "BiDAF": (BiDAF, "BiDAF"),
+    # ### "GPT2": (GPT2, "GPT2"), # OOM
+}
+
+# Additional models that onwed by Custom Vision Service
+CVS_MODELS = {
+    "vehicle-detector": (VehicleDetector, "vehicle-detector"), 
+    "two-stage-product-reco": (TwoStageProductReco, "two-stage-product-reco"), 
+    "seresnext-general": (SeresnextGeneral, "seresnext-general"),
+    "yolov2v2-logo": (YoloV2V2LOGO, "yolov2v2-logo"),
+    "yolov2v3": (YoloV2V3, "yolov2v3"),
+    "yolov3-pytorch": (YoloV3PyTorch, "yolov3-pytorch"),
 }
 
 
@@ -234,7 +250,8 @@ def get_trt_version():
 #
 def load_onnx_model_zoo_test_data(path):
     print("Parsing inputs/outputs of test data in {} ...".format(path))
-    p1 = subprocess.Popen(["find", path, "-name", "test_data_set*", "-type", "d"], stdout=subprocess.PIPE)
+    # p1 = subprocess.Popen(["find", path, "-name", "test_data_set*", "-type", "d"], stdout=subprocess.PIPE)
+    p1 = subprocess.Popen(["find", path, "-name", "test_data*", "-type", "d"], stdout=subprocess.PIPE)
     p2 = subprocess.Popen(["sort"], stdin=p1.stdout, stdout=subprocess.PIPE)
     stdout, sterr = p2.communicate()
     stdout = stdout.decode("ascii").strip()
@@ -411,8 +428,6 @@ def get_system_info(info):
 
 def run_onnxruntime(args, models=MODELS):
     import onnxruntime
-    devnull = open(os.devnull, 'w')
-    old_stdout = sys.stdout
 
     results = []
     latency_comparison_map = {} 
@@ -435,8 +450,10 @@ def run_onnxruntime(args, models=MODELS):
 
     # provider_list = ["TensorrtExecutionProvider", "CUDAExecutionProvider"]
     # provider_list = ["CUDAExecutionProvider", "TensorrtExecutionProvider"]
-    # provider_list = ["CUDAExecutionProvider"]
+    provider_list = ["CUDAExecutionProvider"]
     # provider_list = ["TensorrtExecutionProvider"]
+
+    models.update(CVS_MODELS)
 
     # iterate models
     for name in models.keys():
@@ -454,10 +471,11 @@ def run_onnxruntime(args, models=MODELS):
         # cleanup files before running a new inference
         remove_profiling_files(path)
 
+        inputs_for_cvs_model = []
         inputs = []
         ref_outputs = []
         ep_fail_set = set()
-        ep_op_map = {} # map of ep -> operator
+        ep_op_map = {} # map of map: ep -> operator
         profile_already_parsed = set()
 
         # iterate ep 
@@ -486,10 +504,15 @@ def run_onnxruntime(args, models=MODELS):
 
             model = model_class(providers=ep_to_provider_list[ep])
             model_name = model.get_model_name()
+            model.set_model_zoo_source(args.model_zoo)
 
+            print(args.model_zoo)
             # read input/output of test data
             if not inputs or not ref_outputs:
-                test_data_dir = model.get_onnx_zoo_test_data_dir()
+                if args.model_zoo ==  "onnx":
+                    test_data_dir = model.get_onnx_zoo_test_data_dir()
+                elif args.model_zoo == "cvs":
+                    test_data_dir = model.get_cvs_model_test_data_dir()
                 inputs, ref_outputs = load_onnx_model_zoo_test_data(test_data_dir)
 
             # these settings are temporary
@@ -504,16 +527,20 @@ def run_onnxruntime(args, models=MODELS):
             model.set_session_options(options)
 
             try: 
-                model.create_session()
+                if args.model_zoo ==  "onnx":
+                    model.create_session()
+                elif args.model_zoo == "cvs":
+                    model.create_session(model.get_cvs_model_path())
+                
             except Exception as e:
                 logger.error(e)
                 ep_fail_set.add(ep)
                 update_fail_model(model_name, ep, ep_model_fail_map)
                 continue
 
+
             sess = model.get_session()
             sess.disable_fallback()
-
 
             logger.info("Start to inference {} with {} ...".format(model_name, ep))
             logger.info(sess.get_providers())
@@ -629,25 +656,19 @@ def run_onnxruntime(args, models=MODELS):
                     profile_metrics_map[model_name_]['ratio_of_ops_in_trt'] = ratio_of_ops_in_trt 
                     profile_metrics_map[model_name_]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt 
 
+            # if True:
+            if False:
+                pp = pprint.PrettyPrinter(indent=4)
+                print('TRT operator map:')
+                pp.pprint(trt_op_map)
+                print('TRT FP16 operator map:')
+                pp.pprint(trt_fp16_op_map)
+                print('CUDA operator map:')
+                pp.pprint(cuda_op_map)
+                # print('CPU operator map:')
+                # pp.pprint(cpu_op_map)
 
-        # analyze profiling files 
-        # if len(ep_fail_set) == 0:
-            # presults = analyze_profiling_file(path)
-            # for i in range(len(presults)):
-                # result = presults[i]
-                # total_ops_in_trt = result[0]
-                # total_ops = result[1]
-                # ratio_of_ops_in_trt = result[2]
-                # ratio_of_execution_time_in_trt =  result[3]
-                
-                # name = model_name + " (TRT fp16)" if i == 0 else model_name
-                # profile_metrics_map[name] = {}
-                # profile_metrics_map[name]['total_ops_in_trt'] = total_ops_in_trt
-                # profile_metrics_map[name]['total_ops'] = total_ops
-                # profile_metrics_map[name]['ratio_of_ops_in_trt'] = ratio_of_ops_in_trt 
-                # profile_metrics_map[name]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt 
-
-        cleanup_files()
+        # cleanup_files()
         os.chdir(pwd)
 
         # end of model
@@ -742,6 +763,8 @@ def parse_arguments():
     parser.add_argument("-d", "--detail_csv", required=False, default=None, help="CSV file for saving detail results.")
     parser.add_argument("-r", "--ratio_csv", required=False, default=None, help="CSV file for saving detail results.")
     parser.add_argument("-l", "--latency_csv", required=False, default=None, help="CSV file for saving detail results.")
+
+    parser.add_argument("-m", "--model_zoo", required=False, default="onnx", choices=["onnx", "cvs"], help="Models pool for perf")
 
     parser.add_argument("--fp16", required=False, default=True, action="store_true", help="Use FP16 to accelerate inference")
 

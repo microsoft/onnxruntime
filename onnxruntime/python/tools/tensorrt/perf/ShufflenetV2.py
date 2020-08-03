@@ -22,36 +22,42 @@ class ShufflenetV2(BaseModel):
 
         self.onnx_zoo_test_data_dir_ = os.path.join(os.getcwd(), "model/test_shufflenetv2") 
 
+        self.cvs_model_path_ = os.path.join(os.getcwd(), "..", "cvs_models", "shufflenetv2_general_AnnaSoda", "shufflenetv2_general.onnx")
+        self.cvs_model_test_data_dir_ = os.path.join(os.getcwd(), "..", "cvs_models", "shufflenetv2_general_AnnaSoda") 
+
 
     def preprocess(self):
         return
 
     def get_ort_inputs(self, inputs):
-        data = {
-            self.session_.get_inputs()[0].name: inputs 
-        }
+        if self.model_zoo_source_ == 'onnx':
+            data = {
+                self.session_.get_inputs()[0].name: inputs 
+            }
+        else:
+            data = {
+                self.session_.get_inputs()[0].name: inputs[0]
+            }
 
         return data
 
     def inference(self):
-        # session = self.session_
-        # if input_list:
-            # outputs = []
-            # for test_data in input_list:
-                # img_data = test_data
-                # output = session.run(None, {
-                    # session.get_inputs()[0].name: img_data
-                # })
-                # outputs.append(output[0])
-            # self.outputs_ = outputs
-
         self.outputs_ = []
-        for test_data in self.inputs_:
-            img_data = test_data
-            output = self.session_.run(None, {
-                self.session_.get_inputs()[0].name: img_data
-            })
-            self.outputs_.append(output[0])
+
+        if self.model_zoo_source_ == 'onnx':
+            for test_data in self.inputs_:
+                img_data = test_data
+                output = self.session_.run(None, {
+                    self.session_.get_inputs()[0].name: img_data
+                })
+                self.outputs_.append(output[0])
+        else:
+            for test_data in self.inputs_:
+                img_data = test_data[0]
+                output = self.session_.run(None, {
+                    self.session_.get_inputs()[0].name: img_data
+                })
+                self.outputs_.append(output)
 
     def postprocess(self):
         return

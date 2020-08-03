@@ -21,6 +21,9 @@ class YoloV3(BaseModel):
             subprocess.run("tar zxf yolov3-10.tar.gz", shell=True, check=True)
 
         self.onnx_zoo_test_data_dir_ = os.path.join(os.getcwd(), "yolov3") 
+        
+        self.cvs_model_path_ = os.path.join(os.getcwd(), "..", "cvs_models", "Yolov3_Pytorch", "yolov3-ms-openimages_40000_0627_608.batch.onnx")
+        self.cvs_model_test_data_dir_ = os.path.join(os.getcwd(), "..", "cvs_models", "Yolov3_Pytorch") 
 
 
     def get_ort_inputs(self, ort_inputs):
