@@ -245,6 +245,16 @@ namespace OperatorHelper
         static const int sc_sinceVer_Unsqueeze = 11;
     } // namespace OnnxOperatorSet11
 
+    namespace OnnxOperatorSet12
+    {
+        static const int sc_sinceVer_Clip = 12;
+        static const int sc_sinceVer_Min = 12;
+        static const int sc_sinceVer_Max = 12;
+        static const int sc_sinceVer_MaxPool = 12;
+        static const int sc_sinceVer_ReduceMax = 12;
+        static const int sc_sinceVer_ReduceMin = 12;
+    }
+
     namespace MsftOperatorSet1
     {
         static const int sc_sinceVer_FusedConv = 1;

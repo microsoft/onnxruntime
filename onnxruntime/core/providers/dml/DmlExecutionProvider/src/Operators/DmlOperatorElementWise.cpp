@@ -462,6 +462,9 @@ public:
     }
 };
 
+// Same operator signature as 11. Only difference is new type support
+using DmlOperatorElementwiseClip12 = DmlOperatorElementwiseClip11;
+
 class DmlOperatorElementwisePow : public DmlOperator
 {
 public:
@@ -718,6 +721,7 @@ DML_OP_DEFINE_CREATION_FUNCTION(Mean,             DmlOperatorElementwiseMean);
 // Operators with extra attributes:
 DML_OP_DEFINE_CREATION_FUNCTION(Clip7,            DmlOperatorElementwiseClip7);
 DML_OP_DEFINE_CREATION_FUNCTION(Clip11,           DmlOperatorElementwiseClip11);
+DML_OP_DEFINE_CREATION_FUNCTION(Clip12,           DmlOperatorElementwiseClip12);
 DML_OP_DEFINE_CREATION_FUNCTION(Pow,              DmlOperatorElementwisePow);
 DML_OP_DEFINE_CREATION_FUNCTION(QuantizeLinear,   DmlOperatorElementwiseQLinear<DML_ELEMENT_WISE_QUANTIZE_LINEAR_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(DequantizeLinear, DmlOperatorElementwiseQLinear<DML_ELEMENT_WISE_DEQUANTIZE_LINEAR_OPERATOR_DESC>);
