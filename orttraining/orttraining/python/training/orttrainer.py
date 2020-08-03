@@ -258,7 +258,7 @@ class ORTTrainer(object):
 
         # Update Learning Rate if Necessary
         if self.options.lr_scheduler:
-            self.optim_config.lr = self.options.lr_scheduler.get_lr(self._train_step_info)[0]
+            self.options.lr_scheduler._step(self._train_step_info)
 
         # Get data. CombineTorchModelLossFn takes label as last input and outputs loss first
         input = self._prepare_model_input(input_desc, self.optim_config.lr, None, *args, **kwargs)
@@ -273,6 +273,11 @@ class ORTTrainer(object):
         # Run a train step and return
         session_run_results = self._training_session_run_helper(True, input, input_desc,
                                                                 output_desc, run_options)
+       
+        # Train step incremented after first train step  based on lr scheduler implementation
+        # which handles initial train step of 0.
+        self._train_step_info.step += 1
+
         return session_run_results[output_desc.name][0] if len (session_run_results) == 1\
             else [session_run_results[output_desc.name] for output_desc in self.model_desc.outputs]
 
