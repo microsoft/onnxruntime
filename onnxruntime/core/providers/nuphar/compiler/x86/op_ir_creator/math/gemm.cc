@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 #include "core/codegen/mti/math/binary_ops.h"
 #include "core/codegen/mti/math/gemm.h"
+#include "core/codegen/mti/mti_tvm_utils.h"
 #include "core/framework/op_kernel_info.h"
 #include "core/providers/common.h"
 #include "core/providers/nuphar/compiler/x86/op_ir_creator/all_ops.h"
@@ -22,13 +23,22 @@ Status NUPHAR_TVM_X86_OP_IR_CREATOR_CLASS(Gemm)::Evaluate(
   tvm::Tensor Y;
   auto& A = inputs[0];
   auto& B = inputs[1];
-  auto& C = inputs[2];
+  tvm::Tensor C;
+
   int64_t trans_a, trans_b;
   float alpha, beta;
   ORT_RETURN_IF_ERROR(info.GetAttr<int64_t>("transA", &trans_a));
   ORT_RETURN_IF_ERROR(info.GetAttr<int64_t>("transB", &trans_b));
   ORT_RETURN_IF_ERROR(info.GetAttr<float>("alpha", &alpha));
   ORT_RETURN_IF_ERROR(info.GetAttr<float>("beta", &beta));
+
+  // bias is optional
+  if (inputs.size() < 3) {
+    beta = 0;
+    C = tvm_codegen::MakeZeroTensor({1}, A->dtype, node.Name() + "_zero");
+  } else {
+    C = inputs[2];
+  }
 
   // use native sgemm for floating point
   if (A->dtype == HalideIR::Float(32) &&
