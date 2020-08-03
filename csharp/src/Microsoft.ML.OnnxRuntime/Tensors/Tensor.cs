@@ -78,7 +78,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
     /// <summary>
     /// Helps typecasting. Holds primitive type information
     /// </summary>
-    internal class TensorTypeInfo
+    public class TensorTypeInfo
     {
         public TensorElementType ElementType { get; private set; }
         public int TypeSize { get; private set; }
@@ -90,7 +90,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         }
     }
 
-    internal class TensorBase
+    public class TensorBase
     {
         private static readonly Dictionary<Type, TensorTypeInfo> typeInfoMap =
             new Dictionary<Type, TensorTypeInfo>()
@@ -254,7 +254,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
     /// <typeparam name="T">type contained within the Tensor.  Typically a value type such as int, double, float, etc.</typeparam>
     [DebuggerDisplay("{GetArrayString(false)}")]
     // When we cross-compile for frameworks that expose ICloneable this must implement ICloneable as well.
-    public abstract class Tensor<T> : IList, IList<T>, IReadOnlyList<T>, IStructuralComparable, IStructuralEquatable
+    public abstract class Tensor<T> : TensorBase, IList, IList<T>, IReadOnlyList<T>, IStructuralComparable, IStructuralEquatable
     {
         internal static T Zero
         {
@@ -388,7 +388,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         /// Initialize a 1-dimensional tensor of the specified length
         /// </summary>
         /// <param name="length">Size of the 1-dimensional tensor</param>
-        protected Tensor(int length)
+        protected Tensor(int length) : base(typeof(T))
         {
             dimensions = new[] { length };
             strides = new[] { 1 };
@@ -401,7 +401,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         /// </summary>
         /// <param name="dimensions">An span of integers that represent the size of each dimension of the Tensor to create.</param>
         /// <param name="reverseStride">False (default) to indicate that the first dimension is most major (farthest apart) and the last dimension is most minor (closest together): akin to row-major in a rank-2 tensor.  True to indicate that the last dimension is most major (farthest apart) and the first dimension is most minor (closest together): akin to column-major in a rank-2 tensor.</param>
-        protected Tensor(ReadOnlySpan<int> dimensions, bool reverseStride)
+        protected Tensor(ReadOnlySpan<int> dimensions, bool reverseStride) : base(typeof(T))
         {
             if (dimensions.Length == 0)
             {
@@ -431,7 +431,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         /// </summary>
         /// <param name="fromArray">Array from which to derive dimensions.</param>
         /// <param name="reverseStride">False (default) to indicate that the first dimension is most major (farthest apart) and the last dimension is most minor (closest together): akin to row-major in a rank-2 tensor.  True to indicate that the last dimension is most major (farthest apart) and the first dimension is most minor (closest together): akin to column-major in a rank-2 tensor.</param>
-        protected Tensor(Array fromArray, bool reverseStride)
+        protected Tensor(Array fromArray, bool reverseStride) : base(typeof(T))
         {
             if (fromArray == null)
             {

@@ -10,6 +10,7 @@ using System.Threading;
 namespace Microsoft.ML.OnnxRuntime
 {
     /// <summary>
+    /// TODO: dmitrism -> Get rid of this class.
     /// A non-public interface detailing the contract to be honored by NativeOnnxTensorMemory
     /// </summary>
     internal interface NativeMemoryHandler : IDisposable
@@ -117,11 +118,6 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         public IntPtr Handle { get { return _onnxValueHandle; } }
-
-        ~NativeOnnxTensorMemory()
-        {
-            Dispose(false);
-        }
 
         public void Dispose()
         {

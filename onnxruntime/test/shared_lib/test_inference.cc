@@ -458,6 +458,10 @@ TEST(CApiTest, get_allocator_cpu) {
   void* p = cpu_allocator.Alloc(1024);
   ASSERT_NE(p, nullptr);
   cpu_allocator.Free(p);
+
+  auto mem_allocation = cpu_allocator.GetAllocation(1024);
+  ASSERT_NE(nullptr, mem_allocation.get());
+  ASSERT_EQ(1024, mem_allocation.size());
 }
 
 #ifdef USE_CUDA
@@ -474,6 +478,10 @@ TEST(CApiTest, get_allocator_cuda) {
   void* p = cuda_allocator.Alloc(1024);
   ASSERT_NE(p, nullptr);
   cuda_allocator.Free(p);
+
+  auto mem_allocation = cuda_allocator.GetAllocation(1024);
+  ASSERT_NE(nullptr, mem_allocation.get());
+  ASSERT_EQ(1024, mem_allocation.size());
 }
 #endif
 

@@ -11,14 +11,14 @@ namespace Microsoft.ML.OnnxRuntime
     public class FixedBufferOnnxValue : IDisposable
     {
         internal MemoryHandle PinnedMemory { get; private set; }
-        internal IntPtr Value { get; private set; }
+        internal OrtValue Value { get; private set; }
         internal OnnxValueType OnnxValueType { get; private set; }
         internal TensorElementType ElementType { get; private set; }
 
-        private FixedBufferOnnxValue(MemoryHandle pinnedMemory, IntPtr onnxValue, OnnxValueType onnxValueType, TensorElementType elementType)
+        private FixedBufferOnnxValue(MemoryHandle pinnedMemory, OrtValue ortValue, OnnxValueType onnxValueType, TensorElementType elementType)
         {
             PinnedMemory = pinnedMemory;
-            Value = onnxValue;
+            Value = ortValue;
             OnnxValueType = onnxValueType;
             ElementType = elementType;
         }
@@ -31,35 +31,18 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns></returns>
         public static FixedBufferOnnxValue CreateFromTensor<T>(Tensor<T> value)
         {
-            NativeOnnxValueHelper.CreateNativeOnnxValue(value, out IntPtr onnxValue, out MemoryHandle pinnedMemoryHandle, out OnnxValueType onnxValueType, out TensorElementType elementType);
-
-            Debug.Assert(onnxValueType == OnnxValueType.ONNX_TYPE_TENSOR, "the value should always be a tensor");
-
-            return new FixedBufferOnnxValue(pinnedMemoryHandle, onnxValue, onnxValueType, elementType);
+            var ortValue = OrtValue.CreateFromTensorObject(value, out MemoryHandle pinnedMemoryHandle, out TensorElementType elementType);
+            return new FixedBufferOnnxValue(pinnedMemoryHandle, ortValue, OnnxValueType.ONNX_TYPE_TENSOR, elementType);
         }
 
         #region IDisposable Support
 
-        // standard dispose pattern to deal with both managed and native resources
-
-        private bool disposed = false;
-
         protected virtual void Dispose(bool disposing)
         {
-            if (!disposed)
+            if (disposing)
             {
-                if (disposing)
-                {
-                    ((IDisposable)PinnedMemory).Dispose();
-                }
-
-                if (Value != IntPtr.Zero)
-                {
-                    NativeMethods.OrtReleaseValue(Value);
-                    Value = IntPtr.Zero;
-                }
-
-                disposed = true;
+                Value.Dispose();
+                PinnedMemory.Dispose();
             }
         }
 

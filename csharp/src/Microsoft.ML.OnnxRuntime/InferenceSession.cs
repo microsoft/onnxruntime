@@ -257,7 +257,7 @@ namespace Microsoft.ML.OnnxRuntime
             int inputIndex = 0;
             foreach (var input in inputValues)
             {
-                inputValuesArray[inputIndex] = input.Value;
+                inputValuesArray[inputIndex] = input.Value.Handle;
 
                 inputIndex++;
             }
@@ -353,7 +353,7 @@ namespace Microsoft.ML.OnnxRuntime
             int inputIndex = 0;
             foreach (var input in inputValues)
             {
-                inputValuesArray[inputIndex] = input.Value;
+                inputValuesArray[inputIndex] = input.Value.Handle;
 
                 inputIndex++;
             }
@@ -369,7 +369,7 @@ namespace Microsoft.ML.OnnxRuntime
                     throw new NotSupportedException("Using string type FixedBufferOnnxValue in outputs is not supported.");
                 }
 
-                outputValuesArray[outputIndex] = output.Value;
+                outputValuesArray[outputIndex] = output.Value.Handle;
 
                 outputIndex++;
             }
@@ -564,7 +564,7 @@ namespace Microsoft.ML.OnnxRuntime
                         throw new NotSupportedException("Using string type FixedBufferOnnxValue in outputs is not supported.");
                     }
 
-                    outputValuesArray[outputIndex] = output.Value;
+                    outputValuesArray[outputIndex] = output.Value.Handle;
 
                     outputIndex++;
                 }
@@ -646,7 +646,7 @@ namespace Microsoft.ML.OnnxRuntime
                 int inputIndex = 0;
                 foreach (var input in inputValues)
                 {
-                    inputValuesArray[inputIndex] = input.Value;
+                    inputValuesArray[inputIndex] = input.Value.Handle;
 
                     inputIndex++;
                 }
