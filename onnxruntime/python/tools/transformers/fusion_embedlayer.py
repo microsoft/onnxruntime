@@ -113,6 +113,11 @@ class FusionEmbedLayerNoMask(Fusion):
             if word_embedding_path is not None:
                 word_embedding_gather = word_embedding_path[0]
                 is_distill = True;
+                from packaging.version import Version
+                import onnxruntime
+                if Version(onnxruntime.__version__) <= Version("1.4.0"):
+                    logger.warning('Please install onnxruntime with version > 1.4.0 for embedlayer fusion support for distilbert')
+                    return
             else:
                 logger.info("Word embedding path is not found. Embed layer cannot be fused.")
                 return
@@ -179,12 +184,6 @@ class FusionEmbedLayerNoMask(Fusion):
             if segment_path is None:
                 return
             else:
-                from packaging.version import Version
-                import onnxruntime
-                if Version(onnxruntime.__version__) <= Version("1.4.0"):
-                    logger.warning('Please install onnxruntime with version > 1.4.0 for embedlayer fusion support for distilbert')
-                    return
-
                 segment_ids, segment_embedding_gather = segment_path
 
                 embed_node_inputs=[
