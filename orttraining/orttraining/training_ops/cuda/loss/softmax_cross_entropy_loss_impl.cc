@@ -101,16 +101,17 @@ Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) co
   auto normalize_factor_data = GetScratchBuffer<T>(1);
   if (reduction_ == ReductionType::MEAN) {
     // Compute buffer size in byte for reduction APIs.
+    typedef typename ToReduction<T>::BufferType TBuf;
     const auto buffer_size = static_cast<size_t>(
         compute_reduction_buffer_size(
-            static_cast<int>(sizeof(T)), static_cast<int>(N_D)));
+            static_cast<int>(sizeof(TBuf)), static_cast<int>(N_D)));
     // Allocate reduction buffer whose size is buffer_size bytes.
     IAllocatorUniquePtr<void> reduction_buffer = GetScratchBuffer<void>(
         buffer_size);
     reduce_sum(weight_data_nd_data,
                normalize_factor_data.get(),
                static_cast<int>(N_D),
-               reinterpret_cast<T*>(reduction_buffer.get()));
+               reinterpret_cast<TBuf*>(reduction_buffer.get()));
   } else {
     const T normalize_factor = static_cast<T>(1);
     cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice);

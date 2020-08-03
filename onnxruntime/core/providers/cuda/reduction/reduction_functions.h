@@ -7,19 +7,31 @@
 namespace onnxruntime {
 namespace cuda {
 
+template <typename T>
+class ToReduction {
+ public:
+  typedef T BufferType;
+};
+
+template <>
+class ToReduction<half> {
+ public:
+  typedef float BufferType;
+};
+
 int compute_reduction_buffer_size(int element_size, int size);
 
-template <typename TIn, typename TOut>
-void reduce_sum(const TIn* input, TOut* output, int size, TOut* buffer);
+template <typename TIn, typename TOut, typename TBuf>
+void reduce_sum(const TIn* input, TOut* output, int size, TBuf* buffer);
 
-template <typename TIn, typename TOut>
-void reduce_square_sum(const TIn* input, TOut* output, int size, TOut* buffer);
+template <typename TIn, typename TOut, typename TBuf>
+void reduce_square_sum(const TIn* input, TOut* output, int size, TBuf* buffer);
 
-template <typename TIn, typename TOut>
-void reduce_l2_norm(const TIn* input, TOut* output, int size, TOut* buffer);
+template <typename TIn, typename TOut, typename TBuf>
+void reduce_l2_norm(const TIn* input, TOut* output, int size, TBuf* buffer);
 
-template <typename TIn, typename TOut>
-void reduce_mean(const TIn* data, TOut* output, int size, TOut* buffer);
+template <typename TIn, typename TOut, typename TBuf>
+void reduce_mean(const TIn* data, TOut* output, int size, TBuf* buffer);
 
 // Determine if a CUDNN reduction can be computed by reduce_matrix_rows.
 bool is_matrix_row_reduction(

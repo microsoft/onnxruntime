@@ -1,8 +1,6 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef NDEBUG  // disable for debug builds because some of these tests are slow
-
 #include <algorithm>
 #include <bitset>
 #include <cmath>
@@ -1898,5 +1896,4 @@ TEST(GradientCheckerTest, ExpandGrad) {
 }  // namespace test
 }  // namespace onnxruntime
 
-#endif  // NDEBUG
 
