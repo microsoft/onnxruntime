@@ -355,6 +355,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${ONNXRUNTIME_INTEROP_TEST_LIBS}
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
+# These providers are shared libraries now, so aren't linked this way anymore:
 #    ${PROVIDERS_DNNL}
 #    ${PROVIDERS_TENSORRT}
     ${PROVIDERS_MIGRAPHX}
@@ -388,6 +389,7 @@ set(onnxruntime_test_providers_libs
 
 if(onnxruntime_USE_TENSORRT)
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/tensorrt/*)
+#  TODO: As TensorRT is now a shared library the tests can't be run this way anymore
 #  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_tensorrt)
 #  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_tensorrt)
 #  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_tensorrt)

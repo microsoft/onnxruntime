@@ -38,9 +38,6 @@ class NodeArg {
   NodeArg(const std::string& name,
           const ONNX_NAMESPACE::TypeProto* p_arg_type);
 
-  ~NodeArg() {
-  }
-
   NodeArg(NodeArg&&) = default;
   NodeArg& operator=(NodeArg&& other) = default;
 

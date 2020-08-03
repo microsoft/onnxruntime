@@ -45,17 +45,9 @@ struct OnUnload {
 }  // namespace onnxruntime
 
 // Override default new/delete so that we match the host's allocator
-void* operator new(size_t n) {
-  return onnxruntime::g_host->HeapAllocate(n);
-}
-
-void operator delete(void* p) {
-  return onnxruntime::g_host->HeapFree(p);
-}
-
-void operator delete(void* p, size_t /*size*/) {
-  return onnxruntime::g_host->HeapFree(p);
-}
+void* operator new(size_t n) { return onnxruntime::g_host->HeapAllocate(n); }
+void operator delete(void* p) { return onnxruntime::g_host->HeapFree(p); }
+void operator delete(void* p, size_t /*size*/) { return onnxruntime::g_host->HeapFree(p); }
 
 namespace onnxruntime {
 
