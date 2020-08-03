@@ -125,7 +125,7 @@ void TestBurstScheduling(const std::string& name, int num_tasks) {
     ASSERT_TRUE(ctr == num_tasks);
     CreateThreadPoolAndTest(name, 2, [&](ThreadPool* tp) {
       // Second variant : schedule from inside the pool
-      tp->Schedule([&]() {
+      tp->Schedule([&, tp]() {
         for (int tasks = 0; tasks < num_tasks; tasks++) {
           tp->Schedule([&]() {
             ctr++;
@@ -234,6 +234,10 @@ TEST(ThreadPoolTest, TestMultipleParallelFor_4Thread_4Conc_8Tasks) {
 
 TEST(ThreadPoolTest, TestMultipleParallelFor_4Thread_4Conc_1MTasks) {
   TestMultipleParallelFor("TestMultipleParallelFor_4Thread_4Conc_1MTasks", 4, 4, 1000000);
+}
+
+TEST(ThreadPoolTest, TestBurstScheduling_0Tasks) {
+  TestBurstScheduling("TestBurstScheduling_0Tasks", 0);
 }
 
 TEST(ThreadPoolTest, TestBurstScheduling_1Task) {
