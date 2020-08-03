@@ -79,7 +79,7 @@ abstract class NativeObject implements AutoCloseable {
        * ACTIVE USAGE COUNT UPDATE:
        */
       if (activeUsagesCount.decrementAndGet() > 0) {
-        logger.warning("Waiting to close: " + toString());
+        logger.info("Waiting to close: " + toString());
         /*
          * In this case, there are still usages. Wait here until the last one informs us it is done.
          */
