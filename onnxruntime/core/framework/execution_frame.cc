@@ -246,6 +246,9 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
           const auto& location = mem_patterns_->locations[i];
           ORT_ENFORCE(buffers_.find(location) == buffers_.end());
           if (mem_patterns_->patterns[i].PeakSize() > 0) {
+            if (location.device.Type() == OrtDevice::GPU)
+              std::cout << "GPU Memory pattern size " << mem_patterns_->patterns[i].PeakSize() << std::endl;
+
             AllocatorPtr alloc = GetAllocator(location);
             void* buffer = nullptr;
             // it's possible we can't allocate the large block. if we have memory patterns we know we have successfully
