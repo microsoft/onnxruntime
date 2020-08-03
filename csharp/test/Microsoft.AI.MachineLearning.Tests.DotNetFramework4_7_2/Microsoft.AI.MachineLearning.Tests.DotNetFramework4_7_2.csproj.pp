@@ -7,8 +7,8 @@
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <ProjectGuid>{717C645E-9C4A-4EBF-A0AF-676B265E8CDA}</ProjectGuid>
     <OutputType>Exe</OutputType>
-    <RootNamespace>Microsoft.AI.MachineLearning.Tests.CSharp</RootNamespace>
-    <AssemblyName>Microsoft.AI.MachineLearning.Tests.CSharp</AssemblyName>
+    <RootNamespace>Microsoft.AI.MachineLearning.Tests.DotNetFramework4_7_2</RootNamespace>
+    <AssemblyName>Microsoft.AI.MachineLearning.Tests.DotNetFramework4_7_2</AssemblyName>
     <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
