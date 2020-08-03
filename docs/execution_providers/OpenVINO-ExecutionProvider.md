@@ -148,7 +148,6 @@ Build a custom nuget package for windows.
 ```
 .\build.bat --config Debug --build --use_openvino $Device --build_csharp
 msbuild csharp\OnnxRuntime.CSharp.proj /p:Configuration=Debug /t:CreatePackage
-
 ```
 
 2. Linux
@@ -160,7 +159,6 @@ and execute the same commands above to get custom nuget package for linux
 On Linux Server
 ```
 ./build.sh --config Debug --build_shared_lib --use_openvino $Device 
-
 ```
 
 On Windows Server
@@ -169,7 +167,6 @@ On Windows Server
 cp libonnxruntime.so $PATH/onnxruntime/ 
 .\build.bat --config Debug --build --use_openvino $Device --build_csharp
 msbuild csharp\OnnxRuntime.CSharp.proj /p:Configuration=Debug /t:CreatePackage
-
 ```
 
 
