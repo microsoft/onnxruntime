@@ -434,6 +434,8 @@ jobs:
       script: |
         msbuild Microsoft.AI.MachineLearning.Tests.DotNetCore3_0.csproj /p:Platform=x64 /t:Restore
         msbuild Microsoft.AI.MachineLearning.Tests.DotNetCore3_0.csproj /p:Platform=x64
+        msbuild Microsoft.AI.MachineLearning.Tests.DotNetCore3_0.csproj /p:Platform=AnyCpu /t:Restore
+        msbuild Microsoft.AI.MachineLearning.Tests.DotNetCore3_0.csproj /p:Platform=AnyCpu
       workingDirectory: $(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests.DotNetCore3_0
 
   - task: PowerShell@2
