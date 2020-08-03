@@ -17,6 +17,9 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelS
 
   bool CloseModelOnSessionCreation();
   void CloseModelOnSessionCreation(bool value);
+  
+  wfc::IMapView<winrt::hstring, uint32_t> NamedDimensionOverrides();
+  void OverrideNamedDimension(winrt::hstring name, uint32_t value);
 
   STDMETHOD(SetIntraOpNumThreadsOverride)
   (uint32_t intraOpNumThreads);
@@ -46,6 +49,13 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelS
   //
   // The default value here is False so that models are not automatically closed on session creation.
   bool close_model_on_session_creation_ = false;
+
+  // Map of named input dimensions to concrete values. 
+  // This informs the engine when the developer wants to explictily set a named dimension to a fixed value.
+
+  // 0    : the dimension present in the model should be honored.
+  // 1...n: override the named input dimension to the given value and optimize evaluations.
+  wfc::IMap<winrt::hstring, uint32_t> named_dim_overrides_ = winrt::single_threaded_map<winrt::hstring, uint32_t>();
 
   // The intra operator num threads property is used to control the number of threads used in the threadpool for intra operator calculations.
   // The default value here is the maximum number of logical cores to ensure that the default behavior of WinML always runs the fastest.
