@@ -395,10 +395,12 @@ Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& input, Pr
   }
 
   CudnnReduceDescriptor reduce_desc;
-  if (std::is_same<T, MLFloat16>::value)
+  if (std::is_same<T, MLFloat16>::value) {
     ORT_RETURN_IF_ERROR(reduce_desc.Set(cudnn_reduce_op, CudnnTensor::GetDataType<float>(), ReduceTensorIndices));
-  else
+  } else {
     ORT_RETURN_IF_ERROR(reduce_desc.Set(cudnn_reduce_op, cudnn_type_X, ReduceTensorIndices));
+  }
+
   const auto one = Consts<CudaT>::One;
   const auto zero = Consts<CudaT>::Zero;
   CudnnTensor input_tensor;
@@ -437,7 +439,11 @@ Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& input, Pr
       } else {
         // Reduce max -- Max/Min will output indices data
         CudnnReduceDescriptor reduce_max_desc;
-        ORT_RETURN_IF_ERROR(reduce_max_desc.Set(CUDNN_REDUCE_TENSOR_MAX, cudnn_type_X, CUDNN_REDUCE_TENSOR_NO_INDICES));
+        cudnnDataType_t cudnn_reduce_max_type = cudnn_type_X;
+        if((std::is_same<T, MLFloat16>::value)) {
+            cudnn_reduce_max_type = CUDNN_DATA_FLOAT;
+        }
+        ORT_RETURN_IF_ERROR(reduce_max_desc.Set(CUDNN_REDUCE_TENSOR_MAX, cudnn_reduce_max_type, CUDNN_REDUCE_TENSOR_NO_INDICES));
         size_t indices_bytes_max = 0;
         CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(cuda_ep.PerThreadCudnnHandle(), reduce_max_desc,
                                                            input_tensor, output_tensor, &indices_bytes_max));

@@ -634,9 +634,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "ON" if args.enable_msvc_static_runtime else "OFF"),
         # enable pyop if it is nightly build
         "-Donnxruntime_ENABLE_LANGUAGE_INTEROP_OPS=" + (
-            "ON" if args.enable_language_interop_ops or
-            (args.config != 'Debug' and
-             bool(os.getenv('NIGHTLY_BUILD') == '1')) else "OFF"),
+            "ON" if args.enable_language_interop_ops else "OFF"),
         "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
         "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml else "OFF"),
         "-Donnxruntime_BUILD_FOR_WINDOWS_STORE=" + ("ON" if args.enable_windows_store else "OFF"),
