@@ -138,6 +138,18 @@ class ExecutionFrame final : public IExecutionFrame {
   // If the retrival is sucessful, this function returns true and false otherwise.
   bool TryGetInferredShape(int index, TensorShape& shape) const override;
 
+  // Return the size of virtual memory allocated in runtime.
+  // The memory is usually used for activations in forward and backward passes.
+  const std::unordered_map<std::string, size_t>& GetDynamicMemorySizeInfo() {
+    return dynamic_activation_memory_sizes_in_byte_;
+  }
+
+  // Return the size of virtual memory allocated before computation.
+  // The memory is usually used for activations in forward and backward passes.
+  const std::unordered_map<std::string, size_t>& GetStaticMemorySizeInfo() {
+    return static_activation_memory_sizes_in_byte_;
+  }
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ExecutionFrame);
 
@@ -183,5 +195,14 @@ class ExecutionFrame final : public IExecutionFrame {
   // by i, if the key i exists.
   // inferred_shapes_ is generated togehter with mem_patterns_.
   std::unordered_map<int, TensorShape> inferred_shapes_;
+
+  // Size of virtual memory allocated before any kernel execution.
+  // This field is not physical memory size.
+  std::unordered_map<std::string, size_t> static_activation_memory_sizes_in_byte_;
+
+  // Size of virtual memory allocated during kernel execution (i.e., inside a kernel,
+  // we may allocate some memory for its outputs, if not planned.).
+  // This field is not physical memory size.
+  std::unordered_map<std::string, size_t> dynamic_activation_memory_sizes_in_byte_;
 };
 }  // namespace onnxruntime
