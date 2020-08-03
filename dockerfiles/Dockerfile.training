@@ -46,7 +46,7 @@ RUN conda install -y \
     pip install \
         onnx=="${ONNX_VERSION}"
 
-# build ucx suite (leverages mellanox libraries)
+# build ucx suite
 # note: openmpi will not select ucx without multithreading enabled
 ARG UCX_VERSION
 ARG UCX_TARNAME=ucx-$UCX_VERSION
