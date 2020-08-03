@@ -24,7 +24,7 @@ jobs:
           #Merge the mulitple prof data into a single indexed profile data file
           llvm-profdata merge -sparse -o ort.profdata *.profraw
           #Create coverage report, output the result to 'report.json'
-          llvm-cov export -summary-only -instr-profile=ort.profdata onnx_test_runner -object onnxruntime_test_all  $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops > $(Build.BinariesDirectory)/report.json
+          llvm-cov export -summary-only -instr-profile=ort.profdata onnxruntime_test_all -object onnxruntime_mlas_test  $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops > $(Build.BinariesDirectory)/report.json
         workingDirectory: $(Build.BinariesDirectory)
 
     - task: CmdLine@2
