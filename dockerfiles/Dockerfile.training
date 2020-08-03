@@ -154,7 +154,6 @@ RUN cd /stage && git clone https://github.com/microsoft/onnxruntime.git &&\
         --update \
         --parallel \
         --build_dir build \
-        --build \
         --build_wheel \
         "${TEST_FLAG}" && \
     pip install build/Release/dist/*.whl
