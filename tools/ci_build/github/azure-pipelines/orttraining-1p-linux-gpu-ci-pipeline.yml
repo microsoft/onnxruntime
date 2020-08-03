@@ -1,6 +1,6 @@
 parameters:
-  - name: test_flag
-    displayName: Test Flag
+  - name: build_flag
+    displayName: Build Flag
     type: string
     default: --enable_onnx_tests
   - name: image_tag
@@ -45,7 +45,7 @@ stages:
             docker build \
               --pull \
               -t ${{ variables.docker_image_prefix }}-manylinux-gpu-release \
-              --build-arg TEST_FLAG="${{ parameters.test_flag }}" \
+              --build-arg BUILD_FLAG="${{ parameters.build_flag }}" \
               -f ${{ variables.linux_gpu_dockerfile }} .
           workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
 

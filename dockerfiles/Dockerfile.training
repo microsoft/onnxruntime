@@ -10,8 +10,8 @@ ARG MKL_VERSION=2020.1
 ARG NUMPY_VERSION=1.18.5
 ARG ONNX_VERSION=1.7.0
 ARG PYTORCH_VERSION=1.6.0
-#ARG TEST_FLAG="--build --skip_tests"
-ARG TEST_FLAG="--build"
+#ARG BUILD_FLAG="--build --skip_tests"
+ARG BUILD_FLAG=--build
 
 # cuda development image for building sources
 FROM nvidia/cuda:10.2-cudnn7-devel-ubuntu18.04 as build
@@ -138,7 +138,7 @@ RUN echo python tools/ci_build/build.py \
         --parallel \
         --build_dir build \
         --build_wheel \
-        "${TEST_FLAG}"
+        "${BUILD_FLAG}"
 RUN cd /stage && git clone https://github.com/microsoft/onnxruntime.git &&\
     cd onnxruntime &&\
     git checkout v1.4.0 &&\
@@ -156,7 +156,7 @@ RUN cd /stage && git clone https://github.com/microsoft/onnxruntime.git &&\
         --parallel \
         --build_dir build \
         --build_wheel \
-        "${TEST_FLAG}" && \
+        "${BUILD_FLAG}" && \
     pip install build/Release/dist/*.whl
 
 # switch to cuda runtime environment
