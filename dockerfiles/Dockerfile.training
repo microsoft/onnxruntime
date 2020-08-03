@@ -197,4 +197,4 @@ RUN conda remove -y cmake &&\
     apt-get autoremove -y &&\
     rm -fr /stage
 WORKDIR /workspace
-COPY --from=build /stage/*.txt /workspace
+COPY --from=build /stage/*.txt /workspace/
