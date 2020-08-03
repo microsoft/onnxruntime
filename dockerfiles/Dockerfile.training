@@ -192,7 +192,7 @@ LABEL PYTORCH_VERSION=${PYTORCH_VERSION}
 
 # clean\finalize environment
 # note: adds onnxruntime license and third party notices
-RUN conda remove -y cmake ninja &&\
+RUN conda remove -y cmake &&\
     apt-get purge -y build-essential &&\
     apt-get autoremove -y &&\
     rm -fr /stage
