@@ -26,3 +26,4 @@ ARG BUILD_UID=1000
 RUN adduser --gecos 'onnxruntime Build User' --disabled-password $BUILD_USER --uid $BUILD_UID
 WORKDIR /home/$BUILD_USER
 USER $BUILD_USER
+
