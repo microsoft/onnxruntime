@@ -337,6 +337,25 @@ struct Value : Base<OrtValue> {
   void FillStringTensorElement(const char* s, size_t index);
 };
 
+// Represents native memory allocation
+struct MemoryAllocation {
+  MemoryAllocation(OrtAllocator* allocator, void* p, size_t size);
+  ~MemoryAllocation();
+  MemoryAllocation(const MemoryAllocation&) = delete;
+  MemoryAllocation& operator=(const MemoryAllocation&) = delete;
+  MemoryAllocation(MemoryAllocation&&);
+  MemoryAllocation& operator=(MemoryAllocation&&);
+
+  void* get() { return p_; }
+  size_t size() const { return size_; }
+
+ private:
+
+  OrtAllocator* allocator_;
+  void* p_;
+  size_t size_;
+};
+
 struct AllocatorWithDefaultOptions {
   AllocatorWithDefaultOptions();
 
@@ -344,6 +363,8 @@ struct AllocatorWithDefaultOptions {
   operator const OrtAllocator*() const { return p_; }
 
   void* Alloc(size_t size);
+  // The return value will own the allocation
+  MemoryAllocation GetAllocation(size_t size);
   void Free(void* p);
 
   const OrtMemoryInfo* GetInfo() const;
@@ -385,6 +406,8 @@ struct Allocator : public Base<OrtAllocator> {
   Allocator(const Session& session, const MemoryInfo&);
 
   void* Alloc(size_t size) const;
+  // The return value will own the allocation
+  MemoryAllocation GetAllocation(size_t size);
   void Free(void* p) const;
   UnownedMemoryInfo GetInfo() const;
 };

@@ -67,7 +67,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 throw new OnnxRuntimeException(ErrorCode.InvalidArgument, "Binding works only with Tensors");
             }
-            BindInputOrOutput(name, fixedValue.Value, true);
+            BindInputOrOutput(name, fixedValue.Value.Handle, true);
         }
 
         /// <summary>
@@ -100,7 +100,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 throw new OnnxRuntimeException(ErrorCode.InvalidArgument, "Binding works only with Tensors");
             }
-            BindInputOrOutput(name, fixedValue.Value, false);
+            BindInputOrOutput(name, fixedValue.Value.Handle, false);
         }
 
         /// <summary>

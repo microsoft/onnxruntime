@@ -48,6 +48,42 @@ struct TypeToTensorType<uint64_t> { static constexpr ONNXTensorElementDataType t
 template <>
 struct TypeToTensorType<bool> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL; };
 
+inline MemoryAllocation::MemoryAllocation(OrtAllocator* allocator, void* p, size_t size)
+    : allocator_(allocator), p_(p), size_(size) {
+}
+
+inline MemoryAllocation::~MemoryAllocation() {
+  if (p_ != nullptr) {
+    GetApi().AllocatorFree(allocator_, p_);
+  }
+}
+
+inline MemoryAllocation::MemoryAllocation(MemoryAllocation&& o) :
+  allocator_(nullptr), p_(nullptr), size_(0) {
+  *this = std::move(o);
+}
+
+inline MemoryAllocation& MemoryAllocation::operator=(MemoryAllocation&& o) {
+
+  OrtAllocator* alloc = nullptr;
+  void* p = nullptr;
+  size_t sz = 0;
+
+  // Swap out this
+  std::swap(alloc, allocator_);
+  std::swap(p, p_);
+  std::swap(sz, size_);
+
+  // Swap with incoming
+  std::swap(allocator_, o.allocator_);
+  std::swap(p_, o.p_);
+  std::swap(size_, o.size_);
+
+  // Destroy this instance if needed
+  MemoryAllocation this_alloc(alloc, p, sz);
+  return *this;
+}
+
 inline AllocatorWithDefaultOptions::AllocatorWithDefaultOptions() {
   ThrowOnError(GetApi().GetAllocatorWithDefaultOptions(&p_));
 }
@@ -56,6 +92,13 @@ inline void* AllocatorWithDefaultOptions::Alloc(size_t size) {
   void* out;
   ThrowOnError(GetApi().AllocatorAlloc(p_, size, &out));
   return out;
+}
+
+inline MemoryAllocation Ort::AllocatorWithDefaultOptions::GetAllocation(size_t size) {
+  void* out;
+  ThrowOnError(GetApi().AllocatorAlloc(p_, size, &out));
+  MemoryAllocation result(p_, out, size);
+  return result;
 }
 
 inline void AllocatorWithDefaultOptions::Free(void* p) {
@@ -122,6 +165,13 @@ inline void* Allocator::Alloc(size_t size) const {
   void* out = nullptr;
   ThrowOnError(GetApi().AllocatorAlloc(p_, size, &out));
   return out;
+}
+
+inline MemoryAllocation Ort::Allocator::GetAllocation(size_t size) {
+  void* out = nullptr;
+  ThrowOnError(GetApi().AllocatorAlloc(p_, size, &out));
+  MemoryAllocation result(p_, out, size);
+  return result;
 }
 
 inline void Allocator::Free(void* p) const {

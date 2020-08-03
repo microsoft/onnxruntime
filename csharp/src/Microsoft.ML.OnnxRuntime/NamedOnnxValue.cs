@@ -5,6 +5,7 @@ using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Runtime.InteropServices.ComTypes;
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -70,7 +71,10 @@ namespace Microsoft.ML.OnnxRuntime
             out MemoryHandle pinnedMemoryHandle,
             out bool disposeOnnxValueAfterUse)
         {
-            NativeOnnxValueHelper.CreateNativeOnnxValue(_value, out onnxValue, out pinnedMemoryHandle, out OnnxValueType onnxValueType, out TensorElementType elementType);
+            var ortValue = OrtValue.CreateFromTensorObject(_value, out pinnedMemoryHandle, out TensorElementType elementType);
+            onnxValue = ortValue.Disown();
+            // Dispose any other parts if any
+            ortValue.Dispose();
             disposeOnnxValueAfterUse = true;
         }
 
