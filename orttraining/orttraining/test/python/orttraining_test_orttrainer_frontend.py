@@ -573,3 +573,60 @@ def testInstantiateORTTrainer(step_fn, lr_scheduler, expected_lr_values):
     assert (trainer_from_onnx._onnx_model.graph == trainer._onnx_model.graph)
     assert (onnx.helper.printable_graph(trainer_from_onnx._onnx_model.graph) == onnx.helper.printable_graph(trainer._onnx_model.graph))
 
+
+def testORTWeights():
+    # Loading external TransformerModel model for testing
+    # A manual import is done as this example is not part of onnxruntime package,
+    # but resides on the onnxruntime repo
+    pytorch_transformer_path = os.path.join('..', '..', '..', 'samples', 'python', 'pytorch_transformer')
+    pt_model_path = os.path.join(pytorch_transformer_path, 'pt_model.py')
+    pt_model_name = 'pt_model'
+    pt_model = _utils.import_module_from_file(pt_model_path, pt_model_name)
+    ort_utils_path = os.path.join(pytorch_transformer_path, 'ort_utils.py')
+    ort_utils_name = 'ort_utils'
+    ort_utils = _utils.import_module_from_file(ort_utils_path, ort_utils_name)
+    utils_path = os.path.join(pytorch_transformer_path, 'utils.py')
+    utils_name = 'utils'
+    utils = _utils.import_module_from_file(utils_path, utils_name)
+
+    # Modeling
+    model = pt_model.TransformerModel(28785, 200, 2, 200, 2, 0.2)
+    my_loss = ort_utils.my_loss
+    model_desc = ort_utils.transformer_model_description()
+   
+    optim_config = optim.LambConfig()
+    opts = orttrainer.ORTTrainerOptions({'debug' : {'deterministic_compute': True}})
+    # Create ORTTrainer
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=opts)
+
+    # Preparing data
+    train_data, val_data, _ = utils.prepare_data('cpu', 20, 20)
+
+    import numpy as np
+
+    # Export model to ONNX
+    step_fn = trainer.train_step
+    data, targets = utils.get_batch(train_data, 0)
+    output = trainer.eval_step(data, targets)
+    assert trainer._onnx_model is not None
+    print(type(trainer._training_session.get_state()))
+    for name, val in trainer._training_session.get_state().items():
+        #print(name, len(val))#val.size())
+        np_vals = np.array(val).flatten()
+    
+    second_trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=opts)
+
+    # Export model to ONNX
+    data, targets = utils.get_batch(train_data, 0)
+    output = second_trainer.eval_step(data, targets)
+    assert second_trainer._onnx_model is not None
+    print(type(second_trainer._training_session.get_state()))
+    for (a_name, a_val), (b_name, b_val) in zip(trainer._training_session.get_state().items(), second_trainer._training_session.get_state().items()):
+        #print(name, len(val))#val.size())
+        np_a_vals = np.array(a_val).flatten()
+        np_b_vals = np.array(b_val).flatten()
+        for a, b in zip(np_a_vals, np_b_vals):
+            assert_allclose(a, b, rtol=1, err_msg="weight mismatch")
+            print("success") 
+        assert np_a_vals.shape == np_b_vals.shape
+
