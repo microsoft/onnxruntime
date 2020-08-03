@@ -7,30 +7,13 @@
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/common/safeint.h"
-//#include "core/graph/onnx_protobuf.h"
 
 #include "tensorrt_execution_provider.h"
 #include "core/providers/cuda/cuda_allocator.h"
-//#include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
-//#include "core/session/onnxruntime_cxx_api.h"
-//#include "core/framework/execution_provider.h"
-//#include "core/framework/op_kernel.h"
-//#include "core/framework/kernel_registry.h"
-//#include "core/framework/compute_capability.h"
-//#include "core/framework/memcpy.h"
-//#include "core/providers/cpu/cpu_execution_provider.h"
-//#include "core/providers/cuda/cuda_common.h"
-//#include "core/providers/cuda/cuda_fence.h"
-//#include "core/platform/env.h"
-//#include "core/common/safeint.h"
-//#include "core/common/status.h"
-//#include "onnx/shape_inference/implementation.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "cuda_runtime_api.h"
 #include "gsl/gsl"
-//#include "core/graph/model.h"
-//#include "core/providers/cuda/gpu_data_transfer.h"
 #include <experimental/filesystem>
 
 #define CUDA_RETURN_IF_ERROR(expr)               \
@@ -92,7 +75,6 @@ void Impl_Cast(
 
 }  // namespace cuda
 
-#pragma warning(disable : 4100)
 template <>
 bool CudaCall<cudaError, false>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg) {
   return g_host->CudaCall_false(retCode, exprString, libName, successCode, msg);
@@ -105,7 +87,7 @@ bool CudaCall<cudaError, true>(cudaError retCode, const char* exprString, const 
 
 class Memcpy final : public Provider_OpKernel {
  public:
-  Memcpy(const Provider_OpKernelInfo& info) {}
+  Memcpy(const Provider_OpKernelInfo&) {}
 
   Status Compute(Provider_OpKernelContext* ctx, const Provider_OpKernel_Base& base) const override {
     const auto* X = ctx->Input<Provider_Tensor>(0);

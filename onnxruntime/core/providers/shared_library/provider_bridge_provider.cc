@@ -8,8 +8,6 @@
 #include <mutex>
 #include <iostream>  // For std::cout used in a stub
 
-#pragma warning(disable : 4100)
-
 #define PROVIDER_NOT_IMPLEMENTED ORT_THROW("Unimplemented shared library provider method");
 
 extern "C" {
@@ -59,14 +57,6 @@ void operator delete(void* p, size_t /*size*/) {
   return onnxruntime::g_host->HeapFree(p);
 }
 
-#if 0
-namespace onnx {
-std::unique_ptr<ONNX_NAMESPACE::Provider_AttributeProto> Provider_AttributeProto::Create() {
-  return onnxruntime::g_host->AttributeProto_Create();
-}
-}  // namespace onnx
-#endif
-
 namespace onnxruntime {
 
 Provider_AllocatorPtr CreateAllocator(const Provider_DeviceAllocatorRegistrationInfo& info, int16_t device_id,
@@ -74,26 +64,10 @@ Provider_AllocatorPtr CreateAllocator(const Provider_DeviceAllocatorRegistration
   return g_host->CreateAllocator(info, device_id, use_arena);
 }
 
-#if 0
-std::unique_ptr<Provider_KernelDefBuilder> Provider_KernelDefBuilder::Create() {
-  return g_host->KernelDefBuilder_Create();
-}
-
-std::shared_ptr<Provider_KernelRegistry> Provider_KernelRegistry::Create() {
-  return g_host->KernelRegistry_Create();
-}
-#endif
-
 std::unique_ptr<Provider_OrtMemoryInfo> Provider_OrtMemoryInfo::Create(
     const char* name_, OrtAllocatorType type_, Provider_OrtDevice* device_, int id_, OrtMemType mem_type_) {
   return g_host->OrtMemoryInfo_Create(name_, type_, device_, id_, mem_type_);
 }
-
-#if 0
-std::unique_ptr<Provider_IndexedSubGraph> Provider_IndexedSubGraph::Create() {
-  return g_host->IndexedSubGraph_Create();
-}
-#endif
 
 template <>
 MLDataType DataTypeImpl::GetType<float>() {
