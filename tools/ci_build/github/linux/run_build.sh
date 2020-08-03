@@ -65,7 +65,7 @@ else
                 --config Debug Release $COMMON_BUILD_ARGS \
                 --use_cuda \
                 --cuda_home /usr/local/cuda \
-                --cudnn_home /usr/local/cuda $BUILD_EXTR_PAR 
+                --cudnn_home /usr/local/cuda $BUILD_EXTR_PAR
         else
             _CUDNN_VERSION=$(echo $CUDNN_VERSION | cut -d. -f1-2)
             python3 $SCRIPT_DIR/../../build.py --build_dir /build \

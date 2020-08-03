@@ -17,7 +17,7 @@ jobs:
       "
     DoNugetPack: 'false'
     ArtifactName: 'drop-linux'
-    TimeoutInMinutes: 0
+    TimeoutInMinutes: 90
     Strategy: 
       maxParallel: 2
       matrix:
