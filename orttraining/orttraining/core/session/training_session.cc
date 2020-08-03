@@ -287,7 +287,8 @@ Status TrainingSession::ConfigureForTraining(
     const auto* node_arg = model_->MainGraph().GetNodeArg(*it);
     ORT_RETURN_IF_NOT(node_arg, "Failed to get NodeArg with name ", *it);
     if (node_arg->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
-        node_arg->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+        node_arg->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
+        node_arg->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) {
       it = weights_to_train_.erase(it);
     } else {
       ++it;
@@ -653,10 +654,11 @@ Status TrainingSession::EnableMixedPrecision(const std::unordered_set<std::strin
 
   std::unordered_set<std::string> mixed_precision_weight_initializer_names{};
   std::transform(
-      fp32_weight_name_to_mixed_precision_node_arg.cbegin(), fp32_weight_name_to_mixed_precision_node_arg.cend(),
+      weights_to_train.cbegin(), weights_to_train.cend(),
       std::inserter(mixed_precision_weight_initializer_names, mixed_precision_weight_initializer_names.begin()),
-      [](const std::pair<std::string, NodeArg*>& p) {
-        return p.second->Name();
+      [&fp32_weight_name_to_mixed_precision_node_arg](const std::string& name) {
+        return fp32_weight_name_to_mixed_precision_node_arg.find(name) != fp32_weight_name_to_mixed_precision_node_arg.end() ?
+               fp32_weight_name_to_mixed_precision_node_arg[name]->Name() : name;
       });
   mixed_precision_weight_initializer_names_ = std::move(mixed_precision_weight_initializer_names);
 

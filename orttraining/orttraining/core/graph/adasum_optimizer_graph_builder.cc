@@ -125,7 +125,9 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
   // No fusion with Adasum
   const bool fuse_scaling_outputs = false;
   ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs,
-                                              opt_graph_config_.allreduce_in_mixed_precision_type, fuse_scaling_outputs));
+                                              opt_graph_config_.allreduce_in_mixed_precision_type ?
+                                                  opt_graph_config_.mixed_precision_type : ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                                              fuse_scaling_outputs));
 
   // check if all gradients are finite
   ArgDef global_grad_norm_argdef;

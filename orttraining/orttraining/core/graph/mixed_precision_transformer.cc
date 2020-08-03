@@ -13,9 +13,9 @@ namespace onnxruntime {
 namespace training {
 
 // Goals of the mixed-precision-transformer: Replace full-precision (FP32) arithmetic by
-// low-precision (FP16) arithmetic as appropriate/required. Currently, the plan is to use
-// FP16, by default, and use FP32 only in the following exceptional situations:
-// (a) Due to the unavailability of FP16 ops or kernels for some ops such as Trainable/Dropout.
+// low-precision (FP16 or BFloat16) arithmetic as appropriate/required. Currently, the plan is to use
+// FP16 or BFloat16 by default, and use FP32 only in the following exceptional situations:
+// (a) Due to the unavailability of FP16/BFloat16 ops or kernels for some ops such as Trainable/Dropout.
 // (b) Due to the usefulness of full-precision in some ops such as SparseSoftmaxCrossEntropy.
 // Note that in the long term, it may be useful to extend ops such as ReduceSum with
 // an attribute to indicate that it should use a higher-precision accumulator internally
@@ -246,6 +246,7 @@ struct LossSubgraph {
     const auto& order = graph_viewer.GetNodesInTopologicalOrder();
 
     // Get the nodes related to loss scale. It's a Mul node if it's FP16 mixed precision.
+    // If it's not FP16 mixed precision, empty vector will be returned.
     std::vector<Node*> loss_scale_consumers = graph.GetMutableConsumerNodes(loss_scale_input);
     nodes_.insert(loss_scale_consumers.begin(), loss_scale_consumers.end());
 
@@ -343,7 +344,7 @@ Status TransformConstants(Graph& graph,
                           ONNX_NAMESPACE::TensorProto_DataType mixed_precision_type,
                           LossSubgraph* p_loss_subgraph = nullptr) {
   // This pass does not require topological sort order: okay to visit nodes in any order.
-  // We identify nodeargs to be converted to FP16 first, and then convert them separately
+  // We identify nodeargs to be converted to FP16/BFloat16 first, and then convert them separately
   // to avoid modifying the graph while iterating through it.
   std::unordered_set<NodeArg*> to_mixed_precision_type;
   for (auto& node : graph.Nodes()) {
@@ -385,10 +386,10 @@ Status TransformConstants(Graph& graph,
   return Status::OK();
 }
 
-// Stage 2 transformation: Introduce conversions from FP16 back to FP32 for ops such
+// Stage 2 transformation: Introduce conversions from FP16/BFloat16 back to FP32 for ops such
 // as SparseSoftmaxCrossEntropy where FP32 precision is required.
-// Converts fp16 tensor --> Op --> fp16 tensor to
-// fp16 tensor --> Cast --> fp32 tensor --> Op --> fp32 tensor --> Cast --> fp16 tensor
+// Converts fp16/bf16 tensor --> Op --> fp16/bf16 tensor to
+// fp16/bf16 tensor --> Cast --> fp32 tensor --> Op --> fp32 tensor --> Cast --> fp16/bf16 tensor
 Status TransformStage2(Graph& graph,
                        ONNX_NAMESPACE::TensorProto_DataType mixed_precision_type,
                        const std::unordered_map<Node*, std::vector<int>>& loss_subgraph_fp32_node_args = {}) {
@@ -511,7 +512,7 @@ static Status HandleFunctionCalls(Graph& graph, ONNX_NAMESPACE::TensorProto_Data
   return Status::OK();
 }
 
-// Create FP16 NodeArg and update the consumers of arg with new FP16 NodeArg.
+// Create FP16/BFloat16 NodeArg and update the consumers of arg with new FP16/BFloat16 NodeArg.
 static NodeArg* CreateMixedPrecisionNodeArgAndUpdateConsumers(Graph& graph,
                                                               const std::unordered_map<std::string, std::vector<int>>& fp32_node_args_by_op_type,
                                                               const std::unordered_map<Node*, std::vector<int>>& fp32_node_args_by_node,
@@ -519,7 +520,7 @@ static NodeArg* CreateMixedPrecisionNodeArgAndUpdateConsumers(Graph& graph,
                                                               ONNX_NAMESPACE::TensorProto_DataType mixed_precision_type) {
   ORT_ENFORCE(arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
               "data type is not float");
-  // Create FP16 Node Arg
+  // Create FP16/BFloat16 Node Arg
   ONNX_NAMESPACE::TypeProto type_proto;
   type_proto.mutable_tensor_type()->set_elem_type(mixed_precision_type);
   type_proto.mutable_tensor_type()->mutable_shape()->CopyFrom(*arg->Shape());
@@ -549,8 +550,8 @@ Status TransformGraphForMixedPrecision(Graph& graph,
   // Stag 0: Initialize loss subgraph.
   LossSubgraph loss_subgraph(graph);
 
-  // Stage 1: Convert whole graph including forward and backward to FP16
-  // Insert Cast node to convert inputs from FP32 to FP16
+  // Stage 1: Convert whole graph including forward and backward to FP16/BFLoat16
+  // Insert Cast node to convert inputs from FP32 to FP16/BFLoat16
   // If all consumers are from loss graph, don't convert it, and remove it from To-32 loss graph inputs.
   for (const NodeArg* input : graph.GetInputs()) {
     // Input loss_scale will always keep as FP32.
@@ -571,7 +572,7 @@ Status TransformGraphForMixedPrecision(Graph& graph,
     }
   }
 
-  // Convert initializers including trainable weights from FP32 to FP16
+  // Convert initializers including trainable weights from FP32 to FP16/BFloat16
   const auto& initialized_tensors = graph.GetAllInitializedTensors();
   std::unordered_map<std::string, NodeArg*> fp32_weight_name_to_mixed_precision_node_arg_result{};
   std::vector<std::pair<std::string, const ONNX_NAMESPACE::TensorProto*>> mixed_precision_initializers;
@@ -607,7 +608,7 @@ Status TransformGraphForMixedPrecision(Graph& graph,
     }
   }
 
-  // Add new FP16 initializers to the graph
+  // Add new FP16/BFloat16 initializers to the graph
   for (const auto& kv : mixed_precision_initializers) {
     const ONNX_NAMESPACE::TensorProto* tensor_proto = kv.second;
     Initializer initializer(*tensor_proto, graph.ModelPath());
@@ -619,13 +620,13 @@ Status TransformGraphForMixedPrecision(Graph& graph,
   // Handle pipeline case
   for (auto& node : graph.Nodes()) {
     // For send and recv node, if the tensor being sent or received is FP32, update its
-    // attribute and change it to FP16.
+    // attribute and change it to FP16/BFloat16.
     if ((!node.OpType().compare("Send") || !node.OpType().compare("Recv")) && !loss_subgraph.Contains(&node)) {
       auto& attributes = node.GetMutableAttributes();
       auto* element_type = &(attributes.find("element_types")->second);
       int ints_size = element_type->ints_size();
       for(int i = 0; i < ints_size; ++i){
-        if(element_type->ints(i) == static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT)){
+        if (element_type->ints(i) == static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
           element_type->set_ints(i, static_cast<int64_t>(mixed_precision_type));
           // Need to resolve and populate the new type through the graph.
           graph.SetGraphResolveNeeded();
@@ -643,7 +644,7 @@ Status TransformGraphForMixedPrecision(Graph& graph,
   // Handle loss graph inputs and outputs.
   ORT_RETURN_IF_ERROR(loss_subgraph.CastInputsToFP32(graph));
 
-  // At this point, the model has been transformed to a valid FP16 model.
+  // At this point, the model has been transformed to a valid FP16/BFloat16 model.
 
   Graph::ResolveOptions options;
   options.initializer_names_to_preserve = &weights_to_train;

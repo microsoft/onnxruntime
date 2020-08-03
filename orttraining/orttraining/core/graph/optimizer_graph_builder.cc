@@ -85,18 +85,15 @@ Status OptimizerGraphBuilder::AddGradientScalingNodes(
     std::vector<ArgDef>& gradient_argdefs,  // update argdefs in place
     ArgDef& fused_gradient_argdef,          // update argdef in place
     GraphAugmenter::GraphDefs& graph_defs,
-    const bool allreduce_in_fp16,
+    ONNX_NAMESPACE::TensorProto_DataType allreduce_element_type,
     const bool fuse_scaling_outputs) {
   ArgDef pre_allreduce_scale(nodearg_name_generator("pre_allreduce_scale"),
                              graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
   graph_defs.AddInitializers({CreateTensorProto<float>(pre_allreduce_scale.name, scale, {})});
 
-  auto target_type = allreduce_in_fp16 ? ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
-                                       : ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
-
   if (fuse_scaling_outputs) {
     TypeProto* fused_gradient_type_proto = graph_defs.CreateTypeProto();
-    fused_gradient_type_proto->mutable_tensor_type()->set_elem_type(target_type);
+    fused_gradient_type_proto->mutable_tensor_type()->set_elem_type(allreduce_element_type);
     fused_gradient_argdef = ArgDef("fused_gradient", fused_gradient_type_proto);
 
     std::vector<ArgDef> inputs;
@@ -107,7 +104,7 @@ Status OptimizerGraphBuilder::AddGradientScalingNodes(
     graph_defs.AddNodeDefs({NodeDef(OpDef{"MixedPrecisionScale", kMSDomain, 1},
                                     inputs,
                                     {fused_gradient_argdef},
-                                    std::vector<AttributeProto>({ONNX_NAMESPACE::MakeAttribute("to", static_cast<int64_t>(target_type)),
+                                    std::vector<AttributeProto>({ONNX_NAMESPACE::MakeAttribute("to", static_cast<int64_t>(allreduce_element_type)),
                                                                  ONNX_NAMESPACE::MakeAttribute("fuse_outputs", static_cast<int64_t>(true))}),
                                     pre_allreduce_scale.name)});
   } else {
@@ -115,14 +112,14 @@ Status OptimizerGraphBuilder::AddGradientScalingNodes(
       ArgDef& gradient_argdef = gradient_argdefs[i];
 
       TypeProto* scaled_gradient_type_proto = graph_defs.CopyTypeProto(gradient_argdef);
-      scaled_gradient_type_proto->mutable_tensor_type()->set_elem_type(target_type);
+      scaled_gradient_type_proto->mutable_tensor_type()->set_elem_type(allreduce_element_type);
 
       ArgDef scaled_gradient_argdef = ArgDef(nodearg_name_generator(gradient_argdef.name + "_scaled"),
                                              scaled_gradient_type_proto);
       graph_defs.AddNodeDefs({NodeDef(OpDef{"MixedPrecisionScale", kMSDomain, 1},
                                       {pre_allreduce_scale, gradient_argdef},
                                       {scaled_gradient_argdef},
-                                      {ONNX_NAMESPACE::MakeAttribute("to", static_cast<int64_t>(target_type))},
+                                      {ONNX_NAMESPACE::MakeAttribute("to", static_cast<int64_t>(allreduce_element_type))},
                                       scaled_gradient_argdef.name)});
 
       gradient_argdef = scaled_gradient_argdef;
@@ -253,9 +250,10 @@ Status OptimizerGraphBuilder::AddGradientNorm(
   ONNX_NAMESPACE::TensorProto_DataType grad_type =
       static_cast<ONNX_NAMESPACE::TensorProto_DataType>(grad_argdefs[0].type_proto->tensor_type().elem_type());
   if (grad_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
-      grad_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+      grad_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
+      grad_type != ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) {
     return Status(common::ONNXRUNTIME, common::FAIL,
-                  "Unsupport gradient type: it has to be either float or MLFloat16.");
+                  "Unsupport gradient type: it has to be either float, MLFloat16 or BFloat16.");
   }
 
   for (const auto argdef : grad_argdefs) {
@@ -401,7 +399,9 @@ Status OptimizerGraphBuilder::BuildInternal(
   if (is_gradient_accumulation_enabled) {
     const float scale = 1.0f / opt_graph_config_.gradient_accumulation_steps;
     ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs,
-                                                opt_graph_config_.allreduce_in_mixed_precision_type, false));
+                                                opt_graph_config_.allreduce_in_mixed_precision_type ?
+                                                    opt_graph_config_.mixed_precision_type : ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                                                false));
   }
 
   // check if all gradients are finite

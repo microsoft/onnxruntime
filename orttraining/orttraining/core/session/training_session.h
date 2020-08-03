@@ -72,7 +72,7 @@ class TrainingSession : public InferenceSession {
     DistributedConfiguration distributed_config{};
 
     struct MixedPrecisionConfiguration {
-      // Whether to use FP16 initializers.
+      // Whether to use mixed precision initializers.
       bool use_mixed_precision_initializers{};
       ONNX_NAMESPACE::TensorProto_DataType mixed_precision_type{ONNX_NAMESPACE::TensorProto_DataType_FLOAT16};
     };
@@ -125,7 +125,7 @@ class TrainingSession : public InferenceSession {
 
       // Whether to use mixed precision moments.
       bool use_mixed_precision_moments{};
-      // Whether to use FP16 for the all reduce.
+      // Whether to use mixed precision type for the all reduce.
       bool do_all_reduce_in_mixed_precision_type{};
       // Whether to use NCCL.
       bool use_nccl{};
