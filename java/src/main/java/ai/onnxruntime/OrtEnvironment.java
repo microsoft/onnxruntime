@@ -194,7 +194,7 @@ public class OrtEnvironment extends NativeObject {
    * @throws OrtException If the call failed.
    */
   public void setTelemetry(boolean sendTelemetry) throws OrtException {
-    try (NativeReference environmentReference = reference()) {
+    try (NativeUsage environmentReference = use()) {
       setTelemetry(OnnxRuntime.ortApiHandle, environmentReference.handle(), sendTelemetry);
     }
   }

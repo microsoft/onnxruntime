@@ -53,8 +53,8 @@ public class OnnxSequence extends NativeObject implements OnnxValue {
    */
   @Override
   public List<Object> getValue() throws OrtException {
-    try (NativeReference sequenceReference = reference();
-        NativeReference allocatorReference = allocator.reference()) {
+    try (NativeUsage sequenceReference = use();
+        NativeUsage allocatorReference = allocator.use()) {
       if (info.sequenceOfMaps) {
         List<Object> outputSequence = new ArrayList<>(info.length);
         for (int i = 0; i < info.length; i++) {
@@ -142,8 +142,8 @@ public class OnnxSequence extends NativeObject implements OnnxValue {
    * @throws OrtException If the native code failed to read the keys.
    */
   private Object[] getMapKeys(int index) throws OrtException {
-    try (NativeReference sequenceReference = reference();
-        NativeReference allocatorReference = allocator.reference()) {
+    try (NativeUsage sequenceReference = use();
+        NativeUsage allocatorReference = allocator.use()) {
       if (info.mapInfo.keyType == OnnxJavaType.STRING) {
         return getStringKeys(
             OnnxRuntime.ortApiHandle,
@@ -171,8 +171,8 @@ public class OnnxSequence extends NativeObject implements OnnxValue {
    * @throws OrtException If the native code failed to read the values.
    */
   private Object[] getMapValues(int index) throws OrtException {
-    try (NativeReference sequenceReference = reference();
-        NativeReference allocatorReference = allocator.reference()) {
+    try (NativeUsage sequenceReference = use();
+        NativeUsage allocatorReference = allocator.use()) {
       switch (info.mapInfo.valueType) {
         case STRING:
           {

@@ -143,8 +143,8 @@ public class OnnxMap extends NativeObject implements OnnxValue {
    * @throws OrtException If the onnxruntime failed to read the keys.
    */
   private Object[] getMapKeys() throws OrtException {
-    try (NativeReference mapReference = reference();
-        NativeReference allocatorReference = allocator.reference()) {
+    try (NativeUsage mapReference = use();
+        NativeUsage allocatorReference = allocator.use()) {
       if (stringKeys) {
         return getStringKeys(
             OnnxRuntime.ortApiHandle, mapReference.handle(), allocatorReference.handle());
@@ -165,8 +165,8 @@ public class OnnxMap extends NativeObject implements OnnxValue {
    * @throws OrtException If the onnxruntime failed to read the values.
    */
   private Object[] getMapValues() throws OrtException {
-    try (NativeReference mapReference = reference();
-        NativeReference allocatorReference = allocator.reference()) {
+    try (NativeUsage mapReference = use();
+        NativeUsage allocatorReference = allocator.use()) {
       switch (valueType) {
         case STRING:
           {

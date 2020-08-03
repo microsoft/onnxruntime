@@ -58,8 +58,8 @@ public class OnnxTensor extends NativeObject implements OnnxValue {
    */
   @Override
   public Object getValue() throws OrtException {
-    try (NativeReference tensorReference = reference();
-        NativeReference allocatorReference = allocator.reference()) {
+    try (NativeUsage tensorReference = use();
+        NativeUsage allocatorReference = allocator.use()) {
       if (info.isScalar()) {
         switch (info.type) {
           case FLOAT:
@@ -124,7 +124,7 @@ public class OnnxTensor extends NativeObject implements OnnxValue {
     if (info.type == OnnxJavaType.STRING) {
       return null;
     }
-    try (NativeReference tensorReference = reference()) {
+    try (NativeUsage tensorReference = use()) {
       ByteBuffer buffer = getBuffer(OnnxRuntime.ortApiHandle, tensorReference.handle());
       ByteBuffer output = ByteBuffer.allocate(buffer.capacity());
       output.put(buffer);
@@ -244,7 +244,7 @@ public class OnnxTensor extends NativeObject implements OnnxValue {
    * @return A ByteBuffer wrapping the data.
    */
   private ByteBuffer getBuffer() {
-    try (NativeReference tensorReference = reference()) {
+    try (NativeUsage tensorReference = use()) {
       return getBuffer(OnnxRuntime.ortApiHandle, tensorReference.handle())
           .order(ByteOrder.nativeOrder());
     }
@@ -321,8 +321,8 @@ public class OnnxTensor extends NativeObject implements OnnxValue {
    */
   static OnnxTensor createTensor(OrtEnvironment env, OrtAllocator allocator, Object data)
       throws OrtException {
-    try (NativeReference environmentReference = env.reference();
-        NativeReference allocatorReference = allocator.reference()) {
+    try (NativeUsage environmentReference = env.use();
+        NativeUsage allocatorReference = allocator.use()) {
       long allocatorHandle = allocatorReference.handle();
       TensorInfo info = TensorInfo.constructFromJavaArray(data);
       if (info.type == OnnxJavaType.STRING) {
@@ -384,8 +384,8 @@ public class OnnxTensor extends NativeObject implements OnnxValue {
    */
   static OnnxTensor createTensor(
       OrtEnvironment env, OrtAllocator allocator, String[] data, long[] shape) throws OrtException {
-    try (NativeReference environmentReference = env.reference();
-        NativeReference allocatorReference = allocator.reference()) {
+    try (NativeUsage environmentReference = env.use();
+        NativeUsage allocatorReference = allocator.use()) {
       TensorInfo info =
           new TensorInfo(
               shape,
@@ -431,8 +431,8 @@ public class OnnxTensor extends NativeObject implements OnnxValue {
   static OnnxTensor createTensor(
       OrtEnvironment env, OrtAllocator allocator, FloatBuffer data, long[] shape)
       throws OrtException {
-    try (NativeReference environmentReference = env.reference();
-        NativeReference allocatorReference = allocator.reference()) {
+    try (NativeUsage environmentReference = env.use();
+        NativeUsage allocatorReference = allocator.use()) {
       OnnxJavaType type = OnnxJavaType.FLOAT;
       int bufferSize = data.capacity() * type.size;
       FloatBuffer tmp;
@@ -491,8 +491,8 @@ public class OnnxTensor extends NativeObject implements OnnxValue {
   static OnnxTensor createTensor(
       OrtEnvironment env, OrtAllocator allocator, DoubleBuffer data, long[] shape)
       throws OrtException {
-    try (NativeReference environmentReference = env.reference();
-        NativeReference allocatorReference = allocator.reference()) {
+    try (NativeUsage environmentReference = env.use();
+        NativeUsage allocatorReference = allocator.use()) {
       OnnxJavaType type = OnnxJavaType.DOUBLE;
       int bufferSize = data.capacity() * type.size;
       DoubleBuffer tmp;
@@ -589,8 +589,8 @@ public class OnnxTensor extends NativeObject implements OnnxValue {
   static OnnxTensor createTensor(
       OrtEnvironment env, OrtAllocator allocator, ByteBuffer data, long[] shape, OnnxJavaType type)
       throws OrtException {
-    try (NativeReference environmentReference = env.reference();
-        NativeReference allocatorReference = allocator.reference()) {
+    try (NativeUsage environmentReference = env.use();
+        NativeUsage allocatorReference = allocator.use()) {
       int bufferSize = data.capacity();
       ByteBuffer tmp;
       if (data.isDirect()) {
@@ -647,8 +647,8 @@ public class OnnxTensor extends NativeObject implements OnnxValue {
   static OnnxTensor createTensor(
       OrtEnvironment env, OrtAllocator allocator, ShortBuffer data, long[] shape)
       throws OrtException {
-    try (NativeReference environmentReference = env.reference();
-        NativeReference allocatorReference = allocator.reference()) {
+    try (NativeUsage environmentReference = env.use();
+        NativeUsage allocatorReference = allocator.use()) {
       OnnxJavaType type = OnnxJavaType.INT16;
       int bufferSize = data.capacity() * type.size;
       ShortBuffer tmp;
@@ -707,8 +707,8 @@ public class OnnxTensor extends NativeObject implements OnnxValue {
   static OnnxTensor createTensor(
       OrtEnvironment env, OrtAllocator allocator, IntBuffer data, long[] shape)
       throws OrtException {
-    try (NativeReference environmentReference = env.reference();
-        NativeReference allocatorReference = allocator.reference()) {
+    try (NativeUsage environmentReference = env.use();
+        NativeUsage allocatorReference = allocator.use()) {
       OnnxJavaType type = OnnxJavaType.INT32;
       int bufferSize = data.capacity() * type.size;
       IntBuffer tmp;
@@ -767,8 +767,8 @@ public class OnnxTensor extends NativeObject implements OnnxValue {
   static OnnxTensor createTensor(
       OrtEnvironment env, OrtAllocator allocator, LongBuffer data, long[] shape)
       throws OrtException {
-    try (NativeReference environmentReference = env.reference();
-        NativeReference allocatorReference = allocator.reference()) {
+    try (NativeUsage environmentReference = env.use();
+        NativeUsage allocatorReference = allocator.use()) {
       OnnxJavaType type = OnnxJavaType.INT64;
       int bufferSize = data.capacity() * type.size;
       LongBuffer tmp;

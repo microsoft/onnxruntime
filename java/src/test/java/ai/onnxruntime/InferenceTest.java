@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
-import ai.onnxruntime.NativeObject.NativeReference;
+import ai.onnxruntime.NativeObject.NativeUsage;
 import ai.onnxruntime.OnnxMl.TensorProto;
 import ai.onnxruntime.OnnxMl.TensorProto.DataType;
 import ai.onnxruntime.OrtSession.Result;
@@ -100,7 +100,7 @@ public class InferenceTest {
     BlockingQueue<String> queue = new ArrayBlockingQueue<>(1);
     executor.submit(
         () -> {
-          try (NativeReference ref = object.reference()) {
+          try (NativeUsage ref = object.use()) {
             queue.add("notification");
             assertEquals(1234L, ref.handle());
             Thread.sleep(100L);

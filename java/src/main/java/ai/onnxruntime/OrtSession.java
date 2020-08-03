@@ -60,8 +60,8 @@ public class OrtSession extends NativeObject {
   static final OrtSession fromPath(
       OrtEnvironment env, String modelPath, OrtAllocator allocator, SessionOptions options)
       throws OrtException {
-    try (NativeReference environmentReference = env.reference();
-        NativeReference optionsReference = options.reference()) {
+    try (NativeUsage environmentReference = env.use();
+        NativeUsage optionsReference = options.use()) {
       long sessionHandle =
           createSession(
               OnnxRuntime.ortApiHandle,
@@ -85,8 +85,8 @@ public class OrtSession extends NativeObject {
   static final OrtSession fromBytes(
       OrtEnvironment env, byte[] modelArray, OrtAllocator allocator, SessionOptions options)
       throws OrtException {
-    try (NativeReference environmentReference = env.reference();
-        NativeReference optionsReference = options.reference()) {
+    try (NativeUsage environmentReference = env.use();
+        NativeUsage optionsReference = options.use()) {
       long sessionHandle =
           createSession(
               OnnxRuntime.ortApiHandle,
@@ -111,7 +111,7 @@ public class OrtSession extends NativeObject {
     this.environment = environment;
     this.allocator = allocator;
     this.activeRunOptions = ConcurrentHashMap.newKeySet();
-    try (NativeReference allocatorReference = allocator.reference()) {
+    try (NativeUsage allocatorReference = allocator.use()) {
       long allocatorHandle = allocatorReference.handle();
       metadata = constructMetadata(OnnxRuntime.ortApiHandle, sessionHandle, allocatorHandle);
       inputInfo = wrapInMap(getInputInfo(OnnxRuntime.ortApiHandle, sessionHandle, allocatorHandle));
@@ -296,10 +296,10 @@ public class OrtSession extends NativeObject {
               + ") found "
               + numRequestedInputs);
     }
-    try (NativeReference environmentReference = environment.reference();
-        NativeReference allocatorReference = allocator.reference();
-        NativeReference sessionReference = reference();
-        NativeReference runOptionsReference = runOptions.reference();
+    try (NativeUsage environmentReference = environment.use();
+        NativeUsage allocatorReference = allocator.use();
+        NativeUsage sessionReference = use();
+        NativeUsage runOptionsReference = runOptions.use();
         NativeInputReferences inputsReferences = new NativeInputReferences(numRequestedInputs)) {
       String[] requestedInputsArray = new String[numRequestedInputs];
       long[] inputHandles = new long[numRequestedInputs];
@@ -352,7 +352,7 @@ public class OrtSession extends NativeObject {
    */
   private static final class NativeInputReferences implements AutoCloseable {
 
-    private final List<NativeReference> references;
+    private final List<NativeUsage> references;
 
     public NativeInputReferences(int size) throws OrtException {
       this.references = new ArrayList<>(size);
@@ -360,14 +360,14 @@ public class OrtSession extends NativeObject {
 
     public long handle(OnnxTensor tensor) {
       // this could throw if the tensor is closed
-      NativeReference reference = tensor.reference();
+      NativeUsage reference = tensor.use();
       references.add(reference);
       return reference.handle();
     }
 
     @Override
     public void close() {
-      for (NativeReference reference : references) {
+      for (NativeUsage reference : references) {
         reference.close();
       }
     }
@@ -393,8 +393,8 @@ public class OrtSession extends NativeObject {
    * @throws OrtException If the native call failed.
    */
   public String endProfiling() throws OrtException {
-    try (NativeReference sessionReference = reference();
-        NativeReference allocatorReference = allocator.reference()) {
+    try (NativeUsage sessionReference = use();
+        NativeUsage allocatorReference = allocator.use()) {
       return endProfiling(
           OnnxRuntime.ortApiHandle, sessionReference.handle(), allocatorReference.handle());
     }
@@ -598,7 +598,7 @@ public class OrtSession extends NativeObject {
      * @throws OrtException If there was an error in native code.
      */
     public void setExecutionMode(ExecutionMode mode) throws OrtException {
-      try (NativeReference sessionOptionsReference = reference()) {
+      try (NativeUsage sessionOptionsReference = use()) {
         setExecutionMode(OnnxRuntime.ortApiHandle, sessionOptionsReference.handle(), mode.getID());
       }
     }
@@ -610,7 +610,7 @@ public class OrtSession extends NativeObject {
      * @throws OrtException If there was an error in native code.
      */
     public void setOptimizationLevel(OptLevel level) throws OrtException {
-      try (NativeReference sessionOptionsReference = reference()) {
+      try (NativeUsage sessionOptionsReference = use()) {
         setOptimizationLevel(
             OnnxRuntime.ortApiHandle, sessionOptionsReference.handle(), level.getID());
       }
@@ -624,7 +624,7 @@ public class OrtSession extends NativeObject {
      * @throws OrtException If there was an error in native code.
      */
     public void setInterOpNumThreads(int numThreads) throws OrtException {
-      try (NativeReference sessionOptionsReference = reference()) {
+      try (NativeUsage sessionOptionsReference = use()) {
         setInterOpNumThreads(
             OnnxRuntime.ortApiHandle, sessionOptionsReference.handle(), numThreads);
       }
@@ -638,7 +638,7 @@ public class OrtSession extends NativeObject {
      * @throws OrtException If there was an error in native code.
      */
     public void setIntraOpNumThreads(int numThreads) throws OrtException {
-      try (NativeReference sessionOptionsReference = reference()) {
+      try (NativeUsage sessionOptionsReference = use()) {
         setIntraOpNumThreads(
             OnnxRuntime.ortApiHandle, sessionOptionsReference.handle(), numThreads);
       }
@@ -651,7 +651,7 @@ public class OrtSession extends NativeObject {
      * @throws OrtException If there was an error in native code.
      */
     public void setOptimizedModelFilePath(String outputPath) throws OrtException {
-      try (NativeReference sessionOptionsReference = reference()) {
+      try (NativeUsage sessionOptionsReference = use()) {
         setOptimizationModelFilePath(
             OnnxRuntime.ortApiHandle, sessionOptionsReference.handle(), outputPath);
       }
@@ -664,7 +664,7 @@ public class OrtSession extends NativeObject {
      * @throws OrtException If there was an error in native code.
      */
     public void setLoggerId(String loggerId) throws OrtException {
-      try (NativeReference sessionOptionsReference = reference()) {
+      try (NativeUsage sessionOptionsReference = use()) {
         setLoggerId(OnnxRuntime.ortApiHandle, sessionOptionsReference.handle(), loggerId);
       }
     }
@@ -676,7 +676,7 @@ public class OrtSession extends NativeObject {
      * @throws OrtException If there was an error in native code.
      */
     public void enableProfiling(String filePath) throws OrtException {
-      try (NativeReference sessionOptionsReference = reference()) {
+      try (NativeUsage sessionOptionsReference = use()) {
         enableProfiling(OnnxRuntime.ortApiHandle, sessionOptionsReference.handle(), filePath);
       }
     }
@@ -687,7 +687,7 @@ public class OrtSession extends NativeObject {
      * @throws OrtException If there was an error in native code.
      */
     public void disableProfiling() throws OrtException {
-      try (NativeReference sessionOptionsReference = reference()) {
+      try (NativeUsage sessionOptionsReference = use()) {
         disableProfiling(OnnxRuntime.ortApiHandle, sessionOptionsReference.handle());
       }
     }
@@ -700,7 +700,7 @@ public class OrtSession extends NativeObject {
      */
     public void setMemoryPatternOptimization(boolean memoryPatternOptimization)
         throws OrtException {
-      try (NativeReference sessionOptionsReference = reference()) {
+      try (NativeUsage sessionOptionsReference = use()) {
         setMemoryPatternOptimization(
             OnnxRuntime.ortApiHandle, sessionOptionsReference.handle(), memoryPatternOptimization);
       }
@@ -713,7 +713,7 @@ public class OrtSession extends NativeObject {
      * @throws OrtException If there was an error in native code.
      */
     public void setCPUArenaAllocator(boolean useArena) throws OrtException {
-      try (NativeReference sessionOptionsReference = reference()) {
+      try (NativeUsage sessionOptionsReference = use()) {
         setCPUArenaAllocator(OnnxRuntime.ortApiHandle, sessionOptionsReference.handle(), useArena);
       }
     }
@@ -725,7 +725,7 @@ public class OrtSession extends NativeObject {
      * @throws OrtException If there was an error in native code.
      */
     public void setSessionLogLevel(OrtLoggingLevel logLevel) throws OrtException {
-      try (NativeReference sessionOptionsReference = reference()) {
+      try (NativeUsage sessionOptionsReference = use()) {
         setSessionLogLevel(
             OnnxRuntime.ortApiHandle, sessionOptionsReference.handle(), logLevel.getValue());
       }
@@ -738,7 +738,7 @@ public class OrtSession extends NativeObject {
      * @throws OrtException If there was an error in native code.
      */
     public void setSessionLogVerbosityLevel(int logLevel) throws OrtException {
-      try (NativeReference sessionOptionsReference = reference()) {
+      try (NativeUsage sessionOptionsReference = use()) {
         setSessionLogVerbosityLevel(
             OnnxRuntime.ortApiHandle, sessionOptionsReference.handle(), logLevel);
       }
@@ -751,7 +751,7 @@ public class OrtSession extends NativeObject {
      * @throws OrtException If there was an error loading the library.
      */
     public void registerCustomOpLibrary(String path) throws OrtException {
-      try (NativeReference sessionOptionsReference = reference()) {
+      try (NativeUsage sessionOptionsReference = use()) {
         long customHandle =
             registerCustomOpLibrary(
                 OnnxRuntime.ortApiHandle, sessionOptionsReference.handle(), path);
@@ -775,7 +775,7 @@ public class OrtSession extends NativeObject {
      * @throws OrtException If there was an error in native code.
      */
     public void addCUDA(int deviceNum) throws OrtException {
-      try (NativeReference sessionOptionsReference = reference()) {
+      try (NativeUsage sessionOptionsReference = use()) {
         addCUDA(OnnxRuntime.ortApiHandle, sessionOptionsReference.handle(), deviceNum);
       }
     }
@@ -790,7 +790,7 @@ public class OrtSession extends NativeObject {
      * @throws OrtException If there was an error in native code.
      */
     public void addCPU(boolean useArena) throws OrtException {
-      try (NativeReference sessionOptionsReference = reference()) {
+      try (NativeUsage sessionOptionsReference = use()) {
         addCPU(OnnxRuntime.ortApiHandle, sessionOptionsReference.handle(), useArena ? 1 : 0);
       }
     }
@@ -802,7 +802,7 @@ public class OrtSession extends NativeObject {
      * @throws OrtException If there was an error in native code.
      */
     public void addDnnl(boolean useArena) throws OrtException {
-      try (NativeReference sessionOptionsReference = reference()) {
+      try (NativeUsage sessionOptionsReference = use()) {
         addDnnl(OnnxRuntime.ortApiHandle, sessionOptionsReference.handle(), useArena ? 1 : 0);
       }
     }
@@ -816,7 +816,7 @@ public class OrtSession extends NativeObject {
      * @throws OrtException If there was an error in native code.
      */
     public void addNGraph(String ngBackendType) throws OrtException {
-      try (NativeReference sessionOptionsReference = reference()) {
+      try (NativeUsage sessionOptionsReference = use()) {
         addNGraph(OnnxRuntime.ortApiHandle, sessionOptionsReference.handle(), ngBackendType);
       }
     }
@@ -828,7 +828,7 @@ public class OrtSession extends NativeObject {
      * @throws OrtException If there was an error in native code.
      */
     public void addOpenVINO(String deviceId) throws OrtException {
-      try (NativeReference sessionOptionsReference = reference()) {
+      try (NativeUsage sessionOptionsReference = use()) {
         addOpenVINO(OnnxRuntime.ortApiHandle, sessionOptionsReference.handle(), deviceId);
       }
     }
@@ -840,7 +840,7 @@ public class OrtSession extends NativeObject {
      * @throws OrtException If there was an error in native code.
      */
     public void addTensorrt(int deviceNum) throws OrtException {
-      try (NativeReference sessionOptionsReference = reference()) {
+      try (NativeUsage sessionOptionsReference = use()) {
         addTensorrt(OnnxRuntime.ortApiHandle, sessionOptionsReference.handle(), deviceNum);
       }
     }
@@ -851,7 +851,7 @@ public class OrtSession extends NativeObject {
      * @throws OrtException If there was an error in native code.
      */
     public void addNnapi() throws OrtException {
-      try (NativeReference sessionOptionsReference = reference()) {
+      try (NativeUsage sessionOptionsReference = use()) {
         addNnapi(OnnxRuntime.ortApiHandle, sessionOptionsReference.handle());
       }
     }
@@ -864,7 +864,7 @@ public class OrtSession extends NativeObject {
      * @throws OrtException If there was an error in native code.
      */
     public void addNuphar(boolean allowUnalignedBuffers, String settings) throws OrtException {
-      try (NativeReference sessionOptionsReference = reference()) {
+      try (NativeUsage sessionOptionsReference = use()) {
         addNuphar(
             OnnxRuntime.ortApiHandle,
             sessionOptionsReference.handle(),
@@ -880,7 +880,7 @@ public class OrtSession extends NativeObject {
      * @throws OrtException If there was an error in native code.
      */
     public void addDirectML(int deviceId) throws OrtException {
-      try (NativeReference sessionOptionsReference = reference()) {
+      try (NativeUsage sessionOptionsReference = use()) {
         addDirectML(OnnxRuntime.ortApiHandle, sessionOptionsReference.handle(), deviceId);
       }
     }
@@ -892,7 +892,7 @@ public class OrtSession extends NativeObject {
      * @throws OrtException If there was an error in native code.
      */
     public void addACL(boolean useArena) throws OrtException {
-      try (NativeReference sessionOptionsReference = reference()) {
+      try (NativeUsage sessionOptionsReference = use()) {
         addACL(OnnxRuntime.ortApiHandle, sessionOptionsReference.handle(), useArena ? 1 : 0);
       }
     }
@@ -1005,7 +1005,7 @@ public class OrtSession extends NativeObject {
      * @throws OrtException If the native call failed.
      */
     public void setLogLevel(OrtLoggingLevel level) throws OrtException {
-      try (NativeReference runOptionsReference = reference()) {
+      try (NativeUsage runOptionsReference = use()) {
         setLogLevel(OnnxRuntime.ortApiHandle, runOptionsReference.handle(), level.getValue());
       }
     }
@@ -1017,7 +1017,7 @@ public class OrtSession extends NativeObject {
      * @throws OrtException If the native call failed.
      */
     public OrtLoggingLevel getLogLevel() throws OrtException {
-      try (NativeReference runOptionsReference = reference()) {
+      try (NativeUsage runOptionsReference = use()) {
         return OrtLoggingLevel.mapFromInt(
             getLogLevel(OnnxRuntime.ortApiHandle, runOptionsReference.handle()));
       }
@@ -1030,7 +1030,7 @@ public class OrtSession extends NativeObject {
      * @throws OrtException If the native call failed.
      */
     public void setLogVerbosityLevel(int level) throws OrtException {
-      try (NativeReference runOptionsReference = reference()) {
+      try (NativeUsage runOptionsReference = use()) {
         setLogVerbosityLevel(OnnxRuntime.ortApiHandle, runOptionsReference.handle(), level);
       }
     }
@@ -1042,7 +1042,7 @@ public class OrtSession extends NativeObject {
      * @throws OrtException If the native call failed.
      */
     public int getLogVerbosityLevel() throws OrtException {
-      try (NativeReference runOptionsReference = reference()) {
+      try (NativeUsage runOptionsReference = use()) {
         return getLogVerbosityLevel(OnnxRuntime.ortApiHandle, runOptionsReference.handle());
       }
     }
@@ -1054,7 +1054,7 @@ public class OrtSession extends NativeObject {
      * @throws OrtException If the native library call failed.
      */
     public void setRunTag(String runTag) throws OrtException {
-      try (NativeReference runOptionsReference = reference()) {
+      try (NativeUsage runOptionsReference = use()) {
         setRunTag(OnnxRuntime.ortApiHandle, runOptionsReference.handle(), runTag);
       }
     }
@@ -1066,7 +1066,7 @@ public class OrtSession extends NativeObject {
      * @throws OrtException If the native library call failed.
      */
     public String getRunTag() throws OrtException {
-      try (NativeReference runOptionsReference = reference()) {
+      try (NativeUsage runOptionsReference = use()) {
         return getRunTag(OnnxRuntime.ortApiHandle, runOptionsReference.handle());
       }
     }
@@ -1080,7 +1080,7 @@ public class OrtSession extends NativeObject {
      * @throws OrtException If the native library call failed.
      */
     public void setTerminate(boolean terminate) throws OrtException {
-      try (NativeReference runOptionsReference = reference()) {
+      try (NativeUsage runOptionsReference = use()) {
         setTerminate(OnnxRuntime.ortApiHandle, runOptionsReference.handle(), terminate);
       }
     }
