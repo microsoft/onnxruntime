@@ -491,8 +491,8 @@ def testInstantiateORTTrainer(step_fn, lr_scheduler, expected_lr_values):
    
     max_train_step = 1
     warmup = 0.5
-    initial_lr = 1
-    optim_config = optim.SGDConfig() if not lr_scheduler else optim.SGDConfig(lr=initial_lr)
+    initial_lr = 1.0
+    optim_config = optim.SGDConfig(lr=initial_lr)
     tolerance = 1e-4 # used in lr comparison
 
     # Set up relevant options
