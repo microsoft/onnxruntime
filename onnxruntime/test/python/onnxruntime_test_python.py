@@ -45,6 +45,154 @@ class TestInferenceSession(unittest.TestCase):
             # confirm only CPU Provider is registered now.
             self.assertEqual(['CPUExecutionProvider'], sess.get_providers())
 
+    def testSetProvidersWithOptions(self):
+        if 'CUDAExecutionProvider' in onnxrt.get_available_providers():
+            import sys
+            import ctypes
+            CUDA_SUCCESS = 0
+
+            def runBaseTest1():
+                sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
+                self.assertTrue('CUDAExecutionProvider' in sess.get_providers())
+
+                option1 = {'device_id': 0}
+                sess.set_providers(['CUDAExecutionProvider'], [option1])
+                self.assertEqual(['CUDAExecutionProvider', 'CPUExecutionProvider'], sess.get_providers())
+                option2 = {'device_id': -1}
+                with self.assertRaises(RuntimeError):
+                    sess.set_providers(['CUDAExecutionProvider'], [option2])
+                sess.set_providers(['CUDAExecutionProvider', 'CPUExecutionProvider'], [option1, {}])
+                self.assertEqual(['CUDAExecutionProvider', 'CPUExecutionProvider'], sess.get_providers())
+
+            def runBaseTest2():
+                sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
+                self.assertTrue('CUDAExecutionProvider' in sess.get_providers())
+
+                # test get/set of "cuda_mem_limit" configuration.
+                options = sess.get_provider_options()
+                self.assertTrue('CUDAExecutionProvider' in options)
+                option = options['CUDAExecutionProvider']
+                self.assertTrue('cuda_mem_limit' in option)
+                ori_mem_limit = option['cuda_mem_limit']
+                new_mem_limit = int(ori_mem_limit) // 2
+                option['cuda_mem_limit'] = new_mem_limit
+                sess.set_providers(['CUDAExecutionProvider'], [option])
+                options = sess.get_provider_options()
+                self.assertEqual(options['CUDAExecutionProvider']['cuda_mem_limit'], str(new_mem_limit))
+
+                option['cuda_mem_limit'] = ori_mem_limit 
+                sess.set_providers(['CUDAExecutionProvider'], [option])
+                options = sess.get_provider_options()
+                self.assertEqual(options['CUDAExecutionProvider']['cuda_mem_limit'], ori_mem_limit)
+
+                option['cuda_mem_limit'] = -1024
+                with self.assertRaises(RuntimeError):
+                    sess.set_providers(['CUDAExecutionProvider'], [option])
+
+                option['cuda_mem_limit'] = 1024.1024
+                with self.assertRaises(RuntimeError):
+                    sess.set_providers(['CUDAExecutionProvider'], [option])
+
+                option['cuda_mem_limit'] = 'wrong_value'
+                with self.assertRaises(RuntimeError):
+                    sess.set_providers(['CUDAExecutionProvider'], [option])
+
+
+                # test get/set of "arena_extend_strategy" configuration.
+                options = sess.get_provider_options()
+                self.assertTrue('CUDAExecutionProvider' in options)
+                option = options['CUDAExecutionProvider']
+                self.assertTrue('arena_extend_strategy' in option)
+                for strategy in ['kNextPowerOfTwo', 'kSameAsRequested']:
+                    option['arena_extend_strategy'] = strategy
+                    sess.set_providers(['CUDAExecutionProvider'], [option])
+                    options = sess.get_provider_options()
+                    self.assertEqual(options['CUDAExecutionProvider']['arena_extend_strategy'], strategy)
+
+                option['arena_extend_strategy'] = 'wrong_value'
+                with self.assertRaises(RuntimeError):
+                    sess.set_providers(['CUDAExecutionProvider'], [option])
+
+            def getCudaDeviceCount():
+                import ctypes
+
+                num_device = ctypes.c_int()
+                result = ctypes.c_int()
+                error_str = ctypes.c_char_p()
+
+                result = cuda.cuInit(0)
+                result = cuda.cuDeviceGetCount(ctypes.byref(num_device))
+                if result != CUDA_SUCCESS:
+                    cuda.cuGetErrorString(result, ctypes.byref(error_str))
+                    print("cuDeviceGetCount failed with error code %d: %s" % (result, error_str.value.decode()))
+                    return -1
+
+                return num_device.value
+
+            def setDeviceIdTest(i):
+                import ctypes
+                import onnxruntime as onnxrt
+
+                device = ctypes.c_int()
+                result = ctypes.c_int()
+                error_str = ctypes.c_char_p()
+
+                sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
+                option = {'device_id': i}
+                sess.set_providers(['CUDAExecutionProvider'], [option])
+                self.assertEqual(['CUDAExecutionProvider', 'CPUExecutionProvider'], sess.get_providers())
+                result = cuda.cuCtxGetDevice(ctypes.byref(device))
+                if result != CUDA_SUCCESS:
+                    cuda.cuGetErrorString(result, ctypes.byref(error_str))
+                    print("cuCtxGetDevice failed with error code %d: %s" % (result, error_str.value.decode()))
+
+                self.assertEqual(result, CUDA_SUCCESS)
+                self.assertEqual(i, device.value)
+
+            def runAdvancedTest():
+                num_device = getCudaDeviceCount()
+                if num_device < 0:
+                    return 
+
+                # Configure session to be ready to run on all available cuda devices
+                for i in range(num_device):
+                    setDeviceIdTest(i)
+
+                sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
+
+                # configure session with not legit option values and that shloud fail
+                with self.assertRaises(RuntimeError):
+                    option = {'device_id': num_device}
+                    sess.set_providers(['CUDAExecutionProvider'], [option])
+                    option = {'device_id': 'non_legit_value'}
+                    sess.set_providers(['CUDAExecutionProvider'], [option])
+
+                # configure session with not legit option should cause no effect
+                option = {'device_id': 0}
+                sess.set_providers(['CUDAExecutionProvider'], [option])
+                option = {'non_legit_option': num_device}
+                sess.set_providers(['CUDAExecutionProvider'], [option])
+                self.assertEqual(['CUDAExecutionProvider', 'CPUExecutionProvider'], sess.get_providers())
+
+
+
+            libnames = ('libcuda.so', 'libcuda.dylib', 'cuda.dll')
+            for libname in libnames:
+                try:
+                    cuda = ctypes.CDLL(libname)
+                    runBaseTest1()
+                    runBaseTest2()
+                    runAdvancedTest()
+
+                except OSError:
+                    continue
+                else:
+                    break
+            else:
+                runBaseTest1()
+                runBaseTest2()
+                # raise OSError("could not load any of: " + ' '.join(libnames))
+
     def testInvalidSetProviders(self):
         with self.assertRaises(ValueError) as context:
             sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
@@ -464,6 +612,28 @@ class TestInferenceSession(unittest.TestCase):
         finally:
             # Make sure the usage of the feature is disabled after this test
             os.environ['ORT_LOAD_CONFIG_FROM_MODEL'] = str(0)
+
+    def testSessionOptionsAddFreeDimensionOverrideByDenotation(self):
+        so = onnxrt.SessionOptions()
+        so.add_free_dimension_override_by_denotation("DATA_BATCH", 3)
+        so.add_free_dimension_override_by_denotation("DATA_CHANNEL", 5)
+        sess = onnxrt.InferenceSession(get_name("abs_free_dimensions.onnx"), so)
+        input_name = sess.get_inputs()[0].name
+        self.assertEqual(input_name, "x")
+        input_shape = sess.get_inputs()[0].shape
+        # Free dims with denotations - "DATA_BATCH" and "DATA_CHANNEL" have values assigned to them.
+        self.assertEqual(input_shape, [3, 5, 5])
+
+    def testSessionOptionsAddFreeDimensionOverrideByName(self):
+        so = onnxrt.SessionOptions()
+        so.add_free_dimension_override_by_name("Dim1", 4)
+        so.add_free_dimension_override_by_name("Dim2", 6)
+        sess = onnxrt.InferenceSession(get_name("abs_free_dimensions.onnx"), so)
+        input_name = sess.get_inputs()[0].name
+        self.assertEqual(input_name, "x")
+        input_shape = sess.get_inputs()[0].shape
+        # "Dim1" and "Dim2" have values assigned to them.
+        self.assertEqual(input_shape, [4, 6, 5])
 
 
 if __name__ == '__main__':

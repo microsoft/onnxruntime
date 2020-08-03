@@ -5,6 +5,7 @@
 #include "gtest/gtest.h"
 #include "orttraining/core/optimizer/gist_encode_decode.h"
 #include "test/providers/provider_test_utils.h"
+#include "core/common/path_utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/environment.h"
 #include "orttraining/models/runner/training_runner.h"
@@ -19,6 +20,7 @@
 using namespace onnxruntime::logging;
 using namespace onnxruntime::training;
 using namespace google::protobuf::util;
+using namespace onnxruntime::path_utils;
 
 namespace onnxruntime {
 namespace test {
@@ -330,7 +332,6 @@ static void RunBertTrainingWithChecks(
       "masked_lm_ids",
       "next_sentence_labels",
       "masked_lm_positions",
-      "masked_lm_weights",
   };
   std::vector<TensorShape> tensor_shapes = {
       {batch_size, max_seq_len_in_batch},
@@ -414,13 +415,11 @@ static void RunBertTrainingWithChecks(
        0, 1, 2, 3, 4, 5, 6,
        0, 1, 2, 3, 4, 5, 6,
        0, 1, 2, 3, 4, 5, 6}};
-  std::vector<float> masked_lm_weights(13 * 7, 1.0f);
 
   std::vector<OrtValue> feeds(feed_names.size());
   for (size_t i = 0; i < 6; ++i) {
     TrainingUtil::CreateCpuMLValue(tensor_shapes[i].GetDims(), tensor_values[i], &feeds[i]);
   }
-  TrainingUtil::CreateCpuMLValue(tensor_shapes[6].GetDims(), masked_lm_weights, &feeds[6]);
 
   auto output_names_include_gradients = GetModelOutputNames(*training_session);
   std::vector<std::string> fetch_names(output_names_include_gradients.begin(), output_names_include_gradients.end());
@@ -475,7 +474,6 @@ TEST(GradientGraphBuilderTest, TrainingSession_BertToy) {
                         /*prediction_next_sentence*/ "seq_relationship_score",
                         /*masked_lm_positions*/ "masked_lm_positions",
                         /*masked_lm_ids*/ "masked_lm_ids",
-                        /*masked_lm_weights*/ "masked_lm_weights",
                         /*next_sentence_labels*/ "next_sentence_labels",
                         /*mlm_loss*/ "mlm_loss",
                         /*nsp_loss*/ "nsp_loss"});
@@ -1117,7 +1115,111 @@ void RetrieveSendRecvOperators(
   }
 }
 
-TEST(GradientGraphBuilderTest, PipelineOnlinePartition) {
+PathString GenerateFileNameWithIndex(const std::string& base_str, int index, const std::string& file_suffix) {
+  return path_utils::MakePathString(base_str, index, file_suffix);
+}
+
+TEST(GradientGraphBuilderTest, PipelineOnlinePartition_bert_tiny) {
+  const auto model_path = ORT_TSTR("testdata/bert_toy_optimized.onnx");
+
+  const size_t total_partition_count = 3;
+  TrainingSession::TrainingConfiguration::PipelineConfiguration pipe{};
+  pipe.do_partition = true;
+
+  // cut model in 3 partitions
+  TrainingSession::TrainingConfiguration::CutInfo cut0 = {
+      onnxruntime::training::TrainingSession::TrainingConfiguration::CutEdge("326"),
+      onnxruntime::training::TrainingSession::TrainingConfiguration::CutEdge("103", {"413", "529"})};
+
+  TrainingSession::TrainingConfiguration::CutInfo cut1 = {
+      onnxruntime::training::TrainingSession::TrainingConfiguration::CutEdge("558"),
+      onnxruntime::training::TrainingSession::TrainingConfiguration::CutEdge("103", {"645"})};
+
+  pipe.cut_list.emplace_back(cut0);
+  pipe.cut_list.emplace_back(cut1);
+
+  TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mixed_precision_config{};
+  mixed_precision_config.use_fp16_initializers = true;
+
+  // 2 test variations - full precision and mixed precision
+  const std::vector<bool> test_with_fp32{true, false};
+  for (auto is_fp32 : test_with_fp32) {
+    // graph is partitioned into 3 parts.
+    for (int i = 0; i < static_cast<int>(total_partition_count); ++i) {
+
+      PathString output_file = GenerateFileNameWithIndex("pipeline_partition_", i, "_back.onnx");
+      auto config = MakeBasicTrainingConfig();
+
+      if (i == static_cast<int>(total_partition_count - 1)) {
+        config.loss_function_config = TrainingSession::TrainingConfiguration::LossFunctionConfiguration{};
+        config.loss_function_config.value().loss_function_info =
+            LossFunctionInfo(OpDef("BertLoss", kOnnxDomain),
+                             "total_loss",
+                             {/*prediction_masked_lm*/ "prediction_scores",
+                              /*prediction_next_sentence*/ "seq_relationship_score",
+                              /*masked_lm_positions*/ "masked_lm_positions",
+                              /*masked_lm_ids*/ "masked_lm_ids",
+                              /*next_sentence_labels*/ "next_sentence_labels",
+                              /*mlm_loss*/ "mlm_loss",
+                              /*nsp_loss*/ "nsp_loss"});
+      }
+
+      // Add weight_names_to_not_train to avoid generating backward graph on those tensor
+      config.weight_names_to_not_train = {
+          "position_01",            // Slice's dat input
+          "op_min_ends_expand_10",  //op_min_ends_expand_10
+      };
+
+      config.pipeline_config = pipe;
+      config.distributed_config.world_rank = i;
+      config.distributed_config.world_size = total_partition_count;
+      config.distributed_config.local_rank = i;
+      config.distributed_config.local_size = total_partition_count;
+      config.distributed_config.data_parallel_size = 1;
+      config.distributed_config.horizontal_parallel_size = 1;
+      config.distributed_config.pipeline_parallel_size = total_partition_count;
+      config.model_with_training_graph_path = output_file;
+
+      if (!is_fp32) {
+        config.mixed_precision_config = mixed_precision_config;
+      }
+
+      PathString backprop_model_file;
+      Status status = BuildBackPropGraph(model_path, config, backprop_model_file);
+      ASSERT_TRUE(status.IsOK()) << status << " (is_fp32 = " << is_fp32 << ", stage = " << i << ").\n";
+
+      // Skip the re-load for mixed-precision case. This model contains grad op that has function body,
+      // which takes a const tensor input. Const cast for input in function body won't be saved in the output
+      // model so reload will run into error.
+      // For the purpose of testing mixed-precision, BuildBackPropGraph above will be sufficient to verify the
+      // partition logic and validate the graph.
+      if (is_fp32) {
+        std::shared_ptr<Model> model;
+        // Ensure the partitioned model load.
+        status = Model::Load(backprop_model_file, model, nullptr, DefaultLoggingManager().DefaultLogger());
+        ASSERT_TRUE(status.IsOK()) << status << " (is_fp32 = " << is_fp32 << ", stage = " << i << ").\n";
+
+        // verify the first stage contains word embedding as input and the last stage doesn't
+        auto model_proto = model->ToProto();
+        const auto& graph_proto = model_proto.graph();
+
+        bool found_word_embedding = false;
+        for (auto& tensor : graph_proto.initializer()) {
+          if (tensor.name() == "bert.embeddings.word_embeddings.weight") {
+            found_word_embedding = true;
+          }
+        }
+        if (i == 0) {
+          ASSERT_TRUE(found_word_embedding) << " (is_fp32 = " << is_fp32 << ", stage = " << i << ").\n";
+        } else {
+          ASSERT_FALSE(found_word_embedding) << " (is_fp32 = " << is_fp32 << ", stage = " << i << ").\n";
+        }
+      }
+    }
+  }
+}
+
+TEST(GradientGraphBuilderTest, PipelineOnlinePartition_MLP) {
   auto model_uri = ORIGINAL_MODEL_PATH;
 
   TrainingSession::TrainingConfiguration::PipelineConfiguration pipe{};
@@ -1137,14 +1239,10 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition) {
   for(auto is_fp32 : test_with_fp32) {
     // graph is partitioned into 3 parts.
     for (int i = 0; i < 3; ++i) {
-#ifdef _WIN32
-      auto surfix = std::to_wstring(i);
-#else
-      auto surfix = std::to_string(i);
-#endif
-      PathString output_file = ORT_TSTR("pipeline_partition_") + surfix + ORT_TSTR("_back.onnx");
+      PathString output_file = GenerateFileNameWithIndex("pipeline_partition_", i, "_back.onnx");
 
       auto config = MakeBasicTrainingConfig();
+
       config.pipeline_config = pipe;
       config.distributed_config.world_rank = i;
       config.distributed_config.world_size = 3;
@@ -1178,9 +1276,62 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition) {
   }
 }
 
+Status RunOnlinePartition(const std::vector<TrainingSession::TrainingConfiguration::CutInfo>& cut_list,
+                          int pipeline_stage_size,
+                          std::set<int> status_check_stages = {}) {
+  auto model_uri = ORIGINAL_MODEL_PATH;
+
+  TrainingSession::TrainingConfiguration::PipelineConfiguration pipe{};
+  pipe.do_partition = true;
+  pipe.cut_list = cut_list;
+
+  for (int i = 0; i < pipeline_stage_size; ++i) {
+    PathString output_file = GenerateFileNameWithIndex("pipeline_partition_", i, "_back.onnx");
+
+    auto config = MakeBasicTrainingConfig();
+    config.pipeline_config = pipe;
+
+    config.distributed_config.world_rank = i;
+    config.distributed_config.world_size = pipeline_stage_size;
+    config.distributed_config.local_rank = i;
+    config.distributed_config.local_size = pipeline_stage_size;
+    config.distributed_config.data_parallel_size = 1;
+    config.distributed_config.horizontal_parallel_size = 1;
+    config.distributed_config.pipeline_parallel_size = pipeline_stage_size;
+    config.model_with_training_graph_path = output_file;
+
+    PathString backprop_model_file;
+    if (status_check_stages.count(i) > 0) {
+      auto status = BuildBackPropGraph(model_uri, config, backprop_model_file);
+      EXPECT_FALSE(status.IsOK());
+    } else {
+      EXPECT_THROW(BuildBackPropGraph(model_uri, config, backprop_model_file), OnnxRuntimeException);
+    }
+  }
+  return Status::OK();
+}
+
+TEST(GradientGraphBuilderTest, PipelineOnlinePartition_Invalid_Input) {
+  using CutEdge = TrainingSession::TrainingConfiguration::CutEdge;
+  using CutInfo = TrainingSession::TrainingConfiguration::CutInfo;
+
+  // Test with invalid cut edge
+  TrainingSession::TrainingConfiguration::CutInfo invalid_cut_edge = {TrainingSession::TrainingConfiguration::CutEdge("3")};
+  ASSERT_STATUS_OK(RunOnlinePartition(std::vector<TrainingSession::TrainingConfiguration::CutInfo>{invalid_cut_edge}, 2 /* pipeline_stage_size */));
+
+  // Test mis-matched cut list with stage size
+  TrainingSession::TrainingConfiguration::CutInfo cut_edge = {TrainingSession::TrainingConfiguration::CutEdge("T3")};
+  ASSERT_STATUS_OK(RunOnlinePartition(std::vector<TrainingSession::TrainingConfiguration::CutInfo>{cut_edge}, 3 /* pipeline_stage_size */));
+
+  // Test unordered cut_info list
+  CutInfo cut0 = {CutEdge("T3")};
+  CutInfo cut1 = {CutEdge("T6")};
+  ASSERT_STATUS_OK(RunOnlinePartition(std::vector<CutInfo>{cut1, cut0}, 3 /* pipeline_stage_size */, {0, 2} /* status_check_stages */));
+}
+
 // verify pipeline config can load and gradient graph can construct.
 TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
-  PathString filename_base = ORT_TSTR("testdata/test_training_model_");
+ std::string filename_base = "testdata/test_training_model_";
 
   auto load_and_check_gradient_graph = [](int stageIdx, PathString& input_file, PathString& output_file) {
     auto config = MakeBasicTrainingConfig();
@@ -1286,13 +1437,9 @@ TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
   };
 
   for (int i = 0; i < 3; ++i) {
-#ifdef _WIN32
-    auto surfix = std::to_wstring(i);
-#else
-    auto surfix = std::to_string(i);
-#endif
-    PathString input_file = filename_base + surfix + ORT_TSTR(".onnx");
-    PathString output_file = filename_base + surfix + ORT_TSTR("_back.onnx");
+    PathString input_file = GenerateFileNameWithIndex(filename_base, i, ".onnx");
+    PathString output_file = GenerateFileNameWithIndex(filename_base, i, "_back.onnx");
+
     load_and_check_gradient_graph(i, input_file, output_file);
   }
 }
@@ -1358,12 +1505,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
 
   std::vector<PathString> sub_model_files(num_subs);
   for (size_t sub_id = 0; sub_id < num_subs; ++sub_id) {
-#ifdef _WIN32
-    auto sub_id_str = std::to_wstring(sub_id);
-#else
-    auto sub_id_str = std::to_string(sub_id);
-#endif
-    sub_model_files[sub_id] = ORT_TSTR("sub_") + sub_id_str + ORT_TSTR(".onnx");
+    sub_model_files[sub_id] = GenerateFileNameWithIndex("sub_", static_cast<int>(sub_id), ".onnx");
   }
 
   PipelineSplitter splitter;
@@ -1383,12 +1525,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
   for (size_t sub_id = 0; sub_id < num_subs; ++sub_id) {
     auto& sub_sess = subs[sub_id];
     sub_sess.so.enable_profiling = true;
-#ifdef _WIN32
-    auto sub_id_str = std::to_wstring(sub_id);
-#else
-    auto sub_id_str = std::to_string(sub_id);
-#endif
-    sub_sess.so.profile_file_prefix = ORT_TSTR("pipeline") + sub_id_str;
+    sub_sess.so.profile_file_prefix = GenerateFileNameWithIndex("pipeline", static_cast<int>(sub_id), "");
 
     sub_sess.run_options.run_log_verbosity_level = sub_sess.so.session_log_verbosity_level;
     sub_sess.run_options.run_tag = sub_sess.so.session_logid;

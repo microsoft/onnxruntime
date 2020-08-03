@@ -38,6 +38,10 @@ Status MatMulInteger::Compute(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b->Shape()));
   Tensor* y = ctx->Output(0, helper.OutputShape());
 
+  // Bail out early if the output is going to be empty
+  if (y->Shape().Size() == 0)
+    return Status::OK();
+
   // validate zero points
   uint8_t a_offset = 0;
   uint8_t b_offset = 0;

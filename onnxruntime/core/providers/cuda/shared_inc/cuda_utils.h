@@ -5,10 +5,13 @@
 // as currently nvcc cannot compile all onnxruntime headers
 
 #pragma once
+
 #include <memory>
+#include <type_traits>
 #include <vector>
-#include "fast_divmod.h"
+
 #include "core/common/common.h"
+#include "core/providers/cuda/shared_inc/fast_divmod.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -57,7 +60,10 @@ struct TArray {
   }
 
   TArray(const std::vector<T>& vec) : TArray(static_cast<int32_t>(vec.size())) {
+// std::is_trivially_copyable is not implemented in older versions of GCC
+#if !defined(__GNUC__) || __GNUC__ >= 5
     static_assert(std::is_trivially_copyable<T>::value, "T must be trivially copyable.");
+#endif
     memcpy(data_, vec.data(), vec.size() * sizeof(T));
   }
 
