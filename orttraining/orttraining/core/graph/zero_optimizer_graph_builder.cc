@@ -76,6 +76,12 @@ static Status AddNcclReduceForGradients(
     bool current_rank = (i == data_parallel_group_rank);
     std::vector<ArgDef> reduce_outputs;
     std::vector<ArgDef> reduce_inputs;
+
+    auto type_proto = graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    auto node_name = nodearg_name_generator("NcclReduce");
+    ArgDef reduce_output_ready(node_name + "_output_ready", type_proto);
+    reduce_outputs.push_back(reduce_output_ready);
+
     for (int j = lb; j <= ub; ++j) {
       reduce_inputs.push_back(gradient_argdefs[j]);
       auto reduce_output = ArgDef(gradient_argdefs[j].name + "_Reduce_Out", gradient_argdefs[j].type_proto);
@@ -88,17 +94,13 @@ static Status AddNcclReduceForGradients(
       }
     }
 
-    auto node_name = nodearg_name_generator("NcclReduce");
-    auto type_proto = graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_BOOL);
-    ArgDef reduce_output_ready(node_name + "output_ready", type_proto);
-    reduce_outputs.push_back(reduce_output_ready);
-    //const NodeAttributes attributes({onnx::MakeAttribute("root_rank", int64_t(i)),
-    //                                 onnx::MakeAttribute("has_output_ready", int64_t(1))});  //,
+    std::vector<AttributeProto> attributes({onnx::MakeAttribute("root_rank", int64_t(i)),
+                                            onnx::MakeAttribute("has_output_ready", int64_t(1))});  //,
     graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclReduce", kMSDomain, 1},
                                     reduce_inputs,
-                                    reduce_outputs
-                                    //attributes
-                                    //node_name
+                                    reduce_outputs,
+                                    attributes,
+                                    node_name
                                     )});
     output_readies.push_back(reduce_output_ready);
   }

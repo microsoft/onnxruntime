@@ -7,12 +7,14 @@ namespace onnxruntime {
 namespace cuda {
 
 NcclAllReduce::NcclAllReduce(const OpKernelInfo& info) : NcclKernel(info) {
-  ORT_ENFORCE(info.GetAttrOrDefault("num_input_ready", &num_input_ready_, static_cast<int64_t>(0)));
+  info.GetAttrOrDefault<int64_t>("num_input_ready", &num_input_ready_, static_cast<int64_t>(0));
 }
 
 Status NcclAllReduce::ComputeInternal(OpKernelContext* context) const {
   cudaStream_t stream = nullptr;  // Default stream
   ncclComm_t comm = nccl_->Comm(group_type_);
+
+  printf("in allreduce. inputcout = %d, num_input_ready_ = %d\n", context->InputCount(), (int)(num_input_ready_));
 
   for (int i = 0; i < context->InputCount() - num_input_ready_; i++) {
     const Tensor* input_tensor = context->Input<Tensor>(i);
@@ -121,7 +123,7 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
 
 NcclReduce::NcclReduce(const OpKernelInfo& info) : NcclKernel(info) {
   ORT_ENFORCE(info.GetAttr<int64_t>("root_rank", &root_rank_).IsOK());
-  ORT_ENFORCE(info.GetAttrOrDefault("has_output_ready", &has_output_ready_, static_cast<int64_t>(0)));
+  info.GetAttrOrDefault<int64_t>("has_output_ready", &has_output_ready_, static_cast<int64_t>(0));
 }
 
 Status NcclReduce::ComputeInternal(OpKernelContext* context) const {
@@ -171,6 +173,8 @@ Status NcclReduce::ComputeInternal(OpKernelContext* context) const {
       const int64_t tensor_bytes = input_tensor->SizeInBytes();
       const void* fusion_data_at_offset = (const int8_t*)fusion_data + offset;
       Tensor* output_tensor = context->Output(i, input_shape);
+      std::cout << "input shape [" << i << "]= " << input_shape.ToString() << "\n";
+      std::cout << "output shape [" << i << "]= " << output_tensor->Shape().ToString() << "\n";
       void* output_data = output_tensor->MutableDataRaw();
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, fusion_data_at_offset, tensor_bytes, cudaMemcpyDeviceToDevice));
       offset += tensor_bytes;
@@ -310,7 +314,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kCudaExecutionProvider,
     KernelDefBuilder()
         .Alias(AliasRange(0, 1024))
-        .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
+        .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())
+        .TypeConstraint("T1", DataTypeImpl::AllIEEEFloatTensorTypes()),
     NcclReduce);
 
 }  // namespace cuda

@@ -876,10 +876,10 @@ Example 4:
       .Attr("group_type", "0 - data parallel group, 1 - horizontal parallel group",
             AttributeProto::INT,
             static_cast<int64_t>(0))
-      .Attr("num_input_readies", "The last num_input_readies of input tensor are the input ready signals current AllReduce node depends on. default value is 0, means no input ready signals", 
+      .Attr("num_input_readies", "The last num_input_readies of input tensor are the input ready signals current AllReduce node depends on. default value is 0, means no input ready signals",
             AttributeProto::INT,
             static_cast<int64_t>(0))
-      .Input(0, "input", "tensors to be reduced", "T", OpSchema::Variadic)
+      .Input(0, "input", "tensors to be reduced", "T", OpSchema::Variadic, false)
       .Output(0, "output", "reduced tensors", "T", OpSchema::Variadic)
       .TypeConstraint(
           "T",
@@ -926,13 +926,17 @@ Example 4:
             static_cast<int64_t>(0))
       .Attr("root_rank", "the rank the reduce output is written to",
             AttributeProto::INT)
-      .Attr("has_output_ready", "If this signal is 1, the output[-1] is the output_ready signal to be passed to down stream nodes for dependency", 
+      .Attr("has_output_ready", "If this signal is 1, the output[-1] is the output_ready signal to be passed to down stream nodes for dependency",
             AttributeProto::INT,
             static_cast<int64_t>(0))
       .Input(0, "input", "tensors to be reduced", "T", OpSchema::Variadic)
-      .Output(0, "output", "reduced tensors", "T", OpSchema::Variadic)
+      .Output(1, "output", "reduced tensors", "T", OpSchema::Variadic, false)
       .TypeConstraint(
           "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain to float, float16 and double tensors.")
+      .TypeConstraint(
+          "T1",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain to float, float16 and double tensors.");
 
