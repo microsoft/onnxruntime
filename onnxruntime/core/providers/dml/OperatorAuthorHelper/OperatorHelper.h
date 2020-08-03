@@ -1382,6 +1382,7 @@ using ShapeInferenceHelper_Ceil = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Floor = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Clip7 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Clip11 = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_Clip12 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Greater = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_Less = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_Equal = GetBroadcastedOutputShapeHelper;
