@@ -13,6 +13,9 @@ class NcclAllReduce final : public NcclKernel {
   explicit NcclAllReduce(const OpKernelInfo& info);
 
   Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  int64_t num_input_ready_;
 };
 
 class NcclAllGather final : public NcclKernel {
@@ -36,6 +39,7 @@ class NcclReduce final : public NcclKernel {
 
  private:
   int64_t root_rank_;
+  int64_t has_output_ready_;
 };
 
 }  // namespace cuda

@@ -331,6 +331,11 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
 
     params.deepspeed_zero = ZeROConfig(flags["deepspeed_zero_stage"].as<int>());
     params.enable_grad_norm_clip = flags["enable_grad_norm_clip"].as<bool>();
+    if(params.deepspeed_zero.stage == 1){
+      printf("use zero stage 1\n");
+    } else if(params.deepspeed_zero.stage == 2){
+      printf("use zero stage 2\n");
+    } 
 
     float alpha = flags["alpha"].as<float>();
     float beta = flags["beta"].as<float>();

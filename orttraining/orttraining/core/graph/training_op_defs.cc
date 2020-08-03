@@ -862,7 +862,6 @@ Example 4:
       .Input(0, "input", "input tensor", "T")
       .Input(1, "input_ready", "one or more bool tensors to wait on", "B", OpSchema::Variadic)
       .Output(0, "output", "output tensor", "T")
-      .Output(1, "output_ready", "output tensor is ready", "B")
       .TypeConstraint("B", {"tensor(bool)"}, "Only bool")
       .TypeConstraint("T", OpSchema::all_tensor_types(), "All Tensor types")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
@@ -875,6 +874,9 @@ Example 4:
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Attr("group_type", "0 - data parallel group, 1 - horizontal parallel group",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
+      .Attr("num_input_readies", "The last num_input_readies of input tensor are the input ready signals current AllReduce node depends on. default value is 0, means no input ready signals", 
             AttributeProto::INT,
             static_cast<int64_t>(0))
       .Input(0, "input", "tensors to be reduced", "T", OpSchema::Variadic)
@@ -924,6 +926,9 @@ Example 4:
             static_cast<int64_t>(0))
       .Attr("root_rank", "the rank the reduce output is written to",
             AttributeProto::INT)
+      .Attr("has_output_ready", "If this signal is 1, the output[-1] is the output_ready signal to be passed to down stream nodes for dependency", 
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
       .Input(0, "input", "tensors to be reduced", "T", OpSchema::Variadic)
       .Output(0, "output", "reduced tensors", "T", OpSchema::Variadic)
       .TypeConstraint(
