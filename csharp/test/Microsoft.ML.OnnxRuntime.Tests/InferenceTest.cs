@@ -1672,7 +1672,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 {
                     Assert.NotEqual(allocator.Pointer, IntPtr.Zero);
                     var alloc_info = allocator.Info;
-                    Assert.True(info_cpu.Equals(alloc_info));
+                    // Allocator type returned may be different on x86 so we don't compare.
+                    Assert.Equal(info_cpu.Name, alloc_info.Name);
+                    Assert.Equal(info_cpu.GetMemoryType(), alloc_info.GetMemoryType());
+                    Assert.Equal(info_cpu.Id, alloc_info.Id);
 
                     uint size = 1024;
                     OrtMemoryAllocation chunk = allocator.Allocate(size);
