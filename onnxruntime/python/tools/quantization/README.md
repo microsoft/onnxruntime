@@ -169,54 +169,34 @@ Calibration uses a small data set representative of the original data set to cal
 See below for a description of all the options to calibrate():
 
 - **model_path**: Path to the original FP32 model
-- **output_model_path**: *default: calibrated_quantized_model.onnx*
-    Path to the output model
-- **dataset_path**: Path to the calibration dataset. This dataset is meant to contain "representative" examples of the input (presumably, a subset of the dataset the original model was trained on), which are used to collect statistics on the "typical" outputs of selected nodes in the model, as described in the sections below.  The dataset can be provided as:
-    * A filepath for a directory, containing images or
-    * A protobuf file, encoding a set of images using the `TensorProto` schema,
-Whether a set of files or a collected bundles of tensors, `calibrate.py` assumes that the images in the representative dataset are suitable for immediate consumption by the original fp32 model, i.e., that they have been adequately pre-processed.
-- **data_preprocess**:
-*preprocess_method1*: reshapes an image into NCHW format and scales the pixel values to the[-1, 1] range.  This method mirrors [the treatment for mobilenet models available in version 0.5 of mlperf](https://github.com/mlperf/inference/blob/master/v0.5/classification_and_detection/python/dataset.py#L226)
-*preprocess_method2*: resizes and normalizes image to NCHW format, in a [technique used by mlperf 0.5](https://github.com/mlperf/inference/blob/master/v0.5/classification_and_detection/python/dataset.py#L250) for variants of ResNet.
-*None*: use this when providing tensorproto as input to the calibration script.
-For maximum flexibility, it is recommended that the user carries out the necessary preprocessing as a separate stage in the quantization pipeline, and provides the already-preprocessed dataset to `calibrate.py`.  Alternatively, we welcome contributions of preprocessing techniques (see below).
+- **data_reader**: User-implemented object to read in and preprocess calibration dataset based on CalibrationDataReader interface, which takes in  `calibration_image_data` and can generate the next input data dictionary for ONNXinferencesession run.
+- **op_types**: Operator types to be calibrated and quantized, *default = 'Conv,MatMul'*
+- **black_nodes**: Operator names that should not be calibrated and quantized, *default = ''*
+- **white_nodes**: Operator names that force to be calibrated and quantized, *default = ''*
+- **augmented_model_path**: Path to save the augmented_model.
 
-### Adding preprocessing options
-Add a new preprocessing method to `data_preprocess.py` file. Please refer to the existing pre-processing methods in this file while adding a new one. To expose it as a new preprocessing function to the command line, "register" it by adding it to the name/function mapping maintained as a dictionary in the `set_preprocess` function in `data_preprocess.py`.
-
-Alternatively the script also accepts preprocessed tensors in .pb format. Refer to [this article](https://github.com/onnx/onnx/blob/master/docs/PythonAPIOverview.md#manipulating-tensorproto-and-numpy-array) to understand how to hop between numpy arrays and tensorproto.
-
-### Example - Calibrate and Quantize an ONNX Model
-```
-python calibrate.py --model_path=<'path/to/model.onnx'> --output_model_path=<'path/to/output_model.onnx'> --dataset_path=<'path/to/data/folder'> --data_preprocess=<custom or prebuilt preprocessing method>
-```
 
 ### End-to-end example
-This is an E2E example to demonstrate calibration, quantization and accuracy testing for a resnet model. We leverage instructions in MLperf for downloading the imagenet dataset, selecting the calibration data set and use mlperf accuracy benchmark for testing the accuracy of the quantized model.
+This is an E2E example to demonstrate calibration, quantization and accuracy testing for a ResNet50 model. As discussed above, if you want to use the quantization tool only, please follow the example above in `Quantization Tool` section.
 
-* Download the model : Download the [resnet50_v1](./E2E_example_model/resnet50_v1.onnx)
+We leverage the instructions as the following:
 
-* Prepare imagenet dataset : Follow instructions provided in [mlperf repo](https://github.com/mlperf/inference/tree/master/v0.5/classification_and_detection#datasets)
+* Download the model : Download the [resnet50_v1](./E2E_example_model/resnet50_v1.onnx).
 
-* Install latest versions of ONNX and ONNXRuntime
+* Install latest versions of ONNX and ONNXRuntime.
 
-* Quantize the model : As described above there are 2 ways to do this.
-    * Use quantization tool only. This method uses Integer Ops :
-    ```python
-    import onnx
-    from quantize import quantize, QuantizationMode
-    model = onnx.load('path/to/the/model.onnx')
-    quantized_model = quantize(model, quantization_mode=QuantizationMode.IntegerOps, force_fusions=True)
-    onnx.save(quantized_model, 'path/to/the/quantized_model.onnx')
+* Download the test calibration data set: 
+    * A `calibration_data_set_test` folder is included under `./E2E_example_model`. It is used as the test calibration data set for this E2E example.
+
+* Run the E2E example. [e2e_example](./E2E_example_model/e2e_user_example.py).
+    * `ResNet50DataReader`is implemented based on `CalibrationDataReader` interface and it's used specifically for reading in the image data for ResNet50.`preprocess_func` is used by `ResNet50DataReader`to load and preprocess the image data.
+        - *preprocess_func*: resizes and normalizes image to NHWC format, in a [technique used by mlperf 0.5](https://github.com/mlperf/inference/blob/master/v0.5/classification_and_detection/python/dataset.py#L250) for variants of ResNet.
+        - Alternatively, if user wants to accept preprocessed tensors in .pb format. Refer to [this article](https://github.com/onnx/onnx/blob/master/docs/PythonAPIOverview.md#manipulating-tensorproto-and-numpy-array) to understand how to hop between numpy arrays and tensorproto and write corresponding preprocess function.
+    * Run the calibration tool:
     ```
-
-    * Use calibration and quantization. This method uses QLinear Ops :
-        * Download the calibration image list : From [mlperf repo](https://github.com/mlperf/inference/tree/master/calibration/ImageNet)
-        * Create a calibration_data_set folder and copy the list of image names mentioned in "cal_image_list_option_<1/2>.txt" from the Imagenet dataset to this new folder.
-        * Run the calibration tool :
-        ```python
-        python calibrate.py --model_path=/<path>/E2E_example_model/resnet50_v1.onnx.onnx --output_model_path=/<output_path>/calibrated_quantized_model.onnx --dataset_path=/<path>/calibration_data_set --data_preprocess=preprocess_method2
-        ```
+    python3 e2e_user_example.py
+    ```
+    * After successfuly running the E2E example, a `calibrated_quantized_model` will be saved. (The `quantization_mode` used here is QLinear Ops.)
 
 * Setup and run mlperf accuracy tests : Now that quantized model is ready run the accuracy tests using the mlperf accuracy benchmarks.
     * Set up the [mlperf benchmark](https://github.com/mlperf/inference/tree/master/v0.5/classification_and_detection#prerequisites-and-installation)

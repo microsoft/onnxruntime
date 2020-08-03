@@ -48,6 +48,8 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_winml::IEngine** out) {
     }
   }
 
+  RETURN_HR_IF_NOT_OK_MSG(ort_api->SetIntraOpNumThreads(session_options.get(), intra_op_num_threads_override_), ort_api);
+
   OrtSession* ort_session = nullptr;
   onnxruntime_session_builder->CreateSession(session_options.get(), &ort_session);
   auto session = UniqueOrtSession(ort_session, ort_api->ReleaseSession);
@@ -85,7 +87,12 @@ STDMETHODIMP OnnxruntimeEngineBuilder::SetBatchSizeOverride(uint32_t batch_size_
   return S_OK;
 }
 
+
 STDMETHODIMP OnnxruntimeEngineBuilder::SetNamedDimensionOverrides(wfc::IMapView<winrt::hstring, uint32_t> named_dimension_overrides) {
   named_dimension_overrides_ = std::move(named_dimension_overrides);
+}
+  
+STDMETHODIMP OnnxruntimeEngineBuilder::SetIntraOpNumThreadsOverride(uint32_t intra_op_num_threads) {
+  intra_op_num_threads_override_ = intra_op_num_threads;
   return S_OK;
 }

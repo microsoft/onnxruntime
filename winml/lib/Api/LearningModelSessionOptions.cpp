@@ -31,4 +31,13 @@ wfc::IMapView<winrt::hstring, uint32_t> LearningModelSessionOptions::NamedDimens
 void LearningModelSessionOptions::OverrideNamedDimension(winrt::hstring name, uint32_t value) {
   named_dim_overrides_.Insert(name, value);
 }
+
+uint32_t LearningModelSessionOptions::GetIntraOpNumThreads() {
+  return intra_op_num_threads_override_;
+}
+
+STDMETHODIMP LearningModelSessionOptions::SetIntraOpNumThreadsOverride(uint32_t intraOpNumThreads) noexcept {
+  intra_op_num_threads_override_ = intraOpNumThreads;
+  return S_OK;
+}
 }  // namespace WINMLP

@@ -111,6 +111,8 @@ class OpKernelContext {
   // The memory allocation will be done on-the-fly with given tensor shape.
   // Return nullptr if the output is an unused optional output.
   Tensor* Output(int index, const TensorShape& shape);
+  Tensor* Output(int index, const std::vector<int64_t>& shape);
+  Tensor* Output(int index, const std::initializer_list<int64_t>& shape);
 
   // Fetch a required tensor output, enforcing that it is present.
   Tensor& RequiredOutput(int index, const TensorShape& shape) {
@@ -125,6 +127,16 @@ class OpKernelContext {
   // Memory allocation for the output may happen when this method is invoked,
   // unless static optimization pre-allocates it.
   SparseTensor* Output(int index, size_t num_values, const TensorShape& shape);
+
+  // Retrieve indexed shape obtained from memory planning before actual
+  // computation. If the indexed shape cannot be inferred, this function returns
+  // false.
+  bool TryGetInferredInputShape(int index, TensorShape& shape) const;
+
+  // Retrieve indexed shape obtained from memory planning before actual
+  // computation. If the indexed shape cannot be inferred, this function returns
+  // false.
+  bool TryGetInferredOutputShape(int index, TensorShape& shape) const;
 
   const logging::Logger& Logger() const {
     return *logger_;

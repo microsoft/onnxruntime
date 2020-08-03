@@ -20,6 +20,7 @@ struct LearningModelSessionAPITestsApi {
   VoidTest EvaluateSessionAndCloseModel;
   VoidTest OverrideNamedDimension;
   VoidTest CloseSession;
+  VoidTest SetIntraOpNumThreads;
 };
 const LearningModelSessionAPITestsApi& getapi();
 
@@ -41,4 +42,5 @@ WINML_TEST(LearningModelSessionAPITests, CreateSessionWithFloat16InitializersInM
 WINML_TEST(LearningModelSessionAPITests, AdapterIdAndDevice)
 WINML_TEST(LearningModelSessionAPITests, OverrideNamedDimension)
 WINML_TEST(LearningModelSessionAPITests, CloseSession)
+WINML_TEST(LearningModelSessionAPITests, SetIntraOpNumThreads)
 WINML_TEST_CLASS_END()

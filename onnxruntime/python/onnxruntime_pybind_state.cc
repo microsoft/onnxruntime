@@ -120,6 +120,8 @@
 
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
+#include "core/providers/cuda/shared_inc/cuda_call.h"
+#include "core/providers/cuda/cuda_provider_options.h"
 OrtDevice::DeviceId cuda_device_id = 0;
 size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
 onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
@@ -150,6 +152,8 @@ std::string nuphar_settings;
 #ifdef USE_ARMNN
 #include "core/providers/armnn/armnn_provider_factory.h"
 #endif
+
+#define PYBIND_UNREFERENCED_PARAMETER(parameter) ((void)(parameter))
 
 namespace onnxruntime {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(int use_arena);
@@ -320,6 +324,113 @@ const std::vector<std::string>& GetAvailableProviders() {
   return available_providers;
 }
 
+#ifdef USE_CUDA
+
+/*
+ * Validate a string that is positive integer or zero.
+ *
+ * (-1234, 43.21, +43.21 ... are not valid,
+ *  1234, +4321, 12 ... are valid) 
+ */
+bool IsPositiveInteger(const std::string& s) {
+  if (s.length() == 0) {
+    return false;
+  }
+
+  for (size_t i = 0; i < s.length(); i++) {
+    if (i == 0 && s[i] == '+' && s.length() > 1) {
+      continue;
+    }
+
+    if (!isdigit(s[i])) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool IsCudaDeviceIdValid(InferenceSession* sess, int id) {
+  int num_devices = 0;
+  CUDA_CALL_THROW(cudaGetDeviceCount(&num_devices));
+
+  if (0 == num_devices) {
+    LOGS(*(sess->GetLogger()), WARNING) << "your system does not have a CUDA capable device.";
+    return false;
+  }
+
+  if (id < 0 || id >= num_devices) {
+    LOGS(*(sess->GetLogger()), WARNING) << "cuda_device=" << id << " is invalid, must choose device ID between 0 and " << num_devices - 1;
+    return false;
+  }
+
+  return true;
+}
+
+void UpdateCudaProviderOptions(InferenceSession* sess, onnxruntime::CudaProviderOptions& options, std::unordered_map<std::string, std::string> options_map) {
+  std::unordered_map<std::string, std::string>::iterator it;
+
+  it = options_map.find("device_id");
+  if (it != options_map.end()) {
+    OrtDevice::DeviceId device_id;
+    try {
+      int id = std::stoi(it->second);
+      device_id = static_cast<int8_t>(id);
+    } catch (...) {
+      throw std::runtime_error("Please provide device id with integer.");
+    }
+
+    if (!IsCudaDeviceIdValid(sess, device_id)) {
+      throw std::runtime_error("Please provide available device id.");
+    }
+    options.device_id = device_id;
+    LOGS(*(sess->GetLogger()), INFO) << "cuda device id is set to " << device_id;
+  }
+
+  it = options_map.find("cuda_mem_limit");
+  if (it != options_map.end()) {
+    // The reason to check whether the string is positive integer upfront is that
+    // when calling stoull(), if the minus sign was part of the input sequence,
+    // the numeric value calculated from the sequence of digits is negated.
+    // In other words, it will cause wraparound.
+    // So, we rule out negative integer string beforehand.
+    if (!IsPositiveInteger(it->second)) {
+      throw std::runtime_error("Please provide cuda memory limitation size with positive integer.");
+    }
+
+    size_t size;
+    try {
+#if (defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__))
+      size = std::stoull(it->second, nullptr, 0);
+#else
+      size = std::stoul(it->second, nullptr, 0);
+#endif
+    } catch (...) {
+      throw std::runtime_error("Please provide cuda memory limitation size with positive integer and within range.");
+    }
+
+    options.cuda_mem_limit = size;
+    LOGS(*(sess->GetLogger()), INFO) << "cuda memory limitation is set to " << size;
+  }
+
+  it = options_map.find("arena_extend_strategy");
+  if (it != options_map.end()) {
+    onnxruntime::ArenaExtendStrategy strategy;
+
+    if (it->second.compare("kNextPowerOfTwo") == 0) {
+      strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
+    } else if (it->second.compare("kSameAsRequested") == 0) {
+      strategy = onnxruntime::ArenaExtendStrategy::kSameAsRequested;
+    } else {
+      throw std::runtime_error("Please provide proper cuda arena extend strategy.");
+    }
+
+    options.arena_extend_strategy = strategy;
+    LOGS(*(sess->GetLogger()), INFO) << "cuda arean extend strategy is set to " << it->second;
+  }
+}
+#endif
+
 void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::string>& provider_types) {
   for (const std::string& type : provider_types) {
     if (type == kCpuExecutionProvider) {
@@ -373,12 +484,112 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
   }
 }
 
+/*
+ * Register execution provider with options.
+ *
+ * (note: currently only cuda EP supports this feature and rest of EPs use default options) 
+ */
+void RegisterExecutionProvidersWithOptions(InferenceSession* sess, const std::vector<std::string>& provider_types, ProviderOptionsMap& provider_options_map) {
+  PYBIND_UNREFERENCED_PARAMETER(provider_options_map);
+
+  for (const std::string& type : provider_types) {
+    if (type == kCpuExecutionProvider) {
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CPU(sess->GetSessionOptions().enable_cpu_mem_arena));
+    } else if (type == kTensorrtExecutionProvider) {
+#ifdef USE_TENSORRT
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Tensorrt(0));
+#endif
+    } else if (type == kMIGraphXExecutionProvider) {
+#ifdef USE_MIGRAPHX
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_MIGraphX(0));
+#endif
+    } else if (type == kCudaExecutionProvider) {
+#ifdef USE_CUDA
+      onnxruntime::CudaProviderOptions cuda_provider_options;
+
+      auto it = provider_options_map.find(type);
+      if (it != provider_options_map.end()) {
+        UpdateCudaProviderOptions(sess, cuda_provider_options, it->second);
+      }
+
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_provider_options.device_id,
+                                                                                        cuda_provider_options.cuda_mem_limit,
+                                                                                        cuda_provider_options.arena_extend_strategy));
+#endif
+    } else if (type == kDnnlExecutionProvider) {
+#ifdef USE_DNNL
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Dnnl(sess->GetSessionOptions().enable_cpu_mem_arena));
+#endif
+    } else if (type == kNGraphExecutionProvider) {
+#if USE_NGRAPH
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_NGraph("CPU"));
+#endif
+    } else if (type == kOpenVINOExecutionProvider) {
+#ifdef USE_OPENVINO
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device.c_str()));
+      openvino_device.clear();
+#endif
+    } else if (type == kNupharExecutionProvider) {
+#if USE_NUPHAR
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Nuphar(true, nuphar_settings.c_str()));
+      nuphar_settings.clear();  // clear nuphar_settings after use to avoid it being accidentally passed on to next session
+#endif
+    } else if (type == kVitisAIExecutionProvider) {
+#if USE_VITISAI
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_VITISAI("dpuv1", 0));
+#endif
+    } else {
+      // unknown provider
+      throw std::runtime_error("Unknown Provider Type: " + type);
+    }
+  }
+}
+
+/**
+ * Generate a map for mapping execution provider to excution provider options. 
+ * 
+ * @param providers vector of excution providers. [ep1, ep2, ...]
+ * @param provider_options_vector vector of excution provider options. [option1, option2 ...] 
+ * @param provider_options_map an unordered map for mapping excution provider to excution provider options. {'ep1' -> option1, 'ep2' -> option2 ...}
+ *                                                                      
+ */
+void GenerateProviderOptionsMap(const std::vector<std::string>& providers,
+                                ProviderOptionsVector& provider_options_vector,
+                                ProviderOptionsMap& provider_options_map) {
+  if (provider_options_vector.empty() || providers.empty()) {
+    return;
+  }
+
+  std::size_t j = 0;  // index for provider_options_vector
+
+  for (const std::string& type : providers) {
+    if (j < provider_options_vector.size() && !provider_options_vector[j].empty()) {
+      provider_options_map[type] = provider_options_vector[j];
+    }
+
+    j += 1;
+  }
+}
+
 void InitializeSession(InferenceSession* sess, const std::vector<std::string>& provider_types) {
   if (provider_types.empty()) {
     // use default registration priority.
     RegisterExecutionProviders(sess, GetAllProviders());
   } else {
     RegisterExecutionProviders(sess, provider_types);
+  }
+  OrtPybindThrowIfError(sess->Initialize());
+}
+
+void InitializeSession(InferenceSession* sess, const std::vector<std::string>& provider_types, ProviderOptionsVector& provider_options) {
+  ProviderOptionsMap provider_options_map;
+  GenerateProviderOptionsMap(provider_types, provider_options, provider_options_map);
+
+  if (provider_types.empty()) {
+    // use default registration priority.
+    RegisterExecutionProvidersWithOptions(sess, GetAllProviders(), provider_options_map);
+  } else {
+    RegisterExecutionProvidersWithOptions(sess, provider_types, provider_options_map);
   }
   OrtPybindThrowIfError(sess->Initialize());
 }
@@ -484,10 +695,15 @@ void addGlobalMethods(py::module& m, const Environment& env) {
 #endif  //onnxruntime_PYBIND_EXPORT_OPSCHEMA
 
 #ifdef USE_CUDA
+  /*
+   * The following set_* methods are deprecated.
+   * 
+   * To achieve same result, please use the following python api: 
+   * InferenceSession.set_providers(list_of_providers, list_of_provider_option_dicts)
+   *
+   */
   m.def("set_cuda_device_id", [](const int id) { cuda_device_id = static_cast<OrtDevice::DeviceId>(id); });
-  m.def("set_cuda_mem_limit", [](const int64_t limit) {
-    cuda_mem_limit = static_cast<size_t>(limit);
-  });
+  m.def("set_cuda_mem_limit", [](const int64_t limit) { cuda_mem_limit = static_cast<size_t>(limit); });
   m.def("set_arena_extend_strategy", [](const onnxruntime::ArenaExtendStrategy strategy) { arena_extend_strategy = strategy; });
 #endif
 }
@@ -801,7 +1017,25 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           },
           R"pbdoc(Graph optimization level for this session.)pbdoc")
       .def_readwrite("use_deterministic_compute", &SessionOptions::use_deterministic_compute,
-                     R"pbdoc(Whether to use deterministic compute. Default is false.)pbdoc");
+                     R"pbdoc(Whether to use deterministic compute. Default is false.)pbdoc")
+      .def(
+          "add_free_dimension_override_by_denotation",
+          [](SessionOptions* options, const char* dim_name, int64_t dim_value)
+              -> void { options->free_dimension_overrides.push_back(
+                            onnxruntime::FreeDimensionOverride{
+                                dim_name,
+                                onnxruntime::FreeDimensionOverrideType::Denotation,
+                                dim_value}); },
+          "Rpbdoc(Specify the dimension size for each denotation associated with an input's free dimension.)pbdoc")
+      .def(
+          "add_free_dimension_override_by_name",
+          [](SessionOptions* options, const char* dim_name, int64_t dim_value)
+              -> void { options->free_dimension_overrides.push_back(
+                            onnxruntime::FreeDimensionOverride{
+                                dim_name,
+                                onnxruntime::FreeDimensionOverrideType::Name,
+                                dim_value}); },
+          "Rpbdoc(Specify values of named dimensions within model inputs.)pbdoc");
 
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())
@@ -913,6 +1147,12 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             InitializeSession(sess, provider_types);
           },
           R"pbdoc(Load a model saved in ONNX format.)pbdoc")
+      .def(
+          "load_model", [](InferenceSession* sess, std::vector<std::string>& provider_types, ProviderOptionsVector& provider_options) {
+            OrtPybindThrowIfError(sess->Load());
+            InitializeSession(sess, provider_types, provider_options);
+          },
+          R"pbdoc(Load a model saved in ONNX format.)pbdoc")
       .def("run", [](InferenceSession* sess, std::vector<std::string> output_names, std::map<std::string, py::object> pyfeeds, RunOptions* run_options = nullptr) -> std::vector<py::object> {
         NameMLValMap feeds;
         for (auto _ : pyfeeds) {
@@ -967,6 +1207,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       })
       .def("get_providers", [](InferenceSession* sess) -> const std::vector<std::string>& {
         return sess->GetRegisteredProviderTypes();
+      })
+      .def("get_provider_options", [](const InferenceSession* sess) -> const ProviderOptionsMap& {
+        return sess->GetAllProviderOptions();
       })
       .def_property_readonly("session_options", [](InferenceSession* sess) -> const SessionOptions& {
         return sess->GetSessionOptions();
