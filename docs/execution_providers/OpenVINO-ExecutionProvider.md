@@ -156,13 +156,12 @@ We currently do not have a process to build directly in Linux. But we can
 copy shared library libonnxruntime.so to onnxruntime repository in windows
 and execute the same commands above to get custom nuget package for linux 
 
-On Linux Server
+On Linux Machine
 ```
 ./build.sh --config Debug --build_shared_lib --use_openvino $Device 
 ```
 
-On Windows Server
-
+On Windows Machine
 ```
 cp libonnxruntime.so $PATH/onnxruntime/ 
 .\build.bat --config Debug --build --use_openvino $Device --build_csharp
