@@ -27,13 +27,6 @@ class TransformerMemcpyImpl {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TransformerMemcpyImpl);
 
   // use value-based compare to make sure transformer output order is consistent
-  struct NodeCompare {
-    bool operator()(const onnxruntime::Node* lhs, const onnxruntime::Node* rhs) const {
-      return lhs->Index() < rhs->Index();
-    }
-  };
-
-  // use value-based compare to make sure transformer output order is consistent
   struct NodeArgCompare {
     bool operator()(const onnxruntime::NodeArg* lhs, const onnxruntime::NodeArg* rhs) const {
       return lhs->Name() < rhs->Name();
@@ -73,8 +66,11 @@ common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
         provider != onnxruntime::kDnnlExecutionProvider &&
         provider != onnxruntime::kNGraphExecutionProvider &&
         provider != onnxruntime::kNupharExecutionProvider &&
+        provider != onnxruntime::kVitisAIExecutionProvider &&
         provider != onnxruntime::kOpenVINOExecutionProvider &&
-        provider != onnxruntime::kAclExecutionProvider) {
+        provider != onnxruntime::kNnapiExecutionProvider &&
+        provider != onnxruntime::kAclExecutionProvider &&
+        provider != onnxruntime::kArmNNExecutionProvider) {
       TransformerMemcpyImpl copy_impl(graph, provider);
       auto current_modified = copy_impl.ModifyGraph(registry_manager_);
       modified = modified || current_modified;
@@ -219,6 +215,7 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
   } else if (node_provider_type != kCudaExecutionProvider && node_provider_type != kTensorrtExecutionProvider) {
     // TODO: copy between devices? i.e. multiple GPUs
     if (node_provider_type != onnxruntime::kCpuExecutionProvider &&
+        node_provider_type != onnxruntime::kVitisAIExecutionProvider &&
         node_provider_type != onnxruntime::kNGraphExecutionProvider && !node_provider_type.empty()) {
       ORT_THROW("Execution type '", node_provider_type, "' doesn't support memcpy ");
     }

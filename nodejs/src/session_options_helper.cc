@@ -4,6 +4,7 @@
 #include "onnxruntime_cxx_api.h"
 #include <napi.h>
 
+#include <cmath>
 #include <unordered_map>
 
 #include "common.h"

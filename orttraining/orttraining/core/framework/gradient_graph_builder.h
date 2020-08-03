@@ -7,6 +7,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <set>
 
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
@@ -15,14 +16,14 @@
 #include "core/graph/constants.h"
 #include "core/graph/graph_nodes.h"
 #include "core/graph/node_arg.h"
-#include "orttraining/core/graph/gradient_schema_defs.h"
+#include "orttraining/core/graph/training_op_defs.h"
 #include "orttraining/core/graph/gradient_builder_base.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 
 namespace onnxruntime {
 namespace training {
 
-typedef std::unordered_set<const Node*> NodeSet;
+typedef std::set<const Node*, NodeCompare> NodeSet;
 
 static std::unordered_map<std::string, std::unordered_set<size_t>>
     STOP_GRADIENT_EDGES = {
@@ -39,7 +40,8 @@ static std::unordered_map<std::string, std::unordered_set<size_t>>
         {"Scatter", {1}},
         {"OneHot", {0, 1, 2}},
         {"Where", {0}},
-        {"Range", {0, 1, 2}}};
+        {"Range", {0, 1, 2}},
+        {"BroadcastGradientArgs", {0, 1}}};
 
 class GradientGraphBuilder {
  public:
@@ -57,6 +59,7 @@ class GradientGraphBuilder {
                        const std::unordered_set<std::string>& y_node_arg_names,
                        const std::unordered_set<std::string>& x_node_arg_names,
                        std::string loss_node_arg_name,
+                       const GradientGraphConfiguration& gradient_graph_config,
                        const bool set_gradient_as_graph_output = false);
 
   Status Build();
@@ -71,6 +74,8 @@ class GradientGraphBuilder {
   Graph* graph_;
 
   std::string loss_node_arg_name_;
+
+  const GradientGraphConfiguration& gradient_graph_config_;
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr_{5};
 

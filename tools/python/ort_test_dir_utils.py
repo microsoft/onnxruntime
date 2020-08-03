@@ -82,12 +82,12 @@ def create_test_dir(model_path, root_path, test_name,
     model_path = os.path.abspath(model_path)
     root_path = os.path.abspath(root_path)
     test_dir = os.path.join(root_path, test_name)
-    test_data_dir = os.path.join(test_dir, f"test_data_set_0")
+    test_data_dir = os.path.join(test_dir, "test_data_set_0")
 
     if not os.path.exists(test_dir) or not os.path.exists(test_data_dir):
         os.makedirs(test_data_dir)
 
-    model_filename = model_path.split('\\')[-1]
+    model_filename = os.path.split(model_path)[-1]
     test_model_filename = os.path.join(test_dir, model_filename)
     shutil.copy(model_path, test_model_filename)
 
@@ -177,7 +177,7 @@ def run_test_dir(model_or_dir):
         models = glob.glob(os.path.join(model_dir, '*.onnx'))
         if len(models) > 1:
             raise ValueError(f"'Multiple .onnx files found in {model_dir}. '"
-                              "'Please provide specific .onnx file as input.")
+                             "'Please provide specific .onnx file as input.")
         elif len(models) == 0:
             raise ValueError(f"'No .onnx files found in {model_dir}.")
 

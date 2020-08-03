@@ -26,8 +26,8 @@ Abstract:
         .equ    .LGemmU8X8KernelFrame_SavedRbp, 24
         .equ    .LGemmU8X8KernelFrame_ReturnAddress, 32
         .equ    .LGemmU8X8KernelFrame_ldc, 40
-        .equ    .LGemmU8X8KernelFrame_RowSumVector, 48
-        .equ    .LGemmU8X8KernelFrame_ColumnSumVector, 56
+        .equ    .LGemmU8X8KernelFrame_RowSumBuffer, 48
+        .equ    .LGemmU8X8KernelFrame_ColumnSumBuffer, 56
         .equ    .LGemmU8X8KernelFrame_DepthValue, 64
         .equ    .LGemmU8X8KernelFrame_ZeroMode, 72
 
@@ -54,9 +54,9 @@ Implicit Arguments:
 
     rcx - Supplies the length in bytes of a row from matrix A.
 
-    r12 - Supplies the address of the row sum vector.
+    r12 - Supplies the address of the row sum buffer.
 
-    r13 - Supplies the address of the column sum vector.
+    r13 - Supplies the address of the column sum buffer.
 
     ymm4-ymm15 - Supplies the block accumulators.
 
@@ -73,7 +73,7 @@ Implicit Arguments:
 .if \ColumnCount\() == 16
         vpaddd  ymm0,ymm1,YMMWORD PTR [r13]
         vpaddd  ymm1,ymm1,YMMWORD PTR [r13+32]
-        add     r13,16*4                    # advance ColumnSumVector by 16 columns
+        add     r13,16*4                    # advance ColumnSumBuffer by 16 columns
 .else
         vpaddd  ymm1,ymm1,YMMWORD PTR [r13]
 .endif
@@ -106,8 +106,8 @@ Implicit Arguments:
 .endif
         ComputeBlockLoop \ColumnCount\(), \RowCount\()
 .if \RowCount\() > 3
-        lea     rbx,[rdx+rax*2]             # compute matrix C plus 3 rows
-        add     rbx,rax
+        lea     rbx,[rax*2+rax]
+        add     rbx,rdx                     # compute matrix C plus 3 rows
 .endif
 
         .endm
@@ -145,9 +145,9 @@ Implicit Arguments:
 
     r10b - Supplies the zero mode flag.
 
-    r12 - Supplies the address of the row sum vector.
+    r12 - Supplies the address of the row sum buffer.
 
-    r13 - Supplies the address of the column sum vector.
+    r13 - Supplies the address of the column sum buffer.
 
 --*/
 

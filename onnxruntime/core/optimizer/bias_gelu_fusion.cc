@@ -4,13 +4,14 @@
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/bias_gelu_fusion.h"
 #include "core/graph/graph_utils.h"
+#include "core/optimizer/utils.h"
 #include <deque>
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
-Status BiasGelu::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
+Status BiasGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -25,7 +26,7 @@ Status BiasGelu::ApplyImpl(Graph& graph, bool& modified, int graph_level, const 
 
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7}) ||
         !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) ||
-        node.GetOutputEdgesCount() != 1) {
+        !optimizer_utils::CheckOutputEdges(graph, node, 1)) {
       continue;
     }
 

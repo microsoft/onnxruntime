@@ -14,10 +14,12 @@ Generate test model for Gelu subgraph pattern 2:
 
 has_bias = True  # change it to True to generate gelu_format2_*_with_bias.onnx
 gelu_use_graph_input = False  # change it to False to let Gelu don't have graph inputs as inputs.
+node_has_graph_output = True # change it to False to let Gelu don't have graph output
 switch_order = True  # switch order of inputs for Mul and Add
 
 X = helper.make_tensor_value_info('input', TensorProto.FLOAT, ["batch", "seqlen", 64])
 Y = helper.make_tensor_value_info('output', TensorProto.FLOAT, ["batch", "seqlen", 64])
+Z = helper.make_tensor_value_info('div', TensorProto.FLOAT, ["batch", "seqlen", 64])
 
 value = (0.01 * np.arange(64)).astype(np.float32).reshape((64))
 bias_initializer = numpy_helper.from_array(value, "input_bias")
@@ -74,7 +76,7 @@ if has_bias:
 initializers.extend([initializer_sqrt_2, initializer_1, initializer_0_5])
 
 # Create the graph (GraphProto)
-graph_def = helper.make_graph(nodes, 'gelu_pattern_2', [X], [Y], initializers)
+graph_def = helper.make_graph(nodes, 'gelu_pattern_2', [X], [Y, Z] if node_has_graph_output else [Y], initializers)
 
 opsets = []
 onnxdomain = OperatorSetIdProto()
@@ -98,6 +100,9 @@ if has_bias:
 
 if gelu_use_graph_input:
     file_name += "_use_graph_input"
+
+if node_has_graph_output:
+    file_name += "_use_graph_output"
 
 file_name += ".onnx"
 onnx.save(model_def, file_name)

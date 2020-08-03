@@ -18,7 +18,6 @@ from onnx import numpy_helper
 
 
 class TestCalibrate(unittest.TestCase):
-
     def test_augment_graph(self):
         # Creating graph
         A = helper.make_tensor_value_info('A', TensorProto.FLOAT, [1, 1, 5, 5])

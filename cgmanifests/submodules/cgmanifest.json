@@ -1,0 +1,545 @@
+{
+  "Version": 1,
+  "Registrations": [
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "fd5fe3de507d4a19f5923c5d4c267e3d730500a9",
+          "repositoryUrl": "https://github.com/microsoft/FeaturizersLibrary.git"
+        },
+        "comments": "git submodule at cmake/external/FeaturizersLibrary"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "efd9867ff0e8df23016ac6c9828d0d7bf8bec1b1",
+          "repositoryUrl": "https://gitlab.com/libeigen/eigen.git"
+        },
+        "comments": "git submodule at cmake/external/FeaturizersLibrary/src/3rdParty/eigen"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "30cad267151fa8f1b17da8c1ef0571da6da9a8f1",
+          "repositoryUrl": "https://github.com/google/re2.git"
+        },
+        "comments": "git submodule at cmake/external/FeaturizersLibrary/src/3rdParty/re2"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "39de59d5bca3a226a241b29571abe1493d15d07a",
+          "repositoryUrl": "https://github.com/dcleblanc/SafeInt.git"
+        },
+        "comments": "git submodule at cmake/external/SafeInt/safeint"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "c3cceac115c072fb63df1836ff46d8c60d9eb304",
+          "repositoryUrl": "https://github.com/NVlabs/cub.git"
+        },
+        "comments": "git submodule at cmake/external/cub"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "3c73d91c0b04e2b59462f0a741be8c07024c1bc0",
+          "repositoryUrl": "https://github.com/jarro2783/cxxopts.git"
+        },
+        "comments": "git submodule at cmake/external/cxxopts"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "e7e1482087f58913b80a20b04d5c58d9d6d90155",
+          "repositoryUrl": "https://github.com/HowardHinnant/date.git"
+        },
+        "comments": "git submodule at cmake/external/date"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "54a0a9c9dd83aad42e79238ec8f0932b2a5e7881",
+          "repositoryUrl": "https://gitlab.com/libeigen/eigen.git"
+        },
+        "comments": "git submodule at cmake/external/eigen"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "42c53187a56c12dc5518cc25e778e5e3e7dbaf72",
+          "repositoryUrl": "https://github.com/google/gemmlowp.git"
+        },
+        "comments": "git submodule at cmake/external/gemmlowp"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "703bd9caab50b139428cea1aaff9974ebee5742e",
+          "repositoryUrl": "https://github.com/google/googletest.git"
+        },
+        "comments": "git submodule at cmake/external/googletest"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "680716940b397bde59476dbc0fa808d6285ecf4a",
+          "repositoryUrl": "https://github.com/horovod/horovod.git"
+        },
+        "comments": "git submodule at cmake/external/horovod"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "4ce14c28b5cfe0199f5b89a393943b3fa729b8b6",
+          "repositoryUrl": "https://github.com/elnormous/HTTPRequest"
+        },
+        "comments": "git submodule at cmake/external/horovod/third_party/HTTPRequest"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "dbe3f8c641151c6c1b33485cd04f6e5285799102",
+          "repositoryUrl": "https://github.com/boostorg/assert.git"
+        },
+        "comments": "git submodule at cmake/external/horovod/third_party/boost/assert"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "67102d043643c51104663c5b00e375c2f476cdf5",
+          "repositoryUrl": "https://github.com/boostorg/config.git"
+        },
+        "comments": "git submodule at cmake/external/horovod/third_party/boost/config"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "d60775659b893fc71a8e37df8830067efdbc5c72",
+          "repositoryUrl": "https://github.com/boostorg/core.git"
+        },
+        "comments": "git submodule at cmake/external/horovod/third_party/boost/core"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "622c7c4ee6046943164fc7bde49023369969de92",
+          "repositoryUrl": "https://github.com/boostorg/detail.git"
+        },
+        "comments": "git submodule at cmake/external/horovod/third_party/boost/detail"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "3cc4107d01b152bc2417d434b6fa22925a34aecd",
+          "repositoryUrl": "https://github.com/boostorg/iterator.git"
+        },
+        "comments": "git submodule at cmake/external/horovod/third_party/boost/iterator"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "38f0cfc28d984cba8b368695491f9cc45bca2363",
+          "repositoryUrl": "https://github.com/boostorg/lockfree.git"
+        },
+        "comments": "git submodule at cmake/external/horovod/third_party/boost/lockfree"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "ac67f5952e6c849e461d7651ffb4fa0e7f380bb0",
+          "repositoryUrl": "https://github.com/boostorg/mpl.git"
+        },
+        "comments": "git submodule at cmake/external/horovod/third_party/boost/mpl"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "5d3e39325e13a74645b60af33b16e8369f5ee61d",
+          "repositoryUrl": "https://github.com/boostorg/parameter.git"
+        },
+        "comments": "git submodule at cmake/external/horovod/third_party/boost/parameter"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "aa94d69718a8d4d0a6fd80cb1e62ed62d9b23d83",
+          "repositoryUrl": "https://github.com/boostorg/predef.git"
+        },
+        "comments": "git submodule at cmake/external/horovod/third_party/boost/predef"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "d135cad759062ba646cb4bc40c163e590d381001",
+          "repositoryUrl": "https://github.com/boostorg/preprocessor.git"
+        },
+        "comments": "git submodule at cmake/external/horovod/third_party/boost/preprocessor"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "feaaf3d14ab42d1f248d2b627a60c446fa9f2600",
+          "repositoryUrl": "https://github.com/boostorg/static_assert.git"
+        },
+        "comments": "git submodule at cmake/external/horovod/third_party/boost/static_assert"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "efc694d679263652520d965b94debbec69a17d85",
+          "repositoryUrl": "https://github.com/boostorg/type_traits.git"
+        },
+        "comments": "git submodule at cmake/external/horovod/third_party/boost/type_traits"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "05dda09fd3b4312594144b5a8617ba6fc694a2d6",
+          "repositoryUrl": "https://github.com/boostorg/utility.git"
+        },
+        "comments": "git submodule at cmake/external/horovod/third_party/boost/utility"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "554d8f538e4b0004152c75a9eb72d99f8c0f914c",
+          "repositoryUrl": "https://github.com/eigenteam/eigen-git-mirror.git"
+        },
+        "comments": "git submodule at cmake/external/horovod/third_party/eigen"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "4f32cbf268a8ad469974b9453924a3582dbf2f30",
+          "repositoryUrl": "https://github.com/google/flatbuffers.git"
+        },
+        "comments": "git submodule at cmake/external/horovod/third_party/flatbuffers"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "5afa358407855465089d52cc49696415c1887bc6",
+          "repositoryUrl": "https://github.com/facebookincubator/gloo.git"
+        },
+        "comments": "git submodule at cmake/external/horovod/third_party/gloo"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "80926584fc8ea7b9da5119c20a47d3e1d37a1bc0",
+          "repositoryUrl": "https://github.com/yixuan/LBFGSpp.git"
+        },
+        "comments": "git submodule at cmake/external/horovod/third_party/lbfgs"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "d98bf0278d6f59a58271425963a8422ff48fe249",
+          "repositoryUrl": "https://github.com/nlohmann/json"
+        },
+        "comments": "git submodule at cmake/external/json"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "7a2ed51a6b682a83e345ff49fc4cfd7ca47550db",
+          "repositoryUrl": "https://github.com/google/libprotobuf-mutator.git"
+        },
+        "comments": "git submodule at cmake/external/libprotobuf-mutator"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "2d54553b7a78c7c35620b827e7e5ab2228ecb495",
+          "repositoryUrl": "https://github.com/microsoft/mimalloc.git"
+        },
+        "comments": "git submodule at cmake/external/mimalloc"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "436617053d0f39a1019a371c3a9aa599b3cb2cea",
+          "repositoryUrl": "https://github.com/google/nsync"
+        },
+        "comments": "git submodule at cmake/external/nsync"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "0c070abb0c40fec649f81a73a75b0098662ec486",
+          "repositoryUrl": "https://github.com/onnx/onnx"
+        },
+        "comments": "git submodule at cmake/external/onnx"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "e776aa0275e293707b6a0901e0e8d8a8a3679508",
+          "repositoryUrl": "https://github.com/google/benchmark.git"
+        },
+        "comments": "git submodule at cmake/external/onnx/third_party/benchmark"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "80d452484c5409444b0ec19383faa84bb7a4d351",
+          "repositoryUrl": "https://github.com/pybind/pybind11.git"
+        },
+        "comments": "git submodule at cmake/external/onnx/third_party/pybind11"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "6a00cbc4a9b8e68b71caf7f774b3f9c753ae84d5",
+          "repositoryUrl": "https://github.com/wjakob/clang-cindex-python3"
+        },
+        "comments": "git submodule at cmake/external/onnx/third_party/pybind11/tools/clang"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "77a8d522e582efaac3166e912e96215acbf3f129",
+          "repositoryUrl": "https://github.com/stevenlix/onnx-tensorrt.git"
+        },
+        "comments": "git submodule at cmake/external/onnx-tensorrt"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "553df22c67bee5f0fe6599cff60f1afc6748c635",
+          "repositoryUrl": "https://github.com/onnx/onnx.git"
+        },
+        "comments": "git submodule at cmake/external/onnx-tensorrt/third_party/onnx"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "e776aa0275e293707b6a0901e0e8d8a8a3679508",
+          "repositoryUrl": "https://github.com/google/benchmark.git"
+        },
+        "comments": "git submodule at cmake/external/onnx-tensorrt/third_party/onnx/third_party/benchmark"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "09f082940113661256310e3f4811aa7261a9fa05",
+          "repositoryUrl": "https://github.com/pybind/pybind11.git"
+        },
+        "comments": "git submodule at cmake/external/onnx-tensorrt/third_party/onnx/third_party/pybind11"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "6a00cbc4a9b8e68b71caf7f774b3f9c753ae84d5",
+          "repositoryUrl": "https://github.com/wjakob/clang-cindex-python3"
+        },
+        "comments": "git submodule at cmake/external/onnx-tensorrt/third_party/onnx/third_party/pybind11/tools/clang"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "498de9f761bef56a032815ee44b6e6dbe0892cc4",
+          "repositoryUrl": "https://github.com/google/protobuf.git"
+        },
+        "comments": "git submodule at cmake/external/protobuf"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "5b7683f49e1e9223cf9927b24f6fd3d6bd82e3f8",
+          "repositoryUrl": "https://github.com/google/benchmark.git"
+        },
+        "comments": "git submodule at cmake/external/protobuf/third_party/benchmark"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "5ec7f0c4a113e2f18ac2c6cc7df51ad6afc24081",
+          "repositoryUrl": "https://github.com/google/googletest.git"
+        },
+        "comments": "git submodule at cmake/external/protobuf/third_party/googletest"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "30cad267151fa8f1b17da8c1ef0571da6da9a8f1",
+          "repositoryUrl": "https://github.com/google/re2.git"
+        },
+        "comments": "git submodule at cmake/external/re2"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "373eb09e4c5d2b3cc2493f0949dc4be6b6a45e81",
+          "repositoryUrl": "https://github.com/tensorflow/tensorboard.git"
+        },
+        "comments": "git submodule at cmake/external/tensorboard"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "eab844a87298d500f1924f8a7cadb4cbee426093",
+          "repositoryUrl": "https://github.com/microsoft/onnxruntime-tvm.git"
+        },
+        "comments": "git submodule at cmake/external/tvm"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "b257a9221ee1e5180d994b3488ddcc259b0ac157",
+          "repositoryUrl": "https://github.com/dmlc/HalideIR"
+        },
+        "comments": "git submodule at cmake/external/tvm/3rdparty/HalideIR"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "5c792cef3aee54ad8b7000111c9dc1797f327b59",
+          "repositoryUrl": "https://github.com/dmlc/dlpack"
+        },
+        "comments": "git submodule at cmake/external/tvm/3rdparty/dlpack"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "d07fb7a443b5db8a89d65a15a024af6a425615a5",
+          "repositoryUrl": "https://github.com/dmlc/dmlc-core"
+        },
+        "comments": "git submodule at cmake/external/tvm/3rdparty/dmlc-core"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "cabe04d6d6b05356fa8f9741704924788f0dd762",
+          "repositoryUrl": "https://github.com/agauniyal/rang"
+        },
+        "comments": "git submodule at cmake/external/tvm/3rdparty/rang"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "e8c599bca6c56c44b6730ad93f6abbc9ecd60fc1",
+          "repositoryUrl": "https://github.com/microsoft/wil"
+        },
+        "comments": "git submodule at cmake/external/wil"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "352281313fe1c4313bc222cb9de222afd50c822f",
+          "repositoryUrl": "https://github.com/gabime/spdlog.git"
+        },
+        "comments": "git submodule at server/external/spdlog"
+      }
+    }
+  ]
+}

@@ -55,6 +55,10 @@ class NodeArg {
   @returns TensorShapeProto if shape is set. nullptr if there's no shape specified. */
   const ONNX_NAMESPACE::TensorShapeProto* Shape() const;
 
+  /** Return an indicator.
+  @returns true if NodeArg is a normal tensor with a non-empty shape or a scalar with an empty shape. Otherwise, returns false. */
+  bool HasTensorOrScalarShape() const;
+
   /** Sets the shape.
   @remarks Shape can only be set if the TypeProto was provided to the ctor, or #SetType has been called,
   as the shape information is stored as part of TypeProto. */

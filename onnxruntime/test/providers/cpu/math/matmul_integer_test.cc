@@ -8,7 +8,9 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/util/math_cpuonly.h"
+#include "core/util/qmath.h"
 
+#include <algorithm>
 #include <random>
 
 namespace onnxruntime {
@@ -24,6 +26,15 @@ TEST(MatmulIntegerOpTest, MatMulInteger_2D) {
   test.Run();
 }
 
+TEST(MatmulIntegerOpTest, MatMulInteger_2D_empty_input) {
+  OpTester test("MatMulInteger", 10);
+  test.AddInput<uint8_t>("T1", {0, 3}, {});
+  test.AddInput<uint8_t>("T2", {3, 2}, {1, 4, 2, 5, 3, 6});
+  test.AddInput<uint8_t>("a_zero_point", {}, {12});
+  test.AddInput<uint8_t>("b_zero_point", {}, {0});
+  test.AddOutput<int32_t>("T3", {0, 2}, {});
+  test.Run();
+}
 TEST(MatmulIntegerOpTest, MatMulInteger) {
   OpTester test("MatMulInteger", 10);
   test.AddInput<uint8_t>("T1", {1, 1}, {11});
@@ -255,48 +266,75 @@ std::vector<T> ToVector(const int* value, int size) {
   return data;
 }
 
+template <typename T>
+T GetMiddle(const std::vector<T>& v) {
+  const auto min_max_pair = std::minmax_element(v.begin(), v.end());
+  return (*(min_max_pair.first) + *(min_max_pair.second)) / 2;
+}
+
 // [M x N] = [M x K] x [K x N] = [batch_seq x input_dim] x [input_dim x embed_dim]
-void RunMatMulIntegerU8S8Test(const int M, const int N, const int K) {
+void RunMatMulIntegerU8S8Test(const int M, const int N, const int K, bool non_zero_zp) {
   OpTester test("MatMulInteger", 10);
   static std::default_random_engine e(123);
   static std::uniform_int_distribution<int> n_unsigned(0, 127);
   static std::uniform_int_distribution<int> n_signed(-128, 127);
-  Eigen::MatrixXi T1 = Eigen::MatrixXi::Random(K, M)
-                           .unaryExpr([](int) { return n_unsigned(e); });
-  Eigen::MatrixXi T2 = Eigen::MatrixXi::Random(N, K)
-                           .unaryExpr([](int) { return n_signed(e); });
-  Eigen::MatrixXi T3 = (T2 * T1).eval();
 
-  test.AddInput<uint8_t>("T1", {M, K},
-                         ToVector<uint8_t>(T1.data(), M * K));
-  test.AddInput<int8_t>("T2", {K, N},
-                        ToVector<int8_t>(T2.data(), K * N), /*is_initializer*/ true);
-  test.AddOutput<int32_t>("T3", {M, N},
-                          ToVector<int32_t>(T3.data(), M * N));
+  Eigen::MatrixXi matrix_a = Eigen::MatrixXi::Random(K, M)
+                                 .unaryExpr([](int) { return n_unsigned(e); });
+  std::vector<uint8_t> matrix_a_data = ToVector<uint8_t>(matrix_a.data(), M * K);
+  uint8_t a_zero_point = non_zero_zp ? GetMiddle(matrix_a_data) : 0;
+  Eigen::MatrixXi matrix_a_offset = matrix_a - a_zero_point * Eigen::MatrixXi::Ones(K, M);
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});  // currently nGraph provider does not support gemm_u8s8
+  Eigen::MatrixXi matrix_b = Eigen::MatrixXi::Random(N, K)
+                                 .unaryExpr([](int) { return n_signed(e); });
+  std::vector<int8_t> matrix_b_data = ToVector<int8_t>(matrix_b.data(), N * K);
+  int8_t b_zero_point = non_zero_zp ? GetMiddle(matrix_b_data) : 0;
+  Eigen::MatrixXi matrix_b_offset = matrix_b - b_zero_point * Eigen::MatrixXi::Ones(N, K);
+
+  Eigen::MatrixXi matrix_c = (matrix_b_offset * matrix_a_offset).eval();
+
+  test.AddInput<uint8_t>("T1", {M, K}, std::move(matrix_a_data));
+  test.AddInput<int8_t>("T2", {K, N}, std::move(matrix_b_data), true /*is_initializer*/);
+  if (non_zero_zp) {
+    test.AddInput<uint8_t>("a_zero_point", {}, {a_zero_point});
+    test.AddInput<int8_t>("b_zero_point", {}, {b_zero_point});
+  }
+
+  test.AddOutput<int32_t>("T3", {M, N}, ToVector<int32_t>(matrix_c.data(), M * N));
+
+  // currently nGraph provider does not support gemm_u8s8
+  // Nuphar provider does not support non-zero zero point
+  if (non_zero_zp) {
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kNupharExecutionProvider});
+  } else {
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
+  }
 }
 
+#define RUN_MATMUL_INTEGER_U8S8(M, N, K)                    \
+  RunMatMulIntegerU8S8Test(M, N, K, false /*non_zero_zp*/); \
+  RunMatMulIntegerU8S8Test(M, N, K, true /*non_zero_zp*/);
+
 TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8_Scalar) {
-  RunMatMulIntegerU8S8Test(1, 1, 32);
-  RunMatMulIntegerU8S8Test(1, 1, 260);
-  RunMatMulIntegerU8S8Test(1, 1, 288);
+  RUN_MATMUL_INTEGER_U8S8(1, 1, 32);
+  RUN_MATMUL_INTEGER_U8S8(1, 1, 260);
+  RUN_MATMUL_INTEGER_U8S8(1, 1, 288);
 }
 
 TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8_GEMV) {
-  RunMatMulIntegerU8S8Test(1, 2, 16);
-  RunMatMulIntegerU8S8Test(1, 2, 64);
-  RunMatMulIntegerU8S8Test(1, 8, 36);
-  RunMatMulIntegerU8S8Test(1, 8, 68);
-  RunMatMulIntegerU8S8Test(1, 8, 400);
-  RunMatMulIntegerU8S8Test(1, 512, 1024);
+  RUN_MATMUL_INTEGER_U8S8(1, 2, 16);
+  RUN_MATMUL_INTEGER_U8S8(1, 2, 64);
+  RUN_MATMUL_INTEGER_U8S8(1, 8, 36);
+  RUN_MATMUL_INTEGER_U8S8(1, 8, 68);
+  RUN_MATMUL_INTEGER_U8S8(1, 8, 400);
+  RUN_MATMUL_INTEGER_U8S8(1, 512, 1024);
 }
 
 TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8_GEMM) {
-  RunMatMulIntegerU8S8Test(2, 2, 40);
-  RunMatMulIntegerU8S8Test(2, 48, 33);
-  RunMatMulIntegerU8S8Test(2, 51, 40);
-  RunMatMulIntegerU8S8Test(4, 8, 68);
+  RUN_MATMUL_INTEGER_U8S8(2, 2, 40);
+  RUN_MATMUL_INTEGER_U8S8(2, 48, 33);
+  RUN_MATMUL_INTEGER_U8S8(2, 51, 40);
+  RUN_MATMUL_INTEGER_U8S8(4, 8, 68);
 }
 
 }  // namespace test

@@ -1,0 +1,72 @@
+trigger: none
+
+jobs:
+- job: Onnxruntime_Linux_GPU_Training_Perf_Test
+
+  timeoutInMinutes: 120
+
+  variables:
+  - group: 'ortperf' # variable group
+
+  steps:
+  - checkout: self
+    clean: true
+    submodules: recursive
+
+  - script: >
+      tools/ci_build/github/linux/run_dockerbuild.sh
+      -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory)
+      -x "
+      --config RelWithDebInfo
+      --enable_training
+      --update --build
+      "
+    displayName: 'Build performance tests'
+
+  - script: >
+      docker run --gpus all --rm --name onnxruntime-gpu-perf
+      --volume $(Build.SourcesDirectory):/onnxruntime_src
+      --volume $(Build.BinariesDirectory):/build
+      --volume /bert_ort/bert_models:/build/bert_models:ro
+      --volume /bert_data:/build/bert_data:ro
+      -e NIGHTLY_BUILD onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6
+      /usr/bin/python3.6 /onnxruntime_src/orttraining/tools/ci_test/run_bert_perf_test.py
+      --binary_dir /build/RelWithDebInfo
+      --training_data_root /build/bert_data
+      --model_root /build/bert_models
+    displayName: 'Run bert performance tests'
+
+  - script: >
+      docker run --gpus all --rm --name onnxruntime-gpu-perf
+      --volume $(Build.SourcesDirectory):/onnxruntime_src
+      --volume $(Build.BinariesDirectory):/build
+      --volume /bert_ort/gpt2_models:/build/gpt2_models:ro
+      --volume /bert_data/gpt2_data:/build/gpt2_data:ro
+      -e NIGHTLY_BUILD onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6
+      /usr/bin/python3.6 /onnxruntime_src/orttraining/tools/ci_test/run_gpt2_perf_test.py
+      --binary_dir /build/RelWithDebInfo
+      --training_data_root /build/gpt2_data
+      --model_root /build/gpt2_models
+    displayName: 'Run gpt-2 performance tests'
+
+  # generate jdbc.properties
+  - script: >
+      mkdir -p $(Build.SourcesDirectory)/tools/perf_util/src/main/resources &&
+      printf "url=jdbc:mysql://onnxruntimedashboard.mysql.database.azure.com/onnxruntime?serverTimezone=UTC&useUnicode=true&characterEncoding=UTF-8\nuser=powerbi@onnxruntimedashboard\npassword_env=ORT_PERF_PASSWORD"
+      > $(Build.SourcesDirectory)/tools/perf_util/src/main/resources/jdbc.properties
+    displayName: 'Create resource file'
+
+  - script: >
+      mvn package
+    displayName: 'Maven build'
+    workingDirectory: $(Build.SourcesDirectory)/tools/perf_util
+
+  # process json files
+  - script: >
+      java -cp target/send_perf_metrics-0.0.1-SNAPSHOT-jar-with-dependencies.jar com.msft.send_perf_metrics.App "$(Build.SourcesDirectory)/orttraining/tools/ci_test/results"
+    env:
+      ORT_PERF_PASSWORD: $(ortperf)
+    displayName: 'Populate perf metrics'
+    workingDirectory: $(Build.SourcesDirectory)/tools/perf_util
+
+  - template: templates/clean-agent-build-directory-step.yml

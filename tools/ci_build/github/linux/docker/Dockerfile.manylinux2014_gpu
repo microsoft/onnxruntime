@@ -1,0 +1,99 @@
+FROM quay.io/pypa/manylinux2014_x86_64:2020-04-04-c0949b6
+
+ARG PYTHON_VERSION=3.5
+ARG BUILD_EXTR_PAR
+
+ADD scripts /tmp/scripts
+RUN cd /tmp/scripts && \
+    /tmp/scripts/install_centos.sh && \
+    /tmp/scripts/install_deps.sh -d gpu -p $PYTHON_VERSION -x "$BUILD_EXTR_PAR" && \
+    rm -rf /tmp/scripts
+
+RUN yum remove -y devtoolset-\* && \
+    yum install -y \
+        devtoolset-7-binutils \
+        devtoolset-7-gcc \
+        devtoolset-7-gcc-c++ \
+        devtoolset-7-gcc-gfortran \
+        devtoolset-7-libquadmath-devel \
+        devtoolset-7-libstdc++-devel \
+        devtoolset-7-runtime
+
+
+# Copied and adapted from https://gitlab.com/nvidia/container-images/cuda/-/blob/d442ff6975fb8310da90e6c3f35a988b6920b017/dist/centos7/10.1/base/Dockerfile
+
+RUN NVIDIA_GPGKEY_SUM=d1be581509378368edeec8c1eb2958702feedf3bc3d17011adbf24efacce4ab5 && \
+curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/rhel7/x86_64/7fa2af80.pub | sed '/^Version/d' > /etc/pki/rpm-gpg/RPM-GPG-KEY-NVIDIA && \
+    echo "$NVIDIA_GPGKEY_SUM  /etc/pki/rpm-gpg/RPM-GPG-KEY-NVIDIA" | sha256sum -c --strict -
+
+COPY cuda_manylinux2014.repo /etc/yum.repos.d/cuda.repo
+
+ENV CUDA_VERSION 10.1.243
+ENV CUDA_PKG_VERSION 10-1-$CUDA_VERSION-1
+RUN yum install -y \
+cuda-cudart-$CUDA_PKG_VERSION \
+cuda-compat-10-1 \
+cuda-libraries-$CUDA_PKG_VERSION \
+cuda-nvtx-$CUDA_PKG_VERSION \
+libcublas10-10.2.1.243-1 \
+cuda-nvml-dev-$CUDA_PKG_VERSION \
+cuda-command-line-tools-$CUDA_PKG_VERSION \
+cuda-libraries-dev-$CUDA_PKG_VERSION \
+cuda-minimal-build-$CUDA_PKG_VERSION \
+libcublas-devel-10.2.1.243-1 \
+&& \
+    ln -s cuda-10.1 /usr/local/cuda && \
+    rm -rf /var/cache/yum/*
+
+# nvidia-docker 1.0
+RUN echo "/usr/local/nvidia/lib" >> /etc/ld.so.conf.d/nvidia.conf && \
+    echo "/usr/local/nvidia/lib64" >> /etc/ld.so.conf.d/nvidia.conf
+
+ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/opt/rh/devtoolset-7/root/usr/bin:${PATH}
+ENV LD_LIBRARY_PATH /usr/local/nvidia/lib:/usr/local/nvidia/lib64:${LD_LIBRARY_PATH}
+
+# nvidia-container-runtime
+ENV NVIDIA_VISIBLE_DEVICES all
+ENV NVIDIA_DRIVER_CAPABILITIES compute,utility
+ENV NVIDIA_REQUIRE_CUDA "cuda>=10.1 brand=tesla,driver>=384,driver<385 brand=tesla,driver>=396,driver<397 brand=tesla,driver>=410,driver<411"
+
+
+ENV LIBRARY_PATH /usr/local/cuda/lib64/stubs
+
+ENV CUDNN_VERSION 7.6.5.32
+LABEL com.nvidia.cudnn.version="${CUDNN_VERSION}"
+
+# cuDNN license: https://developer.nvidia.com/cudnn/license_agreement
+RUN CUDNN_DOWNLOAD_SUM=7eaec8039a2c30ab0bc758d303588767693def6bf49b22485a2c00bf2e136cb3 && \
+    curl -fsSL http://developer.download.nvidia.com/compute/redist/cudnn/v7.6.5/cudnn-10.1-linux-x64-v7.6.5.32.tgz -O && \
+    echo "$CUDNN_DOWNLOAD_SUM  cudnn-10.1-linux-x64-v7.6.5.32.tgz" | sha256sum -c - && \
+    tar --no-same-owner -xzf cudnn-10.1-linux-x64-v7.6.5.32.tgz -C /usr/local && \
+    rm cudnn-10.1-linux-x64-v7.6.5.32.tgz && \
+    ldconfig
+
+
+# install MPI 4.0.0
+RUN MPI_SUM=36f10daa3f1b1d37530f686bf7f70966b2a13c0bc6e2e05aebc7e85e3d21b10d && \
+    curl -fsSL https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.0.tar.gz -O && \
+    echo "$MPI_SUM  openmpi-4.0.0.tar.gz" | sha256sum -c - && \
+    tar zxf openmpi-4.0.0.tar.gz && \
+    cd openmpi-4.0.0 && \
+    ./configure --enable-orterun-prefix-by-default && \
+    make -j $(nproc) all && \
+    make install && \
+    ldconfig
+
+
+# install NCCL 2.4.8
+RUN RPM_SUM=ce8da101c05f0a52e01a569acc7e6845b3883f7e5760eefee85dccb279454d5d && \
+    curl -fsSL https://developer.download.nvidia.com/compute/machine-learning/repos/rhel7/x86_64/nvidia-machine-learning-repo-rhel7-1.0.0-1.x86_64.rpm -O && \
+    echo "$RPM_SUM  nvidia-machine-learning-repo-rhel7-1.0.0-1.x86_64.rpm" | sha256sum -c - && \
+    rpm -i nvidia-machine-learning-repo-rhel7-1.0.0-1.x86_64.rpm && \
+    yum install -y libnccl-2.4.8-1+cuda10.1 libnccl-devel-2.4.8-1+cuda10.1 libnccl-static-2.4.8-1+cuda10.1
+
+
+ARG BUILD_UID=1000
+ARG BUILD_USER=onnxruntimedev
+RUN adduser --comment 'onnxruntime Build User' --uid $BUILD_UID $BUILD_USER
+WORKDIR /home/$BUILD_USER
+USER $BUILD_USER

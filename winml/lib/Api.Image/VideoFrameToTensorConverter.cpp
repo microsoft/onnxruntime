@@ -366,6 +366,12 @@ void VideoFrameToTensorConverter::ConvertDX12TextureToGPUTensor(
     ID3D12DescriptorHeap* ppHeaps[] = {descriptor_heap_.Get()};
     command_list_->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
+    // This code currently re-uses the same decriptors each execution, which is unsafe if previous executions are in flight.
+    if (fence_completion_value_ > 0)
+    {
+        device_cache.WaitForFenceValue(fence_completion_value_);
+    }
+
     CD3DX12_GPU_DESCRIPTOR_HANDLE srvHandle(descriptor_heap_->GetGPUDescriptorHandleForHeapStart(), SrvBufferIdx, srvUavDescriptorSize);
     CD3DX12_GPU_DESCRIPTOR_HANDLE uavHandle(descriptor_heap_->GetGPUDescriptorHandleForHeapStart(), UavBufferIdx, srvUavDescriptorSize);
     {
@@ -386,6 +392,7 @@ void VideoFrameToTensorConverter::ConvertDX12TextureToGPUTensor(
     ID3D12CommandList* pComputeToGPUCLs[] = {command_list_.Get()};
 
     device_cache.GetCommandQueue()->ExecuteCommandLists(ARRAYSIZE(pComputeToGPUCLs), pComputeToGPUCLs);
+    fence_completion_value_ = device_cache.QueueFenceToD3D12();
   }
 }
 
@@ -454,8 +461,12 @@ void VideoFrameToTensorConverter::ConvertSoftwareBitmapToGPUTensor(
   upload_heap_->Unmap(0, &CD3DX12_RANGE(0, bufferSize));
 
   ResetCommandList(device_cache);
-  command_list_->CopyBufferRegion(pOutputResource, bufferSize * batchIdx, upload_heap_.Get(), 0, bufferSize);
 
+  auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(pOutputResource, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST);
+  command_list_->ResourceBarrier(1, &barrier);
+
+  command_list_->CopyBufferRegion(pOutputResource, bufferSize * batchIdx, upload_heap_.Get(), 0, bufferSize);
+  
   WINML_THROW_IF_FAILED(command_list_->Close());
   ID3D12CommandList* ppCommandLists[] = {command_list_.Get()};
   device_cache.GetCommandQueue()->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);

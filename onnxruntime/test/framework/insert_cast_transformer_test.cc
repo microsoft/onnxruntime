@@ -134,5 +134,45 @@ TEST(TransformerTest, ThreeInARowRemoval) {
   ASSERT_TRUE(op_to_count["Cast"] == 2);
 }
 
+// test a case where the ONNX inferred output type (float16) is different from the type bound
+// to the output NodeArg of the "RandomNormalLike" node (input is float16) because of the InsertCaseTransformer
+// Here the ONNX inferred output type (float16) must be made float because that is what the kernel produces
+TEST(TransformerTest, RandomNormalLikeWithFloat16Inputs) {
+  auto model_uri = MODEL_FOLDER ORT_TSTR("random_normal_like_float16.onnx");
+  std::shared_ptr<Model> model;
+  auto status = Model::Load(model_uri, model, nullptr, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(status.IsOK()) << status;
+
+  Graph& graph = model->MainGraph();
+  InsertCastTransformer transformer("Test");
+
+  bool modified = false;
+  status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
+  EXPECT_TRUE(status.IsOK()) << status;
+  EXPECT_TRUE(modified) << "Transformer should have added some Cast nodes";
+  status = graph.Resolve();
+  EXPECT_TRUE(status.IsOK()) << status;
+}
+
+// A case where the ONNX inferred output type is int32 to a node that consumes float16 input
+// Here the InsertCastTransformer must not change the ONNX inferred output type and keep it
+// as is (int32)
+TEST(TransformerTest, MultinomialWithFloat16Input) {
+  auto model_uri = MODEL_FOLDER ORT_TSTR("multinomial_float16.onnx");
+  std::shared_ptr<Model> model;
+  auto status = Model::Load(model_uri, model, nullptr, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(status.IsOK()) << status;
+
+  Graph& graph = model->MainGraph();
+  InsertCastTransformer transformer("Test");
+
+  bool modified = false;
+  status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
+  EXPECT_TRUE(status.IsOK()) << status;
+  EXPECT_TRUE(modified) << "Transformer should have added some Cast nodes";
+  status = graph.Resolve();
+  EXPECT_TRUE(status.IsOK()) << status;
+}
+
 }  // namespace test
 }  // namespace onnxruntime

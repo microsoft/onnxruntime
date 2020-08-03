@@ -1,5 +1,5 @@
 // Copyright(C) 2018 Intel Corporation
-// Copyright (c) 2019, NXP Semiconductor, Inc. All rights reserved.
+// Copyright (c) 2019-2020, NXP Semiconductor, Inc. All rights reserved.
 // Licensed under the MIT License
 
 #ifdef _WIN32
@@ -58,6 +58,25 @@ arm_compute::Status ACLImportMemory(arm_compute::TensorAllocator* allocator, voi
   return allocator->import_memory(memory);
 #endif
 }
+
+template <typename T>
+void importDataFromTensor(arm_compute::Tensor* tensor, T* data){
+
+  arm_compute::Window aclInpuWindow;
+  aclInpuWindow.use_tensor_dimensions(tensor->info()->tensor_shape());
+
+  arm_compute::Iterator aclInputIt(tensor, aclInpuWindow);
+  int index = 0;
+  // copy input tensor into the larger buffer
+  arm_compute::execute_window_loop(
+      aclInpuWindow,
+      [&](const arm_compute::Coordinates& co) {
+        data[index] = *reinterpret_cast<float*>(aclInputIt.ptr());
+        index++;
+      },
+      aclInputIt);
+}
+template void importDataFromTensor<float>(arm_compute::Tensor*, float*);
 
 }  // namespace acl
 }  // namespace onnxruntime

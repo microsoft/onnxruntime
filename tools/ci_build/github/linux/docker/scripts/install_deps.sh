@@ -1,8 +1,9 @@
 #!/bin/bash
-set -e
+set -e -x
 
+SCRIPT_DIR="$( dirname "${BASH_SOURCE[0]}" )"
 
-while getopts p:d: parameter_Option
+while getopts p:d:x: parameter_Option
 do case "${parameter_Option}"
 in
 p) PYTHON_VER=${OPTARG};;
@@ -43,7 +44,7 @@ function GetFile {
   if command -v aria2c > /dev/null; then
     aria2c -q -d $(dirname $path) -o $(basename $path) "$uri"
   else
-    curl "$uri" -sSL --retry $download_retries --retry-delay $retry_wait_time_seconds --create-dirs -o "$path" --fail    
+    curl "$uri" -sSL --retry $download_retries --retry-delay $retry_wait_time_seconds --create-dirs -o "$path" --fail
   fi
 
   return $?
@@ -75,15 +76,18 @@ fi
 if [[ $SYS_LONG_BIT = "64" && "$GLIBC_VERSION" -gt "9" ]]; then
   echo "Installing azcopy"
   mkdir -p /tmp/azcopy
-  GetFile https://aka.ms/downloadazcopy-v10-linux /tmp/azcopy/azcopy.tar.gz 
+  GetFile https://aka.ms/downloadazcopy-v10-linux /tmp/azcopy/azcopy.tar.gz
   tar --strip 1 -xf /tmp/azcopy/azcopy.tar.gz -C /tmp/azcopy
   cp /tmp/azcopy/azcopy /usr/bin
   echo "Installing cmake"
-  GetFile https://github.com/Kitware/CMake/releases/download/v3.13.5/cmake-3.13.5-Linux-x86_64.tar.gz /tmp/src/cmake-3.13.5-Linux-x86_64.tar.gz  
+  GetFile https://github.com/Kitware/CMake/releases/download/v3.13.5/cmake-3.13.5-Linux-x86_64.tar.gz /tmp/src/cmake-3.13.5-Linux-x86_64.tar.gz
   tar -zxf /tmp/src/cmake-3.13.5-Linux-x86_64.tar.gz --strip=1 -C /usr
+  echo "Installing Node.js"
+  GetFile https://nodejs.org/dist/v12.16.3/node-v12.16.3-linux-x64.tar.xz /tmp/src/node-v12.16.3-linux-x64.tar.xz
+  tar -xf /tmp/src/node-v12.16.3-linux-x64.tar.xz --strip=1 -C /usr
 else
   echo "Installing cmake"
-  GetFile https://github.com/Kitware/CMake/releases/download/v3.13.5/cmake-3.13.5.tar.gz /tmp/src/cmake-3.13.5.tar.gz 
+  GetFile https://github.com/Kitware/CMake/releases/download/v3.13.5/cmake-3.13.5.tar.gz /tmp/src/cmake-3.13.5.tar.gz
   tar -xf /tmp/src/cmake-3.13.5.tar.gz -C /tmp/src
   pushd .
   cd /tmp/src/cmake-3.13.5
@@ -93,14 +97,10 @@ else
   popd
 fi
 
-GetFile https://downloads.gradle-dn.com/distributions/gradle-6.2-bin.zip /tmp/src/gradle-6.2-bin.zip
+GetFile https://downloads.gradle-dn.com/distributions/gradle-6.3-bin.zip /tmp/src/gradle-6.3-bin.zip
 cd /tmp/src
-unzip gradle-6.2-bin.zip
-mv /tmp/src/gradle-6.2 /usr/local/gradle
-
-if ! [ -x "$(command -v protoc)" ]; then
-  source ${0/%install_deps\.sh/install_protobuf\.sh}
-fi
+unzip gradle-6.3-bin.zip
+mv /tmp/src/gradle-6.3 /usr/local/gradle
 
 
 #Don't update 'wheel' to the latest version. see: https://github.com/pypa/auditwheel/issues/102
@@ -110,36 +110,14 @@ if [ $DEVICE_TYPE = "Normal" ]; then
 elif [ $DEVICE_TYPE = "gpu" ]; then
     ${PYTHON_EXE} -m pip install sympy==1.1.1
     if [[ $BUILD_EXTR_PAR = *--enable_training* ]]; then
-      ${PYTHON_EXE} -m pip install --upgrade --pre torch torchvision -f https://download.pytorch.org/whl/nightly/cu101/torch_nightly.html
-
-      # patch pytorch onnx export opset version 10 to export nll_loss
-      PATH_TO_SYMBOLIC10=$(${PYTHON_EXE} -c 'import torch; import os; print(os.path.join(os.path.dirname(torch.__file__), "onnx/"))')
-      echo "cp ../scripts/pyt_patch/symbolic_opset10.py ${PATH_TO_SYMBOLIC10}"
-      cp ../scripts/pyt_patch/symbolic_opset10.py ${PATH_TO_SYMBOLIC10}
-    fi
-    if [[ $BUILD_EXTR_PAR = *--enable_training_python_frontend_e2e_tests* ]]; then
-      ${PYTHON_EXE} -m pip install transformers
+      ${PYTHON_EXE} -m pip install --upgrade --pre torch==1.6.0.dev20200610 torchvision==0.7.0.dev20200610 -f https://download.pytorch.org/whl/nightly/cu101/torch_nightly.html
+      ${PYTHON_EXE} -m pip install  transformers==v2.10.0
+      # transformers requires sklearn
+      ${PYTHON_EXE} -m pip install sklearn
     fi
 fi
 
 
-#install onnx
-export ONNX_ML=1
-if [ "$PYTHON_VER" = "3.4" ];then
-  echo "Python 3.5 and above is needed for running onnx tests!" 1>&2
-else
-  source ${0/%install_deps\.sh/install_onnx\.sh} $PYTHON_VER
-fi
-
-#The last onnx version will be kept
 cd /
 rm -rf /tmp/src
 
-if [ "$DISTRIBUTOR" = "Ubuntu" ]; then
-  apt-get -y remove libprotobuf-dev protobuf-compiler
-elif [ "$DISTRIBUTOR" = "CentOS" ]; then
-  rm -rf /usr/include/google
-  rm -rf /usr/$LIBDIR/libproto*
-else
-  dnf remove -y protobuf-devel protobuf-compiler
-fi

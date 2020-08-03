@@ -8,7 +8,7 @@ project(onnxruntime C CXX)
 
 option(onnxruntime_USE_CUDA "Build with CUDA support" OFF)
 option(onnxruntime_USE_OPENVINO "Build with OpenVINO support" OFF)
-option(onnxruntime_USE_NNAPI "Build with DNNLibrary for Android NNAPI support" OFF)
+option(onnxruntime_USE_NNAPI_BUILTIN "Build with builtin NNAPI lib for Android NNAPI support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
 option(onnxruntime_USE_NGRAPH "Build with nGraph support" OFF)
 option(onnxruntime_USE_NUPHAR "Build with Nuphar" OFF)
@@ -23,7 +23,7 @@ endif()
 if(onnxruntime_USE_OPENVINO)
   add_definitions(-DUSE_OPENVINO=1)
 endif()
-if(onnxruntime_USE_NNAPI)
+if(onnxruntime_USE_NNAPI_BUILTIN)
   add_definitions(-DUSE_NNAPI=1)
 endif()
 if(onnxruntime_USE_DNNL)
@@ -88,7 +88,7 @@ endif()
 add_custom_command(
       OUTPUT "${grpc_srcs}" "${grpc_hdrs}"
       COMMAND protoc
-      ARGS 
+      ARGS
         --cpp_out "${CMAKE_CURRENT_BINARY_DIR}"
         --grpc_out "${CMAKE_CURRENT_BINARY_DIR}"
         --plugin=protoc-gen-grpc="${_gRPC_CPP_PLUGIN_EXECUTABLE}"
@@ -155,7 +155,7 @@ target_include_directories(onnxruntime_server_http_core_lib
   ${ONNXRUNTIME_SERVER_ROOT}/http/core
   ${ONNXRUNTIME_SERVER_ROOT}/core
   ${Boost_INCLUDE_DIR}
-  
+
 )
 add_dependencies(onnxruntime_server_http_core_lib Boost)
 
@@ -167,7 +167,7 @@ target_include_directories(onnxruntime_server_lib PRIVATE
   ${ONNXRUNTIME_SERVER_ROOT}
   ${ONNXRUNTIME_SERVER_ROOT}/http
   ${ONNXRUNTIME_SERVER_ROOT}/logging
-  ${ONNXRUNTIME_SERVER_ROOT}/core  
+  ${ONNXRUNTIME_SERVER_ROOT}/core
   PUBLIC
   ${ONNXRUNTIME_SERVER_ROOT}/external/spdlog/include
   ${ONNXRUNTIME_SERVER_ROOT}/http/core
@@ -208,12 +208,12 @@ target_include_directories(${SERVER_APP_NAME} PRIVATE
 target_link_libraries(${SERVER_APP_NAME} PRIVATE
     onnxruntime_server_http_core_lib
     onnxruntime_server_lib
-    ${grpc_reflection} #Note that this will break the tests if we try to link it to the lib so just link to the executable.   
+    ${grpc_reflection} #Note that this will break the tests if we try to link it to the lib so just link to the executable.
    server_grpc_proto server_proto
   ${Boost_LIBRARIES}
-  onnxruntime_server_http_core_lib  
+  onnxruntime_server_http_core_lib
   ${grpc_static_libs}  protobuf::libprotobuf
-  spdlog::spdlog
+  spdlog
   onnxruntime gtest re2  ${CMAKE_DL_LIBS} Threads::Threads
 )
 
@@ -237,34 +237,34 @@ file(GLOB onnxruntime_test_server_src
       set_source_files_properties("test/unit_tests/executor_test.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
     endif()
   endif()
-  
+
   add_executable(onnxruntime_server_tests ${onnxruntime_test_server_src})
   add_dependencies(onnxruntime_server_tests server_proto Boost)
   target_link_libraries(onnxruntime_server_tests PRIVATE onnxruntime_server_http_core_lib
     onnxruntime_server_lib
-    ${grpc_reflection} #Note that this will break the tests if we try to link it to the lib so just link to the executable.   
+    ${grpc_reflection} #Note that this will break the tests if we try to link it to the lib so just link to the executable.
    server_grpc_proto server_proto
   ${Boost_LIBRARIES}
-  onnxruntime_server_http_core_lib  
+  onnxruntime_server_http_core_lib
   ${grpc_static_libs} protobuf::libprotobuf
-  spdlog::spdlog
+  spdlog
   onnxruntime gtest re2 gtest ${CMAKE_DL_LIBS} Threads::Threads)
   target_include_directories(onnxruntime_server_tests PRIVATE ${ONNXRUNTIME_SERVER_ROOT}/external/spdlog/include
   ${ONNXRUNTIME_SERVER_ROOT}/http/core
   ${ONNXRUNTIME_SERVER_ROOT} ${ONNXRUNTIME_SERVER_ROOT}/core)
   onnxruntime_protobuf_generate(
-          APPEND_PATH IMPORT_DIRS ${ONNXRUNTIME_SERVER_ROOT}/protobuf 
+          APPEND_PATH IMPORT_DIRS ${ONNXRUNTIME_SERVER_ROOT}/protobuf
           PROTOS ${ONNXRUNTIME_SERVER_ROOT}/protobuf/predict.proto protobuf/onnx-ml.proto
           LANGUAGE python
           TARGET onnxruntime_server_tests
           OUT_VAR server_test_py)
-          
+
   set(grpc_py "${CMAKE_CURRENT_BINARY_DIR}/prediction_service_pb2_grpc.py")
 
   add_custom_command(
     TARGET onnxruntime_server_tests
     COMMAND protoc
-    ARGS 
+    ARGS
       --grpc_out "${CMAKE_CURRENT_BINARY_DIR}"
       --plugin=protoc-gen-grpc=${_gRPC_PYTHON_PLUGIN_EXECUTABLE}
       -I ${grpc_proto_path}

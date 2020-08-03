@@ -19,3 +19,4 @@ jobs:
     EnvSetupScript: 'setup_env.bat'
     sln_platform: 'x64'
     BuildConfigurations: ['Debug', 'RelWithDebInfo']
+    EnableLto: false

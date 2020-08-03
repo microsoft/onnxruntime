@@ -7,7 +7,7 @@
 #include "core/framework/graph_partitioner.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
-#include "core/framework/session_state_initializer.h"
+#include "core/framework/finalize_session_state.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
@@ -46,11 +46,16 @@ TEST_P(SessionStateAddGetKernelTest, AddGetKernelTest) {
   ONNX_OPERATOR_SCHEMA(Variable)
       .SetDoc("Input variable.")
       .Output(0, "output_1", "docstr for output_1.", "tensor(int32)");
-  ExecutionProviders execution_providers;
-  SessionState s{execution_providers, true, tp.get(), nullptr};
 
   onnxruntime::Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
+
+  ExecutionProviders execution_providers;
+  DataTransferManager dtm;
+  profiling::Profiler profiler;
+  SessionState s(graph, execution_providers, true, tp.get(), nullptr, dtm,
+                 DefaultLoggingManager().DefaultLogger(), profiler);
+
   std::vector<onnxruntime::NodeArg*> inputs;
   std::vector<onnxruntime::NodeArg*> outputs;
   TypeProto output_type;
@@ -80,8 +85,8 @@ TEST_P(SessionStateAddGetKernelTest, AddGetKernelTest) {
   ASSERT_STATUS_OK(kernel_registry->Register(KernelCreateInfo(
       std::move(kernel_def), [](const OpKernelInfo& info) -> OpKernel* { return new TestOpKernel(info); })));
   kernel_registry_manager.RegisterKernelRegistry(kernel_registry);
-  status = s.SetGraphAndCreateKernels(graph, kernel_registry_manager);
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  s.CreateGraphInfo();
+  ASSERT_STATUS_OK(s.CreateKernels(kernel_registry_manager));
   auto test_kernel = s.GetKernel(node.Index());
   std::cout << "orig: " << orig_num_outputs << " new: " << test_kernel->Node().OutputDefs().size() << std::endl;
   EXPECT_EQ(orig_num_outputs, test_kernel->Node().OutputDefs().size());
@@ -126,16 +131,17 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
   status = krm.RegisterKernels(execution_providers);
   ASSERT_TRUE(status.IsOK()) << status;
 
-  SessionState session_state(execution_providers, param.enable_mem_pattern, tp.get(), nullptr);
-  SessionStateInitializer session_initializer(param.enable_mem_pattern, oss.str(), graph, session_state,
-                                              execution_providers, krm);
+  DataTransferManager dtm;
+  profiling::Profiler profiler;
+  SessionState session_state(graph, execution_providers, param.enable_mem_pattern, tp.get(), nullptr, dtm,
+                             DefaultLoggingManager().DefaultLogger(), profiler);
 
   GraphPartitioner partitioner(krm, execution_providers);
   status = partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr());
   ASSERT_TRUE(status.IsOK()) << status;
 
-  status = session_initializer.CreatePlan(nullptr, nullptr, ExecutionMode::ORT_SEQUENTIAL);
-  ASSERT_TRUE(status.IsOK()) << status;
+  session_state.CreateGraphInfo();
+  ASSERT_STATUS_OK(FinalizeSessionState(session_state, oss.str(), krm, nullptr, ExecutionMode::ORT_SEQUENTIAL));
 
   const auto& initialized_tensors = session_state.GetInitializedTensors();
   const auto& const_initialized_tensors = session_state.GetConstantInitializedTensors();

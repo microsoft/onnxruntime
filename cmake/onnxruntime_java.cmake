@@ -42,13 +42,16 @@ set(GRADLE_ARGS clean jar)
 if(WIN32)
   set(GRADLE_ARGS ${GRADLE_ARGS} -Dorg.gradle.daemon=false)
 endif()
+if(onnxruntime_USE_CUDA)
+  set(GRADLE_ARGS ${GRADLE_ARGS} -DUSE_CUDA=1)
+endif()
 add_custom_command(OUTPUT ${JAVA_OUTPUT_JAR} COMMAND ${GRADLE_EXECUTABLE} ${GRADLE_ARGS} WORKING_DIRECTORY ${JAVA_ROOT} DEPENDS ${onnxruntime4j_gradle_files} ${onnxruntime4j_src})
 add_custom_target(onnxruntime4j DEPENDS ${JAVA_OUTPUT_JAR})
 set_source_files_properties(${JAVA_OUTPUT_JAR} PROPERTIES GENERATED TRUE)
 set_property(TARGET onnxruntime4j APPEND PROPERTY ADDITIONAL_CLEAN_FILES "${JAVA_OUTPUT_DIR}")
 
 # Specify the native sources
-file(GLOB onnxruntime4j_native_src 
+file(GLOB onnxruntime4j_native_src
     "${JAVA_ROOT}/src/main/native/*.c"
     "${JAVA_ROOT}/src/main/native/*.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/*.h"
@@ -73,7 +76,7 @@ endif()
 if (onnxruntime_USE_TENSORRT)
   target_compile_definitions(onnxruntime4j_jni PRIVATE USE_TENSORRT=1)
 endif()
-if (onnxruntime_USE_NNAPI)
+if (onnxruntime_USE_NNAPI_BUILTIN)
   target_compile_definitions(onnxruntime4j_jni PRIVATE USE_NNAPI=1)
 endif()
 if (onnxruntime_USE_NUPHAR)
@@ -101,10 +104,12 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Android")
 endif()
 
 # Set platform and ach for packaging
-if(CMAKE_SIZEOF_VOID_P EQUAL "8")
-    set(JNI_ARCH x64)
+if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+  set(JNI_ARCH ${ANDROID_ABI})
+elseif (CMAKE_SIZEOF_VOID_P EQUAL "8")
+  set(JNI_ARCH x64)
 else()
-    message(FATAL_ERROR "Java is currently not supported for x86 architecture")
+  message(FATAL_ERROR "Java is currently not supported for x86 architecture")
 endif()
 
 if (WIN32)
@@ -156,6 +161,9 @@ endif()
 set(GRADLE_ARGS cmakeBuild -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR})
 if(WIN32)
   set(GRADLE_ARGS ${GRADLE_ARGS} -Dorg.gradle.daemon=false)
+endif()
+if(onnxruntime_USE_CUDA)
+  set(GRADLE_ARGS ${GRADLE_ARGS} -DUSE_CUDA=1)
 endif()
 add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${GRADLE_EXECUTABLE} ${GRADLE_ARGS} WORKING_DIRECTORY ${JAVA_ROOT})
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
