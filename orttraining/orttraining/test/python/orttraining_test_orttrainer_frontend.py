@@ -457,7 +457,7 @@ def testLRSchedulerUpdateImpl(lr_scheduler, expected_values):
                         expected_values[step], rtol=rtol, err_msg="lr mismatch")
 
 
-@pytest.mark.parametrize("step_fn, lr_scheduler, expected_values", [
+@pytest.mark.parametrize("step_fn, lr_scheduler, expected_lr_values", [
     ('train_step', None, None),
     ('eval_step', None, None),
     ('train_step', optim.lr_scheduler.ConstantWarmupLRScheduler, [0.181818, 0.066116, 0.036063, 0.026228, 0.023843,
@@ -469,7 +469,7 @@ def testLRSchedulerUpdateImpl(lr_scheduler, expected_values):
     ('train_step', optim.lr_scheduler.PolyWarmupLRScheduler, [0.181818, 0.066116, 0.036063, 0.026228, 0.023843,
                                                 0.0160749, 0.0096935, 0.0050622, 0.0021585, 0.000650833])
 ])
-def testInstantiateORTTrainer(step_fn, lr_scheduler, expected_values):
+def testInstantiateORTTrainer(step_fn, lr_scheduler, expected_lr_values):
     # Loading external TransformerModel model for testing
     # A manual import is done as this example is not part of onnxruntime package,
     # but resides on the onnxruntime repo
@@ -490,16 +490,19 @@ def testInstantiateORTTrainer(step_fn, lr_scheduler, expected_values):
     model_desc = ort_utils.transformer_model_description()
    
     max_train_step = 1
+    warmup = 0.5
+    initial_lr = 1
+    optim_config = optim.SGDConfig() if not lr_scheduler else optim.SGDConfig(lr=initial_lr)
+    tolerance = 1e-4 # used in lr comparison
+
+    # Set up relevant options
+    opts = orttrainer.ORTTrainerOptions({})
     if lr_scheduler:
         max_train_step = 10
-        optim_config = optim.SGDConfig(lr=1)
-        opts = orttrainer.ORTTrainerOptions({'lr_scheduler' : lr_scheduler(max_train_step, 0.5)})
-        # Create ORTTrainer
-        trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=opts)
-    else:
-        optim_config = optim.LambConfig()
-        # Create ORTTrainer
-        trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss)
+        opts = orttrainer.ORTTrainerOptions({'lr_scheduler' : lr_scheduler(max_train_step, warmup)})
+    
+    # Create ORTTrainer
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=opts)
 
     # Preparing data
     train_data, val_data, _ = utils.prepare_data('cpu', 20, 20)
@@ -516,7 +519,7 @@ def testInstantiateORTTrainer(step_fn, lr_scheduler, expected_values):
             output = trainer.train_step(data, targets)
             if lr_scheduler:
                 lr_list = trainer.options.lr_scheduler.get_last_lr()
-                assert_allclose(lr_list[0], expected_values[i], rtol=1e-4, err_msg="lr mismatch")
+                assert_allclose(lr_list[0], expected_lr_values[i], rtol=tolerance, err_msg="lr mismatch")
     else:
         raise ValueError('Invalid step_fn')
     assert trainer._onnx_model is not None
