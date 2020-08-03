@@ -179,6 +179,10 @@ struct Provider_IExecutionProvider_Router_Impl : Provider_IExecutionProvider_Rou
     return std::unique_ptr<Provider_IDataTransfer>(reinterpret_cast<Provider_IDataTransfer*>(IExecutionProvider::GetDataTransfer().release()));
   }
 
+  std::unique_ptr<IDataTransfer> GetDataTransfer() const override {
+    return std::unique_ptr<IDataTransfer>(reinterpret_cast<IDataTransfer*>(outer_->Provider_GetDataTransfer().release()));
+  }
+
   void Provider_InsertAllocator(Provider_AllocatorPtr allocator) override {
     IExecutionProvider::InsertAllocator(static_cast<Provider_IAllocator_Impl*>(allocator.get())->p_);
   }
