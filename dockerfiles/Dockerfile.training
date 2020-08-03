@@ -5,7 +5,6 @@
 ARG UCX_VERSION=1.8.0
 ARG OPENMPI_VERSION=4.0.4
 ARG CONDA_VERSION=4.7.10
-ARG MKL_VERSION=2020.1
 ARG NUMPY_VERSION=1.18.5
 ARG ONNX_VERSION=1.7.0
 ARG PYTORCH_VERSION=1.6.0
@@ -30,19 +29,13 @@ RUN cd /stage && curl -fSsL --insecure ${CONDA_URL} -o install-conda.sh &&\
     /opt/conda/bin/conda clean -ya
 ENV PATH=/opt/conda/bin:${PATH}
 
-# install mkl, numpy, and pytorch build dependencies
-ARG MKL_VERSION
+# install cmake, setuptools, numpy, and onnx
 ARG NUMPY_VERSION
 ARG ONNX_VERSION
 RUN conda install -y \
-        mkl=${MKL_VERSION} \
-        mkl-include=${MKL_VERSION} \
-        numpy=${NUMPY_VERSION} \
+        setuptools \
         cmake \
-        ninja \
-        pyyaml \
-        cffi \
-        setuptools &&\
+        numpy=${NUMPY_VERSION} &&\
     pip install \
         onnx=="${ONNX_VERSION}"
 
@@ -101,10 +94,15 @@ RUN pip install torch==${PYTORCH_VERSION}
 #     NCCL_INCLUDE_DIR="/usr/include" \
 #     NCCL_LIB_DIR="/usr/lib/x86_64-linux-gnu" \
 #     USE_SYSTEM_NCCL=1 
-# RUN apt-get -y update && apt-get -y --no-install-recommends install git &&\
+# RUN conda install -y \
+#         mkl \
+#         mkl-include \
+#         ninja \
+#         pyyaml \
+#         cffi &&\
 #     cd /stage && git clone https://github.com/pytorch/pytorch.git &&\
 #     cd pytorch &&\
-#     git checkout v1.6.0-rc3 &&\
+#     git checkout v1.6.0 &&\
 #     git submodule update --init --recursive &&\
 #     python setup.py bdist_wheel -d build/wheel &&\
 #     pip install build/wheel/*.whl
@@ -112,7 +110,7 @@ RUN pip install torch==${PYTORCH_VERSION}
 # build onnxruntime wheel with cuda and mpi support
 RUN cd /stage && git clone https://github.com/microsoft/onnxruntime.git &&\
     cd onnxruntime &&\
-    git checkout orttraining_rc2 &&\
+    git checkout master &&\
     cp ThirdPartyNotices.txt /stage/ThirdPartyNotices.txt &&\
     cp dockerfiles/LICENSE-IMAGE.txt /stage/LICENSE-IMAGE.txt &&\
     python tools/ci_build/build.py \
@@ -161,7 +159,7 @@ RUN apt-get -y update && apt-get -y --no-install-recommends install \
         libnuma-dev &&\
     ldconfig
 
-# copy conda environment (includes mkl, numpy, mpi4py, pytorch, onnxruntime)
+# copy conda environment (includes numpy, mpi4py, pytorch, onnxruntime)
 COPY --from=build /opt/conda /opt/conda
 ENV PATH=/opt/conda/bin:${PATH}
 
@@ -182,14 +180,12 @@ RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/g' \
 ARG UCX_VERSION
 ARG OPENMPI_VERSION
 ARG CONDA_VERSION
-ARG MKL_VERSION
 ARG NUMPY_VERSION
 ARG ONNX_VERSION
 ARG PYTORCH_VERSION
 LABEL UCX_VERSION=${UCX_VERSION}
 LABEL OPENMPI_VERSION=${OPENMPI_VERSION}
 LABEL CONDA_VERSION=${CONDA_VERSION}
-LABEL MKL_VERSION=${MKL_VERSION}
 LABEL NUMPY_VERSION=${NUMPY_VERSION}
 LABEL ONNX_VERSION=${ONNX_VERSION}
 LABEL PYTORCH_VERSION=${PYTORCH_VERSION}
