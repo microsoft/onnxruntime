@@ -473,7 +473,7 @@ def generate_pytorch_transformer_model_sample(optim_config, options={}, step_fn=
     utils = _utils.import_module_from_file(utils_path, utils_name)
 
     # Modeling
-    model = pt_model.TransformerModel(28785, 200, 2, 200, 2, 0.2)
+    model = pt_model.TransformerModel(28785, 200, 2, 200, 2, 0.2).to(device)
     my_loss = ort_utils.my_loss
     model_desc = ort_utils.transformer_model_description()
    
@@ -627,4 +627,48 @@ def testORTDeterministicCompute(seed, device_id):
     assert second_trainer._onnx_model is not None
     assert id(trainer._onnx_model) != id(second_trainer._onnx_model)
 
+    # Compare two different instances with identical setup
     debug.compare_onnx_weights(trainer, second_trainer)
+
+
+def testORTTrainerLegacyAndExperimentalWeightsCheck():
+    optim_config = optim.LambConfig()
+    opts = orttrainer.ORTTrainerOptions({
+        'debug' : {
+            'deterministic_compute': True
+        },
+    })
+    
+    torch.manual_seed(0)
+    set_seed(0)
+
+    model, model_desc, trainer, data, targets = generate_pytorch_transformer_model_sample(optim_config, opts)
+
+    # Run first model train step
+    output = trainer.train_step(data, targets)
+    assert trainer._onnx_model is not None
+    
+    # Reset the seeds
+    torch.manual_seed(0)
+    set_seed(0)
+
+    # Run second model train step
+    from onnxruntime.capi.ort_trainer import IODescription, ModelDescription
+    from onnxruntime.capi.ort_trainer import ORTTrainer as Legacy_ORTTrainer
+
+    pytorch_transformer_path = os.path.join('..', '..', '..', 'samples', 'python', 'pytorch_transformer')
+    ort_utils_path = os.path.join(pytorch_transformer_path, 'ort_utils.py')
+    ort_utils_name = 'ort_utils'
+    ort_utils = _utils.import_module_from_file(ort_utils_path, ort_utils_name)
+
+    my_loss = ort_utils.my_loss
+    model_desc, lr_desc = ort_utils.legacy_transformer_model_description()
+    device = 'cpu' 
+
+    legacy_trainer = Legacy_ORTTrainer(model, my_loss, model_desc, "LambOptimizer", None, lr_desc, device, _use_deterministic_compute=True)
+    learning_rate = torch.tensor([optim_config.lr])
+    loss, output = legacy_trainer.train_step(data, targets, learning_rate)
+
+    # Compare legacy vs experimental APIs
+    debug.compare_legacy_onnx_weights(trainer, legacy_trainer)
+
