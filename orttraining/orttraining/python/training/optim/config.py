@@ -56,7 +56,7 @@ class _OptimizerConfig(object):
                     assert k in defaults, f"'params' has 'k' hyper parameter not present at 'defaults'"
 
         self.name = name
-        self.lr = defaults['lr']
+        self.lr = float(defaults['lr'])
         self.base_lrs = [defaults['lr']]
         self.defaults = defaults
         self.params = []
