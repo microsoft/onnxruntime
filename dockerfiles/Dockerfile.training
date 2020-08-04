@@ -121,9 +121,9 @@ RUN pip install torch==${PYTORCH_VERSION}
 #     python setup.py bdist_wheel -d build/wheel &&\
 #     pip install build/wheel/*.whl
 
-ARG TEST_FLAG
+ARG BUILD_FLAG
 # build onnxruntime wheel with cuda and mpi support
-RUN echo "${TEST_FLAG}"
+RUN echo "${BUILD_FLAG}"
 RUN echo python tools/ci_build/build.py \
         --cmake_extra_defines \
             ONNXRUNTIME_VERSION=`cat ./VERSION_NUMBER` \
