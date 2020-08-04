@@ -246,9 +246,6 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
           const auto& location = mem_patterns_->locations[i];
           ORT_ENFORCE(buffers_.find(location) == buffers_.end());
           if (mem_patterns_->patterns[i].PeakSize() > 0) {
-            if (location.device.Type() == OrtDevice::GPU)
-              std::cout << "GPU Memory pattern size " << mem_patterns_->patterns[i].PeakSize() << std::endl;
-
             AllocatorPtr alloc = GetAllocator(location);
             void* buffer = nullptr;
             // it's possible we can't allocate the large block. if we have memory patterns we know we have successfully
@@ -523,7 +520,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
           if (!queue->empty()) {
             // when max queue length is reached, do not allocate new buffer but reuse instead.
             // The buffer shares the fence object of buffer in queue front
-            static size_t max_queue_length = 1;
+            static size_t max_queue_length = 2;
             int reuse_mlvalue_index = queue->front();
             if (queue->size() >= max_queue_length || GetMLValue(reuse_mlvalue_index).Fence()->CanRelease()) {
               queue->pop_front();
