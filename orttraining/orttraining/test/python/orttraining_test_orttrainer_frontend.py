@@ -63,14 +63,16 @@ def testORTTrainerOptionsDefaultValues(test_input):
     assert actual_values._validated_opts == expected_values
 
 
-def testORTTrainerOptionsInvalidMixedPrecisionEnabledSchema():
+@pytest.mark.parametrize("input,error_msg", [
+    ({'mixed_precision': {'enabled': 1}},\
+        "Invalid options: {'mixed_precision': [{'enabled': ['must be of boolean type']}]}")
+])
+def testORTTrainerOptionsInvalidMixedPrecisionEnabledSchema(input, error_msg):
     '''Test an invalid input based on schema validation error message'''
 
-    expected_msg = "Invalid options: {'mixed_precision': [{'enabled': ['must be of boolean type']}]}"
     with pytest.raises(ValueError) as e:
-        orttrainer_options.ORTTrainerOptions(
-            {'mixed_precision': {'enabled': 1}})
-    assert str(e.value) == expected_msg
+        orttrainer_options.ORTTrainerOptions(input)
+    assert str(e.value) == error_msg
 
 
 @pytest.mark.parametrize("input_dict,input_dtype,output_dtype", [
@@ -177,29 +179,29 @@ def testDynamicLossScaler():
 
         # 1999 updates without overflow produces 1999 stable steps
         for i in range(1, 2000):
-            default_scaler.update(train_step_info)
+            new_loss_scale = default_scaler.update(train_step_info)
             assert default_scaler._stable_steps_count == i
-            assert_allclose(default_scaler.loss_scale, loss_scale,
+            assert_allclose(new_loss_scale, loss_scale,
                             rtol=rtol, err_msg=f"loss scale mismatch at update {i}")
 
         # 2000th update without overflow doubles the loss and zero stable steps until max_loss_scale is reached
-        default_scaler.update(train_step_info)
+        new_loss_scale = default_scaler.update(train_step_info)
         if cycles <= 8:
             loss_scale *= 2
         assert default_scaler._stable_steps_count == 0
-        assert_allclose(default_scaler.loss_scale, loss_scale,
+        assert_allclose(new_loss_scale, loss_scale,
                         rtol=rtol, err_msg="loss scale mismatch")
 
     # After 8 cycles, loss scale should be float(1 << 16)*(2**8)
-    assert_allclose(default_scaler.loss_scale, float(1 << 16)
+    assert_allclose(new_loss_scale, float(1 << 16)
                     * (2**8), rtol=rtol, err_msg="loss scale mismatch")
 
     # After 9 cycles, loss scale reaches max_loss_scale and it is not doubled from that point on
     loss_scale = float(1 << 16)*(2**8)
     for count in range(1, 2050):
-        default_scaler.update(train_step_info)
+        new_loss_scale = default_scaler.update(train_step_info)
         assert default_scaler._stable_steps_count == (count % 2000)
-        assert_allclose(default_scaler.loss_scale, loss_scale,
+        assert_allclose(new_loss_scale, loss_scale,
                         rtol=rtol, err_msg="loss scale mismatch")
 
     # Setting train_step_info.all_finite = False to test down scaling
@@ -208,21 +210,21 @@ def testDynamicLossScaler():
     # Performing 24 updates to half the loss scale each time
     loss_scale = float(1 << 16)*(2**8)
     for count in range(1, 25):
-        default_scaler.update(train_step_info)
+        new_loss_scale = default_scaler.update(train_step_info)
         loss_scale /= 2
         assert default_scaler._stable_steps_count == 0
-        assert_allclose(default_scaler.loss_scale, loss_scale,
+        assert_allclose(new_loss_scale, loss_scale,
                         rtol=rtol, err_msg="loss scale mismatch")
 
     # After 24 updates with gradient overflow, loss scale is 1.0
-    assert_allclose(default_scaler.loss_scale, 1.,
+    assert_allclose(new_loss_scale, 1.,
                     rtol=rtol, err_msg="loss scale mismatch")
 
     # After 25 updates, min_loss_scale is reached and loss scale is not halfed from that point on
     for count in range(1, 5):
-        default_scaler.update(train_step_info)
+        new_loss_scale = default_scaler.update(train_step_info)
         assert default_scaler._stable_steps_count == 0
-        assert_allclose(default_scaler.loss_scale, loss_scale,
+        assert_allclose(new_loss_scale, loss_scale,
                         rtol=rtol, err_msg="loss scale mismatch")
 
 

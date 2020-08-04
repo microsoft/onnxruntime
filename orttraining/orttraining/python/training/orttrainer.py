@@ -258,8 +258,15 @@ class ORTTrainer(object):
         if self.options.lr_scheduler:
             self.options.lr_scheduler.step(self._train_step_info)
 
+        # Loss Scale for mixed precision
+        loss_scale = None
+        if self.options.mixed_precision.enabled:
+            loss_scaler = self.options.mixed_precision.loss_scaler
+            if loss_scaler:
+                loss_scale = torch.tensor([loss_scaler.update(self._train_step_info)])
+
         # Get data. CombineTorchModelLossFn takes label as last input and outputs loss first
-        input = self._prepare_model_input(input_desc, self.optim_config.lr, None, *args, **kwargs)
+        input = self._prepare_model_input(input_desc, self.optim_config.lr, loss_scale, *args, **kwargs)
 
         # RunOptions
         run_options = None
@@ -508,6 +515,12 @@ class ORTTrainer(object):
         # Create training session used by train_step
         self._create_ort_training_session()
 
+        # Update Loss Scaler Input Name, if applicable
+        if self.options.mixed_precision.enabled and self.options.mixed_precision.loss_scaler:
+            self.options.mixed_precision.loss_scaler.input_name = self._training_session.loss_scale_input_name
+        elif not self.options.mixed_precision.enabled and self.options.mixed_precision.loss_scaler:
+            raise ValueError("Loss Scaler cannot be specified when Mixed Precision is not enabled")
+
     def _prepare_model_input(self, inputs_desc, lr, loss_scale, *inputs, **kwargs):
         # Normalize input to tuple of samples
         if type(inputs) == tuple and len(inputs) == 1 and type(inputs[0]) == list:
@@ -524,10 +537,15 @@ class ORTTrainer(object):
         extra_inputs = 0
         if lr:
             lr = torch.tensor([lr])
-            input = input + (lr,)
+            input += (lr,)
             extra_inputs += 1
-        assert len(self.model_desc.inputs) + extra_inputs == len(input)
 
+        # Append loss scale
+        if loss_scale:
+            input += (loss_scale, )
+            extra_inputs += 1
+
+        assert len(self.model_desc.inputs) + extra_inputs == len(input)
         return input
 
     def _training_session_run_helper(self, is_train, inputs, input_descs, output_descs, run_options=None):

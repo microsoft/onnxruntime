@@ -262,7 +262,7 @@ class ORTTrainerOptions(object):
     def __repr__(self):
         return '{%s}' % str(', '.join("'%s': %s" % (k, repr(v))
                                       for (k, v) in self.__dict__.items()
-                                      if k not in ['_original_opts', '_validated_opts', '_initialized']))
+                                      if k not in ['_original_opts', '_validated_opts', '_initialized', '_main_class_name']))
 
     def __setattr__(self, k, v):
         if hasattr(self, '_initialized'):

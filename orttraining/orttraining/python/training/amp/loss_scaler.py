@@ -8,7 +8,17 @@ class LossScaler(object):
     """
 
     def __init__(self):
-        pass
+        self._input_name = None
+
+    @property
+    def input_name(self):
+        return self._input_name
+
+    @input_name.setter
+    def input_name(self, input_name):
+        assert isinstance(input_name, str), "'input_name must be a string"
+        assert not input_name, "'input_name cannot be empty"
+        self._input_name = input_name
 
     def reset(self):
         r"""Resets loss scaler internal state"""
@@ -19,6 +29,9 @@ class LossScaler(object):
 
         Args:
             train_step_info (TrainStepInfo): last step state information
+
+        Returns:
+            Updated loss scale (float)
         """
         raise NotImplementedError
 
@@ -89,3 +102,4 @@ class DynamicLossScaler(LossScaler):
         else:
             self.loss_scale = max(self.min_loss_scale, self.loss_scale / 2)
             self._stable_steps_count = 0
+        return self.loss_scale
