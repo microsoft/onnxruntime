@@ -110,6 +110,7 @@ void LearningModelSession::Initialize() {
     WINML_THROW_IF_FAILED(engine_builder->SetMetacommandsEnabled(device_impl->MetacommandsEnabled()));
   }
 
+
   // Make onnxruntime apply the batch size override, if any
   if (session_options_) {
     if (session_options_.BatchSizeOverride() != 0) {
@@ -119,6 +120,12 @@ void LearningModelSession::Initialize() {
     uint32_t numIntraOpThreads = session_options_.as<WINMLP::LearningModelSessionOptions>()->GetIntraOpNumThreads();
     WINML_THROW_IF_FAILED(engine_builder->SetIntraOpNumThreadsOverride(numIntraOpThreads)
     );
+    
+    // Make onnxruntime apply named dimension overrides, if any
+    com_ptr<winmlp::LearningModelSessionOptions> session_options_impl = session_options_.as<winmlp::LearningModelSessionOptions>();
+    if (session_options_impl && session_options_impl->NamedDimensionOverrides().Size() > 0) {
+      WINML_THROW_IF_FAILED(engine_builder->SetNamedDimensionOverrides(session_options_impl->NamedDimensionOverrides()));
+    }
   } else {
     // Onnxruntime will use half the number of concurrent threads supported on the system
     // by default. This causes MLAS to not exercise every logical core.
