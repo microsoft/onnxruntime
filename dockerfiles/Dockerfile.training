@@ -124,6 +124,8 @@ RUN echo python tools/ci_build/build.py \
         --parallel \
         --build_dir build \
         --build_wheel \
+        --build \
+        --test \
         "${BUILD_FLAG}"
 RUN cd /stage && git clone https://github.com/microsoft/onnxruntime.git &&\
     cd onnxruntime &&\
@@ -144,6 +146,8 @@ RUN cd /stage && git clone https://github.com/microsoft/onnxruntime.git &&\
         --parallel \
         --build_dir build \
         --build_wheel \
+        --build \
+        --test \
         "${BUILD_FLAG}" && \
     pip install build/Release/dist/*.whl
 
