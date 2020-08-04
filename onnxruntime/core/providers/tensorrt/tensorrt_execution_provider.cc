@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <fstream>
+#include <list>
 #include <unordered_set>
 #include "core/providers/shared_library/provider_api.h"
 #define ORT_API_MANUAL_INIT

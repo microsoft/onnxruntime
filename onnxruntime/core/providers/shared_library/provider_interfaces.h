@@ -5,6 +5,9 @@
 // In the future the internal implementations could derive from these to remove the need for the wrapper implementations
 
 #include "core/framework/func_api.h"
+#ifdef USE_TENSORRT
+#include "driver_Types.h"  // Cuda defines
+#endif
 
 namespace ONNX_NAMESPACE {
 using namespace onnxruntime;
