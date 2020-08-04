@@ -37,10 +37,10 @@ class _LRScheduler(object):
         r""" Return last computed learning rate by LR Scheduler"""
         return self._last_lr
 
-    def _step(self, train_step_info):
-        r"""Private method called to update learning rate
+    def step(self, train_step_info):
+        r"""Public method called to update learning rate
 
-        NOTE: This class should never be called by the user.
+        NOTE: This class is used internally.
         """
 
         # Store last lr for future inquiry
