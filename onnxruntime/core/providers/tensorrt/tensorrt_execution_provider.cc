@@ -1243,7 +1243,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
         }
         ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
       }
-      ORT_MUST_USE_RESULT
+
       // Set output shapes and assign output buffers
       std::vector<int> output_dim_sizes(num_outputs, 1);
       std::vector<OrtValue*> output_tensor(num_outputs, nullptr);
