@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
+#include "orttraining/core/graph/recompute_graph_utils.h"
 
 #include "core/common/common.h"
 
@@ -11,7 +12,7 @@ namespace onnxruntime {
 Status TransformerLayerRecompute::IdentifyTransformerLayerEdges(
     Graph& graph, std::vector<std::pair<const NodeArg*, const NodeArg*>>& start_end_edges) const {
   const std::unordered_set<std::string> gelu_ops{"Gelu", "BiasGelu", "FastGelu"};
-  const std::unordered_set<std::string> dropout_ops{"Dropout", "BiasDropout", "TrainableDropout"};
+  const std::unordered_set<std::string> dropout_ops{"Dropout", "BiasDropout"};
   const std::unordered_set<std::string> layernorm_ops{"LayerNormalization", "SkipLayerNormalization"};
 
   std::vector<const NodeArg*> layer_start_edges, layer_end_edges;
@@ -23,9 +24,9 @@ Status TransformerLayerRecompute::IdentifyTransformerLayerEdges(
     // Look for start of a transformer layer
     if ((layernorm_ops.find(node.OpType()) != layernorm_ops.end() ||
          dropout_ops.find(node.OpType()) != dropout_ops.end()) &&
-        node.GetOutputEdgesCount() == 4)) {
-        layer_start_edges.push_back(node.OutputDefs()[0]);
-      }
+        node.GetOutputEdgesCount() == 4) {
+      layer_start_edges.push_back(node.OutputDefs()[0]);
+    }
 
     // Look for end of a transformer layer
     if (gelu_ops.find(node.OpType()) != gelu_ops.end()) {
@@ -116,7 +117,7 @@ void TransformerLayerRecompute::InsertRecomputeNodes(Graph& graph, const std::ve
   for (const Node* n : nodes) {
     Node* node = graph.GetNode(n->Index());
 
-    if (node->OpType() == "TrainableDropout" || node->OpType() == "Dropout") {
+    if (node->OpType() == "Dropout") {
       std::vector<NodeArg*> recomputed_inputs;
       NodeArg* input = node->MutableInputDefs()[0];
       const Node* p_node = graph.GetProducerNode(input->Name());
@@ -125,19 +126,20 @@ void TransformerLayerRecompute::InsertRecomputeNodes(Graph& graph, const std::ve
           std::find(nodes.begin(), nodes.end(), p_node) == nodes.end()) {
         recomputed_inputs.push_back(input);
       } else {
-        auto& recomputed_input = graph.GetOrCreateNodeArg(input->Name() + "_recompute",
+        auto& recomputed_input = graph.GetOrCreateNodeArg(graph_utils::RecomputeName(input->Name()),
                                                           input->TypeAsProto());
         recomputed_inputs.push_back(&recomputed_input);
       }
       recomputed_inputs.push_back(node->MutableOutputDefs()[1]);
       recomputed_inputs.push_back(node->MutableInputDefs()[1]);
+      recomputed_inputs.push_back(node->MutableInputDefs()[2]);
 
       const auto& output = node->OutputDefs()[0];
-      auto& recomputed_output = graph.GetOrCreateNodeArg(output->Name() + "_recompute",
+      auto& recomputed_output = graph.GetOrCreateNodeArg(graph_utils::RecomputeName(output->Name()),
                                                          output->TypeAsProto());
 
       Node& recompute_node = graph.AddNode(node->Name() + "_recompute",
-                                           "TrainableDropoutGrad",
+                                           "DropoutGrad",
                                            "Recompute of " + node->Name(),
                                            recomputed_inputs,
                                            {&recomputed_output},
@@ -155,7 +157,7 @@ void TransformerLayerRecompute::InsertRecomputeNodes(Graph& graph, const std::ve
           std::find(nodes.begin(), nodes.end(), p_node) == nodes.end()) {
         recomputed_inputs.push_back(input);
       } else {
-        auto& recomputed_input = graph.GetOrCreateNodeArg(input->Name() + "_recompute",
+        auto& recomputed_input = graph.GetOrCreateNodeArg(graph_utils::RecomputeName(input->Name()),
                                                           input->TypeAsProto());
         recomputed_inputs.push_back(&recomputed_input);
       }
@@ -163,7 +165,7 @@ void TransformerLayerRecompute::InsertRecomputeNodes(Graph& graph, const std::ve
 
     std::vector<NodeArg*> recomputed_outputs;
     for (NodeArg* output : node->MutableOutputDefs()) {
-      auto& recomputed_output = graph.GetOrCreateNodeArg(output->Name() + "_recompute",
+      auto& recomputed_output = graph.GetOrCreateNodeArg(graph_utils::RecomputeName(output->Name()),
                                                          output->TypeAsProto());
       recomputed_outputs.push_back(&recomputed_output);
     }

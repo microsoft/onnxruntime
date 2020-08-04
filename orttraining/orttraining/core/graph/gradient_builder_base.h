@@ -95,10 +95,10 @@ class GradientBuilderBase {
     ORT_ENFORCE(i < node_->OutputDefs().size());
 
     const std::string& name = node_->OutputDefs()[i]->Name();
-    NodeArg* recomputed_nodearg = graph_->GetNodeArg(name + "_recompute");
+    const NodeArg* recomputed_nodearg = graph_->GetNodeArg(graph_utils::RecomputeName(name));
     if (recomputed_nodearg) {
       const Node* producer_node = graph_->GetProducerNode(name);
-      std::cout << "Recomputed node arg found for " << producer_node->Name() << "\n";
+      LOGS(logger_, INFO) << "Recomputed node arg found for " << producer_node->Name();
       return ArgDef(recomputed_nodearg->Name(), recomputed_nodearg->TypeAsProto());
     }
 
@@ -241,7 +241,7 @@ class GradientBuilderBase {
 
   // contains set of input arg names of node_ which requires gradient
   std::unordered_set<std::string> gradient_outputs_;
-  
+
   const logging::Logger& logger_;
 };
 
