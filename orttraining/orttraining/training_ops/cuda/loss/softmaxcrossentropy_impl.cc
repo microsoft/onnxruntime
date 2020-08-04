@@ -4,6 +4,7 @@
 #include "core/providers/cuda/reduction/reduction_functions.h"
 #include "core/providers/cuda/math/softmax.h"
 #include "softmaxcrossentropy_impl.h"
+#include "torch/torch.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -121,6 +122,37 @@ Status SoftmaxCrossEntropyGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
+// Type mapping for MLFloat16 to half
+template <typename T>
+at::ScalarType get_torch_type() {
+  return at::kFloat;
+}
+
+template <>
+at::ScalarType get_torch_type<MLFloat16>() {
+  return at::kHalf;
+}
+
+template <>
+at::ScalarType get_torch_type<float>() {
+  return at::kFloat;
+}
+
+template <>
+at::ScalarType get_torch_type<double>() {
+  return at::kDouble;
+}
+
+template <>
+at::ScalarType get_torch_type<int32_t>() {
+  return at::kInt;
+}
+
+template <>
+at::ScalarType get_torch_type<int64_t>() {
+  return at::kLong;
+}
+
 template <typename T, typename Tin>
 Status SparseSoftmaxCrossEntropy<T, Tin>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor& logit = *ctx->Input<Tensor>(0);
@@ -133,6 +165,7 @@ Status SparseSoftmaxCrossEntropy<T, Tin>::ComputeInternal(OpKernelContext* ctx) 
   for (size_t i = 0; i < label_shape.NumDimensions(); i++) {
     ORT_ENFORCE(label_shape[i] == logit_shape[i], "The shape in logits and labels does not match");
   }
+
 
   int64_t N = label_shape.Size();
   int64_t D = logit_shape[logit_shape.NumDimensions() - 1];
@@ -147,6 +180,27 @@ Status SparseSoftmaxCrossEntropy<T, Tin>::ComputeInternal(OpKernelContext* ctx) 
   const Tin* label_data = label.template Data<Tin>();
   T* total_loss_data = total_loss->template MutableData<T>();
   T* log_prob_data = log_prob->template MutableData<T>();
+
+  if (true) {
+    int torch_device = 0;
+    cudaGetDevice(&torch_device);
+
+    auto torch_tensor_options = torch::TensorOptions().dtype(get_torch_type<T>()).device(torch::kCUDA, torch_device);
+    torch::Tensor torch_logit = torch::zeros(c10::IntArrayRef{N, D}, torch_tensor_options);
+    cudaMemcpy(torch_logit.data_ptr(), logit_data, N * D * sizeof(T), cudaMemcpyDeviceToDevice);
+
+    auto torch_label_tensor_options = torch::TensorOptions().dtype(get_torch_type<Tin>()).device(torch::kCUDA, torch_device);
+    torch::Tensor torch_label = torch::zeros(c10::IntArrayRef{N}, torch_label_tensor_options);
+    cudaMemcpy(torch_label.data_ptr(), label_data, N * sizeof(Tin), cudaMemcpyDeviceToDevice);
+
+    torch::Tensor torch_log_prob = at::log_softmax(torch_logit, 1, c10::nullopt);
+    torch::Tensor torch_loss = at::nll_loss(torch_log_prob, torch_label, {}, reduction_ == ReductionType::SUM ? at::Reduction::Sum : at::Reduction::Mean, -1);
+
+    cudaMemcpy(total_loss_data, torch_loss.data_ptr(), sizeof(T), cudaMemcpyDeviceToDevice);
+    cudaMemcpy(log_prob_data, torch_log_prob.data_ptr(), N * D * sizeof(T), cudaMemcpyDeviceToDevice);
+    return Status::OK();
+  }
+
 
   // calculate logsoftmax
   auto status = SoftMaxComputeHelper<T, true>(logit_data,
