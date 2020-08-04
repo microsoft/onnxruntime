@@ -2878,6 +2878,7 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionFusableModels) {
           auto fused_node = std::find_if(
               graph.Nodes().cbegin(), graph.Nodes().cend(),
               [](const Node& node) { return node.OpType() == "TransposeScaleMatMul"; });
+          ASSERT_NE(fused_node, graph.Nodes().cend());
 
           auto alpha_attr = fused_node->GetAttributes().find("alpha");
           ASSERT_NE(alpha_attr, fused_node->GetAttributes().end());
