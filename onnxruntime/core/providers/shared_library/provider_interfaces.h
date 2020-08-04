@@ -6,7 +6,7 @@
 
 #include "core/framework/func_api.h"
 #ifdef USE_TENSORRT
-#include "driver_Types.h"  // Cuda defines
+#include <driver_Types.h>  // Cuda defines
 #endif
 
 namespace ONNX_NAMESPACE {
