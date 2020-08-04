@@ -3,7 +3,7 @@
 # Licensed under the MIT License.
 #--------------------------------------------------------------------------
 from logging import getLogger
-from OnnxModel import OnnxModel
+from onnx_model import OnnxModel
 from typing import Tuple
 from onnx import helper, TensorProto
 

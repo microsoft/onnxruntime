@@ -11,7 +11,7 @@ import sys
 import argparse
 import numpy as np
 from onnx import ModelProto, TensorProto, numpy_helper
-from OnnxModel import OnnxModel
+from onnxruntime_tools.transformers.onnx_model import OnnxModel
 import os
 import onnxruntime
 import random

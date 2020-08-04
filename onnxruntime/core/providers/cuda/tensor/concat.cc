@@ -80,6 +80,5 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
                                  p.output_num_elements));
   return Status::OK();
 }
-
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -467,7 +467,7 @@ void ResizeNearestImpl(
 
   bool could2d = rank >= 2 &&
                  transform_coordinate != GetDeviceOriginalCoordinateFunc(ResizeCoordinateTransformationMode::TF_CROP_AND_RESIZE) &&
-                 std::all_of(scales_vals.data_, scales_vals.data_ + (rank - 2), [](float v) { return v == 1.0; });
+                 std::all_of(scales_vals.Data(), scales_vals.Data() + (rank - 2), [](float v) { return v == 1.0; });
   if (could2d) {
     int64_t output_height = output_shape[rank - 2];
     int64_t output_width = output_shape[rank - 1];
@@ -502,7 +502,7 @@ void ResizeNearestImpl(
     return;
   }
 
-  int64_t total_dim_sum = std::accumulate(output_shape.data_, output_shape.data_ + rank, 0);
+  int64_t total_dim_sum = std::accumulate(output_shape.Data(), output_shape.Data() + rank, 0);
   int blocksPerDimsMappingGrid = (int)(ceil(static_cast<double>(total_dim_sum) / 32));
   _ResizeNearestMappingKernel<T><<<blocksPerDimsMappingGrid, 32, 0>>>(
       rank, input_shape, output_shape,
@@ -540,7 +540,7 @@ void ResizeImpl(
     ResizeCoordinateTransformationMode coordinate_transform_mode,
     ResizeNearestMode nearest_mode,
     void* dims_mapping) {
-  bool isSame = std::all_of(scales_vals.data_, scales_vals.data_ + rank, [](float v) { return v == 1.0f; }) &&
+  bool isSame = std::all_of(scales_vals.Data(), scales_vals.Data() + rank, [](float v) { return v == 1.0f; }) &&
                 (coordinate_transform_mode != ResizeCoordinateTransformationMode::TF_CROP_AND_RESIZE);
   if (isSame) {
     cudaMemcpyAsync(output_data, input_data, N * sizeof(T), cudaMemcpyDeviceToDevice);
@@ -606,12 +606,12 @@ void ResizeImpl(
   template void ResizeImpl<T>(                                      \
       const UpsampleMode upsample_mode,                             \
       const int rank,                                               \
-      TArray<int64_t>& input_shape,            \
-      TArray<int64_t>& output_shape,           \
-      TArray<int64_t>& input_strides,          \
-      TArray<fast_divmod>& output_div_pitches, \
-      TArray<float>& scales_vals,              \
-      TArray<float>& roi_vals,                 \
+      TArray<int64_t>& input_shape,                                 \
+      TArray<int64_t>& output_shape,                                \
+      TArray<int64_t>& input_strides,                               \
+      TArray<fast_divmod>& output_div_pitches,                      \
+      TArray<float>& scales_vals,                                   \
+      TArray<float>& roi_vals,                                      \
       const T* input_data,                                          \
       T* output_data,                                               \
       const size_t N,                                               \

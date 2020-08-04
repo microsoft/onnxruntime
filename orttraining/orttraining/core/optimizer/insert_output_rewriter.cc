@@ -14,7 +14,9 @@ Status InsertMaxPoolOutput::Apply(Graph& graph, Node& node, RewriteRuleEffect& r
 
   TypeProto t;
   t.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
-  t.mutable_tensor_type()->mutable_shape()->CopyFrom(*Y->Shape());
+  if (Y->Shape() != nullptr) {
+    t.mutable_tensor_type()->mutable_shape()->CopyFrom(*Y->Shape());
+  }
 
   NodeArg& node_arg = graph.GetOrCreateNodeArg(Y->Name() + "_mask", &t);
 
@@ -38,7 +40,9 @@ Status InsertSoftmaxCrossEntropyLossOutput::Apply(Graph& graph, Node& node, Rewr
 
   TypeProto t;
   t.mutable_tensor_type()->set_elem_type(X->TypeAsProto()->tensor_type().elem_type());
-  t.mutable_tensor_type()->mutable_shape()->CopyFrom(*X->Shape());  // log probability should have the same shape as logits.
+  if (X->Shape() != nullptr) {
+    t.mutable_tensor_type()->mutable_shape()->CopyFrom(*X->Shape());  // log probability should have the same shape as logits.
+  }
 
   NodeArg& node_arg = graph.GetOrCreateNodeArg(X->Name() + "_log_prob", &t);
 

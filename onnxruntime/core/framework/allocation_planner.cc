@@ -48,7 +48,7 @@ std::ostream& operator<<(std::ostream& out, AllocKind alloc_kind) {
 std::ostream& operator<<(std::ostream& out, std::pair<const SequentialExecutionPlan*, const SessionState*> planinfo) {
   const SequentialExecutionPlan& plan = *planinfo.first;
   const SessionState& session_state = *planinfo.second;
-  auto& graph = *session_state.GetGraphViewer();
+  auto& graph = session_state.GetGraphViewer();
   std::unordered_map<int, std::string> index_to_name;
 
   out << "Allocation Plan:\n";

@@ -3,7 +3,7 @@
 # Licensed under the MIT License.
 #--------------------------------------------------------------------------
 from logging import getLogger
-from OnnxModel import OnnxModel
+from onnx_model import OnnxModel
 from typing import Union, List
 
 logger = getLogger(__name__)

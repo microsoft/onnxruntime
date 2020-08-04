@@ -36,7 +36,7 @@ def main():
         cmds = [
             os.path.join(args.binary_dir, "onnxruntime_training_gpt2"),
             "--model_name", os.path.join(
-                args.model_root, "megatron-gpt2_hidden-size-1024_num-layers-24_vocab-size-50257_num-attention-heads-16_max-position-embeddings-1024_optimized"),
+                args.model_root, "megatron-gpt2_hidden-size-1024_num-layers-24_vocab-size-50257_num-attention-heads-16_max-position-embeddings-1024_optimized_opset12"),
             "--train_data_dir", os.path.join(
                 args.training_data_root, "train"),
             "--test_data_dir", os.path.join(

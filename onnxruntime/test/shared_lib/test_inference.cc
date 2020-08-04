@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <core/common/make_unique.h>
+#include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/graph/constants.h"
 #include "providers.h"
@@ -318,10 +319,11 @@ TEST(CApiTest, RegisterCustomOpForCPUAndCUDA) {
 }
 #endif
 
-#ifndef __ANDROID__
-TEST(CApiTest, test_custom_op_library) {
-#else
+//It has memory leak. The OrtCustomOpDomain created in custom_op_library.cc:RegisterCustomOps function was not freed
+#if defined(__ANDROID__) || defined(ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
 TEST(CApiTest, DISABLED_test_custom_op_library) {
+#else
+TEST(CApiTest, test_custom_op_library) {
 #endif
   std::cout << "Running inference using custom op shared library" << std::endl;
 
@@ -356,8 +358,8 @@ TEST(CApiTest, DISABLED_test_custom_op_library) {
   TestInference<PATH_TYPE, int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y, expected_values_y, 0, nullptr, lib_name.c_str());
 }
 
-#if defined(ENABLE_LANGUAGE_INTEROP_OPS) && !defined(_WIN32)  // on windows, PYTHONHOME must be set explicitly
-TEST(CApiTest, DISABLED_test_pyop) {
+#if defined(ENABLE_LANGUAGE_INTEROP_OPS)
+TEST(CApiTest, test_pyop) {
   std::cout << "Test model with pyop" << std::endl;
   std::ofstream module("mymodule.py");
   module << "class MyKernel:" << std::endl;
@@ -409,6 +411,45 @@ TEST(CApiTest, create_tensor) {
   tensor.GetStringTensorContent((void*)result.data(), data_len, offsets.data(), offsets.size());
 }
 
+TEST(CApiTest, fill_string_tensor) {
+  const char* s[] = {"abc", "kmp"};
+  int64_t expected_len = 2;
+  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+
+  Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+
+  for (int64_t i = 0; i < expected_len; i++) {
+    
+      tensor.FillStringTensorElement(s[i], i);
+  }
+
+  auto shape_info = tensor.GetTensorTypeAndShapeInfo();
+
+  int64_t len = shape_info.GetElementCount();
+  ASSERT_EQ(len, expected_len);
+}
+
+TEST(CApiTest, get_string_tensor_element) {
+  const char* s[] = {"abc", "kmp"};
+  int64_t expected_len = 2;
+  int64_t element_index = 0;
+  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+
+  Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+
+  tensor.FillStringTensor(s, expected_len);
+    
+  auto expected_string = s[element_index];
+  size_t expected_string_len = strlen(expected_string);
+
+  std::string result(expected_string_len, '\0');
+  tensor.GetStringTensorElement(expected_string_len, element_index, (void*)result.data());
+  ASSERT_STREQ(result.c_str(), expected_string);
+
+  auto string_len = tensor.GetStringTensorElementLength(element_index);
+  ASSERT_EQ(expected_string_len, string_len);
+}
+
 TEST(CApiTest, create_tensor_with_data) {
   float values[] = {3.0f, 1.0f, 2.f, 0.f};
   constexpr size_t values_length = sizeof(values) / sizeof(values[0]);
@@ -439,9 +480,8 @@ TEST(CApiTest, override_initializer) {
   std::string f2_data{"f2_string"};
   // Place a string into Tensor OrtValue and assign to the
   Ort::Value f2_input_tensor = Ort::Value::CreateTensor(allocator.get(), dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
-  // No C++ Api to either create a string Tensor or to fill one with string, so we use C
   const char* const input_char_string[] = {f2_data.c_str()};
-  Ort::ThrowOnError(Ort::GetApi().FillStringTensor(static_cast<OrtValue*>(f2_input_tensor), input_char_string, 1U));
+  f2_input_tensor.FillStringTensor(input_char_string, 1U);
 
   Ort::SessionOptions session_options;
   Ort::Session session(*ort_env, OVERRIDABLE_INITIALIZER_MODEL_URI, session_options);
@@ -580,4 +620,20 @@ TEST(CApiTest, model_metadata) {
     ASSERT_TRUE(num_keys_in_custom_metadata_map == 0);
     ASSERT_TRUE(custom_metadata_map_keys == nullptr);
   }
+}
+
+TEST(CApiTest, get_available_providers) {
+  const OrtApi *g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  int len = 0;
+  char **providers;
+  ASSERT_EQ(g_ort->GetAvailableProviders(&providers, &len), nullptr);
+  ASSERT_TRUE(len > 0);
+  ASSERT_EQ(strcmp(providers[0], "CPUExecutionProvider"), 0);
+  ASSERT_EQ(g_ort->ReleaseAvailableProviders(providers, len), nullptr);
+}
+
+TEST(CApiTest, get_available_providers_cpp) {
+  std::vector<std::string> providers = Ort::GetAvailableProviders();
+  ASSERT_TRUE(providers.size() > 0);
+  ASSERT_TRUE(providers[0] == std::string("CPUExecutionProvider"));
 }

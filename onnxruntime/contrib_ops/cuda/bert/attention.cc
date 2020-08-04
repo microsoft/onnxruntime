@@ -44,14 +44,13 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   // Input and output shapes:
   //   Input 0 - input       : (batch_size, sequence_length, hidden_size)
   //   Output 0 - output     : (batch_size, sequence_length, hidden_size)
-  const auto dims = input->Shape().GetDims();
-  int batch_size = static_cast<int>(dims[0]);
-  int sequence_length = static_cast<int>(dims[1]);
-  int hidden_size = static_cast<int>(dims[2]);
+  const auto& shape = input->Shape();
+  int batch_size = static_cast<int>(shape[0]);
+  int sequence_length = static_cast<int>(shape[1]);
+  int hidden_size = static_cast<int>(shape[2]);
   int head_size = hidden_size / num_heads_;
 
-  TensorShape output_shape(dims);
-  Tensor* output = context->Output(0, output_shape);
+  Tensor* output = context->Output(0, shape);
 
   int past_sequence_length = 0;
   Tensor* present = GetPresent(context, past, batch_size, head_size, sequence_length, past_sequence_length);
@@ -90,6 +89,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   if (!LaunchAttentionKernel(
           reinterpret_cast<const CudaT*>(gemm_buffer.get()),
           nullptr == mask_index ? nullptr : mask_index->template Data<int>(),
+          nullptr == mask_index ? nullptr : &(mask_index->Shape().GetDims()),
           output->template MutableData<T>(),
           batch_size,
           sequence_length,
@@ -101,8 +101,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
           is_unidirectional_,
           past_sequence_length,
           nullptr == past ? nullptr : past->template Data<T>(),
-          nullptr == present ? nullptr : present->template MutableData<T>()
-      )) {
+          nullptr == present ? nullptr : present->template MutableData<T>())) {
     // Get last error to reset it to cudaSuccess.
     CUDA_CALL(cudaGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);

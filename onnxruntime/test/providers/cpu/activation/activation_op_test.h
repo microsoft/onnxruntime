@@ -10,9 +10,7 @@
 #include "core/graph/constants.h"
 #include "test/providers/provider_test_utils.h"
 
-
 namespace onnxruntime {
-
 namespace test {
 
 inline void TestActivationOp(const char* szOp, const std::vector<std::vector<float>>& input_vals_vec,
@@ -38,26 +36,34 @@ inline void TestActivationOp(const char* szOp, const std::vector<std::vector<flo
       excluded_providers.insert(kTensorrtExecutionProvider);
     }
 
-    
 //Disabled because of accuracy issues for MYRIAD FP16 and VAD_M
 #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
-  int relu = strcmp(szOp, "Relu");
-  int leaky = strcmp(szOp, "LeakyRelu");
-  int elu = strcmp(szOp, "Elu");
-  if (relu == 0 || leaky == 0) {
-    excluded_providers.insert(kOpenVINOExecutionProvider);
-  }
-  if(elu == 0)
-    excluded_providers.insert(kOpenVINOExecutionProvider);
+    int relu = strcmp(szOp, "Relu");
+    int leaky = strcmp(szOp, "LeakyRelu");
+    int elu = strcmp(szOp, "Elu");
+    if (relu == 0 || leaky == 0) {
+      excluded_providers.insert(kOpenVINOExecutionProvider);
+    }
+    if (elu == 0)
+      excluded_providers.insert(kOpenVINOExecutionProvider);
 #endif
 
 //Disabled because of accuracy issues for GPU
 #if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
-  int leaky = strcmp(szOp, "LeakyRelu");
-  if (leaky == 0) {
-    excluded_providers.insert(kOpenVINOExecutionProvider);
-  }
+    int leaky = strcmp(szOp, "LeakyRelu");
+    if (leaky == 0) {
+      excluded_providers.insert(kOpenVINOExecutionProvider);
+    }
 #endif
+
+//Disabled because of NNAPI treat float::inf as float::max
+#if defined(USE_NNAPI)
+    int relu = strcmp(szOp, "Relu");
+    if (relu == 0) {
+      excluded_providers.insert(kNnapiExecutionProvider);
+    }
+#endif
+
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
   }
 }
@@ -87,9 +93,9 @@ class ActivationOpTest : public ::testing::Test {
 
 class ActivationOpNoInfTest : public ::testing::Test {
  protected:
-  std::vector<std::vector<float>> input_values{{-1.0f, 0, 1.0f,                                               // normal input values for activation
-                                                FLT_MIN, FLT_MIN / 10, -FLT_MIN / 10,                         // min, denorm, -denorm
-      FLT_MAX, -FLT_MAX}};  // max, -max, inf
+  std::vector<std::vector<float>> input_values{{-1.0f, 0, 1.0f,                        // normal input values for activation
+                                                FLT_MIN, FLT_MIN / 10, -FLT_MIN / 10,  // min, denorm, -denorm
+                                                FLT_MAX, -FLT_MAX}};                   // max, -max, inf
 
   void SetUp() override {
     float low = -1.0f, high = 1.0f;
@@ -106,5 +112,6 @@ class ActivationOpNoInfTest : public ::testing::Test {
     }
   }
 };
-}
-}
+
+}  // namespace test
+}  // namespace onnxruntime

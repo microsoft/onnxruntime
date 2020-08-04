@@ -39,6 +39,7 @@ void usage() {
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', 'ngraph', "
       "'openvino', 'nuphar', 'migraphx', 'acl' or 'armnn'. "
       "Default: 'cpu'.\n"
+      "\t-p: Pause after launch, can attach debugger and continue\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
       "\t-d [device_id]: Specifies the device id for multi-device (e.g. GPU). The value should > 0\n"
       "\t-o [optimization level]: Default is 99. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
@@ -106,18 +107,20 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   int device_id = 0;
   GraphOptimizationLevel graph_optimization_level = ORT_ENABLE_ALL;
   bool user_graph_optimization_level_set = false;
-  int verbosity_option_count = 0;
 
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_ERROR;
+  bool verbose_logging_required = false;
+
+  bool pause = false;
   {
     int ch;
-    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:xvo:d:"))) != -1) {
+    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:xvo:d:p"))) != -1) {
       switch (ch) {
         case 'A':
           enable_cpu_mem_arena = false;
           break;
         case 'v':
-          verbosity_option_count += 1;
+          verbose_logging_required = true;
           break;
         case 'c':
           concurrent_session_runs = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
@@ -181,6 +184,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
         case 'x':
           execution_mode = ExecutionMode::ORT_PARALLEL;
           break;
+        case 'p':
+          pause = true;
+          break;
         case 'o': {
           int tmp = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
           switch (tmp) {
@@ -225,10 +231,12 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
   }
 
-  // set log level based on number of verbosity options
-  logging_level =
-      static_cast<OrtLoggingLevel>(static_cast<int>(ORT_LOGGING_LEVEL_ERROR) -
-                                   std::min<int>(verbosity_option_count, static_cast<int>(ORT_LOGGING_LEVEL_ERROR)));
+  // TODO: Support specifying all valid levels of logging
+  // Currently the logging level is ORT_LOGGING_LEVEL_ERROR by default and
+  // if the user adds -v, the logging level is ORT_LOGGING_LEVEL_VERBOSE
+  if (verbose_logging_required) {
+    logging_level = ORT_LOGGING_LEVEL_VERBOSE;
+  }
 
   if (concurrent_session_runs > 1 && repeat_count > 1) {
     fprintf(stderr, "when you use '-r [repeat]', please set '-c' to 1\n");
@@ -241,6 +249,12 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     fprintf(stderr, "please specify a test data dir\n");
     usage();
     return -1;
+  }
+
+  if (pause) {
+    printf("Enter to continue...\n");
+    fflush(stdout);
+    getchar();
   }
 
   try {
@@ -256,6 +270,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   for (int i = 0; i != argc; ++i) {
     data_dirs.emplace_back(argv[i]);
   }
+
+  std::vector<std::unique_ptr<ITestCase>> owned_tests;
   {
     double per_sample_tolerance = 1e-3;
     // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
@@ -342,7 +358,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #ifdef USE_NNAPI
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(sf));
 #else
-      fprintf(stderr, "DNNLibrary/NNAPI is not supported in this build");
+      fprintf(stderr, "NNAPI is not supported in this build");
       return -1;
 #endif
     }
@@ -431,7 +447,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     static const ORTCHAR_T* cuda_flaky_tests[] = {
         ORT_TSTR("fp16_inception_v1"),
         ORT_TSTR("fp16_shufflenet"), ORT_TSTR("fp16_tiny_yolov2")};
-    static const ORTCHAR_T* dml_disabled_tests[] = {ORT_TSTR("mlperf_ssd_resnet34_1200"), ORT_TSTR("mlperf_ssd_mobilenet_300"), ORT_TSTR("mask_rcnn"), ORT_TSTR("faster_rcnn"), ORT_TSTR("tf_pnasnet_large"), ORT_TSTR("zfnet512")};
+    static const ORTCHAR_T* dml_disabled_tests[] = {ORT_TSTR("mlperf_ssd_resnet34_1200"), ORT_TSTR("mlperf_ssd_mobilenet_300"), ORT_TSTR("mask_rcnn"), ORT_TSTR("faster_rcnn"), ORT_TSTR("tf_pnasnet_large"), ORT_TSTR("zfnet512"), ORT_TSTR("keras2coreml_Dense_ImageNet")};
     static const ORTCHAR_T* dnnl_disabled_tests[] = {ORT_TSTR("test_densenet121"), ORT_TSTR("test_resnet18v2"), ORT_TSTR("test_resnet34v2"), ORT_TSTR("test_resnet50v2"), ORT_TSTR("test_resnet101v2"),
                                                      ORT_TSTR("test_resnet101v2"), ORT_TSTR("test_vgg19"), ORT_TSTR("tf_inception_resnet_v2"), ORT_TSTR("tf_inception_v1"), ORT_TSTR("tf_inception_v3"), ORT_TSTR("tf_inception_v4"), ORT_TSTR("tf_mobilenet_v1_1.0_224"),
                                                      ORT_TSTR("tf_mobilenet_v2_1.0_224"), ORT_TSTR("tf_mobilenet_v2_1.4_224"), ORT_TSTR("tf_nasnet_large"), ORT_TSTR("tf_pnasnet_large"), ORT_TSTR("tf_resnet_v1_50"), ORT_TSTR("tf_resnet_v1_101"), ORT_TSTR("tf_resnet_v1_101"),
@@ -455,7 +471,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     all_disabled_tests.insert(std::begin(x86_disabled_tests), std::end(x86_disabled_tests));
 #endif
 
-    std::vector<std::unique_ptr<ITestCase>> owned_tests;
     std::vector<ITestCase*> tests;
 
     LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance,
@@ -491,7 +506,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"BERT_Squad", "test data bug"},
       {"constantofshape_float_ones", "test data bug", {"onnx141", "onnx150"}},
       {"constantofshape_int_zeros", "test data bug", {"onnx141", "onnx150"}},
-      {"convtranspose_3d", "3d convtranspose not supported yet"},
       {"cast_STRING_to_FLOAT", "Linux CI has old ONNX python package with bad test data", {"onnx141"}},
       // Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8.
       // "e.g. 0.296140194 -> '0.2961402' not '0.29614019'. ORT produces the latter with precision set to 8,
@@ -533,6 +547,21 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"nesterov_momentum", "not a registered function/op", {}},        // Op not registered.
   };
 
+#ifdef DISABLE_ML_OPS
+  auto starts_with = [](const std::string& find_in, const std::string& find_what) {
+    return find_in.compare(0, find_what.size(), find_what) == 0;
+  };
+  for (const auto& test_ptr : owned_tests) {
+    const std::string& test_name = test_ptr->GetTestCaseName();
+    if (starts_with(test_name, "XGBoost_") ||
+        starts_with(test_name, "coreml_") ||
+        starts_with(test_name, "scikit_") ||
+        starts_with(test_name, "libsvm_")) {
+      broken_tests.insert({test_name, "Traditional ML ops are disabled in this build."});
+    }
+  }
+#endif
+
   if (enable_ngraph) {
     broken_tests.insert({"qlinearconv", "ambiguity in scalar dimensions [] vs [1]"});
     broken_tests.insert({"clip_splitbounds", "not implemented yet for opset 11"});
@@ -553,6 +582,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"tf_mobilenet_v2_1.0_224", "Results mismatch"});
     broken_tests.insert({"tf_mobilenet_v2_1.4_224", "Results mismatch"});
     broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
+    broken_tests.insert({"convtranspose_3d", "3d convtranspose not supported yet"});
   }
 
   if (enable_openvino) {
@@ -588,6 +618,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"maxpool_2d_dilations", "maxpool dilations not supported"});
     broken_tests.insert({"mlperf_ssd_resnet34_1200", "test pass on dev box but fails on CI build"});
     broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
+    broken_tests.insert({"convtranspose_3d", "3d convtranspose not supported yet"});
     broken_tests.insert({"maxpool_2d_uint8", "Does not work on DNNL, NNAPI"});
   }
 
@@ -602,6 +633,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"range_float_type_positive_delta_expanded", "Temporarily disabled pending investigation"});
     broken_tests.insert({"range_int32_type_negative_delta_expanded", "Temporarily disabled pending investigation"});
     broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
+    broken_tests.insert({"convtranspose_3d", "3d convtranspose not supported yet"});
     broken_tests.insert({"maxpool_2d_uint8", "result mismatch"});
     broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NC_expanded", "shape mismatch"});
     broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_expanded", "shape mismatch"});
@@ -725,6 +757,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"tf_resnet_v2_152", "TRT Engine couldn't be created"});
     broken_tests.insert({"tf_resnet_v2_50", "TRT Engine couldn't be created"});
     broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
+    broken_tests.insert({"convtranspose_3d", "3d convtranspose not supported yet"});
   }
 
   if (enable_cuda) {
@@ -735,6 +768,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"tf_inception_v1", "flaky test"});  //TODO: Investigate cause for flakiness
     broken_tests.insert({"faster_rcnn", "Linux: faster_rcnn:output=6383:shape mismatch, expect {77} got {57}"});
     broken_tests.insert({"split_zero_size_splits", "alloc failed"});
+    broken_tests.insert({"convtranspose_3d", "3d convtranspose not supported yet"});
   }
 
   if (enable_dml) {

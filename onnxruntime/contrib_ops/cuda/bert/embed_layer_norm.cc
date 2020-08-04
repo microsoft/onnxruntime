@@ -39,28 +39,21 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(embed_layer_norm::CheckInputs(context));
 
   const Tensor* input_ids = context->Input<Tensor>(0);
-  const Tensor* segment_ids = context->Input<Tensor>(1);
+  const Tensor* segment_ids = context->Input<Tensor>(1);  // optional. nullptr if it's distill-bert
   const Tensor* word_embedding = context->Input<Tensor>(2);
   const Tensor* position_embedding = context->Input<Tensor>(3);
-  const Tensor* segment_embedding = context->Input<Tensor>(4);
+  const Tensor* segment_embedding = context->Input<Tensor>(4);  // optional. nullptr if it's distill-bert
   const Tensor* gamma = context->Input<Tensor>(5);
   const Tensor* beta = context->Input<Tensor>(6);
   const Tensor* mask = context->Input<Tensor>(7);  // optional. nullptr if not provided
 
-  const auto input_dims = input_ids->Shape().GetDims();
+  const auto& input_dims = input_ids->Shape().GetDims();
   int64_t hidden_size = word_embedding->Shape()[1];
 
-  std::vector<int64_t> out_dims;
-  out_dims.reserve(3);
-  out_dims.push_back(input_dims[0]);
-  out_dims.push_back(input_dims[1]);
-  out_dims.push_back(hidden_size);
-  TensorShape output_shape(out_dims);
+  TensorShape output_shape({input_dims[0], input_dims[1], hidden_size});
   Tensor* output = context->Output(0, output_shape);
 
-  std::vector<int64_t> mask_index_dims;
-  mask_index_dims.push_back(input_dims[0]);
-  TensorShape mask_index_shape(mask_index_dims);
+  TensorShape mask_index_shape({input_dims[0]});
   Tensor* mask_index = context->Output(1, mask_index_shape);
 
   int batch_size = static_cast<int>(input_dims[0]);
@@ -71,15 +64,15 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
           output->template MutableData<T>(),
           mask_index->template MutableData<int32_t>(),
           input_ids->template Data<int32_t>(),
-          segment_ids->template Data<int32_t>(),
+          nullptr == segment_ids ? nullptr : segment_ids->template Data<int32_t>(),
           nullptr == mask ? nullptr : mask->template Data<int32_t>(),
           gamma->template Data<T>(),
           beta->template Data<T>(),
           word_embedding->template Data<T>(),
           position_embedding->template Data<T>(),
-          segment_embedding->template Data<T>(),
+          nullptr == segment_embedding ? nullptr : segment_embedding->template Data<T>(),
           epsilon_,
-          static_cast<int>(hidden_size),          
+          static_cast<int>(hidden_size),
           batch_size,
           sequence_length,
           element_size)) {

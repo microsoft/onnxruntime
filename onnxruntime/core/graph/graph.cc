@@ -172,6 +172,26 @@ const TensorShapeProto* NodeArg::Shape() const {
   }
 }
 
+bool NodeArg::HasTensorOrScalarShape() const {
+  const TypeProto* type = TypeAsProto();
+  if (!type) return false;
+  const auto type_case = type->value_case();
+  switch (type_case) {
+    case TypeProto::kTensorType:
+    case TypeProto::kSparseTensorType:
+      // Standard tensor has a valid shape field while
+      // scalar's shape is empty. Thus, we don't need to
+      // check shape here.
+      return true;
+    case TypeProto::kSequenceType:
+    case TypeProto::kMapType:
+    case TypeProto::kOpaqueType:
+    case TypeProto::VALUE_NOT_SET:
+    default:
+      return false;
+  }
+}
+
 void NodeArg::SetShape(const TensorShapeProto& shape) {
   const auto type_case = node_arg_info_.type().value_case();
   switch (type_case) {
@@ -411,6 +431,19 @@ Node::Type Node::NodeType() const noexcept {
 
 void Node::SetNodeType(Node::Type node_type) noexcept {
   node_type_ = node_type;
+}
+
+const Function* Node::GetFunctionBody(bool try_init_func_body) {
+  if (nullptr != func_body_) {
+    return func_body_;
+  }
+
+  // Initialize function body
+  if (try_init_func_body) {
+    graph_->InitFunctionBodyForNode(*this);
+  }
+
+  return func_body_;
 }
 
 const Function* Node::GetFunctionBody() const noexcept {
@@ -808,6 +841,10 @@ Graph::Graph(const Model& owning_model,
 
     NodeArg* matching_graph_input = GetNodeArg(tensor.name());
     TypeProto t{TypeProtoFromTensorProto(tensor)};
+
+    if (!utils::HasElemType(t.tensor_type())) {
+      ORT_THROW("This is an invalid model. Tensor does not have type information.");
+    }
 
     if (ir_version_ < 4) {
       // initializers can have matching graph inputs but are treated as constant,
@@ -1294,7 +1331,6 @@ void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
                            const std::function<void(const Node*)>& enter,
                            const std::function<void(const Node*)>& leave,
                            const std::function<bool(const Node*, const Node*)>& comp) const {
-
   ReverseDFSFrom(from, enter, leave, comp, {});
 }
 
@@ -2017,21 +2053,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
         node.op_ = nullptr;
       }
 
-      if (node.op_ && (node.op_->HasFunction() || node.op_->HasContextDependentFunction())) {
-        onnx::FunctionProto onnx_function_proto;
-        onnx::FunctionBodyBuildContextImpl function_body_ctx(node_proto);
-        if (node.op_->HasContextDependentFunction()) {
-          node.op_->BuildContextDependentFunction(function_body_ctx, onnx_function_proto);
-        } else {
-          onnx_function_proto = *(node.op_->GetFunction());
-        }
-
-        auto func_ptr = onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto,
-                                                                            logger_);
-
-        function_container_.emplace_back(std::move(func_ptr));
-        node.SetFunctionBody(*function_container_.back());
-      }
+	  InitFunctionBodyForNode(node);
 
       if (!node.op_) {
         return Status(ONNXRUNTIME, FAIL, "Fatal error: " + node.OpType() + " is not a registered function/op");
@@ -2078,6 +2100,26 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   }
 
   return Status::OK();
+}
+
+void Graph::InitFunctionBodyForNode(Node& node) {
+  if (node.op_ && (node.op_->HasFunction() || node.op_->HasContextDependentFunction())) {
+    onnx::FunctionProto onnx_function_proto;
+    if (node.op_->HasContextDependentFunction()) {
+      NodeProto node_proto;
+      node.ToProto(node_proto);
+      onnx::FunctionBodyBuildContextImpl function_body_ctx(node_proto);
+      node.op_->BuildContextDependentFunction(function_body_ctx, onnx_function_proto);
+    } else {
+      onnx_function_proto = *(node.op_->GetFunction());
+    }
+
+    auto func_ptr = onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto,
+                                                                        logger_);
+
+    function_container_.emplace_back(std::move(func_ptr));
+    node.SetFunctionBody(*function_container_.back());
+  }
 }
 
 void Graph::FindAllSubgraphs(std::vector<Graph*>& subgraphs) {
@@ -2262,7 +2304,7 @@ void Graph::AddInitializedTensor(const TensorProto& tensor) {
   const gsl::not_null<TensorProto*> tensor_added{graph_proto_->add_initializer()};
   *(tensor_added) = tensor;
   name_to_initial_tensor_[tensor.name()] = tensor_added;
-
+  SetGraphResolveNeeded();
   if (!is_loaded_from_model_file_ && GetNodeArg(tensor.name()) == nullptr) {
     // make sure there is a NodeArg for the initializer as SetGraphInputsOutputs may add it to the graph inputs.
     // the shape will be set to the correct value in TypeCheckInputsAndInitializers as we don't yet know whether there
@@ -2287,6 +2329,10 @@ static void RemoveRepeatedFieldEntry(T& repeated_field, const TIter& entry_to_re
   } else {
     repeated_field.erase(entry_to_remove);
   }
+}
+
+bool Graph::IsInitializedTensor(const std::string& name) const {
+  return name_to_initial_tensor_.count(name) > 0;
 }
 
 void Graph::RemoveInitializedTensor(const std::string& tensor_name) {
@@ -2378,8 +2424,8 @@ const std::vector<const NodeArg*>& Graph::GetValueInfo() const noexcept {
   return value_info_;
 }
 
-void Graph::AddValueInfo(const NodeArg* new_value_info){
-  for(const auto* info : value_info_){
+void Graph::AddValueInfo(const NodeArg* new_value_info) {
+  for (const auto* info : value_info_) {
     ORT_ENFORCE(info->Name() != new_value_info->Name(), "Error: trying to add an existing value info.");
   }
   value_info_.push_back(new_value_info);

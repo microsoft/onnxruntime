@@ -291,9 +291,14 @@ const char* contrib_ops_auto_pad_doc =
 
 void RegisterBertSchemas() {
   static const char* Attention_ver1_doc = R"DOC(
-Multi-Head Self Attention that can be either unidirectional (like GPT2) or bidirectional (like BERT).
-The mask_index input is optional. Unidirectional and mask_index input are mutually exclusive. When unidirectional is 1, the
-mask_index shall not be provided.)DOC";
+Multi-Head Self Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
+The mask_index input is optional. Besides raw attention mask with shape (batch_size, past_sequence_length + sequence_length),
+we also support other two formats: When input has right-side padding, mask_index is one dimension with shape (batch_size),
+where value of each element is the end position, or valid length of actual sequence excluding padding. When input has
+left-side padding, mask_index has shape (2 * batch_size), where the values are the exclusive end positions followed by
+the inclusive start positions. When unidirectional is 1, and each token only attend to previous tokens. For GPT-2, both past
+and present state are optional. Present state could appear in output even when past state is not in input.
+)DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Attention)
       .SetDomain(kMSDomain)
@@ -308,7 +313,7 @@ mask_index shall not be provided.)DOC";
       .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size", "T")
       .Input(1, "weight", "2D input tensor with shape (hidden_size, 3 * hidden_size)", "T")
       .Input(2, "bias", "1D input tensor with shape (3 * hidden_size)", "T")
-      .Input(3, "mask_index", "Attention mask index with shape (batch_size).", "M", OpSchema::Optional)
+      .Input(3, "mask_index", "Attention mask with shape (batch_size, past_sequence_length + sequence_length), or index with shape (batch_size) or (2 * batch_size).", "M", OpSchema::Optional)
       .Input(4, "past", "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).", "T", OpSchema::Optional)
       .Output(0, "output", "3D output tensor with shape (batch_size, append_length, hidden_size)", "T")
       .Output(1, "present", "present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)", "T", OpSchema::Optional)
@@ -406,11 +411,23 @@ mask_index shall not be provided.)DOC";
           "zero point of quantized weight tensor. It's a scalar, which means a per-tensor/layer quantization.",
           "T2",
           OpSchema::Optional)
+      .Input(
+          8,
+          "past",
+          "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).",
+          "T3",
+          OpSchema::Optional)
       .Output(
           0,
           "output",
           "3D output tensor with shape (batch_size, sequence_length, hidden_size)",
           "T3")
+      .Output(
+          1,
+          "present",
+          "present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)",
+          "T3",
+          OpSchema::Optional)
       .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"}, "Constrain input and output types to int8 tensors.")
       .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input and output types to int8 tensors.")
       .TypeConstraint("T3", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
@@ -444,10 +461,10 @@ will be calculated.)DOC";
       .SetDoc(EmbedLayerNormalization_ver1_doc)
       .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultEmbedLayerNormEpsilon)
       .Input(0, "input_ids", "2D words IDs with shape (batch_size, sequence_length)", "T1")
-      .Input(1, "segment_ids", "2D segment IDs with shape (batch_size, sequence_length)", "T1")
+      .Input(1, "segment_ids", "2D segment IDs with shape (batch_size, sequence_length)", "T1", OpSchema::Optional)
       .Input(2, "word_embedding", "2D with shape (,hidden_size)", "T")
       .Input(3, "position_embedding", "2D with shape (, hidden_size)", "T")
-      .Input(4, "segment_embedding", "2D with shape (, hidden_size)", "T")
+      .Input(4, "segment_embedding", "2D with shape (, hidden_size)", "T", OpSchema::Optional)
       .Input(5, "gamma", "1D gamma tensor for layer normalization with shape (hidden_size)", "T")
       .Input(6, "beta", "1D beta tensor for layer normalization  with shape (hidden_size)", "T")
       .Input(7, "mask", "2D attention mask with shape (batch_size, sequence_length)", "T1", OpSchema::Optional)
@@ -1570,7 +1587,7 @@ of [N, 0] then [N, 0].
       .Attr(
           "tokenexp",
           "An optional string. Token's regular expression in basic POSIX format"
-          " (http://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap09.html#tag_09_03)."
+          " (pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap09.html#tag_09_03)."
           " If set, tokenizer may produce tokens matching the specified pattern. Note that one and only of"
           " 'tokenexp' and 'separators' should be set.",
           AttributeProto::STRING,
@@ -1679,6 +1696,11 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
           "of elements should be equal to the number of columns of input 'B'.",
           "T2",
           OpSchema::Optional)
+      .Input(4,
+             "bias",
+             "1D input tensor, whose dimension is same as B's last dimension",
+             "T1",
+             OpSchema::Optional)
       .Output(0, "Y", "Matrix multiply results from A * B", "T1")
       .TypeConstraint(
           "T1",
@@ -1690,6 +1712,65 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
           "Constrain input B data type to 8-bit integer tensor.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 1);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulIntegerToFloat)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "A", "N-dimensional matrix A", "T1")
+      .Input(1, "B", "N-dimensional matrix B", "T2")
+      .Input(
+          2,
+          "a_scale",
+          "Scale of quantized input 'A'. It could be a scalar or a 1-D tensor, "
+          "which means a per-tensor or per-column quantization. If it's a 1-D tensor, its number "
+          "of elements should be equal to the number of columns of input 'A'.",
+          "T3")
+      .Input(
+          3,
+          "b_scale",
+          "Scale of quantized input 'B'. It could be a scalar or a 1-D tensor, "
+          "which means a per-tensor or per-column quantization. If it's a 1-D tensor, its number "
+          "of elements should be equal to the number of columns of input 'B'.",
+          "T3")
+      .Input(
+          4,
+          "a_zero_point",
+          "Zero point tensor for input 'A'. It's optional and default value is 0.  It could be a scalar or a 1-D tensor, "
+          "which means a per-tensor or per-column quantization. If it's a 1-D tensor, its number "
+          "of elements should be equal to the number of columns of input 'A'.",
+          "T1",
+          OpSchema::Optional)
+      .Input(
+          5,
+          "b_zero_point",
+          "Zero point tensor for input 'B'. It's optional and default value is 0.  It could be a scalar or a 1-D tensor, "
+          "which means a per-tensor or per-column quantization. If it's a 1-D tensor, its number "
+          "of elements should be equal to the number of columns of input 'B'.",
+          "T2",
+          OpSchema::Optional)
+      .Input(
+          6,
+          "bias",
+          "1D input tensor, whose dimension is same as B's last dimension",
+          "T3",
+          OpSchema::Optional)
+      .Output(0, "Y", "Matrix multiply results from A * B", "T3")
+      .TypeConstraint(
+          "T1",
+          {"tensor(int8)", "tensor(uint8)"},
+          "Constrain input A data type to 8-bit integer tensor.")
+      .TypeConstraint(
+          "T2",
+          {"tensor(int8)", "tensor(uint8)"},
+          "Constrain input B data type to 8-bit integer tensor.")
+      .TypeConstraint(
+          "T3",
+          {"tensor(float)"},
+          "Constrain input a_scale, b_scale and output Y data type as float tensor.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 2, 0);
         ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 1);
       });
 
@@ -2616,7 +2697,9 @@ Example 4:
       .Attr("axis",
             "The first normalization dimension: normalization will be performed along dimensions axis : rank(inputs).",
             AttributeProto::INT, static_cast<int64_t>(-1))
-      .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, 1e-5f)
+      .Attr("epsilon",
+            "The epsilon value to use to avoid division by zero.",
+            AttributeProto::FLOAT, 1e-5f)
       .AllowUncheckedAttributes()
       .Input(0, "X", "Input data tensor from the previous layer.", "T")
       .Input(1, "scale", "Scale tensor.", "T")

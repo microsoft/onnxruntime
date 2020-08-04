@@ -14,6 +14,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/status.h"
 #include "core/common/safeint.h"
+#include "core/graph/constants.h"
 #include "core/graph/graph.h"
 #include "core/framework/allocator.h"
 #include "core/framework/tensor.h"
@@ -157,6 +158,8 @@ ORT_STATUS_PTR CreateTensorImpl(MLDataType ml_type, const int64_t* shape, size_t
   size_t elem_count = 1;
   std::vector<int64_t> shapes(shape_len);
   for (size_t i = 0; i != shape_len; ++i) {
+    if (shape[i] < 0)
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "tried creating tensor with negative value in shape");
     elem_count *= static_cast<size_t>(shape[i]);
     shapes[i] = shape[i];
   }
@@ -500,9 +503,9 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
   Status status;
   if (run_options == nullptr) {
     OrtRunOptions op;
-    status = session->Run(op, feed_names, feeds, output_names, &fetches);
+    status = session->Run(op, feed_names, feeds, output_names, &fetches, nullptr);
   } else {
-    status = session->Run(*run_options, feed_names, feeds, output_names, &fetches);
+    status = session->Run(*run_options, feed_names, feeds, output_names, &fetches, nullptr);
   }
 
   if (!status.IsOK())
@@ -537,13 +540,27 @@ ORT_API_STATUS_IMPL(OrtApis::FillStringTensor, _Inout_ OrtValue* value, _In_ con
   TENSOR_READWRITE_API_BEGIN
   auto* dst = tensor->MutableData<std::string>();
   auto len = static_cast<size_t>(tensor->Shape().Size());
-  if (s_len < len) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "input array is too short");
+  if (s_len != len) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "input array doesn't equal tensor size");
   }
   for (size_t i = 0; i != len; ++i) {
     //allocate and copy
     dst[i] = s[i];
   }
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::FillStringTensorElement, _Inout_ OrtValue* value, _In_ const char* s, size_t index) {
+  TENSOR_READWRITE_API_BEGIN
+  auto* dst = tensor->MutableData<std::string>();
+  auto len = static_cast<size_t>(tensor->Shape().Size());
+  if (index >= len) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "element index is out of bounds");
+  }
+
+  dst[index] = s;
+
   return nullptr;
   API_IMPL_END
 }
@@ -564,13 +581,25 @@ ORT_API_STATUS_IMPL(OrtApis::GetStringTensorDataLength, _In_ const OrtValue* val
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::GetStringTensorElementLength, _In_ const OrtValue* value, size_t index, _Out_ size_t* out) {
+  TENSOR_READ_API_BEGIN
+  const auto* src = tensor.Data<std::string>();
+  auto len = static_cast<size_t>(tensor.Shape().Size());
+  if (index < len) {
+    *out = src[index].size();
+  } else
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "shape is invalid");
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::GetStringTensorContent, _In_ const OrtValue* value, _Out_writes_bytes_all_(s_len) void* s,
                     size_t s_len, _Out_writes_all_(offsets_len) size_t* offsets, size_t offsets_len) {
   TENSOR_READ_API_BEGIN
   const auto* input = tensor.Data<std::string>();
   auto len = static_cast<size_t>(tensor.Shape().Size());
-  if (offsets_len < len) {
-    return OrtApis::CreateStatus(ORT_FAIL, "space is not enough");
+  if (offsets_len != len) {
+    return OrtApis::CreateStatus(ORT_FAIL, "offsets buffer is not equal to tensor size");
   }
   {
     size_t ret = 0;
@@ -578,17 +607,37 @@ ORT_API_STATUS_IMPL(OrtApis::GetStringTensorContent, _In_ const OrtValue* value,
       ret += input[i].size();
     }
     if (s_len < ret) {
-      return OrtApis::CreateStatus(ORT_FAIL, "space is not enough");
+      return OrtApis::CreateStatus(ORT_FAIL, "output buffer is too small");
     }
   }
   size_t f = 0;
   char* p = static_cast<char*>(s);
-  for (size_t i = 0; i != offsets_len; ++i, ++offsets) {
+  for (size_t i = 0; i != len; ++i, ++offsets) {
     memcpy(p, input[i].data(), input[i].size());
     p += input[i].size();
     *offsets = f;
     f += input[i].size();
   }
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetStringTensorElement, _In_ const OrtValue* value, size_t s_len, size_t index, _Out_writes_bytes_all_(s_len) void* s) {
+  TENSOR_READ_API_BEGIN
+  const auto* input = tensor.Data<std::string>();
+  auto len = static_cast<size_t>(tensor.Shape().Size());
+
+  if (index >= len) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "element index is out of bounds");
+  }
+
+  size_t ret = input[index].size();
+  if (s_len < ret) {
+    return OrtApis::CreateStatus(ORT_FAIL,"buffer size is too small for string");
+  }
+
+  memcpy(s, input[index].data(), input[index].size());
+
   return nullptr;
   API_IMPL_END
 }
@@ -981,7 +1030,7 @@ ORT_STATUS_PTR OrtGetValueImplSeqOfTensors(_In_ const OrtValue* p_ml_value, int 
   return t_disp.template InvokeWithUnsupportedPolicy<UnsupportedReturnFailStatus>(allocator, one_tensor, out);
 }
 
-#ifdef _MSVC_VER
+#ifdef _MSC_VER
 #pragma warning(pop)
 #endif
 
@@ -1375,6 +1424,46 @@ ORT_API_STATUS_IMPL(OrtApis::GetOpaqueValue, _In_ const char* domain_name, _In_ 
   return nullptr;
 }
 
+ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char*** out_ptr,
+                    _In_ int* providers_length) {
+  API_IMPL_BEGIN
+  const size_t MAX_LEN = 30;
+  int available_count = (int)(sizeof(providers_available) / sizeof(char*));
+  char** out = (char**)malloc(available_count * sizeof(char*));
+  if (out) {
+    for (int i = 0; i < available_count; i++) {
+      out[i] = (char*)malloc((MAX_LEN + 1) * sizeof(char));
+      if (out[i]) {
+#ifdef _MSC_VER
+        strncpy_s(out[i], MAX_LEN, providers_available[i], MAX_LEN);
+#else
+        strncpy(out[i], providers_available[i], MAX_LEN);
+#endif
+        out[i][MAX_LEN] = '\0';
+      }
+    }
+  }
+  *providers_length = available_count;
+  *out_ptr = out;
+  API_IMPL_END
+  return NULL;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char** ptr,
+                    _In_ int providers_length) {
+  API_IMPL_BEGIN
+  if (ptr) {
+    for (int i = 0; i < providers_length; i++) {
+      if (ptr[i]) {
+        free(ptr[i]);
+      }
+    }
+    free(ptr);
+  }
+  API_IMPL_END
+  return NULL;
+}
+
 // End support for non-tensor types
 
 static constexpr OrtApiBase ort_api_base = {
@@ -1421,7 +1510,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
 	In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_3 = {
+static constexpr OrtApi ort_api_1_to_4 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -1560,21 +1649,29 @@ static constexpr OrtApi ort_api_1_to_3 = {
     &OrtApis::ReleaseModelMetadata,
     // End of Version 2 - DO NOT MODIFY ABOVE (see above text for more information)
 
-    // Version 3 - In development, feel free to add/remove/rearrange here
     &OrtApis::CreateEnvWithGlobalThreadPools,
     &OrtApis::DisablePerSessionThreads,
     &OrtApis::CreateThreadingOptions,
     &OrtApis::ReleaseThreadingOptions,
     &OrtApis::ModelMetadataGetCustomMetadataMapKeys,
-    &OrtApis::AddFreeDimensionOverrideByName};
+    &OrtApis::AddFreeDimensionOverrideByName,
+    // End of Version 3 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    // Version 4 - In development, feel free to add/remove/rearrange here
+    &OrtApis::GetAvailableProviders,
+    &OrtApis::ReleaseAvailableProviders,
+    &OrtApis::GetStringTensorElementLength,
+    &OrtApis::GetStringTensorElement,
+    &OrtApis::FillStringTensorElement,
+};
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
 // If this assert hits, read the above 'Rules on how to add a new Ort API version'
 static_assert(offsetof(OrtApi, ReleaseCustomOpDomain) / sizeof(void*) == 101, "Size of version 1 API cannot change");
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
-  if (version >= 1 && version <= 3)
-    return &ort_api_1_to_3;
+  if (version >= 1 && version <= 4)
+    return &ort_api_1_to_4;
 
   return nullptr;  // Unsupported version
 }

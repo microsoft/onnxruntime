@@ -51,8 +51,6 @@ void* CPUAllocator::Alloc(size_t size) {
 void CPUAllocator::Free(void* p) {
   utils::DefaultFree(p);
 }
-
-const OrtMemoryInfo& CPUAllocator::Info() const { return *memory_info_; }
 }  // namespace onnxruntime
 
 std::ostream& operator<<(std::ostream& out, const OrtMemoryInfo& info) { return (out << info.ToString()); }

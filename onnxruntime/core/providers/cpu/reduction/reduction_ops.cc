@@ -3,9 +3,6 @@
 
 #include "core/providers/cpu/reduction/reduction_ops.h"
 #include "core/providers/common.h"
-#include "core/util/math_cpuonly.h"
-#include "core/providers/cpu/containers.h"
-#include "core/platform/threadpool.h"
 
 using namespace std;
 namespace onnxruntime {
@@ -166,8 +163,8 @@ bool PrepareForReduce(const Tensor* input_tensor_ptr,
                       const std::vector<int64_t>& axes_,
                       bool keepdims_,
                       /*out*/ std::vector<int64_t>& reduced_dims,
-                      bool check_no_transpose = false,
-                      const TensorShape* input_shape_override = nullptr) {
+                      bool check_no_transpose,
+                      const TensorShape* input_shape_override) {
   ORT_ENFORCE(input_tensor_ptr != nullptr, "Input to be reduced is null");
 
   if (input_shape_override) {
@@ -284,6 +281,10 @@ bool PrepareForReduce(const Tensor* input_tensor_ptr,
   if (num_elements == 0) {
     block_size = blocks = 0;
     return true;
+  }
+
+  if (0 == first_dim) {
+    return false;
   }
 
   block_size = num_elements / first_dim;
@@ -592,12 +593,11 @@ Status ReduceProd<T>::Compute(OpKernelContext* ctx) const {
 }
 
 template <typename T>
-static void ReduceSumCore(const T* input_data, T* output_data, bool no_transpose,
-                          int64_t blocks, int64_t block_size, FastAllocVector<T>& transposed_input_data,
-                          concurrency::ThreadPool* tp) {
+void ReduceSumCore(const T* input_data, T* output_data, bool no_transpose,
+                   int64_t blocks, int64_t block_size, FastAllocVector<T>& transposed_input_data,
+                   concurrency::ThreadPool* tp) {
   if (no_transpose) {
     auto lambda = [input_data, blocks, output_data](ptrdiff_t i) {
-
       // The ConstEigenMatrixMap type is expanded to work around a MS compiler issue
       output_data[i] = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(input_data + (i * blocks), blocks).sum();
     };
@@ -810,5 +810,15 @@ template class ReduceSum<float>;
 template class ReduceSum<int32_t>;
 template class ReduceSum<double>;
 template class ReduceSum<int64_t>;
+
+#define REGISTER_REDUCESUMCORE_TYPED(T)                                                                         \
+  template void ReduceSumCore<T>(const T* input_data, T* output_data, bool no_transpose,                        \
+                                 int64_t blocks, int64_t block_size, FastAllocVector<T>& transposed_input_data, \
+                                 concurrency::ThreadPool* tp);
+
+REGISTER_REDUCESUMCORE_TYPED(float)
+REGISTER_REDUCESUMCORE_TYPED(double)
+REGISTER_REDUCESUMCORE_TYPED(int32_t)
+REGISTER_REDUCESUMCORE_TYPED(int64_t)
 
 }  // namespace onnxruntime

@@ -542,7 +542,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             session.Dispose();
         }
 
-        private static Dictionary<string, string> GetSkippedModels()
+        private static Dictionary<string, string> GetSkippedModels(DirectoryInfo modelsDirInfo)
         {
             var skipModels = new Dictionary<string, string>() {
                 { "mxnet_arcface", "Model is an invalid ONNX model"},
@@ -568,6 +568,28 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 skipModels["mask_rcnn_keras"] = "Pad is not a registered function/op";
             }
 
+            // Skip traditional ML models
+            var disableMlOpsEnvVar = Environment.GetEnvironmentVariable("DisableMlOps");
+            var isMlOpsDisabled = (disableMlOpsEnvVar != null) ? disableMlOpsEnvVar.Equals("ON") : false;
+            if (isMlOpsDisabled)
+            {
+                foreach (var opsetDir in modelsDirInfo.EnumerateDirectories())
+                {
+                    foreach (var modelDir in opsetDir.EnumerateDirectories())
+                    {
+                        var modelDirName = modelDir.Name;
+                        if (modelDirName.StartsWith("scikit_") ||
+                        modelDirName.StartsWith("libsvm_") ||
+                        modelDirName.StartsWith("coreml_") ||
+                        modelDirName.StartsWith("keras2coreml_") ||
+                        modelDirName.StartsWith("XGBoost_"))
+                        {
+                            skipModels[modelDirName] = "Fails when ML ops are disabled";
+                        }
+                    } //model
+                } //opset
+            }
+
             // This model fails on x86 Win CI
             if (System.Environment.Is64BitProcess == false)
             {
@@ -586,7 +608,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             var modelsDir = GetTestModelsDir();
             var modelsDirInfo = new DirectoryInfo(modelsDir);
-            var skipModels = GetSkippedModels();
+            var skipModels = GetSkippedModels(modelsDirInfo);
 
             foreach (var opsetDir in modelsDirInfo.EnumerateDirectories())
             {
@@ -605,7 +627,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             var modelsDir = GetTestModelsDir();
             var modelsDirInfo = new DirectoryInfo(modelsDir);
-            var skipModels = GetSkippedModels();
+            var skipModels = GetSkippedModels(modelsDirInfo);
 
             foreach (var opsetDir in modelsDirInfo.EnumerateDirectories())
             {
@@ -1056,12 +1078,41 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         public void TestCreateFixedBufferOnnxValueFromStringTensor()
         {
             var tensor = new DenseTensor<string>(new string[] { "a", "b" }, new int[] { 1, 2 });
+            using (var value = FixedBufferOnnxValue.CreateFromTensor(tensor)) { }
+        }
 
-            Assert.Throws<ArgumentException>("value", () =>
+        [Fact]
+        public void TestReusingStringFixedBufferOnnxValue()
+        {
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_STRING.pb");
+            using (var session = new InferenceSession(modelPath))
             {
-                // cannot create from string tensor
-                FixedBufferOnnxValue.CreateFromTensor(tensor);
-            });
+                var tensorA = new DenseTensor<string>(new string[] { "a", "b", "c", "d", "e" }, new int[] { 1, 5 });
+                var tensorB = new DenseTensor<string>(new string[] { "v", "w", "x", "y", "z" }, new int[] { 1, 5 });
+                var tensorC = new DenseTensor<string>(new string[] { "i", "j", "k", "l", "m" }, new int[] { 1, 5 });
+                var tensorD = new DenseTensor<string>(new string[] { "i", "j", "k", "l", "m" }, new int[] { 1, 5 });
+                using (FixedBufferOnnxValue a = FixedBufferOnnxValue.CreateFromTensor(tensorA),
+                                            b = FixedBufferOnnxValue.CreateFromTensor(tensorB),
+                                            c = FixedBufferOnnxValue.CreateFromTensor(tensorC),
+                                            d = FixedBufferOnnxValue.CreateFromTensor(tensorD))
+                {
+                    // OK to use string type FixedBufferOnnxValue only in input
+                    session.Run(new[] { "input" }, new[] { a });
+
+                    // Cannot use string type FixedBufferOnnxValue in output
+                    Assert.Throws<NotSupportedException>(() =>
+                    {
+                        // NamedOnnxValue inputs
+                        session.Run(new[] { NamedOnnxValue.CreateFromTensor("input", tensorB) }, new[] { "output" }, new[] { b });
+                    });
+                    Assert.Throws<NotSupportedException>(() =>
+                    {
+                        // both FixedBufferOnnxValue for inputs and outputs
+                        session.Run(new[] { "input" }, new[] { c }, new[] { "output" }, new[] { d });
+                    });
+                }
+
+            }
         }
 
         [Fact]
@@ -1362,7 +1413,20 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Fact]
+        private class IgnoreWhenMlOpsDisabledFact : FactAttribute
+        {
+            public IgnoreWhenMlOpsDisabledFact()
+            {
+                var disableMlOpsEnvVar = Environment.GetEnvironmentVariable("DisableMlOps");
+                var isMlOpsDisabled = (disableMlOpsEnvVar != null) ? disableMlOpsEnvVar.Equals("ON") : false;
+                if (isMlOpsDisabled)
+                {
+                    Skip = "Skipping this test since Ml Ops are disabled.";
+                }
+            }
+        }
+
+        [IgnoreWhenMlOpsDisabledFact]
         private void TestModelSequenceOfMapIntFloat()
         {
             // test model trained using lightgbm classifier
@@ -1423,7 +1487,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Fact]
+        [IgnoreWhenMlOpsDisabledFact]
         private void TestModelSequenceOfMapStringFloat()
         {
             // test model trained using lightgbm classifier

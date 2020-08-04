@@ -149,44 +149,48 @@ struct DimSetter<d, dims...> {
 };
 
 template <int... dims>
-struct TensorShapeTypeProto : public TensorShapeProto {
+struct TensorShapeTypeProto {
   TensorShapeTypeProto() {
-    DimSetter<dims...>::set(*this);
+    DimSetter<dims...>::set(proto);
   }
+  TensorShapeProto proto;
 };
 
 template <>
-struct TensorShapeTypeProto<> : public TensorShapeProto {};
+struct TensorShapeTypeProto<> { TensorShapeProto proto; };
 
 template <TensorProto_DataType T>
-struct TensorTypeProto : public TypeProto {
+struct TensorTypeProto {
   TensorTypeProto() {
-    mutable_tensor_type()->set_elem_type(T);
+    proto.mutable_tensor_type()->set_elem_type(T);
   }
+  TypeProto proto;
 };
 
 template <TensorProto_DataType T>
-struct SparseTensorTypeProto : public TypeProto {
+struct SparseTensorTypeProto {
   SparseTensorTypeProto() {
-    mutable_sparse_tensor_type()->set_elem_type(T);
+    proto.mutable_sparse_tensor_type()->set_elem_type(T);
   }
   void SetShape(const TensorShapeProto& shape) {
-    mutable_sparse_tensor_type()->mutable_shape()->CopyFrom(shape);
+    proto.mutable_sparse_tensor_type()->mutable_shape()->CopyFrom(shape);
   }
   void SetShape(TensorShapeProto&& shape) {
-    *mutable_sparse_tensor_type()->mutable_shape() = std::move(shape);
+    *proto.mutable_sparse_tensor_type()->mutable_shape() = std::move(shape);
   }
   void ClearShape() {
-    mutable_sparse_tensor_type()->clear_shape();
+    proto.mutable_sparse_tensor_type()->clear_shape();
   }
+  TypeProto proto;
 };
 
 template <TensorProto_DataType key, TensorProto_DataType value>
-struct MapTypeProto : public TypeProto {
+struct MapTypeProto {
   MapTypeProto() {
-    mutable_map_type()->set_key_type(key);
-    mutable_map_type()->mutable_value_type()->mutable_tensor_type()->set_elem_type(value);
+    proto.mutable_map_type()->set_key_type(key);
+    proto.mutable_map_type()->mutable_value_type()->mutable_tensor_type()->set_elem_type(value);
   }
+  TypeProto proto;
 };
 
 class DataTypeTest : public testing::Test {
@@ -241,9 +245,9 @@ TEST_F(DataTypeTest, OpaqueRegistrationTest) {
 TEST_F(DataTypeTest, MapStringStringTest) {
   TensorTypeProto<TensorProto_DataType_FLOAT> tensor_type;
   auto ml_str_str = DataTypeImpl::GetType<MapStringToString>();
-  EXPECT_TRUE(DataTypeImpl::GetTensorType<float>()->IsCompatible(tensor_type));
-  EXPECT_FALSE(DataTypeImpl::GetTensorType<uint64_t>()->IsCompatible(tensor_type));
-  EXPECT_FALSE(ml_str_str->IsCompatible(tensor_type));
+  EXPECT_TRUE(DataTypeImpl::GetTensorType<float>()->IsCompatible(tensor_type.proto));
+  EXPECT_FALSE(DataTypeImpl::GetTensorType<uint64_t>()->IsCompatible(tensor_type.proto));
+  EXPECT_FALSE(ml_str_str->IsCompatible(tensor_type.proto));
   utils::ContainerChecker c_checker(ml_str_str);
   bool result = c_checker.IsMapOf<std::string, std::string>();
   EXPECT_TRUE(result);
@@ -257,17 +261,17 @@ TEST_F(DataTypeTest, MapStringStringTest) {
 
   MapTypeProto<TensorProto_DataType_STRING, TensorProto_DataType_STRING> maps2s_type;
   MapTypeProto<TensorProto_DataType_STRING, TensorProto_DataType_INT64> maps2i_type;
-  EXPECT_TRUE(ml_str_str->IsCompatible(maps2s_type));
-  EXPECT_FALSE(ml_str_str->IsCompatible(maps2i_type));
+  EXPECT_TRUE(ml_str_str->IsCompatible(maps2s_type.proto));
+  EXPECT_FALSE(ml_str_str->IsCompatible(maps2i_type.proto));
 }
 
 TEST_F(DataTypeTest, MapStringInt64Test) {
   MapTypeProto<TensorProto_DataType_STRING, TensorProto_DataType_STRING> maps2s_type;
   MapTypeProto<TensorProto_DataType_STRING, TensorProto_DataType_INT64> maps2i_type;
   TensorTypeProto<TensorProto_DataType_FLOAT> tensor_type;
-  EXPECT_FALSE(DataTypeImpl::GetType<MapStringToInt64>()->IsCompatible(maps2s_type));
-  EXPECT_TRUE(DataTypeImpl::GetType<MapStringToInt64>()->IsCompatible(maps2i_type));
-  EXPECT_FALSE(DataTypeImpl::GetType<MapStringToInt64>()->IsCompatible(tensor_type));
+  EXPECT_FALSE(DataTypeImpl::GetType<MapStringToInt64>()->IsCompatible(maps2s_type.proto));
+  EXPECT_TRUE(DataTypeImpl::GetType<MapStringToInt64>()->IsCompatible(maps2i_type.proto));
+  EXPECT_FALSE(DataTypeImpl::GetType<MapStringToInt64>()->IsCompatible(tensor_type.proto));
 
   utils::ContainerChecker c_checker(DataTypeImpl::GetType<MapStringToInt64>());
   bool result = c_checker.IsMapOf<std::string, int64_t>();
@@ -278,36 +282,36 @@ TEST_F(DataTypeTest, MapStringFloatTest) {
   MapTypeProto<TensorProto_DataType_STRING, TensorProto_DataType_FLOAT> maps2f_type;
   MapTypeProto<TensorProto_DataType_STRING, TensorProto_DataType_INT64> maps2i_type;
   TensorTypeProto<TensorProto_DataType_FLOAT> tensor_type;
-  EXPECT_TRUE(DataTypeImpl::GetType<MapStringToFloat>()->IsCompatible(maps2f_type));
-  EXPECT_FALSE(DataTypeImpl::GetType<MapStringToFloat>()->IsCompatible(maps2i_type));
-  EXPECT_FALSE(DataTypeImpl::GetType<MapStringToFloat>()->IsCompatible(tensor_type));
+  EXPECT_TRUE(DataTypeImpl::GetType<MapStringToFloat>()->IsCompatible(maps2f_type.proto));
+  EXPECT_FALSE(DataTypeImpl::GetType<MapStringToFloat>()->IsCompatible(maps2i_type.proto));
+  EXPECT_FALSE(DataTypeImpl::GetType<MapStringToFloat>()->IsCompatible(tensor_type.proto));
 }
 
 TEST_F(DataTypeTest, MapStringDoubleTest) {
   MapTypeProto<TensorProto_DataType_STRING, TensorProto_DataType_DOUBLE> maps2d_type;
   MapTypeProto<TensorProto_DataType_STRING, TensorProto_DataType_INT64> maps2i_type;
   TensorTypeProto<TensorProto_DataType_FLOAT> tensor_type;
-  EXPECT_TRUE(DataTypeImpl::GetType<MapStringToDouble>()->IsCompatible(maps2d_type));
-  EXPECT_FALSE(DataTypeImpl::GetType<MapStringToDouble>()->IsCompatible(maps2i_type));
-  EXPECT_FALSE(DataTypeImpl::GetType<MapStringToDouble>()->IsCompatible(tensor_type));
+  EXPECT_TRUE(DataTypeImpl::GetType<MapStringToDouble>()->IsCompatible(maps2d_type.proto));
+  EXPECT_FALSE(DataTypeImpl::GetType<MapStringToDouble>()->IsCompatible(maps2i_type.proto));
+  EXPECT_FALSE(DataTypeImpl::GetType<MapStringToDouble>()->IsCompatible(tensor_type.proto));
 }
 
 TEST_F(DataTypeTest, MapInt64StringTest) {
   MapTypeProto<TensorProto_DataType_INT64, TensorProto_DataType_STRING> mapi2s_type;
   MapTypeProto<TensorProto_DataType_INT64, TensorProto_DataType_INT64> mapi2i_type;
   TensorTypeProto<TensorProto_DataType_FLOAT> tensor_type;
-  EXPECT_TRUE(DataTypeImpl::GetType<MapInt64ToString>()->IsCompatible(mapi2s_type));
-  EXPECT_FALSE(DataTypeImpl::GetType<MapInt64ToString>()->IsCompatible(mapi2i_type));
-  EXPECT_FALSE(DataTypeImpl::GetType<MapInt64ToString>()->IsCompatible(tensor_type));
+  EXPECT_TRUE(DataTypeImpl::GetType<MapInt64ToString>()->IsCompatible(mapi2s_type.proto));
+  EXPECT_FALSE(DataTypeImpl::GetType<MapInt64ToString>()->IsCompatible(mapi2i_type.proto));
+  EXPECT_FALSE(DataTypeImpl::GetType<MapInt64ToString>()->IsCompatible(tensor_type.proto));
 }
 
 TEST_F(DataTypeTest, MapInt64DoubleTest) {
   MapTypeProto<TensorProto_DataType_INT64, TensorProto_DataType_DOUBLE> mapi2d_type;
   MapTypeProto<TensorProto_DataType_INT64, TensorProto_DataType_INT64> mapi2i_type;
   TensorTypeProto<TensorProto_DataType_FLOAT> tensor_type;
-  EXPECT_TRUE(DataTypeImpl::GetType<MapInt64ToDouble>()->IsCompatible(mapi2d_type));
-  EXPECT_FALSE(DataTypeImpl::GetType<MapInt64ToString>()->IsCompatible(mapi2i_type));
-  EXPECT_FALSE(DataTypeImpl::GetType<MapInt64ToString>()->IsCompatible(tensor_type));
+  EXPECT_TRUE(DataTypeImpl::GetType<MapInt64ToDouble>()->IsCompatible(mapi2d_type.proto));
+  EXPECT_FALSE(DataTypeImpl::GetType<MapInt64ToString>()->IsCompatible(mapi2i_type.proto));
+  EXPECT_FALSE(DataTypeImpl::GetType<MapInt64ToString>()->IsCompatible(tensor_type.proto));
 }
 
 TEST_F(DataTypeTest, RecursiveMapTest) {
@@ -366,9 +370,9 @@ TEST_F(DataTypeTest, VectorMapStringToFloatTest) {
   TensorTypeProto<TensorProto_DataType_FLOAT> tensor_type;
 
   EXPECT_TRUE(DataTypeImpl::GetType<VectorMapStringToFloat>()->IsCompatible(vector_map_string_to_float));
-  EXPECT_FALSE(DataTypeImpl::GetType<VectorMapStringToFloat>()->IsCompatible(mapi2d_type));
-  EXPECT_FALSE(DataTypeImpl::GetType<VectorMapStringToFloat>()->IsCompatible(mapi2i_type));
-  EXPECT_FALSE(DataTypeImpl::GetType<VectorMapStringToFloat>()->IsCompatible(tensor_type));
+  EXPECT_FALSE(DataTypeImpl::GetType<VectorMapStringToFloat>()->IsCompatible(mapi2d_type.proto));
+  EXPECT_FALSE(DataTypeImpl::GetType<VectorMapStringToFloat>()->IsCompatible(mapi2i_type.proto));
+  EXPECT_FALSE(DataTypeImpl::GetType<VectorMapStringToFloat>()->IsCompatible(tensor_type.proto));
   utils::ContainerChecker c_check(DataTypeImpl::GetType<VectorMapStringToFloat>());
   bool result =  c_check.IsSequenceOf<MapStringToFloat>();
   EXPECT_TRUE(result);
@@ -384,9 +388,9 @@ TEST_F(DataTypeTest, VectorMapInt64ToFloatTest) {
   TensorTypeProto<TensorProto_DataType_FLOAT> tensor_type;
 
   EXPECT_TRUE(DataTypeImpl::GetType<VectorMapInt64ToFloat>()->IsCompatible(type_proto));
-  EXPECT_FALSE(DataTypeImpl::GetType<VectorMapInt64ToFloat>()->IsCompatible(mapi2d_type));
-  EXPECT_FALSE(DataTypeImpl::GetType<VectorMapInt64ToFloat>()->IsCompatible(mapi2i_type));
-  EXPECT_FALSE(DataTypeImpl::GetType<VectorMapInt64ToFloat>()->IsCompatible(tensor_type));
+  EXPECT_FALSE(DataTypeImpl::GetType<VectorMapInt64ToFloat>()->IsCompatible(mapi2d_type.proto));
+  EXPECT_FALSE(DataTypeImpl::GetType<VectorMapInt64ToFloat>()->IsCompatible(mapi2i_type.proto));
+  EXPECT_FALSE(DataTypeImpl::GetType<VectorMapInt64ToFloat>()->IsCompatible(tensor_type.proto));
 }
 
 TEST_F(DataTypeTest, BFloat16Test) {
@@ -476,7 +480,7 @@ TEST_F(DataTypeTest, DataUtilsTest) {
     // We expect that the above string will be matched in both cases
     // where we have shape and where we don't
     SparseTensorTypeProto<TensorProto_DataType_UINT64> sparse_proto;
-    DataType ten_dt = DataTypeUtils::ToType(sparse_proto);
+    DataType ten_dt = DataTypeUtils::ToType(sparse_proto.proto);
     EXPECT_NE(ten_dt, nullptr);
     EXPECT_EQ(tensor_uint64, *ten_dt);
     DataType ten_from_str = DataTypeUtils::ToType(*ten_dt);
@@ -485,8 +489,8 @@ TEST_F(DataTypeTest, DataUtilsTest) {
 
     // Now add empty shape, we expect the same string
     TensorShapeTypeProto<> shape_no_dims;
-    sparse_proto.SetShape(shape_no_dims);
-    ten_dt = DataTypeUtils::ToType(sparse_proto);
+    sparse_proto.SetShape(shape_no_dims.proto);
+    ten_dt = DataTypeUtils::ToType(sparse_proto.proto);
     EXPECT_NE(ten_dt, nullptr);
     EXPECT_EQ(tensor_uint64, *ten_dt);
     ten_from_str = DataTypeUtils::ToType(*ten_dt);
@@ -496,8 +500,8 @@ TEST_F(DataTypeTest, DataUtilsTest) {
     // Now add shape with dimensions, we expect no difference
     sparse_proto.ClearShape();
     TensorShapeTypeProto<10, 12> shape_with_dim;
-    sparse_proto.SetShape(shape_with_dim);
-    ten_dt = DataTypeUtils::ToType(sparse_proto);
+    sparse_proto.SetShape(shape_with_dim.proto);
+    ten_dt = DataTypeUtils::ToType(sparse_proto.proto);
     EXPECT_NE(ten_dt, nullptr);
     EXPECT_EQ(tensor_uint64, *ten_dt);
     ten_from_str = DataTypeUtils::ToType(*ten_dt);

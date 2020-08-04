@@ -6,57 +6,10 @@
 #include "core/common/common.h"
 #include "core/common/exceptions.h"
 #include "core/framework/op_node_proto_helper.h"
-#include "core/providers/cpu/nn/autopad_type.h"
+#include "core/providers/common.h"
 #include "core/util/math.h"
 
 namespace onnxruntime {
-
-// helper function
-template <bool ForceSymmetricAutoPadding>
-Status ComputePadAndOutputShape(
-    const int64_t in_dim,
-    const int64_t stride,
-    const int64_t kernel,
-    const int64_t dilation,
-    AutoPadType pad_type,
-    int64_t* pad_head,
-    int64_t* pad_tail,
-    int64_t* out_dim) {
-  const int64_t dkernel = dilation * (kernel - 1) + 1;
-
-  if (pad_type == AutoPadType::NOTSET) {
-    *out_dim = static_cast<int64_t>(static_cast<float>(in_dim + *pad_head + *pad_tail - dkernel) / stride + 1);
-  } else {
-    switch (pad_type) {
-      case AutoPadType::VALID:
-        *pad_head = 0;
-        *pad_tail = 0;
-        *out_dim = (in_dim - dkernel) / stride + 1;
-        break;
-      case AutoPadType::SAME_UPPER:
-      case AutoPadType::SAME_LOWER: {
-        ORT_ENFORCE(dilation == 1, "Dilation not supported for AutoPadType::SAME_UPPER or AutoPadType::SAME_LOWER.");
-        int64_t legacy_target_size = (in_dim + stride - 1) / stride;
-        int64_t pad_needed = (legacy_target_size - 1) * stride + kernel - in_dim;
-        *out_dim = (in_dim + pad_needed - dkernel) / stride + 1;
-
-        // make sure padding is symmetric
-        if (ForceSymmetricAutoPadding)
-          pad_needed = math::roundUpPow2<int64_t, 2>(pad_needed);
-
-        if (pad_type == AutoPadType::SAME_LOWER) {
-          *pad_head = (pad_needed + 1) / 2;
-        } else {
-          *pad_head = pad_needed / 2;
-        }
-        *pad_tail = pad_needed - *pad_head;
-      } break;
-      default:
-        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "pad type not supported.");
-    }
-  }
-  return Status::OK();
-}
 
 // A helper struct holding attributes for Conv-family ops
 struct ConvAttributes {
@@ -151,34 +104,34 @@ struct ConvAttributes {
     return Status::OK();
   }
 
-  template <bool ForceSymmetricAutoPadding = false>
   Status InferOutputShape(const TensorShape& input_shape,
                           const std::vector<int64_t>& kernel_shape,
                           const std::vector<int64_t>& strides_p,
                           const std::vector<int64_t>& dilations_p,
-                          std::vector<int64_t>* pads_p,
-                          std::vector<int64_t>* output_shape) const {
+                          std::vector<int64_t>& pads_p,
+                          std::vector<int64_t>& output_shape,
+                          bool force_symmetric_auto_padding = false) const {
     size_t rank = input_shape.NumDimensions();
     for (size_t dim = 0; dim < rank; ++dim) {
       if (dim >= strides_p.size() || dim >= kernel_shape.size() ||
-          dim >= dilations_p.size() || dim >= pads_p->size() ||
-          rank + dim >= pads_p->size()) {
+          dim >= dilations_p.size() || dim >= pads_p.size() ||
+          rank + dim >= pads_p.size()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Out of bound access to array");
       }
       int64_t dim_size = 0;
-      ORT_RETURN_IF_ERROR(ComputePadAndOutputShape<ForceSymmetricAutoPadding>(
-          input_shape[dim],
-          strides_p[dim],
-          kernel_shape[dim],
-          dilations_p[dim],
-          auto_pad,
-          &pads_p->at(dim),
-          &pads_p->at(input_shape.NumDimensions() + dim),
-          &dim_size));
+      ORT_RETURN_IF_ERROR(ComputePadAndOutputShape(input_shape[dim],
+                                                   strides_p[dim],
+                                                   kernel_shape[dim],
+                                                   dilations_p[dim],
+                                                   auto_pad,
+                                                   pads_p.at(dim),
+                                                   pads_p.at(input_shape.NumDimensions() + dim),
+                                                   dim_size,
+                                                   force_symmetric_auto_padding));
       if (dim_size <= 0) {
         return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Invalid input shape: " + input_shape.ToString());
       }
-      output_shape->push_back(dim_size);
+      output_shape.push_back(dim_size);
     }
     return Status::OK();
   }

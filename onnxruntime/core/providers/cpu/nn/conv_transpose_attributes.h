@@ -61,14 +61,6 @@ struct ConvTransposeAttributes : public ConvAttributes {
                              " group: ", group);
     }
 
-    if (X->Shape().NumDimensions() > 4) {
-      // This condition is not true for 1 test in ONNX tests series:
-      // test_convtranspose_3d_cpu.
-      // TODO: the error message should tell which operator raises it.
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Only 1D and 2D ConvTranspose is supported.",
-                             " X: ", X->Shape().ToString().c_str());
-    }
-
     if (X->Shape().NumDimensions() != F->Shape().NumDimensions()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "X num_dims does not match W num_dims.",
                              " X: ", X->Shape().ToString().c_str(),
