@@ -5,9 +5,6 @@
 // In the future the internal implementations could derive from these to remove the need for the wrapper implementations
 
 #include "core/framework/func_api.h"
-#ifdef USE_TENSORRT
-#include <driver_Types.h>  // Cuda defines
-#endif
 
 namespace ONNX_NAMESPACE {
 using namespace onnxruntime;
@@ -268,8 +265,8 @@ struct ProviderHost {
   virtual void cuda__Impl_Cast(const int64_t* input_data, int32_t* output_data, size_t count) = 0;
   virtual void cuda__Impl_Cast(const int32_t* input_data, int64_t* output_data, size_t count) = 0;
 
-  virtual bool CudaCall_false(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg) = 0;
-  virtual bool CudaCall_true(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg) = 0;
+  virtual bool CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
+  virtual bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
 #endif
 
   virtual std::unique_ptr<Provider_IExecutionProvider_Router> Create_IExecutionProvider_Router(Provider_IExecutionProvider* outer, const std::string& type) = 0;
