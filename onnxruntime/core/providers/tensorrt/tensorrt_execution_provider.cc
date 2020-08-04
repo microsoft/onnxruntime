@@ -601,12 +601,13 @@ void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& 
           }
         }
       }
-
-      delete[] adjacency_map;
-      delete[] visited;
-      delete[] st;
     }
+
+    delete[] adjacency_map;
+    delete[] visited;
+    delete[] st;
   }
+}
 
   std::vector<std::unique_ptr<ComputeCapability>>
   TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
