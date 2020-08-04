@@ -214,6 +214,7 @@ struct PipelineWorkerState {
   std::vector<MLValue> feeds;
   std::vector<std::string> fetch_names;
   std::vector<MLValue> fetches;
+  std::exception_ptr execution_exception{nullptr};
 };
 
 struct PipelineWorkerPool {

@@ -258,8 +258,6 @@ def parse_arguments():
                  "MYRIAD_FP16", "VAD-F_FP32"],
         help="Build with OpenVINO for specific hardware.")
     parser.add_argument(
-        "--use_dnnlibrary", action='store_true', help="Build with DNNLibrary.")
-    parser.add_argument(
         "--use_nnapi", action='store_true', help="Build with NNAPI support.")
     parser.add_argument(
         "--use_rknpu", action='store_true', help="Build with RKNPU.")
@@ -354,6 +352,9 @@ def parse_arguments():
     parser.add_argument(
         "--armnn_relu", action='store_true',
         help="Use the Relu operator implementation from the ArmNN EP.")
+    parser.add_argument(
+        "--armnn_bn", action='store_true',
+        help="Use the Batch Normalization operator implementation from the ArmNN EP.")
     parser.add_argument(
         "--build_micro_benchmarks", action='store_true',
         help="Build ONNXRuntime micro-benchmarks.")
@@ -598,14 +599,13 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "ON" if args.use_openvino == "VAD-F_FP32" else "OFF"),
         "-Donnxruntime_USE_OPENVINO_BINARY=" + (
             "ON" if args.use_openvino else "OFF"),
-        "-Donnxruntime_USE_NNAPI_DNNLIBRARY=" + ("ON" if args.use_dnnlibrary else "OFF"),
         "-Donnxruntime_USE_NNAPI_BUILTIN=" + ("ON" if args.use_nnapi else "OFF"),
         "-Donnxruntime_USE_RKNPU=" + ("ON" if args.use_rknpu else "OFF"),
         "-Donnxruntime_USE_OPENMP=" + (
             "ON" if args.use_openmp and not (
-                args.use_dnnlibrary or args.use_mklml or args.use_ngraph or
+                args.use_nnapi or args.use_mklml or args.use_ngraph or
                 args.android or (args.ios and is_macOS())
-                or args.use_rknpu or args.use_nnapi)
+                or args.use_rknpu)
             else "OFF"),
         "-Donnxruntime_USE_TVM=" + ("ON" if args.use_tvm else "OFF"),
         "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_llvm else "OFF"),
@@ -654,6 +654,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "ON" if args.use_armnn else "OFF"),
         "-Donnxruntime_ARMNN_RELU_USE_CPU=" + (
             "OFF" if args.armnn_relu else "ON"),
+        "-Donnxruntime_ARMNN_BN_USE_CPU=" + (
+            "OFF" if args.armnn_bn else "ON"),
         # Training related flags
         "-Donnxruntime_ENABLE_NVTX_PROFILE=" + (
             "ON" if args.enable_nvtx_profile else "OFF"),
@@ -702,12 +704,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                        "-Deigen_SOURCE_PATH=" + args.eigen_path]
 
     if args.android:
-        if args.use_dnnlibrary and args.use_nnapi:
-            raise BuildError(
-                "Only one of --use_dnnlibrary and --use_nnapi " +
-                "can be enabled"
-            )
-
         cmake_args += [
             "-DCMAKE_TOOLCHAIN_FILE=" + args.android_ndk_path +
             "/build/cmake/android.toolchain.cmake",
@@ -1171,7 +1167,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             adb_push('onnx_test_runner', '/data/local/tmp/', cwd=cwd)
             adb_shell(
                 'cd /data/local/tmp && /data/local/tmp/onnxruntime_test_all')
-            if args.use_dnnlibrary or args.use_nnapi:
+            if args.use_nnapi:
                 adb_shell(
                     'cd /data/local/tmp && /data/local/tmp/onnx_test_runner -e nnapi /data/local/tmp/test')  # noqa
             else:
@@ -1631,7 +1627,7 @@ def main():
                     "Only Windows ARM(64) cross-compiled builds supported "
                     "currently through this script")
             install_ubuntu_deps(args)
-            if not is_docker() and not args.use_armnn:
+            if not is_docker() and not args.use_acl and not args.use_armnn:
                 install_python_deps()
         if args.enable_pybind and is_windows():
             install_python_deps(args.numpy_version)
