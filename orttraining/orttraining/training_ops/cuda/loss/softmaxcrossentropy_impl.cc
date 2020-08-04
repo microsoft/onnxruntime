@@ -182,6 +182,15 @@ Status SparseSoftmaxCrossEntropy<T, Tin>::ComputeInternal(OpKernelContext* ctx) 
   T* log_prob_data = log_prob->template MutableData<T>();
 
   if (true) {
+    // calculate  (label * log(softmax)) for each sample
+    const T* weight_data = nullptr;
+    if (OpKernel::Node().InputDefs().size() == 3) {
+      const Tensor& weight = *ctx->Input<Tensor>(2);
+      const TensorShape weight_shape{weight.Shape()};
+      ORT_ENFORCE(weight_shape == label_shape, "The shape in weights and labels is different");
+      weight_data = weight.template Data<T>();
+    }
+
     int torch_device = 0;
     cudaGetDevice(&torch_device);
 
@@ -192,6 +201,14 @@ Status SparseSoftmaxCrossEntropy<T, Tin>::ComputeInternal(OpKernelContext* ctx) 
     auto torch_label_tensor_options = torch::TensorOptions().dtype(get_torch_type<Tin>()).device(torch::kCUDA, torch_device);
     torch::Tensor torch_label = torch::zeros(c10::IntArrayRef{N}, torch_label_tensor_options);
     cudaMemcpy(torch_label.data_ptr(), label_data, N * sizeof(Tin), cudaMemcpyDeviceToDevice);
+
+    auto torch_weight_tensor_options = torch::TensorOptions().dtype(get_torch_type<T>()).device(torch::kCUDA, torch_device);
+    torch::Tensor torch_weight = torch::zeros(c10::IntArrayRef{N}, torch_weight_tensor_options);
+    cudaMemcpy(torch_weight.data_ptr(), weight_data, N * sizeof(T), cudaMemcpyDeviceToDevice);
+
+    auto torch_value_options = torch::TensorOptions().dtype(get_torch_type<Tin>()).device(torch::kCUDA, torch_device);
+    torch::Tensor torch_value = -torch::ones(c10::IntArrayRef{N}, torch_value_options);
+    at::masked_fill(torch_label, at::eq(torch_weight, torch::zeros_like(torch_weight)), torch_value);
 
     torch::Tensor torch_log_prob = at::log_softmax(torch_logit, 1, c10::nullopt);
     torch::Tensor torch_loss = at::nll_loss(torch_log_prob, torch_label, {}, reduction_ == ReductionType::SUM ? at::Reduction::Sum : at::Reduction::Mean, -1);
