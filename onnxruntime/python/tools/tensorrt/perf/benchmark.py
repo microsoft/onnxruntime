@@ -14,6 +14,7 @@ from onnx import numpy_helper
 from perf_utils import * 
 import pprint
 import torch
+from float16 import *
 
 from BERTSquad import *
 from Resnet18v1 import *
@@ -59,19 +60,21 @@ from YoloV2V2LOGO import *
 from YoloV2V3 import *
 from YoloV3PyTorch import *
 
+sys.path.append('.')
+
 logger = logging.getLogger('')
 
 MODELS = {
-    # "bert-squad": (BERTSquad, "bert-squad"),
+    "bert-squad": (BERTSquad, "bert-squad"),
     "faster-rcnn": (FasterRCNN, "faster-rcnn"),
-    # "mask-rcnn": (MaskRCNN, "mask-rcnn"),
-    # "ssd": (SSD, "ssd"),
-    "tiny-yolov2": (TinyYolov2, "tiny-yolov2"),
+    "mask-rcnn": (MaskRCNN, "mask-rcnn"),
+    "ssd": (SSD, "ssd"),
+    # "tiny-yolov2": (TinyYolov2, "tiny-yolov2"),
     # "tiny-yolov3": (TinyYolov3, "tiny-yolov3"),
     # "resnet152v1": (Resnet152v1, "resnet152v1"),
     # "resnet152v2": (Resnet152v2, "resnet152v2"),
     # "inception-v2": (InceptionV2, "inception-v2"),
-    "mobilenet-v2": (Mobilenet, "mobilenet-v2"),
+    # "mobilenet-v2": (Mobilenet, "mobilenet-v2"),
     # "zfnet512": (Zfnet512, "zfnet512"),
     # "vgg16": (Vgg16, "vgg16"),
     # "vgg19-bn": (Vgg19bn, "vgg19-bn"),
@@ -82,7 +85,7 @@ MODELS = {
     # "resnet101": (Resnet101, "resnet101"),
     # "inception-v1": (InceptionV1, "inception-v1"),
     # "shufflenet-v1": (ShufflenetV1, "shufflenet-v1"),
-    "shufflenet-v2": (ShufflenetV2, "shufflenet-v2"),
+    # "shufflenet-v2": (ShufflenetV2, "shufflenet-v2"),
     # "squeezenet1.1": (Squeezenet, "squeezenet1.1"),
     # "emotion-ferplus": (EmotionFerplus, "emotion-ferplus"),
     # "bvlc-googlenet": (Googlenet, "bvlc-googlenet"),
@@ -248,7 +251,7 @@ def get_trt_version():
 # inputs: [[test_data_0_input_0.pb, test_data_0_input_1.pb ...], [test_data_1_input_0.pb, test_data_1_input_1.pb ...] ...]
 # outputs: [[test_data_0_output_0.pb, test_data_0_output_1.pb ...], [test_data_1_output_0.pb, test_data_1_output_1.pb ...] ...]
 #
-def load_onnx_model_zoo_test_data(path):
+def load_onnx_model_zoo_test_data(path, data_type="fp32"):
     print("Parsing inputs/outputs of test data in {} ...".format(path))
     # p1 = subprocess.Popen(["find", path, "-name", "test_data_set*", "-type", "d"], stdout=subprocess.PIPE)
     p1 = subprocess.Popen(["find", path, "-name", "test_data*", "-type", "d"], stdout=subprocess.PIPE)
@@ -279,7 +282,13 @@ def load_onnx_model_zoo_test_data(path):
             tensor = onnx.TensorProto()
             with open(data, 'rb') as f:
                 tensor.ParseFromString(f.read())
-                input_data_pb.append(numpy_helper.to_array(tensor))
+
+                tensor_to_array = numpy_helper.to_array(tensor)
+
+                if data_type == "fp16" and tensor_to_array.dtype == np.dtype(np.float32):
+                    tensor_to_array = tensor_to_array.astype(np.float16)
+                input_data_pb.append(tensor_to_array)
+
                 print(np.array(input_data_pb[-1]).shape)
         inputs.append(input_data_pb)
 
@@ -296,7 +305,13 @@ def load_onnx_model_zoo_test_data(path):
             tensor = onnx.TensorProto()
             with open(data, 'rb') as f:
                 tensor.ParseFromString(f.read())
-                output_data_pb.append(numpy_helper.to_array(tensor))
+
+                tensor_to_array = numpy_helper.to_array(tensor)
+
+                if data_type == "fp16" and tensor_to_array.dtype == np.dtype(np.float32):
+                    tensor_to_array = tensor_to_array.astype(np.float16)
+                output_data_pb.append(tensor_to_array)
+
                 print(np.array(output_data_pb[-1]).shape)
         outputs.append(output_data_pb)
 
@@ -438,7 +453,9 @@ def run_onnxruntime(args, models=MODELS):
     get_system_info(sys_info)
 
     ep_to_provider_list = {
+        "CPUExecutionProvider": ["CPUExecutionProvider"],
         "CUDAExecutionProvider": ["CUDAExecutionProvider"],
+        "CUDAExecutionProvider_fp16": ["CUDAExecutionProvider"],
         "TensorrtExecutionProvider": ["TensorrtExecutionProvider", "CUDAExecutionProvider"],
         "TensorrtExecutionProvider_fp16": ["TensorrtExecutionProvider", "CUDAExecutionProvider"],
     }
@@ -450,10 +467,13 @@ def run_onnxruntime(args, models=MODELS):
 
     # provider_list = ["TensorrtExecutionProvider", "CUDAExecutionProvider"]
     # provider_list = ["CUDAExecutionProvider", "TensorrtExecutionProvider"]
-    provider_list = ["CUDAExecutionProvider"]
+    # provider_list = ["CUDAExecutionProvider"]
     # provider_list = ["TensorrtExecutionProvider"]
+    provider_list = ["CUDAExecutionProvider", "CUDAExecutionProvider_fp16"]
+    # provider_list = ["CUDAExecutionProvider_fp16"]
 
-    models.update(CVS_MODELS)
+    if args.model_zoo == "cvs":
+        models.update(CVS_MODELS)
 
     # iterate models
     for name in models.keys():
@@ -474,6 +494,10 @@ def run_onnxruntime(args, models=MODELS):
         inputs_for_cvs_model = []
         inputs = []
         ref_outputs = []
+        inputs_fp32 = []
+        ref_outputs_fp32 = []
+        inputs_fp16 = []
+        ref_outputs_fp16 = []
         ep_fail_set = set()
         ep_op_map = {} # map of map: ep -> operator
         profile_already_parsed = set()
@@ -499,21 +523,36 @@ def run_onnxruntime(args, models=MODELS):
                 logger.error("No {} support".format(ep_))
                 continue
                 
-            # create onnxruntime inference session
             logger.info("\nInitializing {} with {}...".format(name, ep_to_provider_list[ep]))
 
+            # create model instance
             model = model_class(providers=ep_to_provider_list[ep])
+            if ep == "CUDAExecutionProvider_fp16":
+                model.convert_model_from_float_to_float16() 
             model_name = model.get_model_name()
             model.set_model_zoo_source(args.model_zoo)
 
-            print(args.model_zoo)
             # read input/output of test data
-            if not inputs or not ref_outputs:
-                if args.model_zoo ==  "onnx":
-                    test_data_dir = model.get_onnx_zoo_test_data_dir()
-                elif args.model_zoo == "cvs":
-                    test_data_dir = model.get_cvs_model_test_data_dir()
-                inputs, ref_outputs = load_onnx_model_zoo_test_data(test_data_dir)
+            if fp16:
+                if not inputs_fp16 or not ref_outputs_fp16:
+                    if args.model_zoo ==  "onnx":
+                        test_data_dir = model.get_onnx_zoo_test_data_dir()
+                    elif args.model_zoo == "cvs":
+                        test_data_dir = model.get_cvs_model_test_data_dir()
+                    inputs, ref_outputs = load_onnx_model_zoo_test_data(test_data_dir, "fp16")
+                else:
+                    inputs = inputs_fp16
+                    ref_output = ref_outputs_fp16
+            else:
+                if not inputs_fp32 or not ref_outputs_fp32:
+                    if args.model_zoo ==  "onnx":
+                        test_data_dir = model.get_onnx_zoo_test_data_dir()
+                    elif args.model_zoo == "cvs":
+                        test_data_dir = model.get_cvs_model_test_data_dir()
+                    inputs, ref_outputs = load_onnx_model_zoo_test_data(test_data_dir)
+                else:
+                    inputs = inputs_fp32
+                    ref_output = ref_outputs_fp32
 
             # these settings are temporary
             sequence_length = 1
@@ -527,6 +566,7 @@ def run_onnxruntime(args, models=MODELS):
             model.set_session_options(options)
 
             try: 
+                # create onnxruntime inference session
                 if args.model_zoo ==  "onnx":
                     model.create_session()
                 elif args.model_zoo == "cvs":

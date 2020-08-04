@@ -72,10 +72,25 @@ class BaseModel(object):
     def get_ort_outputs(self):
         return None
 
-    def create_session(self, model_path=None):
+    def convert_model_from_float_to_float16(self, model_path=None):
+        # from onnxmltools.utils.float16_converter import convert_float_to_float16
+        from onnxmltools.utils import load_model, save_model
+        from float16 import convert_float_to_float16
+
         if not model_path:
             model_path = self.model_path_
 
+        onnx_model = load_model(model_path)
+        new_onnx_model = convert_float_to_float16(onnx_model)
+        save_model(new_onnx_model, 'new_fp16_model.onnx')
+
+        self.model_path_ = os.path.join(os.getcwd(), "new_fp16_model.onnx")
+
+    def create_session(self, model_path=None):
+        if not model_path:
+            model_path = self.model_path_
+        
+        print(model_path)
         try: 
             self.session_ = onnxruntime.InferenceSession(model_path, providers=self.providers_, sess_options=self.session_options_)
             return
