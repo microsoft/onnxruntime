@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 #include "test/providers/provider_test_utils.h"
 #include "onnx/shape_inference/implementation.h"
 #include "onnx/checker.h"
