@@ -57,7 +57,6 @@ class _OptimizerConfig(object):
 
         self.name = name
         self.lr = float(defaults['lr'])
-        self.base_lrs = [defaults['lr']]
         self.defaults = defaults
         self.params = []
 
