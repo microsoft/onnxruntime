@@ -74,11 +74,11 @@ static Status UnpackInitializerTensor(const onnx::TensorProto& initializer,
 }
 #undef CASE_UNPACK
 
-#define ADD_SCALAR_OPERAND(model_builder, input_indices, scalar_value)           \
-  {                                                                              \
-    uint32_t index = 0;                                                          \
-    ORT_THROW_IF_ERROR(model_builder.AddOperandFromScalar(scalar_value, index)); \
-    input_indices.push_back(index);                                              \
+#define ADD_SCALAR_OPERAND(model_builder, input_indices, scalar_value)            \
+  {                                                                               \
+    uint32_t index = 0;                                                           \
+    ORT_RETURN_IF_ERROR(model_builder.AddOperandFromScalar(scalar_value, index)); \
+    input_indices.push_back(index);                                               \
   }
 
 Status AddTransposeOperator(ModelBuilder& model_builder,
@@ -96,7 +96,7 @@ Status AddTransposeOperator(ModelBuilder& model_builder,
 
   Shape perm_dimen = {SafeInt<uint32_t>(perm.size())};
   OperandType perm_operand_type(Type::TENSOR_INT32, perm_dimen);
-  ORT_THROW_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(perm_name, perm.data(), perm_operand_type));
+  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(perm_name, perm.data(), perm_operand_type));
   uint32_t perm_idx = operand_indices.at(perm_name);
 
   input_indices.push_back(perm_idx);  // permutation
@@ -157,15 +157,15 @@ Status TransposeNCHWToNHWC(ModelBuilder& model_builder,
   return TransposeBetweenNCHWAndNHWC(model_builder, input, output, true /* nchw_to_nhwc */);
 }
 
-static void AddBinaryOperator(int32_t op_type,
-                              ModelBuilder& model_builder,
-                              const std::string& input1,
-                              const std::string& input2,
-                              int32_t fuse_code,
-                              const std::string& output,
-                              bool output_is_nhwc,
-                              float output_scale = 0.0f,
-                              int32_t output_zero_point = 0) {
+static Status AddBinaryOperator(int32_t op_type,
+                                ModelBuilder& model_builder,
+                                const std::string& input1,
+                                const std::string& input2,
+                                int32_t fuse_code,
+                                const std::string& output,
+                                bool output_is_nhwc,
+                                float output_scale = 0.0f,
+                                int32_t output_zero_point = 0) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -175,8 +175,11 @@ static void AddBinaryOperator(int32_t op_type,
   input_indices.push_back(operand_indices.at(input2));  // input 2
   ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
   shaper.Eltwise(input1, input2, output);
-  const OperandType output_operand_type(operand_types.at(input1).type, shaper[output], output_scale, output_zero_point);
-  model_builder.AddOperation(op_type, input_indices, {output}, {output_operand_type}, {output_is_nhwc});
+  const OperandType output_operand_type(operand_types.at(input1).type, shaper[output],
+                                        output_scale, output_zero_point);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_type, input_indices,
+                                                 {output}, {output_operand_type}, {output_is_nhwc}));
+  return Status::OK();
 }
 
 static bool GetType(const NodeArg& node_arg, int32_t& type) {
@@ -339,11 +342,12 @@ static Status AddInitializerTransposed(ModelBuilder& model_builder,
   return model_builder.AddOperandFromPersistMemoryBuffer(name, &buffer[0], operand_type);
 }
 
-static vector<int32_t> ComputeConvPads(
+static Status ComputeConvPads(
     const Shape& input_dimen,
     const uint32_t weight_size_y, const uint32_t weight_size_x,
     const std::vector<int32_t>& onnx_pads, const std::vector<int32_t>& onnx_strides, const std::vector<int32_t>& onnx_dilations,
-    AutoPadType auto_pad_type, bool nchw) {
+    AutoPadType auto_pad_type, bool nchw,
+    vector<int32_t>& pads_out) {
   const int32_t input_size_y = nchw ? input_dimen[2] : input_dimen[1];
   const int32_t input_size_x = nchw ? input_dimen[3] : input_dimen[2];
   const int32_t stride_y = onnx_strides[0];
@@ -356,33 +360,36 @@ static vector<int32_t> ComputeConvPads(
   int64_t padding_left = onnx_pads[1];
   int64_t padding_right = onnx_pads[3];
 
-  ORT_THROW_IF_ERROR(ComputePad(input_size_y,
-                                stride_y, weight_size_y, dilation_y,
-                                auto_pad_type,
-                                padding_top, padding_bottom));
-  ORT_THROW_IF_ERROR(ComputePad(input_size_x,
-                                stride_x, weight_size_x, dilation_x,
-                                auto_pad_type,
-                                padding_left, padding_right));
+  ORT_RETURN_IF_ERROR(ComputePad(input_size_y,
+                                 stride_y, weight_size_y, dilation_y,
+                                 auto_pad_type,
+                                 padding_top, padding_bottom));
+  ORT_RETURN_IF_ERROR(ComputePad(input_size_x,
+                                 stride_x, weight_size_x, dilation_x,
+                                 auto_pad_type,
+                                 padding_left, padding_right));
 
-  return {static_cast<int32_t>(padding_top), static_cast<int32_t>(padding_left),
-          static_cast<int32_t>(padding_bottom), static_cast<int32_t>(padding_right)};
+  pads_out = {static_cast<int32_t>(padding_top), static_cast<int32_t>(padding_left),
+              static_cast<int32_t>(padding_bottom), static_cast<int32_t>(padding_right)};
+
+  return Status::OK();
 }
 
-static void HandleAutoPad(const Shape& input_shape,
-                          const uint32_t weight_size_y,
-                          const uint32_t weight_size_x,
-                          const vector<int32_t>& onnx_strides,
-                          const vector<int32_t>& onnx_dilations,
-                          AutoPadType auto_pad_type,
-                          bool use_nchw,
-                          vector<int32_t>& onnx_pads,
-                          int32_t& nnapi_padding_code,
-                          bool& use_auto_pad) {
+static Status HandleAutoPad(const Shape& input_shape,
+                            const uint32_t weight_size_y,
+                            const uint32_t weight_size_x,
+                            const vector<int32_t>& onnx_strides,
+                            const vector<int32_t>& onnx_dilations,
+                            AutoPadType auto_pad_type,
+                            bool use_nchw,
+                            vector<int32_t>& onnx_pads,
+                            int32_t& nnapi_padding_code,
+                            bool& use_auto_pad) {
   if (auto_pad_type != AutoPadType::NOTSET) {
-    onnx_pads = ComputeConvPads(input_shape, weight_size_y, weight_size_x,
-                                onnx_pads, onnx_strides, onnx_dilations,
-                                auto_pad_type, use_nchw);
+    ORT_RETURN_IF_ERROR(ComputeConvPads(input_shape, weight_size_y, weight_size_x,
+                                        onnx_pads, onnx_strides, onnx_dilations,
+                                        auto_pad_type, use_nchw,
+                                        onnx_pads));
 
     if (AutoPadType::VALID == auto_pad_type || AutoPadType::SAME_UPPER == auto_pad_type) {
       use_auto_pad = true;
@@ -391,14 +398,18 @@ static void HandleAutoPad(const Shape& input_shape,
     }
   } else if (onnx_dilations == std::vector<int32_t>{1, 1}) {
     // Since NNAPI runs more efficiently using auto_pad, we try to map the NOTSET padding to auto_pad
-    const auto same_upper_pads = ComputeConvPads(input_shape, weight_size_y, weight_size_x,
-                                                 onnx_pads, onnx_strides, onnx_dilations,
-                                                 AutoPadType::SAME_UPPER, use_nchw);
+    vector<int32_t> same_upper_pads;
+    ORT_RETURN_IF_ERROR(ComputeConvPads(input_shape, weight_size_y, weight_size_x,
+                                        onnx_pads, onnx_strides, onnx_dilations,
+                                        AutoPadType::SAME_UPPER, use_nchw,
+                                        same_upper_pads));
     if (onnx_pads == same_upper_pads) {
       use_auto_pad = true;
       nnapi_padding_code = ANEURALNETWORKS_PADDING_SAME;
     }
   }
+
+  return Status::OK();
 }
 
 static bool IsQuantizationScaleSupported(
@@ -581,7 +592,7 @@ class BaseOpBuilder : public IOpBuilder {
 
   bool IsOpSupported(ModelBuilder& model_builder, const Node& node) override final;
 
-  void AddToModelBuilder(ModelBuilder& model_builder, const Node& node) override final;
+  Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node) override final;
 
  protected:
   virtual bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node);
@@ -591,7 +602,7 @@ class BaseOpBuilder : public IOpBuilder {
 
   virtual bool HasSupportedInputs(const Node& node);
 
-  virtual void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) = 0;
+  virtual Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) = 0;
 
   bool HasExternalInitializer(ModelBuilder& model_builder, const Node& node);
 };
@@ -639,13 +650,13 @@ bool BaseOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const N
   return true;
 }
 
-void BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node& node) {
-  ORT_ENFORCE(IsOpSupported(model_builder, node),
-              "Unsupported operator " + node.OpType());
+Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node& node) {
+  ORT_RETURN_IF_NOT(IsOpSupported(model_builder, node), "Unsupported operator " + node.OpType());
 
-  AddToModelBuilderImpl(model_builder, node);
+  ORT_RETURN_IF_ERROR(AddToModelBuilderImpl(model_builder, node));
   LOGS_DEFAULT(VERBOSE) << "Operator name: [" << node.Name()
                         << "] type: [" << node.OpType() << "] was added";
+  return Status::OK();
 }
 
 bool BaseOpBuilder::HasExternalInitializer(ModelBuilder& model_builder, const Node& node) {
@@ -679,7 +690,7 @@ class BinaryOpBuilder : public BaseOpBuilder {
   int32_t GetMinSupportedSdkVer(ModelBuilder& model_builder, const Node& node) const override;
   bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
   bool HasSupportedInputs(const Node& node) override;
-  void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
 void BinaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) {
@@ -757,7 +768,7 @@ bool BinaryOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node&
   return true;
 }
 
-void BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
+Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   const auto& op_type(node.OpType());
   const auto input_defs(node.InputDefs());
 
@@ -772,7 +783,7 @@ void BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   else if (op_type == "Div")
     op_code = ANEURALNETWORKS_DIV;
   else {
-    ORT_THROW("UnaryOpBuilder, unknown op: " + op_type);
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "UnaryOpBuilder, unknown op: " + op_type);
   }
 
   size_t a_idx = 0, b_idx = 1;
@@ -814,20 +825,21 @@ void BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
           y_zero_point = 0;
 
   if (op_is_qlinear) {
-    ORT_THROW_IF_ERROR(
-        GetBinaryOpQuantizationScaleAndZeroPoint(model_builder, node,
-                                                 a_scale, b_scale, y_scale,
-                                                 a_zero_point, b_zero_point, y_zero_point));
+    ORT_RETURN_IF_ERROR(GetBinaryOpQuantizationScaleAndZeroPoint(model_builder, node,
+                                                                 a_scale, b_scale, y_scale,
+                                                                 a_zero_point, b_zero_point, y_zero_point));
   }
 
   // Verify if the scale and zero point matchs from onnx input and nnapi input
   if (op_is_qlinear) {
-    ORT_THROW_IF_ERROR(IsValidInputQuantizedType(model_builder, input1, a_scale, a_zero_point));
-    ORT_THROW_IF_ERROR(IsValidInputQuantizedType(model_builder, input2, b_scale, b_zero_point));
+    ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input1, a_scale, a_zero_point));
+    ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input2, b_scale, b_zero_point));
   }
 
   int32_t fuse_code = model_builder.FindActivation(node, *node.OutputDefs()[0]);
-  AddBinaryOperator(op_code, model_builder, input1, input2, fuse_code, output, output_is_nhwc, y_scale, y_zero_point);
+  return AddBinaryOperator(op_code, model_builder,
+                           input1, input2, fuse_code,
+                           output, output_is_nhwc, y_scale, y_zero_point);
 }
 
 #pragma endregion
@@ -836,10 +848,10 @@ void BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 class ReluOpBuilder : public BaseOpBuilder {
  private:
-  void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
-void ReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
+Status ReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -857,8 +869,11 @@ void ReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
   } else {
     std::vector<uint32_t> input_indices;
     input_indices.push_back(operand_indices.at(input));
-    model_builder.AddOperation(ANEURALNETWORKS_RELU, input_indices, {output}, {output_operand_type}, {output_is_nhwc});
+    ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_RELU, input_indices,
+                                                   {output}, {output_operand_type}, {output_is_nhwc}));
   }
+
+  return Status::OK();
 }
 
 #pragma endregion op_relu
@@ -873,7 +888,7 @@ class TransposeOpBuilder : public BaseOpBuilder {
     return 28;
   }
 
-  void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
 bool TransposeOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const Node& node) {
@@ -891,7 +906,7 @@ bool TransposeOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, co
   return true;
 }
 
-void TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
+Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   auto& shaper(model_builder.GetShaper());
 
   auto input = node.InputDefs()[0]->Name();
@@ -903,11 +918,11 @@ void TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
     for (int32_t i = input_dims - 1; i >= 0; i--)
       perm.push_back(i);
   } else {
-    ORT_ENFORCE(perm.size() == input_dims, "Perm and input should have same dimension");
+    ORT_RETURN_IF_NOT(perm.size() == input_dims, "Perm and input should have same dimension");
   }
 
   if (model_builder.IsOperandNHWC(input)) {
-    ORT_ENFORCE(input_dims == 4, "Only 4D shape can be nhwc");
+    ORT_RETURN_IF_NOT(input_dims == 4, "Only 4D shape can be nhwc");
 
     // we are using nhwc here, but the axis is in nchw, need to transpose axis from nchw to nhwc
     const int32_t axis_nchw_to_nhwc[4]{0, 3, 1, 2};
@@ -921,7 +936,9 @@ void TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   // any scenario will do this since onnx is nchw only, assume the output is always not nhwc
   // even it is, there will be extra transpose in the onnx model to convert it back to nchw
   // before conv/pool/... operators
-  AddTransposeOperator(model_builder, input, perm_name, perm, output, false /* is_nhwc */);
+  ORT_RETURN_IF_ERROR(AddTransposeOperator(model_builder, input, perm_name, perm, output, false /* is_nhwc */));
+
+  return Status::OK();
 }
 
 #pragma endregion op_transpose
@@ -935,7 +952,7 @@ class ReshapeOpBuilder : public BaseOpBuilder {
  private:
   bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
 
-  void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
 void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) {
@@ -975,7 +992,7 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node
   return true;
 }
 
-void ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
+Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -1010,13 +1027,15 @@ void ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   Shape shape_dimen = {size};
   std::string shape_name = model_builder.GetUniqueName(node.Name() + input + "newshape");
   OperandType shape_operand_type(Type::TENSOR_INT32, shape_dimen);
-  ORT_THROW_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(shape_name, shape.data(), shape_operand_type));
+  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(shape_name, shape.data(), shape_operand_type));
   input_indices.push_back(operand_indices.at(shape_name));
 
   shaper.Reshape(input, shape, output);
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
-  model_builder.AddOperation(ANEURALNETWORKS_RESHAPE, input_indices,
-                             {output}, {output_operand_type}, {false});
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_RESHAPE, input_indices,
+                                                 {output}, {output_operand_type}, {false}));
+
+  return Status::OK();
 }
 
 #pragma endregion op_reshape
@@ -1030,7 +1049,7 @@ class BatchNormalizationOpBuilder : public BaseOpBuilder {
  private:
   bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
 
-  void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
 void BatchNormalizationOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) {
@@ -1073,7 +1092,7 @@ bool BatchNormalizationOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder,
   return true;
 }
 
-void BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
+Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_types(model_builder.GetOperandTypes());
   const auto& initializers(model_builder.GetInitializerTensors());
@@ -1121,26 +1140,28 @@ void BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
   shaper.AddShape(tensor_a_name, tensor_a_dimen);
   shaper.AddShape(tensor_b_name, tensor_a_dimen);
   const OperandType a_operand_type(operand_types.at(input).type, tensor_a_dimen);
-  ORT_THROW_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(tensor_a_name, a.data(), a_operand_type));
+  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(tensor_a_name, a.data(), a_operand_type));
   const OperandType b_operand_type(operand_types.at(input).type, tensor_a_dimen);
-  ORT_THROW_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(tensor_b_name, b.data(), b_operand_type));
+  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(tensor_b_name, b.data(), b_operand_type));
 
   // Mul
-  AddBinaryOperator(ANEURALNETWORKS_MUL,
-                    model_builder,
-                    input, tensor_a_name,
-                    ANEURALNETWORKS_FUSED_NONE,
-                    tensor_imm_product_name,
-                    output_is_nhwc);
+  ORT_RETURN_IF_ERROR(AddBinaryOperator(ANEURALNETWORKS_MUL,
+                                        model_builder,
+                                        input, tensor_a_name,
+                                        ANEURALNETWORKS_FUSED_NONE,
+                                        tensor_imm_product_name,
+                                        output_is_nhwc));
 
   // Add
   int32_t fuse_code = model_builder.FindActivation(node, *node.OutputDefs()[0]);
-  AddBinaryOperator(ANEURALNETWORKS_ADD,
-                    model_builder,
-                    tensor_imm_product_name, tensor_b_name,
-                    fuse_code,
-                    output,
-                    output_is_nhwc);
+  ORT_RETURN_IF_ERROR(AddBinaryOperator(ANEURALNETWORKS_ADD,
+                                        model_builder,
+                                        tensor_imm_product_name, tensor_b_name,
+                                        fuse_code,
+                                        output,
+                                        output_is_nhwc));
+
+  return Status::OK();
 }
 
 #pragma endregion op_batchnormalization
@@ -1155,7 +1176,7 @@ class PoolOpBuilder : public BaseOpBuilder {
     return model_builder.UseNCHW() ? 29 : 28;
   }
 
-  void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
 bool PoolOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const Node& node) {
@@ -1215,7 +1236,7 @@ bool PoolOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const N
   return true;
 }
 
-void PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
+Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -1227,7 +1248,7 @@ void PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
   bool input_is_nhwc = model_builder.IsOperandNHWC(input);
   bool output_is_nhwc = false;
   if (use_nchw) {
-    ORT_ENFORCE(!input_is_nhwc, "model_builder.UseNCHW() but input is NHWC");
+    ORT_RETURN_IF_NOT(!input_is_nhwc, "model_builder.UseNCHW() but input is NHWC");
   } else {
     output_is_nhwc = true;
     if (!input_is_nhwc) {
@@ -1306,7 +1327,9 @@ void PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
               use_nchw,
               output);
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
-  model_builder.AddOperation(op_code, input_indices, {output}, {output_operand_type}, {output_is_nhwc});
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
+                                                 {output}, {output_operand_type}, {output_is_nhwc}));
+  return Status::OK();
 }
 
 #pragma endregion op_pool
@@ -1325,7 +1348,7 @@ class ConvOpBuilder : public BaseOpBuilder {
   }
 
   bool HasSupportedInputs(const Node& node) override;
-  void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
 bool ConvOpBuilder::HasSupportedInputs(const Node& node) {
@@ -1420,7 +1443,7 @@ bool ConvOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& n
   return true;
 }
 
-void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
+Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -1452,7 +1475,7 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
   bool input_is_nhwc = model_builder.IsOperandNHWC(input);
   bool output_is_nhwc = false;
   if (use_nchw) {
-    ORT_ENFORCE(!input_is_nhwc, "model_builder.UseNCHW() but input is NHWC");
+    ORT_RETURN_IF_NOT(!input_is_nhwc, "model_builder.UseNCHW() but input is NHWC");
   } else {
     output_is_nhwc = true;
     if (!input_is_nhwc) {
@@ -1472,10 +1495,9 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
           y_zero_point = 0;
 
   if (is_qlinear_conv) {
-    ORT_THROW_IF_ERROR(
-        GetBinaryOpQuantizationScaleAndZeroPoint(model_builder, node,
-                                                 x_scale, w_scale, y_scale,
-                                                 x_zero_point, w_zero_point, y_zero_point));
+    ORT_RETURN_IF_ERROR(GetBinaryOpQuantizationScaleAndZeroPoint(model_builder, node,
+                                                                 x_scale, w_scale, y_scale,
+                                                                 x_zero_point, w_zero_point, y_zero_point));
   }
 
   const auto& weight = input_defs[w_idx]->Name();
@@ -1510,8 +1532,9 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
       onnx_weight_type = Type::TENSOR_QUANT8_ASYMM;
       break;
     default:
-      ORT_THROW("The initializer of graph " + weight + " doesn't have valid type: " +
-                std::to_string(weight_tensor.data_type()));
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                    "The initializer of graph " + weight + " doesn't have valid type: " +
+                        std::to_string(weight_tensor.data_type()));
   }
 
   OperandType onnx_weight_operand_type(onnx_weight_type, onnx_weight_shape, w_scale, w_zero_point);
@@ -1525,8 +1548,8 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
 
   if (is_qlinear_conv) {
     // Verify if the scale and zero point matchs from onnx input/weight and nnapi input/weight
-    ORT_THROW_IF_ERROR(IsValidInputQuantizedType(model_builder, input, x_scale, x_zero_point));
-    ORT_THROW_IF_ERROR(IsValidInputQuantizedType(model_builder, weight, w_scale, w_zero_point));
+    ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, x_scale, x_zero_point));
+    ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, weight, w_scale, w_zero_point));
   }
 
   bool hasBias = (input_defs.size() > b_idx);
@@ -1543,25 +1566,25 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
     if (weight_type == Type::TENSOR_FLOAT32) {
       vector<float> buffer(bias_dimen[0], 0.0f);
       OperandType bias_operand_type(Type::TENSOR_FLOAT32, bias_dimen, x_scale * w_scale);
-      ORT_THROW_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer.data(), bias_operand_type));
+      ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer.data(), bias_operand_type));
     } else if (weight_type == Type::TENSOR_QUANT8_ASYMM) {
       vector<int32_t> buffer(bias_dimen[0], 0);
       OperandType bias_operand_type(Type::TENSOR_INT32, bias_dimen, x_scale * w_scale);
-      ORT_THROW_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer.data(), bias_operand_type));
+      ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer.data(), bias_operand_type));
     } else {
-      ORT_THROW("Unknown weight type " + TypeToStr(weight_type));
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Unknown weight type " + TypeToStr(weight_type));
     }
   } else if (is_qlinear_conv) {  // QLinearConv's bias type need special handling
     const auto& bias_tensor = model_builder.GetInitializerTensors().at(bias);
-    ORT_ENFORCE(bias_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT32,
-                "bias of QLinearConv should be int32, actual type: " + std::to_string(bias_tensor.data_type()));
+    ORT_RETURN_IF_NOT(bias_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT32,
+                      "bias of QLinearConv should be int32, actual type: " + std::to_string(bias_tensor.data_type()));
     Shape bias_dimen;
     for (auto dim : bias_tensor.dims())
       bias_dimen.push_back(SafeInt<uint32_t>(dim));
 
     const void* buffer = GetTensorInt32Data(bias_tensor);
     OperandType bias_operand_type(Type::TENSOR_INT32, bias_dimen, x_scale * w_scale);
-    ORT_THROW_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer, bias_operand_type));
+    ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer, bias_operand_type));
   }
 
   const auto auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
@@ -1637,7 +1660,9 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
   }
 
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output], y_scale, y_zero_point);
-  model_builder.AddOperation(operationCode, input_indices, {output}, {output_operand_type}, {output_is_nhwc});
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(operationCode, input_indices,
+                                                 {output}, {output_operand_type}, {output_is_nhwc}));
+  return Status::OK();
 }
 
 #pragma endregion op_conv
@@ -1652,7 +1677,7 @@ class CastOpBuilder : public BaseOpBuilder {
     return 29;
   }
 
-  void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
 bool CastOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const Node& node) {
@@ -1667,7 +1692,7 @@ bool CastOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const N
   return true;
 }
 
-void CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
+Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   NodeAttrHelper helper(node);
@@ -1686,16 +1711,16 @@ void CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
       type = Type::TENSOR_INT32;
       break;
     default:
-      ORT_THROW("Invalid cast to type: " +
-                std::to_string(to));
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Invalid cast to type: " + std::to_string(to));
   }
 
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   shaper.Identity(input, output);
   const OperandType output_operand_type(type, shaper[output]);
-  model_builder.AddOperation(ANEURALNETWORKS_CAST, input_indices, {output},
-                             {output_operand_type}, {output_is_nhwc});
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_CAST, input_indices, {output},
+                                                 {output_operand_type}, {output_is_nhwc}));
+  return Status::OK();
 }
 
 #pragma endregion
@@ -1710,7 +1735,7 @@ class SoftMaxOpBuilder : public BaseOpBuilder {
     return 28;
   }
 
-  void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
 bool SoftMaxOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) {
@@ -1740,7 +1765,7 @@ bool SoftMaxOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node
   return true;
 }
 
-void SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
+Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -1781,8 +1806,9 @@ void SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
   shaper.Identity(input, output);
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
-  model_builder.AddOperation(ANEURALNETWORKS_SOFTMAX, input_indices, {output},
-                             {output_operand_type}, {output_is_nhwc});
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_SOFTMAX, input_indices,
+                                                 {output}, {output_operand_type}, {output_is_nhwc}));
+  return Status::OK();
 }
 
 #pragma endregion
@@ -1791,10 +1817,10 @@ void SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
 class IdentityOpBuilder : public BaseOpBuilder {
  private:
-  void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
-void IdentityOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
+Status IdentityOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   // Identity is not really going to do anything
   // Just register the dimension and type, with same index and new name
   auto& shaper(model_builder.GetShaper());
@@ -1811,6 +1837,7 @@ void IdentityOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   shaper.Identity(input, output);
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
   model_builder.RegisterOperand(output, operand_indices.at(input), output_operand_type, output_is_nhwc);
+  return Status::OK();
 }
 
 #pragma endregion
@@ -1824,7 +1851,7 @@ class GemmOpBuilder : public BaseOpBuilder {
  private:
   bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
   bool HasSupportedInputs(const Node& node) override;
-  void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
 bool GemmOpBuilder::HasSupportedInputs(const Node& node) {
@@ -1958,7 +1985,7 @@ void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
   }
 }
 
-void GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
+Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -1986,10 +2013,9 @@ void GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
           y_zero_point = 0;
 
   if (is_qlinear_matmul) {
-    ORT_THROW_IF_ERROR(
-        GetBinaryOpQuantizationScaleAndZeroPoint(model_builder, node,
-                                                 a_scale, b_scale, y_scale,
-                                                 a_zero_point, b_zero_point, y_zero_point));
+    ORT_RETURN_IF_ERROR(GetBinaryOpQuantizationScaleAndZeroPoint(model_builder, node,
+                                                                 a_scale, b_scale, y_scale,
+                                                                 a_zero_point, b_zero_point, y_zero_point));
   }
 
   uint32_t input_2_idx;
@@ -2013,8 +2039,8 @@ void GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
 
   // Verify if the scale and zero point matchs from onnx input and nnapi input
   if (is_qlinear_matmul) {
-    ORT_THROW_IF_ERROR(IsValidInputQuantizedType(model_builder, input1, a_scale, a_zero_point));
-    ORT_THROW_IF_ERROR(IsValidInputQuantizedType(model_builder, input2, b_scale, b_zero_point));
+    ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input1, a_scale, a_zero_point));
+    ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input2, b_scale, b_zero_point));
   }
 
   uint32_t bias_idx;
@@ -2029,13 +2055,13 @@ void GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
     if (bias_type == Type::TENSOR_FLOAT32) {
       std::vector<float> buffer(bias_dimen[0], 0.f);
       OperandType bias_operand_type(Type::TENSOR_FLOAT32, bias_dimen);
-      ORT_THROW_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer.data(), bias_operand_type));
+      ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer.data(), bias_operand_type));
     } else if (bias_type == Type::TENSOR_QUANT8_ASYMM) {
       std::vector<int32_t> buffer(bias_dimen[0], 0);
       OperandType bias_operand_type(Type::TENSOR_INT32, bias_dimen, a_scale * b_scale, 0);
-      ORT_THROW_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer.data(), bias_operand_type));
+      ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer.data(), bias_operand_type));
     } else {
-      ORT_THROW("Unknown weight type " + TypeToStr(bias_type));
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Unknown weight type " + TypeToStr(bias_type));
     }
 
     bias_idx = operand_indices.at(bias);
@@ -2050,8 +2076,9 @@ void GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
 
   shaper.FC(input1, input2, output);
   const OperandType output_operand_type(operand_types.at(input1).type, shaper[output], y_scale, y_zero_point);
-  model_builder.AddOperation(ANEURALNETWORKS_FULLY_CONNECTED, input_indices, {output},
-                             {output_operand_type}, {false});
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_FULLY_CONNECTED, input_indices,
+                                                 {output}, {output_operand_type}, {false}));
+  return Status::OK();
 }
 
 #pragma endregion
@@ -2062,7 +2089,7 @@ class UnaryOpBuilder : public BaseOpBuilder {
  private:
   int32_t GetMinSupportedSdkVer(ModelBuilder& model_builder, const Node& node) const override;
 
-  void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
 int32_t UnaryOpBuilder::GetMinSupportedSdkVer(ModelBuilder& /* model_builder */, const Node& node) const {
@@ -2079,7 +2106,7 @@ int32_t UnaryOpBuilder::GetMinSupportedSdkVer(ModelBuilder& /* model_builder */,
   return 27;
 }
 
-void UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
+Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -2112,11 +2139,13 @@ void UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   else if (op_type == "Tanh")
     op_code = ANEURALNETWORKS_TANH;
   else {
-    ORT_THROW("UnaryOpBuilder, unknown op: " + op_type);
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "UnaryOpBuilder, unknown op: " + op_type);
   }
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
-  model_builder.AddOperation(op_code, input_indices, {output}, {output_operand_type}, {output_is_nhwc});
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
+                                                 {output}, {output_operand_type}, {output_is_nhwc}));
+  return Status::OK();
 }
 
 #pragma endregion
@@ -2127,7 +2156,7 @@ class ConcatOpBuilder : public BaseOpBuilder {
  private:
   bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
 
-  void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
 bool ConcatOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const Node& node) {
@@ -2145,7 +2174,7 @@ bool ConcatOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const
   return true;
 }
 
-void ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
+Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -2157,7 +2186,7 @@ void ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   bool output_is_nhwc = false;
   const auto node_input_size = node.InputDefs().size();
 
-  // First we want to see if all the input are smae layout
+  // First we want to see if all the input are same layout
   for (size_t i = 0; i < node_input_size - 1; i++) {
     all_input_have_same_layout =
         all_input_have_same_layout &&
@@ -2198,9 +2227,9 @@ void ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   }
 
   if (output_is_nhwc) {
-    ORT_ENFORCE(rank == 4, "nhwc is only on 4d shape, input " + input0 +
-                               " has rank: " + std::to_string(rank));
-    // we are using nhwc here, but the axis is in nwhw, need to transpose axis from nchw to nhwc
+    ORT_RETURN_IF_NOT(rank == 4, "nhwc is only on 4d shape, input " + input0 +
+                                     " has rank: " + std::to_string(rank));
+    // we are using nhwc here, but the axis is in nchw, need to transpose axis from nchw to nhwc
     const uint32_t axis_nchw_to_nhwc[4]{0, 3, 1, 2};
     axis = axis_nchw_to_nhwc[axis];
   }
@@ -2209,8 +2238,9 @@ void ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const auto& output = node.OutputDefs()[0]->Name();
   shaper.Concat(inputs, axis, output);
   const OperandType output_operand_type(operand_types.at(input0).type, shaper[output]);
-  model_builder.AddOperation(ANEURALNETWORKS_CONCATENATION, input_indices, {output},
-                             {output_operand_type}, {output_is_nhwc});
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_CONCATENATION, input_indices,
+                                                 {output}, {output_operand_type}, {output_is_nhwc}));
+  return Status::OK();
 }
 
 #pragma endregion
@@ -2225,7 +2255,7 @@ class SqueezeOpBuilder : public BaseOpBuilder {
     return 28;
   }
 
-  void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
 bool SqueezeOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const Node& node) {
@@ -2243,7 +2273,7 @@ bool SqueezeOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, cons
   return true;
 }
 
-void SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
+Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -2278,7 +2308,7 @@ void SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   Shape axes_dimen = {static_cast<uint32_t>(axes.size())};
   shaper.AddShape(axes_name, axes_dimen);
   const OperandType axes_operand_type(Type::TENSOR_INT32, axes_dimen);
-  ORT_THROW_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(axes_name, axes.data(), axes_operand_type));
+  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(axes_name, axes.data(), axes_operand_type));
 
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));      // input
@@ -2287,8 +2317,9 @@ void SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   const auto& output = node.OutputDefs()[0]->Name();
   shaper.Squeeze(input, axes, output);
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
-  model_builder.AddOperation(ANEURALNETWORKS_SQUEEZE, input_indices, {output},
-                             {output_operand_type}, {false});
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_SQUEEZE, input_indices,
+                                                 {output}, {output_operand_type}, {false}));
+  return Status::OK();
 }
 
 #pragma endregion
@@ -2306,7 +2337,7 @@ class QuantizeLinearOpBuilder : public BaseOpBuilder {
     return 27;
   }
 
-  void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
 void QuantizeLinearOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) {
@@ -2344,7 +2375,7 @@ bool QuantizeLinearOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, con
   return true;
 }
 
-void QuantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
+Status QuantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto input_defs(node.InputDefs());
@@ -2358,7 +2389,7 @@ void QuantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   Type output_type = Type::TENSOR_QUANT8_ASYMM;
 
   if (input_defs.size() == 3) {  // Get zero point
-    ORT_THROW_IF_ERROR(GetQuantizationZeroPoint(model_builder, node, 2, zero_point));
+    ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(model_builder, node, 2, zero_point));
   }
 
   LOGS_DEFAULT(VERBOSE) << "scale: " << scale << " zp: " << zero_point;
@@ -2367,7 +2398,9 @@ void QuantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const OperandType output_operand_type(output_type, shaper[output], scale, zero_point);
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
-  model_builder.AddOperation(ANEURALNETWORKS_QUANTIZE, input_indices, {output}, {output_operand_type}, {output_is_nhwc});
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_QUANTIZE, input_indices,
+                                                 {output}, {output_operand_type}, {output_is_nhwc}));
+  return Status::OK();
 }
 
 #pragma endregion
@@ -2386,7 +2419,7 @@ class DequantizeLinearOpBuilder : public BaseOpBuilder {
   }
 
   bool HasSupportedInputs(const Node& node) override;
-  void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
 bool DequantizeLinearOpBuilder::HasSupportedInputs(const Node& node) {
@@ -2427,7 +2460,7 @@ bool DequantizeLinearOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, c
   return true;
 }
 
-void DequantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
+Status DequantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto input_defs(node.InputDefs());
@@ -2439,17 +2472,19 @@ void DequantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builde
   float scale = GetQuantizationScale(model_builder, node, 1);
   int32_t zero_point = 0;
   if (input_defs.size() == 3) {  // Get zero point
-    ORT_THROW_IF_ERROR(GetQuantizationZeroPoint(model_builder, node, 2, zero_point));
+    ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(model_builder, node, 2, zero_point));
   }
 
-  ORT_THROW_IF_ERROR(IsValidInputQuantizedType(model_builder, input, scale, zero_point));
+  ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, scale, zero_point));
 
   shaper.Identity(input, output);
   const OperandType output_operand_type(Type::TENSOR_FLOAT32, shaper[output]);
 
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
-  model_builder.AddOperation(ANEURALNETWORKS_DEQUANTIZE, input_indices, {output}, {output_operand_type}, {output_is_nhwc});
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_DEQUANTIZE, input_indices,
+                                                 {output}, {output_operand_type}, {output_is_nhwc}));
+  return Status::OK();
 }
 
 #pragma endregion
@@ -2464,7 +2499,7 @@ class LRNOpBuilder : public BaseOpBuilder {
     return 28;
   }
 
-  void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
 bool LRNOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const Node& node) {
@@ -2482,7 +2517,7 @@ bool LRNOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const No
   return true;
 }
 
-void LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
+Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -2530,8 +2565,9 @@ void LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node
 
   shaper.Identity(input, output);
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
-  model_builder.AddOperation(ANEURALNETWORKS_LOCAL_RESPONSE_NORMALIZATION,
-                             input_indices, {output}, {output_operand_type}, {output_is_nhwc});
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_LOCAL_RESPONSE_NORMALIZATION, input_indices,
+                                                 {output}, {output_operand_type}, {output_is_nhwc}));
+  return Status::OK();
 }
 
 #pragma endregion

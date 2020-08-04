@@ -20,7 +20,7 @@ class IOpBuilder {
   virtual void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) = 0;
 
   // Add the operator to NNAPI model
-  virtual void AddToModelBuilder(ModelBuilder& model_builder, const Node& node) = 0;
+  virtual Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node) = 0;
 };
 
 // Generate a lookup table with IOpBuilder delegates

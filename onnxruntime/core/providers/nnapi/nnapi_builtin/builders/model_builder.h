@@ -28,7 +28,7 @@ class ModelBuilder {
     CPU_ONLY,      // use CPU only
   };
 
-  ModelBuilder(const GraphViewer& graph_view);
+  ModelBuilder(const GraphViewer& graph_viewer);
   ~ModelBuilder() = default;
 
   std::vector<std::vector<int>> GetSupportedNodes();
@@ -94,7 +94,7 @@ class ModelBuilder {
   const std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto&>&
   GetInitializerTensors() const { return initializers_; }
 
-  const Graph& GetOnnxGraph() const { return graph_view_.GetGraph(); }
+  const Graph& GetOnnxGraph() const { return graph_viewer_.GetGraph(); }
 
   void RegisterNHWCOperand(const std::string& name);
   bool IsOperandNHWC(const std::string& name);
@@ -110,7 +110,7 @@ class ModelBuilder {
 
  private:
   const NnApi* nnapi_{nullptr};
-  const GraphViewer& graph_view_;
+  const GraphViewer& graph_viewer_;
   std::unique_ptr<Model> nnapi_model_;
 
   uint32_t name_token_{0};

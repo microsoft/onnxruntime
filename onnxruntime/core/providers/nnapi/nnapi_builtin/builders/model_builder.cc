@@ -15,8 +15,8 @@ namespace nnapi {
 using namespace android::nn::wrapper;
 using std::vector;
 
-ModelBuilder::ModelBuilder(const GraphViewer& graph_view)
-    : nnapi_(NnApiImplementation()), graph_view_(graph_view) {
+ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer)
+    : nnapi_(NnApiImplementation()), graph_viewer_(graph_viewer) {
   GetAllInitializers();
   op_builders_ = CreateOpBuilders();
 }
@@ -33,11 +33,11 @@ bool ModelBuilder::IsNodeSupported(const Node& node) {
   }
 }
 
-bool IsValidSupportedNodesVec(const std::vector<int>& supported_node_vec, const GraphViewer& graph_view) {
+bool IsValidSupportedNodesVec(const std::vector<int>& supported_node_vec, const GraphViewer& graph_viewer) {
   if (!supported_node_vec.empty()) {
     if (supported_node_vec.size() == 1) {
-      const auto& node_indices = graph_view.GetNodesInTopologicalOrder();
-      const auto* node(graph_view.GetNode(node_indices[supported_node_vec[0]]));
+      const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
+      const auto* node(graph_viewer.GetNode(node_indices[supported_node_vec[0]]));
       const auto& op = node->OpType();
       // It is not worth it to perform a single Reshape/Dropout/Identity operator
       // which is only copying the data in NNAPI
@@ -66,9 +66,9 @@ std::vector<std::vector<int>> ModelBuilder::GetSupportedNodes() {
 #endif
 
   std::vector<int> supported_node_vec;
-  const auto& node_indices = graph_view_.GetNodesInTopologicalOrder();
+  const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
-    const auto* node(graph_view_.GetNode(node_indices[i]));
+    const auto* node(graph_viewer_.GetNode(node_indices[i]));
     bool supported = IsNodeSupported(*node);
     LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node->OpType()
                           << "] index: [" << i
@@ -78,14 +78,14 @@ std::vector<std::vector<int>> ModelBuilder::GetSupportedNodes() {
     if (supported) {
       supported_node_vec.push_back(i);
     } else {
-      if (IsValidSupportedNodesVec(supported_node_vec, graph_view_)) {
+      if (IsValidSupportedNodesVec(supported_node_vec, graph_viewer_)) {
         supported_node_vecs.push_back(supported_node_vec);
         supported_node_vec.clear();
       }
     }
   }
 
-  if (IsValidSupportedNodesVec(supported_node_vec, graph_view_))
+  if (IsValidSupportedNodesVec(supported_node_vec, graph_viewer_))
     supported_node_vecs.push_back(supported_node_vec);
 
   LOGS_DEFAULT(VERBOSE) << "Support vectors size is " << supported_node_vecs.size();
@@ -175,15 +175,15 @@ Status ModelBuilder::GetTargetDevices() {
 }
 
 void ModelBuilder::GetAllInitializers() {
-  for (const auto& pair : graph_view_.GetAllInitializedTensors()) {
+  for (const auto& pair : graph_viewer_.GetAllInitializedTensors()) {
     initializers_.emplace(pair.first, *pair.second);
   }
 }
 
 void ModelBuilder::PreprocessInitializers() {
-  const auto& node_indices = graph_view_.GetNodesInTopologicalOrder();
+  const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
-    const auto* node(graph_view_.GetNode(node_indices[i]));
+    const auto* node(graph_viewer_.GetNode(node_indices[i]));
     if (auto* op_builder = GetOpBuilder(*node)) {
       op_builder->AddInitializersToSkip(*this, *node);
     }
@@ -191,11 +191,11 @@ void ModelBuilder::PreprocessInitializers() {
 }
 
 // Help to get all quantized operators' input and the node(s) using the input
-std::unordered_map<std::string, vector<const Node*>> GetAllQuantizedOpInputs(const GraphViewer& graph_view) {
+std::unordered_map<std::string, vector<const Node*>> GetAllQuantizedOpInputs(const GraphViewer& graph_viewer) {
   std::unordered_map<std::string, vector<const Node*>> all_quantized_op_inputs;
-  const auto& node_indices = graph_view.GetNodesInTopologicalOrder();
+  const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
   for (const auto& node_idx : node_indices) {
-    const auto* node(graph_view.GetNode(node_idx));
+    const auto* node(graph_viewer.GetNode(node_idx));
     auto qlinear_op_type = GetQLinearOpType(*node);
     if (qlinear_op_type == QLinearOpType::DequantizeLinear || IsQLinearBinaryOp(qlinear_op_type)) {
       const auto& input_name = node->InputDefs()[0]->Name();
@@ -293,8 +293,8 @@ Status ModelBuilder::RegisterInitializers() {
 }
 
 Status ModelBuilder::RegisterModelInputs() {
-  const auto all_quantized_op_inputs = GetAllQuantizedOpInputs(graph_view_);
-  for (const auto* node_arg : graph_view_.GetInputs()) {
+  const auto all_quantized_op_inputs = GetAllQuantizedOpInputs(graph_viewer_);
+  for (const auto* node_arg : graph_viewer_.GetInputs()) {
     const auto& input_name = node_arg->Name();
 
     {  // input should not be an initializer
@@ -368,7 +368,7 @@ Status ModelBuilder::RegisterModelInputs() {
 }
 
 Status ModelBuilder::RegisterModelOutputs() {
-  for (const auto* node_arg : graph_view_.GetOutputs()) {
+  for (const auto* node_arg : graph_viewer_.GetOutputs()) {
     const auto& output_name = node_arg->Name();
 
     if (!Contains(operands_, output_name)) {
@@ -467,9 +467,9 @@ Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
 }
 
 Status ModelBuilder::AddOperations() {
-  const auto& node_indices = graph_view_.GetNodesInTopologicalOrder();
+  const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
-    const auto* node(graph_view_.GetNode(node_indices[i]));
+    const auto* node(graph_viewer_.GetNode(node_indices[i]));
     if (auto* op_builder = GetOpBuilder(*node)) {
       op_builder->AddToModelBuilder(*this, *node);
     } else {
@@ -568,7 +568,7 @@ int32_t ModelBuilder::FindActivation(const Node& node, const NodeArg& output) {
 
   // if output is a graph output, will add relu separately
   if (fuse_code != ANEURALNETWORKS_FUSED_NONE) {
-    for (const auto* graph_output : graph_view_.GetOutputs()) {
+    for (const auto* graph_output : graph_viewer_.GetOutputs()) {
       if (&output == graph_output)
         return ANEURALNETWORKS_FUSED_NONE;
     }
