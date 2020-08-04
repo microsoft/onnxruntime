@@ -395,6 +395,22 @@ TEST(GradientCheckerTest, SinGrad) {
   UnaryOpGradientTest("Sin");
 }
 
+TEST(GradientCheckerTest, LogGrad) {
+  TensorShape shape({2,5,6});
+
+  std::function<float(float)> transformer = [](float x) { return std::fabs(x) + 1e-1f; };
+  TensorInfo x_info{shape, true, &transformer};
+
+  float max_error;
+  float error_tolerance = 1e-3f;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"Log"};
+
+  gradient_checker.ComputeGradientError(op_def, {x_info}, {shape}, &max_error);
+
+  EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+}
+
 TEST(GradientCheckerTest, TanhGrad) {
   UnaryOpGradientTest("Tanh");
 }

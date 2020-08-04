@@ -82,6 +82,14 @@ IMPLEMENT_GRADIENT_BUILDER(GetSinGradient) {
               {GI(0)})};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetLogGradient) {
+  auto const_one = OneConstantNode();
+  return std::vector<NodeDef>{
+      NodeDef("Div",
+              {GO(0), I(0)},
+              {GI(0)})};
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetTanhGradient) {
   return std::vector<NodeDef>{
       NodeDef("TanhGrad",
