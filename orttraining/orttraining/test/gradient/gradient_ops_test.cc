@@ -667,22 +667,21 @@ TEST(GradientCheckerTest, ConvGrad) {
   }
 }
 
-void TestConcatOpGrad(const std::string& op_type,
+static void TestConcatOpGrad(const std::string& op_type,
                       const std::string& domain = kOnnxDomain,
                       int opset_version = 9,
                       bool check_not_have_shape_inferencing = false) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
-  bool extra_input = op_type == "ConcatTraining" ? true : false;
+  const bool extra_input = op_type == "ConcatTraining";
   OpDef op_def{op_type, domain, opset_version};
 
   //concat_1d
   {
     TensorShape x_shape({2});
     TensorShape y_shape({6});
-    TensorInfo y1 = TensorInfo({3}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
     std::vector<TensorInfo> output = {y_shape};
-    if(extra_input) output.push_back(y1);
+    if (extra_input) output.push_back(TensorInfo({3}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>()));
     gradient_checker.ComputeGradientError(op_def, {x_shape, x_shape, x_shape},
                                                                         output, &max_error,
                                                                         {MakeAttribute("axis", int64_t(0))}, true,
@@ -694,9 +693,8 @@ void TestConcatOpGrad(const std::string& op_type,
   {
     TensorShape x_shape({2, 2});
     TensorShape y_shape({2, 6});
-    TensorInfo y1 = TensorInfo({3}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
     std::vector<TensorInfo> output = {y_shape};
-    if (extra_input) output.push_back(y1);
+    if (extra_input) output.push_back(TensorInfo({3}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>()));
     gradient_checker.ComputeGradientError(op_def, {x_shape, x_shape, x_shape},
                                           output, &max_error,
                                           {MakeAttribute("axis", int64_t(1))}, true, 
@@ -708,9 +706,8 @@ void TestConcatOpGrad(const std::string& op_type,
   {
     TensorShape x_shape({1, 2, 3});
     TensorShape y_shape({1, 2, 9});
-    TensorInfo y1 = TensorInfo({3}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
     std::vector<TensorInfo> output = {y_shape};
-    if(extra_input) output.push_back(y1);
+    if (extra_input) output.push_back(TensorInfo({3}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>()));
     gradient_checker.ComputeGradientError(op_def, {x_shape, x_shape, x_shape},
                                           output, &max_error,
                                           {MakeAttribute("axis", int64_t(2))}, true, 
@@ -723,9 +720,8 @@ void TestConcatOpGrad(const std::string& op_type,
     TensorShape x1_shape({2, 2});
     TensorShape x2_shape({2, 4});
     TensorShape y_shape({2, 6});
-    TensorInfo y1 = TensorInfo({2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
     std::vector<TensorInfo> output = {y_shape};
-    if(extra_input) output.push_back(y1);
+    if (extra_input) output.push_back(TensorInfo({2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>()));
     gradient_checker.ComputeGradientError(op_def, {x1_shape, x2_shape},
                                           output, &max_error,
                                           {MakeAttribute("axis", int64_t(1))}, true, 
@@ -738,9 +734,8 @@ void TestConcatOpGrad(const std::string& op_type,
     TensorShape x1_shape({2, 2});
     TensorShape x2_shape({2, 4});
     TensorShape y_shape({2, 6});
-    TensorInfo y1 = TensorInfo({2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
     std::vector<TensorInfo> output = {y_shape};
-    if(extra_input) output.push_back(y1);
+    if (extra_input) output.push_back(TensorInfo({2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>()));
     gradient_checker.ComputeGradientError(op_def, {x1_shape, x2_shape},
                                           output, &max_error,
                                           {MakeAttribute("axis", int64_t(-1))}, true, 

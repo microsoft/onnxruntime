@@ -9,12 +9,12 @@
 
 #include "onnx/defs/attr_proto_util.h"
 #include "onnx/defs/tensor_proto_util.h"
+
 #include "core/framework/tensorprotoutils.h"
+#include "core/providers/common.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/graph/gradient_builder_registry.h"
 #include "orttraining/core/graph/graph_augmenter.h"
-#include "core/providers/common.h"
-#include "core/framework/tensorprotoutils.h"
 
 using namespace ONNX_NAMESPACE;
 
@@ -549,7 +549,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetConcatTrainingGradient) {
     if (GetShape(I(i), data_shape).IsOK()) {
       int64_t rank = static_cast<int64_t>(data_shape.size());
       int64_t axis_index = HandleNegativeAxis(axis, rank);
-      if (axis_index >= 0 && axis_index < rank && data_shape[axis_index].has_dim_value()) {
+      if (data_shape[axis_index].has_dim_value()) {
         split_attribute[i] = data_shape[axis_index].dim_value();
       } else {
         known_shapes = false;

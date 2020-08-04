@@ -1,7 +1,6 @@
 import onnx
 from onnx import helper
 from onnx import TensorProto
-from enum import Enum
 import numpy as np
 
 def GenerateModel(model_name):
