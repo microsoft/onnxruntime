@@ -37,6 +37,10 @@
 #define LIBRARY_EXTENSION ".so"
 #endif
 
+#ifdef __GNUC__
+#pragma GCC diagnostic ignored "-Wstrict-aliasing"
+#endif
+
 namespace onnxruntime {
 
 ProviderHost* g_host{};  // TODO: Remove this for the core code (provider_interfaces.h references it but no code using it is ever called from here)

@@ -16,7 +16,7 @@
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
 #include "core/session/onnxruntime_c_api.h"
-enum cudaError;
+enum cudaError : int;
 #include "provider_interfaces.h"
 
 namespace ONNX_NAMESPACE {
