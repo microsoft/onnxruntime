@@ -24,7 +24,10 @@ inline bool AreVectorsOverlap(const std::vector<T>& v1, const std::vector<T>& v2
 }
 }  // namespace
 
-//TODO: Tell user why it has conflicts
+// TODO: Tell user why it has conflicts
+// TODO: Investigate why IsConflict() was not triggered when there were duplicate Tile CUDA
+// kernels registered. Removing `InputMemoryType<OrtMemTypeCPUInput>(1)` in the kernel definition
+// triggered the conflict.
 bool KernelDef::IsConflict(const KernelDef& other) const {
   if (op_name_ != other.OpName() || provider_type_ != other.Provider())
     return false;

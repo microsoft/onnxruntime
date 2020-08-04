@@ -455,6 +455,11 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     for (size_t i = 0; i < worker_data_.size(); ++i) worker_data_[i].thread.reset();
   }
 
+  // Run fn().  Ordinarily, the function will be added to the thread pool and executed
+  // by a worker thread.  If the thread pool rejects the work then fn() will instead
+  // execute synchronously during Schedule(fn).  Currently the thread pool will only
+  // reject work if the queue of pending work is full.
+
   void Schedule(std::function<void()> fn) override {
     Task t = env_.CreateTask(std::move(fn));
     PerThread* pt = GetPerThread();
@@ -469,13 +474,15 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
       WorkerData &td = worker_data_[q_idx];
       Queue& q = td.queue;
       t = q.PushBack(std::move(t));
-      if (t.f) {
-        // The queue rejected the work; run it directly
-        env_.ExecuteTask(t);
-      } else {
+      if (!t.f) {
         // The queue accepted the work; ensure that the thread will pick it up
         td.EnsureAwake();
       }
+    }
+
+    // Run the work directly if the queue rejected the work
+    if (t.f) {
+      env_.ExecuteTask(t);
     }
   }
 
