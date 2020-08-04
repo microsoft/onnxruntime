@@ -205,4 +205,8 @@ ORT_API_STATUS_IMPL(GetAvailableProviders, _Outptr_ char ***out_ptr,
                     _In_ int *providers_length);
 ORT_API_STATUS_IMPL(ReleaseAvailableProviders, _In_ char **ptr,
                     _In_ int providers_length);
+
+ORT_API_STATUS_IMPL(EnablePrePacking, _Inout_ OrtSessionOptions * options);
+ORT_API_STATUS_IMPL(DisablePrePacking, _Inout_ OrtSessionOptions * options);
+
 }  // namespace OrtApis
