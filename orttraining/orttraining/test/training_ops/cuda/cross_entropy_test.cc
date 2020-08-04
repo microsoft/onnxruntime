@@ -159,12 +159,10 @@ static void TestSparseSoftmaxCrossEntropy(const std::vector<int64_t>* X_dims,
   test.AddInput<float>("X", *X_dims, X_data);
   test.AddInput<int64_t>("index", *index_dims, index_data);
 
-  /*
   if (weight_dims) {
-    std::vector<float> weight_data = random.Uniform<float>(*weight_dims, 1.0f, 1.0f);
+    std::vector<float> weight_data = random.Uniform<float>(*weight_dims, 0.0f, 1.0f);
     test.AddInput<float>("weight", *weight_dims, weight_data);
   }
-  */
 
   std::vector<float> Y_data = FillZeros<float>(*Y_dims);
   std::vector<float> log_prob_data = FillZeros<float>(*log_prob_dims);
