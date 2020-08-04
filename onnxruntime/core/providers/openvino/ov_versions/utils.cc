@@ -34,6 +34,25 @@ int GetInputCount(const Node* node, const InitializedTensorSet& initializer_set)
   return count;
 }
 
+//Ops which are supported only in models(as intermediate nodes) and not in unit tests
+bool IsOpSupportedOnlyInModel(std::string name){
+
+  std::set<std::string> ops_supported_only_in_model = {
+    "Cast",
+    "Concat",
+    "ConstantOfShape",
+    "Dropout",
+    "EyeLike",
+    "Identity",
+    "OneHot",
+    "ReduceMin",
+    "Shape",
+    "Split",
+    "TopK"
+  };
+  return ops_supported_only_in_model.find(name) != ops_supported_only_in_model.end();
+}
+
 void AppendClusterToSubGraph(const std::vector<NodeIndex>& nodes,
                                     const std::vector<std::string>& inputs,
                                     const std::vector<std::string>& outputs,
@@ -135,6 +154,7 @@ GetConnectedClusters(const GraphViewer& graph_viewer, const std::vector<std::vec
 void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
                                       const std::vector<NodeIndex>& cluster,
                                       const std::unordered_set<std::string>& ng_required_initializers,
+                                      /*out*/ std::vector<std::string>& cluster_graph_inputs,
                                       /*out*/ std::vector<std::string>& cluster_inputs,
                                       /*out*/ std::vector<std::string>& constant_inputs,
                                       /*out*/ std::vector<std::string>& cluster_outputs) {
@@ -203,6 +223,9 @@ void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
           ng_required_initializers.count(in_arg))) {
       cluster_inputs.push_back(in_arg);
     }
+  }
+  for(const auto& input : cluster_inputs){
+    cluster_graph_inputs.push_back(input);
   }
 
   for (const auto& in_arg : constant_inputs) {

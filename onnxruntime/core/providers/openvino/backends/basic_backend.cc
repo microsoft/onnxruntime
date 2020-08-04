@@ -14,6 +14,9 @@
 #include "core/common/logging/logging.h"
 
 #include "../backend_utils.h"
+#include <ngraph/frontend/onnx_import/onnx.hpp>
+#include <ngraph/pass/constant_folding.hpp>
+
 #include "basic_backend.h"
 
 namespace onnxruntime {
@@ -33,11 +36,22 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
                            const SubGraphContext& subgraph_context)
     : global_context_(global_context), subgraph_context_(subgraph_context) {
 
-  ie_cnn_network_ = CreateCNNNetwork(model_proto, subgraph_context_.device_id, subgraph_context_.precision);
+  ie_cnn_network_ = CreateCNNNetwork(model_proto, subgraph_context_.device_id, subgraph_context_.precision, const_outputs_map_);
   SetIODefs(model_proto, ie_cnn_network_);
   InferenceEngine::ExecutableNetwork exe_network;
 
+  for(auto item : const_outputs_map_){
+    std::cout << "Const output name " << item.first << std::endl;
+  }
+  std::cout << "Size of map" << const_outputs_map_.size() << std::endl;
+  std::cout << "Full outputs Size of map" << subgraph_context_.output_names.size() << std::endl;
+  if(const_outputs_map_.size() == subgraph_context_.output_names.size())
+    subgraph_context_.is_constant = true;
+
+
   // Loading model to the plugin
+  if(subgraph_context_.is_constant)
+    return;
   std::map<std::string, std::string> config;
   if(subgraph_context_.device_id == "MYRIAD" && subgraph_context_.set_vpu_config){
     config["VPU_DETECT_NETWORK_BATCH"] = CONFIG_VALUE(NO);
@@ -88,7 +102,7 @@ void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort,
     auto graph_input_buffer = graph_input_blob->buffer()
                                   .as<InferenceEngine::PrecisionTrait<InferenceEngine::Precision::FP32>::value_type*>();
     size_t input_data_size = graph_input_blob->byteSize();
-    
+
     #if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
     const OrtValue* tensor = ort.KernelContext_GetInput(context, subgraph_context_.input_indexes[i]);
     #else
@@ -112,7 +126,7 @@ void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort,
       std::memcpy(graph_input_buffer, tensor_data, input_data_size);
 
     }
-    
+
   }
   // Start Async inference
   try {
@@ -157,6 +171,7 @@ void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort,
                                    .as<InferenceEngine::PrecisionTrait<InferenceEngine::Precision::FP32>::value_type*>();
 
     size_t output_data_size = graph_output_blob->byteSize();
+    std::cout << "Output data size is " << output_data_size << std::endl;
 
     auto tensor_shape = ort.GetTensorTypeAndShape(output_tensors[i]);
     auto elem_type = ort.GetTensorElementType(tensor_shape);
@@ -176,6 +191,9 @@ void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort,
 
     }
   }
+  if(!const_outputs_map_.empty()){
+    FillOutputsWithConstantData(ort,const_outputs_map_,output_tensors[i]);
+  }
 }
 
 void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
@@ -187,12 +205,21 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   std::lock_guard<std::mutex> lock(compute_lock_);
 
   size_t batch_size = 1;
+  auto output_tensors = GetOutputTensors(ort, context, batch_size, infer_request_, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_);
+  if(subgraph_context_.is_constant){
+    for(auto out_tensor : output_tensors){
+
+      FillOutputsWithConstantData(ort,const_outputs_map_,out_tensor);
+    }
+  }
+  else{
+    StartAsyncInference(ort, context, infer_request_, ie_cnn_network_);
+    CompleteAsyncInference(ort, output_tensors, infer_request_, ie_cnn_network_);
+  }
   // Get Output tensors
-  auto output_tensors = GetOutputTensors(ort, context, batch_size, infer_request_, ie_cnn_network_, subgraph_context_.output_names);
 
-  StartAsyncInference(ort, context, infer_request_, ie_cnn_network_);
-  CompleteAsyncInference(ort, output_tensors, infer_request_, ie_cnn_network_);
 
+  std::cout << "Inference successful" << std::endl;
   LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
 }
 

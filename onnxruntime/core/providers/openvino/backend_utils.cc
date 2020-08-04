@@ -11,13 +11,13 @@
 
 #include <ngraph/frontend/onnx_import/onnx.hpp>
 #include <ngraph/pass/convert_fp32_to_fp16.hpp>
+#include <ngraph/pass/constant_folding.hpp>
 
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/graph/graph.h"
 #include "core/common/logging/logging.h"
 
 #include "backend_utils.h"
-//#include <ngraph/serializer.hpp>
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -33,7 +33,6 @@ bool IsDebugEnabled() {
   return (std::getenv("ORT_OPENVINO_ENABLE_DEBUG") != nullptr);
 #endif
 }
-
 void DumpOnnxModelProto(const ONNX_NAMESPACE::ModelProto& model_proto, std::string file_name) {
   std::fstream outfile(file_name, std::ios::out | std::ios::trunc | std::ios::binary);
   model_proto.SerializeToOstream(&outfile);
@@ -44,7 +43,7 @@ void DumpOnnxModelProto(const ONNX_NAMESPACE::ModelProto& model_proto, std::stri
 
 std::shared_ptr<InferenceEngine::CNNNetwork>
 CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, std::string device_id,
-                 InferenceEngine::Precision precision) {
+                 InferenceEngine::Precision precision, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map) {
 
   std::istringstream model_stream{model_proto.SerializeAsString()};
   std::shared_ptr<ngraph::Function> ng_function;
@@ -58,16 +57,29 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, std::string devi
     ORT_THROW(log_tag + "[OpenVINO-EP] Unknown exception while importing model to nGraph Func");
   }
 
-  /*std::string json_string = serialize(ng_function, 4);
 
-  std::ofstream out("serialize_function_before_PM.json");
 
-  out << json_string;*/
 
   if (device_id == "GPU" && precision == InferenceEngine::Precision::FP16) {
     //FP16 transformations
     ngraph::pass::ConvertFP32ToFP16().run_on_function(ng_function);
     ng_function->validate_nodes_and_infer_types();
+  }
+  std::map<std::string, std::string> result_to_output;
+  for(auto& result : ng_function->get_results()){
+    result_to_output[result->get_friendly_name()] = result->input_value(0).get_node_shared_ptr()->get_friendly_name();
+  }
+
+  ngraph::pass::ConstantFolding().run_on_function(ng_function);
+  std::map<std::string, std::shared_ptr<ngraph::Node>> const_output_map;
+  auto& results = const_cast<::ngraph::ResultVector&>(ng_function->get_results());
+  size_t index = results.size() - 1;
+  for (auto it = results.rbegin(); it != results.rend(); ++it){
+    if(auto const_node = std::dynamic_pointer_cast<ngraph::op::Constant>((*it)->input_value(0).get_node_shared_ptr())){
+      const_outputs_map[result_to_output.at((*it)->get_friendly_name())] = const_node;
+      results.erase(results.begin() + index);
+    }
+    --index;
   }
 
   try {
@@ -94,6 +106,8 @@ InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::
   } else if (*type_string == "uint16" || *type_string == "tensor(uint16)") {
     return InferenceEngine::Precision::U16;
   } else if (*type_string == "uint8" || *type_string == "tensor(uint8)") {
+    return InferenceEngine::Precision::U8;
+  } else if (*type_string == "bool" || *type_string == "tensor(bool)") {
     return InferenceEngine::Precision::U8;
   } else if (*type_string == "int64" || *type_string == "tensor(int64)") {
     return InferenceEngine::Precision::I32;
@@ -135,32 +149,55 @@ std::vector<OrtValue*>
 GetOutputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_size,
                  InferenceEngine::InferRequest::Ptr infer_request,
                  std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network,
-                 std::unordered_map<std::string, int> output_names) {
+                 std::unordered_map<std::string, int> output_names, std::map<std::string, std::shared_ptr<ngraph::Node>> const_output_map) {
   std::vector<OrtValue*> output_tensors;
 
-  auto graph_output_info = ie_cnn_network->getOutputsInfo();
+  if(output_names.size() != const_output_map.size()){
+    auto graph_output_info = ie_cnn_network->getOutputsInfo();
 
-  size_t i = 0;
-  for (auto output_info_iter = graph_output_info.begin();
-       output_info_iter != graph_output_info.end(); ++output_info_iter, ++i) {
-    auto graph_output_blob = infer_request->GetBlob(output_info_iter->first);
-    auto graph_output_dims = graph_output_blob->getTensorDesc().getDims();
+    size_t i = 0;
+    for (auto output_info_iter = graph_output_info.begin();
+        output_info_iter != graph_output_info.end(); ++output_info_iter, ++i) {
+      auto graph_output_blob = infer_request->GetBlob(output_info_iter->first);
+      auto graph_output_dims = graph_output_blob->getTensorDesc().getDims();
 
-    if (batch_size > 1) {
-      // Add the batch size as dim 0.
-      graph_output_dims.insert(graph_output_dims.begin(), batch_size);
+      if (batch_size > 1) {
+        // Add the batch size as dim 0.
+        graph_output_dims.insert(graph_output_dims.begin(), batch_size);
+      }
+      size_t num_dims = graph_output_dims.size();
+      auto output_shape = new int64_t[num_dims];
+      for (size_t j = 0; j < num_dims; j++) {
+        output_shape[j] = static_cast<int64_t>(graph_output_dims[j]);
+      }
+      auto it = output_names.find(output_info_iter->first);
+      if (it == output_names.end()) {
+        std::cout << "Output name is " << output_info_iter->first << std::endl;
+        ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX");
+      }
+      int index = it->second;
+
+      output_tensors.push_back(ort.KernelContext_GetOutput(context, index, output_shape, num_dims));
+      delete output_shape;
     }
-
-    size_t num_dims = graph_output_dims.size();
-    auto output_shape = new int64_t[num_dims];
-    for (size_t j = 0; j < num_dims; j++) {
-      output_shape[j] = static_cast<int64_t>(graph_output_dims[j]);
-    }
-    auto it = output_names.find(output_info_iter->first);
-    if (it == output_names.end()) {
+  }
+  for(auto item : const_output_map){
+    auto it = output_names.find(item.first);
+    if(it == output_names.end()) {
+      std::cout << "Const Output name is " << item.first << std::endl;
       ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX");
     }
     int index = it->second;
+    auto node = item.second;
+    auto shape = node->get_shape();
+    auto type = node->get_element_type();
+    std::cout << "NODE TYPE IS " << type << std::endl;
+
+    size_t num_dims = shape.size();
+    auto output_shape = new int64_t[num_dims];
+    for(size_t j = 0; j < num_dims; j++){
+      output_shape[j] = static_cast<int64_t>(shape[j]);
+    }
 
     output_tensors.push_back(ort.KernelContext_GetOutput(context, index, output_shape, num_dims));
     delete output_shape;
@@ -190,6 +227,47 @@ int GetFirstAvailableDevice(GlobalContext& global_context){
     }
   }
   return i;
+}
+
+void FillOutputsWithConstantData(Ort::CustomOpApi& ort, std::map<std::string, std::shared_ptr<ngraph::Node>> const_out_map, OrtValue* out_tensor){
+
+  for(auto item : const_out_map){
+
+    auto node = item.second;
+    std::cout << "ELEMENEET TYPE IS " << node->get_element_type() << std::endl;
+
+    switch(node->get_element_type()){
+
+      case ngraph::element::Type_t::f32:
+      {
+        FillOutputHelper<float>(ort, out_tensor, node);
+        break;
+      }
+      case ngraph::element::Type_t::boolean:
+      {
+        FillOutputHelper<char>(ort, out_tensor, node);
+        break;
+      }
+      case ngraph::element::Type_t::i32:
+      {
+        FillOutputHelper<int32_t>(ort, out_tensor, node);
+        break;
+      }
+      default:
+        ORT_THROW(log_tag + "Unsupported output data type");
+    }
+  }
+}
+
+template<typename T>
+void FillOutputHelper(Ort::CustomOpApi& ort, OrtValue* out_tensor, std::shared_ptr<ngraph::Node> node){
+
+  T* tensor_data = ort.GetTensorMutableData<T>(out_tensor);
+  auto const_node = std::dynamic_pointer_cast<ngraph::op::Constant>(node);
+  auto res = const_node->cast_vector<T>();
+  for(size_t j = 0; j < res.size(); j++){
+    tensor_data[j] = res[j];
+  }
 }
 
 }  // namespace backend_utils

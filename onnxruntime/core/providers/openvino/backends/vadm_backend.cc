@@ -47,7 +47,7 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   // sets number of maximum parallel inferences
   num_inf_reqs_ = 8;
 
-  ie_cnn_network_ = CreateCNNNetwork(model_proto, subgraph_context_.device_id, subgraph_context_.precision);
+  ie_cnn_network_ = CreateCNNNetwork(model_proto, subgraph_context_.device_id, subgraph_context_.precision, const_outputs_map_);
 
   SetIODefs(model_proto, ie_cnn_network_);
   std::map<std::string, std::string> config;
@@ -275,7 +275,7 @@ void VADMBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
 
   // All infer_requests process identical tensor slices from the batch.
   // So using info from first infer_request to allocate all output tensors.
-  auto output_tensors = GetOutputTensors(ort, context, batch_size, infer_requests_[0], ie_cnn_network_, subgraph_context_.output_names);
+  auto output_tensors = GetOutputTensors(ort, context, batch_size, infer_requests_[0], ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_);
 
   // Distribute the batched inputs among available Infer Requests
   // for parallel inference.

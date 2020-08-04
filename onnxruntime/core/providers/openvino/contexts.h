@@ -21,6 +21,7 @@ struct SubGraphContext {
   bool has_dynamic_input_shape = false;
   bool enable_batching = false;
   bool set_vpu_config = false;
+  bool is_constant = false;
   std::string subgraph_name;
   #if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
   std::vector<int> input_indexes;
