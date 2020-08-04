@@ -47,6 +47,7 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, std::string devi
 
   std::istringstream model_stream{model_proto.SerializeAsString()};
   std::shared_ptr<ngraph::Function> ng_function;
+  std::cout << "CreateNgraphFunc" << std::endl;
 
   try {
     ng_function = ngraph::onnx_import::import_onnx_model(model_stream);
