@@ -118,6 +118,16 @@ class Gpt2Helper:
         return output_shapes
 
     @staticmethod
+    def auto_increase_buffer_size(output_buffers, output_shapes):
+        for key in output_shapes:
+            assert key in output_buffers
+            buffer = output_buffers[key]
+            if numpy.prod(output_shapes[key]) > buffer.nelement():
+                output_buffers[key] = torch.empty(numpy.prod(output_shapes[key]),
+                                                  dtype=buffer.dtype,
+                                                  device=buffer.device)
+
+    @staticmethod
     def get_output_buffers(output_shapes, device, is_float16=False):
         """ Returns a dictionary of output name as key, and 1D tensor as value. The tensor has enough space for given shape.
         """
@@ -143,13 +153,16 @@ class Gpt2Helper:
     def compare_outputs(torch_outputs, ort_outputs, rtol=1e-03, atol=1e-03):
         """ Returns True if torch and ORT outputs are close for given thresholds, and False otherwise.
         """
-        is_close = numpy.allclose(ort_outputs[0], torch_outputs[0].cpu(), rtol=rtol, atol=atol)
+        is_close = numpy.allclose(ort_outputs[0], torch_outputs[0].cpu().numpy(), rtol=rtol, atol=atol)
         logger.debug(f'PyTorch and OnnxRuntime output 0 (last_state) are close: {is_close}')
 
         is_all_close = is_close
         num_layers = len(ort_outputs) - 1
         for layer in range(num_layers):
-            is_close = numpy.allclose(ort_outputs[1 + layer], torch_outputs[1][layer].cpu(), rtol=rtol, atol=atol)
+            is_close = numpy.allclose(ort_outputs[1 + layer],
+                                      torch_outputs[1][layer].cpu().numpy(),
+                                      rtol=rtol,
+                                      atol=atol)
             logger.debug(f'PyTorch and OnnxRuntime layer {layer} state (present_{layer}) are close:{is_close}')
             is_all_close = is_all_close and is_close
 
@@ -345,7 +358,7 @@ class Gpt2Helper:
         return io_binding
 
     @staticmethod
-    def get_outputs_from_io_binding_buffer(ort_session, output_buffers, output_shapes):
+    def get_outputs_from_io_binding_buffer(ort_session, output_buffers, output_shapes, return_numpy=True):
         """ Copy results to cpu. Returns a list of numpy array.
         """
         ort_outputs = []
@@ -353,11 +366,21 @@ class Gpt2Helper:
             output_name = output.name
             buffer = output_buffers[output_name]
             shape = output_shapes[output_name]
-            ort_outputs.append(buffer[0:numpy.prod(shape)].reshape(shape).cpu().numpy())
+            copy_tensor = buffer[0:numpy.prod(shape)].reshape(shape).clone().detach()
+            if return_numpy:
+                ort_outputs.append(copy_tensor.cpu().numpy())
+            else:
+                ort_outputs.append(copy_tensor)
         return ort_outputs
 
     @staticmethod
-    def onnxruntime_inference_with_binded_io(ort_session, inputs, output_buffers, output_shapes, total_runs=0):
+    def onnxruntime_inference_with_binded_io(ort_session,
+                                             inputs,
+                                             output_buffers,
+                                             output_shapes,
+                                             total_runs=0,
+                                             return_numpy=True,
+                                             include_copy_output_latency=False):
         """ Inference with IO binding. Returns outputs, and optional latency when total_runs > 0.
         """
         logger.debug(f"start onnxruntime_inference_with_binded_io")
@@ -371,7 +394,8 @@ class Gpt2Helper:
         ort_session.run_with_iobinding(io_binding)
 
         # Copy results to cpu for verification
-        ort_outputs = Gpt2Helper.get_outputs_from_io_binding_buffer(ort_session, output_buffers, output_shapes)
+        ort_outputs = Gpt2Helper.get_outputs_from_io_binding_buffer(ort_session, output_buffers, output_shapes,
+                                                                    return_numpy)
 
         if total_runs == 0:
             return ort_outputs
@@ -381,6 +405,9 @@ class Gpt2Helper:
             start = time.time()
             # Run onnxruntime with io binding
             ort_session.run_with_iobinding(io_binding)
+            if include_copy_output_latency:
+                _ = Gpt2Helper.get_outputs_from_io_binding_buffer(ort_session, output_buffers, output_shapes,
+                                                                  return_numpy)
             latency.append(time.time() - start)
 
         average_latency = sum(latency) * 1000 / len(latency)
