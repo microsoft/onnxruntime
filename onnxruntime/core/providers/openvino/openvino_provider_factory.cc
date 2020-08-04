@@ -11,7 +11,7 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
     if (device == nullptr) {
       device_ = "";
     } else {
-      device_ = device;
+      device_ = std::string(device);
     }
   }
   ~OpenVINOProviderFactory() override {
@@ -20,7 +20,7 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
  private:
-  const char* device_;
+  std::string device_;
 };
 
 std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
