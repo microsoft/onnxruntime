@@ -231,6 +231,10 @@ class PlannerImpl {
     auto& symplan = AllocPlan(reused_for);
     symplan.alloc_kind = alloc_kind;
     symplan.reused_buffer = original;
+    // whenever a buffer is reused, remove alloc_size from original so it won't be in async queue at runtime
+    // note this should only happen when reusing input (aliasing or MayInplace),
+    // where fence before the kernel computation would make sure the async buffer is in good state
+    AllocPlan(original).alloc_size = nullptr;
   }
 
   // Find if there exists some input tensor that we can use in-place for output_arg_num-th input in the node.

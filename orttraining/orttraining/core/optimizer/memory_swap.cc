@@ -20,15 +20,18 @@ Status MemorySwap::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, 
   // Skip following ops that do not rely on tensor content (Shape),
   // and tensor being aliased (Flatten, Identity, Reshape, Squeeze, Unsqueeze),
   // and don't swap more than once (SwapFromHost, SwapToHost)
-  static const std::unordered_set<std::string> ignore_op_types =
+  static const std::unordered_set<std::string> ignore_src_op_types =
       {"Shape",
        "Flatten",
        "Identity",
        "Reshape",
        "Squeeze",
        "Unsqueeze",
-       "SwapFromHost",
        "SwapToHost"};
+
+  static const std::unordered_set<std::string> ignore_dst_op_types =
+      {"Shape",
+       "SwapFromHost"};
 
   GraphViewer graph_viewer(graph);
   size_t topo_index = 0;
@@ -50,7 +53,7 @@ Status MemorySwap::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, 
 
   for (const auto src_node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
     auto is_backward = [topo_indices](NodeIndex i) -> bool {
-      // only count dst node in BW. Here we assume the FW/BW nodes are roughly symmetric
+      // only count dst node in BW. Here we use a very rough assumption that the FW/BW nodes are symmetric
       // note that we don't use node description because there might be fusion rules breaking that assumption
       return topo_indices.at(i) > topo_indices.size() / 2;
     };
@@ -70,14 +73,14 @@ Status MemorySwap::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, 
       break;
 
     // check if src_node should be handled
-    if (ignore_op_types.count(src_node.OpType()) && !is_backward(src_node_idx))
+    if (ignore_src_op_types.count(src_node.OpType()) && !is_backward(src_node_idx))
       continue;
 
     // map from src_node_arg_idx to vector of pair(dst_node_idx, dst_node_arg_idx)
     std::unordered_map<int, std::vector<std::pair<NodeIndex, int>>> src_node_edges;
     for (auto edge_iter = src_node.OutputEdgesBegin(); edge_iter != src_node.OutputEdgesEnd(); ++edge_iter) {
       NodeIndex dst_node_idx = edge_iter->GetNode().Index();
-      if (0 == ignore_op_types.count(edge_iter->GetNode().OpType()) && is_backward(dst_node_idx)) {
+      if (0 == ignore_dst_op_types.count(edge_iter->GetNode().OpType()) && is_backward(dst_node_idx)) {
         auto src_node_arg_idx = edge_iter->GetSrcArgIndex();
         if (0 == src_node_edges.count(src_node_arg_idx)) {
           src_node_edges.insert(std::make_pair(src_node_arg_idx, std::vector<std::pair<NodeIndex, int>>()));

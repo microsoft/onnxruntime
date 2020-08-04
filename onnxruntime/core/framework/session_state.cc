@@ -366,6 +366,12 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
 
   if (!mem_planner.GeneratePatterns(output).IsOK()) {
     return Status(ONNXRUNTIME, FAIL, "Generate Memory Pattern failed");
+  } else {
+    for (size_t i = 0; i < output->locations.size(); ++i) {
+      if (output->locations[i].device.Type() == OrtDevice::GPU) {
+        std::cout << "GPU Memory Pattern size: " << output->patterns[i].PeakSize() << std::endl;
+      }
+    }
   }
   return Status::OK();
 }
