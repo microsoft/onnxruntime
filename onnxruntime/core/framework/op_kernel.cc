@@ -48,7 +48,6 @@ OrtValue* OpKernelContext::OutputMLValue(int index, const TensorShape& shape, si
   //I believe it's a false alarm.
 
   OrtValue* p_ml_value = nullptr;
-  std::cout << "shape = " <<shape.ToString() << "\n";
   Status status = execution_frame_->GetOrCreateNodeOutputMLValue(GetOutputArgIndex(index), &shape, p_ml_value, nnz);
   ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
   return p_ml_value;

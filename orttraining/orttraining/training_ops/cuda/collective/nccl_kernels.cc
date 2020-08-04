@@ -7,16 +7,16 @@ namespace onnxruntime {
 namespace cuda {
 
 NcclAllReduce::NcclAllReduce(const OpKernelInfo& info) : NcclKernel(info) {
-  info.GetAttrOrDefault<int64_t>("num_input_ready", &num_input_ready_, static_cast<int64_t>(0));
+  info.GetAttrOrDefault<int64_t>("num_input_readies", &num_input_readies_, static_cast<int64_t>(0));
 }
 
 Status NcclAllReduce::ComputeInternal(OpKernelContext* context) const {
   cudaStream_t stream = nullptr;  // Default stream
   ncclComm_t comm = nccl_->Comm(group_type_);
 
-  printf("in allreduce. inputcout = %d, num_input_ready_ = %d\n", context->InputCount(), (int)(num_input_ready_));
+  printf("in allreduce. inputcout = %d, num_input_readies_ = %d\n", context->InputCount(), (int)(num_input_readies_));
 
-  for (int i = 0; i < context->InputCount() - num_input_ready_; i++) {
+  for (int i = 0; i < context->InputCount() - num_input_readies_; i++) {
     const Tensor* input_tensor = context->Input<Tensor>(i);
     auto onnx_type = input_tensor->DataType();
     const void* input_data = input_tensor->DataRaw();
@@ -123,7 +123,7 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
 
 NcclReduce::NcclReduce(const OpKernelInfo& info) : NcclKernel(info) {
   ORT_ENFORCE(info.GetAttr<int64_t>("root_rank", &root_rank_).IsOK());
-  info.GetAttrOrDefault<int64_t>("has_output_ready", &has_output_ready_, static_cast<int64_t>(0));
+  info.GetAttrOrDefault<int64_t>("num_input_readies", &num_input_readies_, static_cast<int64_t>(0));
 }
 
 Status NcclReduce::ComputeInternal(OpKernelContext* context) const {
@@ -137,10 +137,12 @@ Status NcclReduce::ComputeInternal(OpKernelContext* context) const {
 
   // Count total number of elements to Reduce.
   int64_t total_count = 0;
-  for (int i = 0; i < context->InputCount(); i++) {
+  for (int i = 0; i < context->InputCount() - num_input_readies_; i++) {
     const Tensor* input_tensor = context->Input<Tensor>(i);
     total_count += input_tensor->Shape().Size();
   }
+  printf("in reduce. inputcout = %d, num_input_readies_ = %d, the total count is %ld\n", context->InputCount(), (int)(num_input_readies_), total_count);
+  printf("in reduce, input count = %d, output_count = %d\n", context->InputCount(), context->OutputCount());
 
   //When the contiguous memory is enabled, can remove this buffer
   //TODO: Aligned to 32 bit and world size ?
@@ -150,7 +152,7 @@ Status NcclReduce::ComputeInternal(OpKernelContext* context) const {
 
   // Copy inputs to fusion buffer.
   int64_t offset = 0;
-  for (int i = 0; i < context->InputCount(); i++) {
+  for (int i = 0; i < context->InputCount() - num_input_readies_; i++) {
     const Tensor* input_tensor = context->Input<Tensor>(i);
     const int64_t tensor_bytes = input_tensor->SizeInBytes();
 
@@ -161,22 +163,23 @@ Status NcclReduce::ComputeInternal(OpKernelContext* context) const {
     offset += tensor_bytes;
   }
 
-  NCCL_RETURN_IF_ERROR(ncclReduce(fusion_data, fusion_data, total_count, dtype, ncclSum, root_rank_, comm, stream));
   const int rank = nccl_->Rank(group_type_);
+  printf("before real reduce: rank %d\n", rank);
+  NCCL_RETURN_IF_ERROR(ncclReduce(fusion_data, fusion_data, total_count, dtype, ncclSum, root_rank_, comm, stream));
 
   //Copy this rank's Reduce result to outputs
   offset = 0;
-  if (rank == root_rank_) {
-    for (int i = 0; i < context->InputCount(); i++) {
-      const Tensor* input_tensor = context->Input<Tensor>(i);
-      const TensorShape& input_shape = input_tensor->Shape();
-      const int64_t tensor_bytes = input_tensor->SizeInBytes();
-      const void* fusion_data_at_offset = (const int8_t*)fusion_data + offset;
-      Tensor* output_tensor = context->Output(i, input_shape);
-      std::cout << "input shape [" << i << "]= " << input_shape.ToString() << "\n";
-      std::cout << "output shape [" << i << "]= " << output_tensor->Shape().ToString() << "\n";
+  for (int i = 0; i < context->InputCount(); i++) {
+    const Tensor* input_tensor = context->Input<Tensor>(i);
+    const TensorShape& input_shape = input_tensor->Shape();
+    const int64_t tensor_bytes = input_tensor->SizeInBytes();
+    const void* fusion_data_at_offset = (const int8_t*)fusion_data + offset;
+    Tensor* output_tensor = context->Output(i, input_shape);
+    std::cout << "input shape [" << i << "]= " << input_shape.ToString() << "\n";
+    std::cout << "output shape [" << i << "]= " << output_tensor->Shape().ToString() << "\n";
+    if (rank == root_rank_) {
       void* output_data = output_tensor->MutableDataRaw();
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, fusion_data_at_offset, tensor_bytes, cudaMemcpyDeviceToDevice));
+      CUDA_RETURN_IF_ERROR(cudaMemcpy(output_data, fusion_data_at_offset, tensor_bytes, cudaMemcpyDeviceToDevice));
       offset += tensor_bytes;
     }
   }

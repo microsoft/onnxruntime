@@ -70,6 +70,7 @@ static Status AddNcclReduceForGradients(
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<ArgDef>& output_readies) {
   const int data_parallel_group_rank = opt_graph_config.data_parallel_group_rank;
+  ArgDef old_reduce_output;
   for (int i = 0; i < (int)(partitions.size()); ++i) {
     int ub = partitions[i];
     int lb = i == 0 ? 0 : partitions[i - 1] + 1;
@@ -77,10 +78,7 @@ static Status AddNcclReduceForGradients(
     std::vector<ArgDef> reduce_outputs;
     std::vector<ArgDef> reduce_inputs;
 
-    auto type_proto = graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
     auto node_name = nodearg_name_generator("NcclReduce");
-    ArgDef reduce_output_ready(node_name + "_output_ready", type_proto);
-    reduce_outputs.push_back(reduce_output_ready);
 
     for (int j = lb; j <= ub; ++j) {
       reduce_inputs.push_back(gradient_argdefs[j]);
@@ -93,16 +91,22 @@ static Status AddNcclReduceForGradients(
         opt_configs[j].enabled = false;
       }
     }
+    if (i > 0) {
+      //fake data edge to enforce dependence
+      reduce_inputs.push_back(old_reduce_output);
+      std::cout << "old_reduce_output name = " << old_reduce_output.name << "\n";
+    }
+    old_reduce_output = reduce_outputs[0];
+    int64_t has_old_reduce = i > 0;
 
     std::vector<AttributeProto> attributes({onnx::MakeAttribute("root_rank", int64_t(i)),
-                                            onnx::MakeAttribute("has_output_ready", int64_t(1))});  //,
+                                            onnx::MakeAttribute("num_input_readies", has_old_reduce)});  //,
     graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclReduce", kMSDomain, 1},
                                     reduce_inputs,
                                     reduce_outputs,
                                     attributes,
-                                    node_name
-                                    )});
-    output_readies.push_back(reduce_output_ready);
+                                    node_name)});
+    output_readies.push_back(reduce_outputs[0]);
   }
   return Status::OK();
 }
@@ -165,6 +169,7 @@ static Status AddL2NormNcclAllReduce(
   // AllReduce the squared L2 norms.
   std::vector<ArgDef> inputs({norm_argdef});
   inputs.insert(inputs.end(), input_readies.begin(), input_readies.end());
+  printf("input_readies.size = %d\n", (int)input_readies.size());
   ArgDef allreduce_output(norm_argdef.name + "_AllReduce_Out", norm_argdef.type_proto);
   graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclAllReduce", kMSDomain, 1},
                                   inputs,
@@ -423,7 +428,6 @@ static Status GetGradientArgsInTopoOrder(
     for (const auto* output_def : n_output_defs) {
       auto itr = std::find(gradient_names.begin(), gradient_names.end(), output_def->Name());
       if (itr != gradient_names.end()) {
-        //std::cout << "gradient_name " << *itr << "\n";
         gradient_argdefs_in_topo_order.push_back(gradient_argdefs.at(std::distance(gradient_names.begin(), itr)));
         weight_argdefs_in_topo_order.push_back(weight_argdefs.at(std::distance(gradient_names.begin(), itr)));
         opt_configs_in_topo_order.push_back(opt_configs.at(std::distance(gradient_names.begin(), itr)));
@@ -475,7 +479,7 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
     ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs,
                                                 opt_graph_config_.allreduce_in_fp16, false));
 
-    // add Reducescatter for gradients
+    // add Reducescatter for gradients;
     ORT_RETURN_IF_ERROR(AddNcclReduceScatterForGradients(gradient_argdefs, graph_defs));
 
     // check if all gradients are finite
