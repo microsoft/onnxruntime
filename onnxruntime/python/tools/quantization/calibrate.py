@@ -12,6 +12,7 @@ import numpy as np
 import onnx
 import onnxruntime
 from onnx import helper, TensorProto, numpy_helper
+from onnx import onnx_pb as onnx_proto
 
 import re
 import subprocess
