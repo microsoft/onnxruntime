@@ -91,11 +91,12 @@ void Check<double>(const OpTester::Data& expected_data,
 #endif
 
   for (int i = 0; i < size; ++i) {
-    if (std::isinf(expected[i])) {  // Test infinity for equality
-      EXPECT_EQ(expected[i], output[i]) << "i:" << i;
-    } else if (std::isnan(expected[i])) {
-      EXPECT_TRUE(std::isnan(output[i])) << "Expected output " << i
-                                         << " to be NaN";
+    // NOTE: Check isnan first to work around MSVC linker bug when /LTCG:incremental is specified.
+    // If the isinf check is first the isnan check and branch gets omitted
+    if (std::isnan(expected[i])) {
+      EXPECT_TRUE(std::isnan(output[i])) << "Expected NaN. i:" << i << ", provider_type: " << provider_type;
+    } else if (std::isinf(expected[i])) {  // Test infinity for equality
+      EXPECT_EQ(expected[i], output[i]) << "Expected infinity. i:" << i << ", provider_type: " << provider_type;
     } else {
       if (!has_abs_err && !has_rel_err) {
         // the default for existing tests
@@ -142,11 +143,12 @@ void InternalNumericalCheck(const OpTester::Data& expected_data,
 #endif
 
   for (int i = 0; i < size; ++i) {
-    if (std::isinf(expected[i])) {  // Test infinity for equality
-      EXPECT_EQ(expected[i], output[i]) << "i:" << i;
-    } else if (std::isnan(expected[i])) {
-      EXPECT_TRUE(std::isnan(output[i])) << "Expected output " << i
-                                         << " to be NaN";
+    // NOTE: Check isnan first to work around MSVC linker bug when /LTCG:incremental is specified.
+    // If the isinf check is first the isnan check and branch gets omitted
+    if (std::isnan(expected[i])) {
+      EXPECT_TRUE(std::isnan(output[i])) << "Expected NaN. i:" << i << ", provider_type: " << provider_type;
+    } else if (std::isinf(expected[i])) {  // Test infinity for equality
+      EXPECT_EQ(expected[i], output[i]) << "Expected infinity. i:" << i << ", provider_type: " << provider_type;
     } else {
       if (!has_abs_err && !has_rel_err) {
         // the default for existing tests
