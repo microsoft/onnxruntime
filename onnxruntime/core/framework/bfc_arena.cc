@@ -87,7 +87,8 @@ Status BFCArena::Extend(size_t rounded_bytes) {
     } catch (const OnnxRuntimeException& ort_exception) {
       // swallow if exception is our throw from a failed cudaMalloc call.
       // re-throw otherwise.
-      if (std::string(ort_exception.what()).find("cudaMalloc") == std::string::npos) {
+      if (std::string(ort_exception.what()).find("cudaMalloc") == std::string::npos &&
+          std::string(ort_exception.what()).find("hipMalloc") == std::string::npos) {
         throw;
       }
     }
