@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "transpose_matmul.h"
+#include "contrib_ops/cpu/transpose_scale_matmul.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/util/math.h"
 
@@ -9,20 +9,21 @@ namespace onnxruntime {
 namespace contrib {
 
 ONNX_OPERATOR_KERNEL_EX(
-    TransposeMatMul,
+    TransposeScaleMatMul,
     kMSDomain,
     1,
     kCpuExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    TransposeMatMul);
+    TransposeScaleMatMul);
 
-TransposeMatMul::TransposeMatMul(const OpKernelInfo& info)
+TransposeScaleMatMul::TransposeScaleMatMul(const OpKernelInfo& info)
     : OpKernel{info} {
-  ORT_ENFORCE(info.GetAttr("transA", &trans_a_attr_).IsOK());
-  ORT_ENFORCE(info.GetAttr("transB", &trans_b_attr_).IsOK());
+  ORT_THROW_IF_ERROR(info.GetAttr("alpha", &alpha_attr_));
+  ORT_THROW_IF_ERROR(info.GetAttr("transA", &trans_a_attr_));
+  ORT_THROW_IF_ERROR(info.GetAttr("transB", &trans_b_attr_));
 }
 
-Status TransposeMatMul::Compute(OpKernelContext* context) const {
+Status TransposeScaleMatMul::Compute(OpKernelContext* context) const {
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 
   const Tensor* A = context->Input<Tensor>(0);
@@ -47,7 +48,7 @@ Status TransposeMatMul::Compute(OpKernelContext* context) const {
         trans_a ? CblasTrans : CblasNoTrans,
         trans_b ? CblasTrans : CblasNoTrans,
         helper.M(), helper.N(), helper.K(),
-        1.0f,
+        alpha_attr_,
         A->Data<float>() + helper.LeftOffsets()[i],
         B->Data<float>() + helper.RightOffsets()[i],
         0.0f,
