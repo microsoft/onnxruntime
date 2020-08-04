@@ -8,13 +8,14 @@
 namespace onnxruntime {
 namespace contrib {
 
-class TransposeMatMul final : public OpKernel {
+class TransposeScaleMatMul final : public OpKernel {
  public:
-  TransposeMatMul(const OpKernelInfo& info);
+  TransposeScaleMatMul(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* context) const override;
 
  private:
+  float alpha_attr_;
   int64_t trans_a_attr_, trans_b_attr_;
 };
 
