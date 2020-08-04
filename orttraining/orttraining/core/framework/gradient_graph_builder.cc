@@ -22,7 +22,7 @@ using namespace common;
 GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
                                            const unordered_set<string>& y_node_arg_names,
                                            const unordered_set<string>& x_node_arg_names,
-                                           string loss_node_arg_name,
+                                           const std::string& loss_node_arg_name,
                                            const GradientGraphConfiguration& gradient_graph_config,
                                            const logging::Logger& logger)
     : graph_(graph),
@@ -175,7 +175,6 @@ Status GradientGraphBuilder::Build() {
 
   // so far, visited are the minimum node in between
   // visited_node_args are the node_args involved
-
   for (auto node : visited) {
     //TODO: might not need two sets, the union of them might be enough
     unordered_set<string> input_args_need_grad, output_args_need_grad;

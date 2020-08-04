@@ -27,7 +27,7 @@ GradientDef GetGradientForOp(const GradientGraphConfiguration& gradient_graph_co
                                                                             logger);
 
   ORT_ENFORCE(gradient_builder != nullptr,
-              "The gradient builder has not been registered:", node->OpType());
+              "The gradient builder has not been registered:", node->OpType(), " for node ", node->Name());
 
   return gradient_builder->GetGradientDefs();
 }

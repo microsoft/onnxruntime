@@ -8,6 +8,7 @@
 #include "core/graph/graph.h"
 #include "orttraining/core/graph/graph_augmenter.h"
 #include "orttraining/core/graph/gradient_config.h"
+#include "orttraining/core/graph/recompute_graph_utils.h"
 #include "onnx/defs/attr_proto_util.h"
 
 namespace onnxruntime {
@@ -79,7 +80,7 @@ class GradientBuilderBase {
     ORT_ENFORCE(i < node_->InputDefs().size());
 
     const std::string& name = node_->InputDefs()[i]->Name();
-    NodeArg* recomputed_nodearg = graph_->GetNodeArg(name + "_recompute");
+    NodeArg* recomputed_nodearg = graph_->GetNodeArg(graph_utils::RecomputeName(name));
     if (recomputed_nodearg) {
       const Node* producer_node = graph_->GetProducerNode(name);
       LOGS(logger_, INFO) << "Recomputed node arg found for " << producer_node->Name();

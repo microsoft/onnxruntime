@@ -32,7 +32,7 @@ static std::unordered_map<std::string, std::unordered_set<size_t>>
         {"Reshape", {1}},
         {"Expand", {1}},
         {"TrainableDropout", {1}},
-        {"Dropout", {1}},
+        {"Dropout", {1, 2}},
         {"Slice", {1, 2, 3, 4}},
         {"SparseSoftmaxCrossEntropy", {1, 2}},
         {"SoftmaxCrossEntropyLoss", {1, 2}},
@@ -58,7 +58,7 @@ class GradientGraphBuilder {
   GradientGraphBuilder(Graph* graph,
                        const std::unordered_set<std::string>& y_node_arg_names,
                        const std::unordered_set<std::string>& x_node_arg_names,
-                       std::string loss_node_arg_name,
+                       const std::string& loss_node_arg_name,
                        const GradientGraphConfiguration& gradient_graph_config,
                        const logging::Logger& logger);
 
@@ -76,7 +76,7 @@ class GradientGraphBuilder {
   std::string loss_node_arg_name_;
 
   const GradientGraphConfiguration& gradient_graph_config_;
-  
+
   const logging::Logger& logger_;
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr_{5};

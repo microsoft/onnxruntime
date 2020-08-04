@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/graph/graph_utils.h"
+#include "orttraining/core/graph/recompute_graph_utils.h"
 #include "orttraining/core/optimizer/localized_recompute.h"
 
 using namespace ONNX_NAMESPACE;
@@ -19,7 +20,7 @@ bool GeluRecompute::SatisfyCondition(const Graph& /*graph*/, const Node& node, c
 Status GeluRecompute::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& /*logger*/) const {
   const auto& output = node.OutputDefs()[0];
 
-  auto& recomputed_output = graph.GetOrCreateNodeArg(output->Name() + "_recompute",
+  auto& recomputed_output = graph.GetOrCreateNodeArg(graph_utils::RecomputeName(output->Name()),
                                                      output->TypeAsProto());
 
   graph.AddNode(node.Name() + "_recompute",
@@ -47,16 +48,17 @@ bool AttentionDropoutRecompute::SatisfyCondition(const Graph& /*graph*/, const N
 Status AttentionDropoutRecompute::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& /*logger*/) const {
   const auto& output = node.OutputDefs()[0];
 
-  auto& recomputed_output = graph.GetOrCreateNodeArg(output->Name() + "_recompute",
+  auto& recomputed_output = graph.GetOrCreateNodeArg(graph_utils::RecomputeName(output->Name()),
                                                      output->TypeAsProto());
 
   graph.AddNode(node.Name() + "_recompute",
-                "TrainableDropoutGrad",
+                "DropoutGrad",                    // Reusing DropoutGrad as the recompute op 
                 "Recompute of " + node.Name(),
                 {
                     node.MutableInputDefs()[0],   // X
                     node.MutableOutputDefs()[1],  // mask
-                    node.MutableInputDefs()[1]    // ratio
+                    node.MutableInputDefs()[1],   // ratio
+                    node.MutableInputDefs()[2]    // training_mode 
                 },
                 {&recomputed_output},
                 {},
