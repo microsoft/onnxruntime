@@ -30,10 +30,13 @@
 
 // The filename extension for a shared library is different per platform
 #ifdef _WIN32
+#define LIBRARY_PREFIX
 #define LIBRARY_EXTENSION ".dll"
 #elif defined(__APPLE__)
+#define LIBRARY_PREFIX "lib"
 #define LIBRARY_EXTENSION ".dylib"
 #else
+#define LIBRARY_PREFIX "lib"
 #define LIBRARY_EXTENSION ".so"
 #endif
 
@@ -578,10 +581,10 @@ struct ProviderHostImpl : ProviderHost {
 
 struct ProviderSharedLibrary {
   ProviderSharedLibrary() {
-    std::string full_path = Env::Default().GetRuntimePath() + std::string("onnxruntime_providers_shared" LIBRARY_EXTENSION);
+    std::string full_path = Env::Default().GetRuntimePath() + std::string(LIBRARY_PREFIX "onnxruntime_providers_shared" LIBRARY_EXTENSION);
     Env::Default().LoadDynamicLibrary(full_path, &handle_);
     if (!handle_) {
-      LOGS_DEFAULT(ERROR) << "Failed to load provider shared library";
+      LOGS_DEFAULT(ERROR) << "Failed to load providers shared library";
       return;
     }
 
@@ -611,7 +614,7 @@ struct ProviderLibrary {
     std::string full_path = Env::Default().GetRuntimePath() + std::string(filename);
     Env::Default().LoadDynamicLibrary(full_path, &handle_);
     if (!handle_) {
-      LOGS_DEFAULT(ERROR) << "Failed to load provider shared library";
+      LOGS_DEFAULT(ERROR) << "Failed to load provider library";
       return;
     }
 
@@ -642,7 +645,7 @@ struct IExecutionProviderFactory_Translator : IExecutionProviderFactory {
 };
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int device_id) {
-  static ProviderLibrary library("onnxruntime_providers_dnnl" LIBRARY_EXTENSION);
+  static ProviderLibrary library(LIBRARY_PREFIX "onnxruntime_providers_dnnl" LIBRARY_EXTENSION);
   if (!library.provider_)
     return nullptr;
 
@@ -668,7 +671,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(i
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id) {
-  static ProviderLibrary library("onnxruntime_providers_tensorrt" LIBRARY_EXTENSION);
+  static ProviderLibrary library(LIBRARY_PREFIX "onnxruntime_providers_tensorrt" LIBRARY_EXTENSION);
   if (!library.provider_)
     return nullptr;
 
