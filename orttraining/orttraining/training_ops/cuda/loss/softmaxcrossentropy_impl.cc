@@ -207,7 +207,7 @@ Status SparseSoftmaxCrossEntropy<T, Tin>::ComputeInternal(OpKernelContext* ctx) 
     cudaMemcpy(torch_weight.data_ptr(), weight_data, N * sizeof(T), cudaMemcpyDeviceToDevice);
 
     auto torch_value_options = torch::TensorOptions().dtype(get_torch_type<Tin>()).device(torch::kCUDA, torch_device);
-    torch::Tensor torch_value = -torch::ones(c10::IntArrayRef{N}, torch_value_options);
+    torch::Tensor torch_value = -torch::ones(c10::IntArrayRef{}, torch_value_options);
     at::masked_fill(torch_label, at::eq(torch_weight, torch::zeros_like(torch_weight)), torch_value);
 
     torch::Tensor torch_log_prob = at::log_softmax(torch_logit, 1, c10::nullopt);
