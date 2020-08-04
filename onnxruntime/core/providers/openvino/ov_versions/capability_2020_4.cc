@@ -632,13 +632,15 @@ GetCapability_2020_4(const onnxruntime::GraphViewer& graph_viewer, std::string d
   std::unordered_set<std::string> ng_required_initializers;
 
   const auto unsupported_nodes = GetUnsupportedNodeIndices(graph_viewer, device_id, ng_required_initializers);
-  if(openvino_ep::backend_utils::IsDebugEnabled()){
-    std::cout << "No of unsupported nodes " << unsupported_nodes.size() << std::endl;
-    for(size_t i = 0; i < unsupported_nodes.size(); i++){
-      const auto& node = graph_viewer.GetNode(unsupported_nodes[i]);
-      std::cout << "Unsupported node op " << node->OpType() << std::endl;
+  #ifndef NDEBUG
+    if(openvino_ep::backend_utils::IsDebugEnabled()){
+      std::cout << "No of unsupported nodes " << unsupported_nodes.size() << std::endl;
+      for(size_t i = 0; i < unsupported_nodes.size(); i++){
+        const auto& node = graph_viewer.GetNode(unsupported_nodes[i]);
+        std::cout << "Unsupported node op " << node->OpType() << std::endl;
+      }
     }
-  }
+  #endif
 
   //If all ops are supported, no partitioning is required. Short-circuit and avoid splitting.
   if (unsupported_nodes.empty()) {
