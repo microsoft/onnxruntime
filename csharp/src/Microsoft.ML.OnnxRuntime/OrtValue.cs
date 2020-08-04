@@ -4,6 +4,7 @@
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Buffers;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace Microsoft.ML.OnnxRuntime
@@ -27,12 +28,25 @@ namespace Microsoft.ML.OnnxRuntime
         /// Use factory methods to instantiate
         /// </summary>
         /// <param name="handle"></param>
-        internal OrtValue(IntPtr handle)
+        /// <param name="owned">Default true, own the raw handle</param>
+        internal OrtValue(IntPtr handle, bool owned = true)
         {
             Handle = handle;
+            IsOwned = owned;
         }
 
         internal IntPtr Handle { get; private set; }
+
+        internal bool IsOwned { get; private set; }
+
+        #region NamedOnnxValue/DisposableOnnxValue accommodations
+
+        // DisposableOnnxValue class owns Native handle to OrtValue
+        // NamedOnnxValue does not own anything but creates a new one
+        // which presents a fundamental semantic difference to ToOrtValue interface.
+        //
+        // We provide a way to relinquish ownership as well as return an instance of
+        // OrtValue that is still disposable but does not have ownership
 
         /// <summary>
         /// This internal interface is used to transfer ownership elsewhere.
@@ -44,8 +58,11 @@ namespace Microsoft.ML.OnnxRuntime
         {
             var handle = Handle;
             Handle = IntPtr.Zero;
+            IsOwned = false;
             return handle;
         }
+
+        #endregion
 
         /// <summary>
         /// Factory method to construct an OrtValue of Tensor type on top of pre-allocated memory.
@@ -95,7 +112,8 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// This is a factory method that ta
+        /// This is a factory method creates a native Onnxruntime OrtValue containing a tensor.
+        /// However, it re-uses managed memory if possible.
         /// </summary>
         /// <param name="value">Tensor object</param>
         /// <param name="memoryHandle">For all tensor types but string tensors we endevour to use managed memory
@@ -103,7 +121,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </param>
         /// <param name="elementType">discovered tensor element type</param>
         /// <returns></returns>
-        public static OrtValue CreateFromTensorObject(Object value, out MemoryHandle memoryHandle,
+        public static OrtValue CreateFromTensorObject(Object value, out MemoryHandle? memoryHandle,
                                                                     out TensorElementType elementType)
         {
             // Check if this is a Tensor
@@ -119,7 +137,7 @@ namespace Microsoft.ML.OnnxRuntime
                 throw new OnnxRuntimeException(ErrorCode.RequirementNotRegistered, "BUG Check");
             }
 
-            MemoryHandle memHandle = default;
+            MemoryHandle? memHandle;
             OrtValue ortValue = null;
             int dataBufferLength = 0;
             long[] shape = null;
@@ -130,7 +148,7 @@ namespace Microsoft.ML.OnnxRuntime
             if (typeInfo.IsString)
             {
                 ortValue = CreateStringTensor(value as Tensor<string>);
-                memHandle = default;
+                memHandle = null;
             }
             else
             {
@@ -192,10 +210,11 @@ namespace Microsoft.ML.OnnxRuntime
 
                 try
                 {
+                    Debug.Assert(memHandle.HasValue);
                     IntPtr dataBufferPointer = IntPtr.Zero;
                     unsafe
                     {
-                        dataBufferPointer = (IntPtr)memHandle.Pointer;
+                        dataBufferPointer = (IntPtr)((MemoryHandle)memHandle).Pointer;
                     }
 
                     IntPtr nativeValue;
@@ -212,7 +231,7 @@ namespace Microsoft.ML.OnnxRuntime
                 }
                 catch (Exception e)
                 {
-                    memHandle.Dispose();
+                    memHandle?.Dispose();
                     throw e;
                 }
             }
@@ -225,7 +244,7 @@ namespace Microsoft.ML.OnnxRuntime
                                             Tensor<T> tensor,
                                             TensorElementType nativeElementType,
                                             int elementSize,
-                                            out MemoryHandle pinnedHandle,
+                                            out MemoryHandle? pinnedHandle,
                                             out int dataBufferLength,
                                             out long[] shape,
                                             out int rank)
@@ -320,9 +339,13 @@ namespace Microsoft.ML.OnnxRuntime
             if (disposing)
             {
                 // We have to surrender ownership to some legacy classes
+                // Or we never had that ownership to begin with
                 if (Handle != IntPtr.Zero)
                 {
-                    NativeMethods.OrtReleaseValue(Handle);
+                    if (IsOwned)
+                    {
+                        NativeMethods.OrtReleaseValue(Handle);
+                    }
                     // Prevent use after disposal
                     Handle = IntPtr.Zero;
                 }

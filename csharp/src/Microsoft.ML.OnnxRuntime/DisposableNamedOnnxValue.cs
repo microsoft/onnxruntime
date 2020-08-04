@@ -72,37 +72,19 @@ namespace Microsoft.ML.OnnxRuntime
 
         /// <summary>
         /// Overrides the base class method. Since the instance already has access to the 
-        /// underlying OrtValue handle (if this instance hasn't been disposed), it just assigns
+        /// underlying OrtValue handle, it returns an instance of OrtValue that does not own the raw handle
         /// that to the output onnxValue. With respect to pinnedMemoryHandle, it has no operation
         /// to do, as this class doesn't maintain a managed buffer. It doesn't have to maintain it
         /// as it already is associated with the object of interest (native OrtValue)
         /// </summary>
-        /// <param name="onnxValue"></param>
         /// <param name="pinnedMemoryHandle"></param>
-        /// <param name="disposeOnnxValueAfterUse"></param>
-        internal override void ToNativeOnnxValue(out IntPtr onnxValue, out MemoryHandle pinnedMemoryHandle, out bool disposeOnnxValueAfterUse)
+        internal override OrtValue ToOrtValue(out MemoryHandle? pinnedMemoryHandle)
         {
-            // Make sure that this instance hasn't been disposed yet
-            if (disposedValue)
-            {
-                throw new ObjectDisposedException(nameof(DisposableNamedOnnxValue),
-                                                  "This instance of DisposableNamedOnnxValue has already been disposed");
-            }
-
-            // If not already disposed, _nativeMemoryManager can only be null
-            // for Maps and SequenceTensors
-            if (_nativeMemoryManager == null)
-            {
-                throw new NotSupportedException("Use of Maps and SequenceTensors is not yet supported");
-            }
-
-            // Assign the onnxValue by querying this instance's NativeOnnxTensorMemory instance
-            onnxValue = _nativeMemoryManager.Handle;
-
             // PinnedMemoryHandle holds the default value as DisposableNamedOnnxValue
             // doesn't hold any managed buffer (that needs to be pinned)
-            pinnedMemoryHandle = default;
-            disposeOnnxValueAfterUse = false;
+            pinnedMemoryHandle = null;
+            // Assign the onnxValue by querying this instance's NativeOnnxTensorMemory instance
+            return new OrtValue(_nativeMemoryManager.Handle, false);
         }
 
         internal static DisposableNamedOnnxValue CreateTensorFromOnnxValue(string name, IntPtr nativeOnnxValue)
@@ -170,9 +152,11 @@ namespace Microsoft.ML.OnnxRuntime
             return result;
         }
 
-        internal static DisposableNamedOnnxValue CreateFromOnnxValue(string name, IntPtr nativeOnnxValue)
+        internal static DisposableNamedOnnxValue CreateFromOrtValue(string name, OrtValue ortValue)
         {
-            return CreateFromOnnxValue(name, nativeOnnxValue, OrtAllocator.DefaultInstance);
+            var result = CreateFromOnnxValue(name, ortValue.Handle, OrtAllocator.DefaultInstance);
+            ortValue.Disown();
+            return result;
         }
 
         internal static DisposableNamedOnnxValue CreateFromOnnxValue(string name, IntPtr nativeOnnxValue, OrtAllocator allocator)
@@ -283,29 +267,20 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         #region IDisposable Support
-        private bool disposedValue = false; // To detect redundant calls
 
         protected virtual void Dispose(bool disposing)
         {
-            if (!disposedValue)
+            if (disposing)
             {
-                if (disposing)
+                // dispose managed state (managed objects).
+                if (_nativeMemoryManager != null)
                 {
-                    // dispose managed state (managed objects).
-                    if (_nativeMemoryManager != null)
-                    {
-                        _nativeMemoryManager.Dispose();
-                        _nativeMemoryManager = null;
-                    }
+                    _nativeMemoryManager.Dispose();
+                    _nativeMemoryManager = null;
                 }
-
-                // free unmanaged resources (unmanaged objects) and override a finalizer below.
-                // set large fields to null.
-                disposedValue = true;
             }
         }
 
-        // This code added to correctly implement the disposable pattern.
         public void Dispose()
         {
             // Do not change this code. Put cleanup code in Dispose(bool disposing) above.

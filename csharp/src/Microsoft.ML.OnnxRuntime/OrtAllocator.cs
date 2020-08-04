@@ -235,19 +235,6 @@ namespace Microsoft.ML.OnnxRuntime
         private OrtAllocator _allocator;
 
         /// <summary>
-        /// Bind an arbitrary piece of native memory to the instance
-        /// The instance will not have the ownership of this memory.
-        /// </summary>
-        /// <param name="pointer"></param>
-        /// <param name="size"></param>
-        public OrtMemoryAllocation(IntPtr pointer, uint size)
-        {
-            _allocator = null;
-            Pointer = pointer;
-            Size = size;
-        }
-
-        /// <summary>
         /// This constructs an instance representing an native memory allocation.
         /// Typically returned by OrtAllocator.Allocate(). However, some APIs return
         /// natively allocated IntPtr using a specific allocator. It is a good practice
@@ -257,7 +244,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="allocator"></param>
         /// <param name="pointer"></param>
         /// <param name="size"></param>
-        public OrtMemoryAllocation(OrtAllocator allocator, IntPtr pointer, uint size)
+        internal OrtMemoryAllocation(OrtAllocator allocator, IntPtr pointer, uint size)
         {
             _allocator = allocator;
             Pointer = pointer;

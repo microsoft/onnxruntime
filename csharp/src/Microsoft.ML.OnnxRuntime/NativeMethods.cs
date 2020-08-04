@@ -338,10 +338,10 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate IntPtr /*(ONNStatus*)*/ DOrtRun(
                                                 IntPtr /*(OrtSession*)*/ session,
                                                 IntPtr /*(OrtSessionRunOptions*)*/ runOptions,  // can be null to use the default options
-                                                string[] inputNames,
+                                                IntPtr[] inputNames,
                                                 IntPtr[] /* (OrtValue*[])*/ inputValues,
                                                 UIntPtr inputCount,
-                                                string[] outputNames,
+                                                IntPtr[] outputNames,
                                                 UIntPtr outputCount,
                                                 IntPtr[] outputValues /* An array of output value pointers. Array must be allocated by the caller */
                                                 );

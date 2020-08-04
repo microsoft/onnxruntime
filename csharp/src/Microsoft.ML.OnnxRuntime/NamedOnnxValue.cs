@@ -9,6 +9,10 @@ using System.Runtime.InteropServices.ComTypes;
 
 namespace Microsoft.ML.OnnxRuntime
 {
+    /// <summary>
+    /// The name of the class is a misnomer, it does not hold any
+    /// Onnx values
+    /// </summary>
     public class NamedOnnxValue
     {
         protected Object _value;
@@ -66,16 +70,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="onnxValue"></param>
         /// <param name="pinnedMemoryHandle"></param>
         /// <param name="disposeOnnxValueAfterUse"></param>
-        internal virtual void ToNativeOnnxValue(
-            out IntPtr onnxValue,
-            out MemoryHandle pinnedMemoryHandle,
-            out bool disposeOnnxValueAfterUse)
+        internal virtual OrtValue ToOrtValue(out MemoryHandle? pinnedMemoryHandle)
         {
-            var ortValue = OrtValue.CreateFromTensorObject(_value, out pinnedMemoryHandle, out TensorElementType elementType);
-            onnxValue = ortValue.Disown();
-            // Dispose any other parts if any
-            ortValue.Dispose();
-            disposeOnnxValueAfterUse = true;
+            return OrtValue.CreateFromTensorObject(_value, out pinnedMemoryHandle, out TensorElementType elementType);
         }
 
         // may expose different types of getters in future
