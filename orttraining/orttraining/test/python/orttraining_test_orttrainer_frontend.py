@@ -450,7 +450,7 @@ def testLRSchedulerUpdateImpl(lr_scheduler, expected_values):
         # Emulate ORTTRainer.train_step() call that updates its train_step_info
         train_step_info = TrainStepInfo(step=step, optimizer_config=optimizer_config)
 
-        lr_scheduler._step(train_step_info)
+        lr_scheduler.step(train_step_info)
         lr_list = lr_scheduler.get_last_lr()
         assert len(lr_list) == 1
         assert_allclose(lr_list[0],
@@ -496,12 +496,12 @@ def testInstantiateORTTrainer(step_fn, lr_scheduler, expected_lr_values):
     tolerance = 1e-4 # used in lr comparison
 
     # Set up relevant options
-    opts = orttrainer.ORTTrainerOptions({})
+    opts = {}
     if lr_scheduler:
         max_train_step = 10
-        opts = orttrainer.ORTTrainerOptions({'lr_scheduler' : lr_scheduler(max_train_step, warmup)})
-    
-    # Create ORTTrainer
+        opts.update({'lr_scheduler' : lr_scheduler(max_train_step, warmup)})
+   
+    opts = orttrainer.ORTTrainerOptions(opts)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=opts)
 
     # Preparing data

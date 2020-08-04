@@ -256,7 +256,7 @@ class ORTTrainer(object):
 
         # Update Learning Rate if Necessary
         if self.options.lr_scheduler:
-            self.options.lr_scheduler._step(self._train_step_info)
+            self.options.lr_scheduler.step(self._train_step_info)
 
         # Get data. CombineTorchModelLossFn takes label as last input and outputs loss first
         input = self._prepare_model_input(input_desc, self.optim_config.lr, None, *args, **kwargs)
