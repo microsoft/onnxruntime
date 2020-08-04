@@ -2844,13 +2844,16 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
       });
 
   static const char* Trilu_ver1_doc = R"DOC(
-      Returns the upper or lower triangular part of a 2-D matrix, or batches of 2-D matrices. If setting attribute upper to true,
+      Returns the upper or lower triangular part of a 2-D matrix, or batches of 2-D matrices. If the attribute "upper" is set to true,
       the upper triangular matrix is retained. Lower triangular matrix is retained otherwise. Default value for upper is true.
-      Trilu takes one input tensor of shape [*, N, M], where * is zero or more batch dimensions. The upper/lower triangular part consists
-      of the elements on or above/below the given diagonal (k).
-      If k = 0, this op retains elements on or above/below the the main diagonal. If k > 0, this op
-      retains elements on or above/below k diagonals over the main diagonal. If k < 0, this op retains elements
-      on or above/below as many diagonals below the main diagonal. All other elements in the matrix are set to zero.
+      Trilu takes one input tensor of shape [*, N, M], where * is zero or more batch dimensions. The upper triangular part consists
+      of the elements on and above the given diagonal (k). The lower triangular part consists of elements on and below the diagonal.
+      All other elements in the matrix are set to zero.
+      If k = 0, the triangular part on and above/below the main diagonal is retained.
+      If upper is set to true, a positive k retains the upper triangular matrix excluding k diagonals above
+      the main diagonal. A negative k value includes as many diagonals below the main diagonal.
+      If upper is set to false, a positive k retains the lower triangular matrix including k diagonals above
+      the main diagonal. A negative k value excludes as many diagonals below the main diagonal.
       )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Trilu)
@@ -2859,7 +2862,7 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
       .SetDoc(Trilu_ver1_doc)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .Attr("upper",
-            "Boolean whether upper or lower part of matrix retains it's elements. Default value of upper is true.",
+            "Boolean. Indicates whether upper or lower part of matrix is retained. Default is true.",
             AttributeProto::INT,
             static_cast<int64_t>(1))
       .Input(

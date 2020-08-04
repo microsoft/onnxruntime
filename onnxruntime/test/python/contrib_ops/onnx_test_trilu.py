@@ -4,6 +4,14 @@ import numpy as np
 from onnx_contrib_ops_helper import expect
 
 
+def triu_reference_implementation(x, k=0):
+    return np.triu(x, k)
+
+
+def tril_reference_implementation(x, k=0):
+    return np.tril(x, k)
+
+
 class ONNXReferenceImplementationTest(unittest.TestCase):
     def test_triu(self):
         node = onnx.helper.make_node(
@@ -14,7 +22,8 @@ class ONNXReferenceImplementationTest(unittest.TestCase):
         )
 
         x = np.random.randn(3, 4, 5).astype(np.float32)
-        expect(node, inputs=[x], outputs=[np.triu(x)], name='test_triu')
+        y = triu_reference_implementation(x)
+        expect(node, inputs=[x], outputs=[y], name='test_triu')
 
     def test_triu_neg(self):
         node = onnx.helper.make_node(
@@ -26,7 +35,8 @@ class ONNXReferenceImplementationTest(unittest.TestCase):
 
         x = np.random.randn(3, 4, 5).astype(np.float32)
         k = np.array([-1]).astype(np.int64)
-        expect(node, inputs=[x, k], outputs=[np.triu(x, -1)], name='test_triu_neg')
+        y = triu_reference_implementation(x, k)
+        expect(node, inputs=[x, k], outputs=[y], name='test_triu_neg')
 
     def test_triu_out_neg(self):
         node = onnx.helper.make_node(
@@ -38,7 +48,8 @@ class ONNXReferenceImplementationTest(unittest.TestCase):
 
         x = np.random.randn(3, 4, 5).astype(np.float32)
         k = np.array([-7]).astype(np.int64)
-        expect(node, inputs=[x, k], outputs=[np.triu(x, -7)], name='test_triu_out_neg')
+        y = triu_reference_implementation(x, k)
+        expect(node, inputs=[x, k], outputs=[y], name='test_triu_out_neg')
 
     def test_triu_pos(self):
         node = onnx.helper.make_node(
@@ -50,7 +61,8 @@ class ONNXReferenceImplementationTest(unittest.TestCase):
 
         x = np.random.randn(3, 4, 5).astype(np.float32)
         k = np.array([2]).astype(np.int64)
-        expect(node, inputs=[x, k], outputs=[np.triu(x, 2)], name='test_triu_pos')
+        y = triu_reference_implementation(x, k)
+        expect(node, inputs=[x, k], outputs=[y], name='test_triu_pos')
 
     def test_triu_out_pos(self):
         node = onnx.helper.make_node(
@@ -62,7 +74,8 @@ class ONNXReferenceImplementationTest(unittest.TestCase):
 
         x = np.random.randn(3, 4, 5).astype(np.float32)
         k = np.array([6]).astype(np.int64)
-        expect(node, inputs=[x, k], outputs=[np.triu(x, 6)], name='test_triu_out_pos')
+        y = triu_reference_implementation(x, k)
+        expect(node, inputs=[x, k], outputs=[y], name='test_triu_out_pos')
 
     def test_triu_square(self):
         node = onnx.helper.make_node(
@@ -73,7 +86,8 @@ class ONNXReferenceImplementationTest(unittest.TestCase):
         )
 
         x = np.random.randn(3, 5, 5).astype(np.float32)
-        expect(node, inputs=[x], outputs=[np.triu(x)], name='test_triu_square')
+        y = triu_reference_implementation(x)
+        expect(node, inputs=[x], outputs=[y], name='test_triu_square')
 
     def test_triu_square_neg(self):
         node = onnx.helper.make_node(
@@ -85,7 +99,8 @@ class ONNXReferenceImplementationTest(unittest.TestCase):
 
         x = np.random.randn(3, 5, 5).astype(np.float32)
         k = np.array([-1]).astype(np.int64)
-        expect(node, inputs=[x, k], outputs=[np.triu(x, -1)], name='test_triu_square_neg')
+        y = triu_reference_implementation(x, k)
+        expect(node, inputs=[x, k], outputs=[y], name='test_triu_square_neg')
 
     def test_triu_one_row_neg(self):
         node = onnx.helper.make_node(
@@ -97,7 +112,8 @@ class ONNXReferenceImplementationTest(unittest.TestCase):
 
         x = np.random.randn(3, 1, 5).astype(np.float32)
         k = np.array([-7]).astype(np.int64)
-        expect(node, inputs=[x, k], outputs=[np.triu(x, -7)], name='test_triu_one_row_neg')
+        y = triu_reference_implementation(x, k)
+        expect(node, inputs=[x, k], outputs=[y], name='test_triu_one_row_neg')
 
     def test_triu_square_pos(self):
         node = onnx.helper.make_node(
@@ -109,7 +125,8 @@ class ONNXReferenceImplementationTest(unittest.TestCase):
 
         x = np.random.randn(3, 5, 5).astype(np.float32)
         k = np.array([2]).astype(np.int64)
-        expect(node, inputs=[x, k], outputs=[np.triu(x, 2)], name='test_triu_square_pos')
+        y = triu_reference_implementation(x, k)
+        expect(node, inputs=[x, k], outputs=[y], name='test_triu_square_pos')
 
     def test_triu_zero(self):
         node = onnx.helper.make_node(
@@ -121,7 +138,8 @@ class ONNXReferenceImplementationTest(unittest.TestCase):
 
         x = np.random.randn(3, 0, 5).astype(np.float32)
         k = np.array([6]).astype(np.int64)
-        expect(node, inputs=[x, k], outputs=[np.triu(x, 6)], name='test_triu_zero')
+        y = triu_reference_implementation(x, k)
+        expect(node, inputs=[x, k], outputs=[y], name='test_triu_zero')
 
     def test_tril(self):
         node = onnx.helper.make_node(
@@ -133,7 +151,8 @@ class ONNXReferenceImplementationTest(unittest.TestCase):
         )
 
         x = np.random.randn(3, 4, 5).astype(np.float32)
-        expect(node, inputs=[x], outputs=[np.tril(x)], name='test_tril')
+        y = tril_reference_implementation(x)
+        expect(node, inputs=[x], outputs=[y], name='test_tril')
 
     def test_tril_neg(self):
         node = onnx.helper.make_node(
@@ -146,7 +165,8 @@ class ONNXReferenceImplementationTest(unittest.TestCase):
 
         x = np.random.randn(3, 4, 5).astype(np.float32)
         k = np.array([-1]).astype(np.int64)
-        expect(node, inputs=[x, k], outputs=[np.tril(x, -1)], name='test_tril_neg')
+        y = tril_reference_implementation(x, k)
+        expect(node, inputs=[x, k], outputs=[y], name='test_tril_neg')
 
     def test_tril_out_neg(self):
         node = onnx.helper.make_node(
@@ -159,7 +179,8 @@ class ONNXReferenceImplementationTest(unittest.TestCase):
 
         x = np.random.randn(3, 4, 5).astype(np.float32)
         k = np.array([-7]).astype(np.int64)
-        expect(node, inputs=[x, k], outputs=[np.tril(x, -7)], name='test_tril_out_neg')
+        y = tril_reference_implementation(x, k)
+        expect(node, inputs=[x, k], outputs=[y], name='test_tril_out_neg')
 
     def test_tril_pos(self):
         node = onnx.helper.make_node(
@@ -172,7 +193,8 @@ class ONNXReferenceImplementationTest(unittest.TestCase):
 
         x = np.random.randn(3, 4, 5).astype(np.float32)
         k = np.array([2]).astype(np.int64)
-        expect(node, inputs=[x, k], outputs=[np.tril(x, 2)], name='test_tril_pos')
+        y = tril_reference_implementation(x, k)
+        expect(node, inputs=[x, k], outputs=[y], name='test_tril_pos')
 
     def test_tril_out_pos(self):
         node = onnx.helper.make_node(
@@ -185,7 +207,8 @@ class ONNXReferenceImplementationTest(unittest.TestCase):
 
         x = np.random.randn(3, 4, 5).astype(np.float32)
         k = np.array([6]).astype(np.int64)
-        expect(node, inputs=[x, k], outputs=[np.tril(x, 6)], name='test_tril_out_pos')
+        y = tril_reference_implementation(x, k)
+        expect(node, inputs=[x, k], outputs=[y], name='test_tril_out_pos')
 
     def test_tril_square(self):
         node = onnx.helper.make_node(
@@ -197,7 +220,8 @@ class ONNXReferenceImplementationTest(unittest.TestCase):
         )
 
         x = np.random.randn(3, 5, 5).astype(np.float32)
-        expect(node, inputs=[x], outputs=[np.tril(x)], name='test_tril_square')
+        y = tril_reference_implementation(x)
+        expect(node, inputs=[x], outputs=[y], name='test_tril_square')
 
     def test_tril_square_neg(self):
         node = onnx.helper.make_node(
@@ -210,7 +234,8 @@ class ONNXReferenceImplementationTest(unittest.TestCase):
 
         x = np.random.randn(3, 5, 5).astype(np.float32)
         k = np.array([-1]).astype(np.int64)
-        expect(node, inputs=[x, k], outputs=[np.tril(x, -1)], name='test_tril_square_neg')
+        y = tril_reference_implementation(x, k)
+        expect(node, inputs=[x, k], outputs=[y], name='test_tril_square_neg')
 
     def test_tril_one_row_neg(self):
         node = onnx.helper.make_node(
@@ -223,7 +248,8 @@ class ONNXReferenceImplementationTest(unittest.TestCase):
 
         x = np.random.randn(3, 1, 5).astype(np.float32)
         k = np.array([-7]).astype(np.int64)
-        expect(node, inputs=[x, k], outputs=[np.tril(x, -7)], name='test_tril_one_row_neg')
+        y = tril_reference_implementation(x, k)
+        expect(node, inputs=[x, k], outputs=[y], name='test_tril_one_row_neg')
 
     def test_tril_square_pos(self):
         node = onnx.helper.make_node(
@@ -236,7 +262,8 @@ class ONNXReferenceImplementationTest(unittest.TestCase):
 
         x = np.random.randn(3, 5, 5).astype(np.float32)
         k = np.array([2]).astype(np.int64)
-        expect(node, inputs=[x, k], outputs=[np.tril(x, 2)], name='test_tril_square_pos')
+        y = tril_reference_implementation(x, k)
+        expect(node, inputs=[x, k], outputs=[y], name='test_tril_square_pos')
 
     def test_tril_zero(self):
         node = onnx.helper.make_node(
@@ -249,7 +276,8 @@ class ONNXReferenceImplementationTest(unittest.TestCase):
 
         x = np.random.randn(3, 0, 5).astype(np.float32)
         k = np.array([6]).astype(np.int64)
-        expect(node, inputs=[x, k], outputs=[np.tril(x, 6)], name='test_tril_zero')
+        y = tril_reference_implementation(x, k)
+        expect(node, inputs=[x, k], outputs=[y], name='test_tril_zero')
 
 
 if __name__ == '__main__':

@@ -10,6 +10,8 @@ namespace test {
 
 TEST(TriluContribOpTest, two_by_two_float_upper) {
   OpTester test("Trilu", 1, kMSDomain);
+  int64_t up = 1;
+  test.AddAttribute("upper", up);
   test.AddInput<float>("X", {2, 2}, {4.f, 7.f, 2.f, 6.f});
   test.AddOutput<float>("Y", {2, 2}, {4.f, 7.f, 0.f, 6.f});
   test.Run();
@@ -44,6 +46,8 @@ TEST(TriluContribOpTest, two_by_two_double_lower) {
 
 TEST(TriluContribOpTest, two_by_two_long_upper) {
   OpTester test("Trilu", 1, kMSDomain);
+  int64_t up = 1;
+  test.AddAttribute("upper", up);
   test.AddInput<int64_t>("X", {2, 2}, {4, 7, 2, 6});
   test.AddOutput<int64_t>("Y", {2, 2}, {4, 7, 0, 6});
   test.Run();
@@ -200,13 +204,9 @@ TEST(TriluContribOpTest, small_k_float_lower) {
 
 TEST(TriluContribOpTest, zero_dim_upper) {
   OpTester test("Trilu", 1, kMSDomain);
-  int64_t up = 1;
-  test.AddAttribute("upper", up);
-  test.AddInput<float>("X", {2, 3, 0},
-    {});
+  test.AddInput<float>("X", {2, 3, 0}, {});
   test.AddInput<int64_t>("k", {1}, {0});
-  test.AddOutput<float>("Y", {2, 3, 0},
-    {});
+  test.AddOutput<float>("Y", {2, 3, 0}, {});
   test.Run();
 }
 
@@ -214,21 +214,17 @@ TEST(TriluContribOpTest, zero_dim_lower) {
   OpTester test("Trilu", 1, kMSDomain);
   int64_t up = 0;
   test.AddAttribute("upper", up);
-  test.AddInput<float>("X", {2, 3, 0},
-    {});
+  test.AddInput<float>("X", {2, 3, 0}, {});
   test.AddInput<int64_t>("k", {1}, {0});
-  test.AddOutput<float>("Y", {2, 3, 0},
-    {});
+  test.AddOutput<float>("Y", {2, 3, 0}, {});
   test.Run();
 }
 
 TEST(TriluContribOpTest, zero_dim_2_upper) {
   OpTester test("Trilu", 1, kMSDomain);
-  test.AddInput<float>("X", {2, 0, 0},
-    {});
+  test.AddInput<float>("X", {2, 0, 0}, {});
   test.AddInput<int64_t>("k", {1}, {-5});
-  test.AddOutput<float>("Y", {2, 0, 0},
-    {});
+  test.AddOutput<float>("Y", {2, 0, 0}, {});
   test.Run();
 }
 
@@ -236,11 +232,9 @@ TEST(TriluContribOpTest, zero_dim_2_lower) {
   OpTester test("Trilu", 1, kMSDomain);
   int64_t up = 0;
   test.AddAttribute("upper", up);
-  test.AddInput<float>("X", {2, 0, 0},
-    {});
+  test.AddInput<float>("X", {2, 0, 0}, {});
   test.AddInput<int64_t>("k", {1}, {-5});
-  test.AddOutput<float>("Y", {2, 0, 0},
-    {});
+  test.AddOutput<float>("Y", {2, 0, 0}, {});
   test.Run();
 }
 
