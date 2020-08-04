@@ -46,9 +46,6 @@ class TrainingSession : public InferenceSession {
     // Gradient graph configuration
     GradientGraphConfiguration gradient_graph_config{};
 
-    // Whether to set the gradients as graph outputs.
-    bool set_gradients_as_graph_outputs{false};
-
     // The number of gradient accumulation steps.
     int gradient_accumulation_steps{1};
 
@@ -311,11 +308,10 @@ class TrainingSession : public InferenceSession {
    * @return The list of feed names.
    */
   std::unordered_set<std::string> GetDropoutEvalFeeds() const { return dropout_eval_feeds_; }
+
   /** Override Run function in InferenceSession to inject some training-specific logics **/
   using InferenceSession::Run;  // For overload resolution.
   common::Status Run(const RunOptions& run_options, IOBinding& io_binding) override;
-
-  common::Status Run(IOBinding& io_binding) override;
 
  private:
   /** Configures the loss function.
@@ -419,12 +415,11 @@ class TrainingSession : public InferenceSession {
   /** Perform auto-diff to add backward graph into the model.
   @param weights_to_train a set of weights to be training.
   @param loss_function_output_name the name of the loss function's output.
-  @param set_gradient_as_graph_output if it is true, set gradient of trainable weight as graph output
   */
   common::Status BuildGradientGraph(const std::unordered_set<std::string>& weights_to_train,
                                     const std::string& loss_function_output_name,
                                     const GradientGraphConfiguration& gradient_graph_config,
-                                    const bool set_gradient_as_graph_output = false);
+                                    const logging::Logger& logger);
 
   common::Status BuildAccumulationNode(const std::unordered_set<std::string>& weights_to_train);
 
@@ -456,7 +451,7 @@ class TrainingSession : public InferenceSession {
 
   std::unordered_set<std::string> GetStateTensorNames() const;
 
-  common::Status SetDropoutEvalFeedNames();
+  common::Status SetEvalFeedNames();
 
   NameMLValMap GetWeights() const;
 
@@ -489,6 +484,7 @@ class TrainingSession : public InferenceSession {
   std::unordered_map<std::string, OptimizerNodeConfig> opt_configs_;
 
   GradientGraphConfiguration gradient_graph_config_;
+  static const std::string training_mode_string_;
 };
 }  // namespace training
 }  // namespace onnxruntime

@@ -45,14 +45,20 @@ if(MSVC)
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm/sgemmc.cpp
     )
   elseif(onnxruntime_target_platform STREQUAL "x64")
+    enable_language(ASM_MASM)
+
+    set(mlas_platform_srcs_avx
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/intrinsics/avx/min_max_elements.cpp
+    )
+    set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_FLAGS "/arch:AVX")
+
     set(mlas_platform_srcs_avx2
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/intrinsics/avx2/qladd_avx2.cpp
     )
     set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "/arch:AVX2")
 
-    enable_language(ASM_MASM)
-
     set(mlas_platform_srcs
+      ${mlas_platform_srcs_avx}
       ${mlas_platform_srcs_avx2}
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemmU8S8KernelAvx2.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemvU8S8KernelAvx2.asm
@@ -86,7 +92,6 @@ if(MSVC)
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/LogisticKernelFma3.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/TanhKernelFma3.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/ErfKernelFma3.asm
-      ${ONNXRUNTIME_ROOT}/core/mlas/lib/intrinsics/avx/min_max_elements.cpp
     )
   else()
     enable_language(ASM_MASM)
@@ -177,7 +182,6 @@ else()
     # Forward the flags for the minimum target platform version from the C
     # compiler to the assembler. This works around CMakeASMCompiler.cmake.in
     # not including the logic to set this flag for the assembler.
-
     set(CMAKE_ASM${ASM_DIALECT}_OSX_DEPLOYMENT_TARGET_FLAG "${CMAKE_C_OSX_DEPLOYMENT_TARGET_FLAG}")
 
     # The LLVM assembler does not support the .arch directive to enable instruction

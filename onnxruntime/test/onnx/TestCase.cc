@@ -20,6 +20,7 @@
 #include <map>
 #include <regex>
 #include "OrtValueList.h"
+#include "onnx_model_info.h"
 
 #include "pb_helper.h"
 
@@ -152,85 +153,7 @@ static int ExtractFileNo(const std::basic_string<CHAR_T>& name) {
 }
 using PATH_STRING_TYPE = std::basic_string<PATH_CHAR_TYPE>;
 
-class OnnxModelInfo : public TestModelInfo {
- private:
-  std::string node_name_;
-  std::string onnx_commit_tag_;
-  std::vector<ONNX_NAMESPACE::ValueInfoProto> input_value_info_;
-  std::vector<ONNX_NAMESPACE::ValueInfoProto> output_value_info_;
 
-  template <typename T>
-  static void RepeatedPtrFieldToVector(const ::google::protobuf::RepeatedPtrField<T>& input_value_info,
-                                       std::vector<T>& out) {
-    for (int i = 0; i != input_value_info.size(); ++i) {
-      out.push_back(input_value_info[i]);
-    }
-  }
-  const std::basic_string<PATH_CHAR_TYPE> model_url_;
-
- public:
-  OnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url) : model_url_(model_url) {
-    // parse model
-    int model_fd;
-    auto st = Env::Default().FileOpenRd(model_url, model_fd);
-    if (!st.IsOK()) {
-      ORT_THROW(st.ErrorMessage());
-    }
-
-    ONNX_NAMESPACE::ModelProto model_pb;
-    ::google::protobuf::io::FileInputStream input(model_fd, protobuf_block_size_in_bytes);
-    const bool parse_result = model_pb.ParseFromZeroCopyStream(&input) && input.GetErrno() == 0;
-    if (!parse_result) {
-      (void)Env::Default().FileClose(model_fd);
-      ORT_THROW("Failed to load model because protobuf parsing failed.");
-    }
-    (void)Env::Default().FileClose(model_fd);
-    {
-      const RE2::Anchor re2_anchor = RE2::UNANCHORED;
-      const std::string model_url_string = ToMBString(model_url);
-      re2::StringPiece text(model_url_string);
-      re2::StringPiece submatch;
-      re2::RE2 regex("onnx[0-9a-z]{3}", re2::RE2::Options());  //e.g. onnx141, onnx150, onnxtip
-      if (!regex.ok()) {
-        ORT_THROW("Failed to parse regex: onnx[0-9a-z]{3}");
-      }
-      bool match = regex.Match(text, 0, text.length(), re2_anchor, &submatch, 1);
-      if (match) {
-        onnx_commit_tag_.assign(submatch.data(), submatch.length());
-      } else {
-        onnx_commit_tag_ = TestModelInfo::unknown_version;
-      }
-    }
-    const ONNX_NAMESPACE::GraphProto& graph = model_pb.graph();
-    if (graph.node().size() == 1) {
-      node_name_ = graph.node()[0].op_type();
-    }
-    std::unordered_set<std::string> initializer_names;
-    for (const auto& init : graph.initializer()) {
-      if (!init.has_name()) continue;
-      initializer_names.insert(init.name());
-    }
-    //Ignore the inputs that are already in initializers
-    for (const auto& p : graph.input()) {
-      if (!p.has_name()) ORT_THROW("input without name??");
-      if (initializer_names.find(p.name()) == initializer_names.end()) input_value_info_.push_back(p);
-    }
-    RepeatedPtrFieldToVector(graph.output(), output_value_info_);
-  }
-
-  const PATH_CHAR_TYPE* GetModelUrl() const override { return model_url_.c_str(); }
-  std::string GetModelVersion() const override { return onnx_commit_tag_; }
-
-  const std::string& GetNodeName() const override { return node_name_; }
-  const ONNX_NAMESPACE::ValueInfoProto* GetOutputInfoFromModel(size_t i) const override {
-    return &output_value_info_[i];
-  }
-  int GetInputCount() const override { return static_cast<int>(input_value_info_.size()); }
-  int GetOutputCount() const override { return static_cast<int>(output_value_info_.size()); }
-  const std::string& GetInputName(size_t i) const override { return input_value_info_[i].name(); }
-
-  const std::string& GetOutputName(size_t i) const override { return output_value_info_[i].name(); }
-};
 
 static void SortTensorFileNames(std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_pb_files) {
   if (input_pb_files.size() <= 1) return;

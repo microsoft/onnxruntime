@@ -35,10 +35,10 @@ Recompute Dropout in the attention layer
 */
 class AttentionDropoutRecompute : public RewriteRule {
  public:
-  AttentionDropoutRecompute() noexcept : RewriteRule("GeluRecompute") {}
+  AttentionDropoutRecompute() noexcept : RewriteRule("AttentionDropoutRecompute") {}
 
   std::vector<std::string> TargetOpTypes() const noexcept override {
-    return {"Dropout", "TrainableDropout"};
+    return {"Dropout"};
   }
 
  private:

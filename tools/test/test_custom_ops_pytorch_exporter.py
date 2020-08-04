@@ -44,12 +44,11 @@ class ONNXExporterTest(unittest.TestCase):
 
     def run_test(self, model, input=None,
                  custom_opsets=None,
-                 batch_size=2, state_dict=None,
+                 batch_size=2,
                  rtol=0.001, atol=1e-7,
                  do_constant_folding=True,
                  dynamic_axes=None, test_with_inputs=None,
-                 input_names=None, output_names=None,
-                 fixed_batch_size=False):
+                 input_names=None, output_names=None):
         model.eval()
 
         if input is None:
@@ -74,7 +73,6 @@ class ONNXExporterTest(unittest.TestCase):
                               keep_initializers_as_inputs=self.keep_initializers_as_inputs,
                               dynamic_axes=dynamic_axes,
                               input_names=input_names, output_names=output_names,
-                              fixed_batch_size=fixed_batch_size,
                               custom_opsets=custom_opsets)
 
             # compute onnxruntime output prediction

@@ -435,6 +435,7 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionCorrectnessTest) {
 
     // Now run
     RunOptions run_options;
+    run_options.training_mode = true;
     st = session_object.Run(run_options, feeds, output_names, &expected_ort_values);
 
     EXPECT_TRUE(st.IsOK());
@@ -466,6 +467,7 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionCorrectnessTest) {
 
     // Now run
     RunOptions run_options;
+    run_options.training_mode = true;
     st = session_object.Run(run_options, feeds, output_names, &actual_ort_values);
 
     EXPECT_TRUE(st.IsOK());
@@ -562,6 +564,7 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionCorrectnessTest) 
 
     // Now run
     RunOptions run_options;
+    run_options.training_mode = true;
     st = session_object.Run(run_options, feeds, output_names, &expected_ort_values);
     EXPECT_TRUE(st.IsOK());
   }
@@ -596,6 +599,7 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionCorrectnessTest) 
 
     // Now run
     RunOptions run_options;
+    run_options.training_mode = true;
     st = session_object.Run(run_options, feeds, output_names, &actual_ort_values);
     EXPECT_TRUE(st.IsOK());
   }

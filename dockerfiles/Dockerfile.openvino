@@ -15,7 +15,7 @@ ENV PATH /opt/miniconda/bin:/code/cmake-3.14.3-Linux-x86_64/bin:$PATH
 
 
 ENV pattern="COMPONENTS=DEFAULTS"
-ENV replacement="COMPONENTS=intel-openvino-ie-sdk-ubuntu-xenial__x86_64;intel-openvino-ie-rt-cpu-ubuntu-xenial__x86_64;intel-openvino-ie-rt-gpu-ubuntu-xenial__x86_64;intel-openvino-ie-rt-vpu-ubuntu-xenial__x86_64;intel-openvino-ie-rt-hddl-ubuntu-xenial__x86_64;intel-openvino-model-optimizer__x86_64;intel-openvino-opencv-lib-ubuntu-xenial__x86_64"
+ENV replacement="COMPONENTS=intel-openvino-ie-sdk-ubuntu-bionic__x86_64;intel-openvino-ie-rt-cpu-ubuntu-bionic__x86_64;intel-openvino-ie-rt-gpu-ubuntu-bionic__x86_64;intel-openvino-ie-rt-vpu-ubuntu-bionic__x86_64;intel-openvino-ie-rt-hddl-ubuntu-bionic__x86_64;intel-openvino-model-optimizer__x86_64;intel-openvino-opencv-lib-ubuntu-bionic__x86_64"
 COPY l_openvino_*.tgz .
 ENV LD_LIBRARY_PATH=/opt/miniconda/lib:/usr/lib:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
 ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2020.3.194
@@ -48,7 +48,7 @@ RUN apt update && \
     ./install.sh -s silent.cfg && \
     cd - && \
     rm -rf l_openvino_toolkit* && \
-    cd /opt/intel/openvino/install_dependencies && ./install_openvino_dependencies.sh && ./install_NEO_OCL_driver.sh && dpkg -i *.deb && \
+    cd /opt/intel/openvino/install_dependencies && ./install_openvino_dependencies.sh && ./install_NEO_OCL_driver.sh && ./install_NCS_udev_rules.sh && dpkg -i *.deb && \
     cd ${MY_ROOT} && \
     locale-gen en_US.UTF-8 && update-locale LANG=en_US.UTF-8 && \
     cd ${MY_ROOT} && \

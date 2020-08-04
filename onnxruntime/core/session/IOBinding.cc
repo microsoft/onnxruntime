@@ -78,7 +78,16 @@ common::Status IOBinding::SynchronizeOutputs() {
   return Status::OK();
 }
 
-common::Status IOBinding::BindOutput(const std::string& name, const OrtValue& ml_value, OrtDevice device) {
+common::Status IOBinding::BindOutput(const std::string& name, const OrtValue& ml_value) {
+  // device value is ignored when ml_value is pre-allocated
+  return BindOutputImpl(name, ml_value, {});
+}
+
+common::Status IOBinding::BindOutput(const std::string& name, OrtDevice device) {
+  return BindOutputImpl(name, {}, device);
+}
+
+common::Status IOBinding::BindOutputImpl(const std::string& name, const OrtValue& ml_value, OrtDevice device) {
   auto rc = Contains(output_names_, name);
   if (rc.first) {
     outputs_[rc.second] = ml_value;

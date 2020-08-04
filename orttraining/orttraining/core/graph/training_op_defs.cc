@@ -3,6 +3,7 @@
 
 #include "core/graph/op.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
+#include "core/providers/common.h"
 #include "orttraining/core/graph/training_op_defs.h"
 #include "onnx/defs/function.h"
 #include <math.h>
@@ -949,7 +950,7 @@ Example 4:
           updateOutputShape(ctx, 0, TensorShapeProto());
         }
 
-        if(ctx.getNumOutputs() == 2) {
+        if (ctx.getNumOutputs() == 2) {
           propagateElemTypeFromInputToOutput(ctx, 0, 1);
           if (hasInputShape(ctx, 0)) {
             propagateShapeFromInputToOutput(ctx, 0, 1);
@@ -1026,7 +1027,7 @@ Example 4:
              "the case during training.",
              "T1",
              OpSchema::Optional)
-      .Input(4, "training_mode", 
+      .Input(4, "training_mode",
              "If set to true then it indicates dropout is being used for "
              "training. It is an optional value hence unless specified explicitly, it is false. "
              "If it is false, ratio is ignored and the operation mimics inference mode where nothing "
@@ -1056,6 +1057,236 @@ Example 4:
             propagateShapeFromInputToOutput(ctx, 0, 1);
           }
         }
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ReduceSumTraining)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("ReduceSumTraining")
+      .Attr("keepdims",
+            "Keep the reduced dimension or not, default 1 mean keep reduced dimension.",
+            AttributeProto::INT,
+            static_cast<int64_t>(1))
+      .Attr("noop_with_empty_axes",
+            "Perform reduction or not when axes is empty, default false mean perform reduction."
+            "when axes is empty and this attribute is set to true, input tensor will not be reduced,"
+            "thus output tensor would be equivalent to input tensor.",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
+      .AllowUncheckedAttributes()
+      .Input(0, "data", "An input tensor.", "T")
+      .Input(1, "axes",
+             "A list of integers, along which to reduce. The default is to reduce over "
+             "all the dimensions of the input tensor. Accepted range is [-r, r-1] where r = rank(data).",
+             "tensor(int64)")
+      .Output(0, "reduced", "Reduced output tensor.", "T")
+      .TypeConstraint(
+          "T",
+          OpSchema::numeric_types_for_math_reduction(),
+          "Constrain input and output types to high-precision numeric tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        if (!hasNInputShapes(ctx, 1)) {
+          return;
+        }
+
+        // skip if axes is not an initializer
+        auto axes_proto = ctx.getInputData(1);
+        if (axes_proto == nullptr) {
+          return;
+        }
+
+        int64_t keep_dims = 1;
+        auto attr_proto = ctx.getAttribute("keepdims");
+        if (attr_proto) {
+          keep_dims = attr_proto->i();
+        }
+        auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
+        int64_t input_ndim = input_shape.dim_size();
+        auto output_shape =
+            ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+
+        std::vector<int64_t> axes_values = ParseData<int64_t>(axes_proto);
+        std::vector<int64_t> axes;
+        axes.reserve(axes_values.size());
+        for (int64_t axis : axes_values) {
+          axes.push_back(HandleNegativeAxis(axis, input_ndim));
+        }
+
+        for (int i = 0; i < input_ndim; ++i) {
+          // axes empty means reduce all dim
+          if (!axes.empty() &&
+              std::find(axes.begin(), axes.end(), i) == axes.end()) {
+            auto dim = output_shape->add_dim();
+            dim->CopyFrom(input_shape.dim(i));
+          } else {
+            if (keep_dims == 1) {
+              auto dim = output_shape->add_dim();
+              dim->set_dim_value(1);
+            }
+          }
+        }
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SplitTraining)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("SplitTraining")
+      .Attr("axis",
+            "Which axis to split on. "
+            "A negative value means counting dimensions from the back. Accepted range is [-rank, rank-1] "
+            "where r = rank(input).",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
+      .AllowUncheckedAttributes()
+      .Input(0, "input", "The tensor to split", "T")
+      .Input(1, "split", "length of each output", "tensor(int64)")
+      .Output(0,
+              "outputs",
+              "One or more outputs forming list of tensors after splitting",
+              "T",
+              OpSchema::Variadic)
+      .TypeConstraint(
+          "T",
+          OpSchema::all_tensor_types(),
+          "Constrain input and output types to all tensor types.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        for (int i = 0; i < static_cast<int>(ctx.getNumOutputs()); ++i) {
+          propagateElemTypeFromInputToOutput(ctx, 0, i);
+        }
+        if (!hasNInputShapes(ctx, 1)) {
+          return;
+        }
+
+        // skip if split is not an initializer
+        auto split_proto = ctx.getInputData(1);
+        if (split_proto == nullptr) {
+          return;
+        }
+        std::vector<int64_t> split = ParseData<int64_t>(split_proto);
+
+        if (!ctx.getInputType(0)->tensor_type().has_shape()) {
+          return;
+        }
+        const auto& shape = ctx.getInputType(0)->tensor_type().shape();
+        int rank = shape.dim_size();
+        int axis = static_cast<int>(getAttribute(ctx, "axis", 0));
+        if (axis < -rank || axis >= rank) {
+          fail_type_inference(
+              "Invalid value of attribute 'axis'. Rank=",
+              rank,
+              " Value=",
+              axis);
+        }
+        if (axis < 0) {
+          axis += rank;
+        }
+        const auto& splitDim = shape.dim(axis);
+        if (!splitDim.has_dim_value()) {
+          return;
+        }
+        int splitDimValue = static_cast<int>(splitDim.dim_value());
+        if (split.empty()) {
+          int chunkSize =
+              splitDimValue / static_cast<int>(ctx.getNumOutputs());
+          int leftOver = splitDimValue -
+                         (chunkSize * static_cast<int>(ctx.getNumOutputs()));
+          for (int i = 0; i < static_cast<int>(ctx.getNumOutputs()); i++) {
+            split.push_back(i < leftOver ? chunkSize + 1 : chunkSize);
+          }
+        }
+        for (size_t i = 0; i < ctx.getNumOutputs(); i++) {
+          *ctx.getOutputType(i)->mutable_tensor_type()->mutable_shape() =
+              shape;
+          ctx.getOutputType(i)
+              ->mutable_tensor_type()
+              ->mutable_shape()
+              ->mutable_dim(axis)
+              ->set_dim_value(split[i]);
+        }
+
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ConcatTraining)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Concatenate a list of tensors into a single tensor")
+      .Attr("axis", "Which axis to concat on", AttributeProto::INT)
+      .Input(0,
+             "inputs",
+             "List of tensors for concatenation",
+             "T",
+             OpSchema::Variadic)
+      .Output(0, "concat_result", "Concatenated tensor", "T")
+      .Output(1, "per_input_length",
+              "Vector of length of each concatenated "
+              "input along the 'axis' dimension",
+              "Tint")
+      .TypeConstraint(
+          "T",
+          OpSchema::all_tensor_types(),
+          "Constrain output types to any tensor type.")
+      .TypeConstraint(
+          "Tint",
+          {"tensor(int64)"},
+          "Constrain output len types to integer type.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        auto numInputs = ctx.getNumInputs();
+        if (numInputs < 1 ||
+            !hasNInputShapes(ctx, static_cast<int>(numInputs))) {
+          return;
+        }
+
+        auto rank = ctx.getInputType(0)->tensor_type().shape().dim_size();
+
+        auto axisAttr = ctx.getAttribute("axis");
+        if (!axisAttr) {
+          fail_shape_inference("Required attribute axis is missing");
+        }
+        int64_t axis = static_cast<int64_t>(axisAttr->i());
+        axis = HandleNegativeAxis(axis, rank);
+
+        bool all_lengths_known = true;
+        int total_length = 0;
+
+        auto* output_shape =
+            ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+
+        for (int64_t i = 0; i < rank; ++i) {
+          output_shape->add_dim();
+        }
+
+        ONNX_NAMESPACE::TensorShapeProto per_input_len_shape;
+        per_input_len_shape.add_dim()->set_dim_value(numInputs);
+        updateOutputShape(ctx, 1, per_input_len_shape);
+
+        for (size_t i = 0; i < numInputs; i++) {
+          const auto& shape = ctx.getInputType(i)->tensor_type().shape();
+          if (shape.dim_size() != rank)
+            fail_shape_inference("All inputs to Concat must have same rank");
+          for (int j = 0; j < rank; j++) {
+            if (j == axis) {
+              if (shape.dim(j).has_dim_value()) {
+                total_length += static_cast<int>(shape.dim(j).dim_value());
+              } else {
+                all_lengths_known = false;
+              }
+            } else {
+              auto& output_dim = *output_shape->mutable_dim(j);
+              const auto& input_dim = shape.dim(j);
+              mergeInDimensionInfo(input_dim, output_dim, j);
+            }
+          }
+        }
+
+        if (all_lengths_known) {
+          output_shape->mutable_dim(static_cast<int>(axis))->set_dim_value(total_length);
+        }
+
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(TrainableDropout)
@@ -1145,11 +1376,11 @@ Example 4:
              "T1",
              OpSchema::Optional)
       .Input(3, "training_mode",
-            "If set to true then it indicates dropout is being used for training. It is an optional value hence unless "
-            "specified explicitly, it is false. If it is false, ratio is ignored and the operation mimics inference mode where "
-            "nothing will be dropped from the input data and if mask is requested as output it will contain all ones.",
-            "T2",
-            OpSchema::Optional)
+             "If set to true then it indicates dropout is being used for training. It is an optional value hence unless "
+             "specified explicitly, it is false. If it is false, ratio is ignored and the operation mimics inference mode where "
+             "nothing will be dropped from the input data and if mask is requested as output it will contain all ones.",
+             "T2",
+             OpSchema::Optional)
       .Output(0, "dx", "Gradient of the input.", "T")
       .TypeConstraint(
           "T",
@@ -1166,6 +1397,23 @@ Example 4:
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
       });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BroadcastGradientArgs)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc(
+          "Returns the reduction axes for computing gradients of s0 op s1 with broadcast."
+          "The ouput axes are deterministic from last to first. "
+          "Output is an empty vector when no reduction is necessary for the corresponding input.")
+      .Input(0, "a_shape", "The 1st input shape as Tensor.", "T")
+      .Input(1, "b_shape", "The 2nd input shape as Tensor.", "T")
+      .Output(0, "a_axes", "The reduction axes for 1st input, last to first.", "T", OpSchema::Optional)
+      .Output(1, "b_axes", "The reduction axes for 2nd input, last to first.", "T", OpSchema::Optional)
+      .TypeConstraint(
+          "T",
+          {"tensor(int64)"},
+          "Constrain input and output types to 64-bit integer.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GistBinarizeEncoder)
       .SetDomain(kMSDomain)

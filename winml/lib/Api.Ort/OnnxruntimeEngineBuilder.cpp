@@ -41,6 +41,14 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_winml::IEngine** out) {
     RETURN_HR_IF_NOT_OK_MSG(ort_api->AddFreeDimensionOverride(session_options.get(), DATA_BATCH, batch_size_override_.value()),
                             ort_api);
   }
+  if (named_dimension_overrides_) {
+    for (const auto& override : named_dimension_overrides_) {
+      std::string narrow_name = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(override.Key().c_str());
+      ort_api->AddFreeDimensionOverrideByName(session_options.get(), narrow_name.c_str(), override.Value());
+    }
+  }
+
+  RETURN_HR_IF_NOT_OK_MSG(ort_api->SetIntraOpNumThreads(session_options.get(), intra_op_num_threads_override_), ort_api);
 
   OrtSession* ort_session = nullptr;
   onnxruntime_session_builder->CreateSession(session_options.get(), &ort_session);
@@ -76,5 +84,16 @@ STDMETHODIMP OnnxruntimeEngineBuilder::GetID3D12CommandQueue(ID3D12CommandQueue*
 
 STDMETHODIMP OnnxruntimeEngineBuilder::SetBatchSizeOverride(uint32_t batch_size_override) {
   batch_size_override_ = batch_size_override;
+  return S_OK;
+}
+
+
+STDMETHODIMP OnnxruntimeEngineBuilder::SetNamedDimensionOverrides(wfc::IMapView<winrt::hstring, uint32_t> named_dimension_overrides) {
+  named_dimension_overrides_ = std::move(named_dimension_overrides);
+  return S_OK;
+}
+  
+STDMETHODIMP OnnxruntimeEngineBuilder::SetIntraOpNumThreadsOverride(uint32_t intra_op_num_threads) {
+  intra_op_num_threads_override_ = intra_op_num_threads;
   return S_OK;
 }

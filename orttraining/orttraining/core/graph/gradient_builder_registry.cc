@@ -9,10 +9,11 @@ namespace onnxruntime {
 namespace training {
 
 GradientDef GetGradientForOp(const GradientGraphConfiguration& gradient_graph_config,
-                             Graph* graph,
+                             const Graph* graph,
                              const Node* node,
                              const std::unordered_set<std::string>& output_args_need_grad,
-                             const std::unordered_set<std::string>& input_args_need_grad) {
+                             const std::unordered_set<std::string>& input_args_need_grad,
+                             const logging::Logger& logger) {
   // REVIEW(bahuang): We don't have a version control for forward to backward op mapping.
   // Current SliceGrad(kMSDomain, 1) only supports Slice(kOnnxDomain, 10/11) because adding grad operator for versions
   // less than 9 is not supported and for Slice we have Slice-1, Slice-10 and Slice-11.
@@ -22,10 +23,11 @@ GradientDef GetGradientForOp(const GradientGraphConfiguration& gradient_graph_co
                                                                             graph,
                                                                             node,
                                                                             output_args_need_grad,
-                                                                            input_args_need_grad);
+                                                                            input_args_need_grad,
+                                                                            logger);
 
   ORT_ENFORCE(gradient_builder != nullptr,
-              "The gradient builder has not been registered:", node->OpType());
+              "The gradient builder has not been registered:", node->OpType(), " for node ", node->Name());
 
   return gradient_builder->GetGradientDefs();
 }
@@ -52,6 +54,7 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("Pow", GetPowGradient);
   REGISTER_GRADIENT_BUILDER("ReduceMean", GetReduceMeanGradient);
   REGISTER_GRADIENT_BUILDER("ReduceSum", GetReduceSumGradient);
+  REGISTER_GRADIENT_BUILDER("ReduceLogSumExp", GetReduceLogSumExpGradient);
   REGISTER_GRADIENT_BUILDER("Add", GetAddSubGradient);
   REGISTER_GRADIENT_BUILDER("Sub", GetAddSubGradient);
   REGISTER_GRADIENT_BUILDER("Mul", GetMulGradient);

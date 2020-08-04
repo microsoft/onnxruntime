@@ -12,6 +12,7 @@
   * Execution Providers
     * [NVIDIA CUDA](#CUDA)
     * [NVIDIA TensorRT](#TensorRT)
+    * [NVIDIA Jetson TX1/TX2/Nano/Xavier](#nvidia-jetson-tx1tx2nanoxavier)
     * [Intel DNNL/MKL-ML](#DNNL-and-MKLML)
     * [Intel nGraph](#nGraph)
     * [Intel OpenVINO](#openvino)
@@ -210,34 +211,18 @@ Dockerfile instructions are available [here](./dockerfiles#tensorrt)
 
 ---
 
-#### Jetson TX1/TX2/Nano (ARM64 Builds)
+#### NVIDIA Jetson TX1/TX2/Nano/Xavier
 
-1. ONNX Runtime v1.2.0 or higher requires TensorRT 7 support, at this moment, the compatible TensorRT and CUDA libraries in [JetPack](https://docs.nvidia.com/jetson/jetpack/release-notes/) 4.4 is still under developer preview stage. Therefore, we suggest using ONNX Runtime v1.1.2 with JetPack 4.3 which has been validated.
-```
-git clone --single-branch --recursive --branch v1.1.2 https://github.com/Microsoft/onnxruntime
-```
-2. Indicate CUDA compiler. It's optional, cmake can automatically find the correct cuda.
+1. Indicate CUDA compiler, or add its location to the PATH.
+Cmake can't automatically find the correct nvcc if it's not in the PATH.
 ```
 export CUDACXX="/usr/local/cuda/bin/nvcc"
 ```
-3. Modify  tools/ci_build/build.py
+or:
 ```
-- "-Donnxruntime_DEV_MODE=" + ("OFF" if args.android else "ON"),
-+ "-Donnxruntime_DEV_MODE=" + ("OFF" if args.android else "OFF"),
+export PATH="/usr/local/cuda/bin:${PATH}"
 ```
-4. Modify cmake/CMakeLists.txt
-```
--  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_50,code=sm_50") # M series
-+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_53,code=sm_53") # Jetson TX1/Nano
-+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_62,code=sm_62") # Jetson TX2
-```
-5. Build onnxruntime with --use_tensorrt flag
-```
-./build.sh --config Release --update --build --build_wheel --use_tensorrt --cuda_home /usr/local/cuda --cudnn_home /usr/lib/aarch64-linux-gnu --tensorrt_home /usr/lib/aarch64-linux-gnu
-
-```
-
-See [instructions](https://github.com/microsoft/onnxruntime/issues/2684#issuecomment-568548387) for additional information and tips.
+2. Follow instructions in [Docker README](./dockerfiles/README.md) to build the wheel file. 
 
 ---
 
@@ -257,13 +242,13 @@ DNNL: `./build.sh --use_dnnl`
 #### Deprecation Notice
 
 | | |
-| --- | --- | 
+| --- | --- |
 | Deprecation Begins	| June 1, 2020 |
 | Removal Date |	December 1, 2020 |
 
 Starting with the OpenVINO™ toolkit 2020.2 release, all of the features previously available through nGraph have been merged into the OpenVINO™ toolkit. As a result, all the features previously available through ONNX RT Execution Provider for nGraph have been merged with ONNX RT Execution Provider for OpenVINO™ toolkit.
 
-Therefore, ONNX RT Execution Provider for **nGraph** will be deprecated starting June 1, 2020 and will be completely removed on December 1, 2020. Users are recommended to migrate to the ONNX RT Execution Provider for OpenVINO™ toolkit as the unified solution for all AI inferencing on Intel® hardware. 
+Therefore, ONNX RT Execution Provider for **nGraph** will be deprecated starting June 1, 2020 and will be completely removed on December 1, 2020. Users are recommended to migrate to the ONNX RT Execution Provider for OpenVINO™ toolkit as the unified solution for all AI inferencing on Intel® hardware.
 
 See more information on the nGraph Execution Provider [here](./docs/execution_providers/nGraph-ExecutionProvider.md).
 
@@ -343,31 +328,6 @@ See more information on the OpenVINO Execution Provider [here](./docs/execution_
 
 For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document [OpenVINO-ExecutionProvider.md](./docs/execution_providers/OpenVINO-ExecutionProvider.md) in <code>$onnxruntime_root/docs/execution_providers</code>
 
----
-
-### Android NNAPI
-
-See more information on the NNAPI Execution Provider [here](./docs/execution_providers/NNAPI-ExecutionProvider.md).
-
-#### Prerequisites
-
-To build ONNX Runtime with the NN API EP, first install Android NDK (see [Android Build instructions](#android))
-
-#### Build Instructions
-
-The basic build commands are below. There are also some other parameters for building the Android version. See [Android Build instructions](#android) for more details.
-
-##### Cross compiling on Windows
-
-```bash
-./build.bat --android --android_sdk_path <android sdk path> --android_ndk_path <android ndk path> --use_dnnlibrary
-```
-
-##### Cross compiling on Linux
-
-```bash
-./build.sh --android --android_sdk_path <android sdk path> --android_ndk_path <android ndk path> --use_dnnlibrary
-```
 ---
 
 ### NUPHAR
@@ -536,6 +496,10 @@ alias cmake="/usr/bin/cmake -DCMAKE_TOOLCHAIN_FILE=$OECORE_NATIVE_SYSROOT/usr/sh
 The Relu operator is set by default to use the CPU execution provider for better performance. To use the ArmNN implementation build with --armnn_relu flag
 ```
 ./build.sh --use_armnn --armnn_relu
+```
+The Batch Normalization operator is set by default to use the CPU execution provider. To use the ArmNN implementation build with --armnn_bn flag
+```
+./build.sh --use_armnn --armnn_bn
 ```
 
 ---
@@ -979,7 +943,7 @@ Install an NDK version
         - NDK path in our example with this install would be `.../Android/ndk/21.1.6352462`
       - NOTE: If you install the ndk-bundle package the path will be `.../Android/ndk-bundle` as there's no version number
 
-#### Build Instructions
+#### Android Build Instructions
 
 ##### Cross compiling on Windows
 
@@ -994,14 +958,23 @@ e.g. using the paths from our example
 ./build.bat --android --android_sdk_path .../Android --android_ndk_path .../Android/ndk/21.1.6352462 --android_abi arm64-v8a --android_api 27 --cmake_generator Ninja
 ```
 
-##### Cross compiling on Linux
+##### Cross compiling on Linux and macOS
 
 ```
 ./build.sh --android --android_sdk_path <android sdk path> --android_ndk_path <android ndk path> --android_abi <android abi, e.g., arm64-v8a (default) or armeabi-v7a> --android_api <android api level, e.g., 27 (default)>
 ```
-Android Archive (AAR) files, which can be imported directly in Android Studio, will be generated in your_build_dir/java/build/outputs/aar.
 
-If you want to use NNAPI Execution Provider on Android, see [docs/execution_providers/NNAPI-ExecutionProvider.md](/docs/execution_providers/NNAPI-ExecutionProvider.md).
+##### Build Android Archive (AAR)
+
+Android Archive (AAR) files, which can be imported directly in Android Studio, will be generated in your_build_dir/java/build/outputs/aar, by using the above building commands with `--build_java`
+
+#### Android NNAPI Execution Provider
+
+If you want to use NNAPI Execution Provider on Android, see [NNAPI Execution Provider](/docs/execution_providers/NNAPI-ExecutionProvider.md).
+
+##### Build Instructions
+
+Android NNAPI Execution Provider can be built using building commands in [Android Build instructions](#android-build-instructions) with `--use_nnapi`
 
 ---
 
@@ -1010,7 +983,7 @@ If you want to use NNAPI Execution Provider on Android, see [docs/execution_prov
 See more information on the MIGraphX Execution Provider [here](./docs/execution_providers/MIGraphX-ExecutionProvider.md).
 
 #### Prerequisites
-* Install [ROCM](https://rocmdocs.amd.com/en/latest/Installation_Guide/Installation-Guide.html) 
+* Install [ROCM](https://rocmdocs.amd.com/en/latest/Installation_Guide/Installation-Guide.html)
    * The MIGraphX execution provider for ONNX Runtime is built and tested with ROCM3.3
 * Install [MIGraphX](https://github.com/ROCmSoftwarePlatform/AMDMIGraphX)
    * The path to MIGraphX installation must be provided via the `--migraphx_home parameter`.

@@ -87,7 +87,7 @@ def optimize_by_onnxruntime(onnx_model_path: str,
         assert 'CUDAExecutionProvider' in session.get_providers()  # Make sure there is GPU
 
     assert os.path.exists(optimized_model_path) and os.path.isfile(optimized_model_path)
-    logger.info("Save optimized model by onnxruntime to {}".format(optimized_model_path))
+    logger.debug("Save optimized model by onnxruntime to {}".format(optimized_model_path))
     return optimized_model_path
 
 
@@ -186,6 +186,12 @@ def _parse_arguments():
                         help="enable Gelu/BiasGelu to FastGelu conversion")
     parser.set_defaults(enable_gelu_approximation=False)
 
+    parser.add_argument('--use_raw_attention_mask',
+                        required=False,
+                        action='store_true',
+                        help="use raw attention mask instead of mask index in attention operator")
+    parser.set_defaults(use_raw_attention_mask=False)
+
     parser.add_argument('--verbose', required=False, action='store_true')
     parser.set_defaults(verbose=False)
 
@@ -225,6 +231,9 @@ def _get_optimization_options(args):
         optimization_options.enable_bias_gelu = False
     if args.enable_gelu_approximation:
         optimization_options.enable_gelu_approximation = True
+    if args.use_raw_attention_mask:
+        optimization_options.use_raw_attention_mask()
+
     return optimization_options
 
 
@@ -258,16 +267,15 @@ def optimize_model(input,
     """
     (optimizer_class, producer, run_onnxruntime) = MODEL_CLASSES[model_type]
 
-    input_model_path = input
-
+    temp_model_path = None
     if opt_level > 1:  # Optimization specified for an execution provider.
-        input_model_path = optimize_by_onnxruntime(input_model_path, use_gpu=use_gpu, opt_level=opt_level)
+        temp_model_path = optimize_by_onnxruntime(input, use_gpu=use_gpu, opt_level=opt_level)
     elif run_onnxruntime:
         # Use Onnxruntime to do optimizations (like constant folding and cast elimation) that is not specified to exection provider.
         # CPU provider is used here so that there is no extra node for GPU memory copy.
-        input_model_path = optimize_by_onnxruntime(input_model_path, use_gpu=False, opt_level=1)
+        temp_model_path = optimize_by_onnxruntime(input, use_gpu=False, opt_level=1)
 
-    model = load_model(input_model_path, format=None, load_external_data=True)
+    model = load_model(temp_model_path or input, format=None, load_external_data=True)
 
     if model.producer_name and producer != model.producer_name:
         logger.warning(
@@ -281,6 +289,11 @@ def optimize_model(input,
 
     if not only_onnxruntime:
         optimizer.optimize(optimization_options)
+
+    # Remove the temporary model.
+    if temp_model_path:
+        os.remove(temp_model_path)
+        logger.debug("Remove tempoary model: {}".format(temp_model_path))
 
     return optimizer
 

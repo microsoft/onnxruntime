@@ -3,30 +3,42 @@
 //
 #pragma once
 
-#include <core/common/common.h>
+#include <core/graph/graph.h>
 #include <string>
 
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
 
-#define THROW_ON_ERROR(val)                                               \
-  {                                                                       \
-    const auto ret = (val);                                               \
-    ORT_ENFORCE(                                                          \
-        ret == ANEURALNETWORKS_NO_ERROR,                                  \
-        std::string("Error in ") + __FILE__ + std::string(":") +          \
-            std::to_string(__LINE__) + std::string(", function name: ") + \
-            std::string(__func__) + "error, ret: " + GetErrorCause(ret)); \
+namespace onnxruntime {
+namespace nnapi {
+
+#define THROW_ON_ERROR(val)                                                    \
+  {                                                                            \
+    const auto ret = (val);                                                    \
+    ORT_ENFORCE(                                                               \
+        ret == ANEURALNETWORKS_NO_ERROR, "ResultCode: " + GetErrorCause(ret)); \
   }
 
-#define THROW_ON_ERROR_WITH_NOTE(val, note)                               \
-  {                                                                       \
-    const auto ret = (val);                                               \
-    ORT_ENFORCE(                                                          \
-        ret == ANEURALNETWORKS_NO_ERROR,                                  \
-        std::string("Error in ") + __FILE__ + std::string(":") +          \
-            std::to_string(__LINE__) + std::string(", function name: ") + \
-            std::string(__func__) + "error, ret: " + GetErrorCause(ret) + \
-            std::string(", ") + (note));                                  \
+#define THROW_ON_ERROR_WITH_NOTE(val, note)                                    \
+  {                                                                            \
+    const auto ret = (val);                                                    \
+    ORT_ENFORCE(                                                               \
+        ret == ANEURALNETWORKS_NO_ERROR, "ResultCode: " + GetErrorCause(ret) + \
+                                             ", " + (note));                   \
+  }
+
+#define RETURN_STATUS_ON_ERROR(val)                                            \
+  {                                                                            \
+    const auto ret = (val);                                                    \
+    ORT_RETURN_IF_NOT(                                                         \
+        ret == ANEURALNETWORKS_NO_ERROR, "ResultCode: " + GetErrorCause(ret)); \
+  }
+
+#define RETURN_STATUS_ON_ERROR_WITH_NOTE(val, note)                            \
+  {                                                                            \
+    const auto ret = (val);                                                    \
+    ORT_RETURN_IF_NOT(                                                         \
+        ret == ANEURALNETWORKS_NO_ERROR, "ResultCode: " + GetErrorCause(ret) + \
+                                             ", " + (note));                   \
   }
 
 template <class Map, class Key>
@@ -34,30 +46,45 @@ inline bool Contains(const Map& map, const Key& key) {
   return map.find(key) != map.end();
 }
 
-inline std::string GetErrorCause(int error_code) {
-  switch (error_code) {
-    case ANEURALNETWORKS_NO_ERROR:
-      return "ANEURALNETWORKS_NO_ERROR";
-    case ANEURALNETWORKS_OUT_OF_MEMORY:
-      return "ANEURALNETWORKS_OUT_OF_MEMORY";
-    case ANEURALNETWORKS_INCOMPLETE:
-      return "ANEURALNETWORKS_INCOMPLETE";
-    case ANEURALNETWORKS_UNEXPECTED_NULL:
-      return "ANEURALNETWORKS_UNEXPECTED_NULL";
-    case ANEURALNETWORKS_BAD_DATA:
-      return "ANEURALNETWORKS_BAD_DATA";
-    case ANEURALNETWORKS_OP_FAILED:
-      return "ANEURALNETWORKS_OP_FAILED";
-    case ANEURALNETWORKS_BAD_STATE:
-      return "ANEURALNETWORKS_BAD_STATE";
-    case ANEURALNETWORKS_UNMAPPABLE:
-      return "ANEURALNETWORKS_UNMAPPABLE";
-    case ANEURALNETWORKS_OUTPUT_INSUFFICIENT_SIZE:
-      return "ANEURALNETWORKS_OUTPUT_INSUFFICIENT_SIZE";
-    case ANEURALNETWORKS_UNAVAILABLE_DEVICE:
-      return "ANEURALNETWORKS_UNAVAILABLE_DEVICE";
+std::string GetErrorCause(int error_code);
 
-    default:
-      return "Unknown error code: " + std::to_string(error_code);
-  }
-}
+enum class QLinearOpType : uint8_t {
+  Unknown,  // Unknown or not a linear quantized op
+  DequantizeLinear,
+  QuantizeLinear,
+  QLinearConv,
+  QLinearMatMul,
+  QLinearAdd,
+  // Not yet supported
+  // QLinearAveragePool,
+  // QLinearMul,
+  // QLinearReduceMean,
+};
+
+QLinearOpType GetQLinearOpType(const onnxruntime::Node& node);
+
+// This qlinear op is an operator takes 2 input and producce 1 output
+// Such as QLinearConv, QLinearMatMul, QLinearAdd, ...
+bool IsQLinearBinaryOp(QLinearOpType qlinear_op_type);
+
+/**
+ * Wrapping onnxruntime::Node for retrieving attribute values
+ */
+class NodeAttrHelper {
+ public:
+  NodeAttrHelper(const onnxruntime::Node& node);
+
+  float Get(const std::string& key, float def_val) const;
+  int32_t Get(const std::string& key, int32_t def_val) const;
+  std::vector<float> Get(const std::string& key, const std::vector<float>& def_val) const;
+  std::vector<int32_t> Get(const std::string& key, const std::vector<int32_t>& def_val) const;
+  std::string Get(const std::string& key, const std::string& def_val) const;
+
+  bool HasAttr(const std::string& key) const;
+
+ private:
+  const onnxruntime::NodeAttributes& node_attributes_;
+};
+
+}  // namespace nnapi
+}  // namespace onnxruntime

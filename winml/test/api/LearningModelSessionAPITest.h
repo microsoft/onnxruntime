@@ -18,7 +18,9 @@ struct LearningModelSessionAPITestsApi {
   VoidTest CreateSessionWithCastToFloat16InModel;
   VoidTest CreateSessionWithFloat16InitializersInModel;
   VoidTest EvaluateSessionAndCloseModel;
+  VoidTest OverrideNamedDimension;
   VoidTest CloseSession;
+  VoidTest SetIntraOpNumThreads;
 };
 const LearningModelSessionAPITestsApi& getapi();
 
@@ -38,4 +40,7 @@ WINML_TEST(LearningModelSessionAPITests, CreateSessionDeviceDirectXMinimumPower)
 WINML_TEST(LearningModelSessionAPITests, CreateSessionWithCastToFloat16InModel)
 WINML_TEST(LearningModelSessionAPITests, CreateSessionWithFloat16InitializersInModel)
 WINML_TEST(LearningModelSessionAPITests, AdapterIdAndDevice)
+WINML_TEST(LearningModelSessionAPITests, OverrideNamedDimension)
+WINML_TEST(LearningModelSessionAPITests, CloseSession)
+WINML_TEST(LearningModelSessionAPITests, SetIntraOpNumThreads)
 WINML_TEST_CLASS_END()

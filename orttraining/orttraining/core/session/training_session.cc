@@ -121,6 +121,8 @@ void TrainingSession::FilterUnusedWeights(const std::unordered_set<std::string>&
   }
 }
 
+const std::string TrainingSession::training_mode_string_ = "training_mode";
+
 Status TrainingSession::ConfigureForTraining(
     const TrainingConfiguration& config, TrainingConfigurationResult& config_result_out) {
   ORT_RETURN_IF(
@@ -240,7 +242,7 @@ Status TrainingSession::ConfigureForTraining(
   }
 
   ORT_RETURN_IF_ERROR(BuildGradientGraph(
-      weight_names_to_train, loss_name, config.gradient_graph_config, config.set_gradients_as_graph_outputs));
+      weight_names_to_train, loss_name, config.gradient_graph_config, *session_logger_));
 
   // transform for mixed precision
   std::unordered_map<std::string, NodeArg*> fp32_weight_name_to_fp16_node_arg{};
@@ -315,8 +317,8 @@ Status TrainingSession::ConfigureForTraining(
     }
   }
 
-  // Set eval feed names for Dropout ratio.
-  ORT_RETURN_IF_ERROR(SetDropoutEvalFeedNames());
+  // Set eval feed names for nodes that differ between training and inferencing.
+  ORT_RETURN_IF_ERROR(SetEvalFeedNames());
 
   // add Tensorboard
   if (config.tensorboard_config.has_value()) {
@@ -445,14 +447,14 @@ static Status BuildGradientGraphInternal(Graph& graph,
                                          const std::string& loss_function_output_name,
                                          const std::unordered_set<std::string>& node_arg_names_to_train,
                                          const GradientGraphConfiguration& gradient_graph_config,
-                                         const bool set_gradient_as_graph_output = false) {
+                                         const logging::Logger& logger) {
   // Compute the gradient graph def.
   GradientGraphBuilder grad_graph_builder(&graph,
                                           {loss_function_output_name},
                                           node_arg_names_to_train,
                                           loss_function_output_name,
                                           gradient_graph_config,
-                                          set_gradient_as_graph_output);
+                                          logger);
   return grad_graph_builder.Build();
 }
 
@@ -661,7 +663,7 @@ Status TrainingSession::EnableMixedPrecision(const std::unordered_set<std::strin
 Status TrainingSession::BuildGradientGraph(const std::unordered_set<std::string>& weights_to_train,
                                            const std::string& loss_function_output_name,
                                            const GradientGraphConfiguration& gradient_graph_config,
-                                           const bool set_gradient_as_graph_output) {
+                                           const logging::Logger& logger) {
   // Fill weights_to_train_ according to weights_to_train
   weights_to_train_ = weights_to_train;
   gradient_graph_config_ = gradient_graph_config;
@@ -670,7 +672,7 @@ Status TrainingSession::BuildGradientGraph(const std::unordered_set<std::string>
                                                  loss_function_output_name,
                                                  weights_to_train_,
                                                  gradient_graph_config_,
-                                                 set_gradient_as_graph_output));
+                                                 logger));
 
   return DoPostLoadProcessing(*model_);
 }
@@ -788,7 +790,7 @@ Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveO
                                                    actual_loss_name,
                                                    weights_to_train_,
                                                    gradient_graph_config_,
-                                                   false));
+                                                   *session_logger_));
 
     OptimizerOutputKeyMap<std::string> opt_graph_outputs;
     std::unordered_set<std::string> opt_state_initializer_names;
@@ -833,17 +835,37 @@ bool TrainingSession::IsGraphOutputFp32Node(const std::string& output_name) cons
 common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io_binding) {
   // Override initializers in eval mode.
   if (!run_options.training_mode) {
-    // override all dropout raiots to 0
-    for (auto& drop_ratio : dropout_eval_feeds_) {
-      OrtValue feed_value;
-      // We allocate on CPU first, copy will be taken care off downstream.
-      const auto& session_state = GetSessionState();
-      auto default_cpu_alloc_info = session_state.GetExecutionProviders().GetDefaultCpuMemoryInfo();
-      auto cpu_allocator = session_state.GetAllocator(default_cpu_alloc_info);
-
-      feed_value = onnxruntime::MakeScalarMLValue<float>(cpu_allocator, 0.f, true /*is_1d*/);
+    std::vector<std::pair<std::string, OrtValue>> new_feeds;
+    if (!dropout_eval_feeds_.empty()) {
+      // override all dropout ratios to 0
+      for (auto& drop_ratio : dropout_eval_feeds_) {
+        OrtValue feed_value;
+        // We allocate on CPU first, copy will be taken care of downstream.
+        auto cpu_allocator = GetSessionState().GetExecutionProviders()
+                            .Get(onnxruntime::kCpuExecutionProvider)
+                            ->GetAllocator(0, OrtMemTypeDefault);
+        feed_value = onnxruntime::MakeScalarMLValue<float>(cpu_allocator, 0.f, true /*is_1d*/);
+        // Bind new feed to graph input.
+        new_feeds.emplace_back(drop_ratio, feed_value);
+      }
+    }
+    else {
+      auto& input_names = io_binding.GetInputNames();
+      if (GetSessionState().GetInputNodeInfoMap().find(training_mode_string_) != GetSessionState().GetInputNodeInfoMap().end() &&
+          std::find(input_names.begin(), input_names.end(), training_mode_string_) == input_names.end()) {
+        // Set training_mode input to false
+        OrtValue training_mode_feed_value;
+        // We allocate on CPU first, copy will be taken care of downstream.
+        auto cpu_allocator = GetSessionState().GetExecutionProviders()
+                            .Get(onnxruntime::kCpuExecutionProvider)
+                            ->GetAllocator(0, OrtMemTypeDefault);
+        training_mode_feed_value = onnxruntime::MakeScalarMLValue<bool>(cpu_allocator, false, true /*is_1d*/);
+        new_feeds.emplace_back(training_mode_string_, training_mode_feed_value);
+      }
+    }
+    for (auto& new_feed : new_feeds) {
       // Bind new feed to graph input.
-      ORT_RETURN_IF_ERROR(io_binding.BindInput(drop_ratio, feed_value));
+      ORT_RETURN_IF_ERROR(io_binding.BindInput(new_feed.first, new_feed.second));
     }
   }
 
@@ -851,33 +873,50 @@ common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io
   return InferenceSession::Run(run_options, io_binding);
 }
 
-common::Status TrainingSession::Run(IOBinding& io_binding) {
-  RunOptions run_options;
-  // Set training_mode to true in training session by default.
-  run_options.training_mode = true;
-  return Run(run_options, io_binding);
-}
-
-static const std::unordered_set<std::string> Dropout_Nodes = {
+static const std::unordered_set<std::string> Nodes_Need_Eval_Feeds = {
+    // TODO remove this once ONNX TrainableDropout is completely deprecated.
     "TrainableDropout",
+    "Dropout",
 };
-// TODO remove this once ONNX properly supports training_mode input.
-Status TrainingSession::SetDropoutEvalFeedNames() {
+Status TrainingSession::SetEvalFeedNames() {
   Graph& graph = model_->MainGraph();
 
-  // add ratio node to graph input for overriding.
   GraphAugmenter::GraphDefs defs{};
 
-  for (const auto& node : graph.Nodes()) {
-    auto it = Dropout_Nodes.find(node.OpType());
-    if (it != Dropout_Nodes.cend()) {
-      auto& ratio_name = node.InputDefs()[1]->Name();
-      dropout_eval_feeds_.insert(ratio_name);
-      ORT_ENFORCE(model_->MainGraph().GetProducerNode(ratio_name) == nullptr,
-                  "Input: " + ratio_name + " should not have any producer node.");
-      defs.AddGraphInputs({ratio_name});
+  for (auto& node : graph.Nodes()) {
+    auto it = Nodes_Need_Eval_Feeds.find(node.OpType());
+    if(it != Nodes_Need_Eval_Feeds.cend()) {
+      // The opset is < 12, add each ratio input to graph inputs for overriding.
+      // Needs to be removed when TrainableDropout is deprecated.
+      if(it->compare("TrainableDropout") == 0) {
+        auto& ratio_name = node.InputDefs()[1]->Name();
+        dropout_eval_feeds_.insert(ratio_name);
+        ORT_ENFORCE(model_->MainGraph().GetProducerNode(ratio_name) == nullptr,
+        "Input: " + ratio_name + " should not have any producer node.");
+        defs.AddGraphInputs({ratio_name});
+      }
+      // Found an opset-12 dropout node, replace initializer name.
+      else if(node.InputArgCount().size() > 2) {
+        auto& mode_input = node.MutableInputDefs()[2];
+        const ONNX_NAMESPACE::TensorProto* mode_initializer = nullptr;
+        if (!graph.GetInitializedTensor(training_mode_string_, mode_initializer)) {
+          // training_mode initializer has not been added before, add it here.
+          // Ideally we want only 1 training_mode initializer to control all relevant nodes.
+          const ONNX_NAMESPACE::TensorProto* original_mode_initializer = nullptr;
+          ORT_ENFORCE(graph.GetInitializedTensor(mode_input->Name(), original_mode_initializer) == true,
+                      "Dropout's input: " + mode_input->Name() + " must be an initializer.");
+          ONNX_NAMESPACE::TensorProto new_mode_initializer(*original_mode_initializer);
+          new_mode_initializer.set_name(training_mode_string_);
+          defs.AddInitializers({new_mode_initializer});
+        }
+        mode_input = &model_->MainGraph().GetOrCreateNodeArg(training_mode_string_, mode_input->TypeAsProto());
+        // Set training_mode as graph input if any node that needs eval feed is found,
+        // it's okay to add it multiple times since it will be de-dup'ed downstream.
+        defs.AddGraphInputs({training_mode_string_});
+      }
     }
   }
+  
   ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(graph, defs));
   return DoPostLoadProcessing(*model_);
 }
