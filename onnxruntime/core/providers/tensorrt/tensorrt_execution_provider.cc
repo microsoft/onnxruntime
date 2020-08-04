@@ -755,16 +755,16 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         planFile.read((char*)engine_buf.get(), engine_size);
         planFile.close();
         trt_engine = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
-        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + GetEnginePath(engine_cache_path_, trt_node_name_with_precision);
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Deserialized " + GetEnginePath(engine_cache_path_, trt_node_name_with_precision);
         if (trt_engine == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                 "TensorRT EP could not deSerialize Engine from " + trt_node_name_with_precision + ".engine");
+                                 "TensorRT EP could not deserialize engine from " + trt_node_name_with_precision + ".engine");
         }
       } else {
         trt_engine = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *trt_config));
         if (trt_engine == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                 "TensorRT EP could not build Engine for fused node: " + fused_node->Name());
+                                 "TensorRT EP could not build engine for fused node: " + fused_node->Name());
         }
 
         if (engine_cache_enable_) {
@@ -778,7 +778,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
       if (trt_context == nullptr) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                               "TensorRT EP could not build Execution Context for fused node: " + fused_node->Name());
+                               "TensorRT EP could not build execution context for fused node: " + fused_node->Name());
       }
     }
 
@@ -1013,14 +1013,14 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
             trt_builder->buildEngineWithConfig(*trt_state->network, *trt_config));
 
         if (trt_state->engine->get() == nullptr) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
+          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to build engine.");
         }
         trt_engine = trt_state->engine->get();
 
         *(trt_state->context) = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(
             trt_state->engine->get()->createExecutionContext());
         if (trt_state->context->get() == nullptr) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Create Context.");
+          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
         }
         trt_context = trt_state->context->get();
       }
@@ -1265,7 +1265,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         for (const auto& binding_index : binding_buffers_to_freeup) {
           cudaFree(buffers[binding_index]);
         }
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP Execution Context Enqueue Failed.");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP execution context enqueue failed.");
       }
 
       // Cast INT64 input to INT32 because TensorRT doesn't fully support INT64
