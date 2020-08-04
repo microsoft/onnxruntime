@@ -55,7 +55,8 @@ inline MemoryAllocation::MemoryAllocation(OrtAllocator* allocator, void* p, size
 inline MemoryAllocation::~MemoryAllocation() {
   if (p_ != nullptr) {
     // We do not throw out of destructor
-    static_cast<void>(GetApi().AllocatorFree(allocator_, p_));
+    auto ret = GetApi().AllocatorFree(allocator_, p_);
+    static_cast<void>(ret);
   }
 }
 
