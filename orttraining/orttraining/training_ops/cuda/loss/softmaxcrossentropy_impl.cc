@@ -197,21 +197,27 @@ Status SparseSoftmaxCrossEntropy<T, Tin>::ComputeInternal(OpKernelContext* ctx) 
     auto torch_tensor_options = torch::TensorOptions().dtype(get_torch_type<T>()).device(torch::kCUDA, torch_device);
     torch::Tensor torch_logit = torch::zeros(c10::IntArrayRef{N, D}, torch_tensor_options);
     cudaMemcpy(torch_logit.data_ptr(), logit_data, N * D * sizeof(T), cudaMemcpyDeviceToDevice);
+    ORT_ENFORCE(cudaGetLastError() == cudaSuccess);
 
     auto torch_label_tensor_options = torch::TensorOptions().dtype(get_torch_type<Tin>()).device(torch::kCUDA, torch_device);
     torch::Tensor torch_label = torch::zeros(c10::IntArrayRef{N}, torch_label_tensor_options);
     cudaMemcpy(torch_label.data_ptr(), label_data, N * sizeof(Tin), cudaMemcpyDeviceToDevice);
+    ORT_ENFORCE(cudaGetLastError() == cudaSuccess);
 
     auto torch_weight_tensor_options = torch::TensorOptions().dtype(get_torch_type<T>()).device(torch::kCUDA, torch_device);
     torch::Tensor torch_weight = torch::zeros(c10::IntArrayRef{N}, torch_weight_tensor_options);
     cudaMemcpy(torch_weight.data_ptr(), weight_data, N * sizeof(T), cudaMemcpyDeviceToDevice);
 
-    auto torch_value_options = torch::TensorOptions().dtype(get_torch_type<Tin>()).device(torch::kCUDA, torch_device);
-    torch::Tensor torch_value = -torch::ones(c10::IntArrayRef{}, torch_value_options);
-    at::masked_fill(torch_label, at::eq(torch_weight, torch::zeros_like(torch_weight)), torch_value);
+    auto torch_zero_options = torch::TensorOptions().dtype(get_torch_type<T>()).device(torch::kCUDA, torch_device);
+    auto torch_zero = torch::zeros(c10::IntArrayRef{N}, torch_zero_options);
+    auto mask = at::eq(torch_weight, torch_zero);
+    at::masked_fill(torch_label, mask, (int64_t)-1);
 
+    ORT_ENFORCE(cudaGetLastError() == cudaSuccess);
     torch::Tensor torch_log_prob = at::log_softmax(torch_logit, 1, c10::nullopt);
+    ORT_ENFORCE(cudaGetLastError() == cudaSuccess);
     torch::Tensor torch_loss = at::nll_loss(torch_log_prob, torch_label, {}, reduction_ == ReductionType::SUM ? at::Reduction::Sum : at::Reduction::Mean, -1);
+    ORT_ENFORCE(cudaGetLastError() == cudaSuccess);
 
     cudaMemcpy(total_loss_data, torch_loss.data_ptr(), sizeof(T), cudaMemcpyDeviceToDevice);
     cudaMemcpy(log_prob_data, torch_log_prob.data_ptr(), N * D * sizeof(T), cudaMemcpyDeviceToDevice);
