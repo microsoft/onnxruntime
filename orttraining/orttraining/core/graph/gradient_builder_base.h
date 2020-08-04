@@ -39,12 +39,14 @@ class GradientBuilderBase {
                       Graph* graph,
                       const Node* node,
                       const std::unordered_set<std::string>& gradient_inputs,
-                      const std::unordered_set<std::string>& gradient_outputs)
+                      const std::unordered_set<std::string>& gradient_outputs,
+                      const logging::Logger& logger)
       : gradient_graph_config_(gradient_graph_config),
         graph_(graph),
         node_(node),
         gradient_inputs_(gradient_inputs),
-        gradient_outputs_(gradient_outputs) {
+        gradient_outputs_(gradient_outputs),
+        logger_(logger) {
     unique_node_prefix_ = CreateUniqueNodePrefix();
   }
 
@@ -80,7 +82,7 @@ class GradientBuilderBase {
     NodeArg* recomputed_nodearg = graph_->GetNodeArg(name + "_recompute");
     if (recomputed_nodearg) {
       const Node* producer_node = graph_->GetProducerNode(name);
-      std::cout << "Recomputed node arg found for " << producer_node->Name() << "\n";
+      LOGS(logger_, INFO) << "Recomputed node arg found for " << producer_node->Name();
       return ArgDef(recomputed_nodearg->Name(), recomputed_nodearg->TypeAsProto());
     }
 
@@ -229,6 +231,8 @@ class GradientBuilderBase {
 
   // contains set of input arg names of node_ which requires gradient
   std::unordered_set<std::string> gradient_outputs_;
+  
+  const logging::Logger& logger_;
 };
 
 class EmptyGradientBuilder : public GradientBuilderBase {

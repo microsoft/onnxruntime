@@ -24,11 +24,11 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
                                            const unordered_set<string>& x_node_arg_names,
                                            string loss_node_arg_name,
                                            const GradientGraphConfiguration& gradient_graph_config,
-                                           const bool set_gradient_as_graph_output)
+                                           const logging::Logger& logger)
     : graph_(graph),
       loss_node_arg_name_(loss_node_arg_name),
       gradient_graph_config_(gradient_graph_config),
-      set_gradient_as_graph_output_(set_gradient_as_graph_output) {
+      logger_(logger) {
   auto rule_based_graph_transformer =
       onnxruntime::make_unique<RuleBasedGraphTransformer>("pre_training_rule_based_graph_transformer");
   rule_based_graph_transformer->Register(make_unique<InsertMaxPoolOutput>());
@@ -126,7 +126,7 @@ Status GradientGraphBuilder::CheckNodeArgsReachable(const NodeSet& reachable_nod
 }
 
 Status GradientGraphBuilder::Build() {
-  auto opt_ret = graph_transformation_mgr_.ApplyTransformers(*graph_, TransformerLevel::Level2, logging::LoggingManager::DefaultLogger());
+  auto opt_ret = graph_transformation_mgr_.ApplyTransformers(*graph_, TransformerLevel::Level2, logger_);
   ORT_RETURN_IF_ERROR(opt_ret);
 
   GraphAugmenter::GraphDefs gradient_graph_defs;
@@ -190,7 +190,7 @@ Status GradientGraphBuilder::Build() {
       }
     }
 
-    GradientDef node_defs = GetGradientForOp(gradient_graph_config_, graph_, node, output_args_need_grad, input_args_need_grad);
+    GradientDef node_defs = GetGradientForOp(gradient_graph_config_, graph_, node, output_args_need_grad, input_args_need_grad, logger_);
 
     // updates arg name if gradient accumulation is needed
     for (auto& op_def : node_defs) {
@@ -218,7 +218,7 @@ Status GradientGraphBuilder::Build() {
                  "AccumulateGrad_" + gradient_pair.first.name)});
   }
 
-  if (set_gradient_as_graph_output_) {
+  if (gradient_graph_config_.set_gradients_as_graph_outputs) {
     for (auto x_node_arg : x_node_args_) {
       gradient_graph_defs.AddGraphOutputs({GradientBuilderBase::GradientName(x_node_arg->Name())});
     }

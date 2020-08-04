@@ -12,6 +12,9 @@ struct GradientGraphConfiguration {
   // To save memory, ideally, only one(input vs output) should be stashed rather than both.
   // By default, the input based algorithm is used. This flag is to enable the output based algorithm.
   bool use_invertible_layernorm_grad{false};
+
+  // if it is true, set gradient of trainable weight as graph output
+  bool set_gradients_as_graph_outputs{false};
 };
 
 }  // namespace training

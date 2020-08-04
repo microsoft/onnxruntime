@@ -307,12 +307,13 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::InitOpTesterWithGradGraph(
   }
 
   training::GradientGraphConfiguration gradient_graph_config;
+  gradient_graph_config.set_gradients_as_graph_outputs = true;
   training::GradientGraphBuilder grad_graph_builder(&graph,
                                                     dy_values,
                                                     weights_to_train,
                                                     "",
                                                     gradient_graph_config,
-                                                    true);
+                                                    logging::LoggingManager::DefaultLogger());
   Status status = grad_graph_builder.Build();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 

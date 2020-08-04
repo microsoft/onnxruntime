@@ -60,7 +60,7 @@ class GradientGraphBuilder {
                        const std::unordered_set<std::string>& x_node_arg_names,
                        std::string loss_node_arg_name,
                        const GradientGraphConfiguration& gradient_graph_config,
-                       const bool set_gradient_as_graph_output = false);
+                       const logging::Logger& logger);
 
   Status Build();
 
@@ -76,6 +76,8 @@ class GradientGraphBuilder {
   std::string loss_node_arg_name_;
 
   const GradientGraphConfiguration& gradient_graph_config_;
+  
+  const logging::Logger& logger_;
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr_{5};
 
@@ -104,9 +106,6 @@ class GradientGraphBuilder {
   @returns OK if all 'x_node_args_' are reachable, else an ONNXRUNTIME INVALID_ARGUMENT status
   */
   Status CheckNodeArgsReachable(const NodeSet& reachable_nodes);
-
-  // if it is true, set gradient of trainable weight as graph output
-  const bool set_gradient_as_graph_output_;
 };
 
 }  // namespace training
