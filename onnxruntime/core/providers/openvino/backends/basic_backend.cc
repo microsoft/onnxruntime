@@ -88,7 +88,7 @@ void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort,
     auto graph_input_buffer = graph_input_blob->buffer()
                                   .as<InferenceEngine::PrecisionTrait<InferenceEngine::Precision::FP32>::value_type*>();
     size_t input_data_size = graph_input_blob->byteSize();
-    
+
     #if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
     const OrtValue* tensor = ort.KernelContext_GetInput(context, subgraph_context_.input_indexes[i]);
     #else
@@ -112,7 +112,7 @@ void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort,
       std::memcpy(graph_input_buffer, tensor_data, input_data_size);
 
     }
-    
+
   }
   // Start Async inference
   try {
@@ -194,6 +194,7 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   CompleteAsyncInference(ort, output_tensors, infer_request_, ie_cnn_network_);
 
   LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
+  std::cout << "Inference successful" << std::endl;
 }
 
 }  // namespace openvino_ep

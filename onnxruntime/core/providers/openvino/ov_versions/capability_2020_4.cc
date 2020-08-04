@@ -400,7 +400,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     // tensor type supports float as input for argmax and argmin
     auto dtype = node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
     if (dtype != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
-      return true;      
+      return true;
     }
   }
 
@@ -664,6 +664,7 @@ GetCapability_2020_4(const onnxruntime::GraphViewer& graph_viewer, std::string d
     AppendClusterToSubGraph(graph_viewer.GetNodesInTopologicalOrder(), inputs, outputs, result);
 
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model is fully supported by OpenVINO";
+    std::cout << "Model is fully supported on OpenVINO" << std::endl;
     openvino_ep::BackendManager::GetGlobalContext().is_wholly_supported_graph = true;
 
   } else {  // unsupported_nodes_idx.empty()
