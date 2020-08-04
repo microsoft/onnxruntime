@@ -379,7 +379,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
       if (group.second) {
         nodes_list_output.push_back(group);
       } else {
-        std::unique_ptr<onnxruntime::Model> model_build = std::make_unique<onnxruntime::Model>(graph.Name(), true, ModelMetaData(), PathString(),
+        std::unique_ptr<onnxruntime::Model> model_build = onnxruntime::make_unique<onnxruntime::Model>(graph.Name(), true, ModelMetaData(), PathString(),
                                                                                                IOnnxRuntimeOpSchemaRegistryList(), graph.DomainToVersionMap(),
                                                                                                std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
         onnxruntime::Graph& graph_build = model_build->MainGraph();
@@ -455,7 +455,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         // Serialize modelproto to string
         const onnxruntime::GraphViewer graph_viewer(std::move(graph_build));
 
-        std::unique_ptr<onnxruntime::Model> model = std::make_unique<onnxruntime::Model>(graph_viewer.Name(), true, ModelMetaData(), PathString(),
+        std::unique_ptr<onnxruntime::Model> model = onnxruntime::make_unique<onnxruntime::Model>(graph_viewer.Name(), true, ModelMetaData(), PathString(),
                                                                                          IOnnxRuntimeOpSchemaRegistryList(), graph_viewer.DomainToVersionMap(),
                                                                                          std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
         ONNX_NAMESPACE::ModelProto model_proto = model->ToProto();
