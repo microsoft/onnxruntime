@@ -540,9 +540,6 @@ namespace Microsoft.ML.OnnxRuntime
                     {
                         var ortValue = ortValues.ElementAt(i);
                         result.Add(DisposableNamedOnnxValue.CreateTensorFromOnnxValue(outputNames[i], ortValue.Handle));
-                        // We transferred ownership of the handle.
-                        // But ortValues will still call Dispose() if there are other parts of the
-                        // object needs disposing.
                         ortValue.Disown();
                     }
                 } catch(Exception e)
@@ -612,11 +609,11 @@ namespace Microsoft.ML.OnnxRuntime
                 var input = values.ElementAt(inputIndex);
                 MemoryHandle? memHandle;
                 var ortValue = input.ToOrtValue(out memHandle);
-                cleanupList.Add(ortValue);
                 if (memHandle.HasValue)
                 {
                     cleanupList.Add(memHandle);
                 }
+                cleanupList.Add(ortValue);
                 result[inputIndex] = ortValue.Handle;
                 inputIndex++;
             }

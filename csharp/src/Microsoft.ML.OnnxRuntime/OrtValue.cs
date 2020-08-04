@@ -37,8 +37,6 @@ namespace Microsoft.ML.OnnxRuntime
 
         internal IntPtr Handle { get; private set; }
 
-        internal bool IsOwned { get; private set; }
-
         #region NamedOnnxValue/DisposableOnnxValue accommodations
 
         // DisposableOnnxValue class owns Native handle to OrtValue
@@ -47,7 +45,7 @@ namespace Microsoft.ML.OnnxRuntime
         //
         // We provide a way to relinquish ownership as well as return an instance of
         // OrtValue that is still disposable but does not have ownership
-
+        //
         /// <summary>
         /// This internal interface is used to transfer ownership elsewhere.
         /// This instance must still be disposed in case there are other native
@@ -61,6 +59,8 @@ namespace Microsoft.ML.OnnxRuntime
             IsOwned = false;
             return handle;
         }
+
+        internal bool IsOwned { get; private set; }
 
         #endregion
 
