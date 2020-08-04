@@ -4,6 +4,7 @@
 #pragma once
 #include "core/framework/tensor.h"
 #include "core/graph/basic_types.h"
+#include "gpu_data_transfer.h"
 
 namespace onnxruntime {
 class GPUDataTransfer;
@@ -19,7 +20,7 @@ class CUDAFence : public IFence {
   virtual bool CanRelease() override;
 
  private:
-  cudaEvent_t read_event_;
+  cudaEvent_t read_event_[kTotalCudaStreams];
   cudaEvent_t write_event_;
   const GPUDataTransfer* data_transfer_;
 };

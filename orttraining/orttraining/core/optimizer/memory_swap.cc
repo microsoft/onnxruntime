@@ -107,7 +107,7 @@ Status MemorySwap::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, 
       swap_in_node.SetExecutionProviderType(kCudaExecutionProvider);
 
 #ifdef PRINT_MEMSWAP_INFO
-      std::cout << "MemorySwap: " << src_node.Name() << "(" << src_node.OpType() << ") ";
+      std::cout << "MemorySwap: " << src_node.Name() << "(" << src_node.OpType() << ") " << src_node_output_arg->Name();
       if (src_node_output_arg->Shape() != nullptr) {
         std::cout << *(src_node_output_arg->Shape());
       }
