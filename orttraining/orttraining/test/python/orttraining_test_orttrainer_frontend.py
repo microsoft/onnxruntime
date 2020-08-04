@@ -625,8 +625,7 @@ def testORTWeights():
         #print(name, len(val))#val.size())
         np_a_vals = np.array(a_val).flatten()
         np_b_vals = np.array(b_val).flatten()
-        for a, b in zip(np_a_vals, np_b_vals):
-            assert_allclose(a, b, rtol=1, err_msg="weight mismatch")
-            print("success") 
+        assert_allclose(a_val, b_val, rtol=1e-4, err_msg="weight mismatch")
+         
         assert np_a_vals.shape == np_b_vals.shape
 
