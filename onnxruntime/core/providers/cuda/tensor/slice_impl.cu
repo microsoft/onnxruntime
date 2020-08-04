@@ -24,16 +24,16 @@ __global__ void _SliceKernel(const int32_t dimension_count,
   int value = id;
   int dim = 0;
 #pragma unroll
-  for (; dim < starts.GetCapacity(); ++dim) {
+  for (; dim < starts.Capacity(); ++dim) {
     if (dim >= dimension_count - 1) {
       break;
     }
 
-    output_strides.data_[dim].divmod(value, div, mod);
-    input_index += (starts.data_[dim] + div * steps.data_[dim]) * input_strides.data_[dim];
+    output_strides[dim].divmod(value, div, mod);
+    input_index += (starts[dim] + div * steps[dim]) * input_strides[dim];
     value = mod;
   }
-  input_index += starts.data_[dim] + mod * steps.data_[dim];
+  input_index += starts[dim] + mod * steps[dim];
   if (is_grad)
     output_data[input_index] = input_data[id];
   else

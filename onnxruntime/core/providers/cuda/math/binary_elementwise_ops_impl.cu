@@ -5,17 +5,10 @@
 #include "binary_elementwise_ops_impl.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cu_inc/binary_elementwise_impl.cuh"
+#include "core/providers/cuda/math/binary_elementwise_ops_impl_functors.cuh"
 
 namespace onnxruntime {
 namespace cuda {
-
-#define OP(name, expr)                                    \
-  template <class T, class T1>                            \
-  struct OP_##name {                                      \
-    __device__ __inline__ T operator()(T a, T1 b) const { \
-      return (expr);                                      \
-    }                                                     \
-  };
 
 #define BINARY_ELEMENTWISE_IMPL(name)                      \
   BINARY_ELEMENTWISE_IMPL_DECLARATION(name) {              \
@@ -78,9 +71,8 @@ namespace cuda {
   SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, float)    \
   SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, double)
 
-// create declarations for op and impl
+// create declarations for impl
 #define BINARY_OP_NAME_EXPR(name, expr) \
-  OP(name, expr)                        \
   BINARY_ELEMENTWISE_IMPL(name)
 
 BINARY_OPS()
@@ -117,8 +109,7 @@ SPECIALIZED_BINARY_ELEMENTWISE_IMPL_UZILHFD(Max)
 SPECIALIZED_BINARY_ELEMENTWISE_IMPL_UZILHFD(Min)
 SPECIALIZED_BINARY_ELEMENTWISE_IMPL_UZILHFD(Less)
 
-// create declarations for op and impl for Pow
-OP(Pow, _Pow(a, b))
+// create declarations for impl for Pow
 BINARY_ELEMENTWISE_IMPL_T1(Pow)
 
 SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1(Pow, int32_t, int32_t)

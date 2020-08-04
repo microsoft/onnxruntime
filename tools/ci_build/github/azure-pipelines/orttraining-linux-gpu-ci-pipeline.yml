@@ -6,16 +6,12 @@ jobs:
     AgentPool : 'Linux-GPU-CUDA10'
     JobName: 'Onnxruntime_Linux_GPU_Training'
     SubmoduleCheckoutMode: 'recursive'
-    # TODO --skip_onnx_tests is used to disable onnx_test_runner test.
-    # onnx_test_runner test occasionally causes "CUDA failure 77: an illegal memory access was encountered"
-    # remove --skip_onnx_tests when the test failures are fixed.
     BuildCommand: >
       tools/ci_build/github/linux/run_dockerbuild.sh
       -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory)
       -x "
       --enable_training
       --config $(buildConfig)
-      --skip_onnx_tests
       --build_wheel
       --enable_nvtx_profile
       "

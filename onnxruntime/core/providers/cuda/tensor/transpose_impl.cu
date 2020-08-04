@@ -13,7 +13,7 @@ template <typename T>
 __global__ void Transpose3DKernel(const TArray<int64_t> input_shape,
                                   const TArray<int64_t> input_strides,
                                   const T* input_data, T* output_data) {
-  __shared__ T tile[TILE_DIM * (TILE_DIM+1)];
+  __shared__ T tile[TILE_DIM * (TILE_DIM + 1)];
 
   int x = blockIdx.x * TILE_DIM + threadIdx.x;
   int y = blockIdx.y * TILE_DIM + threadIdx.y;
@@ -32,9 +32,9 @@ bool CanDoTranspose3D(int32_t rank,
                       const std::vector<size_t>& permutations) {
   if (rank == 3 &&
       // permutation is done in the last two dimensions.
-      permutations[rank-2] == (rank-1) && permutations[rank-1] == (rank-2) &&
+      permutations[rank - 2] == (rank - 1) && permutations[rank - 1] == (rank - 2) &&
       // the last two dimensions are aligned with TILE_DIM.
-      input_dims[rank-2] % TILE_DIM == 0 && input_dims[rank-1] % TILE_DIM == 0) {
+      input_dims[rank - 2] % TILE_DIM == 0 && input_dims[rank - 1] % TILE_DIM == 0) {
     return true;
   }
   return false;
@@ -44,7 +44,7 @@ Status Transpose3DImpl(size_t element_size,
                        const TArray<int64_t>& input_shape, const TArray<int64_t>& input_strides,
                        const void* input_data, void* output_data, int64_t N) {
   dim3 block_size(TILE_DIM, TILE_DIM);
-  dim3 grid_size(input_shape[2]/TILE_DIM, input_shape[1]/TILE_DIM, input_shape[0]);
+  dim3 grid_size(input_shape[2] / TILE_DIM, input_shape[1] / TILE_DIM, input_shape[0]);
 
   switch (element_size) {
     case sizeof(int8_t):
@@ -73,7 +73,7 @@ Status Transpose3DImpl(size_t element_size,
       break;
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported for transpose on CUDA. Element size was ",
-                              element_size);
+                             element_size);
   }
 
   return Status::OK();
@@ -86,13 +86,15 @@ __global__ void Transpose4DKernel(const TArray<int64_t> input_strides, const voi
   // output coordinates will be: blockIdx.y, blockIdx.x, threadIdx.y, threadIdx.x
   CUDA_LONG input_index = (blockIdx.y * input_strides[0] +
                            blockIdx.x * input_strides[1] +
-                           threadIdx.y * input_strides[2]) / (4 * sizeof(int) / element_size) +
-                           threadIdx.x * input_strides[3];
+                           threadIdx.y * input_strides[2]) /
+                              (4 * sizeof(int) / element_size) +
+                          threadIdx.x * input_strides[3];
 
   CUDA_LONG output_index = (blockIdx.y * output_strides[0] +
                             blockIdx.x * output_strides[1] +
-                            threadIdx.y * output_strides[2]) / (4 * sizeof(int) / element_size) +
-                            threadIdx.x * output_strides[3];
+                            threadIdx.y * output_strides[2]) /
+                               (4 * sizeof(int) / element_size) +
+                           threadIdx.x * output_strides[3];
 
   const int4* v_input = reinterpret_cast<const int4*>(input_data);
   int4* v_output = reinterpret_cast<int4*>(output_data);
@@ -109,12 +111,11 @@ bool CanDoTranspose4D(const cudaDeviceProp& prop,
                       const std::vector<size_t>& permutations) {
   if (rank == 4 &&
       // the permutations is not on the last dimension.
-      permutations[rank-1] == (rank - 1)) {
-
+      permutations[rank - 1] == (rank - 1)) {
     // The block size will be set based on the last two dimensions of 4D tensor.
     // the number threads per block will be calculated as below.
-    int num_elements_per_thread = 4 * sizeof(int) / element_size; // int4 is used in the kernel to access data.
-    int64_t num_elements_in_last_two_dimensions = input_dims[rank-2] * input_dims[rank-1];
+    int num_elements_per_thread = 4 * sizeof(int) / element_size;  // int4 is used in the kernel to access data.
+    int64_t num_elements_in_last_two_dimensions = input_dims[rank - 2] * input_dims[rank - 1];
     int64_t num_threads_per_block = num_elements_in_last_two_dimensions / num_elements_per_thread;
 
     if (((num_elements_in_last_two_dimensions & (num_elements_per_thread - 1)) == 0) &&
@@ -130,34 +131,34 @@ bool CanDoTranspose4D(const cudaDeviceProp& prop,
 
 Status Transpose4DImpl(size_t element_size, const TArray<int64_t>& input_shape, const TArray<int64_t>& input_strides, const void* input_data,
                        const TArray<int64_t>& output_strides, void* output_data, int64_t N) {
-  int num_elements_per_thread = 4 * sizeof(int) / element_size; // int4 is used in the kernel to access data.
-  dim3 block_size(input_shape[3]/num_elements_per_thread, input_shape[2]);
+  int num_elements_per_thread = 4 * sizeof(int) / element_size;  // int4 is used in the kernel to access data.
+  dim3 block_size(input_shape[3] / num_elements_per_thread, input_shape[2]);
   dim3 grid_size(input_shape[1], input_shape[0]);
 
   switch (element_size) {
     case sizeof(int8_t):
       Transpose4DKernel<sizeof(int8_t)><<<grid_size, block_size, 0>>>(
           input_strides, input_data,
-          output_strides, output_data, N/num_elements_per_thread);
+          output_strides, output_data, N / num_elements_per_thread);
       break;
     case sizeof(int16_t):
       Transpose4DKernel<sizeof(int16_t)><<<grid_size, block_size, 0>>>(
           input_strides, input_data,
-          output_strides, output_data, N/num_elements_per_thread);
+          output_strides, output_data, N / num_elements_per_thread);
       break;
     case sizeof(int32_t):
       Transpose4DKernel<sizeof(int32_t)><<<grid_size, block_size, 0>>>(
           input_strides, input_data,
-          output_strides, output_data, N/num_elements_per_thread);
+          output_strides, output_data, N / num_elements_per_thread);
       break;
     case sizeof(int64_t):
       Transpose4DKernel<sizeof(int64_t)><<<grid_size, block_size, 0>>>(
           input_strides, input_data,
-          output_strides, output_data, N/num_elements_per_thread);
+          output_strides, output_data, N / num_elements_per_thread);
       break;
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported for transpose on CUDA. Element size was ",
-                              element_size);
+                             element_size);
   }
 
   return Status::OK();
@@ -170,8 +171,8 @@ __global__ void TransposeKernel(int32_t shape_rank, const TArray<int64_t> input_
   CUDA_LONG input_index = 0;
   CUDA_LONG output_index = id;
 
-  #pragma unroll
-  for (auto dim = 0; dim < input_strides.GetCapacity(); ++dim) {
+#pragma unroll
+  for (auto dim = 0; dim < input_strides.Capacity(); ++dim) {
     if (dim >= shape_rank) {
       break;
     }

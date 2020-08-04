@@ -175,15 +175,6 @@
       },
       {
          "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "647d4c3f4d47d9cf63fb90ec175c414a005adea7",
-               "repositoryUrl": "https://github.com/JDAI-CV/DNNLibrary.git"
-            }
-         }
-      },
-      {
-         "component": {
             "Type": "other",
             "Other": {
                "Name": "Boost",

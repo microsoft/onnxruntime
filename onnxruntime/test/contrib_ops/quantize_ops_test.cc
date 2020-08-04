@@ -9,14 +9,23 @@ namespace onnxruntime {
 namespace test {
 
 // scalar zero & scale with uint8
-TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_float_uint8) {
+void TestDequantizeLinearPerTensorFloatUint8(bool use_initializer_except_x) {
   OpTester test("DequantizeLinear", 1, onnxruntime::kMSDomain);
   std::vector<int64_t> dims{4};
   test.AddInput<uint8_t>("x", dims, {0, 3, 128, 255});
-  test.AddInput<float>("x_scale", {}, {2.0f});
-  test.AddInput<uint8_t>("x_zero_point", {}, {128});
+  test.AddInput<float>("x_scale", {}, {2.0f}, use_initializer_except_x);
+  test.AddInput<uint8_t>("x_zero_point", {}, {128}, use_initializer_except_x);
   test.AddOutput<float>("y", dims, {-256.0f, -250.0f, 0.0f, 254.0f});
   test.Run();
+}
+
+TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_float_uint8) {
+  TestDequantizeLinearPerTensorFloatUint8(false);
+}
+
+// NNAPI EP requires weight to be an initializer
+TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_float_uint8_use_initializer_except_x) {
+  TestDequantizeLinearPerTensorFloatUint8(true);
 }
 
 // scalar zero & scale with int8
@@ -166,11 +175,11 @@ TEST(DequantizeLinearContribOpTest, DequantizeLinear_3) {
 }
 
 // quantize with scalar zero point and scale
-TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_float_uint8) {
+void TestQuantizeLinearPerTensorFloatUint8(bool use_initializer_except_x) {
   OpTester test("QuantizeLinear", 1, onnxruntime::kMSDomain);
   std::vector<int64_t> dims{16};
   test.AddInput<float>("x", dims, {
-                                      0.f, 2.f,
+                                      0.f, 2.f,        //
                                       3.f, -3.f,       // rounding half to even
                                       2.9f, -2.9f,     // low case
                                       3.1f, -3.1f,     // up case
@@ -179,24 +188,36 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_float_uint8) {
                                       256.f, -258.f,   // critical point
                                       1000.f, -1000.f  // saturate case
                                   });
-  test.AddInput<float>("y_scale", {}, {2.0f});
-  test.AddInput<uint8_t>("y_zero_point", {}, {128});
-  test.AddOutput<uint8_t>("y", dims, {128, 129,
-                                      130, 126,
-                                      129, 127,
-                                      130, 126,
-                                      255, 0,
-                                      255, 0,
-                                      255, 0,
-                                      255, 0});
+  test.AddInput<float>("y_scale", {}, {2.0f}, use_initializer_except_x);
+  test.AddInput<uint8_t>("y_zero_point", {}, {128}, use_initializer_except_x);
+  test.AddOutput<uint8_t>("y", dims,
+                          {128, 129,
+                           130, 126,
+                           129, 127,
+                           130, 126,
+                           255, 0,
+                           255, 0,
+                           255, 0,
+                           255, 0});
   test.Run();
 }
+
+TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_float_uint8) {
+  TestQuantizeLinearPerTensorFloatUint8(false);
+}
+
+// Only NNAPI EP requires weight to be an initializer
+#ifdef USE_NNAPI
+TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_float_uint8_use_initializer_except_x) {
+  TestQuantizeLinearPerTensorFloatUint8(true);
+}
+#endif
 
 TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_float_int8) {
   OpTester test("QuantizeLinear", 1, onnxruntime::kMSDomain);
   std::vector<int64_t> dims{16};
   test.AddInput<float>("x", dims, {
-                                      0.f, 2.f,
+                                      0.f, 2.f,        //
                                       3.f, -3.f,       // rounding half to even
                                       2.9f, -2.9f,     // low case
                                       3.1f, -3.1f,     // up case
@@ -207,14 +228,15 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_float_int8) {
                                   });
   test.AddInput<float>("y_scale", {}, {2.0f});
   test.AddInput<int8_t>("y_zero_point", {}, {1});
-  test.AddOutput<int8_t>("y", dims, {1, 2,
-                                     3, -1,
-                                     2, 0,
-                                     3, -1,
-                                     127, -127,
-                                     127, -127,
-                                     127, -128,
-                                     127, -128});
+  test.AddOutput<int8_t>("y", dims,
+                         {1, 2,
+                          3, -1,
+                          2, 0,
+                          3, -1,
+                          127, -127,
+                          127, -127,
+                          127, -128,
+                          127, -128});
   test.Run();
 }
 
@@ -223,7 +245,7 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_half_uint8) {
   OpTester test("QuantizeLinear", 1, onnxruntime::kMSDomain);
   std::vector<int64_t> dims{16};
   test.AddInput<MLFloat16>("x", dims, ToFloat16({
-                                          0.f, 2.f,
+                                          0.f, 2.f,        //
                                           3.f, -3.f,       // rounding half to even
                                           2.9f, -2.9f,     // low case
                                           3.1f, -3.1f,     // up case
@@ -234,14 +256,15 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_half_uint8) {
                                       }));
   test.AddInput<MLFloat16>("y_scale", {}, ToFloat16({2.0f}));
   test.AddInput<uint8_t>("y_zero_point", {}, {128});
-  test.AddOutput<uint8_t>("y", dims, {128, 129,
-                                      130, 126,
-                                      129, 127,
-                                      130, 126,
-                                      255, 0,
-                                      255, 0,
-                                      255, 0,
-                                      255, 0});
+  test.AddOutput<uint8_t>("y", dims,
+                          {128, 129,
+                           130, 126,
+                           129, 127,
+                           130, 126,
+                           255, 0,
+                           255, 0,
+                           255, 0,
+                           255, 0});
   test.Run();
 }
 
@@ -249,7 +272,7 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_half_int8) {
   OpTester test("QuantizeLinear", 1, onnxruntime::kMSDomain);
   std::vector<int64_t> dims{16};
   test.AddInput<MLFloat16>("x", dims, ToFloat16({
-                                          0.f, 2.f,
+                                          0.f, 2.f,        //
                                           3.f, -3.f,       // rounding half to even
                                           2.9f, -2.9f,     // low case
                                           3.1f, -3.1f,     // up case
@@ -260,14 +283,15 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_half_int8) {
                                       }));
   test.AddInput<MLFloat16>("y_scale", {}, ToFloat16({2.0f}));
   test.AddInput<int8_t>("y_zero_point", {}, {1});
-  test.AddOutput<int8_t>("y", dims, {1, 2,
-                                     3, -1,
-                                     2, 0,
-                                     3, -1,
-                                     127, -127,
-                                     127, -127,
-                                     127, -128,
-                                     127, -128});
+  test.AddOutput<int8_t>("y", dims,
+                         {1, 2,
+                          3, -1,
+                          2, 0,
+                          3, -1,
+                          127, -127,
+                          127, -127,
+                          127, -128,
+                          127, -128});
   test.Run();
 }
 #endif

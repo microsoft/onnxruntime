@@ -4,6 +4,7 @@
 #pragma once
 
 #include <vector>
+#include <unordered_map>
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
@@ -52,6 +53,10 @@ class IExecutionFrame {
   // Return S_OK and nullptr if index map to an value that is an unused optional input/output
   // Shape is required for tensors but not traditional ML values.
   Status GetOrCreateNodeOutputMLValue(int index, const TensorShape* shape, OrtValue*& p_ort_value, size_t nnz = 0);
+
+  // This function try retrieve the inferred shapes for the given NodeArg index.
+  // If the retrival is sucessful, this function returns true and false otherwise.
+  virtual bool TryGetInferredShape(int index, TensorShape& shape) const;
 
   /**
    * write the output values to the 'fetches' vector
@@ -129,17 +134,9 @@ class ExecutionFrame final : public IExecutionFrame {
     return planner_ != nullptr;
   }
 
-  // Return the size of virtual memory allocated in runtime.
-  // The memory is usually used for activations in forward and backward passes.
-  const std::unordered_map<std::string, size_t>& GetDynamicMemorySizeInfo() {
-    return dynamic_activation_memory_sizes_in_byte_;
-  }
-
-  // Return the size of virtual memory allocated before computation.
-  // The memory is usually used for activations in forward and backward passes.
-  const std::unordered_map<std::string, size_t>& GetStaticMemorySizeInfo() {
-    return static_activation_memory_sizes_in_byte_;
-  }
+  // This function try retrieve the inferred shapes for the given NodeArg index.
+  // If the retrival is sucessful, this function returns true and false otherwise.
+  bool TryGetInferredShape(int index, TensorShape& shape) const override;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ExecutionFrame);
@@ -181,12 +178,10 @@ class ExecutionFrame final : public IExecutionFrame {
   // Big chunks on different locations that will be used by mem_pattern.
   std::map<OrtMemoryInfo, BufferUniquePtr> buffers_;
 
-  // Size of virtual memory allocated before any kernel execution.
-  // This field is not physical memory size.
-  std::unordered_map<std::string, size_t> static_activation_memory_sizes_in_byte_;
-  // Size of virtual memory allocated during kernel execution (i.e., inside a kernel,
-  // we may allocate some memory for its outputs, if not planned.).
-  // This field is not physical memory size.
-  std::unordered_map<std::string, size_t> dynamic_activation_memory_sizes_in_byte_;
+  // Given the input shapes of the executed graph, ExecutionFrame tries inferring
+  // all symbolic shapes. inferred_shapes_[i] is the shape of OrtValue indexed
+  // by i, if the key i exists.
+  // inferred_shapes_ is generated togehter with mem_patterns_.
+  std::unordered_map<int, TensorShape> inferred_shapes_;
 };
 }  // namespace onnxruntime

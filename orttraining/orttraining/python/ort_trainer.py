@@ -102,7 +102,6 @@ def ort_training_session_run_helper(session, iobinding, inputs, input_descs, out
         torch_tensor = torch.zeros(output_desc.shape_, device=device,
                                    dtype=output_desc.eval_dtype_ if hasattr(output_desc, 'eval_dtype_')
                                    else output_desc.dtype_)
-
         iobinding.bind_output(output_desc.name_, torch_tensor.device.type, get_device_index(device),
                               dtype_torch_to_numpy(torch_tensor.dtype),
                               list(torch_tensor.size()), torch_tensor.data_ptr())
@@ -195,6 +194,10 @@ def dtype_torch_to_numpy(torch_dtype):
         return np.int32
     elif torch_dtype == torch.int16 or torch_dtype == torch.short:
         return np.int16
+    elif torch_dtype == torch.bool:
+        return np.bool
+    else:
+        raise Exception("Torch type to numpy type mapping unavailable for: " + str(torch_dtype))
 
 def wrap_for_input_match(model, loss_fn, input_names):
     import inspect
@@ -626,6 +629,8 @@ class ORTTrainer():
         self.world_size = world_size
         self.use_mixed_precision = use_mixed_precision
 
+        self.original_model_state_keys = list(model.state_dict().keys()) if hasattr(model, 'state_dict') else []
+
         self.session = None
         self.device_ = device
         self.gradient_accumulation_steps = gradient_accumulation_steps
@@ -770,7 +775,11 @@ class ORTTrainer():
             if n.name not in torch_state:
                 torch_state[n.name] = torch.from_numpy(numpy_helper.to_array(n))
 
-        return torch_state
+        # Need to remove redundant initializers and name suffices to map back to original torch state names
+        torch_state_to_return = {key: torch_state[key] for key in self.original_model_state_keys if key in torch_state} \
+                                if self.original_model_state_keys \
+                                else torch_state
+        return torch_state_to_return
 
     def load_state_dict(self, state_dict, strict=False):
         # Note: It may happen ONNX model has not yet been initialized
@@ -899,7 +908,6 @@ class ORTTrainer():
         elif self.current_step % self.gradient_accumulation_steps != 0:
             run_options = ort.RunOptions()
             run_options.only_execute_path_to_fetches = True
-            run_options.training_mode = True
             output_desc = self.output_desc_with_group_accumulated_gradients
         elif self.use_mixed_precision:
             has_if_all_finite = True
