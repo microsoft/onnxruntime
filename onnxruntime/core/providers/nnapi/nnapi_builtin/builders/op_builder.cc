@@ -74,11 +74,11 @@ static Status UnpackInitializerTensor(const onnx::TensorProto& initializer,
 }
 #undef CASE_UNPACK
 
-#define ADD_SCALAR_OPERAND(model_builder, input_indices, scalar_value)            \
-  {                                                                               \
-    uint32_t index = 0;                                                           \
-    ORT_RETURN_IF_ERROR(model_builder.AddOperandFromScalar(scalar_value, index)); \
-    input_indices.push_back(index);                                               \
+#define ADD_SCALAR_OPERAND(model_builder, input_indices, scalar_value)             \
+  {                                                                                \
+    uint32_t _index = 0;                                                           \
+    ORT_RETURN_IF_ERROR(model_builder.AddOperandFromScalar(scalar_value, _index)); \
+    input_indices.push_back(_index);                                               \
   }
 
 Status AddTransposeOperator(ModelBuilder& model_builder,
@@ -100,7 +100,7 @@ Status AddTransposeOperator(ModelBuilder& model_builder,
   uint32_t perm_idx = operand_indices.at(perm_name);
 
   input_indices.push_back(perm_idx);  // permutation
-  shaper.Transpose(input, perm, output);
+  ORT_RETURN_IF_ERROR(shaper.Transpose(input, perm, output));
   OperandType output_operand_type = operand_types.at(input);
   output_operand_type.SetDimensions(shaper[output]);
   return model_builder.AddOperation(ANEURALNETWORKS_TRANSPOSE, input_indices, {output},
@@ -174,7 +174,7 @@ static Status AddBinaryOperator(int32_t op_type,
   input_indices.push_back(operand_indices.at(input1));  // input 1
   input_indices.push_back(operand_indices.at(input2));  // input 2
   ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
-  shaper.Eltwise(input1, input2, output);
+  ORT_RETURN_IF_ERROR(shaper.Eltwise(input1, input2, output));
   const OperandType output_operand_type(operand_types.at(input1).type, shaper[output],
                                         output_scale, output_zero_point);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_type, input_indices,
@@ -859,7 +859,7 @@ Status ReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const auto& input = node.InputDefs()[0]->Name();
   const auto& output = node.OutputDefs()[0]->Name();
   bool output_is_nhwc = model_builder.IsOperandNHWC(input);
-  shaper.Identity(input, output);
+  ORT_RETURN_IF_ERROR(shaper.Identity(input, output));
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
 
   // skip this relu if it is some op's fuse output
@@ -1030,7 +1030,7 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(shape_name, shape.data(), shape_operand_type));
   input_indices.push_back(operand_indices.at(shape_name));
 
-  shaper.Reshape(input, shape, output);
+  ORT_RETURN_IF_ERROR(shaper.Reshape(input, shape, output));
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_RESHAPE, input_indices,
                                                  {output}, {output_operand_type}, {false}));
@@ -1322,10 +1322,10 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     ADD_SCALAR_OPERAND(model_builder, input_indices, use_nchw);
   }
 
-  shaper.Pool(input,
-              onnx_pads, onnx_strides, kernel_shape,
-              use_nchw,
-              output);
+  ORT_RETURN_IF_ERROR(shaper.Pool(input,
+                                  onnx_pads, onnx_strides, kernel_shape,
+                                  use_nchw,
+                                  output));
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
                                                  {output}, {output_operand_type}, {output_is_nhwc}));
@@ -1647,16 +1647,16 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   if (conv_2d || grouped_conv_2d) {
     operationCode = conv_2d ? ANEURALNETWORKS_CONV_2D
                             : ANEURALNETWORKS_GROUPED_CONV_2D;
-    shaper.Conv(input, weight,
-                onnx_pads, onnx_strides, onnx_dilations,
-                use_nchw,
-                output);
+    ORT_RETURN_IF_ERROR(shaper.Conv(input, weight,
+                                    onnx_pads, onnx_strides, onnx_dilations,
+                                    use_nchw,
+                                    output));
   } else {  // depthwise_conv_2d
     operationCode = ANEURALNETWORKS_DEPTHWISE_CONV_2D;
-    shaper.DepthwiseConv(input, weight,
-                         onnx_pads, onnx_strides, onnx_dilations,
-                         use_nchw,
-                         output);
+    ORT_RETURN_IF_ERROR(shaper.DepthwiseConv(input, weight,
+                                             onnx_pads, onnx_strides, onnx_dilations,
+                                             use_nchw,
+                                             output));
   }
 
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output], y_scale, y_zero_point);
@@ -1716,7 +1716,7 @@ Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
-  shaper.Identity(input, output);
+  ORT_RETURN_IF_ERROR(shaper.Identity(input, output));
   const OperandType output_operand_type(type, shaper[output]);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_CAST, input_indices, {output},
                                                  {output_operand_type}, {output_is_nhwc}));
@@ -1804,7 +1804,7 @@ Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
     ADD_SCALAR_OPERAND(model_builder, input_indices, axis);
   }
 
-  shaper.Identity(input, output);
+  ORT_RETURN_IF_ERROR(shaper.Identity(input, output));
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_SOFTMAX, input_indices,
                                                  {output}, {output_operand_type}, {output_is_nhwc}));
@@ -1834,7 +1834,7 @@ Status IdentityOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, con
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));  // input
 
-  shaper.Identity(input, output);
+  ORT_RETURN_IF_ERROR(shaper.Identity(input, output));
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
   model_builder.RegisterOperand(output, operand_indices.at(input), output_operand_type, output_is_nhwc);
   return Status::OK();
@@ -2074,7 +2074,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   int32_t fuse_code = model_builder.FindActivation(node, *node.OutputDefs()[0]);
   ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
 
-  shaper.FC(input1, input2, output);
+  ORT_RETURN_IF_ERROR(shaper.FC(input1, input2, output));
   const OperandType output_operand_type(operand_types.at(input1).type, shaper[output], y_scale, y_zero_point);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_FULLY_CONNECTED, input_indices,
                                                  {output}, {output_operand_type}, {false}));
@@ -2116,7 +2116,7 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   const auto& output = node.OutputDefs()[0]->Name();
   bool output_is_nhwc = model_builder.IsOperandNHWC(input);
 
-  shaper.Identity(input, output);
+  ORT_RETURN_IF_ERROR(shaper.Identity(input, output));
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
 
   int32_t op_code;
@@ -2236,7 +2236,7 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   ADD_SCALAR_OPERAND(model_builder, input_indices, axis);
 
   const auto& output = node.OutputDefs()[0]->Name();
-  shaper.Concat(inputs, axis, output);
+  ORT_RETURN_IF_ERROR(shaper.Concat(inputs, axis, output));
   const OperandType output_operand_type(operand_types.at(input0).type, shaper[output]);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_CONCATENATION, input_indices,
                                                  {output}, {output_operand_type}, {output_is_nhwc}));
@@ -2315,7 +2315,7 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   input_indices.push_back(operand_indices.at(axes_name));  // axes
 
   const auto& output = node.OutputDefs()[0]->Name();
-  shaper.Squeeze(input, axes, output);
+  ORT_RETURN_IF_ERROR(shaper.Squeeze(input, axes, output));
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_SQUEEZE, input_indices,
                                                  {output}, {output_operand_type}, {false}));
@@ -2394,7 +2394,7 @@ Status QuantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builde
 
   LOGS_DEFAULT(VERBOSE) << "scale: " << scale << " zp: " << zero_point;
 
-  shaper.Identity(input, output);
+  ORT_RETURN_IF_ERROR(shaper.Identity(input, output));
   const OperandType output_operand_type(output_type, shaper[output], scale, zero_point);
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
@@ -2477,7 +2477,7 @@ Status DequantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
 
   ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, scale, zero_point));
 
-  shaper.Identity(input, output);
+  ORT_RETURN_IF_ERROR(shaper.Identity(input, output));
   const OperandType output_operand_type(Type::TENSOR_FLOAT32, shaper[output]);
 
   std::vector<uint32_t> input_indices;
@@ -2563,7 +2563,7 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
     ADD_SCALAR_OPERAND(model_builder, input_indices, axis);
   }
 
-  shaper.Identity(input, output);
+  ORT_RETURN_IF_ERROR(shaper.Identity(input, output));
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_LOCAL_RESPONSE_NORMALIZATION, input_indices,
                                                  {output}, {output_operand_type}, {output_is_nhwc}));
