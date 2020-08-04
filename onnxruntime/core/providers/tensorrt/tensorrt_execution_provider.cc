@@ -403,7 +403,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
             }
           }
 
-          for (auto input : node->ImplicitInputDefs()) {  //slx
+          for (auto input : node->ImplicitInputDefs()) {
             const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
             if (graph.GetInitializedTensor(input->Name(), initializer)) {
               const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
@@ -609,693 +609,693 @@ void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& 
   }
 }
 
-  std::vector<std::unique_ptr<ComputeCapability>>
-  TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
-                                           const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
-    // Get supported node list from TensorRT parser
-    std::vector<size_t> nodes_vector(graph.NumberOfNodes());
-    std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
-    SubGraphCollection_t supported_nodes_vector, parser_nodes_vector = {{nodes_vector, false}};
-    bool early_termination = false;
-    supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination);
-    if (early_termination) {
-      supported_nodes_vector.clear();
-    }
-
-    // Remove subgraphs if its size is less than the predefined minimal size
-    for (auto it = supported_nodes_vector.begin(); it != supported_nodes_vector.end(); ++it) {
-      const int subgraph_size = it->first.size();
-      if (subgraph_size < min_subgraph_size_) {
-        supported_nodes_vector.erase(it--);
-      }
-    }
-
-    // Detect and remove cycles from supported node list
-    RemoveTensorRTGraphCycles(supported_nodes_vector, graph);
-
-    // Construct subgraph capability from node list
-    std::vector<std::unique_ptr<ComputeCapability>> result;
-    int counter = 0, number_of_trt_nodes = 0;
-    for (const auto& group : supported_nodes_vector) {
-      if (!group.first.empty()) {
-        std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, counter, graph);
-        result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
-        number_of_trt_nodes += group.first.size();
-      }
-    }
-
-    const int number_of_subgraphs = supported_nodes_vector.size();
-    if (number_of_subgraphs == 0) {
-      LOGS_DEFAULT(WARNING) << "No graph is running on TensorRT exeuction provider.";
-    } else {
-      LOGS_DEFAULT(INFO) << "Number of subgraphs running on TensorRT exeuction provider: " << number_of_subgraphs;
-    }
-
-    return result;
+std::vector<std::unique_ptr<ComputeCapability>>
+TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
+                                         const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
+  // Get supported node list from TensorRT parser
+  std::vector<size_t> nodes_vector(graph.NumberOfNodes());
+  std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
+  SubGraphCollection_t supported_nodes_vector, parser_nodes_vector = {{nodes_vector, false}};
+  bool early_termination = false;
+  supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination);
+  if (early_termination) {
+    supported_nodes_vector.clear();
   }
 
-  common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
-                                                    std::vector<NodeComputeInfo>& node_compute_funcs) {
-    for (const auto* fused_node : fused_nodes) {
-      // Build map from input name to its index in input definitions
-      std::unordered_map<std::string, int> input_map;
-      const auto& input_defs = fused_node->InputDefs();
-      input_map.reserve(input_defs.size());
-      for (int i = 0, end = input_defs.size(); i < end; ++i) {
-        input_map[input_defs[i]->Name()] = i;
+  // Remove subgraphs if its size is less than the predefined minimal size
+  for (auto it = supported_nodes_vector.begin(); it != supported_nodes_vector.end(); ++it) {
+    const int subgraph_size = it->first.size();
+    if (subgraph_size < min_subgraph_size_) {
+      supported_nodes_vector.erase(it--);
+    }
+  }
+
+  // Detect and remove cycles from supported node list
+  RemoveTensorRTGraphCycles(supported_nodes_vector, graph);
+
+  // Construct subgraph capability from node list
+  std::vector<std::unique_ptr<ComputeCapability>> result;
+  int counter = 0, number_of_trt_nodes = 0;
+  for (const auto& group : supported_nodes_vector) {
+    if (!group.first.empty()) {
+      std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, counter, graph);
+      result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
+      number_of_trt_nodes += group.first.size();
+    }
+  }
+
+  const int number_of_subgraphs = supported_nodes_vector.size();
+  if (number_of_subgraphs == 0) {
+    LOGS_DEFAULT(WARNING) << "No graph is running on TensorRT exeuction provider.";
+  } else {
+    LOGS_DEFAULT(INFO) << "Number of subgraphs running on TensorRT exeuction provider: " << number_of_subgraphs;
+  }
+
+  return result;
+}
+
+common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
+                                                  std::vector<NodeComputeInfo>& node_compute_funcs) {
+  for (const auto* fused_node : fused_nodes) {
+    // Build map from input name to its index in input definitions
+    std::unordered_map<std::string, int> input_map;
+    const auto& input_defs = fused_node->InputDefs();
+    input_map.reserve(input_defs.size());
+    for (int i = 0, end = input_defs.size(); i < end; ++i) {
+      input_map[input_defs[i]->Name()] = i;
+    }
+
+    // Build map from output name to its index in output definitions
+    std::unordered_map<std::string, int> output_map;
+    const auto& output_defs = fused_node->OutputDefs();
+    output_map.reserve(output_defs.size());
+    for (int i = 0, end = output_defs.size(); i < end; ++i) {
+      output_map[output_defs[i]->Name()] = i;
+    }
+
+    // Reconstruct graph proto from fused node's function body
+    const auto* func_body = fused_node->GetFunctionBody();
+    if (!func_body) {
+      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Function body is empty");
+    }
+    const Graph& graph_body = func_body->Body();
+    onnxruntime::Model model(graph_body.Name(), true, ModelMetaData(), PathString(),
+                             IOnnxRuntimeOpSchemaRegistryList(), graph_body.DomainToVersionMap(),
+                             std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
+    ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
+    *(model_proto.mutable_graph()) = graph_body.ToGraphProto();
+    model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+    std::string string_buf;
+    model_proto.SerializeToString(&string_buf);
+
+    if (dump_subgraphs_) {
+      // Dump the TensorRT subgraph if enabled via ORT_TENSORRT_DUMP_SUBGRAPHS env variable.
+      std::fstream dump(fused_node->Name() + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
+      model_proto.SerializeToOstream(&dump);
+    }
+
+    // Create TensorRT engine
+    TensorrtLogger& trt_logger = GetTensorrtLogger();
+    auto trt_builder = tensorrt_ptr::unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
+    const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
+    auto trt_network = tensorrt_ptr::unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
+    auto trt_config = tensorrt_ptr::unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
+    auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
+    trt_parser->parse(string_buf.data(), string_buf.size());
+    trt_config->setMaxWorkspaceSize(max_workspace_size_);
+
+    int num_inputs = trt_network->getNbInputs();
+    int num_outputs = trt_network->getNbOutputs();
+    std::unordered_map<std::string, int> input_indexes(num_inputs);
+    std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>> input_shape_ranges;
+    std::unordered_map<std::string, int> output_indexes(num_outputs);
+    std::unordered_map<std::string, int> output_types(num_outputs);
+
+    // Initialize shape range for dynamic shape tensors
+    bool has_dynamic_shape = false;
+    for (unsigned int i = 0, end = num_inputs; i < end; ++i) {
+      auto input = trt_network->getInput(i);
+      const std::string& input_name = input->getName();
+      nvinfer1::Dims dims = input->getDimensions();
+      int nb_dims = dims.nbDims;
+
+      if (input->isShapeTensor()) {
+        // Shape tensor
+        input_shape_ranges[input_name][0] = std::make_pair(INT_MAX, INT_MIN);
+        has_dynamic_shape = true;
+      } else {
+        // Execution tensor
+        for (int j = 0, end = nb_dims; j < end; ++j) {
+          if (dims.d[j] == -1) {
+            input_shape_ranges[input_name][j] = std::make_pair(INT_MAX, INT_MIN);
+            has_dynamic_shape = true;
+          }
+        }
       }
+    }
 
-      // Build map from output name to its index in output definitions
-      std::unordered_map<std::string, int> output_map;
-      const auto& output_defs = fused_node->OutputDefs();
-      output_map.reserve(output_defs.size());
-      for (int i = 0, end = output_defs.size(); i < end; ++i) {
-        output_map[output_defs[i]->Name()] = i;
+    std::string trt_node_name_with_precision = fused_node->Name();
+    if (fp16_enable_ && trt_builder->platformHasFastFp16()) {
+      trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
+      trt_node_name_with_precision += "_fp16";
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 mode is enabled.";
+    }
+
+    // Build TRT engine here if the graph doesn't have dynamic shape input. Otherwise engine will
+    // be built at runtime
+    tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine> trt_engine;
+    tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext> trt_context;
+    if (!has_dynamic_shape) {
+      std::ifstream planFile(GetEnginePath(engine_cache_path_, trt_node_name_with_precision), std::ios::binary | std::ios::in);
+      if (planFile && engine_cache_enable_) {
+        planFile.seekg(0, std::ios::end);
+        int engine_size = planFile.tellg();
+        planFile.seekg(0, std::ios::beg);
+        std::unique_ptr<char[]> engine_buf{new char[engine_size]};
+        planFile.read((char*)engine_buf.get(), engine_size);
+        planFile.close();
+        trt_engine = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + GetEnginePath(engine_cache_path_, trt_node_name_with_precision);
+        if (trt_engine == nullptr) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                 "TensorRT EP could not deSerialize Engine from " + trt_node_name_with_precision + ".engine");
+        }
+      } else {
+        trt_engine = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *trt_config));
+        if (trt_engine == nullptr) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                 "TensorRT EP could not build Engine for fused node: " + fused_node->Name());
+        }
+
+        if (engine_cache_enable_) {
+          nvinfer1::IHostMemory* serializedModel = trt_engine->serialize();
+          std::ofstream file(GetEnginePath(engine_cache_path_, trt_node_name_with_precision), std::ios::binary | std::ios::out);
+          file.write(reinterpret_cast<char*>(serializedModel->data()), serializedModel->size());
+          serializedModel->destroy();
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + GetEnginePath(engine_cache_path_, trt_node_name_with_precision);
+        }
       }
-
-      // Reconstruct graph proto from fused node's function body
-      const auto* func_body = fused_node->GetFunctionBody();
-      if (!func_body) {
-        return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Function body is empty");
+      trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
+      if (trt_context == nullptr) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                               "TensorRT EP could not build Execution Context for fused node: " + fused_node->Name());
       }
-      const Graph& graph_body = func_body->Body();
-      onnxruntime::Model model(graph_body.Name(), true, ModelMetaData(), PathString(),
-                               IOnnxRuntimeOpSchemaRegistryList(), graph_body.DomainToVersionMap(),
-                               std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
-      ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
-      *(model_proto.mutable_graph()) = graph_body.ToGraphProto();
-      model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-      std::string string_buf;
-      model_proto.SerializeToString(&string_buf);
+    }
 
-      if (dump_subgraphs_) {
-        // Dump the TensorRT subgraph if enabled via ORT_TENSORRT_DUMP_SUBGRAPHS env variable.
-        std::fstream dump(fused_node->Name() + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
-        model_proto.SerializeToOstream(&dump);
+    // Create input to index map
+    for (int i = 0; i < num_inputs; ++i) {
+      auto input = trt_network->getInput(i);
+      const std::string& input_name = input->getName();
+      const auto& iter = input_map.find(input_name);
+      if (iter != input_map.end()) {
+        input_indexes[input_name] = iter->second;
       }
+    }
 
-      // Create TensorRT engine
-      TensorrtLogger& trt_logger = GetTensorrtLogger();
-      auto trt_builder = tensorrt_ptr::unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
-      const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
-      auto trt_network = tensorrt_ptr::unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
-      auto trt_config = tensorrt_ptr::unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
-      auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
-      trt_parser->parse(string_buf.data(), string_buf.size());
-      trt_config->setMaxWorkspaceSize(max_workspace_size_);
+    //  Create output to index and type maps
+    const auto& graph_output = model_proto.graph().output();
+    for (int i = 0; i < num_outputs; ++i) {
+      const std::string& output_name = trt_network->getOutput(i)->getName();
+      const auto& iter = output_map.find(output_name);
+      if (iter != output_map.end()) {
+        output_indexes[output_name] = iter->second;
+      }
+      const auto& tensor_type = graph_output[i].type().tensor_type();
+      output_types[output_name] = tensor_type.elem_type();
+    }
 
-      int num_inputs = trt_network->getNbInputs();
-      int num_outputs = trt_network->getNbOutputs();
-      std::unordered_map<std::string, int> input_indexes(num_inputs);
-      std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>> input_shape_ranges;
-      std::unordered_map<std::string, int> output_indexes(num_outputs);
-      std::unordered_map<std::string, int> output_types(num_outputs);
+    // Save engine, context and input/output info to map
+    parsers_.emplace(fused_node->Name(), std::move(trt_parser));
+    engines_.emplace(fused_node->Name(), std::move(trt_engine));
+    contexts_.emplace(fused_node->Name(), std::move(trt_context));
+    builders_.emplace(fused_node->Name(), std::move(trt_builder));
+    networks_.emplace(fused_node->Name(), std::move(trt_network));
+    input_info_[fused_node->Name()].push_back(input_indexes);
+    output_info_[fused_node->Name()].push_back(output_indexes);
+    output_info_[fused_node->Name()].push_back(output_types);
+    input_shape_ranges_[fused_node->Name()] = input_shape_ranges;
 
-      // Initialize shape range for dynamic shape tensors
-      bool has_dynamic_shape = false;
-      for (unsigned int i = 0, end = num_inputs; i < end; ++i) {
-        auto input = trt_network->getInput(i);
+    // Create function state
+    // TODO: remove default capture
+    NodeComputeInfo compute_info;
+    compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
+      std::unique_ptr<TensorrtFuncState> p = onnxruntime::make_unique<TensorrtFuncState>();
+      *p = {context->allocate_func, context->release_func, context->allocator_handle, parsers_[context->node_name].get(),
+            &engines_[context->node_name], &contexts_[context->node_name], builders_[context->node_name].get(),
+            networks_[context->node_name].get(), input_info_[context->node_name], output_info_[context->node_name],
+            input_shape_ranges_[context->node_name], &tensorrt_mu_, &fp16_enable_,
+            &max_workspace_size_};
+      *state = p.release();
+      return 0;
+    };
+
+    // Release function state
+    compute_info.release_state_func = [](FunctionState state) {
+      if (state)
+        delete static_cast<TensorrtFuncState*>(state);
+    };
+
+    // Create compute function
+    compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
+      Ort::CustomOpApi ort{*api};
+      TensorrtFuncState* trt_state = reinterpret_cast<TensorrtFuncState*>(state);
+      std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
+      const std::unordered_map<std::string, int>& input_indexes = (trt_state->input_info)[0];
+      const std::unordered_map<std::string, int>& output_indexes = (trt_state->output_info)[0];
+      const std::unordered_map<std::string, int>& output_types = (trt_state->output_info)[1];
+      auto& shape_ranges = trt_state->input_shape_ranges;
+      auto trt_builder = trt_state->builder;
+      auto trt_engine = trt_state->engine->get();
+      auto trt_context = trt_state->context->get();
+      int num_inputs = input_indexes.size();
+      int num_outputs = output_indexes.size();
+
+      // Update shape ranges
+      bool engine_update = false;
+      std::unordered_map<std::string, bool> dimension_update;
+      std::unordered_map<std::string, std::vector<int32_t>> tensor_shape_values;
+      nvinfer1::IOptimizationProfile* trt_profile = nullptr;
+      for (int i = 0, end = num_inputs; i < end; ++i) {
+        auto input = trt_state->network->getInput(i);
         const std::string& input_name = input->getName();
         nvinfer1::Dims dims = input->getDimensions();
         int nb_dims = dims.nbDims;
 
-        if (input->isShapeTensor()) {
-          // Shape tensor
-          input_shape_ranges[input_name][0] = std::make_pair(INT_MAX, INT_MIN);
-          has_dynamic_shape = true;
-        } else {
-          // Execution tensor
-          for (int j = 0, end = nb_dims; j < end; ++j) {
-            if (dims.d[j] == -1) {
-              input_shape_ranges[input_name][j] = std::make_pair(INT_MAX, INT_MIN);
-              has_dynamic_shape = true;
-            }
-          }
-        }
-      }
-
-      std::string trt_node_name_with_precision = fused_node->Name();
-      if (fp16_enable_ && trt_builder->platformHasFastFp16()) {
-        trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
-        trt_node_name_with_precision += "_fp16";
-        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 mode is enabled.";
-      }
-
-      // Build TRT engine here if the graph doesn't have dynamic shape input. Otherwise engine will
-      // be built at runtime
-      tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine> trt_engine;
-      tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext> trt_context;
-      if (!has_dynamic_shape) {
-        std::ifstream planFile(GetEnginePath(engine_cache_path_, trt_node_name_with_precision), std::ios::binary | std::ios::in);
-        if (planFile && engine_cache_enable_) {
-          planFile.seekg(0, std::ios::end);
-          int engine_size = planFile.tellg();
-          planFile.seekg(0, std::ios::beg);
-          std::unique_ptr<char[]> engine_buf{new char[engine_size]};
-          planFile.read((char*)engine_buf.get(), engine_size);
-          planFile.close();
-          trt_engine = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + GetEnginePath(engine_cache_path_, trt_node_name_with_precision);
-          if (trt_engine == nullptr) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                   "TensorRT EP could not deSerialize Engine from " + trt_node_name_with_precision + ".engine");
-          }
-        } else {
-          trt_engine = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *trt_config));
-          if (trt_engine == nullptr) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                   "TensorRT EP could not build Engine for fused node: " + fused_node->Name());
-          }
-
-          if (engine_cache_enable_) {
-            nvinfer1::IHostMemory* serializedModel = trt_engine->serialize();
-            std::ofstream file(GetEnginePath(engine_cache_path_, trt_node_name_with_precision), std::ios::binary | std::ios::out);
-            file.write(reinterpret_cast<char*>(serializedModel->data()), serializedModel->size());
-            serializedModel->destroy();
-            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + GetEnginePath(engine_cache_path_, trt_node_name_with_precision);
-          }
-        }
-        trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
-        if (trt_context == nullptr) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                 "TensorRT EP could not build Execution Context for fused node: " + fused_node->Name());
-        }
-      }
-
-      // Create input to index map
-      for (int i = 0; i < num_inputs; ++i) {
-        auto input = trt_network->getInput(i);
-        const std::string& input_name = input->getName();
-        const auto& iter = input_map.find(input_name);
-        if (iter != input_map.end()) {
-          input_indexes[input_name] = iter->second;
-        }
-      }
-
-      //  Create output to index and type maps
-      const auto& graph_output = model_proto.graph().output();
-      for (int i = 0; i < num_outputs; ++i) {
-        const std::string& output_name = trt_network->getOutput(i)->getName();
-        const auto& iter = output_map.find(output_name);
-        if (iter != output_map.end()) {
-          output_indexes[output_name] = iter->second;
-        }
-        const auto& tensor_type = graph_output[i].type().tensor_type();
-        output_types[output_name] = tensor_type.elem_type();
-      }
-
-      // Save engine, context and input/output info to map
-      parsers_.emplace(fused_node->Name(), std::move(trt_parser));
-      engines_.emplace(fused_node->Name(), std::move(trt_engine));
-      contexts_.emplace(fused_node->Name(), std::move(trt_context));
-      builders_.emplace(fused_node->Name(), std::move(trt_builder));
-      networks_.emplace(fused_node->Name(), std::move(trt_network));
-      input_info_[fused_node->Name()].push_back(input_indexes);
-      output_info_[fused_node->Name()].push_back(output_indexes);
-      output_info_[fused_node->Name()].push_back(output_types);
-      input_shape_ranges_[fused_node->Name()] = input_shape_ranges;
-
-      // Create function state
-      // TODO: remove default capture
-      NodeComputeInfo compute_info;
-      compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
-        std::unique_ptr<TensorrtFuncState> p = onnxruntime::make_unique<TensorrtFuncState>();
-        *p = {context->allocate_func, context->release_func, context->allocator_handle, parsers_[context->node_name].get(),
-              &engines_[context->node_name], &contexts_[context->node_name], builders_[context->node_name].get(),
-              networks_[context->node_name].get(), input_info_[context->node_name], output_info_[context->node_name],
-              input_shape_ranges_[context->node_name], &tensorrt_mu_, &fp16_enable_,
-              &max_workspace_size_};
-        *state = p.release();
-        return 0;
-      };
-
-      // Release function state
-      compute_info.release_state_func = [](FunctionState state) {
-        if (state)
-          delete static_cast<TensorrtFuncState*>(state);
-      };
-
-      // Create compute function
-      compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
-        Ort::CustomOpApi ort{*api};
-        TensorrtFuncState* trt_state = reinterpret_cast<TensorrtFuncState*>(state);
-        std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
-        const std::unordered_map<std::string, int>& input_indexes = (trt_state->input_info)[0];
-        const std::unordered_map<std::string, int>& output_indexes = (trt_state->output_info)[0];
-        const std::unordered_map<std::string, int>& output_types = (trt_state->output_info)[1];
-        auto& shape_ranges = trt_state->input_shape_ranges;
-        auto trt_builder = trt_state->builder;
-        auto trt_engine = trt_state->engine->get();
-        auto trt_context = trt_state->context->get();
-        int num_inputs = input_indexes.size();
-        int num_outputs = output_indexes.size();
-
-        // Update shape ranges
-        bool engine_update = false;
-        std::unordered_map<std::string, bool> dimension_update;
-        std::unordered_map<std::string, std::vector<int32_t>> tensor_shape_values;
-        nvinfer1::IOptimizationProfile* trt_profile = nullptr;
-        for (int i = 0, end = num_inputs; i < end; ++i) {
-          auto input = trt_state->network->getInput(i);
-          const std::string& input_name = input->getName();
-          nvinfer1::Dims dims = input->getDimensions();
-          int nb_dims = dims.nbDims;
-
-          // Check and update shape ranges for dynamic shape inputs
-          dimension_update[input_name] = false;
-          if (shape_ranges.find(input_name) != shape_ranges.end()) {
-            int input_index = 0;
-            const auto& iter = input_indexes.find(input_name);
-            if (iter != input_indexes.end()) {
-              input_index = iter->second;
-            }
-
-            const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index);
-            auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
-            const auto& tensor_shapes = ort.GetTensorShape(tensor_info);
-            auto& shape_range = shape_ranges[input_name];
-
-            // Create shape profile
-            if (input->isShapeTensor()) {
-              // Get shape values for shape tensor input
-              const auto& tensor_type = ort.GetTensorElementType(tensor_info);
-              int shape_size = nb_dims == 0 ? 1 : tensor_shapes[0];
-              tensor_shape_values[input_name].reserve(shape_size);
-              switch (tensor_type) {
-                case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
-                  int32_t* input = new int32_t[shape_size];
-                  cudaMemcpy(input, ort.GetTensorData<int32_t>(input_tensor), shape_size * sizeof(int32_t), cudaMemcpyDeviceToHost);
-                  for (int j = 0; j < shape_size; ++j) {
-                    tensor_shape_values[input_name][j] = input[j];
-                  }
-                  delete[] input;
-                  break;
-                }
-                case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
-                  int64_t* input = new int64_t[shape_size];
-                  cudaMemcpy(input, ort.GetTensorData<int64_t>(input_tensor), shape_size * sizeof(int64_t), cudaMemcpyDeviceToHost);
-                  for (int j = 0; j < shape_size; ++j) {
-                    tensor_shape_values[input_name][j] = static_cast<int32_t>(input[j]);
-                  }
-                  delete[] input;
-                  break;
-                }
-                default: {
-                  return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                         "TensorRT shape tensor data type: " + std::to_string(tensor_type) + " not supported.");
-                }
-              }
-
-              // Update shape ranges
-              std::vector<int32_t> shapes_min(shape_size), shapes_opt(shape_size), shapes_max(shape_size);
-              int shape_range_size = shape_range.size();
-              if (shape_size == shape_range_size) {
-                // If shape size matches, check/update shape range
-                for (int j = 0; j < shape_size; ++j) {
-                  shapes_min[j] = shape_range[j].first;
-                  shapes_opt[j] = shape_range[j].second;
-                  shapes_max[j] = shape_range[j].second;
-
-                  const auto& tensor_shape_value = tensor_shape_values[input_name][j];
-                  // Update shape range lower bound
-                  if (tensor_shape_value < shape_range[j].first) {
-                    shape_range[j].first = tensor_shape_value;
-                    shapes_min[j] = tensor_shape_value;
-                    shapes_opt[j] = tensor_shape_value;
-                    dimension_update[input_name] = true;
-                  }
-                  // Update shape range upper bound
-                  if (tensor_shape_value > shape_range[j].second) {
-                    shape_range[j].second = tensor_shape_value;
-                    shapes_max[j] = tensor_shape_value;
-                    shapes_opt[j] = tensor_shape_value;
-                    dimension_update[input_name] = true;
-                  }
-                }
-              } else {
-                // If shape size doesn't match, initialize shape_range with the new shape value
-                shape_range.clear();
-                for (int j = 0; j < shape_size; ++j) {
-                  const auto& tensor_shape_value = tensor_shape_values[input_name][j];
-                  shape_range[j] = std::make_pair(tensor_shape_value, tensor_shape_value);
-                  shapes_min[j] = tensor_shape_value;
-                  shapes_opt[j] = tensor_shape_value;
-                  shapes_max[j] = tensor_shape_value;
-                }
-                dimension_update[input_name] = true;
-              }
-
-              if (dimension_update[input_name]) {
-                if (trt_profile == nullptr) {
-                  trt_profile = trt_builder->createOptimizationProfile();
-                }
-                trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
-                trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], shape_size);
-                trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shape_size);
-              }
-
-            } else  //execution tensor
-            {
-              nvinfer1::Dims dims_min(dims), dims_opt(dims), dims_max(dims);
-              for (int j = 0, end = nb_dims; j < end; ++j) {
-                const auto& tensor_shape = tensor_shapes[j];
-                if (shape_range.find(j) != shape_range.end()) {
-                  dims_min.d[j] = shape_range[j].first;
-                  dims_opt.d[j] = shape_range[j].second;
-                  dims_max.d[j] = shape_range[j].second;
-
-                  // Update minimum dimension
-                  if (tensor_shape < shape_range[j].first) {
-                    shape_range[j].first = tensor_shape;
-                    dims_min.d[j] = tensor_shape;
-                    dims_opt.d[j] = tensor_shape;
-                    dimension_update[input_name] = true;
-                  }
-                  // Update maximum dimension
-                  if (tensor_shape > shape_range[j].second) {
-                    shape_range[j].second = tensor_shape;
-                    dims_max.d[j] = tensor_shape;
-                    dims_opt.d[j] = tensor_shape;
-                    dimension_update[input_name] = true;
-                  }
-                }
-              }
-
-              if (dimension_update[input_name]) {
-                if (trt_profile == nullptr) {
-                  trt_profile = trt_builder->createOptimizationProfile();
-                }
-                trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, dims_min);
-                trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
-                trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, dims_max);
-              }
-            }
-            ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
-          }
-
-          if (!engine_update && dimension_update[input_name]) {
-            engine_update = true;
-          }
-        }
-
-        // Regenerate engine
-        // Only one profile is generated, so no need to explicitly set optimization profile
-        if (engine_update) {
-          auto trt_config = tensorrt_ptr::unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
-          trt_config->setMaxWorkspaceSize(*(trt_state->max_workspace_size_ptr));
-          trt_config->addOptimizationProfile(trt_profile);
-          if (*(trt_state->fp16_enable_ptr) && trt_builder->platformHasFastFp16()) {
-            trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
-          }
-          trt_state->context->reset();
-          trt_state->engine->reset();
-          *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
-              trt_builder->buildEngineWithConfig(*trt_state->network, *trt_config));
-
-          if (trt_state->engine->get() == nullptr) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
-          }
-          trt_engine = trt_state->engine->get();
-
-          *(trt_state->context) = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(
-              trt_state->engine->get()->createExecutionContext());
-          if (trt_state->context->get() == nullptr) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Create Context.");
-          }
-          trt_context = trt_state->context->get();
-        }
-
-        // Get input and output binding names
-        int total_bindings = trt_engine->getNbBindings();
-        std::vector<void*> buffers(total_bindings);
-        std::vector<std::string> input_binding_names, output_binding_names;
-        for (int i = 0, end = total_bindings; i < end; ++i) {
-          if (trt_engine->bindingIsInput(i)) {
-            input_binding_names.push_back(trt_engine->getBindingName(i));
-          } else {
-            output_binding_names.push_back(trt_engine->getBindingName(i));
-          }
-        }
-
-        // Set input shapes and assign input buffers
-        std::vector<int> binding_buffers_to_freeup;
-        for (int i = 0, end = input_binding_names.size(); i < end; ++i) {
-          const std::string& input_name = input_binding_names[i];
-          int binding_index = trt_engine->getBindingIndex(input_name.c_str());
-          if (binding_index == -1) {
-            continue;
-          }
-
+        // Check and update shape ranges for dynamic shape inputs
+        dimension_update[input_name] = false;
+        if (shape_ranges.find(input_name) != shape_ranges.end()) {
           int input_index = 0;
           const auto& iter = input_indexes.find(input_name);
           if (iter != input_indexes.end()) {
             input_index = iter->second;
           }
+
           const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index);
           auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
           const auto& tensor_shapes = ort.GetTensorShape(tensor_info);
+          auto& shape_range = shape_ranges[input_name];
 
-          // Set dynamic shapes
-          nvinfer1::Dims dimensions = trt_engine->getBindingDimensions(static_cast<int>(binding_index));
-          int nb_dims = dimensions.nbDims;
-          if (dimension_update.find(input_name) != dimension_update.end()) {
-            if (trt_engine->isShapeBinding(binding_index)) {
-              trt_context->setInputShapeBinding(binding_index, &tensor_shape_values[input_name][0]);
-            } else {
-              for (int j = 0, end = nb_dims; j < end; ++j) {
-                dimensions.d[j] = tensor_shapes[j];
-              }
-              trt_context->setBindingDimensions(binding_index, dimensions);
-            }
-          }
-
-          const auto& input_type = ort.GetTensorElementType(tensor_info);
-          switch (input_type) {
-            case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
-              auto input_tensor_ptr = ort.GetTensorData<float>(input_tensor);
-              if (input_tensor_ptr == nullptr) {
-                CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(float)));
-                binding_buffers_to_freeup.push_back(binding_index);
-              } else {
-                buffers[binding_index] = const_cast<float*>(input_tensor_ptr);
-              }
-              break;
-            }
-            case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: {
-              auto input_tensor_ptr = ort.GetTensorData<MLFloat16>(input_tensor);
-              if (input_tensor_ptr == nullptr) {
-                CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(MLFloat16)));
-                binding_buffers_to_freeup.push_back(binding_index);
-              } else {
-                buffers[binding_index] = const_cast<MLFloat16*>(input_tensor_ptr);
-              }
-              break;
-            }
-            case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: {
-              auto input_tensor_ptr = ort.GetTensorData<bool>(input_tensor);
-              if (input_tensor_ptr == nullptr) {
-                CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(bool)));
-                binding_buffers_to_freeup.push_back(binding_index);
-              } else {
-                buffers[binding_index] = const_cast<bool*>(input_tensor_ptr);
-              }
-              break;
-            }
-            case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: {
-              auto input_tensor_ptr = ort.GetTensorData<int8_t>(input_tensor);
-              if (input_tensor_ptr == nullptr) {
-                CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(int8_t)));
-                binding_buffers_to_freeup.push_back(binding_index);
-              } else {
-                buffers[binding_index] = const_cast<int8_t*>(input_tensor_ptr);
-              }
-              break;
-            }
-            case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
-              auto input_tensor_ptr = ort.GetTensorData<int32_t>(input_tensor);
-              if (input_tensor_ptr == nullptr) {
-                CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(int32_t)));
-                binding_buffers_to_freeup.push_back(binding_index);
-              } else {
-                buffers[binding_index] = const_cast<int32_t*>(input_tensor_ptr);
-              }
-              break;
-            }
-            case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
-              // Cast INT64 input to INT32 because TensorRT doesn't fully support INT64
-              auto input_tensor_ptr = ort.GetTensorData<int64_t>(input_tensor);
-              if (input_tensor_ptr == nullptr) {
-                CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(int32_t)));
-              } else {
-                SafeInt<int> input_dim_size = 1;
-                for (int j = 0, end = nb_dims; j < end; ++j) {
-                  if (tensor_shapes[j] == 0) {
-                    input_dim_size = 1;
-                    break;
-                  } else {
-                    input_dim_size *= tensor_shapes[j];
-                  }
+          // Create shape profile
+          if (input->isShapeTensor()) {
+            // Get shape values for shape tensor input
+            const auto& tensor_type = ort.GetTensorElementType(tensor_info);
+            int shape_size = nb_dims == 0 ? 1 : tensor_shapes[0];
+            tensor_shape_values[input_name].reserve(shape_size);
+            switch (tensor_type) {
+              case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
+                int32_t* input = new int32_t[shape_size];
+                cudaMemcpy(input, ort.GetTensorData<int32_t>(input_tensor), shape_size * sizeof(int32_t), cudaMemcpyDeviceToHost);
+                for (int j = 0; j < shape_size; ++j) {
+                  tensor_shape_values[input_name][j] = input[j];
                 }
-                CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], input_dim_size * sizeof(int32_t)));
-                cuda::Impl_Cast<int64_t, int32_t>(input_tensor_ptr, reinterpret_cast<int32_t*>(buffers[binding_index]), input_dim_size);
+                delete[] input;
+                break;
               }
-              binding_buffers_to_freeup.push_back(binding_index);
-              break;
+              case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
+                int64_t* input = new int64_t[shape_size];
+                cudaMemcpy(input, ort.GetTensorData<int64_t>(input_tensor), shape_size * sizeof(int64_t), cudaMemcpyDeviceToHost);
+                for (int j = 0; j < shape_size; ++j) {
+                  tensor_shape_values[input_name][j] = static_cast<int32_t>(input[j]);
+                }
+                delete[] input;
+                break;
+              }
+              default: {
+                return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                       "TensorRT shape tensor data type: " + std::to_string(tensor_type) + " not supported.");
+              }
             }
-            default: {
-              return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                     "TensorRT EP input onnx tensor data type: " + std::to_string(input_type) + " not supported.");
+
+            // Update shape ranges
+            std::vector<int32_t> shapes_min(shape_size), shapes_opt(shape_size), shapes_max(shape_size);
+            int shape_range_size = shape_range.size();
+            if (shape_size == shape_range_size) {
+              // If shape size matches, check/update shape range
+              for (int j = 0; j < shape_size; ++j) {
+                shapes_min[j] = shape_range[j].first;
+                shapes_opt[j] = shape_range[j].second;
+                shapes_max[j] = shape_range[j].second;
+
+                const auto& tensor_shape_value = tensor_shape_values[input_name][j];
+                // Update shape range lower bound
+                if (tensor_shape_value < shape_range[j].first) {
+                  shape_range[j].first = tensor_shape_value;
+                  shapes_min[j] = tensor_shape_value;
+                  shapes_opt[j] = tensor_shape_value;
+                  dimension_update[input_name] = true;
+                }
+                // Update shape range upper bound
+                if (tensor_shape_value > shape_range[j].second) {
+                  shape_range[j].second = tensor_shape_value;
+                  shapes_max[j] = tensor_shape_value;
+                  shapes_opt[j] = tensor_shape_value;
+                  dimension_update[input_name] = true;
+                }
+              }
+            } else {
+              // If shape size doesn't match, initialize shape_range with the new shape value
+              shape_range.clear();
+              for (int j = 0; j < shape_size; ++j) {
+                const auto& tensor_shape_value = tensor_shape_values[input_name][j];
+                shape_range[j] = std::make_pair(tensor_shape_value, tensor_shape_value);
+                shapes_min[j] = tensor_shape_value;
+                shapes_opt[j] = tensor_shape_value;
+                shapes_max[j] = tensor_shape_value;
+              }
+              dimension_update[input_name] = true;
+            }
+
+            if (dimension_update[input_name]) {
+              if (trt_profile == nullptr) {
+                trt_profile = trt_builder->createOptimizationProfile();
+              }
+              trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
+              trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], shape_size);
+              trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shape_size);
+            }
+
+          } else  //execution tensor
+          {
+            nvinfer1::Dims dims_min(dims), dims_opt(dims), dims_max(dims);
+            for (int j = 0, end = nb_dims; j < end; ++j) {
+              const auto& tensor_shape = tensor_shapes[j];
+              if (shape_range.find(j) != shape_range.end()) {
+                dims_min.d[j] = shape_range[j].first;
+                dims_opt.d[j] = shape_range[j].second;
+                dims_max.d[j] = shape_range[j].second;
+
+                // Update minimum dimension
+                if (tensor_shape < shape_range[j].first) {
+                  shape_range[j].first = tensor_shape;
+                  dims_min.d[j] = tensor_shape;
+                  dims_opt.d[j] = tensor_shape;
+                  dimension_update[input_name] = true;
+                }
+                // Update maximum dimension
+                if (tensor_shape > shape_range[j].second) {
+                  shape_range[j].second = tensor_shape;
+                  dims_max.d[j] = tensor_shape;
+                  dims_opt.d[j] = tensor_shape;
+                  dimension_update[input_name] = true;
+                }
+              }
+            }
+
+            if (dimension_update[input_name]) {
+              if (trt_profile == nullptr) {
+                trt_profile = trt_builder->createOptimizationProfile();
+              }
+              trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, dims_min);
+              trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
+              trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, dims_max);
             }
           }
           ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
         }
 
-        // Set output shapes and assign output buffers
-        std::vector<int> output_dim_sizes(num_outputs, 1);
-        std::vector<OrtValue*> output_tensor(num_outputs, nullptr);
-        for (int i = 0, end = output_binding_names.size(); i < end; ++i) {
-          // Set dynamic shapes
-          const std::string& output_name = output_binding_names[i];
-          int binding_index = trt_engine->getBindingIndex(output_name.c_str());
-          if (binding_index == -1) {
-            continue;
-          }
+        if (!engine_update && dimension_update[input_name]) {
+          engine_update = true;
+        }
+      }
 
-          int output_index = 0;
-          const auto& index_iter = output_indexes.find(output_name);
-          if (index_iter != output_indexes.end()) {
-            output_index = index_iter->second;
-          }
-          nvinfer1::Dims dimensions = trt_context->getBindingDimensions(static_cast<int>(binding_index));
-          int nb_dims = dimensions.nbDims;
-          std::vector<int64_t> output_shapes(nb_dims);
-          for (int j = 0, end = nb_dims; j < end; ++j) {
-            output_shapes[j] = dimensions.d[j];
-          }
-          output_tensor[i] = ort.KernelContext_GetOutput(context, output_index, output_shapes.data(), output_shapes.size());
+      // Regenerate engine
+      // Only one profile is generated, so no need to explicitly set optimization profile
+      if (engine_update) {
+        auto trt_config = tensorrt_ptr::unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
+        trt_config->setMaxWorkspaceSize(*(trt_state->max_workspace_size_ptr));
+        trt_config->addOptimizationProfile(trt_profile);
+        if (*(trt_state->fp16_enable_ptr) && trt_builder->platformHasFastFp16()) {
+          trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
+        }
+        trt_state->context->reset();
+        trt_state->engine->reset();
+        *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
+            trt_builder->buildEngineWithConfig(*trt_state->network, *trt_config));
 
-          int output_type = 0;
-          const auto& type_iter = output_types.find(output_name);
-          if (type_iter != output_types.end()) {
-            output_type = type_iter->second;
-          }
+        if (trt_state->engine->get() == nullptr) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
+        }
+        trt_engine = trt_state->engine->get();
 
-          switch (output_type) {
-            case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
-              auto output_tensor_ptr = ort.GetTensorMutableData<float>(output_tensor[i]);
-              if (output_tensor_ptr == nullptr) {
-                CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(float)));
-                binding_buffers_to_freeup.push_back(binding_index);
-              } else {
-                buffers[binding_index] = output_tensor_ptr;
-              }
-              break;
+        *(trt_state->context) = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(
+            trt_state->engine->get()->createExecutionContext());
+        if (trt_state->context->get() == nullptr) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Create Context.");
+        }
+        trt_context = trt_state->context->get();
+      }
+
+      // Get input and output binding names
+      int total_bindings = trt_engine->getNbBindings();
+      std::vector<void*> buffers(total_bindings);
+      std::vector<std::string> input_binding_names, output_binding_names;
+      for (int i = 0, end = total_bindings; i < end; ++i) {
+        if (trt_engine->bindingIsInput(i)) {
+          input_binding_names.push_back(trt_engine->getBindingName(i));
+        } else {
+          output_binding_names.push_back(trt_engine->getBindingName(i));
+        }
+      }
+
+      // Set input shapes and assign input buffers
+      std::vector<int> binding_buffers_to_freeup;
+      for (int i = 0, end = input_binding_names.size(); i < end; ++i) {
+        const std::string& input_name = input_binding_names[i];
+        int binding_index = trt_engine->getBindingIndex(input_name.c_str());
+        if (binding_index == -1) {
+          continue;
+        }
+
+        int input_index = 0;
+        const auto& iter = input_indexes.find(input_name);
+        if (iter != input_indexes.end()) {
+          input_index = iter->second;
+        }
+        const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index);
+        auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
+        const auto& tensor_shapes = ort.GetTensorShape(tensor_info);
+
+        // Set dynamic shapes
+        nvinfer1::Dims dimensions = trt_engine->getBindingDimensions(static_cast<int>(binding_index));
+        int nb_dims = dimensions.nbDims;
+        if (dimension_update.find(input_name) != dimension_update.end()) {
+          if (trt_engine->isShapeBinding(binding_index)) {
+            trt_context->setInputShapeBinding(binding_index, &tensor_shape_values[input_name][0]);
+          } else {
+            for (int j = 0, end = nb_dims; j < end; ++j) {
+              dimensions.d[j] = tensor_shapes[j];
             }
-            case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: {
-              auto output_tensor_ptr = ort.GetTensorMutableData<MLFloat16>(output_tensor[i]);
-              if (output_tensor_ptr == nullptr) {
-                CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(MLFloat16)));
-                binding_buffers_to_freeup.push_back(binding_index);
-              } else {
-                buffers[binding_index] = output_tensor_ptr;
-              }
-              break;
-            }
-            case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: {
-              auto output_tensor_ptr = ort.GetTensorMutableData<bool>(output_tensor[i]);
-              if (output_tensor_ptr == nullptr) {
-                CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(bool)));
-                binding_buffers_to_freeup.push_back(binding_index);
-              } else {
-                buffers[binding_index] = output_tensor_ptr;
-              }
-              break;
-            }
-            case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: {
-              auto output_tensor_ptr = ort.GetTensorMutableData<int8_t>(output_tensor[i]);
-              if (output_tensor_ptr == nullptr) {
-                CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(int8_t)));
-                binding_buffers_to_freeup.push_back(binding_index);
-              } else {
-                buffers[binding_index] = output_tensor_ptr;
-              }
-              break;
-            }
-            case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
-              auto output_tensor_ptr = ort.GetTensorMutableData<int32_t>(output_tensor[i]);
-              if (output_tensor_ptr == nullptr) {
-                CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(int32_t)));
-                binding_buffers_to_freeup.push_back(binding_index);
-              } else {
-                buffers[binding_index] = output_tensor_ptr;
-              }
-              break;
-            }
-            case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
-              // Allocate INT32 CUDA memory for INT64 output type because TensorRT doesn't fully support INT64
-              auto output_tensor_ptr = ort.GetTensorMutableData<int64_t>(output_tensor[i]);
-              if (output_tensor_ptr == nullptr) {
-                CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(int32_t)));
-                output_dim_sizes[i] = 1;
-              } else {
-                SafeInt<int> output_dim_size(output_dim_sizes[i]);
-                for (int j = 0, end = nb_dims; j < end; ++j) {
-                  if (dimensions.d[j] == 0) {
-                    output_dim_size = 1;
-                    break;
-                  } else {
-                    output_dim_size *= dimensions.d[j];
-                  }
-                }
-                CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], output_dim_size * sizeof(int32_t)));
-                output_dim_sizes[i] = output_dim_size;
-              }
+            trt_context->setBindingDimensions(binding_index, dimensions);
+          }
+        }
+
+        const auto& input_type = ort.GetTensorElementType(tensor_info);
+        switch (input_type) {
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
+            auto input_tensor_ptr = ort.GetTensorData<float>(input_tensor);
+            if (input_tensor_ptr == nullptr) {
+              CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(float)));
               binding_buffers_to_freeup.push_back(binding_index);
-              break;
+            } else {
+              buffers[binding_index] = const_cast<float*>(input_tensor_ptr);
             }
-            default: {
-              return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                     "TensorRT EP output tensor data type: " + std::to_string(output_type) + " not supported.");
+            break;
+          }
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: {
+            auto input_tensor_ptr = ort.GetTensorData<MLFloat16>(input_tensor);
+            if (input_tensor_ptr == nullptr) {
+              CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(MLFloat16)));
+              binding_buffers_to_freeup.push_back(binding_index);
+            } else {
+              buffers[binding_index] = const_cast<MLFloat16*>(input_tensor_ptr);
             }
+            break;
+          }
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: {
+            auto input_tensor_ptr = ort.GetTensorData<bool>(input_tensor);
+            if (input_tensor_ptr == nullptr) {
+              CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(bool)));
+              binding_buffers_to_freeup.push_back(binding_index);
+            } else {
+              buffers[binding_index] = const_cast<bool*>(input_tensor_ptr);
+            }
+            break;
+          }
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: {
+            auto input_tensor_ptr = ort.GetTensorData<int8_t>(input_tensor);
+            if (input_tensor_ptr == nullptr) {
+              CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(int8_t)));
+              binding_buffers_to_freeup.push_back(binding_index);
+            } else {
+              buffers[binding_index] = const_cast<int8_t*>(input_tensor_ptr);
+            }
+            break;
+          }
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
+            auto input_tensor_ptr = ort.GetTensorData<int32_t>(input_tensor);
+            if (input_tensor_ptr == nullptr) {
+              CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(int32_t)));
+              binding_buffers_to_freeup.push_back(binding_index);
+            } else {
+              buffers[binding_index] = const_cast<int32_t*>(input_tensor_ptr);
+            }
+            break;
+          }
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
+            // Cast INT64 input to INT32 because TensorRT doesn't fully support INT64
+            auto input_tensor_ptr = ort.GetTensorData<int64_t>(input_tensor);
+            if (input_tensor_ptr == nullptr) {
+              CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(int32_t)));
+            } else {
+              SafeInt<int> input_dim_size = 1;
+              for (int j = 0, end = nb_dims; j < end; ++j) {
+                if (tensor_shapes[j] == 0) {
+                  input_dim_size = 1;
+                  break;
+                } else {
+                  input_dim_size *= tensor_shapes[j];
+                }
+              }
+              CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], input_dim_size * sizeof(int32_t)));
+              cuda::Impl_Cast<int64_t, int32_t>(input_tensor_ptr, reinterpret_cast<int32_t*>(buffers[binding_index]), input_dim_size);
+            }
+            binding_buffers_to_freeup.push_back(binding_index);
+            break;
+          }
+          default: {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                   "TensorRT EP input onnx tensor data type: " + std::to_string(input_type) + " not supported.");
           }
         }
+        ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
+      }
 
-        // Run TRT inference
-        if (!trt_context->enqueueV2(&buffers[0], nullptr, nullptr)) {
-          for (const auto& binding_index : binding_buffers_to_freeup) {
-            cudaFree(buffers[binding_index]);
-          }
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP Execution Context Enqueue Failed.");
+      // Set output shapes and assign output buffers
+      std::vector<int> output_dim_sizes(num_outputs, 1);
+      std::vector<OrtValue*> output_tensor(num_outputs, nullptr);
+      for (int i = 0, end = output_binding_names.size(); i < end; ++i) {
+        // Set dynamic shapes
+        const std::string& output_name = output_binding_names[i];
+        int binding_index = trt_engine->getBindingIndex(output_name.c_str());
+        if (binding_index == -1) {
+          continue;
         }
 
-        // Cast INT64 input to INT32 because TensorRT doesn't fully support INT64
-        for (int i = 0, end = output_binding_names.size(); i < end; ++i) {
-          const std::string& output_name = output_binding_names[i];
-          size_t binding_index = trt_engine->getBindingIndex(output_name.c_str());
-          int output_type = 0;
-          const auto& iter = output_types.find(output_name);
-          if (iter != output_types.end()) {
-            output_type = iter->second;
+        int output_index = 0;
+        const auto& index_iter = output_indexes.find(output_name);
+        if (index_iter != output_indexes.end()) {
+          output_index = index_iter->second;
+        }
+        nvinfer1::Dims dimensions = trt_context->getBindingDimensions(static_cast<int>(binding_index));
+        int nb_dims = dimensions.nbDims;
+        std::vector<int64_t> output_shapes(nb_dims);
+        for (int j = 0, end = nb_dims; j < end; ++j) {
+          output_shapes[j] = dimensions.d[j];
+        }
+        output_tensor[i] = ort.KernelContext_GetOutput(context, output_index, output_shapes.data(), output_shapes.size());
+
+        int output_type = 0;
+        const auto& type_iter = output_types.find(output_name);
+        if (type_iter != output_types.end()) {
+          output_type = type_iter->second;
+        }
+
+        switch (output_type) {
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
+            auto output_tensor_ptr = ort.GetTensorMutableData<float>(output_tensor[i]);
+            if (output_tensor_ptr == nullptr) {
+              CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(float)));
+              binding_buffers_to_freeup.push_back(binding_index);
+            } else {
+              buffers[binding_index] = output_tensor_ptr;
+            }
+            break;
           }
-          if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: {
+            auto output_tensor_ptr = ort.GetTensorMutableData<MLFloat16>(output_tensor[i]);
+            if (output_tensor_ptr == nullptr) {
+              CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(MLFloat16)));
+              binding_buffers_to_freeup.push_back(binding_index);
+            } else {
+              buffers[binding_index] = output_tensor_ptr;
+            }
+            break;
+          }
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: {
+            auto output_tensor_ptr = ort.GetTensorMutableData<bool>(output_tensor[i]);
+            if (output_tensor_ptr == nullptr) {
+              CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(bool)));
+              binding_buffers_to_freeup.push_back(binding_index);
+            } else {
+              buffers[binding_index] = output_tensor_ptr;
+            }
+            break;
+          }
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: {
+            auto output_tensor_ptr = ort.GetTensorMutableData<int8_t>(output_tensor[i]);
+            if (output_tensor_ptr == nullptr) {
+              CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(int8_t)));
+              binding_buffers_to_freeup.push_back(binding_index);
+            } else {
+              buffers[binding_index] = output_tensor_ptr;
+            }
+            break;
+          }
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
+            auto output_tensor_ptr = ort.GetTensorMutableData<int32_t>(output_tensor[i]);
+            if (output_tensor_ptr == nullptr) {
+              CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(int32_t)));
+              binding_buffers_to_freeup.push_back(binding_index);
+            } else {
+              buffers[binding_index] = output_tensor_ptr;
+            }
+            break;
+          }
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
+            // Allocate INT32 CUDA memory for INT64 output type because TensorRT doesn't fully support INT64
             auto output_tensor_ptr = ort.GetTensorMutableData<int64_t>(output_tensor[i]);
-            if (output_tensor_ptr != nullptr) {
-              cuda::Impl_Cast<int32_t, int64_t>(reinterpret_cast<int32_t*>(buffers[binding_index]), output_tensor_ptr, output_dim_sizes[i]);
+            if (output_tensor_ptr == nullptr) {
+              CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], sizeof(int32_t)));
+              output_dim_sizes[i] = 1;
+            } else {
+              SafeInt<int> output_dim_size(output_dim_sizes[i]);
+              for (int j = 0, end = nb_dims; j < end; ++j) {
+                if (dimensions.d[j] == 0) {
+                  output_dim_size = 1;
+                  break;
+                } else {
+                  output_dim_size *= dimensions.d[j];
+                }
+              }
+              CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[binding_index], output_dim_size * sizeof(int32_t)));
+              output_dim_sizes[i] = output_dim_size;
             }
+            binding_buffers_to_freeup.push_back(binding_index);
+            break;
+          }
+          default: {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                   "TensorRT EP output tensor data type: " + std::to_string(output_type) + " not supported.");
           }
         }
+      }
 
-        cudaDeviceSynchronize();
+      // Run TRT inference
+      if (!trt_context->enqueueV2(&buffers[0], nullptr, nullptr)) {
         for (const auto& binding_index : binding_buffers_to_freeup) {
           cudaFree(buffers[binding_index]);
         }
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP Execution Context Enqueue Failed.");
+      }
 
-        return Status::OK();
-      };
+      // Cast INT64 input to INT32 because TensorRT doesn't fully support INT64
+      for (int i = 0, end = output_binding_names.size(); i < end; ++i) {
+        const std::string& output_name = output_binding_names[i];
+        size_t binding_index = trt_engine->getBindingIndex(output_name.c_str());
+        int output_type = 0;
+        const auto& iter = output_types.find(output_name);
+        if (iter != output_types.end()) {
+          output_type = iter->second;
+        }
+        if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
+          auto output_tensor_ptr = ort.GetTensorMutableData<int64_t>(output_tensor[i]);
+          if (output_tensor_ptr != nullptr) {
+            cuda::Impl_Cast<int32_t, int64_t>(reinterpret_cast<int32_t*>(buffers[binding_index]), output_tensor_ptr, output_dim_sizes[i]);
+          }
+        }
+      }
 
-      node_compute_funcs.push_back(compute_info);
-    }
+      cudaDeviceSynchronize();
+      for (const auto& binding_index : binding_buffers_to_freeup) {
+        cudaFree(buffers[binding_index]);
+      }
 
-    return Status::OK();
+      return Status::OK();
+    };
+
+    node_compute_funcs.push_back(compute_info);
   }
+
+  return Status::OK();
+}
 }  // namespace onnxruntime
