@@ -96,7 +96,8 @@ Status BFCArena::Extend(size_t rounded_bytes) {
       // swallow if exception is our throw from a failed cudaMalloc call.
       // re-throw otherwise.
       ORT_HANDLE_EXCEPTION([&ort_exception]() {
-        if (std::string(ort_exception.what()).find("cudaMalloc") == std::string::npos) {
+        if (std::string(ort_exception.what()).find("cudaMalloc") == std::string::npos &&
+            std::string(ort_exception.what()).find("hipMalloc") == std::string::npos) {
           ORT_RETHROW;
         }
       });
