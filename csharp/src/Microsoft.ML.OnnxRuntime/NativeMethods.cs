@@ -157,6 +157,9 @@ namespace Microsoft.ML.OnnxRuntime
 
         public IntPtr GetAvailableProviders;
         public IntPtr ReleaseAvailableProviders;
+        public IntPtr GetStringTensorElementLength;
+        public IntPtr GetStringTensorElement;
+        public IntPtr FillStringTensorElement;
         public IntPtr EnablePrePacking;
         public IntPtr DisablePrePacking;
     }
