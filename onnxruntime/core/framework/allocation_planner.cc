@@ -580,16 +580,19 @@ class PlannerImpl {
           // node_output is graph's output, so we can't reuse intermediate buffer
           AllocPlan(current).alloc_kind = AllocKind::kAllocateOutput;
 
-          // hacky perf optimization to not copy a pre-existing value to an output if this is a Loop subgraph.
+          // hacky perf optimization to not copy a pre-existing value to an output if this is a Loop subgraph and
+          // the value is not being changed in the subgraph.
           //
-          // this generally occurred with a loop state variable that was only being provided due to ONNX not
-          // supporting empty variadic inputs (a dummy loop state variable was required to make it happy).
-          // ONNX now supports empty variadic inputs so a new model shouldn't need this to avoid poor performance.
-          // problematic older models still exist and the optimization remains for now.
+          // this usage of a loop state variable has been seen in two scenarios. both have better alternatives now.
+          // we maintain the optimization for existing models.
           //
-          // it has also been triggered when a value from outer scope has being explicitly passed in
-          // as a loop state variable. this sort of usage is automatically handled via implicit inputs
-          // and there's no need to add a loop state variable in order to access the outer scope value.
+          // 1. a loop state variable was being provided due to ONNX not supporting empty variadic inputs.
+          //    a dummy loop state variable was required in this case.
+          //    ONNX now supports empty variadic inputs, so a new model should not add a dummy loop state variable.
+          //
+          // 2. a loop state variable was being used to explicitly pass in an outer scope value to the subgraph.
+          //    this sort of usage is automatically handled via implicit inputs and there's no need to add a
+          //    loop state variable in order to access the outer scope value.
           if (parent_node_ && pnode->OpType() == "Identity" && parent_node_->OpType() == "Loop") {
             const NodeArg* input = pnode->InputDefs()[0];
 
