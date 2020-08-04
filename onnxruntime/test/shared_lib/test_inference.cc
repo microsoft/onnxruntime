@@ -461,7 +461,7 @@ TEST(CApiTest, get_allocator_cpu) {
 
   auto mem_allocation = cpu_allocator.GetAllocation(1024);
   ASSERT_NE(nullptr, mem_allocation.get());
-  ASSERT_EQ(1024, mem_allocation.size());
+  ASSERT_EQ(1024U, mem_allocation.size());
 }
 
 #ifdef USE_CUDA
@@ -481,7 +481,7 @@ TEST(CApiTest, get_allocator_cuda) {
 
   auto mem_allocation = cuda_allocator.GetAllocation(1024);
   ASSERT_NE(nullptr, mem_allocation.get());
-  ASSERT_EQ(1024, mem_allocation.size());
+  ASSERT_EQ(1024U, mem_allocation.size());
 }
 #endif
 
