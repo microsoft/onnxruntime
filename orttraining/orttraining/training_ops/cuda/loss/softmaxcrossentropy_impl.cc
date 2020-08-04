@@ -322,6 +322,67 @@ Status SparseSoftmaxCrossEntropyGrad<T, Tin>::ComputeInternal(OpKernelContext* c
   const Tin* label_data = label.template Data<Tin>();
   T* d_logit_data = d_logit->template MutableData<T>();
 
+  if (true) {
+    // calculate  (label * log(softmax)) for each sample
+    const T* weight_data = nullptr;
+    if (OpKernel::Node().InputDefs().size() == 4) {
+      const Tensor& weight = *ctx->Input<Tensor>(3);
+      const TensorShape weight_shape{weight.Shape()};
+      ORT_ENFORCE(weight_shape == label_shape, "The shape in weights and labels is different");
+      weight_data = weight.template Data<T>();
+    }
+
+    int torch_device = 0;
+    cudaGetDevice(&torch_device);
+
+    // dY
+    auto torch_dY_options = torch::TensorOptions().dtype(get_torch_type<T>()).device(torch::kCUDA, torch_device);
+    torch::Tensor torch_dY = torch::zeros(c10::IntArrayRef{}, torch_dY_options);
+    cudaMemcpy(torch_dY.data_ptr(), dY_data, sizeof(T), cudaMemcpyDeviceToDevice);
+    ORT_ENFORCE(cudaGetLastError() == cudaSuccess);
+
+    // log_prob
+    auto torch_log_prob_options = torch::TensorOptions().dtype(get_torch_type<T>()).device(torch::kCUDA, torch_device);
+    torch::Tensor torch_log_prob = torch::zeros(c10::IntArrayRef{N, D}, torch_log_prob_options);
+    cudaMemcpy(torch_log_prob.data_ptr(), log_prob_data, N * D * sizeof(T), cudaMemcpyDeviceToDevice);
+    ORT_ENFORCE(cudaGetLastError() == cudaSuccess);
+
+    // label
+    auto torch_label_tensor_options = torch::TensorOptions().dtype(get_torch_type<Tin>()).device(torch::kCUDA, torch_device);
+    torch::Tensor torch_label = torch::zeros(c10::IntArrayRef{N}, torch_label_tensor_options);
+    cudaMemcpy(torch_label.data_ptr(), label_data, N * sizeof(Tin), cudaMemcpyDeviceToDevice);
+    ORT_ENFORCE(cudaGetLastError() == cudaSuccess);
+
+    // weight
+    auto torch_weight_tensor_options = torch::TensorOptions().dtype(get_torch_type<T>()).device(torch::kCUDA, torch_device);
+    torch::Tensor torch_weight = torch::ones(c10::IntArrayRef{N, 1}, torch_weight_tensor_options);
+    if (weight_data) {
+      cudaMemcpy(torch_weight.data_ptr(), weight_data, N * sizeof(T), cudaMemcpyDeviceToDevice);
+    }
+
+    torch::Tensor prob = at::exp(torch_log_prob);
+    ORT_ENFORCE(cudaGetLastError() == cudaSuccess);
+
+    torch::Tensor mask = at::one_hot(torch_label, D).toType(get_torch_type<T>());
+    ORT_ENFORCE(cudaGetLastError() == cudaSuccess);
+
+    torch::Tensor grad = torch_dY * (-mask + prob);
+    ORT_ENFORCE(cudaGetLastError() == cudaSuccess);
+
+    torch::Tensor weighted_grad = at::mul(grad, torch_weight);
+    ORT_ENFORCE(cudaGetLastError() == cudaSuccess);
+
+    if (reduction_ == ReductionType::SUM) {
+      cudaMemcpy(d_logit_data, weighted_grad.data_ptr(), N * D * sizeof(T), cudaMemcpyDeviceToDevice);
+    } else if (reduction_ == ReductionType::MEAN) {
+      torch::Tensor torch_weight_sum = at::sum(torch_weight);
+      torch::Tensor torch_final_loss = weighted_grad / torch_weight_sum;
+      cudaMemcpy(d_logit_data, torch_final_loss.data_ptr(), N * D * sizeof(T), cudaMemcpyDeviceToDevice);
+    }
+
+    return Status::OK();
+  }
+
   const T* weight_data = nullptr;
   if (OpKernel::Node().InputDefs().size() == 4) {
     const Tensor& weight = *ctx->Input<Tensor>(3);
