@@ -37,7 +37,7 @@ typedef std::vector<NodeDef> GradientDef;
 class GradientBuilderBase {
  public:
   GradientBuilderBase(const GradientGraphConfiguration& gradient_graph_config,
-                      Graph* graph,
+                      const Graph* graph,
                       const Node* node,
                       const std::unordered_set<std::string>& gradient_inputs,
                       const std::unordered_set<std::string>& gradient_outputs,
@@ -80,7 +80,7 @@ class GradientBuilderBase {
     ORT_ENFORCE(i < node_->InputDefs().size());
 
     const std::string& name = node_->InputDefs()[i]->Name();
-    NodeArg* recomputed_nodearg = graph_->GetNodeArg(graph_utils::RecomputeName(name));
+    const NodeArg* recomputed_nodearg = graph_->GetNodeArg(graph_utils::RecomputeName(name));
     if (recomputed_nodearg) {
       const Node* producer_node = graph_->GetProducerNode(name);
       LOGS(logger_, INFO) << "Recomputed node arg found for " << producer_node->Name();
@@ -223,7 +223,7 @@ class GradientBuilderBase {
   }
 
   const GradientGraphConfiguration& gradient_graph_config_;
-  Graph* graph_;
+  const Graph* graph_;
   const Node* node_;
   std::string unique_node_prefix_;
 
