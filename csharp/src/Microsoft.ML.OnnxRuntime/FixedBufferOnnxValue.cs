@@ -31,8 +31,16 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns></returns>
         public static FixedBufferOnnxValue CreateFromTensor<T>(Tensor<T> value)
         {
-            var ortValue = OrtValue.CreateFromTensorObject(value, out MemoryHandle pinnedMemoryHandle, out TensorElementType elementType);
-            return new FixedBufferOnnxValue(pinnedMemoryHandle, ortValue, OnnxValueType.ONNX_TYPE_TENSOR, elementType);
+            MemoryHandle? memHandle;
+            var ortValue = OrtValue.CreateFromTensorObject(value, out memHandle, out TensorElementType elementType);
+            if (memHandle.HasValue)
+            {
+                return new FixedBufferOnnxValue((MemoryHandle)memHandle, ortValue, OnnxValueType.ONNX_TYPE_TENSOR, elementType);
+            }
+            else
+            {
+                return new FixedBufferOnnxValue(default(MemoryHandle), ortValue, OnnxValueType.ONNX_TYPE_TENSOR, elementType);
+            }
         }
 
         #region IDisposable Support
