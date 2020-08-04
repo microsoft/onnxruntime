@@ -66,9 +66,9 @@ logger = logging.getLogger('')
 
 MODELS = {
     "bert-squad": (BERTSquad, "bert-squad"),
-    "faster-rcnn": (FasterRCNN, "faster-rcnn"),
-    "mask-rcnn": (MaskRCNN, "mask-rcnn"),
-    "ssd": (SSD, "ssd"),
+    # "faster-rcnn": (FasterRCNN, "faster-rcnn"),
+    # "mask-rcnn": (MaskRCNN, "mask-rcnn"),
+    # "ssd": (SSD, "ssd"),
     # "tiny-yolov2": (TinyYolov2, "tiny-yolov2"),
     # "tiny-yolov3": (TinyYolov3, "tiny-yolov3"),
     # "resnet152v1": (Resnet152v1, "resnet152v1"),
@@ -218,6 +218,20 @@ def get_cuda_version():
     return stdout
 
 def get_trt_version():
+    from pathlib import Path
+    home = str(Path.home())
+
+    p1 = subprocess.Popen(["find", home+"/.local/lib/", "-name", "onnxruntime_pybind11_state.so"], stdout=subprocess.PIPE)
+    stdout, sterr = p1.communicate()
+    stdout = stdout.decode("ascii").strip()
+    p1 = subprocess.Popen(["ldd", stdout], stdout=subprocess.PIPE)
+    p2 = subprocess.Popen(["grep", "libnvinfer.so"], stdin=p1.stdout, stdout=subprocess.PIPE)
+    stdout, sterr = p2.communicate()
+    stdout = stdout.decode("ascii").strip()
+
+    return stdout
+
+def get_trt_version_old():
     p1 = subprocess.Popen(["dpkg", "-l"], stdout=subprocess.PIPE)
     p2 = subprocess.Popen(["grep", "TensorRT runtime libraries"], stdin=p1.stdout, stdout=subprocess.PIPE)
     stdout, sterr = p2.communicate()
@@ -491,7 +505,6 @@ def run_onnxruntime(args, models=MODELS):
         # cleanup files before running a new inference
         remove_profiling_files(path)
 
-        inputs_for_cvs_model = []
         inputs = []
         ref_outputs = []
         inputs_fp32 = []
@@ -503,11 +516,10 @@ def run_onnxruntime(args, models=MODELS):
         profile_already_parsed = set()
 
         # iterate ep 
-        for i in range(len(provider_list)):
+        for ep in provider_list:
 
             os.environ["ORT_TENSORRT_FP16_ENABLE"] = "0"
             fp16 = False 
-            ep = provider_list[i]
             model = None
 
             if "fp16" in ep:
@@ -523,7 +535,10 @@ def run_onnxruntime(args, models=MODELS):
                 logger.error("No {} support".format(ep_))
                 continue
                 
-            logger.info("\nInitializing {} with {}...".format(name, ep_to_provider_list[ep]))
+            if fp16:
+                logger.info("\nInitializing {} with float16 enabled ...".format(name))
+            else:
+                logger.info("\nInitializing {} ...".format(name))
 
             # create model instance
             model = model_class(providers=ep_to_provider_list[ep])
