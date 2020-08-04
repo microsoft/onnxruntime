@@ -132,8 +132,11 @@ static Status AddNcclReduceScatterForGradients(
 }
 
 static Status AddNcclAllGatherForWeights(
+    std::vector<int>& partitions,
     std::vector<ArgDef>& weight_argdefs,
-    GraphAugmenter::GraphDefs& graph_defs) {
+    GraphAugmenter::GraphDefs& graph_defs,
+    const int dp_group_rank,
+    int max_group_size_val) {
   std::vector<ArgDef> allgather_outputs(weight_argdefs.size());
   for (size_t i = 0; i < weight_argdefs.size(); i++) {
     allgather_outputs[i] = ArgDef(weight_argdefs[i].name + "_AllGather_Out",
@@ -141,11 +144,25 @@ static Status AddNcclAllGatherForWeights(
   }
 
   // Add NCCL AllGather node.
-  graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclAllGather", kMSDomain, 1},
-                                  weight_argdefs,
-                                  allgather_outputs,
-                                  NodeAttributes(),
-                                  "NcclAllGather")});
+  bool partition_even = partitions.empty();
+  if (partition_even) {
+    graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclAllGather", kMSDomain, 1},
+                                    weight_argdefs,
+                                    allgather_outputs,
+                                    NodeAttributes(),
+                                    "NcclAllGather")});
+  } else {
+    int64_t partition_lb_val = dp_group_rank == 0 ? 0 : partitions[dp_group_rank - 1] + 1;
+    int64_t partition_ub_val = partitions[dp_group_rank];
+    auto partition_lb = onnx::MakeAttribute("partition_lb", partition_lb_val);
+    auto partition_ub = onnx::MakeAttribute("partition_ub", partition_ub_val);
+    auto max_group_size = onnx::MakeAttribute("max_group_size", int64_t(max_group_size_val));
+    graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclAllGather", kMSDomain, 1},
+                                    weight_argdefs,
+                                    allgather_outputs,
+                                    {partition_lb, partition_ub, max_group_size},
+                                    "NcclAllGather")});
+  }
 
   weight_argdefs = std::move(allgather_outputs);
   return Status::OK();
@@ -266,7 +283,8 @@ static Status AddViewForParameters(
 static Status ModifyParametersForOptimizerPartitioningByBoundary(
     const OptimizerGraphConfig& opt_graph_config,
     std::vector<ArgDef>& gradient_argdefs,
-    std::vector<int>& partitions) {
+    std::vector<int>& partitions,
+    int& max_group_size) {
   std::vector<int> size_arr;
   int max_size = 0;
   int total_size = 0;
@@ -283,8 +301,8 @@ static Status ModifyParametersForOptimizerPartitioningByBoundary(
 
   //Reverse traverse the gradients, bucketing them on boundary
   const int dp_group = opt_graph_config.data_parallel_group_size;
-  WorkersPartition(size_arr, dp_group, max_size, total_size, partitions);
-  //The partitions have to be the same (smaller ?) as the data parallel group size
+  max_group_size = WorkersPartition(size_arr, dp_group, max_size, total_size, partitions);
+  //The partitions have to be the same (TODO: smaller ?) as the data parallel group size
   ORT_ENFORCE((int)(partitions.size()) == dp_group);
 
   return Status::OK();
@@ -508,7 +526,8 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
         optimizer_state_initializer_names));
 
     // add Allgather for weights
-    ORT_RETURN_IF_ERROR(AddNcclAllGatherForWeights(weight_argdefs, graph_defs));
+    std::vector<int> partitions;
+    ORT_RETURN_IF_ERROR(AddNcclAllGatherForWeights(partitions, weight_argdefs, graph_defs, opt_graph_config_.data_parallel_group_rank, 0));
 
     return Status::OK();
   } else /*(stage_ == 2) */ {
@@ -524,7 +543,8 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
     ORT_RETURN_IF_ERROR(GetGradientArgsInTopoOrder(graph, weight_argdefs, opt_configs_, gradient_argdefs));
 
     // handle optimizer partitioning
-    ORT_RETURN_IF_ERROR(ModifyParametersForOptimizerPartitioningByBoundary(opt_graph_config_, gradient_argdefs, partitions));
+    int max_group_size;
+    ORT_RETURN_IF_ERROR(ModifyParametersForOptimizerPartitioningByBoundary(opt_graph_config_, gradient_argdefs, partitions, max_group_size));
 
     ArgDef fused_gradient_argdef;
     const auto total_num_accumulations = opt_graph_config_.gradient_accumulation_steps * opt_graph_config_.data_parallel_group_size;
@@ -562,7 +582,7 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
         optimizer_state_initializer_names));
 
     // add Allgather for weights
-    ORT_RETURN_IF_ERROR(AddNcclAllGatherForWeights(weight_argdefs, graph_defs));
+    ORT_RETURN_IF_ERROR(AddNcclAllGatherForWeights(partitions, weight_argdefs, graph_defs, opt_graph_config_.data_parallel_group_rank, max_group_size));
 
     return Status::OK();
   }

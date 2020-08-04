@@ -895,6 +895,15 @@ Example 4:
       .Attr("group_type", "0 - data parallel group, 1 - horizontal parallel group",
             AttributeProto::INT,
             static_cast<int64_t>(0))
+      .Attr("max_group_size", "If partition by boundary, the largest bucket size",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
+      .Attr("partition_lb", "The index of the first input tensor in this current rank",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
+      .Attr("partition_ub", "The index of the last input tensor in this current rank",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
       .Input(0, "input", "tensors to be sent", "T", OpSchema::Variadic)
       .Output(0, "output", "gathered tensors", "T", OpSchema::Variadic)
       .TypeConstraint(

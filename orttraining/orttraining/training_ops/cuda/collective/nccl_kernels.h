@@ -23,6 +23,11 @@ class NcclAllGather final : public NcclKernel {
   explicit NcclAllGather(const OpKernelInfo& info);
 
   Status ComputeInternal(OpKernelContext* context) const override;
+  private:
+  int64_t partition_lb_;
+  int64_t partition_ub_;
+  int64_t max_group_size_;
+  bool partition_even_;
 };
 
 class NcclReduceScatter final : public NcclKernel {
