@@ -200,8 +200,7 @@ static Status GetOutputBuffer(Ort::CustomOpApi& ort,
       *output_buffer = ort.GetTensorMutableData<uint8_t>(output_tensor);
       break;
     default:
-      return Status(common::ONNXRUNTIME, common::FAIL,
-                    "Unsupported output type: " + TypeToStr(output_type));
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported output type: ", TypeToStr(output_type));
       break;
   }
 
@@ -293,7 +292,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
         // Disable support of the scalar input (tensor input with an empty shape) for now
         // TODO, add support for ONNX scalar input (tensor input with an empty shape)
         if (dimensions.empty())
-          return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "NNAPI does not support scalar input");
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "NNAPI does not support scalar input");
 
         // it is possible that the input has the detailed size while
         // the model has an operand with unknown size, use the size
@@ -302,12 +301,12 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
         input_type.SetDimensions(dimensions);
 
         if (input_type.GetOperandBlobByteSize() == 0)
-          return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "The actual input cannot have 0 dim (dynamic)");
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The actual input cannot have 0 dim (dynamic)");
 
         if (input_type.dimensions != model_input_type.dimensions && model_input_type.GetOperandBlobByteSize() != 0) {
-          return Status(common::ONNXRUNTIME, common::FAIL,
-                        "The actual input dimanesions should match the model input "
-                        "dimensions, or model input dimension has 0 (dynamic)");
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                 "The actual input dimanesions should match the model input "
+                                 "dimensions, or model input dimension has 0 (dynamic)");
         }
 
         const void* inputBuffer = ort.GetTensorData<void>(input_tensor);
@@ -338,8 +337,8 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
           bool is_dynamic_shape_output = false;
           if (model_output_type.GetOperandBlobByteSize() == 0) {
             if (!model->SupportsDynamicOutputShape()) {
-              return Status(common::ONNXRUNTIME, common::FAIL,
-                            "We do not support dynamic output shape or empty output for now");
+              return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                     "We do not support dynamic output shape or empty output for now");
             }
 
             is_dynamic_shape_output = true;

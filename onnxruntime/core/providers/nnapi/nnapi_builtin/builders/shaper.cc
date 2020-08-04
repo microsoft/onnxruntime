@@ -41,11 +41,12 @@ std::pair<uint32_t, uint32_t> ComputeConvOutputShape(const uint32_t input_size_y
   return std::make_pair(static_cast<uint32_t>(output_size_y), static_cast<uint32_t>(output_size_x));
 }
 
-#define SHAPER_FUNC(FUNC, ...)                         \
-  ORT_RETURN_IF_ERROR(FUNC##Impl(__VA_ARGS__));        \
-  shape_ops_.push_back([__VA_ARGS__](Shaper& shaper) { \
-    return shaper.FUNC##Impl(__VA_ARGS__);             \
-  });                                                  \
+#define SHAPER_FUNC(FUNC, ...)                  \
+  ORT_RETURN_IF_ERROR(FUNC##Impl(__VA_ARGS__)); \
+  shape_ops_.push_back(                         \
+      [__VA_ARGS__](Shaper& shaper) {           \
+        return shaper.FUNC##Impl(__VA_ARGS__);  \
+      });                                       \
   return Status::OK();
 
 Status Shaper::Conv(const std::string& input_name,
@@ -291,9 +292,8 @@ Status Shaper::EltwiseImpl(const std::string& input1_name,
     int dim_min_shape = min_shape[j];
     if (dim_max_shape != dim_min_shape) {
       ORT_RETURN_IF_NOT(dim_max_shape == 1 || dim_min_shape == 1,
-                        "Dimensions are not compatible, dim1: " +
-                            std::to_string(dim_max_shape) + "dim2: " +
-                            std::to_string(dim_min_shape));
+                        "Dimensions are not compatible, dim1: ", std::to_string(dim_max_shape),
+                        "dim2: ", std::to_string(dim_min_shape));
     }
 
     if (dim_max_shape == 0 || dim_min_shape == 0) {

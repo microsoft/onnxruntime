@@ -244,9 +244,9 @@ Status ModelBuilder::RegisterInitializers() {
         break;
       default:
         // TODO: support other type
-        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                      "The initializer of graph doesn't have valid type, name: " +
-                          name + " type: " + std::to_string(tensor.data_type()));
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "The initializer of graph doesn't have valid type, name: ",
+                               name, " type: ", std::to_string(tensor.data_type()));
         break;
     }
 
@@ -306,7 +306,7 @@ Status ModelBuilder::RegisterModelInputs() {
     }
 
     const auto* shape_proto = node_arg->Shape();
-    ORT_RETURN_IF_NOT(shape_proto != nullptr, "shape_proto cannot be null for input: " + input_name);
+    ORT_RETURN_IF_NOT(shape_proto != nullptr, "shape_proto cannot be null for input: ", input_name);
     Shaper::Shape shape;
 
     for (const auto& dim : shape_proto->dim()) {
@@ -322,8 +322,8 @@ Status ModelBuilder::RegisterModelInputs() {
     int32_t zero_point = 0;
     const auto* type_proto = node_arg->TypeAsProto();
     if (!type_proto || !type_proto->tensor_type().has_elem_type()) {
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "The input of graph doesn't have elem_type: " + input_name);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "The input of graph doesn't have elem_type: ", input_name);
     } else {
       switch (type_proto->tensor_type().elem_type()) {
         case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
@@ -336,9 +336,9 @@ Status ModelBuilder::RegisterModelInputs() {
           type = Type::TENSOR_QUANT8_ASYMM;
           if (!Contains(all_quantized_op_inputs, input_name)) {
             // We current do not support uint8 input if it is not a quantized input
-            return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                          "The input of graph doesn't have valid type, name: " + input_name + " type: " +
-                              std::to_string(type_proto->tensor_type().elem_type()));
+            return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                   "The input of graph doesn't have valid type, name: ", input_name,
+                                   " type: ", std::to_string(type_proto->tensor_type().elem_type()));
           }
 
           // TODO, verify the scale and zero point match if there are multiple op using same input
@@ -348,9 +348,9 @@ Status ModelBuilder::RegisterModelInputs() {
         }
         default: {
           // TODO: support other type
-          return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                        "The input of graph doesn't have valid type, name: " + input_name + " type: " +
-                            std::to_string(type_proto->tensor_type().elem_type()));
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "The input of graph doesn't have valid type, name: ", input_name,
+                                 " type: ", std::to_string(type_proto->tensor_type().elem_type()));
         }
       }
     }
@@ -372,8 +372,7 @@ Status ModelBuilder::RegisterModelOutputs() {
     const auto& output_name = node_arg->Name();
 
     if (!Contains(operands_, output_name)) {
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "The output of graph is not registered" + output_name);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The output of graph is not registered ", output_name);
     }
 
     std::string nnapi_output_name = output_name;
@@ -473,8 +472,8 @@ Status ModelBuilder::AddOperations() {
     if (auto* op_builder = GetOpBuilder(*node)) {
       op_builder->AddToModelBuilder(*this, *node);
     } else {
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Node [" + node->Name() + "], type [" + node->OpType() + "] is not supported");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Node [", node->Name(), "], type [", node->OpType(), "] is not supported");
     }
   }
 

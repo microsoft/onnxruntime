@@ -69,8 +69,8 @@ static Status UnpackInitializerTensor(const onnx::TensorProto& initializer,
     default:
       break;
   }
-  return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                "Unsupported type: " + std::to_string(initializer.data_type()));
+  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                         "Unsupported type: ", std::to_string(initializer.data_type()));
 }
 #undef CASE_UNPACK
 
@@ -114,8 +114,8 @@ Status TransposeBetweenNCHWAndNHWC(ModelBuilder& model_builder,
   ORT_RETURN_IF_NOT(!model_builder.UseNCHW(), "model_builder.UseNCHW() is on");
   const auto& shaper(model_builder.GetShaper());
   ORT_RETURN_IF_NOT(4 == shaper[input].size(),
-                    "TransposeNCHWToNHWC input has to be a 4d tensor, actual dimensions: " +
-                        std::to_string(shaper[input].size()));
+                    "TransposeNCHWToNHWC input has to be a 4d tensor, actual dimensions: ",
+                    std::to_string(shaper[input].size()));
 
   std::string perm_name;
   vector<int32_t> perm;
@@ -222,8 +222,8 @@ static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
                                         DataLayout new_layout) {
   const auto& tensor = model_builder.GetInitializerTensors().at(name);
   const Shape& shape = source_operand_type.dimensions;
-  ORT_RETURN_IF_NOT(shape.size() == 4, "The initializer is not 4D: " + name + " actual dim " +
-                                           std::to_string(shape.size()));
+  ORT_RETURN_IF_NOT(shape.size() == 4,
+                    "The initializer is not 4D: ", name, " actual dim ", std::to_string(shape.size()));
 
   // TODO support other data types
   const uint8_t* src = nullptr;
@@ -242,9 +242,9 @@ static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
       break;
     }
     default:
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "The initializer of graph " + name + " doesn't have valid type: " +
-                        std::to_string(tensor.data_type()));
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "The initializer of graph ", name,
+                             " doesn't have valid type: ", std::to_string(tensor.data_type()));
   }
 
   const auto out_t = shape[0], in_t = shape[1],
@@ -300,8 +300,8 @@ static Status AddInitializerTransposed(ModelBuilder& model_builder,
   const auto& tensor = model_builder.GetInitializerTensors().at(name);
   const Shape& shape = source_operand_type.dimensions;
 
-  ORT_RETURN_IF_NOT(shape.size() == 2, "The initializer is not 2D: " + name + " actual dim " +
-                                           std::to_string(shape.size()));
+  ORT_RETURN_IF_NOT(shape.size() == 2,
+                    "The initializer is not 2D: ", name, " actual dim ", std::to_string(shape.size()));
 
   // TODO support other data types
   const uint8_t* src = nullptr;
@@ -319,9 +319,9 @@ static Status AddInitializerTransposed(ModelBuilder& model_builder,
       break;
     }
     default:
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "The initializer of graph " + name + " doesn't have valid type: " +
-                        std::to_string(tensor.data_type()));
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "The initializer of graph ", name,
+                             " doesn't have valid type: ", std::to_string(tensor.data_type()));
   }
 
   const auto x_t = shape[0], y_t = shape[1];
@@ -498,17 +498,17 @@ static Status IsValidInputQuantizedType(const ModelBuilder& model_builder,
                                         int32_t zero_point) {
   const OperandType& input_operand_type = model_builder.GetOperandTypes().at(input_name);
   if (input_operand_type.operandType.scale != scale) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "Input [" + input_name + "] NNAPI input scale: " +
-                      std::to_string(input_operand_type.operandType.scale) +
-                      ", ONNX input scale: " + std::to_string(scale));
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input [", input_name, "] NNAPI input scale: ",
+                           std::to_string(input_operand_type.operandType.scale),
+                           ", ONNX input scale: ", std::to_string(scale));
   }
 
   if (input_operand_type.operandType.zeroPoint != zero_point) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "Input [" + input_name + "] NNNAPI input zero point: " +
-                      std::to_string(input_operand_type.operandType.zeroPoint) +
-                      ", ONNX input zero point: " + std::to_string(zero_point));
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input [", input_name, "] NNNAPI input zero point: ",
+                           std::to_string(input_operand_type.operandType.zeroPoint),
+                           ", ONNX input zero point: ", std::to_string(zero_point));
   }
 
   return Status::OK();
@@ -565,11 +565,11 @@ Status GetQuantizedInputScaleAndZeroPoint(const ModelBuilder& model_builder,
       scale_idx = 4;
       zero_point_idx = 5;
     } else {
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Unknown input: " + input_name + ", for op: " + op_type);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Unknown input: ", input_name, ", for op: ", op_type);
     }
   } else {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Unsupported op: " + op_type);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported op: ", op_type);
   }
 
   scale = GetQuantizationScale(model_builder, node, scale_idx);
@@ -651,7 +651,7 @@ bool BaseOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const N
 }
 
 Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node& node) {
-  ORT_RETURN_IF_NOT(IsOpSupported(model_builder, node), "Unsupported operator " + node.OpType());
+  ORT_RETURN_IF_NOT(IsOpSupported(model_builder, node), "Unsupported operator ", node.OpType());
 
   ORT_RETURN_IF_ERROR(AddToModelBuilderImpl(model_builder, node));
   LOGS_DEFAULT(VERBOSE) << "Operator name: [" << node.Name()
@@ -783,7 +783,7 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   else if (op_type == "Div")
     op_code = ANEURALNETWORKS_DIV;
   else {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "UnaryOpBuilder, unknown op: " + op_type);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "UnaryOpBuilder, unknown op: ", op_type);
   }
 
   size_t a_idx = 0, b_idx = 1;
@@ -1532,9 +1532,9 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       onnx_weight_type = Type::TENSOR_QUANT8_ASYMM;
       break;
     default:
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "The initializer of graph " + weight + " doesn't have valid type: " +
-                        std::to_string(weight_tensor.data_type()));
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "The initializer of graph ", weight, " doesn't have valid type: ",
+                             std::to_string(weight_tensor.data_type()));
   }
 
   OperandType onnx_weight_operand_type(onnx_weight_type, onnx_weight_shape, w_scale, w_zero_point);
@@ -1572,12 +1572,12 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       OperandType bias_operand_type(Type::TENSOR_INT32, bias_dimen, x_scale * w_scale);
       ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer.data(), bias_operand_type));
     } else {
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Unknown weight type " + TypeToStr(weight_type));
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unknown weight type ", TypeToStr(weight_type));
     }
   } else if (is_qlinear_conv) {  // QLinearConv's bias type need special handling
     const auto& bias_tensor = model_builder.GetInitializerTensors().at(bias);
     ORT_RETURN_IF_NOT(bias_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT32,
-                      "bias of QLinearConv should be int32, actual type: " + std::to_string(bias_tensor.data_type()));
+                      "bias of QLinearConv should be int32, actual type: ", std::to_string(bias_tensor.data_type()));
     Shape bias_dimen;
     for (auto dim : bias_tensor.dims())
       bias_dimen.push_back(SafeInt<uint32_t>(dim));
@@ -1711,7 +1711,7 @@ Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       type = Type::TENSOR_INT32;
       break;
     default:
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Invalid cast to type: " + std::to_string(to));
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid cast to type: ", std::to_string(to));
   }
 
   std::vector<uint32_t> input_indices;
@@ -2061,7 +2061,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       OperandType bias_operand_type(Type::TENSOR_INT32, bias_dimen, a_scale * b_scale, 0);
       ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer.data(), bias_operand_type));
     } else {
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Unknown weight type " + TypeToStr(bias_type));
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unknown weight type ", TypeToStr(bias_type));
     }
 
     bias_idx = operand_indices.at(bias);
@@ -2139,7 +2139,7 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   else if (op_type == "Tanh")
     op_code = ANEURALNETWORKS_TANH;
   else {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "UnaryOpBuilder, unknown op: " + op_type);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "UnaryOpBuilder, unknown op: ", op_type);
   }
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
@@ -2227,8 +2227,8 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   }
 
   if (output_is_nhwc) {
-    ORT_RETURN_IF_NOT(rank == 4, "nhwc is only on 4d shape, input " + input0 +
-                                     " has rank: " + std::to_string(rank));
+    ORT_RETURN_IF_NOT(rank == 4,
+                      "nhwc is only on 4d shape, input ", input0, " has rank: ", std::to_string(rank));
     // we are using nhwc here, but the axis is in nchw, need to transpose axis from nchw to nhwc
     const uint32_t axis_nchw_to_nhwc[4]{0, 3, 1, 2};
     axis = axis_nchw_to_nhwc[axis];
