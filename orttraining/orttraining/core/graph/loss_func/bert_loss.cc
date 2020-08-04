@@ -122,7 +122,7 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
                                    "Reshape_label"));
 
     std::vector<AttributeProto> attrs;
-    attrs.push_back(ONNX_NAMESPACE::MakeAttribute("ignore_index", static_cast<int64_t>(-1)));
+    attrs.push_back(ONNX_NAMESPACE::MakeAttribute("ignore_index", static_cast<int64_t>(0)));
     attrs.push_back(ONNX_NAMESPACE::MakeAttribute("reduction", "mean"));
 
     new_nodes.emplace_back(NodeDef("SoftmaxCrossEntropyLoss",

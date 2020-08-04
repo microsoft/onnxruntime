@@ -294,8 +294,8 @@ void RegisterBertSchemas() {
 Multi-Head Self Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
 The mask_index input is optional. Besides raw attention mask with shape (batch_size, past_sequence_length + sequence_length),
 we also support other two formats: When input has right-side padding, mask_index is one dimension with shape (batch_size),
-where value of each element is the end position, or valid length of actual sequence excluding padding. When input has 
-left-side padding, mask_index has shape (2 * batch_size), where the values are the exclusive end positions followed by 
+where value of each element is the end position, or valid length of actual sequence excluding padding. When input has
+left-side padding, mask_index has shape (2 * batch_size), where the values are the exclusive end positions followed by
 the inclusive start positions. When unidirectional is 1, and each token only attend to previous tokens. For GPT-2, both past
 and present state are optional. Present state could appear in output even when past state is not in input.
 )DOC";
@@ -461,10 +461,10 @@ will be calculated.)DOC";
       .SetDoc(EmbedLayerNormalization_ver1_doc)
       .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultEmbedLayerNormEpsilon)
       .Input(0, "input_ids", "2D words IDs with shape (batch_size, sequence_length)", "T1")
-      .Input(1, "segment_ids", "2D segment IDs with shape (batch_size, sequence_length)", "T1")
+      .Input(1, "segment_ids", "2D segment IDs with shape (batch_size, sequence_length)", "T1", OpSchema::Optional)
       .Input(2, "word_embedding", "2D with shape (,hidden_size)", "T")
       .Input(3, "position_embedding", "2D with shape (, hidden_size)", "T")
-      .Input(4, "segment_embedding", "2D with shape (, hidden_size)", "T")
+      .Input(4, "segment_embedding", "2D with shape (, hidden_size)", "T", OpSchema::Optional)
       .Input(5, "gamma", "1D gamma tensor for layer normalization with shape (hidden_size)", "T")
       .Input(6, "beta", "1D beta tensor for layer normalization  with shape (hidden_size)", "T")
       .Input(7, "mask", "2D attention mask with shape (batch_size, sequence_length)", "T1", OpSchema::Optional)
