@@ -203,27 +203,72 @@ ORT_API_STATUS_IMPL(AddFreeDimensionOverrideByName, _Inout_ OrtSessionOptions* o
 ORT_API_STATUS_IMPL(CreateKernelSession, _In_ const OrtSessionOptions* options, OrtKernelSession** session);
 
 ORT_API_STATUS_IMPL(CreateExecutableKernelContext,
-                    _In_ OrtKernelSession* session,
-                    unsigned int provider_id,
-                    _In_ const void * node_proto,
-                    _In_ const void* arg_to_type_map,
+                    _In_ const char* name,
+                    _In_ const char* op_type,
                     _Outptr_ OrtExecutableKernelContext** kernel);
 
-ORT_API_STATUS_IMPL(ExecutableKernelContext_SetInput,
+ORT_API_STATUS_IMPL(ExecutableKernelContext_AddInput,
                     _Inout_ OrtExecutableKernelContext* context,
+                    ONNXTensorElementDataType type);
+ORT_API_STATUS_IMPL(ExecutableKernelContext_AddOutput,
+                    _Inout_ OrtExecutableKernelContext* context,
+                    ONNXTensorElementDataType type);
+/*
+ORT_API_STATUS_IMPL(ExecutableKernelContext_AddAttributeString,
+                    _Inout_ OrtExecutableKernelContext* context,
+                    _In_ const char* name,
+                    _In_ const char* value);
+ORT_API_STATUS_IMPL(ExecutableKernelContext_AddAttributeStrings,
+                    _Inout_ OrtExecutableKernelContext* context,
+                    _In_ const char* name,
+                    _In_ const char** values,
+                    size_t num_values);
+ORT_API_STATUS_IMPL(ExecutableKernelContext_AddAttributeFloat,
+                    _Inout_ OrtExecutableKernelContext* context,
+                    _In_ const char* name,
+                    float value);
+ORT_API_STATUS_IMPL(ExecutableKernelContext_AddAttributeFloats,
+                    _Inout_ OrtExecutableKernelContext* context,
+                    _In_ const char* name,
+                    float* values,
+                    size_t num_values);
+ORT_API_STATUS_IMPL(ExecutableKernelContext_AddAttributeInt,
+                    _Inout_ OrtExecutableKernelContext* context,
+                    _In_ const char* name,
+                    int64_t value);
+ORT_API_STATUS_IMPL(ExecutableKernelContext_AddAttributeInts,
+                    _Inout_ OrtExecutableKernelContext* context,
+                    _In_ const char* name,
+                    int64_t* values,
+                    size_t num_values);
+ORT_API_STATUS_IMPL(ExecutableKernelContext_AddAttributeTensor,
+                    _Inout_ OrtExecutableKernelContext* context,
+                    _In_ const char* name,
+                    _In_ void* p_data,
+                    size_t p_data_len,
+                    _In_ const int64_t* shape,
+                    size_t shape_len,
+                    ONNXTensorElementDataType type);
+*/
+
+ORT_API_STATUS_IMPL(CreateExecutableKernel,
+                    _Inout_ OrtKernelSession* session,
+                    _In_ OrtExecutableKernelContext* context,
+                    size_t provider_id,
+                    _Outptr_ OrtExecutableKernel** kernel);
+
+ORT_API_STATUS_IMPL(ExecutableKernel_SetInput,
+                    _Inout_ OrtExecutableKernel* kernel,
                     int index,
                     _Inout_ OrtValue* value);
-ORT_API_STATUS_IMPL(ExecutableKernelContext_SetImplicitInput,
-                    _Inout_ OrtExecutableKernelContext* context,
-                    int index,
-                    _Inout_ OrtValue* value);
-ORT_API_STATUS_IMPL(ExecutableKernelContext_SetOutput,
-                    _Inout_ OrtExecutableKernelContext* context,
+ORT_API_STATUS_IMPL(ExecutableKernel_SetOutput,
+                    _Inout_ OrtExecutableKernel* kernel,
                     int index,
                     _Inout_ OrtValue* value);
 
-ORT_API_STATUS_IMPL(ExecutableKernelContext_Compute, _Inout_ OrtExecutableKernelContext* context);
+ORT_API_STATUS_IMPL(ExecutableKernel_Compute, _Inout_ OrtExecutableKernel* kernel);
 
 ORT_API(void, ReleaseKernelSession, _Frees_ptr_opt_ OrtKernelSession*);
+ORT_API(void, ReleaseExecutableKernel, _Frees_ptr_opt_ OrtExecutableKernel*);
 ORT_API(void, ReleaseExecutableKernelContext, _Frees_ptr_opt_ OrtExecutableKernelContext*);
 }  // namespace OrtApis

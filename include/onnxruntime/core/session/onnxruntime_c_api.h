@@ -144,6 +144,7 @@ ORT_RUNTIME_CLASS(MemoryInfo);
 ORT_RUNTIME_CLASS(Session);  //Don't call OrtReleaseSession from Dllmain (because session owns a thread pool)
 ORT_RUNTIME_CLASS(KernelSession);
 ORT_RUNTIME_CLASS(ExecutableKernelContext);
+ORT_RUNTIME_CLASS(ExecutableKernel);
 ORT_RUNTIME_CLASS(Value);
 ORT_RUNTIME_CLASS(RunOptions);
 ORT_RUNTIME_CLASS(TypeInfo);
@@ -825,29 +826,85 @@ struct OrtApi {
   // we don't actually read anything from OrtSessionOptions except for the provider factories.
   ORT_API2_STATUS(CreateKernelSession, _In_ const OrtSessionOptions* options, OrtKernelSession** session);
 
-  // Add an node_protobuf to the session for a session, get out an executable kernel context
+  // Create an ExecutableKernelContext. This holds the information needed to build a kernel, such as
+  // parameters, attributes, name and op type.
+  // After setup, it is used to create an ExecutableKernel, which can be executed
   ORT_API2_STATUS(CreateExecutableKernelContext,
-                  _In_ OrtKernelSession* session,
-                  unsigned int provider_id,
-                  _In_ const void* node_proto, // pointer to a c++ NodeProto
-                  _In_ const void* arg_to_type_map, // pointer to a ArgToTypeMap (aka std::unordered_map<std::string, onnx::TypeProto>)
+                  _In_ const char* name,
+                  _In_ const char* op_type,
                   _Outptr_ OrtExecutableKernelContext** kernel);
 
-  // set inputs and outputs for a kernel context
-  ORT_API2_STATUS(ExecutableKernelContext_SetInput,
+
+  // Add parameters to a kernel context
+  ORT_API2_STATUS(ExecutableKernelContext_AddInput,
                   _Inout_ OrtExecutableKernelContext* context,
+                  ONNXTensorElementDataType type);
+  ORT_API2_STATUS(ExecutableKernelContext_AddOutput,
+                  _Inout_ OrtExecutableKernelContext* context,
+                  ONNXTensorElementDataType type);
+
+  /*
+  // Add attributes to a kernel context
+  ORT_API2_STATUS(ExecutableKernelContext_AddAttributeString,
+                  _Inout_ OrtExecutableKernelContext* context,
+                  _In_ const char* name,
+                  _In_ const char* value);
+  ORT_API2_STATUS(ExecutableKernelContext_AddAttributeStrings,
+                  _Inout_ OrtExecutableKernelContext* context,
+                  _In_ const char* name,
+                  _In_ const char** values,
+                  size_t num_values);
+  ORT_API2_STATUS(ExecutableKernelContext_AddAttributeFloat,
+                  _Inout_ OrtExecutableKernelContext* context,
+                  _In_ const char* name,
+                  float value);
+  ORT_API2_STATUS(ExecutableKernelContext_AddAttributeFloats,
+                  _Inout_ OrtExecutableKernelContext* context,
+                  _In_ const char* name,
+                  float* values,
+                  size_t num_values);
+  ORT_API2_STATUS(ExecutableKernelContext_AddAttributeInt,
+                  _Inout_ OrtExecutableKernelContext* context,
+                  _In_ const char* name,
+                  int64_t value);
+  ORT_API2_STATUS(ExecutableKernelContext_AddAttributeInts,
+                  _Inout_ OrtExecutableKernelContext* context,
+                  _In_ const char* name,
+                  int64_t* values,
+                  size_t num_values);
+  ORT_API2_STATUS(ExecutableKernelContext_AddAttributeTensor,
+                  _Inout_ OrtExecutableKernelContext* context,
+                  _In_ const char* name,
+                  _In_ void* p_data,
+                  size_t p_data_len,
+                  _In_ const int64_t* shape,
+                  size_t shape_len,
+                  ONNXTensorElementDataType type);
+*/
+
+  // Create an ExecutableKernel that can be executed
+  ORT_API2_STATUS(CreateExecutableKernel,
+                  _Inout_ OrtKernelSession* session,
+                  _In_ OrtExecutableKernelContext* context,
+                  size_t provider_id,
+                  _Outptr_ OrtExecutableKernel** kernel);
+
+  // Set OrtValues for parameters for a kernel
+  ORT_API2_STATUS(ExecutableKernel_SetInput,
+                  _Inout_ OrtExecutableKernel* kernel,
                   int index,
                   _In_ OrtValue* value);
-  ORT_API2_STATUS(ExecutableKernelContext_SetOutput,
-                  _Inout_ OrtExecutableKernelContext* context,
+  ORT_API2_STATUS(ExecutableKernel_SetOutput,
+                  _Inout_ OrtExecutableKernel* kernel,
                   int index,
                   _Inout_ OrtValue* value);
 
-  // Execute the kernel with its context
-  // TODO check what happens if some inputs aren't set
-  ORT_API2_STATUS(ExecutableKernelContext_Compute, _Inout_ OrtExecutableKernelContext* context);
+  // Execute the kernel
+  // todo rename
+  ORT_API2_STATUS(ExecutableKernelContext_Compute, _Inout_ OrtExecutableKernel* kernel);
 
   ORT_CLASS_RELEASE(KernelSession);
+  ORT_CLASS_RELEASE(ExecutableKernel);
   ORT_CLASS_RELEASE(ExecutableKernelContext);
 };
 

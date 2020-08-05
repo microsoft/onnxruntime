@@ -1570,10 +1570,23 @@ static constexpr OrtApi ort_api_1_to_3 = {
 
     &OrtApis::CreateKernelSession,
     &OrtApis::CreateExecutableKernelContext,
-    &OrtApis::ExecutableKernelContext_SetInput,
-    &OrtApis::ExecutableKernelContext_SetOutput,
-    &OrtApis::ExecutableKernelContext_Compute,
+    &OrtApis::ExecutableKernelContext_AddInput,
+    &OrtApis::ExecutableKernelContext_AddOutput,
+    /*
+    &OrtApis::ExecutableKernelContext_AddAttributeString,
+    &OrtApis::ExecutableKernelContext_AddAttributeStrings,
+    &OrtApis::ExecutableKernelContext_AddAttributeFloat,
+    &OrtApis::ExecutableKernelContext_AddAttributeFloats,
+    &OrtApis::ExecutableKernelContext_AddAttributeInt,
+    &OrtApis::ExecutableKernelContext_AddAttributeInts,
+    &OrtApis::ExecutableKernelContext_AddAttributeTensor,
+     */
+    &OrtApis::CreateExecutableKernel,
+    &OrtApis::ExecutableKernel_SetInput,
+    &OrtApis::ExecutableKernel_SetOutput,
+    &OrtApis::ExecutableKernel_Compute,
     &OrtApis::ReleaseKernelSession,
+    &OrtApis::ReleaseExecutableKernel,
     &OrtApis::ReleaseExecutableKernelContext
 };
 

@@ -24,136 +24,146 @@ using namespace onnxruntime;
 
 // taken from OptimizerExecutionFrame
 Status
-ExecutableKernelContextImpl::CreateNodeOutputMLValueImpl(__attribute__((unused)) OrtValue &ort_value, int ort_value_idx,
-                                                         __attribute__((unused)) const TensorShape *shape,
-                                                         __attribute__((unused)) size_t nnz) {
-    std::string name;
-    Status status = info_->value_name_idx_map_.GetName(ort_value_idx, name);
-    if (!status.IsOK()) {
-        return status;
-    }
-    return Status(ONNXRUNTIME, RUNTIME_EXCEPTION, "All outputs should already be allocated, but output "
-                                                  + name + " was not");
+SingleKernelExecutionFrame::CreateNodeOutputMLValueImpl(__attribute__((unused)) OrtValue &ort_value, int ort_value_idx,
+                                                        __attribute__((unused)) const TensorShape *shape,
+                                                        __attribute__((unused)) size_t nnz) {
+  std::string name;
+  Status status = info_->value_name_idx_map_.GetName(ort_value_idx, name);
+  if (!status.IsOK()) {
+    return status;
+  }
+  return Status(ONNXRUNTIME, RUNTIME_EXCEPTION, "All outputs should already be allocated, but output "
+                                                + name + " was not");
 }
 
 
+
+
+/*
+ * ORT API Implementations
+ */
 ORT_API_STATUS_IMPL(OrtApis::CreateKernelSession,
                     _In_ const OrtSessionOptions* options,
                     _Outptr_ OrtKernelSession **session_) {
-    API_IMPL_BEGIN
-        ORT_ENFORCE(session_, "OrtKernelSession pointer must not be null");
-        std::unique_ptr<Model> model = std::make_unique<Model>("KernelExecutionModel", true,
-                                                               logging::LoggingManager::DefaultLogger());
+  API_IMPL_BEGIN
+    ORT_ENFORCE(session_, "OrtKernelSession pointer must not be null");
+    std::unique_ptr<Model> model = std::make_unique<Model>("KernelExecutionModel", true,
+                                                           logging::LoggingManager::DefaultLogger());
 
-        KernelSessionImpl *session = new KernelSessionImpl(std::move(model));
+    KernelSessionImpl *session = new KernelSessionImpl(std::move(model));
 
-        // initialize the providers
-        for(auto& factory : options->provider_factories) {
-            auto provider = factory->CreateProvider();
-            session->provider_list.push_back(std::move(provider));
-        }
+    // initialize the providers
+    for(auto& factory : options->provider_factories) {
+      auto provider = factory->CreateProvider();
+      session->provider_list.push_back(std::move(provider));
+    }
 
-        *session_ = reinterpret_cast<OrtKernelSession *>(session);
+    *session_ = reinterpret_cast<OrtKernelSession *>(session);
 
-        return ToOrtStatus(Status::OK());
-    API_IMPL_END
+    return ToOrtStatus(Status::OK());
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::CreateExecutableKernelContext,
-                    _In_ OrtKernelSession *session_,
-                    unsigned int provider_id,
-                    _In_ const void *node_proto_, // pointer to a c++ NodeProto
-                    _In_ const void *arg_to_type_map_, // pointer to a ArgToTypeMap (aka std::unordered_map<std::string, onnx::TypeProto>)
+                    _In_ const char* name,
+                    _In_ const char* op_type,
                     _Outptr_ OrtExecutableKernelContext **kernel_context_) {
-    API_IMPL_BEGIN
+  API_IMPL_BEGIN
 
-        ORT_ENFORCE(kernel_context_, "OrtExecutableKernelContext pointer must be non-null.");
-        ORT_ENFORCE(session_, "OrtKernelSession pointer must be non-null.");
+    ORT_ENFORCE(kernel_context_, "OrtExecutableKernelContext pointer must be non-null.");
 
-        KernelSessionImpl *session = reinterpret_cast<KernelSessionImpl *>(session_);
-        ORT_ENFORCE(provider_id < session->provider_list.size(),
+    ExecutableKernelContextImpl* kernel_context = new ExecutableKernelContextImpl();
+    kernel_context->SetName(name);
+    kernel_context->SetOpType(op_type);
+    *kernel_context_ = reinterpret_cast<OrtExecutableKernelContext *>(kernel_context);
+    return ToOrtStatus(Status::OK());
+  API_IMPL_END
+}
+
+
+ORT_API_STATUS_IMPL(OrtApis::ExecutableKernelContext_AddInput,
+                    _Inout_ OrtExecutableKernelContext* context_,
+                    ONNXTensorElementDataType type) {
+  API_IMPL_BEGIN
+    ExecutableKernelContextImpl *context = reinterpret_cast<ExecutableKernelContextImpl *>(context_);
+    context->AddInput(type);
+    return ToOrtStatus(Status::OK());
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ExecutableKernelContext_AddOutput,
+                    _Inout_ OrtExecutableKernelContext* context_,
+                    ONNXTensorElementDataType type) {
+  API_IMPL_BEGIN
+    ExecutableKernelContextImpl *context = reinterpret_cast<ExecutableKernelContextImpl *>(context_);
+    context->AddOutput(type);
+    return ToOrtStatus(Status::OK());
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateExecutableKernel,
+                    _Inout_ OrtKernelSession *session_,
+                    _In_ OrtExecutableKernelContext *context_,
+                    size_t provider_id,
+                    _Outptr_ OrtExecutableKernel **kernel_) {
+  API_IMPL_BEGIN
+
+    ORT_ENFORCE(session_, "OrtKernelSession pointer must be non-null.");
+    ORT_ENFORCE(context_, "OrtExecutableKernelContext pointer must be non-null.");
+    ORT_ENFORCE(kernel_, "OrtExecutableKernel pointer must be non-null.");
+
+    KernelSessionImpl *session = reinterpret_cast<KernelSessionImpl *>(session_);
+    ExecutableKernelContextImpl *context = reinterpret_cast<ExecutableKernelContextImpl *>(context_);
+    ORT_ENFORCE(provider_id < session->provider_list.size(),
                 "provider_id must be less than the provider list size (" + std::to_string(session->provider_list.size()) + ").");
 
-        const ONNX_NAMESPACE::NodeProto *node_proto = static_cast<const ONNX_NAMESPACE::NodeProto *>(node_proto_);
-        const ArgNameToTypeMap *arg_name_to_type_map = static_cast<const ArgNameToTypeMap *>(arg_to_type_map_);
-
-        // add the node
-        auto &graph = session->model->MainGraph();
-        Node &node = graph.AddNode(*node_proto, *arg_name_to_type_map);
-        Status status = graph.Resolve();
-        if (!status.IsOK()) {
-            return ToOrtStatus(status);
-        }
-
-
-        auto const& execution_provider = session->provider_list[provider_id];
-
-        // set the execution provider
-        node.SetExecutionProviderType(execution_provider->Type());
-
-        // create the kernel
-        std::shared_ptr<KernelRegistry> registry = execution_provider->GetKernelRegistry();
-        std::unique_ptr<OpKernel> op_kernel;
-        status = registry->TryCreateKernel(node,
-                                           *execution_provider,
-                                           std::unordered_map<int, OrtValue>(),
-                                           OrtValueNameIdxMap(),
-                                           FuncManager(),
-                                           DataTransferManager(),
-                                           op_kernel);
-
-        if (!status.IsOK()) {
-            return ToOrtStatus(status);
-        }
-
-        // create the context info
-        std::unique_ptr<ExecutableKernelContextImpl::Info> info = std::make_unique<ExecutableKernelContextImpl::Info>(
-                std::move(op_kernel),
-                logging::LoggingManager::DefaultLogger(),
-                execution_provider);
-
-
-        ExecutableKernelContextImpl *kernel_context = new ExecutableKernelContextImpl(std::move(info));
-        *kernel_context_ = reinterpret_cast<OrtExecutableKernelContext *>(kernel_context);
-        return ToOrtStatus(Status::OK());
-    API_IMPL_END
+    SingleKernelExecutionFrame* frame;
+    Status status = context->CreateExecutionFrame(session, &frame, provider_id);
+    if (!status.IsOK()){
+      return ToOrtStatus(status);
+    }
+    *kernel_ = reinterpret_cast<OrtExecutableKernel*>(frame);
+    return ToOrtStatus(Status::OK());
+  API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::ExecutableKernelContext_SetInput,
-                    OrtExecutableKernelContext *context_,
+ORT_API_STATUS_IMPL(OrtApis::ExecutableKernel_SetInput,
+                    _Inout_ OrtExecutableKernel *kernel_,
+                    int index,
+                    _In_ OrtValue *value) {
+  API_IMPL_BEGIN
+    SingleKernelExecutionFrame* context = reinterpret_cast<SingleKernelExecutionFrame*>(kernel_);
+    return ToOrtStatus(context->SetInput(*value, index));
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ExecutableKernel_SetOutput,
+                    OrtExecutableKernel *kernel_,
                     int index,
                     OrtValue *value) {
-    API_IMPL_BEGIN
-        ExecutableKernelContextImpl *context = reinterpret_cast<ExecutableKernelContextImpl *>(context_);
-        Status status = context->SetInput(*value, index);
-        return ToOrtStatus(status);
-    API_IMPL_END
+  API_IMPL_BEGIN
+    SingleKernelExecutionFrame* context = reinterpret_cast<SingleKernelExecutionFrame*>(kernel_);
+    return ToOrtStatus(context->SetOutput(*value, index));
+  API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::ExecutableKernelContext_SetOutput,
-                    OrtExecutableKernelContext *context_,
-                    int index,
-                    OrtValue *value) {
-    API_IMPL_BEGIN
-        ExecutableKernelContextImpl *context = reinterpret_cast<ExecutableKernelContextImpl *>(context_);
-        Status status = context->SetOutput(*value, index);
-        return ToOrtStatus(status);
-    API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(OrtApis::ExecutableKernelContext_Compute, _Inout_ OrtExecutableKernelContext *context_) {
-    API_IMPL_BEGIN
-        ExecutableKernelContextImpl *context = reinterpret_cast<ExecutableKernelContextImpl *>(context_);
-        context->Compute();
-        return ToOrtStatus(Status::OK());
-    API_IMPL_END
+ORT_API_STATUS_IMPL(OrtApis::ExecutableKernel_Compute,
+                    _Inout_ OrtExecutableKernel *context_) {
+  API_IMPL_BEGIN
+    SingleKernelExecutionFrame*context = reinterpret_cast<SingleKernelExecutionFrame*>(context_);
+    return ToOrtStatus(context->Compute());
+  API_IMPL_END
 }
 
 ORT_API(void, OrtApis::ReleaseKernelSession, _Frees_ptr_opt_ OrtKernelSession* value) {
-    delete reinterpret_cast<KernelSessionImpl*>(value);
+  delete reinterpret_cast<KernelSessionImpl*>(value);
+}
+
+ORT_API(void, OrtApis::ReleaseExecutableKernel, _Frees_ptr_opt_ OrtExecutableKernel* value) {
+  delete reinterpret_cast<SingleKernelExecutionFrame*>(value);
 }
 
 ORT_API(void, OrtApis::ReleaseExecutableKernelContext, _Frees_ptr_opt_ OrtExecutableKernelContext * value) {
-    delete reinterpret_cast<ExecutableKernelContextImpl*>(value);
+  delete reinterpret_cast<ExecutableKernelContextImpl*>(value);
 }
 
