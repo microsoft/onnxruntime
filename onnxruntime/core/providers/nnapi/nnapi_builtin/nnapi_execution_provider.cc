@@ -180,6 +180,13 @@ static Status GetOutputBuffer(Ort::CustomOpApi& ort,
                               const std::string& output_name,
                               const std::vector<uint32_t>& output_shape,
                               const android::nn::wrapper::Type output_type,
+                              void** output_buffer) ORT_MUST_USE_RESULT;
+static Status GetOutputBuffer(Ort::CustomOpApi& ort,
+                              OrtKernelContext* context,
+                              const nnapi::Model& model,
+                              const std::string& output_name,
+                              const std::vector<uint32_t>& output_shape,
+                              const android::nn::wrapper::Type output_type,
                               void** output_buffer) {
   using namespace android::nn::wrapper;
   std::vector<int64_t> int64_output_shape(output_shape.begin(),
