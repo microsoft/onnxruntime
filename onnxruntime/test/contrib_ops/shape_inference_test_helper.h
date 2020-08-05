@@ -87,7 +87,7 @@ inline void testShapeInference(
   ONNX_NAMESPACE::shape_inference::InferShapes(model, false, schema_registry);
 
   auto inferredGraph = model.graph();
-  int64_t index = inputs.size();  // index for value_info of output
+  int index = static_cast<int>(inputs.size());  // index for value_info of output
   auto inferred_output = inferredGraph.value_info(index);
 
   auto shape = output.mutable_type()->mutable_tensor_type()->mutable_shape();
