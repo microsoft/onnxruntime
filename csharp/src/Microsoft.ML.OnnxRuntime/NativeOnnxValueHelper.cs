@@ -56,7 +56,10 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>UTF-8 encoded equivalent</returns>
         internal static byte[] StringToZeroTerminatedUtf8(string s)
         {
-            return UTF8Encoding.UTF8.GetBytes(s + Char.MinValue);
+            byte[] utf8Bytes = UTF8Encoding.UTF8.GetBytes(s);
+            Array.Resize(ref utf8Bytes, utf8Bytes.Length + 1);
+            utf8Bytes[utf8Bytes.Length - 1] = 0;
+            return utf8Bytes;
         }
 
         /// <summary>
@@ -65,18 +68,13 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="nativeUtf8">pointer to native or pinned memory where Utf-8 resides</param>
         /// <returns></returns>
-        internal static string StringFromNativeUtf8(IntPtr nativeUtf8) 
+        internal static string StringFromNativeUtf8(IntPtr nativeUtf8)
         {
             // .NET 5.0 has Marshal.PtrToStringUTF8 that does the below
             int len = 0;
             while (Marshal.ReadByte(nativeUtf8, len) != 0) ++len;
-            return StringFromNativeUtf8(nativeUtf8, 0, len);
-        }
-
-        internal static string StringFromNativeUtf8(IntPtr nativeUtf8, int  offset, int len)
-        {
             byte[] buffer = new byte[len];
-            Marshal.Copy(nativeUtf8, buffer, 0, buffer.Length);
+            Marshal.Copy(nativeUtf8, buffer, 0, len);
             return Encoding.UTF8.GetString(buffer, 0, buffer.Length);
         }
     }
