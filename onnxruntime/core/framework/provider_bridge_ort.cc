@@ -583,11 +583,9 @@ struct ProviderSharedLibrary {
   ProviderSharedLibrary() {
     std::string full_path = Env::Default().GetRuntimePath() + std::string(LIBRARY_PREFIX "onnxruntime_providers_shared" LIBRARY_EXTENSION);
     auto error = Env::Default().LoadDynamicLibrary(full_path, &handle_);
-    if (!error.IsOK())
+    if (!error.IsOK()) {
+      handle_ = nullptr;
       LOGS_DEFAULT(ERROR) << error.ErrorMessage();
-
-    if (!handle_) {
-      LOGS_DEFAULT(ERROR) << "Failed to load providers shared library: " << full_path;
       return;
     }
 
@@ -614,12 +612,11 @@ struct ProviderLibrary {
     if (!EnsureSharedProviderLibrary())
       return;
 
-    LOGS_DEFAULT(ERROR) << "Loading the provider...";  // TODO: Delete
-
     std::string full_path = Env::Default().GetRuntimePath() + std::string(filename);
-    Env::Default().LoadDynamicLibrary(full_path, &handle_);
-    if (!handle_) {
-      LOGS_DEFAULT(ERROR) << "Failed to load provider library: " << full_path;
+    auto error = Env::Default().LoadDynamicLibrary(full_path, &handle_);
+    if (!error.IsOK()) {
+      handle_ = nullptr;
+      LOGS_DEFAULT(ERROR) << error.ErrorMessage();
       return;
     }
 
