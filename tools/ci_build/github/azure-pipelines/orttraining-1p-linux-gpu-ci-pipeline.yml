@@ -13,18 +13,8 @@ stages:
 
   variables:
     docker_image_prefix: onnxruntime-training
-    linux_gpu_dockerfile: ../../../../../dockerfiles/Dockerfile.training
-    python.version: 3.6
-    BuildCommand: >
-      tools/ci_build/github/linux/run_dockerbuild.sh
-      -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory)
-      -x "
-      --enable_training
-      --config $(buildConfig)
-      --skip_onnx_tests
-      --build_wheel
-      --enable_nvtx_profile
-      "
+    linux_gpu_dockerfile: dockerfiles/Dockerfile.training
+
   jobs:
   - job: Linux_py_GPU_Wheels
     timeoutInMinutes: 0
@@ -40,6 +30,34 @@ stages:
       - template: templates/set-py-packaging-variables-step.yml
 
       - task: CmdLine@2
+        displayName: Build builder stage of docker file
+        inputs:
+          script: |
+            docker build \
+              --pull \
+              -t ${{ variables.docker_image_prefix }}-manylinux-gpu-release-stage1 \
+              --target builder \
+              --build-arg BUILD_FLAG="${{ parameters.build_flag }}" \
+              -f ${{ variables.linux_gpu_dockerfile }} .
+          workingDirectory: $(Build.SourcesDirectory)
+
+      - task: CmdLine@2
+        displayName: Run tests
+        inputs:
+          script: |
+            docker run \
+              --gpus all \
+              --rm \
+              ${{ variables.docker_image_prefix }}-manylinux-gpu-release-stage1 \
+              python onnxruntime/tools/ci_build/build.py \
+              --build_dir build \
+              --config Release \
+              --test \
+              --enable_onnx_tests
+          workingDirectory: $(Build.SourcesDirectory)
+
+      - task: CmdLine@2
+        displayName: Build entire docker file
         inputs:
           script: |
             docker build \
@@ -47,7 +65,7 @@ stages:
               -t ${{ variables.docker_image_prefix }}-manylinux-gpu-release \
               --build-arg BUILD_FLAG="${{ parameters.build_flag }}" \
               -f ${{ variables.linux_gpu_dockerfile }} .
-          workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
+          workingDirectory: $(Build.SourcesDirectory)
 
       - task: AzureKeyVault@1
         inputs:
@@ -61,7 +79,7 @@ stages:
           script: |
             echo $(OrtreleasePassword) > password.txt
             cat password.txt | docker login --username ortrelease --password-stdin ortrelease.azurecr.io
-            docker tag onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 ortrelease.azurecr.io/onnxruntime-training:${{ parameters.image_tag }}
+            docker tag ${{ variables.docker_image_prefix }}-manylinux-gpu-release ortrelease.azurecr.io/onnxruntime-training:${{ parameters.image_tag }}
             docker push ortrelease.azurecr.io/onnxruntime-training:${{ parameters.image_tag }}
 
       - template: templates/component-governance-component-detection-steps.yml

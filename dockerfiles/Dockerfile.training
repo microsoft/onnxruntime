@@ -11,7 +11,7 @@ ARG PYTORCH_VERSION=1.6.0
 ARG BUILD_FLAG=--build
 
 # cuda development image for building sources
-FROM nvidia/cuda:10.2-cudnn7-devel-ubuntu18.04 as build
+FROM nvidia/cuda:10.2-cudnn7-devel-ubuntu18.04 as builder
 
 # set location for builds
 WORKDIR /stage
@@ -124,9 +124,7 @@ RUN echo python tools/ci_build/build.py \
         --parallel \
         --build_dir build \
         --build_wheel \
-        --build \
-        --test \
-        "${BUILD_FLAG}"
+        --build 
 RUN cd /stage && git clone https://github.com/microsoft/onnxruntime.git &&\
     cd onnxruntime &&\
     git checkout master &&\
@@ -146,9 +144,7 @@ RUN cd /stage && git clone https://github.com/microsoft/onnxruntime.git &&\
         --parallel \
         --build_dir build \
         --build_wheel \
-        --build \
-        --test \
-        "${BUILD_FLAG}" && \
+        --build  && \
     pip install build/Release/dist/*.whl
 
 # switch to cuda runtime environment
@@ -158,7 +154,7 @@ WORKDIR /stage
 
 # install ucx
 # note: launch with --cap-add=sys_nice to avoid 'mbind' warnings
-COPY --from=build /opt/ucx /opt/ucx
+COPY --from=builder /opt/ucx /opt/ucx
 ENV PATH=/opt/ucx/bin:$PATH
 ENV LD_LIBRARY_PATH=/opt/ucx/lib:$LD_LIBRARY_PATH
 
@@ -166,7 +162,7 @@ ENV LD_LIBRARY_PATH=/opt/ucx/lib:$LD_LIBRARY_PATH
 # note: permit mpirun as root for Azure cluster submissions
 # note: enforce openmpi select ucx or fail
 ARG OPENMPI_VERSION
-COPY --from=build /opt/openmpi-${OPENMPI_VERSION} /opt/openmpi-${OPENMPI_VERSION}
+COPY --from=builder /opt/openmpi-${OPENMPI_VERSION} /opt/openmpi-${OPENMPI_VERSION}
 ENV PATH=/opt/openmpi-${OPENMPI_VERSION}/bin:$PATH
 ENV LD_LIBRARY_PATH=/opt/openmpi-${OPENMPI_VERSION}/lib:$LD_LIBRARY_PATH
 ENV OMPI_ALLOW_RUN_AS_ROOT=1
@@ -180,7 +176,7 @@ RUN apt-get -y update && apt-get -y --no-install-recommends install \
     ldconfig
 
 # copy conda environment (includes numpy, mpi4py, pytorch, onnxruntime)
-COPY --from=build /opt/conda /opt/conda
+COPY --from=builder /opt/conda /opt/conda
 ENV PATH=/opt/conda/bin:${PATH}
 
 # make ssh/sshd less strict for wiring containers on Azure VM scale set
@@ -217,4 +213,4 @@ RUN conda remove -y cmake &&\
     apt-get autoremove -y &&\
     rm -fr /stage
 WORKDIR /workspace
-COPY --from=build /stage/*.txt /workspace/
+COPY --from=builder /stage/*.txt /workspace/
