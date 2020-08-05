@@ -1,14 +1,14 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <Import Project="packages\Microsoft.Windows.CsWinRT.0.1.0-prerelease.200512.7\build\Microsoft.Windows.CsWinRT.props" Condition="Exists('packages\Microsoft.Windows.CsWinRT.0.1.0-prerelease.200512.7\build\Microsoft.Windows.CsWinRT.props')" />
+  <Import Project="packages\Microsoft.Windows.CsWinRT.0.1.0-prerelease.200629.3\build\Microsoft.Windows.CsWinRT.props" Condition="Exists('packages\Microsoft.Windows.CsWinRT.0.1.0-prerelease.200629.3\build\Microsoft.Windows.CsWinRT.props')" />
   <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <ProjectGuid>{717C645E-9C4A-4EBF-A0AF-676B265E8CDA}</ProjectGuid>
     <OutputType>Exe</OutputType>
-    <RootNamespace>Microsoft.AI.MachineLearning.Tests.CSharp</RootNamespace>
-    <AssemblyName>Microsoft.AI.MachineLearning.Tests.CSharp</AssemblyName>
+    <RootNamespace>Microsoft.AI.MachineLearning.Tests.DotNetFramework4_7_2</RootNamespace>
+    <AssemblyName>Microsoft.AI.MachineLearning.Tests.DotNetFramework4_7_2</AssemblyName>
     <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
@@ -59,7 +59,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="Microsoft.AI.MachineLearning.Interop, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>packages\Microsoft.AI.MachineLearning.1.3.1-dev-20200626-0616-f44313c3d\lib\netstandard2.0\Microsoft.AI.MachineLearning.Interop.dll</HintPath>
+      <HintPath>packages\Microsoft.AI.MachineLearning.[PackageVersion]\lib\netstandard2.0\Microsoft.AI.MachineLearning.Interop.dll</HintPath>
     </Reference>
     <Reference Include="Microsoft.Windows.SDK.NET, Version=10.0.18362.3, Culture=neutral, processorArchitecture=MSIL">
       <HintPath>packages\Microsoft.Windows.SDK.NET.10.0.18362.3-preview\lib\netstandard2.0\Microsoft.Windows.SDK.NET.dll</HintPath>
@@ -73,7 +73,7 @@
     <Reference Include="System.Net.Http" />
     <Reference Include="System.Xml" />
     <Reference Include="winrt.runtime, Version=0.1.0.1677, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>packages\Microsoft.Windows.CsWinRT.0.1.0-prerelease.200512.7\lib\netstandard2.0\winrt.runtime.dll</HintPath>
+      <HintPath>packages\Microsoft.Windows.CsWinRT.0.1.0-prerelease.200629.3\lib\netstandard2.0\winrt.runtime.dll</HintPath>
     </Reference>
   </ItemGroup>
   <ItemGroup>
@@ -102,10 +102,10 @@
     <PropertyGroup>
       <ErrorText>This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
     </PropertyGroup>
-    <Error Condition="!Exists('packages\Microsoft.Windows.CsWinRT.0.1.0-prerelease.200512.7\build\Microsoft.Windows.CsWinRT.props')" Text="$([System.String]::Format('$(ErrorText)', 'packages\Microsoft.Windows.CsWinRT.0.1.0-prerelease.200512.7\build\Microsoft.Windows.CsWinRT.props'))" />
-    <Error Condition="!Exists('packages\Microsoft.Windows.CsWinRT.0.1.0-prerelease.200512.7\build\Microsoft.Windows.CsWinRT.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\Microsoft.Windows.CsWinRT.0.1.0-prerelease.200512.7\build\Microsoft.Windows.CsWinRT.targets'))" />
-    <Error Condition="!Exists('packages\Microsoft.AI.MachineLearning.1.3.1-dev-20200626-0616-f44313c3d\build\netstandard2.0\Microsoft.AI.MachineLearning.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\Microsoft.AI.MachineLearning.1.3.1-dev-20200626-0616-f44313c3d\build\netstandard2.0\Microsoft.AI.MachineLearning.targets'))" />
+    <Error Condition="!Exists('packages\Microsoft.Windows.CsWinRT.0.1.0-prerelease.200629.3\build\Microsoft.Windows.CsWinRT.props')" Text="$([System.String]::Format('$(ErrorText)', 'packages\Microsoft.Windows.CsWinRT.0.1.0-prerelease.200629.3\build\Microsoft.Windows.CsWinRT.props'))" />
+    <Error Condition="!Exists('packages\Microsoft.Windows.CsWinRT.0.1.0-prerelease.200629.3\build\Microsoft.Windows.CsWinRT.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\Microsoft.Windows.CsWinRT.0.1.0-prerelease.200629.3\build\Microsoft.Windows.CsWinRT.targets'))" />
+    <Error Condition="!Exists('packages\Microsoft.AI.MachineLearning.[PackageVersion]\build\netstandard2.0\Microsoft.AI.MachineLearning.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\Microsoft.AI.MachineLearning.[PackageVersion]\build\netstandard2.0\Microsoft.AI.MachineLearning.targets'))" />
   </Target>
-  <Import Project="packages\Microsoft.Windows.CsWinRT.0.1.0-prerelease.200512.7\build\Microsoft.Windows.CsWinRT.targets" Condition="Exists('packages\Microsoft.Windows.CsWinRT.0.1.0-prerelease.200512.7\build\Microsoft.Windows.CsWinRT.targets')" />
-  <Import Project="packages\Microsoft.AI.MachineLearning.1.3.1-dev-20200626-0616-f44313c3d\build\netstandard2.0\Microsoft.AI.MachineLearning.targets" Condition="Exists('packages\Microsoft.AI.MachineLearning.1.3.1-dev-20200626-0616-f44313c3d\build\netstandard2.0\Microsoft.AI.MachineLearning.targets')" />
+  <Import Project="packages\Microsoft.Windows.CsWinRT.0.1.0-prerelease.200629.3\build\Microsoft.Windows.CsWinRT.targets" Condition="Exists('packages\Microsoft.Windows.CsWinRT.0.1.0-prerelease.200629.3\build\Microsoft.Windows.CsWinRT.targets')" />
+  <Import Project="packages\Microsoft.AI.MachineLearning.[PackageVersion]\build\netstandard2.0\Microsoft.AI.MachineLearning.targets" Condition="Exists('packages\Microsoft.AI.MachineLearning.[PackageVersion]\build\netstandard2.0\Microsoft.AI.MachineLearning.targets')" />
 </Project>
