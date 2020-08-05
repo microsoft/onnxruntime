@@ -798,7 +798,7 @@ if (onnxruntime_USE_HIP)
   set(CMAKE_MODULE_PATH "${onnxruntime_HIP_HOME}/hip/cmake" ${CMAKE_MODULE_PATH})
   find_package(HIP)
 
-  find_library(HIP_LIB hip_hcc REQUIRED)
+  find_library(HIP_LIB amdhip64 REQUIRED)
   find_library(HIP_BLAS hipblas REQUIRED)
   find_library(MIOPEN_LIB MIOpen REQUIRED)
   find_library(RCCL_LIB rccl REQUIRED)
