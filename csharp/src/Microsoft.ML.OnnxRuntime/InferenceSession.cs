@@ -193,17 +193,11 @@ namespace Microsoft.ML.OnnxRuntime
             using (var cleanupList = new DisposableList<IDisposable>())
             {
                 var inputNamesArray = ConvertNamesToUtf8(inputNames, n => n, cleanupList);
+                IntPtr[] inputValuesArray = GetOrtValuesHandles(inputValues, true);
                 var outputNamesArray = ConvertNamesToUtf8(outputNames, n => n, cleanupList);
 
-                int inputIndex = 0;
-                IntPtr[] inputValuesArray = new IntPtr[inputValues.Count];
-                foreach (var input in inputValues)
-                {
-                    inputValuesArray[inputIndex] = input.Value.Handle;
-                    inputIndex++;
-                }
 
-                var ortValues = RunImpl(options, inputNamesArray, inputNamesArray, outputNamesArray, cleanupList);
+                var ortValues = RunImpl(options, inputNamesArray, inputValuesArray, outputNamesArray, cleanupList);
                 return CreateDisposableResult(ortValues, outputNames);
             }
         }
@@ -256,29 +250,11 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 // prepare inputs
                 var inputNamesArray = ConvertNamesToUtf8(inputNames, n => n, cleanupList);
-                var outputNamesArray = ConvertNamesToUtf8(outputNames, n => n, cleanupList);
-
-                IntPtr[] inputValuesArray = new IntPtr[inputNames.Count];
-                int inputIndex = 0;
-                foreach (var input in inputValues)
-                {
-                    inputValuesArray[inputIndex] = input.Value.Handle;
-                    inputIndex++;
-                }
+                IntPtr[] inputValuesArray = GetOrtValuesHandles(inputValues, true);
 
                 // prepare outputs
-                IntPtr[] outputValuesArray = new IntPtr[outputNames.Count];
-                int outputIndex = 0;
-                foreach (var output in outputValues)
-                {
-                    if (output.ElementType == Tensors.TensorElementType.String)
-                    {
-                        throw new NotSupportedException("Using string type FixedBufferOnnxValue in outputs is not supported.");
-                    }
-
-                    outputValuesArray[outputIndex] = output.Value.Handle;
-                    outputIndex++;
-                }
+                var outputNamesArray = ConvertNamesToUtf8(outputNames, n => n, cleanupList);
+                IntPtr[] outputValuesArray = GetOrtValuesHandles(outputValues, false);
 
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtRun(
                                                     _nativeHandle,
@@ -325,8 +301,9 @@ namespace Microsoft.ML.OnnxRuntime
             using(var cleanupList = new DisposableList<IDisposable>())
             {
                 var inputNamesArray = ConvertNamesToUtf8(inputs, i => i.Name, cleanupList);
-                var outputNamesArray = ConvertNamesToUtf8(outputs, o => o.Name, cleanupList);
                 var inputValuesArray = GetOrtValuesHandles(inputs, cleanupList);
+
+                var outputNamesArray = ConvertNamesToUtf8(outputs, o => o.Name, cleanupList);
                 var outputValuesArray = GetOrtValuesHandles(outputs, cleanupList);
 
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtRun(
@@ -386,17 +363,7 @@ namespace Microsoft.ML.OnnxRuntime
 
                 // prepare outputs
                 var outputNamesArray = ConvertNamesToUtf8(outputNames, n => n, cleanupList);
-                IntPtr[] outputValuesArray = new IntPtr[outputValues.Count];
-                int outputIndex = 0;
-                foreach (var output in outputValues)
-                {
-                    if (output.ElementType == TensorElementType.String)
-                    {
-                        throw new NotSupportedException("Using string type FixedBufferOnnxValue in outputs is not supported.");
-                    }
-                    outputValuesArray[outputIndex] = output.Value.Handle;
-                    outputIndex++;
-                }
+                var outputValuesArray = GetOrtValuesHandles(outputValues, false);
 
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtRun(
                                                     _nativeHandle,
@@ -453,13 +420,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 // prepare inputs
                 var inputNamesArray = ConvertNamesToUtf8(inputNames, n => n, cleanupList);
-                IntPtr[] inputValuesArray = new IntPtr[inputValues.Count];
-                int inputIndex = 0;
-                foreach (var input in inputValues)
-                {
-                    inputValuesArray[inputIndex] = input.Value.Handle;
-                    inputIndex++;
-                }
+                var inputValuesArray = GetOrtValuesHandles(inputValues, true);
 
                 // prepare outputs
                 var outputNamesArray = ConvertNamesToUtf8(outputs, o => o.Name, cleanupList);
@@ -615,12 +576,27 @@ namespace Microsoft.ML.OnnxRuntime
                 }
                 cleanupList.Add(ortValue);
                 result[inputIndex] = ortValue.Handle;
-                inputIndex++;
             }
             return result;
         }
 
-        private DisposableList<OrtValue> RunImpl(RunOptions options, IntPtr[] inputNames, IntPtr[] inputValues, IntPtr[] outputNames,
+        private IntPtr[] GetOrtValuesHandles(IReadOnlyCollection<FixedBufferOnnxValue> values, bool input)
+        {
+            var valuesArray = new IntPtr[values.Count];
+            for (int index = 0; index < values.Count; ++index)
+            {
+                var v = values.ElementAt(index);
+                if (!input && v.ElementType == Tensors.TensorElementType.String)
+                {
+                    throw new NotSupportedException("Using string type FixedBufferOnnxValue in outputs is not supported.");
+                }
+                valuesArray[index] = v.Value.Handle;
+            }
+            return valuesArray;
+        }
+
+
+    private DisposableList<OrtValue> RunImpl(RunOptions options, IntPtr[] inputNames, IntPtr[] inputValues, IntPtr[] outputNames,
             DisposableList<IDisposable> cleanupList)
         {
             var ortValues = new DisposableList<OrtValue>(outputNames.Length);
