@@ -31,64 +31,15 @@ class SingleKernelExecutionFrame final : public IExecutionFrame {
   class Info {
    public:
     Info(std::unique_ptr<OpKernel> kernel,
-         const logging::Logger &logger, const std::unique_ptr<IExecutionProvider>& provider)
-        : kernel_(std::move(kernel)),
-          logger_(&logger),
-          provider_(provider)
-    {
-      ORT_ENFORCE(kernel_, "kernel cannot be null");
-      ORT_ENFORCE(provider_, "provider cannot be null");
-
-      allocator_ = provider_->GetAllocator(provider_->GetDeviceId(), OrtMemTypeDefault);
-
-      auto &node = kernel_->Node();
-
-      input_index_to_mlvalue_map_ = std::vector<int> (node.InputDefs().size(), -1);
-      output_index_to_mlvalue_map_ = std::vector<int> (node.OutputDefs().size(), -1);
-
-      if (node.ImplicitInputDefs().size()) {
-        // not sure how to handle this correctly
-        throw new NotImplementedException("Implicit inputs are not supported");
-      }
-
-      // initialize inputs and outputs with null values
-      OrtValue null_value;
-      node.ForEachWithIndex(node.InputDefs(),
-                            [this](const NodeArg &arg, size_t index) {
-                              this->AddInput(OrtValue(), index, arg.Name());
-                              return Status::OK();
-                            });
-
-      node.ForEachWithIndex(node.OutputDefs(),
-                            [this](const NodeArg &arg, size_t index) {
-                              this->AddOutput(OrtValue(), index, arg.Name());
-                              return Status::OK();
-                            });
-    }
+         const logging::Logger &logger, const std::unique_ptr<IExecutionProvider>& provider);
 
     AllocatorPtr GetAllocator() const {
       return allocator_;
     }
 
-    Status AddOutput(OrtValue value, int index, const std::string &name) {
-      int mlvalue_idx = value_name_idx_map_.Add(name);
-      ort_value_idx_nodearg_map_[mlvalue_idx] = kernel_->Info().GetOutputType(index);
+    Status AddOutput(OrtValue value, int index, const std::string &name);
 
-      output_index_to_mlvalue_map_[index] = mlvalue_idx;
-      fetches_.push_back(value);
-      fetches_mlvalue_idxs_.push_back(mlvalue_idx);
-      return Status::OK();
-    }
-
-    Status AddInput(OrtValue value, int index, const std::string &name) {
-      int mlvalue_idx = value_name_idx_map_.Add(name);
-
-      input_index_to_mlvalue_map_[index] = mlvalue_idx;
-      ort_value_idx_nodearg_map_[mlvalue_idx] = kernel_->Info().GetInputType(index);
-      feeds_.push_back(value);
-      feed_mlvalue_idxs_.push_back(mlvalue_idx);
-      return Status::OK();
-    }
+    Status AddInput(OrtValue value, int index, const std::string &name);
 
    protected:
 
@@ -138,8 +89,7 @@ class SingleKernelExecutionFrame final : public IExecutionFrame {
 
   Status Compute() {
     OpKernelContext context(this, info_->kernel_.get(), nullptr, *info_->logger_);
-    Status status = info_->kernel_->Compute(&context);
-    return status;
+    return info_->kernel_->Compute(&context);
   }
 
 
@@ -191,151 +141,15 @@ class ExecutableKernelContextImpl {
   }
 
 
-  Status AddInput(ONNXTensorElementDataType type) {
-    std::unique_ptr<ONNX_NAMESPACE::TypeProto> type_proto = std::make_unique<ONNX_NAMESPACE::TypeProto>();
+  Status AddInput(ONNXTensorElementDataType type);
 
-    Status status = SetupTensorType(type_proto, type);
-    if (!status.IsOK()) {
-      return status;
-    }
+  Status AddOutput(ONNXTensorElementDataType type);
 
-    std::ostringstream oss;
-    oss << "Input_" << input_args_.size();
-    std::string name = oss.str();
-
-    std::unique_ptr<NodeArg> arg_ptr = std::make_unique<NodeArg>(name, type_proto.get());
-    input_args_.push_back(arg_ptr.get());
-    types_.push_back(std::move(type_proto));
-    args_.push_back(std::move(arg_ptr));
-    return Status::OK();
-  }
-
-  Status AddOutput(ONNXTensorElementDataType type) {
-
-    std::unique_ptr<ONNX_NAMESPACE::TypeProto> type_proto = std::make_unique<ONNX_NAMESPACE::TypeProto>();
-
-    Status status = SetupTensorType(type_proto, type);
-    if (!status.IsOK()) {
-      return status;
-    }
-
-    std::ostringstream oss;
-    oss << "Output_" << output_args_.size();
-    std::string name = oss.str();
-
-    std::unique_ptr<NodeArg> arg_ptr = std::make_unique<NodeArg>(name, type_proto.get());
-
-    output_args_.push_back(arg_ptr.get());
-    types_.push_back(std::move(type_proto));
-    args_.push_back(std::move(arg_ptr));
-    return Status::OK();
-  }
-
-  Status CreateExecutionFrame(KernelSessionImpl* session, SingleKernelExecutionFrame** frame, size_t provider_id) {
-    auto& graph = session->model->MainGraph();
-    std::string description;
-    Node& node = graph.AddNode(
-        name_,
-        op_type_,
-        description,
-        input_args_,
-        output_args_);
-    Status status = graph.Resolve();
-    if (!status.IsOK()){
-      return status;
-    }
-
-    auto const& execution_provider = session->provider_list[provider_id];
-
-    node.SetExecutionProviderType(execution_provider->Type());
-
-    std::shared_ptr<KernelRegistry> registry = execution_provider->GetKernelRegistry();
-    std::unique_ptr<OpKernel> op_kernel;
-    status = registry->TryCreateKernel(node,
-                                       *execution_provider,
-                                       std::unordered_map<int, OrtValue>(),
-                                       OrtValueNameIdxMap(),
-                                       FuncManager(),
-                                       DataTransferManager(),
-                                       op_kernel);
-
-    if (!status.IsOK()) {
-      return status;
-    }
-
-    // create the context info
-    std::unique_ptr<SingleKernelExecutionFrame::Info> info = std::make_unique<SingleKernelExecutionFrame::Info>(
-        std::move(op_kernel),
-        logging::LoggingManager::DefaultLogger(),
-        execution_provider);
-
-    *frame = new SingleKernelExecutionFrame(std::move(info));
-    return Status::OK();
-  }
+  Status CreateExecutionFrame(KernelSessionImpl* session, SingleKernelExecutionFrame** frame, size_t provider_id);
 
  private:
 
-  Status SetupTensorType(std::unique_ptr<ONNX_NAMESPACE::TypeProto> const &type_proto, ONNXTensorElementDataType type) {
-    ONNX_NAMESPACE::TypeProto::Tensor *tensor_type = type_proto->mutable_tensor_type();
-
-    switch (type) {
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
-        tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto::FLOAT);
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
-        tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto::UINT8);
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
-        tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto::INT8);
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
-        tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto::UINT16);
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:
-        tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto::INT16);
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
-        tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto::INT32);
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
-        tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto::UINT32);
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
-        tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto::INT64);
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
-        tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto::UINT64);
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:
-        tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto::STRING);
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
-        tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto::BOOL);
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
-        tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto::FLOAT16);
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
-        tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto::BFLOAT16);
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
-        tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto::DOUBLE);
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64:
-        tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto::COMPLEX64);
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128:
-        tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto::COMPLEX128);
-        break;
-      default: {
-        std::ostringstream oss;
-        oss << "type " << type << " is not supported in this function";
-        std::string errmsg = oss.str();
-        return Status(ONNXRUNTIME, NOT_IMPLEMENTED, errmsg);
-      }
-    }
-    return Status::OK();
-  }
+  Status SetupTensorType(std::unique_ptr<ONNX_NAMESPACE::TypeProto> const &type_proto, ONNXTensorElementDataType type);
 
   // Node attributes
   std::string name_;
