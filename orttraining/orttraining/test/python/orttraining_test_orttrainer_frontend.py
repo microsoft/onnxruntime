@@ -8,7 +8,7 @@ from numpy.testing import assert_allclose
 
 from onnxruntime.capi.training import orttrainer_options as orttrainer_options
 from onnxruntime.capi.training import model_desc_validation as md_val
-from onnxruntime.capi.training import orttrainer, amp, optim, TrainStepInfo, _utils
+from onnxruntime.capi.training import orttrainer, amp, optim, TrainStepInfo, _utils, debug
 
 
 @pytest.mark.parametrize("test_input", [
@@ -596,36 +596,30 @@ def testORTWeights():
    
     optim_config = optim.LambConfig()
     opts = orttrainer.ORTTrainerOptions({'debug' : {'deterministic_compute': True}})
+
     # Create ORTTrainer
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=opts)
 
     # Preparing data
     train_data, val_data, _ = utils.prepare_data('cpu', 20, 20)
-
-    import numpy as np
-
-    # Export model to ONNX
-    step_fn = trainer.train_step
     data, targets = utils.get_batch(train_data, 0)
+    
+    from onnxruntime.capi._pybind_state import set_seed
+    torch.manual_seed(0)
+    set_seed(0)
+
+    # Run first model train step
     output = trainer.train_step(data, targets)
     assert trainer._onnx_model is not None
-    print(type(trainer._training_session.get_state()))
-    for name, val in trainer._training_session.get_state().items():
-        #print(name, len(val))#val.size())
-        np_vals = np.array(val).flatten()
     
-    second_trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=opts)
+    # Reset the seeds
+    torch.manual_seed(0)
+    set_seed(0)
 
-    # Export model to ONNX
+    # Run second model train step
+    second_trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=opts)
     output = second_trainer.train_step(data, targets)
     assert second_trainer._onnx_model is not None
-    print(type(second_trainer._training_session.get_state()))
-    for (a_name, a_val), (b_name, b_val) in zip(trainer._training_session.get_state().items(), second_trainer._training_session.get_state().items()):
-        #print(name, len(val))#val.size())
-        np_a_vals = np.array(a_val).flatten()
-        np_b_vals = np.array(b_val).flatten()
-        print(a_name, np.abs(np_a_vals-np_b_vals).max())
-        #assert_allclose(a_val, b_val, atol=1e-4, err_msg="weight mismatch")
-         
-        assert np_a_vals.shape == np_b_vals.shape
+    
+    debug.compare_weights(trainer._training_session.get_state(), second_trainer._training_session.get_state())
 
