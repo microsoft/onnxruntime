@@ -457,7 +457,7 @@ def testLRSchedulerUpdateImpl(lr_scheduler, expected_values):
         assert_allclose(lr_list[0],
                         expected_values[step], rtol=rtol, err_msg="lr mismatch")
 
-def _prep_model_and_data(optim_config, options=None, step_fn='train_step', device='cpu'):
+def generate_pytorch_transformer_model_sample(optim_config, options=None, step_fn='train_step', device='cpu'):
     # Loading external TransformerModel model for testing
     # A manual import is done as this example is not part of onnxruntime package,
     # but resides on the onnxruntime repo
@@ -521,7 +521,7 @@ def testInstantiateORTTrainer(step_fn, lr_scheduler, expected_lr_values):
    
     opts = orttrainer.ORTTrainerOptions(opts)
 
-    model, model_desc, trainer, data, targets = _prep_model_and_data(optim_config, opts, step_fn)
+    model, model_desc, trainer, data, targets = generate_pytorch_transformer_model_sample(optim_config, opts, step_fn)
 
     # Export model to ONNX
     if step_fn == 'eval_step':
@@ -609,9 +609,9 @@ def testORTDeterministicCompute(seeds, device_id):
     })
     
     torch.manual_seed(seeds[0])
-    set_seed(seeds[0])
+    set_seed(seeds[1])
 
-    model, model_desc, trainer, data, targets = _prep_model_and_data(optim_config, opts,  device=device_id)
+    model, model_desc, trainer, data, targets = generate_pytorch_transformer_model_sample(optim_config, opts,  device=device_id)
 
     # Run first model train step
     output = trainer.train_step(data, targets)
@@ -619,10 +619,10 @@ def testORTDeterministicCompute(seeds, device_id):
     
     # Reset the seeds
     torch.manual_seed(seeds[0])
-    set_seed(seeds[0])
+    set_seed(seeds[1])
 
     # Run second model train step
-    _, _, second_trainer, _, _ = _prep_model_and_data(optim_config, opts, device=device_id)
+    _, _, second_trainer, _, _ = generate_pytorch_transformer_model_sample(optim_config, opts, device=device_id)
     output = second_trainer.train_step(data, targets)
     assert second_trainer._onnx_model is not None
     assert id(trainer._onnx_model) != id(second_trainer._onnx_model)

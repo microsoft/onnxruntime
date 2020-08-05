@@ -7,15 +7,14 @@ import torch
 from numpy.testing import assert_allclose
 
 # Inputs are the state_dicts for each of the model (dictionary for each layer and weights)
-def compare_onnx_weights(model_a, model_b, prnt=False, rtol=1e-4):
+def compare_onnx_weights(model_a, model_b, verbose=False, rtol=1e-4):
     r"""Compare onnx weights method
     Compares the weights of two different ONNX models and throws an error when they diverge
-
     Args:
         model_a, model_b: The state_dicts of two ONNX models containing a dictionary 
-            of the weights for each layer of the respective model.
-        prnt: Indicates if the max absolute difference for each layer should be
-            calculated and printed for debug information. Default: False.
+    of the weights for each layer of the respective model.
+        verbose: Indicates if the max absolute difference for each layer should be
+    calculated and printed for debug information. Default: False.
         rtol: Tolerance for divergence. Default: 1e-4.
 
     """
@@ -25,7 +24,7 @@ def compare_onnx_weights(model_a, model_b, prnt=False, rtol=1e-4):
         np_a_vals = np.array(a_val).flatten()
         np_b_vals = np.array(b_val).flatten()
         assert np_a_vals.shape == np_b_vals.shape
-        if prnt:
+        if verbose:
             print(a_name, np.abs(np_a_vals-np_b_vals).max())
         assert_allclose(a_val, b_val, rtol=rtol, err_msg="weight mismatch")
          
