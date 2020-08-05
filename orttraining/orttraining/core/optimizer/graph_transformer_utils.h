@@ -6,6 +6,7 @@
 #include <gsl/gsl>
 
 #include "core/optimizer/graph_transformer.h"
+#include "orttraining/core/session/training_session.h"
 
 namespace onnxruntime {
 struct FreeDimensionOverride;
@@ -17,7 +18,7 @@ namespace transformer_utils {
 std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
     TransformerLevel level,
     const std::unordered_set<std::string>& weights_to_train,
-    bool enable_gelu_approximation,
+    const TrainingSession::TrainingConfiguration::GraphTransformerConfiguration& config,
     const std::vector<std::string>& rules_and_transformers_to_enable = {});
 
 /** Generates all predefined (both rule-based and non-rule-based) transformers for this level.
