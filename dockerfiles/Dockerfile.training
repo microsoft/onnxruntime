@@ -9,6 +9,9 @@ ARG NUMPY_VERSION=1.18.5
 ARG ONNX_VERSION=1.7.0
 ARG PYTORCH_VERSION=1.6.0
 
+ARG BUILD_VERSION=Release
+ARG OPENMPI_PATH=/opt/openmpi-${OPENMPI_VERSION} 
+
 # cuda development image for building sources
 FROM nvidia/cuda:10.2-cudnn7-devel-ubuntu18.04 as build
 
@@ -61,13 +64,14 @@ RUN apt-get -y update && apt-get -y --no-install-recommends install \
 # note: require --enable-orterun-prefix-by-default for Azure machine learning compute
 # note: disable verbs as we use ucx middleware and don't want btl openib warnings
 ARG OPENMPI_VERSION
+ARG OPENMPI_PATH
 ARG OPENMPI_TARNAME=openmpi-${OPENMPI_VERSION}
 ARG OPENMPI_URL=https://download.open-mpi.org/release/open-mpi/v%OMPI_BASE%/${OPENMPI_TARNAME}.tar.gz
 RUN export OMPI_BASE=${OPENMPI_VERSION%.*} &&\
     cd /stage && curl -fSsL `echo ${OPENMPI_URL} | sed s/%OMPI_BASE%/$OMPI_BASE/` | tar xzf - &&\
     cd ${OPENMPI_TARNAME} &&\
     ./configure \
-        --prefix=/opt/openmpi-${OPENMPI_VERSION} \
+        --prefix=${OPENMPI_PATH} \
         --with-ucx=/opt/ucx \
         --without-verbs \
         --with-cuda=/usr/local/cuda \
@@ -76,8 +80,8 @@ RUN export OMPI_BASE=${OPENMPI_VERSION%.*} &&\
         --enable-mca-no-build=btl-uct &&\
     make -j"$(nproc)" install &&\
     ldconfig
-ENV PATH=/opt/openmpi-${OPENMPI_VERSION}/bin:$PATH
-ENV LD_LIBRARY_PATH=/opt/openmpi-${OPENMPI_VERSION}/lib:$LD_LIBRARY_PATH
+ENV PATH=${OPENMPI_PATH}/bin:$PATH
+ENV LD_LIBRARY_PATH=${OPENMPI_PATH}/lib:$LD_LIBRARY_PATH
 
 # install mpi4py (be sure to link existing /opt/openmpi-xxx)
 RUN CC=mpicc MPICC=mpicc pip install mpi4py --no-binary mpi4py
@@ -108,6 +112,7 @@ RUN pip install torch==${PYTORCH_VERSION}
 #     pip install build/wheel/*.whl
 
 # build onnxruntime wheel with cuda and mpi support
+ARG BUILD_VERSION
 RUN cd /stage && git clone https://github.com/microsoft/onnxruntime.git &&\
     cd onnxruntime &&\
     git checkout master &&\
@@ -116,9 +121,9 @@ RUN cd /stage && git clone https://github.com/microsoft/onnxruntime.git &&\
     python tools/ci_build/build.py \
         --cmake_extra_defines \
             ONNXRUNTIME_VERSION=`cat ./VERSION_NUMBER` \
-        --config Release \
+        --config ${BUILD_VERSION} \
         --enable_training \
-        --mpi_home /opt/openmpi-${OPENMPI_VERSION} \
+        --mpi_home ${OPENMPI_PATH} \
         --use_cuda \
         --cuda_home /usr/local/cuda \
         --cudnn_home /usr/lib/x86_64-linux-gnu/ \
@@ -129,7 +134,7 @@ RUN cd /stage && git clone https://github.com/microsoft/onnxruntime.git &&\
         --build \
         --build_wheel \
         --skip_tests &&\
-    pip install build/Release/dist/*.whl
+    pip install build/${BUILD_VERSION}/dist/*.whl
 
 # switch to cuda runtime environment
 # note: launch with --gpus all or nvidia-docker
@@ -146,9 +151,10 @@ ENV LD_LIBRARY_PATH=/opt/ucx/lib:$LD_LIBRARY_PATH
 # note: permit mpirun as root for Azure cluster submissions
 # note: enforce openmpi select ucx or fail
 ARG OPENMPI_VERSION
-COPY --from=build /opt/openmpi-${OPENMPI_VERSION} /opt/openmpi-${OPENMPI_VERSION}
-ENV PATH=/opt/openmpi-${OPENMPI_VERSION}/bin:$PATH
-ENV LD_LIBRARY_PATH=/opt/openmpi-${OPENMPI_VERSION}/lib:$LD_LIBRARY_PATH
+ARG OPENMPI_PATH
+COPY --from=build ${OPENMPI_PATH} ${OPENMPI_PATH}
+ENV PATH=${OPENMPI_PATH}/bin:$PATH
+ENV LD_LIBRARY_PATH=${OPENMPI_PATH}/lib:$LD_LIBRARY_PATH
 ENV OMPI_ALLOW_RUN_AS_ROOT=1
 ENV OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1
 ENV OMPI_MCA_pml=ucx
