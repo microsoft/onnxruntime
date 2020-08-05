@@ -6,18 +6,13 @@
 # license information.
 # --------------------------------------------------------------------------
 
-import os
-import sys
 import numpy as np
 import onnx
 import onnxruntime
-from onnx import helper, TensorProto, numpy_helper
-
-import re
-import subprocess
-import json
+from onnx import helper, TensorProto
 
 import abc
+
 
 class CalibrationDataReader(metaclass=abc.ABCMeta):
     @classmethod
