@@ -698,8 +698,16 @@ bool BaseOpBuilder::IsOpSupported(ModelBuilder& model_builder, const Node& node)
 bool BaseOpBuilder::HasSupportedInputs(const Node& node) {
   // We only check the type of input 0 by default
   // specific op builder can override this
+  const auto& input = *node.InputDefs()[0];
+
+  if (nullptr == input.Shape()) {
+    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
+                          << "] Input shape is null";
+    return false;
+  }
+
   int32_t input_type;
-  if (!GetType(*node.InputDefs()[0], input_type))
+  if (!GetType(input, input_type))
     return false;
 
   if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
