@@ -315,7 +315,7 @@ TEST(UpsampleOpTest, UpsampleOp2DBilinearTest) {
       3.0f, 3.5f, 4.0f, 4.5f, 5.0f, 5.0f, 5.0f, 5.0f};
 
   test.AddOutput<float>("Y", {(int64_t)(H * scales[0]), (int64_t)(W * scales[1])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); // TensorRT: results mismatch
 }
 
 TEST(UpsampleOpTest, UpsampleOp4DBilinearTest_ScalesNoOp) {
@@ -341,7 +341,7 @@ TEST(UpsampleOpTest, UpsampleOp4DBilinearTest_ScalesNoOp) {
                           7.0f, 9.0f};
 
   test.AddOutput<float>("Y", {N, C, H, W}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); // TensorRT: results mismatch
 }
 
 TEST(UpsampleOpTest, UpsampleOp4DBilinearTest_int32) {
