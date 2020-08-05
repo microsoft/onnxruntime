@@ -5,6 +5,7 @@
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/cuda_allocator.h"
+#include "torch/torch.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -69,6 +70,10 @@ static bool CanUseStridedBatchedGemm(const TensorShape& left_shape, const Tensor
   return true;
 }
 
+// Type mapping for MLFloat16 to half
+template <typename T>
+at::ScalarType get_torch_type();
+
 template <typename T>
 Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
@@ -95,6 +100,49 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   // Bail out early if the output is going to be empty
   if (Y->Shape().Size() == 0)
     return Status::OK();
+
+  if (true) {
+    int torch_device = 0;
+    cudaGetDevice(&torch_device);
+
+    auto torch_tensor_options = torch::TensorOptions().dtype(get_torch_type<T>()).device(torch::kCUDA, torch_device);
+    torch::Tensor torch_left;
+    if (!transa) {
+      torch_left = torch::zeros(c10::IntArrayRef{left_X->Shape().GetDims()}, torch_tensor_options);
+    } else {
+      torch_left = torch::zeros(c10::IntArrayRef{left_X->Shape().GetDims()}, torch_tensor_options);
+    }
+
+    torch::Tensor torch_right;
+    if (!transb) {
+      torch_right = torch::zeros(c10::IntArrayRef{right_X->Shape().GetDims()}, torch_tensor_options);
+    } else {
+      torch_right = torch::zeros(c10::IntArrayRef{right_X->Shape().GetDims()}, torch_tensor_options);
+    }
+
+    ORT_ENFORCE(cudaGetLastError() == cudaSuccess);
+
+    const CudaT* left_data = reinterpret_cast<const CudaT*>(left_X->template Data<T>());
+    const CudaT* right_data = reinterpret_cast<const CudaT*>(right_X->template Data<T>());
+    cudaMemcpy(torch_left.data_ptr(), left_data, left_X->Shape().Size() * sizeof(T), cudaMemcpyDeviceToDevice);
+    cudaMemcpy(torch_right.data_ptr(), right_data, right_X->Shape().Size() * sizeof(T), cudaMemcpyDeviceToDevice);
+
+    ORT_ENFORCE(cudaGetLastError() == cudaSuccess);
+
+    if (transa) {
+      torch_left = at::transpose(torch_left, left_X->Shape().NumDimensions() - 2, left_X->Shape().NumDimensions() - 1);
+    }
+    if (transb) {
+      torch_right = at::transpose(torch_right, right_X->Shape().NumDimensions() - 2, right_X->Shape().NumDimensions() - 1);
+    }
+
+    auto torch_result = at::matmul(torch_left, torch_right);
+
+    auto Y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
+    cudaMemcpy(Y_data, torch_result.data_ptr(), Y->Shape().Size() * sizeof(T), cudaMemcpyDeviceToDevice);
+
+    return Status::OK();
+  }
 
   CudaT one = ToCudaType<T>::FromFloat(1.0f);
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);

@@ -144,6 +144,16 @@ at::ScalarType get_torch_type<double>() {
 }
 
 template <>
+at::ScalarType get_torch_type<int8_t>() {
+  return at::kChar;
+}
+
+template <>
+at::ScalarType get_torch_type<int16_t>() {
+  return at::kShort;
+}
+
+template <>
 at::ScalarType get_torch_type<int32_t>() {
   return at::kInt;
 }
