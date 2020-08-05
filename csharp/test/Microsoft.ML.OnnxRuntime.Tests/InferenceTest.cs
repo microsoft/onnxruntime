@@ -1037,44 +1037,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
         [Fact]
-        private void TestReusingDisposedRunOutput()
-        {
-            // model takes 1x5 input of fixed type, echoes back
-            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_BOOL.pb");
-            using (var session = new InferenceSession(modelPath))
-            {
-                var container = new List<NamedOnnxValue>();
-                var tensorIn = new DenseTensor<bool>(new bool[] { true, false, true, false, true }, new int[] { 1, 5 });
-                var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
-                container.Add(nov);
-                var res1 = session.Run(container);
-
-                // Dispose the result tensor
-                res1.First().Dispose();
-
-                bool succeeded = false;
-
-                // Now try using the disposed output as input to another Run()
-                try
-                {
-                    // Run() should fail with a user friendly error message.
-                    session.Run(res1);
-                }
-
-                catch (ObjectDisposedException e)
-                {
-                    var errorString = "This instance of DisposableNamedOnnxValue has already been disposed";
-
-                    Assert.Contains(errorString, e.Message);
-
-                    succeeded = true;
-                }
-
-                Assert.True(succeeded);
-            }
-        }
-
-        [Fact]
         public void TestCreateFixedBufferOnnxValueFromStringTensor()
         {
             var tensor = new DenseTensor<string>(new string[] { "a", "b" }, new int[] { 1, 2 });
