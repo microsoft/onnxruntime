@@ -582,7 +582,10 @@ struct ProviderHostImpl : ProviderHost {
 struct ProviderSharedLibrary {
   ProviderSharedLibrary() {
     std::string full_path = Env::Default().GetRuntimePath() + std::string(LIBRARY_PREFIX "onnxruntime_providers_shared" LIBRARY_EXTENSION);
-    Env::Default().LoadDynamicLibrary(full_path, &handle_);
+    auto error = Env::Default().LoadDynamicLibrary(full_path, &handle_);
+    if (!error.IsOK())
+      LOGS_DEFAULT(ERROR) << error.ErrorMessage();
+
     if (!handle_) {
       LOGS_DEFAULT(ERROR) << "Failed to load providers shared library: " << full_path;
       return;
