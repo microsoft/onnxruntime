@@ -408,7 +408,39 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     if (dtype != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
       return true;
     }
+} else if ((optype == "Equal") || (optype == "And"))  {
+    
+    using onnx_dtype = ONNX_NAMESPACE::TensorProto_DataType;
+    auto supportedOps = std::set<std::vector<onnx_dtype>>{
+        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT },
+        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_FLOAT },
+        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_INT8 },
+        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_FLOAT },
+        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8 },
+        {onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_INT8 },
+        {onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_UINT8 },
+        {onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_INT8 },
+        {onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_INT32 },
+        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_FLOAT },
+        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8 }};
+    
+    if (optype == "Equal") {
+      supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_INT32 }),
+      supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT });
+    }
+
+    onnx_dtype input_0_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    onnx_dtype input_1_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
+    onnx_dtype output_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+
+    const std::vector<onnx_dtype> typePair{output_data_type, input_0_data_type, input_1_data_type};
+    const auto match = supportedOps.find(typePair);
+    if (match == supportedOps.end()) {
+      return true;
+    } else
+      return false;
   }
+    
 
   //Op doesn't fall into known any of unsupported modes.
   return false;
@@ -632,14 +664,17 @@ GetCapability_2020_4(const onnxruntime::GraphViewer& graph_viewer, std::string d
   std::unordered_set<std::string> ng_required_initializers;
 
   const auto unsupported_nodes = GetUnsupportedNodeIndices(graph_viewer, device_id, ng_required_initializers);
-  if(openvino_ep::backend_utils::IsDebugEnabled()){
-    std::cout << "No of unsupported nodes " << unsupported_nodes.size() << std::endl;
-    for(size_t i = 0; i < unsupported_nodes.size(); i++){
-      const auto& node = graph_viewer.GetNode(unsupported_nodes[i]);
-      std::cout << "Unsupported node op " << node->OpType() << std::endl;
+  
+  #ifndef NDEBUG
+    if(openvino_ep::backend_utils::IsDebugEnabled()){
+      std::cout << "No of unsupported nodes " << unsupported_nodes.size() << std::endl;
+      for(size_t i = 0; i < unsupported_nodes.size(); i++){
+        const auto& node = graph_viewer.GetNode(unsupported_nodes[i]);
+        std::cout << "Unsupported node op " << node->OpType() << std::endl;
+      }
     }
-  }
-
+  #endif 
+  
   //If all ops are supported, no partitioning is required. Short-circuit and avoid splitting.
   if (unsupported_nodes.empty()) {
     std::vector<std::string> inputs;
