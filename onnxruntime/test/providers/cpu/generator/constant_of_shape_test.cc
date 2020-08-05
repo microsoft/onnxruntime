@@ -128,8 +128,8 @@ void RunTypedTest(TensorProto::DataType dt, T value) {
   std::fill_n(output.begin(), output.size(), value);
   test.AddOutput<T>("output", output_dims, output);
 
-  if (T == TensorProto::DOUBLE)
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); // TensorRT: DOUBLE is not supported
+  if (dt == TensorProto::DOUBLE || dt == TensorProto::UINT8 || dt == TensorProto::UINT16 || dt == TensorProto::UINT32 || dt == TensorProto::UINT64)
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); // TensorRT: DOUBLE/UINT8/UINT16/UINT32/UINT64 is not supported
   else
     test.Run(OpTester::ExpectResult::kExpectSuccess);
 }

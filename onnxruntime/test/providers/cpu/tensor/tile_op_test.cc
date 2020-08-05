@@ -18,7 +18,7 @@ void RunTest(std::initializer_list<T> input,
   test.AddInput<T>("input", input_dims, input);
   test.AddInput<int64_t>("repeats", repeat_dims, repeat);
   test.AddOutput<T>("output", output_dims, output);
-  if (T == int8_t)
+  if (std::is_same<T, int8_t>::value)
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); // TensorRT doesn't support int8 type
   else
     test.Run();
