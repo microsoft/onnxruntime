@@ -27,11 +27,11 @@ class TestOpKernel : public OpKernel {
  public:
   TestOpKernel(const OpKernelInfo& p) : OpKernel(p) {
   }
-  Status Compute(OpKernelContext* context) const {
+  Status Compute(OpKernelContext* context) const override {
     ORT_UNUSED_PARAMETER(context);
     return Status::OK();
   }
-  Status ComputeAsync(OpKernelContext* context, DoneCallback done) const {
+  Status ComputeAsync(OpKernelContext* context, DoneCallback done) const override {
     ORT_UNUSED_PARAMETER(context);
     ORT_UNUSED_PARAMETER(done);
     return Status::OK();
@@ -175,7 +175,7 @@ INSTANTIATE_TEST_SUITE_P(SessionStateTests, SessionStateTestP, testing::ValuesIn
 class PrePackingTestOpKernel : public OpKernel {
  public:
   PrePackingTestOpKernel(const OpKernelInfo& info) : OpKernel(info) {}
-  Status Compute(OpKernelContext* context) const {
+  Status Compute(OpKernelContext* context) const override {
     ORT_UNUSED_PARAMETER(context);
     return Status::OK();
   }
