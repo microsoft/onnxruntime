@@ -37,6 +37,7 @@
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
+#include "core/optimizer/matmul_scale_fusion.h"
 #include "core/optimizer/matmul_transpose_fusion.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
@@ -702,7 +703,7 @@ TEST_F(GraphTransformationTests, TransposeMatmulFusion) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Transpose"] == 0);
   ASSERT_TRUE(op_to_count["MatMul"] == 0);
-  ASSERT_TRUE(op_to_count["TransposeMatMul"] == 1);
+  ASSERT_TRUE(op_to_count["TransposeScaleMatMul"] == 1);
 }
 
 TEST_F(GraphTransformationTests, TransposeMatmulFusionOnTwoTranspose) {
@@ -719,10 +720,10 @@ TEST_F(GraphTransformationTests, TransposeMatmulFusionOnTwoTranspose) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Transpose"] == 0);
   ASSERT_TRUE(op_to_count["MatMul"] == 0);
-  ASSERT_TRUE(op_to_count["TransposeMatMul"] == 1);
+  ASSERT_TRUE(op_to_count["TransposeScaleMatMul"] == 1);
 
   auto& node = *graph.Nodes().begin();
-  ASSERT_TRUE(node.OpType() == "TransposeMatMul");
+  ASSERT_TRUE(node.OpType() == "TransposeScaleMatMul");
   ASSERT_TRUE(static_cast<bool>(node.GetAttributes().at("transA").i()));
   ASSERT_TRUE(static_cast<bool>(node.GetAttributes().at("transB").i()));
 }
@@ -741,10 +742,10 @@ TEST_F(GraphTransformationTests, TransposeMatmulFusionOnThreeTranspose) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Transpose"] == 0);
   ASSERT_TRUE(op_to_count["MatMul"] == 0);
-  ASSERT_TRUE(op_to_count["TransposeMatMul"] == 1);
+  ASSERT_TRUE(op_to_count["TransposeScaleMatMul"] == 1);
 
   auto& node = *graph.Nodes().begin();
-  ASSERT_TRUE(node.OpType() == "TransposeMatMul");
+  ASSERT_TRUE(node.OpType() == "TransposeScaleMatMul");
   ASSERT_FALSE(static_cast<bool>(node.GetAttributes().at("transA").i()));
   ASSERT_TRUE(static_cast<bool>(node.GetAttributes().at("transB").i()));
 }
@@ -763,7 +764,7 @@ TEST_F(GraphTransformationTests, TransposeMatmulNoFusionOnInvalidPerm) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Transpose"] == 1);
   ASSERT_TRUE(op_to_count["MatMul"] == 1);
-  ASSERT_TRUE(op_to_count["TransposeMatMul"] == 0);
+  ASSERT_TRUE(op_to_count["TransposeScaleMatMul"] == 0);
 }
 
 TEST_F(GraphTransformationTests, Gemm_LeakyRelu_Fusion) {
@@ -2821,6 +2822,112 @@ TEST_F(GraphTransformationTests, ComputationReductionTransformer_GatherND_E2E) {
       EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
     }
   }
+}
+#endif
+
+#ifndef DISABLE_CONTRIB_OPS
+template <typename GraphTransformationCheckFn>
+static void TestMatMulScaleFusion(
+    const PathString& model_path, const Logger& logger,
+    GraphTransformationCheckFn graph_transformation_check,
+    const std::unordered_set<std::string>& excluded_initializer_names = {}) {
+  SCOPED_TRACE(ORT_TSTR("model path: ") + model_path);
+
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_path, model, nullptr, logger));
+  Graph& graph = model->MainGraph();
+
+  auto original_op_counts = CountOpsInGraph(graph);
+
+  onnxruntime::GraphTransformerManager graph_transformer_manager{5};
+  ASSERT_STATUS_OK(graph_transformer_manager.Register(
+      make_unique<MatMulScaleFusion>(std::unordered_set<std::string>{}, excluded_initializer_names),
+      TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformer_manager.ApplyTransformers(graph, TransformerLevel::Level2, logger));
+
+  auto transformed_op_counts = CountOpsInGraph(graph);
+
+  graph_transformation_check(graph, original_op_counts, transformed_op_counts);
+}
+
+TEST_F(GraphTransformationTests, MatMulScaleFusionFusableModels) {
+  const std::vector<PathString> one_fusion_model_paths{
+      MODEL_FOLDER "fusion/matmul_scale_in0.onnx",
+      MODEL_FOLDER "fusion/matmul_scale_in0_in1.onnx",
+      MODEL_FOLDER "fusion/matmul_scale_in0_in1_out.onnx",
+      MODEL_FOLDER "fusion/matmul_scale_transposescalematmul_in0_in1_out.onnx",
+  };
+
+  for (const auto& path : one_fusion_model_paths) {
+    TestMatMulScaleFusion(
+        path, *logger_,
+        [](const Graph& graph,
+           std::map<std::string, int> original_op_counts,
+           std::map<std::string, int> transformed_op_counts) {
+          EXPECT_EQ(transformed_op_counts["Mul"], 0);
+          EXPECT_EQ(transformed_op_counts["Div"], 0);
+          EXPECT_EQ(transformed_op_counts["MatMul"], 0);
+          EXPECT_EQ(transformed_op_counts["TransposeScaleMatMul"], 1);
+
+          // check combined scale, individual scales should all have the same value
+          const float scale_value = 3.0f;
+
+          const int num_scales =
+              original_op_counts["Mul"] + original_op_counts["Div"] + original_op_counts["TransposeScaleMatMul"];
+
+          auto fused_node = std::find_if(
+              graph.Nodes().cbegin(), graph.Nodes().cend(),
+              [](const Node& node) { return node.OpType() == "TransposeScaleMatMul"; });
+          ASSERT_NE(fused_node, graph.Nodes().cend());
+
+          auto alpha_attr = fused_node->GetAttributes().find("alpha");
+          ASSERT_NE(alpha_attr, fused_node->GetAttributes().end());
+
+          EXPECT_EQ(alpha_attr->second.f(), pow(scale_value, num_scales));
+        });
+  }
+}
+
+TEST_F(GraphTransformationTests, MatMulScaleFusionUnfusableModels) {
+  const std::vector<PathString> unfusable_model_paths{
+      MODEL_FOLDER "fusion/matmul_scale_unfusable_div_not_scale.onnx",
+      MODEL_FOLDER "fusion/matmul_scale_unfusable_scale_not_scalar.onnx",
+      MODEL_FOLDER "fusion/matmul_scale_unfusable_scale_not_constant.onnx",
+  };
+
+  for (const auto& path : unfusable_model_paths) {
+    TestMatMulScaleFusion(
+        path, *logger_,
+        [](const Graph&,
+           const std::map<std::string, int>& original_op_counts,
+           const std::map<std::string, int>& transformed_op_counts) {
+          EXPECT_EQ(original_op_counts, transformed_op_counts);
+        });
+  }
+}
+
+TEST_F(GraphTransformationTests, MatMulScaleFusionReusedInputScale) {
+  TestMatMulScaleFusion(
+      MODEL_FOLDER "fusion/matmul_scale_reused_input_scale.onnx", *logger_,
+      [](const Graph&,
+         const std::map<std::string, int>&,
+         std::map<std::string, int> transformed_op_counts) {
+        EXPECT_EQ(transformed_op_counts["Mul"], 0);
+        EXPECT_EQ(transformed_op_counts["Div"], 0);
+        EXPECT_EQ(transformed_op_counts["MatMul"], 0);
+        EXPECT_EQ(transformed_op_counts["TransposeScaleMatMul"], 2);
+      });
+}
+
+TEST_F(GraphTransformationTests, MatMulScaleFusionExcludedInitializerName) {
+  TestMatMulScaleFusion(
+      MODEL_FOLDER "fusion/matmul_scale_in0.onnx", *logger_,
+      [](const Graph&,
+         const std::map<std::string, int>& original_op_counts,
+         const std::map<std::string, int>& transformed_op_counts) {
+        EXPECT_EQ(original_op_counts, transformed_op_counts);
+      },
+      {"scale"});
 }
 #endif
 

@@ -131,10 +131,10 @@ void ProcessInputs(const std::vector<int64_t>& input_dims, const std::vector<T>&
 }
 
 template <typename T>
-void RunTransposeMatMulTest(int32_t opset_version = 7, bool transa = false, bool transb = false) {
+void RunTransposeScaleMatMulTest(int32_t opset_version = 7, bool transa = false, bool transb = false, float alpha = 1.0f) {
   std::vector<T> common_input_vals{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
   for (auto t : GenerateSimpleTestCases<T>()) {
-    OpTester test("TransposeMatMul", opset_version, onnxruntime::kMSDomain);
+    OpTester test("TransposeScaleMatMul", opset_version, onnxruntime::kMSDomain);
 
     std::vector<int64_t> input0_dims(t.input0_dims);
     std::vector<T> input0_vals;
@@ -150,6 +150,13 @@ void RunTransposeMatMulTest(int32_t opset_version = 7, bool transa = false, bool
 
     test.AddAttribute("transA", (int64_t)transa);
     test.AddAttribute("transB", (int64_t)transb);
+    test.AddAttribute("alpha", alpha);
+
+    if (alpha != 1.0f) {
+      std::transform(
+          t.expected_vals.begin(), t.expected_vals.end(), t.expected_vals.begin(),
+          [alpha](const T& val) -> T { return alpha * val; });
+    }
 
     test.AddOutput<T>("Y", t.expected_dims, t.expected_vals);
 
@@ -159,25 +166,31 @@ void RunTransposeMatMulTest(int32_t opset_version = 7, bool transa = false, bool
 }
 
 TEST(TransposeMatMulOpTest, FloatTypeNoTranspose) {
-  RunTransposeMatMulTest<float>(1);
+  RunTransposeScaleMatMulTest<float>(1);
 }
 
 #ifdef USE_CUDA  // double support only implemented in CUDA kernel
 TEST(TransposeMatMulOpTest, DoubleTypeNoTranspose) {
-  RunTransposeMatMulTest<double>(1);
+  RunTransposeScaleMatMulTest<double>(1);
 }
 #endif
 
 TEST(TransposeMatMulOpTest, FloatTypeTransposeA) {
-  RunTransposeMatMulTest<float>(1, true, false);
+  RunTransposeScaleMatMulTest<float>(1, true, false);
 }
 
 TEST(TransposeMatMulOpTest, FloatTypeTransposeB) {
-  RunTransposeMatMulTest<float>(1, false, true);
+  RunTransposeScaleMatMulTest<float>(1, false, true);
 }
 
 TEST(TransposeMatMulOpTest, FloatTypeTransposeAB) {
-  RunTransposeMatMulTest<float>(1, true, true);
+  RunTransposeScaleMatMulTest<float>(1, true, true);
+}
+
+TEST(TransposeMatMulOpTest, FloatTypeScale) {
+  RunTransposeScaleMatMulTest<float>(1, false, false, 0.5f);
+  RunTransposeScaleMatMulTest<float>(1, true, false, 2.0f);
+  RunTransposeScaleMatMulTest<float>(1, true, true, 4.0f);
 }
 
 }  // namespace transpose_matmul
