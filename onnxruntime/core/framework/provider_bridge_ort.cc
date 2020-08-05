@@ -608,8 +608,12 @@ bool EnsureSharedProviderLibrary() {
 
 struct ProviderLibrary {
   ProviderLibrary(const char* filename) {
-    if (!EnsureSharedProviderLibrary())
-      return;
+    LOGS_DEFAULT(ERROR) << "About to load shared provider library";
+    EnsureSharedProviderLibrary();
+    LOGS_DEFAULT(ERROR) << "After trying to load shared provider library, about to load the provider itself";
+
+    //    if (!EnsureSharedProviderLibrary())
+    //      return;
 
     std::string full_path = Env::Default().GetRuntimePath() + std::string(filename);
     auto error = Env::Default().LoadDynamicLibrary(full_path, &handle_);
