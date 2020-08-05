@@ -328,7 +328,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
       {
         std::unique_ptr<nnapi::Execution> execution;
         std::unique_lock<OrtMutex> lock(model->GetMutex());
-        model->PrepareForExecution(execution);
+        ORT_RETURN_IF_ERROR(model->PrepareForExecution(execution));
 
         ORT_RETURN_IF_ERROR(execution->SetInputBuffers(inputs));
         std::vector<nnapi::Execution::OutputBuffer> outputs;
