@@ -156,7 +156,7 @@ class ORTTrainer(object):
         if 'cuda' in device_id.lower():
             set_cuda_mem_limit(int(self.options.device.mem_limit))
             if ':' in device_id:
-                set_cuda_device_id(device_id.split(':')[1])
+                set_cuda_device_id(int(device_id.split(':')[1]))
 
         self._train_step_info = TrainStepInfo(all_finite=True, step=0, optimizer_config=self.optim_config)
 
@@ -345,7 +345,7 @@ class ORTTrainer(object):
         return CombineTorchModelLossFn(self._torch_model, self.loss_fn, input_names)
 
     def _convert_torch_model_loss_fn_to_onnx(self, inputs):
-        device = torch.device(self.options.device.id)
+        device = torch.device('cpu') #torch.device(self.options.device.id)
         if isinstance(inputs, torch.Tensor):
             inputs = [inputs]
         if isinstance(inputs, dict):

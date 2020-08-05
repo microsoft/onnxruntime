@@ -473,7 +473,7 @@ def _prep_model_and_data(optim_config, options=None, step_fn='train_step', devic
     utils = _utils.import_module_from_file(utils_path, utils_name)
 
     # Modeling
-    model = pt_model.TransformerModel(28785, 200, 2, 200, 2, 0.2)
+    model = pt_model.TransformerModel(28785, 200, 2, 200, 2, 0.2).to(device)
     my_loss = ort_utils.my_loss
     model_desc = ort_utils.transformer_model_description()
    
@@ -489,6 +489,8 @@ def _prep_model_and_data(optim_config, options=None, step_fn='train_step', devic
         data, targets = utils.get_batch(train_data, 0)
     else:
         raise ValueError('Invalid step_fn')
+
+    data, targets = data.to(trainer.options.device.id), targets.to(trainer.options.device.id)
 
     return model, model_desc, trainer, data, targets 
 
@@ -590,18 +592,20 @@ def testInstantiateORTTrainer(step_fn, lr_scheduler, expected_lr_values):
     ((0, 0), 'cpu'),
     ((42, 42), 'cpu'),
     ((42, 57), 'cpu'),
+    ((0, 0), 'cuda:0'),
     ((0, 0), 'cuda')
 ])
 def testORTDeterministicCompute(seeds, device_id):
     optim_config = optim.LambConfig()
+    print(torch.device(device_id))
     opts = orttrainer.ORTTrainerOptions({
         'debug' : {
             'deterministic_compute': True
         },
-#        'device' : {
-#            'id' : device_id,
-#            'mem_limit' : 256
-#        }
+        'device' : {
+            'id' : device_id,
+            'mem_limit' : 256
+        }
     })
     
     torch.manual_seed(seeds[0])
