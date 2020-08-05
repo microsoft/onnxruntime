@@ -34,11 +34,12 @@ void checkShapeEquality(ONNX_NAMESPACE::TensorShapeProto* shape1, ONNX_NAMESPACE
 inline void createValueInfo(
     ONNX_NAMESPACE::ValueInfoProto& value_info,
     const std::string& name,
+    const ONNX_NAMESPACE::TensorProto_DataType& elem_type,
     const std::vector<int64_t> shape) {
   value_info.set_name(name);
   ONNX_NAMESPACE::TypeProto* type = value_info.mutable_type();
   ONNX_NAMESPACE::TypeProto_Tensor* tensor_type = type->mutable_tensor_type();
-  tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  tensor_type->set_elem_type(elem_type);
   ONNX_NAMESPACE::TensorShapeProto* value_info_shape = tensor_type->mutable_shape();
 
   for (int64_t dim_value : shape) {
@@ -89,6 +90,10 @@ inline void testShapeInference(
   auto inferredGraph = model.graph();
   int index = static_cast<int>(inputs.size());  // index for value_info of output
   auto inferred_output = inferredGraph.value_info(index);
+
+  auto elem_type = output.mutable_type()->mutable_tensor_type()->elem_type();
+  auto inferred_elem_type = inferred_output.mutable_type()->mutable_tensor_type()->elem_type();
+  EXPECT_EQ(elem_type, inferred_elem_type);
 
   auto shape = output.mutable_type()->mutable_tensor_type()->mutable_shape();
   auto inferred_shape = inferred_output.mutable_type()->mutable_tensor_type()->mutable_shape();

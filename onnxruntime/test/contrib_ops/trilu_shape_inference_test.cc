@@ -6,10 +6,10 @@
 namespace onnxruntime {
 namespace test {
 
-TEST(ShapeInferenceTests, tri_upper) {
+TEST(ShapeInferenceTests, tri_upper_float) {
   std::vector<int64_t> shape = {4, 7};
   ONNX_NAMESPACE::ValueInfoProto input;
-  createValueInfo(input, "X", shape);
+  createValueInfo(input, "X", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, shape);
   std::vector<ONNX_NAMESPACE::ValueInfoProto> inputs = {input};
 
   ONNX_NAMESPACE::AttributeProto upper;
@@ -19,15 +19,15 @@ TEST(ShapeInferenceTests, tri_upper) {
   std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {upper};
 
   ONNX_NAMESPACE::ValueInfoProto output;
-  createValueInfo(output, "Y", shape);
+  createValueInfo(output, "Y", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, shape);
 
   testShapeInference("Trilu", inputs, attributes, output);
 }
 
-TEST(ShapeInferenceTests, tri_upper_zero_dim) {
+TEST(ShapeInferenceTests, tri_upper_zero_dim_int) {
   std::vector<int64_t> shape = {4, 7, 0};
   ONNX_NAMESPACE::ValueInfoProto input;
-  createValueInfo(input, "X", shape);
+  createValueInfo(input, "X", ONNX_NAMESPACE::TensorProto_DataType_INT32, shape);
   std::vector<ONNX_NAMESPACE::ValueInfoProto> inputs = {input};
 
   ONNX_NAMESPACE::AttributeProto upper;
@@ -37,51 +37,33 @@ TEST(ShapeInferenceTests, tri_upper_zero_dim) {
   std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {upper};
 
   ONNX_NAMESPACE::ValueInfoProto output;
-  createValueInfo(output, "Y", shape);
+  createValueInfo(output, "Y", ONNX_NAMESPACE::TensorProto_DataType_INT32, shape);
 
   testShapeInference("Trilu", inputs, attributes, output);
 }
 
-TEST(ShapeInferenceTests, tri_upper_) {
+TEST(ShapeInferenceTests, tri_upper_4d_long) {
+  std::vector<int64_t> shape = {2, 3, 7, 11};
+  ONNX_NAMESPACE::ValueInfoProto input;
+  createValueInfo(input, "X", ONNX_NAMESPACE::TensorProto_DataType_INT64, shape);
+  std::vector<ONNX_NAMESPACE::ValueInfoProto> inputs = {input};
+
+  ONNX_NAMESPACE::AttributeProto upper;
+  upper.set_name("upper");
+  upper.set_type(ONNX_NAMESPACE::AttributeProto::INT);
+  upper.set_i(1);  // upper
+  std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {upper};
+
+  ONNX_NAMESPACE::ValueInfoProto output;
+  createValueInfo(output, "Y", ONNX_NAMESPACE::TensorProto_DataType_INT64, shape);
+
+  testShapeInference("Trilu", inputs, attributes, output);
+}
+
+TEST(ShapeInferenceTests, tri_lower_float) {
   std::vector<int64_t> shape = {4, 7};
   ONNX_NAMESPACE::ValueInfoProto input;
-  createValueInfo(input, "X", shape);
-  std::vector<ONNX_NAMESPACE::ValueInfoProto> inputs = {input};
-
-  ONNX_NAMESPACE::AttributeProto upper;
-  upper.set_name("upper");
-  upper.set_type(ONNX_NAMESPACE::AttributeProto::INT);
-  upper.set_i(1);  // upper
-  std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {upper};
-
-  ONNX_NAMESPACE::ValueInfoProto output;
-  createValueInfo(output, "Y", shape);
-
-  testShapeInference("Trilu", inputs, attributes, output);
-}
-
-TEST(ShapeInferenceTests, tri_upper_4d) {
-  std::vector<int64_t> shape = {2, 3, 7, 11};
-  ONNX_NAMESPACE::ValueInfoProto input;
-  createValueInfo(input, "X", shape);
-  std::vector<ONNX_NAMESPACE::ValueInfoProto> inputs = {input};
-
-  ONNX_NAMESPACE::AttributeProto upper;
-  upper.set_name("upper");
-  upper.set_type(ONNX_NAMESPACE::AttributeProto::INT);
-  upper.set_i(1);  // upper
-  std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {upper};
-
-  ONNX_NAMESPACE::ValueInfoProto output;
-  createValueInfo(output, "Y", shape);
-
-  testShapeInference("Trilu", inputs, attributes, output);
-}
-
-TEST(ShapeInferenceTests, tri_lower_4d) {
-  std::vector<int64_t> shape = {2, 3, 7, 11};
-  ONNX_NAMESPACE::ValueInfoProto input;
-  createValueInfo(input, "X", shape);
+  createValueInfo(input, "X", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, shape);
   std::vector<ONNX_NAMESPACE::ValueInfoProto> inputs = {input};
 
   ONNX_NAMESPACE::AttributeProto upper;
@@ -91,15 +73,15 @@ TEST(ShapeInferenceTests, tri_lower_4d) {
   std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {upper};
 
   ONNX_NAMESPACE::ValueInfoProto output;
-  createValueInfo(output, "Y", shape);
+  createValueInfo(output, "Y", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, shape);
 
   testShapeInference("Trilu", inputs, attributes, output);
 }
 
-TEST(ShapeInferenceTests, tri_lower_zero_dim) {
-  std::vector<int64_t> shape = {4, 7, 0};
+TEST(ShapeInferenceTests, tri_lower_4d_int) {
+  std::vector<int64_t> shape = {2, 3, 7, 11};
   ONNX_NAMESPACE::ValueInfoProto input;
-  createValueInfo(input, "X", shape);
+  createValueInfo(input, "X", ONNX_NAMESPACE::TensorProto_DataType_INT32, shape);
   std::vector<ONNX_NAMESPACE::ValueInfoProto> inputs = {input};
 
   ONNX_NAMESPACE::AttributeProto upper;
@@ -109,7 +91,25 @@ TEST(ShapeInferenceTests, tri_lower_zero_dim) {
   std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {upper};
 
   ONNX_NAMESPACE::ValueInfoProto output;
-  createValueInfo(output, "Y", shape);
+  createValueInfo(output, "Y", ONNX_NAMESPACE::TensorProto_DataType_INT32, shape);
+
+  testShapeInference("Trilu", inputs, attributes, output);
+}
+
+TEST(ShapeInferenceTests, tri_lower_zero_dim_long) {
+  std::vector<int64_t> shape = {4, 7, 0};
+  ONNX_NAMESPACE::ValueInfoProto input;
+  createValueInfo(input, "X", ONNX_NAMESPACE::TensorProto_DataType_INT64, shape);
+  std::vector<ONNX_NAMESPACE::ValueInfoProto> inputs = {input};
+
+  ONNX_NAMESPACE::AttributeProto upper;
+  upper.set_name("upper");
+  upper.set_type(ONNX_NAMESPACE::AttributeProto::INT);
+  upper.set_i(0);  // lower
+  std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {upper};
+
+  ONNX_NAMESPACE::ValueInfoProto output;
+  createValueInfo(output, "Y", ONNX_NAMESPACE::TensorProto_DataType_INT64, shape);
 
   testShapeInference("Trilu", inputs, attributes, output);
 }
