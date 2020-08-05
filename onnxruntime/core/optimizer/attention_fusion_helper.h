@@ -56,7 +56,7 @@ bool CheckSliceParameters(const Graph& graph, const Node& slice, const std::vect
       |                                                                     |  |
       +----> Shape --> Gather (indices=0) --> Unsqueeze (axes=0) -----------+  |
       |                                                                        |
-      +----> Shape --> Gather (indices=1) --> Unsqueeze (axes=0) --------------+ 
+      +----> Shape --> Gather (indices=1) --> Unsqueeze (axes=0) --------------+
 */
 bool MatchGemmSubgraph(Graph& graph,
                        Node& node_after_gemm_reshape,
@@ -255,7 +255,7 @@ struct MatchUnidirMaskResult {
   std::vector<NodeIndex> node_indices;  // id of all nodes in the subgraph for removing later.
 };
 
-/**  Match Unidirectional Mask subgraph. 
+/**  Match Unidirectional Mask subgraph.
      In the below graph, ':' is followed by variable name in code. * means the input on the left side.
 
 
@@ -444,6 +444,16 @@ struct AttentionMaskNodes {
   const Node* unsqueeze_1;
 };
 
+//bugbug
+struct AttentionMaskNodes2 {
+  const Node* softmax;
+  const Node* Where;
+  const Node* cast;
+  const Node* Expand;
+  const Node* Reshape;
+  const Node* Equal;
+};
+
 void SetMaskNodesToRemove(const Graph& graph, AttentionMaskNodes& mask_nodes, std::vector<NodeIndex>& nodes_to_remove) {
   nodes_to_remove.push_back(mask_nodes.softmax->Index());
   if (!mask_nodes.has_input_mask) {
@@ -476,7 +486,7 @@ In this case, we only match two nodes: "Softmax" and "Where". Note that "Where" 
 */
 bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, AttentionMaskNodes& result, const logging::Logger& logger, bool is_input_mask_optional) {
   DEBUG_LOG("Start MatchInputMaskSubgraph");
-  
+
   std::vector<graph_utils::EdgeEndToMatch> softmax_path{
       {0, 0, "Softmax", {1, 11, 13}, kOnnxDomain}};
 
@@ -497,7 +507,7 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, Attentio
 
   // GPT-2 might not have input mask. In that case the subgraph is like:
   // {UnidirMask Subgraph} --> Softmax --> [MatMul]
-  if (is_input_mask_optional) { 
+  if (is_input_mask_optional) {
     const Node* parent = graph_utils::GetInputNode(softmax, 0);
     if (parent != nullptr && parent->OpType() == "Where") {   // UnidirMask Subgraph ends withs Where node
       return true;
@@ -590,6 +600,60 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, Attentio
   result.unsqueeze_2 = p_mask_unsqueeze_2;
   result.unsqueeze_1 = p_mask_unsqueeze_1;
   DEBUG_LOG("Pass MatchInputMaskSubgraph");
+  return true;
+}
+
+// bugbug
+bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, AttentionMaskNodes2& result, const logging::Logger& logger) {
+  DEBUG_LOG("Start MatchInputMaskSubgraph2");
+
+  // bugbug 0, 0 not check
+  std::vector<graph_utils::EdgeEndToMatch> mask_path{
+      {0, 0, "Softmax", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Where", {9}, kOnnxDomain},
+      {0, 0, "Cast", {9}, kOnnxDomain},
+      {0, 0, "Expand", {8}, kOnnxDomain},
+      {0, 0, "Reshape", {5}, kOnnxDomain},
+      {0, 0, "Equal", {1, 11}, kOnnxDomain}};
+
+  std::vector<const Node::EdgeEnd*> edges;
+  if (!graph_utils::FindPath(qkv_matmul, true, mask_path, edges, logger)) {
+    DEBUG_LOG("Failed to find mask path");
+    return false;
+  }
+
+  const Node& softmax = edges[0]->GetNode();
+  const Node& where = edges[0]->GetNode();
+  const Node& cast = edges[0]->GetNode();
+  const Node& expend = edges[0]->GetNode();
+  const Node& reshape = edges[0]->GetNode();
+  const Node& equal = edges[0]->GetNode();
+
+  if (!optimizer_utils::CheckOutputEdges(graph, softmax, 1) ||
+      !optimizer_utils::CheckOutputEdges(graph, where, 1) ||
+      !optimizer_utils::CheckOutputEdges(graph, cast, 1) ||
+      !optimizer_utils::CheckOutputEdges(graph, expend, 1) ||
+      !optimizer_utils::CheckOutputEdges(graph, reshape, 1) ||
+      !optimizer_utils::CheckOutputEdges(graph, equal, 1)) {
+    DEBUG_LOG("Output edge count not expected for mask nodes");
+    return false;
+  }
+
+  if (!optimizer_utils::IsAttributeWithExpectedValue(softmax, "axis", 3)) {
+    DEBUG_LOG("Softmax attribute axis is expected to be 3");
+    return false;
+  }
+
+  // bugbug: more check
+
+  result.softmax = &softmax;
+  result.Where = &where;
+  result.cast = &cast;
+  result.Expand = &expend;
+  result.Reshape = &reshape;
+  result.Equal = &equal;
+
+  DEBUG_LOG("Pass MatchInputMaskSubgraph2");
   return true;
 }
 
@@ -901,7 +965,7 @@ NodeArg* GetOrCreateMaskInt32(
     Graph before Fusion (q_, k_, v_, qk_, qkv_ and mask_ prefix is added before Operator type):
                   Add
                /       \ [Input](BxSxW)
-              /         \ 
+              /         \
              /   LayerNormalization
             /            |
            /       {Gemm_Subgraph} <---[weights](Wx3W); [Bias](3W)
@@ -944,7 +1008,7 @@ After Fusion:
       Add
       |   \
       |  LayerNormalization [Weights] [Bias]   [Mask]?  [Past]?
-      |                 \   |        /         /         / 
+      |                 \   |        /         /         /
        \                 \  |       /         /         /
         \                 Attention <------------------
          \                |       |
