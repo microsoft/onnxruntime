@@ -1157,6 +1157,10 @@ TEST(GradientCheckerTest, DISABLED_BatchNormalizationGrad) {
 }
 #endif
 
+TEST(GradientCheckerTest, SigmoidGrad) {
+  UnaryOpGradientTest("Sigmoid");
+}
+
 void GradientCheckerSoftmaxGradHelper(bool is_log_softmax) {
   TensorShape shape({3, 4, 5});
   float max_error;
