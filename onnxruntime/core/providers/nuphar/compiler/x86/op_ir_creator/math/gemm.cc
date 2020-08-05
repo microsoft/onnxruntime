@@ -46,7 +46,10 @@ Status NUPHAR_TVM_X86_OP_IR_CREATOR_CLASS(Gemm)::Evaluate(
       GemmExternCpu(A, B, Y, !!trans_a, !!trans_b, node.Name() + "_gemm")) {
     if (beta != 0) {
       tvm::Tensor beta_bias = (beta == 1) ? C : tvm_codegen::Mul(tvm::make_const(tvm::Float(32), beta), C);
-      Y = tvm_codegen::Add((alpha == 1) ? Y : tvm_codegen::Mul(tvm::make_const(tvm::Float(32), alpha), Y), beta_bias, node.Name() + "_add_bias");
+      Y = tvm_codegen::Add((alpha == 1) ? Y : tvm_codegen::Mul(tvm::make_const(tvm::Float(32), alpha), Y),
+                           beta_bias, node.Name() + "_add_bias");
+    } else {
+      Y = (alpha == 1) ? Y : tvm_codegen::Mul(tvm::make_const(tvm::Float(32), alpha), Y);
     }
     outputs.push_back(Y);
     return Status::OK();
