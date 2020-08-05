@@ -584,7 +584,7 @@ struct ProviderSharedLibrary {
     std::string full_path = Env::Default().GetRuntimePath() + std::string(LIBRARY_PREFIX "onnxruntime_providers_shared" LIBRARY_EXTENSION);
     Env::Default().LoadDynamicLibrary(full_path, &handle_);
     if (!handle_) {
-      LOGS_DEFAULT(ERROR) << "Failed to load providers shared library";
+      LOGS_DEFAULT(ERROR) << "Failed to load providers shared library: " << full_path;
       return;
     }
 
@@ -611,10 +611,12 @@ struct ProviderLibrary {
     if (!EnsureSharedProviderLibrary())
       return;
 
+    LOGS_DEFAULT(ERROR) << "Loading the provider...";  // TODO: Delete
+
     std::string full_path = Env::Default().GetRuntimePath() + std::string(filename);
     Env::Default().LoadDynamicLibrary(full_path, &handle_);
     if (!handle_) {
-      LOGS_DEFAULT(ERROR) << "Failed to load provider library";
+      LOGS_DEFAULT(ERROR) << "Failed to load provider library: " << full_path;
       return;
     }
 
@@ -683,6 +685,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensor
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena) {
   auto factory = onnxruntime::CreateExecutionProviderFactory_Dnnl(use_arena);
   if (!factory) {
+    LOGS_DEFAULT(ERROR) << "OrtSessionOptionsAppendExecutionProvider_Dnnl: Failed to load shared library";
     return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Dnnl: Failed to load shared library");
   }
 
