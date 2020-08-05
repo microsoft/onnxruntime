@@ -81,8 +81,8 @@ struct Provider_TensorShapeProto_Dimension_Iterator_Impl : Provider_TensorShapeP
 
   bool operator!=(const Provider_TensorShapeProto_Dimension_Iterator& p) const override { return v_ != static_cast<const Provider_TensorShapeProto_Dimension_Iterator_Impl*>(&p)->v_; }
 
-  void operator++() { v_.operator++(); }
-  const Provider_TensorShapeProto_Dimension& operator*() { return *reinterpret_cast<const Provider_TensorShapeProto_Dimension*>(&v_.operator*()); }
+  void operator++() override { v_.operator++(); }
+  const Provider_TensorShapeProto_Dimension& operator*() override { return *reinterpret_cast<const Provider_TensorShapeProto_Dimension*>(&v_.operator*()); }
 
   google::protobuf::internal::RepeatedPtrIterator<const onnx::TensorShapeProto_Dimension> v_;
 };
@@ -550,7 +550,7 @@ struct ProviderHostImpl : ProviderHost {
 
   const std::vector<const Provider_NodeArg*>& Provider_GraphViewer__GetInputs(const Provider_GraphViewer* p) noexcept override { return *reinterpret_cast<const std::vector<const Provider_NodeArg*>*>(&reinterpret_cast<const GraphViewer*>(p)->GetInputs()); }
   const std::vector<const Provider_NodeArg*>& Provider_GraphViewer__GetOutputs(const Provider_GraphViewer* p) noexcept override { return *reinterpret_cast<const std::vector<const Provider_NodeArg*>*>(&reinterpret_cast<const GraphViewer*>(p)->GetOutputs()); }
-  const std::vector<const Provider_NodeArg*>& Provider_GraphViewer__GetValueInfo(const Provider_GraphViewer* p) noexcept { return *reinterpret_cast<const std::vector<const Provider_NodeArg*>*>(&reinterpret_cast<const GraphViewer*>(p)->GetValueInfo()); }
+  const std::vector<const Provider_NodeArg*>& Provider_GraphViewer__GetValueInfo(const Provider_GraphViewer* p) noexcept override { return *reinterpret_cast<const std::vector<const Provider_NodeArg*>*>(&reinterpret_cast<const GraphViewer*>(p)->GetValueInfo()); }
 
   const Provider_InitializedTensorSet& Provider_GraphViewer__GetAllInitializedTensors(const Provider_GraphViewer* p) override { return *reinterpret_cast<const Provider_InitializedTensorSet*>(&reinterpret_cast<const GraphViewer*>(p)->GetAllInitializedTensors()); }
 
