@@ -216,7 +216,7 @@ Status TrainingSession::ConfigureForTraining(
     }
   }
 
-  ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers, config.enable_gelu_approximation));
+  ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers, config.graph_transformer_config));
 
   // derive actual set of weights to train
   std::unordered_set<std::string> weight_names_to_train =
@@ -237,7 +237,7 @@ Status TrainingSession::ConfigureForTraining(
   }
 
   ORT_RETURN_IF_ERROR(BuildGradientGraph(
-      weight_names_to_train, loss_name, config.gradient_graph_config, config.set_gradients_as_graph_outputs));
+      weight_names_to_train, loss_name, config.gradient_graph_config, *session_logger_));
 
   // transform for mixed precision
   std::unordered_map<std::string, NodeArg*> fp32_weight_name_to_fp16_node_arg{};
@@ -443,14 +443,14 @@ static Status BuildGradientGraphInternal(Graph& graph,
                                          const std::string& loss_function_output_name,
                                          const std::unordered_set<std::string>& node_arg_names_to_train,
                                          const GradientGraphConfiguration& gradient_graph_config,
-                                         const bool set_gradient_as_graph_output = false) {
+                                         const logging::Logger& logger) {
   // Compute the gradient graph def.
   GradientGraphBuilder grad_graph_builder(&graph,
                                           {loss_function_output_name},
                                           node_arg_names_to_train,
                                           loss_function_output_name,
                                           gradient_graph_config,
-                                          set_gradient_as_graph_output);
+                                          logger);
   return grad_graph_builder.Build();
 }
 
@@ -488,10 +488,10 @@ static Status AddGradientAccumulationNodes(Graph& graph,
   return GraphAugmenter::AugmentGraph(graph, graph_defs);
 }
 
-Status TrainingSession::ApplyTransformationsToMainGraph(
-    const std::unordered_set<std::string>& weights_to_train, bool enable_gelu_approximation) {
+Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,
+                                                        const TrainingConfiguration::GraphTransformerConfiguration& config) {
   GraphTransformerManager graph_transformation_mgr{1};
-  AddPreTrainingTransformers(graph_transformation_mgr, weights_to_train, enable_gelu_approximation);
+  AddPreTrainingTransformers(graph_transformation_mgr, weights_to_train, config);
 
   // apply transformers
   Graph& graph = model_->MainGraph();
@@ -505,13 +505,13 @@ Status TrainingSession::ApplyTransformationsToMainGraph(
 // Registers all the pre transformers with transformer manager
 void TrainingSession::AddPreTrainingTransformers(GraphTransformerManager& transformer_manager,
                                                  const std::unordered_set<std::string>& weights_to_train,
-                                                 bool enable_gelu_approximation,
+                                                 const TrainingConfiguration::GraphTransformerConfiguration& config,
                                                  TransformerLevel graph_optimization_level,
                                                  const std::vector<std::string>& custom_list) {
   auto add_transformers = [&](TransformerLevel level) {
     // Generate and register transformers for level
     auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(
-        level, weights_to_train, enable_gelu_approximation, custom_list);
+        level, weights_to_train, config, custom_list);
     for (auto& entry : transformers_to_register) {
       transformer_manager.Register(std::move(entry), level);
     }
@@ -664,7 +664,7 @@ Status TrainingSession::EnableMixedPrecision(
 Status TrainingSession::BuildGradientGraph(const std::unordered_set<std::string>& weights_to_train,
                                            const std::string& loss_function_output_name,
                                            const GradientGraphConfiguration& gradient_graph_config,
-                                           const bool set_gradient_as_graph_output) {
+                                           const logging::Logger& logger) {
   // Fill weights_to_train_ according to weights_to_train
   weights_to_train_ = weights_to_train;
   gradient_graph_config_ = gradient_graph_config;
@@ -673,7 +673,7 @@ Status TrainingSession::BuildGradientGraph(const std::unordered_set<std::string>
                                                  loss_function_output_name,
                                                  weights_to_train_,
                                                  gradient_graph_config_,
-                                                 set_gradient_as_graph_output));
+                                                 logger));
 
   return DoPostLoadProcessing(*model_);
 }
@@ -791,7 +791,7 @@ Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveO
                                                    actual_loss_name,
                                                    weights_to_train_,
                                                    gradient_graph_config_,
-                                                   false));
+                                                   *session_logger_));
 
     OptimizerOutputKeyMap<std::string> opt_graph_outputs;
     std::unordered_set<std::string> opt_state_initializer_names;

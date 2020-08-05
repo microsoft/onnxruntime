@@ -38,6 +38,7 @@
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/optimizer/bias_dropout_fusion.h"
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
+#include "orttraining/core/optimizer/localized_recompute.h"
 #include "orttraining/core/optimizer/megatron_transformer.h"
 #include "orttraining/core/optimizer/nonzero_shape_setter.h"
 
@@ -48,7 +49,7 @@ namespace transformer_utils {
 std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
     TransformerLevel level,
     const std::unordered_set<std::string>& weights_to_train,
-    bool enable_gelu_approximation,
+    const TrainingSession::TrainingConfiguration::GraphTransformerConfiguration& config,
     const std::vector<std::string>& transformers_and_rules_to_enable) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
@@ -69,6 +70,12 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       rule_transformer->Register(make_unique<CastElimination>());
       rule_transformer->Register(make_unique<NonZeroShapeSetter>());
       rule_transformer->Register(make_unique<InsertSoftmaxCrossEntropyLossOutput>());
+      if (config.gelu_checkpoint) {
+        rule_transformer->Register(make_unique<GeluRecompute>());
+      }
+      if (config.attn_dropout_checkpoint) {
+        rule_transformer->Register(make_unique<AttentionDropoutRecompute>());
+      }
 
       transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(compatible_eps));
       transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(compatible_eps));
@@ -76,7 +83,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
 
       transformers.emplace_back(onnxruntime::make_unique<BiasGeluFusion>(compatible_eps));
 
-      if (enable_gelu_approximation) {
+      if (config.enable_gelu_approximation) {
         transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(compatible_eps));
       }
 
