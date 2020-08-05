@@ -507,9 +507,13 @@ IMPLEMENT_GRADIENT_BUILDER(GetGatherNDGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetReshapeGradient) {
   return std::vector<NodeDef>{
-      NodeDef("ReshapeGrad",
-              {I(0), GO(0)},
-              {GI(0)})};
+      NodeDef("Shape",
+              {I(0)},
+              {IA("x_shape")}),
+      NodeDef("Reshape",
+              {GO(0), IA("x_shape")},
+              {GI(0)})
+  };
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetTransposeGradient) {
@@ -927,14 +931,13 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceLogSumExpGradient) {
 
     result.push_back(NodeDef("Unsqueeze", {O(0)}, {IA("Unsqueezed_Output")}, {MakeAttribute("axes", axes_values)}));
     result.push_back(NodeDef("Sub", {I(0), IA("Unsqueezed_Output")}, {IA("Self_Sub_Result")}));
-  }
-  else {
+  } else {
     result.push_back(NodeDef("Sub", {I(0), O(0)}, {IA("Self_Sub_Result")}));
   }
 
   result.push_back(NodeDef("Exp", {IA("Self_Sub_Result")}, {IA("Self_Sub_Result_Exp")}));
 
-  result.push_back(NodeDef("Mul", {IA("Self_Sub_Result_Exp"), grad}, {GI(0)}));  
+  result.push_back(NodeDef("Mul", {IA("Self_Sub_Result_Exp"), grad}, {GI(0)}));
 
   return result;
 }

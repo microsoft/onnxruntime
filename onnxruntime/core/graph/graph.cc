@@ -1439,7 +1439,7 @@ void Graph::KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
   }
 
   if (NumberOfNodes() != static_cast<int>(topo_order.size())) {
-    std::cout << "Some nodes are not included in the topological sort, graph might have a cycle\n";
+    LOGS(logger_, WARNING) << "Some nodes are not included in the topological sort, graph might have a cycle.";
   }
 }
 
@@ -2102,7 +2102,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
         node.op_ = nullptr;
       }
 
-	  InitFunctionBodyForNode(node);
+      InitFunctionBodyForNode(node);
 
       if (!node.op_) {
         return Status(ONNXRUNTIME, FAIL, "Fatal error: " + node.OpType() + " is not a registered function/op");

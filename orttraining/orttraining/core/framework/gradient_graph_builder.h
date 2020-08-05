@@ -107,7 +107,7 @@ class GradientGraphBuilder {
   @returns OK if all 'x_node_args_' are reachable, else an ONNXRUNTIME INVALID_ARGUMENT status
   */
 
-  Status CheckNodeArgsReachable(const NodeSet& reachable_nodes);
+  Status CheckNodeArgsReachable() const;
 
   /** 
   Check if node is reachable from the 'y_node_args_'

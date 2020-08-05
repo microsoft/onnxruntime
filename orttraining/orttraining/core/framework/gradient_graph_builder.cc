@@ -12,7 +12,6 @@
 #include "core/optimizer/rule_based_graph_transformer.h"
 
 using namespace ONNX_NAMESPACE;
-using namespace std;
 
 namespace onnxruntime {
 namespace training {
@@ -20,8 +19,8 @@ namespace training {
 using namespace common;
 
 GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
-                                           const unordered_set<string>& y_node_arg_names,
-                                           const unordered_set<string>& x_node_arg_names,
+                                           const std::unordered_set<std::string>& y_node_arg_names,
+                                           const std::unordered_set<std::string>& x_node_arg_names,
                                            const std::string& loss_node_arg_name,
                                            const GradientGraphConfiguration& gradient_graph_config,
                                            const logging::Logger& logger)
@@ -71,12 +70,12 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
     }
     x_node_args_.insert(node_arg);
 
-    vector<const Node*> nodes = graph_->GetConsumerNodes(name);
+    std::vector<const Node*> nodes = graph_->GetConsumerNodes(name);
     if (nodes.empty()) {
       ORT_THROW(name, " couldn't find the consumer node.");
     }
 
-    string grad_arg_name = GradientBuilderBase::GradientName(name);
+    std::string grad_arg_name = GradientBuilderBase::GradientName(name);
     pending_[grad_arg_name] = 0;
 
     for (const Node* node : nodes) {
@@ -84,7 +83,7 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
         pending_[grad_arg_name] += 1;
         x_nodes_.insert(node);
       } else {
-        std::cout << "Unreachable node found " << node->Name() << "\n";
+        LOGS(logger_, WARNING) << node->Name() << " is unreachable for gradient back propagation.";
       }
     }
   }
@@ -92,7 +91,7 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
 
 NodeSet GradientGraphBuilder::ReverseBFS(const NodeSet& nodes) const {
   NodeSet visited(nodes);
-  deque<const Node*> queue(nodes.begin(), nodes.end());
+  std::deque<const Node*> queue(nodes.begin(), nodes.end());
 
   while (!queue.empty()) {
     const Node* n = queue.front();
@@ -101,7 +100,7 @@ NodeSet GradientGraphBuilder::ReverseBFS(const NodeSet& nodes) const {
     for (auto edge_it = n->InputEdgesBegin(); edge_it != n->InputEdgesEnd(); ++edge_it) {
       auto it = STOP_GRADIENT_EDGES.find(n->OpType());
       if (it != STOP_GRADIENT_EDGES.end() && it->second.count(edge_it->GetDstArgIndex())) {
-        LOGS(logger_, WARNING) << "Skip building gradient for node: " << edge_it->GetNode().Name() ;
+        LOGS(logger_, WARNING) << "Skip building gradient for node: " << edge_it->GetNode().Name();
         continue;
       }
 
@@ -153,10 +152,10 @@ Status GradientGraphBuilder::Build() {
   ORT_RETURN_IF_ERROR(CheckNodeArgsReachable());
 
   // Going forward to figure out which node_args need backprop-ed.
-  deque<const Node*> queue(x_nodes_.begin(), x_nodes_.end());
+  std::deque<const Node*> queue(x_nodes_.begin(), x_nodes_.end());
   NodeSet visited(x_nodes_);
-  
-  unordered_set<const NodeArg*> visited_node_args = x_node_args_;
+
+  std::unordered_set<const NodeArg*> visited_node_args = x_node_args_;
   visited_node_args.insert(y_node_args_.begin(), y_node_args_.end());
 
   while (!queue.empty()) {
@@ -169,7 +168,7 @@ Status GradientGraphBuilder::Build() {
       if (!IsReachable(&next_node)) continue;
 
       const NodeArg* node_arg = node->OutputDefs()[edge_it->GetSrcArgIndex()];
-      string grad_node_arg_name = GradientBuilderBase::GradientName(node_arg->Name());
+      std::string grad_node_arg_name = GradientBuilderBase::GradientName(node_arg->Name());
 
       pending_[grad_node_arg_name] += 1;
 
@@ -186,7 +185,7 @@ Status GradientGraphBuilder::Build() {
   // visited_node_args are the node_args involved
   for (auto node : visited) {
     //TODO: might not need two sets, the union of them might be enough
-    unordered_set<string> input_args_need_grad, output_args_need_grad;
+    std::unordered_set<std::string> input_args_need_grad, output_args_need_grad;
     for (auto arg : node->InputDefs()) {
       if (visited_node_args.find(arg) != visited_node_args.end()) {
         input_args_need_grad.insert(arg->Name());
@@ -206,7 +205,7 @@ Status GradientGraphBuilder::Build() {
         auto found = pending_.find(arg.name);
         if (found != pending_.end() && found->second > 1) {
           auto idx = gradients_to_accumulate_[arg].size();
-          string indexed_arg_name = arg.name + "_" + to_string(idx);
+          std::string indexed_arg_name = arg.name + "_" + to_string(idx);
           gradients_to_accumulate_[arg].push_back(ArgDef(indexed_arg_name, arg.type_proto));
 
           arg.name = indexed_arg_name;

@@ -20,8 +20,13 @@ bool NodeCompare::operator()(const Node* n1, const Node* n2) const {
 
 struct PriorityNodeCompare {
   bool operator()(const Node* n1, const Node* n2) const {
-    return n1->Priority() > n2->Priority() ||
-           n1->Index() < n2->Index();
+    if (n1->OpType() == "Shape" && n2->OpType() != "Shape") {
+      return false;
+    } else if (n1->OpType() != "Shape" && n2->OpType() == "Shape") {
+      return true;
+    } else {
+      return n1->Priority() > n2->Priority() || n1->Index() < n2->Index();
+    }
   }
 };
 

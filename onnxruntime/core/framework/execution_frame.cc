@@ -282,8 +282,8 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
             }
 
             // log size of activation. Keep it commented out for now to avoid log flooding.
-            // VLOGS(session_state_.Logger(), 1) << "Allocated memory for activations, size: "
-            //                                   << mem_patterns_->patterns[i].PeakSize();
+            std::cout << "Allocated memory for activations, size: "
+                      << mem_patterns_->patterns[i].PeakSize() << "\n";
           }
         }
       }
