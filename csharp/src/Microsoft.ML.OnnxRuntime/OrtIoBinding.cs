@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -158,14 +159,25 @@ namespace Microsoft.ML.OnnxRuntime
             using (var bufferAllocation = new OrtMemoryAllocation(allocator, buffer, 0))
             using (var lengthsAllocation = new OrtMemoryAllocation(allocator, lengths, 0))
             {
-                uint outputCount = (uint)count;
+                int outputCount = (int)count;
+                var lens = new int[outputCount];
+                int totalLength = 0;
+                for(int i = 0; i < outputCount; ++i)
+                {
+                    var len =(int)Marshal.ReadIntPtr(lengths, IntPtr.Size * i);
+                    lens[i] = len;
+                    totalLength += len;
+                }
+
+                var stringData = new byte[totalLength];
+                Marshal.Copy(buffer, stringData, 0, stringData.Length);
+
                 string[] result = new string[outputCount];
                 int readOffset = 0;
                 for(int i = 0; i < outputCount; ++i)
                 {
-                    // strLen in bytes
-                    int strLen = (int)Marshal.ReadIntPtr(lengths, IntPtr.Size * i);
-                    result[i] = NativeOnnxValueHelper.StringFromNativeUtf8(buffer, readOffset, strLen);
+                    var strLen = lens[i];
+                    result[i] = Encoding.UTF8.GetString(stringData, readOffset, strLen);
                     readOffset += strLen;
                 }
                 return result;

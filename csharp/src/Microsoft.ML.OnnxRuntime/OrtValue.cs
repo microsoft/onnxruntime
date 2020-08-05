@@ -155,52 +155,52 @@ namespace Microsoft.ML.OnnxRuntime
                 switch (elType)
                 {
                     case TensorElementType.Float:
-                        PinAsTensor(value as Tensor<float>, elType, typeSize, out memHandle, out dataBufferLength,
+                        PinAsTensor(value as Tensor<float>, typeSize, out memHandle, out dataBufferLength,
                             out shape, out rank);
                         break;
                     case TensorElementType.Double:
-                        PinAsTensor(value as Tensor<double>, elType, typeSize, out memHandle, out dataBufferLength,
+                        PinAsTensor(value as Tensor<double>, typeSize, out memHandle, out dataBufferLength,
                                             out shape, out rank);
                         break;
                     case TensorElementType.Int32:
-                        PinAsTensor(value as Tensor<int>, elType, typeSize, out memHandle, out dataBufferLength,
+                        PinAsTensor(value as Tensor<int>, typeSize, out memHandle, out dataBufferLength,
                             out shape, out rank);
                         break;
                     case TensorElementType.UInt32:
-                        PinAsTensor(value as Tensor<uint>, elType, typeSize, out memHandle, out dataBufferLength,
+                        PinAsTensor(value as Tensor<uint>, typeSize, out memHandle, out dataBufferLength,
                             out shape, out rank);
                         break;
                     case TensorElementType.Int64:
-                        PinAsTensor(value as Tensor<long>, elType, typeSize, out memHandle, out dataBufferLength,
+                        PinAsTensor(value as Tensor<long>, typeSize, out memHandle, out dataBufferLength,
                             out shape, out rank);
                         break;
                     case TensorElementType.UInt64:
-                        PinAsTensor(value as Tensor<ulong>, elType, typeSize, out memHandle, out dataBufferLength,
+                        PinAsTensor(value as Tensor<ulong>, typeSize, out memHandle, out dataBufferLength,
                                     out shape, out rank);
                         break;
                     case TensorElementType.Int16:
-                        PinAsTensor(value as Tensor<short>, elType, typeSize, out memHandle, out dataBufferLength,
+                        PinAsTensor(value as Tensor<short>, typeSize, out memHandle, out dataBufferLength,
                             out shape, out rank);
                         break;
 
                     case TensorElementType.UInt16:
-                        PinAsTensor(value as Tensor<ushort>, elType, typeSize,
+                        PinAsTensor(value as Tensor<ushort>, typeSize,
                                     out memHandle, out dataBufferLength,
                                     out shape, out rank);
 
                         break;
                     case TensorElementType.UInt8:
-                        PinAsTensor(value as Tensor<byte>, elType, typeSize,
+                        PinAsTensor(value as Tensor<byte>, typeSize,
                                     out memHandle, out dataBufferLength,
                                     out shape, out rank);
                         break;
                     case TensorElementType.Int8:
-                        PinAsTensor(value as Tensor<sbyte>, elType, typeSize,
+                        PinAsTensor(value as Tensor<sbyte>, typeSize,
                             out memHandle, out dataBufferLength,
                             out shape, out rank);
                         break;
                     case TensorElementType.Bool:
-                        PinAsTensor(value as Tensor<bool>, elType, typeSize,
+                        PinAsTensor(value as Tensor<bool>, typeSize,
                                     out memHandle, out dataBufferLength,
                                     out shape, out rank);
                         break;
@@ -242,7 +242,6 @@ namespace Microsoft.ML.OnnxRuntime
 
         private static void PinAsTensor<T>(
                                             Tensor<T> tensor,
-                                            TensorElementType nativeElementType,
                                             int elementSize,
                                             out MemoryHandle? pinnedHandle,
                                             out int dataBufferLength,
@@ -282,6 +281,11 @@ namespace Microsoft.ML.OnnxRuntime
 
         private static OrtValue CreateStringTensor(Tensor<string> tensor)
         {
+            if (tensor == null)
+            {
+                throw new OnnxRuntimeException(ErrorCode.Fail, "Cast to Tensor<string> failed. BUG check!");
+            }
+
             int totalLength = 0;
             for (int i = 0; i < tensor.Length; i++)
             {
@@ -317,8 +321,8 @@ namespace Microsoft.ML.OnnxRuntime
                     {
                         var utf8str = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(tensor.GetValue(i));
                         var gcHandle = GCHandle.Alloc(utf8str, GCHandleType.Pinned);
-                        pinnedHandles.Add(new PinnedGCHandle(gcHandle));
                         nativeStrings[i] = gcHandle.AddrOfPinnedObject();
+                        pinnedHandles.Add(new PinnedGCHandle(gcHandle));
                     }
 
                     using (var pinnedStrings = new PinnedGCHandle(GCHandle.Alloc(nativeStrings, GCHandleType.Pinned)))

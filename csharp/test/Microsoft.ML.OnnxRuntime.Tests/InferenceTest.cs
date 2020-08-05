@@ -1799,7 +1799,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 var outputMeta = session.OutputMetadata;
                 var outputTensor = new DenseTensor<float>(outputData, outputMeta[outputName].Dimensions);
 
-                // var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("data_0", inputTensor) };
                 var ioBinding = session.CreateIoBinding();
                 dispList.Add(ioBinding);
 
@@ -1809,6 +1808,19 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 var ortAllocationOutput = allocator.Allocate((uint)outputData.Length * sizeof(float));
                 dispList.Add(ortAllocationOutput);
+
+                // Test GetOutputNames, bind two output names
+                {
+                    var cyrName = "несуществующийВыход";
+                    var longShape = Array.ConvertAll<int, long>(outputMeta[outputName].Dimensions, i => i);
+                    ioBinding.BindOutput(outputName, Tensors.TensorElementType.Float, longShape, ortAllocationOutput);
+                    ioBinding.BindOutput(cyrName, Tensors.TensorElementType.Float, longShape, ortAllocationOutput);
+                    string[] outputs = ioBinding.GetOutputNames();
+                    Assert.Equal(2, outputs.Length);
+                    Assert.Equal(outputName, outputs[0]);
+                    Assert.Equal(cyrName, outputs[1]);
+                    ioBinding.ClearBoundOutputs();
+                }
 
                 // Test 1. Bind input to fixed, Bind Output to Fixed.
                 using (FixedBufferOnnxValue fixeInputBuffer = FixedBufferOnnxValue.CreateFromTensor(inputTensor),

@@ -712,7 +712,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="buffer">a continuous buffer that contains all output names.
         /// Names are not zero terminated use lengths to extract strings. This needs to be deallocated.</param>
         /// <param name="lengths">A buffer that contains lengths (size_t) for each of the returned strings in order.
-        /// You may use Marshal.ReadIntPtr() to read each element of the array. The buffer must be deallocated.</param>
+        /// The buffer must be deallocated.</param>
         /// <param name="count">this contains the count of names returned which is the number of elements in lengths.</param>
         /// <returns></returns>
         public delegate IntPtr /* OrtStatus*/ DOrtGetBoundOutputNames(IntPtr /* (const OrtIoBinding*) */ io_binding, IntPtr /* OrtAllocator* */ allocator,
