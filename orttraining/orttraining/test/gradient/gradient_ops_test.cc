@@ -39,55 +39,52 @@ static bool IsErrorWithinTolerance(float error, float tolerance) {
   EXPECT_IS_TINIER_THAN(max_error, 1.5e-2f)
 
 static void RunReductionTests(const OpDef& op_def) {
-
   TestDataVector test_data(
-                            // Input X
-                            {
-                              {{4, 3, 2}},
-                              {{4, 3, 2}},
-                              {{4, 3, 2}},
-                              {{4, 3, 2}},
-                              {{4, 3, 2}},
-                              {{4, 3, 2}},
-                              {{4, 3, 2}},
-                              {{4, 3, 2}},
-                            },
-                            // Input Y
-                            {
-                              {{1, 1, 1}},
-                              {{}},
-                              {{1, 3, 1}},
-                              {{2}},
-                              {{4, 1, 2}},
-                              {{4, 3}},
-                              {{4, 1, 2}},
-                              {{4}}
-                            },
-                            // Attributes
-                            {
-                              // default
-                              {},
-                              // axes = [0, 1, 2], keepdims = 0
-                              {MakeAttribute("axes", std::vector<int64_t>{0, 1, 2}),
-                               MakeAttribute("keepdims", int64_t(0))},
-                              // axes = [0, 2], keepdims = 1
-                              {MakeAttribute("axes", std::vector<int64_t>{0, 2})},
-                              // axes = [0, 1], keepdims = 0
-                              {MakeAttribute("axes", std::vector<int64_t>{0, 1}),
-                               MakeAttribute("keepdims", int64_t(0))},
-                              // axes = [1], keepdims = 1
-                              {MakeAttribute("axes", std::vector<int64_t>{1}),
-                               MakeAttribute("keepdims", int64_t(1))},
-                              // axes = [2], keepdims = 0
-                              {MakeAttribute("axes", std::vector<int64_t>{2}),
-                               MakeAttribute("keepdims", int64_t(0))},
-                              // axes = [-2], keepdims = 1
-                              {MakeAttribute("axes", std::vector<int64_t>{-2}),
-                               MakeAttribute("keepdims", int64_t(1))},
-                              // axes = [-2, -1], keepdims = 0
-                              {MakeAttribute("axes", std::vector<int64_t>{-2, -1}),
-                               MakeAttribute("keepdims", int64_t(0))}
-                            });
+      // Input X
+      {
+          {{4, 3, 2}},
+          {{4, 3, 2}},
+          {{4, 3, 2}},
+          {{4, 3, 2}},
+          {{4, 3, 2}},
+          {{4, 3, 2}},
+          {{4, 3, 2}},
+          {{4, 3, 2}},
+      },
+      // Input Y
+      {
+          {{1, 1, 1}},
+          {{}},
+          {{1, 3, 1}},
+          {{2}},
+          {{4, 1, 2}},
+          {{4, 3}},
+          {{4, 1, 2}},
+          {{4}}},
+      // Attributes
+      {
+          // default
+          {},
+          // axes = [0, 1, 2], keepdims = 0
+          {MakeAttribute("axes", std::vector<int64_t>{0, 1, 2}),
+           MakeAttribute("keepdims", int64_t(0))},
+          // axes = [0, 2], keepdims = 1
+          {MakeAttribute("axes", std::vector<int64_t>{0, 2})},
+          // axes = [0, 1], keepdims = 0
+          {MakeAttribute("axes", std::vector<int64_t>{0, 1}),
+           MakeAttribute("keepdims", int64_t(0))},
+          // axes = [1], keepdims = 1
+          {MakeAttribute("axes", std::vector<int64_t>{1}),
+           MakeAttribute("keepdims", int64_t(1))},
+          // axes = [2], keepdims = 0
+          {MakeAttribute("axes", std::vector<int64_t>{2}),
+           MakeAttribute("keepdims", int64_t(0))},
+          // axes = [-2], keepdims = 1
+          {MakeAttribute("axes", std::vector<int64_t>{-2}),
+           MakeAttribute("keepdims", int64_t(1))},
+          // axes = [-2, -1], keepdims = 0
+          {MakeAttribute("axes", std::vector<int64_t>{-2, -1}),
+           MakeAttribute("keepdims", int64_t(0))}});
 
   GradientChecker<float, float, float> gradient_checker;
 
@@ -670,17 +667,25 @@ TEST(GradientCheckerTest, ConvGrad) {
   }
 }
 
-TEST(GradientCheckerTest, ConcatGrad) {
+static void TestConcatOpGrad(const std::string& op_type,
+                      const std::string& domain = kOnnxDomain,
+                      int opset_version = 9,
+                      bool check_not_have_shape_inferencing = false) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"Concat"};
+  const bool extra_input = op_type == "ConcatTraining";
+  OpDef op_def{op_type, domain, opset_version};
 
   //concat_1d
   {
     TensorShape x_shape({2});
     TensorShape y_shape({6});
-    gradient_checker.ComputeGradientError(op_def, {x_shape, x_shape, x_shape}, {y_shape}, &max_error,
-                                          {MakeAttribute("axis", int64_t(0))});
+    std::vector<TensorInfo> output = {y_shape};
+    if (extra_input) output.push_back(TensorInfo({3}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>()));
+    gradient_checker.ComputeGradientError(op_def, {x_shape, x_shape, x_shape},
+                                                                        output, &max_error,
+                                                                        {MakeAttribute("axis", int64_t(0))}, true,
+                                                                        check_not_have_shape_inferencing);
     EXPECT_IS_TINY(max_error);
   }
 
@@ -688,8 +693,12 @@ TEST(GradientCheckerTest, ConcatGrad) {
   {
     TensorShape x_shape({2, 2});
     TensorShape y_shape({2, 6});
-    gradient_checker.ComputeGradientError(op_def, {x_shape, x_shape, x_shape}, {y_shape}, &max_error,
-                                          {MakeAttribute("axis", int64_t(1))});
+    std::vector<TensorInfo> output = {y_shape};
+    if (extra_input) output.push_back(TensorInfo({3}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>()));
+    gradient_checker.ComputeGradientError(op_def, {x_shape, x_shape, x_shape},
+                                          output, &max_error,
+                                          {MakeAttribute("axis", int64_t(1))}, true, 
+                                          check_not_have_shape_inferencing);
     EXPECT_IS_TINY(max_error);
   }
 
@@ -697,8 +706,12 @@ TEST(GradientCheckerTest, ConcatGrad) {
   {
     TensorShape x_shape({1, 2, 3});
     TensorShape y_shape({1, 2, 9});
-    gradient_checker.ComputeGradientError(op_def, {x_shape, x_shape, x_shape}, {y_shape}, &max_error,
-                                          {MakeAttribute("axis", int64_t(2))});
+    std::vector<TensorInfo> output = {y_shape};
+    if (extra_input) output.push_back(TensorInfo({3}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>()));
+    gradient_checker.ComputeGradientError(op_def, {x_shape, x_shape, x_shape},
+                                          output, &max_error,
+                                          {MakeAttribute("axis", int64_t(2))}, true, 
+                                          check_not_have_shape_inferencing);
     EXPECT_IS_TINY(max_error);
   }
 
@@ -707,8 +720,12 @@ TEST(GradientCheckerTest, ConcatGrad) {
     TensorShape x1_shape({2, 2});
     TensorShape x2_shape({2, 4});
     TensorShape y_shape({2, 6});
-    gradient_checker.ComputeGradientError(op_def, {x1_shape, x2_shape}, {y_shape}, &max_error,
-                                          {MakeAttribute("axis", int64_t(1))});
+    std::vector<TensorInfo> output = {y_shape};
+    if (extra_input) output.push_back(TensorInfo({2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>()));
+    gradient_checker.ComputeGradientError(op_def, {x1_shape, x2_shape},
+                                          output, &max_error,
+                                          {MakeAttribute("axis", int64_t(1))}, true, 
+                                          check_not_have_shape_inferencing);
     EXPECT_IS_TINY(max_error);
   }
 
@@ -717,10 +734,22 @@ TEST(GradientCheckerTest, ConcatGrad) {
     TensorShape x1_shape({2, 2});
     TensorShape x2_shape({2, 4});
     TensorShape y_shape({2, 6});
-    gradient_checker.ComputeGradientError(op_def, {x1_shape, x2_shape}, {y_shape}, &max_error,
-                                          {MakeAttribute("axis", int64_t(-1))});
+    std::vector<TensorInfo> output = {y_shape};
+    if (extra_input) output.push_back(TensorInfo({2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>()));
+    gradient_checker.ComputeGradientError(op_def, {x1_shape, x2_shape},
+                                          output, &max_error,
+                                          {MakeAttribute("axis", int64_t(-1))}, true, 
+                                          check_not_have_shape_inferencing);
     EXPECT_IS_TINY(max_error);
   }
+}
+
+TEST(GradientCheckerTest, ConcatGrad) {
+  TestConcatOpGrad("Concat");
+}
+
+TEST(GradientCheckerTest, ConcatTrainingGrad) { /*also test w/o shape inferencing */
+  TestConcatOpGrad("ConcatTraining", kMSDomain, 1, true);
 }
 
 TEST(GradientCheckerTest, AveragePoolGrad) {
@@ -1909,4 +1938,3 @@ TEST(GradientCheckerTest, ExpandGrad) {
 }  // namespace onnxruntime
 
 #endif  // NDEBUG
-

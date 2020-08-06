@@ -5,6 +5,7 @@
 #include "gtest/gtest.h"
 #include "orttraining/core/optimizer/gist_encode_decode.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/framework/test_utils.h"
 #include "core/common/path_utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/environment.h"
@@ -28,6 +29,7 @@ namespace test {
 namespace {
 constexpr auto ORIGINAL_MODEL_PATH = ORT_TSTR("testdata/test_training_model.onnx");
 constexpr auto BACKWARD_MODEL_PATH = ORT_TSTR("testdata/temp_backward_model.onnx");
+constexpr auto CONCAT_MODEL_PATH = ORT_TSTR("testdata/transform/concat_trainable.onnx");
 
 std::unordered_set<std::string> GetModelOutputNames(const InferenceSession& session) {
   const auto outputs_result = session.GetModelOutputs();
@@ -165,6 +167,27 @@ TEST(GradientGraphBuilderTest, BuildGradientGraphTest) {
               << " Name=" << node_name
               << '\n';
   }
+}
+
+TEST(GradientGraphBuilderTest, BuildConcatGradientGraphTest) {
+  const auto config = MakeBasicTrainingConfig();
+  PathString backprop_model_file;
+  ASSERT_STATUS_OK(BuildBackPropGraph(CONCAT_MODEL_PATH, config, backprop_model_file));
+
+  std::shared_ptr<Model> pModel;
+  ASSERT_STATUS_OK(Model::Load(backprop_model_file, pModel, nullptr, DefaultLoggingManager().DefaultLogger()));
+
+  Graph& graph = pModel->MainGraph();
+  EXPECT_FALSE(graph.GraphResolveNeeded());
+  EXPECT_TRUE(graph.NumberOfNodes() > 0);
+  EXPECT_TRUE(graph.MaxNodeIndex() > 0);
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  ASSERT_EQ(op_to_count["Concat"], 0);
+  ASSERT_EQ(op_to_count["Split"], 0);
+  ASSERT_EQ(op_to_count["ConcatTraining"], 1);
+  ASSERT_EQ(op_to_count["SplitTraining"], 1);
 }
 
 TEST(GradientGraphBuilderTest, TrainingSession_Basic) {
