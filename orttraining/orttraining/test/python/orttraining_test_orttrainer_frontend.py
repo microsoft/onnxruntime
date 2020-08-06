@@ -473,7 +473,7 @@ def generate_pytorch_transformer_model_sample(optim_config, options={}, step_fn=
     utils = _utils.import_module_from_file(utils_path, utils_name)
 
     # Modeling
-    model = pt_model.TransformerModel(28785, 200, 2, 200, 2, 0.2).to(device)
+    model = pt_model.TransformerModel(28785, 200, 2, 200, 2, 0.2)
     my_loss = ort_utils.my_loss
     model_desc = ort_utils.transformer_model_description()
    
@@ -671,4 +671,3 @@ def testORTTrainerLegacyAndExperimentalWeightsCheck():
 
     # Compare legacy vs experimental APIs
     debug.compare_legacy_onnx_weights(trainer, legacy_trainer)
-
