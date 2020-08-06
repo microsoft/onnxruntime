@@ -14,7 +14,6 @@ stages:
   variables:
     docker_image_prefix: onnxruntime-training
     linux_gpu_dockerfile: dockerfiles/Dockerfile.training
-    python.version: 3.6
 
   jobs:
   - job: Linux_py_GPU_Run_Test
@@ -24,8 +23,6 @@ stages:
     pool: Linux-GPU-CUDA10
     #pool: Linux-Multi-GPU-V100
     steps:
-      - template: templates/set-py-packaging-variables-step.yml
-
       - task: CmdLine@2
         displayName: Build builder stage of docker file
         inputs:
