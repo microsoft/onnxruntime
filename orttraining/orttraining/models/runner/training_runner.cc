@@ -45,6 +45,8 @@ static SessionOptions SESSION_OPTION = {
     overrides,                         //free_dimension_overrides
     true,                              //use_per_session_threads
     true                               //thread_pool_allow_spinning
+    false,                             //use_deterministic_compute
+    {},                                //session_configurations
 };
 
 TrainingRunner::TrainingRunner(Parameters params, const Environment& env)
@@ -703,7 +705,7 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
   // We must join here because main thread needs to access thread-produced
   // fetches and those fetches must be ready.
   pipeline_worker_pool_.JoinAll();
-  for(auto& status : pipeline_worker_pool_.worker_states){
+  for (auto& status : pipeline_worker_pool_.worker_states) {
     CheckWorkerException(status.execution_exception);
   }
 
@@ -738,7 +740,7 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
   // Wait all workers to finish this around of pipeline parallism.
   // The last batch in a pipeline collects gradient and update the model.
   pipeline_worker_pool_.JoinAll();
-  for(auto& status : pipeline_worker_pool_.worker_states){
+  for (auto& status : pipeline_worker_pool_.worker_states) {
     CheckWorkerException(status.execution_exception);
   }
 
