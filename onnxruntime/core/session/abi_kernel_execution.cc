@@ -110,6 +110,245 @@ ORT_API_STATUS_IMPL(OrtApis::CreateExecutableKernel,
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::ExecutableKernelContext_AddAttributeString,
+                    _Inout_ OrtExecutableKernelContext* context_,
+                    _In_ const char* name,
+                    _In_ const char* value) {
+  API_IMPL_BEGIN
+    ORT_ENFORCE(context_, "OrtExecutableKernelContext pointer must be non-null.");
+    ExecutableKernelContextImpl *context = reinterpret_cast<ExecutableKernelContextImpl *>(context_);
+
+    ONNX_NAMESPACE::AttributeProto attribute_proto;
+
+    attribute_proto.set_name(name);
+    attribute_proto.set_type(onnx::AttributeProto::STRING);
+    attribute_proto.set_s(value);
+
+    return ToOrtStatus(context->AddAttribute(name, attribute_proto));
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ExecutableKernelContext_AddAttributeStrings,
+                    _Inout_ OrtExecutableKernelContext* context_,
+                    _In_ const char* name,
+                    _In_ const char** values,
+                    size_t num_values) {
+  API_IMPL_BEGIN
+    ORT_ENFORCE(context_, "OrtExecutableKernelContext pointer must be non-null.");
+    ExecutableKernelContextImpl *context = reinterpret_cast<ExecutableKernelContextImpl *>(context_);
+
+    ONNX_NAMESPACE::AttributeProto attribute_proto;
+    attribute_proto.set_name(name);
+    attribute_proto.set_type(onnx::AttributeProto::STRINGS);
+
+    for (size_t i = 0; i < num_values; i++) {
+      attribute_proto.add_strings(values[i]);
+    }
+
+    return ToOrtStatus(context->AddAttribute(name, attribute_proto));
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ExecutableKernelContext_AddAttributeFloat,
+                    _Inout_ OrtExecutableKernelContext* context_,
+                    _In_ const char* name,
+                    float value) {
+  API_IMPL_BEGIN
+    ORT_ENFORCE(context_, "OrtExecutableKernelContext pointer must be non-null.");
+    ExecutableKernelContextImpl *context = reinterpret_cast<ExecutableKernelContextImpl *>(context_);
+
+    ONNX_NAMESPACE::AttributeProto attribute_proto;
+
+    attribute_proto.set_name(name);
+    attribute_proto.set_type(onnx::AttributeProto::FLOAT);
+    attribute_proto.set_f(value);
+
+    return ToOrtStatus(context->AddAttribute(name, attribute_proto));
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ExecutableKernelContext_AddAttributeFloats,
+                    _Inout_ OrtExecutableKernelContext* context_,
+                    _In_ const char* name,
+                    float* values,
+                    size_t num_values) {
+  API_IMPL_BEGIN
+    ORT_ENFORCE(context_, "OrtExecutableKernelContext pointer must be non-null.");
+    ExecutableKernelContextImpl *context = reinterpret_cast<ExecutableKernelContextImpl *>(context_);
+
+    ONNX_NAMESPACE::AttributeProto attribute_proto;
+    attribute_proto.set_name(name);
+    attribute_proto.set_type(onnx::AttributeProto::FLOATS);
+
+    for (size_t i = 0; i < num_values; i++) {
+      attribute_proto.add_floats(values[i]);
+    }
+
+    return ToOrtStatus(context->AddAttribute(name, attribute_proto));
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ExecutableKernelContext_AddAttributeInt,
+                    _Inout_ OrtExecutableKernelContext* context_,
+                    _In_ const char* name,
+                    int64_t value) {
+  API_IMPL_BEGIN
+    ORT_ENFORCE(context_, "OrtExecutableKernelContext pointer must be non-null.");
+    ExecutableKernelContextImpl *context = reinterpret_cast<ExecutableKernelContextImpl *>(context_);
+
+    ONNX_NAMESPACE::AttributeProto attribute_proto;
+
+    attribute_proto.set_name(name);
+    attribute_proto.set_type(onnx::AttributeProto::INT);
+    attribute_proto.set_i(value);
+
+    return ToOrtStatus(context->AddAttribute(name, attribute_proto));
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ExecutableKernelContext_AddAttributeInts,
+                    _Inout_ OrtExecutableKernelContext* context_,
+                    _In_ const char* name,
+                    int64_t* values,
+                    size_t num_values) {
+  API_IMPL_BEGIN
+    ORT_ENFORCE(context_, "OrtExecutableKernelContext pointer must be non-null.");
+    ExecutableKernelContextImpl *context = reinterpret_cast<ExecutableKernelContextImpl *>(context_);
+
+    ONNX_NAMESPACE::AttributeProto attribute_proto;
+    attribute_proto.set_name(name);
+    attribute_proto.set_type(onnx::AttributeProto::INTS);
+
+    for (size_t i = 0; i < num_values; i++) {
+      attribute_proto.add_ints(values[i]);
+    }
+
+    return ToOrtStatus(context->AddAttribute(name, attribute_proto));
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ExecutableKernelContext_AddAttributeTensor,
+                    _Inout_ OrtExecutableKernelContext* context_,
+                    _In_ const char* name,
+                    _In_ void* p_data,
+                    size_t p_data_len,
+                    _In_ const int64_t* shape,
+                    size_t shape_len,
+                    ONNXTensorElementDataType type) {
+  API_IMPL_BEGIN
+    ORT_ENFORCE(context_, "OrtExecutableKernelContext pointer must be non-null.");
+    ExecutableKernelContextImpl *context = reinterpret_cast<ExecutableKernelContextImpl *>(context_);
+
+    ONNX_NAMESPACE::AttributeProto attribute_proto;
+
+    attribute_proto.set_name(name);
+    attribute_proto.set_type(onnx::AttributeProto::TENSOR);
+    onnx::TensorProto* t = attribute_proto.mutable_t();
+
+    switch (type) {
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
+        t->set_data_type(ONNX_NAMESPACE::TensorProto::FLOAT);
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+        t->set_data_type(ONNX_NAMESPACE::TensorProto::UINT8);
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
+        t->set_data_type(ONNX_NAMESPACE::TensorProto::INT8);
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
+        t->set_data_type(ONNX_NAMESPACE::TensorProto::UINT16);
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:
+        t->set_data_type(ONNX_NAMESPACE::TensorProto::INT16);
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
+        t->set_data_type(ONNX_NAMESPACE::TensorProto::INT32);
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
+        t->set_data_type(ONNX_NAMESPACE::TensorProto::UINT32);
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
+        t->set_data_type(ONNX_NAMESPACE::TensorProto::INT64);
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
+        t->set_data_type(ONNX_NAMESPACE::TensorProto::UINT64);
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
+        t->set_data_type(ONNX_NAMESPACE::TensorProto::BOOL);
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
+        t->set_data_type(ONNX_NAMESPACE::TensorProto::DOUBLE);
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64:
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128:
+      default: {
+        std::ostringstream oss;
+        oss << "type " << type << " is not supported in this function";
+        std::string errmsg = oss.str();
+        return ToOrtStatus(Status(ONNXRUNTIME, NOT_IMPLEMENTED, errmsg));
+      }
+    }
+
+    for(size_t i = 0; i < shape_len; i++) {
+      t->add_dims(shape[i]);
+    }
+
+    for(size_t i = 0; i < p_data_len; i++) {
+      switch (type) {
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
+          t->add_float_data(static_cast<float*>(p_data)[i]);
+          break;
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+          t->add_int32_data(static_cast<uint8_t*>(p_data)[i]);
+          break;
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
+          t->add_int32_data(static_cast<int8_t*>(p_data)[i]);
+          break;
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
+          t->add_int32_data(static_cast<uint16_t*>(p_data)[i]);
+          break;
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
+          t->add_int32_data(static_cast<bool*>(p_data)[i]);
+          break;
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:
+          t->add_int32_data(static_cast<int16_t*>(p_data)[i]);
+          break;
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
+          t->add_int32_data(static_cast<int32_t*>(p_data)[i]);
+          break;
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
+          t->add_int64_data(static_cast<int64_t*>(p_data)[i]);
+          break;
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
+          t->add_uint64_data(static_cast<uint32_t*>(p_data)[i]);
+          break;
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
+          t->add_uint64_data(static_cast<uint64_t*>(p_data)[i]);
+          break;
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
+          t->add_double_data(static_cast<double*>(p_data)[i]);
+          break;
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64:
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128:
+        default: {
+          std::ostringstream oss;
+          oss << "type " << type << " is not supported in this function";
+          std::string errmsg = oss.str();
+          return ToOrtStatus(Status(ONNXRUNTIME, NOT_IMPLEMENTED, errmsg));
+        }
+      }
+    }
+
+    return ToOrtStatus(context->AddAttribute(name, attribute_proto));
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::ExecutableKernel_SetInput,
                     _Inout_ OrtExecutableKernel *kernel_,
                     int index,
@@ -247,13 +486,16 @@ Status ExecutableKernelContextImpl::AddOutput(ONNXTensorElementDataType type) {
 
 Status ExecutableKernelContextImpl::CreateExecutionFrame(KernelSessionImpl* session, SingleKernelExecutionFrame** frame, size_t provider_id) {
   auto& graph = session->model->MainGraph();
+
   std::string description;
+
   Node& node = graph.AddNode(
       name_,
       op_type_,
       description,
       input_args_,
-      output_args_);
+      output_args_,
+      &attributes_);
   Status status = graph.Resolve();
   if (!status.IsOK()){
     return status;

@@ -3,24 +3,6 @@
 #include <core/framework/op_kernel.h>
 #include "core/graph/graph.h"
 #include <iostream>
-#include <core/graph/model.h>
-#include <core/framework/mldata_type_utils.h>
-#include "core/graph/onnx_protobuf.h"
-#include "core/optimizer/optimizer_execution_frame.h"
-#include "core/session/abi_kernel_execution.h"
-#include "core/session/inference_session.h"
-#include "core/session/ort_apis.h"
-#include "core/framework/customregistry.h"
-#include "core/framework/data_types.h"
-#include "core/framework/execution_providers.h"
-#include "core/framework/op_kernel_info.h"
-#include "core/framework/op_kernel_context_internal.h"
-#include "core/framework/error_code_helper.h"
-#include "core/framework/tensor_type_and_shape.h"
-#include "core/framework/TensorSeq.h"
-#include "core/providers/cpu/cpu_execution_provider.h"
-#include "core/framework/tensorprotoutils.h"
-#include "abi_session_options_impl.h"
 
 namespace onnxruntime {
 
@@ -140,6 +122,10 @@ class ExecutableKernelContextImpl {
     return Status::OK();
   }
 
+  Status AddAttribute(std::string name, ONNX_NAMESPACE::AttributeProto& attribute){
+    attributes_.insert({name, attribute});
+    return Status::OK();
+  }
 
   Status AddInput(ONNXTensorElementDataType type);
 
@@ -154,6 +140,7 @@ class ExecutableKernelContextImpl {
   // Node attributes
   std::string name_;
   std::string op_type_;
+  NodeAttributes attributes_;
 
   // AddNode takes a vector of raw pointers, so we store the unique pointers separately here and add references to them to the input and output
   // arg vectors
@@ -161,7 +148,6 @@ class ExecutableKernelContextImpl {
   std::vector<std::unique_ptr<ONNX_NAMESPACE::TypeProto>> types_;
   std::vector<NodeArg*> input_args_;
   std::vector<NodeArg*> output_args_;
-  std::unique_ptr<NodeAttributes> attributes_;
 
   // before context is finalized, this op will be null
   std::unique_ptr<SingleKernelExecutionFrame> frame_;

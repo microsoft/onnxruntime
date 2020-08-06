@@ -843,7 +843,6 @@ struct OrtApi {
                   _Inout_ OrtExecutableKernelContext* context,
                   ONNXTensorElementDataType type);
 
-  /*
   // Add attributes to a kernel context
   ORT_API2_STATUS(ExecutableKernelContext_AddAttributeString,
                   _Inout_ OrtExecutableKernelContext* context,
@@ -880,7 +879,6 @@ struct OrtApi {
                   _In_ const int64_t* shape,
                   size_t shape_len,
                   ONNXTensorElementDataType type);
-*/
 
   // Create an ExecutableKernel that can be executed
   ORT_API2_STATUS(CreateExecutableKernel,
@@ -900,8 +898,7 @@ struct OrtApi {
                   _Inout_ OrtValue* value);
 
   // Execute the kernel
-  // todo rename
-  ORT_API2_STATUS(ExecutableKernelContext_Compute, _Inout_ OrtExecutableKernel* kernel);
+  ORT_API2_STATUS(ExecutableKernel_Compute, _Inout_ OrtExecutableKernel* kernel);
 
   ORT_CLASS_RELEASE(KernelSession);
   ORT_CLASS_RELEASE(ExecutableKernel);

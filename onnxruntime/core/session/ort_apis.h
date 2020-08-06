@@ -213,7 +213,6 @@ ORT_API_STATUS_IMPL(ExecutableKernelContext_AddInput,
 ORT_API_STATUS_IMPL(ExecutableKernelContext_AddOutput,
                     _Inout_ OrtExecutableKernelContext* context,
                     ONNXTensorElementDataType type);
-/*
 ORT_API_STATUS_IMPL(ExecutableKernelContext_AddAttributeString,
                     _Inout_ OrtExecutableKernelContext* context,
                     _In_ const char* name,
@@ -249,7 +248,6 @@ ORT_API_STATUS_IMPL(ExecutableKernelContext_AddAttributeTensor,
                     _In_ const int64_t* shape,
                     size_t shape_len,
                     ONNXTensorElementDataType type);
-*/
 
 ORT_API_STATUS_IMPL(CreateExecutableKernel,
                     _Inout_ OrtKernelSession* session,

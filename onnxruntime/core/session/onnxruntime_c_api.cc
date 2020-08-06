@@ -1572,7 +1572,6 @@ static constexpr OrtApi ort_api_1_to_3 = {
     &OrtApis::CreateExecutableKernelContext,
     &OrtApis::ExecutableKernelContext_AddInput,
     &OrtApis::ExecutableKernelContext_AddOutput,
-    /*
     &OrtApis::ExecutableKernelContext_AddAttributeString,
     &OrtApis::ExecutableKernelContext_AddAttributeStrings,
     &OrtApis::ExecutableKernelContext_AddAttributeFloat,
@@ -1580,7 +1579,6 @@ static constexpr OrtApi ort_api_1_to_3 = {
     &OrtApis::ExecutableKernelContext_AddAttributeInt,
     &OrtApis::ExecutableKernelContext_AddAttributeInts,
     &OrtApis::ExecutableKernelContext_AddAttributeTensor,
-     */
     &OrtApis::CreateExecutableKernel,
     &OrtApis::ExecutableKernel_SetInput,
     &OrtApis::ExecutableKernel_SetOutput,
