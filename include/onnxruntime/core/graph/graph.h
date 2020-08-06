@@ -658,10 +658,6 @@ class Graph {
   */
   Node& AddNode(const Node& other);
 
-  // Add node with specified <node_proto>.
-  Node& AddNode(const ONNX_NAMESPACE::NodeProto& node_proto,
-                const ArgNameToTypeMap& name_to_type);
-
   /** Remove a Node from this Graph and free it.
   The output edges of this specified node MUST have been removed before removing the node.
   The input edges of this specified node is removed while removing the node. The process of
@@ -940,6 +936,9 @@ class Graph {
 
   void InitializeStateFromModelFileGraphProto();
 
+  // Add node with specified <node_proto>.
+  Node& AddNode(const ONNX_NAMESPACE::NodeProto& node_proto,
+                const ArgNameToTypeMap& name_to_type);
 
   Version IrVersion() const noexcept {
     return ir_version_;
