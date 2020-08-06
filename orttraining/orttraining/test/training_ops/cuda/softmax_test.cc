@@ -8,9 +8,12 @@ namespace test {
 
 static void TestSoftmax(const std::vector<int64_t>& X_dims,
                         const std::vector<int64_t>& Y_dims,
+                        bool is_log_softmax=false,
                         double per_sample_tolerance = 1e-4,
                         double relative_per_sample_tolerance = 1e-4) {
-  CompareOpTester test("Softmax");
+                      
+  const char* op = is_log_softmax? "LogSoftmax" : "Softmax";
+  CompareOpTester test(op);
 
   // create rand inputs
   RandomValueGenerator random{};
@@ -26,20 +29,32 @@ static void TestSoftmax(const std::vector<int64_t>& X_dims,
 TEST(CudaKernelTest, Softmax_SmallTensor) {
   std::vector<int64_t> X_dims{8, 2, 128, 128};
   std::vector<int64_t> Y_dims{8, 2, 128, 128};
-  TestSoftmax(X_dims, Y_dims);
+  TestSoftmax(X_dims, Y_dims, false);
 }
 
 TEST(CudaKernelTest, Softmax_LargeTensor) {
   std::vector<int64_t> X_dims{8, 16, 512, 512};
   std::vector<int64_t> Y_dims{8, 16, 512, 512};
-  TestSoftmax(X_dims, Y_dims);
+  TestSoftmax(X_dims, Y_dims, false);
+}
+
+TEST(CudaKernelTest, LogSoftmax_SmallTensor) {
+  std::vector<int64_t> X_dims{8, 2, 128, 128};
+  std::vector<int64_t> Y_dims{8, 2, 128, 128};
+  TestSoftmax(X_dims, Y_dims, true);
+}
+
+TEST(CudaKernelTest, LogSoftmax_LargeTensor) {
+  std::vector<int64_t> X_dims{8, 16, 512, 512};
+  std::vector<int64_t> Y_dims{8, 16, 512, 512};
+  TestSoftmax(X_dims, Y_dims, true);
 }
 
 static void TestSoftmaxGrad(const std::vector<int64_t>& dY_dims,
                             const std::vector<int64_t>& Y_dims,
                             const std::vector<int64_t>& dX_dims,
                             double per_sample_tolerance = 1e-4,
-                            double relative_per_sample_tolerance = 1e-4) {
+                            double relative_per_sample_tolerance = 1e-4) {  
   CompareOpTester test("SoftmaxGrad", 1, kMSDomain);
 
   // create rand inputs

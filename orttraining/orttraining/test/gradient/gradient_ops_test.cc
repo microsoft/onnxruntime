@@ -1,7 +1,7 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef NDEBUG  // disable for debug builds because some of these tests are slow
+// #ifdef NDEBUG  // disable for debug builds because some of these tests are slow
 
 #include <algorithm>
 #include <bitset>
@@ -1112,11 +1112,13 @@ TEST(GradientCheckerTest, DISABLED_BatchNormalizationGrad) {
 }
 #endif
 
-TEST(GradientCheckerTest, SoftMaxGrad) {
+void GradientCheckerSoftmaxGradHelper(bool is_log_softmax) {
   TensorShape shape({3, 4, 5});
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"Softmax"};
+
+  const std::string op = is_log_softmax? "LogSoftmax" : "Softmax";
+  OpDef op_def{op};
 
   // default_axis
   {
@@ -1135,6 +1137,14 @@ TEST(GradientCheckerTest, SoftMaxGrad) {
     gradient_checker.ComputeGradientError(op_def, {shape}, {shape}, &max_error, {MakeAttribute("axis", int64_t(2))});
     EXPECT_IS_TINY(max_error);
   }
+}
+
+TEST(GradientCheckerTest, SoftMaxGrad) {
+  GradientCheckerSoftmaxGradHelper(false);
+}
+
+TEST(GradientCheckerTest, LogSoftMaxGrad) {
+  GradientCheckerSoftmaxGradHelper(true);
 }
 
 void TestSoftmaxCrossEntropyGrad(const TensorShape& input_shape, const std::string& reduction) {
@@ -1898,5 +1908,5 @@ TEST(GradientCheckerTest, ExpandGrad) {
 }  // namespace test
 }  // namespace onnxruntime
 
-#endif  // NDEBUG
+// #endif  // NDEBUG
 
