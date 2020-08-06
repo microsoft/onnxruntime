@@ -7,7 +7,7 @@
 
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
-// Disable TensorRT in most tests due to lack of support of the operator.
+// Disable TensorRT in the tests due to lack of support of the operator.
 namespace test {
 TEST(ConstantOfShape, Float_Ones) {
   OpTester test("ConstantOfShape", 9);
@@ -129,10 +129,7 @@ void RunTypedTest(TensorProto::DataType dt, T value) {
   std::fill_n(output.begin(), output.size(), value);
   test.AddOutput<T>("output", output_dims, output);
 
-  if (dt == TensorProto::DOUBLE || dt == TensorProto::UINT8 || dt == TensorProto::UINT16 || dt == TensorProto::UINT32 || dt == TensorProto::UINT64)
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});//TensorRT: DOUBLE/UINT8/UINT16/UINT32/UINT64 is not supported
-  else
-    test.Run(OpTester::ExpectResult::kExpectSuccess);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ConstantOfShape, TypeTests) {
