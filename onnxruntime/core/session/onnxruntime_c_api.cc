@@ -1479,8 +1479,8 @@ ORT_API_STATUS_IMPL(OrtApis::TensorAt, _Inout_ OrtValue* value, size_t* location
   // data has row-major format
   size_t offset = 0;
   for (size_t i = 1; i <= tensor->Shape().NumDimensions(); i++) {
-    int64_t sum = 1;
-    for (size_t j = i+1; j <= tensor->Shape().NumDimensions(); j++) sum *= tensor->Shape()[j-1];
+    size_t sum = 1;
+    for (size_t j = i+1; j <= tensor->Shape().NumDimensions(); j++) sum *= (size_t)tensor->Shape()[j-1];
     offset += location[i-1] * sum;
   }
   auto data = ((char *)tensor->MutableDataRaw()) + (tensor->DataType()->Size() * offset);
