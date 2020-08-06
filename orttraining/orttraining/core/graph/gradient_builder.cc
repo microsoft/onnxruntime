@@ -5,9 +5,11 @@
 
 #include <cmath>
 #include <numeric>
+#include <list>
 
 #include "onnx/defs/attr_proto_util.h"
-
+#include "onnx/defs/tensor_proto_util.h"
+#include "core/framework/tensorprotoutils.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/graph/gradient_builder_registry.h"
 #include "orttraining/core/graph/graph_augmenter.h"
@@ -16,6 +18,47 @@ using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
 namespace training {
+
+static bool SimplifyReshape(const std::vector<Dimension>& target_shape,  // the output shape of Reshape
+                            const std::vector<Dimension>& source_shape,  // the input shape of Reshape
+                            TensorProto& shape_tensor) {                 // the simplified shape tensor if succeeded
+  std::vector<int64_t> shape_const;
+  std::list<std::string> target_dim_params;
+  std::list<std::string> source_dim_params;
+  auto get_dim_params = [](const std::vector<Dimension>& shape, std::list<std::string>& dim_params) {
+    for (const auto& dim : shape) {
+      if (utils::HasDimParam(dim)) {
+        dim_params.push_back(dim.dim_param());
+      } else if (utils::HasDimValue(dim)) {
+        dim_params.push_back("");
+      } else {
+        return false;
+      }
+    }
+    //trim empty strings in the tail of list
+    while (!dim_params.empty() && dim_params.back().empty()) {
+      dim_params.pop_back();
+    }
+    return true;
+  };
+
+  if (get_dim_params(target_shape, target_dim_params) &&
+      get_dim_params(source_shape, source_dim_params) &&
+      target_dim_params == source_dim_params) {
+    for (const auto& dim : target_shape) {
+      if (utils::HasDimParam(dim)) {
+        shape_const.push_back(0);
+      } else {
+        shape_const.push_back(dim.dim_value());
+      }
+    }
+    auto t = ToTensor<int64_t>(shape_const);
+    t.add_dims(shape_const.size());
+    shape_tensor.CopyFrom(t);
+    return true;
+  }
+  return false;
+}
 
 #define IMPLEMENT_GRADIENT_BUILDER(name) \
   std::vector<NodeDef> name::GetGradientDefsImpl() const
@@ -506,6 +549,24 @@ IMPLEMENT_GRADIENT_BUILDER(GetGatherNDGradient) {
 };
 
 IMPLEMENT_GRADIENT_BUILDER(GetReshapeGradient) {
+  std::vector<Dimension> target_shape;
+  std::vector<Dimension> source_shape;
+  if (GetShape(I(0), target_shape).IsOK() &&
+      GetShape(GO(0), source_shape).IsOK()) {
+    TensorProto shape_tensor;
+    if (SimplifyReshape(target_shape,
+                        source_shape,
+                        shape_tensor)) {
+      return std::vector<NodeDef>{
+          NodeDef("Constant",
+                  {},
+                  {IA("x_shape")},
+                  {MakeAttribute("value", shape_tensor)}),
+          NodeDef("Reshape",
+                  {GO(0), IA("x_shape")},
+                  {GI(0)})};
+    }
+  }
   return std::vector<NodeDef>{
       NodeDef("ReshapeGrad",
               {I(0), GO(0)},
@@ -927,14 +988,13 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceLogSumExpGradient) {
 
     result.push_back(NodeDef("Unsqueeze", {O(0)}, {IA("Unsqueezed_Output")}, {MakeAttribute("axes", axes_values)}));
     result.push_back(NodeDef("Sub", {I(0), IA("Unsqueezed_Output")}, {IA("Self_Sub_Result")}));
-  }
-  else {
+  } else {
     result.push_back(NodeDef("Sub", {I(0), O(0)}, {IA("Self_Sub_Result")}));
   }
 
   result.push_back(NodeDef("Exp", {IA("Self_Sub_Result")}, {IA("Self_Sub_Result_Exp")}));
 
-  result.push_back(NodeDef("Mul", {IA("Self_Sub_Result_Exp"), grad}, {GI(0)}));  
+  result.push_back(NodeDef("Mul", {IA("Self_Sub_Result_Exp"), grad}, {GI(0)}));
 
   return result;
 }
