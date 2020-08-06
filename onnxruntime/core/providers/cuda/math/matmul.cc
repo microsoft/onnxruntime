@@ -105,27 +105,23 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
     int torch_device = 0;
     cudaGetDevice(&torch_device);
 
-    std::cout << "1" << std::endl;
     auto torch_tensor_options = torch::TensorOptions().dtype(get_torch_type<T>()).device(torch::kCUDA, torch_device);
     torch::Tensor torch_left;
     if (!transa) {
-      torch_left = torch::zeros(c10::IntArrayRef{helper.M(), helper.K()}, torch_tensor_options);
+      torch_left = torch::zeros(c10::IntArrayRef{left_X->Shape().GetDims()}, torch_tensor_options);
     } else {
-      torch_left = torch::zeros(c10::IntArrayRef{helper.K(), helper.M()}, torch_tensor_options);
+      torch_left = torch::zeros(c10::IntArrayRef{left_X->Shape().GetDims()}, torch_tensor_options);
     }
 
-
-    std::cout << "2" << std::endl;
     torch::Tensor torch_right;
     if (!transb) {
-      torch_right = torch::zeros(c10::IntArrayRef{helper.K(), helper.N()}, torch_tensor_options);
+      torch_right = torch::zeros(c10::IntArrayRef{right_X->Shape().GetDims()}, torch_tensor_options);
     } else {
-      torch_right = torch::zeros(c10::IntArrayRef{helper.N(), helper.K()}, torch_tensor_options);
+      torch_right = torch::zeros(c10::IntArrayRef{right_X->Shape().GetDims()}, torch_tensor_options);
     }
 
     ORT_ENFORCE(cudaGetLastError() == cudaSuccess);
 
-    std::cout << "3" << std::endl;
     const CudaT* left_data = reinterpret_cast<const CudaT*>(left_X->template Data<T>());
     const CudaT* right_data = reinterpret_cast<const CudaT*>(right_X->template Data<T>());
     cudaMemcpy(torch_left.data_ptr(), left_data, left_X->Shape().Size() * sizeof(T), cudaMemcpyDeviceToDevice);
@@ -133,20 +129,17 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
 
     ORT_ENFORCE(cudaGetLastError() == cudaSuccess);
 
-    std::cout << "4" << std::endl;
     if (transa) {
-      torch_left = at::transpose(torch_left, 0, 1);
+      torch_left = at::transpose(torch_left, left_X->Shape().NumDimensions() - 2, left_X->Shape().NumDimensions() - 1);
     }
     if (transb) {
-      torch_right = at::transpose(torch_right, 0, 1);
+      torch_right = at::transpose(torch_right, right_X->Shape().NumDimensions() - 2, right_X->Shape().NumDimensions() - 1);
     }
 
-    std::cout << "5" << std::endl;
     auto torch_result = at::matmul(torch_left, torch_right);
 
-    std::cout << "6" << std::endl;
     auto Y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
-    cudaMemcpy(Y_data, torch_result.data_ptr(), helper.M() * helper.N() * sizeof(T), cudaMemcpyDeviceToDevice);
+    cudaMemcpy(Y_data, torch_result.data_ptr(), Y->Shape().Size() * sizeof(T), cudaMemcpyDeviceToDevice);
 
     return Status::OK();
   }
