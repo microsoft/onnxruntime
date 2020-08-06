@@ -611,35 +611,38 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, Attentio
   std::vector<graph_utils::EdgeEndToMatch> mask_path{
       {0, 0, "Softmax", {1, 11, 13}, kOnnxDomain},
       {0, 0, "Where", {9}, kOnnxDomain},
-      {0, 0, "Cast", {9}, kOnnxDomain},
+      //{0, 0, "Cast", {9}, kOnnxDomain}, //if skiplayernorm, there is cast
       {0, 0, "Expand", {8}, kOnnxDomain},
       {0, 0, "Reshape", {5}, kOnnxDomain},
       {0, 0, "Equal", {1, 11}, kOnnxDomain}};
 
   std::vector<const Node::EdgeEnd*> edges;
   if (!graph_utils::FindPath(qkv_matmul, true, mask_path, edges, logger)) {
+    std::cout << "621" << std::endl;
     DEBUG_LOG("Failed to find mask path");
     return false;
   }
 
   const Node& softmax = edges[0]->GetNode();
-  const Node& where = edges[0]->GetNode();
-  const Node& cast = edges[0]->GetNode();
-  const Node& expend = edges[0]->GetNode();
-  const Node& reshape = edges[0]->GetNode();
-  const Node& equal = edges[0]->GetNode();
+  const Node& where = edges[1]->GetNode();
+  //const Node& cast = edges[2]->GetNode();
+  const Node& expend = edges[2]->GetNode();
+  const Node& reshape = edges[3]->GetNode();
+  const Node& equal = edges[4]->GetNode();
 
   if (!optimizer_utils::CheckOutputEdges(graph, softmax, 1) ||
       !optimizer_utils::CheckOutputEdges(graph, where, 1) ||
-      !optimizer_utils::CheckOutputEdges(graph, cast, 1) ||
+      //!optimizer_utils::CheckOutputEdges(graph, cast, 1) ||
       !optimizer_utils::CheckOutputEdges(graph, expend, 1) ||
       !optimizer_utils::CheckOutputEdges(graph, reshape, 1) ||
       !optimizer_utils::CheckOutputEdges(graph, equal, 1)) {
+    std::cout << "639" << std::endl;
     DEBUG_LOG("Output edge count not expected for mask nodes");
     return false;
   }
 
   if (!optimizer_utils::IsAttributeWithExpectedValue(softmax, "axis", 3)) {
+    std::cout << "645" << std::endl;
     DEBUG_LOG("Softmax attribute axis is expected to be 3");
     return false;
   }
@@ -648,7 +651,7 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, Attentio
 
   result.softmax = &softmax;
   result.Where = &where;
-  result.cast = &cast;
+  //result.cast = &cast;
   result.Expand = &expend;
   result.Reshape = &reshape;
   result.Equal = &equal;
