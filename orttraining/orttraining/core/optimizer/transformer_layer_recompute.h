@@ -16,9 +16,11 @@ class TransformerLayerRecompute : public GraphTransformer {
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 
  private:
-  Status IdentifyTransformerLayerEdges(Graph& graph, std::vector<std::pair<const NodeArg*, const NodeArg*>>& start_end_edges) const;
+  Status IdentifyTransformerLayerEdges(const Graph& graph,
+                                       std::vector<std::pair<const NodeArg*, const NodeArg*>>& start_end_edges,
+                                       const logging::Logger& logger) const;
 
-  std::vector<const Node*> NodesBetweenEdges(Graph& graph, const NodeArg* start, const NodeArg* end) const;
+  std::vector<const Node*> NodesBetweenEdges(const Graph& graph, const NodeArg* start, const NodeArg* end) const;
 
   void InsertRecomputeNodes(Graph& graph, const std::vector<const Node*>& nodes, int priority) const;
 };

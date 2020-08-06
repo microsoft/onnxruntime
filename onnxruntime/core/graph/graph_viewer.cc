@@ -19,14 +19,30 @@ bool NodeCompare::operator()(const Node* n1, const Node* n2) const {
 }
 
 struct PriorityNodeCompare {
+  inline bool IsHighPri(const Node* n) const {
+    static const std::unordered_set<std::string> high_pri_ops = {"Shape", "Size"};
+    return high_pri_ops.find(n->OpType()) != high_pri_ops.end();
+  }
+
+  // Used for std::priority_queue
+  // If return false, n1 will be output first
+  // If return true, n2 will be output first
   bool operator()(const Node* n1, const Node* n2) const {
-    if (n1->OpType() == "Shape" && n2->OpType() != "Shape") {
+    // nodes in global high priorty list will be output first
+    if (IsHighPri(n1) && !IsHighPri(n2)) {
       return false;
-    } else if (n1->OpType() != "Shape" && n2->OpType() == "Shape") {
-      return true;
-    } else {
-      return n1->Priority() > n2->Priority() || n1->Index() < n2->Index();
     }
+    if (!IsHighPri(n1) && IsHighPri(n2)) {
+      return true;
+    }
+
+    // nodes with lower priority value will be output first
+    if (n1->Priority() != n2->Priority()) {
+      return n1->Priority() > n2->Priority();
+    }
+
+    // otherwise, nodes with lower index will be output first
+    return n1->Index() > n2->Index();
   }
 };
 

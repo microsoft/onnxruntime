@@ -10,7 +10,9 @@
 
 namespace onnxruntime {
 Status TransformerLayerRecompute::IdentifyTransformerLayerEdges(
-    Graph& graph, std::vector<std::pair<const NodeArg*, const NodeArg*>>& start_end_edges) const {
+    const Graph& graph,
+    std::vector<std::pair<const NodeArg*, const NodeArg*>>& start_end_edges,
+    const logging::Logger& logger) const {
   const std::unordered_set<std::string> gelu_ops{"Gelu", "BiasGelu", "FastGelu"};
   const std::unordered_set<std::string> dropout_ops{"Dropout", "BiasDropout"};
   const std::unordered_set<std::string> layernorm_ops{"LayerNormalization", "SkipLayerNormalization"};
@@ -51,10 +53,11 @@ Status TransformerLayerRecompute::IdentifyTransformerLayerEdges(
   ORT_RETURN_IF_NOT(layer_start_edges.size() == layer_end_edges.size(), "Number of start and end edges doesn't match!");
 
   start_end_edges.clear();
-  std::cout << "Find " << layer_start_edges.size() << " transformer layers.\n";
+
+  LOGS(logger, INFO) << "Found " << layer_start_edges.size() << " transformer layers.";
   for (size_t i = 0; i < layer_start_edges.size(); ++i) {
     start_end_edges.push_back({layer_start_edges[i], layer_end_edges[i]});
-    std::cout << "Start edge: " << layer_start_edges[i]->Name() << " End edge: " << layer_end_edges[i]->Name() << "\n";
+    LOGS(logger, INFO) << "Start edge: " << layer_start_edges[i]->Name() << " End edge: " << layer_end_edges[i]->Name();
   }
 
   return Status::OK();
@@ -62,7 +65,7 @@ Status TransformerLayerRecompute::IdentifyTransformerLayerEdges(
 
 typedef std::set<const Node*, NodeCompare> NodeSet;
 
-std::vector<const Node*> TransformerLayerRecompute::NodesBetweenEdges(Graph& graph, const NodeArg* start, const NodeArg* end) const {
+std::vector<const Node*> TransformerLayerRecompute::NodesBetweenEdges(const Graph& graph, const NodeArg* start, const NodeArg* end) const {
   // Forward BFS from the start node
   std::vector<const Node*> start_nodes = graph.GetConsumerNodes(start->Name());
   NodeSet fw_visited(start_nodes.begin(), start_nodes.end());
@@ -149,10 +152,12 @@ void TransformerLayerRecompute::InsertRecomputeNodes(Graph& graph, const std::ve
       continue;
     }
 
+    // prepare inputs for recompute node
     std::vector<NodeArg*> recomputed_inputs;
     for (NodeArg* input : node->MutableInputDefs()) {
       const Node* p_node = graph.GetProducerNode(input->Name());
 
+      // do not duplicate initializers in recompute subgraph
       if (initializers.find(input->Name()) != initializers.end() ||
           std::find(nodes.begin(), nodes.end(), p_node) == nodes.end()) {
         recomputed_inputs.push_back(input);
@@ -163,6 +168,7 @@ void TransformerLayerRecompute::InsertRecomputeNodes(Graph& graph, const std::ve
       }
     }
 
+    // prepare ouputs for recompute node
     std::vector<NodeArg*> recomputed_outputs;
     for (NodeArg* output : node->MutableOutputDefs()) {
       auto& recomputed_output = graph.GetOrCreateNodeArg(graph_utils::RecomputeName(output->Name()),
@@ -182,9 +188,9 @@ void TransformerLayerRecompute::InsertRecomputeNodes(Graph& graph, const std::ve
   return;
 }
 
-Status TransformerLayerRecompute::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, const logging::Logger& /*logger*/) const {
+Status TransformerLayerRecompute::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, const logging::Logger& logger) const {
   std::vector<std::pair<const NodeArg*, const NodeArg*>> start_end_edges;
-  ORT_RETURN_IF_ERROR(IdentifyTransformerLayerEdges(graph, start_end_edges));
+  ORT_RETURN_IF_ERROR(IdentifyTransformerLayerEdges(graph, start_end_edges, logger));
 
   for (size_t i = 0; i < start_end_edges.size(); ++i) {
     std::vector<const Node*> nodes = NodesBetweenEdges(graph, start_end_edges[i].first, start_end_edges[i].second);
