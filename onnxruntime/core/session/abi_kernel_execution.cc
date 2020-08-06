@@ -500,6 +500,10 @@ Status ExecutableKernelContextImpl::CreateExecutionFrame(KernelSessionImpl* sess
   if (!status.IsOK()){
     return status;
   }
+  if (node.Op() == nullptr) {
+    std::string message("Unable to resolve node op. This may happen when the node has no outputs.");
+    return Status(ONNXRUNTIME, NOT_IMPLEMENTED, message);
+  }
 
   auto const& execution_provider = session->provider_list[provider_id];
 

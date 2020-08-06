@@ -148,10 +148,6 @@ class ExecutableKernelContextImpl {
   std::vector<std::unique_ptr<ONNX_NAMESPACE::TypeProto>> types_;
   std::vector<NodeArg*> input_args_;
   std::vector<NodeArg*> output_args_;
-
-  // before context is finalized, this op will be null
-  std::unique_ptr<SingleKernelExecutionFrame> frame_;
-
 };
 
 }  // namespace onnxruntime
