@@ -11,6 +11,9 @@ using System.Threading.Tasks;
 using Xunit;
 using Xunit.Abstractions;
 
+// This runs in a separate package built from EndToEndTests
+// and for this reason it can not refer to non-public members
+// of Onnxruntime package
 namespace Microsoft.ML.OnnxRuntime.Tests
 {
     public class InferenceTest
@@ -222,7 +225,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
 
                 // Run inference with pinned inputs and outputs created with in Run()
-                using (var pinnedInputs = new DisposableList<FixedBufferOnnxValue>())
+                using (var pinnedInputs = new DisposableListTest<FixedBufferOnnxValue>())
                 {
                     var inputNames = container.Select(i => i.Name).ToArray();
                     pinnedInputs.AddRange(container.Select(i => FixedBufferOnnxValue.CreateFromTensor(i.AsTensor<float>())));
@@ -252,7 +255,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
 
                 // Run inference with pinned inputs and named outputs
-                using (var pinnedInputs = new DisposableList<FixedBufferOnnxValue>())
+                using (var pinnedInputs = new DisposableListTest<FixedBufferOnnxValue>())
                 {
                     var inputNames = container.Select(i => i.Name).ToArray();
                     pinnedInputs.AddRange(container.Select(i => FixedBufferOnnxValue.CreateFromTensor(i.AsTensor<float>())));
@@ -269,7 +272,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 // Run inference with named inputs and pinned outputs
                 {
                     // correct pre-allocated outputs
-                    using (var pinnedOutputs = new DisposableList<FixedBufferOnnxValue>())
+                    using (var pinnedOutputs = new DisposableListTest<FixedBufferOnnxValue>())
                     {
                         var outputTensor = new DenseTensor<float>(expectedOutputDimensions);
                         pinnedOutputs.Add(FixedBufferOnnxValue.CreateFromTensor(outputTensor));
@@ -279,8 +282,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
 
                 // Run inference with pinned inputs and pinned outputs
-                using (DisposableList<FixedBufferOnnxValue> pinnedInputs = new DisposableList<FixedBufferOnnxValue>(),
-                                                            pinnedOutputs = new DisposableList<FixedBufferOnnxValue>())
+                using (DisposableListTest<FixedBufferOnnxValue> pinnedInputs = new DisposableListTest<FixedBufferOnnxValue>(),
+                                                            pinnedOutputs = new DisposableListTest<FixedBufferOnnxValue>())
                 {
                     var inputNames = container.Select(i => i.Name).ToArray();
                     pinnedInputs.AddRange(container.Select(i => FixedBufferOnnxValue.CreateFromTensor(i.AsTensor<float>())));
@@ -425,7 +428,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var inputData = tuple.Item2;
             var tensor = tuple.Item3;
 
-            using (var inputs = new DisposableList<FixedBufferOnnxValue>())
+            using (var inputs = new DisposableListTest<FixedBufferOnnxValue>())
             {
                 inputs.Add(FixedBufferOnnxValue.CreateFromTensor(tensor));
                 var ex = Assert.Throws<ArgumentException>(() => session.Run(new string[0], inputs));
@@ -505,7 +508,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("data_0", inputTensor) };
             var outputTensor = new DenseTensor<float>((ReadOnlySpan<int>)new[] { 1, 1000, 1, 1 });
 
-            using (var outputs = new DisposableList<FixedBufferOnnxValue>())
+            using (var outputs = new DisposableListTest<FixedBufferOnnxValue>())
             {
                 var ex = Assert.Throws<ArgumentException>(() => session.Run(inputs, new string[] { "softmaxout_1" }, outputs));
                 Assert.StartsWith("Length of outputNames (1) must match that of outputValues (0).", ex.Message);
@@ -1624,7 +1627,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             int device_id = 0;
             using (var info_cpu = new OrtMemoryInfo(OrtMemoryInfo.allocatorCPU, OrtAllocatorType.ArenaAllocator, device_id, OrtMemType.Default))
             {
-                Assert.NotEqual(info_cpu.Pointer, IntPtr.Zero);
                 Assert.Equal("Cpu", info_cpu.Name);
                 Assert.Equal(device_id, info_cpu.Id);
                 Assert.Equal(OrtAllocatorType.ArenaAllocator, info_cpu.GetAllocatorType());
@@ -1632,7 +1634,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 using (var allocator = new OrtAllocator(session, info_cpu))
                 {
-                    Assert.NotEqual(allocator.Pointer, IntPtr.Zero);
                     var alloc_info = allocator.Info;
                     // Allocator type returned may be different on x86 so we don't compare.
                     Assert.Equal(info_cpu.Name, alloc_info.Name);
@@ -1641,7 +1642,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                     uint size = 1024;
                     OrtMemoryAllocation chunk = allocator.Allocate(size);
-                    Assert.NotEqual(chunk.Pointer, IntPtr.Zero);
                     Assert.Equal(chunk.Size, size);
                     var chunk_info = chunk.Info;
                     // Allocator type returned may be different on x86 so we don't compare.
@@ -1660,7 +1660,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             int device_id = 0;
             using (var info_cuda = new OrtMemoryInfo(OrtMemoryInfo.allocatorCUDA, OrtAllocatorType.ArenaAllocator, device_id, OrtMemType.Default))
             {
-                Assert.NotEqual(info_cuda.Pointer, IntPtr.Zero);
                 Assert.Equal("Cuda", info_cuda.Name);
                 Assert.Equal(device_id, info_cuda.Id);
                 Assert.Equal(OrtAllocatorType.ArenaAllocator, info_cuda.GetAllocatorType());
@@ -1668,13 +1667,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 using (var allocator = new OrtAllocator(session, info_cuda))
                 {
-                    Assert.NotEqual(allocator.Pointer, IntPtr.Zero);
                     var alloc_info = allocator.Info;
                     Assert.True(info_cuda.Equals(alloc_info));
 
                     uint size = 1024;
                     OrtMemoryAllocation chunk = allocator.Allocate(size);
-                    Assert.NotEqual(chunk.Pointer, IntPtr.Zero);
                     Assert.Equal(chunk.Size, size);
                     Assert.True(chunk.Info.Equals(alloc_info));
                     chunk.Dispose();
@@ -1704,53 +1701,14 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        /// <summary>
-        /// This works only for allocations accessible from host memory
-        /// </summary>
-        /// <param name="buffer"></param>
-        /// <param name="elements"></param>
-        private static void PopulateNativeBufferFloat(OrtMemoryAllocation buffer, float[] elements)
-        {
-            if(buffer.Size < elements.Length * sizeof(float))
-            {
-                Assert.True(false);
-            }
-
-            unsafe
-            {
-                float* p = (float*)buffer.Pointer;
-                for (int i = 0; i < elements.Length; ++i)
-                {
-                    *p++ = elements[i];
-                }
-            }
-        }
-
-        private static void CompareNativeBufferFloat(OrtMemoryAllocation buffer, float[] elements, IEqualityComparer<float> comp)
-        {
-            if (buffer.Size != elements.Length * sizeof(float))
-            {
-                Assert.True(false);
-            }
-
-            unsafe
-            {
-                float* p = (float*)buffer.Pointer;
-                for (int i = 0; i < elements.Length; ++i)
-                {
-                    Assert.True(comp.Equals(*p++, elements[i]));
-                }
-            }
-        }
-
         [Fact]
-        private void TestBinding()
+        private void TestIOBinding()
         {
             var inputName = "data_0";
             var outputName = "softmaxout_1";
             var allocator = OrtAllocator.DefaultInstance;
             // From the model
-            using (var dispList = new DisposableList<IDisposable>())
+            using (var dispList = new DisposableListTest<IDisposable>())
             {
                 var tuple = OpenSessionSqueezeNet();
                 var session = tuple.Item1;
@@ -1763,10 +1721,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 var ioBinding = session.CreateIoBinding();
                 dispList.Add(ioBinding);
-
-                var ortAllocationInput = allocator.Allocate((uint)inputData.Length * sizeof(float));
-                dispList.Add(ortAllocationInput);
-                PopulateNativeBufferFloat(ortAllocationInput, inputData);
 
                 var ortAllocationOutput = allocator.Allocate((uint)outputData.Length * sizeof(float));
                 dispList.Add(ortAllocationOutput);
@@ -1801,28 +1755,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     }
                 }
 
-                //Test 2. Use the same input as in Test 1
-                // but rebind the output to OrtAllocated buffer
-                using (FixedBufferOnnxValue fixedInputBuffer = FixedBufferOnnxValue.CreateFromTensor(inputTensor))
-                {
-                    ioBinding.BindInput(inputName, fixedInputBuffer);
-                    var longShape = Array.ConvertAll<int, long>(outputMeta[outputName].Dimensions, i => i);
-                    ioBinding.BindOutput(outputName, Tensors.TensorElementType.Float, longShape, ortAllocationOutput);
-                    using (var outputs = session.RunWithBindingAndNames(new RunOptions(), ioBinding))
-                    {
-                        Assert.Equal(1, outputs.Count);
-                        var output = outputs.First();
-                        Assert.Equal(outputName, output.Name);
-                        var tensor = output.AsTensor<float>();
-                        Assert.True(tensor.IsFixedSize);
-                        Assert.Equal(outputData, tensor.ToArray<float>(), new floatComparer());
-
-                        // Let's check that the output buffer actually contains the data
-                        CompareNativeBufferFloat(ortAllocationOutput, outputData, new floatComparer());
-                    }
-                }
-
-                // Test 3. Bind input to preallocated buffer. Output to a device so the allocation would happen
+                // Test 2. Bind input to preallocated buffer. Output to a device so the allocation would happen
                 // automatically
                 using (FixedBufferOnnxValue fixedInputBuffer = FixedBufferOnnxValue.CreateFromTensor(inputTensor))
                 {
@@ -2139,7 +2072,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             return NamedOnnxValue.CreateFromTensor<T>(name, dt);
         }
 
-        static Tuple<InferenceSession, float[], DenseTensor<float>, float[]> OpenSessionSqueezeNet(int? cudaDeviceId = null)
+        internal static Tuple<InferenceSession, float[], DenseTensor<float>, float[]> OpenSessionSqueezeNet(int? cudaDeviceId = null)
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
 #if USE_CUDA
@@ -2167,7 +2100,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        class floatComparer : IEqualityComparer<float>
+        internal class floatComparer : IEqualityComparer<float>
         {
             private float atol = 1e-3f;
             private float rtol = 1.7e-2f;
@@ -2218,6 +2151,48 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
             }
         }
+    }
 
+    // Copy of the class that is internal in the main package
+    internal class DisposableListTest<T> : List<T>, IDisposableReadOnlyCollection<T>
+        where T : IDisposable
+    {
+        public DisposableListTest() { }
+        public DisposableListTest(int count) : base(count) { }
+
+        #region IDisposable Support
+        private bool disposedValue = false; // To detect redundant calls
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!disposedValue)
+            {
+                if (disposing)
+                {
+                    // Dispose in the reverse order.
+                    // Objects should typically be destroyed/disposed
+                    // in the reverse order of its creation
+                    // especially if the objects created later refer to the
+                    // objects created earlier. For homogeneous collections of objects
+                    // it would not matter.
+                    for (int i = this.Count - 1; i >= 0; --i)
+                    {
+                        this[i]?.Dispose();
+                    }
+                    this.Clear();
+                }
+
+                disposedValue = true;
+            }
+        }
+
+        // This code added to correctly implement the disposable pattern.
+        public void Dispose()
+        {
+            // Do not change this code. Put cleanup code in Dispose(bool disposing) above.
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+        #endregion
     }
 }
