@@ -195,6 +195,8 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& Add(OrtCustomOpDomain* custom_op_domain);
 
   SessionOptions& DisablePerSessionThreads();
+
+  SessionOptions& SetSessionConfiguration(OrtSessionConfigKey config_key, const char* config_value);
 };
 
 struct ModelMetadata : Base<OrtModelMetadata> {

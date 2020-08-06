@@ -81,5 +81,8 @@ struct SessionOptions {
 
   // Deterministic compute is likely not as performant. This option is default to false.
   bool use_deterministic_compute = false;
+
+  // Stores the configurations for this session
+  std::unordered_map<OrtSessionConfigKey, std::string> session_configurations;
 };
 }  // namespace onnxruntime

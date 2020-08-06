@@ -179,3 +179,9 @@ ORT_API_STATUS_IMPL(OrtApis::DisablePerSessionThreads, _In_ OrtSessionOptions* o
   options->value.use_per_session_threads = false;
   return nullptr;
 }
+
+ORT_API_STATUS_IMPL(OrtApis::SetSessionConfiguration, _Inout_ OrtSessionOptions* options,
+                    _In_ OrtSessionConfigKey config_key, _In_ const char* config_value) {
+  options->value.session_configurations[config_key] = config_value;
+  return nullptr;
+}

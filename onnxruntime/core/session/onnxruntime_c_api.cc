@@ -633,7 +633,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetStringTensorElement, _In_ const OrtValue* value,
 
   size_t ret = input[index].size();
   if (s_len < ret) {
-    return OrtApis::CreateStatus(ORT_FAIL,"buffer size is too small for string");
+    return OrtApis::CreateStatus(ORT_FAIL, "buffer size is too small for string");
   }
 
   memcpy(s, input[index].data(), input[index].size());
@@ -1663,6 +1663,7 @@ static constexpr OrtApi ort_api_1_to_4 = {
     &OrtApis::GetStringTensorElementLength,
     &OrtApis::GetStringTensorElement,
     &OrtApis::FillStringTensorElement,
+    &OrtApis::SetSessionConfiguration,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

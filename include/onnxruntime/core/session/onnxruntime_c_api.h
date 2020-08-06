@@ -133,6 +133,10 @@ typedef enum OrtErrorCode {
   ORT_EP_FAIL,
 } OrtErrorCode;
 
+typedef enum OrtSessionConfigKey {
+  ORT_SESSION_CONFIG_MAXIMUM,  // Always leave this as the last value
+} OrtSessionConfigKey;
+
 #define ORT_RUNTIME_CLASS(X) \
   struct Ort##X;             \
   typedef struct Ort##X Ort##X;
@@ -587,7 +591,7 @@ struct OrtApi {
    * std::map<int64_t, int64_t>
    * std::map<int64_t, float>
    * std::map<int64_t, double>
-   * 
+   *
    * Sequence types
    * ==============
    * std::vector<std::string>
@@ -750,8 +754,8 @@ struct OrtApi {
 
   /**
    * \param out is set to a null terminated string allocated using 'allocator'. The caller is responsible for freeing it.
-   * Profiling is turned ON automatically if enabled for the particular session by invoking EnableProfiling() 
-   * on the SessionOptions instance used to create the session.  
+   * Profiling is turned ON automatically if enabled for the particular session by invoking EnableProfiling()
+   * on the SessionOptions instance used to create the session.
    */
   ORT_API2_STATUS(SessionEndProfiling, _In_ OrtSession* sess, _Inout_ OrtAllocator* allocator, _Outptr_ char** out);
 
@@ -804,7 +808,7 @@ struct OrtApi {
 
   /**
    * \param num_keys contains the number of keys in the custom metadata map
-   * \param keys is an array of null terminated strings (array count = num_keys) allocated using 'allocator'. 
+   * \param keys is an array of null terminated strings (array count = num_keys) allocated using 'allocator'.
    * The caller is responsible for freeing each string and the pointer array.
    * 'keys' will be a nullptr if custom metadata map is empty.
    */
@@ -826,15 +830,15 @@ struct OrtApi {
    * The caller is responsible for freeing each char * and the pointer
    * array by calling ReleaseAvailableProviders().
    */
-  ORT_API2_STATUS(GetAvailableProviders, _Outptr_ char ***out_ptr,
-                  _In_ int *provider_length);
+  ORT_API2_STATUS(GetAvailableProviders, _Outptr_ char*** out_ptr,
+                  _In_ int* provider_length);
 
   /**
    * \param ptr is the pointer to an array of available providers you
    * get after calling GetAvailableProviders().
    * \param providers_length is the number of available providers.
    */
-  ORT_API2_STATUS(ReleaseAvailableProviders, _In_ char **ptr,
+  ORT_API2_STATUS(ReleaseAvailableProviders, _In_ char** ptr,
                   _In_ int providers_length);
 
   /**
@@ -854,9 +858,17 @@ struct OrtApi {
   /**
      * \param value A tensor created from OrtCreateTensor... function.
      * \param s A null terminated string.
-     * \param index index of string tensor element to fill 
+     * \param index index of string tensor element to fill
      */
   ORT_API2_STATUS(FillStringTensorElement, _Inout_ OrtValue* value, _In_ const char* s, size_t index);
+
+  /**
+     * Set a single session configuration entry as a pair of an enum and a string
+     * \param config_key An enum as the key of the configuration
+     * \param config_value A null terminated string representation of the config value
+     */
+  ORT_API2_STATUS(SetSessionConfiguration, _Inout_ OrtSessionOptions* options,
+                  _In_ OrtSessionConfigKey config_key, _In_ const char* config_value);
 };
 
 /*

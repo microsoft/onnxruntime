@@ -229,6 +229,12 @@ inline SessionOptions& SessionOptions::Add(OrtCustomOpDomain* custom_op_domain) 
   return *this;
 }
 
+inline SessionOptions& SessionOptions::SetSessionConfiguration(OrtSessionConfigKey config_key,
+                                                               const char* config_value) {
+  ThrowOnError(GetApi().SetSessionConfiguration(p_, config_key, config_value));
+  return *this;
+}
+
 inline Session::Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options) {
   ThrowOnError(GetApi().CreateSession(env, model_path, options, &p_));
 }
