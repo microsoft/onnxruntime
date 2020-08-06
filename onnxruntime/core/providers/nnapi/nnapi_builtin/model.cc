@@ -154,8 +154,7 @@ Status Execution::SetInputBuffers(const std::vector<InputBuffer>& inputs) {
     ORT_RETURN_IF_ERROR(shaper_.UpdateShape(input.name, input.type.dimensions));
   }
 
-  shaper_.UpdateDynamicDimensions();
-
+  ORT_RETURN_IF_ERROR(shaper_.UpdateDynamicDimensions());
   return Status::OK();
 }
 
