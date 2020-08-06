@@ -111,6 +111,8 @@ TEST(ConcatOpTest, Concat2D_3) {
             kNnapiExecutionProvider});   // NNAPI: concat does not support 0 size input
 }
 
+// Test Concat of tensors when one of them has dynamic shape
+// This is useful for testing EP's own shape inferencing, such as NNAPI EP
 TEST(ConcatOpTest, Concat2D_4) {
   OpTester test("Concat");
   test.AddAttribute("axis", int64_t{1});
