@@ -17,7 +17,7 @@ stages:
     python.version: 3.6
 
   jobs:
-  - job: Linux_py_GPU_Test
+  - job: Linux_py_GPU_Run_Test
     timeoutInMinutes: 0
     workspace:
       clean: all
@@ -53,7 +53,7 @@ stages:
               --enable_onnx_tests
           workingDirectory: $(Build.SourcesDirectory)
 
-  - job: Linux_py_GPU_Docker
+  - job: Linux_py_GPU_Build_Docker_Push
     timeoutInMinutes: 0
     workspace:
       clean: all

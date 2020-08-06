@@ -20,7 +20,11 @@ WORKDIR /stage
 RUN apt-get -y update &&\
     apt-get -y --no-install-recommends install \
         curl \
-        git
+        git \
+        language-pack-en
+
+RUN locale-gen en_US.UTF-8 && \
+    update-locale LANG=en_US.UTF-8
     
 # install miniconda (comes with python 3.7 default)
 ARG CONDA_VERSION
