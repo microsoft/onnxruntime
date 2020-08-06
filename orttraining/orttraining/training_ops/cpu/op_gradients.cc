@@ -131,23 +131,20 @@ Status LogSoftmaxGrad<T>::Compute(OpKernelContext* context) const {
   const float* dYdata = dY.template Data<float>();
   float* dXdata = dX.template MutableData<float>();
 
-  std::vector<float> eYsdY(nd);
-  float* eYsdYdata = eYsdY.data();
-
-  // dX_ai = d(log Y_ai) - (sum_j dY_aj) exp(log Y_ai)
-  math::Exp<float, CPUMathUtil>(nd, Ydata, eYsdYdata, nullptr);
+  std::vector<float> eY(nd);
+  float* eYdata = eY.data();
+  
+  // dX_ai = d(log Y_ai) - [sum_j d(log Y_aj)] exp(log Y_ai)
+  gsl::copy(gsl::make_span(dYdata, nd), gsl::make_span(dXdata, nd));
+  math::Exp<float, CPUMathUtil>(nd, Ydata, eYdata, nullptr);
   for (size_t i = 0; i < N; ++i) {
     float sdY;
-    math::Sum<float, CPUMathUtil>(d, dYdata + i * d, &sdY, nullptr, nullptr);
-    math::Scale<float, CPUMathUtil>(d, sdY, eYsdYdata + i * d, eYsdYdata + i * d, nullptr);
+    math::Sum<float, CPUMathUtil>(d, dYdata + i*d, &sdY, nullptr, nullptr);
+    math::Axpy<float, CPUMathUtil>(d, -sdY, eYdata + i*d, dXdata + i*d, nullptr);
   }
-  math::Sub<float, CPUMathUtil>(gsl::narrow_cast<int>(Y.Shape().Size()), dYdata, eYsdYdata, dXdata, nullptr);
 
   return Status::OK();
 }
-
-
-
 
 }  // namespace contrib
 }  // namespace onnxruntime
