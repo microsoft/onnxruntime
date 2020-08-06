@@ -141,13 +141,22 @@ class ExecutionFrame final : public IExecutionFrame {
 
   // Return the size of virtual memory allocated in runtime.
   // The memory is usually used for activations in forward and backward passes.
-  const std::unordered_map<std::string, size_t>& GetDynamicMemorySizeInfo() {
+  const std::unordered_map<std::string, size_t> GetDynamicMemorySizeInfo() {
+    // Dynamic memory dictionary can be accessed by multiple threads when using
+    // parallel executor, so we need to lock the global mutex of ExecutionFrame
+    // before accessing it.
+    std::unique_lock<std::mutex> lock(mtx_);
+    // It's a cheap copy of current dictionary. The dictionary size is at most
+    // indentical to the number of execution providers. We can't return reference
+    // because it's not thread-safe.
     return dynamic_activation_memory_sizes_in_byte_;
   }
 
   // Return the size of virtual memory allocated before computation.
   // The memory is usually used for activations in forward and backward passes.
-  const std::unordered_map<std::string, size_t>& GetStaticMemorySizeInfo() {
+  const std::unordered_map<std::string, size_t> GetStaticMemorySizeInfo() {
+    // It's a cheap copy of current dictionary. The dictionary size is at most
+    // indentical to the number of execution providers.
     return static_activation_memory_sizes_in_byte_;
   }
 
@@ -199,11 +208,13 @@ class ExecutionFrame final : public IExecutionFrame {
 
   // Size of virtual memory allocated before any kernel execution.
   // This field is not physical memory size.
+  // static_activation_memory_sizes_in_byte_[location] is the static memory consumption on "location".
   std::unordered_map<std::string, size_t> static_activation_memory_sizes_in_byte_;
 
   // Size of virtual memory allocated during kernel execution (i.e., inside a kernel,
   // we may allocate some memory for its outputs, if not planned.).
   // This field is not physical memory size.
+  // dynamic_activation_memory_sizes_in_byte_[location] is the dynamic memory consumption on "location".
   std::unordered_map<std::string, size_t> dynamic_activation_memory_sizes_in_byte_;
 
   // Mutex which should be acquired when executing non-thread-safe member functions.
