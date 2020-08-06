@@ -1,4 +1,13 @@
 parameters:
+- task: Docker@2
+  inputs:
+    containerRegistry: 'ortrelease'
+    repository: 'onnxruntime-training'
+    command: 'buildAndPush'
+    Dockerfile: 'dockerfiles/Dockerfile.training'
+    tags: |
+      $(Build.BuildId)
+      latest
   - name: build_flag
     displayName: Build Flag
     type: string
