@@ -24,6 +24,7 @@ def compare_onnx_weights(model_a, model_b, verbose=False, rtol=1e-4):
     assert len(state_dict_a.items()) == len(state_dict_b.items())
     _compare_state_dict_weights(state_dict_a, state_dict_b, verbose, rtol)
 
+
 def compare_legacy_onnx_weights(model_a, model_b, verbose=False, rtol=1e-4):
     r"""Compare whether weights between 'model_a' (legacy API ONNX model) and 'model_b' (new API ONNX model)
     are within a certain tolerance 'rtol'
@@ -48,4 +49,3 @@ def _compare_state_dict_weights(state_dict_a, state_dict_b, verbose=False, rtol=
         if verbose:
             print(f'Weight name: {a_name}: absolute difference: {np.abs(np_a_vals-np_b_vals).max()}')
         assert_allclose(a_val, b_val, rtol=rtol, err_msg=f"Weight mismatch for {a_name}")
-
