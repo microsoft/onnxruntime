@@ -265,7 +265,7 @@ TEST_P(SessionStatePrepackingTest, PrePackingTest) {
                                         sess_options));
   const auto& const_initialized_tensors = session_state.GetConstantInitializedTensors();
   // check prepacking
-  ASSERT_EQ(const_initialized_tensors.size(), sess_options.use_prepacking ? 0 : 1);
+  ASSERT_EQ(const_initialized_tensors.size(), size_t(sess_options.use_prepacking ? 0 : 1));
 }
 
 INSTANTIATE_TEST_SUITE_P(SessionStateTests, SessionStatePrepackingTest, testing::Values(true, false));
