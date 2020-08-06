@@ -353,10 +353,6 @@ class InferenceSession {
     */
   std::string EndProfiling();
 
-  /*
-   * Get InferenceSession logger.
-   */
-  const logging::Logger* GetLogger() const { return session_logger_; };
   /**
     * Search registered execution providers for an allocator that has characteristics
     * specified within mem_info

@@ -955,10 +955,10 @@ struct OrtApi {
      * \param index - index of string tensor element to fill 
      */
   ORT_API2_STATUS(FillStringTensorElement, _Inout_ OrtValue* value, _In_ const char* s, size_t index);
-  ORT_API2_STATUS(CreateAllocator, const OrtSession* sess, const OrtMemoryInfo* mem_info,
-                      _Outptr_ OrtAllocator** out);
+  //ORT_API2_STATUS(CreateAllocator, const OrtSession* sess, const OrtMemoryInfo* mem_info,
+  //                    _Outptr_ OrtAllocator** out);
 
-  ORT_CLASS_RELEASE(Allocator);
+  // ORT_CLASS_RELEASE(Allocator);
 };
 
 /*
