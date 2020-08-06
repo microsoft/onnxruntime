@@ -1,7 +1,9 @@
 import cerberus
 from collections import namedtuple
 import torch
-from ._utils import static_vars
+from ._utils import static_vars, LEARNING_RATE_IO_DESCRIPTION_NAME,\
+    IS_FINITE_IO_DESCRIPTION_NAME,\
+    LOSS_SCALE_INPUT_IO_DESCRIPTION_NAME
 
 
 LEARNING_RATE_IO_DESCRIPTION_NAME = "__learning_rate"
