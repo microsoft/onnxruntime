@@ -83,6 +83,6 @@ struct SessionOptions {
   bool use_deterministic_compute = false;
 
   // Stores the configurations for this session
-  std::unordered_map<OrtSessionConfigKey, std::string> session_configurations;
+  std::unordered_map<int, std::string> session_configurations;
 };
 }  // namespace onnxruntime
