@@ -83,7 +83,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetSinGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetLogGradient) {
-  auto const_one = OneConstantNode();
   return std::vector<NodeDef>{
       NodeDef("Div",
               {GO(0), I(0)},
