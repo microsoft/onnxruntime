@@ -17,7 +17,6 @@ def compare_onnx_weights(model_a, model_b, verbose=False, rtol=1e-4):
         verbose (bool, default is False): Indicates if the max absolute difference for each layer should be
     calculated and printed for debug information.
         rtol (float, default is 1e-4): Tolerance for divergence.
-
     """
     assert isinstance(model_a, orttrainer.ORTTrainer) and isinstance(model_b, orttrainer.ORTTrainer)
     state_dict_a, state_dict_b = model_a._training_session.get_state(), model_b._training_session.get_state()
