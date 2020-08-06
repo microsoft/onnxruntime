@@ -675,6 +675,14 @@ IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxGradient) {
               SrcNodeAttributes())};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetLogSoftmaxGradient) {
+  return std::vector<NodeDef>{
+      NodeDef(OpDef{"LogSoftmaxGrad", kMSDomain, 1},
+              {GO(0), O(0)},
+              {GI(0)},
+              SrcNodeAttributes())};
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetUnsqueezeGradient) {
   return std::vector<NodeDef>{
       NodeDef("Squeeze",
