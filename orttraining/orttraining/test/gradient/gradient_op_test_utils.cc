@@ -147,6 +147,7 @@ void GradientOpTester::Run(
         node.SetExecutionProviderType(provider_type);
         auto reg = execution_provider->GetKernelRegistry();
         const KernelCreateInfo* kci;
+        std::cout << "Searching for node " << node.Name() << " of type " << node.OpType() << " in " << execution_provider->Type() << std::endl;
         auto st = reg->TryFindKernel(node, execution_provider->Type(), &kci);
         if (!st.IsOK()) {
           auto* node_func = node.GetFunctionBody();
@@ -157,6 +158,7 @@ void GradientOpTester::Run(
               if (sub_node.OpType() != "Constant") {
                 auto sub_reg = execution_provider->GetKernelRegistry();
                 const KernelCreateInfo* sub_kci;
+                std::cout << "Searching for subnode " << sub_node.Name()  << " of type " << node.OpType() << " in " << execution_provider->Type() << std::endl;
                 st = sub_reg->TryFindKernel(sub_node, execution_provider->Type(), &sub_kci);
                 if (!st.IsOK()) {
                   valid = false;

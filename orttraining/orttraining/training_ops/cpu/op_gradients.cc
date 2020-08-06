@@ -100,5 +100,54 @@ Status SoftmaxGrad<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
+ONNX_OPERATOR_KERNEL_EX(
+  LogSoftmaxGrad,
+  kMSDomain,
+  1,
+  kCpuExecutionProvider,
+  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+  LogSoftmaxGrad<float>);
+
+template <typename T>
+Status LogSoftmaxGrad<T>::Compute(OpKernelContext* context) const {
+  auto& dY = *context->Input<Tensor>(0);
+  auto& Y = *context->Input<Tensor>(1);
+  const TensorShape input_shape{Y.Shape()};
+  auto& dX = *context->Output(0, Y.Shape());
+
+  auto axis = HandleNegativeAxis(axis_, Y.Shape().NumDimensions());
+
+  size_t N = input_shape.SizeToDimension(axis);
+  size_t D = input_shape.SizeFromDimension(axis);
+
+  if (N == 0) {
+    return Status::OK();
+  }
+
+  const int d = gsl::narrow_cast<int>(D);
+  const int nd = gsl::narrow_cast<int>(N * D);
+
+  const float* Ydata = Y.template Data<float>();
+  const float* dYdata = dY.template Data<float>();
+  float* dXdata = dX.template MutableData<float>();
+
+  std::vector<float> eYsdY(nd);
+  float* eYsdYdata = eYsdY.data();
+
+  // dX_ai = d(log Y_ai) - (sum_j dY_aj) exp(log Y_ai)
+  math::Exp<float, CPUMathUtil>(nd, Ydata, eYsdYdata, nullptr);
+  for (size_t i = 0; i < N; ++i) {
+    float sdY;
+    math::Sum<float, CPUMathUtil>(d, dYdata + i * d, &sdY, nullptr, nullptr);
+    math::Scale<float, CPUMathUtil>(d, sdY, eYsdYdata + i * d, eYsdYdata + i * d, nullptr);
+  }
+  math::Sub<float, CPUMathUtil>(gsl::narrow_cast<int>(Y.Shape().Size()), dYdata, eYsdYdata, dXdata, nullptr);
+
+  return Status::OK();
+}
+
+
+
+
 }  // namespace contrib
 }  // namespace onnxruntime
