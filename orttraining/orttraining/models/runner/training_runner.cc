@@ -44,7 +44,7 @@ static SessionOptions SESSION_OPTION = {
     {},                                //inter_op_param
     overrides,                         //free_dimension_overrides
     true,                              //use_per_session_threads
-    true                               //thread_pool_allow_spinning
+    true,                              //thread_pool_allow_spinning
     false,                             //use_deterministic_compute
     {},                                //session_configurations
 };
