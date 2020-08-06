@@ -1,4 +1,4 @@
-# C# Sample: ResNet50v2
+# C# Sample: ResNet50 v2
 
 The sample walks through how to run a pretrained ResNet50 v2 ONNX model using the Onnx Runtime C# API.
 
@@ -9,7 +9,7 @@ The source code for this sample is available [here](Program.cs).
 To run this sample, you'll need the following things:
 
 1. Install [.NET Core 3.1](https://dotnet.microsoft.com/download/dotnet-core/3.1) or higher for you OS (Mac, Windows or Linux).
-2. Download the [ResNet50 V2](https://github.com/onnx/models/blob/master/vision/classification/resnet/model/resnet50-v2-7.onnx) to your local system.
+2. Download the [ResNet50 v2](https://github.com/onnx/models/blob/master/vision/classification/resnet/model/resnet50-v2-7.onnx) to your local system.
 3. Download [this picture of a dog](dog.jpeg) to test the model. You can also use any image you like.
 
 ## Getting Started

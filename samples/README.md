@@ -33,11 +33,12 @@ For a list of available dockerfiles and published images to help with getting st
 * [Keras: Convert and Inference](https://microsoft.github.io/onnxruntime/python/auto_examples/plot_dl_keras.html#sphx-glr-auto-examples-plot-dl-keras-py)
 
 **Other**
-* [Running ONNX model tests](../docs/Model_Test.md)
+* [Running ONNX model tests](../csharp/sample/Microsoft.ML.OnnxRuntime.ResNet50v2Sample)
 * [Common Errors with explanations](https://microsoft.github.io/onnxruntime/python/auto_examples/plot_common_errors.html#sphx-glr-auto-examples-plot-common-errors-py)
 
 ## C#
 * [Inference Tutorial](../docs/CSharp_API.md#getting-started)
+* [ResNet50 v2 Tutorial](../docs/CSharp_API.md#getting-started)
 
 ## C/C++
 * [C: SqueezeNet](../csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp)
