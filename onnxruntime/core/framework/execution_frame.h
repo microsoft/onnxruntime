@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <mutex>
 #include <vector>
 #include <unordered_map>
 
@@ -204,5 +205,9 @@ class ExecutionFrame final : public IExecutionFrame {
   // we may allocate some memory for its outputs, if not planned.).
   // This field is not physical memory size.
   std::unordered_map<std::string, size_t> dynamic_activation_memory_sizes_in_byte_;
+
+  // Mutex which should be acquired when executing non-thread-safe member functions.
+  // A current example is the tracker of dynamic memory allocation.
+  mutable std::mutex mtx_;
 };
 }  // namespace onnxruntime
