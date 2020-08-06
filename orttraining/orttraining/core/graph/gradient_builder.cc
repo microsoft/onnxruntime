@@ -9,7 +9,9 @@
 
 #include "onnx/defs/attr_proto_util.h"
 #include "onnx/defs/tensor_proto_util.h"
+
 #include "core/framework/tensorprotoutils.h"
+#include "core/providers/common.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/graph/gradient_builder_registry.h"
 #include "orttraining/core/graph/graph_augmenter.h"
@@ -532,6 +534,49 @@ IMPLEMENT_GRADIENT_BUILDER(GetConcatGradient) {
               {GO(0)},
               outputs,
               new_attributes)};
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetConcatTrainingGradient) {
+  auto attributes = SrcNodeAttributes();
+  ORT_ENFORCE(utils::HasInt(attributes.at("axis")));
+  auto axis = attributes.at("axis").i();
+
+  std::vector<int64_t> split_attribute(GetSrcNodeInputSize());
+  std::vector<ArgDef> outputs;
+  bool known_shapes = true;
+  for (int i = 0; i < GetSrcNodeInputSize(); ++i) {
+    std::vector<Dimension> data_shape;
+    if (GetShape(I(i), data_shape).IsOK()) {
+      int64_t rank = static_cast<int64_t>(data_shape.size());
+      int64_t axis_index = HandleNegativeAxis(axis, rank);
+      if (data_shape[axis_index].has_dim_value()) {
+        split_attribute[i] = data_shape[axis_index].dim_value();
+      } else {
+        known_shapes = false;
+      }
+    } else {
+      known_shapes = false;
+    }
+
+    outputs.push_back(GI(i));
+  }
+
+  std::vector<AttributeProto> new_attributes;
+  new_attributes.push_back(MakeAttribute("axis", axis));
+  if (known_shapes) {
+    new_attributes.push_back(MakeAttribute("split", split_attribute));
+    return std::vector<NodeDef>{
+        NodeDef("Split",
+                {GO(0)},
+                outputs,
+                new_attributes)};
+  } else {
+    return std::vector<NodeDef>{
+        NodeDef(OpDef{"SplitTraining", kMSDomain, 1},
+                {GO(0), O(1)},
+                outputs,
+                new_attributes)};
+  }
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetGatherNDGradient) {
