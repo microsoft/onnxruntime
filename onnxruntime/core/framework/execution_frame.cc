@@ -73,6 +73,13 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(int index, const TensorShap
   return status;
 }
 
+bool IExecutionFrame::TryGetInferredShape(int /*index*/, TensorShape& /*shape*/) const {
+  // By default, there is not information about inferred shape, so this default
+  // implementation always returns false. The derived class of IExecutionFrame
+  // can override this function to provide, for example, activations' shape information.
+  return false;
+}
+
 AllocatorPtr IExecutionFrame::GetAllocator(const OrtMemoryInfo& info) const {
   return GetAllocatorImpl(info);
 }
@@ -235,7 +242,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
 
     //if there are some traditional ml value type in inputs disable the memory pattern optimization.
     if (all_tensors) {
-      mem_patterns_ = session_state.GetMemoryPatternGroup(input_shapes, feed_mlvalue_idxs);
+      mem_patterns_ = session_state.GetMemoryPatternGroup(input_shapes, feed_mlvalue_idxs, inferred_shapes_);
       // if no existing patterns, generate one in this executionframe
       if (!mem_patterns_) {
         planner_ = onnxruntime::make_unique<OrtValuePatternPlanner>(*session_state.GetExecutionPlan());
@@ -254,7 +261,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
             // it's less efficient (the arena will add some overhead to coalesce individual allocations
             // back into blocks on 'free'), but better than failing completely.
             try {
-              // static_activation_memory_in_bytes_ is max virtual memory size the planner computes 
+              // static_activation_memory_in_bytes_ is max virtual memory size the planner computes
               auto peak_size = mem_patterns_->patterns[i].PeakSize();
               // Planning of one memory type should only happen once.
               buffer = alloc->Alloc(peak_size);
@@ -319,7 +326,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
 
   // Lazily get the allocator only if needed.
   AllocatorPtr alloc = nullptr;
-  
+
   // create fence if needed
   if (create_fence) {
     ORT_ENFORCE(ort_value.Fence() == nullptr);
@@ -621,6 +628,27 @@ Status ExecutionFrame::GeneratePatterns(MemoryPatternGroup* out) const {
   }
 
   return planner_->GeneratePatterns(out);
+}
+
+bool ExecutionFrame::TryGetInferredShape(int index, TensorShape& shape) const {
+  // NodeArg index to OrtValue index.
+  int ort_value_idx = GetNodeIdxToMLValueIdx(index);
+
+  // Check if index is valid.
+  if (ort_value_idx == NodeIndexInfo::kInvalidEntry) {
+    return false;
+  }
+
+  // Search for inferred shape.
+  // If inferred shape is found, it's assigned to "shape" so that caller can use it.
+  auto it = inferred_shapes_.find(ort_value_idx);
+  if (it != inferred_shapes_.end()) {
+    shape = it->second;
+    return true;
+  }
+
+  // Tell the caller if the search is successful or not.
+  return false;
 }
 
 }  // namespace onnxruntime
