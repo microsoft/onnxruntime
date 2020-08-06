@@ -18,6 +18,7 @@ def transformer_model_description():
                               ('predictions', [bptt, batch_size, ntokens])]}
     return model_desc
 
+
 def legacy_transformer_model_description():
     input_desc = IODescription('input1', [35, 20], torch.float32)
     label_desc = IODescription('label', [35, 20, 28785], torch.int64)
