@@ -457,7 +457,7 @@ def testLRSchedulerUpdateImpl(lr_scheduler, expected_values):
         assert_allclose(lr_list[0],
                         expected_values[step], rtol=rtol, err_msg="lr mismatch")
 
-def generate_pytorch_transformer_model_sample(optim_config, options=None, step_fn='train_step', device='cpu'):
+def generate_pytorch_transformer_model_sample(optim_config, options={}, step_fn='train_step', device='cpu'):
     # Loading external TransformerModel model for testing
     # A manual import is done as this example is not part of onnxruntime package,
     # but resides on the onnxruntime repo
@@ -521,6 +521,7 @@ def testInstantiateORTTrainer(step_fn, lr_scheduler, expected_lr_values):
    
     opts = orttrainer.ORTTrainerOptions(opts)
 
+    # Using PyTorch Transformer model as example
     model, model_desc, trainer, data, targets = generate_pytorch_transformer_model_sample(optim_config, opts, step_fn)
 
     # Export model to ONNX
@@ -588,16 +589,14 @@ def testInstantiateORTTrainer(step_fn, lr_scheduler, expected_lr_values):
     assert (onnx.helper.printable_graph(trainer_from_onnx._onnx_model.graph) == onnx.helper.printable_graph(trainer._onnx_model.graph))
 
 
-@pytest.mark.parametrize("seeds, device_id", [
-    ((0, 0), 'cpu'),
-    ((42, 42), 'cpu'),
-    ((42, 57), 'cpu'),
-    ((0, 0), 'cuda:0'),
-    ((0, 0), 'cuda')
+@pytest.mark.parametrize("seed, device_id", [
+    (0, 'cpu'),
+    (42, 'cpu'),
+    (0, 'cuda:0'),
+    (0, 'cuda')
 ])
-def testORTDeterministicCompute(seeds, device_id):
+def testORTDeterministicCompute(seed, device_id):
     optim_config = optim.LambConfig()
-    print(torch.device(device_id))
     opts = orttrainer.ORTTrainerOptions({
         'debug' : {
             'deterministic_compute': True
@@ -608,9 +607,10 @@ def testORTDeterministicCompute(seeds, device_id):
         }
     })
     
-    torch.manual_seed(seeds[0])
-    set_seed(seeds[1])
+    torch.manual_seed(seed)
+    set_seed(seed)
 
+    # Using PyTorch Transformer model as example
     model, model_desc, trainer, data, targets = generate_pytorch_transformer_model_sample(optim_config, opts,  device=device_id)
 
     # Run first model train step
@@ -618,8 +618,8 @@ def testORTDeterministicCompute(seeds, device_id):
     assert trainer._onnx_model is not None
     
     # Reset the seeds
-    torch.manual_seed(seeds[0])
-    set_seed(seeds[1])
+    torch.manual_seed(seed)
+    set_seed(seed)
 
     # Run second model train step
     _, _, second_trainer, _, _ = generate_pytorch_transformer_model_sample(optim_config, opts, device=device_id)
@@ -627,5 +627,5 @@ def testORTDeterministicCompute(seeds, device_id):
     assert second_trainer._onnx_model is not None
     assert id(trainer._onnx_model) != id(second_trainer._onnx_model)
 
-    debug.compare_onnx_weights(trainer._training_session.get_state(), second_trainer._training_session.get_state())
+    debug.compare_onnx_weights(trainer, second_trainer)
 
