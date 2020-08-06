@@ -13,7 +13,7 @@ def compare_onnx_weights(model_a, model_b, verbose=False, rtol=1e-4):
 
     Compares the weights of two different ONNX models and throws an error when they diverge
     Args:
-        model_a, model_b (orttrainer): Two instances of ORTTrainer with the same model structure
+        model_a, model_b (ORTTrainer): Two instances of ORTTrainer with the same model structure
         verbose (bool, default is False): Indicates if the max absolute difference for each layer should be
     calculated and printed for debug information.
         rtol (float, default is 1e-4): Tolerance for divergence.
