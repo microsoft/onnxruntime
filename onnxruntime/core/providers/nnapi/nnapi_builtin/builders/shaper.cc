@@ -333,17 +333,22 @@ Status Shaper::ConcatImpl(const std::vector<std::string>& input_names,
       for (size_t i = 0; i < dimens[0].size(); i++) {
         if ((int32_t)i == axis)
           continue;
-
-        ORT_RETURN_IF_NOT(dimen[i] == dimens[0][i], "Wrong input for concat");
       }
     }
 
-    dimens.push_back(shape_map_.at(input_name));
+    dimens.push_back(dimen);
   }
 
+  // If one of the inputs has dynamic shape (at axis), we will keep the dimen[axis] as 0 (dynamic)
   auto output_dimen = dimens[0];
-  for (size_t i = 1; i < dimens.size(); i++) {
-    output_dimen[axis] += dimens[i][axis];
+  if (output_dimen[axis] != 0) {
+    for (size_t i = 1; i < dimens.size(); i++) {
+      if (dimens[i][axis] == 0) {
+        output_dimen[axis] = 0;
+        break;
+      }
+      output_dimen[axis] += dimens[i][axis];
+    }
   }
 
   shape_map_[output_name] = output_dimen;
