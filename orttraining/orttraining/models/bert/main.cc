@@ -575,7 +575,7 @@ void setup_training_params(BertParameters& params) {
                                             /*mlm_loss*/ "mlm_loss",
                                             /*nsp_loss*/ "nsp_loss"});
 
-  params.fetch_names = {"total_loss", "mlm_loss", "nsp_loss"};
+  params.fetch_names = {"total_loss", "mlm_loss", "nsp_loss", "cls.predictions.transform.LayerNorm.weight_grad"};
 
   if (params.EnableTensorboard()) {
     params.fetch_names.push_back(params.summary_name);
@@ -625,7 +625,7 @@ void setup_training_params(BertParameters& params) {
       summary_loss.push_back(*(summary_loss_t.template Data<std::string>()));
     }
 
-    if (params.dump_fetches) {
+    if (1) {
       std::ostringstream filename;
       filename << "./fetch_dumps/rank_" << params.mpi_context.world_rank << "_step_" << step << ".txt";
       ofstream ofs(filename.str());

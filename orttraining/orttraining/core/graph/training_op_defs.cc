@@ -904,6 +904,9 @@ Example 4:
       .Attr("partition_ub", "The index of the last input tensor in this current rank",
             AttributeProto::INT,
             static_cast<int64_t>(0))
+      .Attr("num_input_readies", "The last num_input_readies of input tensor are the input ready signals current AllGather node depends on. default value is 0, means no input ready signals",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
       .Input(0, "input", "tensors to be sent", "T", OpSchema::Variadic)
       .Output(0, "output", "gathered tensors", "T", OpSchema::Variadic)
       .TypeConstraint(

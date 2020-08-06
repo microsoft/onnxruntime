@@ -37,6 +37,7 @@ NcclAllGather::NcclAllGather(const OpKernelInfo& info) : NcclKernel(info) {
   if (max_group_size_ > 0) {
     ORT_ENFORCE(info.GetAttr<int64_t>("partition_lb", &partition_lb_).IsOK());
     ORT_ENFORCE(info.GetAttr<int64_t>("partition_ub", &partition_ub_).IsOK());
+    info.GetAttrOrDefault<int64_t>("num_input_readies", &num_input_readies_, static_cast<int64_t>(0));
     partition_even_ = false;
   } else {
     partition_lb_ = 0;
@@ -56,18 +57,18 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
   const size_t element_size = onnx_type->Size();
   ncclDataType_t dtype = GetNcclDataType(onnx_type);
 
-  // Count total number of elements to AllGather.
-  int64_t total_count = 0;
-  for (int i = 0; i < context->InputCount(); i++) {
-    const Tensor* input_tensor = context->Input<Tensor>(i);
-    total_count += input_tensor->Shape().Size();
-  }
-
   // AllGather requires every rank to receive the same amount of data, and
   // slows down significantly if the data is not aligned.  Nvidia recommends 32-byte alignment,
   // so pad to multiple of 32 and world size.
   // Note: the alignment here needs to be kept in-sync with the alignment in zero_optimizer_graph_builder.cc
   if (partition_even_) {
+    ORT_ENFORCE(num_input_readies_ == 0);
+    // Count total number of elements to AllGather.
+    int64_t total_count = 0;
+    for (int i = 0; i < context->InputCount(); i++) {
+      const Tensor* input_tensor = context->Input<Tensor>(i);
+      total_count += input_tensor->Shape().Size();
+    }
     const int64_t alignment = size * 32;
     const int64_t padded_count = total_count + alignment - (total_count % alignment);
     const int64_t padded_size = padded_count * element_size;
@@ -130,15 +131,20 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
     }
 
   } else {
+    std::cout << "max_group_size = " << max_group_size_ << ", partition_lb = " << partition_lb_
+              << ", parititon_ub = " << partition_ub_ << ", num_input_readies = "
+              << num_input_readies_
+              << std::endl;
     ORT_ENFORCE(max_group_size_ > 0);
-    const int64_t alignment = size * 32;
-    const int64_t total_group_count = max_group_size_ * size;
-    const int64_t padded_count = total_group_count + alignment - (total_group_count % alignment);
-    const int64_t padded_size = padded_count * element_size;
-    auto fusion_buffer = GetScratchBuffer<void>(padded_size);
+    const int64_t alignment = 32;
+    const int64_t padded_max_group_size = max_group_size_ + alignment - (max_group_size_ % alignment);
+    const int64_t padded_count = padded_max_group_size * size * element_size;
+    auto fusion_buffer = GetScratchBuffer<void>(padded_count);
     void* fusion_data = fusion_buffer.get();
+    std::cout << "padded_max_group_size = " << padded_max_group_size << ", padded_count =" << padded_count << "\n";
+    std::cout << "Input count = " << context->InputCount() << "\n";
+    stsd::cout << "Output count = " << context->OutputCount() << "\n";
 
-    ORT_ENFORCE(padded_count % size == 0);
     const int64_t rank_count = padded_count / size;
 
     int64_t offset = rank_count * rank;
@@ -147,24 +153,26 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
       const int64_t tensor_bytes = input_tensor->SizeInBytes();
       void* fusion_data_at_offset = (int8_t*)fusion_data + offset;
       const void* input_data = input_tensor->DataRaw();
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(fusion_data_at_offset, input_data, tensor_bytes, cudaMemcpyDeviceToDevice));
+      printf("i = %d, offset = %d\n", i, int(offset));
+      CUDA_RETURN_IF_ERROR(cudaMemcpy(fusion_data_at_offset, input_data, tensor_bytes, cudaMemcpyDeviceToDevice));
       offset += tensor_bytes;
     }
+    printf("Done copy in\n");
 
     //AllGather
     const void* fusion_data_rank_offset = (const int8_t*)fusion_data + rank_count * rank;
     NCCL_RETURN_IF_ERROR(ncclAllGather(fusion_data_rank_offset, fusion_data, rank_count, dtype, comm, stream));
 
     //Copy AllGather results to outputs
-    offset = rank_count * rank;
-    for (int i = partition_lb_; i <= partition_ub_; ++i) {
+    offset = 0;
+    for (int i = 0; i <= context->OutputCount(); ++i) {
       const Tensor* input_tensor = context->Input<Tensor>(i);
       const TensorShape& input_shape = input_tensor->Shape();
       const int64_t tensor_bytes = input_tensor->SizeInBytes();
       Tensor* output_tensor = context->Output(i, input_shape);
       void* output_data = output_tensor->MutableDataRaw();
       const void* fusion_data_at_offset = (const int8_t*)fusion_data + offset;
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, fusion_data_at_offset, tensor_bytes, cudaMemcpyDeviceToDevice));
+      CUDA_RETURN_IF_ERROR(cudaMemcpy(output_data, fusion_data_at_offset, tensor_bytes, cudaMemcpyDeviceToDevice));
       offset += tensor_bytes;
     }
   }
@@ -233,7 +241,6 @@ Status NcclReduce::ComputeInternal(OpKernelContext* context) const {
       offset += tensor_bytes;
     }
   }
-  printf("Done\n");
   return Status::OK();
 }
 

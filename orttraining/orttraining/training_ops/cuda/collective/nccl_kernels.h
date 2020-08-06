@@ -28,6 +28,7 @@ class NcclAllGather final : public NcclKernel {
   int64_t partition_ub_;
   int64_t max_group_size_;
   bool partition_even_;
+  int64_t num_input_readies_;
 };
 
 class NcclReduceScatter final : public NcclKernel {
