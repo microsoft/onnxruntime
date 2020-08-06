@@ -1,7 +1,6 @@
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Buffers;
-using System.Diagnostics;
 
 namespace Microsoft.ML.OnnxRuntime
 {
