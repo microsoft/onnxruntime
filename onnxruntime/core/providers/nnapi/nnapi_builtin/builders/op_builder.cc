@@ -1227,7 +1227,12 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   bool output_is_nhwc = input_is_nhwc;
 
   if (!input_is_nhwc) {
-    // input shape is {N, C, [H, W]}, so tensor_a/b's shape is {C, [H, W]}
+    // the batch normalization is applied on C channel,
+    // if the input is NC[HW], will need correct shape for tensor_a/b
+    // to make sure we are broadcasting on the correct channel,
+    // input shape {N, C}       ==> tensor_a/b's shape {size}
+    // input shape {N, C, H}    ==> tensor_a/b's shape {size, 1}
+    // input shape {N, C, H, W} ==> tensor_a/b's shape {size, 1, 1}
     const auto input_rank = shaper[input].size();
     for (size_t i = 2; i < input_rank; i++)
       tensor_a_dimen.push_back(1);
