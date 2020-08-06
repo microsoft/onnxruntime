@@ -57,8 +57,6 @@ stages:
     pool: Linux-GPU-CUDA10
     condition: always()
     steps:
-      - template: templates/set-py-packaging-variables-step.yml
-
       - task: CmdLine@2
         displayName: Build entire docker file
         inputs:
