@@ -54,12 +54,12 @@ stages:
           workingDirectory: $(Build.SourcesDirectory)
 
   - job: Linux_py_GPU_Docker
-      timeoutInMinutes: 0
-      workspace:
-        clean: all
-      pool: Linux-GPU-CUDA10
-      condition: always()
-      steps:
+    timeoutInMinutes: 0
+    workspace:
+      clean: all
+    pool: Linux-GPU-CUDA10
+    condition: always()
+    steps:
       - template: templates/set-py-packaging-variables-step.yml
 
       - task: CmdLine@2
