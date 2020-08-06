@@ -141,22 +141,21 @@ class ExecutionFrame final : public IExecutionFrame {
 
   // Return the size of virtual memory allocated in runtime.
   // The memory is usually used for activations in forward and backward passes.
-  const std::unordered_map<std::string, size_t> GetDynamicMemorySizeInfo() {
-    // Dynamic memory dictionary can be accessed by multiple threads when using
-    // parallel executor, so we need to lock the global mutex of ExecutionFrame
-    // before accessing it.
-    std::unique_lock<std::mutex> lock(mtx_);
-    // It's a cheap copy of current dictionary. The dictionary size is at most
-    // indentical to the number of execution providers. We can't return reference
-    // because it's not thread-safe.
+  const std::unordered_map<std::string, size_t>& GetDynamicMemorySizeInfo() {
+    // This function is not thread-safe. Please make sure dynamic_activation_memory_sizes_in_byte_
+    // is not being changed when calling this function.
+    // If one day, race condition happens, please uncomment the following line:
+    //   std::unique_lock<std::mutex> lock(mtx_);
     return dynamic_activation_memory_sizes_in_byte_;
   }
 
   // Return the size of virtual memory allocated before computation.
   // The memory is usually used for activations in forward and backward passes.
-  const std::unordered_map<std::string, size_t> GetStaticMemorySizeInfo() {
-    // It's a cheap copy of current dictionary. The dictionary size is at most
-    // indentical to the number of execution providers.
+  const std::unordered_map<std::string, size_t>& GetStaticMemorySizeInfo() {
+    // This function is not thread-safe. Please make sure static_activation_memory_sizes_in_byte_
+    // is not being changed when calling this function.
+    // If one day, race condition happens, please uncomment the following line:
+    //   std::unique_lock<std::mutex> lock(mtx_);
     return static_activation_memory_sizes_in_byte_;
   }
 

@@ -26,7 +26,7 @@ class ITensorAllocator {
 
   /**
    *
-   * \param planned_memory_size_in_byte The size of memory allocated inside FinalizePlan
+   * \param planned_memory_sizes_in_byte The sizes of memory allocated inside FinalizePlan on different devices.
    *
    * When there is no more tensor to trace, call this function to finalize the
    * allocation.
