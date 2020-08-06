@@ -30,6 +30,3 @@ def compare_onnx_weights(model_a, model_b, verbose=False, rtol=1e-4):
             print(f'Weight name: {a_name}: absolute difference: {np.abs(np_a_vals-np_b_vals).max()}')
         assert_allclose(a_val, b_val, rtol=rtol, err_msg=f"Weight mismatch for {a_name}")
          
-
-
-
