@@ -34,6 +34,7 @@ class Profiler;
 #define WINML_TLM_MODEL_CREATION_VERSION 0
 #define WINML_TLM_RUNTIME_ERROR_VERSION 0
 #define WINML_TLM_RUNTIME_PERF_VERSION 0
+#define WINML_TLM_NATIVE_API_INTRAOP_THREADS_VERSION 0
 
 #define WinMLTraceLoggingWrite(hProvider, EventName, ...)                \
   TraceLoggingWrite(hProvider,                                           \
@@ -94,7 +95,8 @@ class WinMLTelemetryHelper {
       uint32_t type_constraint_count,
       uint32_t attribute_count,
       uint32_t default_attribute_count);
-
+  void SetIntraOpNumThreadsOverride(
+      uint32_t num_threads);
   void EndRuntimeSession() { ++runtime_session_id_; };
   bool IsMeasureSampled();
 

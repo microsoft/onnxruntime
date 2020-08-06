@@ -92,7 +92,7 @@ Status TrainingRunner::Initialize() {
   config.immutable_weights = params_.immutable_weights;
 
   config.gradient_graph_config.use_invertible_layernorm_grad = params_.use_invertible_layernorm_grad;
-  config.set_gradients_as_graph_outputs = false;
+  config.gradient_graph_config.set_gradients_as_graph_outputs = false;
 
   config.gradient_accumulation_steps = params_.gradient_accumulation_steps;
 
@@ -164,7 +164,15 @@ Status TrainingRunner::Initialize() {
     config.pipeline_config = pipe;
   }
 
-  config.enable_gelu_approximation = params_.enable_gelu_approximation;
+  // always configure the graph transformer
+  {
+    TrainingSession::TrainingConfiguration::GraphTransformerConfiguration gt_config{};
+    gt_config.enable_gelu_approximation = params_.enable_gelu_approximation;
+    gt_config.attn_dropout_checkpoint = params_.attn_dropout_checkpoint;
+    gt_config.gelu_checkpoint = params_.gelu_checkpoint;
+
+    config.graph_transformer_config = gt_config;
+  }
 
   TrainingSession::TrainingConfigurationResult config_result{};
 
