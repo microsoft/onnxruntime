@@ -38,7 +38,6 @@ class SoftmaxGrad final : public OpKernel {
  public:
   explicit SoftmaxGrad(const OpKernelInfo& info) : OpKernel(info) {
     axis_ = info.GetAttrOrDefault<int64_t>("axis", 0);
-    log_softmax_ = info.GetKernelDef().OpName() == "LogSoftmaxGrad";
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -46,7 +45,6 @@ class SoftmaxGrad final : public OpKernel {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SoftmaxGrad);
   int64_t axis_;
-  bool log_softmax_;
 };
 
 template <typename T>
