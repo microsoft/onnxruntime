@@ -250,7 +250,7 @@ class ORTTrainer(object):
             sample_input = self._prepare_model_input(self.model_desc.inputs, None, None, *args, **kwargs)
             self._init_onnx_model(sample_input)
 
-        # Prepare input/output description
+        # Prepare inputs+lr and output descriptions
         input_desc = [*self.model_desc.inputs, self.model_desc.learning_rate]
         output_desc = self.model_desc.outputs
 
@@ -262,8 +262,10 @@ class ORTTrainer(object):
         loss_scale = None
         if self.options.mixed_precision.enabled:
             loss_scaler = self.options.mixed_precision.loss_scaler
-            if loss_scaler:
-                loss_scale = torch.tensor([loss_scaler.update(self._train_step_info)])
+            assert loss_scaler, "Loss scaler is required when mixed precision is enabled"
+            loss_scale = torch.tensor([loss_scaler.loss_scale])
+            input_desc.extend([self.model_desc.loss_scale_input_name])
+            output_desc.extend([self.model_desc.is_finite])
 
         # Get data. CombineTorchModelLossFn takes label as last input and outputs loss first
         input = self._prepare_model_input(input_desc, self.optim_config.lr, loss_scale, *args, **kwargs)
@@ -279,12 +281,23 @@ class ORTTrainer(object):
         session_run_results = self._training_session_run_helper(True, input, input_desc,
                                                                 output_desc, run_options)
        
-        # Train step incremented after first train step  based on lr scheduler implementation
-        # which handles initial train step of 0.
+        if self.options.mixed_precision.enabled:
+            # After session run with all_fp32_gradients_finite, we need to clear the training I/O binding's output
+            # Otherwise next run with only_execute_path_to_fetches will lead to gradient all reduce
+            # because all_fp32_gradients_finite is still in the feed.
+            self._train_io_binding.clear_binding_outputs()
+
+            is_all_finite = session_run_results[self.model_desc.is_finite.name]
+            self._train_step_info.is_finite = is_all_finite
+            if loss_scaler:
+                loss_scaler.update(self._train_step_info)
+
+        # Train step must be incremented *after* optimization is successful
         self._train_step_info.step += 1
 
-        return session_run_results[output_desc.name][0] if len (session_run_results) == 1\
-            else [session_run_results[output_desc.name] for output_desc in self.model_desc.outputs]
+        # Output must be returned in the same order as defined in the model description
+        results = [session_run_results[output_desc.name] for output_desc in self.model_desc.outputs]
+        return results[0] if len (results) == 1 else results
 
     def _combine_torch_model_with_loss_fn(self):
         # Don't need to wrap model when loss_fn is not set
@@ -375,14 +388,14 @@ class ORTTrainer(object):
             sample_outputs = [sample_outputs]
 
         # Append 'dtype' for model description's inputs/outputs
-        for i, sample_input in enumerate(sample_inputs):
-            if i < len(self.model_desc.inputs):
+        for idx_i, sample_input in enumerate(sample_inputs):
+            if idx_i < len(self.model_desc.inputs):
                 self.model_desc.add_type_to_input_description(
-                    i, sample_input.dtype)
-        for i, sample_output in enumerate(sample_outputs):
-            if i < len(self.model_desc.outputs):
+                    idx_i, sample_input.dtype)
+        for idx_o, sample_output in enumerate(sample_outputs):
+            if idx_o < len(self.model_desc.outputs):
                 self.model_desc.add_type_to_output_description(
-                    i, sample_output.dtype)
+                    idx_o, sample_output.dtype)
 
         # Export the model to ONNX
         f = io.BytesIO()
@@ -428,7 +441,7 @@ class ORTTrainer(object):
                 unused_frozen_weights))
 
         # Get loss name from model description
-        loss_name = [item.name for item in self.model_desc.outputs if len(item) == 4 and item[2]]
+        loss_name = [item.name for item in self.model_desc.outputs if item.is_loss]
         assert len(loss_name) == 1, f"Only one loss output is supported ({len(loss_name)} were specified)"
         loss_name = loss_name[0]
 
@@ -477,7 +490,17 @@ class ORTTrainer(object):
         session_options.use_deterministic_compute = self.options.debug.deterministic_compute
 
         # TrainingSession
-        self._training_session = ort.TrainingSession(self._onnx_model.SerializeToString(), ort_parameters, session_options)
+        self._training_session = ort.TrainingSession(self._onnx_model.SerializeToString(),
+                                                     ort_parameters,
+                                                     session_options)
+
+        # Update model description to update dtype when mixed precision is enabled
+        # C++ backend modifies model's output dtype from float32 to float16 for mixed precision
+        # Note that for training we must use float32 and for evaluation we must use float16 
+        for idx, o_desc in enumerate(self.model_desc.outputs):
+            if (self.options.mixed_precision.enabled and o_desc.dtype == torch.float32 and
+                    not self.session.is_output_fp32_node(o_desc.name)):
+                self.model_desc.add_type_to_output_description(idx, o_desc.dtype, torch.float16)
 
         # I/O bindings
         self._train_io_binding = self._training_session.io_binding()
@@ -515,6 +538,11 @@ class ORTTrainer(object):
         # Create training session used by train_step
         self._create_ort_training_session()
 
+        # Update model description with mixed precision metadata
+        if self.options.mixed_precision.enabled:
+            self.model_desc.loss_scale_input = self._training_session.loss_scale_input_name
+            self.model_desc.is_finite = _utils.get_all_gradients_finite_name_from_session(self.session)
+
         # Update Loss Scaler Input Name, if applicable
         if self.options.mixed_precision.enabled and self.options.mixed_precision.loss_scaler:
             self.options.mixed_precision.loss_scaler.input_name = self._training_session.loss_scale_input_name
@@ -542,6 +570,7 @@ class ORTTrainer(object):
 
         # Append loss scale
         if loss_scale:
+            assert self.options.mixed_precision.enabled, "Loss scale cannot be used without mixed precision"
             input += (loss_scale, )
             extra_inputs += 1
 
@@ -571,7 +600,7 @@ class ORTTrainer(object):
         result = {}
         for output_desc in output_descs_resolved:
             torch_tensor = torch.zeros(output_desc.shape, device=self.options.device.id,
-                                       dtype=output_desc.dtype)
+                                       dtype=output_desc.dtype_amp if output_desc.dtype_amp else output_desc.dtype)
             iobinding.bind_output(output_desc.name, torch_tensor.device.type, _utils.get_device_index(self.options.device.id),
                                   _utils.dtype_torch_to_numpy(torch_tensor.dtype),
                                   list(torch_tensor.size()), torch_tensor.data_ptr())

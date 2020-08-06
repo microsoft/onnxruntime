@@ -90,7 +90,7 @@ def testORTTrainerModelDescValidSchemas(input_dict, input_dtype, output_dtype):
     model_description = md_val._ORTTrainerModelDesc(input_dict)
 
     # Validating hard-coded learning rate description
-    assert model_description.learning_rate.name == "Learning_Rate"
+    assert model_description.learning_rate.name == _utils.LEARNING_RATE_IO_DESCRIPTION_NAME
     assert model_description.learning_rate.shape == [1]
     assert model_description.learning_rate.dtype == torch.float32
 
@@ -108,6 +108,18 @@ def testORTTrainerModelDescValidSchemas(input_dict, input_dtype, output_dtype):
         is_loss = input_dict['outputs'][idx][2] if len(input_dict['outputs'][idx]) == 3 else False
         assert is_loss == o_desc.is_loss
 
+    # Set is_finite name and check its description
+    model_description.is_finite = _utils.IS_FINITE_IO_DESCRIPTION_NAME
+    assert model_description.is_finite.name == _utils.IS_FINITE_IO_DESCRIPTION_NAME
+    assert model_description.is_finite.shape == [1]
+    assert model_description.is_finite.dtype == torch.bool
+
+    # Set loss_scale_input and check its description
+    model_description.loss_scale_input = _utils.LOSS_SCALE_INPUT_IO_DESCRIPTION_NAME
+    assert model_description.loss_scale_input.name == _utils.LOSS_SCALE_INPUT_IO_DESCRIPTION_NAME
+    assert model_description.loss_scale_input.shape == []
+    assert model_description.loss_scale_input.dtype == torch.float32
+
     # Append type to inputs/outputs tuples
     for idx, i_desc in enumerate(model_description.inputs):
         model_description.add_type_to_input_description(idx, input_dtype[idx])
@@ -116,11 +128,9 @@ def testORTTrainerModelDescValidSchemas(input_dict, input_dtype, output_dtype):
 
     # Verify inputs/outputs tuples are replaced by the typed counterparts
     for idx, i_desc in enumerate(model_description.inputs):
-        assert len(i_desc) == 3
         assert isinstance(i_desc, model_description._InputDescriptionTyped)
         assert input_dtype[idx] == i_desc.dtype
     for idx, o_desc in enumerate(model_description.outputs):
-        assert len(o_desc) == 4
         assert isinstance(o_desc, model_description._OutputDescriptionTyped)
         assert output_dtype[idx] == o_desc.dtype
 

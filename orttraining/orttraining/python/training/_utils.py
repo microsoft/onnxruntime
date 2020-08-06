@@ -4,6 +4,9 @@ import os
 import sys
 import torch
 
+LEARNING_RATE_IO_DESCRIPTION_NAME = "__learning_rate"
+IS_FINITE_IO_DESCRIPTION_NAME = "__is_finite"
+LOSS_SCALE_INPUT_IO_DESCRIPTION_NAME = "__loss_scale_input_name"
 
 def get_device_index(device):
     if type(device) == str:
@@ -18,6 +21,13 @@ def get_device_index_from_input(input):
     else:
         device_index = get_device_index(input.device)
     return device_index
+
+
+def get_all_gradients_finite_name_from_session(session):
+    nodes = [x for x in session._outputs_meta if 'all_gradients_finite' in x.name]
+    if len(nodes) != 1:
+        raise RuntimeError("'all_gradients_finite' node not found within training session")
+    return nodes[0].name
 
 
 def dtype_torch_to_numpy(torch_dtype):
