@@ -593,7 +593,7 @@ def testInstantiateORTTrainer(step_fn, lr_scheduler, expected_lr_values):
     (0, 'cpu'),
     (42, 'cpu'),
     (0, 'cuda:0'),
-    (0, 'cuda')
+    (24, 'cuda')
 ])
 def testORTDeterministicCompute(seed, device_id):
     optim_config = optim.LambConfig()
