@@ -603,7 +603,7 @@ def testORTDeterministicCompute(seed, device_id):
         },
         'device' : {
             'id' : device_id,
-            'mem_limit' : 256
+            'mem_limit' : 10*1024*1024
         }
     })
     
@@ -628,4 +628,3 @@ def testORTDeterministicCompute(seed, device_id):
     assert id(trainer._onnx_model) != id(second_trainer._onnx_model)
 
     debug.compare_onnx_weights(trainer, second_trainer)
-
