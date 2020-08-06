@@ -51,7 +51,7 @@ stages:
               --rm \
               ${{ variables.docker_image_prefix }}-manylinux-gpu-release-stage1 \
               python onnxruntime/tools/ci_build/build.py \
-              --build_dir build \
+              --build_dir onnxruntime/build \
               --config Release \
               --test \
               --enable_onnx_tests
