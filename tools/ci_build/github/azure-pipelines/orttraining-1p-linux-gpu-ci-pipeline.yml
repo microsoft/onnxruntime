@@ -17,7 +17,7 @@ stages:
     python.version: 3.6
 
   jobs:
-  - job: Linux_py_GPU_Wheels
+  - job: Linux_py_GPU_Test
     timeoutInMinutes: 0
     workspace:
       clean: all
@@ -57,6 +57,12 @@ stages:
               --enable_onnx_tests
           workingDirectory: $(Build.SourcesDirectory)
 
+  - job: Linux_py_GPU_Docker
+      timeoutInMinutes: 0
+      workspace:
+        clean: all
+      pool: Linux-GPU-CUDA10
+      condition: always()
       - task: CmdLine@2
         displayName: Build entire docker file
         inputs:
