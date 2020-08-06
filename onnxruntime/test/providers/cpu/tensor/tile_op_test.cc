@@ -19,7 +19,7 @@ void RunTest(std::initializer_list<T> input,
   test.AddInput<int64_t>("repeats", repeat_dims, repeat);
   test.AddOutput<T>("output", output_dims, output);
   if (std::is_same<T, int8_t>::value)
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); // TensorRT doesn't support int8 type
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT reports error: Assertion Error in makePaddedScale: 0 (regionRanges != nullptr)
   else
     test.Run();
 }
