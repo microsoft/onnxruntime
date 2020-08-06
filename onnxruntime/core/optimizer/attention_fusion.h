@@ -20,6 +20,7 @@ class AttentionFusion : public GraphTransformer {
 
 private:
   static bool FuseSubGraph(Node& layer_norm, const Node& add_after_layer_norm, Graph& graph, int64_t hidden_size, std::map<std::string, NodeArg*>& mask_index_map, const logging::Logger& logger);
+  static bool FuseSubGraph2(Node& layer_norm, const Node& add_after_layer_norm, Graph& graph, int64_t hidden_size, std::map<std::string, NodeArg*>& mask_index_map, const logging::Logger& logger);
 };
 
 }  // namespace onnxruntime
