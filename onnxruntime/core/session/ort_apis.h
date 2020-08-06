@@ -199,7 +199,6 @@ ORT_API_STATUS_IMPL(ModelMetadataGetCustomMetadataMapKeys, _In_ const OrtModelMe
 ORT_API_STATUS_IMPL(AddFreeDimensionOverrideByName, _Inout_ OrtSessionOptions* options, _In_ const char* dim_name, _In_ int64_t dim_value);
 
 
-
 ORT_API_STATUS_IMPL(CreateKernelSession, _In_ const OrtSessionOptions* options, OrtKernelSession** session);
 
 ORT_API_STATUS_IMPL(CreateExecutableKernelContext,

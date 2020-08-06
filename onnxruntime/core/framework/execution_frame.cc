@@ -78,6 +78,7 @@ AllocatorPtr IExecutionFrame::GetAllocator(const OrtMemoryInfo& info) const {
 }
 
 Status IExecutionFrame::ReleaseMLValue(int ort_value_idx) { return ReleaseMLValueImpl(ort_value_idx); }
+
 Status IExecutionFrame::SetOrtValue(OrtValue &value, int ort_value_idx) {
     ORT_ENFORCE(ort_value_idx >= 0 && static_cast<size_t>(ort_value_idx) < all_values_size_);
     all_values_[ort_value_idx] = value;
