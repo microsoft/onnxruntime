@@ -275,6 +275,7 @@ Status PrepareForReduce(const Tensor* X,
   prepare_reduce_metadata.rank = rank;
   prepare_reduce_metadata.input_count = input_shape.Size();
   prepare_reduce_metadata.stride = (rank > 0) ? input_shape[input_shape.NumDimensions() - 1] : 1;
+  prepare_reduce_metadata.contiguous_axes = false;
 
   if (rank > 8) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "cuDNN only supports up to 8-D tensors in reduction");
@@ -290,7 +291,6 @@ Status PrepareForReduce(const Tensor* X,
     for (size_t i = 0; i < axes.size(); i++) {
       reduced_axis = axes[i];
       const int64_t axis = HandleNegativeAxis(reduced_axis, rank);
-      ORT_ENFORCE(axis < rank, "Reduced axis is greater than rank: ", axis);
       ORT_ENFORCE(input_dims[axis] != 0,
                   "Can't reduce on dim with value of 0 if 'keepdims' is false. "
                   "Invalid output shape would be produced. input_shape:",
@@ -299,20 +299,21 @@ Status PrepareForReduce(const Tensor* X,
       reduced[axis] = true;
       axes_[i] = axis;
     }
-    bool row_reduction = true;
+
+    bool contiguous_axes = true;
     std::sort(axes_.begin(), axes_.end());
     for (size_t i = 0; i < axes_.size(); i++) {
       if (axes_[i] != i)
-        row_reduction = false;
+        contiguous_axes = false;
     }
     int64_t stride = 1;
-    if (row_reduction) {
+    if (contiguous_axes) {
       for (size_t s = rank - 1; s >= axes_.size(); s--) {
         stride *= input_dims[s];
       }
       prepare_reduce_metadata.stride = stride;
+      prepare_reduce_metadata.contiguous_axes = true;
     }
-
   } else {
     // no axes provided (i.e.) default axes  => reduce on all dims
     for (auto dim : input_dims) {
@@ -392,9 +393,8 @@ Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& input, Pr
   const auto reduction_size = input_count / stride;
   if (!std::is_same<T, int8_t>::value && !std::is_same<T, uint8_t>::value) {
     if (fast_reduction && reduction_size <= std::numeric_limits<int>::max() && stride <= std::numeric_limits<int>::max() &&
-        is_matrix_row_reduction(cudnn_reduce_op,
-                                static_cast<int>(reduction_size),
-                                static_cast<int>(stride), rank, axes)) {
+        prepare_reduce_metadata.contiguous_axes &&
+        is_matrix_row_reduction(cudnn_reduce_op, static_cast<int>(reduction_size), static_cast<int>(stride), rank, axes)) {
       std::cout << "Doing reduce_matrix_rows.\n";
       reduce_matrix_rows(
           reinterpret_cast<const CudaT*>(input.template Data<T>()),

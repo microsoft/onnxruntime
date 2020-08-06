@@ -69,15 +69,5 @@ TEST(CudaKernelTest, ReduceSum_LargeTensor) {
   TestReduceSum(X_dims, Y_dims, axes, keepdims, per_sample_tolerance, relative_per_sample_tolerance);
 }
 
-TEST(CudaKernelTest, ReduceSum_LargeTensor_offdim) {
-  std::vector<int64_t> X_dims{512, 4096, 1024};
-  std::vector<int64_t> Y_dims{1, 4096, 1024};
-  std::vector<int64_t> axes{0};
-  bool keepdims = true;
-  double per_sample_tolerance = 5e-4;
-  double relative_per_sample_tolerance = 5e-2;
-  TestReduceSum(X_dims, Y_dims, axes, keepdims, per_sample_tolerance, relative_per_sample_tolerance);
-}
-
 }  // namespace test
 }  // namespace onnxruntime

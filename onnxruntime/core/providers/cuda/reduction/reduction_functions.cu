@@ -289,13 +289,6 @@ bool is_matrix_row_reduction(
   if(axes.size()<1)
     return false;
 
-  //check if axes are contiguous from 0 to a max of second last axis
-  std::sort(axes.begin(), axes.end());
-  for (int64_t i = 0; i < axes.size(); i++) {
-    if (axes[i] != i)
-      return false;
-  }
-
   return true;
 }
 
@@ -328,7 +321,7 @@ __global__ void reduce_matrix_rows_kernel(const TIn* input, TOut* output, int m,
         int row_final = row + row_inner * t_count_y_in_grid;
         int col_final = col;
         if (row_final < m && col_final < n) {
-          sum += TBuf(input[row_final * n + col_final]);
+          sum += TBuf(input[row_final * static_cast<int64_t>(n) + col_final]);
         }
       }
       // Write thread-level reduction result into shared memory.
