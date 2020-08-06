@@ -1,13 +1,4 @@
 parameters:
-- task: Docker@2
-  inputs:
-    containerRegistry: 'ortrelease'
-    repository: 'onnxruntime-training'
-    command: 'buildAndPush'
-    Dockerfile: 'dockerfiles/Dockerfile.training'
-    tags: |
-      $(Build.BuildId)
-      latest
   - name: build_flag
     displayName: Build Flag
     type: string
@@ -76,7 +67,15 @@ stages:
               --build-arg BUILD_FLAG="${{ parameters.build_flag }}" \
               -f ${{ variables.linux_gpu_dockerfile }} .
           workingDirectory: $(Build.SourcesDirectory)
-
+      - task: Docker@2
+        inputs:
+          containerRegistry: 'ortrelease'
+          repository: 'onnxruntime-training'
+          command: 'buildAndPush'
+          Dockerfile: 'dockerfiles/Dockerfile.training'
+          tags: |
+            $(Build.BuildId)
+            latest
       - task: AzureKeyVault@1
         inputs:
           azureSubscription: 'AIInfraBuild'
