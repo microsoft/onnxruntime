@@ -45,6 +45,7 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   // Register gradient builders here.
   REGISTER_GRADIENT_BUILDER("Cast", GetCastGradient);
   REGISTER_GRADIENT_BUILDER("Sin", GetSinGradient);
+  REGISTER_GRADIENT_BUILDER("Log", GetLogGradient);
   REGISTER_GRADIENT_BUILDER("Tanh", GetTanhGradient);
   REGISTER_GRADIENT_BUILDER("Sqrt", GetSqrtGradient);
   REGISTER_GRADIENT_BUILDER("Erf", GetErfGradient);
@@ -69,6 +70,7 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("Conv", GetConvGradient);
   REGISTER_GRADIENT_BUILDER("Squeeze", GetSqueezeGradient);
   REGISTER_GRADIENT_BUILDER("Unsqueeze", GetUnsqueezeGradient);
+  REGISTER_GRADIENT_BUILDER("Sigmoid", GetSigmoidGradient);
   REGISTER_GRADIENT_BUILDER("Softmax", GetSoftmaxGradient);
   REGISTER_GRADIENT_BUILDER("LogSoftmax", GetLogSoftmaxGradient);
   REGISTER_GRADIENT_BUILDER("SoftmaxCrossEntropy", GetSoftmaxCrossEntropyGradient);
