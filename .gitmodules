@@ -61,4 +61,5 @@
 	url = https://github.com/google/libprotobuf-mutator.git
 [submodule "cmake/external/onnx-tensorrt"]
 	path = cmake/external/onnx-tensorrt
-	url = https://github.com/onnx/onnx-tensorrt.git
+	url = https://github.com/stevenlix/onnx-tensorrt.git
+	branch = trt71
