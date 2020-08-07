@@ -12,6 +12,10 @@ namespace onnxruntime {
  * For example, given matrices A and B and constant scalars t, u, and v:
  *   Mul(v, MatMul(Mul(t, A), Mul(u, B))
  *     -> TransposeScaleMatMul(A, B, alpha=t*u*v)
+ *
+ * Note: Since both leading and following scales may be fused into a single
+ * scale, the order and number of mathematical operations may change. This may
+ * yield different results with floating point calculations.
  */
 class MatMulScaleFusion : public GraphTransformer {
  public:
