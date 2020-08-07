@@ -944,6 +944,8 @@ bool AttentionFusion::FuseSubGraph2(Node& layer_norm, const Node& add_after_laye
   // Assign provider to this new node.
   attention_node.SetExecutionProviderType(layer_norm.GetExecutionProviderType());
 
+
+
   // Remove nodes that are not used anymore.
   std::vector<NodeIndex> more_nodes_to_remove{
     reshape.Index(),
@@ -955,16 +957,40 @@ bool AttentionFusion::FuseSubGraph2(Node& layer_norm, const Node& add_after_laye
     v_matmul.Index()
   };
 
+  for (auto it = layer_norm.OutputNodesBegin(); it != layer_norm.OutputNodesEnd(); ++it) {
+    if ((*it).OpType().compare("Shape") == 0) {
+      const Node& shape_node = *it;
+      for (auto it1 = shape_node.OutputNodesBegin(); it1 != shape_node.OutputNodesEnd(); ++it1) {
+        if ((*it1).OpType().compare("Gather") == 0) {
+          const Node& gather_node = *it1;
+          for (auto it2 = gather_node.OutputNodesBegin(); it2 != gather_node.OutputNodesEnd(); ++it2) {
+            const Node& unsqueeze_node = *it2;
+            for (auto it3 = unsqueeze_node.OutputNodesBegin(); it3 != unsqueeze_node.OutputNodesEnd(); ++it3) {
+              const Node& concat_node = *it3;
+              more_nodes_to_remove.push_back(concat_node.Index()); //repeated concat-node, need to deduplicate
+            }
+            more_nodes_to_remove.push_back(unsqueeze_node.Index());
+          }
+          more_nodes_to_remove.push_back(gather_node.Index());
+        }
+      }
+      more_nodes_to_remove.push_back(shape_node.Index());
+    }
+  }
+
   nodes_to_remove.insert(std::end(nodes_to_remove), std::begin(more_nodes_to_remove), std::end(more_nodes_to_remove));
 
   //bugbug
-  //AttentionFusionHelper::SetMaskNodesToRemove(graph, mask_nodes2, nodes_to_remove);
+  AttentionFusionHelper::SetMaskNodesToRemove(graph, mask_nodes2, nodes_to_remove);
 
   for (const auto& node_index : nodes_to_remove) {
     Node* node = graph.GetNode(node_index);
+    std::cout << node->OpType() << std::endl;
     graph_utils::RemoveNodeOutputEdges(graph, *node);
     graph.RemoveNode(node->Index());
   }
+
+  std::cout << "--------------------------------------------" << std::endl;
 
   DEBUG_LOG("Fused an attention node.");
 

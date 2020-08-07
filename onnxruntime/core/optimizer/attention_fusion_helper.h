@@ -474,6 +474,16 @@ void SetMaskNodesToRemove(const Graph& graph, AttentionMaskNodes& mask_nodes, st
   }
 }
 
+void SetMaskNodesToRemove(const Graph&, AttentionMaskNodes2& mask_nodes2, std::vector<NodeIndex>& nodes_to_remove) {
+  nodes_to_remove.push_back(mask_nodes2.softmax->Index());
+  nodes_to_remove.push_back(mask_nodes2.Where->Index());
+  //bugbug
+  //nodes_to_remove.push_back(mask_nodes2.cast->Index());
+  nodes_to_remove.push_back(mask_nodes2.Expand->Index());
+  nodes_to_remove.push_back(mask_nodes2.Reshape->Index());
+  nodes_to_remove.push_back(mask_nodes2.Equal->Index());
+}
+
 /**  Match Input Mask subgraph:
                                                                                                        {UnidirMask Subgraph}
                                                                                                                    |

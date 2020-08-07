@@ -1819,7 +1819,7 @@ TEST_F(GraphTransformationTests, AttentionFusionDistilBertTest) {
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
   graph_transformation_mgr.Register(onnxruntime::make_unique<AttentionFusion>(), TransformerLevel::Level2);
-  graph_transformation_mgr.Register(onnxruntime::make_unique<EmbedLayerNormFusion>(), TransformerLevel::Level2);
+  //graph_transformation_mgr.Register(onnxruntime::make_unique<EmbedLayerNormFusion>(), TransformerLevel::Level2);
   auto ret1 = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
   ASSERT_TRUE(ret1.IsOK());
   //auto ret2 = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
@@ -1827,7 +1827,11 @@ TEST_F(GraphTransformationTests, AttentionFusionDistilBertTest) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   EXPECT_EQ(op_to_count["ReduceSum"], 1);
   EXPECT_EQ(op_to_count["Attention"], 6);
-  EXPECT_EQ(op_to_count["EmbedLayerNormalization"], 1);
+  EXPECT_EQ(op_to_count["Gather"], 5);
+  EXPECT_EQ(op_to_count["Unsqueeze"], 3);
+  EXPECT_EQ(op_to_count["Concat"], 6);
+  EXPECT_EQ(op_to_count["Shape"], 6);
+  //EXPECT_EQ(op_to_count["EmbedLayerNormalization"], 0);
 }
 
 TEST_F(GraphTransformationTests, GeluFusionTest) {
