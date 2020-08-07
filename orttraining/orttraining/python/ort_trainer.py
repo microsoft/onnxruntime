@@ -574,9 +574,6 @@ class ORTTrainer():
             gradient_accumulation_steps: number of training steps to accumulate
                gradients before averaging and applying them.
                Defaults to 1.
-            postprocess_model: a callable to postprocess the ONNX model that is
-               converted from PyTorch.
-               Defaults to None.
             world_rank: rank id used for distributed training.
                Defaults to 0.
             world_size: number of ranks participating in distributed training.
