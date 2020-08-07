@@ -82,6 +82,13 @@ IMPLEMENT_GRADIENT_BUILDER(GetSinGradient) {
               {GI(0)})};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetLogGradient) {
+  return std::vector<NodeDef>{
+      NodeDef("Div",
+              {GO(0), I(0)},
+              {GI(0)})};
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetTanhGradient) {
   return std::vector<NodeDef>{
       NodeDef("TanhGrad",
@@ -712,6 +719,20 @@ IMPLEMENT_GRADIENT_BUILDER(GetConvGradient) {
               SrcNodeAttributes())};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetSigmoidGradient) {
+  auto const_one = OneConstantNode();
+  return std::vector<NodeDef>{
+      const_one,
+      NodeDef("Sub",
+              {const_one.output_args[0], O(0)},
+              {IA("one_minus_output")}),
+      NodeDef("Mul",
+              {IA("one_minus_output"), O(0)},
+              {IA("sigmoid_derivate")}),
+      NodeDef("Mul",
+              {IA("sigmoid_derivate"), GO(0)},
+              {GI(0)})};
+}
 IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxGradient) {
   return std::vector<NodeDef>{
       NodeDef(OpDef{"SoftmaxGrad", kMSDomain, 1},
