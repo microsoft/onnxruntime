@@ -30,6 +30,7 @@ namespace training {
 static std::vector<FreeDimensionOverride> overrides = {};
 static SessionOptions SESSION_OPTION = {
     ExecutionMode::ORT_SEQUENTIAL,     //execution_mode
+    ExecutionOrder::PRIORITY_BASED,    //execution_order
     false,                             //enable_profiling
     ORT_TSTR(""),                      //optimized_model_filepath
     true,                              //enable_mem_pattern
@@ -704,7 +705,7 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
   // We must join here because main thread needs to access thread-produced
   // fetches and those fetches must be ready.
   pipeline_worker_pool_.JoinAll();
-  for(auto& status : pipeline_worker_pool_.worker_states){
+  for (auto& status : pipeline_worker_pool_.worker_states) {
     CheckWorkerException(status.execution_exception);
   }
 
@@ -739,7 +740,7 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
   // Wait all workers to finish this around of pipeline parallism.
   // The last batch in a pipeline collects gradient and update the model.
   pipeline_worker_pool_.JoinAll();
-  for(auto& status : pipeline_worker_pool_.worker_states){
+  for (auto& status : pipeline_worker_pool_.worker_states) {
     CheckWorkerException(status.execution_exception);
   }
 

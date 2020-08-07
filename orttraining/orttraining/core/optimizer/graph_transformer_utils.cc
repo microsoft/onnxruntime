@@ -96,7 +96,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
             training::DistributedRunContext::RankInGroup(training::WorkerGroupType::HorizontalParallel),
             horizontal_parallel_size, compatible_eps));
       }
-      //transformers.emplace_back(onnxruntime::make_unique<ComputationReductionTransformer>(compatible_eps));
+      transformers.emplace_back(onnxruntime::make_unique<ComputationReductionTransformer>(compatible_eps));
 
       if (config.transformer_layer_checkpoint) {
         transformers.emplace_back(onnxruntime::make_unique<TransformerLayerRecompute>(compatible_eps));

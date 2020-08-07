@@ -763,7 +763,8 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
 
       ORT_RETURN_IF_ERROR_SESSIONID_(FinalizeSessionState(*subgraph_session_state, model_location_,
                                                           kernel_registry_manager_, &node,
-                                                          session_options_.execution_mode));
+                                                          session_options_.execution_mode,
+                                                          session_options_.execution_order));
 
       // LOGS(*session_logger_, VERBOSE) << std::make_pair(subgraph_info.session_state->GetExecutionPlan(),
       //                                                   &*subgraph_info.session_state);
@@ -937,8 +938,12 @@ common::Status InferenceSession::Initialize() {
       }
     }
 
-    ORT_RETURN_IF_ERROR_SESSIONID_(FinalizeSessionState(*session_state_, model_location_, kernel_registry_manager_,
-                                                        nullptr, session_options_.execution_mode));
+    ORT_RETURN_IF_ERROR_SESSIONID_(FinalizeSessionState(*session_state_,
+                                                        model_location_,
+                                                        kernel_registry_manager_,
+                                                        nullptr,
+                                                        session_options_.execution_mode,
+                                                        session_options_.execution_order));
 
     // handle any subgraphs
     ORT_RETURN_IF_ERROR_SESSIONID_(InitializeSubgraphSessions(graph, *session_state_));

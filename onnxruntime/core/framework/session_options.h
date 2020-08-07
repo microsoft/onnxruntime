@@ -11,6 +11,11 @@
 
 namespace onnxruntime {
 
+enum class ExecutionOrder {
+  TOPOLOGICAL = 0,    // basic topological sort
+  PRIORITY_BASED = 1  // priority-based topological sort
+};
+
 enum class FreeDimensionOverrideType {
   Invalid = 0,
   Denotation = 1,
@@ -28,6 +33,9 @@ struct FreeDimensionOverride {
   */
 struct SessionOptions {
   ExecutionMode execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+
+  // set the execution order of the graph
+  ExecutionOrder execution_order = ExecutionOrder::TOPOLOGICAL;
 
   // enable profiling for this session.
   bool enable_profiling = false;

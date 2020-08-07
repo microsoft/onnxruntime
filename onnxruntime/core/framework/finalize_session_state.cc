@@ -45,7 +45,8 @@ Status FinalizeSessionState(SessionState& session_state,
                             const std::basic_string<PATH_CHAR_TYPE>& graph_location,
                             KernelRegistryManager& kernel_registry_manager,
                             _In_opt_ const Node* parent_node,
-                            ExecutionMode execution_mode) {
+                            ExecutionMode execution_mode,
+                            ExecutionOrder execution_order) {
   session_state.CreateGraphInfo();
 
   const GraphViewer& graph_viewer = session_state.GetGraphViewer();
@@ -70,7 +71,7 @@ Status FinalizeSessionState(SessionState& session_state,
   }
 
   std::unique_ptr<SequentialExecutionPlan> exec_plan;
-  SequentialPlannerContext context(execution_mode);
+  SequentialPlannerContext context(execution_mode, execution_order);
   ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, graph_viewer, valid_outer_scope_node_args,
                                                     session_state.GetExecutionProviders(), kernel_registry_manager,
                                                     ort_value_name_idx_map, context, exec_plan));

@@ -71,6 +71,12 @@ GraphViewer::GraphViewer(const Graph& graph) {
         nodes_in_topological_order_.push_back(n->Index());
       },
       NodeCompare());
+
+  graph.KahnsTopologicalSort(
+      [this](const Node* n) {
+        nodes_in_topological_order_with_priority_.push_back(n->Index());
+      },
+      PriorityNodeCompare());
 }
 
 // Graph name.
@@ -127,20 +133,15 @@ int GraphViewer::MaxNodeIndex() const noexcept {
   return graph_->MaxNodeIndex();
 }
 
-const std::vector<NodeIndex>& GraphViewer::GetNodesInTopologicalOrder() const {
-  return nodes_in_topological_order_;
-}
-
-const std::vector<NodeIndex> GraphViewer::GetNodesInTopologicalOrderWithPriority() const {
-  std::vector<NodeIndex> topological_order;
-
-  graph_->KahnsTopologicalSort(
-      [&topological_order](const Node* n) {
-        topological_order.push_back(n->Index());
-      },
-      PriorityNodeCompare());
-
-  return topological_order;
+const std::vector<NodeIndex>& GraphViewer::GetNodesInTopologicalOrder(ExecutionOrder order) const {
+  switch (order) {
+    case ExecutionOrder::TOPOLOGICAL:
+      return nodes_in_topological_order_;
+    case ExecutionOrder::PRIORITY_BASED:
+      return nodes_in_topological_order_with_priority_;
+    default:
+      ORT_THROW("Invalide ExecutionOrder");
+  }
 }
 
 const std::vector<NodeIndex>& GraphViewer::GetRootNodes() const {
