@@ -1663,6 +1663,8 @@ static constexpr OrtApi ort_api_1_to_4 = {
     &OrtApis::GetStringTensorElementLength,
     &OrtApis::GetStringTensorElement,
     &OrtApis::FillStringTensorElement,
+    &OrtApis::EnablePrePacking,
+    &OrtApis::DisablePrePacking,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
