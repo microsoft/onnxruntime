@@ -161,16 +161,12 @@ Now the program is created, we can run it will the following command:
 dotnet run [path-to-model] [path-to-image] [path-to-output-image]
 ```
 
-e.g.
+e.g. running:
 
 ```
 dotnet run ~/Downloads/FasterRCNN-10.onnx ~/Downloads/demo.jpg ~/Downloads/out.jpg
 ```
 
-Running this on the following image:
-
-![](demo.jpg)
-
-We get the following output image:
+detects the following objects in the image:
 
 ![](out.jpg)
