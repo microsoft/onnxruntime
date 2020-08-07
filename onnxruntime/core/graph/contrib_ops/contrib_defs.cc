@@ -1587,7 +1587,7 @@ of [N, 0] then [N, 0].
       .Attr(
           "tokenexp",
           "An optional string. Token's regular expression in basic POSIX format"
-          " (http://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap09.html#tag_09_03)."
+          " (pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap09.html#tag_09_03)."
           " If set, tokenizer may produce tokens matching the specified pattern. Note that one and only of"
           " 'tokenexp' and 'separators' should be set.",
           AttributeProto::STRING,

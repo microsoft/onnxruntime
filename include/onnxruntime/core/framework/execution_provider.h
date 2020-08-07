@@ -30,6 +30,13 @@ using CreateFunctionStateFunc = std::function<int(ComputeContext*, FunctionState
 using ComputeFunc = std::function<Status(FunctionState, const OrtApi*, OrtKernelContext*)>;
 using DestroyFunctionStateFunc = std::function<void(FunctionState)>;
 
+//unordered maps
+using UnorderedMapStringToString = std::unordered_map<std::string, std::string>;
+
+//data types for execution provider options
+using ProviderOptionsVector = std::vector<UnorderedMapStringToString>;  
+using ProviderOptionsMap = std::unordered_map<std::string, UnorderedMapStringToString>;  
+
 struct NodeComputeInfo {
   CreateFunctionStateFunc create_state_func;
   ComputeFunc compute_func;
@@ -97,6 +104,18 @@ class IExecutionProvider {
      Get the device id of current execution provider
   */
   virtual int GetDeviceId() const { return -1; };
+
+  /**
+     Get execution provider's configurations. 
+   */
+  const UnorderedMapStringToString& GetProviderOptions() const { return provider_options_; }
+
+  /**
+     Store execution provider's configurations. 
+   */
+  void SetProviderOptions(UnorderedMapStringToString& options) { 
+    provider_options_ = options;
+  }
 
   /**
      Returns an opaque handle whose exact type varies based on the provider
@@ -179,5 +198,7 @@ class IExecutionProvider {
   // convenience list of the allocators so GetAllocatorList doesn't have to build a new vector each time
   // contains the same instances as allocators_
   std::vector<AllocatorPtr> allocator_list_;
+  // It will be set when constructor is being called
+  UnorderedMapStringToString provider_options_;
 };
 }  // namespace onnxruntime

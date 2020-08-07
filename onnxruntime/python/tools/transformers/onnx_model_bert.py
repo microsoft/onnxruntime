@@ -48,7 +48,6 @@ class BertOnnxModel(OnnxModel):
         super().__init__(model)
         self.num_heads = num_heads
         self.hidden_size = hidden_size
-        self.bert_inputs = []
 
         self.attention_mask = AttentionMask(self)
         self.attention_fusion = FusionAttention(self, self.hidden_size, self.num_heads, self.attention_mask)
@@ -79,12 +78,8 @@ class BertOnnxModel(OnnxModel):
         fusion.apply()
 
     def fuse_embed_layer(self):
-        mask_indice = self.attention_mask.mask_indice if self.attention_mask else {}
-        mask_casted = self.attention_mask.mask_casted if self.attention_mask else {}
-        fusion = FusionEmbedLayerNormalization(self, mask_indice, mask_casted)
+        fusion = FusionEmbedLayerNormalization(self)
         fusion.apply()
-        if fusion.mask_input_name:
-            self.bert_inputs.append(fusion.mask_input_name)
 
     def fuse_layer_norm(self):
         fusion = FusionLayerNormalization(self)
@@ -97,18 +92,39 @@ class BertOnnxModel(OnnxModel):
         fusion = FusionSkipLayerNormalization(self)
         fusion.apply()
 
-    def get_bert_inputs(self, include_mask=True):
-        return self.bert_inputs if include_mask else self.bert_inputs[:2]
+    def get_graph_inputs_from_embed_nodes(self, casted=False):
+        """
+        Get graph inputs that feed into EmbedLayerNormaliazation.
+        Returns a list of the graph input names based on the filter whether it is casted or not.
+        """
+        embed_graph_inputs = []
+
+        output_name_to_node = self.output_name_to_node()
+        embed_nodes = self.get_nodes_by_op_type('EmbedLayerNormalization')
+        for embed_node in embed_nodes:
+            bert_inputs = embed_node.input[:2] + embed_node.input[
+                7:]  # inputs 0, 1 and 7 are input_ids, segment_ids and attention mask
+            for bert_input in bert_inputs:
+                if self.find_graph_input(bert_input):
+                    if not casted:
+                        embed_graph_inputs.append(bert_input)
+                elif bert_input in output_name_to_node:
+                    parent = output_name_to_node[bert_input]
+                    if parent.op_type == 'Cast' and self.find_graph_input(parent.input[0]) is not None:
+                        if casted:
+                            embed_graph_inputs.append(parent.input[0])
+        return embed_graph_inputs
 
     def change_input_to_int32(self):
         original_opset_version = self.model.opset_import[0].version
         graph = self.graph()
 
         new_graph_inputs = []
-        bert_inputs = self.get_bert_inputs()
+        casted_bert_graph_inputs = self.get_graph_inputs_from_embed_nodes(casted=True)
         utils = FusionUtils(self)
+
         for input in graph.input:
-            if input.name in bert_inputs:
+            if input.name in casted_bert_graph_inputs:
                 utils.remove_cast_int32(input.name)
                 int32_input = helper.make_tensor_value_info(input.name, TensorProto.INT32,
                                                             self.tensor_shape_to_list(input.type.tensor_type))
@@ -132,16 +148,17 @@ class BertOnnxModel(OnnxModel):
         """
         Update input and output shape to use dynamic axes.
         """
-        bert_inputs = self.get_bert_inputs()
+        bert_graph_inputs = self.get_graph_inputs_from_embed_nodes(
+            casted=True) + self.get_graph_inputs_from_embed_nodes(casted=False)
+
         dynamic_batch_inputs = {}
         for input in self.model.graph.input:
-            for bert_input in bert_inputs:
-                if bert_input == input.name:
-                    dim_proto = input.type.tensor_type.shape.dim[0]
-                    dim_proto.dim_param = dynamic_batch_dim
-                    if dynamic_seq_len is not None:
-                        dim_proto = input.type.tensor_type.shape.dim[1]
-                        dim_proto.dim_param = dynamic_seq_len
+            if input.name in bert_graph_inputs:
+                dim_proto = input.type.tensor_type.shape.dim[0]
+                dim_proto.dim_param = dynamic_batch_dim
+                if dynamic_seq_len is not None:
+                    dim_proto = input.type.tensor_type.shape.dim[1]
+                    dim_proto.dim_param = dynamic_seq_len
 
         for output in self.model.graph.output:
             dim_proto = output.type.tensor_type.shape.dim[0]

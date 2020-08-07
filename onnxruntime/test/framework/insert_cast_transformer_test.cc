@@ -134,5 +134,24 @@ TEST(TransformerTest, ThreeInARowRemoval) {
   ASSERT_TRUE(op_to_count["Cast"] == 2);
 }
 
+// test a case where the ONNX inferred type (float16) is different from the type bound
+// to the output NodeArg of the "RandomNormalLike" node because of the InsertCaseTransformer
+TEST(TransformerTest, RandomNormalLikeWithFloat16Inputs) {
+  auto model_uri = MODEL_FOLDER ORT_TSTR("random_normal_like_float16.onnx");
+  std::shared_ptr<Model> model;
+  auto status = Model::Load(model_uri, model, nullptr, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(status.IsOK()) << status;
+
+  Graph& graph = model->MainGraph();
+  InsertCastTransformer transformer("Test");
+
+  bool modified = false;
+  status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
+  EXPECT_TRUE(status.IsOK()) << status;
+  EXPECT_TRUE(modified) << "Transformer should have added some Cast nodes";
+  status = graph.Resolve();
+  EXPECT_TRUE(status.IsOK()) << status;
+}
+
 }  // namespace test
 }  // namespace onnxruntime

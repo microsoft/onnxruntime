@@ -267,6 +267,7 @@ def optimize_model(input,
     """
     (optimizer_class, producer, run_onnxruntime) = MODEL_CLASSES[model_type]
 
+    temp_model_path = None
     if opt_level > 1:  # Optimization specified for an execution provider.
         temp_model_path = optimize_by_onnxruntime(input, use_gpu=use_gpu, opt_level=opt_level)
     elif run_onnxruntime:
@@ -274,7 +275,7 @@ def optimize_model(input,
         # CPU provider is used here so that there is no extra node for GPU memory copy.
         temp_model_path = optimize_by_onnxruntime(input, use_gpu=False, opt_level=1)
 
-    model = load_model(temp_model_path, format=None, load_external_data=True)
+    model = load_model(temp_model_path or input, format=None, load_external_data=True)
 
     if model.producer_name and producer != model.producer_name:
         logger.warning(
@@ -290,8 +291,9 @@ def optimize_model(input,
         optimizer.optimize(optimization_options)
 
     # Remove the temporary model.
-    os.remove(temp_model_path)
-    logger.debug("Remove tempoary model: {}".format(temp_model_path))
+    if temp_model_path:
+        os.remove(temp_model_path)
+        logger.debug("Remove tempoary model: {}".format(temp_model_path))
 
     return optimizer
 

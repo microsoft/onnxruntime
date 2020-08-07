@@ -70,6 +70,7 @@ class ReduceKernel : public CudaKernel, public ReduceKernelBase<allow_multi_axes
 
   using ReduceKernelBase<allow_multi_axes>::axes_;
   using ReduceKernelBase<allow_multi_axes>::keepdims_;
+  using ReduceKernelBase<allow_multi_axes>::noop_with_empty_axes_;
 
   bool calculate_log_;
   bool calculate_sqt_;
@@ -166,6 +167,18 @@ template <typename T>
 class ReduceSum final : public ReduceKernel<true> {
  public:
   ReduceSum(const OpKernelInfo& info) : ReduceKernel<true>(info) {
+    fast_reduction_ = true;
+  }
+
+  Status ComputeInternal(OpKernelContext* ctx) const override {
+    return ComputeImpl<T>(ctx, CUDNN_REDUCE_TENSOR_ADD);
+  }
+};
+
+template <typename T>
+class ReduceSumTraining final : public ReduceKernel<true> {
+ public:
+  ReduceSumTraining(const OpKernelInfo& info) : ReduceKernel<true>(info) {
     fast_reduction_ = true;
   }
 

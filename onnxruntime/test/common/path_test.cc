@@ -5,6 +5,7 @@
 
 #include "gtest/gtest.h"
 
+#include "core/common/optional.h"
 #include "test/util/include/asserts.h"
 
 namespace onnxruntime {
@@ -219,6 +220,33 @@ TEST(PathTest, RelativePathFailure) {
   check_relative_failure("C:/a", "D:/a");
 #else  // POSIX
   check_relative_failure("//root_0/a", "//root_1/a");
+#endif
+}
+
+TEST(PathTest, Concat) {
+  auto check_concat =
+      [](const optional<std::string>& a, const std::string& b, const std::string& expected_a, bool expect_throw = false) {
+        Path p_a{}, p_expected_a{};
+        if (a.has_value()) {
+          ASSERT_STATUS_OK(Path::Parse(ToPathString(a.value()), p_a));
+        }
+        ASSERT_STATUS_OK(Path::Parse(ToPathString(expected_a), p_expected_a));
+
+        if (expect_throw) {
+          EXPECT_THROW(p_a.Concat(ToPathString(b)).ToPathString(), OnnxRuntimeException);
+        } else {
+          EXPECT_EQ(p_a.Concat(ToPathString(b)).ToPathString(), p_expected_a.ToPathString());
+        }
+      };
+
+  check_concat({"/a/b"}, "c", "/a/bc");
+  check_concat({"a/b"}, "cd", "a/bcd");
+  check_concat({""}, "cd", "cd");
+  check_concat({}, "c", "c");
+#ifdef _WIN32
+  check_concat({"a/b"}, R"(c\d)", "", true /* expect_throw */);
+#else
+  check_concat({"a/b"}, "c/d", "", true /* expect_throw */);
 #endif
 }
 

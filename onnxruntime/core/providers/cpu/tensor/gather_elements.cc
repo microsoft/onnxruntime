@@ -249,7 +249,7 @@ Status GatherElements::Compute(OpKernelContext* context) const {
   if (!status.IsOK())
     return status;
 
-  Tensor* output_tensor = context->Output(0, TensorShape(indices_shape));
+  Tensor* output_tensor = context->Output(0, indices_shape);
 
   const auto& input_data_type = input_tensor->DataType();
   if (input_data_type != output_tensor->DataType())
@@ -260,10 +260,8 @@ Status GatherElements::Compute(OpKernelContext* context) const {
   if (indices_shape.Size() == 0)
     return Status::OK();
 
-
   if (input_tensor->IsDataTypeString())
     core_impl<true, std::string>(input_tensor, indices_tensor, output_tensor, axis);
-
   else
     core_impl<false, int8_t>(input_tensor, indices_tensor, output_tensor, axis);
 

@@ -67,6 +67,7 @@ jobs:
 - job: 'Linux_CI_Dev'
   workspace:
     clean: all
+  timeoutInMinutes: 120
   pool: $(AgentPoolLinux)
   steps:    
     - template: ../../templates/set-version-number-variables-step.yml

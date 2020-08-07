@@ -490,9 +490,9 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     }
     // Find Attention after LayerNormalization
     const Node* p_attention = graph_utils::FirstChildByType(layer_norm_node, "Attention");
-    // Stop EmbedLayerNormalization fusion if Attention is not found.
     if (p_attention == nullptr) {
-      return Status::OK();
+      // Support model with multiple EmbedLayerNormalization.
+      continue;
     }
     Node& attention_node = *graph.GetNode(p_attention->Index());
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(attention_node, "Attention", {1}, kMSDomain) ||
