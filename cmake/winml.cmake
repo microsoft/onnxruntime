@@ -427,10 +427,6 @@ add_library(winml_lib_api STATIC
   ${winml_lib_api_dir}/TensorFeatureDescriptor.cpp
   ${winml_lib_api_dir}/TensorFeatureDescriptor.h
   ${winml_lib_api_dir}/pch/pch.h
-
-  ## WinML.Experimental
-  #${winml_lib_api_dir}/Experimental.Dummy.cpp
-  #${winml_lib_api_dir}/Experimental.Dummy.h
 )
 
 # Compiler options
