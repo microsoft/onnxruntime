@@ -90,11 +90,7 @@ Status GetShape(const ArgDef& arg_def, std::vector<Dimension>& shape) {
   ORT_RETURN_IF_NOT(arg_def.type_proto && arg_def.type_proto->has_tensor_type() && arg_def.type_proto->tensor_type().has_shape(),
                     "During GetShape, ", arg_def.name, "'s shape is null.");
   const auto& dims = arg_def.type_proto->tensor_type().shape().dim();
-  ORT_RETURN_IF_NOT(dims.size() > 0,
-                    "During GetShape, ", arg_def.name, "'s dims is empty.");
   for (auto dim = dims.begin(); dim < dims.end(); dim++) {
-    ORT_RETURN_IF_NOT((*dim).dim_value() > 0,
-                      "During GetShape, ", arg_def.name, "'s dim value is invalid ", (*dim).dim_value());                
     shape.push_back(*dim);
   }
   return Status::OK();
