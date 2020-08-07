@@ -912,6 +912,7 @@ if (onnxruntime_USE_CUDA)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcudafe \"--diag_suppress=expr_has_no_effect\"")
 endif()
 
+# TODO: This is for when TensorRT was not a shared library
 if(false)
 if (onnxruntime_USE_TENSORRT)
   if (WIN32)

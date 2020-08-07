@@ -46,7 +46,7 @@
 
 namespace onnxruntime {
 
-ProviderHost* g_host{};  // TODO: Remove this for the core code (provider_interfaces.h references it but no code using it is ever called from here)
+ProviderHost* g_host{};
 
 struct Provider_OrtDevice_Impl : Provider_OrtDevice {
   OrtDevice v_;
@@ -292,8 +292,8 @@ struct ProviderHostImpl : ProviderHost {
   const Provider_TypeProto_Tensor& Provider_TypeProto__tensor_type(const Provider_TypeProto* p) override { return *reinterpret_cast<const Provider_TypeProto_Tensor*>(&reinterpret_cast<const ONNX_NAMESPACE::TypeProto*>(p)->tensor_type()); }
 
   // Provider_AttributeProto
-  std::unique_ptr<Provider_AttributeProto> Provider_AttributeProto__Create() override { return std::unique_ptr<Provider_AttributeProto>(reinterpret_cast<Provider_AttributeProto*>(new ONNX_NAMESPACE::AttributeProto())); }
-  void Provider_AttributeProto__destructor(Provider_AttributeProto* p) override { delete reinterpret_cast<ONNX_NAMESPACE::AttributeProto*>(p); }
+  std::unique_ptr<Provider_AttributeProto> Provider_AttributeProto__construct() override { return std::unique_ptr<Provider_AttributeProto>(reinterpret_cast<Provider_AttributeProto*>(new ONNX_NAMESPACE::AttributeProto())); }
+  void Provider_AttributeProto__operator_delete(Provider_AttributeProto* p) override { delete reinterpret_cast<ONNX_NAMESPACE::AttributeProto*>(p); }
   void Provider_AttributeProto__operator_assign(Provider_AttributeProto* p, const Provider_AttributeProto& v) override { *reinterpret_cast<ONNX_NAMESPACE::AttributeProto*>(p) = *reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(&v); }
 
   ONNX_NAMESPACE::AttributeProto_AttributeType Provider_AttributeProto__type(const Provider_AttributeProto* p) override { return reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(p)->type(); }
@@ -308,7 +308,7 @@ struct ProviderHostImpl : ProviderHost {
   Provider_TensorProto* Provider_AttributeProto__add_tensors(Provider_AttributeProto* p) override { return reinterpret_cast<Provider_TensorProto*>(reinterpret_cast<ONNX_NAMESPACE::AttributeProto*>(p)->add_tensors()); }
 
   // Provider_GraphProto
-  void Provider_GraphProto_destructor(Provider_GraphProto* p) override { delete reinterpret_cast<ONNX_NAMESPACE::GraphProto*>(p); }
+  void Provider_GraphProto__operator_delete(Provider_GraphProto* p) override { delete reinterpret_cast<ONNX_NAMESPACE::GraphProto*>(p); }
 
   Provider_ValueInfoProtos* Provider_GraphProto__mutable_input(Provider_GraphProto* p) override { return reinterpret_cast<Provider_ValueInfoProtos*>(reinterpret_cast<ONNX_NAMESPACE::GraphProto*>(p)->mutable_input()); }
 
@@ -322,7 +322,7 @@ struct ProviderHostImpl : ProviderHost {
   void Provider_GraphProto__operator_assign(Provider_GraphProto* p, const Provider_GraphProto& v) override { *reinterpret_cast<ONNX_NAMESPACE::GraphProto*>(p) = *reinterpret_cast<const ONNX_NAMESPACE::GraphProto*>(&v); }
 
   // Provider_ModelProto
-  void Provider_ModelProto__destructor(Provider_ModelProto* p) override { delete reinterpret_cast<ONNX_NAMESPACE::ModelProto*>(p); }
+  void Provider_ModelProto__operator_delete(Provider_ModelProto* p) override { delete reinterpret_cast<ONNX_NAMESPACE::ModelProto*>(p); }
 
   bool Provider_ModelProto__SerializeToString(const Provider_ModelProto* p, std::string& string) override { return reinterpret_cast<const ONNX_NAMESPACE::ModelProto*>(p)->SerializeToString(&string); }
   bool Provider_ModelProto__SerializeToOstream(const Provider_ModelProto* p, std::ostream& output) override { return reinterpret_cast<const ONNX_NAMESPACE::ModelProto*>(p)->SerializeToOstream(&output); }
@@ -333,7 +333,7 @@ struct ProviderHostImpl : ProviderHost {
   void Provider_ModelProto__set_ir_version(Provider_ModelProto* p, int64_t value) override { reinterpret_cast<ONNX_NAMESPACE::ModelProto*>(p)->set_ir_version(value); }
 
   // Provider_TensorProto
-  void Provider_TensorProto__destructor(Provider_TensorProto* p) override { delete reinterpret_cast<ONNX_NAMESPACE::TensorProto*>(p); }
+  void Provider_TensorProto__operator_delete(Provider_TensorProto* p) override { delete reinterpret_cast<ONNX_NAMESPACE::TensorProto*>(p); }
   void Provider_TensorProto__operator_assign(Provider_TensorProto* p, const Provider_TensorProto& v) override { *reinterpret_cast<ONNX_NAMESPACE::TensorProto*>(p) = *reinterpret_cast<const ONNX_NAMESPACE::TensorProto*>(&v); }
 
   // Provider_TensorProtos
@@ -368,6 +368,7 @@ struct ProviderHostImpl : ProviderHost {
 
   // Provider_ComputeCapability
   std::unique_ptr<Provider_ComputeCapability> Provider_ComputeCapability__construct(std::unique_ptr<Provider_IndexedSubGraph> t_sub_graph) override { return std::unique_ptr<Provider_ComputeCapability>(reinterpret_cast<Provider_ComputeCapability*>(new ComputeCapability(std::unique_ptr<IndexedSubGraph>(reinterpret_cast<IndexedSubGraph*>(t_sub_graph.release()))))); }
+  void Provider_ComputeCapability__operator_delete(Provider_ComputeCapability* p) override { delete reinterpret_cast<ComputeCapability*>(p); }
   std::unique_ptr<Provider_IndexedSubGraph>& Provider_ComputeCapability__SubGraph(Provider_ComputeCapability* p) override { return *reinterpret_cast<std::unique_ptr<Provider_IndexedSubGraph>*>(&reinterpret_cast<ComputeCapability*>(p)->sub_graph); }
 
   // Provider_DataTransferManager
@@ -481,8 +482,8 @@ struct ProviderHostImpl : ProviderHost {
   const ONNX_NAMESPACE::Provider_TypeProto* Provider_NodeArg__TypeAsProto(const Provider_NodeArg* p) noexcept override { return reinterpret_cast<const ONNX_NAMESPACE::Provider_TypeProto*>(reinterpret_cast<const NodeArg*>(p)->TypeAsProto()); }
 
   // Provider_NodeAttributes
-  std::unique_ptr<Provider_NodeAttributes> Provider_NodeAttributes__Create() override { return std::unique_ptr<Provider_NodeAttributes>(reinterpret_cast<Provider_NodeAttributes*>(new NodeAttributes())); }
-  void Provider_NodeAttributes__destructor(Provider_NodeAttributes* p) noexcept override { delete reinterpret_cast<NodeAttributes*>(p); }
+  std::unique_ptr<Provider_NodeAttributes> Provider_NodeAttributes__construct() override { return std::unique_ptr<Provider_NodeAttributes>(reinterpret_cast<Provider_NodeAttributes*>(new NodeAttributes())); }
+  void Provider_NodeAttributes__operator_delete(Provider_NodeAttributes* p) noexcept override { delete reinterpret_cast<NodeAttributes*>(p); }
   size_t Provider_NodeAttributes__size(const Provider_NodeAttributes* p) override { return reinterpret_cast<const NodeAttributes*>(p)->size(); }
   void Provider_NodeAttributes__clear(Provider_NodeAttributes* p) noexcept override { return reinterpret_cast<NodeAttributes*>(p)->clear(); }
   Provider_AttributeProto& Provider_NodeAttributes__operator_array(Provider_NodeAttributes* p, const std::string& string) override { return *reinterpret_cast<Provider_AttributeProto*>(&(*reinterpret_cast<NodeAttributes*>(p))[string]); }
@@ -503,7 +504,7 @@ struct ProviderHostImpl : ProviderHost {
   }
 
   // Provider_Model
-  void Provider_Model__destructor(Provider_Model* p) override { delete reinterpret_cast<Model*>(p); }
+  void Provider_Model__operator_delete(Provider_Model* p) override { delete reinterpret_cast<Model*>(p); }
   Provider_Graph& Provider_Model__MainGraph(Provider_Model* p) override { return *reinterpret_cast<Provider_Graph*>(&reinterpret_cast<Model*>(p)->MainGraph()); }
   std::unique_ptr<Provider_ModelProto> Provider_Model__ToProto(Provider_Model* p) override { return std::unique_ptr<Provider_ModelProto>(reinterpret_cast<Provider_ModelProto*>(new ONNX_NAMESPACE::ModelProto(reinterpret_cast<Model*>(p)->ToProto()))); }
 
@@ -532,7 +533,7 @@ struct ProviderHostImpl : ProviderHost {
   const std::vector<const Provider_NodeArg*>& Provider_Graph__GetInputs(const Provider_Graph* p) noexcept override { return *reinterpret_cast<const std::vector<const Provider_NodeArg*>*>(&reinterpret_cast<const Graph*>(p)->GetInputs()); }
 
   // Provider_GraphViewer
-  void Provider_GraphViewer__destructor(Provider_GraphViewer* p) override { delete reinterpret_cast<GraphViewer*>(p); }
+  void Provider_GraphViewer__operator_delete(Provider_GraphViewer* p) override { delete reinterpret_cast<GraphViewer*>(p); }
   std::unique_ptr<Provider_Model> Provider_GraphViewer__CreateModel(const Provider_GraphViewer* p, const logging::Logger& logger) override {
     auto& graph_viewer = *reinterpret_cast<const GraphViewer*>(p);
     return std::unique_ptr<Provider_Model>(reinterpret_cast<Provider_Model*>(new Model(graph_viewer.Name(), true, ModelMetaData(), PathString(),

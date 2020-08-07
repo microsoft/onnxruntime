@@ -471,12 +471,6 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
       if (group.second) {
         nodes_list_output.push_back(group);
       } else {
-#if 0
-        onnxruntime::Model model_build(graph.Name(), true, ModelMetaData(), PathString(),
-                                       IOnnxRuntimeOpSchemaRegistryList(), graph.DomainToVersionMap(),
-                                       std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
-        onnxruntime::Graph& graph_build = model_build.MainGraph();
-#endif
         auto model_build = graph.CreateModel(*GetLogger());
         auto& graph_build = model_build->MainGraph();
 
@@ -538,19 +532,6 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         }
 
         // Serialize modelproto to string
-#if 0
-        const onnxruntime::Provider_GraphViewer graph_viewer(graph_build);
-
-        onnxruntime::Model model(graph_viewer.Name(), true, ModelMetaData(), PathString(),
-                                 IOnnxRuntimeOpSchemaRegistryList(), graph_viewer.DomainToVersionMap(),
-                                 std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
-        ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
-        ToGraphProtoInternal(graph_viewer, *(model_proto.mutable_graph()));
-        model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-
-        std::string string_buf;
-        model_proto.SerializeToString(&string_buf);
-#endif
         auto graph_viewer = graph_build.CreateGraphViewer();
         auto model = graph_viewer->CreateModel(*GetLogger());
         auto model_proto = model->ToProto();
@@ -772,13 +753,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Function body is empty");
     }
     const Provider_Graph& graph_body = func_body->Body();
-#if 0
-    onnxruntime::Model model(graph_body.Name(), true, ModelMetaData(), PathString(),
-                             IOnnxRuntimeOpSchemaRegistryList(), graph_body.DomainToVersionMap(),
-                             std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
-    ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
-#endif
-    auto model = graph_body.CreateGraphViewer()->CreateModel(*GetLogger());  // TODO: Add separate way to create a model from a graph?
+    auto model = graph_body.CreateGraphViewer()->CreateModel(*GetLogger());
     auto model_proto = model->ToProto();
 
     *model_proto->mutable_graph() = *graph_body.ToGraphProto();
