@@ -773,7 +773,7 @@ bool AttentionFusion::FuseSubGraph2(Node& layer_norm, const Node& add_after_laye
   }
 
   //bugbug
-  int64_t num_heads = 0;  // will be updated in CheckNodesInPathV
+  int64_t num_heads = 12;  // will be updated in CheckNodesInPathV
   //int64_t head_size = 0;  // will be updated in CheckNodesInPathV
   //if (!AttentionFusionHelper::CheckNodesInPathV(graph, reshape, transpose, qkv_matmul, v_transpose, v_reshape, num_heads, head_size, hidden_size, logger)) {
   //  DEBUG_LOG("CheckNodesInPathV return false");
