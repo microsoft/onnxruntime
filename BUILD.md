@@ -218,7 +218,7 @@ These instructions are for JetPack SDK 4.4.
 1. Clone the ONNX Runtime repo on the Jetson host
 
     ```bash
-    git clone https://github.com/microsoft/onnxruntime
+    git clone --recursive https://github.com/microsoft/onnxruntime
     ```
 
 2. Specify the CUDA compiler, or add its location to the PATH.
