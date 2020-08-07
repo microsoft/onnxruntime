@@ -180,8 +180,21 @@ ORT_API_STATUS_IMPL(OrtApis::DisablePerSessionThreads, _In_ OrtSessionOptions* o
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SetSessionConfiguration, _Inout_ OrtSessionOptions* options,
-                    _In_ OrtSessionConfigKey config_key, _In_ const char* config_value) {
-  options->value.session_configurations[config_key] = config_value;
+ORT_API_STATUS_IMPL(OrtApis::AddSessionConfigEntry, _Inout_ OrtSessionOptions* options,
+                    _In_ OrtSessionOptionsConfigKey config_key, _In_ const char* config_value) {
+  if (config_key <= OrtSessionOptionsConfigKey::MINIMUM ||
+      config_key >= OrtSessionOptionsConfigKey::MAXIMUM) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "config_key out of range");
+  }
+
+  size_t value_len = strlen(config_value);
+  if (value_len > 1024)
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "config_value is longer than maximum length 1024");
+
+  auto& configs = options->value.session_configurations;
+  if (configs.find(config_key) != configs.end())
+    LOGS_DEFAULT(WARNING) << "Session Config with key [" << config_key << "] already exists";
+
+  configs[config_key] = config_value;
   return nullptr;
 }

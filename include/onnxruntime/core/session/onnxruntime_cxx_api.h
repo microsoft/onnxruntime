@@ -196,7 +196,7 @@ struct SessionOptions : Base<OrtSessionOptions> {
 
   SessionOptions& DisablePerSessionThreads();
 
-  SessionOptions& SetSessionConfiguration(OrtSessionConfigKey config_key, const char* config_value);
+  SessionOptions& AddConfigEntry(OrtSessionOptionsConfigKey config_key, const char* config_value);
 };
 
 struct ModelMetadata : Base<OrtModelMetadata> {
