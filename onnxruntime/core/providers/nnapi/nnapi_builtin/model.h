@@ -94,7 +94,7 @@ class Model {
   // Mutex for exclusive lock to this model object
   OrtMutex& GetMutex() { return mutex_; }
 
-  Status PrepareForExecution(std::unique_ptr<Execution>& execution);
+  Status PrepareForExecution(std::unique_ptr<Execution>& execution) ORT_MUST_USE_RESULT;
 
  private:
   const NnApi* nnapi_{nullptr};
@@ -160,16 +160,17 @@ class Execution {
 
   // Set the input/output data buffers
   // These need to be called before calling Predict()
-  Status SetInputBuffers(const std::vector<InputBuffer>& inputs);
-  Status SetOutputBuffers(const std::vector<OutputBuffer>& outputs);
+  Status SetInputBuffers(const std::vector<InputBuffer>& inputs) ORT_MUST_USE_RESULT;
+  Status SetOutputBuffers(const std::vector<OutputBuffer>& outputs) ORT_MUST_USE_RESULT;
 
   // Execute the NNAPI model
   // if there is dynamic output shape, will output the actual output shapes
-  Status Predict(const std::vector<int32_t>& dynamic_outputs, std::vector<Shaper::Shape>& dynamic_output_shapes);
+  Status Predict(const std::vector<int32_t>& dynamic_outputs, std::vector<Shaper::Shape>& dynamic_output_shapes)
+      ORT_MUST_USE_RESULT;
 
  private:
-  Status SetInputBuffer(const int32_t index, const InputBuffer& input);
-  Status SetOutputBuffer(const int32_t index, const OutputBuffer& output);
+  Status SetInputBuffer(const int32_t index, const InputBuffer& input) ORT_MUST_USE_RESULT;
+  Status SetOutputBuffer(const int32_t index, const OutputBuffer& output) ORT_MUST_USE_RESULT;
 
   const NnApi* nnapi_{nullptr};
   ANeuralNetworksExecution* execution_;

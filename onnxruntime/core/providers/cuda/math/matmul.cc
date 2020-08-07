@@ -96,8 +96,8 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (Y->Shape().Size() == 0)
     return Status::OK();
 
-  CudaT one = ToCudaType<T>::FromFloat(1.0f);
-  CudaT zero = ToCudaType<T>::FromFloat(0.0f);
+  const CudaT alpha = ToCudaType<T>::FromFloat(alpha_);
+  const CudaT zero = ToCudaType<T>::FromFloat(0.0f);
 
   cublasOperation_t transA = transa ? CUBLAS_OP_T : CUBLAS_OP_N;
   cublasOperation_t transB = transb ? CUBLAS_OP_T : CUBLAS_OP_N;
@@ -114,7 +114,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         static_cast<int>(helper.N()),
         static_cast<int>(helper.M()),
         static_cast<int>(helper.K()),
-        &one,
+        &alpha,
         reinterpret_cast<const CudaT*>(right_X->template Data<T>()),
         ldb,
         reinterpret_cast<const CudaT*>(left_X->template Data<T>()),
@@ -132,7 +132,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
                                                           static_cast<int>(helper.N()),
                                                           static_cast<int>(helper.M()),
                                                           static_cast<int>(helper.K()),
-                                                          &one,
+                                                          &alpha,
                                                           reinterpret_cast<const CudaT*>(right_X->template Data<T>()),
                                                           ldb,
                                                           stride_B,
@@ -167,7 +167,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
       static_cast<int>(helper.N()),
       static_cast<int>(helper.M()),
       static_cast<int>(helper.K()),
-      &one,
+      &alpha,
       right_arrays.GpuPtr(),
       ldb,
       left_arrays.GpuPtr(),
