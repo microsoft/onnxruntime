@@ -574,9 +574,6 @@ class ORTTrainer():
             gradient_accumulation_steps: number of training steps to accumulate
                gradients before averaging and applying them.
                Defaults to 1.
-            postprocess_model: a callable to postprocess the ONNX model that is
-               converted from PyTorch.
-               Defaults to None.
             world_rank: rank id used for distributed training.
                Defaults to 0.
             world_size: number of ranks participating in distributed training.
@@ -628,6 +625,8 @@ class ORTTrainer():
         self.world_rank = world_rank
         self.world_size = world_size
         self.use_mixed_precision = use_mixed_precision
+
+        self.original_model_state_keys = list(model.state_dict().keys()) if hasattr(model, 'state_dict') else []
 
         self.session = None
         self.device_ = device
@@ -773,7 +772,11 @@ class ORTTrainer():
             if n.name not in torch_state:
                 torch_state[n.name] = torch.from_numpy(numpy_helper.to_array(n))
 
-        return torch_state
+        # Need to remove redundant initializers and name suffices to map back to original torch state names
+        torch_state_to_return = {key: torch_state[key] for key in self.original_model_state_keys if key in torch_state} \
+                                if self.original_model_state_keys \
+                                else torch_state
+        return torch_state_to_return
 
     def load_state_dict(self, state_dict, strict=False):
         # Note: It may happen ONNX model has not yet been initialized

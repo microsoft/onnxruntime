@@ -80,6 +80,16 @@ std::vector<int64_t> GetTypeSpecificDataFromTensorProto(
     onnx::TensorProto tensorProto) {
   return std::vector<int64_t>(std::begin(tensorProto.int64_data()), std::end(tensorProto.int64_data()));
 }
+template <>
+std::vector<uint8_t> GetTypeSpecificDataFromTensorProto(
+    onnx::TensorProto tensorProto) {
+  return std::vector<uint8_t>(std::begin(tensorProto.int32_data()), std::end(tensorProto.int32_data()));
+}
+template <>
+std::vector<double> GetTypeSpecificDataFromTensorProto(
+    onnx::TensorProto tensorProto) {
+  return std::vector<double>(std::begin(tensorProto.double_data()), std::end(tensorProto.double_data()));
+}
 
 template <typename DataType>
 std::vector<DataType> GetTensorDataFromTensorProto(
@@ -139,6 +149,10 @@ ITensor ProtobufHelpers::LoadTensorFromProtobufFile(
         return TensorInt64Bit::CreateFromIterable(tensorShape, GetTensorDataFromTensorProto<int64_t>(tensorProto, elementCount));
       case (onnx::TensorProto::DataType::TensorProto_DataType_STRING):
         return TensorString::CreateFromIterable(tensorShape, GetTensorStringDataFromTensorProto(tensorProto, elementCount));
+      case (onnx::TensorProto::DataType::TensorProto_DataType_UINT8):
+        return TensorUInt8Bit::CreateFromIterable(tensorShape, GetTensorDataFromTensorProto<uint8_t>(tensorProto, elementCount));
+      case (onnx::TensorProto::DataType::TensorProto_DataType_DOUBLE):
+        return TensorDouble::CreateFromIterable(tensorShape, GetTensorDataFromTensorProto<double>(tensorProto, elementCount));
       default:
         throw winrt::hresult_invalid_argument(L"Tensor type for creating tensor from protobuf file not supported.");
         break;

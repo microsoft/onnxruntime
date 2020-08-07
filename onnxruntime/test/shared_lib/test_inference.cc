@@ -144,6 +144,8 @@ static constexpr PATH_TYPE MODEL_WITH_CUSTOM_MODEL_METADATA = TSTR("testdata/mod
 
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 static constexpr PATH_TYPE PYOP_FLOAT_MODEL_URI = TSTR("testdata/pyop_1.onnx");
+static constexpr PATH_TYPE PYOP_MULTI_MODEL_URI = TSTR("testdata/pyop_2.onnx");
+static constexpr PATH_TYPE PYOP_KWARG_MODEL_URI = TSTR("testdata/pyop_3.onnx");
 #endif
 
 class CApiTestWithProvider : public testing::Test, public ::testing::WithParamInterface<int> {
@@ -358,9 +360,11 @@ TEST(CApiTest, test_custom_op_library) {
   TestInference<PATH_TYPE, int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y, expected_values_y, 0, nullptr, lib_name.c_str());
 }
 
-#if defined(ENABLE_LANGUAGE_INTEROP_OPS) && !defined(_WIN32)  // on windows, PYTHONHOME must be set explicitly
-TEST(CApiTest, DISABLED_test_pyop) {
-  std::cout << "Test model with pyop" << std::endl;
+#if defined(ENABLE_LANGUAGE_INTEROP_OPS)
+std::once_flag my_module_flag;
+
+void PrepareModule()
+{
   std::ofstream module("mymodule.py");
   module << "class MyKernel:" << std::endl;
   module << "\t"
@@ -371,7 +375,29 @@ TEST(CApiTest, DISABLED_test_pyop) {
          << "def compute(self,x):" << std::endl;
   module << "\t\t"
          << "return x*2" << std::endl;
+  module << "class MyKernel_2:" << std::endl;
+  module << "\t"
+         << "def __init__(self,A,B):" << std::endl;
+  module << "\t\t"
+         << "self.a,self.b = A,B" << std::endl;
+  module << "\t"
+         << "def compute(self,x):" << std::endl;
+  module << "\t\t"
+         << "return x*4" << std::endl;
+  module << "class MyKernel_3:" << std::endl;
+  module << "\t"
+         << "def __init__(self,A,B):" << std::endl;
+  module << "\t\t"
+         << "self.a,self.b = A,B" << std::endl;
+  module << "\t"
+         << "def compute(self,*kwargs):" << std::endl;
+  module << "\t\t"
+         << "return kwargs[0]*5" << std::endl;
   module.close();
+}
+
+TEST(CApiTest, test_pyop) {
+  std::call_once(my_module_flag, PrepareModule);
   std::vector<Input> inputs(1);
   Input& input = inputs[0];
   input.name = "X";
@@ -380,6 +406,30 @@ TEST(CApiTest, DISABLED_test_pyop) {
   std::vector<int64_t> expected_dims_y = {2, 2};
   std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f};
   TestInference<PATH_TYPE, float>(*ort_env, PYOP_FLOAT_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
+}
+
+TEST(CApiTest, test_pyop_multi) {
+  std::call_once(my_module_flag, PrepareModule);
+  std::vector<Input> inputs(1);
+  Input& input = inputs[0];
+  input.name = "X";
+  input.dims = {2, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f};
+  std::vector<int64_t> expected_dims_y = {2, 2};
+  std::vector<float> expected_values_y = {8.0f, 16.0f, 24.0f, 32.0f};
+  TestInference<PATH_TYPE, float>(*ort_env, PYOP_MULTI_MODEL_URI, inputs, "Z", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
+}
+
+TEST(CApiTest, test_pyop_kwarg) {
+  std::call_once(my_module_flag, PrepareModule);
+  std::vector<Input> inputs(1);
+  Input& input = inputs[0];
+  input.name = "X";
+  input.dims = {2, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f};
+  std::vector<int64_t> expected_dims_y = {2, 2};
+  std::vector<float> expected_values_y = {25.0f, 50.0f, 75.0f, 100.0f};
+  TestInference<PATH_TYPE, float>(*ort_env, PYOP_KWARG_MODEL_URI, inputs, "Z", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
 }
 #endif
 
@@ -409,6 +459,45 @@ TEST(CApiTest, create_tensor) {
   std::string result(data_len, '\0');
   std::vector<size_t> offsets(len);
   tensor.GetStringTensorContent((void*)result.data(), data_len, offsets.data(), offsets.size());
+}
+
+TEST(CApiTest, fill_string_tensor) {
+  const char* s[] = {"abc", "kmp"};
+  int64_t expected_len = 2;
+  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+
+  Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+
+  for (int64_t i = 0; i < expected_len; i++) {
+    
+      tensor.FillStringTensorElement(s[i], i);
+  }
+
+  auto shape_info = tensor.GetTensorTypeAndShapeInfo();
+
+  int64_t len = shape_info.GetElementCount();
+  ASSERT_EQ(len, expected_len);
+}
+
+TEST(CApiTest, get_string_tensor_element) {
+  const char* s[] = {"abc", "kmp"};
+  int64_t expected_len = 2;
+  int64_t element_index = 0;
+  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+
+  Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+
+  tensor.FillStringTensor(s, expected_len);
+    
+  auto expected_string = s[element_index];
+  size_t expected_string_len = strlen(expected_string);
+
+  std::string result(expected_string_len, '\0');
+  tensor.GetStringTensorElement(expected_string_len, element_index, (void*)result.data());
+  ASSERT_STREQ(result.c_str(), expected_string);
+
+  auto string_len = tensor.GetStringTensorElementLength(element_index);
+  ASSERT_EQ(expected_string_len, string_len);
 }
 
 TEST(CApiTest, create_tensor_with_data) {
@@ -441,9 +530,8 @@ TEST(CApiTest, override_initializer) {
   std::string f2_data{"f2_string"};
   // Place a string into Tensor OrtValue and assign to the
   Ort::Value f2_input_tensor = Ort::Value::CreateTensor(allocator.get(), dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
-  // No C++ Api to either create a string Tensor or to fill one with string, so we use C
   const char* const input_char_string[] = {f2_data.c_str()};
-  Ort::ThrowOnError(Ort::GetApi().FillStringTensor(static_cast<OrtValue*>(f2_input_tensor), input_char_string, 1U));
+  f2_input_tensor.FillStringTensor(input_char_string, 1U);
 
   Ort::SessionOptions session_options;
   Ort::Session session(*ort_env, OVERRIDABLE_INITIALIZER_MODEL_URI, session_options);

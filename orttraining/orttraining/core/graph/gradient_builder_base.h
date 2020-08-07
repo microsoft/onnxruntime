@@ -8,6 +8,7 @@
 #include "core/graph/graph.h"
 #include "orttraining/core/graph/graph_augmenter.h"
 #include "orttraining/core/graph/gradient_config.h"
+#include "orttraining/core/graph/recompute_graph_utils.h"
 #include "onnx/defs/attr_proto_util.h"
 
 namespace onnxruntime {
@@ -21,18 +22,32 @@ void ComputeBroadcastBackwardAxes(
     std::vector<int64_t>* A_axes,
     std::vector<int64_t>* B_axes);
 
-std::vector<Dimension> GetShape(const ArgDef& arg_def);
+void ComputeBroadcastBackwardAxesDynamic(const ArgDef& a,
+                                         const ArgDef& b,
+                                         const ArgDef& a_shape,
+                                         const ArgDef& b_shape,
+                                         const ArgDef* a_axes,
+                                         const ArgDef* b_axes,
+                                         std::vector<NodeDef>& output);
+
+Status GetShape(const ArgDef& arg_def, std::vector<Dimension>& shape);
 
 typedef std::vector<NodeDef> GradientDef;
 
 class GradientBuilderBase {
  public:
-  GradientBuilderBase(
-      const GradientGraphConfiguration& gradient_graph_config,
-      const Node* node,
-      const std::unordered_set<std::string>& gradient_inputs,
-      const std::unordered_set<std::string>& gradient_outputs)
-      : gradient_graph_config_(gradient_graph_config), node_(node), gradient_inputs_(gradient_inputs), gradient_outputs_(gradient_outputs) {
+  GradientBuilderBase(const GradientGraphConfiguration& gradient_graph_config,
+                      const Graph* graph,
+                      const Node* node,
+                      const std::unordered_set<std::string>& gradient_inputs,
+                      const std::unordered_set<std::string>& gradient_outputs,
+                      const logging::Logger& logger)
+      : gradient_graph_config_(gradient_graph_config),
+        graph_(graph),
+        node_(node),
+        gradient_inputs_(gradient_inputs),
+        gradient_outputs_(gradient_outputs),
+        logger_(logger) {
     unique_node_prefix_ = CreateUniqueNodePrefix();
   }
 
@@ -63,6 +78,15 @@ class GradientBuilderBase {
   // i-th input of forward op
   ArgDef I(const size_t i) const {
     ORT_ENFORCE(i < node_->InputDefs().size());
+
+    const std::string& name = node_->InputDefs()[i]->Name();
+    const NodeArg* recomputed_nodearg = graph_->GetNodeArg(graph_utils::RecomputeName(name));
+    if (recomputed_nodearg) {
+      const Node* producer_node = graph_->GetProducerNode(name);
+      LOGS(logger_, INFO) << "Recomputed node arg found for " << producer_node->Name();
+      return ArgDef(recomputed_nodearg->Name(), recomputed_nodearg->TypeAsProto());
+    }
+
     return ArgDef(node_->InputDefs()[i]->Name(), node_->InputDefs()[i]->TypeAsProto());
   }
 
@@ -175,6 +199,13 @@ class GradientBuilderBase {
                           const std::vector<int64_t>& reduce_axes,
                           std::vector<NodeDef>& output) const;
 
+  void HandleBroadcastingDynamic(const ArgDef& input_grad,
+                                 const ArgDef& target,
+                                 const ArgDef& target_shape,
+                                 const ArgDef& output_grad,
+                                 const ArgDef& reduce_axes,
+                                 std::vector<NodeDef>& output) const;
+
  private:
   friend class GradientGraphBuilder;
 
@@ -192,6 +223,7 @@ class GradientBuilderBase {
   }
 
   const GradientGraphConfiguration& gradient_graph_config_;
+  const Graph* graph_;
   const Node* node_;
   std::string unique_node_prefix_;
 
@@ -200,6 +232,8 @@ class GradientBuilderBase {
 
   // contains set of input arg names of node_ which requires gradient
   std::unordered_set<std::string> gradient_outputs_;
+  
+  const logging::Logger& logger_;
 };
 
 class EmptyGradientBuilder : public GradientBuilderBase {

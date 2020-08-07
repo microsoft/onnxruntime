@@ -7,9 +7,74 @@
 #include "core/platform/windows/TraceLoggingConfig.h"
 #include <evntrace.h>
 
+#include <windows.h>
+
 using namespace _winml;
 
 static bool debug_output_ = false;
+
+EXTERN_C IMAGE_DOS_HEADER __ImageBase;
+
+static bool IsCurrentModuleInSystem32() {
+  std::string current_module_path;
+  current_module_path.reserve(MAX_PATH);
+  auto size_module_path = GetModuleFileNameA((HINSTANCE)&__ImageBase, current_module_path.data(), MAX_PATH);
+  FAIL_FAST_IF(size_module_path == 0);
+
+  std::string system32_path;
+  system32_path.reserve(MAX_PATH);
+  auto size_system32_path = GetSystemDirectoryA(system32_path.data(), MAX_PATH);
+  FAIL_FAST_IF(size_system32_path == 0);
+
+  return _strnicmp(system32_path.c_str(), current_module_path.c_str(), size_system32_path) == 0;
+}
+
+static HRESULT GetOnnxruntimeLibrary(HMODULE& module) {
+  DWORD flags = 0;
+#ifdef BUILD_INBOX
+  flags |= IsCurrentModuleInSystem32() ? LOAD_LIBRARY_SEARCH_SYSTEM32 : 0;
+#endif
+
+  auto out_module = LoadLibraryExA("onnxruntime.dll", nullptr, flags);
+  if (out_module == nullptr) {
+    return HRESULT_FROM_WIN32(GetLastError());
+  }
+  module = out_module;
+  return S_OK;
+}
+
+const OrtApi* _winml::GetVersionedOrtApi() {
+  HMODULE onnxruntime_dll;
+  FAIL_FAST_IF_FAILED(GetOnnxruntimeLibrary(onnxruntime_dll));
+
+  using OrtGetApiBaseSignature = decltype(OrtGetApiBase);
+  auto ort_get_api_base_fn = reinterpret_cast<OrtGetApiBaseSignature*>(GetProcAddress(onnxruntime_dll, "OrtGetApiBase"));
+  if (ort_get_api_base_fn == nullptr) {
+    FAIL_FAST_HR(HRESULT_FROM_WIN32(GetLastError()));
+  }
+
+  const auto ort_api_base = ort_get_api_base_fn();
+
+  static const uint32_t ort_version = 2;
+  return ort_api_base->GetApi(ort_version);
+}
+
+static const WinmlAdapterApi* GetVersionedWinmlAdapterApi(const OrtApi* ort_api) {
+  HMODULE onnxruntime_dll;
+  FAIL_FAST_IF_FAILED(GetOnnxruntimeLibrary(onnxruntime_dll));
+
+  using OrtGetWinMLAdapterSignature = decltype(OrtGetWinMLAdapter);
+  auto ort_get_winml_adapter_fn = reinterpret_cast<OrtGetWinMLAdapterSignature*>(GetProcAddress(onnxruntime_dll, "OrtGetWinMLAdapter"));
+  if (ort_get_winml_adapter_fn == nullptr) {
+    FAIL_FAST_HR(HRESULT_FROM_WIN32(GetLastError()));
+  }
+
+  return ort_get_winml_adapter_fn(ort_api);
+}
+
+const WinmlAdapterApi* _winml::GetVersionedWinmlAdapterApi() {
+  return GetVersionedWinmlAdapterApi(GetVersionedOrtApi());
+}
 
 static void __stdcall WinmlOrtLoggingCallback(void* param, OrtLoggingLevel severity, const char* category,
                                     const char* logger_id, const char* code_location, const char* message) noexcept {
@@ -128,7 +193,7 @@ OnnxruntimeEnvironment::OnnxruntimeEnvironment(const OrtApi* ort_api) : ort_env_
   ort_env_ = UniqueOrtEnv(ort_env, ort_api->ReleaseEnv);
 
   // Configure the environment with the winml logger
-  auto winml_adapter_api = OrtGetWinMLAdapter(ort_api);
+  auto winml_adapter_api = GetVersionedWinmlAdapterApi(ort_api);
   THROW_IF_NOT_OK_MSG(winml_adapter_api->EnvConfigureCustomLoggerAndProfiler(ort_env_.get(),
                                                                              &WinmlOrtLoggingCallback, &WinmlOrtProfileEventCallback, nullptr,
                                                                              OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env),
