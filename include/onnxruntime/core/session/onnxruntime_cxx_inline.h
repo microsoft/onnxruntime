@@ -229,6 +229,15 @@ inline SessionOptions& SessionOptions::Add(OrtCustomOpDomain* custom_op_domain) 
   return *this;
 }
 
+inline SessionOptions& SessionOptions::EnablePrePacking() {
+  ThrowOnError(GetApi().EnablePrePacking(p_));
+  return *this;
+}
+inline SessionOptions& SessionOptions::DisablePrePacking() {
+  ThrowOnError(GetApi().DisablePrePacking(p_));
+  return *this;
+}
+
 inline Session::Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options) {
   ThrowOnError(GetApi().CreateSession(env, model_path, options, &p_));
 }

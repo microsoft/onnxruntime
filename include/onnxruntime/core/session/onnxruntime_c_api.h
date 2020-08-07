@@ -826,15 +826,15 @@ struct OrtApi {
    * The caller is responsible for freeing each char * and the pointer
    * array by calling ReleaseAvailableProviders().
    */
-  ORT_API2_STATUS(GetAvailableProviders, _Outptr_ char ***out_ptr,
-                  _In_ int *provider_length);
+  ORT_API2_STATUS(GetAvailableProviders, _Outptr_ char*** out_ptr,
+                  _In_ int* provider_length);
 
   /**
    * \param ptr is the pointer to an array of available providers you
    * get after calling GetAvailableProviders().
    * \param providers_length is the number of available providers.
    */
-  ORT_API2_STATUS(ReleaseAvailableProviders, _In_ char **ptr,
+  ORT_API2_STATUS(ReleaseAvailableProviders, _In_ char** ptr,
                   _In_ int providers_length);
 
   /**
@@ -857,6 +857,10 @@ struct OrtApi {
      * \param index index of string tensor element to fill 
      */
   ORT_API2_STATUS(FillStringTensorElement, _Inout_ OrtValue* value, _In_ const char* s, size_t index);
+  
+  // Control pre-packing of initialized constant tensors
+  ORT_API2_STATUS(EnablePrePacking, _Inout_ OrtSessionOptions* options);
+  ORT_API2_STATUS(DisablePrePacking, _Inout_ OrtSessionOptions* options);
 };
 
 /*

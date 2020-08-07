@@ -511,6 +511,12 @@ class TestInferenceSession(unittest.TestCase):
 
         res = sess.run([], {'input1:0': a, 'input:0': b})
 
+    def testPrePacking(self):
+        opt = onnxrt.SessionOptions()
+        self.assertTrue(opt.use_prepacking)
+        opt.use_prepacking = False
+        self.assertFalse(opt.use_prepacking)
+
     def testSequenceLength(self):
         sess = onnxrt.InferenceSession(get_name("sequence_length.onnx"))
         x = [
