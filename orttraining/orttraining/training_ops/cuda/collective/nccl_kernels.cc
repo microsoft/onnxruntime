@@ -14,8 +14,6 @@ Status NcclAllReduce::ComputeInternal(OpKernelContext* context) const {
   cudaStream_t stream = nullptr;  // Default stream
   ncclComm_t comm = nccl_->Comm(group_type_);
 
-  printf("in allreduce. inputcout = %d, num_input_readies_ = %d\n", context->InputCount(), (int)(num_input_readies_));
-
   for (int i = 0; i < context->InputCount() - num_input_readies_; i++) {
     const Tensor* input_tensor = context->Input<Tensor>(i);
     auto onnx_type = input_tensor->DataType();
@@ -141,9 +139,6 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
     const int64_t padded_size = padded_max_group_size * size * element_size;
     auto fusion_buffer = GetScratchBuffer<void>(padded_size);
     void* fusion_data = fusion_buffer.get();
-    std::cout << "padded_max_group_size = " << padded_max_group_size << ", padded_size =" << padded_size << "\n";
-    std::cout << "Input count = " << context->InputCount() << "\n";
-    std::cout << "Output count = " << context->OutputCount() << "\n";
 
     const int64_t rank_size = padded_size / size;
     const int64_t rank_count = rank_size / element_size;
@@ -156,19 +151,8 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
       const int64_t tensor_bytes = input_tensor->SizeInBytes();
       void* fusion_data_at_offset = (int8_t*)fusion_data + offset;
       const void* input_data = input_tensor->DataRaw();
-      CUDA_RETURN_IF_ERROR(cudaMemcpy(fusion_data_at_offset, input_data, tensor_bytes, cudaMemcpyDeviceToDevice));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(fusion_data_at_offset, input_data, tensor_bytes, cudaMemcpyDeviceToDevice));
       offset += tensor_bytes;
-      /*
-      for (int jj = 0; jj < input_tensor->Shape().Size(); jj += 10) {
-        printf("jj = %d\n", jj);
-        CUDA_RETURN_IF_ERROR(cudaMemcpy(tmp_arr, input_data, 10 * element_size, cudaMemcpyDeviceToHost));
-        for (int kk = 0; kk < 10; ++kk) {
-          if (std::isnan(float(tmp_arr[kk]))) {
-            printf("Error!\n");
-          }
-        }
-      }
-      */
     }
 
     //AllGather
@@ -201,17 +185,7 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
           Tensor* output_tensor = context->Output(i, input_shape);
           void* output_data = output_tensor->MutableDataRaw();
           const void* fusion_data_at_offset = (const int8_t*)fusion_data + offset;
-          CUDA_RETURN_IF_ERROR(cudaMemcpy(output_data, fusion_data_at_offset, tensor_bytes, cudaMemcpyDeviceToDevice));
-          /*
-          CUDA_RETURN_IF_ERROR(cudaMemcpy(tmp_arr, fusion_data_at_offset, DS * element_size, cudaMemcpyDeviceToHost));
-          for (int jj = 0; jj < input_tensor->Shape().Size(); jj += DS) {
-            for (int kk = 0; kk < DS; ++kk) {
-              if (std::isnan(float(tmp_arr[kk]))) {
-                printf("Error!\n");
-              }
-            }
-          }
-          */
+          CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, fusion_data_at_offset, tensor_bytes, cudaMemcpyDeviceToDevice));
           offset += tensor_bytes;
         }
       }
@@ -237,8 +211,6 @@ Status NcclReduce::ComputeInternal(OpKernelContext* context) const {
     const Tensor* input_tensor = context->Input<Tensor>(i);
     total_count += input_tensor->Shape().Size();
   }
-  printf("in reduce. inputcout = %d, num_input_readies_ = %d, the total count is %ld\n", context->InputCount(), (int)(num_input_readies_), total_count);
-  printf("in reduce, input count = %d, output_count = %d\n", context->InputCount(), context->OutputCount());
 
   //When the contiguous memory is enabled, can remove this buffer
   //TODO: Aligned to 32 bit and world size ?
@@ -260,7 +232,6 @@ Status NcclReduce::ComputeInternal(OpKernelContext* context) const {
   }
 
   const int rank = nccl_->Rank(group_type_);
-  printf("before real reduce: rank %d. root_rank = %d\n", rank, (int)root_rank_);
   cudaStream_t stream = nullptr;  //Default stream
   ncclComm_t comm = nccl_->Comm(group_type_);
   ncclDataType_t dtype = GetNcclDataType(onnx_type);

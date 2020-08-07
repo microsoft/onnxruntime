@@ -186,7 +186,6 @@ static Status AddL2NormNcclAllReduce(
   // AllReduce the squared L2 norms.
   std::vector<ArgDef> inputs({norm_argdef});
   inputs.insert(inputs.end(), input_readies.begin(), input_readies.end());
-  printf("input_readies.size = %d\n", (int)input_readies.size());
   ArgDef allreduce_output(norm_argdef.name + "_AllReduce_Out", norm_argdef.type_proto);
   graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclAllReduce", kMSDomain, 1},
                                   inputs,
@@ -471,7 +470,6 @@ static Status GetGradientArgsInTopoOrder(
   gradient_argdefs = std::move(gradient_argdefs_in_topo_order);
   weight_argdefs = std::move(weight_argdefs_in_topo_order);
   opt_configs = std::move(opt_configs_in_topo_order);
-  printf("in topo sorting\n");
   return Status::OK();
 }
 
