@@ -24,8 +24,7 @@ class NcclAllGather final : public NcclKernel {
 
   Status ComputeInternal(OpKernelContext* context) const override;
   private:
-  int64_t partition_lb_;
-  int64_t partition_ub_;
+  std::vector<int64_t> partition_;
   int64_t max_group_size_;
   bool partition_even_;
   int64_t num_input_readies_;

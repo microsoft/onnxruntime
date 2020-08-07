@@ -34,14 +34,12 @@ Status NcclAllReduce::ComputeInternal(OpKernelContext* context) const {
 
 NcclAllGather::NcclAllGather(const OpKernelInfo& info) : NcclKernel(info) {
   info.GetAttrOrDefault<int64_t>("max_group_size", &max_group_size_, static_cast<int64_t>(0));
+  info.GetAttrOrDefault<int64_t>("num_input_readies", &num_input_readies_, static_cast<int64_t>(0));
   if (max_group_size_ > 0) {
-    ORT_ENFORCE(info.GetAttr<int64_t>("partition_lb", &partition_lb_).IsOK());
-    ORT_ENFORCE(info.GetAttr<int64_t>("partition_ub", &partition_ub_).IsOK());
-    info.GetAttrOrDefault<int64_t>("num_input_readies", &num_input_readies_, static_cast<int64_t>(0));
+    ORT_ENFORCE(info.GetAttrs<int64_t>("partition", partition_).IsOK());
     partition_even_ = false;
   } else {
-    partition_lb_ = 0;
-    partition_ub_ = 0;
+    partition_ = {};
     partition_even_ = true;
   }
 }
@@ -131,6 +129,8 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
     }
 
   } else {
+    const int64_t partition_ub_ = partition_[rank];
+    const int64_t partition_lb_ = rank == 0 ? 0 : partition_[rank - 1] + 1;
     std::cout << "max_group_size = " << max_group_size_ << ", partition_lb = " << partition_lb_
               << ", parititon_ub = " << partition_ub_ << ", num_input_readies = "
               << num_input_readies_
@@ -138,43 +138,85 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
     ORT_ENFORCE(max_group_size_ > 0);
     const int64_t alignment = 32;
     const int64_t padded_max_group_size = max_group_size_ + alignment - (max_group_size_ % alignment);
-    const int64_t padded_count = padded_max_group_size * size * element_size;
-    auto fusion_buffer = GetScratchBuffer<void>(padded_count);
+    const int64_t padded_size = padded_max_group_size * size * element_size;
+    auto fusion_buffer = GetScratchBuffer<void>(padded_size);
     void* fusion_data = fusion_buffer.get();
-    std::cout << "padded_max_group_size = " << padded_max_group_size << ", padded_count =" << padded_count << "\n";
+    std::cout << "padded_max_group_size = " << padded_max_group_size << ", padded_size =" << padded_size << "\n";
     std::cout << "Input count = " << context->InputCount() << "\n";
-    stsd::cout << "Output count = " << context->OutputCount() << "\n";
+    std::cout << "Output count = " << context->OutputCount() << "\n";
 
-    const int64_t rank_count = padded_count / size;
+    const int64_t rank_size = padded_size / size;
+    const int64_t rank_count = rank_size / element_size;
 
-    int64_t offset = rank_count * rank;
+    int64_t offset = rank_size * rank;
+    int DS = 100;
+    MLFloat16* tmp_arr = new MLFloat16[DS];
     for (int i = partition_lb_; i <= partition_ub_; ++i) {
       const Tensor* input_tensor = context->Input<Tensor>(i);
       const int64_t tensor_bytes = input_tensor->SizeInBytes();
       void* fusion_data_at_offset = (int8_t*)fusion_data + offset;
       const void* input_data = input_tensor->DataRaw();
-      printf("i = %d, offset = %d\n", i, int(offset));
       CUDA_RETURN_IF_ERROR(cudaMemcpy(fusion_data_at_offset, input_data, tensor_bytes, cudaMemcpyDeviceToDevice));
       offset += tensor_bytes;
+      /*
+      for (int jj = 0; jj < input_tensor->Shape().Size(); jj += 10) {
+        printf("jj = %d\n", jj);
+        CUDA_RETURN_IF_ERROR(cudaMemcpy(tmp_arr, input_data, 10 * element_size, cudaMemcpyDeviceToHost));
+        for (int kk = 0; kk < 10; ++kk) {
+          if (std::isnan(float(tmp_arr[kk]))) {
+            printf("Error!\n");
+          }
+        }
+      }
+      */
     }
-    printf("Done copy in\n");
 
     //AllGather
-    const void* fusion_data_rank_offset = (const int8_t*)fusion_data + rank_count * rank;
+    const void* fusion_data_rank_offset = (const int8_t*)fusion_data + rank_size * rank;
     NCCL_RETURN_IF_ERROR(ncclAllGather(fusion_data_rank_offset, fusion_data, rank_count, dtype, comm, stream));
 
     //Copy AllGather results to outputs
     offset = 0;
-    for (int i = 0; i <= context->OutputCount(); ++i) {
-      const Tensor* input_tensor = context->Input<Tensor>(i);
-      const TensorShape& input_shape = input_tensor->Shape();
-      const int64_t tensor_bytes = input_tensor->SizeInBytes();
-      Tensor* output_tensor = context->Output(i, input_shape);
-      void* output_data = output_tensor->MutableDataRaw();
-      const void* fusion_data_at_offset = (const int8_t*)fusion_data + offset;
-      CUDA_RETURN_IF_ERROR(cudaMemcpy(output_data, fusion_data_at_offset, tensor_bytes, cudaMemcpyDeviceToDevice));
-      offset += tensor_bytes;
+    for (size_t idx = 0; idx < partition_.size(); ++idx) {
+      offset = idx * rank_size;
+      const int64_t lb = idx == 0 ? 0 : partition_[idx - 1] + 1;
+      const int64_t ub = partition_[idx];
+      if (idx == rank) {
+        for (int64_t i = lb; i <= ub; ++i) {
+          const Tensor* input_tensor = context->Input<Tensor>(i);
+          const void* input_data = input_tensor->DataRaw();
+          const TensorShape& input_shape = input_tensor->Shape();
+          const int64_t tensor_bytes = input_tensor->SizeInBytes();
+          Tensor* output_tensor = context->Output(i, input_shape);
+          void* output_data = output_tensor->MutableDataRaw();
+          if (input_data != output_data) {
+            CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, input_data, tensor_bytes, cudaMemcpyDeviceToDevice));
+          }
+        }
+      } else {
+        for (int64_t i = lb; i <= ub; ++i) {
+          const Tensor* input_tensor = context->Input<Tensor>(i);
+          const TensorShape& input_shape = input_tensor->Shape();
+          const int64_t tensor_bytes = input_tensor->SizeInBytes();
+          Tensor* output_tensor = context->Output(i, input_shape);
+          void* output_data = output_tensor->MutableDataRaw();
+          const void* fusion_data_at_offset = (const int8_t*)fusion_data + offset;
+          CUDA_RETURN_IF_ERROR(cudaMemcpy(output_data, fusion_data_at_offset, tensor_bytes, cudaMemcpyDeviceToDevice));
+          /*
+          CUDA_RETURN_IF_ERROR(cudaMemcpy(tmp_arr, fusion_data_at_offset, DS * element_size, cudaMemcpyDeviceToHost));
+          for (int jj = 0; jj < input_tensor->Shape().Size(); jj += DS) {
+            for (int kk = 0; kk < DS; ++kk) {
+              if (std::isnan(float(tmp_arr[kk]))) {
+                printf("Error!\n");
+              }
+            }
+          }
+          */
+          offset += tensor_bytes;
+        }
+      }
     }
+    delete[] tmp_arr;
   }
   return Status::OK();
 }
