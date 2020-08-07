@@ -93,7 +93,7 @@ target_cppwinrt(winml_api
 # generate winml.experimental headers from idl
 target_cppwinrt(winml_api_experimental
   ${winrt_experimental_idl}                    # winml winrt idl to compile
-  "Microsoft.AI.MachineLearning.Experimental"  # outputs name
+  ${experimental_output_name}                  # outputs name
   ${winml_lib_api_dir}                         # location for cppwinrt generated component sources
   ${sdk_folder}                                # location of sdk folder
   ${sdk_version}                               # sdk version

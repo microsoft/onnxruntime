@@ -1,10 +1,12 @@
 ﻿#include "pch.h"
 #include "Dummy.h"
 
-namespace winrt::Microsoft::AI::MachineLearning::Experimental::implementation
+namespace WINML_EXPERIMENTALP {
+
+void Dummy::Test()
 {
-    void Dummy::Test()
-    {
-        throw hresult_not_implemented();
-    }
+    throw hresult_not_implemented();
 }
+
+}  // namespace WINML_EXPERIMENTALP
+

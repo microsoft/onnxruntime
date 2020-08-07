@@ -9,6 +9,8 @@
 #include "protobufHelpers.h"
 #include "winrt/Windows.Storage.h"
 
+#include "winrt/Microsoft.AI.MachineLearning.Experimental.h"
+
 #include <D3d11_4.h>
 #include <dxgi1_6.h>
 #include "Psapi.h"
@@ -21,6 +23,8 @@ using wf::IPropertyValue;
 
 static void LearningModelSessionAPITestsClassSetup() {
   init_apartment();
+
+  winml::Experimental::Dummy dummy_api();
 }
 
 static void CreateSessionDeviceDefault()

@@ -2,19 +2,21 @@
 
 #include "Dummy.g.h"
 
-namespace winrt::Microsoft::AI::MachineLearning::Experimental::implementation
-{
-    struct Dummy : DummyT<Dummy>
-    {
-        Dummy() = default;
+namespace WINML_EXPERIMENTALP {
 
-        void Test();
-    };
+struct Dummy : DummyT<Dummy>
+{
+    Dummy() = default;
+
+    void Test();
+};
+
 }
 
-namespace winrt::Microsoft::AI::MachineLearning::Experimental::factory_implementation
+namespace WINML_EXPERIMENTAL::factory_implementation {
+
+struct Dummy : DummyT<Dummy, implementation::Dummy>
 {
-    struct Dummy : DummyT<Dummy, implementation::Dummy>
-    {
-    };
+};
+
 }
