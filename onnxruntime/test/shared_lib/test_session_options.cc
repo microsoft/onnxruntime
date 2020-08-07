@@ -12,3 +12,9 @@ TEST(CApiTest, session_options_graph_optimization_level) {
   Ort::SessionOptions options;
   options.SetGraphOptimizationLevel(ORT_ENABLE_EXTENDED);
 }
+
+TEST(CApiTest, session_options_pre_packing) {
+  Ort::SessionOptions options;
+  options.DisablePrePacking();
+  options.EnablePrePacking();
+}

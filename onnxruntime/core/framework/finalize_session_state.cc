@@ -45,7 +45,7 @@ Status FinalizeSessionState(SessionState& session_state,
                             const std::basic_string<PATH_CHAR_TYPE>& graph_location,
                             KernelRegistryManager& kernel_registry_manager,
                             _In_opt_ const Node* parent_node,
-                            ExecutionMode execution_mode) {
+                            const SessionOptions& session_options) {
   session_state.CreateGraphInfo();
 
   const GraphViewer& graph_viewer = session_state.GetGraphViewer();
@@ -70,7 +70,7 @@ Status FinalizeSessionState(SessionState& session_state,
   }
 
   std::unique_ptr<SequentialExecutionPlan> exec_plan;
-  SequentialPlannerContext context(execution_mode);
+  SequentialPlannerContext context(session_options.execution_mode);
   ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, graph_viewer, valid_outer_scope_node_args,
                                                     session_state.GetExecutionProviders(), kernel_registry_manager,
                                                     ort_value_name_idx_map, context, exec_plan));
@@ -99,6 +99,10 @@ Status FinalizeSessionState(SessionState& session_state,
   session_state.CleanInitializedTensorsFromGraph();
 
   ORT_RETURN_IF_ERROR(session_state.CreateKernels(kernel_registry_manager));
+  if (session_options.use_prepacking) {
+    ORT_RETURN_IF_ERROR(session_state.PrepackInitializedConstantTensors());
+  }
+
   ORT_RETURN_IF_ERROR(SaveInputOutputNamesToNodeMapping(graph_viewer, kernel_registry_manager, session_state,
                                                         valid_outer_scope_node_args));
   return Status::OK();
