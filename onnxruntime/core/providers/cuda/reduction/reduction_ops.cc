@@ -395,13 +395,11 @@ Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& input, Pr
     if (fast_reduction && reduction_size <= std::numeric_limits<int>::max() && stride <= std::numeric_limits<int>::max() &&
         prepare_reduce_metadata.contiguous_axes &&
         is_matrix_row_reduction(cudnn_reduce_op, static_cast<int>(reduction_size), static_cast<int>(stride), rank, axes)) {
-      std::cout << "Doing reduce_matrix_rows.\n";
       reduce_matrix_rows(
           reinterpret_cast<const CudaT*>(input.template Data<T>()),
           reinterpret_cast<CudaT*>(output.template MutableData<T>()),
           static_cast<int>(reduction_size),
           static_cast<int>(stride));
-      std::cout << "Done reduce_matrix_rows.\n";
       return Status::OK();
     }
   }
