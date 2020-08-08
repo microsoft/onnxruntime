@@ -727,12 +727,14 @@ std::cout << "724" << std::endl;
     //segment_ids = CastToInt32(graph, segment_ids, layer_norm_node.GetExecutionProviderType());
     mask = CastToInt32(graph, mask, layer_norm_node.GetExecutionProviderType());
 std::cout << "729" << std::endl;
+
+    NodeArg place_holder("", nullptr);
     const std::vector<NodeArg*> embed_layer_norm_input_defs{
         input_ids,
-        //segment_ids,
+        &place_holder,
         word_embedding,
         position_embedding,
-        //segment_embedding,
+        &place_holder,
         layer_norm_node.MutableInputDefs()[1],
         layer_norm_node.MutableInputDefs()[2],
         mask};
