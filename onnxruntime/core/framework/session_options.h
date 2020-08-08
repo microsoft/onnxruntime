@@ -81,5 +81,8 @@ struct SessionOptions {
 
   // Deterministic compute is likely not as performant. This option is default to false.
   bool use_deterministic_compute = false;
+
+  // Control the pre-packing of initialized constant tensors
+  bool use_prepacking = true;
 };
 }  // namespace onnxruntime

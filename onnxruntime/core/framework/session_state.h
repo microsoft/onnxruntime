@@ -147,6 +147,12 @@ class SessionState {
   */
   void CleanInitializedTensorsFromGraph();
 
+  /**
+  * Prepack the constant initialized tensors for better performance.
+  * The original constant initialized tensors will be removed to save memory.
+  */
+  Status PrepackInitializedConstantTensors();
+
 #ifdef ENABLE_TRAINING
   /**
   Get some initialized tensors (weights).
@@ -197,7 +203,7 @@ class SessionState {
   Status UpdateMemoryPatternGroupCache(const std::vector<std::reference_wrapper<const TensorShape>>& input_shape,
                                        std::unique_ptr<MemoryPatternGroup> mem_patterns) const;
 
-  bool GetUseDeterministicCompute() const {return use_deterministic_compute_;}
+  bool GetUseDeterministicCompute() const { return use_deterministic_compute_; }
 
   /**
   Get enable memory pattern flag

@@ -7,7 +7,7 @@ With the TensorRT execution provider, the ONNX Runtime delivers better inferenci
 ## Build
 For build instructions, please see the [BUILD page](../../BUILD.md#tensorrt). 
 
-The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 7.0.0.11.
+The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 7.1.3.4.
 
 ## Using the TensorRT execution provider
 ### C/C++

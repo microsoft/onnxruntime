@@ -4,9 +4,11 @@
 #pragma once
 
 namespace onnxruntime {
-namespace training {
+namespace graph_utils {
 
-void RegisterGradientSchemas();
+inline std::string RecomputeName(const std::string& name) {
+  return name + "_recompute";
+}
 
-}  // namespace training
+}  // namespace graph_utils
 }  // namespace onnxruntime
