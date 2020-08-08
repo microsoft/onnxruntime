@@ -129,10 +129,6 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
   } else {
     const int64_t partition_ub_ = partition_[rank];
     const int64_t partition_lb_ = rank == 0 ? 0 : partition_[rank - 1] + 1;
-    std::cout << "max_group_size = " << max_group_size_ << ", partition_lb = " << partition_lb_
-              << ", parititon_ub = " << partition_ub_ << ", num_input_readies = "
-              << num_input_readies_
-              << std::endl;
     ORT_ENFORCE(max_group_size_ > 0);
     const int64_t alignment = 32;
     const int64_t padded_max_group_size = max_group_size_ + alignment - (max_group_size_ % alignment);
@@ -144,8 +140,6 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
     const int64_t rank_count = rank_size / element_size;
 
     int64_t offset = rank_size * rank;
-    int DS = 100;
-    MLFloat16* tmp_arr = new MLFloat16[DS];
     for (int i = partition_lb_; i <= partition_ub_; ++i) {
       const Tensor* input_tensor = context->Input<Tensor>(i);
       const int64_t tensor_bytes = input_tensor->SizeInBytes();
@@ -190,7 +184,6 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
         }
       }
     }
-    delete[] tmp_arr;
   }
   return Status::OK();
 }
@@ -213,9 +206,10 @@ Status NcclReduce::ComputeInternal(OpKernelContext* context) const {
   }
 
   //When the contiguous memory is enabled, can remove this buffer
-  //TODO: Aligned to 32 bit and world size ?
   const int size = total_count * element_size;
-  auto fusion_buffer = GetScratchBuffer<void>(size);
+  const int64_t alignment = 32;
+  const int64_t padded_size = size + alignment - (size % alignment);
+  auto fusion_buffer = GetScratchBuffer<void>(padded_size);
   void* fusion_data = fusion_buffer.get();
 
   // Copy inputs to fusion buffer.
