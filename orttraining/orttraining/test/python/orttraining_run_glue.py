@@ -81,10 +81,10 @@ class ORTGlueTest(unittest.TestCase):
         assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
 
     def test_roberta_fp16_with_mrpc(self):
-        expected_acc = 0.8995098039215687
-        expected_f1 = 0.9279437609841829
-        expected_acc_and_f1 = 0.9137267824528758
-        expected_loss = 0.32052762967114357
+        expected_acc = 0.8946078431372549
+        expected_f1 = 0.9244288224956063
+        expected_acc_and_f1 = 0.9095183328164307
+        expected_loss = 0.2860557144763423
 
         results = self.run_glue(model_name="roberta-base", task_name="MRPC", fp16=True)
         assert_allclose(results['acc'], expected_acc, rtol=self.rtol)
