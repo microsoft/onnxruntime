@@ -453,7 +453,7 @@ Status ExecutableKernelContextImpl::AddInput(ONNXTensorElementDataType type) {
   }
 
   std::ostringstream oss;
-  oss << "Input_" << input_args_.size();
+  oss << name_ << "_Input_" << input_args_.size();
   std::string name = oss.str();
 
   std::unique_ptr<NodeArg> arg_ptr = std::make_unique<NodeArg>(name, type_proto.get());
@@ -473,7 +473,7 @@ Status ExecutableKernelContextImpl::AddOutput(ONNXTensorElementDataType type) {
   }
 
   std::ostringstream oss;
-  oss << "Output_" << output_args_.size();
+  oss << name_ << "_Output_" << output_args_.size();
   std::string name = oss.str();
 
   std::unique_ptr<NodeArg> arg_ptr = std::make_unique<NodeArg>(name, type_proto.get());
