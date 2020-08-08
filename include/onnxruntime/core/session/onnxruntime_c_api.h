@@ -866,6 +866,10 @@ struct OrtApi {
      */
   ORT_API2_STATUS(FillStringTensorElement, _Inout_ OrtValue* value, _In_ const char* s, size_t index);
 
+  // Control pre-packing of initialized constant tensors
+  ORT_API2_STATUS(EnablePrePacking, _Inout_ OrtSessionOptions* options);
+  ORT_API2_STATUS(DisablePrePacking, _Inout_ OrtSessionOptions* options);
+
   /**
      * Set a single session configuration entry as a pair of an enum and a string
      * \param config_key An enum as the key of the configuration

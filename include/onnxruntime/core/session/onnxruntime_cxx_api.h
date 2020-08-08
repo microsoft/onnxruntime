@@ -196,6 +196,9 @@ struct SessionOptions : Base<OrtSessionOptions> {
 
   SessionOptions& DisablePerSessionThreads();
 
+  SessionOptions& EnablePrePacking();
+  SessionOptions& DisablePrePacking();
+
   SessionOptions& AddConfigEntry(OrtSessionOptionsConfigKey config_key, const char* config_value);
 };
 

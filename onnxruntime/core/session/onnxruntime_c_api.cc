@@ -1663,6 +1663,8 @@ static constexpr OrtApi ort_api_1_to_4 = {
     &OrtApis::GetStringTensorElementLength,
     &OrtApis::GetStringTensorElement,
     &OrtApis::FillStringTensorElement,
+    &OrtApis::EnablePrePacking,
+    &OrtApis::DisablePrePacking,
     &OrtApis::AddSessionConfigEntry,
 };
 

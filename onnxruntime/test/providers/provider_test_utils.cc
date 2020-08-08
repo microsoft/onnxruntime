@@ -880,7 +880,11 @@ void OpTester::AddReferenceOutputs(const std::string& model_path) {
                  [](const onnxruntime::NodeArg* node_arg) -> std::string { return node_arg->Name(); });
 
   NameMLValMap feeds;
-  FillFeeds(feeds);
+  for (size_t i = 0; i < input_data_.size(); ++i) {
+    if (input_data_[i].def_.Exists()) {
+      feeds[input_data_[i].def_.Name()] = input_data_[i].data_;
+    }
+  }
 
   std::vector<MLValue> subgraph_fetches;
   ASSERT_TRUE((status = subgraph_session_object.Run(run_options, feeds, output_names, &subgraph_fetches)).IsOK()) << status;

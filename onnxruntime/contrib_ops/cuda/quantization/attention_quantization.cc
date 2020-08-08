@@ -60,7 +60,7 @@ Status QAttention<T, int8_t>::CheckInputs(const Tensor* input,
   //   Input 7 - weight_zero_point : scalar
   //   Output                      : (batch_size, sequence_length, hidden_size)
 
-  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input, weights, bias, mask_index, past_tensor));
+  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input->Shape(), weights->Shape(), bias->Shape(), mask_index, past_tensor));
 
   ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(input_scale_tensor),
                     "input scale must be a scalar or 1D tensor of size 1");
