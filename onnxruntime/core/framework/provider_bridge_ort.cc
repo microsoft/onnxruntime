@@ -674,7 +674,6 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(i
   static ProviderLibrary library(LIBRARY_PREFIX "onnxruntime_providers_dnnl" LIBRARY_EXTENSION);
   if (!library.provider_)
     return nullptr;
-
   //return std::make_shared<onnxruntime::MkldnnProviderFactory>(device_id);
   //TODO: This is apparently a bug. The constructor parameter is create-arena-flag, not the device-id
   return std::make_shared<IExecutionProviderFactory_Translator>(library.provider_->CreateExecutionProviderFactory(device_id));
