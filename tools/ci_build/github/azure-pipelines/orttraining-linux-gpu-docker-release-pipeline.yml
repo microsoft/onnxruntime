@@ -31,7 +31,7 @@ stages:
               --pull \
               -t ${{ variables.docker_image_prefix }}-manylinux-gpu-release-stage1 \
               --target builder \
-              --build-arg BUILD_FLAG="${{ parameters.build_flag }}" \
+              --build-arg COMMIT_SHA1="${{ parameters.commit_sha1 }}" \
               -f ${{ variables.linux_gpu_dockerfile }} .
           workingDirectory: $(Build.SourcesDirectory)
 
@@ -57,16 +57,16 @@ stages:
   #   pool: Linux-GPU-CUDA10
   #   condition: always()
   #   steps:
-      - task: CmdLine@2
-        displayName: Build entire docker file
-        inputs:
-          script: |
-            docker build \
-              --pull \
-              -t ${{ variables.docker_image_prefix }}-manylinux-gpu-release \
-              --build-arg BUILD_FLAG="${{ parameters.build_flag }}" \
-              -f ${{ variables.linux_gpu_dockerfile }} .
-          workingDirectory: $(Build.SourcesDirectory)
+      # - task: CmdLine@2
+      #   displayName: Build entire docker file
+      #   inputs:
+      #     script: |
+      #       docker build \
+      #         --pull \
+      #         -t ${{ variables.docker_image_prefix }}-manylinux-gpu-release \
+      #         --build-arg COMMIT_SHA1="${{ parameters.commit_sha1 }}" \
+      #         -f ${{ variables.linux_gpu_dockerfile }} .
+      #     workingDirectory: $(Build.SourcesDirectory)
 
       - task: Docker@2
         displayName: Build entire docker file
@@ -75,7 +75,7 @@ stages:
           containerRegistry: 'ortrelease'
           repository: 'onnxruntime-training'
           tags: ${{ parameters.image_tag }}
-          arguments: --build-arg BUILD_FLAG="${{ parameters.build_flag }}"
+          arguments: --build-arg COMMIT_SHA1="${{ parameters.commit_sha1 }}"
 
       - task: Docker@2
         displayName: Push docker image
