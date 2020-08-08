@@ -1,8 +1,8 @@
 parameters:
-  - name: build_flag
-    displayName: Build Flag
+  - name: commit_sha1
+    displayName: Commit Sha1
     type: string
-    default: --enable_onnx_tests
+    default: master
   - name: image_tag
     displayName: Image Tag
     type: string
@@ -16,7 +16,7 @@ stages:
     linux_gpu_dockerfile: dockerfiles/Dockerfile.training
 
   jobs:
-  - job: Linux_py_GPU_Run_Test
+  - job: Linux_py_GPU_Build_Test_Release_Dockerfile
     timeoutInMinutes: 0
     workspace:
       clean: all
@@ -50,13 +50,13 @@ stages:
               --enable_onnx_tests
           workingDirectory: $(Build.SourcesDirectory)
 
-  - job: Linux_py_GPU_Build_Docker_Push
-    timeoutInMinutes: 0
-    workspace:
-      clean: all
-    pool: Linux-GPU-CUDA10
-    condition: always()
-    steps:
+  # - job: Linux_py_GPU_Build_Docker_Push
+  #   timeoutInMinutes: 0
+  #   workspace:
+  #     clean: all
+  #   pool: Linux-GPU-CUDA10
+  #   condition: always()
+  #   steps:
       - task: CmdLine@2
         displayName: Build entire docker file
         inputs:
@@ -67,29 +67,32 @@ stages:
               --build-arg BUILD_FLAG="${{ parameters.build_flag }}" \
               -f ${{ variables.linux_gpu_dockerfile }} .
           workingDirectory: $(Build.SourcesDirectory)
+
       - task: Docker@2
+        displayName: Build entire docker file
         inputs:
+          command: build
           containerRegistry: 'ortrelease'
           repository: 'onnxruntime-training'
-          command: 'buildAndPush'
-          Dockerfile: 'dockerfiles/Dockerfile.training'
-          tags: |
-            $(Build.BuildId)
-            latest
-      - task: AzureKeyVault@1
-        inputs:
-          azureSubscription: 'AIInfraBuild'
-          KeyVaultName: 'jingywatest'
-          SecretsFilter: '*'
-          RunAsPreJob: false
+          tags: ${{ parameters.image_tag }}
+          arguments: --build-arg BUILD_FLAG="${{ parameters.build_flag }}"
 
-      - task: CmdLine@2
+      - task: Docker@2
+        displayName: Push docker image
         inputs:
-          script: |
-            echo $(OrtreleasePassword) > password.txt
-            cat password.txt | docker login --username ortrelease --password-stdin ortrelease.azurecr.io
-            docker tag ${{ variables.docker_image_prefix }}-manylinux-gpu-release ortrelease.azurecr.io/onnxruntime-training:${{ parameters.image_tag }}
-            docker push ortrelease.azurecr.io/onnxruntime-training:${{ parameters.image_tag }}
+          command: push
+          containerRegistry: 'ortrelease'
+          repository: 'onnxruntime-training'
+          tags: ${{ parameters.image_tag }}
+
+      # - task: Docker@2
+      #   inputs:
+      #     containerRegistry: 'ortrelease'
+      #     repository: 'onnxruntime-training'
+      #     command: 'buildAndPush'
+      #     Dockerfile: 'dockerfiles/Dockerfile.training'
+      #     tags: |
+      #       ${{ parameters.image_tag }}
 
       - template: templates/component-governance-component-detection-steps.yml
 
