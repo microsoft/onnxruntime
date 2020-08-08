@@ -98,7 +98,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateExecutableKernel,
     KernelSessionImpl *session = reinterpret_cast<KernelSessionImpl *>(session_);
     ExecutableKernelContextImpl *context = reinterpret_cast<ExecutableKernelContextImpl *>(context_);
     ORT_ENFORCE(provider_id < session->provider_list.size(),
-                "provider_id must be less than the provider list size (" + std::to_string(session->provider_list.size()) + ").");
+                "provider_id (" + std::to_string(provider_id) + ")must be less than the provider list size (" + std::to_string(session->provider_list.size()) + ").");
 
     SingleKernelExecutionFrame* frame;
     Status status = context->CreateExecutionFrame(session, &frame, provider_id);
