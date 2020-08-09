@@ -18,7 +18,7 @@ class LossScaler(object):
     @input_name.setter
     def input_name(self, input_name):
         assert isinstance(input_name, str), "'input_name' must be a string"
-        assert not input_name, "'input_name' cannot be empty"
+        assert input_name is None or len(input_name) > 0, "'input_name' cannot be empty"
         self._input_name = input_name
 
     @property

@@ -1,9 +1,12 @@
 import cerberus
 from collections import namedtuple
 import torch
-from ._utils import static_vars, LEARNING_RATE_IO_DESCRIPTION_NAME,\
-    IS_FINITE_IO_DESCRIPTION_NAME,\
-    LOSS_SCALE_INPUT_IO_DESCRIPTION_NAME
+from ._utils import static_vars
+
+
+LEARNING_RATE_IO_DESCRIPTION_NAME = "__learning_rate"
+IS_FINITE_IO_DESCRIPTION_NAME = "__is_finite"
+LOSS_SCALE_INPUT_IO_DESCRIPTION_NAME = "__loss_scale_input_name"
 
 
 class _ORTTrainerModelDesc(object):

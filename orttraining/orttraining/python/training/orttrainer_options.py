@@ -31,8 +31,8 @@ class ORTTrainerOptions(object):
                     'schema' : {
                         'gradient_accumulation_steps' : {
                             'type' : 'integer',
-                            'min' : 0,
-                            'default' : 0
+                            'min' : 1,
+                            'default' : 1
                         }
                     },
                 },
@@ -43,7 +43,7 @@ class ORTTrainerOptions(object):
                     'schema' : {
                         'id' : {
                             'type' : 'string',
-                            'default' : 'cpu'
+                            'default' : 'cuda'
                         },
                         'mem_limit' : {
                             'type' : 'integer',
@@ -120,7 +120,7 @@ class ORTTrainerOptions(object):
                         },
                         'grad_norm_clip' : {
                             'type' : 'boolean',
-                            'default' : False
+                            'default' : True
                         }
                     }
                 },
@@ -162,11 +162,11 @@ class ORTTrainerOptions(object):
     Keyword arguments:
         batch (dict):
             batch related settings
-        batch.gradient_accumulation_steps (int, 0):
+        batch.gradient_accumulation_steps (int, default is 1):
             number of steps to accumulate before do collective gradient reduction
         device (dict):
             compute device related settings
-        device.id (string, default is 'cpu'):
+        device.id (string, default is 'cuda'):
             device to run training
         device.mem_limit (int):
             maximum memory size (in bytes) used by device.id
@@ -200,7 +200,7 @@ class ORTTrainerOptions(object):
             miscellaneous options
         utils.frozen_weights (list of str, []):
             list of model parameter names to skip training (weights don't change)
-        utils.grad_norm_clip (bool, default is False):
+        utils.grad_norm_clip (bool, default is True):
             enables gradient norm clipping for 'AdamOptimizer' and 'LambOptimizer'
         debug (dict):
             debug options
@@ -211,7 +211,7 @@ class ORTTrainerOptions(object):
         _internal_use.enable_internal_postprocess (bool, default is True):
             enable internal internal post processing of the ONNX model
         _internal_use.extra_postprocess (callable, default is None)
-            a functor to postprocess the ONNX model.
+            a functor to postprocess the ONNX model and return a new ONNX model.
             It does not override :py:attr:`._internal_use.enable_internal_postprocess`, but complement it
         _internal_use.onnx_opset_version (int, default is 12):
             ONNX opset version used during model exporting.
@@ -327,8 +327,8 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
         'schema': {
             'gradient_accumulation_steps': {
                 'type': 'integer',
-                'min': 0,
-                'default': 0
+                'min': 1,
+                'default': 1
             }
         },
     },
@@ -339,7 +339,7 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
         'schema': {
             'id': {
                 'type': 'string',
-                'default': 'cpu'
+                'default': 'cuda'
             },
             'mem_limit': {
                 'type': 'integer',
@@ -417,7 +417,7 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
             },
             'grad_norm_clip': {
                 'type': 'boolean',
-                'default': False
+                'default': True
             }
         }
     },

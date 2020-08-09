@@ -24,29 +24,33 @@ class TrainStepInfo(object):
 
     Args:
         all_finite (bool): flag that indicates whether all gradients are still finite after last step
-        step (int): indicates current step
+        step (int): indicates current training step. Used for gradient accumulation
+        optimization_step (int): indicates the number of optimizations performed. Used for learning rate scheduling
         optimizer_config (optim._OptimizerConfig): reference to optimizer config
 
     Example:
 
         .. code-block:: python
 
-            info = TrainStepInfo(all_finite=True, step=0, optimizer_config=optim.SGDConfig(lr=0.01))
+            info = TrainStepInfo(all_finite=True, step=0, optimization_step=0, optimizer_config=optim.SGDConfig(lr=0.01))
             if info.all_finite:
                 print(f'Yay, all gradients are finite at {step} step!')
 
     """
 
-    def __init__(self, all_finite=None, step=None, optimizer_config=None):
+    def __init__(self, all_finite=None, step=None, optimization_step=None, optimizer_config=None):
         assert all_finite is None or isinstance(all_finite, bool),\
             "all_finite must be either None or a bool"
         assert step is None or (isinstance(step, int) and step >= 0),\
             "step must be either None or a positive int"
+        assert optimization_step is None or (isinstance(optimization_step, int) and step >= 0),\
+            "optimization_step must be either None or a positive int"
         assert optimizer_config is None or isinstance(optimizer_config, optim._OptimizerConfig),\
             "optimizer_config must be either None or optim._OptimizerConfig"
 
         self.all_finite = all_finite
         self.step = step
+        self.optimization_step = optimization_step
         self.optimizer_config = optimizer_config
 
 
@@ -119,7 +123,7 @@ class ORTTrainer(object):
         assert loss_fn is None or (callable(loss_fn) and len(signature(loss_fn).parameters) == 2),\
             "'loss_fn' must be either 'None' or a callable with two parameters"
         assert options is None or isinstance(options, ORTTrainerOptions),\
-            "'loss_fn' must be either 'None' or 'ORTTrainerOptions'"
+            "'options' must be either 'None' or 'ORTTrainerOptions'"
 
         #            Model + Loss validation
         #           Supported combinarios are
@@ -147,18 +151,27 @@ class ORTTrainer(object):
         self.model_desc = _ORTTrainerModelDesc(model_desc)
         self.optim_config = optim_config
 
+        # ORTTrainerOptions
         if not options:
             options = ORTTrainerOptions()
         self.options = options
 
-        # Set GPU device and memory limit
-        device_id = self.options.device.id
-        if 'cuda' in device_id.lower():
-            set_cuda_mem_limit(int(self.options.device.mem_limit))
-            if ':' in device_id:
-                set_cuda_device_id(int(device_id.split(':')[1]))
+        # Post processing ONNX model given as input
+        if self._onnx_model:
+            if self.options._internal_use.enable_internal_postprocess:
+                self._onnx_model = postprocess.run_postprocess(self._onnx_model)
+            if self.options._internal_use.extra_postprocess:
+                self._onnx_model = self.options._internal_use.extra_postprocess(self._onnx_model)
 
-        self._train_step_info = TrainStepInfo(all_finite=True, step=0, optimizer_config=self.optim_config)
+        # Set GPU device and memory limit
+        if 'cuda' in self.options.device.id.lower():
+            mem_limit = self.options.device.mem_limit
+            if  mem_limit > 0:
+                set_cuda_mem_limit(self.options.device.mem_limit)
+            set_cuda_device_id(_utils.get_device_index(self.options.device.id))
+
+        self._train_step_info = TrainStepInfo(all_finite=True, step=0, optimization_step=0, optimizer_config=self.optim_config)
+        self._init_session()
 
     def eval_step(self, *args, **kwargs):
         r"""Evaluation step method
@@ -182,7 +195,7 @@ class ORTTrainer(object):
                 raise RuntimeError("Model is uninitialized. Only ONNX and PyTorch models are supported")
 
         # Prepare input/output description
-        input_desc = self.model_desc.inputs[:len(sample_input)]
+        input_desc = self._model_desc_inputs_with_lr
         output_desc = self.model_desc.outputs
 
         # Normalize input
@@ -251,8 +264,24 @@ class ORTTrainer(object):
             self._init_onnx_model(sample_input)
 
         # Prepare inputs+lr and output descriptions
-        input_desc = [*self.model_desc.inputs, self.model_desc.learning_rate]
+        input_desc = self._model_desc_inputs_with_lr
         output_desc = self.model_desc.outputs
+
+        # Train step must be incremented *before* gradient accumulation code
+        # Gradients are accumulated when
+        # self._train_step_info.step % self.options.batch.gradient_accumulation_steps != 0,
+        # and they are updated otherwise
+        self._train_step_info.step += 1
+
+        # RunOptions
+        run_options = None
+        if self._train_step_info.step % self.options.batch.gradient_accumulation_steps != 0:
+            run_options = ort.RunOptions()
+            run_options.only_execute_path_to_fetches = True
+            run_options.training_mode = True
+            output_desc = self._model_desc_outputs_with_gradient_accumulation
+        elif self.options.mixed_precision.enabled:
+            output_desc = self._model_desc_outputs_with_is_finite
 
         # Update Learning Rate if Necessary
         if self.options.lr_scheduler:
@@ -264,14 +293,10 @@ class ORTTrainer(object):
             loss_scaler = self.options.mixed_precision.loss_scaler
             assert loss_scaler, "Loss scaler is required when mixed precision is enabled"
             loss_scale = torch.tensor([loss_scaler.loss_scale])
-            input_desc.extend([self.model_desc.loss_scale_input_name])
-            output_desc.extend([self.model_desc.is_finite])
+            input_desc = self._model_desc_inputs_desc_with_lr_and_loss_scale
 
         # Get data. CombineTorchModelLossFn takes label as last input and outputs loss first
         input = self._prepare_model_input(input_desc, self.optim_config.lr, loss_scale, *args, **kwargs)
-
-        # RunOptions
-        run_options = None
 
         # Normalize input
         if not isinstance(args, (list, tuple)):
@@ -280,7 +305,6 @@ class ORTTrainer(object):
         # Run a train step and return
         session_run_results = self._training_session_run_helper(True, input, input_desc,
                                                                 output_desc, run_options)
-       
         if self.options.mixed_precision.enabled:
             # After session run with all_fp32_gradients_finite, we need to clear the training I/O binding's output
             # Otherwise next run with only_execute_path_to_fetches will lead to gradient all reduce
@@ -291,9 +315,12 @@ class ORTTrainer(object):
             self._train_step_info.is_finite = is_all_finite
             if loss_scaler:
                 loss_scaler.update(self._train_step_info)
-
-        # Train step must be incremented *after* optimization is successful
-        self._train_step_info.step += 1
+            if is_all_finite:
+                # Optimization step must be incremented *after* optimization is successful
+                self._train_step_info.optimization_step += 1
+        elif self._train_step_info.step % self.options.batch.gradient_accumulation_steps == 0:
+            # Optimization step must be incremented *after* optimization is successful
+            self._train_step_info.optimization_step += 1
 
         # Output must be returned in the same order as defined in the model description
         results = [session_run_results[output_desc.name] for output_desc in self.model_desc.outputs]
@@ -364,8 +391,7 @@ class ORTTrainer(object):
 
         return CombineTorchModelLossFn(self._torch_model, self.loss_fn, input_names)
 
-    def _convert_torch_model_loss_fn_to_onnx(self, inputs):
-        device = torch.device('cpu') #torch.device(self.options.device.id)
+    def _convert_torch_model_loss_fn_to_onnx(self, inputs, device):
         if isinstance(inputs, torch.Tensor):
             inputs = [inputs]
         if isinstance(inputs, dict):
@@ -499,7 +525,7 @@ class ORTTrainer(object):
         # Note that for training we must use float32 and for evaluation we must use float16 
         for idx, o_desc in enumerate(self.model_desc.outputs):
             if (self.options.mixed_precision.enabled and o_desc.dtype == torch.float32 and
-                    not self.session.is_output_fp32_node(o_desc.name)):
+                    not self._training_session.is_output_fp32_node(o_desc.name)):
                 self.model_desc.add_type_to_output_description(idx, o_desc.dtype, torch.float16)
 
         # I/O bindings
@@ -519,7 +545,13 @@ class ORTTrainer(object):
             self.options.utils.frozen_weights.extend(torch_buffers)
 
             # Export to ONNX
-            self._onnx_model = self._convert_torch_model_loss_fn_to_onnx(inputs)
+            self._onnx_model = self._convert_torch_model_loss_fn_to_onnx(inputs, 'cpu')
+
+            # Post processing for ONNX models expported from PyTorch
+            if self.options._internal_use.enable_internal_postprocess:
+                self._onnx_model = postprocess.run_postprocess(self._onnx_model)
+            if self.options._internal_use.extra_postprocess:
+                self._onnx_model = self.options._internal_use.extra_postprocess(self._onnx_model)
 
         self._init_session()
 
@@ -527,27 +559,33 @@ class ORTTrainer(object):
         if self._onnx_model is None:
             return
 
-        # Perform internal post-processing
-        if self.options._internal_use.enable_internal_postprocess:
-            self._onnx_model = postprocess.run_postprocess(self._onnx_model)
+        # Update model description
+        self._model_desc_inputs_with_lr = [*self.model_desc.inputs, self.model_desc.learning_rate]
 
-        # Perform user-specified post-processing
-        if self.options._internal_use.extra_postprocess:
-            self.options._internal_use.extra_postprocess(self._onnx_model)
-
-        # Create training session used by train_step
-        self._create_ort_training_session()
-
-        # Update model description with mixed precision metadata
+        # Update Mixed Precision, if applicable
         if self.options.mixed_precision.enabled:
             self.model_desc.loss_scale_input = self._training_session.loss_scale_input_name
-            self.model_desc.is_finite = _utils.get_all_gradients_finite_name_from_session(self.session)
+            self._model_desc_inputs_with_lr_and_loss_scale = [
+                *self._model_desc_inputs_with_lr, self.model_desc.loss_scale_input]
+            self.model_desc.is_finite = _utils.get_all_gradients_finite_name_from_session(self._training_session)
+            self._model_desc_outputs_with_is_finite = [*self.model_desc.outputs, self.model_desc.is_finite]
+        elif self.options.mixed_precision.loss_scaler:
+            raise ValueError("Loss Scaler cannot be specified when Mixed Precision is not enabled")
 
         # Update Loss Scaler Input Name, if applicable
         if self.options.mixed_precision.enabled and self.options.mixed_precision.loss_scaler:
-            self.options.mixed_precision.loss_scaler.input_name = self._training_session.loss_scale_input_name
+            self.options.mixed_precision.loss_scaler.input_name = self.model_desc.loss_scale_input.name
         elif not self.options.mixed_precision.enabled and self.options.mixed_precision.loss_scaler:
             raise ValueError("Loss Scaler cannot be specified when Mixed Precision is not enabled")
+
+        # Update Gradient Accumulation, if applicable
+        if self.options.batch.gradient_accumulation_steps > 1:
+            self.model_desc.gradient_accumulation = get_gradient_accumulation_name_from_session(self._training_session)
+            self._model_desc_outputs_with_gradient_accumulation = [
+                *self.model_desc.outputs, self.model_desc.gradient_accumulation]
+
+        # Create training session used by train_step
+        self._create_ort_training_session()
 
     def _prepare_model_input(self, inputs_desc, lr, loss_scale, *inputs, **kwargs):
         # Normalize input to tuple of samples
@@ -571,6 +609,7 @@ class ORTTrainer(object):
         # Append loss scale
         if loss_scale:
             assert self.options.mixed_precision.enabled, "Loss scale cannot be used without mixed precision"
+            loss_scale = torch.tensor(loss_scale)
             input += (loss_scale, )
             extra_inputs += 1
 
@@ -608,7 +647,6 @@ class ORTTrainer(object):
 
         # Run a train/eval step
         self._training_session.run_with_iobinding(iobinding, run_options)
-
         return result
 
     def _update_onnx_model_initializers(self, state_tensors):

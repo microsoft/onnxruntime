@@ -7,11 +7,13 @@ import torch
 from numpy.testing import assert_allclose
 
 from onnxruntime.capi._pybind_state import set_seed
-from onnxruntime.capi.ort_trainer import IODescription, ModelDescription
-from onnxruntime.capi.ort_trainer import ORTTrainer as Legacy_ORTTrainer
-from onnxruntime.capi.training import orttrainer_options as orttrainer_options
-from onnxruntime.capi.training import model_desc_validation as md_val
-from onnxruntime.capi.training import orttrainer, amp, optim, TrainStepInfo, _utils, debug
+from onnxruntime.capi.ort_trainer import IODescription as Legacy_IODescription,\
+                                         ModelDescription as Legacy_ModelDescription,\
+                                         LossScaler as Legacy_LossScaler,\
+                                         ORTTrainer as Legacy_ORTTrainer
+from onnxruntime.capi.training import _utils, amp, debug, optim, orttrainer, TrainStepInfo,\
+                                      model_desc_validation as md_val,\
+                                      orttrainer_options as orttrainer_options
 
 
 @pytest.mark.parametrize("test_input", [
@@ -28,10 +30,10 @@ def testORTTrainerOptionsDefaultValues(test_input):
 
     expected_values = {
         'batch': {
-            'gradient_accumulation_steps': 0
+            'gradient_accumulation_steps': 1
         },
         'device': {
-            'id': 'cpu',
+            'id': 'cuda',
             'mem_limit': 0
         },
         'distributed': {
@@ -49,7 +51,7 @@ def testORTTrainerOptionsDefaultValues(test_input):
         },
         'utils': {
             'frozen_weights': [],
-            'grad_norm_clip': False
+            'grad_norm_clip': True
         },
         'debug': {
             'deterministic_compute': False
@@ -92,7 +94,7 @@ def testORTTrainerModelDescValidSchemas(input_dict, input_dtype, output_dtype):
     model_description = md_val._ORTTrainerModelDesc(input_dict)
 
     # Validating hard-coded learning rate description
-    assert model_description.learning_rate.name == _utils.LEARNING_RATE_IO_DESCRIPTION_NAME
+    assert model_description.learning_rate.name == md_val.LEARNING_RATE_IO_DESCRIPTION_NAME
     assert model_description.learning_rate.shape == [1]
     assert model_description.learning_rate.dtype == torch.float32
 
@@ -111,14 +113,14 @@ def testORTTrainerModelDescValidSchemas(input_dict, input_dtype, output_dtype):
         assert is_loss == o_desc.is_loss
 
     # Set is_finite name and check its description
-    model_description.is_finite = _utils.IS_FINITE_IO_DESCRIPTION_NAME
-    assert model_description.is_finite.name == _utils.IS_FINITE_IO_DESCRIPTION_NAME
+    model_description.is_finite = md_val.IS_FINITE_IO_DESCRIPTION_NAME
+    assert model_description.is_finite.name == md_val.IS_FINITE_IO_DESCRIPTION_NAME
     assert model_description.is_finite.shape == [1]
     assert model_description.is_finite.dtype == torch.bool
 
     # Set loss_scale_input and check its description
-    model_description.loss_scale_input = _utils.LOSS_SCALE_INPUT_IO_DESCRIPTION_NAME
-    assert model_description.loss_scale_input.name == _utils.LOSS_SCALE_INPUT_IO_DESCRIPTION_NAME
+    model_description.loss_scale_input = md_val.LOSS_SCALE_INPUT_IO_DESCRIPTION_NAME
+    assert model_description.loss_scale_input.name == md_val.LOSS_SCALE_INPUT_IO_DESCRIPTION_NAME
     assert model_description.loss_scale_input.shape == []
     assert model_description.loss_scale_input.dtype == torch.float32
 
@@ -176,6 +178,7 @@ def testDynamicLossScaler():
 
     # Initial state
     train_step_info = orttrainer.TrainStepInfo(all_finite=True, step=0,
+                                               optimization_step=0,
                                                optimizer_config=None)
     assert_allclose(default_scaler.loss_scale, float(1 << 16),
                     rtol=rtol, err_msg="loss scale mismatch")
@@ -260,7 +263,7 @@ def testDynamicLossScalerCustomValues():
 def testTrainStepInfo():
     '''Test valid initializations of TrainStepInfo'''
 
-    step_info = orttrainer.TrainStepInfo(all_finite=True, step=2, optimizer_config=optim.SGDConfig())
+    step_info = orttrainer.TrainStepInfo(all_finite=True, step=2, optimizer_config=optim.LambConfig())
     assert step_info.all_finite is True
     assert step_info.step == 2
     assert isinstance(step_info.optimizer_config, optim._OptimizerConfig)
@@ -450,6 +453,7 @@ def testLinearLRSchedulerCreation():
                                                 0.0160749, 0.0096935, 0.0050622, 0.0021585, 0.000650833])
 ])
 def testLRSchedulerUpdateImpl(lr_scheduler, expected_values):
+    # Test tolerance
     rtol = 1e-04
 
     # Initial state
@@ -457,86 +461,76 @@ def testLRSchedulerUpdateImpl(lr_scheduler, expected_values):
     total_steps = 10
     warmup = 0.5
     optimizer_config = optim.SGDConfig(lr=initial_lr)
-    lr_scheduler = lr_scheduler(total_steps,
-                                warmup)
+    lr_scheduler = lr_scheduler(total_steps, warmup)
 
     # First half is warmup
-    for step in range(total_steps):
+    for optimization_step in range(total_steps):
         # Emulate ORTTRainer.train_step() call that updates its train_step_info
-        train_step_info = TrainStepInfo(step=step, optimizer_config=optimizer_config)
+        train_step_info = TrainStepInfo(step=0, optimization_step=optimization_step, optimizer_config=optimizer_config)
 
         lr_scheduler.step(train_step_info)
         lr_list = lr_scheduler.get_last_lr()
         assert len(lr_list) == 1
         assert_allclose(lr_list[0],
-                        expected_values[step], rtol=rtol, err_msg="lr mismatch")
+                        expected_values[optimization_step], rtol=rtol, err_msg="lr mismatch")
 
-def generate_pytorch_transformer_model_sample(optim_config, options={}, step_fn='train_step', device='cpu'):
-    # Loading external TransformerModel model for testing
-    # A manual import is done as this example is not part of onnxruntime package,
-    # but resides on the onnxruntime repo
+def _load_pytorch_transformer_model(device, legacy_api=False):
+    # Loads external Pytorch TransformerModel into utils
     pytorch_transformer_path = os.path.join('..', '..', '..', 'samples', 'python', 'pytorch_transformer')
     pt_model_path = os.path.join(pytorch_transformer_path, 'pt_model.py')
-    pt_model_name = 'pt_model'
-    pt_model = _utils.import_module_from_file(pt_model_path, pt_model_name)
+    pt_model = _utils.import_module_from_file(pt_model_path, 'pt_model')
     ort_utils_path = os.path.join(pytorch_transformer_path, 'ort_utils.py')
-    ort_utils_name = 'ort_utils'
-    ort_utils = _utils.import_module_from_file(ort_utils_path, ort_utils_name)
+    ort_utils = _utils.import_module_from_file(ort_utils_path, 'ort_utils')
     utils_path = os.path.join(pytorch_transformer_path, 'utils.py')
-    utils_name = 'utils'
-    utils = _utils.import_module_from_file(utils_path, utils_name)
+    utils = _utils.import_module_from_file(utils_path, 'utils')
 
     # Modeling
-    model = pt_model.TransformerModel(28785, 200, 2, 200, 2, 0.2)
+    model = pt_model.TransformerModel(28785, 200, 2, 200, 2, 0.2).to(device)
     my_loss = ort_utils.my_loss
-    model_desc = ort_utils.transformer_model_description()
+    if legacy_api:
+        model_desc = ort_utils.legacy_transformer_model_description()
+    else:
+        model_desc = ort_utils.transformer_model_description()
    
-    # Set up relevant options
-    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
-
     # Preparing data
-    train_data, val_data, _ = utils.prepare_data(device, 20, 20)
-    
+    train_data, val_data, test_data = utils.prepare_data(device, 20, 20)
+
+    return model, model_desc, my_loss, utils.get_batch, train_data, val_data, test_data
+
+@pytest.mark.parametrize("step_fn, lr_scheduler, expected_lr_values, device", [
+    ('train_step', None, None, 'cuda'),
+    ('eval_step', None, None, 'cpu'),
+    ('train_step', optim.lr_scheduler.ConstantWarmupLRScheduler, [0.181818, 0.066116, 0.036063, 0.026228, 0.023843,
+                                                    0.023843, 0.023843, 0.023843, 0.023843, 0.023843], 'cpu'),
+    ('train_step', optim.lr_scheduler.CosineWarmupLRScheduler, [0.181818, 0.066116, 0.036063, 0.026228, 0.023843,
+                                                  0.010225, 0.002989, 0.0005158, 0.000040937, 0.0000008291], 'cuda'),
+    ('train_step', optim.lr_scheduler.LinearWarmupLRScheduler, [0.181818, 0.066116, 0.036063, 0.026228, 0.023843,
+                                                  0.021675, 0.0157636, 0.0085983, 0.0031266, 0.00056847], 'cpu'),
+    ('train_step', optim.lr_scheduler.PolyWarmupLRScheduler, [0.181818, 0.066116, 0.036063, 0.026228, 0.023843,
+                                                0.0160749, 0.0096935, 0.0050622, 0.0021585, 0.000650833], 'cuda')
+])
+def testInstantiateORTTrainer(step_fn, lr_scheduler, expected_lr_values, device):
+    total_steps = 1
+    initial_lr = 1.
+    tolerance = 1e-4
+
+    # PyTorch Transformer model as example
+    opts = {'device' : {'id' : device}}
+    if lr_scheduler:
+        total_steps = 10
+        opts.update({'lr_scheduler' : lr_scheduler(total_steps=total_steps, warmup=0.5)})
+    opts = orttrainer.ORTTrainerOptions(opts)
+    optim_config = optim.LambConfig(lr=initial_lr)
+    model, model_desc, my_loss, batcher_fn, train_data, val_data, _ = _load_pytorch_transformer_model(device)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=opts)
+
+    # Run a train or evaluation step
     if step_fn == 'eval_step':
-        data, targets = utils.get_batch(val_data, 0)
+        data, targets = batcher_fn(val_data, 0)
     elif step_fn == 'train_step':
-        data, targets = utils.get_batch(train_data, 0)
+        data, targets = batcher_fn(train_data, 0)
     else:
         raise ValueError('Invalid step_fn')
-
-    data, targets = data.to(trainer.options.device.id), targets.to(trainer.options.device.id)
-
-    return model, model_desc, trainer, data, targets 
-
-@pytest.mark.parametrize("step_fn, lr_scheduler, expected_lr_values", [
-    ('train_step', None, None),
-    ('eval_step', None, None),
-    ('train_step', optim.lr_scheduler.ConstantWarmupLRScheduler, [0.181818, 0.066116, 0.036063, 0.026228, 0.023843,
-                                                    0.023843, 0.023843, 0.023843, 0.023843, 0.023843]),
-    ('train_step', optim.lr_scheduler.CosineWarmupLRScheduler, [0.181818, 0.066116, 0.036063, 0.026228, 0.023843,
-                                                  0.010225, 0.002989, 0.0005158, 0.000040937, 0.0000008291]),
-    ('train_step', optim.lr_scheduler.LinearWarmupLRScheduler, [0.181818, 0.066116, 0.036063, 0.026228, 0.023843,
-                                                  0.021675, 0.0157636, 0.0085983, 0.0031266, 0.00056847]),
-    ('train_step', optim.lr_scheduler.PolyWarmupLRScheduler, [0.181818, 0.066116, 0.036063, 0.026228, 0.023843,
-                                                0.0160749, 0.0096935, 0.0050622, 0.0021585, 0.000650833])
-])
-def testInstantiateORTTrainer(step_fn, lr_scheduler, expected_lr_values):
-    max_train_step = 1
-    warmup = 0.5
-    initial_lr = 1
-    optim_config = optim.SGDConfig(lr=initial_lr)
-    tolerance = 1e-4 # used in lr comparison
-
-    # Set up relevant options
-    opts = {}
-    if lr_scheduler:
-        max_train_step = 10
-        opts.update({'lr_scheduler' : lr_scheduler(max_train_step, warmup)})
-   
-    opts = orttrainer.ORTTrainerOptions(opts)
-
-    # Using PyTorch Transformer model as example
-    model, model_desc, trainer, data, targets = generate_pytorch_transformer_model_sample(optim_config, opts, step_fn)
 
     # Export model to ONNX
     if step_fn == 'eval_step':
@@ -544,7 +538,7 @@ def testInstantiateORTTrainer(step_fn, lr_scheduler, expected_lr_values):
         output = trainer.eval_step(data, targets)
     elif step_fn == 'train_step':
         step_fn = trainer.train_step
-        for i in range(max_train_step):
+        for i in range(total_steps):
             output = trainer.train_step(data, targets)
             if lr_scheduler:
                 lr_list = trainer.options.lr_scheduler.get_last_lr()
@@ -603,13 +597,11 @@ def testInstantiateORTTrainer(step_fn, lr_scheduler, expected_lr_values):
     assert (onnx.helper.printable_graph(trainer_from_onnx._onnx_model.graph) == onnx.helper.printable_graph(trainer._onnx_model.graph))
 
 
-@pytest.mark.parametrize("seed, device_id", [
+@pytest.mark.parametrize("seed, device", [
     (0, 'cpu'),
-    (42, 'cpu'),
-    (0, 'cuda:0'),
     (24, 'cuda')
 ])
-def testORTDeterministicCompute(seed, device_id):
+def testORTDeterministicCompute(seed, device):
     # Common setup
     optim_config = optim.LambConfig()
     opts = orttrainer.ORTTrainerOptions({
@@ -617,7 +609,7 @@ def testORTDeterministicCompute(seed, device_id):
             'deterministic_compute': True
         },
         'device' : {
-            'id' : device_id,
+            'id' : device,
             'mem_limit' : 10*1024*1024
         }
     })
@@ -625,45 +617,119 @@ def testORTDeterministicCompute(seed, device_id):
     # Setup for the first ORTTRainer run
     torch.manual_seed(seed)
     set_seed(seed)
-    model, model_desc, trainer, data, targets = generate_pytorch_transformer_model_sample(optim_config, opts,  device=device_id)
-    _ = trainer.train_step(data, targets)
-    assert trainer._onnx_model is not None
+    model, model_desc, my_loss, batcher_fn, train_data, val_data, _ = _load_pytorch_transformer_model(device)
+    first_trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=opts)
+    data, targets = batcher_fn(train_data, 0)
+    _ = first_trainer.train_step(data, targets)
+    assert first_trainer._onnx_model is not None
     
     # Setup for the second ORTTRainer run
     torch.manual_seed(seed)
     set_seed(seed)
-    model, model_desc, second_trainer, data, targets = generate_pytorch_transformer_model_sample(optim_config, opts, device=device_id)
+    model, _, _, _, _, _, _ = _load_pytorch_transformer_model(device)
+    second_trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=opts)
     _ = second_trainer.train_step(data, targets)
     assert second_trainer._onnx_model is not None
 
     # Compare two different instances with identical setup
-    assert id(trainer._onnx_model) != id(second_trainer._onnx_model)
-    debug.compare_onnx_weights(trainer, second_trainer)
+    assert id(first_trainer._onnx_model) != id(second_trainer._onnx_model)
+    debug.compare_onnx_weights(first_trainer, second_trainer)
 
 
-def testORTTrainerLegacyAndExperimentalWeightsCheck():
+@pytest.mark.parametrize("seed,device", [
+    (1234, 'cuda')
+])
+def testORTTrainerLegacyAndExperimentalWeightsCheck(seed, device):
     # Setup for the first ORTTRainer run
-    torch.manual_seed(0)
-    set_seed(0)
+    torch.manual_seed(seed)
+    set_seed(seed)
     optim_config = optim.LambConfig()
     opts = orttrainer.ORTTrainerOptions({
+        'device' : {
+            'id' : device
+        },
         'debug' : {
             'deterministic_compute': True
         },
     })
-    model, model_desc, trainer, data, targets = generate_pytorch_transformer_model_sample(optim_config, opts)
+    model, model_desc, my_loss, batcher_fn, train_data, val_data, _ = _load_pytorch_transformer_model(device)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=opts)
+    data, targets = batcher_fn(train_data, 0)
     _ = trainer.train_step(data, targets)
     assert trainer._onnx_model is not None
-    
-    # Setup for the second ORTTRainer run
-    torch.manual_seed(0)
-    set_seed(0)
-    ort_utils_path = os.path.join('..', '..', '..', 'samples', 'python', 'pytorch_transformer', 'ort_utils.py')
-    ort_utils = _utils.import_module_from_file(ort_utils_path, 'ort_utils')
-    model_desc, lr_desc = ort_utils.legacy_transformer_model_description()
-    legacy_trainer = Legacy_ORTTrainer(model, ort_utils.my_loss, model_desc, "LambOptimizer", None, lr_desc, 'cpu', _use_deterministic_compute=True)
-    learning_rate = torch.tensor([optim_config.lr])
-    _, _ = legacy_trainer.train_step(data, targets, learning_rate)
+
+    # Setup for the legacy ORTTrainer run
+    torch.manual_seed(seed)
+    set_seed(seed)
+    model, (model_desc, lr_desc), _, _, _, _, _ = _load_pytorch_transformer_model(device, legacy_api=True)
+    legacy_trainer = Legacy_ORTTrainer(model, my_loss, model_desc, "LambOptimizer", None, lr_desc,
+                                       device, _use_deterministic_compute=True)
+    _, _ = legacy_trainer.train_step(data, targets, torch.tensor([optim_config.lr]))
 
     # Compare legacy vs experimental APIs
     debug.compare_legacy_onnx_weights(trainer, legacy_trainer)
+
+@pytest.mark.parametrize("seed,device", [
+    # (0, 'cpu'), # TODO: bug on backend for CPU training
+    (0, 'cuda:0'),
+    (24, 'cuda')
+])
+def testORTTrainerMixedPrecisionLossScaler(seed, device):
+    total_steps = 10
+    torch.manual_seed(seed)
+    set_seed(seed)
+
+    bptt=35
+    loss_scaler = None
+    # loss_scaler = amp.DynamicLossScaler()
+    options = orttrainer.ORTTrainerOptions({'device' : {'id' : device,
+                                                        'mem_limit' : 100*1024*1024},
+                                            'mixed_precision' : {
+                                                'enabled' : True if loss_scaler else False,
+                                                'loss_scaler' : loss_scaler},
+                                            'debug' : {'deterministic_compute' : True,}})
+
+    model, model_desc, my_loss, batcher_fn, train_data, val_data, _ = _load_pytorch_transformer_model(device)
+    optim_config = optim.LambConfig(lr=0.001)
+
+    # Set up relevant options
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
+
+    # Train for total_steps steps
+    for i in range(total_steps):
+        data, targets = batcher_fn(train_data, i)
+        if len(data) < bptt:
+            # TODO: remove after testing dynamic batches
+            continue
+        loss, preds = trainer.train_step(data, targets)
+    assert trainer._onnx_model is not None
+
+
+@pytest.mark.parametrize("seed, device", [
+    (0, 'cpu'),
+    (0, 'cuda:0'),
+    (24, 'cuda')
+])
+def testLegacyORTTrainerMixedPrecisionLossScaler(seed, device):
+    total_steps = 10
+    torch.manual_seed(seed)
+    set_seed(seed)
+
+    # Modeling
+    bptt=35
+    model, (model_desc, lr_desc), my_loss, batcher_fn, train_data, val_data, _ = _load_pytorch_transformer_model(device, legacy_api=True)
+    loss_scaler = Legacy_LossScaler('ort_test_input_loss_scalar', True)
+    legacy_trainer = Legacy_ORTTrainer(model, my_loss, model_desc, "LambOptimizer",
+                                       None, lr_desc, device=device,
+                                       _use_deterministic_compute=True,
+                                       use_mixed_precision=True if loss_scaler else False,
+                                       loss_scaler=loss_scaler)
+
+    for i in range(total_steps):
+        data, targets = batcher_fn(train_data, i)
+        if len(data) < bptt:
+            # TODO: remove after testing dynamic batches
+            continue
+
+        learning_rate = torch.tensor([0.001])
+        loss, preds = legacy_trainer.train_step(data, targets, learning_rate)
