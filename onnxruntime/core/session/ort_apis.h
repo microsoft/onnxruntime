@@ -263,7 +263,9 @@ ORT_API_STATUS_IMPL(ExecutableKernel_SetOutput,
                     int index,
                     _Inout_ OrtValue* value);
 
+
 ORT_API_STATUS_IMPL(ExecutableKernel_Compute, _Inout_ OrtExecutableKernel* kernel);
+ORT_API_STATUS_IMPL(ExecutableKernel_IsOutputOnCpu, _Inout_ OrtExecutableKernel* kernel, int index, _Out_ int* is_output_on_cpu);
 
 ORT_API(void, ReleaseKernelSession, _Frees_ptr_opt_ OrtKernelSession*);
 ORT_API(void, ReleaseExecutableKernel, _Frees_ptr_opt_ OrtExecutableKernel*);

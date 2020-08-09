@@ -121,7 +121,7 @@ ORT_API_STATUS_IMPL(OrtApis::ExecutableKernelContext_AddAttributeString,
     ONNX_NAMESPACE::AttributeProto attribute_proto;
 
     attribute_proto.set_name(name);
-    attribute_proto.set_type(onnx::AttributeProto::STRING);
+    attribute_proto.set_type(ONNX_NAMESPACE::AttributeProto::STRING);
     attribute_proto.set_s(value);
 
     return ToOrtStatus(context->AddAttribute(name, attribute_proto));
@@ -139,7 +139,7 @@ ORT_API_STATUS_IMPL(OrtApis::ExecutableKernelContext_AddAttributeStrings,
 
     ONNX_NAMESPACE::AttributeProto attribute_proto;
     attribute_proto.set_name(name);
-    attribute_proto.set_type(onnx::AttributeProto::STRINGS);
+    attribute_proto.set_type(ONNX_NAMESPACE::AttributeProto::STRINGS);
 
     for (size_t i = 0; i < num_values; i++) {
       attribute_proto.add_strings(values[i]);
@@ -160,7 +160,7 @@ ORT_API_STATUS_IMPL(OrtApis::ExecutableKernelContext_AddAttributeFloat,
     ONNX_NAMESPACE::AttributeProto attribute_proto;
 
     attribute_proto.set_name(name);
-    attribute_proto.set_type(onnx::AttributeProto::FLOAT);
+    attribute_proto.set_type(ONNX_NAMESPACE::AttributeProto::FLOAT);
     attribute_proto.set_f(value);
 
     return ToOrtStatus(context->AddAttribute(name, attribute_proto));
@@ -178,7 +178,7 @@ ORT_API_STATUS_IMPL(OrtApis::ExecutableKernelContext_AddAttributeFloats,
 
     ONNX_NAMESPACE::AttributeProto attribute_proto;
     attribute_proto.set_name(name);
-    attribute_proto.set_type(onnx::AttributeProto::FLOATS);
+    attribute_proto.set_type(ONNX_NAMESPACE::AttributeProto::FLOATS);
 
     for (size_t i = 0; i < num_values; i++) {
       attribute_proto.add_floats(values[i]);
@@ -199,7 +199,7 @@ ORT_API_STATUS_IMPL(OrtApis::ExecutableKernelContext_AddAttributeInt,
     ONNX_NAMESPACE::AttributeProto attribute_proto;
 
     attribute_proto.set_name(name);
-    attribute_proto.set_type(onnx::AttributeProto::INT);
+    attribute_proto.set_type(ONNX_NAMESPACE::AttributeProto::INT);
     attribute_proto.set_i(value);
 
     return ToOrtStatus(context->AddAttribute(name, attribute_proto));
@@ -217,7 +217,7 @@ ORT_API_STATUS_IMPL(OrtApis::ExecutableKernelContext_AddAttributeInts,
 
     ONNX_NAMESPACE::AttributeProto attribute_proto;
     attribute_proto.set_name(name);
-    attribute_proto.set_type(onnx::AttributeProto::INTS);
+    attribute_proto.set_type(ONNX_NAMESPACE::AttributeProto::INTS);
 
     for (size_t i = 0; i < num_values; i++) {
       attribute_proto.add_ints(values[i]);
@@ -242,8 +242,8 @@ ORT_API_STATUS_IMPL(OrtApis::ExecutableKernelContext_AddAttributeTensor,
     ONNX_NAMESPACE::AttributeProto attribute_proto;
 
     attribute_proto.set_name(name);
-    attribute_proto.set_type(onnx::AttributeProto::TENSOR);
-    onnx::TensorProto* t = attribute_proto.mutable_t();
+    attribute_proto.set_type(ONNX_NAMESPACE::AttributeProto::TENSOR);
+    ONNX_NAMESPACE::TensorProto* t = attribute_proto.mutable_t();
 
     switch (type) {
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
@@ -354,8 +354,8 @@ ORT_API_STATUS_IMPL(OrtApis::ExecutableKernel_SetInput,
                     int index,
                     _In_ OrtValue *value) {
   API_IMPL_BEGIN
-    SingleKernelExecutionFrame* context = reinterpret_cast<SingleKernelExecutionFrame*>(kernel_);
-    return ToOrtStatus(context->SetInput(*value, index));
+    SingleKernelExecutionFrame* kernel = reinterpret_cast<SingleKernelExecutionFrame*>(kernel_);
+    return ToOrtStatus(kernel->SetInput(*value, index));
   API_IMPL_END
 }
 
@@ -364,16 +364,25 @@ ORT_API_STATUS_IMPL(OrtApis::ExecutableKernel_SetOutput,
                     int index,
                     OrtValue *value) {
   API_IMPL_BEGIN
-    SingleKernelExecutionFrame* context = reinterpret_cast<SingleKernelExecutionFrame*>(kernel_);
-    return ToOrtStatus(context->SetOutput(*value, index));
+    SingleKernelExecutionFrame* kernel = reinterpret_cast<SingleKernelExecutionFrame*>(kernel_);
+    return ToOrtStatus(kernel->SetOutput(*value, index));
   API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::ExecutableKernel_Compute,
-                    _Inout_ OrtExecutableKernel *context_) {
+                    _Inout_ OrtExecutableKernel *kernel_) {
   API_IMPL_BEGIN
-    SingleKernelExecutionFrame*context = reinterpret_cast<SingleKernelExecutionFrame*>(context_);
-    return ToOrtStatus(context->Compute());
+    SingleKernelExecutionFrame* kernel = reinterpret_cast<SingleKernelExecutionFrame*>(kernel_);
+    return ToOrtStatus(kernel->Compute());
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ExecutableKernel_IsOutputOnCpu,
+                    _Inout_ OrtExecutableKernel *kernel_, int index, _Out_ int* is_output_on_cpu) {
+  API_IMPL_BEGIN
+    SingleKernelExecutionFrame* kernel = reinterpret_cast<SingleKernelExecutionFrame*>(kernel_);
+    *is_output_on_cpu = kernel->IsOutputOnCpu(index);
+    return ToOrtStatus(Status::OK());
   API_IMPL_END
 }
 
@@ -533,7 +542,7 @@ Status ExecutableKernelContextImpl::CreateExecutionFrame(KernelSessionImpl* sess
   return Status::OK();
 }
 
-Status ExecutableKernelContextImpl::SetupTensorType(const std::unique_ptr<onnx::TypeProto>& type_proto, ONNXTensorElementDataType type) {
+Status ExecutableKernelContextImpl::SetupTensorType(const std::unique_ptr<ONNX_NAMESPACE::TypeProto>& type_proto, ONNXTensorElementDataType type) {
   ONNX_NAMESPACE::TypeProto::Tensor *tensor_type = type_proto->mutable_tensor_type();
 
   switch (type) {

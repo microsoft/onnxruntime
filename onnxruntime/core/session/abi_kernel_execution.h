@@ -69,6 +69,14 @@ class SingleKernelExecutionFrame final : public IExecutionFrame {
     return SetOrtValue(value, info_->output_index_to_mlvalue_map_[index]);
   }
 
+  bool IsOutputOnCpu(int index) {
+      return info_->kernel_->Info().GetExecutionProvider()->Type() == kCpuExecutionProvider || info_->kernel_->KernelDef().IsOutputOnCpu(index);
+  }
+
+  bool IsInputOnCpu(int index) {
+      return info_->kernel_->Info().GetExecutionProvider()->Type() == kCpuExecutionProvider || info_->kernel_->KernelDef().IsInputOnCpu(index);
+  }
+
   Status Compute() {
     OpKernelContext context(this, info_->kernel_.get(), nullptr, *info_->logger_);
     return info_->kernel_->Compute(&context);

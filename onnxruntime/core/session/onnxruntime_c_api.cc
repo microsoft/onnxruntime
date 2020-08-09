@@ -1583,6 +1583,7 @@ static constexpr OrtApi ort_api_1_to_3 = {
     &OrtApis::ExecutableKernel_SetInput,
     &OrtApis::ExecutableKernel_SetOutput,
     &OrtApis::ExecutableKernel_Compute,
+    &OrtApis::ExecutableKernel_IsOutputOnCpu,
     &OrtApis::ReleaseKernelSession,
     &OrtApis::ReleaseExecutableKernel,
     &OrtApis::ReleaseExecutableKernelContext
