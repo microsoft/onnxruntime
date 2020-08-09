@@ -166,6 +166,13 @@ class ORTTrainer(object):
             if self.options._internal_use.extra_postprocess:
                 self._onnx_model = self.options._internal_use.extra_postprocess(self._onnx_model)
 
+        # Post processing ONNX model given as input
+        if self._onnx_model:
+            if self.options._internal_use.enable_internal_postprocess:
+                self._onnx_model = postprocess.run_postprocess(self._onnx_model)
+            if self.options._internal_use.extra_postprocess:
+                self._onnx_model = self.options._internal_use.extra_postprocess(self._onnx_model)
+
         # Set GPU device and memory limit
         if 'cuda' in self.options.device.id.lower():
             mem_limit = self.options.device.mem_limit

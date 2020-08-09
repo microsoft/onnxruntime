@@ -4,9 +4,6 @@ import os
 import sys
 import torch
 
-LEARNING_RATE_IO_DESCRIPTION_NAME = "__learning_rate"
-IS_FINITE_IO_DESCRIPTION_NAME = "__is_finite"
-LOSS_SCALE_INPUT_IO_DESCRIPTION_NAME = "__loss_scale_input_name"
 
 def get_device_index(device):
     '''Returns device index from a device'''
