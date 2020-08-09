@@ -5,6 +5,7 @@
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/torch_wrapper/torch_wrapper.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -95,6 +96,12 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   // Bail out early if the output is going to be empty
   if (Y->Shape().Size() == 0)
     return Status::OK();
+  
+#ifdef USE_TORCH
+  // Invoke Libtorch code from ORT kernel.
+  torch_wrapper::matmul(left_X, right_X, Y, transa, transb, alpha_);
+  return Status::OK();
+#endif
 
   const CudaT alpha = ToCudaType<T>::FromFloat(alpha_);
   const CudaT zero = ToCudaType<T>::FromFloat(0.0f);

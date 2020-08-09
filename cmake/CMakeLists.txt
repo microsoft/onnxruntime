@@ -120,6 +120,17 @@ option(onnxruntime_RUN_MODELTEST_IN_DEBUG_MODE "Run model tests even in debug mo
 # build configuration for fuzz testing is in onnxruntime_fuzz_test.cmake
 option(onnxruntime_FUZZ_TEST "Enable Fuzz testing" OFF)
 
+# LIBTORCH_HOME can be either a path to libtorch downloaded from Pytorch website,
+# Pytorch python package installed using Anaconda, Pytorch build folder if you built
+# Pytorch from source, and so on.
+# This D_GLIBCXX_USE_CXX11_ABI flag should match what is used when compiling Pytorch/LibTorch and
+# all other ORT dependencies.
+# Do not build using multi-threading when ABI is set. Some packages have their
+# own logics to determine this flag and seems resulting race conditions.
+if (onnxruntime_USE_TORCH)
+  add_definitions(-D_GLIBCXX_USE_CXX11_ABI=0 -DUSE_TORCH=1)
+endif()
+
 # Fuzz test has only been tested with BUILD_SHARED_LIB option,
 # using the MSVC compiler and on windows OS.
 if(MSVC AND WIN32 AND onnxruntime_FUZZ_TEST AND onnxruntime_BUILD_SHARED_LIB AND onnxruntime_USE_FULL_PROTOBUF)
@@ -975,6 +986,7 @@ if (onnxruntime_USE_DML)
   add_definitions(-DUSE_DML=1)
   include(dml)
 endif()
+
 
 if (onnxruntime_ENABLE_TRAINING)
   add_compile_definitions(ENABLE_TRAINING)

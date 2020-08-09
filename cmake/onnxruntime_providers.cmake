@@ -227,6 +227,16 @@ if (onnxruntime_USE_CUDA)
 
   add_library(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_src})
 
+  # Build GPU execution provider with Pytorch's C++ APIs.
+  if (onnxruntime_USE_TORCH)
+    # Hide Caffe2 installed separatedly.
+    list(APPEND CMAKE_PREFIX_PATH "${onnxruntime_TORCH_HOME}")
+    find_package(Torch REQUIRED PATHS "${onnxruntime_TORCH_HOME}")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS} -Wno-unused-parameter")
+    target_include_directories(onnxruntime_providers_cuda PRIVATE ${TORCH_INCLUDE_DIRS})
+    target_link_libraries(onnxruntime_providers_cuda PRIVATE onnxruntime_training ${TORCH_LIBRARIES})
+  endif()
+
   if (UNIX)
     target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-reorder>"
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-reorder>")

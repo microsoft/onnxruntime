@@ -107,6 +107,10 @@ def parse_arguments():
         "--mpi_home", help="Path to MPI installation dir")
     parser.add_argument(
         "--nccl_home", help="Path to NCCL installation dir")
+    parser.add_argument(
+        "--use_torch", action='store_true', help="Build with libtorch C++ APIs")
+    parser.add_argument(
+        "--torch_home", help="Path to Pytorch python package or libtorch dir")
 
     # enable ONNX tests
     parser.add_argument(
@@ -541,7 +545,7 @@ def setup_test_data(build_dir, configs):
 
 
 def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home,
-                        mpi_home, nccl_home, tensorrt_home, migraphx_home,
+                        mpi_home, nccl_home, tensorrt_home, migraphx_home, torch_home,
                         path_to_protoc_exe, configs, cmake_extra_defines, args, cmake_extra_args):
     log.info("Generating CMake build tree")
     cmake_dir = os.path.join(source_dir, "cmake")
@@ -657,6 +661,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         # Training related flags
         "-Donnxruntime_ENABLE_NVTX_PROFILE=" + (
             "ON" if args.enable_nvtx_profile else "OFF"),
+        "-Donnxruntime_USE_TORCH=" + (
+            "ON" if args.use_torch else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING=" + (
             "ON" if args.enable_training else "OFF"),
         "-Donnxruntime_USE_HOROVOD=" + (
@@ -670,6 +676,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
 
     if nccl_home and os.path.exists(nccl_home):
         cmake_args += ["-Donnxruntime_NCCL_HOME=" + nccl_home]
+
+    if torch_home and os.path.exists(torch_home):
+        cmake_args += ["-Donnxruntime_TORCH_HOME=" + torch_home]
 
     if args.winml_root_namespace_override:
         cmake_args += ["-Donnxruntime_WINML_NAMESPACE_OVERRIDE=" +
@@ -1543,6 +1552,7 @@ def main():
 
     mpi_home = args.mpi_home
     nccl_home = args.nccl_home
+    torch_home = args.torch_home
 
     # if using tensorrt, setup tensorrt paths
     tensorrt_home = setup_tensorrt_vars(args)
@@ -1634,7 +1644,7 @@ def main():
             setup_test_data(build_dir, configs)
         generate_build_tree(
             cmake_path, source_dir, build_dir, cuda_home, cudnn_home, mpi_home, nccl_home,
-            tensorrt_home, migraphx_home, path_to_protoc_exe, configs, cmake_extra_defines,
+            tensorrt_home, migraphx_home, torch_home, path_to_protoc_exe, configs, cmake_extra_defines,
             args, cmake_extra_args)
 
     if args.clean:
