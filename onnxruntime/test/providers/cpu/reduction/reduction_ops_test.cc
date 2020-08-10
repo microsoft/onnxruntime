@@ -1614,7 +1614,7 @@ TEST(ReductionOpTest, ArgMax_do_not_keepdims_2) {
                        {1.0f, 2.0f, 3.0f});
   test.AddOutput<int64_t>("reduced", {},
                           {2});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); // TensorRT: node1: at least 2 dimensions are required for input
 }
 
 TEST(ReductionOpTest, ArgMax_int32) {
@@ -1774,7 +1774,7 @@ TEST(ReductionOpTest, ArgMin_do_not_keepdims_2) {
   test.AddInput<float>("data", {3},
                        {1.0f, 2.0f, 3.0f});
   test.AddOutput<int64_t>("reduced", {}, {0});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); // TensorRT: node1: at least 2 dimensions are required for input
 }
 
 TEST(ReductionOpTest, ArgMin_do_not_keepdims_2_select_last) {

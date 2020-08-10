@@ -71,7 +71,7 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
     if ((!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", {9}) &&
-         !graph_utils::IsSupportedOptypeVersionAndDomain(node, "TransposeMatMul", {1}, kMSDomain)) ||
+         !graph_utils::IsSupportedOptypeVersionAndDomain(node, "TransposeScaleMatMul", {1}, kMSDomain)) ||
         !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders())) {
       continue;
     }
@@ -104,16 +104,16 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
     const std::vector<NodeArg*> output_defs{node.MutableOutputDefs()[0]};
 
     Node& matmul_node = graph.AddNode(graph.GenerateNodeName("MatMul_With_Transpose"),
-                                      "TransposeMatMul",
+                                      "TransposeScaleMatMul",
                                       "fused MatMul and Transpose ",
                                       input_defs,
                                       output_defs, {}, kMSDomain);
     bool transpose_left = (left != nullptr);
-    if (node.OpType() == "TransposeMatMul") {
+    if (node.OpType() == "TransposeScaleMatMul") {
       transpose_left ^= static_cast<bool>(node.GetAttributes().at("transA").i());
     }
     bool transpose_right = (right != nullptr);
-    if (node.OpType() == "TransposeMatMul") {
+    if (node.OpType() == "TransposeScaleMatMul") {
       transpose_right ^= static_cast<bool>(node.GetAttributes().at("transB").i());
     }
     matmul_node.AddAttribute("transA", static_cast<int64_t>(transpose_left));

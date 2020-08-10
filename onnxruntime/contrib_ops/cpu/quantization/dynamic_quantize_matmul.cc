@@ -17,11 +17,13 @@ namespace contrib {
 class MatMulIntegerToFloatBase : public OpKernel {
  public:
   MatMulIntegerToFloatBase(const OpKernelInfo& info) : OpKernel(info) {
-    TryPackWeights(info);
   }
 
+#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
+  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override;
+#endif
+
  protected:
-  void TryPackWeights(const OpKernelInfo& info);
   Status ComputeCommon(OpKernelContext* ctx,
                        const uint8_t* a_data,
                        const TensorShape& a_shape,
@@ -31,45 +33,44 @@ class MatMulIntegerToFloatBase : public OpKernel {
                        float multiplier,
                        const Tensor* bias_tensor) const;
 
-#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
+  bool b_is_signed_;
+  TensorShape b_shape_;
   BufferUniquePtr packed_b_;
-#endif
 };
 
-void MatMulIntegerToFloatBase::TryPackWeights(const OpKernelInfo& info) {
 #ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
-  // Check if the weights tensor is constant.
-  const Tensor* b;
-  if (!info.TryGetConstantInput(1, &b)) {
-    return;
+Status MatMulIntegerToFloatBase::PrePack(const Tensor& tensor, int input_idx, bool& is_packed) {
+  is_packed = false;
+
+  // only pack Matrix B
+  if (input_idx == 1) {
+    // Only handle the common case of a 2D weight matrix. Additional matrices
+    // could be handled by stacking the packed buffers.
+    b_shape_ = tensor.Shape();
+    if (b_shape_.NumDimensions() != 2) {
+      return Status::OK();
+    }
+
+    const size_t K = static_cast<size_t>(b_shape_[0]);
+    const size_t N = static_cast<size_t>(b_shape_[1]);
+
+    const auto* b_data = static_cast<const uint8_t*>(tensor.DataRaw());
+    b_is_signed_ = tensor.IsDataType<int8_t>();
+
+    const size_t packed_b_size = MlasGemmPackBSize(N, K, b_is_signed_);
+    if (packed_b_size == 0) {
+      return Status::OK();
+    }
+
+    auto alloc = Info().GetAllocator(0, OrtMemTypeDefault);
+    auto* packed_b_data = alloc->Alloc(packed_b_size);
+    packed_b_ = BufferUniquePtr(packed_b_data, BufferDeleter(alloc));
+    MlasGemmPackB(N, K, b_data, N, b_is_signed_, packed_b_data);
+    is_packed = true;
   }
-
-  // Only handle the common case of a 2D weight matrix. Additional matrices
-  // could be handled by stacking the packed buffers.
-  const auto& b_shape = b->Shape();
-  if (b_shape.NumDimensions() != 2) {
-    return;
-  }
-
-  const size_t K = static_cast<size_t>(b_shape[0]);
-  const size_t N = static_cast<size_t>(b_shape[1]);
-
-  const auto* b_data = static_cast<const uint8_t*>(b->DataRaw());
-  const bool b_is_signed = b->IsDataType<int8_t>();
-
-  const size_t packed_b_size = MlasGemmPackBSize(N, K, b_is_signed);
-  if (packed_b_size == 0) {
-    return;
-  }
-
-  auto alloc = info.GetAllocator(0, OrtMemTypeDefault);
-  auto* packed_b_data = alloc->Alloc(packed_b_size);
-  packed_b_ = BufferUniquePtr(packed_b_data, BufferDeleter(alloc));
-  MlasGemmPackB(N, K, b_data, N, b_is_signed, packed_b_data);
-#else
-  ORT_UNUSED_PARAMETER(info);
-#endif
+  return Status::OK();
 }
+#endif
 
 Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
                                                const uint8_t* a_data,
@@ -80,15 +81,13 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
                                                float multiplier,
                                                const Tensor* bias_tensor) const {
   MatMulComputeHelper helper;
-  ORT_RETURN_IF_ERROR(helper.Compute(a_shape, b->Shape()));
+  ORT_RETURN_IF_ERROR(helper.Compute(a_shape, packed_b_ ? b_shape_ : b->Shape()));
   Tensor* y = ctx->Output(0, helper.OutputShape());
 
   // Bail out early if the output is going to be empty
   if (y->Shape().Size() == 0)
     return Status::OK();
 
-  const auto* b_data = static_cast<const uint8_t*>(b->DataRaw());
-  const bool b_is_signed = b->IsDataType<int8_t>();
   auto* y_data = y->template MutableData<float>();
   const auto* bias_data = bias_tensor != nullptr ? bias_tensor->Data<float>() : nullptr;
 
@@ -105,7 +104,7 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
                a_zero_point,
                packed_b_.get(),
                b_zero_point,
-               b_is_signed,
+               b_is_signed_,
                y_data + helper.OutputOffsets()[i],
                static_cast<size_t>(helper.N()),
                &multiplier,
@@ -114,6 +113,8 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
       continue;
     }
 #endif
+    const auto* b_data = static_cast<const uint8_t*>(b->DataRaw());
+    const bool b_is_signed = b->IsDataType<int8_t>();
     QGemm(static_cast<int>(helper.M()),
           static_cast<int>(helper.N()),
           static_cast<int>(helper.K()),
@@ -167,15 +168,15 @@ static void GetQuantizationParameter(const float* data, int64_t num_of_elements,
 }
 
 Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
-  const auto* a = ctx->Input<Tensor>(0);
-  const auto* b = ctx->Input<Tensor>(1);
+  const Tensor* a = ctx->Input<Tensor>(0);
+  const Tensor* b = packed_b_ ? nullptr : ctx->Input<Tensor>(1);
 
-  const auto* b_scale_tensor = ctx->Input<Tensor>(2);
+  const Tensor* b_scale_tensor = ctx->Input<Tensor>(2);
   ORT_ENFORCE(IsScalarOr1ElementVector(b_scale_tensor),
               "DynamicQuantizeMatMul : input B scale must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
   float b_scale = *b_scale_tensor->template Data<float>();
 
-  const auto* b_zero_point_tensor = ctx->Input<Tensor>(3);
+  const Tensor* b_zero_point_tensor = ctx->Input<Tensor>(3);
   uint8_t b_zero_point = 0;
   if (b_zero_point_tensor != nullptr) {
     ORT_ENFORCE(IsScalarOr1ElementVector(b_zero_point_tensor),
@@ -184,7 +185,7 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
   }
 
   // calculate quantization parameter of a
-  const auto* a_data = a->template Data<float>();
+  const float* a_data = a->template Data<float>();
   int64_t num_of_elements = a->Shape().Size();
 
   float a_scale;
@@ -210,7 +211,7 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
 
 Status MatMulIntegerToFloat::Compute(OpKernelContext* ctx) const {
   const Tensor* a = ctx->Input<Tensor>(0);
-  const Tensor* b = ctx->Input<Tensor>(1);
+  const Tensor* b = packed_b_ ? nullptr : ctx->Input<Tensor>(1);
 
   const Tensor* a_scale_tensor = ctx->Input<Tensor>(2);
   ORT_ENFORCE(IsScalarOr1ElementVector(a_scale_tensor),
