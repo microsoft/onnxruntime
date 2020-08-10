@@ -179,3 +179,13 @@ ORT_API_STATUS_IMPL(OrtApis::DisablePerSessionThreads, _In_ OrtSessionOptions* o
   options->value.use_per_session_threads = false;
   return nullptr;
 }
+
+ORT_API_STATUS_IMPL(OrtApis::EnablePrePacking, _In_ OrtSessionOptions* options) {
+  options->value.use_prepacking = true;
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::DisablePrePacking, _In_ OrtSessionOptions* options) {
+  options->value.use_prepacking = false;
+  return nullptr;
+}
