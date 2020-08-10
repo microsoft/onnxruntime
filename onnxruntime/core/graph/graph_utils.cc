@@ -289,7 +289,7 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        const std::string& op_type,
                                        const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions,
                                        const std::string& domain) {
-  return (node.OpType() == op_type && !node.Op()->Deprecated() &&
+  return (node.OpType() == op_type && node.Op() && !node.Op()->Deprecated() &&
           MatchesOpSinceVersion(node, versions) && MatchesOpSetDomain(node, domain));
 }
 
