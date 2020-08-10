@@ -556,7 +556,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "OFF" if args.skip_winml_tests else "ON"),
         "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
         "-Donnxruntime_DEV_MODE=" + (
-            "OFF" if args.android or args.use_acl or args.use_armnn or
+            "OFF" if args.use_acl or args.use_armnn or
             (args.ios and is_macOS()) else "ON"),
         "-DPYTHON_EXECUTABLE=" + sys.executable,
         "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
@@ -946,7 +946,8 @@ def setup_cuda_vars(args):
                 .format(
                     cuda_home, cuda_home_valid, cudnn_home, cudnn_home_valid))
 
-        if is_windows():
+        # Our CI build machines already have the env vars setup
+        if is_windows() and 'AGENT_VERSION' not in os.environ:
             # Validate that the cudnn_home is pointing at
             # the right level.
             if not os.path.exists(os.path.join(cudnn_home, "bin")):

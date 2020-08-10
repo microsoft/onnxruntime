@@ -7,6 +7,7 @@
 
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
+// Disable TensorRT in the tests due to lack of support of the operator.
 namespace test {
 TEST(ConstantOfShape, Float_Ones) {
   OpTester test("ConstantOfShape", 9);
@@ -29,7 +30,7 @@ TEST(ConstantOfShape, Float_Ones) {
   std::fill_n(output.begin(), 4 * 3 * 2, 1.f);
 
   test.AddOutput<float>("output", output_dims, output);
-  test.Run(OpTester::ExpectResult::kExpectSuccess);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ConstantOfShape, Int32_Zeros) {
@@ -51,7 +52,7 @@ TEST(ConstantOfShape, Int32_Zeros) {
   std::fill_n(output.begin(), output.size(), 0);
   test.AddOutput<int32_t>("output", output_dims, output);
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ConstantOfShape, DefaultValue) {
@@ -68,7 +69,7 @@ TEST(ConstantOfShape, DefaultValue) {
   std::fill_n(output.begin(), output.size(), 0.f);
   test.AddOutput<float>("output", output_dims, output);
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 inline void SetValue(TensorProto& t_proto, float value) {
@@ -128,7 +129,7 @@ void RunTypedTest(TensorProto::DataType dt, T value) {
   std::fill_n(output.begin(), output.size(), value);
   test.AddOutput<T>("output", output_dims, output);
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ConstantOfShape, TypeTests) {

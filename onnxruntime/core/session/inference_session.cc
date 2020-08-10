@@ -761,9 +761,11 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
       SessionState* subgraph_session_state = session_state.GetMutableSubgraphSessionState(node.Index(), name);
       ORT_ENFORCE(subgraph_session_state, "CreateSubgraphSessionState should have created an entry earlier.");
 
-      ORT_RETURN_IF_ERROR_SESSIONID_(FinalizeSessionState(*subgraph_session_state, model_location_,
-                                                          kernel_registry_manager_, &node,
-                                                          session_options_.execution_mode));
+      ORT_RETURN_IF_ERROR_SESSIONID_(FinalizeSessionState(*subgraph_session_state,
+                                                          model_location_,
+                                                          kernel_registry_manager_,
+                                                          &node,
+                                                          session_options_));
 
       // LOGS(*session_logger_, VERBOSE) << std::make_pair(subgraph_info.session_state->GetExecutionPlan(),
       //                                                   &*subgraph_info.session_state);
@@ -937,8 +939,11 @@ common::Status InferenceSession::Initialize() {
       }
     }
 
-    ORT_RETURN_IF_ERROR_SESSIONID_(FinalizeSessionState(*session_state_, model_location_, kernel_registry_manager_,
-                                                        nullptr, session_options_.execution_mode));
+    ORT_RETURN_IF_ERROR_SESSIONID_(FinalizeSessionState(*session_state_,
+                                                        model_location_,
+                                                        kernel_registry_manager_,
+                                                        nullptr /*parent_node*/,
+                                                        session_options_));
 
     // handle any subgraphs
     ORT_RETURN_IF_ERROR_SESSIONID_(InitializeSubgraphSessions(graph, *session_state_));
@@ -1396,6 +1401,10 @@ std::string InferenceSession::EndProfiling() {
   LOGS(*session_logger_, ERROR) << "Could not write a profile because no model was loaded.";
   return std::string();
 }
+
+AllocatorPtr InferenceSession::GetAllocator(const OrtMemoryInfo& mem_info) const {
+  return session_state_->GetAllocator(mem_info);
+ }
 
 // assumes model has already been loaded before
 common::Status InferenceSession::DoPostLoadProcessing(onnxruntime::Model& model) {

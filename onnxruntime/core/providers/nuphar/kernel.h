@@ -101,7 +101,8 @@ class NupharKernelState {
   NUPHAR_OP(Flatten, 11, DataTypeImpl::AllIEEEFloatTensorTypes())                           \
   NUPHAR_OP(Floor, 6, DataTypeImpl::AllIEEEFloatTensorTypes())                              \
   NUPHAR_VERSIONED_OP(Gemm, 7, 8, DataTypeImpl::AllIEEEFloatTensorExceptHalfTypes())        \
-  NUPHAR_OP(Gemm, 9, DataTypeImpl::AllIEEEFloatTensorExceptHalfTypes())                     \
+  NUPHAR_VERSIONED_OP(Gemm, 9, 10, DataTypeImpl::AllIEEEFloatTensorExceptHalfTypes())       \
+  NUPHAR_OP(Gemm, 11, DataTypeImpl::AllIEEEFloatTensorExceptHalfTypes())                    \
   NUPHAR_OP(GlobalAveragePool, 1, DataTypeImpl::AllIEEEFloatTensorExceptHalfTypes())        \
   NUPHAR_OP(GlobalMaxPool, 1, DataTypeImpl::AllIEEEFloatTensorExceptHalfTypes())            \
   NUPHAR_OP(Greater, 9, DataTypeImpl::AllFixedSizeTensorTypes())                            \

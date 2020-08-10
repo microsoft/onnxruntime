@@ -590,6 +590,99 @@ def convert_to_scan_model(input_model, output_model):
 
     onnx.save(out_mp, output_model)
 
+def gemm_to_matmul(node, nf, converted_initializers):
+    assert node.op_type == 'Gemm'
+
+    alpha = NodeFactory.get_attribute(node, 'alpha', 1.0)
+    beta = NodeFactory.get_attribute(node, 'beta', 1.0)
+    transA = NodeFactory.get_attribute(node, 'transA', 0)
+    transB = NodeFactory.get_attribute(node, 'transB', 0)
+
+    A = node.input[0]
+    B = node.input[1]
+    Y = node.output[0]
+
+    with nf.scoped_prefix(node.name) as scoped_prefix:
+        if alpha != 1.0:
+            alpha_name = node.name + '_Const_alpha'
+            nf.make_initializer(np.full((), alpha, dtype=np.float32), alpha_name)
+            alpha_A = nf.make_node('Mul', [alpha_name, A])
+            A = alpha_A.name
+
+        if transA:
+            if A in converted_initializers:
+                A = converted_initializers[A]
+            else:
+                A_initializer = nf.get_initializer(A)
+                # A is an initializer
+                if A_initializer is not None:
+                    new_A = A + '_trans'
+                    converted_initializers[A] = new_A
+                    nf.make_initializer(np.transpose(A_initializer), new_A, in_main_graph=True)
+                    nf.remove_initializer(A)
+                    A = new_A
+                else:
+                    A = nf.make_node('Transpose', A)
+        if transB:
+            if B in converted_initializers:
+                B = converted_initializers[B]
+            else:
+                B_initializer = nf.get_initializer(B)
+                # B is an initializer
+                if B_initializer is not None:
+                    new_B = B + '_trans'
+                    converted_initializers[B] = new_B
+                    nf.make_initializer(np.transpose(B_initializer), new_B, in_main_graph=True)
+                    nf.remove_initializer(B)
+                    B = new_B
+                else:
+                    B = nf.make_node('Transpose', B)
+
+        if len(node.input) != 3 or beta == 0.0:
+            nf.make_node('MatMul', [A, B], output_names=Y)
+        else:
+            AB = nf.make_node('MatMul', [A, B])
+            C = node.input[2]
+            if beta != 1.0:
+                beta_name = node.name + '_Const_beta'
+                nf.make_initializer(np.full((), beta, dtype=np.float32), beta_name)
+                C = nf.make_node('Mul', [beta_name, C])
+            nf.make_node('Add', [AB, C], output_names=Y)
+
+def convert_gemm_to_matmul(input_model, output_model):
+    in_mp = onnx.load(input_model)
+    out_mp = onnx.ModelProto()
+    out_mp.CopyFrom(in_mp)
+    out_mp.ir_version = 5 # update ir version to avoid requirement of initializer in graph input
+    out_mp.graph.ClearField('node')
+    nf = NodeFactory(out_mp.graph)
+    # gemm_to_matmul will generate transposed weights if the corresponding input
+    # comes from initializer. We keep a map between the original and converted
+    # ones in case the original initializer is shared between Gemm ops
+    converted_initializers = {}
+
+    for in_n in in_mp.graph.node:
+        if in_n.op_type == 'Gemm':
+            gemm_to_matmul(in_n, nf, converted_initializers)
+            continue
+
+        out_n = out_mp.graph.node.add()
+        out_n.CopyFrom(in_n)
+        if in_n.op_type == 'Scan' or in_n.op_type == 'Loop':
+            in_subgraph = NodeFactory.get_attribute(in_n, 'body')
+            out_subgraph = NodeFactory.get_attribute(out_n, 'body')
+            out_subgraph.ClearField('node')
+            scan_nf = NodeFactory(out_mp.graph, out_subgraph)
+
+            for in_sn in in_subgraph.node:
+                if in_sn.op_type == 'Gemm':
+                    gemm_to_matmul(in_sn, scan_nf, converted_initializers)
+                    continue
+                out_sn = out_subgraph.node.add()
+                out_sn.CopyFrom(in_sn)
+
+    onnx.save(out_mp, output_model)
+
 # Old models (ir_version < 4) is required to initializers in graph inputs
 # This is optional for ir_version >= 4
 def remove_initializers_from_inputs(input_model, output_model, remain_inputs=[]):
@@ -713,6 +806,7 @@ def parse_arguments():
     parser.add_argument('--mode', help='The modification mode',
                         choices=['to_scan',
                                  'opt_inproj',
+                                 'gemm_to_matmul',
                                  'remove_initializers_from_inputs'])
     parser.add_argument('--input', help='The input model file', default=None)
     parser.add_argument('--output', help='The output model file', default=None)
@@ -725,6 +819,9 @@ if __name__ == '__main__':
     if args.mode == 'to_scan':
         print('Convert LSTM/GRU/RNN to Scan...')
         convert_to_scan_model(args.input, args.output)
+    elif args.mode == 'gemm_to_matmul':
+        print('Convert Gemm to MatMul')
+        convert_gemm_to_matmul(args.input, args.output)
     elif args.mode == 'opt_inproj':
         print('Optimize input projection in Scan...')
         optimize_input_projection(args.input, args.output)

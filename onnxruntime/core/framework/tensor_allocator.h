@@ -25,10 +25,13 @@ class ITensorAllocator {
   AllocatorPtr GetAllocator(const OrtMemoryInfo& memory_info);
 
   /**
+   *
+   * \param planned_memory_sizes_in_byte The sizes of memory allocated inside FinalizePlan on different devices.
+   *
    * When there is no more tensor to trace, call this function to finalize the
    * allocation.
    */
-  virtual common::Status FinalizePlan() = 0;
+  virtual common::Status FinalizePlan(std::unordered_map<std::string, size_t>& planned_memory_sizes_in_byte) = 0;
 
   /**
    *

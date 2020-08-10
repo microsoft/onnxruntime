@@ -144,6 +144,8 @@ static constexpr PATH_TYPE MODEL_WITH_CUSTOM_MODEL_METADATA = TSTR("testdata/mod
 
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 static constexpr PATH_TYPE PYOP_FLOAT_MODEL_URI = TSTR("testdata/pyop_1.onnx");
+static constexpr PATH_TYPE PYOP_MULTI_MODEL_URI = TSTR("testdata/pyop_2.onnx");
+static constexpr PATH_TYPE PYOP_KWARG_MODEL_URI = TSTR("testdata/pyop_3.onnx");
 #endif
 
 class CApiTestWithProvider : public testing::Test, public ::testing::WithParamInterface<int> {
@@ -359,8 +361,10 @@ TEST(CApiTest, test_custom_op_library) {
 }
 
 #if defined(ENABLE_LANGUAGE_INTEROP_OPS)
-TEST(CApiTest, test_pyop) {
-  std::cout << "Test model with pyop" << std::endl;
+std::once_flag my_module_flag;
+
+void PrepareModule()
+{
   std::ofstream module("mymodule.py");
   module << "class MyKernel:" << std::endl;
   module << "\t"
@@ -371,7 +375,29 @@ TEST(CApiTest, test_pyop) {
          << "def compute(self,x):" << std::endl;
   module << "\t\t"
          << "return x*2" << std::endl;
+  module << "class MyKernel_2:" << std::endl;
+  module << "\t"
+         << "def __init__(self,A,B):" << std::endl;
+  module << "\t\t"
+         << "self.a,self.b = A,B" << std::endl;
+  module << "\t"
+         << "def compute(self,x):" << std::endl;
+  module << "\t\t"
+         << "return x*4" << std::endl;
+  module << "class MyKernel_3:" << std::endl;
+  module << "\t"
+         << "def __init__(self,A,B):" << std::endl;
+  module << "\t\t"
+         << "self.a,self.b = A,B" << std::endl;
+  module << "\t"
+         << "def compute(self,*kwargs):" << std::endl;
+  module << "\t\t"
+         << "return kwargs[0]*5" << std::endl;
   module.close();
+}
+
+TEST(CApiTest, test_pyop) {
+  std::call_once(my_module_flag, PrepareModule);
   std::vector<Input> inputs(1);
   Input& input = inputs[0];
   input.name = "X";
@@ -380,6 +406,30 @@ TEST(CApiTest, test_pyop) {
   std::vector<int64_t> expected_dims_y = {2, 2};
   std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f};
   TestInference<PATH_TYPE, float>(*ort_env, PYOP_FLOAT_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
+}
+
+TEST(CApiTest, test_pyop_multi) {
+  std::call_once(my_module_flag, PrepareModule);
+  std::vector<Input> inputs(1);
+  Input& input = inputs[0];
+  input.name = "X";
+  input.dims = {2, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f};
+  std::vector<int64_t> expected_dims_y = {2, 2};
+  std::vector<float> expected_values_y = {8.0f, 16.0f, 24.0f, 32.0f};
+  TestInference<PATH_TYPE, float>(*ort_env, PYOP_MULTI_MODEL_URI, inputs, "Z", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
+}
+
+TEST(CApiTest, test_pyop_kwarg) {
+  std::call_once(my_module_flag, PrepareModule);
+  std::vector<Input> inputs(1);
+  Input& input = inputs[0];
+  input.name = "X";
+  input.dims = {2, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f};
+  std::vector<int64_t> expected_dims_y = {2, 2};
+  std::vector<float> expected_values_y = {25.0f, 50.0f, 75.0f, 100.0f};
+  TestInference<PATH_TYPE, float>(*ort_env, PYOP_KWARG_MODEL_URI, inputs, "Z", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
 }
 #endif
 
@@ -390,6 +440,123 @@ TEST(CApiTest, create_session_without_session_option) {
   ASSERT_NE(nullptr, ret);
 }
 #endif
+
+TEST(CApiTest, get_allocator_cpu) {
+  Ort::SessionOptions session_options;
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CPU(session_options, 1));
+  Ort::Session session(*ort_env, NAMED_AND_ANON_DIM_PARAM_URI, session_options);
+  Ort::MemoryInfo info_cpu = Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtArenaAllocator, OrtMemTypeDefault);
+  Ort::Allocator cpu_allocator(session, info_cpu);
+
+  // CPU OrtMemoryInfo does not return OrtArenaAllocator on x86 but rather a device allocator
+  // which causes MemoryInfo that is used to request the allocator and the actual instance
+  // of MemoryInfo returned from the allocator exactly match, although they are functionally equivalent.
+  auto allocator_info = cpu_allocator.GetInfo();
+  ASSERT_EQ(info_cpu.GetAllocatorName(), allocator_info.GetAllocatorName());
+  ASSERT_EQ(info_cpu.GetDeviceId(), allocator_info.GetDeviceId());
+  ASSERT_EQ(info_cpu.GetMemoryType(), allocator_info.GetDeviceId());
+  void* p = cpu_allocator.Alloc(1024);
+  ASSERT_NE(p, nullptr);
+  cpu_allocator.Free(p);
+
+  auto mem_allocation = cpu_allocator.GetAllocation(1024);
+  ASSERT_NE(nullptr, mem_allocation.get());
+  ASSERT_EQ(1024U, mem_allocation.size());
+}
+
+#ifdef USE_CUDA
+TEST(CApiTest, get_allocator_cuda) {
+  Ort::SessionOptions session_options;
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+  Ort::Session session(*ort_env, NAMED_AND_ANON_DIM_PARAM_URI, session_options);
+
+  Ort::MemoryInfo info_cuda("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
+  Ort::Allocator cuda_allocator(session, info_cuda);
+
+  auto allocator_info = cuda_allocator.GetInfo();
+  ASSERT_TRUE(info_cuda == allocator_info);
+  void* p = cuda_allocator.Alloc(1024);
+  ASSERT_NE(p, nullptr);
+  cuda_allocator.Free(p);
+
+  auto mem_allocation = cuda_allocator.GetAllocation(1024);
+  ASSERT_NE(nullptr, mem_allocation.get());
+  ASSERT_EQ(1024U, mem_allocation.size());
+}
+#endif
+
+TEST(CApiTest, io_binding) {
+  Ort::SessionOptions session_options;
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CPU(session_options, 1));
+  Ort::Session session(*ort_env, MODEL_URI, session_options);
+
+  Ort::MemoryInfo info_cpu = Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtArenaAllocator, OrtMemTypeDefault);
+
+  const std::array<int64_t, 2> x_shape = {3, 2};
+  std::array<float, 3 * 2> x_values  = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  Ort::Value bound_x = Ort::Value::CreateTensor(info_cpu, x_values.data(), x_values.size(),
+    x_shape.data(), x_shape.size());
+
+  const std::array<float, 3 * 2> expected_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
+  const std::array<int64_t, 2> y_shape = {3, 2};
+  std::array<float, 3 * 2> y_values;
+  Ort::Value bound_y = Ort::Value::CreateTensor(info_cpu, y_values.data(), y_values.size(),
+                                                y_shape.data(), y_shape.size());
+
+
+  Ort::IoBinding binding(session);
+  binding.BindInput("X", bound_x);
+  binding.BindOutput("Y", bound_y);
+
+  session.Run(Ort::RunOptions(), binding);
+  // Check the values against the bound raw memory
+  ASSERT_TRUE(std::equal(std::begin(y_values), std::end(y_values), std::begin(expected_y)));
+
+  // Now compare values via GetOutputValues
+  {
+    std::vector<Ort::Value> output_values = binding.GetOutputValues();
+    ASSERT_EQ(output_values.size(), 1U);
+    const Ort::Value& Y_value = output_values[0];
+    ASSERT_TRUE(Y_value.IsTensor());
+    Ort::TensorTypeAndShapeInfo type_info = Y_value.GetTensorTypeAndShapeInfo();
+    ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, type_info.GetElementType());
+    auto count = type_info.GetElementCount();
+    ASSERT_EQ(expected_y.size(), count);
+    const float* values = Y_value.GetTensorData<float>();
+    ASSERT_TRUE(std::equal(values, values + count, std::begin(expected_y)));
+  }
+
+  {
+    std::vector<std::string> output_names = binding.GetOutputNames();
+    ASSERT_EQ(1U, output_names.size());
+    ASSERT_EQ(output_names[0].compare("Y"), 0);
+  }
+
+  // Now replace binding of Y with an on device binding instead of pre-allocated memory.
+  // This is when we can not allocate an OrtValue due to unknown dimensions
+  {
+    Ort::MemoryInfo info_cpu_dev("Cpu", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
+    binding.BindOutput("Y", info_cpu_dev);
+    session.Run(Ort::RunOptions(), binding);
+  }
+
+  // Check the output value allocated based on the device binding.
+  {
+    std::vector<Ort::Value> output_values = binding.GetOutputValues();
+    ASSERT_EQ(output_values.size(), 1U);
+    const Ort::Value& Y_value = output_values[0];
+    ASSERT_TRUE(Y_value.IsTensor());
+    Ort::TensorTypeAndShapeInfo type_info = Y_value.GetTensorTypeAndShapeInfo();
+    ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, type_info.GetElementType());
+    auto count = type_info.GetElementCount();
+    ASSERT_EQ(expected_y.size(), count);
+    const float* values = Y_value.GetTensorData<float>();
+    ASSERT_TRUE(std::equal(values, values + count, std::begin(expected_y)));
+  }
+
+  binding.ClearBoundInputs();
+  binding.ClearBoundOutputs();
+}
 
 TEST(CApiTest, create_tensor) {
   const char* s[] = {"abc", "kmp"};

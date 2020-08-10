@@ -274,56 +274,8 @@ bool FindCycleHelper(int i, const std::list<int>* adjacency_map,
   return false;
 }
 
-// Remove nodes with empty shape (for example [1, 0]) because TensorRT 7 doens't support empty shape
-SubGraphCollection_t RemoveEmptyShapeNodes(const onnxruntime::Provider_GraphViewer& graph) {
-  // Here only NonZero, NonMaxSuppression and TopK related empty shape nodes are removed, particularly for RCNN models.
-  // TODO: Remove the code if TensorRT fixed the issue in the future release, or find a better generic way here to work around
-  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
-  const std::vector<std::string> exclude_dim_names{"NonZero", "NonMaxSuppression", "TopK"};
-  SubGraphCollection_t parser_nodes_vector = {{{}, false}};
-  std::vector<size_t> nodes_vector(node_index.size());
-  std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
-  for (const auto& index : nodes_vector) {
-    // Check if node has empty input shape
-    const auto& node = graph.GetNode(node_index[index]);
-    bool exclude_node = false;
-    for (const auto& input : node->InputDefs()) {
-      const auto& input_shape = input->Shape();
-      if (input_shape) {
-        for (const auto& dim : input_shape->dim()) {
-          std::string dim_name = dim.dim_param();
-          if (!dim_name.empty()) {
-            for (const auto& exclude : exclude_dim_names) {
-              if (dim_name.find(exclude) != std::string::npos) {
-                exclude_node = true;
-                break;
-              }
-            }
-            if (exclude_node) {
-              break;
-            }
-          }
-        }
-      }
-
-      if (exclude_node) {
-        break;
-      }
-    }
-
-    // Remove the node with empty input shape
-    if (!exclude_node) {
-      parser_nodes_vector.back().first.push_back(index);
-    } else if (!parser_nodes_vector.back().first.empty()) {
-      parser_nodes_vector.push_back({{}, false});
-    }
-  }
-
-  return parser_nodes_vector;
-}
-
 std::unique_ptr<Provider_IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph_t graph_nodes_index, int& kernels_index, const onnxruntime::Provider_GraphViewer& graph) const {
-  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
+    const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
   std::unordered_set<size_t> node_set;
   node_set.reserve(graph_nodes_index.first.size());
   for (const auto& index : graph_nodes_index.first) {
@@ -484,6 +436,23 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
           for (auto input : node->InputDefs()) {
             auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
             inputs.push_back(&n_input);
+            const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
+            if (graph.GetInitializedTensor(input->Name(), initializer)) {
+              const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
+              if (!graph_build.GetInitializedTensor(input->Name(), subgraph_initializer)) {
+                graph_build.AddInitializedTensor(*(initializer));
+              }
+            }
+          }
+
+          for (auto input : node->ImplicitInputDefs()) {
+            const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
+            if (graph.GetInitializedTensor(input->Name(), initializer)) {
+              const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
+              if (!graph_build.GetInitializedTensor(input->Name(), subgraph_initializer)) {
+                graph_build.AddInitializedTensor(*(initializer));
+              }
+            }
           }
           for (auto output : node->OutputDefs()) {
             auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
@@ -494,12 +463,6 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
             }
           }
           graph_build.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, &node->GetAttributes(), node->Domain());
-        }
-
-        // Add initializers to the subgraph
-        const auto& init_tensors = graph.GetAllInitializedTensors();
-        for (const auto& tensor : init_tensors) {
-          graph_build.AddInitializedTensor(*(tensor.second));
         }
 
         ORT_ENFORCE(graph_build.Resolve().IsOK());
@@ -668,10 +631,13 @@ void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& 
       for (int i = 0; i < static_cast<int>(cycles.size()); ++i) {
         auto loc = index_to_node_map.find(cycles[i]);
         if (loc != index_to_node_map.end() && loc->second.find("TRTKernel") != std::string::npos) {
-          int trt_node_index = std::stoi(loc->second.substr(10));
-          supported_nodes_vector.erase(supported_nodes_vector.begin() + trt_node_index);
-          trt_cycle = true;
-          break;
+          std::size_t found = loc->second.rfind("_");
+          if (found != std::string::npos) {
+            int trt_node_index = std::stoi(loc->second.substr(found + 1));
+            supported_nodes_vector.erase(supported_nodes_vector.begin() + trt_node_index);
+            trt_cycle = true;
+            break;
+          }
         }
       }
     }
@@ -685,11 +651,10 @@ void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& 
 std::vector<std::unique_ptr<Provider_ComputeCapability>>
 TensorrtExecutionProvider::Provider_GetCapability(const onnxruntime::Provider_GraphViewer& graph,
                                                   const std::vector<const Provider_KernelRegistry*>& /*kernel_registries*/) const {
-  // Remove nodes with empty shape
-  SubGraphCollection_t parser_nodes_vector = RemoveEmptyShapeNodes(graph);
-
   // Get supported node list from TensorRT parser
-  SubGraphCollection_t supported_nodes_vector;
+  std::vector<size_t> nodes_vector(graph.NumberOfNodes());
+  std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
+  SubGraphCollection_t supported_nodes_vector, parser_nodes_vector = {{nodes_vector, false}};
   bool early_termination = false;
   supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination);
   if (early_termination) {
@@ -828,12 +793,16 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
         planFile.read((char*)engine_buf.get(), engine_size);
         planFile.close();
         trt_engine = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
-        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + GetEnginePath(engine_cache_path_, trt_node_name_with_precision);
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Deserialized " + GetEnginePath(engine_cache_path_, trt_node_name_with_precision);
+        if (trt_engine == nullptr) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                 "TensorRT EP could not deserialize engine from " + trt_node_name_with_precision + ".engine");
+        }
       } else {
         trt_engine = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *trt_config));
         if (trt_engine == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                 "TensorRT EP could not build Engine for fused node: " + fused_node->Name());
+                                 "TensorRT EP could not build engine for fused node: " + fused_node->Name());
         }
 
         if (engine_cache_enable_) {
@@ -847,7 +816,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
       if (trt_context == nullptr) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                               "TensorRT EP could not build Execution Context for fused node: " + fused_node->Name());
+                               "TensorRT EP could not build execution context for fused node: " + fused_node->Name());
       }
     }
 
@@ -1082,14 +1051,14 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
             trt_builder->buildEngineWithConfig(*trt_state->network, *trt_config));
 
         if (trt_state->engine->get() == nullptr) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
+          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to build engine.");
         }
         trt_engine = trt_state->engine->get();
 
         *(trt_state->context) = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(
             trt_state->engine->get()->createExecutionContext());
         if (trt_state->context->get() == nullptr) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Create Context.");
+          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
         }
         trt_context = trt_state->context->get();
       }
@@ -1334,7 +1303,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
         for (const auto& binding_index : binding_buffers_to_freeup) {
           cudaFree(buffers[binding_index]);
         }
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP Execution Context Enqueue Failed.");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP execution context enqueue failed.");
       }
 
       // Cast INT64 input to INT32 because TensorRT doesn't fully support INT64
