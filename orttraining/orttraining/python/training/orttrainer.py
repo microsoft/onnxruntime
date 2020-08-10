@@ -5,11 +5,11 @@ import torch
 from inspect import signature
 
 import onnxruntime as ort
-from . import optim, ORTTrainerOptions, _utils
+from . import _utils, amp, optim, ORTTrainerOptions
 from .model_desc_validation import _ORTTrainerModelDesc
 from .. import postprocess
-from onnxruntime.capi._pybind_state import set_cuda_mem_limit
-from onnxruntime.capi._pybind_state import set_cuda_device_id
+from onnxruntime.capi._pybind_state import set_cuda_mem_limit,\
+                                           set_cuda_device_id
 
 class TrainStepInfo(object):
     r"""Private class used to store runtime information from current train step.
@@ -155,6 +155,9 @@ class ORTTrainer(object):
         if not options:
             options = ORTTrainerOptions()
         self.options = options
+        if self.options.mixed_precision.enabled and not self.options.mixed_precision.loss_scaler:
+            # TODO: Move this to model_desc_validation.py
+            self.options.mixed_precision.loss_scaler = amp.loss_scaler.DynamicLossScaler()
 
         # Post processing ONNX model given as input
         if self._onnx_model:
@@ -293,7 +296,7 @@ class ORTTrainer(object):
             loss_scaler = self.options.mixed_precision.loss_scaler
             assert loss_scaler, "Loss scaler is required when mixed precision is enabled"
             loss_scale = torch.tensor([loss_scaler.loss_scale])
-            input_desc = self._model_desc_inputs_desc_with_lr_and_loss_scale
+            input_desc = self._model_desc_inputs_with_lr_and_loss_scale
 
         # Get data. CombineTorchModelLossFn takes label as last input and outputs loss first
         input = self._prepare_model_input(input_desc, self.optim_config.lr, loss_scale, *args, **kwargs)
@@ -559,6 +562,9 @@ class ORTTrainer(object):
         if self._onnx_model is None:
             return
 
+        # Create training session used by train_step
+        self._create_ort_training_session()
+
         # Update model description
         self._model_desc_inputs_with_lr = [*self.model_desc.inputs, self.model_desc.learning_rate]
 
@@ -583,9 +589,6 @@ class ORTTrainer(object):
             self.model_desc.gradient_accumulation = get_gradient_accumulation_name_from_session(self._training_session)
             self._model_desc_outputs_with_gradient_accumulation = [
                 *self.model_desc.outputs, self.model_desc.gradient_accumulation]
-
-        # Create training session used by train_step
-        self._create_ort_training_session()
 
     def _prepare_model_input(self, inputs_desc, lr, loss_scale, *inputs, **kwargs):
         # Normalize input to tuple of samples

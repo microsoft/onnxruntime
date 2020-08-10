@@ -255,19 +255,10 @@ class ORTTrainerOptions(object):
         for k, v in self._validated_opts.items():
             setattr(self, k, self._wrap(v))
 
-        # Keep this in the last line
-        # After this point, this class becomes immutable
-        self._initialized = True
-
     def __repr__(self):
         return '{%s}' % str(', '.join("'%s': %s" % (k, repr(v))
                                       for (k, v) in self.__dict__.items()
-                                      if k not in ['_original_opts', '_validated_opts', '_initialized', '_main_class_name']))
-
-    def __setattr__(self, k, v):
-        if hasattr(self, '_initialized'):
-            raise Exception(f"{self._main_class_name} is an immutable class")
-        return super().__setattr__(k, v)
+                                      if k not in ['_original_opts', '_validated_opts', '_main_class_name']))
 
     def _wrap(self, v):
         if isinstance(v, (tuple, list, set, frozenset)):
@@ -289,10 +280,6 @@ class _ORTTrainerOptionsInternal(ORTTrainerOptions):
         # Convert dict in object
         for k, v in dict(options).items():
             setattr(self, k, self._wrap(v))
-
-        # Keep this in the last line
-        # After this point, this class becomes immutable
-        self._initialized = True
 
 
 class ORTTrainerOptionsValidator(cerberus.Validator):
