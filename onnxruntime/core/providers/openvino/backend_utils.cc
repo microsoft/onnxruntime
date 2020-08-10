@@ -118,7 +118,9 @@ InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::
 }
 
 void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
-               std::shared_ptr<InferenceEngine::CNNNetwork> network) {
+               std::shared_ptr<InferenceEngine::CNNNetwork> network,
+               std::unordered_map<std::string, int> output_names,
+               std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map) {
   // Configure input & output
   // Prepare input blobs
 
@@ -139,9 +141,13 @@ void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
 
   // Prepare output blobs
   auto outputInfo = network->getOutputsInfo();
-  int output_idx = 0;
-  for (auto iter = outputInfo.begin(); iter != outputInfo.end(); ++iter, ++output_idx) {
-    auto precision = ConvertPrecisionONNXToOpenVINO(model_proto.graph().output(output_idx).type());
+  for (auto iter = outputInfo.begin(); iter != outputInfo.end(); ++iter) {
+    auto output_name = iter->first;
+    auto it = const_outputs_map.find(output_name);
+    //Output is constant and don't need to set precision
+    if(it != const_outputs_map.end())
+      break;
+    auto precision = ConvertPrecisionONNXToOpenVINO(model_proto.graph().output(output_names.at(output_name)).type());
     iter->second->setPrecision(precision);
   }
 }
@@ -191,8 +197,6 @@ GetOutputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_
     int index = it->second;
     auto node = item.second;
     auto shape = node->get_shape();
-    auto type = node->get_element_type();
-    std::cout << "NODE TYPE IS " << type << std::endl;
 
     size_t num_dims = shape.size();
     auto output_shape = new int64_t[num_dims];
@@ -230,12 +234,8 @@ int GetFirstAvailableDevice(GlobalContext& global_context){
   return i;
 }
 
-void FillOutputsWithConstantData(Ort::CustomOpApi& ort, std::map<std::string, std::shared_ptr<ngraph::Node>> const_out_map, OrtValue* out_tensor){
+void FillOutputsWithConstantData(Ort::CustomOpApi& ort, std::shared_ptr<ngraph::Node> node, OrtValue* out_tensor){
 
-  for(auto item : const_out_map){
-
-    auto node = item.second;
-    std::cout << "ELEMENEET TYPE IS " << node->get_element_type() << std::endl;
 
     switch(node->get_element_type()){
 
@@ -254,21 +254,23 @@ void FillOutputsWithConstantData(Ort::CustomOpApi& ort, std::map<std::string, st
         FillOutputHelper<int32_t>(ort, out_tensor, node);
         break;
       }
+      case ngraph::element::Type_t::i64:
+      {
+        FillOutputHelper<int64_t>(ort, out_tensor, node);
+        break;
+      }
       default:
         ORT_THROW(log_tag + "Unsupported output data type");
     }
-  }
 }
 
 template<typename T>
 void FillOutputHelper(Ort::CustomOpApi& ort, OrtValue* out_tensor, std::shared_ptr<ngraph::Node> node){
 
-  T* tensor_data = ort.GetTensorMutableData<T>(out_tensor);
   auto const_node = std::dynamic_pointer_cast<ngraph::op::Constant>(node);
   auto res = const_node->cast_vector<T>();
-  for(size_t j = 0; j < res.size(); j++){
-    tensor_data[j] = res[j];
-  }
+  T* tensor_data = ort.GetTensorMutableData<T>(out_tensor);
+  std::copy(res.begin(), res.end(), tensor_data);
 }
 
 }  // namespace backend_utils

@@ -270,9 +270,12 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     return true;
   } else if (optype == "Identity") {
     const auto& input = node->InputDefs()[0];
+    const auto& output = node->OutputDefs()[0];
     auto graph_inputs = graph_viewer.GetInputs();
-    auto it = find(graph_inputs.begin(), graph_inputs.end(), input);
-    if(it != graph_inputs.end())
+    auto graph_outputs = graph_viewer.GetOutputs();
+    auto input_it = find(graph_inputs.begin(), graph_inputs.end(), input);
+    auto output_it = find(graph_outputs.begin(), graph_outputs.end(), output);
+    if(input_it != graph_inputs.end() && output_it != graph_outputs.end())
       return true;
   } else if (optype == "Resize") {
     //Resize opset 11 is not supported
@@ -725,37 +728,48 @@ GetCapability_2020_4(const onnxruntime::GraphViewer& graph_viewer, std::string d
         const auto& node = graph_viewer.GetNode(index);
         // if (node->OpType() == "Unsqueeze" || node->OpType() == "Gather" || node->OpType() == "Squeeze") {
         // if (node->OpType() == "Mul" || node->OpType() == "Reshape" || node->OpType() == "Concat"){
-        if (node->OpType() == "Mul"){
-          for (const auto& input : node->InputDefs()) {
-            auto input_name = input->Name();
-            auto it = find(cluster_graph_inputs.begin(), cluster_graph_inputs.end(), input_name);
-            if (it != cluster_graph_inputs.end()) {
-              if(node->OpType() == "Reshape"){
-                std::cout << "Reshape failed" << std::endl;
-                const auto& shape_arg = node->InputDefs()[1];
-                if(ng_required_initializers.find(shape_arg->Name()) == ng_required_initializers.end()){
+        // if (node->OpType() == "Mul" || node->OpType() == "Transpose" || node->OpType() == "Reshape" || node->OpType() == "Unsqueeze" || node->OpType() == "Cast"){
+        if (node->OpType() == "Mul" || node->OpType() == "Transpose" || node->OpType() == "Unsqueeze" ||
+            node->OpType() == "Cast" || node->OpType() == "Reshape" || node->OpType() == "Concat" ||
+            node->OpType() == "Gather"){
+          std::cout << "In here " << std::endl;
+          std::cout << "Node is " << node->OpType() << std::endl;
+          if(node->OpType() == "Reshape"){
+            std::cout << "Node Reshape"
+            const auto& shape_arg = node->InputDefs()[1];
+            auto it = find(cluster_graph_inputs.begin(), cluster_graph_inputs.end(), shape_arg->Name());
+            if(it != cluster_graph_inputs.end()){
+              omit_subgraph = true;
+              std::cout << "Reshape input failed" << std::endl;
+              break;
+            }
+          }
+          else{
+
+            for (const auto& input : node->InputDefs()) {
+              auto input_name = input->Name();
+              auto it = find(cluster_graph_inputs.begin(), cluster_graph_inputs.end(), input_name);
+              if (it != cluster_graph_inputs.end()) {
+                  std::cout << "Input check Failed " << std::endl;
                   omit_subgraph = true;
                   break;
-                }
-              }
-              else{
-                std::cout << "Input failed" << std::endl;
-                omit_subgraph = true;
-                break;
               }
             }
+
           }
         }
       }
-      std::cout << "omit subgraph" << omit_subgraph << std::endl;
       if (omit_subgraph)
         continue;
 
       /* In scenarios, when there are no inputs or all inputs being initializers,
          ConstantFolding optimization in onnxruntime pre-computes the value.*/
-      if (!cluster_inputs.empty() && cluster_inputs.size() > const_inputs.size()) {
+      if (!cluster_inputs.empty()){ //&& cluster_inputs.size() > const_inputs.size()) {
         AppendClusterToSubGraph(this_cluster, cluster_inputs, cluster_outputs, result);
         no_of_clusters++;
+      }
+      else{
+        std::cout << "Cluster is omitted" << std::endl;
       }
     }
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Supported subgraphs on OpenVINO: " << no_of_clusters;

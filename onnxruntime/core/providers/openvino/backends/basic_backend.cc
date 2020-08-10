@@ -37,7 +37,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
     : global_context_(global_context), subgraph_context_(subgraph_context) {
 
   ie_cnn_network_ = CreateCNNNetwork(model_proto, subgraph_context_.device_id, subgraph_context_.precision, const_outputs_map_);
-  SetIODefs(model_proto, ie_cnn_network_);
+  SetIODefs(model_proto, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_);
   InferenceEngine::ExecutableNetwork exe_network;
 
   for(auto item : const_outputs_map_){
@@ -59,7 +59,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   try {
     exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, subgraph_context_.device_id, config);
   } catch (InferenceEngine::details::InferenceEngineException e) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph: " + subgraph_context_.subgraph_name + e.what());
+    ORT_THROW(log_tag + " Exception while Loading Network for graph: " + subgraph_context_.subgraph_name + ": " +  e.what());
   } catch (...) {
     ORT_THROW(log_tag + " Exception while Loading Network for graph " + subgraph_context_.subgraph_name);
   }
@@ -171,7 +171,6 @@ void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort,
                                    .as<InferenceEngine::PrecisionTrait<InferenceEngine::Precision::FP32>::value_type*>();
 
     size_t output_data_size = graph_output_blob->byteSize();
-    std::cout << "Output data size is " << output_data_size << std::endl;
 
     auto tensor_shape = ort.GetTensorTypeAndShape(output_tensors[i]);
     auto elem_type = ort.GetTensorElementType(tensor_shape);
@@ -192,7 +191,13 @@ void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort,
     }
   }
   if(!const_outputs_map_.empty()){
-    FillOutputsWithConstantData(ort,const_outputs_map_,output_tensors[i]);
+    size_t j = i;
+    for(auto item : const_outputs_map_){
+
+      auto node = item.second;
+      FillOutputsWithConstantData(ort,node,output_tensors[j]);
+      j++;
+    }
   }
 }
 
@@ -207,9 +212,11 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   size_t batch_size = 1;
   auto output_tensors = GetOutputTensors(ort, context, batch_size, infer_request_, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_);
   if(subgraph_context_.is_constant){
-    for(auto out_tensor : output_tensors){
-
-      FillOutputsWithConstantData(ort,const_outputs_map_,out_tensor);
+    size_t i = 0;
+    for(auto item : const_outputs_map_){
+      auto node = item.second;
+      FillOutputsWithConstantData(ort,node, output_tensors[i]);
+      i++;
     }
   }
   else{
