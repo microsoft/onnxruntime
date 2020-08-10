@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import hashlib
+from rewriter import rewrite_cpu_provider
 
 logging.basicConfig(
     format="%(asctime)s %(name)s [%(levelname)s] - %(message)s",
@@ -358,6 +359,9 @@ def parse_arguments():
     parser.add_argument(
         "--build_micro_benchmarks", action='store_true',
         help="Build ONNXRuntime micro-benchmarks.")
+    parser.add_argument(
+        "--reduce_ops_by_model", type=str,
+        help="remove unused ops from build by model(s) under designated path.")
     return parser.parse_args()
 
 
@@ -1512,6 +1516,12 @@ def main():
 
     if args.skip_tests:
         args.test = False
+
+    if args.reduce_ops_by_model and len(args.reduce_ops_by_model) > 0:
+        args.test = False
+        rewrite_cpu_provider(args.reduce_ops_by_model,
+                             os.path.dirname(os.path.abspath(__file__)) +\
+                             '/../../onnxruntime/core/providers/cpu/cpu_execution_provider.cc')
 
     if args.use_tensorrt:
         args.use_cuda = True
