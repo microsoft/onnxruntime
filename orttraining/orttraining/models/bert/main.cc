@@ -335,10 +335,11 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
 
     params.deepspeed_zero = ZeROConfig(flags["deepspeed_zero_stage"].as<int>());
     params.enable_grad_norm_clip = flags["enable_grad_norm_clip"].as<bool>();
+
     if(params.deepspeed_zero.stage == 1){
-      printf("use zero stage 1\n");
+      printf("use ZeRO stage 1\n");
     } else if(params.deepspeed_zero.stage == 2){
-      printf("use zero stage 2\n");
+      printf("use ZeRO stage 2\n");
     } 
 
     float alpha = flags["alpha"].as<float>();
@@ -581,7 +582,7 @@ void setup_training_params(BertParameters& params) {
                                             /*mlm_loss*/ "mlm_loss",
                                             /*nsp_loss*/ "nsp_loss"});
 
-  params.fetch_names = {"total_loss", "mlm_loss", "nsp_loss", "cls.predictions.transform.LayerNorm.weight_grad"};
+  params.fetch_names = {"total_loss", "mlm_loss", "nsp_loss"};
 
   if (params.EnableTensorboard()) {
     params.fetch_names.push_back(params.summary_name);
@@ -631,7 +632,7 @@ void setup_training_params(BertParameters& params) {
       summary_loss.push_back(*(summary_loss_t.template Data<std::string>()));
     }
 
-    if (1) {
+    if (params.dump_fetches) {
       std::ostringstream filename;
       filename << "./fetch_dumps/rank_" << params.mpi_context.world_rank << "_step_" << step << ".txt";
       ofstream ofs(filename.str());
