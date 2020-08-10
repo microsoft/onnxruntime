@@ -225,6 +225,10 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& Add(OrtCustomOpDomain* custom_op_domain);
 
   SessionOptions& DisablePerSessionThreads();
+
+  SessionOptions& EnablePrePacking();
+  SessionOptions& DisablePrePacking();
+
 };
 
 struct ModelMetadata : Base<OrtModelMetadata> {

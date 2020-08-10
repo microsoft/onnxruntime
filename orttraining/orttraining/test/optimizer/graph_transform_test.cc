@@ -14,6 +14,7 @@
 #include "orttraining/core/optimizer/gist_encode_decode.h"
 #include "orttraining/core/optimizer/nonzero_shape_setter.h"
 #include "orttraining/core/optimizer/megatron_transformer.h"
+#include "orttraining/core/optimizer/concat_replacement.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/asserts.h"
@@ -108,8 +109,28 @@ TEST_F(GraphTransformationTests, NonZeroShapeSetter) {
   ASSERT_TRUE(nonzero_shape->dim(1).dim_param() == "nonzero_nonzero_count");
 }
 
-// MegatronF/G is defined only for training, and in msdomain.
+// MegatronF/G and ConcatTraining is defined only for training, and in msdomain.
 #ifndef DISABLE_CONTRIB_OPS
+TEST_F(GraphTransformationTests, ConcatReplacement) {
+  auto model_uri = MODEL_FOLDER "concat_trainable.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, *logger_).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("ConcatReplacement");
+  rule_transformer_L1->Register(onnxruntime::make_unique<ConcatReplacement>());
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  ASSERT_EQ(op_to_count["Concat"], 0);
+  ASSERT_EQ(op_to_count["ConcatTraining"], 1);
+}
+
 TEST_F(GraphTransformationTests, MegatronMLPPartitionRank0) {
   auto model_uri = MODEL_FOLDER "model_parallel/mlp_megatron_basic_test.onnx";
   std::shared_ptr<Model> p_model;
@@ -483,7 +504,7 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionCorrectnessTest) {
 
 TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionCorrectnessTest) {
   auto model_uri = MODEL_FOLDER "model_parallel/self_attention_megatron_basic_test.onnx";
-  const int total_rank = 2; // The test graph is too small to partition to 4, so use 2 instead here.
+  const int total_rank = 2;  // The test graph is too small to partition to 4, so use 2 instead here.
   std::vector<Graph*> graphs;
   std::vector<std::shared_ptr<Model>> p_models(total_rank);
   for (auto i = 0; i < total_rank; i++) {

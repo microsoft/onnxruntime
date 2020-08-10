@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 using System;
-using System.Linq.Expressions;
 using System.Runtime.InteropServices;
 
 namespace Microsoft.ML.OnnxRuntime
@@ -15,7 +14,7 @@ namespace Microsoft.ML.OnnxRuntime
     };
 
     // NOTE: The order of the APIs in this struct should match exactly that in
-    // OrtApi ort_api_1_to_3 (onnxruntime_c_api.cc)
+    // OrtApi ort_api_1_to_4 (onnxruntime_c_api.cc)
     [StructLayout(LayoutKind.Sequential)]
     public struct OrtApi
     {
@@ -139,6 +138,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ReleaseMapTypeInfo;
         public IntPtr ReleaseSequenceTypeInfo;
         public IntPtr SessionEndProfiling;
+
         public IntPtr SessionGetModelMetadata;
         public IntPtr ModelMetadataGetProducerName;
         public IntPtr ModelMetadataGetGraphName;
@@ -147,7 +147,6 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ModelMetadataLookupCustomMetadataMap;
         public IntPtr ModelMetadataGetVersion;
         public IntPtr ReleaseModelMetadata;
-        // End of Version 2
 
         public IntPtr CreateEnvWithGlobalThreadPools;
         public IntPtr DisablePerSessionThreads;
@@ -155,8 +154,15 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ReleaseThreadingOptions;
         public IntPtr ModelMetadataGetCustomMetadataMapKeys;
         public IntPtr AddFreeDimensionOverrideByName;
-        // End of Version 3 - DO NOT MODIFY ABOVE (see above text for more information)
 
+        public IntPtr GetAvailableProviders;
+        public IntPtr ReleaseAvailableProviders;
+        public IntPtr GetStringTensorElementLength;
+        public IntPtr GetStringTensorElement;
+        public IntPtr FillStringTensorElement;
+        public IntPtr EnablePrePacking;
+        public IntPtr DisablePrePacking;
+        
         public IntPtr CreateAllocator;
         public IntPtr ReleaseAllocator;
         public IntPtr RunWithBinding;
@@ -229,6 +235,8 @@ namespace Microsoft.ML.OnnxRuntime
             OrtSetIntraOpNumThreads = (DOrtSetIntraOpNumThreads)Marshal.GetDelegateForFunctionPointer(api_.SetIntraOpNumThreads, typeof(DOrtSetIntraOpNumThreads));
             OrtSetSessionGraphOptimizationLevel = (DOrtSetSessionGraphOptimizationLevel)Marshal.GetDelegateForFunctionPointer(api_.SetSessionGraphOptimizationLevel, typeof(DOrtSetSessionGraphOptimizationLevel));
             OrtRegisterCustomOpsLibrary = (DOrtRegisterCustomOpsLibrary)Marshal.GetDelegateForFunctionPointer(api_.RegisterCustomOpsLibrary, typeof(DOrtRegisterCustomOpsLibrary));
+            OrtEnablePrePacking = (DOrtEnablePrePacking)Marshal.GetDelegateForFunctionPointer(api_.EnablePrePacking, typeof(DOrtEnablePrePacking));
+            OrtDisablePrePacking = (DOrtDisablePrePacking)Marshal.GetDelegateForFunctionPointer(api_.DisablePrePacking, typeof(DOrtDisablePrePacking));
 
             OrtCreateRunOptions = (DOrtCreateRunOptions)Marshal.GetDelegateForFunctionPointer(api_.CreateRunOptions, typeof(DOrtCreateRunOptions));
             OrtReleaseRunOptions = (DOrtReleaseRunOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseRunOptions, typeof(DOrtReleaseRunOptions));
@@ -476,6 +484,18 @@ namespace Microsoft.ML.OnnxRuntime
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtSetSessionGraphOptimizationLevel(IntPtr /* OrtSessionOptions* */ options, GraphOptimizationLevel graphOptimizationLevel);
         public static DOrtSetSessionGraphOptimizationLevel OrtSetSessionGraphOptimizationLevel;
+
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtEnablePrePacking(IntPtr /* OrtSessionOptions* */ options);
+        public static DOrtEnablePrePacking OrtEnablePrePacking;
+
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtDisablePrePacking(IntPtr /* OrtSessionOptions* */ options);
+        public static DOrtDisablePrePacking OrtDisablePrePacking;
+
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtEnablePrePacking(IntPtr /* OrtSessionOptions* */ options);
+        public static DOrtEnablePrePacking OrtEnablePrePacking;
+
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtDisablePrePacking(IntPtr /* OrtSessionOptions* */ options);
+        public static DOrtDisablePrePacking OrtDisablePrePacking;
 
         ///**
         //  * The order of invocation indicates the preference order as well. In other words call this method

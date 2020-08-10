@@ -3,6 +3,8 @@
   <PropertyGroup>
     <WindowsAI-Platform Condition="'$(PlatformTarget)' == 'x64' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' != 'true')">x64</WindowsAI-Platform>
     <WindowsAI-Platform Condition="'$(PlatformTarget)' == 'x86' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' == 'true')">x86</WindowsAI-Platform>
+    <WindowsAI-Platform Condition="'$(PlatformTarget)' == '' AND '$(Prefer32Bit)' != 'true'">x64</WindowsAI-Platform>
+    <WindowsAI-Platform Condition="'$(PlatformTarget)' == '' AND '$(Prefer32Bit)' == 'true'">x86</WindowsAI-Platform>
     <WindowsAI-Platform Condition="'$(WindowsAI-Platform)' == ''">$(PlatformTarget)</WindowsAI-Platform>
   </PropertyGroup>
 
