@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "nccl_kernels.h"
-#include <inttypes.h>
 
 namespace onnxruntime {
 namespace cuda {

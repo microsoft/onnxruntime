@@ -430,8 +430,7 @@ static Status GetGradientArgsInTopoOrder(
     Graph& graph,
     std::vector<ArgDef>& weight_argdefs,
     std::vector<OptimizerNodeConfig>& opt_configs,
-    std::vector<ArgDef>& gradient_argdefs,
-    int data_parallel_group_rank) {
+    std::vector<ArgDef>& gradient_argdefs) {
   GraphViewer gv(graph);
   const auto& node_indices = gv.GetNodesInTopologicalOrder();
   std::vector<std::string> gradient_names;
@@ -545,7 +544,7 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
     std::vector<int64_t> partitions;
 
     //Get gradients in topological order, updates the weight, gradients and opt_configs_ following that order
-    ORT_RETURN_IF_ERROR(GetGradientArgsInTopoOrder(graph, weight_argdefs, opt_configs_, gradient_argdefs, opt_graph_config_.data_parallel_group_rank));
+    ORT_RETURN_IF_ERROR(GetGradientArgsInTopoOrder(graph, weight_argdefs, opt_configs_, gradient_argdefs));
 
     // handle optimizer partitioning
     int max_group_size;
