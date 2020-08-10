@@ -20,6 +20,20 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
     {
         public const int StackallocMax = 16;
 
+        public static long GetSizeForShape(long[] shape)
+        {
+            long product = 1;
+            foreach( var dim in shape)
+            {
+                if (dim < 0)
+                {
+                    throw new ArgumentOutOfRangeException("Shape must not have negative elements:" + dim);
+                }
+                product *= dim;
+            }
+            return product;
+        }
+
         public static long GetProduct(ReadOnlySpan<int> dimensions, int startIndex = 0)
         {
             if (dimensions.Length == 0)
