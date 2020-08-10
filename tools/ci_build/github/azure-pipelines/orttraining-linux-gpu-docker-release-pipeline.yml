@@ -21,7 +21,6 @@ stages:
     workspace:
       clean: all
     pool: Linux-GPU-CUDA10
-    #pool: Linux-Multi-GPU-V100
     steps:
       - task: CmdLine@2
         displayName: Build builder stage of docker file
@@ -50,24 +49,6 @@ stages:
               --enable_onnx_tests
           workingDirectory: $(Build.SourcesDirectory)
 
-  # - job: Linux_py_GPU_Build_Docker_Push
-  #   timeoutInMinutes: 0
-  #   workspace:
-  #     clean: all
-  #   pool: Linux-GPU-CUDA10
-  #   condition: always()
-  #   steps:
-      # - task: CmdLine@2
-      #   displayName: Build entire docker file
-      #   inputs:
-      #     script: |
-      #       docker build \
-      #         --pull \
-      #         -t ${{ variables.docker_image_prefix }}-manylinux-gpu-release \
-      #         --build-arg COMMIT_SHA1="${{ parameters.commit_sha1 }}" \
-      #         -f ${{ variables.linux_gpu_dockerfile }} .
-      #     workingDirectory: $(Build.SourcesDirectory)
-
       - task: Docker@2
         displayName: Build entire docker file
         inputs:
@@ -85,15 +66,6 @@ stages:
           containerRegistry: 'ortrelease'
           repository: 'onnxruntime-training'
           tags: ${{ parameters.image_tag }}
-
-      # - task: Docker@2
-      #   inputs:
-      #     containerRegistry: 'ortrelease'
-      #     repository: 'onnxruntime-training'
-      #     command: 'buildAndPush'
-      #     Dockerfile: 'dockerfiles/Dockerfile.training'
-      #     tags: |
-      #       ${{ parameters.image_tag }}
 
       - template: templates/component-governance-component-detection-steps.yml
 
