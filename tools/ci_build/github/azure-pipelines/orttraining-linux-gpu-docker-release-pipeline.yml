@@ -76,6 +76,7 @@ stages:
           repository: 'onnxruntime-training'
           tags: ${{ parameters.image_tag }}
           arguments: --build-arg COMMIT_SHA1="${{ parameters.commit_sha1 }}"
+          Dockerfile: 'dockerfiles/Dockerfile.training'
 
       - task: Docker@2
         displayName: Push docker image
