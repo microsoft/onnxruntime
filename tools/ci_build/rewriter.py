@@ -112,7 +112,7 @@ def rewrite_cpu_provider(model_path, file_path):
     def process_lines(lines, offset, end_mark, call_back):
         '''extract op info from a logic code line start from offset to the line end
            with end_mark, then trigger callback(op_type, opset_from, opset_to, domain)
-           return offset + num of lines processed
+           return next line offset and whether current lines are disabled
         '''
 
         lines_to_process = []
@@ -124,28 +124,28 @@ def rewrite_cpu_provider(model_path, file_path):
             offset += 1
         code_line = ''.join([line.strip() for line in lines_to_process])
 
-        call_back_ret = False
+        disabled = False
         if onnx_op in code_line:
             trim_at = code_line.index(onnx_op) + onnx_op_len
             args = [arg.strip() for arg in code_line[trim_at: -len(end_mark)].split(',')]
-            call_back_ret = call_back(args[-1], int(args[-2]), int(args[-2]), args[-3])
+            disabled = call_back(args[-1], int(args[-2]), int(args[-2]), args[-3])
 
         elif onnx_typed_op in code_line:
             trim_at = code_line.index(onnx_typed_op) + onnx_typed_op_len
             args = [arg.strip() for arg in code_line[trim_at: -len(end_mark)].split(',')]
-            call_back_ret = call_back(args[-1], int(args[-3]), int(args[-3]), args[-4])
+            disabled = call_back(args[-1], int(args[-3]), int(args[-3]), args[-4])
 
         elif onnx_versioned_op in code_line:
             trim_at = code_line.index(onnx_versioned_op) + onnx_versioned_op_len
             args = [arg.strip() for arg in code_line[trim_at: -len(end_mark)].split(',')]
-            call_back_ret = call_back(args[-1], int(args[-3]), int(args[-2]), args[-4])
+            disabled = call_back(args[-1], int(args[-3]), int(args[-2]), args[-4])
 
         elif onnx_versioned_typed_op in code_line:
             trim_at = code_line.index(onnx_versioned_typed_op) + onnx_versioned_typed_op_len
             args = [arg.strip() for arg in code_line[trim_at: -len(end_mark)].split(',')]
-            call_back_ret = call_back(args[-1], int(args[-4]), int(args[-3]), args[-5])
+            disabled = call_back(args[-1], int(args[-4]), int(args[-3]), args[-5])
 
-        return offset + 1, call_back_ret #end of process_lines(...)
+        return offset + 1, disabled #end of process_lines(...)
 
 
     lines = []
@@ -154,45 +154,45 @@ def rewrite_cpu_provider(model_path, file_path):
 
     shutil.move(file_path, file_path + '.bak')
     with open(file_path, 'w') as file_to_write:
-        line_index = 0
+        line_offset = 0
 
-        while line_index < len(lines):
+        while line_offset < len(lines):
 
-            line = lines[line_index]
+            line = lines[line_offset]
             stripped = line.strip()
 
             if stripped.startswith('class ONNX_OPERATOR'):
                 #collection versions of ops
 
-                next_line_index, _ = process_lines(lines,
-                                                   line_index,
+                next_line_offset, _ = process_lines(lines,
+                                                   line_offset,
                                                    ');',
                                                    fill_version_map)
 
-                for index in range(line_index, next_line_index):
+                for index in range(line_offset, next_line_offset):
                     file_to_write.write(lines[index]) #leave as it was
 
-                line_index = next_line_index
+                line_offset = next_line_offset
 
             elif stripped.startswith('BuildKernelCreateInfo<ONNX'):
                 #comment out unused ops
 
-                next_line_index, disabled = process_lines(lines,
-                                                          line_index,
+                next_line_offset, disabled = process_lines(lines,
+                                                          line_offset,
                                                           ')>,',
                                                           need_comment)
 
-                for index in range(line_index, next_line_index):
+                for index in range(line_offset, next_line_offset):
                     if disabled: #comment out unused
                         file_to_write.write('//' + lines[index])
 
                     else: #leave as it was
                         file_to_write.write(lines[index])
 
-                line_index = next_line_index
+                line_offset = next_line_offset
 
             else: #leave as it was
                 file_to_write.write(line)
-                line_index += 1
+                line_offset += 1
 
     #end of rewrite_cpu_provider(...)
