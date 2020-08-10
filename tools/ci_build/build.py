@@ -360,8 +360,11 @@ def parse_arguments():
         "--build_micro_benchmarks", action='store_true',
         help="Build ONNXRuntime micro-benchmarks.")
     parser.add_argument(
-        "--reduce_ops_by_model", type=str,
-        help="remove unused ops from build by model(s) under designated path.")
+        "--include_ops_by_model", type=str,
+        help="include ops from model(s) under designated path.")
+    parser.add_argument(
+        "--include_ops_by_csv", type=str,
+        help="include ops from csv file.")
     return parser.parse_args()
 
 
@@ -1517,11 +1520,13 @@ def main():
     if args.skip_tests:
         args.test = False
 
-    if args.reduce_ops_by_model and len(args.reduce_ops_by_model) > 0:
-        args.test = False
-        rewrite_cpu_provider(args.reduce_ops_by_model,
+    if (args.include_ops_by_model and len(args.include_ops_by_model) > 0) or\
+       (args.include_ops_by_csv and len(args.include_ops_by_csv) > 0):
+        rewrite_cpu_provider(args.include_ops_by_model if args.include_ops_by_model else '',
+                             args.include_ops_by_csv if args.include_ops_by_csv else '',
                              os.path.dirname(os.path.abspath(__file__)) +\
                              '/../../onnxruntime/core/providers/cpu/cpu_execution_provider.cc')
+        args.test = False
 
     if args.use_tensorrt:
         args.use_cuda = True

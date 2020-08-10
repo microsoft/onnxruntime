@@ -7,8 +7,36 @@ from onnx import AttributeProto as AP
 
 #pylint: disable=no-member,too-many-locals,too-many-statements
 
-def extract_ops_from_model(model_path):
+def extract_ops_from_csv(csv_path, referred_ops):
+    '''extract ops from csv file with format:
+        op_type,domain,opset'''
+
+    if not os.path.isfile(csv_path):
+        return referred_ops
+
+    with open(csv_path, 'r') as csv_to_read:
+
+        for line in csv_to_read.readlines():
+            op_type, domain, raw_opset = line.strip().split(',')
+            opset = int(raw_opset)
+
+            if op_type not in referred_ops:
+                referred_ops[op_type] = {domain:[opset]}
+
+            elif domain not in referred_ops[op_type]:
+                referred_ops[op_type][domain] = [opset]
+
+            elif opset not in referred_ops[op_type][domain]:
+                referred_ops[op_type][domain].append(opset)
+
+    return referred_ops #end of extract_ops_from_csv(...)
+
+
+def extract_ops_from_model(model_path, referred_ops):
     '''extract ops from models under model_path and return a diction'''
+
+    if not os.path.isdir(model_path):
+        return referred_ops
 
     def map_domain(domain):
         if domain == 'ai.onnx.ml':
@@ -21,12 +49,14 @@ def extract_ops_from_model(model_path):
         for operator in graph.node:
 
             if operator.op_type not in operators:
-                operators[operator.op_type] = {'opsets': {}, 'domains': {}}
-
-            operators[operator.op_type]['domains'][map_domain(operator.domain)] = True
+                operators[operator.op_type] = {}
 
             for opset in opsets:
-                operators[operator.op_type]['opsets'][opset.version] = True
+                mapped_domain = map_domain(opset.domain)
+                if mapped_domain not in operators[operator.op_type]:
+                    operators[operator.op_type][mapped_domain] = []
+                if opset.version not in operators[operator.op_type][mapped_domain]:
+                    operators[operator.op_type][mapped_domain].append(opset.version)
 
             for attr in operator.attribute:
 
@@ -37,10 +67,8 @@ def extract_ops_from_model(model_path):
                     for subgraph in attr.graphs:
                         extract_ops_from_graph(subgraph, opsets, operators)
 
-    referred_ops = {}
     for root, _, files in os.walk(model_path):
         for file in files:
-
             if file.endswith('.onnx'):
                 model_path = os.path.join(root, file)
                 model = onnx.load(model_path)
@@ -49,7 +77,7 @@ def extract_ops_from_model(model_path):
     return referred_ops #end of extract_ops_from_model(...)
 
 
-def rewrite_cpu_provider(model_path, file_path):
+def rewrite_cpu_provider(model_path, csv_path, file_path):
     '''rewrite provider file to exclude unused ops'''
 
     onnx_op = 'ONNX_OPERATOR_KERNEL_CLASS_NAME'
@@ -61,7 +89,7 @@ def rewrite_cpu_provider(model_path, file_path):
     onnx_versioned_typed_op = 'ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME'
     onnx_versioned_typed_op_len = len(onnx_versioned_typed_op)
     version_map = {} #{op:{domain:[opset1, opset2, opset3 ...]}
-    operators = extract_ops_from_model(model_path)
+    operators = extract_ops_from_csv(csv_path, extract_ops_from_model(model_path, {}))
 
     def fill_version_map(op_type, opset_from, opset_to, domain):
         '''callback func to register op in version_map'''
@@ -88,25 +116,20 @@ def rewrite_cpu_provider(model_path, file_path):
     def need_comment(op_type, opset_from, opset_to, domain):
         '''callback func to check if the op is in ops'''
 
-        if op_type not in operators:
-            return True
-        if domain not in operators[op_type]['domains']:
-            return True
-        found_opset = False
-        if opset_to == opset_from:
-            offset = version_map[op_type][domain].index(opset_from)
+        if op_type in operators and domain in operators[op_type]:
+            opset_to_index = version_map[op_type][domain].index(opset_to)
 
-            if offset >= len(version_map[op_type][domain]) - 1:
-                opset_to = 100
-            else:
-                opset_to = version_map[op_type][domain][offset + 1]
+            if opset_to_index == len(version_map[op_type][domain]) - 1:
+                opset_to = 9999 #if is the latest, extend to unlimited
 
-        for opset in range(opset_from, opset_to+1):
-            if opset in operators[op_type]['opsets']:
-                found_opset = True
-                break
+            elif opset_from == opset_to:
+                opset_to = version_map[op_type][domain][opset_to_index + 1]
 
-        return not found_opset #end of need_comment(...)
+            for opset in range(opset_from, opset_to + 1):
+                if opset in operators[op_type][domain]:
+                    return False #do not comment
+
+        return True #end of need_comment(...)
 
 
     def process_lines(lines, offset, end_mark, call_back):
@@ -165,9 +188,9 @@ def rewrite_cpu_provider(model_path, file_path):
                 #collection versions of ops
 
                 next_line_offset, _ = process_lines(lines,
-                                                   line_offset,
-                                                   ');',
-                                                   fill_version_map)
+                                                    line_offset,
+                                                    ');',
+                                                    fill_version_map)
 
                 for index in range(line_offset, next_line_offset):
                     file_to_write.write(lines[index]) #leave as it was
@@ -178,9 +201,9 @@ def rewrite_cpu_provider(model_path, file_path):
                 #comment out unused ops
 
                 next_line_offset, disabled = process_lines(lines,
-                                                          line_offset,
-                                                          ')>,',
-                                                          need_comment)
+                                                           line_offset,
+                                                           ')>,',
+                                                           need_comment)
 
                 for index in range(line_offset, next_line_offset):
                     if disabled: #comment out unused
