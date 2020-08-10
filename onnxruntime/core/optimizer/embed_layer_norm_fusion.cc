@@ -512,8 +512,7 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     }
     Node& layer_norm_add_node = *graph.GetNode(edges[0]->GetNode().Index());
 
-    // Check that if it's distil-bert
-    //bool is_distill = false;
+    // Check if it's distil-bert
     int add_count = 0;
     int gather_count = 0;
     for (auto it = layer_norm_add_node.InputNodesBegin(); it != layer_norm_add_node.InputNodesEnd(); ++it) {
@@ -526,34 +525,27 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
 
     if (add_count == 0 && gather_count == 2) {
       //distilbert
-      //bugbug bugbug
-      int64_t hidden_size = 4; //768 hardcode for now
-
       std::vector<graph_utils::EdgeEndToMatch> word_embedding_path{
           {0, 0, "Gather", {1, 11}, kOnnxDomain}};
       if (!graph_utils::FindPath(layer_norm_add_node, true, word_embedding_path, edges, logger)) {
         continue;
       }
-std::cout << "587" << std::endl;
       Node& word_gather_node = *graph.GetNode(edges[0]->GetNode().Index());
       if (!optimizer_utils::CheckOutputEdges(graph, word_gather_node, 1)) {
         continue;
       }
-std::cout << "592" << std::endl;
       // The first input of word_gather_node must be 2d.
       NodeArg* word_embedding = word_gather_node.MutableInputDefs()[0];
       auto wg_shape = word_embedding->Shape();
       if (wg_shape == nullptr || wg_shape->dim_size() != 2 ||
-          !utils::HasDimValue(wg_shape->dim()[1]) ||
-          wg_shape->dim()[1].dim_value() != hidden_size) {
-std::cout << wg_shape->dim()[1].dim_value() << std::endl;
+          !utils::HasDimValue(wg_shape->dim()[1])) {
         DEBUG_LOG("Word embedding shape not expected.");
         continue;
       }
-std::cout << "597" << std::endl;
+
+      int64_t hidden_size = wg_shape->dim()[1].dim_value();
 
       Node& add_node = layer_norm_add_node;
-
 
       NodeArg* input_ids = word_gather_node.MutableInputDefs()[1];
       NodeArg* position_embedding = nullptr;
@@ -562,61 +554,16 @@ std::cout << "597" << std::endl;
       // ORT constant folding might be applied to position embedding subgraph when input has static shape.
       // Here we handle such special case that the input of add node is constant initializer.
       auto add_input_name = add_node.MutableInputDefs()[1]->Name();
-      if (graph_utils::IsConstantInitializer(graph, add_input_name)) {
-        std::cout << "608" << std::endl;
-        // Check that input has static shape.
-        auto input_shape = input_ids->Shape();
-        if (input_shape->dim_size() != 2 ||
-            !utils::HasDimValue(input_shape->dim()[0]) ||
-            !utils::HasDimValue(input_shape->dim()[1])) {
-          DEBUG_LOG("Input is expected to have dim value in all dimensions.");
-          continue;
-        }
-
-        int64_t batch_size = input_shape->dim()[0].dim_value();
-        int64_t sequence_length = input_shape->dim()[1].dim_value();
-        if (batch_size <= 0 || sequence_length <= 0) {
-          continue;
-        }
-
-        const ONNX_NAMESPACE::TensorProto* position_embed_tensor;
-        if (!graph.GetInitializedTensor(add_input_name, position_embed_tensor)) {
-          DEBUG_LOG("Failed to get initializer tensor.");
-          continue;
-        }
-        // Tensor shape shall be [batch_size, sequence_length, hidden_size].
-        if (position_embed_tensor->dims_size() != 3 ||
-            position_embed_tensor->dims(0) != batch_size ||
-            position_embed_tensor->dims(1) != sequence_length ||
-            position_embed_tensor->dims(2) != hidden_size) {
-          DEBUG_LOG("Position embedding shape not matched.");
-          continue;
-        }
-
-        // Tensor data type should be float or float16.
-        const auto data_type = position_embed_tensor->data_type();
-        if (data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
-            data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-          DEBUG_LOG("Position embedding data type shall be float or float16.");
-          continue;
-        }
-
-        // The tensor has same data for all batches, and we extract only one batch data as position embedding.
-        position_embedding = ExtractEmbedding(graph, batch_size, sequence_length, hidden_size, position_embed_tensor, modified);
-      } else {
-        std::cout << "647" << std::endl;
-        if (!MatchPositionEmbeddingSubgraph(graph, add_node, input_ids, logger, nodes_to_remove, position_embedding)) {
-          std::cout << "659" << std::endl;
-          DEBUG_LOG("Failed to match position embedding subgraph.");
-          continue;
-        }
+      if (!MatchPositionEmbeddingSubgraph(graph, add_node, input_ids, logger, nodes_to_remove, position_embedding)) {
+        DEBUG_LOG("Failed to match position embedding subgraph.");
+        continue;
       }
 
       if (position_embedding == nullptr) {
         DEBUG_LOG("Failed to get position embedding weights.");
         continue;
       }
-std::cout << "669" << std::endl;
+
       auto pg_shape = position_embedding->Shape();
       if (pg_shape == nullptr || pg_shape->dim_size() != 2 ||
           !utils::HasDimValue(pg_shape->dim()[1]) ||
@@ -624,21 +571,12 @@ std::cout << "669" << std::endl;
         DEBUG_LOG("Position embedding shape is not expected.");
         continue;
       }
-std::cout << "677" << std::endl;
+
       // Get input "input_ids" from node.
       if (!CheckInput(input_ids, logger)) {
         DEBUG_LOG("Input id is not valid. ");
         continue;
       }
-std::cout << "683" << std::endl;
-      // Get input "segment_ids" from node.
-      //bugbug
-      //NodeArg* segment_ids = nullptr;
-      //NodeArg* segment_ids = segment_gather_node.MutableInputDefs()[1];
-      //if (!CheckInput(segment_ids, logger)) {
-      //  DEBUG_LOG("Segment id is not valid. ");
-      //  continue;
-      //}
 
       // Get input "mask" from "ReduceSum" node.
       NodeArg* mask = reduce_sum_node.MutableInputDefs()[0];
@@ -646,37 +584,29 @@ std::cout << "683" << std::endl;
         DEBUG_LOG("Mask is not valid. ");
         continue;
       }
-std::cout << "699" << std::endl;
-      //if (utils::GetTensorShapeFromTensorShapeProto(*(input_ids->Shape())) !=
-      //    utils::GetTensorShapeFromTensorShapeProto(*(segment_ids->Shape()))) {
-      //  DEBUG_LOG("Input_ids and segment id should have the same shape. ");
-      //  continue;
-      //}
-std::cout << utils::GetTensorShapeFromTensorShapeProto(*(input_ids->Shape())) << std::endl;
-std::cout << utils::GetTensorShapeFromTensorShapeProto(*(mask->Shape())) << std::endl;
+
       if (utils::GetTensorShapeFromTensorShapeProto(*(input_ids->Shape())) !=
           utils::GetTensorShapeFromTensorShapeProto(*(mask->Shape()))) {
         DEBUG_LOG("Input_ids and mask should have the same shape. ");
         continue;
       }
-std::cout << "712" << std::endl;
+
       NodeArg* gamma = layer_norm_node.MutableInputDefs()[1];
       NodeArg* beta = layer_norm_node.MutableInputDefs()[2];
       if (gamma->Shape() == nullptr || gamma->Shape()->dim()[0].dim_value() != hidden_size) {
         DEBUG_LOG("Gamma should be of shape (hidden_size). ");
         continue;
       }
-std::cout << "719" << std::endl;
+
       if (beta->Shape() == nullptr || beta->Shape()->dim()[0].dim_value() != hidden_size) {
         DEBUG_LOG("Beta should be of shape (hidden_size). ");
         continue;
       }
-std::cout << "724" << std::endl;
+
       // Cast input_ids, segment_ids, and mask to int32 if needed.
       input_ids = CastToInt32(graph, input_ids, layer_norm_node.GetExecutionProviderType());
       //segment_ids = CastToInt32(graph, segment_ids, layer_norm_node.GetExecutionProviderType());
       mask = CastToInt32(graph, mask, layer_norm_node.GetExecutionProviderType());
-std::cout << "729" << std::endl;
 
       NodeArg place_holder("", nullptr);
       const std::vector<NodeArg*> embed_layer_norm_input_defs{
@@ -688,14 +618,14 @@ std::cout << "729" << std::endl;
           layer_norm_node.MutableInputDefs()[1],
           layer_norm_node.MutableInputDefs()[2],
           mask};
-std::cout << "739" << std::endl;
+
       Node& embed_layer_norm_node = graph.AddNode(graph.GenerateNodeName("EmbedLayerNormalization"),
                                                   "EmbedLayerNormalization",
                                                   "fused EmbedLayerNorm subgraphs ",
                                                   embed_layer_norm_input_defs,
                                                   {layer_norm_node.MutableOutputDefs()[0], reduce_sum_node.MutableOutputDefs()[0]},
                                                   {}, kMSDomain);
-std::cout << "746" << std::endl;
+
       // Get attribute "epsilon" from "LayerNormalization" node if available. Else, default value
       // will be used.
       NodeAttributes ln_attrs = layer_norm_node.GetAttributes();
@@ -705,18 +635,15 @@ std::cout << "746" << std::endl;
       } else {
         embed_layer_norm_node.AddAttribute("epsilon", contrib::kDefaultEmbedLayerNormEpsilon);
       }
-std::cout << "756" << std::endl;
+
       // Assign provider to this new node. Provider should be same as the provider for old node.
       embed_layer_norm_node.SetExecutionProviderType(layer_norm_node.GetExecutionProviderType());
 
       nodes_to_remove.push_back(word_gather_node.Index());
-      //bugbug
-      //nodes_to_remove.push_back(segment_gather_node.Index());
       nodes_to_remove.push_back(add_node.Index());
       nodes_to_remove.push_back(reduce_sum_node.Index());
-      //nodes_to_remove.push_back(layer_norm_add_node.Index());
       nodes_to_remove.push_back(layer_norm_node.Index());
-std::cout << "767" << std::endl;
+
       for (const auto& index : nodes_to_remove) {
         Node* node = graph.GetNode(index);
         graph_utils::RemoveNodeOutputEdges(graph, *node);
@@ -929,308 +856,4 @@ std::cout << "767" << std::endl;
   }
   return Status::OK();
 }
-
-/* //bugbug
-Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
-  GraphViewer graph_viewer(graph);
-  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-  for (auto node_index : node_topology_list) {
-    auto* p_layer_norm = graph.GetNode(node_index);
-    if (p_layer_norm == nullptr)
-      continue;  // we removed the node as part of an earlier fusion
-
-    Node& layer_norm_node = *p_layer_norm;
-    ORT_RETURN_IF_ERROR(Recurse(layer_norm_node, modified, graph_level, logger));
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(layer_norm_node, "LayerNormalization", {1}, kOnnxDomain) ||
-        !graph_utils::IsSupportedProvider(layer_norm_node, GetCompatibleExecutionProviders())) {
-      continue;
-    }
-    // Find Attention after LayerNormalization
-    const Node* p_attention = graph_utils::FirstChildByType(layer_norm_node, "Attention");
-    if (p_attention == nullptr) {
-      // Support model with multiple EmbedLayerNormalization.
-      continue;
-    }
-    Node& attention_node = *graph.GetNode(p_attention->Index());
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(attention_node, "Attention", {1}, kMSDomain) ||
-        !graph_utils::IsSupportedProvider(attention_node, GetCompatibleExecutionProviders())) {
-      continue;
-    }
-    // Find ReduceSum --> Attention
-    std::vector<const Node::EdgeEnd*> edges;
-    if (!graph_utils::FindPath(attention_node, true, {{0, 3, "ReduceSum", {1, 11}, kOnnxDomain}}, edges, logger)) {
-      continue;
-    }
-    Node& reduce_sum_node = *graph.GetNode(edges[0]->GetNode().Index());
-
-    // Find Add --> LayerNormalization
-    if (!graph_utils::FindPath(layer_norm_node, true, {{0, 0, "Add", {7}, kOnnxDomain}}, edges, logger)) {
-      continue;
-    }
-    Node& layer_norm_add_node = *graph.GetNode(edges[0]->GetNode().Index());
-
-    // Check that if it's distil-bert
-    //bool is_distill = false;
-    int add_count = 0;
-    int gather_count = 0;
-    for (auto it = layer_norm_add_node.InputNodesBegin(); it != layer_norm_add_node.InputNodesEnd(); ++it) {
-      if ((*it).OpType().compare("Add") == 0) {
-        add_count++;
-      } else if ((*it).OpType().compare("Gather") == 0) {
-        gather_count++;
-      }
-    }
-
-    if (add_count == 0 && gather_count == 2) {}
-      //is_distill = true;
-
-    //bugbug
-    int64_t hidden_size = 768;
-    //NodeArg* segment_embedding = nullptr;
-    //if (!is_distill) {
-    //  // Trace back to find the Gather for segment embedding.
-    //  std::vector<graph_utils::EdgeEndToMatch> segment_embedding_path{
-    //      {0, 1, "Gather", {1, 11}, kOnnxDomain}};
-    //  if (!graph_utils::FindPath(layer_norm_add_node, true, segment_embedding_path, edges, logger)) {
-    //    continue;
-    //  }
-    //  Node& segment_gather_node = *graph.GetNode(edges[0]->GetNode().Index());
-    //  if (!optimizer_utils::CheckOutputEdges(graph, segment_gather_node, 1)) {
-    //    continue;
-    //  }
-    //  // The first input of segment_gather_node must be 2d.
-    //  NodeArg* segment_embedding = segment_gather_node.MutableInputDefs()[0];
-    //  auto sg_shape = segment_embedding->Shape();
-    //  if (sg_shape == nullptr || sg_shape->dim_size() != 2 ||
-    //      !utils::HasDimValue(sg_shape->dim()[1]) ||
-    //      sg_shape->dim()[1].dim_value() <= 0) {
-    //    continue;
-    //  }
-    //  hidden_size = sg_shape->dim()[1].dim_value();
-    //}
-
-    //bugbug
-    //if (!is_distill) {
-    //  // Trace back to find Gather --> Add --> Add --> LayerNormalization
-    //  std::vector<graph_utils::EdgeEndToMatch> word_embedding_path{
-    //      {0, 0, "Add", {7}, kOnnxDomain},
-    //      {0, 0, "Gather", {1, 11}, kOnnxDomain}};
-    //  if (!graph_utils::FindPath(layer_norm_add_node, true, word_embedding_path, edges, logger)) {
-    //    continue;
-    //  }
-    //  Node& add_node = *graph.GetNode(edges[0]->GetNode().Index());
-    //  Node& word_gather_node = *graph.GetNode(edges[1]->GetNode().Index());
-    //  if (!optimizer_utils::CheckOutputEdges(graph, add_node, 1) ||
-    //      !optimizer_utils::CheckOutputEdges(graph, word_gather_node, 1)) {
-    //    continue;
-    //  }
-    //  // The first input of word_gather_node must be 2d.
-    //  NodeArg* word_embedding = word_gather_node.MutableInputDefs()[0];
-    //  auto wg_shape = word_embedding->Shape();
-    //  if (wg_shape == nullptr || wg_shape->dim_size() != 2 ||
-    //      !utils::HasDimValue(wg_shape->dim()[1]) ||
-    //      wg_shape->dim()[1].dim_value() != hidden_size) {
-    //    DEBUG_LOG("Word embedding shape not expected.");
-    //    continue;
-    //  }
-    //}
-
-      std::vector<graph_utils::EdgeEndToMatch> word_embedding_path{
-          {0, 0, "Gather", {1, 11}, kOnnxDomain}};
-      if (!graph_utils::FindPath(layer_norm_add_node, true, word_embedding_path, edges, logger)) {
-        continue;
-      }
-std::cout << "587" << std::endl;
-      Node& word_gather_node = *graph.GetNode(edges[0]->GetNode().Index());
-      if (!optimizer_utils::CheckOutputEdges(graph, word_gather_node, 1)) {
-        continue;
-      }
-std::cout << "592" << std::endl;
-      // The first input of word_gather_node must be 2d.
-      NodeArg* word_embedding = word_gather_node.MutableInputDefs()[0];
-      auto wg_shape = word_embedding->Shape();
-      if (wg_shape == nullptr || wg_shape->dim_size() != 2 ||
-          !utils::HasDimValue(wg_shape->dim()[1]) ||
-          wg_shape->dim()[1].dim_value() != hidden_size) {
-std::cout << wg_shape->dim()[1].dim_value() << std::endl;
-        DEBUG_LOG("Word embedding shape not expected.");
-        continue;
-      }
-std::cout << "597" << std::endl;
-
-      Node& add_node = layer_norm_add_node;
-
-
-    NodeArg* input_ids = word_gather_node.MutableInputDefs()[1];
-    NodeArg* position_embedding = nullptr;
-    std::vector<NodeIndex> nodes_to_remove;
-
-    // ORT constant folding might be applied to position embedding subgraph when input has static shape.
-    // Here we handle such special case that the input of add node is constant initializer.
-    auto add_input_name = add_node.MutableInputDefs()[1]->Name();
-    if (graph_utils::IsConstantInitializer(graph, add_input_name)) {
-      std::cout << "608" << std::endl;
-      // Check that input has static shape.
-      auto input_shape = input_ids->Shape();
-      if (input_shape->dim_size() != 2 ||
-          !utils::HasDimValue(input_shape->dim()[0]) ||
-          !utils::HasDimValue(input_shape->dim()[1])) {
-        DEBUG_LOG("Input is expected to have dim value in all dimensions.");
-        continue;
-      }
-
-      int64_t batch_size = input_shape->dim()[0].dim_value();
-      int64_t sequence_length = input_shape->dim()[1].dim_value();
-      if (batch_size <= 0 || sequence_length <= 0) {
-        continue;
-      }
-
-      const ONNX_NAMESPACE::TensorProto* position_embed_tensor;
-      if (!graph.GetInitializedTensor(add_input_name, position_embed_tensor)) {
-        DEBUG_LOG("Failed to get initializer tensor.");
-        continue;
-      }
-      // Tensor shape shall be [batch_size, sequence_length, hidden_size].
-      if (position_embed_tensor->dims_size() != 3 ||
-          position_embed_tensor->dims(0) != batch_size ||
-          position_embed_tensor->dims(1) != sequence_length ||
-          position_embed_tensor->dims(2) != hidden_size) {
-        DEBUG_LOG("Position embedding shape not matched.");
-        continue;
-      }
-
-      // Tensor data type should be float or float16.
-      const auto data_type = position_embed_tensor->data_type();
-      if (data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
-          data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-        DEBUG_LOG("Position embedding data type shall be float or float16.");
-        continue;
-      }
-
-      // The tensor has same data for all batches, and we extract only one batch data as position embedding.
-      position_embedding = ExtractEmbedding(graph, batch_size, sequence_length, hidden_size, position_embed_tensor, modified);
-    } else {
-      std::cout << "647" << std::endl;
-      if (!MatchPositionEmbeddingSubgraph(graph, add_node, input_ids, logger, nodes_to_remove, position_embedding)) {
-        std::cout << "659" << std::endl;
-        DEBUG_LOG("Failed to match position embedding subgraph.");
-        continue;
-      }
-    }
-
-    if (position_embedding == nullptr) {
-      DEBUG_LOG("Failed to get position embedding weights.");
-      continue;
-    }
-std::cout << "669" << std::endl;
-    auto pg_shape = position_embedding->Shape();
-    if (pg_shape == nullptr || pg_shape->dim_size() != 2 ||
-        !utils::HasDimValue(pg_shape->dim()[1]) ||
-        pg_shape->dim()[1].dim_value() != hidden_size) {
-      DEBUG_LOG("Position embedding shape is not expected.");
-      continue;
-    }
-std::cout << "677" << std::endl;
-    // Get input "input_ids" from node.
-    if (!CheckInput(input_ids, logger)) {
-      DEBUG_LOG("Input id is not valid. ");
-      continue;
-    }
-std::cout << "683" << std::endl;
-    // Get input "segment_ids" from node.
-    //bugbug
-    //NodeArg* segment_ids = nullptr;
-    //NodeArg* segment_ids = segment_gather_node.MutableInputDefs()[1];
-    //if (!CheckInput(segment_ids, logger)) {
-    //  DEBUG_LOG("Segment id is not valid. ");
-    //  continue;
-    //}
-
-    // Get input "mask" from "ReduceSum" node.
-    NodeArg* mask = reduce_sum_node.MutableInputDefs()[0];
-    if (!CheckInput(mask, logger)) {
-      DEBUG_LOG("Mask is not valid. ");
-      continue;
-    }
-std::cout << "699" << std::endl;
-    //if (utils::GetTensorShapeFromTensorShapeProto(*(input_ids->Shape())) !=
-    //    utils::GetTensorShapeFromTensorShapeProto(*(segment_ids->Shape()))) {
-    //  DEBUG_LOG("Input_ids and segment id should have the same shape. ");
-    //  continue;
-    //}
-//std::cout << (input_ids->Shape() == nullptr) << std::endl;
-//std::cout << (mask->Shape() == nullptr) << std::endl;
-    if (utils::GetTensorShapeFromTensorShapeProto(*(input_ids->Shape())) !=
-        utils::GetTensorShapeFromTensorShapeProto(*(mask->Shape()))) {
-      DEBUG_LOG("Input_ids and mask should have the same shape. ");
-      continue;
-    }
-std::cout << "712" << std::endl;
-    NodeArg* gamma = layer_norm_node.MutableInputDefs()[1];
-    NodeArg* beta = layer_norm_node.MutableInputDefs()[2];
-    if (gamma->Shape() == nullptr || gamma->Shape()->dim()[0].dim_value() != hidden_size) {
-      DEBUG_LOG("Gamma should be of shape (hidden_size). ");
-      continue;
-    }
-std::cout << "719" << std::endl;
-    if (beta->Shape() == nullptr || beta->Shape()->dim()[0].dim_value() != hidden_size) {
-      DEBUG_LOG("Beta should be of shape (hidden_size). ");
-      continue;
-    }
-std::cout << "724" << std::endl;
-    // Cast input_ids, segment_ids, and mask to int32 if needed.
-    input_ids = CastToInt32(graph, input_ids, layer_norm_node.GetExecutionProviderType());
-    //segment_ids = CastToInt32(graph, segment_ids, layer_norm_node.GetExecutionProviderType());
-    mask = CastToInt32(graph, mask, layer_norm_node.GetExecutionProviderType());
-std::cout << "729" << std::endl;
-
-    NodeArg place_holder("", nullptr);
-    const std::vector<NodeArg*> embed_layer_norm_input_defs{
-        input_ids,
-        &place_holder,
-        word_embedding,
-        position_embedding,
-        &place_holder,
-        layer_norm_node.MutableInputDefs()[1],
-        layer_norm_node.MutableInputDefs()[2],
-        mask};
-std::cout << "739" << std::endl;
-    Node& embed_layer_norm_node = graph.AddNode(graph.GenerateNodeName("EmbedLayerNormalization"),
-                                                "EmbedLayerNormalization",
-                                                "fused EmbedLayerNorm subgraphs ",
-                                                embed_layer_norm_input_defs,
-                                                {layer_norm_node.MutableOutputDefs()[0], reduce_sum_node.MutableOutputDefs()[0]},
-                                                {}, kMSDomain);
-std::cout << "746" << std::endl;
-    // Get attribute "epsilon" from "LayerNormalization" node if available. Else, default value
-    // will be used.
-    NodeAttributes ln_attrs = layer_norm_node.GetAttributes();
-    NodeAttributes::const_iterator epsilon = ln_attrs.find("epsilon");
-    if (epsilon != ln_attrs.end()) {
-      embed_layer_norm_node.AddAttribute("epsilon", epsilon->second);
-    } else {
-      embed_layer_norm_node.AddAttribute("epsilon", contrib::kDefaultEmbedLayerNormEpsilon);
-    }
-std::cout << "756" << std::endl;
-    // Assign provider to this new node. Provider should be same as the provider for old node.
-    embed_layer_norm_node.SetExecutionProviderType(layer_norm_node.GetExecutionProviderType());
-
-    nodes_to_remove.push_back(word_gather_node.Index());
-    //bugbug
-    //nodes_to_remove.push_back(segment_gather_node.Index());
-    nodes_to_remove.push_back(add_node.Index());
-    nodes_to_remove.push_back(reduce_sum_node.Index());
-    //nodes_to_remove.push_back(layer_norm_add_node.Index());
-    nodes_to_remove.push_back(layer_norm_node.Index());
-std::cout << "767" << std::endl;
-    for (const auto& index : nodes_to_remove) {
-      Node* node = graph.GetNode(index);
-      graph_utils::RemoveNodeOutputEdges(graph, *node);
-      graph.RemoveNode(node->Index());
-    }
-    modified = true;
-  }
-std::cout << "775" << std::endl;
-  return Status::OK();
-} */
 }  // namespace onnxruntime

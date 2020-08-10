@@ -445,7 +445,7 @@ struct AttentionMaskNodes {
 };
 
 //bugbug
-struct AttentionMaskNodes2 {
+struct AttentionMaskNodesDistilBert {
   const Node* softmax;
   const Node* Where;
   const Node* cast;
@@ -474,14 +474,12 @@ void SetMaskNodesToRemove(const Graph& graph, AttentionMaskNodes& mask_nodes, st
   }
 }
 
-void SetMaskNodesToRemove(const Graph&, AttentionMaskNodes2& mask_nodes2, std::vector<NodeIndex>& nodes_to_remove) {
-  nodes_to_remove.push_back(mask_nodes2.softmax->Index());
-  nodes_to_remove.push_back(mask_nodes2.Where->Index());
-  //bugbug
-  //nodes_to_remove.push_back(mask_nodes2.cast->Index());
-  nodes_to_remove.push_back(mask_nodes2.Expand->Index());
-  nodes_to_remove.push_back(mask_nodes2.Reshape->Index());
-  nodes_to_remove.push_back(mask_nodes2.Equal->Index());
+void SetMaskNodesToRemove(const Graph&, AttentionMaskNodesDistilBert& mask_nodes, std::vector<NodeIndex>& nodes_to_remove) {
+  nodes_to_remove.push_back(mask_nodes.softmax->Index());
+  nodes_to_remove.push_back(mask_nodes.Where->Index());
+  nodes_to_remove.push_back(mask_nodes.Expand->Index());
+  nodes_to_remove.push_back(mask_nodes.Reshape->Index());
+  nodes_to_remove.push_back(mask_nodes.Equal->Index());
 }
 
 /**  Match Input Mask subgraph:
@@ -614,14 +612,13 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, Attentio
 }
 
 // bugbug
-bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, AttentionMaskNodes2& result, const logging::Logger& logger) {
-  DEBUG_LOG("Start MatchInputMaskSubgraph2");
+bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, AttentionMaskNodesDistilBert& result, const logging::Logger& logger) {
+  DEBUG_LOG("Start MatchInputMaskSubgraphDistilBert");
 
   // bugbug 0, 0 not check
   std::vector<graph_utils::EdgeEndToMatch> mask_path{
       {0, 0, "Softmax", {1, 11, 13}, kOnnxDomain},
       {0, 0, "Where", {9}, kOnnxDomain},
-      //{0, 0, "Cast", {9}, kOnnxDomain}, //if skiplayernorm, there is cast
       {0, 0, "Expand", {8}, kOnnxDomain},
       {0, 0, "Reshape", {5}, kOnnxDomain},
       {0, 0, "Equal", {1, 11}, kOnnxDomain}};
@@ -635,38 +632,31 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, Attentio
 
   const Node& softmax = edges[0]->GetNode();
   const Node& where = edges[1]->GetNode();
-  //const Node& cast = edges[2]->GetNode();
   const Node& expend = edges[2]->GetNode();
   const Node& reshape = edges[3]->GetNode();
   const Node& equal = edges[4]->GetNode();
 
   if (!optimizer_utils::CheckOutputEdges(graph, softmax, 1) ||
       !optimizer_utils::CheckOutputEdges(graph, where, 1) ||
-      //!optimizer_utils::CheckOutputEdges(graph, cast, 1) ||
       !optimizer_utils::CheckOutputEdges(graph, expend, 1) ||
       !optimizer_utils::CheckOutputEdges(graph, reshape, 1) ||
       !optimizer_utils::CheckOutputEdges(graph, equal, 1)) {
-    std::cout << "639" << std::endl;
     DEBUG_LOG("Output edge count not expected for mask nodes");
     return false;
   }
 
   if (!optimizer_utils::IsAttributeWithExpectedValue(softmax, "axis", 3)) {
-    std::cout << "645" << std::endl;
     DEBUG_LOG("Softmax attribute axis is expected to be 3");
     return false;
   }
 
-  // bugbug: more check
-
   result.softmax = &softmax;
   result.Where = &where;
-  //result.cast = &cast;
   result.Expand = &expend;
   result.Reshape = &reshape;
   result.Equal = &equal;
 
-  DEBUG_LOG("Pass MatchInputMaskSubgraph2");
+  DEBUG_LOG("Pass MatchInputMaskSubgraphDistilBert");
   return true;
 }
 

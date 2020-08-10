@@ -252,23 +252,9 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     Node& node = *p_node;
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
-    // bugbug
-    //if (node.OpType() == "LayerNormalization") {
-    //  std::cout << node.OpType() << std::endl;
-    //  std::cout << node.Domain() << std::endl;
-    //  std::cout << node.GetOutputEdgesCount() << std::endl;
-    //    std::cout << (node.OpType() == "LayerNormalization") << std::endl;
-    //    std::cout << (!node.Op()->Deprecated()) << std::endl;
-    //    std::cout << (graph_utils::MatchesOpSinceVersion(node, {1})) << std::endl;
-    //    std::cout << (graph_utils::MatchesOpSetDomain(node, "com.microsoft")) << std::endl;
-    //}
-
     if ((node.GetOutputEdgesCount() == 6 || node.GetOutputEdgesCount() == 4) &&
         graph_utils::IsSupportedOptypeVersionAndDomain(node, "LayerNormalization", {1}, kOnnxDomain) &&
         graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders())) {
-    //if (node.GetOutputEdgesCount() == 6 &&
-    //    graph_utils::IsSupportedOptypeVersionAndDomain(node, "SkipLayerNormalization", {1}, "com.microsoft") &&  //temp using com.microsoft, in general it's ""
-    //    graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders())) {
       // Get hidden size from layer norm bias tensor shape.
       const NodeArg& layer_norm_bias = *(node.InputDefs()[2]);
       if (!optimizer_utils::IsShapeKnownOnAllDims(layer_norm_bias, 1)) {
@@ -295,8 +281,8 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
           reshape_count++;
         }
       }
-      if (shape_count == 2 && matmul_count == 3) {//DistilBert
-        if (AttentionFusion::FuseSubGraph2(node, *add_node, graph, hidden_size, mask_index_map, logger)) {
+      if (shape_count == 2 && matmul_count == 3) { //DistilBERT
+        if (AttentionFusion::FuseSubGraphDistilBert(node, *add_node, graph, hidden_size, mask_index_map, logger)) {
           fused_count++;
           modified = true;
         }
@@ -590,8 +576,7 @@ bool AttentionFusion::FuseSubGraph(Node& layer_norm, const Node& add_after_layer
   return true;
 }
 
-//bugbug
-bool AttentionFusion::FuseSubGraph2(Node& layer_norm, const Node& add_after_layer_norm, Graph& graph, int64_t hidden_size, std::map<std::string, NodeArg*>& mask_index_map, const logging::Logger& logger) {
+bool AttentionFusion::FuseSubGraphDistilBert(Node& layer_norm, const Node& add_after_layer_norm, Graph& graph, int64_t hidden_size, std::map<std::string, NodeArg*>& mask_index_map, const logging::Logger& logger) {
   std::vector<graph_utils::EdgeEndToMatch> parent_path{
       {0, 0, "Add", {7}, kOnnxDomain},
       {0, 0, "MatMul", {1, 9}, kOnnxDomain},
@@ -630,13 +615,22 @@ bool AttentionFusion::FuseSubGraph2(Node& layer_norm, const Node& add_after_laye
     return false;
   }
 
-  //bugbug
-  int64_t num_heads = 12;  // will be updated in CheckNodesInPathV
+  //std::vector<int64_t> v_reshape_shape;
+  //const NodeArg& x = (*(v_reshape.InputDefs()[1]));
+  //const ONNX_NAMESPACE::TensorShapeProto* tensor_shape_proto = y.Shape();
+  //std::cout << (tensor_shape_proto == nullptr) << std::endl;
+  //int64_t num_heads = v_reshape_shape[2];
+  //int64_t head_size = v_reshape_shape[3];
+
+  //bugbug: hardcode for now
+  int64_t num_heads = 12;
+
+  //bugbug: todo
+  //int64_t num_heads = 0;  // will be updated in CheckNodesInPathV
   //int64_t head_size = 0;  // will be updated in CheckNodesInPathV
   //if (!AttentionFusionHelper::CheckNodesInPathV(graph, reshape, transpose, qkv_matmul, v_transpose, v_reshape, num_heads, head_size, hidden_size, logger)) {
   //  DEBUG_LOG("CheckNodesInPathV return false");
-  //  std::cout << "423" << std::endl;
-  //  //return false;
+  //  return false;
   //}
 
   // Validate the input shape of MatMul and Add according to hidden_size.
@@ -649,23 +643,13 @@ bool AttentionFusion::FuseSubGraph2(Node& layer_norm, const Node& add_after_laye
   }
 
   //bugbug distilbert
-  AttentionFusionHelper::AttentionMaskNodes2 mask_nodes2 = AttentionFusionHelper::AttentionMaskNodes2(); //avoid potentially uninitialised local variable
-  if (!AttentionFusionHelper::MatchInputMaskSubgraph(graph, qkv_matmul, mask_nodes2, logger)) {
-    DEBUG_LOG("Failed in match input mask subgraph2");
-    std::cout << "448" << std::endl;
+  AttentionFusionHelper::AttentionMaskNodesDistilBert mask_nodes = AttentionFusionHelper::AttentionMaskNodesDistilBert(); //avoid potentially uninitialised local variable
+  if (!AttentionFusionHelper::MatchInputMaskSubgraph(graph, qkv_matmul, mask_nodes, logger)) {
+    DEBUG_LOG("Failed in match input mask subgraphdistilbert");
     return false;
   }
 
-  const ONNX_NAMESPACE::TensorProto* q_weight_tensor = nullptr;
-  const ONNX_NAMESPACE::TensorProto* k_weight_tensor = nullptr;
-  const ONNX_NAMESPACE::TensorProto* v_weight_tensor = nullptr;
-
-  const ONNX_NAMESPACE::TensorProto* q_bias_tensor = nullptr;
-  const ONNX_NAMESPACE::TensorProto* k_bias_tensor = nullptr;
-  const ONNX_NAMESPACE::TensorProto* v_bias_tensor = nullptr;
-
   // path to q
-  // bugbug: 0, 0 not sure
   std::vector<graph_utils::EdgeEndToMatch> q_path{
       {0, 2, "MatMul", {1, 9}, kOnnxDomain},
       {0, 0, "Div", {7}, kOnnxDomain},
@@ -675,9 +659,8 @@ bool AttentionFusion::FuseSubGraph2(Node& layer_norm, const Node& add_after_laye
       {0, 0, "MatMul", {1, 9}, kOnnxDomain},
       {0, 0, "LayerNormalization", {1}, kOnnxDomain}};
 
-  if (!graph_utils::FindPath(*(mask_nodes2.Where), true, q_path, edges, logger)) {
+  if (!graph_utils::FindPath(*(mask_nodes.Where), true, q_path, edges, logger)) {
     DEBUG_LOG("Failed to find path for q");
-    std::cout << "578" << std::endl;
     return false;
   }
 
@@ -690,7 +673,6 @@ bool AttentionFusion::FuseSubGraph2(Node& layer_norm, const Node& add_after_laye
   const Node& q_root = edges[6]->GetNode();
   if (q_root.Index() != layer_norm.Index()) {
     DEBUG_LOG("q root should be layer normalization");
-    std::cout << "591" << std::endl;
     return false;
   }
 
@@ -703,7 +685,6 @@ bool AttentionFusion::FuseSubGraph2(Node& layer_norm, const Node& add_after_laye
   if (!(ValidateAddBiasInitializer(graph, q_add, hidden_size) &&
         ValidateMatMulInitializer(graph, q_matmul, hidden_size))) {
     DEBUG_LOG("q_matmul and q_add shape not matched");
-    std::cout << "604" << std::endl;
     return false;
   }
 
@@ -716,9 +697,8 @@ bool AttentionFusion::FuseSubGraph2(Node& layer_norm, const Node& add_after_laye
       {0, 0, "MatMul", {1, 9}, kOnnxDomain},
       {0, 0, "LayerNormalization", {1}, kOnnxDomain}};
 
-  if (!graph_utils::FindPath(*(mask_nodes2.Where), true, k_path, edges, logger)) {
+  if (!graph_utils::FindPath(*(mask_nodes.Where), true, k_path, edges, logger)) {
     DEBUG_LOG("Failed to find path for k");
-    std::cout << "619" << std::endl;
     return false;
   }
 
@@ -746,11 +726,17 @@ bool AttentionFusion::FuseSubGraph2(Node& layer_norm, const Node& add_after_laye
   }
 
   // Load q, k and v weights
+  const ONNX_NAMESPACE::TensorProto* q_weight_tensor = nullptr;
+  const ONNX_NAMESPACE::TensorProto* k_weight_tensor = nullptr;
+  const ONNX_NAMESPACE::TensorProto* v_weight_tensor = nullptr;
   if (!LoadQkvWeights(graph, q_matmul, k_matmul, v_matmul, q_weight_tensor, k_weight_tensor, v_weight_tensor)) {
     DEBUG_LOG("Failed to load Q, K and V weights, or data type is not float or float16.");
     return false;
   }
 
+  const ONNX_NAMESPACE::TensorProto* q_bias_tensor = nullptr;
+  const ONNX_NAMESPACE::TensorProto* k_bias_tensor = nullptr;
+  const ONNX_NAMESPACE::TensorProto* v_bias_tensor = nullptr;
   if (!LoadQkvWeights(graph, q_add, k_add, v_add, q_bias_tensor, k_bias_tensor, v_bias_tensor)) {
     DEBUG_LOG("Failed to load Q, K and V bias tensors, or data type is not float or float16.");
     return false;
@@ -758,7 +744,7 @@ bool AttentionFusion::FuseSubGraph2(Node& layer_norm, const Node& add_after_laye
 
   // Now everything is ready, we will start fusing subgraph.
   NodeArg* mask_input = nullptr;
-  mask_input = graph.GetNode(mask_nodes2.Equal->Index())->MutableInputDefs()[0];
+  mask_input = graph.GetNode(mask_nodes.Equal->Index())->MutableInputDefs()[0];
 
   NodeArg* mask_index = GetOrCreateMaskIndex(graph, mask_input, mask_index_map, layer_norm.GetExecutionProviderType(), logger);
   if (nullptr == mask_index) {
@@ -807,7 +793,7 @@ bool AttentionFusion::FuseSubGraph2(Node& layer_norm, const Node& add_after_laye
     k_matmul.Index()
   };
 
-  //consider a lambda
+  //remove redundent nodes
   std::unordered_set<NodeIndex> unique_concat_node;
   for (auto it = layer_norm.OutputNodesBegin(); it != layer_norm.OutputNodesEnd(); ++it) {
     if ((*it).OpType().compare("Shape") == 0) {
@@ -841,17 +827,13 @@ bool AttentionFusion::FuseSubGraph2(Node& layer_norm, const Node& add_after_laye
     }
   }
 
-  //bugbug
-  AttentionFusionHelper::SetMaskNodesToRemove(graph, mask_nodes2, nodes_to_remove);
+  AttentionFusionHelper::SetMaskNodesToRemove(graph, mask_nodes, nodes_to_remove);
 
   for (const auto& node_index : nodes_to_remove) {
     Node* node = graph.GetNode(node_index);
-    std::cout << node->OpType() << "--" << node_index << std::endl;
     graph_utils::RemoveNodeOutputEdges(graph, *node);
     graph.RemoveNode(node->Index());
   }
-
-  std::cout << "--------------------------------------------" << std::endl;
 
   DEBUG_LOG("Fused an attention node.");
 
