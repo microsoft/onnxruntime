@@ -1,6 +1,7 @@
 '''comment out unused ops in cpu_execution_provider.cc by a set of models'''
 
 import os
+import shutil
 import onnx
 from onnx import AttributeProto as AP
 
@@ -123,6 +124,7 @@ def rewrite_cpu_provider(model_path, file_path):
             offset += 1
         code_line = ''.join([line.strip() for line in lines_to_process])
 
+        call_back_ret = False
         if onnx_op in code_line:
             trim_at = code_line.index(onnx_op) + onnx_op_len
             args = [arg.strip() for arg in code_line[trim_at: -len(end_mark)].split(',')]
@@ -150,7 +152,7 @@ def rewrite_cpu_provider(model_path, file_path):
     with open(file_path, 'r') as file_to_read:
         lines = file_to_read.readlines()
 
-    os.rename(file_path, file_path + '.bak')
+    shutil.move(file_path, file_path + '.bak')
     with open(file_path, 'w') as file_to_write:
         line_index = 0
 
@@ -172,7 +174,7 @@ def rewrite_cpu_provider(model_path, file_path):
 
                 line_index = next_line_index
 
-            elif stripped.startswith('BuildKernelCreateInfo'):
+            elif stripped.startswith('BuildKernelCreateInfo<ONNX'):
                 #comment out unused ops
 
                 next_line_index, disabled = process_lines(lines,
