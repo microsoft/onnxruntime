@@ -126,6 +126,8 @@ DML_OP_EXTERN_CREATION_FUNCTION(Clip11);
 DML_OP_EXTERN_CREATION_FUNCTION(Clip12);
 DML_OP_EXTERN_CREATION_FUNCTION(Greater);
 DML_OP_EXTERN_CREATION_FUNCTION(Less);
+DML_OP_EXTERN_CREATION_FUNCTION(GreaterOrEqual);
+DML_OP_EXTERN_CREATION_FUNCTION(LessOrEqual);
 DML_OP_EXTERN_CREATION_FUNCTION(Equal);
 DML_OP_EXTERN_CREATION_FUNCTION(Not);
 DML_OP_EXTERN_CREATION_FUNCTION(And);
@@ -167,6 +169,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(LeakyRelu);
 DML_OP_EXTERN_CREATION_FUNCTION(PRelu);
 DML_OP_EXTERN_CREATION_FUNCTION(ThresholdedRelu);
 DML_OP_EXTERN_CREATION_FUNCTION(Elu);
+DML_OP_EXTERN_CREATION_FUNCTION(Celu);
 DML_OP_EXTERN_CREATION_FUNCTION(Selu);
 DML_OP_EXTERN_CREATION_FUNCTION(Softmax);
 DML_OP_EXTERN_CREATION_FUNCTION(LogSoftmax);
@@ -482,6 +485,8 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(      9,  Greater,                            typeNameListLogicalComparison,  supportedTypeListLogicalComparison9,DmlGraphSupport::Supported)},
     {REG_INFO(      7,  Less,                               typeNameListLogicalComparison,  supportedTypeListLogicalComparison7,DmlGraphSupport::Supported)},
     {REG_INFO(      9,  Less,                               typeNameListLogicalComparison,  supportedTypeListLogicalComparison9,DmlGraphSupport::Supported)},
+    {REG_INFO(      12, GreaterOrEqual,                     typeNameListLogicalComparison,  supportedTypeListLogicalComparison9,DmlGraphSupport::Supported)},
+    {REG_INFO(      12, LessOrEqual,                        typeNameListLogicalComparison,  supportedTypeListLogicalComparison9,DmlGraphSupport::Supported)},
     {REG_INFO(      7,  Equal,                              typeNameListLogicalComparison,  supportedTypeListLogicalComparison7,DmlGraphSupport::Supported)},
     {REG_INFO(     11,  Equal,                              typeNameListLogicalComparison,  supportedTypeListLogicalComparison9,DmlGraphSupport::Supported)},
     {REG_INFO(      7,  Not,                                typeNameListDefault,            supportedTypeListBool,              DmlGraphSupport::Supported)},
@@ -510,6 +515,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(      7,  ThresholdedRelu,                    typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
     {REG_INFO(     10,  ThresholdedRelu,                    typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
     {REG_INFO(      7,  Elu,                                typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
+    {REG_INFO(      12, Celu,                               typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
     {REG_INFO(      7,  Selu,                               typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
     {REG_INFO(      7,  Softmax,                            typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
     {REG_INFO(     11,  Softmax,                            typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},

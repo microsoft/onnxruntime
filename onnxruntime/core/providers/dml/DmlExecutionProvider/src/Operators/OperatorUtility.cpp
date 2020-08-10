@@ -14,6 +14,7 @@ namespace Dml
             switch (function)
             {
             case DML_OPERATOR_ACTIVATION_ELU:
+            case DML_OPERATOR_ACTIVATION_CELU:
                 return 1.0f;
 
             case DML_OPERATOR_ACTIVATION_LEAKY_RELU:
