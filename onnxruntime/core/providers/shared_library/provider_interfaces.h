@@ -517,6 +517,7 @@ struct ProviderHost {
   virtual const std::vector<const Provider_NodeArg*>& Provider_GraphViewer__GetValueInfo(const Provider_GraphViewer* p) noexcept = 0;
 
   virtual const Provider_InitializedTensorSet& Provider_GraphViewer__GetAllInitializedTensors(const Provider_GraphViewer* p) = 0;
+  virtual bool Provider_GraphViewer__GetInitializedTensor(const Provider_GraphViewer* p, const std::string& tensor_name, const Provider_TensorProto*& value) = 0;
   virtual const std::unordered_map<std::string, int>& Provider_GraphViewer__DomainToVersionMap(const Provider_GraphViewer* p) = 0;
 
   virtual const std::vector<NodeIndex>& Provider_GraphViewer__GetNodesInTopologicalOrder(const Provider_GraphViewer* p) = 0;
@@ -948,6 +949,7 @@ struct Provider_GraphViewer {
   const std::vector<const Provider_NodeArg*>& GetValueInfo() const noexcept { return g_host->Provider_GraphViewer__GetValueInfo(this); }
 
   const Provider_InitializedTensorSet& GetAllInitializedTensors() const noexcept { return g_host->Provider_GraphViewer__GetAllInitializedTensors(this); }
+  bool GetInitializedTensor(const std::string& tensor_name, const Provider_TensorProto*& value) const { return g_host->Provider_GraphViewer__GetInitializedTensor(this, tensor_name, value); }
 
   const std::unordered_map<std::string, int>& DomainToVersionMap() const noexcept { return g_host->Provider_GraphViewer__DomainToVersionMap(this); }
 

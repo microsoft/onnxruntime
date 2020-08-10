@@ -556,6 +556,7 @@ struct ProviderHostImpl : ProviderHost {
   const std::vector<const Provider_NodeArg*>& Provider_GraphViewer__GetValueInfo(const Provider_GraphViewer* p) noexcept override { return *reinterpret_cast<const std::vector<const Provider_NodeArg*>*>(&reinterpret_cast<const GraphViewer*>(p)->GetValueInfo()); }
 
   const Provider_InitializedTensorSet& Provider_GraphViewer__GetAllInitializedTensors(const Provider_GraphViewer* p) override { return *reinterpret_cast<const Provider_InitializedTensorSet*>(&reinterpret_cast<const GraphViewer*>(p)->GetAllInitializedTensors()); }
+  bool Provider_GraphViewer__GetInitializedTensor(const Provider_GraphViewer* p, const std::string& tensor_name, const Provider_TensorProto*& value) { return reinterpret_cast<const GraphViewer*>(p)->GetInitializedTensor(tensor_name, reinterpret_cast<const ONNX_NAMESPACE::TensorProto*&>(value)); }
 
   const std::unordered_map<std::string, int>& Provider_GraphViewer__DomainToVersionMap(const Provider_GraphViewer* p) override { return reinterpret_cast<const GraphViewer*>(p)->DomainToVersionMap(); }
 
