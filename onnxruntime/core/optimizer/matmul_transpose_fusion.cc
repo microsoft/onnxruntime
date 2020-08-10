@@ -10,6 +10,28 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
+static bool GetTransposePerms(const Node& transpose_node, std::vector<int64_t>& perms) {
+  ORT_ENFORCE(transpose_node.InputDefs().size() == 1);
+
+  // use perms if present
+  const auto perm_attr = transpose_node.GetAttributes().find("perm");
+  if (perm_attr != transpose_node.GetAttributes().end()) {
+    perms = RetrieveValues<int64_t>(perm_attr->second);
+    return true;
+  }
+
+  // otherwise, reverse dimensions
+  const NodeArg& input = *transpose_node.InputDefs()[0];
+  const TensorShapeProto* shape = input.Shape();
+  if (!shape) {
+    return false;
+  }
+
+  perms.resize(shape->dim_size());
+  std::iota(perms.rbegin(), perms.rend(), 0);
+  return true;
+}
+
 static Node* GetTransposeNodeFromOutput(Graph& graph, NodeArg& node_arg) {
   Node* trans_node = graph.GetMutableProducerNode(node_arg.Name());
   if (trans_node == nullptr || trans_node->OpType() != "Transpose") {
@@ -21,7 +43,11 @@ static Node* GetTransposeNodeFromOutput(Graph& graph, NodeArg& node_arg) {
     return nullptr;
   }
 
-  auto perms = RetrieveValues<int64_t>(trans_node->GetAttributes().at("perm"));
+  std::vector<int64_t> perms;
+  if (!GetTransposePerms(*trans_node, perms)) {
+    return nullptr;
+  }
+
   int64_t rank = perms.size();
   if (rank < 2) {
     return nullptr;
@@ -109,15 +135,16 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
                                       input_defs,
                                       output_defs, {}, kMSDomain);
     bool transpose_left = (left != nullptr);
+    bool transpose_right = (right != nullptr);
+    float alpha = 1.0f;
     if (node.OpType() == "TransposeScaleMatMul") {
       transpose_left ^= static_cast<bool>(node.GetAttributes().at("transA").i());
-    }
-    bool transpose_right = (right != nullptr);
-    if (node.OpType() == "TransposeScaleMatMul") {
       transpose_right ^= static_cast<bool>(node.GetAttributes().at("transB").i());
+      alpha = node.GetAttributes().at("alpha").f();
     }
     matmul_node.AddAttribute("transA", static_cast<int64_t>(transpose_left));
     matmul_node.AddAttribute("transB", static_cast<int64_t>(transpose_right));
+    matmul_node.AddAttribute("alpha", alpha);
     // Assign provider to this new node. Provider should be same as the provider for old node.
     matmul_node.SetExecutionProviderType(node.GetExecutionProviderType());
 
