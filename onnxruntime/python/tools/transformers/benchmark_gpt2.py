@@ -149,7 +149,7 @@ def main():
 
         if args.precision == Precision.INT8:
             logger.info("quantizing model...")
-            QuantizeHelper.quantize_onnx_model(onnx_model_path, onnx_model_path)
+            QuantizeHelper.quantize_onnx_model(onnx_model_path, onnx_model_path, use_external_data_format)
             model = QuantizeHelper.quantize_torch_model(model)
             logger.info("finished quantizing model")
 
