@@ -20,6 +20,12 @@
 #include "core/framework/session_options.h"
 #include "core/framework/bfc_arena.h"
 #include "core/session/IOBinding.h"
+#include "core/session/abi_session_options_impl.h"
+
+struct OrtStatus {
+  OrtErrorCode code;
+  char msg[1];  // a null-terminated string
+};
 
 #if USE_CUDA
 #define BACKEND_PROC "GPU"
@@ -571,6 +577,12 @@ void GenerateProviderOptionsMap(const std::vector<std::string>& providers,
   }
 }
 
+void RegisterCustomOpDomains(InferenceSession* sess, const std::vector<OrtCustomOpDomain*>& custom_op_domains) {
+  if (!custom_op_domains.empty()) {
+    OrtPybindThrowIfError(sess->AddCustomOpDomains(custom_op_domains));
+  }
+}
+
 void InitializeSession(InferenceSession* sess, const std::vector<std::string>& provider_types) {
   if (provider_types.empty()) {
     // use default registration priority.
@@ -947,36 +959,36 @@ void addObjectMethods(py::module& m, Environment& env) {
         return rfetch;
       });
 
-  py::class_<SessionOptions>
+  py::class_<PySessionOptions>
       sess(m, "SessionOptions", R"pbdoc(Configuration information for a session.)pbdoc");
   sess
       .def(py::init())
-      .def_readwrite("enable_cpu_mem_arena", &SessionOptions::enable_cpu_mem_arena,
+      .def_readwrite("enable_cpu_mem_arena", &PySessionOptions::enable_cpu_mem_arena,
                      R"pbdoc(Enables the memory arena on CPU. Arena may pre-allocate memory for future usage.
 Set this option to false if you don't want it. Default is True.)pbdoc")
-      .def_readwrite("enable_profiling", &SessionOptions::enable_profiling,
+      .def_readwrite("enable_profiling", &PySessionOptions::enable_profiling,
                      R"pbdoc(Enable profiling for this session. Default is false.)pbdoc")
-      .def_readwrite("optimized_model_filepath", &SessionOptions::optimized_model_filepath,
+      .def_readwrite("optimized_model_filepath", &PySessionOptions::optimized_model_filepath,
                      R"pbdoc(File path to serialize optimized model. By default, optimized model is not serialized if optimized_model_filepath is not provided.)pbdoc")
-      .def_readwrite("enable_mem_pattern", &SessionOptions::enable_mem_pattern,
+      .def_readwrite("enable_mem_pattern", &PySessionOptions::enable_mem_pattern,
                      R"pbdoc(Enable the memory pattern optimization. Default is true.)pbdoc")
-      .def_readwrite("logid", &SessionOptions::session_logid,
+      .def_readwrite("logid", &PySessionOptions::session_logid,
                      R"pbdoc(Logger id to use for session output.)pbdoc")
-      .def_readwrite("log_severity_level", &SessionOptions::session_log_severity_level,
+      .def_readwrite("log_severity_level", &PySessionOptions::session_log_severity_level,
                      R"pbdoc(Log severity level. Applies to session load, initialization, etc.
 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.)pbdoc")
-      .def_readwrite("log_verbosity_level", &SessionOptions::session_log_verbosity_level,
+      .def_readwrite("log_verbosity_level", &PySessionOptions::session_log_verbosity_level,
                      R"pbdoc(VLOG level if DEBUG build and session_log_verbosity_level is 0.
 Applies to session load, initialization, etc. Default is 0.)pbdoc")
       .def_property(
-          "intra_op_num_threads", [](const SessionOptions* options) -> int { return options->intra_op_param.thread_pool_size; }, [](SessionOptions* options, int value) -> void { options->intra_op_param.thread_pool_size = value; }, R"pbdoc(Sets the number of threads used to parallelize the execution within nodes. Default is 0 to let onnxruntime choose.)pbdoc")
+          "intra_op_num_threads", [](const PySessionOptions* options) -> int { return options->intra_op_param.thread_pool_size; }, [](PySessionOptions* options, int value) -> void { options->intra_op_param.thread_pool_size = value; }, R"pbdoc(Sets the number of threads used to parallelize the execution within nodes. Default is 0 to let onnxruntime choose.)pbdoc")
       .def_property(
-          "inter_op_num_threads", [](const SessionOptions* options) -> int { return options->inter_op_param.thread_pool_size; }, [](SessionOptions* options, int value) -> void { options->inter_op_param.thread_pool_size = value; }, R"pbdoc(Sets the number of threads used to parallelize the execution of the graph (across nodes). Default is 0 to let onnxruntime choose.)pbdoc")
-      .def_readwrite("execution_mode", &SessionOptions::execution_mode,
+          "inter_op_num_threads", [](const PySessionOptions* options) -> int { return options->inter_op_param.thread_pool_size; }, [](PySessionOptions* options, int value) -> void { options->inter_op_param.thread_pool_size = value; }, R"pbdoc(Sets the number of threads used to parallelize the execution of the graph (across nodes). Default is 0 to let onnxruntime choose.)pbdoc")
+      .def_readwrite("execution_mode", &PySessionOptions::execution_mode,
                      R"pbdoc(Sets the execution mode. Default is sequential.)pbdoc")
       .def_property(
           "graph_optimization_level",
-          [](const SessionOptions* options) -> GraphOptimizationLevel {
+          [](const PySessionOptions* options) -> GraphOptimizationLevel {
             GraphOptimizationLevel retval = ORT_ENABLE_ALL;
             switch (options->graph_optimization_level) {
               case onnxruntime::TransformerLevel::Default:
@@ -999,7 +1011,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
             return retval;
           },
 
-          [](SessionOptions* options, GraphOptimizationLevel level) -> void {
+          [](PySessionOptions* options, GraphOptimizationLevel level) -> void {
             switch (level) {
               case ORT_DISABLE_ALL:
                 options->graph_optimization_level = onnxruntime::TransformerLevel::Default;
@@ -1016,11 +1028,11 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
             }
           },
           R"pbdoc(Graph optimization level for this session.)pbdoc")
-      .def_readwrite("use_deterministic_compute", &SessionOptions::use_deterministic_compute,
+      .def_readwrite("use_deterministic_compute", &PySessionOptions::use_deterministic_compute,
                      R"pbdoc(Whether to use deterministic compute. Default is false.)pbdoc")
       .def(
           "add_free_dimension_override_by_denotation",
-          [](SessionOptions* options, const char* dim_name, int64_t dim_value)
+          [](PySessionOptions* options, const char* dim_name, int64_t dim_value)
               -> void { options->free_dimension_overrides.push_back(
                             onnxruntime::FreeDimensionOverride{
                                 dim_name,
@@ -1028,19 +1040,66 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
                                 dim_value}); },
           "Rpbdoc(Specify the dimension size for each denotation associated with an input's free dimension.)pbdoc")
       .def(
+          "dummy",
+          [](PySessionOptions* options)
+              -> int { return options->custom_op_domains_[0].use_count(); },
+          "Rpbdoc(Specify the dimension size for each denotation associated with an input's free dimension.)pbdoc")
+      .def(
           "add_free_dimension_override_by_name",
-          [](SessionOptions* options, const char* dim_name, int64_t dim_value)
+          [](PySessionOptions* options, const char* dim_name, int64_t dim_value)
               -> void { options->free_dimension_overrides.push_back(
                             onnxruntime::FreeDimensionOverride{
                                 dim_name,
                                 onnxruntime::FreeDimensionOverrideType::Name,
                                 dim_value}); },
-          "Rpbdoc(Specify values of named dimensions within model inputs.)pbdoc");
+          "Rpbdoc(Specify values of named dimensions within model inputs.)pbdoc")
+      .def(
+          "register_custom_ops_library",
+          [&env](PySessionOptions* options, const char* library_path)
+              -> void {
+            /*
+            void* library_handle = nullptr;
+
+            Env::Default().LoadDynamicLibrary(library_path, &library_handle);
+
+            if (!library_handle)
+              throw std::runtime_error("RegisterCustomOpsLibrary: Failed to load library");
+
+            OrtStatus*(_stdcall * RegisterCustomOps)(OrtSessionOptions * options, const OrtApiBase* api);
+
+            Env::Default().GetSymbolFromLibrary(library_handle, "RegisterCustomOps", (void**)&RegisterCustomOps);
+
+            if (!RegisterCustomOps)
+              throw std::runtime_error("RegisterCustomOpsLibrary: Entry point RegisterCustomOps not found in library");
+
+            OrtSessionOptions s;
+
+            auto* status = RegisterCustomOps(&s, OrtGetApiBase());
+
+            if (status) {
+              // A non-nullptr indicates some error
+              // Free status and throw
+              ::free(status);
+              Env::Default().UnloadDynamicLibrary(library_handle);
+              throw std::runtime_error("TODO");
+            }
+
+            // No status to free if it is a nullptr
+            */
+            OrtSessionOptions s;
+            options->custom_op_libraries_.emplace_back(std::make_shared<CustomOpLibrary>(library_path, s));
+
+            options->custom_op_domains_.reserve(options->custom_op_domains_.size() + s.custom_op_domains_.size());
+            for (size_t i = 0; i < s.custom_op_domains_.size(); ++i) {
+              options->custom_op_domains_.emplace_back(std::shared_ptr<OrtCustomOpDomain>(s.custom_op_domains_[i]));
+            }
+          },
+          "TODO");
 
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())
       .def_readwrite("log_severity_level", &RunOptions::run_log_severity_level,
-                     R"pbdoc(Log severity level for a particular Run() invocation. 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.)pbdoc")
+                     R"pbdoc(Log severity level for a particular Run() invocation. 0:Verbose, 1:Info, 2:Warn. 3:Error, 4:Fatal. Default is 2.)pbdoc")
       .def_readwrite("log_verbosity_level", &RunOptions::run_log_verbosity_level,
                      R"pbdoc(VLOG level if DEBUG build and run_log_severity_level is 0.
 Applies to a particular Run() invocation. Default is 0.)pbdoc")
@@ -1131,15 +1190,33 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       // In Python3, a Python bytes object will be passed to C++ functions that accept std::string or char*
       // without any conversion. So this init method can be used for model file path (string)
       // and model content (bytes)
-      .def(py::init([&env](const SessionOptions& so, const std::string& arg, bool is_arg_file_name) {
+      .def(py::init([&env](const PySessionOptions& so, const std::string& arg, bool is_arg_file_name) {
         // Given arg is the file path. Invoke the corresponding ctor().
         if (is_arg_file_name) {
-          return onnxruntime::make_unique<InferenceSession>(so, env, arg);
+          auto sess = onnxruntime::make_unique<InferenceSession>(so, env, arg);
+          if (!so.custom_op_domains_.empty()) {
+            std::vector<OrtCustomOpDomain*> custom_op_domains;
+            custom_op_domains.reserve(so.custom_op_domains_.size());
+            for (size_t i = 0; i < so.custom_op_domains_.size(); ++i) {
+              custom_op_domains.emplace_back(so.custom_op_domains_[i].get());
+            }
+            RegisterCustomOpDomains(sess.get(), custom_op_domains);
+          }
+          return sess;
         }
 
         // Given arg is the model content as bytes. Invoke the corresponding ctor().
         std::istringstream buffer(arg);
-        return onnxruntime::make_unique<InferenceSession>(so, env, buffer);
+        auto sess = onnxruntime::make_unique<InferenceSession>(so, env, buffer);
+        if (!so.custom_op_domains_.empty()) {
+          std::vector<OrtCustomOpDomain*> custom_op_domains;
+          custom_op_domains.resize(so.custom_op_domains_.size());
+          for (size_t i = 0; i < so.custom_op_domains_.size(); ++i) {
+            custom_op_domains.emplace_back(so.custom_op_domains_[i].get());
+          }
+          RegisterCustomOpDomains(sess.get(), custom_op_domains);
+        }
+        return sess;
       }))
       .def(
           "load_model", [](InferenceSession* sess, std::vector<std::string>& provider_types) {
@@ -1211,8 +1288,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .def("get_provider_options", [](const InferenceSession* sess) -> const ProviderOptionsMap& {
         return sess->GetAllProviderOptions();
       })
-      .def_property_readonly("session_options", [](InferenceSession* sess) -> const SessionOptions& {
-        return sess->GetSessionOptions();
+      .def_property_readonly("session_options", [](InferenceSession* sess) -> const PySessionOptions& {
+        auto& session_options = sess->GetSessionOptions();
+        return static_cast<const PySessionOptions&>(session_options);
       })
       .def_property_readonly("inputs_meta", [](const InferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
         auto res = sess->GetModelInputs();
@@ -1248,7 +1326,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .value("kNextPowerOfTwo", onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo)
       .value("kSameAsRequested", onnxruntime::ArenaExtendStrategy::kSameAsRequested)
       .export_values();
-}
+}  // namespace python
 
 #if defined(USE_MIMALLOC_ARENA_ALLOCATOR)
 static struct {

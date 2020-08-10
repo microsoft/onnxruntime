@@ -95,9 +95,20 @@ struct CustomOpKernel : OpKernel {
 common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_domains, std::shared_ptr<CustomRegistry>& output) {
   output = std::make_shared<CustomRegistry>();
 
+  std::unordered_set<std::string> domain_names;
+
   for (auto& domain : op_domains) {
-    if (domain->domain_[0])
-      ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(domain->domain_, 1, 1000);
+    // Domain is not empty - add it to the DomainToVersion ONNX map
+    // If domain is empty, it is assumed to be part of the ONNX domain
+    if (domain->domain_[0]) {
+      // Add it to the DomainToVersion ONNX map if it doesn't already exist
+      // For example, two sessions using the same session_options should not add the same custom op domains to the version map twice
+      const auto& domain_to_version_map = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().Map();
+
+      if (domain_to_version_map.find(domain->domain_) == domain_to_version_map.end()) {
+        ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(domain->domain_, 1, 1000);
+      }
+    }
 
     std::vector<ONNX_NAMESPACE::OpSchema> schemas_list;
 

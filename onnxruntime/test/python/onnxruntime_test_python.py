@@ -635,6 +635,15 @@ class TestInferenceSession(unittest.TestCase):
         # "Dim1" and "Dim2" have values assigned to them.
         self.assertEqual(input_shape, [4, 6, 5])
 
+    def testSessionOptionsRegisterCustomOpsLibrary(self):
+        so1 = onnxrt.SessionOptions()
+        so1.register_custom_ops_library("C:\\Users\\hasesh\\Desktop\\custom_op_library.dll")
+        
+        # Model loading successfully indicates that the custom op node could be resolved successfully
+        sess1 = onnxrt.InferenceSession("C:\\Users\\hasesh\\Desktop\\custom_op_test.onnx", so1)
+        so2 = so1
+        sess2 = onnxrt.InferenceSession("C:\\Users\\hasesh\\Desktop\\custom_op_test.onnx", so2)
+
 
 if __name__ == '__main__':
     unittest.main()
