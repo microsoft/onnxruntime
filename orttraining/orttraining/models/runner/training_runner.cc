@@ -46,6 +46,7 @@ static SessionOptions SESSION_OPTION = {
     true,                              //use_per_session_threads
     true,                              //thread_pool_allow_spinning
     false,                             //use_deterministic_compute
+    true,                              //use_prepacking
     {},                                //session_configurations
 };
 
