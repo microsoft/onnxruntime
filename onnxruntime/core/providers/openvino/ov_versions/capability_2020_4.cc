@@ -735,7 +735,6 @@ GetCapability_2020_4(const onnxruntime::GraphViewer& graph_viewer, std::string d
           std::cout << "In here " << std::endl;
           std::cout << "Node is " << node->OpType() << std::endl;
           if(node->OpType() == "Reshape"){
-            std::cout << "Node Reshape"
             const auto& shape_arg = node->InputDefs()[1];
             auto it = find(cluster_graph_inputs.begin(), cluster_graph_inputs.end(), shape_arg->Name());
             if(it != cluster_graph_inputs.end()){
