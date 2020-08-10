@@ -278,7 +278,7 @@ def wrap_for_input_match(model, loss_fn, input_names):
 
     return model
 
-def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, opset_version=DEFAULT_OPSET_VERSION, _enable_internal_postprocess=True):
+def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, opset_version=DEFAULT_OPSET_VERSION):
     # example: {input0:{0:'batch'}, input1:{0:'batch'}}
     dynamic_axes = {}
     for input in model_desc.inputs_:
@@ -366,9 +366,6 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
         set([n.name for n in onnx_model.graph.initializer])), \
         "Initializer names do not match between PyTorch model and ONNX model, " \
         "please report a bug to ONNX Runtime."
-
-    if _enable_internal_postprocess:
-        onnx_model = postprocess.run_postprocess(onnx_model)
 
     return onnx_model
 
@@ -574,9 +571,6 @@ class ORTTrainer():
             gradient_accumulation_steps: number of training steps to accumulate
                gradients before averaging and applying them.
                Defaults to 1.
-            postprocess_model: a callable to postprocess the ONNX model that is
-               converted from PyTorch.
-               Defaults to None.
             world_rank: rank id used for distributed training.
                Defaults to 0.
             world_size: number of ranks participating in distributed training.
@@ -612,6 +606,9 @@ class ORTTrainer():
 
         self.torch_model_ = None
         self.onnx_model_ = None
+        self._enable_internal_postprocess = _enable_internal_postprocess
+        self._extra_postprocess = _extra_postprocess
+
         if isinstance(model, torch.nn.Module):
             self.torch_model_ = model
             self.loss_fn_ = loss_fn
@@ -622,12 +619,20 @@ class ORTTrainer():
             # TODO: accept loss_fn as an onnx model. build self.onnx_model_ with model and loss_fn
             self.loss_fn_ = None
 
+            if self._enable_internal_postprocess:
+                postprocess.run_postprocess(self.onnx_model_)
+
+            if self._extra_postprocess:
+                self._extra_postprocess(self.onnx_model_)
+
         self.model_desc_ = model_desc
         self.input_desc_with_lr = [*self.model_desc_.inputs_, learning_rate_description]
 
         self.world_rank = world_rank
         self.world_size = world_size
         self.use_mixed_precision = use_mixed_precision
+
+        self.original_model_state_keys = list(model.state_dict().keys()) if hasattr(model, 'state_dict') else []
 
         self.session = None
         self.device_ = device
@@ -641,7 +646,6 @@ class ORTTrainer():
         # we use self.global_step_ to count optimizations being performed.
         # it is used to calculate learning rate if self.get_lr_this_step_ is provided.
         self.global_step_ = global_step
-        self._extra_postprocess = _extra_postprocess
         self.get_lr_this_step_ = get_lr_this_step
         self.loss_scaler_ = loss_scaler
 
@@ -656,7 +660,6 @@ class ORTTrainer():
         self.frozen_weights_ = frozen_weights
         self.opset_version_ = _opset_version
         self.state_dict_ = None
-        self._enable_internal_postprocess = _enable_internal_postprocess
         self._use_deterministic_compute = _use_deterministic_compute
         self.use_invertible_layernorm_grad = use_invertible_layernorm_grad
 
@@ -669,12 +672,6 @@ class ORTTrainer():
     def _init_session(self):
         if self.onnx_model_ is None:
             return
-
-        if self._enable_internal_postprocess:
-            self._onnx_model_ = postprocess.run_postprocess(self.onnx_model_)
-
-        if self._extra_postprocess:
-            self._extra_postprocess(self.onnx_model_)
 
         self._verify_fully_optimized_model(self.onnx_model_)
         self.session, self.train_io_binding, self.eval_io_binding, self.output_name, _, self.output_types = \
@@ -733,7 +730,13 @@ class ORTTrainer():
             torch_buffers = list(dict(self.torch_model_.named_buffers()).keys())
             self.frozen_weights_ = self.frozen_weights_ + torch_buffers
             self.onnx_model_ = convert_model_loss_fn_to_onnx(
-                self.torch_model_, self.loss_fn_, self.model_desc_, torch.device('cpu'), inputs, opset_version=self.opset_version_, _enable_internal_postprocess=self._enable_internal_postprocess)
+                self.torch_model_, self.loss_fn_, self.model_desc_, torch.device('cpu'), inputs, opset_version=self.opset_version_)
+
+            if self._enable_internal_postprocess:
+                postprocess.run_postprocess(self.onnx_model_)
+
+            if self._extra_postprocess:
+                self._extra_postprocess(self.onnx_model_)
 
         self._init_session()
 
@@ -773,7 +776,11 @@ class ORTTrainer():
             if n.name not in torch_state:
                 torch_state[n.name] = torch.from_numpy(numpy_helper.to_array(n))
 
-        return torch_state
+        # Need to remove redundant initializers and name suffices to map back to original torch state names
+        torch_state_to_return = {key: torch_state[key] for key in self.original_model_state_keys if key in torch_state} \
+                                if self.original_model_state_keys \
+                                else torch_state
+        return torch_state_to_return
 
     def load_state_dict(self, state_dict, strict=False):
         # Note: It may happen ONNX model has not yet been initialized

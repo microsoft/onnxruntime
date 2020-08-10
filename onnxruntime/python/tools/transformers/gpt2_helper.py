@@ -11,10 +11,13 @@ import onnx
 import random
 import numpy
 import time
+import re
 from transformers import GPT2Model, GPT2LMHeadModel, GPT2Config
 from benchmark_helper import Precision
 
 logger = logging.getLogger(__name__)
+
+PRETRAINED_GPT2_MODELS = ['distilgpt2', 'gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl']
 
 DEFAULT_TOLERANCE = {Precision.FLOAT32: 0.0005, Precision.FLOAT16: 0.2, Precision.INT8: 3.0}
 
@@ -118,6 +121,16 @@ class Gpt2Helper:
         return output_shapes
 
     @staticmethod
+    def auto_increase_buffer_size(output_buffers, output_shapes):
+        for key in output_shapes:
+            assert key in output_buffers
+            buffer = output_buffers[key]
+            if numpy.prod(output_shapes[key]) > buffer.nelement():
+                output_buffers[key] = torch.empty(numpy.prod(output_shapes[key]),
+                                                  dtype=buffer.dtype,
+                                                  device=buffer.device)
+
+    @staticmethod
     def get_output_buffers(output_shapes, device, is_float16=False):
         """ Returns a dictionary of output name as key, and 1D tensor as value. The tensor has enough space for given shape.
         """
@@ -143,13 +156,16 @@ class Gpt2Helper:
     def compare_outputs(torch_outputs, ort_outputs, rtol=1e-03, atol=1e-03):
         """ Returns True if torch and ORT outputs are close for given thresholds, and False otherwise.
         """
-        is_close = numpy.allclose(ort_outputs[0], torch_outputs[0].cpu(), rtol=rtol, atol=atol)
+        is_close = numpy.allclose(ort_outputs[0], torch_outputs[0].cpu().numpy(), rtol=rtol, atol=atol)
         logger.debug(f'PyTorch and OnnxRuntime output 0 (last_state) are close: {is_close}')
 
         is_all_close = is_close
         num_layers = len(ort_outputs) - 1
         for layer in range(num_layers):
-            is_close = numpy.allclose(ort_outputs[1 + layer], torch_outputs[1][layer].cpu(), rtol=rtol, atol=atol)
+            is_close = numpy.allclose(ort_outputs[1 + layer],
+                                      torch_outputs[1][layer].cpu().numpy(),
+                                      rtol=rtol,
+                                      atol=atol)
             logger.debug(f'PyTorch and OnnxRuntime layer {layer} state (present_{layer}) are close:{is_close}')
             is_all_close = is_all_close and is_close
 
@@ -160,7 +176,7 @@ class Gpt2Helper:
         return is_all_close
 
     @staticmethod
-    def export_onnx(model, device, onnx_model_path, verbose=False):
+    def export_onnx(model, device, onnx_model_path, verbose=False, use_external_data_format=False):
         """ Export GPT-2 model with past state to ONNX model
         """
         config: GPT2Config = model.config
@@ -218,9 +234,15 @@ class Gpt2Helper:
                           dynamic_axes=dynamic_axes,
                           opset_version=11,
                           do_constant_folding=True,
+                          use_external_data_format=use_external_data_format,
                           verbose=verbose)
 
-    def optimize_onnx(onnx_model_path, optimized_model_path, is_float16, num_attention_heads, hidden_size):
+    def optimize_onnx(onnx_model_path,
+                      optimized_model_path,
+                      is_float16,
+                      num_attention_heads,
+                      hidden_size,
+                      use_external_data_format=False):
         """ Optimize ONNX model with an option to convert it to use mixed precision.
         """
         from optimizer import optimize_model
@@ -234,7 +256,7 @@ class Gpt2Helper:
         if is_float16:
             m.convert_model_float32_to_float16(cast_input_output=False)
 
-        m.save_model_to_file(optimized_model_path)
+        m.save_model_to_file(optimized_model_path, use_external_data_format)
 
     @staticmethod
     def pytorch_inference(model, inputs, total_runs=0):
@@ -345,7 +367,7 @@ class Gpt2Helper:
         return io_binding
 
     @staticmethod
-    def get_outputs_from_io_binding_buffer(ort_session, output_buffers, output_shapes):
+    def get_outputs_from_io_binding_buffer(ort_session, output_buffers, output_shapes, return_numpy=True):
         """ Copy results to cpu. Returns a list of numpy array.
         """
         ort_outputs = []
@@ -353,11 +375,21 @@ class Gpt2Helper:
             output_name = output.name
             buffer = output_buffers[output_name]
             shape = output_shapes[output_name]
-            ort_outputs.append(buffer[0:numpy.prod(shape)].reshape(shape).cpu().numpy())
+            copy_tensor = buffer[0:numpy.prod(shape)].reshape(shape).clone().detach()
+            if return_numpy:
+                ort_outputs.append(copy_tensor.cpu().numpy())
+            else:
+                ort_outputs.append(copy_tensor)
         return ort_outputs
 
     @staticmethod
-    def onnxruntime_inference_with_binded_io(ort_session, inputs, output_buffers, output_shapes, total_runs=0):
+    def onnxruntime_inference_with_binded_io(ort_session,
+                                             inputs,
+                                             output_buffers,
+                                             output_shapes,
+                                             total_runs=0,
+                                             return_numpy=True,
+                                             include_copy_output_latency=False):
         """ Inference with IO binding. Returns outputs, and optional latency when total_runs > 0.
         """
         logger.debug(f"start onnxruntime_inference_with_binded_io")
@@ -371,7 +403,8 @@ class Gpt2Helper:
         ort_session.run_with_iobinding(io_binding)
 
         # Copy results to cpu for verification
-        ort_outputs = Gpt2Helper.get_outputs_from_io_binding_buffer(ort_session, output_buffers, output_shapes)
+        ort_outputs = Gpt2Helper.get_outputs_from_io_binding_buffer(ort_session, output_buffers, output_shapes,
+                                                                    return_numpy)
 
         if total_runs == 0:
             return ort_outputs
@@ -381,6 +414,9 @@ class Gpt2Helper:
             start = time.time()
             # Run onnxruntime with io binding
             ort_session.run_with_iobinding(io_binding)
+            if include_copy_output_latency:
+                _ = Gpt2Helper.get_outputs_from_io_binding_buffer(ort_session, output_buffers, output_shapes,
+                                                                  return_numpy)
             latency.append(time.time() - start)
 
         average_latency = sum(latency) * 1000 / len(latency)
@@ -462,16 +498,26 @@ class Gpt2Helper:
         return torch.jit.trace(model, [dummy_input_ids, dummy_position_ids, dummy_attention_mask] + dummy_past)
 
     @staticmethod
-    def get_onnx_paths(output_dir, model_name_or_path, model_class: str = 'GPT2LMHeadModel', has_past=True):
+    def get_onnx_paths(output_dir,
+                       model_name_or_path,
+                       model_class: str = 'GPT2LMHeadModel',
+                       has_past=True,
+                       new_folder=False):
         """ Build a  path name for given model based on given attributes.
         """
-        model_name = model_name_or_path if model_name_or_path.isalnum() else os.path.dirname(model_name_or_path)
+        model_name = model_name_or_path if re.match('^[\w_-]+$',
+                                                    model_name_or_path) else os.path.dirname(model_name_or_path)
 
         if model_class != 'GPT2LMHeadModel':
             model_name += "_" + model_class
 
         if has_past:
             model_name += "_past"
+
+        if new_folder:
+            output_dir = os.path.join(output_dir, model_name)
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
 
         return {
             "raw": os.path.join(output_dir, model_name + ".onnx"),
