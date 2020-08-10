@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cpu/reduction/reduction_ops.h"
 #include "core/providers/common.h"
+#include "core/providers/cpu/reduction/reduction_ops.h"
+#include "core/providers/cpu/tensor/transpose.h"
 
 using namespace std;
 namespace onnxruntime {
@@ -360,6 +361,155 @@ bool PrepareForReduce(const Tensor* input_tensor_ptr,
   return false;
 }
 
+// Process the axes to reduce along. It does:
+// 1. Handle negative axis
+// 2. Extend axes to reduce along to full if axes is empty
+// 3. Sort the axes
+inline std::vector<int64_t> ProcessAxesToReduce(const std::vector<int64_t>& axes_to_reduce, size_t ndim) {
+  std::vector<int64_t> axes_non_negative;
+  axes_non_negative.reserve(ndim);
+
+  if (axes_to_reduce.empty()) {
+    // This is the default case for non-arg kind reductions. Reduce on all dimensions.
+    axes_non_negative.resize(ndim);
+    std::iota(axes_non_negative.begin(), axes_non_negative.end(), 0);
+  } else {
+    std::transform(axes_to_reduce.begin(), axes_to_reduce.end(), std::back_inserter(axes_non_negative), [ndim](int64_t axis) {
+      return HandleNegativeAxis(axis, static_cast<int64_t>(ndim));
+    });
+    std::sort(axes_non_negative.begin(), axes_non_negative.end());
+  }
+  return axes_non_negative;
+}
+
+// When all reduce axes are located at the tail of the dims, quite general cases, transpose and extra
+// copy could be skipped to improve performance. If required by check_no_transpose = true, then
+// the calling code will check if the data was transposed and act accordingly.
+// return value: true means transposedInputData is not created/copied, input tensor data could
+// be directly used as row major matrix [block_size, blocks], where blocks is the
+// size of each reduce.
+// `input_shape_override` overrides the shape of `input` for compute purposes.
+template <typename T>
+const T* PrepareForReduceLocal(const Tensor* input_tensor_ptr,
+                               Tensor& transpose_tensor,
+                               int64_t& block_size,
+                               int64_t& blocks,
+                               const std::vector<int64_t>& axes_to_reduce,
+                               AllocatorPtr allocator_ptr,
+                               bool keepdims_,
+                               /*out*/ std::vector<int64_t>& reduced_dims,
+                               const TensorShape* input_shape_override = nullptr) {
+  ORT_ENFORCE(input_tensor_ptr != nullptr, "Input to be reduced is null");
+
+  if (input_shape_override) {
+    ORT_ENFORCE(input_tensor_ptr->Shape().Size() == input_shape_override->Size(),
+                "The input shape override's size does not match the input tensor's shape size");
+  }
+
+  const Tensor& input = *input_tensor_ptr;
+  const auto& input_shape = input_shape_override ? *input_shape_override : input.Shape();
+
+  size_t ndim = input_shape.NumDimensions();
+
+  // Scalar tensor
+  if (ndim == 0) {
+    block_size = blocks = 1;
+    return input_tensor_ptr->Data<T>();
+  }
+
+  std::vector<int64_t> axes_to_reduce_processed = ProcessAxesToReduce(axes_to_reduce, ndim);
+
+  std::vector<bool> keep_axis(ndim, true);
+  for (auto i : axes_to_reduce_processed) {
+    keep_axis[i] = false;
+  }
+
+  //transpose the input so that axes-to-keep are in front and axes-to-reduce are at the rear
+  std::vector<size_t> transposed_axes;
+  for (size_t i = 0; i < ndim; ++i) {
+    if (keep_axis[i]) {
+      transposed_axes.push_back(i);
+    }
+  }
+  transposed_axes.insert(transposed_axes.end(), axes_to_reduce_processed.begin(), axes_to_reduce_processed.end());
+
+  std::vector<int64_t> new_dims(transposed_axes.size());
+  for (size_t i = 0; i < transposed_axes.size(); ++i) {
+    new_dims[i] = input_shape.GetDims().at(transposed_axes[i]);
+  }
+
+  int num_axes = static_cast<int>(transposed_axes.size());
+  auto input_dims = input_shape.GetDims();
+
+  // Measure amount of contiguous data we can copy at once
+  int64_t blocksize = 1;
+  int n_shared_idxs = 0;
+  for (int i = num_axes - 1; i >= 0; --i) {
+    if (transposed_axes[i] == i) {
+      blocksize *= new_dims[i];
+      ++n_shared_idxs;
+    } else {
+      break;
+    }
+  }
+
+  //set to-be-reduced axes to one. squeeze is keepdims_ is false
+  int64_t first_dim = 1;
+  reduced_dims.reserve(input_dims.size());
+
+  for (size_t i = 0; i < input_dims.size(); i++) {
+    const auto in_dim = input_dims[i];
+    if (keep_axis[i]) {
+      reduced_dims.push_back(in_dim);
+    } else {
+      first_dim *= in_dim;
+      if (keepdims_) {
+        reduced_dims.push_back(in_dim == 0 ? 0 : 1);
+      } else {
+        // as we are reducing on this axis and not keeping a dim for it, we can't drop a dim value of 0.
+        // e.g. if input was {3, 0, 2} and we reduced on axis 1 without keeping it, the output shape would be
+        // {3, 2} which is invalid given the input was empty.
+        // note that if we do keep the dim the output shape will have a 0 in it,
+        // which is still valid for an empty tensor, so allow that.
+        ORT_ENFORCE(in_dim != 0,
+                    "Can't reduce on dim with value of 0 if 'keepdims' is false. "
+                    "Invalid output shape would be produced. input_shape:",
+                    input_shape);
+      }
+    }
+  }
+
+  auto num_elements = input_shape.Size();
+
+  // edge case. one or more input dims with value of 0.
+  if (num_elements == 0) {
+    block_size = blocks = 0;
+    return input_tensor_ptr->Data<T>();
+  }
+
+  if (0 == first_dim) {
+    return input_tensor_ptr->Data<T>();
+  }
+
+  block_size = num_elements / first_dim;
+  blocks = first_dim;
+
+  // If all reduced axes are located at the tail of the input shape, then transpose could be skipped
+  if (axes_to_reduce_processed.size() <= ndim &&
+      axes_to_reduce_processed.front() == static_cast<int64_t>(ndim - axes_to_reduce_processed.size()) &&
+      axes_to_reduce_processed.back() == static_cast<int64_t>(ndim) - 1) {
+    return input_tensor_ptr->Data<T>();
+  }
+
+  transpose_tensor = Tensor(input_tensor_ptr->DataType(),
+                            input_tensor_ptr->Shape(),
+                            allocator_ptr->Alloc(num_elements * sizeof(T)),
+                            allocator_ptr->Info());
+
+  TransposeBase::DoTranspose(transposed_axes, *input_tensor_ptr, transpose_tensor);
+  return transpose_tensor.Data<T>();
+}
+
 template <typename T>
 Status ReduceL1<T>::Compute(OpKernelContext* ctx) const {
   FastAllocVector<T> transposed_input_data(GetAllocator<T>(*ctx));
@@ -609,6 +759,14 @@ void ReduceSumCore(const T* input_data, T* output_data, bool no_transpose,
 }
 
 template <typename T>
+void ReduceSumCoreLocal(const T* input_data, T* output_data,
+                        int64_t blocks, int64_t block_size,
+                        concurrency::ThreadPool* /*tp*/) {
+  EigenVectorMap<T> out_vec(output_data, block_size);
+  out_vec = ConstEigenMatrixMap<T>(input_data, blocks, block_size).colwise().sum();
+}
+
+template <typename T>
 Tensor ReduceSum<T>::Impl(const Tensor& input, const std::vector<int64_t>& reduce_axes,
                           AllocatorPtr allocator, concurrency::ThreadPool* tp, bool keep_dims,
                           const TensorShape* input_shape_override) {
@@ -636,12 +794,15 @@ Status ReduceSum<T>::Compute(OpKernelContext* ctx) const {
   std::vector<int64_t> reduced_dims;
   const Tensor* input = ctx->Input<Tensor>(0);
 
-  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true);
+  Tensor transpose_tensor;
+  AllocatorPtr alloc;
+  ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
+  const T* data = PrepareForReduceLocal<T>(input, transpose_tensor, block_size, blocks, axes_, alloc, keepdims_, reduced_dims);
 
   auto* output = ctx->Output(0, reduced_dims);
 
-  ReduceSumCore(input->template Data<T>(), output->template MutableData<T>(),
-                no_transpose, blocks, block_size, transposed_input_data, ctx->GetOperatorThreadPool());
+  ReduceSumCoreLocal(data, output->template MutableData<T>(),
+                     blocks, block_size, ctx->GetOperatorThreadPool());
 
   return Status::OK();
 }
