@@ -11,10 +11,13 @@ import onnx
 import random
 import numpy
 import time
+import re
 from transformers import GPT2Model, GPT2LMHeadModel, GPT2Config
 from benchmark_helper import Precision
 
 logger = logging.getLogger(__name__)
+
+PRETRAINED_GPT2_MODELS = ['distilgpt2', 'gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl']
 
 DEFAULT_TOLERANCE = {Precision.FLOAT32: 0.0005, Precision.FLOAT16: 0.2, Precision.INT8: 3.0}
 
@@ -173,7 +176,7 @@ class Gpt2Helper:
         return is_all_close
 
     @staticmethod
-    def export_onnx(model, device, onnx_model_path, verbose=False):
+    def export_onnx(model, device, onnx_model_path, verbose=False, use_external_data_format=False):
         """ Export GPT-2 model with past state to ONNX model
         """
         config: GPT2Config = model.config
@@ -231,9 +234,15 @@ class Gpt2Helper:
                           dynamic_axes=dynamic_axes,
                           opset_version=11,
                           do_constant_folding=True,
+                          use_external_data_format=use_external_data_format,
                           verbose=verbose)
 
-    def optimize_onnx(onnx_model_path, optimized_model_path, is_float16, num_attention_heads, hidden_size):
+    def optimize_onnx(onnx_model_path,
+                      optimized_model_path,
+                      is_float16,
+                      num_attention_heads,
+                      hidden_size,
+                      use_external_data_format=False):
         """ Optimize ONNX model with an option to convert it to use mixed precision.
         """
         from optimizer import optimize_model
@@ -247,7 +256,7 @@ class Gpt2Helper:
         if is_float16:
             m.convert_model_float32_to_float16(cast_input_output=False)
 
-        m.save_model_to_file(optimized_model_path)
+        m.save_model_to_file(optimized_model_path, use_external_data_format)
 
     @staticmethod
     def pytorch_inference(model, inputs, total_runs=0):
@@ -489,16 +498,26 @@ class Gpt2Helper:
         return torch.jit.trace(model, [dummy_input_ids, dummy_position_ids, dummy_attention_mask] + dummy_past)
 
     @staticmethod
-    def get_onnx_paths(output_dir, model_name_or_path, model_class: str = 'GPT2LMHeadModel', has_past=True):
+    def get_onnx_paths(output_dir,
+                       model_name_or_path,
+                       model_class: str = 'GPT2LMHeadModel',
+                       has_past=True,
+                       new_folder=False):
         """ Build a  path name for given model based on given attributes.
         """
-        model_name = model_name_or_path if model_name_or_path.isalnum() else os.path.dirname(model_name_or_path)
+        model_name = model_name_or_path if re.match('^[\w_-]+$',
+                                                    model_name_or_path) else os.path.dirname(model_name_or_path)
 
         if model_class != 'GPT2LMHeadModel':
             model_name += "_" + model_class
 
         if has_past:
             model_name += "_past"
+
+        if new_folder:
+            output_dir = os.path.join(output_dir, model_name)
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
 
         return {
             "raw": os.path.join(output_dir, model_name + ".onnx"),
