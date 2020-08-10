@@ -15,6 +15,33 @@ from quantize_helper import QuantizeHelper
 
 logger = logging.getLogger(__name__)
 
+torch_func = {"triu": torch.triu }
+
+def triu_onnx(x, diagonal=0, out=None):
+    assert out is None
+    assert len(x.shape) == 2 and x.size(0) == x.size(1)
+    """
+    arange = torch.arange(x.size(1), device = x.device)
+    temp = arange.unsqueeze(-1).expand(-1, x.size(1))
+    if diagonal == 0:
+        mask = (temp > arange)
+    else: #diagonal == 1
+        mask = (temp >= arange)
+    return x.clone().masked_fill_(mask, 0)
+    """
+
+    torch_triu = torch_func["triu"]
+    template = torch_triu(torch.ones((1024, 1024), dtype=torch.uint8), diagonal)
+    mask = template[:x.size(0),:x.size(1)]
+    return torch.where(mask.bool(), x, torch.zeros_like(x))
+
+def replace_torch_functions():
+    # Walkaround for torch.triu cannot be exported to ONNX. See https://github.com/pytorch/pytorch/issues/32968
+    torch.triu = triu_onnx
+
+def restore_torch_functions():
+    torch.triu = torch_func["triu"]
+
 def create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_names):
     input_ids = numpy.random.randint(low=0, high=vocab_size - 1, size=(batch_size, sequence_length), dtype=numpy.int64)
 
@@ -201,6 +228,7 @@ def export_onnx_model(model_name, opset_version, use_external_data_format, model
 
         dynamic_axes, output_names = build_dynamic_axes(example_inputs, example_outputs_flatten)
 
+        replace_torch_functions()
         torch.onnx.export(model=model,
                           args=tuple(example_inputs.values()),
                           f=onnx_model_path,
@@ -211,6 +239,7 @@ def export_onnx_model(model_name, opset_version, use_external_data_format, model
                           do_constant_folding=True,
                           opset_version=opset_version,
                           use_external_data_format=use_external_data_format)
+        restore_torch_functions()
     else:
         logger.info(f"Skip export since model existed: {onnx_model_path}")
 

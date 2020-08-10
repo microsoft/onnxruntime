@@ -76,6 +76,8 @@ MODELS = {
 
     #"xlm-mlm-en-2048": (["input_ids"], 11, True, "bert"),
 
+    # torch.triu cannot be exported to ONNX by PyTorch right now.
+    "facebook/bart-base": (["input_ids"], 11, False, "bert"),
 }
 
 cpu_count = psutil.cpu_count(logical=True)
