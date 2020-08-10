@@ -491,12 +491,6 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate IntPtr /*(OrtStatus*)*/ DOrtDisablePrePacking(IntPtr /* OrtSessionOptions* */ options);
         public static DOrtDisablePrePacking OrtDisablePrePacking;
 
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtEnablePrePacking(IntPtr /* OrtSessionOptions* */ options);
-        public static DOrtEnablePrePacking OrtEnablePrePacking;
-
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtDisablePrePacking(IntPtr /* OrtSessionOptions* */ options);
-        public static DOrtDisablePrePacking OrtDisablePrePacking;
-
         ///**
         //  * The order of invocation indicates the preference order as well. In other words call this method
         //  * on your most preferred execution provider first followed by the less preferred ones.

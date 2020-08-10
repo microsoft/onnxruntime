@@ -1825,7 +1825,16 @@ static constexpr OrtApi ort_api_1_to_4 = {
 
     // Version 4 - In development
 
-    // Allocator extension and Binding APIs are exposed via C# API, do not move
+    &OrtApis::GetAvailableProviders,
+    &OrtApis::ReleaseAvailableProviders,
+    &OrtApis::GetStringTensorElementLength,
+    &OrtApis::GetStringTensorElement,
+    &OrtApis::FillStringTensorElement,
+    &OrtApis::EnablePrePacking,
+    &OrtApis::DisablePrePacking,
+
+    // IoBinding and above are propagated in the same order to C# API
+    // Do not move
     &OrtApis::CreateAllocator,
     &OrtApis::ReleaseAllocator,
     &OrtApis::RunWithBinding,
@@ -1839,14 +1848,6 @@ static constexpr OrtApi ort_api_1_to_4 = {
     &OrtApis::ClearBoundInputs,
     &OrtApis::ClearBoundOutputs,
 
-    // feel free to add/remove/rearrange here
-    &OrtApis::GetAvailableProviders,
-    &OrtApis::ReleaseAvailableProviders,
-    &OrtApis::GetStringTensorElementLength,
-    &OrtApis::GetStringTensorElement,
-    &OrtApis::FillStringTensorElement,
-    &OrtApis::EnablePrePacking,
-    &OrtApis::DisablePrePacking,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

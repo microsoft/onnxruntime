@@ -21,28 +21,22 @@ namespace Microsoft.ML.OnnxRuntime
         public DisposableList(int count) : base(count) { }
 
         #region IDisposable Support
-        private bool disposedValue = false; // To detect redundant calls
 
         protected virtual void Dispose(bool disposing)
         {
-            if (!disposedValue)
+            if (disposing)
             {
-                if (disposing)
+                // Dispose in the reverse order.
+                // Objects should typically be destroyed/disposed
+                // in the reverse order of its creation
+                // especially if the objects created later refer to the
+                // objects created earlier. For homogeneous collections of objects
+                // it would not matter.
+                for (int i = this.Count - 1; i >= 0; --i)
                 {
-                    // Dispose in the reverse order.
-                    // Objects should typically be destroyed/disposed
-                    // in the reverse order of its creation
-                    // especially if the objects created later refer to the
-                    // objects created earlier. For homogeneous collections of objects
-                    // it would not matter.
-                    for (int i = this.Count - 1; i >= 0; --i)
-                    {
-                        this[i]?.Dispose();
-                    }
-                    this.Clear();
+                    this[i]?.Dispose();
                 }
-
-                disposedValue = true;
+                this.Clear();
             }
         }
 

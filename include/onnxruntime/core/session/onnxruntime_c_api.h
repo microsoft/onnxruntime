@@ -820,6 +820,51 @@ struct OrtApi {
                   _In_ int64_t dim_value);
 
   /**
+   * \param out_ptr will hold a pointer to the array of char *
+   * representing available providers.
+   * \param provider_length is a pointer to an int variable where
+   * the number of available providers will be added.
+   * The caller is responsible for freeing each char * and the pointer
+   * array by calling ReleaseAvailableProviders().
+   */
+  ORT_API2_STATUS(GetAvailableProviders, _Outptr_ char*** out_ptr,
+                  _In_ int* provider_length);
+
+  /**
+   * \param ptr is the pointer to an array of available providers you
+   * get after calling GetAvailableProviders().
+   * \param providers_length is the number of available providers.
+   */
+  ORT_API2_STATUS(ReleaseAvailableProviders, _In_ char** ptr,
+                  _In_ int providers_length);
+
+  /**
+     * \param value - A tensor created from OrtCreateTensor... function.
+     * \param index - index of string tensor element, length of element at index will be returned.
+     * \param out - number of UTF-8 bytes that the string contains
+     */
+  ORT_API2_STATUS(GetStringTensorElementLength, _In_ const OrtValue* value, size_t index, _Out_ size_t* out);
+
+  /**
+     * \param s string element contents in UTF-8 encoding. The string is NOT null-terminated.
+     * \param value A tensor created from OrtCreateTensor... function.
+     * \param s_len element length, get it from OrtGetStringTensorElementLength.
+     * \param index offset of element of tensor to return.
+     */
+  ORT_API2_STATUS(GetStringTensorElement, _In_ const OrtValue* value, size_t s_len, size_t index, _Out_writes_bytes_all_(s_len) void* s);
+
+  /**
+     * \param value - A tensor created from OrtCreateTensor... function.
+     * \param s - A null terminated UTF-8 encoded string.
+     * \param index - index of string tensor element to fill 
+     */
+  ORT_API2_STATUS(FillStringTensorElement, _Inout_ OrtValue* value, _In_ const char* s, size_t index);
+
+  // Control pre-packing of initialized constant tensors
+  ORT_API2_STATUS(EnablePrePacking, _Inout_ OrtSessionOptions* options);
+  ORT_API2_STATUS(DisablePrePacking, _Inout_ OrtSessionOptions* options);
+
+  /**
    * \param sess valid OrtSession instance
    * \para mem_info - valid OrtMemoryInfo instance
    * \param - out a ptr to a new instance of OrtAllocator according to the spec within mem_info
@@ -914,51 +959,6 @@ struct OrtApi {
    */
   void(ORT_API_CALL* ClearBoundInputs)(_Inout_ OrtIoBinding* binding_ptr) NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
   void(ORT_API_CALL* ClearBoundOutputs)(_Inout_ OrtIoBinding* binding_ptr) NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
-
-  /**
-   * \param out_ptr will hold a pointer to the array of char *
-   * representing available providers.
-   * \param provider_length is a pointer to an int variable where
-   * the number of available providers will be added.
-   * The caller is responsible for freeing each char * and the pointer
-   * array by calling ReleaseAvailableProviders().
-   */
-  ORT_API2_STATUS(GetAvailableProviders, _Outptr_ char*** out_ptr,
-                  _In_ int* provider_length);
-
-  /**
-   * \param ptr is the pointer to an array of available providers you
-   * get after calling GetAvailableProviders().
-   * \param providers_length is the number of available providers.
-   */
-  ORT_API2_STATUS(ReleaseAvailableProviders, _In_ char** ptr,
-                  _In_ int providers_length);
-
-  /**
-     * \param value - A tensor created from OrtCreateTensor... function.
-     * \param index - index of string tensor element, length of element at index will be returned.
-     * \param out - number of UTF-8 bytes that the string contains
-     */
-  ORT_API2_STATUS(GetStringTensorElementLength, _In_ const OrtValue* value, size_t index, _Out_ size_t* out);
-
-  /**
-     * \param s string element contents in UTF-8 encoding. The string is NOT null-terminated.
-     * \param value A tensor created from OrtCreateTensor... function.
-     * \param s_len element length, get it from OrtGetStringTensorElementLength.
-     * \param index offset of element of tensor to return.
-     */
-  ORT_API2_STATUS(GetStringTensorElement, _In_ const OrtValue* value, size_t s_len, size_t index, _Out_writes_bytes_all_(s_len) void* s);
-
-  /**
-     * \param value - A tensor created from OrtCreateTensor... function.
-     * \param s - A null terminated UTF-8 encoded string.
-     * \param index - index of string tensor element to fill 
-     */
-  ORT_API2_STATUS(FillStringTensorElement, _Inout_ OrtValue* value, _In_ const char* s, size_t index);
-  
-  // Control pre-packing of initialized constant tensors
-  ORT_API2_STATUS(EnablePrePacking, _Inout_ OrtSessionOptions* options);
-  ORT_API2_STATUS(DisablePrePacking, _Inout_ OrtSessionOptions* options);
 };
 
 /*
