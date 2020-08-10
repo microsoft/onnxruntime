@@ -444,7 +444,6 @@ struct AttentionMaskNodes {
   const Node* unsqueeze_1;
 };
 
-//bugbug
 struct AttentionMaskNodesDistilBert {
   const Node* softmax;
   const Node* Where;
@@ -611,11 +610,9 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, Attentio
   return true;
 }
 
-// bugbug
 bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, AttentionMaskNodesDistilBert& result, const logging::Logger& logger) {
   DEBUG_LOG("Start MatchInputMaskSubgraphDistilBert");
 
-  // bugbug 0, 0 not check
   std::vector<graph_utils::EdgeEndToMatch> mask_path{
       {0, 0, "Softmax", {1, 11, 13}, kOnnxDomain},
       {0, 0, "Where", {9}, kOnnxDomain},
@@ -625,7 +622,6 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, Attentio
 
   std::vector<const Node::EdgeEnd*> edges;
   if (!graph_utils::FindPath(qkv_matmul, true, mask_path, edges, logger)) {
-    std::cout << "621" << std::endl;
     DEBUG_LOG("Failed to find mask path");
     return false;
   }
