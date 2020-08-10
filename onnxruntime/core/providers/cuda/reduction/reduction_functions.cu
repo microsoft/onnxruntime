@@ -286,7 +286,7 @@ bool is_matrix_row_reduction(
     return false;
 
   //empty axes, default reduction
-  if(axes.size()<1)
+  if (axes.size() < 1)
     return false;
 
   return true;
@@ -308,6 +308,9 @@ __global__ void reduce_matrix_rows_kernel(const TIn* input, TOut* output, int m,
   extern __shared__ unsigned char shared_memory_[];
   TBuf* shared_memory = reinterpret_cast<TBuf*>(shared_memory_);
 
+  // to prevent int overflow in index calculation for input size m*n
+  const int64_t n_int64 = static_cast<int64_t>(n);
+
   for (int col = tid_x_in_grid; col < n; col += x_grid_stride) {
     shared_memory[tid_in_block] = TBuf(0.0f);
 
@@ -321,7 +324,7 @@ __global__ void reduce_matrix_rows_kernel(const TIn* input, TOut* output, int m,
         int row_final = row + row_inner * t_count_y_in_grid;
         int col_final = col;
         if (row_final < m && col_final < n) {
-          sum += TBuf(input[row_final * static_cast<int64_t>(n) + col_final]);
+          sum += TBuf(input[row_final * n_int64 + col_final]);
         }
       }
       // Write thread-level reduction result into shared memory.

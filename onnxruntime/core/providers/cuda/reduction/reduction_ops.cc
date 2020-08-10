@@ -303,8 +303,10 @@ Status PrepareForReduce(const Tensor* X,
     bool contiguous_axes = true;
     std::sort(axes_.begin(), axes_.end());
     for (size_t i = 0; i < axes_.size(); i++) {
-      if (axes_[i] != i)
+      if (axes_[i] != i) {
         contiguous_axes = false;
+        break;
+      }
     }
     int64_t stride = 1;
     if (contiguous_axes) {
