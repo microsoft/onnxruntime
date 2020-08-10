@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include "core/providers/cuda/torch_wrapper/torch_wrapper.h"
 #include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {

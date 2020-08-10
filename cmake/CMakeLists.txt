@@ -129,6 +129,8 @@ option(onnxruntime_FUZZ_TEST "Enable Fuzz testing" OFF)
 # own logics to determine this flag and seems resulting race conditions.
 if (onnxruntime_USE_TORCH)
   add_definitions(-D_GLIBCXX_USE_CXX11_ABI=0 -DUSE_TORCH=1)
+  list(APPEND CMAKE_PREFIX_PATH "${onnxruntime_TORCH_HOME}")
+  find_package(Torch REQUIRED PATHS "${onnxruntime_TORCH_HOME}")
 endif()
 
 # Fuzz test has only been tested with BUILD_SHARED_LIB option,

@@ -73,6 +73,13 @@ function(AddTest)
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=sign-compare>")
   endif()
 
+  # Build GPU execution provider with Pytorch's C++ APIs.
+  if (onnxruntime_USE_TORCH)
+    target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-Wno-unused-parameter>")
+    target_include_directories(${_UT_TARGET} PRIVATE ${TORCH_INCLUDE_DIRS})
+    target_link_libraries(${_UT_TARGET} PRIVATE onnxruntime_training ${TORCH_LIBRARIES})
+  endif()
+
   set(TEST_ARGS)
   if (onnxruntime_GENERATE_TEST_REPORTS)
     # generate a report file next to the test program
