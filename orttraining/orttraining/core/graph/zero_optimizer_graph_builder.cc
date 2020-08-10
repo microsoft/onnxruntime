@@ -1,6 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include <fstream>
 #include "onnx/defs/attr_proto_util.h"
 
 #include "orttraining/core/graph/zero_optimizer_graph_builder.h"
@@ -299,7 +298,7 @@ static Status ModifyParametersForOptimizerPartitioningByBoundary(
     size_arr.push_back(gradient_shape.Size());
   }
 
-  //Reverse traverse the gradients, bucketing them on boundary
+  //Bucketing the gradients on boundary
   const int dp_group = opt_graph_config.data_parallel_group_size;
   max_group_size = WorkersPartition(size_arr, dp_group, max_size, total_size, partitions);
   //The partitions have to be the same (TODO: smaller ?) as the data parallel group size
@@ -444,10 +443,6 @@ static Status GetGradientArgsInTopoOrder(
   std::vector<ArgDef> gradient_argdefs_in_topo_order;
   std::vector<OptimizerNodeConfig> opt_configs_in_topo_order;
 
-  std::ofstream weight_file;
-  std::ofstream grad_file;
-  weight_file.open(std::string("weight_") + std::to_string(data_parallel_group_rank));
-  grad_file.open(std::string("grad_") + std::to_string(data_parallel_group_rank));
   for (auto& n_idx : node_indices) {
     auto n_output_defs = gv.GetNode(n_idx)->OutputDefs();
     for (const auto* output_def : n_output_defs) {
@@ -456,14 +451,9 @@ static Status GetGradientArgsInTopoOrder(
         gradient_argdefs_in_topo_order.push_back(gradient_argdefs.at(std::distance(gradient_names.begin(), itr)));
         weight_argdefs_in_topo_order.push_back(weight_argdefs.at(std::distance(gradient_names.begin(), itr)));
         opt_configs_in_topo_order.push_back(opt_configs.at(std::distance(gradient_names.begin(), itr)));
-        weight_file << weight_argdefs_in_topo_order.back().name << "\n";
-        grad_file << gradient_argdefs_in_topo_order.back().name << "\n";
       }
     }
   }
-
-  weight_file.close();
-  grad_file.close();
 
   ORT_ENFORCE(gradient_argdefs_in_topo_order.size() == gradient_argdefs.size());
   ORT_ENFORCE(weight_argdefs_in_topo_order.size() == gradient_argdefs.size());
