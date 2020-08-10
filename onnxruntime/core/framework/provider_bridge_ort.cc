@@ -144,6 +144,8 @@ struct OpKernel_Translator : OpKernel {
   }
 
   std::unique_ptr<Provider_OpKernel> p_;
+
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(OpKernel_Translator);
 };
 
 struct Provider_IExecutionProvider_Router_Impl : Provider_IExecutionProvider_Router, IExecutionProvider {
@@ -600,6 +602,8 @@ struct ProviderSharedLibrary {
   }
 
   void* handle_{};
+
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(ProviderSharedLibrary);
 };
 
 bool EnsureSharedProviderLibrary() {
@@ -631,6 +635,8 @@ struct ProviderLibrary {
 
   Provider* provider_{};
   void* handle_{};
+
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(ProviderLibrary);
 };
 
 // This class translates the IExecutionProviderFactory interface to work with the interface providers implement

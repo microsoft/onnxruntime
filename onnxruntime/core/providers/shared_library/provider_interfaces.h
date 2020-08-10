@@ -142,6 +142,8 @@ struct Provider_IAllocator {
         [=](T* ptr) { allocator->Free(ptr); }};         // capture IAllocator so it's always valid, and use as deleter
   }
 
+  Provider_IAllocator() = default;
+  Provider_IAllocator(const Provider_IAllocator&) = delete;
   void operator=(const Provider_IAllocator&) = delete;
 };
 
@@ -161,6 +163,9 @@ struct Provider_OpKernel {
   virtual ~Provider_OpKernel() = default;
 
   virtual Status Compute(Provider_OpKernelContext* context, const Provider_OpKernel_Base& base) const = 0;
+
+  Provider_OpKernel(const Provider_OpKernel&) = delete;
+  void operator=(const Provider_OpKernel&) = delete;
 };
 
 using NodeIndex = size_t;
