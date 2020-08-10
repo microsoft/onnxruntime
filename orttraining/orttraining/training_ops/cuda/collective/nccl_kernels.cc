@@ -130,14 +130,12 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
   } else {
     const int64_t partition_ub_ = partition_[rank];
     const int64_t partition_lb_ = rank == 0 ? 0 : partition_[rank - 1] + 1;
-    printf("partition_lb_ = %d, partition_ub_ = %d\n", int(partition_lb_), int(partition_ub_));
     ORT_ENFORCE(max_group_size_ > 0);
     const int64_t alignment = 32;
     const int64_t padded_max_group_size = max_group_size_ + alignment - (max_group_size_ % alignment);
     const int64_t padded_size = padded_max_group_size * size * element_size;
     auto fusion_buffer = GetScratchBuffer<void>(padded_size);
     void* fusion_data = fusion_buffer.get();
-    printf("in allgather: padded_size = %" PRIu64 "\n", padded_size);
 
     const int64_t rank_size = padded_size / size;
     const int64_t rank_count = rank_size / element_size;
@@ -213,7 +211,6 @@ Status NcclReduce::ComputeInternal(OpKernelContext* context) const {
   const int64_t alignment = 32;
   const int64_t padded_size = size + alignment - (size % alignment);
   auto fusion_buffer = GetScratchBuffer<void>(padded_size);
-  printf("in reduce: padded_size = %" PRIu64 "\n", padded_size);
   void* fusion_data = fusion_buffer.get();
 
   // Copy inputs to fusion buffer.

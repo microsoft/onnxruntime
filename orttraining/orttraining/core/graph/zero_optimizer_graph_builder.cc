@@ -41,6 +41,7 @@ static int NumberOfWorkers(std::vector<int>& size_arr, int max_len, std::vector<
   return num_workers;
 }
 
+//Binary search to find the most even partition of gradients cross workers
 static int WorkersPartition(std::vector<int>& size_arr, int dp_group, int max_size, int total_size, std::vector<int64_t>& partitions) {
   int lo = max_size;
   int hi = total_size;
