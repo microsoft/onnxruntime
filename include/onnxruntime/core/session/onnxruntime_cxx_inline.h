@@ -48,6 +48,44 @@ struct TypeToTensorType<uint64_t> { static constexpr ONNXTensorElementDataType t
 template <>
 struct TypeToTensorType<bool> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL; };
 
+inline MemoryAllocation::MemoryAllocation(OrtAllocator* allocator, void* p, size_t size)
+    : allocator_(allocator), p_(p), size_(size) {
+}
+
+inline MemoryAllocation::~MemoryAllocation() {
+  if (p_ != nullptr) {
+    // We do not throw out of destructor
+    auto ret = GetApi().AllocatorFree(allocator_, p_);
+    static_cast<void>(ret);
+  }
+}
+
+inline MemoryAllocation::MemoryAllocation(MemoryAllocation&& o) :
+  allocator_(nullptr), p_(nullptr), size_(0) {
+  *this = std::move(o);
+}
+
+inline MemoryAllocation& MemoryAllocation::operator=(MemoryAllocation&& o) {
+
+  OrtAllocator* alloc = nullptr;
+  void* p = nullptr;
+  size_t sz = 0;
+
+  // Swap out this
+  std::swap(alloc, allocator_);
+  std::swap(p, p_);
+  std::swap(sz, size_);
+
+  // Swap with incoming
+  std::swap(allocator_, o.allocator_);
+  std::swap(p_, o.p_);
+  std::swap(size_, o.size_);
+
+  // Destroy this instance if needed
+  MemoryAllocation this_alloc(alloc, p, sz);
+  return *this;
+}
+
 inline AllocatorWithDefaultOptions::AllocatorWithDefaultOptions() {
   ThrowOnError(GetApi().GetAllocatorWithDefaultOptions(&p_));
 }
@@ -56,6 +94,13 @@ inline void* AllocatorWithDefaultOptions::Alloc(size_t size) {
   void* out;
   ThrowOnError(GetApi().AllocatorAlloc(p_, size, &out));
   return out;
+}
+
+inline MemoryAllocation Ort::AllocatorWithDefaultOptions::GetAllocation(size_t size) {
+  void* out;
+  ThrowOnError(GetApi().AllocatorAlloc(p_, size, &out));
+  MemoryAllocation result(p_, out, size);
+  return result;
 }
 
 inline void AllocatorWithDefaultOptions::Free(void* p) {
@@ -68,6 +113,42 @@ inline const OrtMemoryInfo* AllocatorWithDefaultOptions::GetInfo() const {
   return out;
 }
 
+template<typename B>
+inline std::string BaseMemoryInfo<B>::GetAllocatorName() const {
+  const char* name = nullptr;
+  ThrowOnError(GetApi().MemoryInfoGetName(*this, &name));
+  return std::string(name);
+}
+
+template <typename B>
+inline OrtAllocatorType BaseMemoryInfo<B>::GetAllocatorType() const {
+  OrtAllocatorType type;
+  ThrowOnError(GetApi().MemoryInfoGetType(*this, &type));
+  return type;
+}
+
+template <typename B>
+int BaseMemoryInfo<B>::GetDeviceId() const {
+  int id = 0;
+  ThrowOnError(GetApi().MemoryInfoGetId(*this, &id));
+  return id;
+}
+
+template <typename B>
+inline OrtMemType BaseMemoryInfo<B>::GetMemoryType() const {
+  OrtMemType type;
+  ThrowOnError(GetApi().MemoryInfoGetMemType(*this, &type));
+  return type;
+}
+
+template <typename B>
+template <typename U>
+inline bool BaseMemoryInfo<B>::operator==(const BaseMemoryInfo<U>& o) const {
+  int comp_result = 0;
+  ThrowOnError(Ort::GetApi().CompareMemoryInfo(*this, o, &comp_result));
+  return comp_result == 0;
+}
+
 inline MemoryInfo MemoryInfo::CreateCpu(OrtAllocatorType type, OrtMemType mem_type) {
   OrtMemoryInfo* p;
   ThrowOnError(GetApi().CreateCpuMemoryInfo(type, mem_type, &p));
@@ -76,6 +157,135 @@ inline MemoryInfo MemoryInfo::CreateCpu(OrtAllocatorType type, OrtMemType mem_ty
 
 inline MemoryInfo::MemoryInfo(const char* name, OrtAllocatorType type, int id, OrtMemType mem_type) {
   ThrowOnError(GetApi().CreateMemoryInfo(name, type, id, mem_type, &p_));
+}
+
+inline Allocator::Allocator(const Session& sess, const MemoryInfo& mem_info) {
+  ThrowOnError(GetApi().CreateAllocator(sess, mem_info, &p_));
+}
+
+inline void* Allocator::Alloc(size_t size) const {
+  void* out = nullptr;
+  ThrowOnError(GetApi().AllocatorAlloc(p_, size, &out));
+  return out;
+}
+
+inline MemoryAllocation Ort::Allocator::GetAllocation(size_t size) {
+  void* out = nullptr;
+  ThrowOnError(GetApi().AllocatorAlloc(p_, size, &out));
+  MemoryAllocation result(p_, out, size);
+  return result;
+}
+
+inline void Allocator::Free(void* p) const {
+  ThrowOnError(GetApi().AllocatorFree(p_, p));
+}
+
+inline UnownedMemoryInfo Allocator::GetInfo() const {
+  const OrtMemoryInfo* out = nullptr;
+  ThrowOnError(GetApi().AllocatorGetInfo(p_, &out));
+  return UnownedMemoryInfo(out);
+}
+
+inline IoBinding::IoBinding(Session& session) {
+  ThrowOnError(GetApi().CreateIoBinding(session, &p_));
+}
+
+inline void IoBinding::BindInput(const char* name, const Value& value) {
+  ThrowOnError(GetApi().BindInput(p_, name, value));
+}
+
+inline void IoBinding::BindOutput(const char* name, const Value& value) {
+  ThrowOnError(GetApi().BindOutput(p_, name, value));
+}
+
+inline void IoBinding::BindOutput(const char* name, const MemoryInfo& mem_info) {
+  ThrowOnError(GetApi().BindOutputToDevice(p_, name, mem_info));
+}
+
+inline std::vector<std::string> IoBinding::GetOutputNamesHelper(OrtAllocator* allocator) const {
+  std::vector<std::string> result;
+  auto free_fn = [allocator](void* p) { if (p) allocator->Free(allocator, p); };
+  using Ptr = std::unique_ptr<void, decltype(free_fn)>;
+
+  char* buffer = nullptr;
+  size_t* lengths = nullptr;
+  size_t count = 0;
+  ThrowOnError(GetApi().GetBoundOutputNames(p_, allocator, &buffer, &lengths, &count));
+
+  if (count == 0) {
+    return result;
+  }
+
+  Ptr buffer_g(buffer, free_fn);
+  Ptr lengths_g(lengths, free_fn);
+
+  result.reserve(count);
+  for (size_t i = 0; i < count; ++i) {
+    auto sz = *lengths;
+    result.emplace_back(buffer, sz);
+    buffer += sz;
+    ++lengths;
+  }
+  return result;
+}
+
+inline std::vector<std::string> IoBinding::GetOutputNames() const {
+  AllocatorWithDefaultOptions allocator;
+  return GetOutputNamesHelper(allocator);
+}
+
+inline std::vector<std::string> IoBinding::GetOutputNames(Allocator& allocator) const {
+  return GetOutputNamesHelper(allocator);
+}
+
+inline std::vector<Value> Ort::IoBinding::GetOutputValuesHelper(OrtAllocator* allocator) const {
+  std::vector<Value> result;
+  size_t owned = 0;
+  size_t output_count = 0;
+  // Lambda to release the buffer when no longer needed and
+  // make sure that we destroy all instances on exception
+  auto free_fn = [&owned, &output_count, allocator](OrtValue** buffer) {
+    if (buffer) {
+      while (owned < output_count) {
+        auto* p = buffer + owned++;
+        GetApi().ReleaseValue(*p);
+      }
+      allocator->Free(allocator, buffer);
+    }
+  };
+  using Ptr = std::unique_ptr<OrtValue*, decltype(free_fn)> ;
+
+  OrtValue** output_buffer = nullptr;
+  ThrowOnError(GetApi().GetBoundOutputValues(p_, allocator, &output_buffer, &output_count));
+  if (output_count == 0) {
+    return result;
+  }
+
+  Ptr buffer_g(output_buffer, free_fn);
+
+  result.reserve(output_count);
+  for (size_t i = 0; i < output_count; ++i) {
+    result.emplace_back(output_buffer[i]);
+    ++owned;
+  }
+  return result;
+}
+
+inline std::vector<Value> Ort::IoBinding::GetOutputValues(Allocator& allocator) const {
+  return GetOutputValuesHelper(allocator);
+}
+
+inline std::vector<Value> Ort::IoBinding::GetOutputValues() const {
+  AllocatorWithDefaultOptions allocator;
+  return GetOutputValuesHelper(allocator);
+}
+
+inline void IoBinding::ClearBoundInputs() {
+  GetApi().ClearBoundInputs(p_);
+}
+
+inline void IoBinding::ClearBoundOutputs() {
+  GetApi().ClearBoundOutputs(p_);
 }
 
 inline Env::Env(OrtLoggingLevel default_warning_level, _In_ const char* logid) {
@@ -263,6 +473,10 @@ inline void Session::Run(const RunOptions& run_options, const char* const* input
   ThrowOnError(GetApi().Run(p_, run_options, input_names, ort_input_values, input_count, output_names, output_count, ort_output_values));
 }
 
+inline void Session::Run(const RunOptions& run_options, const IoBinding& io_binding) {
+  ThrowOnError(GetApi().RunWithBinding(p_, run_options, io_binding));
+}
+
 inline size_t Session::GetInputCount() const {
   size_t out;
   ThrowOnError(GetApi().SessionGetInputCount(p_, &out));
@@ -406,7 +620,7 @@ inline std::vector<int64_t> TensorTypeAndShapeInfo::GetShape() const {
 inline Unowned<TensorTypeAndShapeInfo> TypeInfo::GetTensorTypeAndShapeInfo() const {
   const OrtTensorTypeAndShapeInfo* out;
   ThrowOnError(GetApi().CastTypeInfoToTensorInfo(p_, &out));
-  return Unowned<TensorTypeAndShapeInfo>{const_cast<OrtTensorTypeAndShapeInfo*>(out)};
+  return Unowned<TensorTypeAndShapeInfo>(const_cast<OrtTensorTypeAndShapeInfo*>(out));
 }
 
 inline ONNXType TypeInfo::GetONNXType() const {
@@ -460,7 +674,7 @@ inline Value Value::CreateOpaque(const char* domain, const char* type_name, cons
 }
 
 template <typename T>
-inline void Value::GetOpaqueData(const char* domain, const char* type_name, T& out) {
+inline void Value::GetOpaqueData(const char* domain, const char* type_name, T& out) const {
   ThrowOnError(GetApi().GetOpaqueValue(domain, type_name, p_, &out, sizeof(T)));
 }
 
@@ -512,6 +726,13 @@ inline void Value::FillStringTensorElement(const char* s, size_t index) {
 
 template <typename T>
 T* Value::GetTensorMutableData() {
+  T* out;
+  ThrowOnError(GetApi().GetTensorMutableData(p_, (void**)&out));
+  return out;
+}
+
+template <typename T>
+const T* Value::GetTensorData() const {
   T* out;
   ThrowOnError(GetApi().GetTensorMutableData(p_, (void**)&out));
   return out;
