@@ -51,15 +51,35 @@ common::Status IExecutionProvider::OnRunEnd() { return Status::OK(); }
 
 common::Status IExecutionProvider::OnSessionInitializationEnd() { return Status::OK(); }
 
-void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
+std::vector<AllocatorPtr> IExecutionProvider::GetAllocators() {
+  std::vector<AllocatorPtr> retval;
+  retval.reserve(allocators_.size());
+  for (const auto& val : allocators_) {
+    retval.push_back(val.second);
+  }
+  return retval;
+}
+
+void IExecutionProvider::InsertAllocatorHelper(AllocatorPtr allocator, bool allow_overwrite) {
   const OrtMemoryInfo& info = allocator->Info();
-  const int key = MakeKey(info.id, info.mem_type);
-  auto iter = allocators_.find(key);
-  if (iter != allocators_.end()) {
+  auto ite = allocator_set_.find(info);
+  bool already_added = ite != allocator_set_.end();
+  if (!allow_overwrite && already_added) {
     ORT_THROW("duplicated allocator");
   }
-  allocators_.insert(iter, {key, allocator});
-  allocator_list_.push_back(allocator);
+  const int key = MakeKey(info.id, info.mem_type);
+  allocators_[key] = {key, allocator};
+  if (!already_added) {
+    allocator_set_.insert(ite, info);
+  }
+}
+
+void IExecutionProvider::InsertAllocator(AllocatorPtr allocator, bool allow_overwrite) {
+  InsertAllocatorHelper(allocator, allow_overwrite);
+}
+
+void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
+  InsertAllocatorHelper(allocator, false);
 }
 
 common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& /*fused_node*/,

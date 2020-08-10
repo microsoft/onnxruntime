@@ -22,7 +22,8 @@ class KernelRegistryManager;
 /**
    Logical device representation.
 */
-typedef std::map<int, AllocatorPtr> AllocatorMap;
+using AllocatorMap = std::map<int, AllocatorPtr>;
+using AllocatorSet = std::set<OrtMemoryInfo>;
 
 // if we are export the fused function to dll, the function will still in the same binary as onnxruntime
 // use std function to give execution provider some chance to capture some state.
@@ -34,8 +35,8 @@ using DestroyFunctionStateFunc = std::function<void(FunctionState)>;
 using UnorderedMapStringToString = std::unordered_map<std::string, std::string>;
 
 //data types for execution provider options
-using ProviderOptionsVector = std::vector<UnorderedMapStringToString>;  
-using ProviderOptionsMap = std::unordered_map<std::string, UnorderedMapStringToString>;  
+using ProviderOptionsVector = std::vector<UnorderedMapStringToString>;
+using ProviderOptionsMap = std::unordered_map<std::string, UnorderedMapStringToString>;
 
 struct NodeComputeInfo {
   CreateFunctionStateFunc create_state_func;
@@ -53,9 +54,7 @@ class IExecutionProvider {
   /**
      Get all IAllocators for <*this> execution provider.
   */
-  const std::vector<AllocatorPtr>& GetAllocators() const {
-    return allocator_list_;
-  }
+  std::vector<AllocatorPtr> GetAllocators() const;
 
   /**
    * Get an allocator with specified device id and MemType. Return nullptr if it doesn't exist
@@ -113,7 +112,7 @@ class IExecutionProvider {
   /**
      Store execution provider's configurations. 
    */
-  void SetProviderOptions(UnorderedMapStringToString& options) { 
+  void SetProviderOptions(UnorderedMapStringToString& options) {
     provider_options_ = options;
   }
 
@@ -165,6 +164,7 @@ class IExecutionProvider {
   virtual common::Status OnSessionInitializationEnd();
 
   void InsertAllocator(AllocatorPtr allocator);
+  void InsertAllocatorHelper(AllocatorPtr allocator, bool allow_overwrite);
 
   /**
   Given a list of fused_node, return create_state/compute/release_state func for each node.
@@ -193,11 +193,9 @@ class IExecutionProvider {
  private:
   const std::string type_;
   AllocatorMap allocators_;
+  AllocatorSet allocator_set_;
   //It will be set when this object is registered to a session
   const logging::Logger* logger_ = nullptr;
-  // convenience list of the allocators so GetAllocatorList doesn't have to build a new vector each time
-  // contains the same instances as allocators_
-  std::vector<AllocatorPtr> allocator_list_;
   // It will be set when constructor is being called
   UnorderedMapStringToString provider_options_;
 };
