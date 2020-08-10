@@ -18,15 +18,18 @@ bool IsDebugEnabled();
 #endif
 
 void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
-               std::shared_ptr<InferenceEngine::CNNNetwork> network);
+               std::shared_ptr<InferenceEngine::CNNNetwork> network,
+               std::unordered_map<std::string, int> output_names,
+               std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map);
 
   std::shared_ptr<InferenceEngine::CNNNetwork>
   CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, std::string device_id,
-                   InferenceEngine::Precision precision, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map);
+                   InferenceEngine::Precision precision,
+                   std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map);
 
 int GetFirstAvailableDevice(GlobalContext& global_context);
 
-void FillOutputsWithConstantData(Ort::CustomOpApi& ort, std::map<std::string, std::shared_ptr<ngraph::Node>> const_out_map, OrtValue* out_tensor);
+void FillOutputsWithConstantData(Ort::CustomOpApi& ort, std::shared_ptr<ngraph::Node> node, OrtValue* out_tensor);
 
 template <typename T>
 void FillOutputHelper(Ort::CustomOpApi& ort, OrtValue* out_tensor, std::shared_ptr<ngraph::Node> node);
