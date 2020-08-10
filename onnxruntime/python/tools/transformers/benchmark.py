@@ -75,7 +75,6 @@ MODELS = {
     #"xlnet-base-cased": (["input_ids"], 12, False, "bert"),
 
     #"xlm-mlm-en-2048": (["input_ids"], 11, True, "bert"),
-
 }
 
 cpu_count = psutil.cpu_count(logical=True)

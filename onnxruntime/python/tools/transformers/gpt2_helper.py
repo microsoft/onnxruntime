@@ -237,7 +237,12 @@ class Gpt2Helper:
                           use_external_data_format=use_external_data_format,
                           verbose=verbose)
 
-    def optimize_onnx(onnx_model_path, optimized_model_path, is_float16, num_attention_heads, hidden_size, use_external_data_format=False):
+    def optimize_onnx(onnx_model_path,
+                      optimized_model_path,
+                      is_float16,
+                      num_attention_heads,
+                      hidden_size,
+                      use_external_data_format=False):
         """ Optimize ONNX model with an option to convert it to use mixed precision.
         """
         from optimizer import optimize_model
@@ -493,10 +498,15 @@ class Gpt2Helper:
         return torch.jit.trace(model, [dummy_input_ids, dummy_position_ids, dummy_attention_mask] + dummy_past)
 
     @staticmethod
-    def get_onnx_paths(output_dir, model_name_or_path, model_class: str = 'GPT2LMHeadModel', has_past=True, new_folder=False):
+    def get_onnx_paths(output_dir,
+                       model_name_or_path,
+                       model_class: str = 'GPT2LMHeadModel',
+                       has_past=True,
+                       new_folder=False):
         """ Build a  path name for given model based on given attributes.
         """
-        model_name = model_name_or_path if re.match('^[\w_-]+$', model_name_or_path) else os.path.dirname(model_name_or_path)
+        model_name = model_name_or_path if re.match('^[\w_-]+$',
+                                                    model_name_or_path) else os.path.dirname(model_name_or_path)
 
         if model_class != 'GPT2LMHeadModel':
             model_name += "_" + model_class

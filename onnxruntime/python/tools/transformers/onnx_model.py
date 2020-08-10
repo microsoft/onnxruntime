@@ -660,7 +660,7 @@ class OnnxModel:
     def save_model_to_file(self, output_path, use_external_data_format=False):
         logger.info(f"Output model to {output_path}")
 
-        if output_path.endswith(".json"): # Output text for testing small model.
+        if output_path.endswith(".json"):  # Output text for testing small model.
             assert isinstance(self.model, ModelProto)
             with open(output_path, "w") as out:
                 out.write(str(self.model))
@@ -668,9 +668,10 @@ class OnnxModel:
             # Save model to external data, which is needed for model size > 2GB
             if use_external_data_format:
                 from pathlib import Path
-                external_data_helper.convert_model_to_external_data(self.model, all_tensors_to_one_file=True, location = Path(output_path).name + ".data")       
+                external_data_helper.convert_model_to_external_data(self.model,
+                                                                    all_tensors_to_one_file=True,
+                                                                    location=Path(output_path).name + ".data")
             save_model(self.model, output_path)
-
 
     def get_graph_inputs_excluding_initializers(self):
         """

@@ -37,9 +37,10 @@ def conv1d_to_linear(model):
 
 def _get_size_of_pytorch_model(model):
     torch.save(model.state_dict(), "temp.p")
-    size = os.path.getsize("temp.p")/(1024*1024)
+    size = os.path.getsize("temp.p") / (1024 * 1024)
     os.remove('temp.p')
     return size
+
 
 class QuantizeHelper:
     @staticmethod
@@ -67,7 +68,9 @@ class QuantizeHelper:
 
         if use_external_data_format:
             from pathlib import Path
-            onnx.external_data_helper.convert_model_to_external_data(quantized_onnx_model, all_tensors_to_one_file=True, location = Path(quantized_model_path).name + ".data")       
+            onnx.external_data_helper.convert_model_to_external_data(quantized_onnx_model,
+                                                                     all_tensors_to_one_file=True,
+                                                                     location=Path(quantized_model_path).name + ".data")
         onnx.save_model(quantized_onnx_model, quantized_model_path)
 
         logger.info(f"quantized model saved to:{quantized_model_path}")

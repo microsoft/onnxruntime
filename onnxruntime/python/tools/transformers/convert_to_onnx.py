@@ -130,8 +130,11 @@ def main():
     device = torch.device("cuda:0" if args.use_gpu else "cpu")
     model.eval().to(device)
 
-    use_external_data_format = (config.n_layer > 24) #TODO: find a way to check model size > 2GB
-    onnx_model_paths = Gpt2Helper.get_onnx_paths(output_dir, args.model_name_or_path, args.model_class, new_folder=use_external_data_format)
+    use_external_data_format = (config.n_layer > 24)  #TODO: find a way to check model size > 2GB
+    onnx_model_paths = Gpt2Helper.get_onnx_paths(output_dir,
+                                                 args.model_name_or_path,
+                                                 args.model_class,
+                                                 new_folder=use_external_data_format)
     raw_onnx_model = args.output if args.output.endswith('.onnx') else onnx_model_paths["raw"]
     output_path = raw_onnx_model if (
         args.output.endswith('.onnx') or
@@ -171,10 +174,12 @@ def main():
 
                 if "attention_mask" in data:
                     numpy_float = numpy.float16 if args.precision == Precision.FLOAT16 else numpy.float32
-                    attention_mask = torch.from_numpy(numpy.asarray(data["attention_mask"], dtype=numpy_float)).to(device)
+                    attention_mask = torch.from_numpy(numpy.asarray(data["attention_mask"],
+                                                                    dtype=numpy_float)).to(device)
                 else:
                     padding = -1
-                    attention_mask = (input_ids != padding).type(torch.float16 if args.precision == Precision.FLOAT16 else torch.float32)
+                    attention_mask = (input_ids != padding
+                                      ).type(torch.float16 if args.precision == Precision.FLOAT16 else torch.float32)
                     input_ids.masked_fill_(input_ids == padding, 0)
 
                 if "position_ids" in data:

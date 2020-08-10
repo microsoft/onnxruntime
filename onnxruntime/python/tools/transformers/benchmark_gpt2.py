@@ -23,6 +23,7 @@ from benchmark_helper import create_onnxruntime_session, setup_logger, prepare_e
 
 logger = logging.getLogger('')
 
+
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
@@ -136,8 +137,12 @@ def main():
 
     device = torch.device("cuda:0" if args.use_gpu else "cpu")
     model.to(device)
-    use_external_data_format = (config.n_layer > 24) #TODO: find a way to check model size > 2GB
-    onnx_model_paths = Gpt2Helper.get_onnx_paths(output_dir, args.model_name, args.model_class, has_past=True, new_folder=use_external_data_format)
+    use_external_data_format = (config.n_layer > 24)  #TODO: find a way to check model size > 2GB
+    onnx_model_paths = Gpt2Helper.get_onnx_paths(output_dir,
+                                                 args.model_name,
+                                                 args.model_class,
+                                                 has_past=True,
+                                                 new_folder=use_external_data_format)
 
     onnx_model_path = onnx_model_paths["raw"]
     Gpt2Helper.export_onnx(model, device, onnx_model_path, args.verbose, use_external_data_format)

@@ -15,6 +15,7 @@ from quantize_helper import QuantizeHelper
 
 logger = logging.getLogger(__name__)
 
+
 def create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_names):
     input_ids = numpy.random.randint(low=0, high=vocab_size - 1, size=(batch_size, sequence_length), dtype=numpy.int64)
 
@@ -223,8 +224,8 @@ def export_onnx_model(model_name, opset_version, use_external_data_format, model
         optimized_model_path = get_onnx_file_path(onnx_dir, model_name, len(input_names), True, use_gpu, precision,
                                                   False, use_external_data_format)
         optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, config.num_attention_heads,
-                            config.hidden_size, use_gpu, precision, use_raw_attention_mask,
-                            overwrite, model_fusion_statistics)
+                            config.hidden_size, use_gpu, precision, use_raw_attention_mask, overwrite,
+                            model_fusion_statistics)
 
         onnx_model_path = optimized_model_path
         if validate_onnx:
