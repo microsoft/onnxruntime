@@ -166,7 +166,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
     // meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
     meta_def->since_version = 1;
-    sub_graph->SetMetaDef(meta_def);
+    sub_graph->SetMetaDef(std::move(meta_def));
 
     result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
   }
