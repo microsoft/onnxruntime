@@ -13,38 +13,47 @@ variables:
   linux_gpu_dockerfile: dockerfiles/Dockerfile.training
   build_timestamp: $(Date:yyyyMMdd)-$(Rev:r)
 
+name: $(Date:yyyyMMdd).$(Rev:.r)
 jobs:
 - job: Linux_py_GPU_Build_Test_Release_Dockerfile
   timeoutInMinutes: 90
   workspace:
     clean: all
-  pool: Linux-GPU-CUDA10
+  #pool: Linux-GPU-CUDA10
+  pool: Linux-Multi-GPU-V100
   steps:
-  - task: CmdLine@2
-    displayName: Build builder stage of docker file
-    inputs:
-      script: |
-        docker build \
-          --pull \
-          -t ${{ variables.docker_image_prefix }}-manylinux-gpu-release-stage1 \
-          --target builder \
-          --build-arg COMMIT="${{ parameters.commit }}" \
-          -f ${{ variables.linux_gpu_dockerfile }} .
-      workingDirectory: $(Build.SourcesDirectory)
+  # - task: CmdLine@2
+  #   displayName: Build builder stage of docker file
+  #   inputs:
+  #     script: |
+  #       docker build \
+  #         --pull \
+  #         -t ${{ variables.docker_image_prefix }}-manylinux-gpu-release-stage1 \
+  #         --target builder \
+  #         --build-arg COMMIT="${{ parameters.commit }}" \
+  #         -f ${{ variables.linux_gpu_dockerfile }} .
+  #     workingDirectory: $(Build.SourcesDirectory)
 
+  # - task: CmdLine@2
+  #   displayName: Run tests
+  #   inputs:
+  #     script: |
+  #       docker run \
+  #         --gpus all \
+  #         --rm \
+  #         ${{ variables.docker_image_prefix }}-manylinux-gpu-release-stage1 \
+  #         python onnxruntime/tools/ci_build/build.py \
+  #         --build_dir onnxruntime/build \
+  #         --config Release \
+  #         --test \
+  #         --enable_onnx_tests
+  #     workingDirectory: $(Build.SourcesDirectory) 
+  
   - task: CmdLine@2
-    displayName: Run tests
+    displayName: Test on Build.BuildNumber
     inputs:
       script: |
-        docker run \
-          --gpus all \
-          --rm \
-          ${{ variables.docker_image_prefix }}-manylinux-gpu-release-stage1 \
-          python onnxruntime/tools/ci_build/build.py \
-          --build_dir onnxruntime/build \
-          --config Release \
-          --test \
-          --enable_onnx_tests
+        echo $(Build.BuildNumber)
       workingDirectory: $(Build.SourcesDirectory) 
 
   - task: Docker@2
@@ -64,7 +73,7 @@ jobs:
       containerRegistry: 'ortrelease'
       repository: 'onnxruntime-training'
       tags: |
-        ${{ variables.build_timestamp }}
+        $(Build.BuildNumber)
         ${{ parameters.image_tag }}
 
   - template: templates/component-governance-component-detection-steps.yml
