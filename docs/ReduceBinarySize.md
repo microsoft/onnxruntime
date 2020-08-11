@@ -12,9 +12,9 @@ On building, it enables the compile binary of including only operators consumed 
 ## include_ops_by_file
 On building, it enables the compiled binary of including only operators referred. Each line of the csv file takes format:
 ```
-op,domain,opest
+op,domain,opset
 ```
 
 ## More usage tips
-- By default, the operator-trimming only happens on cpu execution provider, with --use_cuda it will also be applied to cuda execution provider;
+- By default, the trimming happens only on cpu execution provider, with --use_cuda it will also be applied to cuda;
 - If both are specified, operators referred from either argument will be kept active.
