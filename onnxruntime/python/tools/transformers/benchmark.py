@@ -65,6 +65,7 @@ MODELS = {
 
     # No past state inputs for GPT models.
     "gpt2": (["input_ids"], 11, False, "gpt2"),  # no past state inputs & outputs
+    "gpt2-large": (["input_ids"], 11, True, "gpt2"),  # Model>2GB. Need use_external_data_format=True to export it.
     "distilgpt2": (["input_ids"], 11, False, "gpt2"),  # no past state inputs & outputs
 
     #"openai-gpt": (["input_ids"], 11, False, "gpt2"),  # no past state inputs
@@ -73,9 +74,7 @@ MODELS = {
     "albert-base-v2": (["input_ids"], 12, False, "bert"),
     #"xlnet-base-cased": (["input_ids"], 12, False, "bert"),
 
-    # Model>2GB. Need use_external_data_format=True to export it.
     #"xlm-mlm-en-2048": (["input_ids"], 11, True, "bert"),
-    "gpt2-large": (["input_ids"], 11, True, "gpt2"),  # no past state inputs & outputs
 }
 
 cpu_count = psutil.cpu_count(logical=True)

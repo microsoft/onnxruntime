@@ -65,13 +65,13 @@ def preprocess_func(images_folder, height, width, size_limit=0):
 
 def main():
     model_path = './resnet50_v1.onnx'
-    calibration_dataset_path = './calibration_data_set_test'
+    calibration_dataset_path = './calibration_data_set'
     dr = ResNet50DataReader(calibration_dataset_path)
     #call calibrate to generate quantization dictionary containing the zero point and scale values
     quantization_params_dict = calibrate(model_path,dr)
     calibrated_quantized_model = quantize(onnx.load(model_path),
                                           quantization_mode=QuantizationMode.QLinearOps,
-                                          force_fusions=False,
+                                          force_fusions=True,
                                           quantization_params=quantization_params_dict)
     output_model_path = './calibrated_quantized_model.onnx'
     onnx.save(calibrated_quantized_model, output_model_path)

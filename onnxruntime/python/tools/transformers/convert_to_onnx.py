@@ -1,4 +1,5 @@
 # -------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.  See License.txt in the project root for
 # license information.
@@ -19,8 +20,11 @@ import argparse
 import coloredlogs
 import logging
 import torch
+import numpy
+import json
 from transformers import AutoConfig
 from gpt2_helper import Gpt2Helper, MODEL_CLASSES, DEFAULT_TOLERANCE
+from gpt2_tester import Gpt2Tester
 from quantize_helper import QuantizeHelper
 from benchmark_helper import create_onnxruntime_session, setup_logger, prepare_environment, Precision
 
@@ -71,6 +75,13 @@ def parse_arguments():
                         default=0,
                         help="the aboslute and relative tolerance for parity verification")
 
+    parser.add_argument('--input_test_file',
+                        '-i',
+                        required=False,
+                        type=str,
+                        default='',
+                        help='Path to the file with inputs to test with')
+
     parser.add_argument(
         "-p",
         "--precision",
@@ -119,15 +130,21 @@ def main():
     device = torch.device("cuda:0" if args.use_gpu else "cpu")
     model.eval().to(device)
 
-    onnx_model_paths = Gpt2Helper.get_onnx_paths(output_dir, args.model_name_or_path, args.model_class)
+    use_external_data_format = (config.n_layer > 24)  #TODO: find a way to check model size > 2GB
+    onnx_model_paths = Gpt2Helper.get_onnx_paths(output_dir,
+                                                 args.model_name_or_path,
+                                                 args.model_class,
+                                                 new_folder=use_external_data_format)
     raw_onnx_model = args.output if args.output.endswith('.onnx') else onnx_model_paths["raw"]
     output_path = raw_onnx_model if (
         args.output.endswith('.onnx') or
         (args.precision == Precision.FLOAT32 and not args.optimize_onnx)) else onnx_model_paths[str(args.precision)]
 
-    Gpt2Helper.export_onnx(model, device, raw_onnx_model, args.verbose)
+    logger.info(f"Exporting ONNX model to {raw_onnx_model}")
+    Gpt2Helper.export_onnx(model, device, raw_onnx_model, args.verbose, use_external_data_format)
 
     if args.optimize_onnx or args.precision != Precision.FLOAT32:
+        logger.info(f"Optimizing model to {output_path}")
         Gpt2Helper.optimize_onnx(raw_onnx_model, output_path, args.precision == Precision.FLOAT16,
                                  model.config.num_attention_heads, model.config.hidden_size)
 
@@ -137,7 +154,7 @@ def main():
         model = QuantizeHelper.quantize_torch_model(model)
         logger.info("finished quantizing model")
 
-    session = create_onnxruntime_session(output_path, args.use_gpu, enable_all_optimization=False, verbose=args.verbose)
+    session = create_onnxruntime_session(output_path, args.use_gpu, enable_all_optimization=True, verbose=args.verbose)
     if session is not None:
         Gpt2Helper.test_parity(session,
                                model,
@@ -146,6 +163,44 @@ def main():
                                rtol=args.tolerance,
                                atol=args.tolerance,
                                model_class=args.model_class)
+
+    if args.input_test_file:
+        test_inputs = []
+        with open(args.input_test_file) as read_f:
+            for i, line in enumerate(read_f):
+                line = line.rstrip()
+                data = json.loads(line)
+                input_ids = torch.from_numpy(numpy.asarray(data["input_ids"], dtype=numpy.int64)).to(device)
+
+                if "attention_mask" in data:
+                    numpy_float = numpy.float16 if args.precision == Precision.FLOAT16 else numpy.float32
+                    attention_mask = torch.from_numpy(numpy.asarray(data["attention_mask"],
+                                                                    dtype=numpy_float)).to(device)
+                else:
+                    padding = -1
+                    attention_mask = (input_ids != padding
+                                      ).type(torch.float16 if args.precision == Precision.FLOAT16 else torch.float32)
+                    input_ids.masked_fill_(input_ids == padding, 0)
+
+                if "position_ids" in data:
+                    position_ids = torch.from_numpy(numpy.asarray(data["position_ids"], dtype=numpy.int64)).to(device)
+                else:
+                    position_ids = (attention_mask.long().cumsum(-1) - 1)
+                    position_ids.masked_fill_(position_ids < 0, 0)
+
+                inputs = {"input_ids": input_ids, "position_ids": position_ids, "attention_mask": attention_mask}
+                test_inputs.append(inputs)
+        Gpt2Tester.test_generation(session,
+                                   model,
+                                   device,
+                                   test_inputs,
+                                   precision=args.precision,
+                                   model_class=args.model_class,
+                                   top_k=20,
+                                   top_k_no_order=True,
+                                   max_steps=24,
+                                   max_inputs=0,
+                                   verbose=args.verbose)
 
     logger.info(f"Done. Output model: {output_path}")
 

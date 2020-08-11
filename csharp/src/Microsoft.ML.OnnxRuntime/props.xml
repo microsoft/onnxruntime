@@ -32,9 +32,7 @@
     <DirectMLBinary Condition="Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-$(EnginePlatform)\native\directml.dll')">$(MSBuildThisFileDirectory)..\..\runtimes\win-$(EnginePlatform)\native\directml.dll</DirectMLBinary>
   </PropertyGroup>
 
-  <ItemGroup Condition="Exists('packages.config') OR
-                        Exists('$(MSBuildProjectName).packages.config') OR
-                        Exists('packages.$(MSBuildProjectName).config')">
+  <ItemGroup>
     <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime.dll"
           Condition="'$(PlatformTarget)' == 'x64' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' != 'true')">
       <Link>onnxruntime.dll</Link>
