@@ -363,7 +363,7 @@ def parse_arguments():
         "--include_ops_by_model", type=str,
         help="include ops from model(s) under designated path.")
     parser.add_argument(
-        "--include_ops_by_csv", type=str,
+        "--include_ops_by_file", type=str,
         help="include ops from csv file.")
     return parser.parse_args()
 
@@ -1498,6 +1498,19 @@ def generate_documentation(source_dir, build_dir, configs):
             str(docdiff))
 
 
+def paths_to_execution_provider(args):
+    '''return paths to current execution provider delaration file'''
+
+    dir_path = os.path.dirname(os.path.abspath(__file__)) +\
+               '/../../onnxruntime/core/providers/{ep}/{ep}_execution_provider.cc'
+    ep_paths = [dir_path.format(ep='cpu')]
+
+    if args.use_cuda:
+        ep_paths.append(dir_path.format(ep='cuda'))
+
+    return ep_paths
+
+
 def main():
     args = parse_arguments()
     cmake_extra_defines = (args.cmake_extra_defines
@@ -1521,12 +1534,15 @@ def main():
         args.test = False
 
     if (args.include_ops_by_model and len(args.include_ops_by_model) > 0) or\
-       (args.include_ops_by_csv and len(args.include_ops_by_csv) > 0):
-        rewrite_cpu_provider(args.include_ops_by_model if args.include_ops_by_model else '',
-                             args.include_ops_by_csv if args.include_ops_by_csv else '',
-                             os.path.dirname(os.path.abspath(__file__)) +\
-                             '/../../onnxruntime/core/providers/cpu/cpu_execution_provider.cc')
-        args.test = False
+       (args.include_ops_by_file and len(args.include_ops_by_file) > 0):
+
+        include_ops_by_model = args.include_ops_by_model if args.include_ops_by_model else ''
+        include_ops_by_file = args.include_ops_by_file if args.include_ops_by_file else ''
+
+        for ep_path in paths_to_execution_provider(args):
+            rewrite_cpu_provider(include_ops_by_model, include_ops_by_file, ep_path)
+
+        args.test = False #disable tests since we don't know which ops are enabled
 
     if args.use_tensorrt:
         args.use_cuda = True

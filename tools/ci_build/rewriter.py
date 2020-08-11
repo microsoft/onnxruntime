@@ -7,14 +7,14 @@ from onnx import AttributeProto as AP
 
 #pylint: disable=no-member,too-many-locals,too-many-statements
 
-def extract_ops_from_csv(csv_path, referred_ops):
+def extract_ops_from_file(file_path, referred_ops):
     '''extract ops from csv file with format:
         op_type,domain,opset'''
 
-    if not os.path.isfile(csv_path):
+    if not os.path.isfile(file_path):
         return referred_ops
 
-    with open(csv_path, 'r') as csv_to_read:
+    with open(file_path, 'r') as csv_to_read:
 
         for line in csv_to_read.readlines():
             op_type, domain, raw_opset = line.strip().split(',')
@@ -29,7 +29,7 @@ def extract_ops_from_csv(csv_path, referred_ops):
             elif opset not in referred_ops[op_type][domain]:
                 referred_ops[op_type][domain].append(opset)
 
-    return referred_ops #end of extract_ops_from_csv(...)
+    return referred_ops #end of extract_ops_from_file(...)
 
 
 def extract_ops_from_model(model_path, referred_ops):
@@ -77,7 +77,7 @@ def extract_ops_from_model(model_path, referred_ops):
     return referred_ops #end of extract_ops_from_model(...)
 
 
-def rewrite_cpu_provider(model_path, csv_path, file_path):
+def rewrite_cpu_provider(model_path, file_path, ep_path):
     '''rewrite provider file to exclude unused ops'''
 
     onnx_op = 'ONNX_OPERATOR_KERNEL_CLASS_NAME'
@@ -89,7 +89,7 @@ def rewrite_cpu_provider(model_path, csv_path, file_path):
     onnx_versioned_typed_op = 'ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME'
     onnx_versioned_typed_op_len = len(onnx_versioned_typed_op)
     version_map = {} #{op:{domain:[opset1, opset2, opset3 ...]}
-    operators = extract_ops_from_csv(csv_path, extract_ops_from_model(model_path, {}))
+    operators = extract_ops_from_file(file_path, extract_ops_from_model(model_path, {}))
 
     def fill_version_map(op_type, opset_from, opset_to, domain):
         '''callback func to register op in version_map'''
@@ -172,11 +172,11 @@ def rewrite_cpu_provider(model_path, csv_path, file_path):
 
 
     lines = []
-    with open(file_path, 'r') as file_to_read:
+    with open(ep_path, 'r') as file_to_read:
         lines = file_to_read.readlines()
 
-    shutil.move(file_path, file_path + '.bak')
-    with open(file_path, 'w') as file_to_write:
+    shutil.move(ep_path, ep_path + '.bak')
+    with open(ep_path, 'w') as file_to_write:
         line_offset = 0
 
         while line_offset < len(lines):
