@@ -354,7 +354,7 @@ TEST(CApiTest, test_custom_op_library) {
 #elif defined(__APPLE__)
   lib_name = "libcustom_op_library.dylib";
 #else
-  lib_name = "./libcustom_op_library.so";
+lib_name = "./libcustom_op_library.so";
 #endif
 
   TestInference<PATH_TYPE, int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y, expected_values_y, 0, nullptr, lib_name.c_str());
@@ -363,8 +363,7 @@ TEST(CApiTest, test_custom_op_library) {
 #if defined(ENABLE_LANGUAGE_INTEROP_OPS)
 std::once_flag my_module_flag;
 
-void PrepareModule()
-{
+void PrepareModule() {
   std::ofstream module("mymodule.py");
   module << "class MyKernel:" << std::endl;
   module << "\t"
@@ -493,16 +492,15 @@ TEST(CApiTest, io_binding) {
   Ort::MemoryInfo info_cpu = Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtArenaAllocator, OrtMemTypeDefault);
 
   const std::array<int64_t, 2> x_shape = {3, 2};
-  std::array<float, 3 * 2> x_values  = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  std::array<float, 3 * 2> x_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   Ort::Value bound_x = Ort::Value::CreateTensor(info_cpu, x_values.data(), x_values.size(),
-    x_shape.data(), x_shape.size());
+                                                x_shape.data(), x_shape.size());
 
   const std::array<float, 3 * 2> expected_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
   const std::array<int64_t, 2> y_shape = {3, 2};
   std::array<float, 3 * 2> y_values;
   Ort::Value bound_y = Ort::Value::CreateTensor(info_cpu, y_values.data(), y_values.size(),
                                                 y_shape.data(), y_shape.size());
-
 
   Ort::IoBinding binding(session);
   binding.BindInput("X", bound_x);
@@ -586,8 +584,7 @@ TEST(CApiTest, fill_string_tensor) {
   Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
 
   for (int64_t i = 0; i < expected_len; i++) {
-    
-      tensor.FillStringTensorElement(s[i], i);
+    tensor.FillStringTensorElement(s[i], i);
   }
 
   auto shape_info = tensor.GetTensorTypeAndShapeInfo();
@@ -605,7 +602,7 @@ TEST(CApiTest, get_string_tensor_element) {
   Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
 
   tensor.FillStringTensor(s, expected_len);
-    
+
   auto expected_string = s[element_index];
   size_t expected_string_len = strlen(expected_string);
 
@@ -643,10 +640,11 @@ TEST(CApiTest, access_tensor_data_elements) {
    *  0 1 2
    *  3 4 5
    */
-  std::vector<int64_t> shape = {2,3};
-  int element_count = 6; // 2*3
+  std::vector<int64_t> shape = {2, 3};
+  int element_count = 6;  // 2*3
   std::vector<float> values(element_count);
-  for (int i = 0; i < element_count; i++) values[i] = i;
+  for (int i = 0; i < element_count; i++)
+    values[i] = static_cast<float>(i);
 
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
@@ -814,9 +812,9 @@ TEST(CApiTest, model_metadata) {
 }
 
 TEST(CApiTest, get_available_providers) {
-  const OrtApi *g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   int len = 0;
-  char **providers;
+  char** providers;
   ASSERT_EQ(g_ort->GetAvailableProviders(&providers, &len), nullptr);
   ASSERT_TRUE(len > 0);
   ASSERT_EQ(strcmp(providers[0], "CPUExecutionProvider"), 0);

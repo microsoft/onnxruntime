@@ -198,7 +198,6 @@ ORT_API(void, ReleaseThreadingOptions, _Frees_ptr_opt_ OrtThreadingOptions*);
 ORT_API_STATUS_IMPL(ModelMetadataGetCustomMetadataMapKeys, _In_ const OrtModelMetadata* model_metadata,
                     _Inout_ OrtAllocator* allocator, _Outptr_result_buffer_maybenull_(*num_keys) char*** keys, _Out_ int64_t* num_keys);
 
-
 ORT_API_STATUS_IMPL(AddFreeDimensionOverrideByName, _Inout_ OrtSessionOptions* options, _In_ const char* dim_name, _In_ int64_t dim_value);
 
 ORT_API_STATUS_IMPL(CreateAllocator, const OrtSession* sess, const OrtMemoryInfo* mem_info,
@@ -221,12 +220,14 @@ ORT_API_STATUS_IMPL(GetBoundOutputValues, _In_ const OrtIoBinding* binding_ptr, 
 ORT_API(void, ClearBoundInputs, _Inout_ OrtIoBinding* binding_ptr);
 ORT_API(void, ClearBoundOutputs, _Inout_ OrtIoBinding* binding_ptr);
 
-ORT_API_STATUS_IMPL(GetAvailableProviders, _Outptr_ char ***out_ptr,
-                    _In_ int *providers_length);
-ORT_API_STATUS_IMPL(ReleaseAvailableProviders, _In_ char **ptr,
+ORT_API_STATUS_IMPL(GetAvailableProviders, _Outptr_ char*** out_ptr,
+                    _In_ int* providers_length);
+ORT_API_STATUS_IMPL(ReleaseAvailableProviders, _In_ char** ptr,
                     _In_ int providers_length);
 
-ORT_API_STATUS_IMPL(EnablePrePacking, _Inout_ OrtSessionOptions * options);
-ORT_API_STATUS_IMPL(DisablePrePacking, _Inout_ OrtSessionOptions * options);
+ORT_API_STATUS_IMPL(EnablePrePacking, _Inout_ OrtSessionOptions* options);
+ORT_API_STATUS_IMPL(DisablePrePacking, _Inout_ OrtSessionOptions* options);
+
+ORT_API_STATUS_IMPL(TensorAt, _Inout_ OrtValue* value, size_t* location_values, size_t location_values_count, _Outptr_ void** out);
 
 }  // namespace OrtApis
