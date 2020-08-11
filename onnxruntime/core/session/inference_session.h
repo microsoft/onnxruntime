@@ -414,6 +414,10 @@ class InferenceSession {
   common::Status Load(std::function<common::Status(std::shared_ptr<Model>&)> loader,
                       const std::string& event_name) ORT_MUST_USE_RESULT;
 
+  virtual void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
+                                         TransformerLevel graph_optimization_level,
+                                         const std::vector<std::string>& custom_list);
+
   common::Status TransformGraph(onnxruntime::Graph& graph,
                                 const onnxruntime::GraphTransformerManager& graph_transformer_mgr,
                                 const ExecutionProviders& providers, KernelRegistryManager& kernel_registry_manager,
@@ -421,12 +425,6 @@ class InferenceSession {
                                 SessionState& session_state) ORT_MUST_USE_RESULT;
 
   common::Status CreateSubgraphSessionState(Graph& graph, SessionState& session_state) ORT_MUST_USE_RESULT;
-
-  common::Status InitializeSubgraphSessions(Graph& graph, SessionState& session_state) ORT_MUST_USE_RESULT;
-
-  virtual void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                         TransformerLevel graph_optimization_level,
-                                         const std::vector<std::string>& custom_list);
 
   void InitLogger(logging::LoggingManager* logging_manager);
 

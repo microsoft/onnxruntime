@@ -28,7 +28,6 @@
 #include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/mldata_type_utils.h"
 #include "core/framework/op_kernel_context_internal.h"
-#include "core/framework/finalize_session_state.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/tensor_type_and_shape.h"
@@ -735,57 +734,6 @@ common::Status InferenceSession::CreateSubgraphSessionState(Graph& graph, Sessio
   return Status::OK();
 }
 
-/// iterate nodes in graph looking for ones with graph attribute/s
-/// @param graph The graph to iterate
-/// @param session_state The SessionState instance for 'graph'.
-/// @remarks We pass in graph and session_state so we can handled nested subgraphs in the future
-common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, SessionState& session_state) {
-  for (auto& node : graph.Nodes()) {
-    // We only need subgraph session state for control flow nodes being handled by our CPU or CUDA execution provider.
-    // Remove it if it's not needed.
-    if (node.ContainsSubgraph()) {
-      const auto ep = node.GetExecutionProviderType();
-      if (ep != kCpuExecutionProvider && ep != kCudaExecutionProvider) {
-        session_state.RemoveSubgraphSessionState(node.Index());
-        continue;
-      }
-    } else {
-      // not a control flow node
-      continue;
-    }
-
-    for (const auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
-      auto& name = entry.first;
-      Graph& subgraph = *entry.second;
-
-      SessionState* subgraph_session_state = session_state.GetMutableSubgraphSessionState(node.Index(), name);
-      ORT_ENFORCE(subgraph_session_state, "CreateSubgraphSessionState should have created an entry earlier.");
-
-      ORT_RETURN_IF_ERROR_SESSIONID_(FinalizeSessionState(*subgraph_session_state,
-                                                          model_location_,
-                                                          kernel_registry_manager_,
-                                                          &node,
-                                                          session_options_));
-
-      // LOGS(*session_logger_, VERBOSE) << std::make_pair(subgraph_info.session_state->GetExecutionPlan(),
-      //                                                   &*subgraph_info.session_state);
-
-      // setup all the info for handling the feeds and fetches used in subgraph execution
-      auto* p_op_kernel = session_state.GetMutableKernel(node.Index());
-      ORT_ENFORCE(p_op_kernel);
-      // Downcast is safe, since only control flow nodes have subgraphs (node.GetAttributeNameToMutableSubgraphMap() is non-empty)
-      auto& control_flow_kernel = static_cast<controlflow::IControlFlowKernel&>(*p_op_kernel);
-      ORT_RETURN_IF_ERROR_SESSIONID_(
-          control_flow_kernel.SetupSubgraphExecutionInfo(session_state, name, *subgraph_session_state));
-
-      // recurse
-      ORT_RETURN_IF_ERROR_SESSIONID_(InitializeSubgraphSessions(subgraph, *subgraph_session_state));
-    }
-  }
-
-  return Status::OK();
-}
-
 bool InferenceSession::IsInitialized() const {
   std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
   return is_inited_;
@@ -892,16 +840,11 @@ common::Status InferenceSession::Initialize() {
 
     if (session_options_.execution_mode == ExecutionMode::ORT_PARALLEL &&
         execution_providers_.Get(onnxruntime::kCudaExecutionProvider)) {
-      LOGS(*session_logger_, ERROR) << "Parallel execution mode doesn't support "
-                                       "CUDA Execution Provider currently.";
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                            "Parallel execution mode doesn't support "
-                            "CUDA Execution Provider currently.");
+      status = common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                              "Parallel execution mode doesn't support CUDA Execution Provider currently.");
+      LOGS(*session_logger_, ERROR) << status.ErrorMessage();
+      return status;
     }
-
-    // add predefined transformers
-    AddPredefinedTransformers(graph_transformation_mgr_, session_options_.graph_optimization_level,
-                              transformers_to_enable_);
 
     onnxruntime::Graph& graph = model_->MainGraph();
 
@@ -918,6 +861,9 @@ common::Status InferenceSession::Initialize() {
     // create SessionState for subgraphs as it's needed by the transformers
     ORT_RETURN_IF_ERROR_SESSIONID_(CreateSubgraphSessionState(graph, *session_state_));
 
+    AddPredefinedTransformers(graph_transformation_mgr_, session_options_.graph_optimization_level,
+                              transformers_to_enable_);
+
     // apply any transformations to the main graph and any subgraphs
     ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraph(graph, graph_transformation_mgr_,
                                                   execution_providers_, kernel_registry_manager_,
@@ -926,6 +872,13 @@ common::Status InferenceSession::Initialize() {
 
     // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
     ORT_RETURN_IF_ERROR_SESSIONID_(graph.Resolve());
+
+    // need to keep the initializers if we're going to save the optimized model
+    bool keep_initializers = !session_options_.optimized_model_filepath.empty();
+
+    ORT_RETURN_IF_ERROR_SESSIONID_(session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
+                                                                        session_options_,
+                                                                        !keep_initializers));
 
     if (!session_options_.optimized_model_filepath.empty()) {
       // Serialize optimized ONNX model.
@@ -939,14 +892,6 @@ common::Status InferenceSession::Initialize() {
       }
     }
 
-    ORT_RETURN_IF_ERROR_SESSIONID_(FinalizeSessionState(*session_state_,
-                                                        model_location_,
-                                                        kernel_registry_manager_,
-                                                        nullptr /*parent_node*/,
-                                                        session_options_));
-
-    // handle any subgraphs
-    ORT_RETURN_IF_ERROR_SESSIONID_(InitializeSubgraphSessions(graph, *session_state_));
     session_state_->ResolveMemoryPatternFlag();
     is_inited_ = true;
 
