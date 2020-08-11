@@ -1,4 +1,6 @@
-'''comment out unused ops in cpu_execution_provider.cc by a set of models'''
+#!/usr/bin/env python3
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
 
 import os
 import shutil
@@ -77,7 +79,7 @@ def extract_ops_from_model(model_path, referred_ops):
     return referred_ops #end of extract_ops_from_model(...)
 
 
-def rewrite_cpu_provider(model_path, file_path, ep_path):
+def rewrite_provider(model_path, file_path, ep_path):
     '''rewrite provider file to exclude unused ops'''
 
     onnx_op = 'ONNX_OPERATOR_KERNEL_CLASS_NAME'

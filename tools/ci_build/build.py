@@ -1540,7 +1540,7 @@ def main():
         include_ops_by_file = args.include_ops_by_file if args.include_ops_by_file else ''
 
         for ep_path in paths_to_execution_provider(args):
-            rewrite_cpu_provider(include_ops_by_model, include_ops_by_file, ep_path)
+            rewrite_provider(include_ops_by_model, include_ops_by_file, ep_path)
 
         args.test = False #disable tests since we don't know which ops are enabled
 
