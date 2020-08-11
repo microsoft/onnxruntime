@@ -256,6 +256,7 @@ Status ProcessNode(
     }
   }
 
+  graph.Resolve();
   modified = true;
 
   return Status::OK();
