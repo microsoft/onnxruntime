@@ -1,11 +1,7 @@
 #pragma once
 
-#if defined(USE_NCCL) || defined(USE_HOROVOD)
+#if defined(USE_NCCL)
 #include <mpi.h>
-#endif
-
-#ifdef USE_HOROVOD
-#include "orttraining/core/graph/horovod_adapters.h"
 #endif
 
 namespace onnxruntime {
@@ -24,18 +20,34 @@ namespace training {
         error);                                              \
   } while (0)
 
-struct MPIContext {
-  MPIContext(int world_rank = 0, int local_rank = 0, int world_size = 1, int local_size = 1);
-  int world_rank;
-  int local_rank;
-  int world_size;
-  int local_size;
-};
+class MPIContext {
+  // https://stackoverflow.com/questions/1008019/c-singleton-design-pattern
+  public:
+    static const MPIContext& GetInstance();
 
-#if defined(USE_NCCL) || defined(USE_HOROVOD)
-MPIContext setup_mpi();
-void shutdown_mpi();
+    MPIContext(MPIContext const&) = delete;
+    void operator=(MPIContext const&) = delete;
+    
+    ~MPIContext();
+
+    int GetWorldRank() const { return world_rank; }
+    int GetLocalRank() const { return local_rank; }
+    int GetWorldSize() const { return world_size; }
+    int GetLocalSize() const { return local_size; }
+
+  private:
+    MPIContext();
+#if defined(USE_NCCL)
+    void setup_mpi();
+    void shutdown_mpi();
 #endif
+
+    int world_rank;
+    int local_rank;
+    int world_size;
+    int local_size;
+
+};
 
 }  // namespace training
 }  // namespace onnxruntime
