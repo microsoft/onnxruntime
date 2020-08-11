@@ -348,21 +348,9 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
 
     onnx_model = onnx.load_model_from_string(f.getvalue())
 
-    # Remove 'model_.' prefix introduced by model wrapper for initializers.
-    replace_name_dict = {}
-    for n in onnx_model.graph.initializer:
-        if n.name.startswith('model_.'):
-            replace_name_dict[n.name] = n.name[len('model_.'):]
-            n.name = replace_name_dict[n.name]
-    for n in onnx_model.graph.node:
-        for i, name in enumerate(n.input):
-            if name in replace_name_dict:
-                n.input[i] = replace_name_dict[name]
-
     # onnx model initializer may contain non-trainable registered buffers that are not part
     # of pytorch model named parameteres.
-    named_parameters = model.model_.named_parameters() if hasattr(model, 'model_') else model.named_parameters()
-    assert set([n for n, t in named_parameters]).issubset(
+    assert set([n for n, t in model.named_parameters()]).issubset(
         set([n.name for n in onnx_model.graph.initializer])), \
         "Initializer names do not match between PyTorch model and ONNX model, " \
         "please report a bug to ONNX Runtime."
