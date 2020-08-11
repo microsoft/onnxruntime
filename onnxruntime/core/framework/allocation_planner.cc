@@ -253,7 +253,7 @@ class PlannerImpl {
     // TODO: This should probably be defined to be the equality operator on TensorShapeProto.
     namespace on = ONNX_NAMESPACE;
     int rank1 = shape1.dim_size();
-    if (rank1 == 0 || shape2.dim_size() != rank1) return false;
+    if (shape2.dim_size() != rank1) return false;
     for (int i = 0; i < rank1; i++) {
       const auto& val1 = shape1.dim(i);
       const auto& val2 = shape2.dim(i);
@@ -323,7 +323,7 @@ class PlannerImpl {
   // Find if freelist contains a buffer of the same size as output_arg
   bool FindReusableTensor(const onnxruntime::NodeArg& output_arg, OrtValueIndex* reusable_tensor) {
     auto p_required_buffer_shape = context_.GetShape(output_arg);
-    if (nullptr == p_required_buffer_shape) return false;
+    if (nullptr == p_required_buffer_shape || p_required_buffer_shape->dim_size() == 0) return false;
     auto& required_memory_info = AllocPlan(output_arg.Name()).location;
     if (HasFence(&output_arg)) return false;
 
