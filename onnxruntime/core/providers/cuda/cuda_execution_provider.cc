@@ -1296,7 +1296,10 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
   };
 
   for (auto& function_table_entry : function_table) {
-    ORT_RETURN_IF_ERROR(kernel_registry.Register(function_table_entry()));
+    KernelCreateInfo info = function_table_entry();
+    if (info.kernel_def != nullptr) {  // filter disabled entries where type is void
+      ORT_RETURN_IF_ERROR(kernel_registry.Register(std::move(info)));
+    }
   }
 
 #ifndef DISABLE_CONTRIB_OPS
