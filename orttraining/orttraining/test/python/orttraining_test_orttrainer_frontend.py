@@ -11,10 +11,10 @@ from onnxruntime.capi.ort_trainer import IODescription as Legacy_IODescription,\
                                          ModelDescription as Legacy_ModelDescription,\
                                          LossScaler as Legacy_LossScaler,\
                                          ORTTrainer as Legacy_ORTTrainer
-from onnxruntime.capi.training import _utils, amp, debug, optim, orttrainer, TrainStepInfo,\
+from onnxruntime.capi.training import _utils, amp, optim, orttrainer, TrainStepInfo,\
                                       model_desc_validation as md_val,\
                                       orttrainer_options as orttrainer_options
-
+import _test_helpers as debug
 
 ###############################################################################
 # Helper functions ############################################################
@@ -658,8 +658,7 @@ def testORTTrainerMixedPrecisionLossScaler(seed, device, expected_loss):
 
     # Setup ORTTrainer
     loss_scaler = amp.DynamicLossScaler()
-    options = orttrainer.ORTTrainerOptions({'device' : {'id' : device,
-                                                        'mem_limit' : 100*1024*1024},
+    options = orttrainer.ORTTrainerOptions({'device' : {'id' : device},
                                             'mixed_precision' : {
                                                 'enabled' : True,
                                                 'loss_scaler' : loss_scaler},
@@ -681,67 +680,6 @@ def testORTTrainerMixedPrecisionLossScaler(seed, device, expected_loss):
     # Compare loss to ground truth computed from current ORTTrainer API
     debug.assert_model_outputs(expected_loss, actual_loss, True, rtol=1e-4)
     assert trainer._onnx_model is not None
-
-# generate sample input for our example
-def generate_random_input_from_model_desc(desc):
-    dtype = torch.int64
-    vocab_size = 30528
-    num_classes = [vocab_size, 2, 2, vocab_size, 2]
-    device = "cuda:0"
-    sample_input = []
-    for index, input in enumerate(desc['inputs']):
-        sample_input.append(torch.randint(0, num_classes[index], tuple(input[1]), dtype=dtype).to(device))
-    return sample_input
-
-def bert_model_description():
-    vocab_size = 30528
-    batch_size = 16
-    seq_len = 1
-    """
-    input_ids_desc = IODescription('input_ids', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=vocab_size)
-    segment_ids_desc = IODescription('segment_ids', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=2)
-    input_mask_desc = IODescription('input_mask', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=2)
-    masked_lm_labels_desc = IODescription('masked_lm_labels', ['batch', 'max_seq_len_in_batch'], torch.int64,
-                                          num_classes=vocab_size)
-    next_sentence_labels_desc = IODescription('next_sentence_labels', ['batch', ], torch.int64, num_classes=2)
-    loss_desc = IODescription('loss', [], torch.float32)
-
-    return ModelDescription([input_ids_desc, segment_ids_desc, input_mask_desc, masked_lm_labels_desc,
-                             next_sentence_labels_desc], [loss_desc])
-    """
-    model_desc = {'inputs': [('input_ids', [batch_size, seq_len]),
-                             ('segment_ids', [batch_size, seq_len],),
-                             ('input_mask', [batch_size, seq_len],),
-                             ('masked_lm_labels', [batch_size, seq_len],),
-                             ('next_sentence_labels', [batch_size, ],)],
-                  'outputs': [('loss', [], True)]}
-    return model_desc
-
-def testToyBERTModel():
-    print(bert_model_description())
-    model_desc = bert_model_description()
-    device = torch.device("cuda", 0)
-
-    pytorch_transformer_path = os.path.join('..', '..', '..', 'samples', 'python', 'pytorch_transformer')
-    bert_onnx_model_path = os.path.join(pytorch_transformer_path, "bert_toy_postprocessed.onnx")
-    model = onnx.load(bert_onnx_model_path)
-
-    optim_config = optim.LambConfig()
-    opts = orttrainer.ORTTrainerOptions({
-        'debug' : {
-            'deterministic_compute': True
-        },
-    })
-    
-    torch.manual_seed(0)
-    set_seed(0)
-    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
-
-    sample_input = generate_random_input_from_model_desc(model_desc)
-    print(sample_input)
-
-    output = trainer.train_step(*sample_input)
-    print(output)
 
 ###############################################################################
 # Temporary tests comparing Legacy vs Experimental ORTTrainer APIs ############

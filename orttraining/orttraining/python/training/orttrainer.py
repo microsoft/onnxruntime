@@ -165,7 +165,26 @@ class ORTTrainer(object):
                 self._onnx_model = postprocess.run_postprocess(self._onnx_model)
             if self.options._internal_use.extra_postprocess:
                 self._onnx_model = self.options._internal_use.extra_postprocess(self._onnx_model)
-
+         
+            # When input model is already ONNX (and not exported from Pytorch within ORTTrainer),
+            # append 'dtype' from ONNX into model description's
+            for idx_i, i_desc in enumerate(self.model_desc.inputs):
+               dtype = None
+               for onnx_input in self._onnx_model.graph.input:
+                  if onnx_input.name == i_desc.name:
+                     dtype = _utils.dtype_onnx_to_torch(onnx_input.type.tensor_type.elem_type)
+                     self.model_desc.add_type_to_input_description(idx_i, dtype)
+                     break
+               assert dtype is not None, f"ONNX model with unknown input type ({i_desc.name})"
+            for idx_o, o_desc in enumerate(self.model_desc.outputs):
+                dtype = None
+                for onnx_output in self._onnx_model.graph.output:
+                    if onnx_output.name == o_desc.name:
+                        dtype = _utils.dtype_onnx_to_torch(onnx_output.type.tensor_type.elem_type)
+                        self.model_desc.add_type_to_output_description(idx_o, dtype)
+                        break
+                assert dtype is not None, f"ONNX model with unknown output type ({o_desc.name})"
+        
         # Set GPU device and memory limit
         if 'cuda' in self.options.device.id.lower():
             mem_limit = self.options.device.mem_limit
@@ -174,6 +193,7 @@ class ORTTrainer(object):
             set_cuda_device_id(_utils.get_device_index(self.options.device.id))
 
         self._train_step_info = TrainStepInfo(all_finite=True, step=0, optimization_step=0, optimizer_config=self.optim_config)
+        
         self._init_session()
 
     def eval_step(self, *args, **kwargs):
@@ -642,7 +662,7 @@ class ORTTrainer(object):
         result = {}
         for output_desc in output_descs_resolved:
             torch_tensor = torch.zeros(output_desc.shape, device=self.options.device.id,
-                                       dtype=output_desc.dtype_amp if output_desc.dtype_amp else output_desc.dtype)
+                                   dtype=output_desc.dtype_amp if output_desc.dtype_amp else output_desc.dtype)
             iobinding.bind_output(output_desc.name, torch_tensor.device.type, _utils.get_device_index(self.options.device.id),
                                   _utils.dtype_torch_to_numpy(torch_tensor.dtype),
                                   list(torch_tensor.size()), torch_tensor.data_ptr())
