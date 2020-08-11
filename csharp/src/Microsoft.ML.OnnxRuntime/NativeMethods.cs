@@ -162,6 +162,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr FillStringTensorElement;
         public IntPtr EnablePrePacking;
         public IntPtr DisablePrePacking;
+        public IntPtr AddSessionConfigEntry;
     }
 
     internal static class NativeMethods
@@ -223,6 +224,7 @@ namespace Microsoft.ML.OnnxRuntime
             OrtRegisterCustomOpsLibrary = (DOrtRegisterCustomOpsLibrary)Marshal.GetDelegateForFunctionPointer(api_.RegisterCustomOpsLibrary, typeof(DOrtRegisterCustomOpsLibrary));
             OrtEnablePrePacking = (DOrtEnablePrePacking)Marshal.GetDelegateForFunctionPointer(api_.EnablePrePacking, typeof(DOrtEnablePrePacking));
             OrtDisablePrePacking = (DOrtDisablePrePacking)Marshal.GetDelegateForFunctionPointer(api_.DisablePrePacking, typeof(DOrtDisablePrePacking));
+            OrtAddSessionConfigEntry = (DOrtAddSessionConfigEntry)Marshal.GetDelegateForFunctionPointer(api_.AddSessionConfigEntry, typeof(DOrtAddSessionConfigEntry));
 
             OrtCreateRunOptions = (DOrtCreateRunOptions)Marshal.GetDelegateForFunctionPointer(api_.CreateRunOptions, typeof(DOrtCreateRunOptions));
             OrtReleaseRunOptions = (DOrtReleaseRunOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseRunOptions, typeof(DOrtReleaseRunOptions));
@@ -452,6 +454,9 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate IntPtr /*(OrtStatus*)*/ DOrtDisablePrePacking(IntPtr /* OrtSessionOptions* */ options);
         public static DOrtDisablePrePacking OrtDisablePrePacking;
 
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtAddSessionConfigEntry(IntPtr /* OrtSessionOptions* */ options, string configKey, string configValue);
+        public static DOrtAddSessionConfigEntry OrtAddSessionConfigEntry;
+
         ///**
         //  * The order of invocation indicates the preference order as well. In other words call this method
         //  * on your most preferred execution provider first followed by the less preferred ones.
@@ -675,14 +680,14 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtGetDimensions OrtGetDimensions;
 
         /**
-        * Get the symbolic dimension names for dimensions with a value of -1. 
-        * Order and number of entries is the same as values returned by GetDimensions. 
+        * Get the symbolic dimension names for dimensions with a value of -1.
+        * Order and number of entries is the same as values returned by GetDimensions.
         * The name may be empty for an unnamed symbolic dimension.
-        * e.g. 
+        * e.g.
         * If OrtGetDimensions returns [-1, -1, 2], OrtGetSymbolicDimensions would return an array with 3 entries.
         * If the values returned were ['batch', '', ''] it would indicate that
-        *  - the first dimension was a named symbolic dimension (-1 dim value and name in symbolic dimensions), 
-        *  - the second dimension was an unnamed symbolic dimension (-1 dim value and empty string), 
+        *  - the first dimension was a named symbolic dimension (-1 dim value and name in symbolic dimensions),
+        *  - the second dimension was an unnamed symbolic dimension (-1 dim value and empty string),
         *  - the entry for the third dimension should be ignored as it is not a symbolic dimension (dim value >= 0).
         */
         public delegate IntPtr /*(OrtStatus*)*/ DOrtGetSymbolicDimensions(

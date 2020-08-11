@@ -192,18 +192,18 @@ ORT_API_STATUS_IMPL(OrtApis::DisablePrePacking, _In_ OrtSessionOptions* options)
 
 ORT_API_STATUS_IMPL(OrtApis::AddSessionConfigEntry, _Inout_ OrtSessionOptions* options,
                     _In_z_ const char* config_key, _In_z_ const char* config_value) {
-  size_t string_len = strlen(config_key);
-  if (string_len > 128)
+  std::string key(config_key);
+  if (key.length() > 128)
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "config_key is longer than maximum length 128");
 
-  string_len = strlen(config_value);
-  if (string_len > 1024)
+  std::string val(config_value);
+  if (val.length() > 1024)
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "config_value is longer than maximum length 1024");
 
   auto& configs = options->value.session_configurations;
-  if (configs.find(config_key) != configs.end())
-    LOGS_DEFAULT(WARNING) << "Session Config with key [" << config_key << "] already exists";
+  if (configs.find(key) != configs.end())
+    LOGS_DEFAULT(WARNING) << "Session Config with key [" << key << "] already exists";
 
-  configs[config_key] = config_value;
+  configs[std::move(key)] = std::move(val);
   return nullptr;
 }
