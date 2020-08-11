@@ -11,10 +11,10 @@ from onnxruntime.capi.ort_trainer import IODescription as Legacy_IODescription,\
                                          ModelDescription as Legacy_ModelDescription,\
                                          LossScaler as Legacy_LossScaler,\
                                          ORTTrainer as Legacy_ORTTrainer
-from onnxruntime.capi.training import _utils, amp, debug, optim, orttrainer, TrainStepInfo,\
+from onnxruntime.capi.training import _utils, amp, optim, orttrainer, TrainStepInfo,\
                                       model_desc_validation as md_val,\
                                       orttrainer_options as orttrainer_options
-
+import _test_helpers
 
 ###############################################################################
 # Helper functions ############################################################
@@ -644,7 +644,7 @@ def testORTDeterministicCompute(seed, device):
 
     # Compare two different instances with identical setup
     assert id(first_trainer._onnx_model) != id(second_trainer._onnx_model)
-    debug.assert_onnx_weights(first_trainer, second_trainer)
+    _test_helpers.assert_onnx_weights(first_trainer, second_trainer)
 
 
 @pytest.mark.parametrize("seed,device,expected_loss", [
@@ -658,8 +658,7 @@ def testORTTrainerMixedPrecisionLossScaler(seed, device, expected_loss):
 
     # Setup ORTTrainer
     loss_scaler = amp.DynamicLossScaler()
-    options = orttrainer.ORTTrainerOptions({'device' : {'id' : device,
-                                                        'mem_limit' : 100*1024*1024},
+    options = orttrainer.ORTTrainerOptions({'device' : {'id' : device},
                                             'mixed_precision' : {
                                                 'enabled' : True,
                                                 'loss_scaler' : loss_scaler},
@@ -679,9 +678,8 @@ def testORTTrainerMixedPrecisionLossScaler(seed, device, expected_loss):
         actual_loss.append(loss.cpu())
 
     # Compare loss to ground truth computed from current ORTTrainer API
-    debug.assert_model_outputs(expected_loss, actual_loss, True, rtol=1e-4)
+    _test_helpers.assert_model_outputs(expected_loss, actual_loss, True, rtol=1e-4)
     assert trainer._onnx_model is not None
-
 
 ###############################################################################
 # Temporary tests comparing Legacy vs Experimental ORTTrainer APIs ############
@@ -733,7 +731,7 @@ def testORTTrainerLegacyAndExperimentalWeightsCheck(seed, device):
         _, _ = legacy_trainer.train_step(data, targets, torch.tensor([optim_config.lr]))
 
     # Compare legacy vs experimental APIs
-    debug.assert_legacy_onnx_weights(trainer, legacy_trainer, rtol=1e-4)
+    _test_helpers.assert_legacy_onnx_weights(trainer, legacy_trainer, rtol=1e-4)
 
 
 @pytest.mark.parametrize("seed,device", [
@@ -793,5 +791,5 @@ def testORTTrainerLegacyAndExperimentalPrecisionLossScaler(seed, device):
 
     # Compare legacy vs experimental APIs
     assert experimental_preds_dtype == legacy_preds_dtype
-    debug.assert_legacy_onnx_weights(trainer, legacy_trainer, rtol=1e-4, atol=1e-2)
-    debug.assert_model_outputs(legacy_loss, experimental_loss, rtol=1e-4)
+    _test_helpers.assert_legacy_onnx_weights(trainer, legacy_trainer, rtol=1e-4, atol=1e-2)
+    _test_helpers.assert_model_outputs(legacy_loss, experimental_loss, rtol=1e-4)
