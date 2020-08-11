@@ -17,6 +17,12 @@ from onnxruntime.capi.training import _utils, amp, optim, orttrainer, TrainStepI
                                       model_desc_validation as md_val,\
                                       orttrainer_options as orttrainer_options
 
+
+###############################################################################
+# Helper functions ############################################################
+###############################################################################
+
+
 def generate_random_input_from_model_desc(desc):
     dtype = torch.int64
     vocab_size = 30528
@@ -38,6 +44,12 @@ def bert_model_description():
                              ('next_sentence_labels', [batch_size, ],)],
                   'outputs': [('loss', [], True)]}
     return model_desc
+
+
+###############################################################################
+# Testing starts here #########################################################
+###############################################################################
+
 
 def testToyBERTModel():
     #print(bert_model_description())
