@@ -6,6 +6,8 @@ import torch
 
 
 def get_device_index(device):
+    '''Returns device index from a device'''
+
     if type(device) == str:
         # Could be 'cuda:0', 'cuda:1', or 'cpu'. with cpu, set index=0
         device = torch.device(device)
@@ -13,11 +15,31 @@ def get_device_index(device):
 
 
 def get_device_index_from_input(input):
+    '''Returns device index from a input PyTorch Tensor'''
+
     if isinstance(input, (list, tuple)):
         device_index = get_device_index(input[0].device)
     else:
         device_index = get_device_index(input.device)
     return device_index
+
+
+def get_all_gradients_finite_name_from_session(session):
+    '''Find all_gradients_finite node on Session graph and return its name'''
+
+    nodes = [x for x in session._outputs_meta if 'all_gradients_finite' in x.name]
+    if len(nodes) != 1:
+        raise RuntimeError("'all_gradients_finite' node not found within training session")
+    return nodes[0].name
+
+
+def get_gradient_accumulation_name_from_session(session):
+    '''Find Group_Accumulated_Gradients node on Session graph and return its name'''
+
+    nodes = [x for x in session._outputs_meta if 'Group_Accumulated_Gradients' in x.name]
+    if len(nodes) != 1:
+        raise RuntimeError("'Group_Accumulated_Gradients' node not found within training session")
+    return nodes[0].name
 
 
 def dtype_torch_to_numpy(torch_dtype):
@@ -140,6 +162,8 @@ def static_vars(**kwargs):
 
 
 def import_module_from_file(file_path, module_name):
+    '''Import a Python module from a file into interpreter'''
+
     assert isinstance(file_path, str) and os.path.exists(file_path),\
         "'file_path' must be a full path string with the python file to load"
     assert isinstance(module_name, str) and module_name,\
