@@ -1,72 +1,72 @@
 parameters:
-  - name: commit_sha1
-    displayName: Commit Sha1
-    type: string
-    default: master
-  - name: image_tag
-    displayName: Image Tag
-    type: string
-    default: latest
+- name: commit
+  displayName: Commit
+  type: string
+  default: master
+- name: image_tag
+  displayName: Image Tag
+  type: string
+  default: latest
 
-stages:
-- stage: Python_Packaging
+variables:
+  docker_image_prefix: onnxruntime-training
+  linux_gpu_dockerfile: dockerfiles/Dockerfile.training
 
-  variables:
-    docker_image_prefix: onnxruntime-training
-    linux_gpu_dockerfile: dockerfiles/Dockerfile.training
+jobs:
+- job: Linux_py_GPU_Build_Test_Release_Dockerfile
+  timeoutInMinutes: 90
+  # workspace:
+  #   clean: all
+  # pool: Linux-GPU-CUDA10
+  # steps:
+  # - task: CmdLine@2
+  #   displayName: Build builder stage of docker file
+  #   inputs:
+  #     script: |
+  #       docker build \
+  #         --pull \
+  #         -t ${{ variables.docker_image_prefix }}-manylinux-gpu-release-stage1 \
+  #         --target builder \
+  #         --build-arg COMMIT="${{ parameters.commit }}" \
+  #         -f ${{ variables.linux_gpu_dockerfile }} .
+  #     workingDirectory: $(Build.SourcesDirectory)
 
-  jobs:
-  - job: Linux_py_GPU_Build_Test_Release_Dockerfile
-    timeoutInMinutes: 0
-    workspace:
-      clean: all
-    pool: Linux-GPU-CUDA10
-    steps:
-      - task: CmdLine@2
-        displayName: Build builder stage of docker file
-        inputs:
-          script: |
-            docker build \
-              --pull \
-              -t ${{ variables.docker_image_prefix }}-manylinux-gpu-release-stage1 \
-              --target builder \
-              --build-arg COMMIT_SHA1="${{ parameters.commit_sha1 }}" \
-              -f ${{ variables.linux_gpu_dockerfile }} .
-          workingDirectory: $(Build.SourcesDirectory)
+  # - task: CmdLine@2
+  #   displayName: Run tests
+  #   inputs:
+  #     script: |
+  #       docker run \
+  #         --gpus all \
+  #         --rm \
+  #         ${{ variables.docker_image_prefix }}-manylinux-gpu-release-stage1 \
+  #         python onnxruntime/tools/ci_build/build.py \
+  #         --build_dir onnxruntime/build \
+  #         --config Release \
+  #         --test \
+  #         --enable_onnx_tests
+  #     workingDirectory: $(Build.SourcesDirectory)
 
-      - task: CmdLine@2
-        displayName: Run tests
-        inputs:
-          script: |
-            docker run \
-              --gpus all \
-              --rm \
-              ${{ variables.docker_image_prefix }}-manylinux-gpu-release-stage1 \
-              python onnxruntime/tools/ci_build/build.py \
-              --build_dir onnxruntime/build \
-              --config Release \
-              --test \
-              --enable_onnx_tests
-          workingDirectory: $(Build.SourcesDirectory)
+  - task: Docker@2
+    displayName: Build entire docker file
+    inputs:
+      command: build
+      containerRegistry: 'ortrelease'
+      repository: 'onnxruntime-training'
+      tags: ${{ parameters.image_tag }}
+      arguments: --build-arg COMMIT="${{ parameters.commit }}"
+      Dockerfile: ${{ variables.linux_gpu_dockerfile }}
 
-      - task: Docker@2
-        displayName: Build entire docker file
-        inputs:
-          command: build
-          containerRegistry: 'ortrelease'
-          repository: 'onnxruntime-training'
-          tags: ${{ parameters.image_tag }}
-          arguments: --build-arg COMMIT_SHA1="${{ parameters.commit_sha1 }}"
-          Dockerfile: 'dockerfiles/Dockerfile.training'
+  - task: Docker@2
+    displayName: Push docker image
+    inputs:
+      command: push
+      containerRegistry: 'ortrelease'
+      repository: 'onnxruntime-training'
+      tags: |
+      latest
+      $(Date:yyyyMMdd).$(Rev:r)
+      ${{ parameters.image_tag }}
 
-      - task: Docker@2
-        displayName: Push docker image
-        inputs:
-          command: push
-          containerRegistry: 'ortrelease'
-          repository: 'onnxruntime-training'
-          tags: ${{ parameters.image_tag }}
+  - template: templates/component-governance-component-detection-steps.yml
 
-      - template: templates/component-governance-component-detection-steps.yml
-
-      - template: templates/clean-agent-build-directory-step.yml
+  - template: templates/clean-agent-build-directory-step.yml

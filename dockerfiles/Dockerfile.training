@@ -11,7 +11,7 @@ ARG PYTORCH_VERSION=1.6.0
 
 ARG BUILD_VERSION=Release
 ARG OPENMPI_PATH=/opt/openmpi-${OPENMPI_VERSION} 
-ARG COMMIT_SHA1=master
+ARG COMMIT=master
 
 # cuda development image for building sources
 FROM nvidia/cuda:10.2-cudnn7-devel-ubuntu18.04 as builder
@@ -118,10 +118,10 @@ RUN pip install torch==${PYTORCH_VERSION}
 
 # build onnxruntime wheel with cuda and mpi support
 ARG BUILD_VERSION
-ARG COMMIT_SHA1
+ARG COMMIT
 RUN cd /stage && git clone https://github.com/microsoft/onnxruntime.git &&\
     cd onnxruntime &&\
-    git checkout ${COMMIT_SHA1} &&\
+    git checkout ${COMMIT} &&\
     cp ThirdPartyNotices.txt /stage/ThirdPartyNotices.txt &&\
     cp dockerfiles/LICENSE-IMAGE.txt /stage/LICENSE-IMAGE.txt &&\
     python tools/ci_build/build.py \
