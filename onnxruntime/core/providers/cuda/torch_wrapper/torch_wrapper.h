@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef USE_TORCH
+
 #pragma once
 
 #include "torch/torch.h"
@@ -37,3 +39,5 @@ void matmul(
 }  // torch_wrapper
 }  // namespace cuda
 }  // namespace onnxruntime
+
+#endif // USE_TORCH

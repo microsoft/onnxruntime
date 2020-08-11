@@ -1,9 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef USE_TORCH
+
 #include "gtest/gtest.h"
-#include "test/providers/provider_test_utils.h"
 #include "torch/torch.h"
+#include "test/providers/provider_test_utils.h"
 #include "test/providers/compare_provider_test_utils.h"
 
 namespace onnxruntime {
@@ -42,3 +44,5 @@ TEST(TorchBaseline, MatMul) {
 
 }  // namespace test
 }  // namespace onnxruntime
+
+#endif // USE_TORCH
