@@ -499,6 +499,7 @@ struct ProviderHost {
   virtual void Provider_Graph__SetOutputs(Provider_Graph* p, const std::vector<const Provider_NodeArg*>& outputs) = 0;
 
   virtual const std::vector<const Provider_NodeArg*>& Provider_Graph__GetInputs(const Provider_Graph* p) noexcept = 0;
+  virtual bool Provider_Graph__GetInitializedTensor(const Provider_Graph* p, const std::string& tensor_name, const Provider_TensorProto*& value) = 0;
 
   // Provider_GraphViewer
   virtual void Provider_GraphViewer__operator_delete(Provider_GraphViewer* p) = 0;
@@ -510,6 +511,7 @@ struct ProviderHost {
   virtual const Provider_NodeArg* Provider_GraphViewer__GetNodeArg(const Provider_GraphViewer* p, const std::string& name) = 0;
 
   virtual bool Provider_GraphViewer__IsSubgraph(const Provider_GraphViewer* p) = 0;
+  virtual int Provider_GraphViewer__NumberOfNodes(const Provider_GraphViewer* p) noexcept = 0;
   virtual int Provider_GraphViewer__MaxNodeIndex(const Provider_GraphViewer* p) noexcept = 0;
 
   virtual const std::vector<const Provider_NodeArg*>& Provider_GraphViewer__GetInputs(const Provider_GraphViewer* p) noexcept = 0;
@@ -927,6 +929,8 @@ struct Provider_Graph {
 
   const std::vector<const Provider_NodeArg*>& GetInputs() const noexcept { return g_host->Provider_Graph__GetInputs(this); }
 
+  bool GetInitializedTensor(const std::string& tensor_name, const Provider_TensorProto*& value) const { return g_host->Provider_Graph__GetInitializedTensor(this, tensor_name, value); }
+
   PROVIDER_DISALLOW_ALL(Provider_Graph)
 };
 
@@ -942,6 +946,7 @@ struct Provider_GraphViewer {
 
   bool IsSubgraph() const { return g_host->Provider_GraphViewer__IsSubgraph(this); }
 
+  int NumberOfNodes() const noexcept { return g_host->Provider_GraphViewer__NumberOfNodes(this); }
   int MaxNodeIndex() const noexcept { return g_host->Provider_GraphViewer__MaxNodeIndex(this); }
 
   const std::vector<const Provider_NodeArg*>& GetInputs() const noexcept { return g_host->Provider_GraphViewer__GetInputs(this); }

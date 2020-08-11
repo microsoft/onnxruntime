@@ -20,6 +20,7 @@
 
 namespace ONNX_NAMESPACE {
 
+// These are exact duplicates of the real protobuf types, defined here since we can't include the protobuf headers
 enum AttributeProto_AttributeType : int {
   AttributeProto_AttributeType_UNDEFINED = 0,
   AttributeProto_AttributeType_FLOAT = 1,
@@ -213,7 +214,6 @@ class Capture {
 
   std::ostream& Stream() noexcept;
 
- private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Capture);
 };
 

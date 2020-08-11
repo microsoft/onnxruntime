@@ -533,6 +533,7 @@ struct ProviderHostImpl : ProviderHost {
   void Provider_Graph__SetOutputs(Provider_Graph* p, const std::vector<const Provider_NodeArg*>& outputs) override { reinterpret_cast<Graph*>(p)->SetOutputs(*reinterpret_cast<const std::vector<const NodeArg*>*>(&outputs)); }
 
   const std::vector<const Provider_NodeArg*>& Provider_Graph__GetInputs(const Provider_Graph* p) noexcept override { return *reinterpret_cast<const std::vector<const Provider_NodeArg*>*>(&reinterpret_cast<const Graph*>(p)->GetInputs()); }
+  bool Provider_Graph__GetInitializedTensor(const Provider_Graph* p, const std::string& tensor_name, const Provider_TensorProto*& value) override { return reinterpret_cast<const Graph*>(p)->GetInitializedTensor(tensor_name, reinterpret_cast<const ONNX_NAMESPACE::TensorProto*&>(value)); }
 
   // Provider_GraphViewer
   void Provider_GraphViewer__operator_delete(Provider_GraphViewer* p) override { delete reinterpret_cast<GraphViewer*>(p); }
@@ -549,6 +550,7 @@ struct ProviderHostImpl : ProviderHost {
   const Provider_NodeArg* Provider_GraphViewer__GetNodeArg(const Provider_GraphViewer* p, const std::string& name) override { return reinterpret_cast<const Provider_NodeArg*>(reinterpret_cast<const GraphViewer*>(p)->GetNodeArg(name)); }
 
   bool Provider_GraphViewer__IsSubgraph(const Provider_GraphViewer* p) override { return reinterpret_cast<const GraphViewer*>(p)->IsSubgraph(); }
+  int Provider_GraphViewer__NumberOfNodes(const Provider_GraphViewer* p) noexcept override { return reinterpret_cast<const GraphViewer*>(p)->NumberOfNodes(); }
   int Provider_GraphViewer__MaxNodeIndex(const Provider_GraphViewer* p) noexcept override { return reinterpret_cast<const GraphViewer*>(p)->MaxNodeIndex(); }
 
   const std::vector<const Provider_NodeArg*>& Provider_GraphViewer__GetInputs(const Provider_GraphViewer* p) noexcept override { return *reinterpret_cast<const std::vector<const Provider_NodeArg*>*>(&reinterpret_cast<const GraphViewer*>(p)->GetInputs()); }
@@ -556,7 +558,7 @@ struct ProviderHostImpl : ProviderHost {
   const std::vector<const Provider_NodeArg*>& Provider_GraphViewer__GetValueInfo(const Provider_GraphViewer* p) noexcept override { return *reinterpret_cast<const std::vector<const Provider_NodeArg*>*>(&reinterpret_cast<const GraphViewer*>(p)->GetValueInfo()); }
 
   const Provider_InitializedTensorSet& Provider_GraphViewer__GetAllInitializedTensors(const Provider_GraphViewer* p) override { return *reinterpret_cast<const Provider_InitializedTensorSet*>(&reinterpret_cast<const GraphViewer*>(p)->GetAllInitializedTensors()); }
-  bool Provider_GraphViewer__GetInitializedTensor(const Provider_GraphViewer* p, const std::string& tensor_name, const Provider_TensorProto*& value) { return reinterpret_cast<const GraphViewer*>(p)->GetInitializedTensor(tensor_name, reinterpret_cast<const ONNX_NAMESPACE::TensorProto*&>(value)); }
+  bool Provider_GraphViewer__GetInitializedTensor(const Provider_GraphViewer* p, const std::string& tensor_name, const Provider_TensorProto*& value) override { return reinterpret_cast<const GraphViewer*>(p)->GetInitializedTensor(tensor_name, reinterpret_cast<const ONNX_NAMESPACE::TensorProto*&>(value)); }
 
   const std::unordered_map<std::string, int>& Provider_GraphViewer__DomainToVersionMap(const Provider_GraphViewer* p) override { return reinterpret_cast<const GraphViewer*>(p)->DomainToVersionMap(); }
 

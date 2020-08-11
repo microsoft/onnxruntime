@@ -3,8 +3,6 @@
 
 #pragma once
 #include <ctime>
-//#include "core/common/logging/logging.h"
-//#include "core/framework/op_kernel.h"
 #include "NvInfer.h"
 #include "NvOnnxParser.h"
 #include "core/platform/ort_mutex.h"

@@ -56,9 +56,6 @@ struct ShutdownProtobuf {
 
 namespace onnxruntime {
 
-//constexpr const char* TRT = "Tensorrt";
-//constexpr const char* TRT_PINNED = "TensorrtPinned";
-
 namespace cuda {
 template <>
 void Impl_Cast(
@@ -436,9 +433,9 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
           for (auto input : node->InputDefs()) {
             auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
             inputs.push_back(&n_input);
-            const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
+            const Provider_TensorProto* initializer = nullptr;
             if (graph.GetInitializedTensor(input->Name(), initializer)) {
-              const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
+              const Provider_TensorProto* subgraph_initializer = nullptr;
               if (!graph_build.GetInitializedTensor(input->Name(), subgraph_initializer)) {
                 graph_build.AddInitializedTensor(*(initializer));
               }
@@ -446,9 +443,9 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
           }
 
           for (auto input : node->ImplicitInputDefs()) {
-            const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
+            const Provider_TensorProto* initializer = nullptr;
             if (graph.GetInitializedTensor(input->Name(), initializer)) {
-              const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
+              const Provider_TensorProto* subgraph_initializer = nullptr;
               if (!graph_build.GetInitializedTensor(input->Name(), subgraph_initializer)) {
                 graph_build.AddInitializedTensor(*(initializer));
               }
