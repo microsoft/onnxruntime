@@ -21,8 +21,8 @@ static bool IsNcclAvailable() {
 #endif
 }
 
-static int NumberOfWorkers(std::vector<int>& size_arr, int max_len, std::vector<int64_t>& partitions) {
-  int total = 0;
+static int NumberOfWorkers(std::vector<int64_t>& size_arr, int64_t max_len, std::vector<int64_t>& partitions) {
+  int64_t total = 0;
   int num_workers = 1;
   int64_t idx = 0;
   partitions.clear();
@@ -41,10 +41,10 @@ static int NumberOfWorkers(std::vector<int>& size_arr, int max_len, std::vector<
 }
 
 //Binary search to find the most even partition of gradients cross workers
-static int WorkersPartition(std::vector<int>& size_arr, int dp_group, int max_size, int total_size, std::vector<int64_t>& partitions) {
-  int lo = max_size;
-  int hi = total_size;
-  int mid = lo + (hi - lo) / 2;
+static int64_t WorkersPartition(std::vector<int64_t>& size_arr, int dp_group, int64_t max_size, int64_t total_size, std::vector<int64_t>& partitions) {
+  int64_t lo = max_size;
+  int64_t hi = total_size;
+  int64_t mid = lo + (hi - lo) / 2;
   std::vector<int64_t> tmp_partitions;
 
   while (lo < hi) {
@@ -136,7 +136,7 @@ static Status AddNcclAllGatherForWeights(
     std::vector<int64_t>& partitions,
     std::vector<ArgDef>& weight_argdefs,
     GraphAugmenter::GraphDefs& graph_defs,
-    int max_group_size_val) {
+    int64_t max_group_size_val) {
   std::vector<ArgDef> allgather_outputs(weight_argdefs.size());
   for (size_t i = 0; i < weight_argdefs.size(); i++) {
     allgather_outputs[i] = ArgDef(weight_argdefs[i].name + "_AllGather_Out",
@@ -283,17 +283,17 @@ static Status ModifyParametersForOptimizerPartitioningByBoundary(
     const OptimizerGraphConfig& opt_graph_config,
     std::vector<ArgDef>& gradient_argdefs,
     std::vector<int64_t>& partitions,
-    int& max_group_size) {
-  std::vector<int> size_arr;
+    int64_t& max_group_size) {
+  std::vector<int64_t> size_arr;
   int max_size = 0;
-  int total_size = 0;
+  int64_t total_size = 0;
   for (size_t i = 0; i < gradient_argdefs.size(); i++) {
     ArgDef gradient_argdef = gradient_argdefs[i];
     ORT_ENFORCE(gradient_argdef.type_proto != nullptr);
     const auto& gradient_shape_proto = gradient_argdef.type_proto->tensor_type().shape();
     const TensorShape& gradient_shape = utils::GetTensorShapeFromTensorShapeProto(gradient_shape_proto);
 
-    total_size += gradient_shape.Size();
+    total_size += int(gradient_shape.Size());
     if (max_size < gradient_shape.Size()) max_size = gradient_shape.Size();
     size_arr.push_back(gradient_shape.Size());
   }
@@ -489,6 +489,8 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
       return graph.GenerateNodeArgName(base_name);
     };
 
+    ORT_RETURN_IF_ERROR(GetGradientArgsInTopoOrder(graph, weight_argdefs, opt_configs_, gradient_argdefs));
+
     // handle optimizer partitioning
     ORT_RETURN_IF_ERROR(ModifyParametersForOptimizerPartitioning(
         graph, graph_defs, opt_graph_config_, opt_configs_, weight_argdefs, gradient_argdefs));
@@ -547,7 +549,7 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
     ORT_RETURN_IF_ERROR(GetGradientArgsInTopoOrder(graph, weight_argdefs, opt_configs_, gradient_argdefs));
 
     // handle optimizer partitioning
-    int max_group_size;
+    int64_t max_group_size;
     ORT_RETURN_IF_ERROR(ModifyParametersForOptimizerPartitioningByBoundary(opt_graph_config_, gradient_argdefs, partitions, max_group_size));
 
     ArgDef fused_gradient_argdef;
