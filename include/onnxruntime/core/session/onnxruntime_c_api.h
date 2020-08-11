@@ -133,14 +133,6 @@ typedef enum OrtErrorCode {
   ORT_EP_FAIL,
 } OrtErrorCode;
 
-typedef enum OrtSessionOptionsConfigKey {
-  MINIMUM = 0,  // Dummy value to set the lower bound of the enum value
-
-  // Dummy value to set the upper bound of the enum value
-  // Always leave this as the last value
-  MAXIMUM,
-} OrtSessionOptionsConfigKey;
-
 #define ORT_RUNTIME_CLASS(X) \
   struct Ort##X;             \
   typedef struct Ort##X Ort##X;
@@ -876,7 +868,7 @@ struct OrtApi {
      * \param config_value A null terminated string representation of the config value
      */
   ORT_API2_STATUS(AddSessionConfigEntry, _Inout_ OrtSessionOptions* options,
-                  _In_ OrtSessionOptionsConfigKey config_key, _In_ const char* config_value);
+                  _In_z_ const char* config_key, _In_z_ const char* config_value);
 };
 
 /*

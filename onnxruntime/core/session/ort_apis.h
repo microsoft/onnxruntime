@@ -209,5 +209,5 @@ ORT_API_STATUS_IMPL(EnablePrePacking, _Inout_ OrtSessionOptions* options);
 ORT_API_STATUS_IMPL(DisablePrePacking, _Inout_ OrtSessionOptions* options);
 
 ORT_API_STATUS_IMPL(AddSessionConfigEntry, _Inout_ OrtSessionOptions* options,
-                    _In_ OrtSessionOptionsConfigKey config_key, _In_ const char* config_value);
+                    _In_z_ const char* config_key, _In_z_ const char* config_value);
 }  // namespace OrtApis

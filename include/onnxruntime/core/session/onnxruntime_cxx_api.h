@@ -199,7 +199,7 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& EnablePrePacking();
   SessionOptions& DisablePrePacking();
 
-  SessionOptions& AddConfigEntry(OrtSessionOptionsConfigKey config_key, const char* config_value);
+  SessionOptions& AddConfigEntry(const char* config_key, const char* config_value);
 };
 
 struct ModelMetadata : Base<OrtModelMetadata> {

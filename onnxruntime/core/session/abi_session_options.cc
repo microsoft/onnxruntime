@@ -191,14 +191,13 @@ ORT_API_STATUS_IMPL(OrtApis::DisablePrePacking, _In_ OrtSessionOptions* options)
 }
 
 ORT_API_STATUS_IMPL(OrtApis::AddSessionConfigEntry, _Inout_ OrtSessionOptions* options,
-                    _In_ OrtSessionOptionsConfigKey config_key, _In_ const char* config_value) {
-  if (config_key <= OrtSessionOptionsConfigKey::MINIMUM ||
-      config_key >= OrtSessionOptionsConfigKey::MAXIMUM) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "config_key out of range");
-  }
+                    _In_z_ const char* config_key, _In_z_ const char* config_value) {
+  size_t string_len = strlen(config_key);
+  if (string_len > 128)
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "config_key is longer than maximum length 128");
 
-  size_t value_len = strlen(config_value);
-  if (value_len > 1024)
+  string_len = strlen(config_value);
+  if (string_len > 1024)
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "config_value is longer than maximum length 1024");
 
   auto& configs = options->value.session_configurations;

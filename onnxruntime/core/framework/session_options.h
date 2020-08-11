@@ -86,6 +86,6 @@ struct SessionOptions {
   bool use_prepacking = true;
 
   // Stores the configurations for this session
-  std::unordered_map<int, std::string> session_configurations;
+  std::unordered_map<std::string, std::string> session_configurations;
 };
 }  // namespace onnxruntime

@@ -239,8 +239,7 @@ inline SessionOptions& SessionOptions::DisablePrePacking() {
   return *this;
 }
 
-inline SessionOptions& SessionOptions::AddConfigEntry(OrtSessionOptionsConfigKey config_key,
-                                                      const char* config_value) {
+inline SessionOptions& SessionOptions::AddConfigEntry(const char* config_key, const char* config_value) {
   ThrowOnError(GetApi().AddSessionConfigEntry(p_, config_key, config_value));
   return *this;
 }
