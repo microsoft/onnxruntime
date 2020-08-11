@@ -12,7 +12,7 @@ import shutil
 import subprocess
 import sys
 import hashlib
-from rewriter import rewrite_cpu_provider
+from rewriter import rewrite_provider
 
 logging.basicConfig(
     format="%(asctime)s %(name)s [%(levelname)s] - %(message)s",
