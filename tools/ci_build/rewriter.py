@@ -175,7 +175,10 @@ def rewrite_cpu_provider(model_path, file_path, ep_path):
     with open(ep_path, 'r') as file_to_read:
         lines = file_to_read.readlines()
 
-    shutil.move(ep_path, ep_path + '.bak')
+    backup_path = ep_path + '.bak'
+    if not os.path.isfile(backup_path):
+        shutil.move(ep_path, backup_path)
+
     with open(ep_path, 'w') as file_to_write:
         line_offset = 0
 
