@@ -51,6 +51,8 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   std::map<std::string, std::string> config;
   if(subgraph_context_.device_id == "MYRIAD" && subgraph_context_.set_vpu_config){
     config["VPU_DETECT_NETWORK_BATCH"] = CONFIG_VALUE(NO);
+    config["VPU_HW_INJECT_STAGES"] = CONFIG_VALUE(NO);
+    config["VPU_COPY_OPTIMIZATION"] = CONFIG_VALUE(NO);
   }
   try {
     exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, subgraph_context_.device_id, config);
