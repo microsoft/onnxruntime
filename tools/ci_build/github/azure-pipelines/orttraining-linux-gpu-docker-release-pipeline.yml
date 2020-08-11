@@ -1,6 +1,6 @@
 parameters:
 - name: commit
-  displayName: Commit
+  displayName: Commit (Default to master or use sha1)
   type: string
   default: master
 - name: image_tag
@@ -37,7 +37,7 @@ jobs:
     inputs:
       script: |
         docker run \
-         gpus all \
+          --gpus all \
           --rm \
           ${{ variables.docker_image_prefix }}-manylinux-gpu-release-stage1 \
           python onnxruntime/tools/ci_build/build.py \
