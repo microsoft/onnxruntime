@@ -330,7 +330,7 @@ const std::vector<std::string>& GetAvailableProviders() {
  * Validate a string that is positive integer or zero.
  *
  * (-1234, 43.21, +43.21 ... are not valid,
- *  1234, +4321, 12 ... are valid) 
+ *  1234, +4321, 12 ... are valid)
  */
 bool IsPositiveInteger(const std::string& s) {
   if (s.length() == 0) {
@@ -487,7 +487,7 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
 /*
  * Register execution provider with options.
  *
- * (note: currently only cuda EP supports this feature and rest of EPs use default options) 
+ * (note: currently only cuda EP supports this feature and rest of EPs use default options)
  */
 void RegisterExecutionProvidersWithOptions(InferenceSession* sess, const std::vector<std::string>& provider_types, ProviderOptionsMap& provider_options_map) {
   PYBIND_UNREFERENCED_PARAMETER(provider_options_map);
@@ -546,12 +546,12 @@ void RegisterExecutionProvidersWithOptions(InferenceSession* sess, const std::ve
 }
 
 /**
- * Generate a map for mapping execution provider to excution provider options. 
- * 
+ * Generate a map for mapping execution provider to excution provider options.
+ *
  * @param providers vector of excution providers. [ep1, ep2, ...]
- * @param provider_options_vector vector of excution provider options. [option1, option2 ...] 
+ * @param provider_options_vector vector of excution provider options. [option1, option2 ...]
  * @param provider_options_map an unordered map for mapping excution provider to excution provider options. {'ep1' -> option1, 'ep2' -> option2 ...}
- *                                                                      
+ *
  */
 void GenerateProviderOptionsMap(const std::vector<std::string>& providers,
                                 ProviderOptionsVector& provider_options_vector,
@@ -697,8 +697,8 @@ void addGlobalMethods(py::module& m, const Environment& env) {
 #ifdef USE_CUDA
   /*
    * The following set_* methods are deprecated.
-   * 
-   * To achieve same result, please use the following python api: 
+   *
+   * To achieve same result, please use the following python api:
    * InferenceSession.set_providers(list_of_providers, list_of_provider_option_dicts)
    *
    */
@@ -1037,7 +1037,25 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
                                 dim_value}); },
           "Rpbdoc(Specify values of named dimensions within model inputs.)pbdoc")
       .def_readwrite("use_prepacking", &SessionOptions::use_prepacking,
-                     R"pbdoc(Whether to use prepacking. Default is true.)pbdoc");
+                     R"pbdoc(Whether to use prepacking. Default is true.)pbdoc")
+      .def(
+          "add_session_config_entry",
+          [](SessionOptions* options, const char* config_key, const char* config_value) -> void {
+            std::string key(config_key);
+            if (key.empyt() || key.length() > 128)
+              throw std::runtime_error("config_key is empty or longer than maximum length 128");
+
+            std::string val(config_value);
+            if (val.length() > 1024)
+              throw std::runtime_error("config_value is longer than maximum length 1024");
+
+            auto& configs = options->session_configurations;
+            if (configs.find(key) != configs.end())
+              LOGS_DEFAULT(WARNING) << "Session Config with key [" << key << "] already exists";
+
+            configs[std::move(key)] = std::move(val);
+          },
+          "Rpbdoc(Specify values of named dimensions within model inputs.)pbdoc");
 
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())
