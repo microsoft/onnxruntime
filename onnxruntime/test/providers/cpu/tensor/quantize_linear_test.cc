@@ -7,7 +7,7 @@
 namespace onnxruntime {
 namespace test {
 // scalar zero & scale with uint8
-TEST(DequantizeLinearOpTest, DequantizeLinear_0) {
+TEST(DequantizeLinearOpTest, Uint8) {
   OpTester test("DequantizeLinear", 10);
   std::vector<int64_t> dims{4};
   test.AddInput<uint8_t>("x", dims, {0, 3, 128, 255});
@@ -18,7 +18,7 @@ TEST(DequantizeLinearOpTest, DequantizeLinear_0) {
 }
 
 // scalar zero & scale with int8
-TEST(DequantizeLinearOpTest, DequantizeLinear_1) {
+TEST(DequantizeLinearOpTest, Int8) {
   OpTester test("DequantizeLinear", 10);
   std::vector<int64_t> dims{4};
   test.AddInput<int8_t>("x", dims, {-30, -3, 100, 127});
@@ -29,7 +29,7 @@ TEST(DequantizeLinearOpTest, DequantizeLinear_1) {
 }
 
 // 2d inputs
-TEST(DequantizeLinearOpTest, DequantizeLinear_2D) {
+TEST(DequantizeLinearOpTest, 2D) {
   OpTester test("DequantizeLinear", 10);
   std::vector<int64_t> dims{3, 4};
   test.AddInput<uint8_t>("X", dims,
@@ -46,7 +46,7 @@ TEST(DequantizeLinearOpTest, DequantizeLinear_2D) {
 }
 
 // dequantize with scalar data
-TEST(DequantizeLinearOpTest, DequantizeLinear_Scalar) {
+TEST(DequantizeLinearOpTest, Scalar) {
   OpTester test("DequantizeLinear", 10);
   test.AddInput<int8_t>("x", {}, {100});
   test.AddInput<float>("x_scale", {}, {2.0f});
@@ -56,7 +56,7 @@ TEST(DequantizeLinearOpTest, DequantizeLinear_Scalar) {
 }
 
 // dequantize without zero point
-TEST(DequantizeLinearOpTest, DequantizeLinear_Without_Zero_Point) {
+TEST(DequantizeLinearOpTest, Without_Zero_Point) {
   OpTester test("DequantizeLinear", 10);
   test.AddInput<int8_t>("x", {}, {100});
   test.AddInput<float>("x_scale", {}, {2.0f});
@@ -176,7 +176,7 @@ TEST(DequantizeLinearOpTest, Per_Channel_Neg_2) {
 }
 
 // quantize with scalar zero point and scale
-TEST(QuantizeLinearOpTest, QuantizeLinear_uint8) {
+TEST(QuantizeLinearOpTest, Uint8) {
   OpTester test("QuantizeLinear", 10);
   std::vector<int64_t> dims{6};
   test.AddInput<float>("x", dims, {0, 2, 3, 1000, -254, -1000});
@@ -187,7 +187,7 @@ TEST(QuantizeLinearOpTest, QuantizeLinear_uint8) {
 }
 
 // quantize with scalar zero point and scale
-TEST(QuantizeLinearOpTest, QuantizeLinear_int8) {
+TEST(QuantizeLinearOpTest, Int8) {
   OpTester test("QuantizeLinear", 10);
   std::vector<int64_t> dims{6};
   test.AddInput<float>("x", dims, {0, 2, 3, 5, -2, -5});
@@ -198,7 +198,7 @@ TEST(QuantizeLinearOpTest, QuantizeLinear_int8) {
 }
 
 // quantize with scalar zero point and scale
-TEST(QuantizeLinearOpTest, QuantizeLinear_int8_NegativeZeroPoint) {
+TEST(QuantizeLinearOpTest, Int8_NegativeZeroPoint) {
   OpTester test("QuantizeLinear", 10);
   std::vector<int64_t> dims{8};
   test.AddInput<float>("x", dims, {0, 2, 3, 5, 6, -2, -5, -6});
@@ -209,7 +209,7 @@ TEST(QuantizeLinearOpTest, QuantizeLinear_int8_NegativeZeroPoint) {
 }
 
 // quantize with scalar zero point and scale
-TEST(QuantizeLinearOpTest, QuantizeLinear_int8_PositiveZeroPoint) {
+TEST(QuantizeLinearOpTest, Int8_PositiveZeroPoint) {
   OpTester test("QuantizeLinear", 10);
   std::vector<int64_t> dims{8};
   test.AddInput<float>("x", dims, {0, 2, 3, 5, 6, -2, -5, -6});
@@ -220,7 +220,7 @@ TEST(QuantizeLinearOpTest, QuantizeLinear_int8_PositiveZeroPoint) {
 }
 
 // quantize with 2D data
-TEST(QuantizeLinearOpTest, QuantizeLinear_2D) {
+TEST(QuantizeLinearOpTest, 2D) {
   OpTester test("QuantizeLinear", 10);
   std::vector<int64_t> dims{3, 4};
   test.AddInput<float>("X", dims,
@@ -237,7 +237,7 @@ TEST(QuantizeLinearOpTest, QuantizeLinear_2D) {
 }
 
 // quantize with scalar data
-TEST(QuantizeLinearOpTest, QuantizeLinear_Scalar) {
+TEST(QuantizeLinearOpTest, Scalar) {
   OpTester test("QuantizeLinear", 10);
   test.AddInput<float>("x", {}, {3});
   test.AddInput<float>("y_scale", {}, {2.0f});
@@ -255,8 +255,23 @@ TEST(QuantizeLinearOpTest, DISABLED_QuantizeLinear_Without_Zero_Point) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
 }
 
-// quantize with broadcasting
-TEST(QuantizeLinearOpTest, QuantizeLinear_per_channel) {
+TEST(QuantizeLinearOpTest, Per_Channel_Axis_Default) {
+  OpTester test("QuantizeLinear", 13);
+  std::vector<int64_t> dims{3, 4};
+  test.AddInput<float>("X", dims,
+                       {0, 2, 1, 1001,
+                        1, 1, 2, 1100,
+                        2, 4.2f, 3, 1200});
+  test.AddInput<float>("scale", {4}, {1, 2, 3, 20});
+  test.AddInput<uint8_t>("zero_point", {4}, {64, 100, 127, 127});
+  test.AddOutput<uint8_t>("Y", dims,
+                          {64, 101, 127, 177,
+                           65, 100, 128, 182,
+                           66, 102, 128, 187});
+  test.Run();
+}
+
+TEST(QuantizeLinearOpTest, Per_Channel_Axis_0) {
   OpTester test("QuantizeLinear", 13);
   std::vector<int64_t> dims{3, 4};
   test.AddInput<float>("X", dims,
@@ -273,8 +288,8 @@ TEST(QuantizeLinearOpTest, QuantizeLinear_per_channel) {
   test.Run();
 }
 
-// quantize with broadcasting and negative axis (-2 resolves to axis 0)
-TEST(QuantizeLinearOpTest, QuantizeLinear_per_channel_negative_axis) {
+// quantize with per-channel and negative axis (-2 resolves to axis 0)
+TEST(QuantizeLinearOpTest, Per_Channel_Axis_neg) {
   OpTester test("QuantizeLinear", 13);
   std::vector<int64_t> dims{3, 4};
   test.AddInput<float>("X", dims,
