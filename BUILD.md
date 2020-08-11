@@ -213,16 +213,45 @@ Dockerfile instructions are available [here](./dockerfiles#tensorrt)
 
 #### NVIDIA Jetson TX1/TX2/Nano/Xavier
 
-1. Indicate CUDA compiler, or add its location to the PATH.
-Cmake can't automatically find the correct nvcc if it's not in the PATH.
-```
-export CUDACXX="/usr/local/cuda/bin/nvcc"
-```
-or:
-```
-export PATH="/usr/local/cuda/bin:${PATH}"
-```
-2. Follow instructions in [Docker README](./dockerfiles/README.md) to build the wheel file. 
+These instructions are for JetPack SDK 4.4.
+
+1. Clone the ONNX Runtime repo on the Jetson host
+
+    ```bash
+    git clone --recursive https://github.com/microsoft/onnxruntime
+    ```
+
+2. Specify the CUDA compiler, or add its location to the PATH.
+
+   Cmake can't automatically find the correct nvcc if it's not in the PATH.
+
+    ```bash
+    export CUDACXX="/usr/local/cuda/bin/nvcc"
+
+    ```
+
+    or:
+
+    ```bash
+    export PATH="/usr/local/cuda/bin:${PATH}"
+    ```
+
+3. Install the ONNX Runtime build dependencies on the Jetpack 4.4 host:
+
+    ```bash
+    sudo apt install -y --no-install-recommends \
+      build-essential software-properties-common cmake libopenblas-dev \
+      libpython3.6-dev python3-pip python3-dev
+    ```
+
+4. Build the ONNX Runtime Python wheel:
+
+    ```bash
+    ./build.sh --update --config Release --build --build_wheel \
+    --use_cuda --cuda_home /usr/local/cuda --cudnn_home /usr/lib/aarch64-linux-gnu
+    ```
+
+    Note: You may add --use_tensorrt and --tensorrt_home options if you wish to use NVIDIA TensorRT (support is experimental), as well as any other options supported by build.sh script.
 
 ---
 

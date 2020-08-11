@@ -73,7 +73,7 @@ static Status UnpackInitializerTensor(const onnx::TensorProto& initializer,
       break;
   }
   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                         "Unsupported type: ", std::to_string(initializer.data_type()));
+                         "Unsupported type: ", initializer.data_type());
 }
 #undef CASE_UNPACK
 
@@ -127,8 +127,7 @@ Status TransposeBetweenNCHWAndNHWC(ModelBuilder& model_builder,
   ORT_RETURN_IF_NOT(!model_builder.UseNCHW(), "model_builder.UseNCHW() is on");
   const auto& shaper(model_builder.GetShaper());
   ORT_RETURN_IF_NOT(4 == shaper[input].size(),
-                    "TransposeNCHWToNHWC input has to be a 4d tensor, actual dimensions: ",
-                    std::to_string(shaper[input].size()));
+                    "TransposeNCHWToNHWC input has to be a 4d tensor, actual dimensions: ", shaper[input].size());
 
   std::string perm_name;
   vector<int32_t> perm;
@@ -255,7 +254,7 @@ static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
   const auto& tensor = model_builder.GetInitializerTensors().at(name);
   const Shape& shape = source_operand_type.dimensions;
   ORT_RETURN_IF_NOT(shape.size() == 4,
-                    "The initializer is not 4D: ", name, " actual dim ", std::to_string(shape.size()));
+                    "The initializer is not 4D: ", name, " actual dim ", shape.size());
 
   // TODO support other data types
   const uint8_t* src = nullptr;
@@ -276,7 +275,7 @@ static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "The initializer of graph ", name,
-                             " doesn't have valid type: ", std::to_string(tensor.data_type()));
+                             " doesn't have valid type: ", tensor.data_type());
   }
 
   const auto out_t = shape[0], in_t = shape[1],
@@ -336,7 +335,7 @@ static Status AddInitializerTransposed(ModelBuilder& model_builder,
   const Shape& shape = source_operand_type.dimensions;
 
   ORT_RETURN_IF_NOT(shape.size() == 2,
-                    "The initializer is not 2D: ", name, " actual dim ", std::to_string(shape.size()));
+                    "The initializer is not 2D: ", name, " actual dim ", shape.size());
 
   // TODO support other data types
   const uint8_t* src = nullptr;
@@ -356,7 +355,7 @@ static Status AddInitializerTransposed(ModelBuilder& model_builder,
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "The initializer of graph ", name,
-                             " doesn't have valid type: ", std::to_string(tensor.data_type()));
+                             " doesn't have valid type: ", tensor.data_type());
   }
 
   const auto x_t = shape[0], y_t = shape[1];
@@ -561,16 +560,16 @@ static Status IsValidInputQuantizedType(const ModelBuilder& model_builder,
   const OperandType& input_operand_type = model_builder.GetOperandTypes().at(input_name);
   if (input_operand_type.operandType.scale != scale) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input [", input_name, "] NNAPI input scale: ",
-                           std::to_string(input_operand_type.operandType.scale),
-                           ", ONNX input scale: ", std::to_string(scale));
+                           "Input [", input_name,
+                           "] NNAPI input scale: ", input_operand_type.operandType.scale,
+                           ", ONNX input scale: ", scale);
   }
 
   if (input_operand_type.operandType.zeroPoint != zero_point) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input [", input_name, "] NNNAPI input zero point: ",
-                           std::to_string(input_operand_type.operandType.zeroPoint),
-                           ", ONNX input zero point: ", std::to_string(zero_point));
+                           "Input [", input_name,
+                           "] NNNAPI input zero point: ", input_operand_type.operandType.zeroPoint,
+                           ", ONNX input zero point: ", zero_point);
   }
 
   return Status::OK();
@@ -699,8 +698,16 @@ bool BaseOpBuilder::IsOpSupported(ModelBuilder& model_builder, const Node& node)
 bool BaseOpBuilder::HasSupportedInputs(const Node& node) {
   // We only check the type of input 0 by default
   // specific op builder can override this
+  const auto& input = *node.InputDefs()[0];
+
+  if (nullptr == input.Shape()) {
+    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
+                          << "] Input shape is null";
+    return false;
+  }
+
   int32_t input_type;
-  if (!GetType(*node.InputDefs()[0], input_type))
+  if (!GetType(input, input_type))
     return false;
 
   if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
@@ -1134,11 +1141,30 @@ bool BatchNormalizationOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder,
     return false;
   }
 
+  const auto& input_defs = node.InputDefs();
+  Shape input_shape;
+  if (!GetShape(*input_defs[0], input_shape))
+    return false;
+
+  const auto input_size = input_shape.size();
+  if (input_size > 4) {
+    LOGS_DEFAULT(VERBOSE) << "BN only support up to 4d shape, input is "
+                          << input_size << "d shape";
+    return false;
+  }
+
+  NodeAttrHelper helper(node);
+  const auto spatial = helper.Get("spatial", 1);
+  if (spatial != 1) {
+    LOGS_DEFAULT(VERBOSE) << "Non-spatial BN is not supported";
+    return false;
+  }
+
   const auto& initializers(model_builder.GetInitializerTensors());
-  const auto& scale_name = node.InputDefs()[1]->Name();
-  const auto& b_name = node.InputDefs()[2]->Name();
-  const auto& mean_name = node.InputDefs()[3]->Name();
-  const auto& var_name = node.InputDefs()[4]->Name();
+  const auto& scale_name = input_defs[1]->Name();
+  const auto& b_name = input_defs[2]->Name();
+  const auto& mean_name = input_defs[3]->Name();
+  const auto& var_name = input_defs[4]->Name();
   if (!Contains(initializers, scale_name)) {
     LOGS_DEFAULT(VERBOSE) << "Scale of BN must be known";
     return false;
@@ -1195,14 +1221,22 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   const auto tensor_a_name = model_builder.GetUniqueName(node.Name() + input + "_imm_a");
   const auto tensor_b_name = model_builder.GetUniqueName(node.Name() + input + "_imm_b");
   const auto tensor_imm_product_name = model_builder.GetUniqueName(node.Name() + input + "_imm_mul");
-  Shape tensor_a_dimen;
+  Shape tensor_a_dimen = {size};
 
   bool input_is_nhwc = model_builder.IsOperandNHWC(input);
   bool output_is_nhwc = input_is_nhwc;
-  if (input_is_nhwc)
-    tensor_a_dimen = {size};
-  else                              // input is nchw
-    tensor_a_dimen = {size, 1, 1};  // {C, H, W}
+
+  if (!input_is_nhwc) {
+    // the batch normalization is applied on C channel,
+    // if the input is NC[HW], will need correct shape for tensor_a/b
+    // to make sure we are broadcasting on the correct channel,
+    // input shape {N, C}       ==> tensor_a/b's shape {size}
+    // input shape {N, C, H}    ==> tensor_a/b's shape {size, 1}
+    // input shape {N, C, H, W} ==> tensor_a/b's shape {size, 1, 1}
+    const auto input_rank = shaper[input].size();
+    for (size_t i = 2; i < input_rank; i++)
+      tensor_a_dimen.push_back(1);
+  }
 
   shaper.AddShape(tensor_a_name, tensor_a_dimen);
   shaper.AddShape(tensor_b_name, tensor_a_dimen);
@@ -1601,8 +1635,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       break;
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "The initializer of graph ", weight, " doesn't have valid type: ",
-                             std::to_string(weight_tensor.data_type()));
+                             "The initializer of graph ", weight, " doesn't have valid type: ", weight_tensor.data_type());
   }
 
   OperandType onnx_weight_operand_type(onnx_weight_type, onnx_weight_shape, w_scale, w_zero_point);
@@ -1645,7 +1678,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   } else if (is_qlinear_conv) {  // QLinearConv's bias type need special handling
     const auto& bias_tensor = model_builder.GetInitializerTensors().at(bias);
     ORT_RETURN_IF_NOT(bias_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT32,
-                      "bias of QLinearConv should be int32, actual type: ", std::to_string(bias_tensor.data_type()));
+                      "bias of QLinearConv should be int32, actual type: ", bias_tensor.data_type());
     Shape bias_dimen;
     for (auto dim : bias_tensor.dims())
       bias_dimen.push_back(SafeInt<uint32_t>(dim));
@@ -1780,7 +1813,7 @@ Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       type = Type::TENSOR_INT32;
       break;
     default:
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid cast to type: ", std::to_string(to));
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid cast to type: ", to);
   }
 
   std::vector<uint32_t> input_indices;
@@ -2297,7 +2330,7 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
   if (output_is_nhwc) {
     ORT_RETURN_IF_NOT(rank == 4,
-                      "nhwc is only on 4d shape, input ", input0, " has rank: ", std::to_string(rank));
+                      "nhwc is only on 4d shape, input ", input0, " has rank: ", rank);
     // we are using nhwc here, but the axis is in nchw, need to transpose axis from nchw to nhwc
     const uint32_t axis_nchw_to_nhwc[4]{0, 3, 1, 2};
     axis = axis_nchw_to_nhwc[axis];

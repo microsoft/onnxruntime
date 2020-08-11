@@ -214,6 +214,44 @@ void SessionState::CleanInitializedTensorsFromGraph() {
   graph_.CleanAllInitializedTensors();
 }
 
+Status SessionState::PrepackInitializedConstantTensors() {
+  // calculate the use count of each value
+  std::unordered_map<std::string, size_t> node_arg_use_count;
+  for (const auto& node : GetGraphViewer().Nodes()) {
+    node.ForEachDef([&](const onnxruntime::NodeArg& node_arg, bool is_input) {
+      if (is_input) {
+        node_arg_use_count[node_arg.Name()]++;
+      }
+    });
+  }
+
+  for (auto& node : GetGraphViewer().Nodes()) {
+    auto kernel = GetMutableKernel(node.Index());
+    int input_idx = 0;
+    for (auto& input_def : node.InputDefs()) {
+      if (input_def->Exists()) {
+        const std::string& input_name = input_def->Name();
+        int ort_value_idx;
+        ORT_RETURN_IF_ERROR(ort_value_name_idx_map_.GetIdx(input_name, ort_value_idx));
+        if (constant_initialized_tensors_.count(ort_value_idx) &&
+            constant_initialized_tensors_[ort_value_idx].IsTensor()) {
+          bool is_packed = false;
+          const Tensor& const_initialized_tensor = constant_initialized_tensors_[ort_value_idx].Get<Tensor>();
+          ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx, is_packed));
+          if (is_packed && node_arg_use_count.count(input_name) && --node_arg_use_count[input_name] == 0) {
+            // release the constant intialized tensor
+            initialized_tensors_.erase(ort_value_idx);
+            constant_initialized_tensors_.erase(ort_value_idx);
+          }
+        }
+      }
+      input_idx++;
+    }
+  }
+
+  return Status::OK();
+}
+
 static int64_t CalculateMemoryPatternsKey(const std::vector<std::reference_wrapper<const TensorShape>>& shapes) {
   int64_t key = 0;
   for (auto shape : shapes) {
