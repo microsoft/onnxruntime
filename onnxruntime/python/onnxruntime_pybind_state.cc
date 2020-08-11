@@ -1042,7 +1042,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           "add_session_config_entry",
           [](SessionOptions* options, const char* config_key, const char* config_value) -> void {
             std::string key(config_key);
-            if (key.empyt() || key.length() > 128)
+            if (key.empty() || key.length() > 128)
               throw std::runtime_error("config_key is empty or longer than maximum length 128");
 
             std::string val(config_value);
