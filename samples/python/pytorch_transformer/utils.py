@@ -2,7 +2,6 @@ import torch
 import torchtext
 from torchtext.data.utils import get_tokenizer
 
-
 def batchify(data, bsz, TEXT, device):
     data = TEXT.numericalize([data.examples[0].text])
     # Divide the dataset into bsz parts.
