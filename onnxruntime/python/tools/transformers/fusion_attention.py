@@ -178,7 +178,7 @@ class FusionAttention(Fusion):
             return
         (_, _, add_v, matmul_v) = v_nodes
 
-        is_distill = False;
+        is_distill = False
         qk_nodes = self.model.match_parent_path(matmul_qkv, ['Softmax', 'Add', 'Div', 'MatMul'], [0, 0, 0, 0])
         if qk_nodes is None:
             qk_nodes = self.model.match_parent_path(matmul_qkv, ['Softmax', 'Add', 'Mul', 'MatMul'], [0, 0, 0, 0])
@@ -199,7 +199,8 @@ class FusionAttention(Fusion):
 
         q_nodes = self.model.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'], [0, 0, 0, 0])
         if q_nodes is None:
-            q_nodes = self.model.match_parent_path(matmul_qk, ['Div', 'Transpose', 'Reshape', 'Add', 'MatMul'], [0, 0, 0, 0, 0])
+            q_nodes = self.model.match_parent_path(matmul_qk, ['Div', 'Transpose', 'Reshape', 'Add', 'MatMul'],
+                                                   [0, 0, 0, 0, 0])
             if q_nodes is None:
                 logger.debug("fuse_attention: failed to match q path")
                 return
@@ -219,10 +220,11 @@ class FusionAttention(Fusion):
         # Note that Cast might be removed by OnnxRuntime so we match two patterns here.
         mask_nodes = None
         if is_distill:
-            _, mask_nodes, _ = self.model.match_parent_paths(
-                where_qk, [(['Expand', 'Reshape', 'Equal'], [0, 0, 0]),
-                         (['Cast', 'Expand', 'Reshape', 'Equal'], [0, 0, 0, 0])], output_name_to_node)
-        else :
+            _, mask_nodes, _ = self.model.match_parent_paths(where_qk,
+                                                             [(['Expand', 'Reshape', 'Equal'], [0, 0, 0]),
+                                                              (['Cast', 'Expand', 'Reshape', 'Equal'], [0, 0, 0, 0])],
+                                                             output_name_to_node)
+        else:
             _, mask_nodes, _ = self.model.match_parent_paths(
                 add_qk, [(['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Unsqueeze'], [1, 0, 1, 0, 0]),
                          (['Mul', 'Sub', 'Unsqueeze', 'Unsqueeze'], [1, 0, 1, 0])], output_name_to_node)
