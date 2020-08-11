@@ -183,7 +183,7 @@ function(target_cppwinrt
                     ( \
                         if not exist ${out_sources_folder_back_slash}\\%I \
                         ( \
-                            copy ${temp_dir_back_slash}\\%I ${out_sources_folder_back_slash}\\%I /Y /D \
+                            copy ${temp_dir_back_slash}\\%I ${out_sources_folder_back_slash}\\%I \
                         ) \
                     )"
             COMMAND
