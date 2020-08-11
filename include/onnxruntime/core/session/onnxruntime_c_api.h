@@ -229,6 +229,12 @@ typedef enum OrtMemType {
   OrtMemTypeDefault = 0,                // the default allocator for execution provider
 } OrtMemType;
 
+// Session Configuration Options
+
+// Key for disable MatMul PrePacking,
+// if the config value is set to "1" then the prepacking is disabled, otherwise prepacking is enabled
+constexpr const char* kDisablePrePacking = "Math.MatMul.DisablePrePacking";
+
 struct OrtApi;
 typedef struct OrtApi OrtApi;
 
@@ -859,10 +865,6 @@ struct OrtApi {
      * \param index - index of string tensor element to fill
      */
   ORT_API2_STATUS(FillStringTensorElement, _Inout_ OrtValue* value, _In_ const char* s, size_t index);
-
-  // Control pre-packing of initialized constant tensors
-  ORT_API2_STATUS(EnablePrePacking, _Inout_ OrtSessionOptions* options);
-  ORT_API2_STATUS(DisablePrePacking, _Inout_ OrtSessionOptions* options);
 
   /**
      * Set a single session configuration entry as a pair of an enum and a string

@@ -99,7 +99,11 @@ Status FinalizeSessionState(SessionState& session_state,
   session_state.CleanInitializedTensorsFromGraph();
 
   ORT_RETURN_IF_ERROR(session_state.CreateKernels(kernel_registry_manager));
-  if (session_options.use_prepacking) {
+
+  bool disable_prepacking = HasSessionOptionConfig(session_options, kDisablePrePacking) &&
+                            session_options.session_configurations.at(kDisablePrePacking) == "1";
+
+  if (!disable_prepacking) {
     ORT_RETURN_IF_ERROR(session_state.PrepackInitializedConstantTensors());
   }
 

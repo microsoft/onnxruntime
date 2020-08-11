@@ -82,10 +82,11 @@ struct SessionOptions {
   // Deterministic compute is likely not as performant. This option is default to false.
   bool use_deterministic_compute = false;
 
-  // Control the pre-packing of initialized constant tensors
-  bool use_prepacking = true;
-
   // Stores the configurations for this session
   std::unordered_map<std::string, std::string> session_configurations;
 };
+
+inline bool HasSessionOptionConfig(const SessionOptions& options, const std::string& config_key) {
+  return options.session_configurations.find(config_key) != options.session_configurations.cend();
+}
 }  // namespace onnxruntime

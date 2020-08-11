@@ -160,8 +160,6 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr GetStringTensorElementLength;
         public IntPtr GetStringTensorElement;
         public IntPtr FillStringTensorElement;
-        public IntPtr EnablePrePacking;
-        public IntPtr DisablePrePacking;
         public IntPtr AddSessionConfigEntry;
 
         public IntPtr CreateAllocator;
@@ -236,8 +234,6 @@ namespace Microsoft.ML.OnnxRuntime
             OrtSetIntraOpNumThreads = (DOrtSetIntraOpNumThreads)Marshal.GetDelegateForFunctionPointer(api_.SetIntraOpNumThreads, typeof(DOrtSetIntraOpNumThreads));
             OrtSetSessionGraphOptimizationLevel = (DOrtSetSessionGraphOptimizationLevel)Marshal.GetDelegateForFunctionPointer(api_.SetSessionGraphOptimizationLevel, typeof(DOrtSetSessionGraphOptimizationLevel));
             OrtRegisterCustomOpsLibrary = (DOrtRegisterCustomOpsLibrary)Marshal.GetDelegateForFunctionPointer(api_.RegisterCustomOpsLibrary, typeof(DOrtRegisterCustomOpsLibrary));
-            OrtEnablePrePacking = (DOrtEnablePrePacking)Marshal.GetDelegateForFunctionPointer(api_.EnablePrePacking, typeof(DOrtEnablePrePacking));
-            OrtDisablePrePacking = (DOrtDisablePrePacking)Marshal.GetDelegateForFunctionPointer(api_.DisablePrePacking, typeof(DOrtDisablePrePacking));
             OrtAddSessionConfigEntry = (DOrtAddSessionConfigEntry)Marshal.GetDelegateForFunctionPointer(api_.AddSessionConfigEntry, typeof(DOrtAddSessionConfigEntry));
 
             OrtCreateRunOptions = (DOrtCreateRunOptions)Marshal.GetDelegateForFunctionPointer(api_.CreateRunOptions, typeof(DOrtCreateRunOptions));
@@ -486,12 +482,6 @@ namespace Microsoft.ML.OnnxRuntime
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtSetSessionGraphOptimizationLevel(IntPtr /* OrtSessionOptions* */ options, GraphOptimizationLevel graphOptimizationLevel);
         public static DOrtSetSessionGraphOptimizationLevel OrtSetSessionGraphOptimizationLevel;
-
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtEnablePrePacking(IntPtr /* OrtSessionOptions* */ options);
-        public static DOrtEnablePrePacking OrtEnablePrePacking;
-
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtDisablePrePacking(IntPtr /* OrtSessionOptions* */ options);
-        public static DOrtDisablePrePacking OrtDisablePrePacking;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtAddSessionConfigEntry(IntPtr /* OrtSessionOptions* */ options, string configKey, string configValue);
         public static DOrtAddSessionConfigEntry OrtAddSessionConfigEntry;

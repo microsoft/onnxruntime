@@ -80,7 +80,7 @@ class TestInferenceSession(unittest.TestCase):
                 options = sess.get_provider_options()
                 self.assertEqual(options['CUDAExecutionProvider']['cuda_mem_limit'], str(new_mem_limit))
 
-                option['cuda_mem_limit'] = ori_mem_limit 
+                option['cuda_mem_limit'] = ori_mem_limit
                 sess.set_providers(['CUDAExecutionProvider'], [option])
                 options = sess.get_provider_options()
                 self.assertEqual(options['CUDAExecutionProvider']['cuda_mem_limit'], ori_mem_limit)
@@ -152,7 +152,7 @@ class TestInferenceSession(unittest.TestCase):
             def runAdvancedTest():
                 num_device = getCudaDeviceCount()
                 if num_device < 0:
-                    return 
+                    return
 
                 # Configure session to be ready to run on all available cuda devices
                 for i in range(num_device):
@@ -510,12 +510,6 @@ class TestInferenceSession(unittest.TestCase):
         b = np.array([[True, False], [True, False]], dtype=np.bool)
 
         res = sess.run([], {'input1:0': a, 'input:0': b})
-
-    def testPrePacking(self):
-        opt = onnxrt.SessionOptions()
-        self.assertTrue(opt.use_prepacking)
-        opt.use_prepacking = False
-        self.assertFalse(opt.use_prepacking)
 
     def testSequenceLength(self):
         sess = onnxrt.InferenceSession(get_name("sequence_length.onnx"))
