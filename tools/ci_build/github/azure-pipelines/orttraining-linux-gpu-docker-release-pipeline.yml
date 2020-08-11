@@ -11,6 +11,7 @@ parameters:
 variables:
   docker_image_prefix: onnxruntime-training
   linux_gpu_dockerfile: dockerfiles/Dockerfile.training
+  build_timestamp: $(Date:yyyyMMdd)-$(Rev:r)
 
 jobs:
 - job: Linux_py_GPU_Build_Test_Release_Dockerfile
@@ -64,7 +65,7 @@ jobs:
       containerRegistry: 'ortrelease'
       repository: 'onnxruntime-training'
       tags: |
-        $(Build.BuildNumber)
+        ${{ variables.build_timestamp }}
         ${{ parameters.image_tag }}
 
   - template: templates/component-governance-component-detection-steps.yml
