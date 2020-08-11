@@ -15,10 +15,10 @@ variables:
 jobs:
 - job: Linux_py_GPU_Build_Test_Release_Dockerfile
   timeoutInMinutes: 90
-  # workspace:
-  #   clean: all
-  # pool: Linux-GPU-CUDA10
-  # steps:
+  workspace:
+    clean: all
+  pool: Linux-GPU-CUDA10
+  steps:
   # - task: CmdLine@2
   #   displayName: Build builder stage of docker file
   #   inputs:
