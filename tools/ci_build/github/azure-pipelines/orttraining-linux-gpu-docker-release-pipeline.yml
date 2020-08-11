@@ -19,32 +19,32 @@ jobs:
     clean: all
   pool: Linux-GPU-CUDA10
   steps:
-  # - task: CmdLine@2
-  #   displayName: Build builder stage of docker file
-  #   inputs:
-  #     script: |
-  #       docker build \
-  #         --pull \
-  #         -t ${{ variables.docker_image_prefix }}-manylinux-gpu-release-stage1 \
-  #         --target builder \
-  #         --build-arg COMMIT="${{ parameters.commit }}" \
-  #         -f ${{ variables.linux_gpu_dockerfile }} .
-  #     workingDirectory: $(Build.SourcesDirectory)
+  - task: CmdLine@2
+    displayName: Build builder stage of docker file
+    inputs:
+      script: |
+        docker build \
+          --pull \
+          -t ${{ variables.docker_image_prefix }}-manylinux-gpu-release-stage1 \
+          --target builder \
+          --build-arg COMMIT="${{ parameters.commit }}" \
+          -f ${{ variables.linux_gpu_dockerfile }} .
+      workingDirectory: $(Build.SourcesDirectory)
 
-  # - task: CmdLine@2
-  #   displayName: Run tests
-  #   inputs:
-  #     script: |
-  #       docker run \
-  #         --gpus all \
-  #         --rm \
-  #         ${{ variables.docker_image_prefix }}-manylinux-gpu-release-stage1 \
-  #         python onnxruntime/tools/ci_build/build.py \
-  #         --build_dir onnxruntime/build \
-  #         --config Release \
-  #         --test \
-  #         --enable_onnx_tests
-  #     workingDirectory: $(Build.SourcesDirectory)
+  - task: CmdLine@2
+    displayName: Run tests
+    inputs:
+      script: |
+        docker run \
+         gpus all \
+          --rm \
+          ${{ variables.docker_image_prefix }}-manylinux-gpu-release-stage1 \
+          python onnxruntime/tools/ci_build/build.py \
+          --build_dir onnxruntime/build \
+          --config Release \
+          --test \
+          --enable_onnx_tests
+      workingDirectory: $(Build.SourcesDirectory) 
 
   - task: Docker@2
     displayName: Build entire docker file
