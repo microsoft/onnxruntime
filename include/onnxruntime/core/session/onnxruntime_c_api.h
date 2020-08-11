@@ -231,10 +231,6 @@ typedef enum OrtMemType {
 
 // Session Configuration Options
 
-// Key for disable MatMul PrePacking,
-// if the config value is set to "1" then the prepacking is disabled, otherwise prepacking is enabled
-constexpr const char* kDisablePrePacking = "Math.MatMul.DisablePrePacking";
-
 struct OrtApi;
 typedef struct OrtApi OrtApi;
 
@@ -867,9 +863,10 @@ struct OrtApi {
   ORT_API2_STATUS(FillStringTensorElement, _Inout_ OrtValue* value, _In_ const char* s, size_t index);
 
   /**
-     * Set a single session configuration entry as a pair of an enum and a string
-     * \param config_key An enum as the key of the configuration
-     * \param config_value A null terminated string representation of the config value
+     * Set a single session configuration entry as a pair of strings
+     * If a configuration with same key exists, this will overwrite the configuration with the given config_value
+     * \param config_key    A null terminated string representation of the config key
+     * \param config_value  A null terminated string representation of the config value
      */
   ORT_API2_STATUS(AddSessionConfigEntry, _Inout_ OrtSessionOptions* options,
                   _In_z_ const char* config_key, _In_z_ const char* config_value);

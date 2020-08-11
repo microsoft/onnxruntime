@@ -1053,7 +1053,13 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
 
             configs[std::move(key)] = std::move(val);
           },
-          "Rpbdoc(Specify values of named dimensions within model inputs.)pbdoc");
+          "Rpbdoc(Set a single session configuration entry as a pair of strings.)pbdoc")
+      .def(
+          "get_session_config_entry",
+          [](SessionOptions* options, const char* config_key) -> std::string {
+            return options->session_configurations.at(config_key);
+          },
+          "Rpbdoc(Get a single session configuration value using the given configuration key.)pbdoc");
 
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())

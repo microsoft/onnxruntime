@@ -635,6 +635,12 @@ class TestInferenceSession(unittest.TestCase):
         # "Dim1" and "Dim2" have values assigned to them.
         self.assertEqual(input_shape, [4, 6, 5])
 
+    def testSessionOptionsAddConfigEntry(self):
+        so = onnxrt.SessionOptions()
+        key = "CONFIG_KEY"
+        val = "CONFIG_VAL"
+        so.add_session_config_entry(key, val)
+        self.assertEqual(so.get_session_config_entry(key), val)
 
 if __name__ == '__main__':
     unittest.main()
