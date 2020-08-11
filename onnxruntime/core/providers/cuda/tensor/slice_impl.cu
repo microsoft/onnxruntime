@@ -28,7 +28,7 @@ __global__ void _SliceKernel(const TArray<int64_t> starts,
       int mod = id;
       int value = id;
       int dim = 0;
-    #pragma unroll
+#pragma unroll
       for (; dim < DIMS - 1; ++dim) {
         output_strides[dim].divmod(value, div, mod);
         input_index += (starts[dim] + div * steps[dim]) * input_strides[dim];
