@@ -115,7 +115,6 @@ function(target_cppwinrt
         convert_forward_slashes_to_back(${target_outputs}/comp_generated generated_dir_back_slash)
         convert_forward_slashes_to_back(${generated_dir_back_slash}/module.g.cpp module_g_cpp_back_slash)
         convert_forward_slashes_to_back(${generated_dir_back_slash}/module.g.excl.cpp module_g_ecxl_cpp_back_slash)
-        
         if (set_ns_prefix)
           set(ns_prefix "/ns_prefix")
         else()
@@ -153,7 +152,7 @@ function(target_cppwinrt
                 ${midl_options}
                 ${renamed_idl_fullpath_back_slash}
             COMMAND
-                    ${cppwinrt_exe} -in ${winmd_filename} -comp ${output_dir_back_slash} -ref ${cmake_current_binary_dir_back_slash} -ref ${sdk_metadata_directory} -out ${generated_dir_back_slash} -verbose
+                    ${cppwinrt_exe} -in ${winmd_filename} -comp ${output_dir_back_slash} -ref ${sdk_metadata_directory} -out ${generated_dir_back_slash} -verbose
             COMMAND
                     # copy the generated component files into a temporary directory where headers exclusions will be applied
                     xcopy ${output_dir_back_slash} ${temp_dir_back_slash}\\ /Y /D
