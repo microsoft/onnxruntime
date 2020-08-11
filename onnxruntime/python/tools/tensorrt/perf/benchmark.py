@@ -13,7 +13,7 @@ import re
 from onnx import numpy_helper
 from perf_utils import * 
 import pprint
-import torch
+# import torch
 from float16 import *
 
 from BERTSquad import *
@@ -51,8 +51,8 @@ from Resnet101DucHdc import *
 from ArcFace import *
 # from SuperResolution import *
 from FastNeural import *
-from BiDAF import *
-from GPT2 import *
+# from BiDAF import *
+# from GPT2 import *
 from VehicleDetector import *
 from TwoStageProductReco import *
 from SeresnextGeneral import *
@@ -114,6 +114,14 @@ CVS_MODELS = {
     "yolov3-pytorch": (YoloV3PyTorch, "yolov3-pytorch"),
 }
 
+ep_to_provider_list = {
+    "CPUExecutionProvider": ["CPUExecutionProvider"],
+    "CUDAExecutionProvider": ["CUDAExecutionProvider"],
+    "CUDAExecutionProvider_fp16": ["CUDAExecutionProvider"],
+    "TensorrtExecutionProvider": ["TensorrtExecutionProvider", "CUDAExecutionProvider"],
+    "TensorrtExecutionProvider_fp16": ["TensorrtExecutionProvider", "CUDAExecutionProvider"],
+}
+
 
 def get_latency_result(runtimes, batch_size):
     latency_ms = sum(runtimes) / float(len(runtimes)) * 1000.0
@@ -131,7 +139,7 @@ def get_latency_result(runtimes, batch_size):
     }
 
 
-def inference_ort(model, ort_inputs, result_template, repeat_times, batch_size):
+def inference_ort(model, ep, ort_inputs, result_template, repeat_times, batch_size):
 
     runtimes = []
     for ort_input in ort_inputs:
@@ -140,7 +148,13 @@ def inference_ort(model, ort_inputs, result_template, repeat_times, batch_size):
         inputs = model.get_ort_inputs(ort_input)
         outputs = model.get_ort_outputs()
         try:
-            runtimes = runtimes + timeit.repeat(lambda: session.run(outputs, inputs), number=1, repeat=repeat_times)
+            if ep in ["TensorrtExecutionProvider", "TensorrtExecutionProvider_fp16"]:
+                repeat_times += 1
+
+            runtime = timeit.repeat(lambda: session.run(outputs, inputs), number=1, repeat=repeat_times)
+            print(runtime)
+            runtimes.append(runtime[-1])
+
         except Exception as e:
             logger.error(e)
             return None
@@ -399,12 +413,52 @@ def remove_profiling_files(path):
     for f in files:
         subprocess.Popen(["rm","-rf", f], stdout=subprocess.PIPE)
 
-def update_fail_model(model_name, ep, ep_model_fail_map):
-    if not model_name in ep_model_fail_map:
-        ep_model_fail_map[model_name] = [ep]
+def update_fail_model(model_name, ep, model_ep_fail_map):
+    if not model_name in model_ep_fail_map:
+        model_ep_fail_map[model_name] = [ep]
     else:
-        if ep not in ep_model_fail_map[model_name]:
-            ep_model_fail_map[model_name].append(ep)
+        if ep not in model_ep_fail_map[model_name]:
+            model_ep_fail_map[model_name].append(ep)
+
+def skip_ep(model_name, ep, model_ep_fail_map):
+    if model_name not in model_ep_fail_map:
+        return False
+
+    ep_fail_list = model_ep_fail_map[model_name]
+
+    if ep in ep_fail_list:
+        return True
+
+    # No need to run TRT/CUDA FP16 again if TRT/CUDA already failed on previous run
+    if "fp16" in ep:
+        if "TensorrtExecutionProvider" in ep_fail_list or "CUDAExecutionProvider" in ep_fail_list:
+            return True
+
+    # parsing security issue when convering fp32 model to fp16 model:
+    # 
+    # Reading dangerously large protocol message.  
+    # If the message turns out to be larger than 2147483647 bytes, parsing will be halted for security reasons.
+    if ep == "CUDAExecutionProvider_fp16" and model_name in ['vgg16', 'vgg19bn']:
+        return True
+
+    return False
+
+def read_model_ep_fail_map_from_file(map_file):
+    import json
+
+    with open(map_file) as f:
+        try:
+            data = json.load(f)
+        except Exception as e:
+            return None
+
+    return data
+
+def write_model_ep_fail_map_to_file(model_ep_fail_map):
+    import json
+
+    with open('.model_ep_fail_map.json', 'w') as file:
+     file.write(json.dumps(model_ep_fail_map)) # use `json.loads` to do the reverse
 
 def get_system_info(info):
     info["cuda"] = get_cuda_version()
@@ -460,36 +514,35 @@ def run_onnxruntime(args, models=MODELS):
 
     results = []
     latency_comparison_map = {} 
-    ep_model_fail_map = {}
     profile_metrics_map = {}
+    
+    model_ep_fail_map = {} # model -> failing ep
+    if args.performace_type == 'benchmark':
+        if os.path.exists('.model_ep_fail_map.json'):
+            model_ep_fail_map = read_model_ep_fail_map_from_file('.model_ep_fail_map.json')
 
     sys_info = {} 
     get_system_info(sys_info)
 
-    ep_to_provider_list = {
-        "CPUExecutionProvider": ["CPUExecutionProvider"],
-        "CUDAExecutionProvider": ["CUDAExecutionProvider"],
-        "CUDAExecutionProvider_fp16": ["CUDAExecutionProvider"],
-        "TensorrtExecutionProvider": ["TensorrtExecutionProvider", "CUDAExecutionProvider"],
-        "TensorrtExecutionProvider_fp16": ["TensorrtExecutionProvider", "CUDAExecutionProvider"],
-    }
-
     if args.fp16:
-        provider_list = ["CUDAExecutionProvider", "TensorrtExecutionProvider","TensorrtExecutionProvider_fp16"]
+        provider_list = ["CUDAExecutionProvider", "CUDAExecutionProvider_fp16", "TensorrtExecutionProvider","TensorrtExecutionProvider_fp16"]
     else:
         provider_list = ["CUDAExecutionProvider", "TensorrtExecutionProvider"]
 
     # provider_list = ["TensorrtExecutionProvider", "CUDAExecutionProvider"]
     # provider_list = ["CUDAExecutionProvider", "TensorrtExecutionProvider"]
-    # provider_list = ["CUDAExecutionProvider"]
+    provider_list = ["CUDAExecutionProvider"]
     # provider_list = ["TensorrtExecutionProvider"]
-    provider_list = ["CUDAExecutionProvider", "CUDAExecutionProvider_fp16"]
+    # provider_list = ["CUDAExecutionProvider", "CUDAExecutionProvider_fp16"]
     # provider_list = ["CUDAExecutionProvider_fp16"]
+
 
     if args.model_zoo == "cvs":
         models.update(CVS_MODELS)
 
-    # iterate models
+    #######################
+    # iterate model 
+    #######################
     for name in models.keys():
         info = models[name] 
         model_class = info[0]
@@ -511,35 +564,32 @@ def run_onnxruntime(args, models=MODELS):
         ref_outputs_fp32 = []
         inputs_fp16 = []
         ref_outputs_fp16 = []
-        ep_fail_set = set()
-        ep_op_map = {} # map of map: ep -> operator
+        ep_op_map = {} # ep -> { ep -> operator }
         profile_already_parsed = set()
 
+
+        #######################
         # iterate ep 
+        #######################
         for ep in provider_list:
-
-            os.environ["ORT_TENSORRT_FP16_ENABLE"] = "0"
-            fp16 = False 
-            model = None
-
-            if "fp16" in ep:
-                # No need to run TRT FP16 again if TRT already failed on previous run
-                if "TensorrtExecutionProvider" in ep_fail_set:
-                    continue
-
-                os.environ["ORT_TENSORRT_FP16_ENABLE"] = "1"
-                fp16 = True 
 
             ep_ = ep_to_provider_list[ep][0]
             if (ep_ not in onnxruntime.get_available_providers()):
                 logger.error("No {} support".format(ep_))
                 continue
-                
-            if fp16:
-                logger.info("\nInitializing {} with float16 enabled ...".format(name))
-            else:
-                logger.info("\nInitializing {} ...".format(name))
 
+            if "fp16" in ep:
+                if skip_ep(name, ep, model_ep_fail_map):
+                    continue
+                os.environ["ORT_TENSORRT_FP16_ENABLE"] = "1"
+                fp16 = True 
+                logger.info("\nInitializing {} with float16 enabled to run on {} ...".format(name, ep))
+            else:
+                os.environ["ORT_TENSORRT_FP16_ENABLE"] = "0"
+                fp16 = False 
+                model = None
+                logger.info("\nInitializing {} to run on {} ...".format(name, ep))
+                
             # create model instance
             model = model_class(providers=ep_to_provider_list[ep])
             if ep == "CUDAExecutionProvider_fp16":
@@ -548,130 +598,156 @@ def run_onnxruntime(args, models=MODELS):
             model.set_model_zoo_source(args.model_zoo)
 
             # read input/output of test data
-            if fp16:
+            if fp16 and ep == "CUDAExecutionProvider_fp16":
                 if not inputs_fp16 or not ref_outputs_fp16:
                     if args.model_zoo ==  "onnx":
                         test_data_dir = model.get_onnx_zoo_test_data_dir()
                     elif args.model_zoo == "cvs":
                         test_data_dir = model.get_cvs_model_test_data_dir()
-                    inputs, ref_outputs = load_onnx_model_zoo_test_data(test_data_dir, "fp16")
-                else:
-                    inputs = inputs_fp16
-                    ref_output = ref_outputs_fp16
+                    inputs_fp16, ref_outputs_fp16 = load_onnx_model_zoo_test_data(test_data_dir, "fp16")
+
+                inputs = inputs_fp16
+                ref_outputs = ref_outputs_fp16
             else:
                 if not inputs_fp32 or not ref_outputs_fp32:
                     if args.model_zoo ==  "onnx":
                         test_data_dir = model.get_onnx_zoo_test_data_dir()
                     elif args.model_zoo == "cvs":
                         test_data_dir = model.get_cvs_model_test_data_dir()
-                    inputs, ref_outputs = load_onnx_model_zoo_test_data(test_data_dir)
-                else:
-                    inputs = inputs_fp32
-                    ref_output = ref_outputs_fp32
+                    inputs_fp32, ref_outputs_fp32 = load_onnx_model_zoo_test_data(test_data_dir)
 
-            # these settings are temporary
-            sequence_length = 1
-            optimize_onnx = False
-            batch_size = 1
-
-            # enable profiling to generate profiling file for analysis
-            options = onnxruntime.SessionOptions()
-            options.enable_profiling = True 
-            options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
-            model.set_session_options(options)
-
-            try: 
-                # create onnxruntime inference session
-                if args.model_zoo ==  "onnx":
-                    model.create_session()
-                elif args.model_zoo == "cvs":
-                    model.create_session(model.get_cvs_model_path())
-                
-            except Exception as e:
-                logger.error(e)
-                ep_fail_set.add(ep)
-                update_fail_model(model_name, ep, ep_model_fail_map)
-                continue
+                inputs = inputs_fp32
+                ref_outputs = ref_outputs_fp32
 
 
-            sess = model.get_session()
-            sess.disable_fallback()
+            
+            #######################################
+            # benchmark or validation
+            #######################################
+            if args.performace_type == 'benchmark':
 
-            logger.info("Start to inference {} with {} ...".format(model_name, ep))
-            logger.info(sess.get_providers())
-            logger.info("ORT_TENSORRT_FP16_ENABLE={}".format(os.environ["ORT_TENSORRT_FP16_ENABLE"]))
-
-            if model.get_input_nodes():
-                logger.info("Model inputs nodes:")
-                for input_meta in model.get_input_nodes():
-                    logger.info(input_meta)
-            if model.get_output_nodes():
-                logger.info("Model outputs nodes:")
-                for output_meta in model.get_output_nodes():
-                    logger.info(output_meta)
-
-            # first, run inference and validate the result
-            if ep in ['TensorrtExecutionProvider', 'CUDAExecutionProvider']:
-                try:
-                    model.set_inputs(inputs)
-                    model.inference()
-                    status = validate(ref_outputs, model.get_outputs(), model.get_decimal())
-                    if not status:
-                        ep_fail_set.add(ep)
-                        update_fail_model(model_name, ep, ep_model_fail_map)
-                        continue
+                try: 
+                    # create onnxruntime inference session
+                    if args.model_zoo ==  "onnx":
+                        model.create_session()
+                    elif args.model_zoo == "cvs":
+                        model.create_session(model.get_cvs_model_path())
+                    
                 except Exception as e:
                     logger.error(e)
-                    ep_fail_set.add(ep)
-                    update_fail_model(model_name, ep, ep_model_fail_map)
                     continue
 
-            # make sure profiling file will be generated by runing one inference
-            inference_ort(model, inputs, {}, 2, batch_size)
+                sess = model.get_session()
+                logger.info("Start to inference {} with {} ...".format(model_name, ep))
+                logger.info(sess.get_providers())
+                logger.info("ORT_TENSORRT_FP16_ENABLE={}".format(os.environ["ORT_TENSORRT_FP16_ENABLE"]))
+
+                if model.get_input_nodes():
+                    logger.info("Model inputs nodes:")
+                    for input_meta in model.get_input_nodes():
+                        logger.info(input_meta)
+                if model.get_output_nodes():
+                    logger.info("Model outputs nodes:")
+                    for output_meta in model.get_output_nodes():
+                        logger.info(output_meta)
+
+                batch_size = 1
+
+                # for io_binding in [True, False]:
+                for io_binding in [False]:
+                    result_template = {
+                        "engine": "onnxruntime",
+                        "version": onnxruntime.__version__,
+                        "device": ep,
+                        "optimizer": False,
+                        "fp16": fp16,
+                        "io_binding": io_binding,
+                        "model_name": model_name,
+                        "inputs": len(sess.get_inputs()),
+                        "batch_size": batch_size,
+                        "sequence_length": 1,
+                        "datetime": str(datetime.now()),}
+
+                    result = None
+
+                    # measure inference
+                    if io_binding:
+                        # can't do io-binding for BiDAF
+                        if model.get_model_name() != 'BiDAF':
+                            result = inference_ort_with_io_binding(model, inputs, result_template, args.test_times, batch_size)
+                            latency_result[ep + "_io_binding"] = result["average_latency_ms"]
+                    else:
+                        result = inference_ort(model, ep, inputs, result_template, args.test_times, batch_size)
+                        latency_result[ep] = result["average_latency_ms"]
+                        logger.info(result)
 
 
-            sess.end_profiling()
-            logger.info(sess.get_providers())
+                    if result:
+                        results.append(result)
 
-            # for io_binding in [True, False]:
-            for io_binding in [False]:
-                result_template = {
-                    "engine": "onnxruntime",
-                    "version": onnxruntime.__version__,
-                    "device": ep,
-                    "optimizer": optimize_onnx,
-                    "fp16": fp16,
-                    "io_binding": io_binding,
-                    "model_name": model_name,
-                    "inputs": len(sess.get_inputs()),
-                    "batch_size": batch_size,
-                    "sequence_length": sequence_length,
-                    "datetime": str(datetime.now()),
-                }
-
-                result = None
-
-                # measure inference
-                if io_binding:
-                    # can't do io-binding for BiDAF
-                    if model.get_model_name() != 'BiDAF':
-                        result = inference_ort_with_io_binding(model, inputs, result_template, args.test_times, batch_size)
-                        latency_result[ep + "_io_binding"] = result["average_latency_ms"]
-                else:
-                    result = inference_ort(model, inputs, result_template, args.test_times, batch_size)
-                    print(result)
-                    latency_result[ep] = result["average_latency_ms"]
+                latency_comparison_map[model_name] = copy.deepcopy(latency_result)
 
 
-                if result:
-                    logger.info(result)
-                    results.append(result)
+            elif args.performace_type == 'validate':
 
-            latency_comparison_map[model_name] = copy.deepcopy(latency_result)
+                # enable profiling to generate profiling file for analysis
+                options = onnxruntime.SessionOptions()
+                options.enable_profiling = True 
+                options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+                model.set_session_options(options)
+
+                try: 
+                    # create onnxruntime inference session
+                    if args.model_zoo ==  "onnx":
+                        model.create_session()
+                    elif args.model_zoo == "cvs":
+                        model.create_session(model.get_cvs_model_path())
+                    
+                except Exception as e:
+                    logger.error(e)
+                    update_fail_model(name, ep, model_ep_fail_map)
+                    continue
+
+
+                sess = model.get_session()
+                sess.disable_fallback()
+
+                logger.info("Start to inference {} with {} ...".format(model_name, ep))
+                logger.info(sess.get_providers())
+                logger.info("ORT_TENSORRT_FP16_ENABLE={}".format(os.environ["ORT_TENSORRT_FP16_ENABLE"]))
+
+                if model.get_input_nodes():
+                    logger.info("Model inputs nodes:")
+                    for input_meta in model.get_input_nodes():
+                        logger.info(input_meta)
+                if model.get_output_nodes():
+                    logger.info("Model outputs nodes:")
+                    for output_meta in model.get_output_nodes():
+                        logger.info(output_meta)
+
+                # first, run inference and validate the result
+                if ep in ['TensorrtExecutionProvider', 'CUDAExecutionProvider', 'CUDAExecutionProvider_fp16']:
+                    try:
+                        model.set_inputs(inputs)
+                        model.inference()
+                        status = validate(ref_outputs, model.get_outputs(), model.get_decimal())
+                        if not status:
+                            update_fail_model(name, ep, model_ep_fail_map)
+                            continue
+                    except Exception as e:
+                        logger.error(e)
+                        update_fail_model(name, ep, model_ep_fail_map)
+                        continue
+
+                # make sure profiling file will be generated by runing one inference
+                batch_size = 1
+                inference_ort(model, ep, inputs, {}, args.test_times, batch_size)
+                sess.end_profiling()
+                # logger.info(sess.get_providers())
             
-            metrics = get_profile_metrics(path, profile_already_parsed)
-            if metrics:
-                ep_op_map[ep] = metrics
+                metrics = get_profile_metrics(path, profile_already_parsed)
+                if metrics:
+                    ep_op_map[ep] = metrics
 
             # end of ep
 
@@ -723,12 +799,14 @@ def run_onnxruntime(args, models=MODELS):
                 # print('CPU operator map:')
                 # pp.pprint(cpu_op_map)
 
+
+
         # cleanup_files()
         os.chdir(pwd)
 
         # end of model
 
-    return results, latency_comparison_map, ep_model_fail_map, profile_metrics_map
+    return results, latency_comparison_map, model_ep_fail_map, profile_metrics_map
 
 def add_improvement_information(latency_comparison_map):
     for key, value in latency_comparison_map.items():
@@ -737,12 +815,13 @@ def add_improvement_information(latency_comparison_map):
 
         trt_latency = float(value['TensorrtExecutionProvider'])
         cuda_latency = float(value['CUDAExecutionProvider'])
-        gain = (cuda_latency - trt_latency)*100/trt_latency
+        gain = (cuda_latency - trt_latency)*100/cuda_latency
         value["Tensorrt_gain(%)"] = "{:.2f} %".format(gain) 
 
-        if "TensorrtExecutionProvider_fp16" in value:
+        if "TensorrtExecutionProvider_fp16" in value and "CUDAExecutionProvider_fp16" in value:
             trt_fp16_latency = float(value['TensorrtExecutionProvider_fp16'])
-            gain = (cuda_latency - trt_fp16_latency)*100/trt_fp16_latency
+            cuda_fp16_latency = float(value['CUDAExecutionProvider_fp16'])
+            gain = (cuda_fp16_latency - trt_fp16_latency)*100/cuda_fp16_latency
             value["Tensorrt_fp16_gain(%)"] = "{:.2f} %".format(gain) 
 
 def output_details(results, csv_filename):
@@ -764,6 +843,7 @@ def output_latency(results, csv_filename):
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = ["Model",
                         "CUDA latency (ms)",
+                        "CUDA fp16 latency (ms)",
                         "CUDA latency with io_binding (ms)",
                         "TRT latency (ms)",
                         "TRT latency with io_binding (ms)",
@@ -777,6 +857,7 @@ def output_latency(results, csv_filename):
         for key, value in results.items():
             row = [key,
                    value['CUDAExecutionProvider'] if 'CUDAExecutionProvider' in value else "  ",
+                   value['CUDAExecutionProvider_fp16'] if 'CUDAExecutionProvider_fp16' in value else "  ",
                    value['CUDAExecutionProvider_io_binding'] if 'CUDAExecutionProvider_io_binding' in value else "  ",
                    value['TensorrtExecutionProvider'] if 'TensorrtExecutionProvider' in value else "  ",
                    value['TensorrtExecutionProvider_io_binding'] if 'TensorrtExecutionProvider_io_binding' in value else "  ",
@@ -815,24 +896,22 @@ def output_ratio(results, csv_filename):
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("-d", "--detail_csv", required=False, default=None, help="CSV file for saving detail results.")
-    parser.add_argument("-r", "--ratio_csv", required=False, default=None, help="CSV file for saving detail results.")
-    parser.add_argument("-l", "--latency_csv", required=False, default=None, help="CSV file for saving detail results.")
+    parser.add_argument("-m", "--model_zoo", required=False, default="onnx", choices=["onnx", "cvs"], help="Models pool for perf.")
 
-    parser.add_argument("-m", "--model_zoo", required=False, default="onnx", choices=["onnx", "cvs"], help="Models pool for perf")
+    parser.add_argument("-p", "--performace_type", required=False, default="benchmark", choices=["validate", "benchmark"], help="Models pool for perf.")
 
-    parser.add_argument("--fp16", required=False, default=True, action="store_true", help="Use FP16 to accelerate inference")
-
-    parser.add_argument("--fp32", required=False, action="store_true", help="Use FP32 to accelerate inference")
+    parser.add_argument("--fp16", required=False, default=True, action="store_true", help="Inlcude Float16 into benchmarking.")
 
     parser.add_argument("-t",
                         "--test_times",
                         required=False,
-                        default=8,
+                        default=1,
                         type=int,
                         help="Number of repeat times to get average inference latency.")
 
-    # parser.add_argument("-r", "--result_csv", required=False, default=None, help="CSV file for saving summary results.")
+    parser.add_argument("-d", "--detail_csv", required=False, default=None, help="CSV file for saving detail results.")
+    parser.add_argument("-r", "--ratio_csv", required=False, default=None, help="CSV file for saving detail results.")
+    parser.add_argument("-l", "--latency_csv", required=False, default=None, help="CSV file for saving detail results.")
 
     args = parser.parse_args()
     return args
@@ -865,6 +944,7 @@ def main():
         logger.info("========== Failing Models/EPs ==============")
         logger.info("============================================")
         logger.info(failing_models)
+        write_model_ep_fail_map_to_file(failing_models)
 
     if latency_comparison_map:
         logger.info("\n=========================================")

@@ -10,7 +10,11 @@ debug_verbose = False
 
 def parse_single_file(f):
     import re
-    data = json.load(f)
+
+    try:
+        data = json.load(f)
+    except Exception as e:
+        return None
 
     model_run_flag = False 
     first_run_flag = True
@@ -236,11 +240,8 @@ def get_profile_metrics(path, profile_already_parsed):
     if len(data) == 0:
         print("No profile metrics got.")
         return None
-    elif len(data) > 1 :
-        print("We expect to get only one profile file ...")
-        raise
     
-    return data[0]
+    return data[-1]
 
 
 def analyze_profiling_file(path):
@@ -309,38 +310,6 @@ def analyze_profiling_file(path):
         calculate_metrics({}, cuda_op_map)
 
 
-
-    '''
-    trt_fall_back = False
-    if trt_number > 0 and cuda_number <= 1: # TRT can execute model without falling back to CUDA/CPU
-        print("Generate the metrics of TRT/TRT_fp16/CUDA ...")
-
-        trt_op_map = list_of_trt_op_map[0]
-        if trt_number > 1:
-            trt_fp16_op_map = list_of_trt_op_map[1]
-
-        if cuda_number > 0:
-            cuda_op_map = list_of_cuda_op_map[0]
-
-        results.append(calculate_metrics(trt_op_map, cuda_op_map))
-        results.append(calculate_metrics(trt_fp16_op_map, cuda_op_map))
-
-    elif trt_number > 0 and (cuda_number > 1 or cpu_number > 1): # TRT can't execute model and falling back to CUDA/CPU
-        print("Generate the metrics of CUDA/CPU (Fall back due to TRT fails ...")
-        trt_fall_back = True 
-
-        trt_op_map = list_of_trt_op_map[0]
-        if trt_number > 1:
-            trt_fp16_op_map = list_of_trt_op_map[1]
-
-        if cuda_number > 0:
-            cuda_op_map = list_of_cuda_op_map[-1] 
-        if cpu_number > 0 :
-            cpu_op_map = list_of_cpu_op_map[-1]
-
-        results.append(calculate_metrics(trt_op_map, cuda_op_map))
-        results.append(calculate_metrics(trt_fp16_op_map, cuda_op_map))
-    '''
 
     if debug:
         print('TRT operator map:')
