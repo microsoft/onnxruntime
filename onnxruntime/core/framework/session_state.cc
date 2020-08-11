@@ -673,9 +673,8 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 
   SequentialPlannerContext context(session_options.execution_mode);
   ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
-                                                    execution_providers_, kernel_registry_manager,
-                                                    kernel_create_info_map_, ort_value_name_idx_map_,
-                                                    context, p_seq_exec_plan_));
+                                                    execution_providers_, kernel_create_info_map_,
+                                                    ort_value_name_idx_map_, context, p_seq_exec_plan_));
 
   // Uncomment the below to dump the allocation plan to std::cout
   // LOGS(logger_, VERBOSE) << std::make_pair(p_seq_exec_plan_.get(), this);
@@ -714,10 +713,10 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   // and add the execution info
 
   // Currently all subgraphs need to be executed using the sequential EP due to potential deadlock with the current
-  // parallel executor implementation 
+  // parallel executor implementation
   SessionOptions subgraph_session_options(session_options);
   subgraph_session_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
-  
+
   for (const auto& node_to_subgraph_ss : subgraph_session_states_) {
     Node& node = *graph_.GetNode(node_to_subgraph_ss.first);
 

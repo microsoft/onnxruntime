@@ -114,7 +114,6 @@ class PlannerImpl {
  public:
   PlannerImpl(const Node* parent_node, const onnxruntime::GraphViewer& graph_viewer,
               const std::vector<const NodeArg*>& outer_scope_node_args, const ExecutionProviders& providers,
-              const KernelRegistryManager& kernel_registry,
               const std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map,
               const OrtValueNameIdxMap& ort_value_name_idx_map,
               const ISequentialPlannerContext& context, SequentialExecutionPlan& plan)
@@ -124,7 +123,6 @@ class PlannerImpl {
         graph_viewer_(graph_viewer),
         outer_scope_node_args_(outer_scope_node_args),
         execution_providers_(providers),
-        kernel_registry_(kernel_registry),
         kernel_create_info_map_(kernel_create_info_map),
         ort_value_name_idx_map_(ort_value_name_idx_map) {}
 
@@ -139,7 +137,6 @@ class PlannerImpl {
   const std::vector<const NodeArg*>& outer_scope_node_args_;
   const ExecutionProviders& execution_providers_;
 
-  const KernelRegistryManager& kernel_registry_;
   const std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map_;
   const OrtValueNameIdxMap& ort_value_name_idx_map_;
 
@@ -768,7 +765,6 @@ Status SequentialPlanner::CreatePlan(
     const onnxruntime::GraphViewer& graph_viewer,
     const std::vector<const NodeArg*>& outer_scope_node_args,
     const ExecutionProviders& providers,
-    const KernelRegistryManager& kernel_registry,
     const std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map,
     const OrtValueNameIdxMap& ort_value_name_idx_map,
     const ISequentialPlannerContext& context,
@@ -776,7 +772,7 @@ Status SequentialPlanner::CreatePlan(
   // allocate/reset here so we know it's clean
   plan = onnxruntime::make_unique<SequentialExecutionPlan>();
 
-  PlannerImpl planner(parent_node, graph_viewer, outer_scope_node_args, providers, kernel_registry,
+  PlannerImpl planner(parent_node, graph_viewer, outer_scope_node_args, providers,
                       kernel_create_info_map, ort_value_name_idx_map, context, *plan);
 
   return planner.CreatePlan();

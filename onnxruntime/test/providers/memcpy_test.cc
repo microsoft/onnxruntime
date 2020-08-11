@@ -51,7 +51,8 @@ TEST(MemcpyTest, copy1) {
   SessionState s(model.MainGraph(), execution_providers, true, &tp, nullptr, dtm,
                  DefaultLoggingManager().DefaultLogger(), profiler);
 
-  ASSERT_STATUS_OK(s.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
+  SessionOptions so;
+  ASSERT_STATUS_OK(s.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager, so));
 
   AllocatorPtr allocator =
       execution_providers.Get(onnxruntime::kCpuExecutionProvider)->GetAllocator(0, OrtMemTypeDefault);

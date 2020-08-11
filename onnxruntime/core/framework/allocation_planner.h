@@ -52,9 +52,10 @@ class SequentialPlanner {
   static Status CreatePlan(
       const Node* parent_node, const onnxruntime::GraphViewer& graph,
       const std::vector<const NodeArg*>& outer_scope_node_args,
-      const ExecutionProviders& providers, const KernelRegistryManager& kernel_registry,
+      const ExecutionProviders& providers,
       const std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map,
-      const OrtValueNameIdxMap& ort_value_name_idx_map, const ISequentialPlannerContext& context,
+      const OrtValueNameIdxMap& ort_value_name_idx_map,
+      const ISequentialPlannerContext& context,
       std::unique_ptr<SequentialExecutionPlan>& plan);
 };
 

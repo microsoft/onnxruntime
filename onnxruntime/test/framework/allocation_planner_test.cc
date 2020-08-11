@@ -252,7 +252,7 @@ class PlannerTest : public ::testing::Test {
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
     // CreatePlan is called inside FinalizeSessionState and usually the initializers are removed following that.
-	// Leave initializers so we can duplicate the call to CreatePlan from here to validate.
+    // Leave initializers so we can duplicate the call to CreatePlan from here to validate.
     const bool remove_initializers = false;
     status = state_->FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager, {},
                                           remove_initializers);
@@ -261,8 +261,8 @@ class PlannerTest : public ::testing::Test {
     SequentialPlannerTestContext test_context(&shape_map_);
 
     status = SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph_), outer_scope_node_args, execution_providers_,
-                                           kernel_registry_manager, kernel_create_info_map,
-                                           state_->GetOrtValueNameIdxMap(), test_context, plan_);
+                                           kernel_create_info_map, state_->GetOrtValueNameIdxMap(), test_context,
+                                           plan_);
 
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
     AllocationPlanTestUtility::BasicIntegrityCheck(*plan_, name_to_arg_.size());
