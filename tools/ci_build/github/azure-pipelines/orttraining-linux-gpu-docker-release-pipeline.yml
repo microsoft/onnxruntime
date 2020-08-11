@@ -64,9 +64,8 @@ jobs:
       containerRegistry: 'ortrelease'
       repository: 'onnxruntime-training'
       tags: |
-      latest
-      $(Build.BuildNumber)
-      ${{ parameters.image_tag }}
+        $(Build.BuildNumber)
+        ${{ parameters.image_tag }}
 
   - template: templates/component-governance-component-detection-steps.yml
 
