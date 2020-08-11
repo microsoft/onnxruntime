@@ -78,6 +78,11 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
 
   Tensor* Y = nullptr;
 
+  // We may have to write the CuDNN Conv results to a temporary bufferwhen we deal with
+  // asymmetric padding as we have to take the results written to this temporary buffer and slice out
+  // extraneous portions of the result
+  IAllocatorUniquePtr<void> memory_for_cudnn_conv_results;
+
   {
     std::lock_guard<OrtMutex> lock(s_.mutex);
     // TODO: add a global cache if need to handle cases for multiple frames running simultaneuously with different batch_size
@@ -148,8 +153,9 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
         y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
       } else {
         // Post slicing needed. Create and fill in the Conv results in an intermediate buffer.
-        y_data = reinterpret_cast<CudaT*>(s_.AllocMemoryForCuDnnConvResults(allocator,
-                                                                            TensorShape(y_dims_with_adjusted_pads).Size() * element_size));
+        IAllocatorUniquePtr<void> temp = GetScratchBuffer<void>(TensorShape(y_dims_with_adjusted_pads).Size() * element_size);
+        memory_for_cudnn_conv_results = std::move(temp);
+        y_data = reinterpret_cast<CudaT*>(memory_for_cudnn_conv_results.get());
       }
 
       std::vector<int64_t> x_dims_cudnn = x_dims;
@@ -235,8 +241,14 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
       if (Y->Shape().Size() == 0)
         return Status::OK();
 
-      y_data = !s_.post_slicing_required ? reinterpret_cast<CudaT*>(Y->template MutableData<T>())
-                                         : reinterpret_cast<CudaT*>(s_.cached_memory_for_cudnn_results);
+      if (!s_.post_slicing_required) {
+        y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
+      } else {
+        // Post slicing needed. Create and fill in the Conv results in an intermediate buffer.
+        IAllocatorUniquePtr<void> temp = GetScratchBuffer<void>(TensorShape(s_.y_dims_with_adjusted_pads).Size() * element_size);
+        memory_for_cudnn_conv_results = std::move(temp);
+        y_data = reinterpret_cast<CudaT*>(memory_for_cudnn_conv_results.get());
+      }
     }
 
     const auto alpha = Consts<CudaT>::One;
@@ -244,19 +256,19 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
 
     IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(s_.workspace_bytes);
 
-    CUDNN_RETURN_IF_ERROR(cudnnConvolutionForward(CudnnHandle(),
-                                                  &alpha,
-                                                  s_.x_tensor,
-                                                  x_data,
-                                                  s_.filter_desc,
-                                                  w_data,
-                                                  s_.conv_desc,
-                                                  s_.algo,
-                                                  workspace.get(),
-                                                  s_.workspace_bytes,
-                                                  &beta,
-                                                  s_.y_tensor,
-                                                  y_data));
+    (cudnnConvolutionForward(CudnnHandle(),
+                             &alpha,
+                             s_.x_tensor,
+                             x_data,
+                             s_.filter_desc,
+                             w_data,
+                             s_.conv_desc,
+                             s_.algo,
+                             workspace.get(),
+                             s_.workspace_bytes,
+                             &beta,
+                             s_.y_tensor,
+                             y_data));
 
     if (has_bias) {
       const Tensor* B = context->Input<Tensor>(2);

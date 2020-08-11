@@ -216,7 +216,7 @@ struct ConvAttributes {
           pad_tail = pad_head;
           auto revised_dim_size = ComputeOutputShape(input_shape[dim], strides_p[dim],
                                                      kernel_shape[dim], dilations_p[dim],
-                                                     pads_p[dim], pads_p[rank + dim]);
+                                                     pad_head, pad_tail);
 
           if (head_overpadded) {
             // Head has already been over-padded
@@ -224,8 +224,6 @@ struct ConvAttributes {
             // Ensure that the size has changed - otherwise no operation needed.
             if (revised_dim_size !=
                 output_shape_with_revised_pads[output_shape_with_revised_pads.size() - 1]) {
-              slice_ends[slice_ends.size() - 1] = output_shape_with_revised_pads[output_shape_with_revised_pads.size() - 1] -
-                                                  revised_dim_size;
               output_shape_with_revised_pads[output_shape_with_revised_pads.size() - 1] = revised_dim_size;
             }
           } else {
