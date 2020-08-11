@@ -11,7 +11,7 @@ namespace tvm_codegen {
 tvm::Tensor Abs(const tvm::Tensor& X, const std::string& name = "abs");
 tvm::Tensor Affine(const tvm::Tensor& X, float alpha, float beta, const std::string& name = "affine");
 tvm::Tensor Ceil(const tvm::Tensor& X, const std::string& name = "ceil");
-tvm::Tensor Clip(const tvm::Tensor& X, float min_value, float max_value, const std::string& name = "clip");
+tvm::Tensor Clip(const tvm::Tensor& X, tvm::Expr min_value, tvm::Expr max_value, const std::string& name = "clip");
 tvm::Tensor Elu(const tvm::Tensor& X, float alpha, const std::string& name = "elu");
 tvm::Tensor Exp(const tvm::Tensor& X, const std::string& name = "exp");
 tvm::Tensor Floor(const tvm::Tensor& X, const std::string& name = "floor");

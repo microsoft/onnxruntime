@@ -201,6 +201,26 @@ ORT_API_STATUS_IMPL(ModelMetadataGetCustomMetadataMapKeys, _In_ const OrtModelMe
 
 ORT_API_STATUS_IMPL(AddFreeDimensionOverrideByName, _Inout_ OrtSessionOptions* options, _In_ const char* dim_name, _In_ int64_t dim_value);
 
+ORT_API_STATUS_IMPL(CreateAllocator, const OrtSession* sess, const OrtMemoryInfo* mem_info,
+                    _Outptr_ OrtAllocator** out);
+ORT_API(void, ReleaseAllocator, _Frees_ptr_opt_ OrtAllocator* allocator);
+
+ORT_API_STATUS_IMPL(RunWithBinding, _Inout_ OrtSession* sess, _In_opt_ const OrtRunOptions* run_options, _In_ const OrtIoBinding* binding_ptr);
+
+ORT_API_STATUS_IMPL(CreateIoBinding, _Inout_ OrtSession* sess, _Outptr_ OrtIoBinding** out);
+ORT_API(void, ReleaseIoBinding, _Frees_ptr_opt_ OrtIoBinding* allocator);
+
+ORT_API_STATUS_IMPL(BindInput, _Inout_ OrtIoBinding* binding_ptr, _In_ const char* name, _In_ const OrtValue* val_ptr);
+ORT_API_STATUS_IMPL(BindOutput, _Inout_ OrtIoBinding* binding_ptr, _In_ const char* name, _In_ const OrtValue* val_ptr);
+ORT_API_STATUS_IMPL(BindOutputToDevice, _Inout_ OrtIoBinding* binding_ptr, _In_ const char* name, _In_ const OrtMemoryInfo* val_ptr);
+ORT_API_STATUS_IMPL(GetBoundOutputNames, _In_ const OrtIoBinding* binding_ptr, _In_ OrtAllocator* allocator,
+                    _Out_ char** buffer, _Out_writes_all_(count) size_t** lengths, _Out_ size_t* count);
+ORT_API_STATUS_IMPL(GetBoundOutputValues, _In_ const OrtIoBinding* binding_ptr, _In_ OrtAllocator* allocator,
+                    _Out_writes_all_(output_count) OrtValue*** output, _Out_ size_t* output_count);
+
+ORT_API(void, ClearBoundInputs, _Inout_ OrtIoBinding* binding_ptr);
+ORT_API(void, ClearBoundOutputs, _Inout_ OrtIoBinding* binding_ptr);
+
 ORT_API_STATUS_IMPL(GetAvailableProviders, _Outptr_ char ***out_ptr,
                     _In_ int *providers_length);
 ORT_API_STATUS_IMPL(ReleaseAvailableProviders, _In_ char **ptr,
