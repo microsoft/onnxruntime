@@ -53,9 +53,11 @@ jobs:
       command: build
       containerRegistry: 'ortrelease'
       repository: 'onnxruntime-training'
-      tags: ${{ parameters.image_tag }}
       arguments: --build-arg COMMIT="${{ parameters.commit }}"
       Dockerfile: ${{ variables.linux_gpu_dockerfile }}
+      tags: |
+        $(Build.BuildNumber)
+        ${{ parameters.image_tag }}
 
   - task: Docker@2
     displayName: Push docker image
