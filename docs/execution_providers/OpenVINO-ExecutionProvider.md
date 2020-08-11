@@ -155,10 +155,10 @@ The msbuild log will show the paths of the nuget packages created.
 2. Linux
 
 We currently do not have a process to build directly in Linux. But we can
-copy shared library libonnxruntime.so to onnxruntime source repository in windows
-and execute the same commands above to get custom nuget package for linux. 
-Two nuget packages will be created Microsoft.ML.OnnxRuntime.Managed and
-Microsoft.ML.OnnxRuntime.Openvino.
+copy shared library <ORT linux repo>/build/Linux/<config>/libonnxruntime.so
+to onnxruntime source repository in windows and execute the same commands 
+above to get custom nuget package for linux. Two nuget packages will be 
+created Microsoft.ML.OnnxRuntime.Managed and Microsoft.ML.OnnxRuntime.Openvino.
 
 On Linux Machine
 ```

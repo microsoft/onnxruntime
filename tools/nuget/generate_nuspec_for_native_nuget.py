@@ -224,7 +224,7 @@ def generate_files(list, args):
 
     # Process runtimes
     # Process linux
-    if (args.linux_build == True):
+    if (args.linux_build is True):
         files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'libonnxruntime.so') +
                           '" target="runtimes\\linux-' + args.target_architecture + '\\native" />')
 
