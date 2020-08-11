@@ -18,6 +18,7 @@ jobs:
   workspace:
     clean: all
   pool: Linux-GPU-CUDA10
+  name: $(Date:yyyyMMdd)$(Rev:.r)
   steps:
   - task: CmdLine@2
     displayName: Build builder stage of docker file
@@ -64,7 +65,7 @@ jobs:
       repository: 'onnxruntime-training'
       tags: |
       latest
-      $(Date:yyyyMMdd).$(Rev:r)
+      $(Build.BuildNumber)
       ${{ parameters.image_tag }}
 
   - template: templates/component-governance-component-detection-steps.yml
