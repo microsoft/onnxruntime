@@ -2569,7 +2569,7 @@ Node& Graph::AddNode(const std::string& name,
   node->Init(name, op_type, description, inputs, outputs, attributes, domain);
   if (0 != op_type.compare(kNoOp)) {
     GraphProtoSyncNeeded(true);
-  } 
+  }
   GraphResolveNeeded(true);
 
   return *node;
