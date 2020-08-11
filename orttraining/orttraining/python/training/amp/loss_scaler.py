@@ -7,8 +7,28 @@ class LossScaler(object):
         This class should never be instantiated, but used as an abstract class for custom loss scaling strategy.
     """
 
-    def __init__(self):
-        pass
+    def __init__(self, loss_scale):
+        self._input_name = None
+        self._loss_scale = loss_scale
+
+    @property
+    def input_name(self):
+        return self._input_name
+
+    @input_name.setter
+    def input_name(self, input_name):
+        assert isinstance(input_name, str), "'input_name' must be a string"
+        assert input_name is None or len(input_name) > 0, "'input_name' cannot be empty"
+        self._input_name = input_name
+
+    @property
+    def loss_scale(self):
+        return self._loss_scale
+
+    @loss_scale.setter
+    def loss_scale(self, loss_scale):
+        assert isinstance(loss_scale, float) and loss_scale > 0, "'loss_scale' must be a positive float"
+        self._loss_scale = loss_scale
 
     def reset(self):
         r"""Resets loss scaler internal state"""
@@ -19,6 +39,9 @@ class LossScaler(object):
 
         Args:
             train_step_info (TrainStepInfo): last step state information
+
+        Returns:
+            Updated loss scale (float)
         """
         raise NotImplementedError
 
@@ -65,9 +88,8 @@ class DynamicLossScaler(LossScaler):
                  up_scale_window=2000,
                  min_loss_scale=1.0,
                  max_loss_scale=float(1 << 24)):
-        super().__init__()
+        super().__init__(loss_scale)
         self.automatic_update = automatic_update
-        self.loss_scale = loss_scale
         self.up_scale_window = up_scale_window
         self.min_loss_scale = min_loss_scale
         self.max_loss_scale = max_loss_scale
@@ -89,3 +111,4 @@ class DynamicLossScaler(LossScaler):
         else:
             self.loss_scale = max(self.min_loss_scale, self.loss_scale / 2)
             self._stable_steps_count = 0
+        return self.loss_scale
