@@ -738,6 +738,14 @@ const T* Value::GetTensorData() const {
   return out;
 }
 
+template <typename T>
+inline T Value::At(const std::initializer_list<size_t>& location) {
+  T* out;
+  std::vector<size_t> location_ = location;
+  ThrowOnError(GetApi().TensorAt(p_, location_.data(), location_.size(), (void**)&out));
+  return *out;
+}
+
 inline TypeInfo Value::GetTypeInfo() const {
   OrtTypeInfo* output;
   ThrowOnError(GetApi().GetTypeInfo(p_, &output));

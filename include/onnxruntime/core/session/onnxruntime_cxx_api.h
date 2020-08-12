@@ -331,6 +331,9 @@ struct Value : Base<OrtValue> {
   template<typename T>
   const T* GetTensorData() const;
 
+  template <typename T>
+  T At(const std::initializer_list<size_t>& location);
+
   TypeInfo GetTypeInfo() const;
   TensorTypeAndShapeInfo GetTensorTypeAndShapeInfo() const;
 

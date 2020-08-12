@@ -959,6 +959,20 @@ struct OrtApi {
    */
   void(ORT_API_CALL* ClearBoundInputs)(_Inout_ OrtIoBinding* binding_ptr) NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
   void(ORT_API_CALL* ClearBoundOutputs)(_Inout_ OrtIoBinding* binding_ptr) NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
+
+  /**
+   * Provides element-level access into a tensor.
+   * \param location_values a pointer to an array of index values that specify an element's location in the tensor data blob
+   * \param location_values_count length of location_values
+   * \param out a pointer to the element specified by location_values
+   * e.g.
+   * Given a tensor with overall shape [3,224,224], an element at
+   * location [2,150,128] can be accessed directly.
+   * 
+   * This function only works for numeric tensors.
+   * This is a no-copy method whose pointer is only valid until the backing OrtValue is free'd.
+   */
+  ORT_API2_STATUS(TensorAt, _Inout_ OrtValue* value, size_t* location_values, size_t location_values_count, _Outptr_ void** out);
 };
 
 /*

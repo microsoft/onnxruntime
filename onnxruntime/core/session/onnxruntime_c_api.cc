@@ -1630,6 +1630,31 @@ ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char** ptr,
   return NULL;
 }
 
+ORT_API_STATUS_IMPL(OrtApis::TensorAt, _Inout_ OrtValue* value, size_t* location_values, size_t location_values_count,
+                   _Outptr_ void** out) {
+  TENSOR_READWRITE_API_BEGIN
+  //TODO: test if it's a string tensor
+  if (location_values_count != tensor->Shape().NumDimensions())
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "location dimensions do not match shape size");
+  std::vector<size_t> location(location_values_count);
+  for (size_t i = 0; i < location_values_count; i++) {
+    if (location_values[i] >= (size_t)tensor->Shape()[i])
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "invalid location range");
+    location[i] = location_values[i];
+  }
+  // data has row-major format
+  size_t offset = 0;
+  for (size_t i = 1; i <= tensor->Shape().NumDimensions(); i++) {
+    size_t sum = 1;
+    for (size_t j = i+1; j <= tensor->Shape().NumDimensions(); j++) sum *= (size_t)tensor->Shape()[j-1];
+    offset += location[i-1] * sum;
+  }
+  auto data = ((char *)tensor->MutableDataRaw()) + (tensor->DataType()->Size() * offset);
+  *out = (void *)data;
+  return nullptr;
+  API_IMPL_END
+}
+
 // End support for non-tensor types
 
 static constexpr OrtApiBase ort_api_base = {
@@ -1848,6 +1873,7 @@ static constexpr OrtApi ort_api_1_to_4 = {
     &OrtApis::ClearBoundInputs,
     &OrtApis::ClearBoundOutputs,
 
+    &OrtApis::TensorAt,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
