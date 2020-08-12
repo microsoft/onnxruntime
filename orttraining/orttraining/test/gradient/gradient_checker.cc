@@ -248,7 +248,17 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::InitOpTesterWithGraph(
 
   for (size_t data_index = 0; data_index < y_infos.size(); data_index++) {
     std::string name = "output" + std::to_string(data_index);
-    op_session.AddOutput<Y_T>(name.c_str(), y_infos[data_index].shape.GetDims(), (*y_datas)[data_index]);
+    const std::vector<Y_T>& data = (*y_datas)[data_index];
+
+    if (y_infos[data_index].data_type == DataTypeImpl::GetTensorType<int64_t>()) {
+      std::vector<int64_t> int64_data(data.size());
+      std::transform(data.begin(), data.end(), int64_data.begin(), [](Y_T x) { return static_cast<int64_t>(x); });
+      op_session.AddOutput<int64_t>(name.c_str(),
+                                    y_infos[data_index].shape.GetDims(),
+                                    int64_data);
+    } else {
+      op_session.AddOutput<Y_T>(name.c_str(), y_infos[data_index].shape.GetDims(), data);
+    }
   }
   // Currently only allows setting int attributes to zero. TODO: Expand this
   for (auto attr : attributes) {
@@ -568,7 +578,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
   }
 
   // Compute gradient error.
-  return ComputeGradientErrorInternal(op_def, x_infos, y_infos, &x_datas, &y_datas, max_error, 
+  return ComputeGradientErrorInternal(op_def, x_infos, y_infos, &x_datas, &y_datas, max_error,
                                       attributes, check_not_have_gradient, check_not_have_shape_inferencing);
 }
 

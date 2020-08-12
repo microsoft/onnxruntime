@@ -6,18 +6,13 @@
 # license information.
 # --------------------------------------------------------------------------
 
-import os
-import sys
 import numpy as np
 import onnx
 import onnxruntime
-from onnx import helper, TensorProto, numpy_helper
-
-import re
-import subprocess
-import json
+from onnx import helper, TensorProto
 
 import abc
+
 
 class CalibrationDataReader(metaclass=abc.ABCMeta):
     @classmethod
@@ -77,7 +72,7 @@ class ONNXCalibrater:
                     if input_tensor_name in value_infos.keys(): 
                         vi = value_infos[input_tensor_name]
                         if vi.type.HasField(
-                            'tensor_type') and vi.type.tensor_type.elem_type == onnx_proto.TensorProto.FLOAT and (
+                            'tensor_type') and vi.type.tensor_type.elem_type == TensorProto.FLOAT and (
                                 input_tensor_name not in model.graph.initializer):
                             tensors_to_calibrate.add(input_tensor_name)
 
@@ -85,7 +80,7 @@ class ONNXCalibrater:
                     if output_tensor_name in value_infos.keys(): 
                         vi = value_infos[output_tensor_name]
                         if vi.type.HasField(
-                            'tensor_type') and vi.type.tensor_type.elem_type == onnx_proto.TensorProto.FLOAT:
+                            'tensor_type') and vi.type.tensor_type.elem_type == TensorProto.FLOAT:
                             tensors_to_calibrate.add(output_tensor_name)
             
         for tensor in tensors_to_calibrate:

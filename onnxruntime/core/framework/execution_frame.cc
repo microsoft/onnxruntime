@@ -261,9 +261,17 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
             // it's less efficient (the arena will add some overhead to coalesce individual allocations
             // back into blocks on 'free'), but better than failing completely.
             try {
-              // static_activation_memory_in_bytes_ is max virtual memory size the planner computes
               auto peak_size = mem_patterns_->patterns[i].PeakSize();
               // Planning of one memory type should only happen once.
+              ORT_ENFORCE(
+                static_activation_memory_sizes_in_byte_.find(location.name) ==
+                static_activation_memory_sizes_in_byte_.end(),
+                "Memory type ",
+                location.name,
+                " should only appear once.");
+              // static_activation_memory_in_bytes_ is max virtual memory size the planner computes.
+              // Memory dynamically allocated when executing kernels is not recorded using this field.
+              static_activation_memory_sizes_in_byte_[location.name] = peak_size;
               buffer = alloc->Alloc(peak_size);
               // handle allocator that doesn't throw
               if (buffer == nullptr) {
@@ -385,6 +393,15 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
   // placement new, we don't support it in memory pattern optimization.
   if (!utils::IsDataTypeString(element_type)) {
     TraceAllocate(ort_value_index, size);
+  }
+
+  
+  {
+    // This code block is not thread-safe.
+    // Dynamic activation size would be accessed by multiple threads
+    // if parallel executor is used.
+    std::unique_lock<std::mutex> lock(mtx_);
+    dynamic_activation_memory_sizes_in_byte_[location.name] += size;
   }
 
   return Status::OK();
