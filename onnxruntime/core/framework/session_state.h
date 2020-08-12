@@ -276,6 +276,12 @@ class SessionState {
   void UpdateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue_idxs);
   const std::unordered_set<NodeIndex>* GetToBeExecutedNodes(const std::vector<int>& fetch_mlvalue_idxs) const;
 
+#ifdef ENABLE_TRAINING
+  Status GenerateActivationMemoryPatterns(MemoryPatternGroup* output,
+                                          std::unordered_map<std::string, int64_t>& symbolic_map,
+                                          std::unordered_map<int, TensorShape>& resolved_shapes) const;
+#endif
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 

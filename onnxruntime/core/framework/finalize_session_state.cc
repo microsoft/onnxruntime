@@ -82,6 +82,22 @@ Status FinalizeSessionState(SessionState& session_state,
       ITensorAllocator::Create(session_state.GetEnableMemoryPattern(), *exec_plan_ptr, session_state,
                                session_state.GetMutableWeightsBuffers()));
 
+#ifdef ENABLE_TRAINING
+  if (session_state.GetEnableMemoryPattern()) {
+    // calculate activation memory usage
+    MemoryPatternGroup activation_memory_pattern_output;
+    std::unordered_map<std::string, int64_t> symbolic_map;
+    std::unordered_map<int, TensorShape> resolved_shapes;
+    auto ret = session_state.GenerateActivationMemoryPatterns(&activation_memory_pattern_output, symbolic_map, resolved_shapes);
+    for (size_t i = 0; i < activation_memory_pattern_output.locations.size(); i++) {
+      LOGS(logger, INFO) << activation_memory_pattern_output.locations[i].ToString()
+                         << "Activation Peak: Allocated memory for activations, size: "
+                         << activation_memory_pattern_output.patterns[i].PeakSize();
+    }
+    ORT_ENFORCE(ret.IsOK());
+  }
+#endif
+
   // lambda to save initialized tensors into SessionState directly
   const Env& env = Env::Default();
   ORT_RETURN_IF_ERROR(SaveInitializedTensors(
@@ -193,7 +209,8 @@ common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PA
   //2. allocate weight buffer on different locations
   // planned_initializers_memory_size_in_byte is not actual physical size.
   // It's the virtual size computed by planner.
-  std::unordered_map<std::string, size_t> planned_initializers_memory_sizes_in_byte;
+  std::unordered_map<std::string, size_t>
+      planned_initializers_memory_sizes_in_byte;
   ORT_RETURN_IF_ERROR(
       planner.FinalizePlan(planned_initializers_memory_sizes_in_byte));
 
