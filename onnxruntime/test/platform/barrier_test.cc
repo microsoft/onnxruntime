@@ -8,7 +8,6 @@
 
 #include "gtest/gtest.h"
 
-#include <algorithm>
 #include <atomic>
 #include <thread>
 
@@ -59,7 +58,7 @@ TEST(BarrierTest, TestBarrier_1Worker_Spin) {
   TestBarrier(1, count, true);
 }
 
-TEST(BarrierTest, TestBarrier_1Workers_Block) {
+TEST(BarrierTest, TestBarrier_1Worker_Block) {
   TestBarrier(1, count, false);
 }
 
