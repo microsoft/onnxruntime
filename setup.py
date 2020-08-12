@@ -183,7 +183,7 @@ elif platform.system() == "Darwin":
 else:
   libs = ['onnxruntime_pybind11_state.pyd', 'dnnl.dll', 'mklml.dll', 'libiomp5md.dll']
   # DNNL & TensorRT EPs are built as shared libs
-  libs.extend(['libonnxruntime_providers_shared.dll'])
+  libs.extend(['onnxruntime_providers_shared.dll'])
   libs.extend(['onnxruntime_providers_dnnl.dll'])
   libs.extend(['onnxruntime_providers_tensorrt.dll'])
   # nGraph Libs
