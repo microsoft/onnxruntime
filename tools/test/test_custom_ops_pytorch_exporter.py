@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+#
+# Test export of pytorch operators using ONNX Runtime contrib ops
+
 import torch
 import onnxruntime
 import numpy as np
@@ -32,7 +37,7 @@ def ort_test_with_input(ort_sess, input, output, rtol, atol):
 
 # These set of tests verify ONNX model export and compare onnxruntime outputs to pytorch.
 # To register custom ops and run the tests, you should set PYTHONPATH as:
-# PYTHONPATH=<path_to_onnxruntime/tools> -m pytest -v test_custom_ops_pytorch_exporter.py
+# PYTHONPATH=<path_to_onnxruntime/tools> python -m pytest -v test_custom_ops_pytorch_exporter.py
 class ONNXExporterTest(unittest.TestCase):
     from torch.onnx.symbolic_helper import _export_onnx_opset_version
     opset_version = _export_onnx_opset_version

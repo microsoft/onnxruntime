@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+#
+# Helper functions for generating ONNX model and data to test ONNX Runtime contrib ops
+
 import onnx
 import os
 from onnx import numpy_helper

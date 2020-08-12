@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "onnx/shape_inference/implementation.h"
@@ -10,7 +13,7 @@ auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
 
 const std::string MS_DOMAIN = "com.microsoft";
 
-void checkShapeEquality(ONNX_NAMESPACE::TensorShapeProto* shape1, ONNX_NAMESPACE::TensorShapeProto* shape2) {
+void CheckShapeEquality(ONNX_NAMESPACE::TensorShapeProto* shape1, ONNX_NAMESPACE::TensorShapeProto* shape2) {
   EXPECT_NE(shape1, nullptr);
   EXPECT_NE(shape2, nullptr);
   if ((shape1 != nullptr) && (shape2 != nullptr)) {
@@ -31,7 +34,7 @@ void checkShapeEquality(ONNX_NAMESPACE::TensorShapeProto* shape1, ONNX_NAMESPACE
   }
 }
 
-inline void createValueInfo(
+inline void CreateValueInfo(
     ONNX_NAMESPACE::ValueInfoProto& value_info,
     const std::string& name,
     const ONNX_NAMESPACE::TensorProto_DataType& elem_type,
@@ -47,7 +50,7 @@ inline void createValueInfo(
   }
 }
 
-inline void testShapeInference(
+inline void TestShapeInference(
     const std::string& op_type,
     const std::vector<ONNX_NAMESPACE::ValueInfoProto>& inputs,
     const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes,
@@ -97,7 +100,7 @@ inline void testShapeInference(
 
   auto shape = output.mutable_type()->mutable_tensor_type()->mutable_shape();
   auto inferred_shape = inferred_output.mutable_type()->mutable_tensor_type()->mutable_shape();
-  checkShapeEquality(shape, inferred_shape);
+  CheckShapeEquality(shape, inferred_shape);
 }
 
 }  // namespace test

@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+#
+# Register pytorch symbolic for export using ONNX Runtime contrib ops
+
 from torch.onnx import register_custom_op_symbolic
 
 

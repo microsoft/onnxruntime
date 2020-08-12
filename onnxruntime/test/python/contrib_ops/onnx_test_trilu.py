@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+#
+# Test reference implementation and model for ONNX Runtime conrtib op trilu
+
 import onnx
 import unittest
 import numpy as np
