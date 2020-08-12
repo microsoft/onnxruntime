@@ -161,13 +161,16 @@ def static_vars(**kwargs):
     return decorate
 
 
-def import_module_from_file(file_path, module_name):
+def import_module_from_file(file_path, module_name=None):
     '''Import a Python module from a file into interpreter'''
 
     assert isinstance(file_path, str) and os.path.exists(file_path),\
         "'file_path' must be a full path string with the python file to load"
-    assert isinstance(module_name, str) and module_name,\
+    assert module_name is None or isinstance(module_name, str) and module_name,\
         "'module_name' must be a string with the python module name to load"
+
+    if not module_name:
+        module_name = os.path.basename(file_path).split('.')[0]
 
     spec = importlib.util.spec_from_file_location(module_name, file_path)
     module = importlib.util.module_from_spec(spec)

@@ -121,6 +121,10 @@ class ORTTrainerOptions(object):
                         'grad_norm_clip' : {
                             'type' : 'boolean',
                             'default' : True
+                        },
+                        'invertible_layer_norm_gradient' : {
+                            'type' : 'boolean',
+                            'default' : False
                         }
                     }
                 },
@@ -202,6 +206,8 @@ class ORTTrainerOptions(object):
             list of model parameter names to skip training (weights don't change)
         utils.grad_norm_clip (bool, default is True):
             enables gradient norm clipping for 'AdamOptimizer' and 'LambOptimizer'
+        utils.invertible_layer_norm_gradient (bool, default is False):
+            enables use of invertible layer norm gradients
         debug (dict):
             debug options
         debug.deterministic_compute (bool, default is False)
@@ -359,11 +365,18 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'type': 'boolean',
                 'default': False
             },
-            'deepspeed_zero_stage' : {
-                'type' : 'integer',
-                'min' : 0,
-                'max' : 1,
-                'default' : 0,
+            'deepspeed_zero_optimization' : {
+                'type' : 'dict',
+                'default_setter': lambda _: {},
+                'required': False,
+                'schema': {
+                    'stage': {
+                        'type': 'integer',
+                        'min': 0,
+                        'max': 1,
+                        'default': 0
+                    },
+                }
             },
             'enable_adasum': {
                 'type': 'boolean',
@@ -405,6 +418,10 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
             'grad_norm_clip': {
                 'type': 'boolean',
                 'default': True
+            },
+            'invertible_layer_norm_gradient' : {
+                'type': 'boolean',
+                'default': False
             }
         }
     },

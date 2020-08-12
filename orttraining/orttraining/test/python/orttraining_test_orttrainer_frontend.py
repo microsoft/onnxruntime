@@ -26,11 +26,11 @@ def _load_pytorch_transformer_model(device, legacy_api=False):
     # Loads external Pytorch TransformerModel into utils
     pytorch_transformer_path = os.path.join('..', '..', '..', 'samples', 'python', 'pytorch_transformer')
     pt_model_path = os.path.join(pytorch_transformer_path, 'pt_model.py')
-    pt_model = _utils.import_module_from_file(pt_model_path, 'pt_model')
+    pt_model = _utils.import_module_from_file(pt_model_path)
     ort_utils_path = os.path.join(pytorch_transformer_path, 'ort_utils.py')
-    ort_utils = _utils.import_module_from_file(ort_utils_path, 'ort_utils')
+    ort_utils = _utils.import_module_from_file(ort_utils_path)
     utils_path = os.path.join(pytorch_transformer_path, 'utils.py')
-    utils = _utils.import_module_from_file(utils_path, 'utils')
+    utils = _utils.import_module_from_file(utils_path)
 
     # Modeling
     model = pt_model.TransformerModel(28785, 200, 2, 200, 2, 0.2).to(device)
@@ -75,7 +75,9 @@ def testORTTrainerOptionsDefaultValues(test_input):
             'world_size': 1,
             'local_rank': 0,
             'allreduce_post_accumulation': False,
-            'deepspeed_zero_stage': 0,
+            'deepspeed_zero_optimization': {
+                'stage' : 0,
+            },
             'enable_adasum': False
         },
         'lr_scheduler': None,
@@ -85,7 +87,8 @@ def testORTTrainerOptionsDefaultValues(test_input):
         },
         'utils': {
             'frozen_weights': [],
-            'grad_norm_clip': True
+            'grad_norm_clip': True,
+            'invertible_layer_norm_gradient': False,
         },
         'debug': {
             'deterministic_compute': False
