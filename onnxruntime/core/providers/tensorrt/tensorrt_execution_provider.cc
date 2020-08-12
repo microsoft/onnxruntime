@@ -1020,10 +1020,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         }
         trt_state->context->reset();
         trt_state->engine->reset();
-		std::cout << "trt_state->network: " << trt_state->network << ", trt_profile: " << trt_profile << ", trt_profile->isValid: " << trt_profile->isValid() << ", profile_index: " << profile_index << ", trt_config: " << trt_config << ", trt_builder: " << trt_builder << std::endl;
+		std::cout << "trt_state->network: " << trt_state->network << ", trt_profile: " << trt_profile << ", trt_profile->isValid: " << trt_profile->isValid() << ", profile_index: " << profile_index << ", trt_builder: " << trt_builder << std::endl;
         *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
             trt_builder->buildEngineWithConfig(*trt_state->network, *trt_config));
-		std::cout << "*(trt_state->engine): " << *(trt_state->engine) << std::endl;
+		//std::cout << "*(trt_state->engine): " << *(trt_state->engine) << std::endl;
+		std::cout << "trt_state->engine->get(): " << trt_state->engine->get() << std::endl;		
 
         if (trt_state->engine->get() == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to build engine.");
