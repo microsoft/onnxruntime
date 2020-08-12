@@ -196,17 +196,18 @@ using namespace onnxruntime;
 using namespace onnxruntime::logging;
 
 // Custom op section starts
+static Env& platform_env = Env::Default();
 
 CustomOpLibrary::CustomOpLibrary(const char* library_path, OrtSessionOptions& ort_so) {
   {
-    OrtPybindThrowIfError(Env::Default().LoadDynamicLibrary(library_path, &library_handle_));
+    OrtPybindThrowIfError(platform_env.LoadDynamicLibrary(library_path, &library_handle_));
 
     if (!library_handle_)
       throw std::runtime_error("RegisterCustomOpsLibrary: Failed to load library");
 
     OrtStatus*(ORT_API_CALL * RegisterCustomOps)(OrtSessionOptions * options, const OrtApiBase* api);
 
-    OrtPybindThrowIfError(Env::Default().GetSymbolFromLibrary(library_handle_, "RegisterCustomOps", (void**)&RegisterCustomOps));
+    OrtPybindThrowIfError(platform_env.GetSymbolFromLibrary(library_handle_, "RegisterCustomOps", (void**)&RegisterCustomOps));
 
     if (!RegisterCustomOps)
       throw std::runtime_error("RegisterCustomOpsLibrary: Entry point RegisterCustomOps not found in library");
@@ -216,7 +217,7 @@ CustomOpLibrary::CustomOpLibrary(const char* library_path, OrtSessionOptions& or
     if (status) {
       // A non-nullptr indicates some error
       // Free status and throw
-      Env::Default().UnloadDynamicLibrary(library_handle_);
+      platform_env.UnloadDynamicLibrary(library_handle_);
       ::free(status);
       throw std::runtime_error("TODO");
     }
@@ -227,7 +228,7 @@ CustomOpLibrary::CustomOpLibrary(const char* library_path, OrtSessionOptions& or
 
 // Unload the library when the destructor is triggered
 CustomOpLibrary::~CustomOpLibrary() {
-  Env::Default().UnloadDynamicLibrary(library_handle_);
+  platform_env.UnloadDynamicLibrary(library_handle_);
 }
 
 void CustomOpLibraries::AddLibrary(std::unique_ptr<CustomOpLibrary> custom_op_library) {
@@ -1406,8 +1407,6 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   })();
 
   Environment& env = get_env();
-
-  ORT_IGNORE_RETURN_VALUE(Env::Default());
 
   CustomOpLibraries& global_custom_op_libraries = get_custom_op_libraries();
 
