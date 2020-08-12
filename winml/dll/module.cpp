@@ -89,7 +89,7 @@ STDAPI DllCanUnloadNow() {
   return S_FALSE;
 }
 
-int32_t WINRT_CALL DllGetExperimentalActivationFactory(void* classId, void** factory) noexcept {
+STDAPI DllGetExperimentalActivationFactory(void* classId, void** factory) noexcept {
   try {
     *factory = nullptr;
     uint32_t length{};
