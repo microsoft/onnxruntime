@@ -218,7 +218,7 @@ class ORTTrainer(object):
                 raise RuntimeError("Model is uninitialized. Only ONNX and PyTorch models are supported")
 
         # Prepare input/output description
-        input_desc = self._model_desc_inputs_with_lr
+        input_desc = self.model_desc.inputs
         output_desc = self.model_desc.outputs
 
         # Normalize input
@@ -236,8 +236,10 @@ class ORTTrainer(object):
                                                                 input_desc,
                                                                 output_desc,
                                                                 run_options)
-        return session_run_results[output_desc.name][0] if len (session_run_results) == 1\
-            else [session_run_results[output_desc.name] for output_desc in output_desc]
+
+        # Output must be returned in the same order as defined in the model description
+        results = [session_run_results[output_desc.name] for output_desc in self.model_desc.outputs]
+        return results[0] if len (results) == 1 else results
 
     def save_as_onnx(self, path):
         r"""Persists ONNX model into :py:attr:`path`
@@ -361,7 +363,7 @@ class ORTTrainer(object):
                 "loss function should take two arguments - predict and label.")
 
         # Basic input names from model
-        input_names = [input[0] for input in self.model_desc.inputs]
+        input_names = [input.name for input in self.model_desc.inputs]
         sig = signature(self._torch_model.forward)
         ordered_input_list = list(sig.parameters.keys())
 
@@ -415,7 +417,6 @@ class ORTTrainer(object):
         return CombineTorchModelLossFn(self._torch_model, self.loss_fn, input_names)
 
     def _convert_torch_model_loss_fn_to_onnx(self, inputs, device):
-
         # Dynamic axes
         dynamic_axes = {}
         for input in self.model_desc.inputs:
@@ -467,8 +468,8 @@ class ORTTrainer(object):
         # Export the model to ONNX
         f = io.BytesIO()
         torch.onnx._export(model, tuple(sample_inputs), f,
-                           input_names=[input[0] for input in self.model_desc.inputs],
-                           output_names=[output[0] for output in self.model_desc.outputs],
+                           input_names=[input.name for input in self.model_desc.inputs],
+                           output_names=[output.name for output in self.model_desc.outputs],
                            opset_version=self.options._internal_use.onnx_opset_version,
                            dynamic_axes=dynamic_axes,
                            _retain_param_name=True,
@@ -498,8 +499,6 @@ class ORTTrainer(object):
 
         return onnx_model
 
-    # TODO: Test this througly along with train step, including
-    #       various optimizer parameter groups, frozen weights, loss and lr
     def _create_ort_training_session(self):
         # Validating frozen_weights names
         unused_frozen_weights = [n for n in self.options.utils.frozen_weights\
@@ -544,9 +543,10 @@ class ORTTrainer(object):
         ort_parameters.world_size = self.options.distributed.world_size
         ort_parameters.gradient_accumulation_steps = self.options.batch.gradient_accumulation_steps
         ort_parameters.allreduce_post_accumulation = self.options.distributed.allreduce_post_accumulation
-        ort_parameters.deepspeed_zero_stage = self.options.distributed.deepspeed_zero_stage
+        ort_parameters.deepspeed_zero_stage = self.options.distributed.deepspeed_zero_optimization.stage
         ort_parameters.enable_grad_norm_clip = self.options.utils.grad_norm_clip
         ort_parameters.set_gradients_as_graph_outputs = False
+        ort_parameters.use_invertible_layernorm_grad = self.options.utils.invertible_layer_norm_gradient
         ort_parameters.training_optimizer_name = self.optim_config.name
         ort_parameters.lr_params_feed_name = self.model_desc.learning_rate.name
         ort_parameters.weights_to_train = trainable_params
@@ -561,14 +561,6 @@ class ORTTrainer(object):
         self._training_session = ort.TrainingSession(self._onnx_model.SerializeToString(),
                                                      ort_parameters,
                                                      session_options)
-
-        # Update model description to update dtype when mixed precision is enabled
-        # C++ backend modifies model's output dtype from float32 to float16 for mixed precision
-        # Note that for training we must use float32 and for evaluation we must use float16 
-        for idx, o_desc in enumerate(self.model_desc.outputs):
-            if (self.options.mixed_precision.enabled and o_desc.dtype == torch.float32 and
-                    not self._training_session.is_output_fp32_node(o_desc.name)):
-                self.model_desc.add_type_to_output_description(idx, o_desc.dtype, torch.float16)
 
         # I/O bindings
         self._train_io_binding = self._training_session.io_binding()
@@ -604,6 +596,14 @@ class ORTTrainer(object):
         # Create training session used by train_step
         self._create_ort_training_session()
 
+        # Update model description to update dtype when mixed precision is enabled
+        # C++ backend modifies model's output dtype from float32 to float16 for mixed precision
+        # Note that for training we must use float32 and for evaluation we must use float16
+        for idx, o_desc in enumerate(self.model_desc.outputs):
+            if (self.options.mixed_precision.enabled and o_desc.dtype == torch.float32 and
+                    not self._training_session.is_output_fp32_node(o_desc.name)):
+                self.model_desc.add_type_to_output_description(idx, o_desc.dtype, torch.float16)
+
         # Update model description
         self._model_desc_inputs_with_lr = [*self.model_desc.inputs, self.model_desc.learning_rate]
 
@@ -638,8 +638,8 @@ class ORTTrainer(object):
 
         # Append input from 'kwargs'
         for input_desc in inputs_desc:
-            if input_desc[0] in kwargs:
-                input = input + (kwargs[input_desc[0]],)
+            if input_desc.name in kwargs:
+                input = input + (kwargs[input_desc.name],)
 
         # Append learning rate
         extra_inputs = 0

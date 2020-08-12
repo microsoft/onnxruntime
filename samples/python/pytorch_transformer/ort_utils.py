@@ -1,4 +1,5 @@
 import torch
+
 from onnxruntime.capi.ort_trainer import IODescription as Legacy_IODescription,\
                                          ModelDescription as Legacy_ModelDescription
 
