@@ -19,6 +19,12 @@ enum AdasumReductionType {
   GpuHierarchical,
 };
 
+// Data types to support for mixed precision training.
+enum MixedPrecisionDataType {
+  FP16,
+  BF16,
+};
+
 // Configuration for the DeepSpeed ZeRO technique.  Currently only the stage
 // setting is supported, and only with stages 0 (disabled) and 1 (optimizer
 // state partitioning).
@@ -54,7 +60,7 @@ struct OptimizerGraphConfig {
   int local_rank{0};
   int local_size{1};
   bool use_mixed_precision{false};
-  ONNX_NAMESPACE::TensorProto_DataType mixed_precision_type{ONNX_NAMESPACE::TensorProto_DataType_FLOAT16};
+  MixedPrecisionDataType mixed_precision_type{MixedPrecisionDataType::FP16};
   bool allreduce_in_mixed_precision_type{false};
   bool use_nccl{false};
   ZeROConfig deepspeed_zero{0};
@@ -63,6 +69,18 @@ struct OptimizerGraphConfig {
   std::string loss_scale_input_name{};  // empty string means no loss scaling factor is applied
   AdasumReductionType adasum_reduction_type{AdasumReductionType::None};
   bool enable_grad_norm_clip{true};
+
+  ONNX_NAMESPACE::TensorProto_DataType AllReduceDataType() const {
+    if (!allreduce_in_mixed_precision_type) {
+      return ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+    }
+
+    switch (mixed_precision_type) {
+      case MixedPrecisionDataType::FP16: return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+      case MixedPrecisionDataType::BF16: return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
+      default: return ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+    }  
+  }
 };
 
 }  // namespace training

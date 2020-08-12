@@ -317,8 +317,7 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
   ORT_RETURN_IF_NOT(total_num_accumulations > 0);
   const float scale = 1.0f / total_num_accumulations;
   ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs,
-                                              opt_graph_config_.allreduce_in_mixed_precision_type ?
-                                                  opt_graph_config_.mixed_precision_type : ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                                              opt_graph_config_.AllReduceDataType(),
                                               false));
 
   // add Reducescatter for gradients

@@ -126,6 +126,16 @@ class GradientBuilderBase {
     return node_->OutputDefs()[i]->TypeAsProto();
   }
 
+  // Element type of i-th input of forward op.
+  int IElemType(const size_t i) const {
+    return IType(i)->tensor_type().elem_type();
+  }
+
+  // Element type of i-th output of forward op.
+  int OElemType(const size_t i) const {
+    return OType(i)->tensor_type().elem_type();
+  }
+
   int GetSrcNodeInputSize() const {
     ORT_ENFORCE(node_ != nullptr);
     return (int)node_->InputDefs().size();

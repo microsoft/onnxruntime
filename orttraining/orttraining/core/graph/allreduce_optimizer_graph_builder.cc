@@ -185,8 +185,7 @@ Status AllreduceOptimizerGraphBuilder::BuildInternal(
   const float scale = 1.0f / total_num_accumulations;
   const bool fuse_scaling_outputs = !overlap_compute_allreduce;
   ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs,
-                                              opt_graph_config_.allreduce_in_mixed_precision_type ?
-                                                  opt_graph_config_.mixed_precision_type : ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                                              opt_graph_config_.AllReduceDataType(),
                                               fuse_scaling_outputs));
 
   // add Allreduce for gradients

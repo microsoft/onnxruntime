@@ -166,7 +166,7 @@ Status TrainingSession::ConfigureForTraining(
   // So we can check the last stage by checking the world_rank and world_size. Once DP and MP combination is
   // enabled, we need to devise another way to check MP stages.
   bool enable_loss_scale = is_mixed_precision_enabled_ &&
-                           config.mixed_precision_config.value().mixed_precision_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
+                           config.mixed_precision_config.value().mixed_precision_type == MixedPrecisionDataType::FP16 &&
                            (!config.pipeline_config.has_value() ||
                             (config.distributed_config.world_rank + 1 == config.distributed_config.world_size));
   optional<std::string> loss_scale_input_name =
@@ -242,8 +242,7 @@ Status TrainingSession::ConfigureForTraining(
   if (is_mixed_precision_enabled_) {
     const auto& mixed_precision_config = config.mixed_precision_config.value();
     ORT_RETURN_IF_ERROR(EnableMixedPrecision(weight_names_to_train,
-                                             mixed_precision_config.use_mixed_precision_initializers,
-                                             mixed_precision_config.mixed_precision_type,
+                                             mixed_precision_config,
                                              fp32_weight_name_to_mixed_precision_node_arg));
   }
 
@@ -650,14 +649,13 @@ Status TrainingSession::ConfigureLossFunction(
 
 Status TrainingSession::EnableMixedPrecision(
     const std::unordered_set<std::string>& weights_to_train,
-    bool use_mixed_precision_initializer,
-    ONNX_NAMESPACE::TensorProto_DataType mixed_precision_type,
+    const TrainingConfiguration::MixedPrecisionConfiguration& mixed_precision_config,
     std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_mixed_precision_node_arg) {
   ORT_RETURN_IF_ERROR(TransformGraphForMixedPrecision(
       model_->MainGraph(),
       weights_to_train,
-      use_mixed_precision_initializer,
-      mixed_precision_type,
+      mixed_precision_config.use_mixed_precision_initializers,
+      mixed_precision_config.TensorProtoDataType(),
       fp32_weight_name_to_mixed_precision_node_arg));
 
   std::unordered_set<std::string> mixed_precision_weight_initializer_names{};

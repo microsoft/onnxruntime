@@ -399,8 +399,7 @@ Status OptimizerGraphBuilder::BuildInternal(
   if (is_gradient_accumulation_enabled) {
     const float scale = 1.0f / opt_graph_config_.gradient_accumulation_steps;
     ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs,
-                                                opt_graph_config_.allreduce_in_mixed_precision_type ?
-                                                    opt_graph_config_.mixed_precision_type : ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                                                opt_graph_config_.AllReduceDataType(),
                                                 false));
   }
 
@@ -412,7 +411,7 @@ Status OptimizerGraphBuilder::BuildInternal(
         nodearg_name_generator, gradient_argdefs, graph_defs, global_grad_norm_argdef));
     optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
 
-    if (opt_graph_config_.mixed_precision_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+    if (opt_graph_config_.mixed_precision_type == MixedPrecisionDataType::FP16) {
       ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
           nodearg_name_generator, {global_grad_norm_argdef}, graph_defs, global_grad_norm_finite_argdef));
       optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite] = global_grad_norm_finite_argdef.name;

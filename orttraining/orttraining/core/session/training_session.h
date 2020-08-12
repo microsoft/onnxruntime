@@ -71,7 +71,15 @@ class TrainingSession : public InferenceSession {
     struct MixedPrecisionConfiguration {
       // Whether to use mixed precision initializers.
       bool use_mixed_precision_initializers{};
-      ONNX_NAMESPACE::TensorProto_DataType mixed_precision_type{ONNX_NAMESPACE::TensorProto_DataType_FLOAT16};
+      MixedPrecisionDataType mixed_precision_type{MixedPrecisionDataType::FP16};
+
+      ONNX_NAMESPACE::TensorProto_DataType TensorProtoDataType() const {
+        switch (mixed_precision_type) {
+          case MixedPrecisionDataType::FP16: return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+          case MixedPrecisionDataType::BF16: return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
+          default: return ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+        }  
+      }
     };
     // The mixed precision configuration.
     // If not provided, mixed precision is disabled.
@@ -435,12 +443,11 @@ class TrainingSession : public InferenceSession {
   /** Enable mixed precision training
   @param weights_to_train a set of weights to be training.
   @param use_mixed_precision_initializer specify whether mixed precision initialier is created.
-  @param mixed_precision_type specify the mixed precision type.
+  @param mixed_precision_config The mixed precision configuration.
   @param fp32_weight_name_to_mixed_precision_node_arg the map between weights and mixed precision weights.
   */
   common::Status EnableMixedPrecision(const std::unordered_set<std::string>& weights_to_train,
-                                      bool use_mixed_precision_initializer,
-                                      ONNX_NAMESPACE::TensorProto_DataType mixed_precision_type,
+                                      const TrainingConfiguration::MixedPrecisionConfiguration& mixed_precision_config,
                                       std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_mixed_precision_node_arg);
 
   /** Discover all trainable initializers by reverse DFS starting from a given tensor (for example, the loss value)
