@@ -805,6 +805,25 @@ TEST_F(GraphTransformationTests, TransposeMatmulFusionFromTransposeScaleMatMul) 
   ASSERT_EQ(transpose_scale_matmul_node.GetAttributes().at("alpha").f(), expected_alpha);
 }
 
+TEST_F(GraphTransformationTests, TransposeMatmulFusionWithPreservedTranspose) {
+  auto model_uri = MODEL_FOLDER "fusion/transpose_matmul_2d_fusion_with_preserved_transpose.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      onnxruntime::make_unique<MatmulTransposeFusion>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Transpose"], 1);
+  ASSERT_EQ(op_to_count["MatMul"], 0);
+  ASSERT_EQ(op_to_count["TransposeScaleMatMul"], 1);
+
+  ASSERT_FALSE(graph.GraphResolveNeeded());
+}
+
 TEST_F(GraphTransformationTests, Gemm_LeakyRelu_Fusion) {
   auto model_uri = MODEL_FOLDER "gemm_activation_fusion/gemm_activation_fusion.onnx";
 
