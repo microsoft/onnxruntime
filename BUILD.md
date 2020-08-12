@@ -584,7 +584,7 @@ The Vitis-AI execution provider is only supported on Linux.
 .\build.bat --use_openmp
 ```
 
-##### Linux
+##### Linux/Mac OS X
 ```
 ./build.sh --use_openmp
 
