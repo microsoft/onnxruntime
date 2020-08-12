@@ -637,7 +637,11 @@ TEST(ReductionOpTest, ReduceMax_int8) {
                          9, 10,
                          11, 12});
   test.AddOutput<int8_t>("reduced", {3, 1, 1}, {4, 8, 12});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
+  #if defined(OPENVINO_CONFIG_MYRIAD)
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
+  #else
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
+  #endif
 }
 
 TEST(ReductionOpTest, ReduceMax_uint8) {
@@ -654,7 +658,11 @@ TEST(ReductionOpTest, ReduceMax_uint8) {
                           9, 10,
                           11, 12});
   test.AddOutput<uint8_t>("reduced", {3, 1, 1}, {4, 8, 12});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
+  #if defined(OPENVINO_CONFIG_MYRIAD)
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
+  #else
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
+  #endif
 }
 
 #if !(defined USE_TENSORRT) && !(defined USE_TVM)
