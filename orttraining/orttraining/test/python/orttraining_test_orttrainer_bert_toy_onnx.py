@@ -23,25 +23,24 @@ from onnxruntime.capi.training import _utils, amp, optim, orttrainer, TrainStepI
 ###############################################################################
 
 
-def generate_random_input_from_model_desc(desc):
-    dtype = torch.int64
-    vocab_size = 30528
-    num_classes = [vocab_size, 2, 2, vocab_size, 2]
-    device = "cuda:0"
+def generate_random_input_from_model_desc(desc, device='cuda'):
+    num_classes = [30528, 2, 2, 30528, 2]
     sample_input = []
     for index, input in enumerate(desc['inputs']):
-        sample_input.append(torch.randint(0, num_classes[index], tuple(input[1]), dtype=dtype).to(device))
+        size = [s if isinstance(s, (int)) else 1 for s in input[1]]
+        sample_input.append(torch.randint(0,
+                                          num_classes[index],
+                                          tuple(size),
+                                          dtype=torch.int64).to(device))
     return sample_input
 
+
 def bert_model_description():
-    vocab_size = 30528
-    batch_size = 16
-    seq_len = 1
-    model_desc = {'inputs': [('input_ids', [batch_size, seq_len]),
-                             ('segment_ids', [batch_size, seq_len],),
-                             ('input_mask', [batch_size, seq_len],),
-                             ('masked_lm_labels', [batch_size, seq_len],),
-                             ('next_sentence_labels', [batch_size, ],)],
+    model_desc = {'inputs': [('input_ids', ['batch_size', 'seq_len']),
+                             ('segment_ids', ['batch_size', 'seq_len'],),
+                             ('input_mask', ['batch_size', 'seq_len'],),
+                             ('masked_lm_labels', ['batch_size', 'seq_len'],),
+                             ('next_sentence_labels', ['batch_size', ],)],
                   'outputs': [('loss', [], True)]}
     return model_desc
 
@@ -51,33 +50,26 @@ def bert_model_description():
 ###############################################################################
 
 
-def testToyBERTModel():
-    #print(bert_model_description())
-    model_desc = bert_model_description()
-    device = torch.device("cuda", 0)
+def testORTTrainerToyBERTModel():
+    # Common setup
+    seed = 1
+    torch.manual_seed(seed)
+    set_seed(seed)
 
+    # Modeling
     pytorch_transformer_path = os.path.join('..', '..', '..', 'onnxruntime', 'test', 'testdata')
     bert_onnx_model_path = os.path.join(pytorch_transformer_path, "bert_toy_postprocessed.onnx")
     model = onnx.load(bert_onnx_model_path)
-
+    model_desc = bert_model_description()
     optim_config = optim.LambConfig()
-    opts = orttrainer.ORTTrainerOptions({
-        'debug' : {
-            'deterministic_compute': True
-        },
-        'device' : {
-            'id' : "cuda:0",
-        }
-
-    })
-    
-    torch.manual_seed(1)
-    set_seed(1)
+    opts = orttrainer.ORTTrainerOptions({'debug' : {'deterministic_compute': True}})
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
 
+    # Generating fake input
     sample_input = generate_random_input_from_model_desc(model_desc)
 
+    # Train
     output = trainer.train_step(*sample_input)
-    #print(output)
-    assert output.shape == torch.Size([]) 
 
+    # Check output
+    assert output.shape == torch.Size([])

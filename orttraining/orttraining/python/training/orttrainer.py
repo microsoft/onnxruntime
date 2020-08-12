@@ -1,3 +1,4 @@
+import copy
 import io
 import os
 import onnx
@@ -414,6 +415,24 @@ class ORTTrainer(object):
         return CombineTorchModelLossFn(self._torch_model, self.loss_fn, input_names)
 
     def _convert_torch_model_loss_fn_to_onnx(self, inputs, device):
+
+        # Dynamic axes
+        dynamic_axes = {}
+        for input in self.model_desc.inputs:
+            symbolic_axis = {}
+            for i, axis in enumerate(input.shape):
+                if isinstance(axis, str):
+                    symbolic_axis[i] = axis
+            if len(symbolic_axis):
+                dynamic_axes[input.name] = symbolic_axis
+        for output in self.model_desc.outputs:
+            symbolic_axis = {}
+            for i, axis in enumerate(output.shape):
+                if isinstance(axis, str):
+                    symbolic_axis[i] = axis
+            if len(symbolic_axis):
+                dynamic_axes[output.name] = symbolic_axis
+
         if isinstance(inputs, torch.Tensor):
             inputs = [inputs]
         if isinstance(inputs, dict):
@@ -451,6 +470,7 @@ class ORTTrainer(object):
                            input_names=[input[0] for input in self.model_desc.inputs],
                            output_names=[output[0] for output in self.model_desc.outputs],
                            opset_version=self.options._internal_use.onnx_opset_version,
+                           dynamic_axes=dynamic_axes,
                            _retain_param_name=True,
                            example_outputs=tuple(sample_outputs),
                            do_constant_folding=False,
@@ -638,7 +658,26 @@ class ORTTrainer(object):
         assert len(self.model_desc.inputs) + extra_inputs == len(input)
         return input
 
-    def _training_session_run_helper(self, is_train, inputs, input_descs, output_descs, run_options=None):
+    def _resolve_symbolic_dimensions(self, inputs, inputs_desc, outputs_desc):
+        outputs = copy.deepcopy(outputs_desc)
+        resolved_dims = {}
+        for input, i_desc in zip(inputs, inputs_desc):
+            for i_idx, i_axis in enumerate(i_desc.shape):
+                if isinstance(i_axis, str):
+                    resolved_dims[i_axis] = input.size()[i_idx]
+
+        for o_desc in outputs:
+            for idx_o, o_axis in enumerate(o_desc.shape):
+                if isinstance(o_axis, str):
+                    o_desc.shape_[idx_o] = resolved_dims[o_axis]
+
+        unknown_dim = [o_desc.name for dim in o_desc.shape for o_desc in outputs if isinstance(dim, str)]
+        if unknown_dim:
+            raise RuntimeError(f"Cannot execute model with unknown output dimensions ({unknown_dim}")
+
+        return outputs
+
+    def _training_session_run_helper(self, is_train, inputs, inputs_desc, outputs_desc, run_options=None):
         # Select IO binding
         if is_train:
             iobinding = self._train_io_binding
@@ -646,7 +685,7 @@ class ORTTrainer(object):
             iobinding = self._eval_io_binding
 
         # Bind input tensors
-        for input, input_desc in zip(inputs, input_descs):
+        for input, input_desc in zip(inputs, inputs_desc):
             device_index = _utils.get_device_index_from_input(input)
             iobinding.bind_input(input_desc.name,
                                  input.device.type,
@@ -656,10 +695,9 @@ class ORTTrainer(object):
                                  input.data_ptr())
 
         # Bind output tensors
-        # TODO: Add support to symbolic dimensions
-        output_descs_resolved = output_descs
+        outputs_desc_resolved = self._resolve_symbolic_dimensions(inputs, inputs_desc, outputs_desc)
         result = {}
-        for output_desc in output_descs_resolved:
+        for output_desc in outputs_desc_resolved:
             torch_tensor = torch.zeros(output_desc.shape, device=self.options.device.id,
                                        dtype=output_desc.dtype_amp if output_desc.dtype_amp else output_desc.dtype)
             iobinding.bind_output(output_desc.name, torch_tensor.device.type, _utils.get_device_index(self.options.device.id),
