@@ -1337,7 +1337,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .value("kNextPowerOfTwo", onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo)
       .value("kSameAsRequested", onnxruntime::ArenaExtendStrategy::kSameAsRequested)
       .export_values();
-}  // namespace python
+}
 
 #if defined(USE_MIMALLOC_ARENA_ALLOCATOR)
 static struct {
