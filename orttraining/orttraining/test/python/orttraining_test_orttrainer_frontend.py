@@ -6,6 +6,8 @@ import torch
 
 from numpy.testing import assert_allclose
 
+import sys
+sys.path.append("/bert_ort/liqun/onnxruntime/build/Linux/Debug")
 from onnxruntime.capi.training import orttrainer_options as orttrainer_options
 from onnxruntime.capi.training import model_desc_validation as md_val
 from onnxruntime.capi.training import orttrainer, amp, optim, TrainStepInfo, _utils, debug
@@ -461,7 +463,8 @@ def generate_pytorch_transformer_model_sample(optim_config, options={}, step_fn=
     # Loading external TransformerModel model for testing
     # A manual import is done as this example is not part of onnxruntime package,
     # but resides on the onnxruntime repo
-    pytorch_transformer_path = os.path.join('..', '..', '..', 'samples', 'python', 'pytorch_transformer')
+    # Liqun_fix: one more '..' to work under test/python folder
+    pytorch_transformer_path = os.path.join('..', '..', '..', '..', 'samples', 'python', 'pytorch_transformer')
     pt_model_path = os.path.join(pytorch_transformer_path, 'pt_model.py')
     pt_model_name = 'pt_model'
     pt_model = _utils.import_module_from_file(pt_model_path, pt_model_name)
@@ -634,6 +637,10 @@ def testORTDeterministicCompute(seed, device_id):
 def testORTTrainerLegacyAndExperimentalWeightsCheck():
     optim_config = optim.LambConfig()
     opts = orttrainer.ORTTrainerOptions({
+        'device' : {
+            'id' : 'cuda:0',
+            'mem_limit' : 2*1024*1024*1024,
+        },                    
         'debug' : {
             'deterministic_compute': True
         },
@@ -656,18 +663,21 @@ def testORTTrainerLegacyAndExperimentalWeightsCheck():
     from onnxruntime.capi.ort_trainer import IODescription, ModelDescription
     from onnxruntime.capi.ort_trainer import ORTTrainer as Legacy_ORTTrainer
 
-    pytorch_transformer_path = os.path.join('..', '..', '..', 'samples', 'python', 'pytorch_transformer')
+    # Liqun_fix: one more '..' to work under test/python folder
+    pytorch_transformer_path = os.path.join('..', '..', '..', '..', 'samples', 'python', 'pytorch_transformer')
     ort_utils_path = os.path.join(pytorch_transformer_path, 'ort_utils.py')
     ort_utils_name = 'ort_utils'
     ort_utils = _utils.import_module_from_file(ort_utils_path, ort_utils_name)
 
     my_loss = ort_utils.my_loss
     model_desc, lr_desc = ort_utils.legacy_transformer_model_description()
-    device = 'cpu' 
+    device = 'cuda' 
 
     legacy_trainer = Legacy_ORTTrainer(model, my_loss, model_desc, "LambOptimizer", None, lr_desc, device, _use_deterministic_compute=True)
     learning_rate = torch.tensor([optim_config.lr])
     loss, output = legacy_trainer.train_step(data, targets, learning_rate)
 
     # Compare legacy vs experimental APIs
-    debug.compare_legacy_onnx_weights(trainer, legacy_trainer)
+    debug.compare_legacy_onnx_weights(trainer, legacy_trainer, rtol=1e-6)
+
+testORTTrainerLegacyAndExperimentalWeightsCheck()

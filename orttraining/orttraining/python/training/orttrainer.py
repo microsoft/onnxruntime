@@ -268,10 +268,12 @@ class ORTTrainer(object):
         if not isinstance(args, (list, tuple)):
             args = (args,)
 
+        _utils.print_tensor("new_trainer inputs:", input)
         # Run a train step and return
         session_run_results = self._training_session_run_helper(True, input, input_desc,
                                                                 output_desc, run_options)
-       
+        _utils.print_tensor("new_trainer outputs:", session_run_results)
+
         # Train step incremented after first train step  based on lr scheduler implementation
         # which handles initial train step of 0.
         self._train_step_info.step += 1

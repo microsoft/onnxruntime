@@ -862,7 +862,7 @@ class ORTTrainer():
         learning_rate, loss_scale = None, None
         if self.get_lr_this_step_ is not None:
             # $args, **kwargs contains inputs to the pytorch model
-            lr_this_step = self.get_lr_this_step_(self.global_step_)
+            lr_this_step = self.get_lr_this_step_(self.global_step_ + 1)
             learning_rate = torch.tensor([lr_this_step])
         if self.loss_scaler_ is not None and self.use_mixed_precision:
             loss_scale = torch.tensor([self.loss_scaler_.loss_scale_])
@@ -904,10 +904,14 @@ class ORTTrainer():
         if not isinstance(input, (list, tuple)):
             input = (input,)
 
+        from onnxruntime.capi.training import optim, ORTTrainerOptions, _utils
+        _utils.print_tensor("old_trainer inputs:", input)
         session_run_results = ort_training_session_run_helper(self.session, self.train_io_binding, input,
                                                               input_descs, output_desc,
                                                               self.device_,
                                                               run_options)
+
+        _utils.print_tensor("old_trainer outputs:", session_run_results)
 
         if has_if_all_finite:
             # After session run with all_fp32_gradients_finite, we need to clear the iobinding's output state.

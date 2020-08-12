@@ -23,6 +23,8 @@ from transformers import (
     set_seed,
 )
 
+import sys
+sys.path.append("/bert_ort/liqun/onnxruntime/build/Linux/Debug")
 import onnxruntime
 from onnxruntime.capi.ort_trainer import ORTTrainer, LossScaler, ModelDescription, IODescription
 

@@ -150,3 +150,13 @@ def import_module_from_file(file_path, module_name):
     sys.modules[module_name] = module
     spec.loader.exec_module(module)
     return module
+
+def print_tensor(name, tensors):
+    torch.set_printoptions(precision=30)
+    print('\n')
+    if type(tensors) == dict:
+        for k in tensors.keys():
+            print(name, k, torch.sum(tensors[k]), torch.sum(torch.square(tensors[k])).item())
+    else:
+        for k, tensor in enumerate(tensors):
+            print(name, k, torch.sum(tensor), torch.sum(torch.square(tensor)).item())

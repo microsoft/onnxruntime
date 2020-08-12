@@ -16,11 +16,18 @@ import torch.nn.functional as F
 from torchvision import datasets, transforms
 
 from helper import get_name
+
+sys.path.append("/bert_ort/liqun/onnxruntime/build/Linux/Debug")
 import onnxruntime
 from onnxruntime.capi.ort_trainer import ORTTrainer, IODescription, ModelDescription, LossScaler, generate_sample, save_checkpoint, load_checkpoint
 
-SCRIPT_DIR = os.path.realpath(os.path.dirname(__file__))
+# sys.path.append("/bert_ort/liqun/onnxruntime/build/Linux/Debug/onnxruntime/capi/training")
+# sys.path.append("/bert_ort/liqun/onnxruntime/build/Linux/Debug/onnxruntime/capi")
 
+# import pdb; pdb.set_trace()
+from onnxruntime.capi.training import orttrainer, amp, optim, TrainStepInfo
+
+SCRIPT_DIR = os.path.realpath(os.path.dirname(__file__))
 def ort_trainer_learning_rate_description():
     return IODescription('Learning_Rate', [1, ], torch.float32)
 
@@ -203,13 +210,25 @@ class MNISTWrapper():
     def my_loss(x, target):
         return F.nll_loss(F.log_softmax(x, dim=1), target)
 
-    def train_with_trainer(self, learningRate, trainer, device, train_loader, epoch):
+    def train_with_trainer(self, learningRate, trainer, device, train_loader, epoch, new_trainer=None):
         actual_losses = []
         for batch_idx, (data, target) in enumerate(train_loader):
+            if batch_idx == 937:
+                break
+                
             data, target = data.to(device), target.to(device)
             data = data.reshape(data.shape[0], -1)
 
-            loss, _ = trainer.train_step(data, target, torch.tensor([learningRate]))
+            print('batch_idx:', batch_idx)
+            loss, pred = trainer.train_step(data, target, torch.tensor([learningRate]))
+
+            if new_trainer:
+                new_loss, new_pred = new_trainer.train_step(data, target)
+                rtol = 1e-7
+                atol = 0
+                assert_allclose(loss.cpu().numpy(), new_loss.cpu().numpy(), rtol=rtol, atol=atol, err_msg="loss mismatch")
+                assert_allclose(pred.cpu().numpy(), new_pred.cpu().numpy(), rtol=rtol, atol=atol, err_msg="pred mismatch")
+
 
             args_log_interval = 100
             if batch_idx % args_log_interval == 0:
@@ -221,7 +240,7 @@ class MNISTWrapper():
         return actual_losses
 
     # TODO: comple this once ORT training can do evaluation.
-    def test_with_trainer(self, trainer, device, test_loader):
+    def test_with_trainer(self, trainer, device, test_loader, new_trainer=None):
         test_loss = 0
         correct = 0
         with torch.no_grad():
@@ -229,6 +248,10 @@ class MNISTWrapper():
                 data, target = data.to(device), target.to(device)
                 data = data.reshape(data.shape[0], -1)
                 output = F.log_softmax(trainer.eval_step((data), fetches=['probability']), dim=1)
+
+                if new_trainer:
+                    output = F.log_softmax(new_trainer.eval_step((data), fetches=['probability']), dim=1)
+
                 test_loss += F.nll_loss(output, target, reduction='sum').item()     # sum up batch loss
                 pred = output.argmax(dim=1, keepdim=True)                           # get the index of the max log-probability
                 correct += pred.eq(target.view_as(pred)).sum().item()
@@ -247,6 +270,13 @@ class MNISTWrapper():
         loss_desc = IODescription('loss', [], torch.float32)
         probability_desc = IODescription('probability', ['batch', 10], torch.float32)
         return ModelDescription([input_desc, label_desc], [loss_desc, probability_desc])
+
+    def new_mnist_model_description():
+        model_desc = {'inputs':  [('input1', [64, 784]),
+                                ('label', [64, 784])],
+                    'outputs': [('loss', [], True),
+                                ('probability', [64, 10])]}
+        return model_desc
 
     def get_loaders(self):
         args_batch_size = 64
@@ -293,6 +323,18 @@ class MNISTWrapper():
                                 torch.float32), device, _opset_version=onnx_opset_ver, frozen_weights=frozen_weights,
                                 get_lr_this_step=get_lr_this_step)
 
+    def get_new_trainer(self, model, model_desc, device, learning_rate):        
+        optim_config = optim.SGDConfig(lr=learning_rate)
+        opts = orttrainer.ORTTrainerOptions({
+                    'device' : {
+                        'id' : 'cuda:0',
+                        'mem_limit' : 2*1024*1024*1024,
+                    },                    
+            })
+
+        trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=MNISTWrapper.my_loss, options=opts)
+        return trainer
+
 class TestOrtTrainer(unittest.TestCase):
 
     def run_mnist_training_and_testing(onnx_opset_ver):
@@ -305,6 +347,10 @@ class TestOrtTrainer(unittest.TestCase):
         trainer = mnist.get_trainer(model, model_desc, device, onnx_opset_ver=onnx_opset_ver)
 
         learningRate = 0.01
+
+        new_model_desc = MNISTWrapper.new_mnist_model_description()
+        new_trainer = mnist.get_new_trainer(model, new_model_desc, device, learningRate)
+
         args_epochs = 2
         expected_losses = [2.333008289337158, 1.0680292844772339, 0.6300537586212158, 0.5279903411865234,
                         0.3710068166255951, 0.4044453501701355, 0.30482712388038635, 0.4595026969909668,
@@ -317,9 +363,9 @@ class TestOrtTrainer(unittest.TestCase):
         actual_losses = []
         actual_test_losses, actual_accuracies = [], []
         for epoch in range(1, args_epochs + 1):
-            actual_losses = [*actual_losses, *mnist.train_with_trainer(learningRate, trainer, device, train_loader, epoch)]
+            actual_losses = [*actual_losses, *mnist.train_with_trainer(learningRate, trainer, device, train_loader, epoch, new_trainer)]
 
-            test_loss, accuracy = mnist.test_with_trainer(trainer, device, test_loader)
+            test_loss, accuracy = mnist.test_with_trainer(trainer, device, test_loader, new_trainer)
             actual_test_losses = [*actual_test_losses, test_loss]
             actual_accuracies = [*actual_accuracies, accuracy]
 
@@ -785,4 +831,5 @@ class TestOrtTrainer(unittest.TestCase):
         assert state_dict.keys() == {'linear.bias', 'linear.weight'}
 
 if __name__ == '__main__':
-    unittest.main(module=__name__, buffer=True)
+    # unittest.main(module=__name__, buffer=True)
+    unittest.main()
