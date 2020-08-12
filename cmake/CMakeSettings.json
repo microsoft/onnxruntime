@@ -29,9 +29,13 @@
           "name": "onnxruntime_BUILD_SHARED_LIB",
           "value": "True",
           "type": "BOOL"
+        },
+        {
+          "name": "CMAKE_USER_MAKE_RULES_OVERRIDE",
+          "value": "wcos_rules_override.cmake",
+          "type": "STRING"
         }
-      ],
-      "cmakeToolchain": "${projectDir}\\wcos_toolchain.cmake"
+      ]
     },
     {
       "name": "WinML-RelWithDebInfo",
@@ -62,9 +66,13 @@
           "name": "onnxruntime_BUILD_SHARED_LIB",
           "value": "True",
           "type": "BOOL"
+        },
+        {
+          "name": "CMAKE_USER_MAKE_RULES_OVERRIDE",
+          "value": "wcos_rules_override.cmake",
+          "type": "STRING"
         }
-      ],
-      "cmakeToolchain": "${projectDir}\\wcos_toolchain.cmake"
+      ]
     }
   ]
 }
