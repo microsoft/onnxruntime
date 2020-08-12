@@ -643,22 +643,22 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(input_shape, [4, 6, 5])
 
     def testSessionOptionsRegisterCustomOpsLibrary(self):
+        this = os.path.dirname(__file__)
         if sys.platform.startswith("win"):
-            shared_library = "custom_op_library.dll"
+            shared_library = os.path.join(this, "custom_op_library.dll")
             if not os.path.exists(shared_library):
                 raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
 
         elif sys.platform.startswith("darwin"):
-            shared_library = "libcustom_op_library.dylib"
+            shared_library = os.path.join(this, "libcustom_op_library.dylib")
             if not os.path.exists(shared_library):
                 raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
 
         else:
-            shared_library = "libcustom_op_library.so"
+            shared_library = os.path.join(this, "libcustom_op_library.so")
             if not os.path.exists(shared_library):
                 raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
 
-        this = os.path.dirname(__file__)
         custom_op_model = os.path.join(this, "testdata", "custom_op_library", "custom_op_test.onnx")
         if not os.path.exists(custom_op_model):
             raise FileNotFoundError("Unable to find '{0}'".format(custom_op_model))

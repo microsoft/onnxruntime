@@ -1103,14 +1103,14 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
                      R"pbdoc(Whether to use prepacking. Default is true.)pbdoc")
       .def(
           "register_custom_ops_library",
-          [&custom_op_libraries](PySessionOptions* options, const char* library_path)
+          [&custom_op_libraries](PySessionOptions* options, const std::string& library_path)
               -> void {
             OrtSessionOptions s;
 
             // Keep the CustomOpLibrary in a container so that it can be unloaded when it is safe to do so.
             // (Transfer ownership of the shared library to the global container that will manage all referenced
             // shared libraries as long this module of onnxruntime is in scope.)
-            custom_op_libraries.AddLibrary(onnxruntime::make_unique<CustomOpLibrary>(library_path, s));
+            custom_op_libraries.AddLibrary(onnxruntime::make_unique<CustomOpLibrary>(library_path.c_str(), s));
 
             // reserve enough memory to hold current contents and the new incoming contents
             options->custom_op_domains_.reserve(options->custom_op_domains_.size() + s.custom_op_domains_.size());
