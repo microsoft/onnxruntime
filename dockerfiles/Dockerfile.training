@@ -9,7 +9,7 @@ ARG NUMPY_VERSION=1.18.5
 ARG ONNX_VERSION=1.7.0
 ARG PYTORCH_VERSION=1.6.0
 
-ARG BUILD_VERSION=Release
+ARG BUILD_CONFIG=Release
 ARG OPENMPI_PATH=/opt/openmpi-${OPENMPI_VERSION} 
 ARG COMMIT=master
 
@@ -117,7 +117,7 @@ RUN pip install torch==${PYTORCH_VERSION}
 #     pip install build/wheel/*.whl
 
 # build onnxruntime wheel with cuda and mpi support
-ARG BUILD_VERSION
+ARG BUILD_CONFIG
 ARG COMMIT
 RUN cd /stage && git clone https://github.com/microsoft/onnxruntime.git &&\
     cd onnxruntime &&\
@@ -127,7 +127,7 @@ RUN cd /stage && git clone https://github.com/microsoft/onnxruntime.git &&\
     python tools/ci_build/build.py \
         --cmake_extra_defines \
             ONNXRUNTIME_VERSION=`cat ./VERSION_NUMBER` \
-        --config ${BUILD_VERSION} \
+        --config ${BUILD_CONFIG} \
         --enable_training \
         --mpi_home ${OPENMPI_PATH} \
         --use_cuda \
@@ -140,7 +140,7 @@ RUN cd /stage && git clone https://github.com/microsoft/onnxruntime.git &&\
         --build \
         --build_wheel \
         --skip_tests &&\
-    pip install build/${BUILD_VERSION}/dist/*.whl
+    pip install build/${BUILD_CONFIG}/dist/*.whl
 
 # switch to cuda runtime environment
 # note: launch with --gpus all or nvidia-docker
