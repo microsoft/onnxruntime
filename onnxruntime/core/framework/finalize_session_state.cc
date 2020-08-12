@@ -89,12 +89,13 @@ Status FinalizeSessionState(SessionState& session_state,
     std::unordered_map<std::string, int64_t> symbolic_map;
     std::unordered_map<int, TensorShape> resolved_shapes;
     auto ret = session_state.GenerateActivationMemoryPatterns(&activation_memory_pattern_output, symbolic_map, resolved_shapes);
-    for (size_t i = 0; i < activation_memory_pattern_output.locations.size(); i++) {
-      LOGS(logger, INFO) << activation_memory_pattern_output.locations[i].ToString()
-                         << "Activation Peak: Allocated memory for activations, size: "
-                         << activation_memory_pattern_output.patterns[i].PeakSize();
+    if (ret.IsOK()) {
+      for (size_t i = 0; i < activation_memory_pattern_output.locations.size(); i++) {
+        LOGS(logger, INFO) << activation_memory_pattern_output.locations[i].ToString()
+                           << "Activation Peak: Allocated memory for activations, size: "
+                           << activation_memory_pattern_output.patterns[i].PeakSize();
+      }
     }
-    ORT_ENFORCE(ret.IsOK());
   }
 #endif
 
