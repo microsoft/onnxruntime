@@ -19,7 +19,7 @@ static void TestBarrier(int num_threads, uint64_t per_thread_count, bool spin) {
 
   std::vector<std::thread> threads;
   for (auto i = 0; i < num_threads + 1; i++) {
-    threads.push_back(std::thread([&] {
+    threads.push_back(std::thread([&, i] {
       if (i > 0) {
         // Worker thread; increment the shared counter then
         // notify the barrier.
@@ -27,11 +27,12 @@ static void TestBarrier(int num_threads, uint64_t per_thread_count, bool spin) {
           counter++;
         }
         barrier.Notify();
-    }  else {
-      // Main thread; wait on the barrier, and then check the count seen.
-      barrier.Wait();
-      ASSERT_EQ(counter, per_thread_count * num_threads);
-    } }));
+      }  else {
+        // Main thread; wait on the barrier, and then check the count seen.
+        barrier.Wait();
+        ASSERT_EQ(counter, per_thread_count * num_threads);
+      } 
+    }));
   }
 
   // Wait for the threads to finish
