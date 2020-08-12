@@ -1103,7 +1103,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
                      R"pbdoc(Whether to use prepacking. Default is true.)pbdoc")
       .def(
           "register_custom_ops_library",
-          [&env, &custom_op_libraries](PySessionOptions* options, const char* library_path)
+          [&custom_op_libraries](PySessionOptions* options, const char* library_path)
               -> void {
             OrtSessionOptions s;
 
