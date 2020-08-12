@@ -1121,18 +1121,14 @@ endif()
 
 if (WIN32)
   if (WINDOWS_STORE)
-    if (WINDOWS_STORE_FOR_REAL)
-      #      add_compile_definitions(WINAPI_FAMILY=2 __cplusplus_winrt)
-      #      add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:SHELL:/FIvccorlib.h /ZW:nostdlib /FUplatform.winmd>")
-      add_compile_definitions(WINAPI_FAMILY=2)
-      add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:SHELL:/ZW:nostdlib /FUplatform.winmd>")
-      get_filename_component(msvc_path "${CMAKE_C_COMPILER}/../../../.." ABSOLUTE)
-      link_directories("${msvc_path}/lib/${onnxruntime_target_platform}/store")
-
-      add_link_options(/APPCONTAINER)
-    else()
-      add_compile_definitions(WINVER=0x0601)  # Support Windows 7 and newer
-    endif()
+    add_compile_definitions(WINAPI_FAMILY=2)
+    add_compile_definitions(WINVER=0x0A00 _WIN32_WINNT=0x0A00)  # Support Windows 10
+    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:SHELL:/ZW:nostdlib /FUplatform.winmd>")
+    get_filename_component(msvc_path "${CMAKE_C_COMPILER}/../../../.." ABSOLUTE)
+    link_directories("${msvc_path}/lib/${onnxruntime_target_platform}/store")
+    add_link_options(/APPCONTAINER)
+  else()
+    add_compile_definitions(WINVER=0x0601 _WIN32_WINNT=0x0601)  # Support Windows 7 and newer
   endif()
 endif()
 
