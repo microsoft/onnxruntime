@@ -28,6 +28,7 @@ jobs:
           --pull \
           -t ${{ variables.docker_image_prefix }}-manylinux-gpu-release-stage1 \
           --target builder \
+          --no-cache \
           --build-arg COMMIT="${{ parameters.commit }}" \
           -f ${{ variables.linux_gpu_dockerfile }} .
       workingDirectory: $(Build.SourcesDirectory)
