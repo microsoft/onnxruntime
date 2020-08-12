@@ -1099,6 +1099,8 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
                                 onnxruntime::FreeDimensionOverrideType::Name,
                                 dim_value}); },
           "Rpbdoc(Specify values of named dimensions within model inputs.)pbdoc")
+      .def_readwrite("use_prepacking", &SessionOptions::use_prepacking,
+                     R"pbdoc(Whether to use prepacking. Default is true.)pbdoc")
       .def(
           "register_custom_ops_library",
           [&env, &custom_op_libraries](PySessionOptions* options, const char* library_path)

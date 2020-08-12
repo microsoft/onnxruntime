@@ -95,7 +95,7 @@ Therefore, ONNX RT Execution Provider for **nGraph** will be deprecated starting
   ```
 
 ## TensorRT
-**Ubuntu 18.04, CUDA 10.2, TensorRT 7.0.0**
+**Ubuntu 18.04, CUDA 11.0, TensorRT 7.1.3.4**
 
 1. Build the docker image from the Dockerfile in this repository.
   ```
