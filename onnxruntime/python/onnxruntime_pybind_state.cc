@@ -227,7 +227,7 @@ CustomOpLibrary::CustomOpLibrary(const char* library_path, OrtSessionOptions& or
 
 // Unload the library when the destructor is triggered
 CustomOpLibrary::~CustomOpLibrary() {
-  Env::Default().UnloadDynamicLibrary(library_handle_);
+  // Env::Default().UnloadDynamicLibrary(library_handle_);
 }
 
 void CustomOpLibraries::AddLibrary(std::unique_ptr<CustomOpLibrary> custom_op_library) {
