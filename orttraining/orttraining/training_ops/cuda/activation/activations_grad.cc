@@ -44,7 +44,6 @@ namespace cuda {
   ACTIVATION_GRAD_OP_TYPED(name, ver, domain, double)
 
 ACTIVATION_GRAD_OP_HFD(GeluGrad, 1, kMSDomain);
-ACTIVATION_GRAD_OP_HFD(ReluGrad, 9, kOnnxDomain);
 ACTIVATION_GRAD_OP_HFD(FastGeluGrad, 1, kMSDomain);
 
 }  //namespace cuda

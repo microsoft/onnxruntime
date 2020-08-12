@@ -23,17 +23,6 @@ class GeluGrad final : public BinaryElementwise<ShouldNotBroadcast> {
 };
 
 template <typename T>
-class ReluGrad final : public BinaryElementwise<ShouldNotBroadcast> {
- public:
-  ReluGrad(const OpKernelInfo& info) : BinaryElementwise(info) {}
-
-  Status ComputeInternal(OpKernelContext* context) const override;
-
- private:
-  MAKE_FUNC_CTX_NULL()
-};
-
-template <typename T>
 class FastGeluGrad final : public BinaryElementwise<ShouldNotBroadcast> {
  public:
   FastGeluGrad(const OpKernelInfo& info) : BinaryElementwise(info) {}

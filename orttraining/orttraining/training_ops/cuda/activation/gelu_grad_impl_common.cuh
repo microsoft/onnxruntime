@@ -34,15 +34,5 @@ __device__ __inline__ T ComputeGeluGradScalar(T dY, T X, gelu_computation_mode::
   return dY * static_cast<T>(dg1 + dg2 + dg3);
 }
 
-template <typename T>
-__device__ __inline__ T ComputeReluGradScalar(T dY, T X) {
-  const float X_float = static_cast<float>(X);
-  if (X_float > 0) {
-    return dY;
-  } else {
-    return static_cast<T>(0.0);
-  }
-}
-
 }  // namespace cuda
 }  // namespace onnxruntime
