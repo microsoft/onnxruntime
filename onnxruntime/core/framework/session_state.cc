@@ -364,17 +364,21 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
   }
   std::unordered_map<std::string, int64_t> map;
   ORT_RETURN_IF_ERROR(ResolveDimParams(*graph_viewer_, feeds, map));
+  return GenerateActivationMemoryPatterns(output, map, resolved_shapes);
+}
+
+Status SessionState::GenerateActivationMemoryPatterns(MemoryPatternGroup* output,
+                                                      std::unordered_map<std::string, int64_t>& map,
+                                                      std::unordered_map<int, TensorShape>& resolved_shapes) const {
   auto* exe_plan = GetExecutionPlan();
   ORT_ENFORCE(exe_plan);
   OrtValuePatternPlanner mem_planner(*exe_plan);
-  auto& node_index_info = GetNodeIndexInfo();
   for (auto& node_plan : exe_plan->execution_plan) {
-    int node_index = node_index_info.GetNodeOffset(node_plan.node_index);
     auto* node = graph_viewer_->GetNode(node_plan.node_index);
-    int output_start = node_index + static_cast<int>(node->InputDefs().size()) + static_cast<int>(node->ImplicitInputDefs().size());
     //allocate output
     for (int i = 0, end = static_cast<int>(node->OutputDefs().size()); i < end; ++i) {
-      const auto ml_value_idx = node_index_info.GetMLValueIndex(output_start + i);
+      int ml_value_idx;
+      this->ort_value_name_idx_map_.GetIdx(node->OutputDefs()[i]->Name(), ml_value_idx);
       if (ml_value_idx == NodeIndexInfo::kInvalidEntry)
         continue;
       const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;

@@ -25,7 +25,103 @@
 #include "core/framework/tensor_allocator.h"
 
 namespace onnxruntime {
-namespace session_state_utils {
+
+// T should have signature of '(int idx, const OrtValue& value, const OrtCallback& d) -> Status'
+template <typename T>
+static common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
+                                             const GraphViewer& graph, const OrtMemoryInfo& default_cpu_memory_info,
+                                             const OrtValueNameIdxMap& ort_value_name_idx_map,
+                                             ITensorAllocator& planner, const T& save_tensor_func,
+                                             const logging::Logger& logger,
+                                             const DataTransferManager& data_transfer_mgr);
+
+static common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer& graph,
+                                                        const KernelRegistryManager& custom_registry_manager,
+                                                        SessionState& session_state,
+                                                        const std::vector<const NodeArg*>& implicit_inputs);
+
+Status FinalizeSessionState(SessionState& session_state,
+                            const std::basic_string<PATH_CHAR_TYPE>& graph_location,
+                            KernelRegistryManager& kernel_registry_manager,
+                            _In_opt_ const Node* parent_node,
+                            const SessionOptions& session_options) {
+  session_state.CreateGraphInfo();
+
+  const GraphViewer& graph_viewer = session_state.GetGraphViewer();
+  const auto& logger = session_state.Logger();
+
+  // populate the SessionState OrtValueNameIdxMap
+  const auto& ort_value_name_idx_map = session_state.GetOrtValueNameIdxMap();
+
+  // ignore any outer scope args we don't know about. this can happen if a node contains multiple subgraphs.
+  std::vector<const NodeArg*> valid_outer_scope_node_args;
+  if (parent_node) {
+    auto outer_scope_node_args = parent_node->ImplicitInputDefs();
+    valid_outer_scope_node_args.reserve(outer_scope_node_args.size());
+
+    std::for_each(outer_scope_node_args.cbegin(), outer_scope_node_args.cend(),
+                  [&ort_value_name_idx_map, &valid_outer_scope_node_args](const NodeArg* node_arg) {
+                    int idx;
+                    if (ort_value_name_idx_map.GetIdx(node_arg->Name(), idx).IsOK()) {
+                      valid_outer_scope_node_args.push_back(node_arg);
+                    };
+                  });
+  }
+
+  std::unique_ptr<SequentialExecutionPlan> exec_plan;
+  SequentialPlannerContext context(session_options.execution_mode);
+  ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, graph_viewer, valid_outer_scope_node_args,
+                                                    session_state.GetExecutionProviders(), kernel_registry_manager,
+                                                    ort_value_name_idx_map, context, exec_plan));
+
+  const auto* exec_plan_ptr = exec_plan.get();
+  session_state.SetExecutionPlan(std::move(exec_plan));
+
+  std::unique_ptr<ITensorAllocator> tensor_allocator_(
+      ITensorAllocator::Create(session_state.GetEnableMemoryPattern(), *exec_plan_ptr, session_state,
+                               session_state.GetMutableWeightsBuffers()));
+
+#ifdef ENABLE_TRAINING
+  if (session_state.GetEnableMemoryPattern()) {
+    // calculate activation memory usage
+    MemoryPatternGroup activation_memory_pattern_output;
+    std::unordered_map<std::string, int64_t> symbolic_map;
+    std::unordered_map<int, TensorShape> resolved_shapes;
+    auto ret = session_state.GenerateActivationMemoryPatterns(&activation_memory_pattern_output, symbolic_map, resolved_shapes);
+    for (size_t i = 0; i < activation_memory_pattern_output.locations.size(); i++) {
+      LOGS(logger, INFO) << activation_memory_pattern_output.locations[i].ToString()
+                         << "Activation Peak: Allocated memory for activations, size: "
+                         << activation_memory_pattern_output.patterns[i].PeakSize();
+    }
+    ORT_ENFORCE(ret.IsOK());
+  }
+#endif
+
+  // lambda to save initialized tensors into SessionState directly
+  const Env& env = Env::Default();
+  ORT_RETURN_IF_ERROR(SaveInitializedTensors(
+      env, graph_location, graph_viewer,
+      session_state.GetExecutionProviders().GetDefaultCpuMemoryInfo(),
+      ort_value_name_idx_map, *tensor_allocator_,
+      [&session_state](int idx, const OrtValue& value, const OrtCallback& d, bool constant) -> Status {
+        return session_state.AddInitializedTensor(idx, value, &d, constant);
+      },
+      logger, session_state.GetDataTransferMgr()));
+
+  // remove weights from the graph now to save memory but in many cases it won't save memory, if the tensor was
+  // preallocated with the some other tensors in a single 'allocate' call, which is very common.
+  // TODO: make it better
+  session_state.CleanInitializedTensorsFromGraph();
+
+  ORT_RETURN_IF_ERROR(session_state.CreateKernels(kernel_registry_manager));
+  if (session_options.use_prepacking) {
+    ORT_RETURN_IF_ERROR(session_state.PrepackInitializedConstantTensors());
+  }
+
+  ORT_RETURN_IF_ERROR(SaveInputOutputNamesToNodeMapping(graph_viewer, kernel_registry_manager, session_state,
+                                                        valid_outer_scope_node_args));
+  return Status::OK();
+}
 
 static common::Status DeserializeTensorProto(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& proto_path,
                                              const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer& m,
@@ -112,7 +208,8 @@ common::Status SaveInitializedTensors(
   //2. allocate weight buffer on different locations
   // planned_initializers_memory_size_in_byte is not actual physical size.
   // It's the virtual size computed by planner.
-  std::unordered_map<std::string, size_t> planned_initializers_memory_sizes_in_byte;
+  std::unordered_map<std::string, size_t>
+      planned_initializers_memory_sizes_in_byte;
   ORT_RETURN_IF_ERROR(
       planner.FinalizePlan(planned_initializers_memory_sizes_in_byte));
 

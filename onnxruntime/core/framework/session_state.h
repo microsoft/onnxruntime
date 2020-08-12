@@ -268,6 +268,12 @@ class SessionState {
                               const onnxruntime::experimental::fbs::SessionState* serialized_session_state = nullptr,
                               bool remove_initializers = true);
 
+#ifdef ENABLE_TRAINING
+  Status GenerateActivationMemoryPatterns(MemoryPatternGroup* output,
+                                          std::unordered_map<std::string, int64_t>& symbolic_map,
+                                          std::unordered_map<int, TensorShape>& resolved_shapes) const;
+#endif
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
