@@ -18,6 +18,13 @@ struct OP_GeluGrad : public CtxGeluGrad {
 };
 
 template <typename T>
+struct OP_ReluGrad : public CtxReluGrad {
+  __device__ __inline__ T operator()(const T& dy, const T& x) const {
+    return ComputeReluGradScalar(dy, x);
+  }
+};
+
+template <typename T>
 struct OP_FastGeluGrad : public CtxGeluGrad {
   __device__ __inline__ T operator()(const T& dy, const T& x) const {
     return ComputeGeluGradScalar(dy, x, gelu_computation_mode::Approximation{});
