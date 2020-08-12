@@ -95,8 +95,6 @@ struct CustomOpKernel : OpKernel {
 common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_domains, std::shared_ptr<CustomRegistry>& output) {
   output = std::make_shared<CustomRegistry>();
 
-  std::unordered_set<std::string> domain_names;
-
   for (auto& domain : op_domains) {
     // Domain is not empty - add it to the DomainToVersion ONNX map
     // If domain is empty, it is assumed to be part of the ONNX domain
