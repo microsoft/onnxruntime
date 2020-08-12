@@ -193,7 +193,7 @@ a.link:active .link-arrow{
     border: 2px solid transparent;;
 }
 .main-wrapper .top-banner-bg{
-    background-image:url(../images/top-banner-background.jpg);
+    background-image:url(/images/top-banner-background.jpg);
     background-size: auto;
     background-position: top center;
     background-repeat: repeat no-repeat;

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="{{ page.lang | default: site.lang | default: "en" }}">
+
+{%- include head.html -%}
+
+<body>
+
+  <a class="skip-main" id="topContent" href="#skipMain">Skip to main content</a>
+  <div class="main-wrapper">
+    <div class="top-banner-bg">
+
+      {%- include header.html -%}
+
+      <div class="container px-md-4 px-lg-5 pt-5 mx-auto text-center">
+        <div class="pt-3 pb-3 pt-md-5 pb-lg-3 px-md-4 px-lg-5 mt-5 mb-0"></div>
+      </div>
+
+      {{ content }}
+
+      {%- include footer.html -%}
+
+    </div>
+  </div>
+
+  {%- include foot.html -%}
+
+</body>
+
+</html>
