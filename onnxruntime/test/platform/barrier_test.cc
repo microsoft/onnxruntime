@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/platform/barrier.h"
+#include "core/platform/Barrier.h"
 #include "core/platform/threadpool.h"
 
 #include <core/common/make_unique.h>
