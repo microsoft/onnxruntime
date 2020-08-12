@@ -1,8 +1,8 @@
-# Tag: nvcr.io/nvidia/tensorrt:20.07-py3
+# Tag: nvcr.io/nvidia/tensorrt:20.07.1-py3
 # Label: com.nvidia.cuda.version: 11.0.194
 # Label: com.nvidia.cudnn.version: 8.0.1
 # Ubuntu 18.04
-FROM nvcr.io/nvidia/tensorrt:20.07-py3
+FROM nvcr.io/nvidia/tensorrt:20.07.1-py3
 
 ARG PYTHON_VERSION=3.6
 
