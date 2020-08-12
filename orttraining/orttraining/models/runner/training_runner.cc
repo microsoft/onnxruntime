@@ -60,7 +60,7 @@ TrainingRunner::TrainingRunner(Parameters params, const Environment& env, Sessio
       session_options_(session_options),
       session_(session_options, env),
       input_allocator_(params.input_allocator ? params.input_allocator : TrainingUtil::GetCpuAllocator()),
-      pipeline_schedule_(params_.pipeline_parallel_size),
+      pipeline_schedule_(params.gradient_accumulation_steps, params_.pipeline_parallel_size),
       pipeline_worker_pool_(params_.pipeline_parallel_size) {
   ORT_ENFORCE(!params_.model_path.empty());
   if (!params.weights_to_train.empty())
@@ -92,7 +92,7 @@ Status TrainingRunner::Initialize() {
   config.immutable_weights = params_.immutable_weights;
 
   config.gradient_graph_config.use_invertible_layernorm_grad = params_.use_invertible_layernorm_grad;
-  config.set_gradients_as_graph_outputs = false;
+  config.gradient_graph_config.set_gradients_as_graph_outputs = false;
 
   config.gradient_accumulation_steps = params_.gradient_accumulation_steps;
 
@@ -164,7 +164,15 @@ Status TrainingRunner::Initialize() {
     config.pipeline_config = pipe;
   }
 
-  config.enable_gelu_approximation = params_.enable_gelu_approximation;
+  // always configure the graph transformer
+  {
+    TrainingSession::TrainingConfiguration::GraphTransformerConfiguration gt_config{};
+    gt_config.enable_gelu_approximation = params_.enable_gelu_approximation;
+    gt_config.attn_dropout_checkpoint = params_.attn_dropout_checkpoint;
+    gt_config.gelu_checkpoint = params_.gelu_checkpoint;
+
+    config.graph_transformer_config = gt_config;
+  }
 
   TrainingSession::TrainingConfigurationResult config_result{};
 
@@ -281,7 +289,6 @@ Status TrainingRunner::Initialize() {
     // Configure dimension of this pipeline.
     pipeline_context_.pipeline_stage_id = config_result.pipeline_config_result.value().pipeline_stage_id;
     pipeline_context_.num_pipeline_batches = params_.gradient_accumulation_steps;
-    pipeline_schedule_.Add(0, pipeline_context_.num_pipeline_batches);
   } else {
     fetch_names = params_.fetch_names;
     pipeline_context_.pipeline_stage_id = 0;
@@ -406,9 +413,9 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     OrtValue event_id;
     const int64_t id =
         (mode == EvaluateStep) ? -1
-                               : pipeline_schedule_.GetForwardWaitedEventId(
-                                     pipeline_context_.pipeline_stage_id,
-                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
+                               : pipeline_schedule_.GetForwardWaitedEventBeforeRecv(
+                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches,
+                                     pipeline_context_.pipeline_stage_id);
     TrainingUtil::CreateCpuMLScalar(
         id,
         &event_id,
@@ -423,9 +430,9 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     OrtValue event_id;
     const int64_t id =
         (mode == EvaluateStep) ? -1
-                               : pipeline_schedule_.GetForwardWaitedEventIdAfterRecv(
-                                     pipeline_context_.pipeline_stage_id,
-                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
+                               : pipeline_schedule_.GetForwardWaitedEventAfterRecv(
+                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches,
+                                     pipeline_context_.pipeline_stage_id);
     TrainingUtil::CreateCpuMLScalar(
         id,
         &event_id,
@@ -440,9 +447,9 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     OrtValue event_id;
     const int64_t id =
         (mode == EvaluateStep) ? -1
-                               : pipeline_schedule_.GetForwardRecordedEventIdBeforeSend(
-                                     pipeline_context_.pipeline_stage_id,
-                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
+                               : pipeline_schedule_.GetForwardRecordedEventBeforeSend(
+                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches,
+                                     pipeline_context_.pipeline_stage_id);
     TrainingUtil::CreateCpuMLScalar(
         id,
         &event_id,
@@ -457,9 +464,9 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     OrtValue event_id;
     const int64_t id =
         (mode == EvaluateStep) ? -1
-                               : pipeline_schedule_.GetForwardRecordedEventId(
-                                     pipeline_context_.pipeline_stage_id,
-                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
+                               : pipeline_schedule_.GetForwardRecordedEventAfterSend(
+                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches,
+                                     pipeline_context_.pipeline_stage_id);
     TrainingUtil::CreateCpuMLScalar(
         id,
         &event_id,
@@ -474,9 +481,9 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     OrtValue event_id;
     const int64_t id =
         (mode == EvaluateStep) ? -1
-                               : pipeline_schedule_.GetBackwardWaitedEventId(
-                                     pipeline_context_.pipeline_stage_id,
-                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
+                               : pipeline_schedule_.GetBackwardWaitedEventBeforeRecv(
+                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches,
+                                     pipeline_context_.pipeline_stage_id);
     TrainingUtil::CreateCpuMLScalar(
         id,
         &event_id,
@@ -491,9 +498,9 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     OrtValue event_id;
     const int64_t id =
         (mode == EvaluateStep) ? -1
-                               : pipeline_schedule_.GetBackwardWaitedEventIdAfterRecv(
-                                     pipeline_context_.pipeline_stage_id,
-                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
+                               : pipeline_schedule_.GetBackwardWaitedEventAfterRecv(
+                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches,
+                                     pipeline_context_.pipeline_stage_id);
     TrainingUtil::CreateCpuMLScalar(
         id,
         &event_id,
@@ -508,9 +515,9 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     OrtValue event_id;
     int64_t id =
         (mode == EvaluateStep) ? -1
-                               : pipeline_schedule_.GetBackwardRecordedEventIdBeforeSend(
-                                     pipeline_context_.pipeline_stage_id,
-                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
+                               : pipeline_schedule_.GetBackwardRecordedEventBeforeSend(
+                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches,
+                                     pipeline_context_.pipeline_stage_id);
     TrainingUtil::CreateCpuMLScalar(
         id,
         &event_id,
@@ -525,9 +532,9 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     OrtValue event_id;
     int64_t id =
         (mode == EvaluateStep) ? -1
-                               : pipeline_schedule_.GetBackwardRecordedEventId(
-                                     pipeline_context_.pipeline_stage_id,
-                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
+                               : pipeline_schedule_.GetBackwardRecordedEventAfterSend(
+                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches,
+                                     pipeline_context_.pipeline_stage_id);
     TrainingUtil::CreateCpuMLScalar(
         id,
         &event_id,
@@ -632,6 +639,19 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const SessionMode mode,
   return Status::OK();
 }
 
+// If any exceptions happen during worker execution, it means there is an error
+// during training. The worker thread propagates the exception to the main thread so
+// we can properly cleanup and exit the execution.
+void TrainingRunner::CheckWorkerException(const std::exception_ptr& p) {
+  try {
+    if (p) {
+      std::rethrow_exception(p);
+    }
+  } catch (const std::exception& e) {
+    ORT_THROW("Error in worker thread: ", e.what());
+  }
+}
+
 // Launch synced session.Run on the main thread.
 void TrainingRunner::RunWithUpdate(VectorString& feed_names,
                                    VectorString& fetch_names,
@@ -643,6 +663,7 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
   // Wait for the previous work to finish its job.
   // Its resource cannot be overrided when it's still working.
   pipeline_worker_pool_.Join(worker_id);
+  CheckWorkerException(pipeline_worker_pool_.worker_states[worker_id].execution_exception);
 
   // Copy thread-used variable to thread-specific buffer to maintain their life.
   pipeline_worker_pool_.worker_states[worker_id].feed_names = feed_names;
@@ -650,35 +671,41 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
   pipeline_worker_pool_.worker_states[worker_id].fetch_names = fetch_names;
   pipeline_worker_pool_.worker_states[worker_id].fetches = std::vector<MLValue>();
 
-  Status status = Status::OK();
-  pipeline_worker_pool_.workers[worker_id] = std::thread([&](
-                                                             const size_t worker_id, const size_t step) {
+  pipeline_worker_pool_.workers[worker_id] = std::thread([&](const size_t worker_id, const size_t step) {
+    try {
 #ifdef ENABLE_NVTX_PROFILE
-    // Store the tag for the thread which runs session_.Run(...).
-    // It will be used to name range in Nvidia's visual profiler.
-    auto& profile_context = profile::Context::GetInstance();
-    profile_context.SetThreadTag(
-        std::this_thread::get_id(), std::to_string(step));
+      // Store the tag for the thread which runs session_.Run(...).
+      // It will be used to name range in Nvidia's visual profiler.
+      auto& profile_context = profile::Context::GetInstance();
+      profile_context.SetThreadTag(
+          std::this_thread::get_id(), std::to_string(step));
 #else
-    ORT_UNUSED_PARAMETER(step);
+      ORT_UNUSED_PARAMETER(step);
 #endif
-    RunOptions run_options;
-    status = session_.Run(
-      run_options,
-      pipeline_worker_pool_.worker_states[worker_id].feed_names,
-      pipeline_worker_pool_.worker_states[worker_id].feeds,
-      pipeline_worker_pool_.worker_states[worker_id].fetch_names,
-      &(pipeline_worker_pool_.worker_states[worker_id].fetches));
-  }, worker_id, step_);
+      RunOptions run_options;
+      auto status = session_.Run(
+          run_options,
+          pipeline_worker_pool_.worker_states[worker_id].feed_names,
+          pipeline_worker_pool_.worker_states[worker_id].feeds,
+          pipeline_worker_pool_.worker_states[worker_id].fetch_names,
+          &(pipeline_worker_pool_.worker_states[worker_id].fetches));
+
+      ORT_THROW_IF_ERROR(status);
+    } catch (std::exception&) {
+      // If exception happens during worker execution, propogate the exception to main thread.
+      pipeline_worker_pool_.worker_states[worker_id].execution_exception = std::current_exception();
+    }
+  },
+                                                         worker_id, step_);
 
   // Wait all workers to finish this round of pipeline parallelism.
   // The last batch in a pipeline collects gradient and update the model.
   // We must join here because main thread needs to access thread-produced
   // fetches and those fetches must be ready.
   pipeline_worker_pool_.JoinAll();
-
-  // If the updating thread fails, we return with its error status.
-  ORT_THROW_IF_ERROR(status);
+  for(auto& status : pipeline_worker_pool_.worker_states){
+    CheckWorkerException(status.execution_exception);
+  }
 
   // Copy back from thread-specific buffer to main thread's memory.
   fetches = pipeline_worker_pool_.worker_states[worker_id].fetches;
@@ -711,6 +738,9 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
   // Wait all workers to finish this around of pipeline parallism.
   // The last batch in a pipeline collects gradient and update the model.
   pipeline_worker_pool_.JoinAll();
+  for(auto& status : pipeline_worker_pool_.worker_states){
+    CheckWorkerException(status.execution_exception);
+  }
 
   // Add one after process one batch.
   ++step_;
@@ -729,6 +759,7 @@ void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
   // Wait for the previous work to finish its job.
   // Its resource cannot be overrided when it's still working.
   pipeline_worker_pool_.Join(worker_id);
+  CheckWorkerException(pipeline_worker_pool_.worker_states[worker_id].execution_exception);
 
   // Prepare async launch of session.
   // All used variables have to be copied to a buffer object to maintain their lifetime.
@@ -738,27 +769,30 @@ void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
   pipeline_worker_pool_.worker_states[worker_id].fetches = std::vector<MLValue>();
 
   // Async launch of a session.
-  pipeline_worker_pool_.workers[worker_id] = std::thread([&](
-                                                             const size_t worker_id, const size_t step) {
+  pipeline_worker_pool_.workers[worker_id] = std::thread([&](const size_t worker_id, const size_t step) {
+    try {
 #ifdef ENABLE_NVTX_PROFILE
-    // Store the tag for the thread which runs session_.Run(...).
-    // It will be used to name range in Nvidia's visual profiler.
-    auto& profile_context = profile::Context::GetInstance();
-    profile_context.SetThreadTag(
-        std::this_thread::get_id(), std::to_string(step));
+      // Store the tag for the thread which runs session_.Run(...).
+      // It will be used to name range in Nvidia's visual profiler.
+      auto& profile_context = profile::Context::GetInstance();
+      profile_context.SetThreadTag(
+          std::this_thread::get_id(), std::to_string(step));
 #else
-    ORT_UNUSED_PARAMETER(step);
+      ORT_UNUSED_PARAMETER(step);
 #endif
-    RunOptions run_options;
-    run_options.only_execute_path_to_fetches = true;
-    run_options.training_mode = true;
-    auto status = session_.Run(
-        run_options,
-        pipeline_worker_pool_.worker_states[worker_id].feed_names,
-        pipeline_worker_pool_.worker_states[worker_id].feeds,
-        pipeline_worker_pool_.worker_states[worker_id].fetch_names,
-        &(pipeline_worker_pool_.worker_states[worker_id].fetches));
-    ORT_THROW_IF_ERROR(status);
+      RunOptions run_options;
+      run_options.only_execute_path_to_fetches = true;
+      run_options.training_mode = true;
+      auto status = session_.Run(
+          run_options,
+          pipeline_worker_pool_.worker_states[worker_id].feed_names,
+          pipeline_worker_pool_.worker_states[worker_id].feeds,
+          pipeline_worker_pool_.worker_states[worker_id].fetch_names,
+          &(pipeline_worker_pool_.worker_states[worker_id].fetches));
+      ORT_THROW_IF_ERROR(status);
+    } catch (std::exception&) {
+      pipeline_worker_pool_.worker_states[worker_id].execution_exception = std::current_exception();
+    }
   },
                                                          worker_id, step_);
 
@@ -1152,7 +1186,7 @@ Status TrainingRunner::Evaluate(TrainingSession& session, IDataLoader& data_load
     const std::string training_mode_string = "training_mode";
     auto input_list = session.GetOverridableInitializers().second;
     for (auto input : *input_list) {
-      if(input->Name().compare(training_mode_string) == 0) {
+      if (input->Name().compare(training_mode_string) == 0) {
         feed_names.push_back("training_mode");
         OrtValue mode_val;
         TrainingUtil::CreateCpuMLScalar(false, &mode_val, input_allocator_);

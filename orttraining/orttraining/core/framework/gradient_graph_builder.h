@@ -32,7 +32,7 @@ static std::unordered_map<std::string, std::unordered_set<size_t>>
         {"Reshape", {1}},
         {"Expand", {1}},
         {"TrainableDropout", {1}},
-        {"Dropout", {1}},
+        {"Dropout", {1, 2}},
         {"Slice", {1, 2, 3, 4}},
         {"SparseSoftmaxCrossEntropy", {1, 2}},
         {"SoftmaxCrossEntropyLoss", {1, 2}},
@@ -40,7 +40,8 @@ static std::unordered_map<std::string, std::unordered_set<size_t>>
         {"Scatter", {1}},
         {"OneHot", {0, 1, 2}},
         {"Where", {0}},
-        {"Range", {0, 1, 2}}};
+        {"Range", {0, 1, 2}},
+        {"BroadcastGradientArgs", {0, 1}}};
 
 class GradientGraphBuilder {
  public:
@@ -57,9 +58,9 @@ class GradientGraphBuilder {
   GradientGraphBuilder(Graph* graph,
                        const std::unordered_set<std::string>& y_node_arg_names,
                        const std::unordered_set<std::string>& x_node_arg_names,
-                       std::string loss_node_arg_name,
+                       const std::string& loss_node_arg_name,
                        const GradientGraphConfiguration& gradient_graph_config,
-                       const bool set_gradient_as_graph_output = false);
+                       const logging::Logger& logger);
 
   Status Build();
 
@@ -75,6 +76,8 @@ class GradientGraphBuilder {
   std::string loss_node_arg_name_;
 
   const GradientGraphConfiguration& gradient_graph_config_;
+
+  const logging::Logger& logger_;
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr_{5};
 
@@ -103,9 +106,6 @@ class GradientGraphBuilder {
   @returns OK if all 'x_node_args_' are reachable, else an ONNXRUNTIME INVALID_ARGUMENT status
   */
   Status CheckNodeArgsReachable(const NodeSet& reachable_nodes);
-
-  // if it is true, set gradient of trainable weight as graph output
-  const bool set_gradient_as_graph_output_;
 };
 
 }  // namespace training

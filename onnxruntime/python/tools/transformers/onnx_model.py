@@ -206,7 +206,11 @@ class OnnxModel:
                 return i, matched, return_indice
         return -1, None, None
 
-    def match_parent_path(self, node, parent_op_types, parent_input_index, output_name_to_node=None,
+    def match_parent_path(self,
+                          node,
+                          parent_op_types,
+                          parent_input_index,
+                          output_name_to_node=None,
                           return_indice=None):
         '''
         Find a sequence of input edges based on constraints on parent op_type and index.
@@ -653,18 +657,21 @@ class OnnxModel:
                             return False
         return True
 
-    def save_model_to_file(self, output_path):
+    def save_model_to_file(self, output_path, use_external_data_format=False):
         logger.info(f"Output model to {output_path}")
 
-        if output_path.endswith(".json"):
+        if output_path.endswith(".json"):  # Output text for testing small model.
             assert isinstance(self.model, ModelProto)
             with open(output_path, "w") as out:
                 out.write(str(self.model))
         else:
-            save_model(self.model, output_path, format=None)
-            #external_data_helper.convert_model_to_external_data(self.model, all_tensors_to_one_file=True, location = output_path + ".data")
-            #with open(output_path, "wb") as out:
-            #    out.write(self.model.SerializeToString())
+            # Save model to external data, which is needed for model size > 2GB
+            if use_external_data_format:
+                from pathlib import Path
+                external_data_helper.convert_model_to_external_data(self.model,
+                                                                    all_tensors_to_one_file=True,
+                                                                    location=Path(output_path).name + ".data")
+            save_model(self.model, output_path)
 
     def get_graph_inputs_excluding_initializers(self):
         """

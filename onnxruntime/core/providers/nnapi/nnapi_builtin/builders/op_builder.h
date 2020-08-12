@@ -20,15 +20,21 @@ class IOpBuilder {
   virtual void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) = 0;
 
   // Add the operator to NNAPI model
-  virtual void AddToModelBuilder(ModelBuilder& model_builder, const Node& node) = 0;
+  virtual Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node) ORT_MUST_USE_RESULT = 0;
 };
 
 // Generate a lookup table with IOpBuilder delegates
 // for different onnx operators
 std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> CreateOpBuilders();
 
-// Transpose the NHWCinput to NCHW output
-void TransposeNHWCToNCHW(ModelBuilder& model_builder, const std::string& input, const std::string& output);
+// Transpose the NHWC input to NCHW output
+Status TransposeNHWCToNCHW(ModelBuilder& model_builder, const std::string& input, const std::string& output)
+    ORT_MUST_USE_RESULT;
+
+// Get the quantized input's scale and zero point for the given input
+Status GetQuantizedInputScaleAndZeroPoint(const ModelBuilder& model_builder,
+                                          const Node& node, const std::string& input_name,
+                                          float& scale, int32_t& zero_point) ORT_MUST_USE_RESULT;
 
 }  // namespace nnapi
 }  // namespace onnxruntime

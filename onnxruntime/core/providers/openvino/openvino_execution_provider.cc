@@ -628,7 +628,7 @@ static void AppendClusterToSubGraph(const std::vector<NodeIndex>& nodes,
 
   std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
   sub_graph->nodes = nodes;
-  sub_graph->SetMetaDef(meta_def);
+  sub_graph->SetMetaDef(std::move(meta_def));
   result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
 }
 

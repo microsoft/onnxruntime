@@ -8,15 +8,15 @@
 #include <mutex>
 #include <iostream>  // For std::cout used in a stub
 
-onnxruntime::ProviderHost* g_host{};
-
 #define PROVIDER_NOT_IMPLEMENTED ORT_THROW("Unimplemented shared library provider method");
+
+extern "C" {
+void* Provider_GetHost();
+}
 
 namespace onnxruntime {
 
-void SetProviderHost(ProviderHost& host) {
-  g_host = &host;
-}
+ProviderHost* g_host = reinterpret_cast<ProviderHost*>(Provider_GetHost());
 
 static std::unique_ptr<std::vector<std::function<void()>>> s_run_on_unload_;
 
@@ -45,15 +45,9 @@ struct OnUnload {
 }  // namespace onnxruntime
 
 // Override default new/delete so that we match the host's allocator
-void* operator new(size_t n) { return g_host->HeapAllocate(n); }
-void operator delete(void* p) { return g_host->HeapFree(p); }
-void operator delete(void* p, size_t /*size*/) { return g_host->HeapFree(p); }
-
-namespace onnx {
-std::unique_ptr<ONNX_NAMESPACE::Provider_AttributeProto> Provider_AttributeProto::Create() {
-  return g_host->AttributeProto_Create();
-}
-}  // namespace onnx
+void* operator new(size_t n) { return onnxruntime::g_host->HeapAllocate(n); }
+void operator delete(void* p) { return onnxruntime::g_host->HeapFree(p); }
+void operator delete(void* p, size_t /*size*/) { return onnxruntime::g_host->HeapFree(p); }
 
 namespace onnxruntime {
 
@@ -62,21 +56,9 @@ Provider_AllocatorPtr CreateAllocator(const Provider_DeviceAllocatorRegistration
   return g_host->CreateAllocator(info, device_id, use_arena);
 }
 
-std::unique_ptr<Provider_KernelDefBuilder> Provider_KernelDefBuilder::Create() {
-  return g_host->KernelDefBuilder_Create();
-}
-
-std::shared_ptr<Provider_KernelRegistry> Provider_KernelRegistry::Create() {
-  return g_host->KernelRegistry_Create();
-}
-
 std::unique_ptr<Provider_OrtMemoryInfo> Provider_OrtMemoryInfo::Create(
     const char* name_, OrtAllocatorType type_, Provider_OrtDevice* device_, int id_, OrtMemType mem_type_) {
   return g_host->OrtMemoryInfo_Create(name_, type_, device_, id_, mem_type_);
-}
-
-std::unique_ptr<Provider_IndexedSubGraph> Provider_IndexedSubGraph::Create() {
-  return g_host->IndexedSubGraph_Create();
 }
 
 template <>
@@ -87,6 +69,10 @@ MLDataType DataTypeImpl::GetType<float>() {
 template <>
 MLDataType DataTypeImpl::GetTensorType<float>() {
   return g_host->DataTypeImpl_GetTensorType_float();
+}
+
+const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorTypes() {
+  return g_host->DataTypeImpl_AllFixedSizeTensorTypes();
 }
 
 TensorShape::TensorShape(const int64_t* dimension_sizes, size_t dimension_count)
@@ -158,8 +144,30 @@ bool CPUIDInfo::HasAVX512f() const {
   return g_host->CPU_HasAVX512f();
 }
 
-std::unique_ptr<Provider_IDeviceAllocator> CreateCPUAllocator(std::unique_ptr<Provider_OrtMemoryInfo> info) {
+Provider_AllocatorPtr CreateAllocator(Provider_DeviceAllocatorRegistrationInfo info, int16_t device_id) {
+  return g_host->CreateAllocator(info, device_id);
+}
+
+std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCPUAllocator(std::unique_ptr<Provider_OrtMemoryInfo> info) {
   return g_host->CreateCPUAllocator(std::move(info));
+}
+
+#ifdef USE_TENSORRT
+std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCUDAAllocator(int16_t device_id, const char* name) {
+  return g_host->CreateCUDAAllocator(device_id, name);
+}
+
+std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCUDAPinnedAllocator(int16_t device_id, const char* name) {
+  return g_host->CreateCUDAPinnedAllocator(device_id, name);
+}
+
+std::unique_ptr<Provider_IDataTransfer> Provider_CreateGPUDataTransfer() {
+  return g_host->CreateGPUDataTransfer();
+}
+#endif
+
+std::string GetEnvironmentVar(const std::string& var_name) {
+  return g_host->GetEnvironmentVar(var_name);
 }
 
 Provider_IExecutionProvider::Provider_IExecutionProvider(const std::string& type) {
@@ -196,7 +204,7 @@ std::ostream& Capture::Stream() noexcept {
   return std::cout;
 }
 
-const char* Category::onnxruntime = "foo";
+const char* Category::onnxruntime = "onnxruntime";
 
 }  // namespace logging
 

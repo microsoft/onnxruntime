@@ -169,7 +169,10 @@ class TrainingRunner {
 
     // Enable GELU approximation
     bool enable_gelu_approximation = false;
-  
+    // Enable checkpointing of attention dropout to save memory
+    bool attn_dropout_checkpoint = false;
+    // Enable checkpointing of Gelu activation output to save memory
+    bool gelu_checkpoint = false;
     // Use invertible layernorm grad
     bool use_invertible_layernorm_grad = false;
   };
@@ -213,6 +216,7 @@ class TrainingRunner {
                         VectorString& fetch_names,
                         std::vector<MLValue>& feeds,
                         size_t& gradient_accumulation_step_count);
+  void CheckWorkerException(const std::exception_ptr& p);
   Status TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader,
     const MapStringToString& mapped_dimensions);
   Status Evaluate(TrainingSession& session, IDataLoader& data_loader);
@@ -247,7 +251,7 @@ class TrainingRunner {
   // Information for running pipeline.
   pipeline::PipelineContext pipeline_context_;
   // Pipeline schedule for deciding when to run batch, forward, or backward.
-  pipeline::PipelineSchedule pipeline_schedule_;
+  pipeline::PipelineScheduler pipeline_schedule_;
   // Workers to run pipeline stage.
   pipeline::PipelineWorkerPool pipeline_worker_pool_;
 };

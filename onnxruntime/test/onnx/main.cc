@@ -39,6 +39,7 @@ void usage() {
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', 'ngraph', "
       "'openvino', 'nuphar', 'migraphx', 'acl' or 'armnn'. "
       "Default: 'cpu'.\n"
+      "\t-p: Pause after launch, can attach debugger and continue\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
       "\t-d [device_id]: Specifies the device id for multi-device (e.g. GPU). The value should > 0\n"
       "\t-o [optimization level]: Default is 99. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
@@ -106,18 +107,20 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   int device_id = 0;
   GraphOptimizationLevel graph_optimization_level = ORT_ENABLE_ALL;
   bool user_graph_optimization_level_set = false;
-  int verbosity_option_count = 0;
 
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_ERROR;
+  bool verbose_logging_required = false;
+
+  bool pause = false;
   {
     int ch;
-    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:xvo:d:"))) != -1) {
+    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:xvo:d:p"))) != -1) {
       switch (ch) {
         case 'A':
           enable_cpu_mem_arena = false;
           break;
         case 'v':
-          verbosity_option_count += 1;
+          verbose_logging_required = true;
           break;
         case 'c':
           concurrent_session_runs = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
@@ -181,6 +184,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
         case 'x':
           execution_mode = ExecutionMode::ORT_PARALLEL;
           break;
+        case 'p':
+          pause = true;
+          break;
         case 'o': {
           int tmp = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
           switch (tmp) {
@@ -225,10 +231,12 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
   }
 
-  // set log level based on number of verbosity options
-  logging_level =
-      static_cast<OrtLoggingLevel>(static_cast<int>(ORT_LOGGING_LEVEL_ERROR) -
-                                   std::min<int>(verbosity_option_count, static_cast<int>(ORT_LOGGING_LEVEL_ERROR)));
+  // TODO: Support specifying all valid levels of logging
+  // Currently the logging level is ORT_LOGGING_LEVEL_ERROR by default and
+  // if the user adds -v, the logging level is ORT_LOGGING_LEVEL_VERBOSE
+  if (verbose_logging_required) {
+    logging_level = ORT_LOGGING_LEVEL_VERBOSE;
+  }
 
   if (concurrent_session_runs > 1 && repeat_count > 1) {
     fprintf(stderr, "when you use '-r [repeat]', please set '-c' to 1\n");
@@ -241,6 +249,12 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     fprintf(stderr, "please specify a test data dir\n");
     usage();
     return -1;
+  }
+
+  if (pause) {
+    printf("Enter to continue...\n");
+    fflush(stdout);
+    getchar();
   }
 
   try {
@@ -344,7 +358,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #ifdef USE_NNAPI
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(sf));
 #else
-      fprintf(stderr, "DNNLibrary/NNAPI is not supported in this build");
+      fprintf(stderr, "NNAPI is not supported in this build");
       return -1;
 #endif
     }
