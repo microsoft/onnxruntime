@@ -20,6 +20,7 @@
 
 namespace ONNX_NAMESPACE {
 
+// These are exact duplicates of the real protobuf types, defined here since we can't include the protobuf headers
 enum AttributeProto_AttributeType : int {
   AttributeProto_AttributeType_UNDEFINED = 0,
   AttributeProto_AttributeType_FLOAT = 1,
@@ -36,6 +37,17 @@ enum AttributeProto_AttributeType : int {
   AttributeProto_AttributeType_SPARSE_TENSORS = 12
 };
 
+enum Version : int {
+  _START_VERSION = 0,
+  IR_VERSION_2017_10_10 = 1,
+  IR_VERSION_2017_10_30 = 2,
+  IR_VERSION_2017_11_3 = 3,
+  IR_VERSION_2019_1_22 = 4,
+  IR_VERSION_2019_3_18 = 5,
+  IR_VERSION_2019_9_19 = 6,
+  IR_VERSION = 7
+};
+
 enum OperatorStatus : int {
   EXPERIMENTAL = 0,
   STABLE = 1
@@ -44,6 +56,8 @@ enum OperatorStatus : int {
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
+
+void SetProviderHost(ProviderHost& host);
 
 // The function passed in will be run on provider DLL unload. This is used to free thread_local variables that are in threads we don't own
 // Since these are not destroyed when the DLL unloads we have to do it manually. Search for usage for an example.
@@ -67,7 +81,16 @@ struct DeleteOnUnloadPtr {
 };
 
 constexpr const char* kOnnxDomain = "";
+constexpr const char* kMSDomain = "com.microsoft";
 constexpr const char* kDnnlExecutionProvider = "DnnlExecutionProvider";
+constexpr const char* kTensorrtExecutionProvider = "TensorrtExecutionProvider";
+
+enum CUDAStreamType : int {
+  kCudaStreamDefault = 0,
+  kCudaStreamCopyIn,
+  kCudaStreamCopyOut,
+  kTotalCudaStreams,
+};
 
 class DataTypeImpl {
  public:
@@ -77,6 +100,8 @@ class DataTypeImpl {
   static MLDataType GetType();
   template <typename elemT>
   static MLDataType GetTensorType();
+
+  static const std::vector<MLDataType>& AllFixedSizeTensorTypes();
 };
 
 class TensorShape : private std::vector<int64_t> {
@@ -129,15 +154,17 @@ class TensorShape : private std::vector<int64_t> {
   int64_t SizeHelper(size_t start, size_t end) const;
 };
 
-constexpr const char* kMSDomain = "com.microsoft";
-constexpr const char* kMklDnnExecutionProvider = "MKLDNNExecutionProvider";
-
 template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
 
-std::unique_ptr<Provider_IDeviceAllocator> CreateCPUAllocator(std::unique_ptr<Provider_OrtMemoryInfo> memory_info);
-Provider_AllocatorPtr CreateAllocator(const Provider_DeviceAllocatorRegistrationInfo& info, int16_t device_id = 0,
-                                      bool use_arena = true);
+std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCPUAllocator(std::unique_ptr<Provider_OrtMemoryInfo> memory_info);
+std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCUDAAllocator(int16_t device_id, const char* name);
+std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
+Provider_AllocatorPtr CreateAllocator(const Provider_DeviceAllocatorRegistrationInfo& info, int16_t device_id = 0, bool use_arena = true);
+
+std::unique_ptr<Provider_IDataTransfer> Provider_CreateGPUDataTransfer();
+
+std::string GetEnvironmentVar(const std::string& var_name);
 
 class CPUIDInfo {
  public:
@@ -186,7 +213,10 @@ class Capture {
           logging::DataType dataType, const CodeLocation& location);
 
   std::ostream& Stream() noexcept;
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Capture);
 };
+
 }  // namespace logging
 
 enum class AutoPadType {
@@ -226,6 +256,7 @@ constexpr T roundUpPow2(T a) {
   return (a + (b - 1)) & (~(b - 1));
 }
 }  // namespace math
+
 }  // namespace onnxruntime
 
 #define ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name) \
