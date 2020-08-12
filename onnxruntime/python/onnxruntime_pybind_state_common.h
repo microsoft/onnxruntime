@@ -6,7 +6,6 @@
 #include "core/framework/allocator.h"
 #include "core/framework/session_options.h"
 #include "core/session/environment.h"
-#include "core/platform/env.h"
 
 namespace onnxruntime {
 class InferenceSession;
@@ -16,53 +15,32 @@ namespace python {
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
 
-struct OrtStatus {
-  OrtErrorCode code;
-  char msg[1];  // a null-terminated string
+struct CustomOpLibrary {
+  CustomOpLibrary(const char* library_path, OrtSessionOptions& ort_so);
+
+  ~CustomOpLibrary();
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CustomOpLibrary);
+
+ private:
+  void* library_handle_ = nullptr;
 };
 
-struct CustomOpLibrary {
-  CustomOpLibrary(const char* library_path, OrtSessionOptions& ort_so) {
-    Env::Default().LoadDynamicLibrary(library_path, &library_handle_);
+struct CustomOpLibraries {
+  CustomOpLibraries() = default;
 
-    if (!library_handle_)
-      throw std::runtime_error("RegisterCustomOpsLibrary: Failed to load library");
+  void AddLibrary(std::unique_ptr<CustomOpLibrary> custom_op_library);
 
-    OrtStatus*(_stdcall * RegisterCustomOps)(OrtSessionOptions * options, const OrtApiBase* api);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CustomOpLibraries);
 
-    Env::Default().GetSymbolFromLibrary(library_handle_, "RegisterCustomOps", (void**)&RegisterCustomOps);
-
-    if (!RegisterCustomOps)
-      throw std::runtime_error("RegisterCustomOpsLibrary: Entry point RegisterCustomOps not found in library");
-
-    auto* status = RegisterCustomOps(&ort_so, OrtGetApiBase());
-
-    if (status) {
-      // A non-nullptr indicates some error
-      // Free status and throw
-      Env::Default().UnloadDynamicLibrary(library_handle_);
-      ::free(status);
-      throw std::runtime_error("TODO");
-    }
-
-    // No status to free if it is a nullptr
-  }
-  ~CustomOpLibrary() {
-    Env::Default().UnloadDynamicLibrary(library_handle_);
-  }
-
-  CustomOpLibrary(CustomOpLibrary&& other) = delete;
-
-  CustomOpLibrary& operator=(CustomOpLibrary&& other) = delete;
-
-  void* library_handle_ = nullptr;
+ private:
+  std::vector<std::unique_ptr<CustomOpLibrary>> custom_op_libraries_;
+  std::mutex mutex_;
 };
 
 struct PySessionOptions : public SessionOptions {
   // Have the life cycle of the OrtCustomOpDomain pointers managed by a smart pointer
   std::vector<std::shared_ptr<OrtCustomOpDomain>> custom_op_domains_;
-
-  std::vector<std::shared_ptr<CustomOpLibrary>> custom_op_libraries_;
 };
 
 inline const PySessionOptions& GetDefaultCPUSessionOptions() {
@@ -97,6 +75,8 @@ class SessionObjectInitializer {
 };
 
 Environment& get_env();
+
+CustomOpLibraries& get_custom_op_libraries();
 
 void InitializeSession(InferenceSession* sess, const std::vector<std::string>& provider_types);
 

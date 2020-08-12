@@ -21,6 +21,7 @@
 #include "core/framework/bfc_arena.h"
 #include "core/session/IOBinding.h"
 #include "core/session/abi_session_options_impl.h"
+#include "core/platform/env.h"
 
 struct OrtStatus {
   OrtErrorCode code;
@@ -193,6 +194,51 @@ namespace python {
 namespace py = pybind11;
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
+
+// Custom op section starts
+
+CustomOpLibrary::CustomOpLibrary(const char* library_path, OrtSessionOptions& ort_so) {
+  {
+    OrtPybindThrowIfError(Env::Default().LoadDynamicLibrary(library_path, &library_handle_));
+
+    if (!library_handle_)
+      throw std::runtime_error("RegisterCustomOpsLibrary: Failed to load library");
+
+    OrtStatus*(ORT_API_CALL * RegisterCustomOps)(OrtSessionOptions * options, const OrtApiBase* api);
+
+    OrtPybindThrowIfError(Env::Default().GetSymbolFromLibrary(library_handle_, "RegisterCustomOps", (void**)&RegisterCustomOps));
+
+    if (!RegisterCustomOps)
+      throw std::runtime_error("RegisterCustomOpsLibrary: Entry point RegisterCustomOps not found in library");
+
+    auto* status = RegisterCustomOps(&ort_so, OrtGetApiBase());
+
+    if (status) {
+      // A non-nullptr indicates some error
+      // Free status and throw
+      Env::Default().UnloadDynamicLibrary(library_handle_);
+      ::free(status);
+      throw std::runtime_error("TODO");
+    }
+
+    // No status to free if it is a nullptr
+  }
+}
+
+// Unload the library when the destructor is triggered
+CustomOpLibrary::~CustomOpLibrary() {
+  Env::Default().UnloadDynamicLibrary(library_handle_);
+}
+
+void CustomOpLibraries::AddLibrary(std::unique_ptr<CustomOpLibrary> custom_op_library) {
+  // Guard against multiple session options being created in multiple threads referencing
+  // custom op libraries of their own - basically guard against unsynchronized updates to the
+  // container holding the libraries
+  std::lock_guard<std::mutex> lock(mutex_);
+  custom_op_libraries_.push_back(std::move(custom_op_library));
+}
+
+// Custom op section ends
 
 template <typename T>
 void AddNonTensor(const OrtValue& val, std::vector<py::object>& pyobjs, const DataTransferManager* /*data_transfer_manager*/) {
@@ -577,8 +623,13 @@ void GenerateProviderOptionsMap(const std::vector<std::string>& providers,
   }
 }
 
-void RegisterCustomOpDomains(InferenceSession* sess, const std::vector<OrtCustomOpDomain*>& custom_op_domains) {
-  if (!custom_op_domains.empty()) {
+void RegisterCustomOpDomains(InferenceSession* sess, const PySessionOptions& so) {
+  if (!so.custom_op_domains_.empty()) {
+    std::vector<OrtCustomOpDomain*> custom_op_domains;
+    custom_op_domains.reserve(so.custom_op_domains_.size());
+    for (size_t i = 0; i < so.custom_op_domains_.size(); ++i) {
+      custom_op_domains.emplace_back(so.custom_op_domains_[i].get());
+    }
     OrtPybindThrowIfError(sess->AddCustomOpDomains(custom_op_domains));
   }
 }
@@ -839,7 +890,7 @@ void addOpSchemaSubmodule(py::module& m) {
 
 #endif  //onnxruntime_PYBIND_EXPORT_OPSCHEMA
 
-void addObjectMethods(py::module& m, Environment& env) {
+void addObjectMethods(py::module& m, Environment& env, CustomOpLibraries& custom_op_libraries) {
   py::enum_<GraphOptimizationLevel>(m, "GraphOptimizationLevel")
       .value("ORT_DISABLE_ALL", GraphOptimizationLevel::ORT_DISABLE_ALL)
       .value("ORT_ENABLE_BASIC", GraphOptimizationLevel::ORT_ENABLE_BASIC)
@@ -1040,11 +1091,6 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
                                 dim_value}); },
           "Rpbdoc(Specify the dimension size for each denotation associated with an input's free dimension.)pbdoc")
       .def(
-          "dummy",
-          [](PySessionOptions* options)
-              -> int { return options->custom_op_domains_[0].use_count(); },
-          "Rpbdoc(Specify the dimension size for each denotation associated with an input's free dimension.)pbdoc")
-      .def(
           "add_free_dimension_override_by_name",
           [](PySessionOptions* options, const char* dim_name, int64_t dim_value)
               -> void { options->free_dimension_overrides.push_back(
@@ -1055,43 +1101,20 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           "Rpbdoc(Specify values of named dimensions within model inputs.)pbdoc")
       .def(
           "register_custom_ops_library",
-          [&env](PySessionOptions* options, const char* library_path)
+          [&env, &custom_op_libraries](PySessionOptions* options, const char* library_path)
               -> void {
-            /*
-            void* library_handle = nullptr;
-
-            Env::Default().LoadDynamicLibrary(library_path, &library_handle);
-
-            if (!library_handle)
-              throw std::runtime_error("RegisterCustomOpsLibrary: Failed to load library");
-
-            OrtStatus*(_stdcall * RegisterCustomOps)(OrtSessionOptions * options, const OrtApiBase* api);
-
-            Env::Default().GetSymbolFromLibrary(library_handle, "RegisterCustomOps", (void**)&RegisterCustomOps);
-
-            if (!RegisterCustomOps)
-              throw std::runtime_error("RegisterCustomOpsLibrary: Entry point RegisterCustomOps not found in library");
-
             OrtSessionOptions s;
 
-            auto* status = RegisterCustomOps(&s, OrtGetApiBase());
+            // Keep the CustomOpLibrary in a container so that it can be unloaded when it is safe to do so.
+            // (Transfer ownership of the shared library to the global container that will manage all referenced
+            // shared libraries as long this module of onnxruntime is in scope.)
+            custom_op_libraries.AddLibrary(onnxruntime::make_unique<CustomOpLibrary>(library_path, s));
 
-            if (status) {
-              // A non-nullptr indicates some error
-              // Free status and throw
-              ::free(status);
-              Env::Default().UnloadDynamicLibrary(library_handle);
-              throw std::runtime_error("TODO");
-            }
-
-            // No status to free if it is a nullptr
-            */
-            OrtSessionOptions s;
-            options->custom_op_libraries_.emplace_back(std::make_shared<CustomOpLibrary>(library_path, s));
-
+            // reserve enough memory to hold current contents and the new incoming contents
             options->custom_op_domains_.reserve(options->custom_op_domains_.size() + s.custom_op_domains_.size());
             for (size_t i = 0; i < s.custom_op_domains_.size(); ++i) {
-              options->custom_op_domains_.emplace_back(std::shared_ptr<OrtCustomOpDomain>(s.custom_op_domains_[i]));
+              std::unique_ptr<OrtCustomOpDomain> ptr(s.custom_op_domains_[i]);
+              options->custom_op_domains_.push_back(std::move(ptr));
             }
           },
           "TODO");
@@ -1194,28 +1217,14 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         // Given arg is the file path. Invoke the corresponding ctor().
         if (is_arg_file_name) {
           auto sess = onnxruntime::make_unique<InferenceSession>(so, env, arg);
-          if (!so.custom_op_domains_.empty()) {
-            std::vector<OrtCustomOpDomain*> custom_op_domains;
-            custom_op_domains.reserve(so.custom_op_domains_.size());
-            for (size_t i = 0; i < so.custom_op_domains_.size(); ++i) {
-              custom_op_domains.emplace_back(so.custom_op_domains_[i].get());
-            }
-            RegisterCustomOpDomains(sess.get(), custom_op_domains);
-          }
+          RegisterCustomOpDomains(sess.get(), so);
           return sess;
         }
 
         // Given arg is the model content as bytes. Invoke the corresponding ctor().
         std::istringstream buffer(arg);
         auto sess = onnxruntime::make_unique<InferenceSession>(so, env, buffer);
-        if (!so.custom_op_domains_.empty()) {
-          std::vector<OrtCustomOpDomain*> custom_op_domains;
-          custom_op_domains.resize(so.custom_op_domains_.size());
-          for (size_t i = 0; i < so.custom_op_domains_.size(); ++i) {
-            custom_op_domains.emplace_back(so.custom_op_domains_[i].get());
-          }
-          RegisterCustomOpDomains(sess.get(), custom_op_domains);
-        }
+        RegisterCustomOpDomains(sess.get(), so);
         return sess;
       }))
       .def(
@@ -1396,8 +1405,10 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 
   Environment& env = get_env();
 
+  CustomOpLibraries& global_custom_op_libraries = get_custom_op_libraries();
+
   addGlobalMethods(m, env);
-  addObjectMethods(m, env);
+  addObjectMethods(m, env, global_custom_op_libraries);
 
 #ifdef ENABLE_TRAINING
   addObjectMethodsForTraining(m);
@@ -1411,6 +1422,9 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 
 // static variable used to create inference session and training session.
 static std::unique_ptr<Environment> session_env;
+
+// static variable - used to hold handles to all references custom op shared libraries used
+static std::unique_ptr<CustomOpLibraries> custom_op_libraries;
 
 void initialize_env() {
   auto initialize = [&]() {
@@ -1435,6 +1449,25 @@ void initialize_env() {
   initialize();
 }
 
+void initialize_custom_op_libraries() {
+  auto initialize = [&]() {
+    // Initialization of the module
+    ([]() -> void {
+      // import_array1() forces a void return value.
+      import_array1();
+    })();
+
+    custom_op_libraries = onnxruntime::make_unique<CustomOpLibraries>();
+
+    static bool initialized = false;
+    if (initialized) {
+      return;
+    }
+    initialized = true;
+  };
+  initialize();
+}
+
 onnxruntime::Environment& get_env() {
   if (!session_env) {
     initialize_env();
@@ -1442,5 +1475,11 @@ onnxruntime::Environment& get_env() {
   return *session_env;
 }
 
+CustomOpLibraries& get_custom_op_libraries() {
+  if (!custom_op_libraries) {
+    initialize_custom_op_libraries();
+  }
+  return *custom_op_libraries;
+}
 }  // namespace python
 }  // namespace onnxruntime

@@ -385,8 +385,7 @@ common::Status InferenceSession::RegisterCustomRegistry(std::shared_ptr<CustomRe
 
   // Insert session-level customized kernel registry.
   kernel_registry_manager_.RegisterKernelRegistry(custom_registry->GetKernelRegistry());
-  //    if (custom_schema_registries_.empty())
-  //      custom_schema_registries_.push_back();
+
   custom_schema_registries_.push_back(custom_registry->GetOpschemaRegistry());
   return Status::OK();
 }
