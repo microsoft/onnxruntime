@@ -1039,19 +1039,8 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
       .def(
           "add_session_config_entry",
           [](SessionOptions* options, const char* config_key, const char* config_value) -> void {
-            std::string key(config_key);
-            if (key.empty() || key.length() > 128)
-              throw std::runtime_error("config_key is empty or longer than maximum length 128");
-
-            std::string val(config_value);
-            if (val.length() > 1024)
-              throw std::runtime_error("config_value is longer than maximum length 1024");
-
-            auto& configs = options->session_configurations;
-            if (configs.find(key) != configs.end())
-              LOGS_DEFAULT(WARNING) << "Session Config with key [" << key << "] already exists";
-
-            configs[std::move(key)] = std::move(val);
+            if (!AddSessionConfigEntryImpl(*options, config_key, config_value))
+              throw std::runtime_error("Error calling AddSessionConfigEntryImpl");
           },
           "Rpbdoc(Set a single session configuration entry as a pair of strings.)pbdoc")
       .def(

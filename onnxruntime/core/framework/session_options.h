@@ -86,7 +86,6 @@ struct SessionOptions {
   std::unordered_map<std::string, std::string> session_configurations;
 };
 
-inline bool HasSessionOptionConfig(const SessionOptions& options, const std::string& config_key) {
-  return options.session_configurations.find(config_key) != options.session_configurations.cend();
-}
+bool HasSessionConfigEntry(const SessionOptions& options, const std::string& config_key);
+bool AddSessionConfigEntryImpl(SessionOptions& options, _In_z_ const char* config_key, _In_z_ const char* config_value);
 }  // namespace onnxruntime

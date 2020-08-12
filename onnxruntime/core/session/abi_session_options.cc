@@ -182,18 +182,8 @@ ORT_API_STATUS_IMPL(OrtApis::DisablePerSessionThreads, _In_ OrtSessionOptions* o
 
 ORT_API_STATUS_IMPL(OrtApis::AddSessionConfigEntry, _Inout_ OrtSessionOptions* options,
                     _In_z_ const char* config_key, _In_z_ const char* config_value) {
-  std::string key(config_key);
-  if (key.empty() || key.length() > 128)
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "config_key is empty or longer than maximum length 128");
+  if (!AddSessionConfigEntryImpl(options->value, config_key, config_value))
+    return OrtApis::CreateStatus(ORT_FAIL, "Error calling AddSessionConfigEntryImpl");
 
-  std::string val(config_value);
-  if (val.length() > 1024)
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "config_value is longer than maximum length 1024");
-
-  auto& configs = options->value.session_configurations;
-  if (configs.find(key) != configs.end())
-    LOGS_DEFAULT(WARNING) << "Session Config with key [" << key << "] already exists";
-
-  configs[std::move(key)] = std::move(val);
   return nullptr;
 }

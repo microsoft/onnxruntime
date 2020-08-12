@@ -100,7 +100,7 @@ Status FinalizeSessionState(SessionState& session_state,
 
   ORT_RETURN_IF_ERROR(session_state.CreateKernels(kernel_registry_manager));
 
-  bool disable_prepacking = HasSessionOptionConfig(session_options, kDisablePrePacking) &&
+  bool disable_prepacking = HasSessionConfigEntry(session_options, kDisablePrePacking) &&
                             session_options.session_configurations.at(kDisablePrePacking) == "1";
 
   if (!disable_prepacking) {

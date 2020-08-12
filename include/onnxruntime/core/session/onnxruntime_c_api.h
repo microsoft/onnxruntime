@@ -229,8 +229,6 @@ typedef enum OrtMemType {
   OrtMemTypeDefault = 0,                // the default allocator for execution provider
 } OrtMemType;
 
-// Session Configuration Options
-
 struct OrtApi;
 typedef struct OrtApi OrtApi;
 
@@ -975,7 +973,7 @@ struct OrtApi {
    * e.g.
    * Given a tensor with overall shape [3,224,224], an element at
    * location [2,150,128] can be accessed directly.
-   * 
+   *
    * This function only works for numeric tensors.
    * This is a no-copy method whose pointer is only valid until the backing OrtValue is free'd.
    */
