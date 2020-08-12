@@ -286,7 +286,7 @@ Status PrepareForReduce(const Tensor* X,
   prepare_reduce_metadata.output_dims.reserve(input_dims.size());
   if (axes.size() > 0) {
     int64_t reduced_axis;
-    std::vector<uint64_t> axes_(axes.size());
+    std::vector<uint64_t> reduced_axes(axes.size());
     prepare_reduce_metadata.output_dims = input_dims;
     for (size_t i = 0; i < axes.size(); i++) {
       reduced_axis = axes[i];
@@ -297,20 +297,20 @@ Status PrepareForReduce(const Tensor* X,
                   input_shape);
       prepare_reduce_metadata.output_dims[axis] = 1;
       reduced[axis] = true;
-      axes_[i] = axis;
+      reduced_axes[i] = axis;
     }
 
     bool contiguous_axes = true;
-    std::sort(axes_.begin(), axes_.end());
-    for (size_t i = 0; i < axes_.size(); i++) {
-      if (axes_[i] != i) {
+    std::sort(reduced_axes.begin(), reduced_axes.end());
+    for (size_t i = 0; i < reduced_axes.size(); i++) {
+      if (reduced_axes[i] != i) {
         contiguous_axes = false;
         break;
       }
     }
     int64_t stride = 1;
     if (contiguous_axes) {
-      for (size_t s = rank - 1; s >= axes_.size(); s--) {
+      for (size_t s = rank - 1; s >= reduced_axes.size(); s--) {
         stride *= input_dims[s];
       }
       prepare_reduce_metadata.stride = stride;
