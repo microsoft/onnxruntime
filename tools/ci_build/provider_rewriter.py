@@ -6,6 +6,7 @@ import os
 import shutil
 import onnx
 from onnx import AttributeProto as AP
+from logger import log
 
 #pylint: disable=no-member,too-many-locals,too-many-statements
 
@@ -14,6 +15,7 @@ def extract_ops_from_file(file_path, referred_ops):
         op_type,domain,opset'''
 
     if not os.path.isfile(file_path):
+        log.warning('File {} does not exist'.format(file_path))
         return referred_ops
 
     with open(file_path, 'r') as csv_to_read:
@@ -38,6 +40,7 @@ def extract_ops_from_model(model_path, referred_ops):
     '''extract ops from models under model_path and return a diction'''
 
     if not os.path.isdir(model_path):
+        log.warning('Directory {} does not exist'.format(model_path))
         return referred_ops
 
     def map_domain(domain):
@@ -66,6 +69,8 @@ def extract_ops_from_model(model_path, referred_ops):
 
                 if attr.type == AP.GRAPH: #process subgraph
                     extract_ops_from_graph(attr.g, opsets, operators)
+
+    #end of extract_ops_from_graph(...)
 
 
     for root, _, files in os.walk(model_path):

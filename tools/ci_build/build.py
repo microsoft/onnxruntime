@@ -4,7 +4,6 @@
 
 import argparse
 import glob
-import logging
 import multiprocessing
 import os
 import re
@@ -13,11 +12,7 @@ import subprocess
 import sys
 import hashlib
 from provider_rewriter import rewrite_provider
-
-logging.basicConfig(
-    format="%(asctime)s %(name)s [%(levelname)s] - %(message)s",
-    level=logging.DEBUG)
-log = logging.getLogger("Build")
+from logger import log
 
 
 class BaseError(Exception):
