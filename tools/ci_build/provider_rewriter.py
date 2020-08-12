@@ -43,6 +43,8 @@ def extract_ops_from_model(model_path, referred_ops):
     def map_domain(domain):
         if domain == 'ai.onnx.ml':
             return 'kMLDomain'
+        if domain == 'com.microsoft':
+            return 'kMSDomain'
         return 'kOnnxDomain'
 
     def extract_ops_from_graph(graph, opsets, operators):
@@ -65,9 +67,6 @@ def extract_ops_from_model(model_path, referred_ops):
                 if attr.type == AP.GRAPH: #process subgraph
                     extract_ops_from_graph(attr.g, opsets, operators)
 
-                elif attr.type == AP.GRAPHS: #process all subgraphs
-                    for subgraph in attr.graphs:
-                        extract_ops_from_graph(subgraph, opsets, operators)
 
     for root, _, files in os.walk(model_path):
         for file in files:
@@ -115,7 +114,7 @@ def rewrite_provider(model_path, file_path, ep_path):
         return True #end of fill_version_map(...)
 
 
-    def need_comment(op_type, opset_from, opset_to, domain):
+    def disable_op(op_type, opset_from, opset_to, domain):
         '''callback func to check if the op is in ops'''
 
         if op_type in operators and domain in operators[op_type]:
@@ -131,7 +130,7 @@ def rewrite_provider(model_path, file_path, ep_path):
                 if opset in operators[op_type][domain]:
                     return False #do not comment
 
-        return True #end of need_comment(...)
+        return True #end of disable_op(...)
 
 
     def process_lines(lines, offset, end_mark, call_back):
@@ -149,28 +148,40 @@ def rewrite_provider(model_path, file_path, ep_path):
             offset += 1
         code_line = ''.join([line.strip() for line in lines_to_process])
 
-        disabled = False
+        call_back_ret = False
         if onnx_op in code_line:
+            #e.g. class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 1, Transpose);
+            #e.g. BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 7, Cos)>,
             trim_at = code_line.index(onnx_op) + onnx_op_len
-            args = [arg.strip() for arg in code_line[trim_at: -len(end_mark)].split(',')]
-            disabled = call_back(args[-1], int(args[-2]), int(args[-2]), args[-3])
+            *_, domain, opset, op_type =\
+                [arg.strip() for arg in code_line[trim_at: -len(end_mark)].split(',')]
+            call_back_ret = call_back(op_type, int(opset), int(opset), domain)
 
         elif onnx_typed_op in code_line:
+            #e.g. class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 8, float, Expand);
+            #e.g. BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 7, double, Sin)>,
             trim_at = code_line.index(onnx_typed_op) + onnx_typed_op_len
-            args = [arg.strip() for arg in code_line[trim_at: -len(end_mark)].split(',')]
-            disabled = call_back(args[-1], int(args[-3]), int(args[-3]), args[-4])
+            *_, domain, opset, _, op_type =\
+                [arg.strip() for arg in code_line[trim_at: -len(end_mark)].split(',')]
+            call_back_ret = call_back(op_type, int(opset), int(opset), domain)
 
         elif onnx_versioned_op in code_line:
+            #e.g. class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 1, 10, Unsqueeze);
+            #e.g. BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 1, 10, Hardmax)>,
             trim_at = code_line.index(onnx_versioned_op) + onnx_versioned_op_len
-            args = [arg.strip() for arg in code_line[trim_at: -len(end_mark)].split(',')]
-            disabled = call_back(args[-1], int(args[-3]), int(args[-2]), args[-4])
+            *_, domain, opset_from, opset_to, op_type =\
+                [arg.strip() for arg in code_line[trim_at: -len(end_mark)].split(',')]
+            call_back_ret = call_back(op_type, int(opset_from), int(opset_to), domain)
 
         elif onnx_versioned_typed_op in code_line:
+            #e.g. class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 7, 9, float, Upsample);
+            #e.g. BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 1, 10, float, LogSoftmax)>,
             trim_at = code_line.index(onnx_versioned_typed_op) + onnx_versioned_typed_op_len
-            args = [arg.strip() for arg in code_line[trim_at: -len(end_mark)].split(',')]
-            disabled = call_back(args[-1], int(args[-4]), int(args[-3]), args[-5])
+            *_, domain, opset_from, opset_to, _, op_type =\
+                [arg.strip() for arg in code_line[trim_at: -len(end_mark)].split(',')]
+            call_back_ret = call_back(op_type, int(opset_from), int(opset_to), domain)
 
-        return offset + 1, disabled #end of process_lines(...)
+        return offset + 1, call_back_ret #end of process_lines(...)
 
 
     lines = []
@@ -208,7 +219,7 @@ def rewrite_provider(model_path, file_path, ep_path):
                 next_line_offset, disabled = process_lines(lines,
                                                            line_offset,
                                                            ')>,',
-                                                           need_comment)
+                                                           disable_op)
 
                 for index in range(line_offset, next_line_offset):
                     if disabled: #comment out unused
