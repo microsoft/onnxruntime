@@ -134,6 +134,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     };
     opt.use_fp16_moments = parameters.use_fp16_moments;
     opt.do_all_reduce_in_fp16 = true;
+
     // TODO: this mapping is temporary.
     // For now, nccl allreduce kernel only implements for allreduce_post_accumulation
     // hovorod allreduce kernel only implements for not allreduce_post_accumulation.
@@ -151,7 +152,6 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   config.gradient_graph_config.use_invertible_layernorm_grad = parameters.use_invertible_layernorm_grad;
 
   training::TrainingSession::TrainingConfigurationResult config_result{};
-
   OrtPybindThrowIfError(sess->ConfigureForTraining(config, config_result));
 
   TrainingConfigurationResult python_config_result{};

@@ -14,6 +14,9 @@ from distutils.version import LooseVersion
 import warnings
 import shutil
 import tempfile
+from filelock import Timeout, FileLock
+from os import path
+import gc
 
 from .checkpointing_utils import list_checkpoint_files, get_checkpoint_name, CombineZeroCheckpoint
 import onnxruntime.capi.pt_patch
@@ -325,8 +328,8 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
         output_desc.dtype_ = sample_output.dtype
     model.train()
 
-    tmp_dir = tempfile.mkdtemp()
-    f = os.path.join(tmp_dir, "t5.onnx")
+    named_parameters = model.model_.named_parameters() if hasattr(model, 'model_') else model.named_parameters()
+
     #f = "exported_large_model/t5.onnx" #io.BytesIO()
 
     # Other export options to use(this is for backward compatibility).
@@ -340,19 +343,39 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
     if LooseVersion(torch.__version__) >= LooseVersion('1.6.0'):
         other_export_options['training'] = torch.onnx.TrainingMode.TRAINING
 
-    torch.onnx._export(model, tuple(sample_inputs), f,
-                       input_names=input_names,
-                       output_names=output_names,
-                       opset_version=opset_version,
-                       dynamic_axes=dynamic_axes,
-                       _retain_param_name=True,
-                       example_outputs=tuple(sample_outputs),
-                       do_constant_folding=False,
-                       use_external_data_format=True,
-                       **other_export_options)
+    #exported_model_dir = os.path.join(os.path.expanduser('~'), "t5_models")
+    exported_model_dir = os.path.join(str(os.environ['T5_MODEL_PATH']), "t5/models/" + str(os.environ['T5_MODEL_NAME']))
+    lock_file = os.path.join(str(os.environ['T5_MODEL_PATH']), "t5.exported_model.lock")
+    exported_model_file_name = os.path.join(exported_model_dir, str(os.environ['T5_MODEL_NAME']) + ".onnx")
+
+    lock = FileLock(lock_file)
+    lock.acquire()
+
+    if path.exists(exported_model_file_name):
+        print("reuse existing exported model at ", exported_model_file_name)
+    else:
+        print("start exporting model to ", exported_model_file_name)
+        os.makedirs(exported_model_dir, exist_ok=True)
+        torch.onnx._export(model, tuple(sample_inputs), exported_model_file_name,
+                        input_names=input_names,
+                        output_names=output_names,
+                        opset_version=opset_version,
+                        dynamic_axes=dynamic_axes,
+                        _retain_param_name=True,
+                        example_outputs=tuple(sample_outputs),
+                        do_constant_folding=False,
+                        use_external_data_format=True,
+                        **other_export_options)
+
+    lock.release()
+
+    print("Delete torch model after exporting ONNX model")
+    del model
+    gc.collect()
+    print("GC completely")
 
     #onnx_model = onnx.load_model_from_string(f.getvalue())
-    onnx_model = onnx.load(f)
+    onnx_model = onnx.load(exported_model_file_name)
 
     # Remove 'model_.' prefix introduced by model wrapper for initializers.
     replace_name_dict = {}
@@ -367,7 +390,7 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
 
     # onnx model initializer may contain non-trainable registered buffers that are not part
     # of pytorch model named parameteres.
-    named_parameters = model.model_.named_parameters() if hasattr(model, 'model_') else model.named_parameters()
+
     assert set([n for n, t in named_parameters]).issubset(
         set([n.name for n in onnx_model.graph.initializer])), \
         "Initializer names do not match between PyTorch model and ONNX model, " \
@@ -473,13 +496,26 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     sessionOptions = ort.SessionOptions()
     sessionOptions.use_deterministic_compute = use_deterministic_compute
     #sessionOptions.log_severity_level = 0
+    
+    #exported_model_dir = os.path.join(os.path.expanduser('~'), "t5_models_to_train")
+    exported_model_dir = os.path.join(str(os.environ['T5_MODEL_PATH']), "t5/models_to_train/" + str(os.environ['T5_MODEL_NAME']))
+    lock_file = os.path.join(str(os.environ['T5_MODEL_PATH']), "t5.model_to_train.lock")
+    exported_model_file_name = os.path.join(exported_model_dir, str(os.environ['T5_MODEL_NAME']) + ".onnx")
+    lock = FileLock(lock_file)
+    lock.acquire()
+    if path.exists(exported_model_file_name):
+        print("reuse existing saved model at ", exported_model_file_name)
+    else:
+        print("start saving model to ", exported_model_file_name)
+        os.makedirs(exported_model_dir, exist_ok=True)
+        onnx.save_model(model, exported_model_file_name)
+        print("finish saving model to ", exported_model_file_name)
+    lock.release()
 
-    tmp_dir = tempfile.mkdtemp()
-    f = os.path.join(tmp_dir, "model_to_train.onnx")
-    print(f"model_to_train file for ort is saved in {f}")
-    onnx.save_model(model, f)
-    session = ort.TrainingSession(f, ort_parameters, sessionOptions)
-    shutil.rmtree(tmp_dir)
+    del model.graph.initializer[:]
+
+    session = ort.TrainingSession(exported_model_file_name, ort_parameters, sessionOptions)
+    #shutil.rmtree(tmp_dir)
     train_io_binding = session.io_binding()
     eval_io_binding = session.io_binding()
 

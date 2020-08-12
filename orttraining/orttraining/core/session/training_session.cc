@@ -146,7 +146,7 @@ Status TrainingSession::ConfigureForTraining(
                                          config.distributed_config.data_parallel_size,
                                          config.distributed_config.horizontal_parallel_size,
                                          config.distributed_config.pipeline_parallel_size});
-
+  _world_rank = config.distributed_config.world_rank;
   if (config.pipeline_config.has_value() && config.pipeline_config.value().do_partition) {
     // Apply online pipeline partition to graph obj. This needs to be done first before any graph
     // transportation which may alter node_arg and invalidate cut_list info from the original graph.
@@ -214,7 +214,7 @@ Status TrainingSession::ConfigureForTraining(
     }
   }
 
-  ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers, config.enable_gelu_approximation));
+  ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers, config.enable_gelu_approximation, IsRootNode(config)));
 
   // derive actual set of weights to train
   std::unordered_set<std::string> weight_names_to_train =
@@ -356,9 +356,10 @@ Status TrainingSession::ConfigureForTraining(
   // Note: in the pipeline case, different ranks may resident in the same node. This could lead to a potential write
   // conflict. It is user's responsibility to make sure different rank is passed in with different
   // model_with_training_graph_path value.
-  if ((IsRootNode(config) || config.pipeline_config.has_value()) && config.model_with_training_graph_path.has_value()) {
-    ORT_IGNORE_RETURN_VALUE(Save(
-        config.model_with_training_graph_path.value(), SaveOption::NO_RELOAD));
+  if ((IsRootNode(config) || config.pipeline_config.has_value()) /*&& config.model_with_training_graph_path.has_value()*/) {
+    //ORT_IGNORE_RETURN_VALUE(Save(
+    //   "full/bw_graph.onnx", SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS));
+    //config.model_with_training_graph_path.value(), SaveOption::NO_RELOAD));
   }
 
   // After pipeline partition, we need to return the inputs allowed in this partition.
@@ -484,14 +485,19 @@ static Status AddGradientAccumulationNodes(Graph& graph,
   return GraphAugmenter::AugmentGraph(graph, graph_defs);
 }
 
-Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train, bool enable_gelu_approximation) {
-  GraphTransformerManager graph_transformation_mgr{1};
+Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train, bool enable_gelu_approximation,
+                                                        bool is_master_node) {
+  GraphTransformerManager graph_transformation_mgr{5};
   AddPreTrainingTransformers(graph_transformation_mgr, weights_to_train, enable_gelu_approximation);
 
   // apply transformers
   Graph& graph = model_->MainGraph();
   for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
-    //Model::Save(*model_, "./before_apply_opt_" + std::to_string(i) + ".onnx");
+    if (is_master_node) {
+      //Model::Save(*model_, "./before_apply_opt_" + std::to_string(i) + ".onnx");
+      std::cout << "saved "
+                << "./before_apply_opt_" << std::to_string(i) << ".onnx" << std::endl;
+    }
     ORT_RETURN_IF_ERROR(graph_transformation_mgr.ApplyTransformers(graph, static_cast<TransformerLevel>(i), *session_logger_));
   }
   return common::Status::OK();

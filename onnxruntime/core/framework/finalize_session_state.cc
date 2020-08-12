@@ -191,68 +191,75 @@ common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PA
 
   // plan the activation
   {
-    OrtValuePatternPlanner activation_mem_planner(exec_plan);
-    MemoryPatternGroup activation_memory_pattern_output;
-    for (const SequentialExecutionPlan::NodeExecutionPlan& node_plan : exec_plan.execution_plan) {
-      auto node = graph.GetNode(node_plan.node_index);
-      for (int i = 0, end = static_cast<int>(node->OutputDefs().size()); i < end; ++i) {
-        int ml_value_idx;
-        if (!node->OutputDefs()[i]->Exists()) {
-          continue;
-        }
-
-        ort_value_name_idx_map.GetIdx(node->OutputDefs()[i]->Name(), ml_value_idx);
-        if (ml_value_idx == NodeIndexInfo::kInvalidEntry)
-          continue;
-        const auto* ml_type = exec_plan.allocation_plan[ml_value_idx].value_type;
-        if (!ml_type->IsTensorType())
-          continue;
-        const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
-        if (exec_plan.allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate &&
-            ml_data_type != DataTypeImpl::GetType<std::string>()) {
-          //calculate size
-          auto* arg = node->OutputDefs()[i];
-          if (!arg->Shape())
+    bool enable = true;
+    if (enable) {
+      enable = false;
+      OrtValuePatternPlanner activation_mem_planner(exec_plan);
+      MemoryPatternGroup activation_memory_pattern_output;
+      for (const SequentialExecutionPlan::NodeExecutionPlan& node_plan : exec_plan.execution_plan) {
+        auto node = graph.GetNode(node_plan.node_index);
+        for (int i = 0, end = static_cast<int>(node->OutputDefs().size()); i < end; ++i) {
+          int ml_value_idx;
+          if (!node->OutputDefs()[i]->Exists()) {
             continue;
-          size_t size = 0;
-          SafeInt<size_t> len = 1;
-          for (auto& dim : arg->Shape()->dim()) {
-            if (dim.has_dim_param()) {
-              return Status(ONNXRUNTIME, FAIL, "Unknown shape found in memory pattern compute");
-            } else if (dim.has_dim_value()) {
-              len *= dim.dim_value();
-            } else {
-              // tensor shape is unknown
-              len = 0;
+          }
+
+          ort_value_name_idx_map.GetIdx(node->OutputDefs()[i]->Name(), ml_value_idx);
+          if (ml_value_idx == NodeIndexInfo::kInvalidEntry)
+            continue;
+          const auto* ml_type = exec_plan.allocation_plan[ml_value_idx].value_type;
+          if (!ml_type->IsTensorType())
+            continue;
+          const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
+          if (exec_plan.allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate &&
+              ml_data_type != DataTypeImpl::GetType<std::string>()) {
+            //calculate size
+            auto* arg = node->OutputDefs()[i];
+            if (!arg->Shape())
+              continue;
+            size_t size = 0;
+            SafeInt<size_t> len = 1;
+            for (auto& dim : arg->Shape()->dim()) {
+              if (dim.has_dim_param()) {
+                return Status(ONNXRUNTIME, FAIL, "Unknown shape found in memory pattern compute");
+              } else if (dim.has_dim_value()) {
+                len *= dim.dim_value();
+              } else {
+                // tensor shape is unknown
+                len = 0;
+              }
+            }
+            // Skip planning for this tensor if shape is unknown
+            if (len == 0) {
+              continue;
+            }
+
+            if (!IAllocator::CalcMemSizeForArrayWithAlignment<64>(len, ml_data_type->Size(), &size)) {
+              return Status(ONNXRUNTIME, FAIL, "Size overflow");
+            }
+            activation_mem_planner.TraceAllocation(ml_value_idx, size);
+            if (node->GetExecutionProviderType().empty() || node->GetExecutionProviderType() == kCpuExecutionProvider) {
+              std::cout << "Activation CPU tensor " << node->OpType() << ": " << size << std::endl;
             }
           }
-          // Skip planning for this tensor if shape is unknown
-          if (len == 0) {
+        }
+        //release nodes
+        for (int index = node_plan.free_from_index; index <= node_plan.free_to_index; ++index) {
+          auto ml_value_idx = exec_plan.to_be_freed[index];
+          const auto* ml_type = exec_plan.allocation_plan[ml_value_idx].value_type;
+          if (!ml_type->IsTensorType())
             continue;
+          const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
+          if (ml_data_type != DataTypeImpl::GetType<std::string>()) {
+            activation_mem_planner.TraceFree(ml_value_idx);
           }
-
-          if (!IAllocator::CalcMemSizeForArrayWithAlignment<64>(len, ml_data_type->Size(), &size)) {
-            return Status(ONNXRUNTIME, FAIL, "Size overflow");
-          }
-          activation_mem_planner.TraceAllocation(ml_value_idx, size);
         }
       }
-      //release nodes
-      for (int index = node_plan.free_from_index; index <= node_plan.free_to_index; ++index) {
-        auto ml_value_idx = exec_plan.to_be_freed[index];
-        const auto* ml_type = exec_plan.allocation_plan[ml_value_idx].value_type;
-        if (!ml_type->IsTensorType())
-          continue;
-        const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
-        if (ml_data_type != DataTypeImpl::GetType<std::string>()) {
-          activation_mem_planner.TraceFree(ml_value_idx);
-        }
+      activation_mem_planner.GeneratePatterns(&activation_memory_pattern_output);
+      for (size_t i = 0; i < activation_memory_pattern_output.locations.size(); i++) {
+        std::cout << activation_memory_pattern_output.locations[i].ToString() << "Activation Peak: Allocated memory for activations, size: "
+                  << activation_memory_pattern_output.patterns[i].PeakSize() << std::endl;
       }
-    }
-    activation_mem_planner.GeneratePatterns(&activation_memory_pattern_output);
-    for (size_t i = 0; i < activation_memory_pattern_output.locations.size(); i++) {
-      std::cout << activation_memory_pattern_output.locations[i].ToString() << "Activation Peak: Allocated memory for activations, size: "
-                << activation_memory_pattern_output.patterns[i].PeakSize() << std::endl;
     }
   }
 

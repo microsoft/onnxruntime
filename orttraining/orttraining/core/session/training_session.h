@@ -391,7 +391,7 @@ class TrainingSession : public InferenceSession {
                                    std::string& backward_recorded_event_before_send_name);
 
   common::Status ApplyTransformationsToMainGraph(
-      const std::unordered_set<std::string>& weights_to_train, bool enable_gelu_approximation);
+      const std::unordered_set<std::string>& weights_to_train, bool enable_gelu_approximation, bool is_master_node);
 
   /** configure initial transformers for training */
   void AddPreTrainingTransformers(GraphTransformerManager& transformer_manager,
@@ -479,6 +479,7 @@ class TrainingSession : public InferenceSession {
 
   GradientGraphConfiguration gradient_graph_config_;
   static const std::string training_mode_string_;
+  int _world_rank = -1;
 };
 }  // namespace training
 }  // namespace onnxruntime
