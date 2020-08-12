@@ -16,9 +16,11 @@ from onnxruntime.capi.training import _utils, amp, optim, orttrainer, TrainStepI
                                       orttrainer_options as orttrainer_options
 import _test_helpers
 
+
 ###############################################################################
 # Helper functions ############################################################
 ###############################################################################
+
 
 def _load_pytorch_transformer_model(device, legacy_api=False):
     # Loads external Pytorch TransformerModel into utils
@@ -40,7 +42,6 @@ def _load_pytorch_transformer_model(device, legacy_api=False):
 
     # Preparing data
     train_data, val_data, test_data = utils.prepare_data(device, 20, 20)
-
     return model, model_desc, my_loss, utils.get_batch, train_data, val_data, test_data
 
 
@@ -662,7 +663,7 @@ def testORTTrainerMixedPrecisionLossScaler(seed, device, expected_loss):
                                             'mixed_precision' : {
                                                 'enabled' : True,
                                                 'loss_scaler' : loss_scaler},
-                                            'debug' : {'deterministic_compute' : True,}})
+                                            'debug' : {'deterministic_compute' : True}})
     model, model_desc, my_loss, batcher_fn, train_data, val_data, _ = _load_pytorch_transformer_model(device)
     optim_config = optim.LambConfig(lr=0.001)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
@@ -671,15 +672,13 @@ def testORTTrainerMixedPrecisionLossScaler(seed, device, expected_loss):
     actual_loss = []
     for i in range(total_steps):
         data, targets = batcher_fn(train_data, i)
-        if len(data) < bptt:
-            # TODO: remove after testing dynamic batches
-            continue
         loss, preds = trainer.train_step(data, targets)
         actual_loss.append(loss.cpu())
 
     # Compare loss to ground truth computed from current ORTTrainer API
     _test_helpers.assert_model_outputs(expected_loss, actual_loss, True, rtol=1e-4)
     assert trainer._onnx_model is not None
+
 
 ###############################################################################
 # Temporary tests comparing Legacy vs Experimental ORTTrainer APIs ############
@@ -711,9 +710,6 @@ def testORTTrainerLegacyAndExperimentalWeightsCheck(seed, device):
     # Training loop
     for i in range(total_steps):
         data, targets = batcher_fn(train_data, i)
-        if len(data) < bptt:
-            # TODO: remove after testing dynamic batches
-            continue
         _ = trainer.train_step(data, targets)
 
     # Setup for the legacy ORTTrainer run
@@ -725,9 +721,6 @@ def testORTTrainerLegacyAndExperimentalWeightsCheck(seed, device):
     # Training loop
     for i in range(total_steps):
         data, targets = batcher_fn(train_data, i)
-        if len(data) < bptt:
-            # TODO: remove after testing dynamic batches
-            continue
         _, _ = legacy_trainer.train_step(data, targets, torch.tensor([optim_config.lr]))
 
     # Compare legacy vs experimental APIs
@@ -759,10 +752,6 @@ def testORTTrainerLegacyAndExperimentalPrecisionLossScaler(seed, device):
     experimental_preds_dtype = []
     for i in range(total_steps):
         data, targets = batcher_fn(train_data, i)
-        if len(data) < bptt:
-            # TODO: remove after testing dynamic batches
-            continue
-
         exp_loss, exp_preds = trainer.train_step(data, targets)
         experimental_loss.append(exp_loss.cpu())
         experimental_preds_dtype.append(exp_preds.dtype)
@@ -782,9 +771,6 @@ def testORTTrainerLegacyAndExperimentalPrecisionLossScaler(seed, device):
     legacy_preds_dtype = []
     for i in range(total_steps):
         data, targets = batcher_fn(train_data, i)
-        if len(data) < bptt:
-            # TODO: remove after testing dynamic batches
-            continue
         leg_loss, leg_preds = legacy_trainer.train_step(data, targets, torch.tensor([optim_config.lr]))
         legacy_loss.append(leg_loss.cpu())
         legacy_preds_dtype.append(leg_preds.dtype)
