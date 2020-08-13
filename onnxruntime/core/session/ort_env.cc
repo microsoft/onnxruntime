@@ -8,8 +8,12 @@
 #include "ort_env.h"
 #include "core/session/ort_apis.h"
 #include "core/session/environment.h"
-#include "core/common/logging/sinks/clog_sink.h"
 #include "core/common/logging/logging.h"
+#ifdef __ANDROID__
+#include "core/platform/android/logging/android_log_sink.h"
+#else
+#include "core/common/logging/sinks/clog_sink.h"
+#endif
 
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
@@ -49,7 +53,13 @@ OrtEnv* OrtEnv::GetInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_inf
                                     LoggingManager::InstanceType::Default,
                                     &name));
     } else {
-      lmgr.reset(new LoggingManager(std::unique_ptr<ISink>{new CLogSink{}},
+#ifdef __ANDROID__
+      ISink* sink = new AndroidLogSink();
+#else
+      ISink* sink = new CLogSink();
+#endif
+
+      lmgr.reset(new LoggingManager(std::unique_ptr<ISink>{sink},
                                     static_cast<Severity>(lm_info.default_warning_level),
                                     false,
                                     LoggingManager::InstanceType::Default,
