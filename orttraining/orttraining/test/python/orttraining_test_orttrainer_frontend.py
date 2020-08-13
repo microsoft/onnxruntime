@@ -214,9 +214,7 @@ def testDynamicLossScaler():
     default_scaler = amp.loss_scaler.DynamicLossScaler()
 
     # Initial state
-    train_step_info = orttrainer.TrainStepInfo(all_finite=True, step=0,
-                                               optimization_step=0,
-                                               optimizer_config=None)
+    train_step_info = orttrainer.TrainStepInfo(optim.LambConfig())
     assert_allclose(default_scaler.loss_scale, float(1 << 16),
                     rtol=rtol, err_msg="loss scale mismatch")
     assert default_scaler.up_scale_window == 2000
@@ -300,31 +298,48 @@ def testDynamicLossScalerCustomValues():
 def testTrainStepInfo():
     '''Test valid initializations of TrainStepInfo'''
 
-    step_info = orttrainer.TrainStepInfo(all_finite=True, step=2, optimizer_config=optim.LambConfig())
-    assert step_info.all_finite is True
-    assert step_info.step == 2
-    assert isinstance(step_info.optimizer_config, optim._OptimizerConfig)
+    optimizer_config = optim.LambConfig()
+    fetches=['out1','out2']
+    step_info = orttrainer.TrainStepInfo(optimizer_config=optimizer_config,
+                                         all_finite=False,
+                                         fetches=fetches,
+                                         optimization_step=123,
+                                         step=456)
+    assert step_info.optimizer_config == optimizer_config
+    assert step_info.all_finite == False
+    assert step_info.fetches == fetches
+    assert step_info.optimization_step == 123
+    assert step_info.step == 456
 
-    step_info = orttrainer.TrainStepInfo()
-    assert step_info.all_finite is None
-    assert step_info.step is None
-    assert step_info.optimizer_config is None
+    step_info = orttrainer.TrainStepInfo(optimizer_config)
+    assert step_info.optimizer_config == optimizer_config
+    assert step_info.all_finite == True
+    assert step_info.fetches == []
+    assert step_info.optimization_step == 0
+    assert step_info.step == 0
 
 
-@pytest.mark.parametrize("test_input", [
+@pytest.mark.parametrize("invalid_input", [
     (-1),
     ('Hello'),
 ])
-def testTrainStepInfoInvalidAllFinite(test_input):
+def testTrainStepInfoInvalidInput(invalid_input):
     '''Test invalid initialization of TrainStepInfo'''
+    optimizer_config = optim.LambConfig()
     with pytest.raises(AssertionError):
-        orttrainer.TrainStepInfo(all_finite=test_input)
+        orttrainer.TrainStepInfo(optimizer_config=invalid_input)
 
     with pytest.raises(AssertionError):
-        orttrainer.TrainStepInfo(step=test_input)
+        orttrainer.TrainStepInfo(optimizer_config, all_finite=invalid_input)
 
     with pytest.raises(AssertionError):
-        orttrainer.TrainStepInfo(optimizer_config=test_input)
+        orttrainer.TrainStepInfo(optimizer_config, fetches=invalid_input)
+
+    with pytest.raises(AssertionError):
+        orttrainer.TrainStepInfo(optimizer_config, optimization_step=invalid_input)
+
+    with pytest.raises(AssertionError):
+        orttrainer.TrainStepInfo(optimizer_config, step=invalid_input)
 
 
 @pytest.mark.parametrize("optim_name,lr,alpha,default_alpha", [
@@ -503,7 +518,7 @@ def testLRSchedulerUpdateImpl(lr_scheduler, expected_values):
     # First half is warmup
     for optimization_step in range(total_steps):
         # Emulate ORTTRainer.train_step() call that updates its train_step_info
-        train_step_info = TrainStepInfo(step=0, optimization_step=optimization_step, optimizer_config=optimizer_config)
+        train_step_info = TrainStepInfo(optimizer_config=optimizer_config, optimization_step=optimization_step)
 
         lr_scheduler.step(train_step_info)
         lr_list = lr_scheduler.get_last_lr()
@@ -651,10 +666,11 @@ def testORTDeterministicCompute(seed, device):
     _test_helpers.assert_onnx_weights(first_trainer, second_trainer)
 
 
-@pytest.mark.parametrize("seed,device,expected_loss", [
-    (321, 'cuda', [10.5774, 10.4403, 10.4175, 10.2886, 10.2760]),
+@pytest.mark.parametrize("seed,device,expected_loss,fetches", [
+    (321, 'cuda', [10.5774, 10.4403, 10.4175, 10.2886, 10.2760], False),
+    (321, 'cuda', [10.5774, 10.4403, 10.4175, 10.2886, 10.2760], True),
 ])
-def testORTTrainerMixedPrecisionLossScaler(seed, device, expected_loss):
+def testORTTrainerMixedPrecisionLossScaler(seed, device, expected_loss, fetches):
     total_steps = len(expected_loss)
     torch.manual_seed(seed)
     set_seed(seed)
@@ -675,8 +691,20 @@ def testORTTrainerMixedPrecisionLossScaler(seed, device, expected_loss):
     actual_loss = []
     for i in range(total_steps):
         data, targets = batcher_fn(train_data, i)
-        loss, preds = trainer.train_step(data, targets)
+        if fetches:
+            trainer._train_step_info.fetches=['loss']
+            loss = trainer.train_step(data, targets)
+        else:
+            loss, _ = trainer.train_step(data, targets)
         actual_loss.append(loss.cpu())
+
+    # Eval once just to test fetches in action
+    val_data, val_targets = batcher_fn(val_data, 0)
+    if fetches:
+        trainer._train_step_info.fetches=['loss']
+        loss = trainer.eval_step(val_data, val_targets)
+        trainer._train_step_info.fetches=[]
+    loss, preds = trainer.eval_step(val_data, val_targets)
 
     # Compare loss to ground truth computed from current ORTTrainer API
     _test_helpers.assert_model_outputs(expected_loss, actual_loss, True, rtol=1e-4)
