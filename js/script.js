@@ -517,7 +517,7 @@ function commandMessage(key) {
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
 
         "linux,Python(3.5-3.7),ARM64,TensorRT":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
+            "For Jetpack, follow installation instructions from <a href='https://elinux.org/Jetson_Zoo#ONNX_Runtime' target='_blank'>here</a>",
 
         "mac,C,X64,nGraph":
             "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
