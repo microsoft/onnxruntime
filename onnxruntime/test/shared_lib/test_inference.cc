@@ -4,7 +4,9 @@
 #include <core/common/make_unique.h>
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/abi_session_options_impl.h"
 #include "core/graph/constants.h"
+#include "core/platform/env.h"
 #include "providers.h"
 #include <memory>
 #include <vector>
@@ -68,7 +70,8 @@ void TestInference(Ort::Env& env, T model_uri,
                    int provider_type,
                    OrtCustomOpDomain* custom_op_domain_ptr,
                    const char* custom_op_library_filename,
-                   bool test_session_creation_only = false) {
+                   bool test_session_creation_only = false,
+                   void** library_handle = nullptr) {
   Ort::SessionOptions session_options;
 
   if (provider_type == 1) {
@@ -100,8 +103,7 @@ void TestInference(Ort::Env& env, T model_uri,
   }
 
   if (custom_op_library_filename) {
-    void* library_handle = nullptr;  // leak this, no harm.
-    Ort::ThrowOnError(Ort::GetApi().RegisterCustomOpsLibrary((OrtSessionOptions*)session_options, custom_op_library_filename, &library_handle));
+    Ort::ThrowOnError(Ort::GetApi().RegisterCustomOpsLibrary(session_options, custom_op_library_filename, &*library_handle));
   }
 
   // if session creation passes, model loads fine
@@ -132,6 +134,15 @@ void TestInference(Ort::Env& env, T model_uri,
                        expected_dims_y,
                        expected_values_y,
                        &value_y);
+  }
+
+  // Release OrtCustomOpDomain created in custom_op_library.cc.
+  // It is safe to do so here.
+  if (custom_op_library_filename) {
+    auto custom_op_domains = session_options.GetCustomOpDomains();
+    for (int i = 0; i < custom_op_domains.size(); ++i) {
+      Ort::GetApi().ReleaseCustomOpDomain(custom_op_domains[i]);
+    }
   }
 }
 
@@ -321,8 +332,7 @@ TEST(CApiTest, RegisterCustomOpForCPUAndCUDA) {
 }
 #endif
 
-//It has memory leak. The OrtCustomOpDomain created in custom_op_library.cc:RegisterCustomOps function was not freed
-#if defined(__ANDROID__) || defined(ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
+#if defined(__ANDROID__)
 TEST(CApiTest, DISABLED_test_custom_op_library) {
 #else
 TEST(CApiTest, test_custom_op_library) {
@@ -357,7 +367,20 @@ TEST(CApiTest, test_custom_op_library) {
 lib_name = "./libcustom_op_library.so";
 #endif
 
-  TestInference<PATH_TYPE, int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y, expected_values_y, 0, nullptr, lib_name.c_str());
+  // We will use the library handle to unload it after the test is done
+  void* library_handle = nullptr;
+
+  TestInference<PATH_TYPE, int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y, expected_values_y, 0, nullptr, lib_name.c_str(), false, &library_handle);
+
+  // Now that the session dependent on this custom op library has used it and it has destructed,
+  // unload the custom op shared library.
+  // We use our platform abstraction class - The user can unload the library in any way once they
+  // have the handle.
+  // This is to avoid leaking the library handle.
+  auto status = onnxruntime::Env::Default().UnloadDynamicLibrary(library_handle);
+  if (!status.IsOK()) {
+    throw std::exception("Unable to unload the custom op shared library");
+  }
 }
 
 #if defined(ENABLE_LANGUAGE_INTEROP_OPS)

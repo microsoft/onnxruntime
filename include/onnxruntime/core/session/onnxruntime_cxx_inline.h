@@ -60,13 +60,11 @@ inline MemoryAllocation::~MemoryAllocation() {
   }
 }
 
-inline MemoryAllocation::MemoryAllocation(MemoryAllocation&& o) :
-  allocator_(nullptr), p_(nullptr), size_(0) {
+inline MemoryAllocation::MemoryAllocation(MemoryAllocation&& o) : allocator_(nullptr), p_(nullptr), size_(0) {
   *this = std::move(o);
 }
 
 inline MemoryAllocation& MemoryAllocation::operator=(MemoryAllocation&& o) {
-
   OrtAllocator* alloc = nullptr;
   void* p = nullptr;
   size_t sz = 0;
@@ -113,7 +111,7 @@ inline const OrtMemoryInfo* AllocatorWithDefaultOptions::GetInfo() const {
   return out;
 }
 
-template<typename B>
+template <typename B>
 inline std::string BaseMemoryInfo<B>::GetAllocatorName() const {
   const char* name = nullptr;
   ThrowOnError(GetApi().MemoryInfoGetName(*this, &name));
@@ -253,7 +251,7 @@ inline std::vector<Value> Ort::IoBinding::GetOutputValuesHelper(OrtAllocator* al
       allocator->Free(allocator, buffer);
     }
   };
-  using Ptr = std::unique_ptr<OrtValue*, decltype(free_fn)> ;
+  using Ptr = std::unique_ptr<OrtValue*, decltype(free_fn)>;
 
   OrtValue** output_buffer = nullptr;
   ThrowOnError(GetApi().GetBoundOutputValues(p_, allocator, &output_buffer, &output_count));
@@ -446,6 +444,26 @@ inline SessionOptions& SessionOptions::EnablePrePacking() {
 inline SessionOptions& SessionOptions::DisablePrePacking() {
   ThrowOnError(GetApi().DisablePrePacking(p_));
   return *this;
+}
+
+inline std::vector<OrtCustomOpDomain*> SessionOptions::GetCustomOpDomains() {
+  size_t count;
+  ThrowOnError(GetApi().GetCustomOpDomainsCount(p_, &count));
+
+  std::vector<OrtCustomOpDomain*> ort_custom_op_domains;
+
+  if (count == 0) {
+    return ort_custom_op_domains;
+  }
+
+  ort_custom_op_domains.reserve(count);
+  for (size_t i = 0; i < count; ++i) {
+    OrtCustomOpDomain* ort_custom_op_domain;
+    ThrowOnError(GetApi().GetCustomOpDomain(p_, i, &ort_custom_op_domain));
+    ort_custom_op_domains.push_back(ort_custom_op_domain);
+  }
+
+  return ort_custom_op_domains;
 }
 
 inline Session::Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options) {

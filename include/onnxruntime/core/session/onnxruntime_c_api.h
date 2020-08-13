@@ -973,6 +973,16 @@ struct OrtApi {
    * This is a no-copy method whose pointer is only valid until the backing OrtValue is free'd.
    */
   ORT_API2_STATUS(TensorAt, _Inout_ OrtValue* value, size_t* location_values, size_t location_values_count, _Outptr_ void** out);
+
+  /*
+    * Get count of custom op domains
+    */
+  ORT_API2_STATUS(GetCustomOpDomainsCount, _Inout_ OrtSessionOptions* options, _Out_ size_t* out);
+
+  /*
+    * Get custom op domain at a specific index. Returns nullptr if requested index is out of bounds.
+    */
+  ORT_API2_STATUS(GetCustomOpDomain, _Inout_ OrtSessionOptions* options, size_t index, _Outptr_ OrtCustomOpDomain** custom_op_domain);
 };
 
 /*
