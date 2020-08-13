@@ -103,7 +103,7 @@ STDAPI DllGetExperimentalActivationFactory(void* classId, void** factory) noexce
     std::wostringstream dummy_class;
     dummy_class << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.Dummy";
     if (requal(name, dummy_class.str())) {
-      *factory = winrt::detach_abi(winrt::make<winrt::Microsoft::AI::MachineLearning::Experimental::factory_implementation::Dummy>());
+      *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::Dummy>());
       return 0;
     }
 
