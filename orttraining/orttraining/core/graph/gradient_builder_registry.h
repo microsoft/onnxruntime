@@ -13,7 +13,7 @@ namespace training {
 
 typedef GenericRegistry<GradientBuilderBase,
                         const GradientGraphConfiguration&,
-                        const Graph*&,                           // graph
+                        Graph*&,                                 // graph
                         const Node*&,                            // node
                         const std::unordered_set<std::string>&,  // gradient_inputs
                         const std::unordered_set<std::string>&,  // gradient_outputs
@@ -35,7 +35,7 @@ class GradientBuilderRegistry : public GradientRegistryType {
 };
 
 GradientDef GetGradientForOp(const GradientGraphConfiguration& gradient_graph_config,
-                             const Graph* graph,
+                             Graph* graph,
                              const Node* node,
                              const std::unordered_set<std::string>& output_args_need_grad,
                              const std::unordered_set<std::string>& input_args_need_grad,
