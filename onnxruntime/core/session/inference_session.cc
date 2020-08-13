@@ -927,6 +927,9 @@ common::Status InferenceSession::Initialize() {
     // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
     ORT_RETURN_IF_ERROR_SESSIONID_(graph.Resolve());
 
+    // Update temporary copies of metadata, input- and output definitions to the same state as the resolved graph
+    ORT_RETURN_IF_ERROR_SESSIONID_(SaveModelMetadata(*model_));
+
     if (!session_options_.optimized_model_filepath.empty()) {
       // Serialize optimized ONNX model.
       ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(*model_, session_options_.optimized_model_filepath));
@@ -1425,11 +1428,13 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
   model_metadata_.custom_metadata_map = model.MetaData();
   model_metadata_.graph_name = graph.Name();
 
+  required_inputs_.clear();
   for (auto input : graph.GetInputs()) {
     required_inputs_.insert(input->Name());
   }
 
   auto add_inputs = [this](const InputDefList& inputs) {
+    input_def_map_.clear();
     input_def_map_.reserve(inputs.size());
     for (auto elem : inputs) {
       auto elem_type = utils::GetMLDataType(*elem);
@@ -1455,6 +1460,8 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
   // save outputs
   const auto& outputs = graph.GetOutputs();
   output_def_list_ = outputs;  // A direct copy of outputs
+
+  model_output_names_.clear();
   model_output_names_.reserve(outputs.size());
   for (const auto& elem : outputs) {
     model_output_names_.insert(elem->Name());
