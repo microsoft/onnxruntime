@@ -11,7 +11,7 @@ import shutil
 import subprocess
 import sys
 import hashlib
-from provider_rewriter import rewrite_provider
+from provider_rewriter import rewrite_providers
 from logger import log
 
 
@@ -1498,10 +1498,10 @@ def paths_to_execution_provider(args):
 
     dir_path = os.path.dirname(os.path.abspath(__file__)) +\
                '/../../onnxruntime/core/providers/{ep}/{ep}_execution_provider.cc'
-    ep_paths = [dir_path.format(ep='cpu')]
+    ep_paths = [os.path.abspath(dir_path.format(ep='cpu'))]
 
     if args.use_cuda:
-        ep_paths.append(dir_path.format(ep='cuda'))
+        ep_paths.append(os.path.abspath(dir_path.format(ep='cuda')))
 
     return ep_paths
 
@@ -1534,8 +1534,7 @@ def main():
         include_ops_by_model = args.include_ops_by_model if args.include_ops_by_model else ''
         include_ops_by_file = args.include_ops_by_file if args.include_ops_by_file else ''
 
-        for ep_path in paths_to_execution_provider(args):
-            rewrite_provider(include_ops_by_model, include_ops_by_file, ep_path)
+        rewrite_providers(include_ops_by_model, include_ops_by_file, paths_to_execution_provider(args))
 
         args.test = False #disable tests since we don't know which ops are enabled
 
