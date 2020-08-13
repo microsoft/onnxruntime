@@ -4,7 +4,6 @@
 #include <core/common/make_unique.h>
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/session/abi_session_options_impl.h"
 #include "core/graph/constants.h"
 #include "core/platform/env.h"
 #include "providers.h"
