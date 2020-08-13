@@ -54,6 +54,7 @@ struct OrtEnv {
 
   onnxruntime::logging::LoggingManager* GetLoggingManager() const;
   void SetLoggingManager(std::unique_ptr<onnxruntime::logging::LoggingManager> logging_manager);
+  onnxruntime::Status RegisterSharedAllocator(OrtAllocator* allocator);
 
  private:
   static OrtEnv* p_instance_;

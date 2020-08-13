@@ -252,7 +252,7 @@ class InferenceSession {
     * @return OK if success.
     */
   common::Status Run(const NameMLValMap& feeds, const std::vector<std::string>& output_names,
-                             std::vector<OrtValue>* p_fetches) ORT_MUST_USE_RESULT;
+                     std::vector<OrtValue>* p_fetches) ORT_MUST_USE_RESULT;
 
   /**
    * See Run(const NameMLValMap& feeds, const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches)
@@ -319,17 +319,15 @@ class InferenceSession {
    */
   const SessionOptions& GetSessionOptions() const;
 
- 
   /*
    * Get the DataTransferManager associated with this session
    */
   const DataTransferManager& GetDataTransferManager() const;
-  
+
   /*
    * Get all the providers' options this session was initialized with.
    */
   const ProviderOptionsMap& GetAllProviderOptions() const;
-
 
   /**
     * Start profiling on this inference session. This simply turns on profiling events to be
@@ -360,8 +358,8 @@ class InferenceSession {
     * @return a ptr to the allocator or nullptr if not available
     */
   AllocatorPtr GetAllocator(const OrtMemoryInfo& mem_info) const;
-  
-   /** 
+
+  /** 
     *Get InferenceSession logger.
     */
   const logging::Logger* GetLogger() const { return session_logger_; };
@@ -496,6 +494,8 @@ class InferenceSession {
   }
 
  private:
+  void UpdateProvidersWithSharedAllocators();
+
   // Immutable state for each op in the model. Shared by all executors.
   // It has a dependency on execution_providers_.
   std::unique_ptr<SessionState> session_state_;
@@ -580,6 +580,7 @@ class InferenceSession {
 
   // Flag indicating if ModelProto has been parsed in an applicable ctor
   bool is_model_proto_parsed_ = false;
+  const Environment& environment_;
 };
 
 struct SessionIOBinding {

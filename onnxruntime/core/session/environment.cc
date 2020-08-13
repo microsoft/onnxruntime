@@ -20,6 +20,7 @@
 
 #include "core/platform/env.h"
 #include "core/util/thread_utils.h"
+#include "core/session/allocator_impl.h"
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
 #include "core/platform/tracing.h"
@@ -46,6 +47,23 @@ Status Environment::Create(std::unique_ptr<logging::LoggingManager> logging_mana
   environment = std::unique_ptr<Environment>(new Environment());
   auto status = environment->Initialize(std::move(logging_manager), tp_options, create_global_thread_pools);
   return status;
+}
+
+Status Environment::RegisterSharedAllocator(OrtAllocator* allocator) {
+  const auto* mem_info_ptr = allocator->Info(allocator);
+  if (!mem_info_ptr) {
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Nullptr for memory info in input allocator.");
+  }
+  // We don't expect millions of allocators getting registered. Hence linear search should be fine.
+  auto ite = std::find_if(std::begin(shared_allocators_),
+                          std::end(shared_allocators_),
+                          [mem_info_ptr](const AllocatorPtr& alloc_ptr) { return alloc_ptr->Info() == *mem_info_ptr; });
+  if (ite != shared_allocators_.end()) {
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Duplicate allocator found.");
+  }
+  onnxruntime::AllocatorPtr allocator_ptr = std::make_shared<onnxruntime::AllocatorWrapper>(allocator);
+  shared_allocators_.insert(ite, allocator_ptr);
+  return Status::OK();
 }
 
 Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_manager,

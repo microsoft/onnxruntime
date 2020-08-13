@@ -133,6 +133,14 @@ typedef enum OrtErrorCode {
   ORT_EP_FAIL,
 } OrtErrorCode;
 
+// use -1 to allow ORT to choose good defaults
+typedef struct OrtArenaCfg {
+  int max_mem;
+  int arena_extend_strategy;  // 0 = kNextPowerOfTwo, 1 = kSameAsRequested // TODO can be an enum
+  int initial_chunk_size_bytes;
+  int max_dead_bytes_per_chunk;
+} OrtArenaCfg;
+
 #define ORT_RUNTIME_CLASS(X) \
   struct Ort##X;             \
   typedef struct Ort##X Ort##X;
@@ -959,6 +967,11 @@ struct OrtApi {
    */
   void(ORT_API_CALL* ClearBoundInputs)(_Inout_ OrtIoBinding* binding_ptr) NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
   void(ORT_API_CALL* ClearBoundOutputs)(_Inout_ OrtIoBinding* binding_ptr) NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
+
+  // Supports CPU device only.
+  ORT_API2_STATUS(CreateAllocatorForSharing, _In_ const OrtMemoryInfo* mem_info, _In_ const OrtArenaCfg* arena_cfg,
+                  _Outptr_ OrtAllocator** out);
+  ORT_API2_STATUS(RegisterSharedAllocator, _Inout_ OrtEnv* env, _Inout_ OrtAllocator* allocator);
 };
 
 /*

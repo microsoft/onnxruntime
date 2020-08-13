@@ -21,7 +21,7 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
   class Info {
    public:
     Info(const std::vector<const Node*>& nodes, const InitializedTensorSet& initialized_tensor_set,
-         std::unique_ptr<CPUExecutionProvider> cpu_execution_provider);
+         const IExecutionProvider* cpu_execution_provider);
     ~Info() {
       for (auto& kvp : deleter_for_initialized_tensors_) {
         kvp.second.f(kvp.second.param);
@@ -55,7 +55,6 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
 
    private:
     // The optimizer is running on CPU execution provider by default.
-    std::unique_ptr<CPUExecutionProvider> cpu_execution_provider_;
     const int device_id_{0};
     const OrtMemType mem_type_{OrtMemTypeDefault};
     AllocatorPtr allocator_ptr_;
@@ -69,6 +68,7 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
     // munmap memory region and close file descriptor
     std::unordered_map<int, OrtCallback> deleter_for_initialized_tensors_;
     std::unique_ptr<NodeIndexInfo> node_index_info_;
+    const IExecutionProvider* cpu_execution_provider_;
 
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Info);
   };

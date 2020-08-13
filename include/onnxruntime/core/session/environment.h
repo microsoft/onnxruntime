@@ -9,6 +9,7 @@
 #include "core/common/status.h"
 #include "core/platform/threadpool.h"
 #include "core/common/logging/logging.h"
+#include "core/framework/allocator.h"
 
 struct OrtThreadingOptions;
 namespace onnxruntime {
@@ -54,6 +55,11 @@ class Environment {
     return create_global_thread_pools_;
   }
 
+  Status RegisterSharedAllocator(OrtAllocator* allocator);
+  const std::vector<AllocatorPtr>& GetRegisteredSharedAllocators() const {
+    return shared_allocators_;
+  }
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Environment);
 
@@ -66,5 +72,6 @@ class Environment {
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> intra_op_thread_pool_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
   bool create_global_thread_pools_{false};
+  std::vector<AllocatorPtr> shared_allocators_;
 };
 }  // namespace onnxruntime

@@ -5,6 +5,8 @@
 
 #include "core/optimizer/graph_transformer.h"
 #include "core/framework/ml_value.h"
+#include <memory>
+#include "core/framework/execution_provider.h"
 
 namespace onnxruntime {
 
@@ -18,9 +20,9 @@ class ConstantFolding : public GraphTransformer {
  public:
   /** Constant folding will not be applied to nodes that have one of initializers from excluded_initializers as input.
       For pre-training, the trainable weights are those initializers to be excluded. */
-  ConstantFolding(const std::unordered_set<std::string>& compatible_execution_providers = {},
-                  const std::unordered_set<std::string>& excluded_initializers = {}) noexcept
-      : GraphTransformer("ConstantFolding", compatible_execution_providers), excluded_initializers_(excluded_initializers) {}
+  ConstantFolding(const IExecutionProvider* cpu_execution_provider,
+                  const std::unordered_set<std::string>& compatible_execution_providers = {},
+                  const std::unordered_set<std::string>& excluded_initializers = {}) noexcept;
 
  private:
   /** Constant folding will not be applied to nodes whose op_type is included in this set.
@@ -31,6 +33,7 @@ class ConstantFolding : public GraphTransformer {
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 
   const std::unordered_set<std::string> excluded_initializers_;
+  const IExecutionProvider* cpu_execution_provider_;
 };
 
 }  // namespace onnxruntime

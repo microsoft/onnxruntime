@@ -21,8 +21,10 @@ TEST(GraphTransformerUtilsTestsForTraining, TestGenerateGraphTransformers) {
   std::string l1_transformer = "ConstantFolding";
   std::string l2_transformer = "ConvActivationFusion";
   std::vector<std::string> custom_list = {l1_rule1, l1_transformer, l2_transformer};
+  std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
+      onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
 
-  auto transformers = training::transformer_utils::GenerateTransformers(TransformerLevel::Level1, {}, {}, custom_list);
+  auto transformers = training::transformer_utils::GenerateTransformers(TransformerLevel::Level1, {}, {}, cpu_execution_provider.get(), custom_list);
   ASSERT_TRUE(transformers.size() == 1);
 
   auto l1_rule_transformer_name = optimizer_utils::GenerateRuleBasedTransformerName(TransformerLevel::Level1);
@@ -34,7 +36,7 @@ TEST(GraphTransformerUtilsTestsForTraining, TestGenerateGraphTransformers) {
   }
   ASSERT_TRUE(rule_transformer && rule_transformer->RulesCount() == 1);
 
-  transformers = training::transformer_utils::GenerateTransformers(TransformerLevel::Level2, {}, {}, custom_list);
+  transformers = training::transformer_utils::GenerateTransformers(TransformerLevel::Level2, {}, {}, cpu_execution_provider.get(), custom_list);
 #ifndef DISABLE_CONTRIB_OPS
   ASSERT_TRUE(transformers.size() == 1);
 #else

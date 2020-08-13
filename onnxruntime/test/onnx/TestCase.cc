@@ -153,8 +153,6 @@ static int ExtractFileNo(const std::basic_string<CHAR_T>& name) {
 }
 using PATH_STRING_TYPE = std::basic_string<PATH_CHAR_TYPE>;
 
-
-
 static void SortTensorFileNames(std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_pb_files) {
   if (input_pb_files.size() <= 1) return;
   std::sort(input_pb_files.begin(), input_pb_files.end(),

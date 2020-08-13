@@ -84,5 +84,8 @@ struct SessionOptions {
 
   // Control the pre-packing of initialized constant tensors
   bool use_prepacking = true;
+
+  // By default each session will create and use their own allocators
+  bool use_shared_allocator = false;  // TODO this will be refactored once Guoyu's changes are merged
 };
 }  // namespace onnxruntime

@@ -35,6 +35,7 @@
 #include "core/optimizer/unsqueeze_elimination.h"
 
 namespace onnxruntime {
+class IExecutionProvider;
 
 namespace optimizer_utils {
 
@@ -106,6 +107,7 @@ std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(Tra
 
 std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerLevel level,
                                                                     gsl::span<const FreeDimensionOverride> free_dimension_overrides,
+                                                                    const IExecutionProvider* cpu_execution_provider,
                                                                     const std::vector<std::string>& transformers_and_rules_to_enable) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
@@ -113,7 +115,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
     case TransformerLevel::Level1: {
       std::unordered_set<std::string> l1_execution_providers = {};
 
-      transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(l1_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(cpu_execution_provider, l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<MatMulAddFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<ReshapeFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));
