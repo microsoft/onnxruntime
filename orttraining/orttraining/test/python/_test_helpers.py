@@ -18,11 +18,11 @@ def assert_model_outputs(output_a, output_b, verbose=False, rtol=1e-7, atol=0):
         atol (float, default is 1e-4): Max absolute difference
     """
     assert isinstance(output_a, list) and isinstance(output_b, list),\
-        "output_a and output_b must be a list of numbers"
+        "output_a and output_b must be list of numbers"
     assert len(output_a) == len(output_b), "output_a and output_b must have the same length"
 
     # for idx in range(len(output_a)):
-    assert_allclose(output_a, output_b, rtol=rtol, atol=atol, err_msg=f"Output mismatch at position")
+    assert_allclose(output_a, output_b, rtol=rtol, atol=atol, err_msg=f"Model output value mismatch")
 
 def assert_onnx_weights(model_a, model_b, verbose=False, rtol=1e-7, atol=0):
     r"""Asserts whether weight difference between models a and b differences are within specified tolerance

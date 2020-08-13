@@ -7,6 +7,7 @@ from ._utils import static_vars
 LEARNING_RATE_IO_DESCRIPTION_NAME = "__learning_rate"
 IS_FINITE_IO_DESCRIPTION_NAME = "__is_finite"
 LOSS_SCALE_INPUT_IO_DESCRIPTION_NAME = "__loss_scale_input_name"
+GRADIENT_ACCUMULATION_IO_DESCRIPTION_NAME = "__gradient_accumulation_name"
 
 
 class _ORTTrainerModelDesc(object):
@@ -102,6 +103,11 @@ class _ORTTrainerModelDesc(object):
                 pretty_msg += '\n\tloss scale input name: '
                 pretty_msg += f'(name={self.loss_scale_input.name}, shape={self.loss_scale_input.shape}, dtype={self.loss_scale_input.dtype})'
 
+        # Gradient Accumulation steps
+        if self.gradient_accumulation:
+            pretty_msg += '\nGradient Accumulation: '
+            pretty_msg += f'(name={self.gradient_accumulation.name}, shape={self.gradient_accumulation.shape}, dtype={self.gradient_accumulation.dtype})'
+
         return pretty_msg
 
     def add_type_to_input_description(self, index, dtype):
@@ -141,6 +147,13 @@ class _ORTTrainerModelDesc(object):
             existing_values = (*existing_values[:-2],)
         self.outputs[index] = self._OutputDescriptionTyped(*existing_values, dtype, dtype_amp)
 
+    @property
+    def gradient_accumulation(self):
+        return getattr(self, GRADIENT_ACCUMULATION_IO_DESCRIPTION_NAME, None)
+
+    @gradient_accumulation.setter
+    def gradient_accumulation(self, name):
+        self._add_output_description(self, name, [1], False, torch.bool, None, GRADIENT_ACCUMULATION_IO_DESCRIPTION_NAME)
 
     @property
     def is_finite(self):

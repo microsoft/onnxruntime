@@ -642,7 +642,7 @@ class ORTTrainer(object):
 
         # Update Gradient Accumulation, if applicable
         if self.options.batch.gradient_accumulation_steps > 1:
-            self.model_desc.gradient_accumulation = get_gradient_accumulation_name_from_session(self._training_session)
+            self.model_desc.gradient_accumulation = _utils.get_gradient_accumulation_name_from_session(self._training_session)
             self._model_desc_outputs_with_gradient_accumulation = [
                 *self.model_desc.outputs, self.model_desc.gradient_accumulation]
 
