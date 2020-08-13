@@ -87,6 +87,12 @@ TrainingConfigurationResult ConfigureSessionForTraining(
 #endif
 
   training::TrainingSession::TrainingConfiguration config{};
+
+  auto model_name_base = ToPathString("zwx_bert_tiny");
+  config.model_with_loss_function_path = model_name_base + ORT_TSTR("_with_cost.onnx");
+  config.model_with_training_graph_path = model_name_base + ORT_TSTR("_bw.onnx");
+  //config.model_actual_running_graph_path = model_name_base + ORT_TSTR("_bw_running.onnx");
+
   config.weight_names_to_train = parameters.weights_to_train;
   config.weight_names_to_not_train = parameters.weights_not_to_train;
   config.immutable_weights = parameters.immutable_weights;

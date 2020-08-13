@@ -247,14 +247,14 @@ void AdamOptimizerImpl(
       size_t count);
 
 SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, float, float)
-SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, float, float)
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, float, float)
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, half, half)
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, half, float)
-SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, half, half)
-SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, half, float)
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, half, half)
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, half, float)
+// SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, float, float)
+// SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, float, float)
+// SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, half, half)
+// SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, half, float)
+// SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, half, half)
+// SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, half, float)
+// SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, half, half)
+// SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, half, float)
 
 }  // namespace hip
 }  // namespace onnxruntime
