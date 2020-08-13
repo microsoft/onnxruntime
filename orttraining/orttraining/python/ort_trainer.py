@@ -788,19 +788,6 @@ class ORTTrainer():
             input_descs = self.input_desc_with_lr
 
         self.current_step += 1
-        if 320 <= self.global_step_ <= 322: 
-            counts = []
-            lengths = []
-            # get data properties
-            for t in args[0]:
-                if len(t.size()) == 1:
-                    frequency = t.eq(-1).sum()
-                else:
-                    frequency = t.eq(-1).sum(dim = 1)
-                total_size = t.size()
-                lengths.append(total_size)
-                counts.append(frequency)
-            print('SystemLog: train_step: counts of -1 = ', counts,"total_length = ",lengths, "current_step = ",self.current_step, "global_step = ", self.global_step_ )
         # handle gradient accumulation in fully optimized mode
         run_options = None
         has_if_all_finite = False
@@ -840,33 +827,7 @@ class ORTTrainer():
         elif self.current_step % self.gradient_accumulation_steps == 0:
             # optimization has done, increase self.global_step_
             self.global_step_ = self.global_step_ + 1
-        
-        if (self.current_step % self.gradient_accumulation_steps == 0):#or (self.global_step_ >= 320 and self.global_step_ <= 330):
-            # print grad norm
-            if not self.use_mixed_precision:
-                loss_scale_to_print = 1.0
-            else:
-                loss_scale_to_print = args[0][-1]
-            if  (self.global_step_ % 10 == 0 and self.world_rank == 0) or ( self.world_rank == 0 and self.global_step_ >= 320 and self.global_step_ <= 330 ) :
-                states = self.session.get_state()
-                print('SystemLog: train_step: with SSCE change and matmul change loss_scale = '+ str(loss_scale_to_print) + ", global_step = " + str(self.global_step_) )
-                for name in states:
-                    tensor = states[name]
-                    if name.startswith('model_') and name.endswith('grad_accumulate_buffer'):
-                        p_name = name[7:-23]
-                        if 'fp16' not in name:
-                            #self.writer.add_scalar('train/summary/scalar/'+p_name+'_grad', torch.norm(tensor), self.total_steps)
-                            print('SystemLog: train_step: grad_norm/'+ p_name, torch.norm(torch.from_numpy(tensor))/loss_scale_to_print, self.global_step_)
-                        else:
-                            print('SystemLog: train_step: grad_norm/' + p_name, torch.norm(torch.from_numpy(tensor).to('cuda').to(torch.float16))/loss_scale_to_print,  self.global_step_)
-                    if name.startswith('model_') and ('weight' in name or 'bias' in name):
-                        p_name = name[7:]
-                        if 'fp16' not in name:
-                            #self.writer.add_scalar('train/summary/scalar/'+p_name+'_grad', torch.norm(tensor), self.total_steps)
-                            print('SystemLog: train_step: weight_norm/'+ p_name , torch.norm(torch.from_numpy(tensor))/loss_scale_to_print, self.global_step_)   
-                        else:
-                            print('SystemLog: train_step: weight_norm/' + p_name, torch.norm(torch.from_numpy(tensor).to('cuda').to(torch.float16))/loss_scale_to_print,  self.global_step_)
- 
+         
         if fetches is not None:
             results = [session_run_results[fetch] for fetch in fetches]
         elif has_if_all_finite and self.loss_scaler_ is None:
@@ -874,10 +835,6 @@ class ORTTrainer():
             results = [session_run_results[output_desc.name_] for output_desc in self.output_desc_with_all_fp_16_or_fp32_gradients_finite]
         else:
             results = [session_run_results[output_desc.name_] for output_desc in self.model_desc_.outputs_]
-        
-        if  (self.global_step_ % 10 == 0 and self.world_rank == 0) or ( self.world_rank == 0 and self.global_step_ >= 320 and self.global_step_ <= 330 ) :
-            loss = results[0] if len(results) == 1 else results
-            print("SystemLog: train_step: loss = " ,loss[0], self.global_step_)
             
         return results[0] if len(results) == 1 else results
 
@@ -951,11 +908,11 @@ class LossScaler():
         super(LossScaler, self).__init__()
         self.loss_scale_input_name_ = loss_scale_input_name
         self.is_dynamic_scale_ = is_dynamic_scale
-        self.initial_loss_scale_ = 1024.0 #loss_scale
+        self.initial_loss_scale_ = loss_scale
         self.up_scale_window_ = up_scale_window
         self.min_loss_scale_ = min_loss_scale
-        self.max_loss_scale_ = 4096.0 #max_loss_scale
-        self.loss_scale_ = 1024.0 #loss_scale
+        self.max_loss_scale_ = max_loss_scale
+        self.loss_scale_ = loss_scale
         self.stable_steps_ = 0
 
     def update_loss_scale(self, is_all_finite):
