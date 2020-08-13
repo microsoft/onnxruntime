@@ -106,13 +106,7 @@ namespace Microsoft.ML.OnnxRuntime
         private bool _terminate = false; //value set to default value of the C++ RunOptions
 
 
-        #region destructors disposers
-
-        ~RunOptions()
-        {
-            Dispose(false);
-        }
-
+        #region IDisposable
 
         public void Dispose()
         {
@@ -125,9 +119,8 @@ namespace Microsoft.ML.OnnxRuntime
         {
             if (disposing)
             {
-                // cleanup managed resources
+                NativeMethods.OrtReleaseRunOptions(_nativePtr);
             }
-            NativeMethods.OrtReleaseRunOptions(_nativePtr);
         }
 
         #endregion

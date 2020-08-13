@@ -181,7 +181,8 @@ void dispatch_softmax_backward(output_t* grad_input, const input_t* grad, const 
 }
 
 #define SPECIALIZED_SOFTMAX_GRAD_IMPL(input_t, output_t, acc_t) \
-template void dispatch_softmax_backward<input_t, output_t, acc_t, false>(input_t * grad_input, const output_t* grad, const output_t* output, int softmax_elements, int softmax_elements_stride, int batch_count);
+template void dispatch_softmax_backward<input_t, output_t, acc_t, false>(input_t * grad_input, const output_t* grad, const output_t* output, int softmax_elements, int softmax_elements_stride, int batch_count); \
+template void dispatch_softmax_backward<input_t, output_t, acc_t, true>(input_t * grad_input, const output_t* grad, const output_t* output, int softmax_elements, int softmax_elements_stride, int batch_count);
 
 SPECIALIZED_SOFTMAX_GRAD_IMPL(float, float, float)
 SPECIALIZED_SOFTMAX_GRAD_IMPL(half, half, float)

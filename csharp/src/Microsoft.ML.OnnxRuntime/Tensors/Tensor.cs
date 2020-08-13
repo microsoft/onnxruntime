@@ -17,6 +17,8 @@ using System.Diagnostics;
 using System.Text;
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Reflection;
 
 // Making this assembly's internals visible to the internal Test assembly
 [assembly: InternalsVisibleTo("Microsoft.ML.OnnxRuntime.Tests," +
@@ -29,6 +31,103 @@ using System.Runtime.CompilerServices;
 
 namespace Microsoft.ML.OnnxRuntime.Tensors
 {
+    /// <summary>
+    /// Supported Tensor DataType
+    /// </summary>
+    public enum TensorElementType
+    {
+        Float = 1,
+        UInt8 = 2,
+        Int8 = 3,
+        UInt16 = 4,
+        Int16 = 5,
+        Int32 = 6,
+        Int64 = 7,
+        String = 8,
+        Bool = 9,
+        Float16 = 10,
+        Double = 11,
+        UInt32 = 12,
+        UInt64 = 13,
+        Complex64 = 14,
+        Complex128 = 15,
+        BFloat16 = 16,
+        DataTypeMax = 17
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct Float16
+    {
+        public ushort Value { get; private set; }
+        public Float16(ushort val)
+        {
+            Value = val;
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct BFloat16
+    {
+        public ushort Value { get; private set; }
+        public BFloat16(ushort val)
+        {
+            Value = val;
+        }
+    }
+
+    /// <summary>
+    /// Helps typecasting. Holds primitive type information
+    /// </summary>
+    public class TensorTypeInfo
+    {
+        public TensorElementType ElementType { get; private set; }
+        public int TypeSize { get; private set; }
+        public bool IsString { get { return ElementType == TensorElementType.String; } }
+        public TensorTypeInfo(TensorElementType elementType, int typeSize)
+        {
+            ElementType = elementType;
+            TypeSize = typeSize;
+        }
+    }
+
+    public class TensorBase
+    {
+        private static readonly Dictionary<Type, TensorTypeInfo> typeInfoMap =
+            new Dictionary<Type, TensorTypeInfo>()
+            {
+                { typeof(float), new TensorTypeInfo( TensorElementType.Float, sizeof(float)) },
+                { typeof(byte), new TensorTypeInfo( TensorElementType.UInt8, sizeof(byte)) },
+                { typeof(sbyte), new TensorTypeInfo( TensorElementType.Int8, sizeof(sbyte)) },
+                { typeof(ushort), new TensorTypeInfo( TensorElementType.UInt16, sizeof(ushort)) },
+                { typeof(short), new TensorTypeInfo( TensorElementType.Int16, sizeof(short)) },
+                { typeof(int), new TensorTypeInfo( TensorElementType.Int32, sizeof(int)) },
+                { typeof(long), new TensorTypeInfo( TensorElementType.Int64, sizeof(long)) },
+                { typeof(string), new TensorTypeInfo( TensorElementType.String, -1) },
+                { typeof(bool), new TensorTypeInfo( TensorElementType.Bool, sizeof(bool)) },
+                { typeof(Float16), new TensorTypeInfo( TensorElementType.Float16, sizeof(ushort)) },
+                { typeof(double), new TensorTypeInfo( TensorElementType.Double, sizeof(double)) },
+                { typeof(uint), new TensorTypeInfo( TensorElementType.UInt32, sizeof(uint)) },
+                { typeof(ulong), new TensorTypeInfo( TensorElementType.UInt64, sizeof(ulong)) },
+                { typeof(BFloat16), new TensorTypeInfo( TensorElementType.BFloat16, sizeof(ushort)) }
+            };
+
+        private readonly Type _primitiveType;
+        protected TensorBase(Type primitiveType)
+        {
+            _primitiveType = primitiveType;
+        }
+        /// <summary>
+        /// Queries the map returns result or null
+        /// </summary>
+        /// <returns></returns>
+        public TensorTypeInfo GetTypeInfo()
+        {
+            TensorTypeInfo result = null;
+            typeInfoMap.TryGetValue(_primitiveType, out result);
+            return result;
+        }
+    }
+
     /// <summary>
     /// Various methods for creating and manipulating Tensor&lt;T&gt;
     /// </summary>
@@ -155,7 +254,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
     /// <typeparam name="T">type contained within the Tensor.  Typically a value type such as int, double, float, etc.</typeparam>
     [DebuggerDisplay("{GetArrayString(false)}")]
     // When we cross-compile for frameworks that expose ICloneable this must implement ICloneable as well.
-    public abstract class Tensor<T> : IList, IList<T>, IReadOnlyList<T>, IStructuralComparable, IStructuralEquatable
+    public abstract class Tensor<T> : TensorBase, IList, IList<T>, IReadOnlyList<T>, IStructuralComparable, IStructuralEquatable
     {
         internal static T Zero
         {
@@ -289,7 +388,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         /// Initialize a 1-dimensional tensor of the specified length
         /// </summary>
         /// <param name="length">Size of the 1-dimensional tensor</param>
-        protected Tensor(int length)
+        protected Tensor(int length) : base(typeof(T))
         {
             dimensions = new[] { length };
             strides = new[] { 1 };
@@ -302,7 +401,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         /// </summary>
         /// <param name="dimensions">An span of integers that represent the size of each dimension of the Tensor to create.</param>
         /// <param name="reverseStride">False (default) to indicate that the first dimension is most major (farthest apart) and the last dimension is most minor (closest together): akin to row-major in a rank-2 tensor.  True to indicate that the last dimension is most major (farthest apart) and the first dimension is most minor (closest together): akin to column-major in a rank-2 tensor.</param>
-        protected Tensor(ReadOnlySpan<int> dimensions, bool reverseStride)
+        protected Tensor(ReadOnlySpan<int> dimensions, bool reverseStride) : base(typeof(T))
         {
             if (dimensions.Length == 0)
             {
@@ -332,7 +431,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         /// </summary>
         /// <param name="fromArray">Array from which to derive dimensions.</param>
         /// <param name="reverseStride">False (default) to indicate that the first dimension is most major (farthest apart) and the last dimension is most minor (closest together): akin to row-major in a rank-2 tensor.  True to indicate that the last dimension is most major (farthest apart) and the first dimension is most minor (closest together): akin to column-major in a rank-2 tensor.</param>
-        protected Tensor(Array fromArray, bool reverseStride)
+        protected Tensor(Array fromArray, bool reverseStride) : base(typeof(T))
         {
             if (fromArray == null)
             {
