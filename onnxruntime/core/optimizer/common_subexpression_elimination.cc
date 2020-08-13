@@ -52,7 +52,7 @@ struct DeepPointerHash {
     if (value == nullptr) {
       return 0;
     }
-    return std::hash<std::decay_t<decltype(*value)>>{}(*value);
+    return std::hash<typename std::decay<decltype(*value)>::type>{}(*value);
   }
 };
 
@@ -207,7 +207,7 @@ bool AreEqual(const ONNX_NAMESPACE::AttributeProto& lhs, const ONNX_NAMESPACE::A
 std::size_t GetAttributeHash(const ONNX_NAMESPACE::AttributeProto& attr) {
   std::size_t hash = 0;
   UpdateHash(
-      static_cast<std::underlying_type_t<std::decay_t<decltype(attr.type())>>>(attr.type()),
+      static_cast<std::underlying_type<ONNX_NAMESPACE::AttributeProto_AttributeType>::type>(attr.type()),
       hash);
   UpdateHash(attr.name(), hash);
   switch (attr.type()) {
@@ -250,7 +250,8 @@ bool SameAttributes(const NodeAttributes* lhs, const NodeAttributes* rhs) {
   if (lhs == nullptr || rhs == nullptr) {
     return lhs == rhs;
   }
-  return std::equal(lhs->begin(), lhs->end(), rhs->begin(), rhs->end(), &SameAttribute);
+  return lhs->size() == rhs->size() &&
+         std::equal(lhs->begin(), lhs->end(), rhs->begin(), &SameAttribute);
 }
 
 bool EquivalenceClass::operator==(const EquivalenceClass& other) const {
