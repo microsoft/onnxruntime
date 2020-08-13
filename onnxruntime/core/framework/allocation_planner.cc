@@ -625,6 +625,15 @@ class PlannerImpl {
                    FindReusableTensor(*node_output, &reused)) {
           // Reuse an available (dead) buffer for this output, this is only for sequential execution.
           Reuse(reused, current, AllocKind::kReuse);
+          OrtValueIndex original = Buffer(reused);
+          if (AllocPlan(original).alloc_kind == AllocKind::kAllocate) {
+            ORT_ENFORCE(AllocPlan(original).program_counter_end.size() > 0);
+            ORT_ENFORCE(AllocPlan(original).program_counter_end.back() != SIZE_MAX);
+            ORT_ENFORCE(AllocPlan(original).program_counter_end.back() < program_counter);
+
+            AllocPlan(original).program_counter_start.emplace_back(program_counter);
+            AllocPlan(original).program_counter_end.emplace_back(SIZE_MAX);
+          }
         } else {
           // otherwise: allocate a new buffer for this output
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
@@ -640,8 +649,11 @@ class PlannerImpl {
           auto original = Buffer(Index(sym));
           if (0 == --UseCount(original)) {
             freelist_.push_front(FreeBufferInfo(original, program_counter));
-            if(AllocPlan(Index(sym)).alloc_kind == AllocKind::kAllocate)
-              AllocPlan(Index(sym)).program_counter_end.back() = program_counter;
+            if (AllocPlan(original).alloc_kind == AllocKind::kAllocate) {
+              ORT_ENFORCE(AllocPlan(original).program_counter_end.size() > 0);
+              ORT_ENFORCE(AllocPlan(original).program_counter_end.back() == SIZE_MAX);
+              AllocPlan(original).program_counter_end.back() = program_counter;
+            }
           }
         }
       }
@@ -652,8 +664,11 @@ class PlannerImpl {
           auto original = Buffer(Index(sym));
           if (0 == --UseCount(original)) {
             freelist_.push_front(FreeBufferInfo(original, program_counter));
-            if(AllocPlan(Index(sym)).alloc_kind == AllocKind::kAllocate)
-              AllocPlan(Index(sym)).program_counter_end.back() = program_counter;
+            if (AllocPlan(original).alloc_kind == AllocKind::kAllocate) {
+              ORT_ENFORCE(AllocPlan(original).program_counter_end.size() > 0);
+              ORT_ENFORCE(AllocPlan(original).program_counter_end.back() == SIZE_MAX);
+              AllocPlan(original).program_counter_end.back() = program_counter;
+            }
           }
         }
       }
@@ -665,8 +680,11 @@ class PlannerImpl {
           auto original = Buffer(Index(sym));
           if (0 == --UseCount(original)) {
             freelist_.push_front(FreeBufferInfo(original, program_counter));
-            if(AllocPlan(Index(sym)).alloc_kind == AllocKind::kAllocate)
-              AllocPlan(Index(sym)).program_counter_end.back() = program_counter;
+            if (AllocPlan(original).alloc_kind == AllocKind::kAllocate) {
+              ORT_ENFORCE(AllocPlan(original).program_counter_end.size() > 0);
+              ORT_ENFORCE(AllocPlan(original).program_counter_end.back() == SIZE_MAX);
+              AllocPlan(original).program_counter_end.back() = program_counter;
+            }
           }
         }
       }
@@ -802,9 +820,8 @@ class PlannerImpl {
       for (int index = node_plan.free_from_index; index <= node_plan.free_to_index; ++index) {
         auto ml_value_idx = plan_.to_be_freed[index];
         if (AllocPlan(ml_value_idx).alloc_kind == AllocKind::kAllocate) {
-
           ORT_ENFORCE(AllocPlan(ml_value_idx).program_counter_start.back() <= program_counter);
-          
+          ORT_ENFORCE(AllocPlan(ml_value_idx).program_counter_end.back() == program_counter);
           AllocPlan(ml_value_idx).program_counter_end.back() = program_counter;
         }
       }

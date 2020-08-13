@@ -51,6 +51,8 @@ class MemPatternPlanner {
             // Memory block can be re-used as long as there is no overlap between their time schedules.
       bool overlap = false;
       if (allocs_[*it].reuse_) {
+        //bool keep_looping = true;
+        //while(keep_looping);
         ORT_ENFORCE(program_counter_start.size() == program_counter_end.size());
         ORT_ENFORCE(program_counter_start.size() == program_counter_end.size());
 
@@ -64,7 +66,7 @@ class MemPatternPlanner {
 
         size_t index_allocated = 0;
         size_t index_to_be_allocated = 0;
-        while ((index_allocated < allocs_[*it].program_counter_start_.size()) || (index_to_be_allocated < program_counter_start.size())) {
+        while ((index_allocated < allocs_[*it].program_counter_start_.size()) && (index_to_be_allocated < program_counter_start.size())) {
           if (allocs_[*it].program_counter_start_[index_allocated] <= program_counter_start[index_to_be_allocated]) {
             if (allocs_[*it].program_counter_end_[index_allocated] >= program_counter_start[index_to_be_allocated]) {
               overlap = true;
