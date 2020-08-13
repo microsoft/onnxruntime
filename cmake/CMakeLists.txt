@@ -171,32 +171,11 @@ else()
 endif()
 
 if(onnxruntime_USE_OPENMP)
-
-  if(APPLE)
-      execute_process(COMMAND brew --prefix libomp
-                      OUTPUT_VARIABLE libomp_path OUTPUT_STRIP_TRAILING_WHITESPACE)
-      if(CMAKE_C_COMPILER_ID MATCHES "^AppleClang$")
-        set(OpenMP_C "${CMAKE_C_COMPILER} CACHE STRING "" FORCE")
-        set(OpenMP_C_FLAGS "-Xpreprocessor -fopenmp -I${libomp_path}/include" CACHE STRING "" FORCE)
-        set(OpenMP_C_LIB_NAMES "omp")
-        set(OpenMP_omp_LIBRARY "${libomp_path}/lib/libomp.a")
-      endif()
-      if(CMAKE_CXX_COMPILER_ID MATCHES "^AppleClang$")
-        set(OpenMP_CXX "${CMAKE_CXX_COMPILER}" CACHE STRING "" FORCE)
-        set(OpenMP_CXX_FLAGS "-Xpreprocessor -fopenmp -I${libomp_path}/include" CACHE STRING "" FORCE)
-        set(OpenMP_CXX_LIB_NAMES "omp")
-        set(OpenMP_omp_LIBRARY "${libomp_path}/lib/libomp.a")
-      endif()
-      set(OpenMP_EXE_LINKER_FLAGS "-lomp -L${libomp_path}/lib")
-      set(OpenMP_SHARED_LINKER_FLAGS "-lomp -L${libomp_path}/lib")
-  endif()
-
   find_package(OpenMP)
   if (OPENMP_FOUND)
     set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-    set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
-    set (CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${OpenMP_SHARED_LINKER_FLAGS}")
+    include_directories(${OpenMP_CXX_INCLUDE_DIR})
     # MKLML and NGraph depend on their own OpenMP library that may be different with the compiler's.
     # Disable the options to build mklml/NGraph and OpenMP together.
     if(onnxruntime_USE_MKLML)
@@ -1133,6 +1112,10 @@ endforeach()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES log)
+endif()
+
+if (onnxruntime_USE_OPENMP)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES OpenMP::OpenMP_CXX)
 endif()
 
 if(WIN32)
