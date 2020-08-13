@@ -849,7 +849,7 @@ class ORTTrainer():
                 loss_scale_to_print = args[0][-1]
             if  (self.global_step_ % 10 == 0 and self.world_rank == 0) or ( self.world_rank == 0 and self.global_step_ >= 320 and self.global_step_ <= 330 ) :
                 states = self.session.get_state()
-                print('SystemLog: train_step: with SSCE change loss_scale = '+ str(loss_scale_to_print) + ", global_step = " + str(self.global_step_) )
+                print('SystemLog: train_step: with SSCE change and matmul change loss_scale = '+ str(loss_scale_to_print) + ", global_step = " + str(self.global_step_) )
                 for name in states:
                     tensor = states[name]
                     if name.startswith('model_') and name.endswith('grad_accumulate_buffer'):
