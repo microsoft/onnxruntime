@@ -10,7 +10,6 @@ import threading
 import sys
 from helper import get_name
 
-
 class TestInferenceSession(unittest.TestCase):
 
     def run_model(self, session_object, run_options):
@@ -643,34 +642,31 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(input_shape, [4, 6, 5])
 
     def testSessionOptionsRegisterCustomOpsLibrary(self):
-        this = os.path.dirname(__file__)
         if sys.platform.startswith("win"):
-            shared_library = os.path.join(this, "custom_op_library.dll")
+            shared_library = 'custom_op_library.dll'
             if not os.path.exists(shared_library):
                 raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
 
         elif sys.platform.startswith("darwin"):
-            shared_library = os.path.join(this, "libcustom_op_library.dylib")
+            shared_library = 'libcustom_op_library.dylib'
             if not os.path.exists(shared_library):
                 raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
 
         else:
-            print('Entering here')
-            shared_library = os.path.join(this, "libcustom_op_library.so")
-            print(shared_library)
+            shared_library = './libcustom_op_library.so'
             if not os.path.exists(shared_library):
                 raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
 
+        this = os.path.dirname(__file__)
         custom_op_model = os.path.join(this, "testdata", "custom_op_library", "custom_op_test.onnx")
         if not os.path.exists(custom_op_model):
             raise FileNotFoundError("Unable to find '{0}'".format(custom_op_model))
 
         so1 = onnxrt.SessionOptions()
-        try:
-            so1.register_custom_ops_library(shared_library)
-        except:
-            so1.register_custom_ops_library('./libcustom_op_library.so')
-        # Create an alias for SessionOptions instance
+        so1.register_custom_ops_library(shared_library)
+
+        # Create an alias of SessionOptions instance
+        # We will use this alias to construct another InferenceSession
         so2 = so1
 
         # Model loading successfully indicates that the custom op node could be resolved successfully
@@ -687,6 +683,7 @@ class TestInferenceSession(unittest.TestCase):
 
         # Model loading successfully indicates that the custom op node could be resolved successfully
         sess2 = onnxrt.InferenceSession(custom_op_model, so2)
+
 
 if __name__ == '__main__':
     unittest.main()
