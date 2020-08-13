@@ -139,10 +139,9 @@ void TestInference(Ort::Env& env, T model_uri,
   // It is safe to do so here.
   if (custom_op_library_filename) {
     auto custom_op_domains = session_options.GetCustomOpDomains();
-    std::cout << custom_op_domains.size();
-    //  for (size_t i = 0; i < custom_op_domains.size(); ++i) {
-    //    Ort::GetApi().ReleaseCustomOpDomain(custom_op_domains[i]);
-    //  }
+    for (size_t i = 0; i < custom_op_domains.size(); ++i) {
+      Ort::GetApi().ReleaseCustomOpDomain(custom_op_domains[i]);
+    }
   }
 }
 
