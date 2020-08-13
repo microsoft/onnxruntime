@@ -102,7 +102,7 @@ void TestInference(Ort::Env& env, T model_uri,
   }
 
   if (custom_op_library_filename) {
-    Ort::ThrowOnError(Ort::GetApi().RegisterCustomOpsLibrary(session_options, custom_op_library_filename, &*library_handle));
+    Ort::ThrowOnError(Ort::GetApi().RegisterCustomOpsLibrary(session_options, custom_op_library_filename, library_handle));
   }
 
   // if session creation passes, model loads fine
@@ -137,12 +137,13 @@ void TestInference(Ort::Env& env, T model_uri,
 
   // Release OrtCustomOpDomain created in custom_op_library.cc.
   // It is safe to do so here.
-  //if (custom_op_library_filename) {
-  //  auto custom_op_domains = session_options.GetCustomOpDomains();
-  //  for (size_t i = 0; i < custom_op_domains.size(); ++i) {
-  //    Ort::GetApi().ReleaseCustomOpDomain(custom_op_domains[i]);
-  //  }
-  //}
+  if (custom_op_library_filename) {
+    auto custom_op_domains = session_options.GetCustomOpDomains();
+    std::cout << custom_op_domains.size();
+    //  for (size_t i = 0; i < custom_op_domains.size(); ++i) {
+    //    Ort::GetApi().ReleaseCustomOpDomain(custom_op_domains[i]);
+    //  }
+  }
 }
 
 static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/mul_1.onnx");
