@@ -165,6 +165,7 @@ def rewrite_provider(operators, ep_path):
             return True
 
         opset_from = int(opset_from)
+        raw_opset_to = opset_to
         opset_to = int(opset_to)
 
         first_bigger_at = find_first_bigger(version_map[domain][op_type], opset_to)
@@ -178,7 +179,7 @@ def rewrite_provider(operators, ep_path):
                op_type in operators[domain][opset]:
                 return False
 
-        log.info("Disable {0} {1} {2} {3}".format(domain, opset_from, opset_to, op_type))
+        log.info("Disable {0} {1} {2} {3}".format(domain, opset_from, raw_opset_to, op_type))
         return True #end of disable_op(...)
 
 
@@ -292,6 +293,7 @@ def rewrite_provider(operators, ep_path):
                 line_offset += 1
 
     #end of rewrite_cpu_provider(...)
+
 
 if __name__ == "__main__":
 

@@ -11,7 +11,6 @@ import shutil
 import subprocess
 import sys
 import hashlib
-from provider_rewriter import rewrite_providers
 from logger import log
 
 
@@ -1530,6 +1529,8 @@ def main():
 
     if (args.include_ops_by_model and len(args.include_ops_by_model) > 0) or\
        (args.include_ops_by_file and len(args.include_ops_by_file) > 0):
+
+        from provider_rewriter import rewrite_providers
 
         include_ops_by_model = args.include_ops_by_model if args.include_ops_by_model else ''
         include_ops_by_file = args.include_ops_by_file if args.include_ops_by_file else ''
