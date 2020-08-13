@@ -139,7 +139,37 @@ def get_latency_result(runtimes, batch_size):
     }
 
 
-def inference_ort(model, ep, ort_inputs, result_template, repeat_times, batch_size):
+def inference_ort(args, model, ep, ort_inputs, result_template, repeat_times, batch_size):
+
+    runtimes = []
+    for ort_input in ort_inputs:
+        session = model.get_session() 
+
+        inputs = model.get_ort_inputs(ort_input)
+        outputs = model.get_ort_outputs()
+        try:
+            if args.input_data == "random":
+                repeat_times = 1
+
+            if ep in ["TensorrtExecutionProvider", "TensorrtExecutionProvider_fp16"]:
+                repeat_times += 1
+
+            runtime = timeit.repeat(lambda: session.run(outputs, inputs), number=1, repeat=repeat_times)
+            runtimes += runtime
+
+        except Exception as e:
+            logger.error(e)
+            return None
+
+    print(runtimes)
+
+    result = {}
+    result.update(result_template)
+    result.update({"io_binding": False})
+    result.update(get_latency_result(runtimes, batch_size))
+    return result
+
+def inference_ort_ori(model, ep, ort_inputs, result_template, repeat_times, batch_size):
 
     runtimes = []
     for ort_input in ort_inputs:
@@ -349,6 +379,22 @@ def load_onnx_model_zoo_test_data(path, data_type="fp32"):
     print('Loaded {} outputs successfully.'.format(len(outputs)))
 
     return inputs, outputs
+
+def generate_onnx_model_random_input(test_times, ref_input):
+
+    test_input_data = [] 
+
+    for i in range(test_times):
+    
+        input_data = []
+        for tensor in ref_input:
+            shape = tensor.shape
+            dtype = tensor.dtype
+            new_tensor = np.random.random_sample(shape).astype(dtype)
+            input_data.append(new_tensor)
+        test_input_data.append(input_data)
+
+    return test_input_data 
 
 def validate(all_ref_outputs, all_outputs, decimal):
     print('Reference {} results.'.format(len(all_ref_outputs)))
@@ -619,8 +665,10 @@ def run_onnxruntime(args, models=MODELS):
                 inputs = inputs_fp32
                 ref_outputs = ref_outputs_fp32
 
-
             
+            if args.input_data == "random":
+                inputs = generate_onnx_model_random_input(args.test_times, inputs[0]) 
+
             #######################################
             # benchmark or validation
             #######################################
@@ -677,7 +725,7 @@ def run_onnxruntime(args, models=MODELS):
                             result = inference_ort_with_io_binding(model, inputs, result_template, args.test_times, batch_size)
                             latency_result[ep + "_io_binding"] = result["average_latency_ms"]
                     else:
-                        result = inference_ort(model, ep, inputs, result_template, args.test_times, batch_size)
+                        result = inference_ort(args, model, ep, inputs, result_template, args.test_times, batch_size)
                         latency_result[ep] = result["average_latency_ms"]
                         logger.info(result)
 
@@ -899,6 +947,7 @@ def parse_arguments():
     parser.add_argument("-m", "--model_zoo", required=False, default="onnx", choices=["onnx", "cvs"], help="Models pool for perf.")
 
     parser.add_argument("-p", "--performace_type", required=False, default="benchmark", choices=["validate", "benchmark"], help="Models pool for perf.")
+    parser.add_argument("-i", "--input_data", required=False, default="zoo", choices=["zoo", "random"], help="source of input data.")
 
     parser.add_argument("--fp16", required=False, default=True, action="store_true", help="Inlcude Float16 into benchmarking.")
 
