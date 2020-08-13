@@ -655,7 +655,9 @@ class TestInferenceSession(unittest.TestCase):
                 raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
 
         else:
+            print('Entering here')
             shared_library = os.path.join(this, "libcustom_op_library.so")
+            print(shared_library)
             if not os.path.exists(shared_library):
                 raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
 
@@ -664,8 +666,10 @@ class TestInferenceSession(unittest.TestCase):
             raise FileNotFoundError("Unable to find '{0}'".format(custom_op_model))
 
         so1 = onnxrt.SessionOptions()
-        so1.register_custom_ops_library(shared_library)
-
+        try:
+            so1.register_custom_ops_library(shared_library)
+        except:
+            so1.register_custom_ops_library('./libcustom_op_library.so')
         # Create an alias for SessionOptions instance
         so2 = so1
 
