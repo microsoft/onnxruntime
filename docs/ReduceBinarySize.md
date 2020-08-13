@@ -33,5 +33,5 @@ The argument enables the compiled binary of including only operators referred. J
 - If both are specified, operators referred from either argument will be kept active.
 - The trimming script is located under toos/ci_build/, and could go solo as:
 ```
-python provider_rewriter.py --model_path d:\ReduceSize\models --ep_path d:\onnxruntime\onnxruntime\core\providers\cpu\cpu_execution_provider.cc
+python provider_rewriter.py --model_path d:\ReduceSize\models --file_path d:\ReduceSize\ops.json --ep_path d:\onnxruntime\onnxruntime\core\providers\cpu\cpu_execution_provider.cc
 ```
