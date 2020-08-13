@@ -504,7 +504,11 @@ void Node::Init(const std::string& name,
                 const std::vector<NodeArg*>& output_args,
                 const NodeAttributes* attributes,
                 const std::string& domain) {
-  name_ = name;
+  if (name.empty()) {
+    name_ = graph_->GenerateNodeName(op_type);
+  } else {
+    name_ = name;
+  }
   op_type_ = op_type;
   description_ = description;
   definitions_.input_defs = input_args;
@@ -2053,7 +2057,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
         node.op_ = nullptr;
       }
 
-	  InitFunctionBodyForNode(node);
+      InitFunctionBodyForNode(node);
 
       if (!node.op_) {
         return Status(ONNXRUNTIME, FAIL, "Fatal error: " + node.OpType() + " is not a registered function/op");
