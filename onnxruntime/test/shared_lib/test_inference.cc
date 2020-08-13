@@ -377,7 +377,9 @@ lib_name = "./libcustom_op_library.so";
   // have the handle.
   // This is to avoid leaking the library handle.
   auto status = onnxruntime::Env::Default().UnloadDynamicLibrary(library_handle);
-  ORT_THROW_IF_ERROR(status);
+  if (!status.IsOK()) {
+    ORT_THROW(status);
+  }
 }
 
 #if defined(ENABLE_LANGUAGE_INTEROP_OPS)
