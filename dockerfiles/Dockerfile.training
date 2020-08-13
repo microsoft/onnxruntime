@@ -10,7 +10,7 @@ ARG ONNX_VERSION=1.7.0
 ARG PYTORCH_VERSION=1.6.0
 
 ARG BUILD_CONFIG=Release
-ARG OPENMPI_PATH=/opt/openmpi-${OPENMPI_VERSION} 
+ARG OPENMPI_PATH=/opt/openmpi-${OPENMPI_VERSION}
 ARG COMMIT=master
 
 # cuda development image for building sources
@@ -102,7 +102,7 @@ RUN pip install torch==${PYTORCH_VERSION}
 #     CUDNN_LIBRARY="/usr/lib/x86_64-linux-gnu" \
 #     NCCL_INCLUDE_DIR="/usr/include" \
 #     NCCL_LIB_DIR="/usr/lib/x86_64-linux-gnu" \
-#     USE_SYSTEM_NCCL=1 
+#     USE_SYSTEM_NCCL=1
 # RUN conda install -y \
 #         mkl \
 #         mkl-include \
@@ -141,6 +141,9 @@ RUN cd /stage && git clone https://github.com/microsoft/onnxruntime.git &&\
         --build_wheel \
         --skip_tests &&\
     pip install build/${BUILD_CONFIG}/dist/*.whl
+
+# Install AzureML support and commonly used packages.
+RUN pip install azureml-defaults transformers==2.11.0 msgpack tensorboardX==1.8 tensorboard==2.3.0
 
 # switch to cuda runtime environment
 # note: launch with --gpus all or nvidia-docker
