@@ -498,7 +498,7 @@ set(all_tests ${onnxruntime_test_common_src} ${onnxruntime_test_ir_src} ${onnxru
 if(NOT TARGET onnxruntime)
   list(APPEND all_tests ${onnxruntime_shared_lib_test_SRC})
 endif()
-set(all_dependencies ${onnxruntime_test_providers_dependencies} )
+set(all_dependencies ${onnxruntime_test_providers_dependencies} onnxruntime_common)
 
   if (onnxruntime_ENABLE_TRAINING)
     list(APPEND all_tests ${onnxruntime_test_training_src})
