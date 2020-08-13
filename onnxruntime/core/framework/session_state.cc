@@ -444,7 +444,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
         ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].program_counter_start[index] <= exe_plan->allocation_plan[ml_value_idx].program_counter_end[index]);
 
         mem_planner.TraceAllocation(ml_value_idx, exe_plan->allocation_plan[ml_value_idx].program_counter_start,
-                                    exe_plan->allocation_plan[ml_value_idx].program_counter_end, size);
+                                    exe_plan->allocation_plan[ml_value_idx].program_counter_end, aligned_size);
       }
     }
 
