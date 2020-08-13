@@ -47,7 +47,6 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, std::string devi
 
   std::istringstream model_stream{model_proto.SerializeAsString()};
   std::shared_ptr<ngraph::Function> ng_function;
-  std::cout << "CreateNgraphFunc" << std::endl;
 
   try {
     ng_function = ngraph::onnx_import::import_onnx_model(model_stream);
@@ -179,7 +178,6 @@ GetOutputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_
       }
       auto it = output_names.find(output_info_iter->first);
       if (it == output_names.end()) {
-        std::cout << "Output name is " << output_info_iter->first << std::endl;
         ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX");
       }
       int index = it->second;
@@ -191,7 +189,6 @@ GetOutputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_
   for(auto item : const_output_map){
     auto it = output_names.find(item.first);
     if(it == output_names.end()) {
-      std::cout << "Const Output name is " << item.first << std::endl;
       ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX");
     }
     int index = it->second;

@@ -40,14 +40,8 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   SetIODefs(model_proto, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_);
   InferenceEngine::ExecutableNetwork exe_network;
 
-  for(auto item : const_outputs_map_){
-    std::cout << "Const output name " << item.first << std::endl;
-  }
-  std::cout << "Size of map" << const_outputs_map_.size() << std::endl;
-  std::cout << "Full outputs Size of map" << subgraph_context_.output_names.size() << std::endl;
   if(const_outputs_map_.size() == subgraph_context_.output_names.size())
     subgraph_context_.is_constant = true;
-
 
   // Loading model to the plugin
   if(subgraph_context_.is_constant)
@@ -226,9 +220,7 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   // Get Output tensors
 
 
-  std::cout << "Inference successful" << std::endl;
   LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
-  std::cout << "Inference successful" << std::endl;
 }
 
 }  // namespace openvino_ep

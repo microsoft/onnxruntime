@@ -48,7 +48,8 @@ bool IsOpSupportedOnlyInModel(std::string name){
     "ReduceMin",
     "Shape",
     "Split",
-    "TopK"
+    "TopK",
+    "Pad"
   };
   return ops_supported_only_in_model.find(name) != ops_supported_only_in_model.end();
 }
