@@ -62,7 +62,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
   auto* Y = ctx->Output(0, TensorShape(std::vector<int64_t>{M, N}));
   HipT* out_data = reinterpret_cast<HipT*>(Y->template MutableData<T>());
 
-  //HipT one = ToHipType<T>::FromFloat(1.0f);
+  HipT one = ToHipType<T>::FromFloat(1.0f);
   HipT zero = ToHipType<T>::FromFloat(0.0f);
 
   // broadcast bias if needed and is present
@@ -79,30 +79,30 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
           0,
           out_data,
           1));
-    // } else if (b_shape.NumDimensions() == 1 || b_shape[0] == 1) {
-    //   // B is (N,) or (1, N), broadcast using Y(N,M) = 1 * B(N,1) x ones(1,M) + 0 * Y
-    //   HIPBLAS_RETURN_IF_ERROR(hipblasGemmHelper(
-    //       HipblasHandle(),
-    //       HIPBLAS_OP_N,
-    //       HIPBLAS_OP_N,
-    //       N, M, 1,
-    //       /*alpha*/ &one,
-    //       b_data, N,
-    //       GetConstOnes<HipT>(M), 1,
-    //       /*beta*/ &zero,
-    //       out_data, N));
-    // } else if (b_shape.NumDimensions() == 2 && b_shape[1] == 1) {
-    //   // B is (M, 1), broadcast using Y(N,M) = 1 * ones(N,1) x B(1,M) + 0 * Y
-    //   HIPBLAS_RETURN_IF_ERROR(hipblasGemmHelper(
-    //       HipblasHandle(),
-    //       HIPBLAS_OP_N,
-    //       HIPBLAS_OP_N,
-    //       N, M, 1,
-    //       /*alpha*/ &one,
-    //       GetConstOnes<HipT>(N), N,
-    //       b_data, 1,
-    //       /*beta*/ &zero,
-    //       out_data, N));
+    } else if (b_shape.NumDimensions() == 1 || b_shape[0] == 1) {
+      // B is (N,) or (1, N), broadcast using Y(N,M) = 1 * B(N,1) x ones(1,M) + 0 * Y
+      HIPBLAS_RETURN_IF_ERROR(hipblasGemmHelper(
+          HipblasHandle(),
+          HIPBLAS_OP_N,
+          HIPBLAS_OP_N,
+          N, M, 1,
+          /*alpha*/ &one,
+          b_data, N,
+          GetConstOnes<HipT>(M), 1,
+          /*beta*/ &zero,
+          out_data, N));
+    } else if (b_shape.NumDimensions() == 2 && b_shape[1] == 1) {
+      // B is (M, 1), broadcast using Y(N,M) = 1 * ones(N,1) x B(1,M) + 0 * Y
+      HIPBLAS_RETURN_IF_ERROR(hipblasGemmHelper(
+          HipblasHandle(),
+          HIPBLAS_OP_N,
+          HIPBLAS_OP_N,
+          N, M, 1,
+          /*alpha*/ &one,
+          GetConstOnes<HipT>(N), N,
+          b_data, 1,
+          /*beta*/ &zero,
+          out_data, N));
     } else {
       // B is (M, N), no broadcast needed.
       HIP_RETURN_IF_ERROR(hipMemcpyAsync(out_data, b_data, M * N * sizeof(float), hipMemcpyDeviceToDevice));

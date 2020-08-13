@@ -38,14 +38,14 @@ namespace hip {
       AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM>);
 
 REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, float, float, float)
-REGISTER_ADAM_KERNEL_TYPED(MLFloat16, int64_t, float, MLFloat16, float, float)
-REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, MLFloat16, float, float)
-REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, float, MLFloat16, MLFloat16)
-REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, float, MLFloat16, float)
-REGISTER_ADAM_KERNEL_TYPED(MLFloat16, int64_t, float, MLFloat16, MLFloat16, MLFloat16)
-REGISTER_ADAM_KERNEL_TYPED(MLFloat16, int64_t, float, MLFloat16, MLFloat16, float)
-REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, MLFloat16, MLFloat16, MLFloat16)
-REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, MLFloat16, MLFloat16, float)
+// REGISTER_ADAM_KERNEL_TYPED(MLFloat16, int64_t, float, MLFloat16, float, float)
+// REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, MLFloat16, float, float)
+// REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, float, MLFloat16, MLFloat16)
+// REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, float, MLFloat16, float)
+// REGISTER_ADAM_KERNEL_TYPED(MLFloat16, int64_t, float, MLFloat16, MLFloat16, MLFloat16)
+// REGISTER_ADAM_KERNEL_TYPED(MLFloat16, int64_t, float, MLFloat16, MLFloat16, float)
+// REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, MLFloat16, MLFloat16, MLFloat16)
+// REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, MLFloat16, MLFloat16, float)
 
 template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD, typename T_GRAD_NORM>
 Status AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM>::ComputeInternal(OpKernelContext* ctx) const {
