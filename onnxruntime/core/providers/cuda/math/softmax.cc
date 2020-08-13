@@ -72,6 +72,22 @@ SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16)
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Softmax<T>);                                                              \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
+      LogSoftmax,                                                               \
+      kOnnxDomain,                                                              \
+      1, 10,                                                                    \
+      T,                                                                        \
+      kCudaExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Softmax<T>);                                                              \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
+      LogSoftmax,                                                               \
+      kOnnxDomain,                                                              \
+      11,                                                                       \
+      T,                                                                        \
+      kCudaExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Softmax<T>);
 
 template <typename T>
@@ -84,7 +100,12 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (input_shape.Size() == 0)
     return Status::OK();
 
-  return SoftMaxComputeHelper<T, false>(X_data, input_shape, Y_data, CudnnHandle(), axis_);
+  if (log_softmax_) {
+    return SoftMaxComputeHelper<T, true>(X_data, input_shape, Y_data, CudnnHandle(), axis_);
+  }
+  else {
+    return SoftMaxComputeHelper<T, false>(X_data, input_shape, Y_data, CudnnHandle(), axis_);
+  }
 }
 
 #define SPECIALIZED_COMPUTE(T) \

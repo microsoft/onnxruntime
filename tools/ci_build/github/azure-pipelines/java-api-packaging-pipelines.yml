@@ -1,3 +1,11 @@
+schedules:
+- cron: "0 8 * * *"
+  displayName: Daily Build
+  branches:
+    include:
+    - master
+  always: true
+
 jobs:
 - job: Linux_Java_API_Build_CPU_x64
   workspace:

@@ -57,9 +57,8 @@ class Multi_1:
         ret = S + P
         return ret + self.W1, ret + self.W2, ret + self.W3
 class Multi_2:
-    def compute(self, H, N, E):
-        r1, r2 = H + N, N + E
-        return r1, r2
+    def compute(self, *kwargs):
+        return sum(kwargs[0:-1]), sum(kwargs[1:])
 ```
 ### Step 4
 Copy mymodule.py into Python sys.path, then run the model with onnxruntime python API. On Windows, please set PYTHONHOME beforehand. It should point to directory where the python is installed, such as C:\Python37 or C:\ProgramData\Anaconda3\envs\myconda1 if it is in conda.
