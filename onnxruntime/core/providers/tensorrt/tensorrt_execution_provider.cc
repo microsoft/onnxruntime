@@ -272,7 +272,7 @@ bool FindCycleHelper(int i, const std::list<int>* adjacency_map,
 }
 
 std::unique_ptr<Provider_IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph_t graph_nodes_index, int& kernels_index, const onnxruntime::Provider_GraphViewer& graph) const {
-    const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
+  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
   std::unordered_set<size_t> node_set;
   node_set.reserve(graph_nodes_index.first.size());
   for (const auto& index : graph_nodes_index.first) {
@@ -915,11 +915,11 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
             // Get shape values for shape tensor input
             const auto& tensor_type = ort.GetTensorElementType(tensor_info);
             int shape_size = nb_dims == 0 ? 1 : tensor_shapes[0];
-            tensor_shape_values[input_name].reserve(shape_size);
+            tensor_shape_values[input_name].resize(shape_size);
             switch (tensor_type) {
               case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
                 int32_t* input = new int32_t[shape_size];
-                cudaMemcpy(input, ort.GetTensorData<int32_t>(input_tensor), shape_size * sizeof(int32_t), cudaMemcpyDeviceToHost);
+                CUDA_RETURN_IF_ERROR(cudaMemcpy(input, ort.GetTensorData<int32_t>(input_tensor), shape_size * sizeof(int32_t), cudaMemcpyDeviceToHost));
                 for (int j = 0; j < shape_size; ++j) {
                   tensor_shape_values[input_name][j] = input[j];
                 }
@@ -928,7 +928,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
               }
               case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
                 int64_t* input = new int64_t[shape_size];
-                cudaMemcpy(input, ort.GetTensorData<int64_t>(input_tensor), shape_size * sizeof(int64_t), cudaMemcpyDeviceToHost);
+                CUDA_RETURN_IF_ERROR(cudaMemcpy(input, ort.GetTensorData<int64_t>(input_tensor), shape_size * sizeof(int64_t), cudaMemcpyDeviceToHost));
                 for (int j = 0; j < shape_size; ++j) {
                   tensor_shape_values[input_name][j] = static_cast<int32_t>(input[j]);
                 }
