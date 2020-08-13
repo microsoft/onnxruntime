@@ -556,7 +556,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "OFF" if args.skip_winml_tests else "ON"),
         "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
         "-Donnxruntime_DEV_MODE=" + (
-            "OFF" if args.android or args.use_acl or args.use_armnn or
+            "OFF" if args.use_acl or args.use_armnn or
             (args.ios and is_macOS()) else "ON"),
         "-DPYTHON_EXECUTABLE=" + sys.executable,
         "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
@@ -634,9 +634,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "ON" if args.enable_msvc_static_runtime else "OFF"),
         # enable pyop if it is nightly build
         "-Donnxruntime_ENABLE_LANGUAGE_INTEROP_OPS=" + (
-            "ON" if args.enable_language_interop_ops or
-            (args.config != 'Debug' and
-             bool(os.getenv('NIGHTLY_BUILD') == '1')) else "OFF"),
+            "ON" if args.enable_language_interop_ops else "OFF"),
         "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
         "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml else "OFF"),
         "-Donnxruntime_BUILD_FOR_WINDOWS_STORE=" + ("ON" if args.enable_windows_store else "OFF"),
@@ -948,7 +946,8 @@ def setup_cuda_vars(args):
                 .format(
                     cuda_home, cuda_home_valid, cudnn_home, cudnn_home_valid))
 
-        if is_windows():
+        # Our CI build machines already have the env vars setup
+        if is_windows() and 'AGENT_VERSION' not in os.environ:
             # Validate that the cudnn_home is pointing at
             # the right level.
             if not os.path.exists(os.path.join(cudnn_home, "bin")):
