@@ -4,8 +4,8 @@
 #include <core/common/make_unique.h>
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/graph/constants.h"
 #include "core/platform/env.h"
+#include "core/graph/constants.h"
 #include "providers.h"
 #include <memory>
 #include <vector>
@@ -376,7 +376,7 @@ lib_name = "./libcustom_op_library.so";
   // We use our platform abstraction class - The user can unload the library in any way once they
   // have the handle.
   // This is to avoid leaking the library handle.
-  //auto status = onnxruntime::Env::Default().UnloadDynamicLibrary(library_handle);
+  static_cast<void>(onnxruntime::Env::Default().UnloadDynamicLibrary(library_handle));
 }
 
 #if defined(ENABLE_LANGUAGE_INTEROP_OPS)
