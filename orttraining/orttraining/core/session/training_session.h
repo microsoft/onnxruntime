@@ -46,9 +46,6 @@ class TrainingSession : public InferenceSession {
     // Gradient graph configuration
     GradientGraphConfiguration gradient_graph_config{};
 
-    // Whether to set the gradients as graph outputs.
-    bool set_gradients_as_graph_outputs{false};
-
     // The number of gradient accumulation steps.
     int gradient_accumulation_steps{1};
 
@@ -177,8 +174,16 @@ class TrainingSession : public InferenceSession {
     // Otherwise, it returns false.
     optional<PipelineConfiguration> pipeline_config{};
 
-    // Whether to enable GELU approximation which is faster but produces different results.
-    bool enable_gelu_approximation{false};
+    struct GraphTransformerConfiguration {
+      // Whether to enable GELU approximation which is faster but produces different results.
+      bool enable_gelu_approximation{false};
+      // Enable checkpointing of attention dropout to save memory
+      bool attn_dropout_checkpoint{false};
+      // Enable checkpointing of Gelu activation output to save memory
+      bool gelu_checkpoint{false};
+    };
+
+    GraphTransformerConfiguration graph_transformer_config{};
   };
 
   /**
@@ -390,13 +395,13 @@ class TrainingSession : public InferenceSession {
                                    std::string& backward_waited_event_after_recv_name,
                                    std::string& backward_recorded_event_before_send_name);
 
-  common::Status ApplyTransformationsToMainGraph(
-      const std::unordered_set<std::string>& weights_to_train, bool enable_gelu_approximation);
+  common::Status ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,
+                                                 const TrainingConfiguration::GraphTransformerConfiguration& config);
 
   /** configure initial transformers for training */
   void AddPreTrainingTransformers(GraphTransformerManager& transformer_manager,
                                   const std::unordered_set<std::string>& weights_to_train,
-                                  bool enable_gelu_approximation,
+                                  const TrainingConfiguration::GraphTransformerConfiguration& config,
                                   TransformerLevel graph_optimization_level = TransformerLevel::MaxLevel,
                                   const std::vector<std::string>& custom_list = {});
 
@@ -408,12 +413,11 @@ class TrainingSession : public InferenceSession {
   /** Perform auto-diff to add backward graph into the model.
   @param weights_to_train a set of weights to be training.
   @param loss_function_output_name the name of the loss function's output.
-  @param set_gradient_as_graph_output if it is true, set gradient of trainable weight as graph output
   */
   common::Status BuildGradientGraph(const std::unordered_set<std::string>& weights_to_train,
                                     const std::string& loss_function_output_name,
                                     const GradientGraphConfiguration& gradient_graph_config,
-                                    const bool set_gradient_as_graph_output = false);
+                                    const logging::Logger& logger);
 
   common::Status BuildAccumulationNode(const std::unordered_set<std::string>& weights_to_train);
 

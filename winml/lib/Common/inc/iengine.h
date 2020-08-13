@@ -168,6 +168,9 @@ IEngineBuilder : IUnknown {
   STDMETHOD(SetBatchSizeOverride)
   (uint32_t batch_size_override) PURE;
 
+  STDMETHOD(SetNamedDimensionOverrides)
+  (wfc::IMapView<winrt::hstring, uint32_t> named_dimension_overrides) PURE;
+
   STDMETHOD(SetIntraOpNumThreadsOverride)
   (uint32_t intra_op_num_threads) PURE;
 

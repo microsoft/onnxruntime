@@ -39,6 +39,9 @@ class BertOptimizationOptions:
     def use_raw_attention_mask(self):
         self.attention_mask_format = AttentionMaskFormat.AttentionMask
 
+    def disable_attention_mask(self):
+        self.attention_mask_format = AttentionMaskFormat.NoMask
+
 
 class BertOnnxModel(OnnxModel):
     def __init__(self, model, num_heads, hidden_size):

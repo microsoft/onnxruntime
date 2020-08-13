@@ -41,60 +41,12 @@ class FusionEmbedLayerNoMask(Fusion):
         self.utils = FusionUtils(model)
         self.attention = None
 
-    def fuse(self, node, input_name_to_nodes, output_name_to_node):
-        if self.model.match_parent_path(node, ['Add', 'Gather'], [0, 0]) is None:
-            logger.debug("Failed to match path SkipLayerNormalization[0] <-- Add <-- Gather")
-            return
-
-        self.attention = self.model.find_first_child_by_type(node, 'Attention', input_name_to_nodes, recursive=False)
-        if self.attention is None:
-            # In case user disables attention fusion, check whether subgraph looks like Attention.
-            if node.output[0] not in input_name_to_nodes:
-                return
-            children = input_name_to_nodes[node.output[0]]
-            children_types = sorted([child.op_type for child in children])
-            if children_types != ['MatMul', 'MatMul', 'MatMul', 'SkipLayerNormalization']:
-                logger.debug("No Attention like subgraph in children of SkipLayerNormalization")
-                return
-
-        # Assume the order of embeddings are word_embedding + position_embedding + segment_embedding
-        normalize_node = node
-        word_embedding_path = self.model.match_parent_path(normalize_node, ['Add', 'Gather'], [0, 0])
-        if word_embedding_path is None:
-            logger.info("Word embedding path is not found. Embed layer cannot be fused.")
-            return
-        add_node, word_embedding_gather = word_embedding_path
-        input_ids = word_embedding_gather.input[1]
-
-        position_embedding_expand = None
-        position_embedding_shape = None
-
-        position_embedding_path = self.model.match_parent_path(normalize_node, ['Reshape', 'Slice'], [1, 0])
-        if position_embedding_path is not None:
-            _, position_embedding_weight_node = position_embedding_path
-        else:
-            position_embedding_path = self.model.match_parent_path(add_node, ['Gather', 'Expand', 'Shape'], [1, 1, 1])
-            if position_embedding_path is not None:
-                position_embedding_weight_node, position_embedding_expand, position_embedding_shape = position_embedding_path
-            else:
-                position_embedding_path = self.model.match_parent_path(
-                    add_node, ['Gather', 'Expand', 'Concat', 'Unsqueeze', 'Gather', 'Shape'], [1, 1, 1, 1, 0, 0])
-                if position_embedding_path is not None:
-                    position_embedding_weight_node, position_embedding_expand, _, _, _, position_embedding_shape = position_embedding_path
-                else:
-                    # Here we will not try to get exact match. Instead, we only try identify position embedding weights.
-                    position_embedding_path = self.model.match_parent_path(add_node, ['Gather', 'Expand'], [1, 1])
-                    if position_embedding_path is not None:
-                        position_embedding_weight_node, position_embedding_expand = position_embedding_path
-                    else:
-                        logger.info("Position embedding path is not found. Embed layer cannot be fused.")
-                        return
-
-            if position_embedding_shape is not None and position_embedding_shape.input[0] != input_ids:
-                logger.info("position and word embedding is expected to be applied on same input")
-                return
+    def match_segment_path(self, normalize_node, input_name_to_nodes, output_name_to_node, input_ids_cast_node):
+        segment_ids = None
+        segment_embedding_gather = None
 
         segment_embedding_path = self.model.match_parent_path(normalize_node, ['Gather'], [1])
+
         if segment_embedding_path is None:
             segment_embedding_path = self.model.match_parent_path(normalize_node, ['Add', 'Gather'], [0, 1])
             if segment_embedding_path is None:
@@ -106,25 +58,7 @@ class FusionEmbedLayerNoMask(Fusion):
 
         segment_ids = segment_embedding_gather.input[1]
 
-        if position_embedding_expand and position_embedding_shape:
-            input_parent = self.model.get_parent(position_embedding_shape, 0, output_name_to_node)
-            subgraph_nodes = self.model.get_parent_subgraph_nodes(position_embedding_expand,
-                                                                  [input_parent] if input_parent else [],
-                                                                  output_name_to_node)
-            self.nodes_to_remove.extend(subgraph_nodes)
-
-        self.nodes_to_remove.extend(word_embedding_path)
-        self.nodes_to_remove.extend(position_embedding_path)
         self.nodes_to_remove.extend(segment_embedding_path)
-
-        self.nodes_to_remove.extend([normalize_node])
-
-        # Cast input_ids and segment_ids to int32.
-        input_ids_cast_node = None
-        if self.model.find_graph_input(input_ids):
-            casted, input_ids = self.utils.cast_graph_input_to_int32(input_ids)
-        else:
-            input_ids, input_ids_cast_node = self.utils.cast_input_to_int32(input_ids)
 
         if self.model.find_graph_input(segment_ids):
             casted, segment_ids = self.utils.cast_graph_input_to_int32(segment_ids)
@@ -148,21 +82,143 @@ class FusionEmbedLayerNoMask(Fusion):
                                      value=helper.make_tensor("value", onnx.TensorProto.INT32, [1], [1])))
                 segment_ids = "zeros_for_input_shape"
 
+        return segment_ids, segment_embedding_gather
+
+    def fuse(self, node, input_name_to_nodes, output_name_to_node):
+        is_distill = False
+
+        if self.model.match_parent_path(node, ['Add', 'Gather'], [0, 0]) is None and self.model.match_parent_path(
+                node, ['Gather'], [0]) is None:
+            logger.debug(
+                "Failed to match path SkipLayerNormalization[0] <-- Add <-- Gather or SkipLayerNormalization[0] <-- Gather"
+            )
+            return
+
+        self.attention = self.model.find_first_child_by_type(node, 'Attention', input_name_to_nodes, recursive=False)
+        if self.attention is None:
+            # In case user disables attention fusion, check whether subgraph looks like Attention.
+            if node.output[0] not in input_name_to_nodes:
+                return
+            children = input_name_to_nodes[node.output[0]]
+            children_types = sorted([child.op_type for child in children])
+            if children_types != ['MatMul', 'MatMul', 'MatMul', 'SkipLayerNormalization'] and children_types != [
+                    'MatMul', 'MatMul', 'MatMul', 'Shape', 'Shape', 'SkipLayerNormalization'
+            ]:
+                logger.debug("No Attention like subgraph in children of SkipLayerNormalization")
+                return
+
+        # Assume the order of embeddings are word_embedding + position_embedding + segment_embedding
+        normalize_node = node
+        add_node = None
+        word_embedding_path = self.model.match_parent_path(normalize_node, ['Add', 'Gather'], [0, 0])
+        if word_embedding_path is not None:
+            add_node, word_embedding_gather = word_embedding_path
+        else:
+            word_embedding_path = self.model.match_parent_path(normalize_node, ['Gather'], [0])
+            if word_embedding_path is not None:
+                word_embedding_gather = word_embedding_path[0]
+                is_distill = True
+                from packaging.version import Version
+                import onnxruntime
+                if Version(onnxruntime.__version__) <= Version("1.4.0"):
+                    logger.warning(
+                        'Please install onnxruntime with version > 1.4.0 for embedlayer fusion support for distilbert')
+                    return
+            else:
+                logger.info("Word embedding path is not found. Embed layer cannot be fused.")
+                return
+
+        input_ids = word_embedding_gather.input[1]
+
+        position_embedding_expand = None
+        position_embedding_shape = None
+
+        position_embedding_path = self.model.match_parent_path(normalize_node, ['Gather', 'Expand'],
+                                                               [1, 1])  # for distill-bert
+        if position_embedding_path is not None:
+            position_embedding_weight_node, position_embedding_expand = position_embedding_path
+        else:
+            position_embedding_path = self.model.match_parent_path(normalize_node, ['Reshape', 'Slice'], [1, 0])
+            if position_embedding_path is not None:
+                _, position_embedding_weight_node = position_embedding_path
+            else:
+                position_embedding_path = self.model.match_parent_path(add_node, ['Gather', 'Expand', 'Shape'],
+                                                                       [1, 1, 1])
+                if position_embedding_path is not None:
+                    position_embedding_weight_node, position_embedding_expand, position_embedding_shape = position_embedding_path
+                else:
+                    position_embedding_path = self.model.match_parent_path(
+                        add_node, ['Gather', 'Expand', 'Concat', 'Unsqueeze', 'Gather', 'Shape'], [1, 1, 1, 1, 0, 0])
+                    if position_embedding_path is not None:
+                        position_embedding_weight_node, position_embedding_expand, _, _, _, position_embedding_shape = position_embedding_path
+                    else:
+                        # Here we will not try to get exact match. Instead, we only try identify position embedding weights.
+                        position_embedding_path = self.model.match_parent_path(add_node, ['Gather', 'Expand'], [1, 1])
+                        if position_embedding_path is not None:
+                            position_embedding_weight_node, position_embedding_expand = position_embedding_path
+                        else:
+                            logger.info("Position embedding path is not found. Embed layer cannot be fused.")
+                            return
+
+                if position_embedding_shape is not None and position_embedding_shape.input[0] != input_ids:
+                    logger.info("position and word embedding is expected to be applied on same input")
+                    return
+
+        if position_embedding_expand and position_embedding_shape:
+            input_parent = self.model.get_parent(position_embedding_shape, 0, output_name_to_node)
+            subgraph_nodes = self.model.get_parent_subgraph_nodes(position_embedding_expand,
+                                                                  [input_parent] if input_parent else [],
+                                                                  output_name_to_node)
+            self.nodes_to_remove.extend(subgraph_nodes)
+
+        self.nodes_to_remove.extend(word_embedding_path)
+        self.nodes_to_remove.extend(position_embedding_path)
+
+        self.nodes_to_remove.extend([normalize_node])
+
+        # Cast input_ids and segment_ids to int32.
+        input_ids_cast_node = None
+        if self.model.find_graph_input(input_ids):
+            casted, input_ids = self.utils.cast_graph_input_to_int32(input_ids)
+        else:
+            input_ids, input_ids_cast_node = self.utils.cast_input_to_int32(input_ids)
+
         node_name = self.model.create_node_name('EmbedLayerNormalization')
         output_name = node_name + "_output"
-        embed_node = helper.make_node(
-            'EmbedLayerNormalization',
-            inputs=[
+
+        embed_node_inputs = None
+        if is_distill == False:
+            segment_path = self.match_segment_path(normalize_node, input_name_to_nodes, output_name_to_node,
+                                                   input_ids_cast_node)
+            if segment_path is None:
+                return
+            else:
+                segment_ids, segment_embedding_gather = segment_path
+
+                embed_node_inputs = [
+                    input_ids,
+                    segment_ids,
+                    word_embedding_gather.input[0],
+                    position_embedding_weight_node.input[0],
+                    segment_embedding_gather.input[0],
+                    normalize_node.input[2],
+                    normalize_node.input[3]  # gamma and beta
+                ]
+        else:
+            embed_node_inputs = [
                 input_ids,
-                segment_ids,
+                '',
                 word_embedding_gather.input[0],
                 position_embedding_weight_node.input[0],
-                segment_embedding_gather.input[0],
+                '',
                 normalize_node.input[2],
                 normalize_node.input[3]  # gamma and beta
-            ],
-            outputs=[node_name + "_output", node_name + "_dummy_mask_index"],
-            name=node_name)
+            ]
+
+        embed_node = helper.make_node('EmbedLayerNormalization',
+                                      embed_node_inputs,
+                                      outputs=[node_name + "_output", node_name + "_dummy_mask_index"],
+                                      name=node_name)
 
         embed_node.domain = "com.microsoft"
 

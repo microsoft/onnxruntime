@@ -30,9 +30,9 @@ AttentionBase::AttentionBase(const OpKernelInfo& info) {
   is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
 }
 
-Status AttentionBase::CheckInputs(const Tensor* input,
-                                  const Tensor* weights,
-                                  const Tensor* bias,
+Status AttentionBase::CheckInputs(const TensorShape& input_shape,
+                                  const TensorShape& weights_shape,
+                                  const TensorShape& bias_shape,
                                   const Tensor* mask_index,
                                   const Tensor* past) const {
   // Input shapes:
@@ -42,7 +42,7 @@ Status AttentionBase::CheckInputs(const Tensor* input,
   //   mask_index  : (batch_size) if presented
   //   past        : (2, batch_size, num_heads, past_sequence_length, head_size)
 
-  const auto& dims = input->Shape().GetDims();
+  const auto& dims = input_shape.GetDims();
   if (dims.size() != 3) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'input' is expected to have 3 dimensions, got ",
                            dims.size());
@@ -55,7 +55,7 @@ Status AttentionBase::CheckInputs(const Tensor* input,
                            "Input 0 dimension 2 should be divisiable by value of the num_heads attribute.");
   }
 
-  const auto& weights_dims = weights->Shape().GetDims();
+  const auto& weights_dims = weights_shape.GetDims();
   if (weights_dims.size() != 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'weights' is expected to have 2 dimensions, got ",
                            weights_dims.size());
@@ -68,7 +68,7 @@ Status AttentionBase::CheckInputs(const Tensor* input,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'weights' dimension 1 should be 3 times of dimension 0");
   }
 
-  const auto& bias_dims = bias->Shape().GetDims();
+  const auto& bias_dims = bias_shape.GetDims();
   if (bias_dims.size() != 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'bias' is expected to have 1 dimension, got ",
                            bias_dims.size());
@@ -160,7 +160,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   const Tensor* mask_index = context->Input<Tensor>(3);
   const Tensor* past = context->Input<Tensor>(4);
 
-  ORT_RETURN_IF_ERROR(CheckInputs(input, weights, bias, mask_index, past));
+  ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(), weights->Shape(), bias->Shape(), mask_index, past));
 
   const auto& shape = input->Shape().GetDims();
   const int batch_size = static_cast<int>(shape[0]);
