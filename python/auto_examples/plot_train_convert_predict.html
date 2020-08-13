@@ -1,19 +1,22 @@
 
 <!DOCTYPE html>
 
-<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Train, convert and predict with ONNX Runtime &#8212; ONNX Runtime 1.2.0 documentation</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Train, convert and predict with ONNX Runtime &#8212; ONNX Runtime 1.4.0 documentation</title>
     <link rel="stylesheet" href="../_static/alabaster.css" type="text/css" />
     <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
-    <link rel="stylesheet" type="text/css" href="../_static/gallery.css" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css" />
-    <script type="text/javascript" id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
-    <script type="text/javascript" src="../_static/jquery.js"></script>
-    <script type="text/javascript" src="../_static/underscore.js"></script>
-    <script type="text/javascript" src="../_static/doctools.js"></script>
-    <script type="text/javascript" src="../_static/language_data.js"></script>
+    <link rel="stylesheet" type="text/css" href="../_static/gallery.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/gallery-binder.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/gallery-dataframe.css" />
+    <script id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
+    <script src="../_static/jquery.js"></script>
+    <script src="../_static/underscore.js"></script>
+    <script src="../_static/doctools.js"></script>
+    <script src="../_static/language_data.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="prev" title="Common errors with onnxruntime" href="plot_common_errors.html" />
@@ -35,7 +38,7 @@
             
   <div class="sphx-glr-download-link-note admonition note">
 <p class="admonition-title">Note</p>
-<p>Click <a class="reference internal" href="#sphx-glr-download-auto-examples-plot-train-convert-predict-py"><span class="std std-ref">here</span></a> to download the full example code</p>
+<p>Click <a class="reference internal" href="#sphx-glr-download-auto-examples-plot-train-convert-predict-py"><span class="std std-ref">here</span></a>     to download the full example code</p>
 </div>
 <div class="sphx-glr-example-title section" id="train-convert-and-predict-with-onnx-runtime">
 <span id="l-logreg-example"></span><span id="sphx-glr-auto-examples-plot-train-convert-predict-py"></span><h1>Train, convert and predict with ONNX Runtime<a class="headerlink" href="#train-convert-and-predict-with-onnx-runtime" title="Permalink to this headline">¶</a></h1>
@@ -53,7 +56,7 @@ to its use in its converted from.</p>
 <div class="section" id="train-a-logistic-regression">
 <h2><a class="toc-backref" href="#id1">Train a logistic regression</a><a class="headerlink" href="#train-a-logistic-regression" title="Permalink to this headline">¶</a></h2>
 <p>The first step consists in retrieving the iris datset.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">sklearn.datasets</span> <span class="kn">import</span> <span class="n">load_iris</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">sklearn.datasets</span> <span class="kn">import</span> <span class="n">load_iris</span>
 <span class="n">iris</span> <span class="o">=</span> <span class="n">load_iris</span><span class="p">()</span>
 <span class="n">X</span><span class="p">,</span> <span class="n">y</span> <span class="o">=</span> <span class="n">iris</span><span class="o">.</span><span class="n">data</span><span class="p">,</span> <span class="n">iris</span><span class="o">.</span><span class="n">target</span>
 
@@ -62,23 +65,27 @@ to its use in its converted from.</p>
 </pre></div>
 </div>
 <p>Then we fit a model.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">sklearn.linear_model</span> <span class="kn">import</span> <span class="n">LogisticRegression</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">sklearn.linear_model</span> <span class="kn">import</span> <span class="n">LogisticRegression</span>
 <span class="n">clr</span> <span class="o">=</span> <span class="n">LogisticRegression</span><span class="p">()</span>
 <span class="n">clr</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">X_train</span><span class="p">,</span> <span class="n">y_train</span><span class="p">)</span>
 </pre></div>
 </div>
+<p class="sphx-glr-script-out">Out:</p>
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>LogisticRegression()
+</pre></div>
+</div>
 <p>We compute the prediction on the test set
 and we show the confusion matrix.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">sklearn.metrics</span> <span class="kn">import</span> <span class="n">confusion_matrix</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">sklearn.metrics</span> <span class="kn">import</span> <span class="n">confusion_matrix</span>
 
 <span class="n">pred</span> <span class="o">=</span> <span class="n">clr</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="n">X_test</span><span class="p">)</span>
-<span class="k">print</span><span class="p">(</span><span class="n">confusion_matrix</span><span class="p">(</span><span class="n">y_test</span><span class="p">,</span> <span class="n">pred</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">confusion_matrix</span><span class="p">(</span><span class="n">y_test</span><span class="p">,</span> <span class="n">pred</span><span class="p">))</span>
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[ 9  0  0]
- [ 0 15  1]
- [ 0  1 12]]
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[11  0  0]
+ [ 0 13  0]
+ [ 0  0 14]]
 </pre></div>
 </div>
 </div>
@@ -87,10 +94,10 @@ and we show the confusion matrix.</p>
 <p>We use module
 <a class="reference external" href="https://github.com/onnx/sklearn-onnx">sklearn-onnx</a>
 to convert the model into ONNX format.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">skl2onnx</span> <span class="kn">import</span> <span class="n">convert_sklearn</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">skl2onnx</span> <span class="kn">import</span> <span class="n">convert_sklearn</span>
 <span class="kn">from</span> <span class="nn">skl2onnx.common.data_types</span> <span class="kn">import</span> <span class="n">FloatTensorType</span>
 
-<span class="n">initial_type</span> <span class="o">=</span> <span class="p">[(</span><span class="s1">&#39;float_input&#39;</span><span class="p">,</span> <span class="n">FloatTensorType</span><span class="p">([</span><span class="bp">None</span><span class="p">,</span> <span class="mi">4</span><span class="p">]))]</span>
+<span class="n">initial_type</span> <span class="o">=</span> <span class="p">[(</span><span class="s1">&#39;float_input&#39;</span><span class="p">,</span> <span class="n">FloatTensorType</span><span class="p">([</span><span class="kc">None</span><span class="p">,</span> <span class="mi">4</span><span class="p">]))]</span>
 <span class="n">onx</span> <span class="o">=</span> <span class="n">convert_sklearn</span><span class="p">(</span><span class="n">clr</span><span class="p">,</span> <span class="n">initial_types</span><span class="o">=</span><span class="n">initial_type</span><span class="p">)</span>
 <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s2">&quot;logreg_iris.onnx&quot;</span><span class="p">,</span> <span class="s2">&quot;wb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
     <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">onx</span><span class="o">.</span><span class="n">SerializeToString</span><span class="p">())</span>
@@ -98,33 +105,33 @@ to convert the model into ONNX format.</p>
 </div>
 <p>We load the model with ONNX Runtime and look at
 its input and output.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">onnxruntime</span> <span class="kn">as</span> <span class="nn">rt</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">onnxruntime</span> <span class="k">as</span> <span class="nn">rt</span>
 <span class="n">sess</span> <span class="o">=</span> <span class="n">rt</span><span class="o">.</span><span class="n">InferenceSession</span><span class="p">(</span><span class="s2">&quot;logreg_iris.onnx&quot;</span><span class="p">)</span>
 
-<span class="k">print</span><span class="p">(</span><span class="s2">&quot;input name=&#39;{}&#39; and shape={}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;input name=&#39;</span><span class="si">{}</span><span class="s2">&#39; and shape=</span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
     <span class="n">sess</span><span class="o">.</span><span class="n">get_inputs</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">sess</span><span class="o">.</span><span class="n">get_inputs</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">))</span>
-<span class="k">print</span><span class="p">(</span><span class="s2">&quot;output name=&#39;{}&#39; and shape={}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;output name=&#39;</span><span class="si">{}</span><span class="s2">&#39; and shape=</span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
     <span class="n">sess</span><span class="o">.</span><span class="n">get_outputs</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">sess</span><span class="o">.</span><span class="n">get_outputs</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">))</span>
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>input name=&#39;float_input&#39; and shape=[None, 4]
-output name=&#39;output_label&#39; and shape=[1]
+output name=&#39;output_label&#39; and shape=[None]
 </pre></div>
 </div>
 <p>We compute the predictions.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">input_name</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">get_inputs</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">name</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">input_name</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">get_inputs</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">name</span>
 <span class="n">label_name</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">get_outputs</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">name</span>
 
 <span class="kn">import</span> <span class="nn">numpy</span>
 <span class="n">pred_onx</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="n">label_name</span><span class="p">],</span> <span class="p">{</span><span class="n">input_name</span><span class="p">:</span> <span class="n">X_test</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">)})[</span><span class="mi">0</span><span class="p">]</span>
-<span class="k">print</span><span class="p">(</span><span class="n">confusion_matrix</span><span class="p">(</span><span class="n">pred</span><span class="p">,</span> <span class="n">pred_onx</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">confusion_matrix</span><span class="p">(</span><span class="n">pred</span><span class="p">,</span> <span class="n">pred_onx</span><span class="p">))</span>
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[ 9  0  0]
- [ 0 16  0]
- [ 0  0 13]]
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[11  0  0]
+ [ 0 13  0]
+ [ 0  0 14]]
 </pre></div>
 </div>
 <p>The prediction are perfectly identical.</p>
@@ -135,19 +142,19 @@ output name=&#39;output_label&#39; and shape=[1]
 relevant metrics such as the ROC Curve.
 Let’s see how to get them first with
 scikit-learn.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">prob_sklearn</span> <span class="o">=</span> <span class="n">clr</span><span class="o">.</span><span class="n">predict_proba</span><span class="p">(</span><span class="n">X_test</span><span class="p">)</span>
-<span class="k">print</span><span class="p">(</span><span class="n">prob_sklearn</span><span class="p">[:</span><span class="mi">3</span><span class="p">])</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">prob_sklearn</span> <span class="o">=</span> <span class="n">clr</span><span class="o">.</span><span class="n">predict_proba</span><span class="p">(</span><span class="n">X_test</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">prob_sklearn</span><span class="p">[:</span><span class="mi">3</span><span class="p">])</span>
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[0.00198628 0.71308408 0.28492964]
- [0.00481246 0.83770353 0.15748401]
- [0.00483108 0.75930899 0.23585993]]
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[1.91824904e-05 3.92373474e-02 9.60743470e-01]
+ [2.01308118e-02 8.63567570e-01 1.16301618e-01]
+ [9.78657084e-01 2.13427283e-02 1.88123801e-07]]
 </pre></div>
 </div>
 <p>And then with ONNX Runtime.
 The probabilies appear to be</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">prob_name</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">get_outputs</span><span class="p">()[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">name</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">prob_name</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">get_outputs</span><span class="p">()[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">name</span>
 <span class="n">prob_rt</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="n">prob_name</span><span class="p">],</span> <span class="p">{</span><span class="n">input_name</span><span class="p">:</span> <span class="n">X_test</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">)})[</span><span class="mi">0</span><span class="p">]</span>
 
 <span class="kn">import</span> <span class="nn">pprint</span>
@@ -155,80 +162,86 @@ The probabilies appear to be</p>
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[{0: 0.0019862803164869547, 1: 0.7130840420722961, 2: 0.28492966294288635},
- {0: 0.0048124659806489944, 1: 0.8377037048339844, 2: 0.15748386085033417},
- {0: 0.004831086378544569, 1: 0.7593092322349548, 2: 0.23585963249206543}]
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[{0: 1.9182492906111293e-05, 1: 0.0392373725771904, 2: 0.9607434272766113},
+ {0: 0.02013082429766655, 1: 0.8635676503181458, 2: 0.1163015067577362},
+ {0: 0.978657066822052, 1: 0.021342728286981583, 2: 1.881237352563403e-07}]
 </pre></div>
 </div>
 <p>Let’s benchmark.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">timeit</span> <span class="kn">import</span> <span class="n">Timer</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">timeit</span> <span class="kn">import</span> <span class="n">Timer</span>
 
 <span class="k">def</span> <span class="nf">speed</span><span class="p">(</span><span class="n">inst</span><span class="p">,</span> <span class="n">number</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">repeat</span><span class="o">=</span><span class="mi">20</span><span class="p">):</span>
     <span class="n">timer</span> <span class="o">=</span> <span class="n">Timer</span><span class="p">(</span><span class="n">inst</span><span class="p">,</span> <span class="nb">globals</span><span class="o">=</span><span class="nb">globals</span><span class="p">())</span>
     <span class="n">raw</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">timer</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">repeat</span><span class="p">,</span> <span class="n">number</span><span class="o">=</span><span class="n">number</span><span class="p">))</span>
     <span class="n">ave</span> <span class="o">=</span> <span class="n">raw</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span> <span class="o">/</span> <span class="n">number</span>
     <span class="n">mi</span><span class="p">,</span> <span class="n">ma</span> <span class="o">=</span> <span class="n">raw</span><span class="o">.</span><span class="n">min</span><span class="p">()</span> <span class="o">/</span> <span class="n">number</span><span class="p">,</span> <span class="n">raw</span><span class="o">.</span><span class="n">max</span><span class="p">()</span> <span class="o">/</span> <span class="n">number</span>
-    <span class="k">print</span><span class="p">(</span><span class="s2">&quot;Average </span><span class="si">%1.3g</span><span class="s2"> min=</span><span class="si">%1.3g</span><span class="s2"> max=</span><span class="si">%1.3g</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">ave</span><span class="p">,</span> <span class="n">mi</span><span class="p">,</span> <span class="n">ma</span><span class="p">))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Average </span><span class="si">%1.3g</span><span class="s2"> min=</span><span class="si">%1.3g</span><span class="s2"> max=</span><span class="si">%1.3g</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">ave</span><span class="p">,</span> <span class="n">mi</span><span class="p">,</span> <span class="n">ma</span><span class="p">))</span>
     <span class="k">return</span> <span class="n">ave</span>
 
-<span class="k">print</span><span class="p">(</span><span class="s2">&quot;Execution time for clr.predict&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Execution time for clr.predict&quot;</span><span class="p">)</span>
 <span class="n">speed</span><span class="p">(</span><span class="s2">&quot;clr.predict(X_test)&quot;</span><span class="p">)</span>
 
-<span class="k">print</span><span class="p">(</span><span class="s2">&quot;Execution time for ONNX Runtime&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Execution time for ONNX Runtime&quot;</span><span class="p">)</span>
 <span class="n">speed</span><span class="p">(</span><span class="s2">&quot;sess.run([label_name], {input_name: X_test.astype(numpy.float32)})[0]&quot;</span><span class="p">)</span>
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Execution time for clr.predict
-Average 4.8e-05 min=4.63e-05 max=5.71e-05
+Average 7.01e-05 min=6.33e-05 max=8.76e-05
 Execution time for ONNX Runtime
-Average 3.19e-05 min=3.08e-05 max=3.81e-05
+Average 0.00123 min=0.000807 max=0.00149
+
+0.0012285225000000111
 </pre></div>
 </div>
 <p>Let’s benchmark a scenario similar to what a webservice
 experiences: the model has to do one prediction at a time
 as opposed to a batch of prediction.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">loop</span><span class="p">(</span><span class="n">X_test</span><span class="p">,</span> <span class="n">fct</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">loop</span><span class="p">(</span><span class="n">X_test</span><span class="p">,</span> <span class="n">fct</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
     <span class="n">nrow</span> <span class="o">=</span> <span class="n">X_test</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-    <span class="k">if</span> <span class="n">n</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">n</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">n</span> <span class="o">=</span> <span class="n">nrow</span>
     <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
         <span class="n">im</span> <span class="o">=</span> <span class="n">i</span> <span class="o">%</span> <span class="n">nrow</span>
         <span class="n">fct</span><span class="p">(</span><span class="n">X_test</span><span class="p">[</span><span class="n">im</span><span class="p">:</span> <span class="n">im</span><span class="o">+</span><span class="mi">1</span><span class="p">])</span>
 
-<span class="k">print</span><span class="p">(</span><span class="s2">&quot;Execution time for clr.predict&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Execution time for clr.predict&quot;</span><span class="p">)</span>
 <span class="n">speed</span><span class="p">(</span><span class="s2">&quot;loop(X_test, clr.predict, 100)&quot;</span><span class="p">)</span>
 
 <span class="k">def</span> <span class="nf">sess_predict</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
     <span class="k">return</span> <span class="n">sess</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="n">label_name</span><span class="p">],</span> <span class="p">{</span><span class="n">input_name</span><span class="p">:</span> <span class="n">x</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">)})[</span><span class="mi">0</span><span class="p">]</span>
 
-<span class="k">print</span><span class="p">(</span><span class="s2">&quot;Execution time for sess_predict&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Execution time for sess_predict&quot;</span><span class="p">)</span>
 <span class="n">speed</span><span class="p">(</span><span class="s2">&quot;loop(X_test, sess_predict, 100)&quot;</span><span class="p">)</span>
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Execution time for clr.predict
-Average 0.00445 min=0.00423 max=0.00495
+Average 0.00421 min=0.00408 max=0.00438
 Execution time for sess_predict
-Average 0.00151 min=0.00145 max=0.00164
+Average 0.0422 min=0.0417 max=0.043
+
+0.042171193
 </pre></div>
 </div>
 <p>Let’s do the same for the probabilities.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">print</span><span class="p">(</span><span class="s2">&quot;Execution time for predict_proba&quot;</span><span class="p">)</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Execution time for predict_proba&quot;</span><span class="p">)</span>
 <span class="n">speed</span><span class="p">(</span><span class="s2">&quot;loop(X_test, clr.predict_proba, 100)&quot;</span><span class="p">)</span>
 
 <span class="k">def</span> <span class="nf">sess_predict_proba</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
     <span class="k">return</span> <span class="n">sess</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="n">prob_name</span><span class="p">],</span> <span class="p">{</span><span class="n">input_name</span><span class="p">:</span> <span class="n">x</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">)})[</span><span class="mi">0</span><span class="p">]</span>
 
-<span class="k">print</span><span class="p">(</span><span class="s2">&quot;Execution time for sess_predict_proba&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Execution time for sess_predict_proba&quot;</span><span class="p">)</span>
 <span class="n">speed</span><span class="p">(</span><span class="s2">&quot;loop(X_test, sess_predict_proba, 100)&quot;</span><span class="p">)</span>
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Execution time for predict_proba
-Average 0.00643 min=0.00632 max=0.00666
+Average 0.00612 min=0.00598 max=0.00655
 Execution time for sess_predict_proba
-Average 0.00158 min=0.00152 max=0.00177
+Average 0.0432 min=0.0426 max=0.0444
+
+0.04324414049999999
 </pre></div>
 </div>
 <p>This second comparison is better as
@@ -239,7 +252,7 @@ in every case.</p>
 <div class="section" id="benchmark-with-randomforest">
 <h2><a class="toc-backref" href="#id4">Benchmark with RandomForest</a><a class="headerlink" href="#benchmark-with-randomforest" title="Permalink to this headline">¶</a></h2>
 <p>We first train and save a model in ONNX format.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">sklearn.ensemble</span> <span class="kn">import</span> <span class="n">RandomForestClassifier</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">sklearn.ensemble</span> <span class="kn">import</span> <span class="n">RandomForestClassifier</span>
 <span class="n">rf</span> <span class="o">=</span> <span class="n">RandomForestClassifier</span><span class="p">()</span>
 <span class="n">rf</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">X_train</span><span class="p">,</span> <span class="n">y_train</span><span class="p">)</span>
 
@@ -250,30 +263,32 @@ in every case.</p>
 </pre></div>
 </div>
 <p>We compare.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">sess</span> <span class="o">=</span> <span class="n">rt</span><span class="o">.</span><span class="n">InferenceSession</span><span class="p">(</span><span class="s2">&quot;rf_iris.onnx&quot;</span><span class="p">)</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sess</span> <span class="o">=</span> <span class="n">rt</span><span class="o">.</span><span class="n">InferenceSession</span><span class="p">(</span><span class="s2">&quot;rf_iris.onnx&quot;</span><span class="p">)</span>
 
 <span class="k">def</span> <span class="nf">sess_predict_proba_rf</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
     <span class="k">return</span> <span class="n">sess</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="n">prob_name</span><span class="p">],</span> <span class="p">{</span><span class="n">input_name</span><span class="p">:</span> <span class="n">x</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">)})[</span><span class="mi">0</span><span class="p">]</span>
 
-<span class="k">print</span><span class="p">(</span><span class="s2">&quot;Execution time for predict_proba&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Execution time for predict_proba&quot;</span><span class="p">)</span>
 <span class="n">speed</span><span class="p">(</span><span class="s2">&quot;loop(X_test, rf.predict_proba, 100)&quot;</span><span class="p">)</span>
 
-<span class="k">print</span><span class="p">(</span><span class="s2">&quot;Execution time for sess_predict_proba&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Execution time for sess_predict_proba&quot;</span><span class="p">)</span>
 <span class="n">speed</span><span class="p">(</span><span class="s2">&quot;loop(X_test, sess_predict_proba_rf, 100)&quot;</span><span class="p">)</span>
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Execution time for predict_proba
-Average 0.516 min=0.483 max=0.572
+Average 0.594 min=0.588 max=0.607
 Execution time for sess_predict_proba
-Average 0.00176 min=0.00171 max=0.00188
+Average 0.0518 min=0.0511 max=0.0531
+
+0.05180173199999999
 </pre></div>
 </div>
 <p>Let’s see with different number of trees.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">measures</span> <span class="o">=</span> <span class="p">[]</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">measures</span> <span class="o">=</span> <span class="p">[]</span>
 
 <span class="k">for</span> <span class="n">n_trees</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">5</span><span class="p">,</span> <span class="mi">51</span><span class="p">,</span> <span class="mi">5</span><span class="p">):</span>
-    <span class="k">print</span><span class="p">(</span><span class="n">n_trees</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">n_trees</span><span class="p">)</span>
     <span class="n">rf</span> <span class="o">=</span> <span class="n">RandomForestClassifier</span><span class="p">(</span><span class="n">n_estimators</span><span class="o">=</span><span class="n">n_trees</span><span class="p">)</span>
     <span class="n">rf</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">X_train</span><span class="p">,</span> <span class="n">y_train</span><span class="p">)</span>
     <span class="n">initial_type</span> <span class="o">=</span> <span class="p">[(</span><span class="s1">&#39;float_input&#39;</span><span class="p">,</span> <span class="n">FloatTensorType</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">4</span><span class="p">]))]</span>
@@ -289,59 +304,61 @@ Average 0.00176 min=0.00171 max=0.00188
 
 <span class="kn">from</span> <span class="nn">pandas</span> <span class="kn">import</span> <span class="n">DataFrame</span>
 <span class="n">df</span> <span class="o">=</span> <span class="n">DataFrame</span><span class="p">(</span><span class="n">measures</span><span class="p">)</span>
-<span class="n">ax</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="s2">&quot;n_trees&quot;</span><span class="p">,</span> <span class="n">y</span><span class="o">=</span><span class="s2">&quot;sklearn&quot;</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s2">&quot;scikit-learn&quot;</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="s2">&quot;blue&quot;</span><span class="p">,</span> <span class="n">logy</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+<span class="n">ax</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="s2">&quot;n_trees&quot;</span><span class="p">,</span> <span class="n">y</span><span class="o">=</span><span class="s2">&quot;sklearn&quot;</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s2">&quot;scikit-learn&quot;</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="s2">&quot;blue&quot;</span><span class="p">,</span> <span class="n">logy</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <span class="n">df</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="s2">&quot;n_trees&quot;</span><span class="p">,</span> <span class="n">y</span><span class="o">=</span><span class="s2">&quot;rt&quot;</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s2">&quot;onnxruntime&quot;</span><span class="p">,</span>
-                <span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="s2">&quot;green&quot;</span><span class="p">,</span> <span class="n">logy</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+                <span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="s2">&quot;green&quot;</span><span class="p">,</span> <span class="n">logy</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <span class="n">ax</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="s2">&quot;Number of trees&quot;</span><span class="p">)</span>
 <span class="n">ax</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="s2">&quot;Prediction time (s)&quot;</span><span class="p">)</span>
 <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="s2">&quot;Speed comparison between scikit-learn and ONNX Runtime</span><span class="se">\n</span><span class="s2">For a random forest on Iris dataset&quot;</span><span class="p">)</span>
 <span class="n">ax</span><span class="o">.</span><span class="n">legend</span><span class="p">()</span>
 </pre></div>
 </div>
-<img alt="../_images/sphx_glr_plot_train_convert_predict_001.png" class="sphx-glr-single-img" src="../_images/sphx_glr_plot_train_convert_predict_001.png" />
+<img alt="Speed comparison between scikit-learn and ONNX Runtime For a random forest on Iris dataset" class="sphx-glr-single-img" src="../_images/sphx_glr_plot_train_convert_predict_001.png" />
 <p class="sphx-glr-script-out">Out:</p>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>5
-Average 0.042 min=0.0412 max=0.0432
-Average 0.00137 min=0.00136 max=0.00138
+Average 0.054 min=0.0512 max=0.0648
+Average 0.0422 min=0.0414 max=0.0436
 10
-Average 0.065 min=0.0641 max=0.0662
-Average 0.00151 min=0.00139 max=0.00159
+Average 0.0828 min=0.0797 max=0.0937
+Average 0.042 min=0.0417 max=0.0423
 15
-Average 0.0886 min=0.0873 max=0.0911
-Average 0.00145 min=0.00143 max=0.00148
+Average 0.109 min=0.107 max=0.112
+Average 0.0438 min=0.0425 max=0.0486
 20
-Average 0.113 min=0.112 max=0.115
-Average 0.0015 min=0.00149 max=0.00152
+Average 0.14 min=0.137 max=0.143
+Average 0.0432 min=0.0427 max=0.0437
 25
-Average 0.14 min=0.135 max=0.15
-Average 0.00161 min=0.0016 max=0.00164
+Average 0.167 min=0.164 max=0.177
+Average 0.044 min=0.0435 max=0.0448
 30
-Average 0.159 min=0.154 max=0.167
-Average 0.00149 min=0.00146 max=0.00158
+Average 0.196 min=0.191 max=0.206
+Average 0.0442 min=0.0434 max=0.0453
 35
-Average 0.183 min=0.177 max=0.195
-Average 0.00153 min=0.0015 max=0.00159
+Average 0.225 min=0.219 max=0.231
+Average 0.0447 min=0.0441 max=0.0458
 40
-Average 0.221 min=0.203 max=0.242
-Average 0.0019 min=0.00153 max=0.0024
+Average 0.253 min=0.249 max=0.263
+Average 0.0455 min=0.045 max=0.0467
 45
-Average 0.23 min=0.22 max=0.248
-Average 0.00177 min=0.00171 max=0.0018
+Average 0.284 min=0.279 max=0.294
+Average 0.0466 min=0.0459 max=0.0483
 50
-Average 0.245 min=0.244 max=0.248
-Average 0.0016 min=0.00157 max=0.00165
+Average 0.31 min=0.306 max=0.321
+Average 0.0467 min=0.0458 max=0.048
+
+&lt;matplotlib.legend.Legend object at 0x0000012207A74C50&gt;
 </pre></div>
 </div>
-<p><strong>Total running time of the script:</strong> ( 2 minutes  25.165 seconds)</p>
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 3 minutes  27.577 seconds)</p>
 <div class="sphx-glr-footer class sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-train-convert-predict-py">
-<div class="sphx-glr-download docutils container">
+<div class="sphx-glr-download sphx-glr-download-python docutils container">
 <p><a class="reference download internal" download="" href="../_downloads/d83345a79a181a29892287297803aeec/plot_train_convert_predict.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_train_convert_predict.py</span></code></a></p>
 </div>
-<div class="sphx-glr-download docutils container">
+<div class="sphx-glr-download sphx-glr-download-jupyter docutils container">
 <p><a class="reference download internal" download="" href="../_downloads/3a0c2ba94405e579c84b6f356705659d/plot_train_convert_predict.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">plot_train_convert_predict.ipynb</span></code></a></p>
 </div>
 </div>
-<p class="sphx-glr-signature"><a class="reference external" href="https://sphinx-gallery.readthedocs.io">Gallery generated by Sphinx-Gallery</a></p>
+<p class="sphx-glr-signature"><a class="reference external" href="https://sphinx-gallery.github.io">Gallery generated by Sphinx-Gallery</a></p>
 </div>
 </div>
 
@@ -390,7 +407,7 @@ Average 0.0016 min=0.00157 max=0.00165
     </form>
     </div>
 </div>
-<script type="text/javascript">$('#searchbox').show(0);</script>
+<script>$('#searchbox').show(0);</script>
 
 
 
@@ -407,7 +424,7 @@ Average 0.0016 min=0.00157 max=0.00165
       &copy;2018-2019, Microsoft.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 2.2.1</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.1.2</a>
       &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
       |

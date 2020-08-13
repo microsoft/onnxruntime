@@ -1,19 +1,22 @@
 
 <!DOCTYPE html>
 
-<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Draw a pipeline &#8212; ONNX Runtime 1.2.0 documentation</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Draw a pipeline &#8212; ONNX Runtime 1.4.0 documentation</title>
     <link rel="stylesheet" href="../_static/alabaster.css" type="text/css" />
     <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
-    <link rel="stylesheet" type="text/css" href="../_static/gallery.css" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css" />
-    <script type="text/javascript" id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
-    <script type="text/javascript" src="../_static/jquery.js"></script>
-    <script type="text/javascript" src="../_static/underscore.js"></script>
-    <script type="text/javascript" src="../_static/doctools.js"></script>
-    <script type="text/javascript" src="../_static/language_data.js"></script>
+    <link rel="stylesheet" type="text/css" href="../_static/gallery.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/gallery-binder.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/gallery-dataframe.css" />
+    <script id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
+    <script src="../_static/jquery.js"></script>
+    <script src="../_static/underscore.js"></script>
+    <script src="../_static/doctools.js"></script>
+    <script src="../_static/language_data.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="Load and predict with ONNX Runtime and a very simple model" href="plot_load_and_predict.html" />
@@ -36,7 +39,7 @@
             
   <div class="sphx-glr-download-link-note admonition note">
 <p class="admonition-title">Note</p>
-<p>Click <a class="reference internal" href="#sphx-glr-download-auto-examples-plot-pipeline-py"><span class="std std-ref">here</span></a> to download the full example code</p>
+<p>Click <a class="reference internal" href="#sphx-glr-download-auto-examples-plot-pipeline-py"><span class="std std-ref">here</span></a>     to download the full example code</p>
 </div>
 <div class="sphx-glr-example-title section" id="draw-a-pipeline">
 <span id="sphx-glr-auto-examples-plot-pipeline-py"></span><h1>Draw a pipeline<a class="headerlink" href="#draw-a-pipeline" title="Permalink to this headline">¶</a></h1>
@@ -54,13 +57,13 @@ format.</p>
 <div class="section" id="retrieve-a-model-in-json-format">
 <h2><a class="toc-backref" href="#id1">Retrieve a model in JSON format</a><a class="headerlink" href="#retrieve-a-model-in-json-format" title="Permalink to this headline">¶</a></h2>
 <p>That’s the most simple way.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">onnxruntime.datasets</span> <span class="kn">import</span> <span class="n">get_example</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">onnxruntime.datasets</span> <span class="kn">import</span> <span class="n">get_example</span>
 <span class="n">example1</span> <span class="o">=</span> <span class="n">get_example</span><span class="p">(</span><span class="s2">&quot;mul_1.onnx&quot;</span><span class="p">)</span>
 
 <span class="kn">import</span> <span class="nn">onnx</span>
 <span class="n">model</span> <span class="o">=</span> <span class="n">onnx</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">example1</span><span class="p">)</span>  <span class="c1"># model is a ModelProto protobuf message</span>
 
-<span class="k">print</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
@@ -132,7 +135,7 @@ opset_import {
 included in <em>onnx</em> package.
 We use <em>onnx</em> to load the model
 in a different way than before.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">onnx</span> <span class="kn">import</span> <span class="n">ModelProto</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">onnx</span> <span class="kn">import</span> <span class="n">ModelProto</span>
 <span class="n">model</span> <span class="o">=</span> <span class="n">ModelProto</span><span class="p">()</span>
 <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">example1</span><span class="p">,</span> <span class="s1">&#39;rb&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">fid</span><span class="p">:</span>
     <span class="n">content</span> <span class="o">=</span> <span class="n">fid</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
@@ -140,34 +143,42 @@ in a different way than before.</p>
 </pre></div>
 </div>
 <p>We convert it into a graph.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">onnx.tools.net_drawer</span> <span class="kn">import</span> <span class="n">GetPydotGraph</span><span class="p">,</span> <span class="n">GetOpNodeProducer</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">onnx.tools.net_drawer</span> <span class="kn">import</span> <span class="n">GetPydotGraph</span><span class="p">,</span> <span class="n">GetOpNodeProducer</span>
 <span class="n">pydot_graph</span> <span class="o">=</span> <span class="n">GetPydotGraph</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">graph</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="n">model</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">rankdir</span><span class="o">=</span><span class="s2">&quot;LR&quot;</span><span class="p">,</span>
                             <span class="n">node_producer</span><span class="o">=</span><span class="n">GetOpNodeProducer</span><span class="p">(</span><span class="s2">&quot;docstring&quot;</span><span class="p">))</span>
 <span class="n">pydot_graph</span><span class="o">.</span><span class="n">write_dot</span><span class="p">(</span><span class="s2">&quot;graph.dot&quot;</span><span class="p">)</span>
 </pre></div>
 </div>
 <p>Then into an image</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">os</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">os</span>
 <span class="n">os</span><span class="o">.</span><span class="n">system</span><span class="p">(</span><span class="s1">&#39;dot -O -Tpng graph.dot&#39;</span><span class="p">)</span>
 </pre></div>
 </div>
+<p class="sphx-glr-script-out">Out:</p>
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>0
+</pre></div>
+</div>
 <p>Which we display…</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="kn">as</span> <span class="nn">plt</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="k">as</span> <span class="nn">plt</span>
 <span class="n">image</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">imread</span><span class="p">(</span><span class="s2">&quot;graph.dot.png&quot;</span><span class="p">)</span>
 <span class="n">plt</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="n">image</span><span class="p">)</span>
 </pre></div>
 </div>
-<img alt="../_images/sphx_glr_plot_pipeline_001.png" class="sphx-glr-single-img" src="../_images/sphx_glr_plot_pipeline_001.png" />
-<p><strong>Total running time of the script:</strong> ( 0 minutes  0.399 seconds)</p>
+<img alt="plot pipeline" class="sphx-glr-single-img" src="../_images/sphx_glr_plot_pipeline_001.png" />
+<p class="sphx-glr-script-out">Out:</p>
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;matplotlib.image.AxesImage object at 0x000001AD2E2D17F0&gt;
+</pre></div>
+</div>
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 0 minutes  0.434 seconds)</p>
 <div class="sphx-glr-footer class sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-pipeline-py">
-<div class="sphx-glr-download docutils container">
+<div class="sphx-glr-download sphx-glr-download-python docutils container">
 <p><a class="reference download internal" download="" href="../_downloads/94ba4b1ad7abc78b59124c6a39f9a075/plot_pipeline.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_pipeline.py</span></code></a></p>
 </div>
-<div class="sphx-glr-download docutils container">
+<div class="sphx-glr-download sphx-glr-download-jupyter docutils container">
 <p><a class="reference download internal" download="" href="../_downloads/c2f3ba3f66159c615632f39a9ad32dee/plot_pipeline.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">plot_pipeline.ipynb</span></code></a></p>
 </div>
 </div>
-<p class="sphx-glr-signature"><a class="reference external" href="https://sphinx-gallery.readthedocs.io">Gallery generated by Sphinx-Gallery</a></p>
+<p class="sphx-glr-signature"><a class="reference external" href="https://sphinx-gallery.github.io">Gallery generated by Sphinx-Gallery</a></p>
 </div>
 </div>
 
@@ -217,7 +228,7 @@ in a different way than before.</p>
     </form>
     </div>
 </div>
-<script type="text/javascript">$('#searchbox').show(0);</script>
+<script>$('#searchbox').show(0);</script>
 
 
 
@@ -234,7 +245,7 @@ in a different way than before.</p>
       &copy;2018-2019, Microsoft.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 2.2.1</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.1.2</a>
       &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
       |

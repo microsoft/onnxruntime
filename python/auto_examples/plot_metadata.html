@@ -1,19 +1,22 @@
 
 <!DOCTYPE html>
 
-<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Metadata &#8212; ONNX Runtime 1.2.0 documentation</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metadata &#8212; ONNX Runtime 1.4.0 documentation</title>
     <link rel="stylesheet" href="../_static/alabaster.css" type="text/css" />
     <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
-    <link rel="stylesheet" type="text/css" href="../_static/gallery.css" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css" />
-    <script type="text/javascript" id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
-    <script type="text/javascript" src="../_static/jquery.js"></script>
-    <script type="text/javascript" src="../_static/underscore.js"></script>
-    <script type="text/javascript" src="../_static/doctools.js"></script>
-    <script type="text/javascript" src="../_static/language_data.js"></script>
+    <link rel="stylesheet" type="text/css" href="../_static/gallery.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/gallery-binder.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/gallery-dataframe.css" />
+    <script id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
+    <script src="../_static/jquery.js"></script>
+    <script src="../_static/underscore.js"></script>
+    <script src="../_static/doctools.js"></script>
+    <script src="../_static/language_data.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="Profile the execution of a simple model" href="plot_profiling.html" />
@@ -36,7 +39,7 @@
             
   <div class="sphx-glr-download-link-note admonition note">
 <p class="admonition-title">Note</p>
-<p>Click <a class="reference internal" href="#sphx-glr-download-auto-examples-plot-metadata-py"><span class="std std-ref">here</span></a> to download the full example code</p>
+<p>Click <a class="reference internal" href="#sphx-glr-download-auto-examples-plot-metadata-py"><span class="std std-ref">here</span></a>     to download the full example code</p>
 </div>
 <div class="sphx-glr-example-title section" id="metadata">
 <span id="sphx-glr-auto-examples-plot-metadata-py"></span><h1>Metadata<a class="headerlink" href="#metadata" title="Permalink to this headline">¶</a></h1>
@@ -47,19 +50,19 @@ instance was used at a specific time.
 Let’s see how to do that with a simple
 logistic regression model trained with
 <em>scikit-learn</em> and converted with <em>sklearn-onnx</em>.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">onnxruntime.datasets</span> <span class="kn">import</span> <span class="n">get_example</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">onnxruntime.datasets</span> <span class="kn">import</span> <span class="n">get_example</span>
 <span class="n">example</span> <span class="o">=</span> <span class="n">get_example</span><span class="p">(</span><span class="s2">&quot;logreg_iris.onnx&quot;</span><span class="p">)</span>
 
 <span class="kn">import</span> <span class="nn">onnx</span>
 <span class="n">model</span> <span class="o">=</span> <span class="n">onnx</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">example</span><span class="p">)</span>
 
-<span class="k">print</span><span class="p">(</span><span class="s2">&quot;doc_string={}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">doc_string</span><span class="p">))</span>
-<span class="k">print</span><span class="p">(</span><span class="s2">&quot;domain={}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">domain</span><span class="p">))</span>
-<span class="k">print</span><span class="p">(</span><span class="s2">&quot;ir_version={}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">ir_version</span><span class="p">))</span>
-<span class="k">print</span><span class="p">(</span><span class="s2">&quot;metadata_props={}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">metadata_props</span><span class="p">))</span>
-<span class="k">print</span><span class="p">(</span><span class="s2">&quot;model_version={}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">model_version</span><span class="p">))</span>
-<span class="k">print</span><span class="p">(</span><span class="s2">&quot;producer_name={}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">producer_name</span><span class="p">))</span>
-<span class="k">print</span><span class="p">(</span><span class="s2">&quot;producer_version={}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">producer_version</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;doc_string=</span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">doc_string</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;domain=</span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">domain</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;ir_version=</span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">ir_version</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;metadata_props=</span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">metadata_props</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;model_version=</span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">model_version</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;producer_name=</span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">producer_name</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;producer_version=</span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">producer_version</span><span class="p">))</span>
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
@@ -73,16 +76,16 @@ producer_version=1.2.0.0116
 </pre></div>
 </div>
 <p>With <em>ONNX Runtime</em>:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">onnxruntime</span> <span class="kn">import</span> <span class="n">InferenceSession</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">onnxruntime</span> <span class="kn">import</span> <span class="n">InferenceSession</span>
 <span class="n">sess</span> <span class="o">=</span> <span class="n">InferenceSession</span><span class="p">(</span><span class="n">example</span><span class="p">)</span>
 <span class="n">meta</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">get_modelmeta</span><span class="p">()</span>
 
-<span class="k">print</span><span class="p">(</span><span class="s2">&quot;custom_metadata_map={}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">meta</span><span class="o">.</span><span class="n">custom_metadata_map</span><span class="p">))</span>
-<span class="k">print</span><span class="p">(</span><span class="s2">&quot;description={}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">meta</span><span class="o">.</span><span class="n">description</span><span class="p">))</span>
-<span class="k">print</span><span class="p">(</span><span class="s2">&quot;domain={}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">meta</span><span class="o">.</span><span class="n">domain</span><span class="p">,</span> <span class="n">meta</span><span class="o">.</span><span class="n">domain</span><span class="p">))</span>
-<span class="k">print</span><span class="p">(</span><span class="s2">&quot;graph_name={}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">meta</span><span class="o">.</span><span class="n">graph_name</span><span class="p">))</span>
-<span class="k">print</span><span class="p">(</span><span class="s2">&quot;producer_name={}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">meta</span><span class="o">.</span><span class="n">producer_name</span><span class="p">))</span>
-<span class="k">print</span><span class="p">(</span><span class="s2">&quot;version={}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">meta</span><span class="o">.</span><span class="n">version</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;custom_metadata_map=</span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">meta</span><span class="o">.</span><span class="n">custom_metadata_map</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;description=</span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">meta</span><span class="o">.</span><span class="n">description</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;domain=</span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">meta</span><span class="o">.</span><span class="n">domain</span><span class="p">,</span> <span class="n">meta</span><span class="o">.</span><span class="n">domain</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;graph_name=</span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">meta</span><span class="o">.</span><span class="n">graph_name</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;producer_name=</span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">meta</span><span class="o">.</span><span class="n">producer_name</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;version=</span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">meta</span><span class="o">.</span><span class="n">version</span><span class="p">))</span>
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
@@ -94,16 +97,16 @@ producer_name=OnnxMLTools
 version=0
 </pre></div>
 </div>
-<p><strong>Total running time of the script:</strong> ( 0 minutes  0.004 seconds)</p>
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 0 minutes  0.031 seconds)</p>
 <div class="sphx-glr-footer class sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-metadata-py">
-<div class="sphx-glr-download docutils container">
+<div class="sphx-glr-download sphx-glr-download-python docutils container">
 <p><a class="reference download internal" download="" href="../_downloads/7d69185b02f38811ad5d0593ec22c99d/plot_metadata.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_metadata.py</span></code></a></p>
 </div>
-<div class="sphx-glr-download docutils container">
+<div class="sphx-glr-download sphx-glr-download-jupyter docutils container">
 <p><a class="reference download internal" download="" href="../_downloads/ae37e1cd2f800a09b44216a88ac39d30/plot_metadata.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">plot_metadata.ipynb</span></code></a></p>
 </div>
 </div>
-<p class="sphx-glr-signature"><a class="reference external" href="https://sphinx-gallery.readthedocs.io">Gallery generated by Sphinx-Gallery</a></p>
+<p class="sphx-glr-signature"><a class="reference external" href="https://sphinx-gallery.github.io">Gallery generated by Sphinx-Gallery</a></p>
 </div>
 
 
@@ -152,7 +155,7 @@ version=0
     </form>
     </div>
 </div>
-<script type="text/javascript">$('#searchbox').show(0);</script>
+<script>$('#searchbox').show(0);</script>
 
 
 
@@ -169,7 +172,7 @@ version=0
       &copy;2018-2019, Microsoft.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 2.2.1</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.1.2</a>
       &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
       |
