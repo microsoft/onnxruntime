@@ -4,6 +4,7 @@
 # Licensed under the MIT License.
 
 import os
+import argparse
 import shutil
 import json
 import onnx
@@ -14,6 +15,9 @@ from logger import log
 
 def extract_ops_from_file(file_path, referred_ops):
     '''extract ops from json file - {domain:{opset:[]}}'''
+
+    if not file_path:
+        return referred_ops
 
     if not os.path.isfile(file_path):
         log.warning('File {} does not exist'.format(file_path))
@@ -38,8 +42,10 @@ def extract_ops_from_file(file_path, referred_ops):
 def extract_ops_from_model(model_path, referred_ops):
     '''extract ops from models under model_path and return a diction'''
 
-    if not os.path.isdir(model_path):
+    if not model_path:
+        return referred_ops
 
+    if not os.path.isdir(model_path):
         log.warning('Directory {} does not exist'.format(model_path))
         return referred_ops
 
@@ -286,3 +292,27 @@ def rewrite_provider(operators, ep_path):
                 line_offset += 1
 
     #end of rewrite_cpu_provider(...)
+
+if __name__ == "__main__":
+
+    PARSER = argparse.ArgumentParser(
+        description="provider rewriter",
+        usage="""
+        --model_path <path to model(s) folder>
+        --file_path <path to file of ops>
+        --ep_path <path to provider file>
+        """)
+
+    PARSER.add_argument(
+        "--model_path", type=str, help="path to model(s) folder")
+
+    PARSER.add_argument(
+        "--file_path", type=str, help="path to file of ops")
+
+    PARSER.add_argument(
+        "--ep_path", required=True, type=str, help="path to a execution provider file")
+
+    ARGS = PARSER.parse_args()
+    rewrite_providers(ARGS.model_path if ARGS.model_path else '',
+                      ARGS.file_path if ARGS.file_path else '',
+                      [ARGS.ep_path])
