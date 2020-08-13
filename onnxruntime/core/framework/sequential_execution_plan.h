@@ -33,8 +33,8 @@ struct AllocPlanPerValue {
   // note the fence object would be shared between MLValues reusing the same buffer
   bool create_fence_if_async{false};
   const onnxruntime::NodeArg* p_def_site{nullptr};
-  size_t program_counter_start;
-  size_t program_counter_end;
+  std::vector<size_t> program_counter_start;
+  std::vector<size_t> program_counter_end;
 
  public:
   AllocPlanPerValue() : location(CPU, Invalid) {}

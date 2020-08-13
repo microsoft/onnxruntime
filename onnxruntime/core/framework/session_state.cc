@@ -314,8 +314,10 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
       }
 
       ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate);
+      ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].program_counter_start.size() == exe_plan->allocation_plan[ml_value_idx].program_counter_end.size());
 
-      ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].program_counter_start <= exe_plan->allocation_plan[ml_value_idx].program_counter_end, size);
+      for (size_t index = 0; index < exe_plan->allocation_plan[ml_value_idx].program_counter_start.size(); index += 1)
+        ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].program_counter_start[index] <= exe_plan->allocation_plan[ml_value_idx].program_counter_end[index]);
 
       mem_planner.TraceAllocation(ml_value_idx, exe_plan->allocation_plan[ml_value_idx].program_counter_start,
                                   exe_plan->allocation_plan[ml_value_idx].program_counter_end, size);
@@ -367,6 +369,13 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
         if (!IAllocator::CalcMemSizeForArrayWithAlignment<64>(len, ml_data_type->Size(), &size)) {
           return Status(ONNXRUNTIME, FAIL, "Size overflow");
         }
+
+      ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate);
+      ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].program_counter_start.size() == exe_plan->allocation_plan[ml_value_idx].program_counter_end.size());
+
+      for (size_t index = 0; index < exe_plan->allocation_plan[ml_value_idx].program_counter_start.size(); index += 1)
+        ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].program_counter_start[index] <= exe_plan->allocation_plan[ml_value_idx].program_counter_end[index]);
+
         mem_planner.TraceAllocation(ml_value_idx, exe_plan->allocation_plan[ml_value_idx].program_counter_start,
                                     exe_plan->allocation_plan[ml_value_idx].program_counter_end, size);
       }

@@ -596,7 +596,8 @@ class PlannerImpl {
         } else if (IsNonTensor(*node_output)) {
           // we do not try sharing-optimization for non-tensors
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
-          AllocPlan(current).program_counter_start = program_counter;
+          AllocPlan(current).program_counter_start.emplace_back(program_counter);
+          AllocPlan(current).program_counter_end.emplace_back(SIZE_MAX);
         } else if (FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused)) {
           // Reuse one of this node's input buffers as the output buffer (for in-place update)
           Reuse(reused, current, AllocKind::kReuse);
@@ -607,7 +608,8 @@ class PlannerImpl {
         } else {
           // otherwise: allocate a new buffer for this output
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
-          AllocPlan(current).program_counter_start = program_counter;
+          AllocPlan(current).program_counter_start.emplace_back(program_counter);
+          AllocPlan(current).program_counter_end.emplace_back(SIZE_MAX);
         }
       }
 
@@ -616,8 +618,11 @@ class PlannerImpl {
         if (node_input->Exists()) {
           auto& sym = node_input->Name();
           auto original = Buffer(Index(sym));
-          if (0 == --UseCount(original))
+          if (0 == --UseCount(original)) {
             freelist_.push_front(FreeBufferInfo(original, program_counter));
+            if(AllocPlan(Index(sym)).alloc_kind == AllocKind::kAllocate)
+              AllocPlan(Index(sym)).program_counter_end.back() = program_counter;
+          }
         }
       }
 
@@ -625,8 +630,11 @@ class PlannerImpl {
         if (node_input->Exists()) {
           auto& sym = node_input->Name();
           auto original = Buffer(Index(sym));
-          if (0 == --UseCount(original))
+          if (0 == --UseCount(original)) {
             freelist_.push_front(FreeBufferInfo(original, program_counter));
+            if(AllocPlan(Index(sym)).alloc_kind == AllocKind::kAllocate)
+              AllocPlan(Index(sym)).program_counter_end.back() = program_counter;
+          }
         }
       }
 
@@ -635,8 +643,11 @@ class PlannerImpl {
         if (node_output->Exists()) {
           auto& sym = node_output->Name();
           auto original = Buffer(Index(sym));
-          if (0 == --UseCount(original))
+          if (0 == --UseCount(original)) {
             freelist_.push_front(FreeBufferInfo(original, program_counter));
+            if(AllocPlan(Index(sym)).alloc_kind == AllocKind::kAllocate)
+              AllocPlan(Index(sym)).program_counter_end.back() = program_counter;
+          }
         }
       }
     }
@@ -772,9 +783,9 @@ class PlannerImpl {
         auto ml_value_idx = plan_.to_be_freed[index];
         if (AllocPlan(ml_value_idx).alloc_kind == AllocKind::kAllocate) {
 
-          ORT_ENFORCE(AllocPlan(ml_value_idx).program_counter_start <= program_counter);
+          ORT_ENFORCE(AllocPlan(ml_value_idx).program_counter_start.back() <= program_counter);
           
-          AllocPlan(ml_value_idx).program_counter_end = program_counter;
+          AllocPlan(ml_value_idx).program_counter_end.back() = program_counter;
         }
       }
 

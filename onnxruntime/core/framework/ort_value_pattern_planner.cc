@@ -13,7 +13,7 @@ OrtValuePatternPlanner::OrtValuePatternPlanner(const ExecutionPlanBase& executio
   }
 }
 
-common::Status OrtValuePatternPlanner::TraceAllocation(int ort_value_idx, size_t program_counter_start, size_t program_counter_end, size_t size) {
+common::Status OrtValuePatternPlanner::TraceAllocation(int ort_value_idx, std::vector<size_t> program_counter_start, std::vector<size_t> program_counter_end, size_t size) {
   // TODO(codemzs): refactor code.
   auto location = execution_planner_.GetLocation(ort_value_idx);
   auto it = planner_map_.find(location);

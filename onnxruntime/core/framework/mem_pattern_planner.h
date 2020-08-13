@@ -31,7 +31,7 @@ class MemPatternPlanner {
  public:
   MemPatternPlanner() = default;
 
-  void TraceAllocation(int ml_value_idx, size_t program_counter_start, size_t program_counter_end, size_t size) {
+  void TraceAllocation(int ml_value_idx, std::vector<size_t> program_counter_start, std::vector<size_t> program_counter_end, size_t size) {
     std::lock_guard<OrtMutex> lock(lock_);
 
     if (size == 0) {
@@ -48,11 +48,43 @@ class MemPatternPlanner {
     }
 
     for (auto it = blocks_.begin(); it != blocks_.end(); it++) {
-      // This block can be re-used, consider it as a gap.
-      
-      ORT_ENFORCE(!allocs_[*it].reuse_ || (allocs_[*it].program_counter_start_ <= allocs_[*it].program_counter_end_));
+            // Memory block can be re-used as long as there is no overlap between their time schedules.
+      bool overlap = false;
+      if (allocs_[*it].reuse_) {
+        ORT_ENFORCE(program_counter_start.size() == program_counter_end.size());
+        ORT_ENFORCE(program_counter_start.size() == program_counter_end.size());
 
-      if (allocs_[*it].reuse_ && ((allocs_[*it].program_counter_start_ > program_counter_end) || (allocs_[*it].program_counter_end_ < program_counter_start)))
+        // Ensure memory time schedule is sorted.
+        size_t start = 0;
+        for (size_t index = 0; index < program_counter_start.size(); index += 1) {
+          ORT_ENFORCE((program_counter_start[index] > start) || (start == 0));
+          ORT_ENFORCE(program_counter_start[index] <= program_counter_end[index]);
+          start = program_counter_start[index];
+        }
+
+        size_t index_allocated = 0;
+        size_t index_to_be_allocated = 0;
+        while ((index_allocated < allocs_[*it].program_counter_start_.size()) || (index_to_be_allocated < program_counter_start.size())) {
+          if (allocs_[*it].program_counter_start_[index_allocated] <= program_counter_start[index_to_be_allocated]) {
+            if (allocs_[*it].program_counter_end_[index_allocated] >= program_counter_start[index_to_be_allocated]) {
+              overlap = true;
+              break;
+            }
+            index_allocated += 1;
+          } else {
+            if (program_counter_end[index_to_be_allocated] >= allocs_[*it].program_counter_start_[index_allocated]) {
+              overlap = true;
+              break;
+            }
+            index_to_be_allocated += 1;
+          }
+        }
+      }
+
+      //if (allocs_[*it].reuse_ && ((allocs_[*it].program_counter_start_ > program_counter_end) || (allocs_[*it].program_counter_end_ < program_counter_start)))
+      //continue;
+
+      if (allocs_[*it].reuse_ && !overlap)
         continue;
 
       if (allocs_[*it].block_.offset_ >= current) {
@@ -143,12 +175,12 @@ class MemPatternPlanner {
   struct OrtValueAllocationBlock {
     int index_{-1};
     MemoryBlock block_;
-    size_t program_counter_start_;
-    size_t program_counter_end_;
+    std::vector<size_t> program_counter_start_;
+    std::vector<size_t> program_counter_end_;
     bool reuse_{false};
     OrtValueAllocationBlock() = default;
     OrtValueAllocationBlock(int index, const MemoryBlock& block) : index_(index), block_(block), reuse_{false} {}
-    OrtValueAllocationBlock(int index, size_t program_counter_start, size_t program_counter_end, const MemoryBlock& block) : index_(index), block_(block), program_counter_start_(program_counter_start), program_counter_end_(program_counter_end), reuse_{true} {}
+    OrtValueAllocationBlock(int index, std::vector<size_t> program_counter_start, std::vector<size_t> program_counter_end, const MemoryBlock& block) : index_(index), block_(block), program_counter_start_(program_counter_start), program_counter_end_(program_counter_end), reuse_{true} {}
   };
 
   std::vector<OrtValueAllocationBlock> allocs_;

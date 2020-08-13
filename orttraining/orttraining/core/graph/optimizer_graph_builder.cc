@@ -208,7 +208,7 @@ Status AddZeroGradientNodes(const NodeArgNameGeneratorFn& nodearg_name_generator
                             const std::vector<ArgDef>& control_signals,
                             std::vector<ArgDef>& gradient_argdefs,  // update argdefs in place
                             GraphAugmenter::GraphDefs& graph_defs) {
-  assert(gradient_argdefs.size() == control_signals.size());
+  //assert(gradient_argdefs.size() == control_signals.size());
   for (size_t i = 0; i < gradient_argdefs.size(); ++i) {
     gradient_argdefs[i] = BuildZeroGradientNode(nodearg_name_generator, control_signals[i], gradient_argdefs[i], graph_defs);
   }
