@@ -175,6 +175,7 @@ if(onnxruntime_USE_OPENMP)
   if (OPENMP_FOUND)
     set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+    include_directories(${OpenMP_CXX_INCLUDE_DIR})
     # MKLML and NGraph depend on their own OpenMP library that may be different with the compiler's.
     # Disable the options to build mklml/NGraph and OpenMP together.
     if(onnxruntime_USE_MKLML)
@@ -184,6 +185,7 @@ if(onnxruntime_USE_OPENMP)
       message(FATAL_ERROR "Please use only one of onnxruntime_USE_NGRAPH, onnxruntime_USE_OPENMP")
     endif()
   else()
+    message(WARNING "Flag --use_openmp is specified, but OpenMP is not found in current build environment. Setting it to OFF.")
     set(onnxruntime_USE_OPENMP OFF)
   endif()
 endif()
@@ -1110,6 +1112,10 @@ endforeach()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES log)
+endif()
+
+if (onnxruntime_USE_OPENMP)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES OpenMP::OpenMP_CXX)
 endif()
 
 if(WIN32)
