@@ -337,9 +337,7 @@ Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_
   if (params_.mpi_context.world_rank == 0 && !params_.model_actual_running_graph_path.empty()) {
     session_.Save(params_.model_actual_running_graph_path, TrainingSession::SaveOption::NO_RELOAD);
   }
-
-  session_.Save("/bert_ort/mzs/onnxruntime/build/Debug/bert_training_graph.onnx", TrainingSession::SaveOption::NO_RELOAD);
-
+  
   // maybe in the future we can support an evaluation-only run
   if (!training_data_loader) {
     LOGS_DEFAULT(WARNING) << "training data loader not provided, nothing to do";

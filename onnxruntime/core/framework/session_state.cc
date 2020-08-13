@@ -352,12 +352,11 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
 
   // Contigiously allocate activations.
   // TODO(codemzs): Refacor this code.
-  MLDataType ml_type{nullptr};
   for (auto ml_value_idx : exe_plan->activation_allocation_order) {
     
     ORT_ENFORCE(ml_value_idx >= 0);
 
-    ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
+    const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
     if (!ml_type->IsTensorType())
       continue;
     const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();

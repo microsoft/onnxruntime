@@ -57,7 +57,7 @@ def main():
         "--convergence_test_output_file", convergence_test_output_path,
         "--seed", "42",
         "--enable_grad_norm_clip=false",
-        "--debug_break=false"
+        "--debug_break=false",
     ]).check_returncode()
 
     # verify output
