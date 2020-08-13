@@ -341,23 +341,22 @@ class MLTypeCallDispatcherRet {
   }
 };
 
-// Version of the MLTypeDispatcher with a return type and an input type that is passed through ('carried')
+// Version of the MLTypeDispatcher that has an input type which is passed through ('carried')
 // as the first type parameter in the call to Fn when dispatching.
-// Return type of Fn must return type convertible to Ret.
-// The value of the return type will be the return value of the function for type T which was specified for execution.
-template <class Ret, typename TCarried, template <typename, typename> class Fn, typename... Types>
-class MLTypeCallDispatcherRetWithCarriedType {
+template <typename TCarried, template <typename, typename> class Fn, typename... Types>
+class MLTypeCallDispatcherWithCarriedType {
   int32_t dt_type_;
 
  public:
-  explicit MLTypeCallDispatcherRetWithCarriedType(int32_t dt_type) noexcept : dt_type_(dt_type) {}
+  explicit MLTypeCallDispatcherWithCarriedType(int32_t dt_type) noexcept : dt_type_(dt_type) {}
 
   template <typename... Args>
-  Ret Invoke(Args&&... args) const {
-    mltype_dispatcher_internal::CallableDispatchableRetHelper<Ret> helper(dt_type_);
+  void Invoke(Args&&... args) const {
+    mltype_dispatcher_internal::CallableDispatchableHelper helper(dt_type_);
     int results[] = {0, helper.template Invoke<Types>(Fn<TCarried, Types>(), std::forward<Args>(args)...)...};
     ORT_UNUSED_PARAMETER(results);
-    return helper.Get();
+    ORT_ENFORCE(helper.called_ < 2, "Check for duplicate types in MLTypeCallDispatcher");
+    ORT_ENFORCE(helper.called_ == 1, "Unsupported data type: ", dt_type_);
   }
 };
 
