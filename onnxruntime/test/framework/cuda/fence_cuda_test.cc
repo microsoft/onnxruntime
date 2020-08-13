@@ -142,7 +142,13 @@ TEST(CUDAFenceTests, DISABLED_PartOnCPU) {
 }
 
 TEST(CUDAFenceTests, TileWithInitializer) {
-  std::unique_ptr<onnxruntime::Model> model = onnxruntime::make_unique<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
+  std::unique_ptr<onnxruntime::Model> model = onnxruntime::make_unique<onnxruntime::Model>("test", 
+                                                                                           ModelMetaData(), 
+                                                                                           PathString(), 
+                                                                                           IOnnxRuntimeOpSchemaRegistryList(), 
+                                                                                           {{kOnnxDomain, 12}}, 
+                                                                                           {}, 
+                                                                                           DefaultLoggingManager().DefaultLogger()));
   onnxruntime::Graph& graph = model->MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
