@@ -24,35 +24,39 @@ class TrainStepInfo(object):
     such as :py:method:`._LRScheduler.get_lr` or :py:class:`.LossScaler.update`.
 
     Args:
-        all_finite (bool): flag that indicates whether all gradients are still finite after last step
-        step (int): indicates current training step. Used for gradient accumulation
-        optimization_step (int): indicates the number of optimizations performed. Used for learning rate scheduling
         optimizer_config (optim._OptimizerConfig): reference to optimizer config
+        all_finite (bool, default is True): flag that indicates whether all gradients are still finite after last step
+        fetches (list of str, default is []): list of output names to fetch from train_step/eval_step
+        optimization_step (int): indicates the number of optimizations performed. Used for learning rate scheduling
+        step (int): indicates current training step. Used for gradient accumulation
 
     Example:
 
         .. code-block:: python
 
-            info = TrainStepInfo(all_finite=True, step=0, optimization_step=0, optimizer_config=optim.SGDConfig(lr=0.01))
+            info = TrainStepInfo(optimizer_config=optim.SGDConfig(lr=0.01))
             if info.all_finite:
                 print(f'Yay, all gradients are finite at {step} step!')
 
     """
 
-    def __init__(self, all_finite=None, step=None, optimization_step=None, optimizer_config=None):
-        assert all_finite is None or isinstance(all_finite, bool),\
-            "all_finite must be either None or a bool"
-        assert step is None or (isinstance(step, int) and step >= 0),\
-            "step must be either None or a positive int"
-        assert optimization_step is None or (isinstance(optimization_step, int) and step >= 0),\
-            "optimization_step must be either None or a positive int"
-        assert optimizer_config is None or isinstance(optimizer_config, optim._OptimizerConfig),\
-            "optimizer_config must be either None or optim._OptimizerConfig"
+    def __init__(self, optimizer_config, all_finite=True, fetches=[], optimization_step=0, step=0):
+        assert isinstance(optimizer_config, optim._OptimizerConfig),\
+            "optimizer_config must be a optim._OptimizerConfig"
+        assert isinstance(all_finite, bool),\
+            "all_finite must be a bool"
+        assert isinstance(fetches, list) and all([isinstance(item, str) for item in fetches]),\
+            "fetches must be a list of str"
+        assert isinstance(optimization_step, int) and optimization_step >= 0,\
+            "optimization_step must be a positive int"
+        assert (isinstance(step, int) and step >= 0),\
+            "step must be a positive int"
 
-        self.all_finite = all_finite
-        self.step = step
-        self.optimization_step = optimization_step
         self.optimizer_config = optimizer_config
+        self.all_finite = all_finite
+        self.fetches = fetches
+        self.optimization_step = optimization_step
+        self.step = step
 
 
 class ORTTrainer(object):
@@ -193,7 +197,7 @@ class ORTTrainer(object):
                 set_cuda_mem_limit(self.options.device.mem_limit)
             set_cuda_device_id(_utils.get_device_index(self.options.device.id))
 
-        self._train_step_info = TrainStepInfo(all_finite=True, step=0, optimization_step=0, optimizer_config=self.optim_config)
+        self._train_step_info = TrainStepInfo(self.optim_config)
         self._init_session()
 
     def eval_step(self, *args, **kwargs):
@@ -218,8 +222,12 @@ class ORTTrainer(object):
                 raise RuntimeError("Model is uninitialized. Only ONNX and PyTorch models are supported")
 
         # Prepare input/output description
-        input_desc = self.model_desc.inputs
-        output_desc = self.model_desc.outputs
+        inputs_desc = self.model_desc.inputs
+        outputs_desc = self.model_desc.outputs
+        if self._train_step_info.fetches:
+            outputs_desc = [o_desc for o_desc in outputs_desc if o_desc.name in self._train_step_info.fetches]
+            if len(outputs_desc) != len(self._train_step_info.fetches):
+                raise RuntimeError("The specified fetches list contains invalid output names")
 
         # Normalize input
         if not isinstance(sample_input, (list, tuple)):
@@ -233,12 +241,12 @@ class ORTTrainer(object):
         # Run a eval step and return
         session_run_results = self._training_session_run_helper(False,
                                                                 sample_input,
-                                                                input_desc,
-                                                                output_desc,
+                                                                inputs_desc,
+                                                                outputs_desc,
                                                                 run_options)
 
         # Output must be returned in the same order as defined in the model description
-        results = [session_run_results[output_desc.name] for output_desc in self.model_desc.outputs]
+        results = [session_run_results[o_desc.name] for o_desc in outputs_desc]
         return results[0] if len (results) == 1 else results
 
     def save_as_onnx(self, path):
@@ -289,8 +297,8 @@ class ORTTrainer(object):
             self._init_onnx_model(sample_input)
 
         # Prepare inputs+lr and output descriptions
-        input_desc = self._model_desc_inputs_with_lr
-        output_desc = self.model_desc.outputs
+        inputs_desc = self._model_desc_inputs_with_lr
+        outputs_desc = self.model_desc.outputs
 
         # Train step must be incremented *before* gradient accumulation code
         # Gradients are accumulated when
@@ -300,13 +308,18 @@ class ORTTrainer(object):
 
         # RunOptions
         run_options = None
-        if self._train_step_info.step % self.options.batch.gradient_accumulation_steps != 0:
+        mixed_precision_without_fetches = False
+        if self._train_step_info.fetches:
+            outputs_desc = [o_desc for o_desc in outputs_desc if o_desc.name in self._train_step_info.fetches]
+            if len(outputs_desc) != len(self._train_step_info.fetches):
+                raise RuntimeError("The specified fetches list contains invalid output names")
+        elif self._train_step_info.step % self.options.batch.gradient_accumulation_steps != 0:
             run_options = ort.RunOptions()
             run_options.only_execute_path_to_fetches = True
-            run_options.training_mode = True
-            output_desc = self._model_desc_outputs_with_gradient_accumulation
+            outputs_desc = self._model_desc_outputs_with_gradient_accumulation
         elif self.options.mixed_precision.enabled:
-            output_desc = self._model_desc_outputs_with_is_finite
+            mixed_precision_without_fetches = True
+            outputs_desc = self._model_desc_outputs_with_is_finite
 
         # Update Learning Rate if Necessary
         if self.options.lr_scheduler:
@@ -318,19 +331,19 @@ class ORTTrainer(object):
             loss_scaler = self.options.mixed_precision.loss_scaler
             assert loss_scaler, "Loss scaler is required when mixed precision is enabled"
             loss_scale = torch.tensor([loss_scaler.loss_scale])
-            input_desc = self._model_desc_inputs_with_lr_and_loss_scale
+            inputs_desc = self._model_desc_inputs_with_lr_and_loss_scale
 
         # Get data. CombineTorchModelLossFn takes label as last input and outputs loss first
-        input = self._prepare_model_input(input_desc, self.optim_config.lr, loss_scale, *args, **kwargs)
+        input = self._prepare_model_input(inputs_desc, self.optim_config.lr, loss_scale, *args, **kwargs)
 
         # Normalize input
         if not isinstance(args, (list, tuple)):
             args = (args,)
 
         # Run a train step and return
-        session_run_results = self._training_session_run_helper(True, input, input_desc,
-                                                                output_desc, run_options)
-        if self.options.mixed_precision.enabled:
+        session_run_results = self._training_session_run_helper(True, input, inputs_desc,
+                                                                outputs_desc, run_options)
+        if mixed_precision_without_fetches:
             # After session run with all_fp32_gradients_finite, we need to clear the training I/O binding's output
             # Otherwise next run with only_execute_path_to_fetches will lead to gradient all reduce
             # because all_fp32_gradients_finite is still in the feed.
@@ -348,7 +361,11 @@ class ORTTrainer(object):
             self._train_step_info.optimization_step += 1
 
         # Output must be returned in the same order as defined in the model description
-        results = [session_run_results[output_desc.name] for output_desc in self.model_desc.outputs]
+        # or in the order specified by TrainStepInfo.fetches, if applicable
+        if self._train_step_info.fetches:
+            results = [session_run_results[o_desc] for o_desc in self._train_step_info.fetches]
+        else:
+            results = [session_run_results[o_desc.name] for o_desc in self.model_desc.outputs]
         return results[0] if len (results) == 1 else results
 
     def _combine_torch_model_with_loss_fn(self):
