@@ -217,7 +217,7 @@ class GradientBuilderBase {
     if (!name.empty()) {
       unique_prefix << name << "_Grad/";
     } else {
-      unique_prefix << node_->OpType() << "_" << node_->Index() << "_Grad/";
+      unique_prefix << node_->OpType() << "_index_" << node_->Index() << "_Grad/";
     }
     return unique_prefix.str();
   }
