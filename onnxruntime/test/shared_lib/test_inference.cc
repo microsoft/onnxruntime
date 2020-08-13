@@ -139,7 +139,7 @@ void TestInference(Ort::Env& env, T model_uri,
   // It is safe to do so here.
   if (custom_op_library_filename) {
     auto custom_op_domains = session_options.GetCustomOpDomains();
-    for (int i = 0; i < custom_op_domains.size(); ++i) {
+    for (size_t i = 0; i < custom_op_domains.size(); ++i) {
       Ort::GetApi().ReleaseCustomOpDomain(custom_op_domains[i]);
     }
   }
@@ -377,9 +377,7 @@ lib_name = "./libcustom_op_library.so";
   // have the handle.
   // This is to avoid leaking the library handle.
   auto status = onnxruntime::Env::Default().UnloadDynamicLibrary(library_handle);
-  if (!status.IsOK()) {
-    throw std::exception("Unable to unload the custom op shared library");
-  }
+  ORT_THROW_IF_ERROR(status);
 }
 
 #if defined(ENABLE_LANGUAGE_INTEROP_OPS)
