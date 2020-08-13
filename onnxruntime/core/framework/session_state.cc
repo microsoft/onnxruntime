@@ -438,7 +438,6 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
           return Status(ONNXRUNTIME, FAIL, "Size overflow");
         }
 
-<<<<<<< HEAD
       ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate);
       ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].program_counter_start.size() == exe_plan->allocation_plan[ml_value_idx].program_counter_end.size());
 
@@ -447,9 +446,6 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
 
         mem_planner.TraceAllocation(ml_value_idx, exe_plan->allocation_plan[ml_value_idx].program_counter_start,
                                     exe_plan->allocation_plan[ml_value_idx].program_counter_end, size);
-=======
-        mem_planner.TraceAllocation(ml_value_idx, aligned_size);
->>>>>>> cddddc4d5597e5d59dbc7d669c4800f2d1991ef7
       }
     }
 
