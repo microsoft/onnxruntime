@@ -172,9 +172,9 @@ class PlannerTest : public ::testing::Test {
                                           concurrency::ThreadPoolType::INTRA_OP)),
         state_(graph_, execution_providers_, false, tp_.get(), nullptr, dtm_, DefaultLoggingManager().DefaultLogger(),
                profiler_) {
-    std_kernel_ = KernelDefBuilder().SetName("Transpose").Provider(kCpuExecutionProvider).SinceVersion(1, 10).Build();
+    std_kernel_ = KernelDefBuilder().SetName("Transpose").Provider(kCpuExecutionProvider).SinceVersion(1, 13).Build();
     in_place_kernel_ =
-        KernelDefBuilder().SetName("Relu").Provider(kCpuExecutionProvider).SinceVersion(1, 10).MayInplace(0, 0).Build();
+        KernelDefBuilder().SetName("Relu").Provider(kCpuExecutionProvider).SinceVersion(1, 13).MayInplace(0, 0).Build();
     CPUExecutionProviderInfo epi;
     auto execution_provider = onnxruntime::make_unique<CPUExecutionProvider>(epi);
     execution_providers_.Add("CPUExecutionProvider", std::move(execution_provider));

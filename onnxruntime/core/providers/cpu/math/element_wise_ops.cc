@@ -32,7 +32,8 @@ namespace onnxruntime {
 #define REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(OP_TYPE, VERSION_FROM, VERSION_TO, TYPE, KERNEL_CLASS) \
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                                           \
       OP_TYPE,                                                                                        \
-      VERSION_FROM, VERSION_TO,                                                                       \
+      VERSION_FROM,                                                                                   \
+      VERSION_TO,                                                                                     \
       TYPE,                                                                                           \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()),                    \
       KERNEL_CLASS<TYPE>);
@@ -68,46 +69,46 @@ namespace onnxruntime {
           .TypeConstraint("T1", BuildKernelDefConstraints<__VA_ARGS__>()),                          \
       KERNEL_CLASS);
 
-REG_ELEMENTWISE_TYPED_KERNEL(Add, 7, float, Add);
-REG_ELEMENTWISE_TYPED_KERNEL(Add, 7, double, Add);
-REG_ELEMENTWISE_TYPED_KERNEL(Add, 7, int32_t, Add);
-REG_ELEMENTWISE_TYPED_KERNEL(Add, 7, int64_t, Add);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Add, 7, 13, float, Add);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Add, 7, 13, double, Add);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Add, 7, 13, int32_t, Add);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Add, 7, 13, int64_t, Add);
 
-REG_ELEMENTWISE_TYPED_KERNEL(Sub, 7, float, Sub);
-REG_ELEMENTWISE_TYPED_KERNEL(Sub, 7, double, Sub);
-REG_ELEMENTWISE_TYPED_KERNEL(Sub, 7, int32_t, Sub);
-REG_ELEMENTWISE_TYPED_KERNEL(Sub, 7, int64_t, Sub);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Sub, 7, 13, float, Sub);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Sub, 7, 13, double, Sub);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Sub, 7, 13, int32_t, Sub);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Sub, 7, 13, int64_t, Sub);
 
-REG_ELEMENTWISE_TYPED_KERNEL(Mul, 7, float, Mul);
-REG_ELEMENTWISE_TYPED_KERNEL(Mul, 7, double, Mul);
-REG_ELEMENTWISE_TYPED_KERNEL(Mul, 7, int32_t, Mul);
-REG_ELEMENTWISE_TYPED_KERNEL(Mul, 7, int64_t, Mul);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Mul, 7, 13, float, Mul);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Mul, 7, 13, double, Mul);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Mul, 7, 13, int32_t, Mul);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Mul, 7, 13, int64_t, Mul);
 
-REG_ELEMENTWISE_TYPED_KERNEL(Div, 7, float, Div);
-REG_ELEMENTWISE_TYPED_KERNEL(Div, 7, double, Div);
-REG_ELEMENTWISE_TYPED_KERNEL(Div, 7, int32_t, Div);
-REG_ELEMENTWISE_TYPED_KERNEL(Div, 7, int64_t, Div);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Div, 7, 13, float, Div);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Div, 7, 13, double, Div);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Div, 7, 13, int32_t, Div);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Div, 7, 13, int64_t, Div);
 
-REG_ELEMENTWISE_TYPED_KERNEL(Abs, 6, float, Abs);
-REG_ELEMENTWISE_TYPED_KERNEL(Abs, 6, double, Abs);
-REG_ELEMENTWISE_TYPED_KERNEL(Abs, 6, int8_t, Abs);
-REG_ELEMENTWISE_TYPED_KERNEL(Abs, 6, int16_t, Abs);
-REG_ELEMENTWISE_TYPED_KERNEL(Abs, 6, int32_t, Abs);
-REG_ELEMENTWISE_TYPED_KERNEL(Abs, 6, int64_t, Abs);
-REG_ELEMENTWISE_TYPED_KERNEL(Abs, 6, uint8_t, Abs);
-REG_ELEMENTWISE_TYPED_KERNEL(Abs, 6, uint16_t, Abs);
-REG_ELEMENTWISE_TYPED_KERNEL(Abs, 6, uint32_t, Abs);
-REG_ELEMENTWISE_TYPED_KERNEL(Abs, 6, uint64_t, Abs);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Abs, 6, 13, float, Abs);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Abs, 6, 13, double, Abs);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Abs, 6, 13, int8_t, Abs);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Abs, 6, 13, int16_t, Abs);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Abs, 6, 13, int32_t, Abs);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Abs, 6, 13, int64_t, Abs);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Abs, 6, 13, uint8_t, Abs);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Abs, 6, 13, uint16_t, Abs);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Abs, 6, 13, uint32_t, Abs);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Abs, 6, 13, uint64_t, Abs);
 
-REG_ELEMENTWISE_TYPED_KERNEL(Neg, 6, float, Neg);
-REG_ELEMENTWISE_TYPED_KERNEL(Neg, 6, double, Neg);
-REG_ELEMENTWISE_TYPED_KERNEL(Neg, 6, int8_t, Neg);
-REG_ELEMENTWISE_TYPED_KERNEL(Neg, 6, int32_t, Neg);
-REG_ELEMENTWISE_TYPED_KERNEL(Neg, 6, int64_t, Neg);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Neg, 6, 13, float, Neg);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Neg, 6, 13, double, Neg);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Neg, 6, 13, int8_t, Neg);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Neg, 6, 13, int32_t, Neg);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Neg, 6, 13, int64_t, Neg);
 
-REG_ELEMENTWISE_TYPED_KERNEL(Floor, 6, float, Floor);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Floor, 6, 13, float, Floor);
 
-REG_ELEMENTWISE_TYPED_KERNEL(Ceil, 6, float, Ceil);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Ceil, 6, 13, float, Ceil);
 
 REG_ELEMENTWISE_TYPED_KERNEL(Reciprocal, 6, float, Reciprocal);
 

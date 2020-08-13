@@ -47,12 +47,23 @@ template Status ElementWiseRangedTransform<float>::Create(const std::string& typ
       alias, sinceVersion,                                              \
       KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), x<float>);
 
-#define REGISTER_UNARY_ELEMENTWISE_KERNEL(x, sinceVersion) REGISTER_UNARY_ELEMENTWISE_KERNEL_ALIAS(x, x, sinceVersion)
+#define REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_ALIAS(alias, x, sinceVersion, endVersion) \
+  ONNX_CPU_OPERATOR_VERSIONED_KERNEL(                                                         \
+      alias,                                                                                  \
+      sinceVersion,                                                                           \
+      endVersion,                                                                             \
+      KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), x<float>);
+
+#define REGISTER_UNARY_ELEMENTWISE_KERNEL(x, sinceVersion) \
+  REGISTER_UNARY_ELEMENTWISE_KERNEL_ALIAS(x, x, sinceVersion)
+
+#define REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(x, sinceVersion, endVersion) \
+  REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_ALIAS(x, x, sinceVersion, endVersion)
 
 REGISTER_UNARY_ELEMENTWISE_KERNEL(Elu, 6);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(HardSigmoid, 6);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(LeakyRelu, 6);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(Relu, 6);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(Relu, 6, 13);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(Selu, 6);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(Sigmoid, 6);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(Softplus, 1);

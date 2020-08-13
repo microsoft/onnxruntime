@@ -1539,8 +1539,8 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
 }
 
 TEST(ExecutionProviderTest, FunctionInlineTest) {
-  onnxruntime::Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
-
+  onnxruntime::Model model("graph_1", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                           std::unordered_map<std::string, int>{{"", 12}}, {}, DefaultLoggingManager().DefaultLogger());
   ONNX_NAMESPACE::FunctionProto fc_proto;
   fc_proto.set_name("FC");
   fc_proto.set_doc_string("this is a full connection function.");

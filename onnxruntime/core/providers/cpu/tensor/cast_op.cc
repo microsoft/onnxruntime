@@ -224,9 +224,10 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
         .MayInplace(0, 0),  // allocation planner will check input and output sizes match before inplacing
     Cast);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Cast,
     9,
+    13,
     KernelDefBuilder()
         .TypeConstraint("T1", castOpTypeConstraints)
         .TypeConstraint("T2", castOpTypeConstraints)

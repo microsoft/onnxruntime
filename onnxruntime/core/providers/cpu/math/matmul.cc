@@ -31,35 +31,35 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     MatMul<double>);
 
 // opset 9 supports more types
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    MatMul,
-    9,
-    float,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    MatMul<float>);
+#define REGISTER_MATMUL_TYPED_KERNEL_9_12(T)                                    \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                     \
+      MatMul,                                                                   \
+      9, 12,                                                                    \
+      T,                                                                        \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      MatMul<T>);
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    MatMul,
-    9,
-    double,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
-    MatMul<double>);
+REGISTER_MATMUL_TYPED_KERNEL_9_12(float)
+REGISTER_MATMUL_TYPED_KERNEL_9_12(double)
+REGISTER_MATMUL_TYPED_KERNEL_9_12(int32_t)
+REGISTER_MATMUL_TYPED_KERNEL_9_12(uint32_t)
+REGISTER_MATMUL_TYPED_KERNEL_9_12(int64_t)
+REGISTER_MATMUL_TYPED_KERNEL_9_12(uint64_t)
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    MatMul,
-    9,
-    int32_t,
-    KernelDefBuilder()
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<uint32_t>()}),
-    MatMul<int32_t>);
+#define REGISTER_MATMUL_TYPED_KERNEL_13(T)                                      \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                               \
+      MatMul,                                                                   \
+      13,                                                                       \
+      T,                                                                        \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      MatMul<T>);
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    MatMul,
-    9,
-    int64_t,
-    KernelDefBuilder()
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<int64_t>(), DataTypeImpl::GetTensorType<uint64_t>()}),
-    MatMul<int64_t>);
+REGISTER_MATMUL_TYPED_KERNEL_13(float)
+REGISTER_MATMUL_TYPED_KERNEL_13(double)
+REGISTER_MATMUL_TYPED_KERNEL_13(int32_t)
+REGISTER_MATMUL_TYPED_KERNEL_13(uint32_t)
+REGISTER_MATMUL_TYPED_KERNEL_13(int64_t)
+REGISTER_MATMUL_TYPED_KERNEL_13(uint64_t)
 
 template <typename T>
 Status MatMul<T>::Compute(OpKernelContext* ctx) const {
