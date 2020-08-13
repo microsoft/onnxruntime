@@ -43,9 +43,9 @@ struct OrtDefaultAllocator : OrtAllocatorImpl {
     return cpu_memory_info;
   }
 
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(OrtDefaultAllocator);
+
  private:
-  OrtDefaultAllocator(const OrtDefaultAllocator&) = delete;
-  OrtDefaultAllocator& operator=(const OrtDefaultAllocator&) = delete;
 
   OrtMemoryInfo* cpu_memory_info;
 };

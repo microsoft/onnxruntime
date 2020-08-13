@@ -266,8 +266,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     12,
     kCudaExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, float, double>())
-                      .TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t, float, double>()),
+    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, float, double>()).TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t, float, double>()),
     Pow);
 
 namespace pow12_internal {
@@ -364,103 +363,6 @@ Status Pow::ComputeInternal(OpKernelContext* context) const {
   return s;
 }
 
-template <typename T, typename CudaT>
-Status VariadicInputBase<T, CudaT>::ComputeMethod(OpKernelContext* context, ImplCompute Impl_Compute) const {
-  const auto& node = Node();
-  const auto& node_name = node.Name();
-  auto input_count = node.InputArgCount().front();
-  ORT_RETURN_IF_NOT(input_count >= 1, "Must have 1 or more inputs");
-
-  auto lhs_tensor = context->Input<Tensor>(0);
-  if (input_count == 1) {
-    const auto& input_shape = lhs_tensor->Shape();
-    auto output_tensor = context->Output(0, input_shape);
-    if (lhs_tensor->DataRaw() != output_tensor->DataRaw()) {
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_tensor->MutableDataRaw(), lhs_tensor->DataRaw(), sizeof(CudaT) * input_shape.Size(), cudaMemcpyDeviceToDevice));
-    }
-  } else {
-    // compute output shape first, using broadcast rule
-    TensorShape output_shape;
-    TensorShape previous_output_shape = lhs_tensor->Shape();
-    for (int index = 1; index < input_count; index++) {
-      ORT_RETURN_IF_ERROR(ComputeOutputShape(node_name, previous_output_shape, context->Input<Tensor>(index)->Shape(), output_shape));
-      previous_output_shape = output_shape;
-    }
-    Tensor* output_tensor = context->Output(0, output_shape);
-    BinaryElementwisePreparation prepare;
-
-    auto rhs_tensor = context->Input<Tensor>(1);
-    if (input_count == 2) {
-      // special case for 2 tensors to avoid memset zero
-      ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(lhs_tensor, rhs_tensor, output_tensor, &prepare));
-      Impl_Compute(
-          prepare.output_rank_or_simple_broadcast,
-          &prepare.lhs_padded_strides,
-          reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
-          &prepare.rhs_padded_strides,
-          reinterpret_cast<const CudaT*>(prepare.rhs_tensor->template Data<T>()),
-          &prepare.fdm_output_strides,
-          prepare.fdm_H,
-          prepare.fdm_C,
-          reinterpret_cast<CudaT*>(prepare.output_tensor->template MutableData<T>()),
-          prepare.output_tensor->Shape().Size());
-    } else {
-      // for more than 2 inputs, we need to accumulate into output tensor, as the shape from input0 + input1 might be different from output shape
-      CUDA_RETURN_IF_ERROR(cudaMemset(output_tensor->MutableDataRaw(), 0, output_shape.Size() * sizeof(CudaT)));
-
-      ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(output_tensor, lhs_tensor, output_tensor, &prepare));
-      Impl_Add(
-          prepare.output_rank_or_simple_broadcast,
-          &prepare.lhs_padded_strides,
-          reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
-          &prepare.rhs_padded_strides,
-          reinterpret_cast<const CudaT*>(prepare.rhs_tensor->template Data<T>()),
-          &prepare.fdm_output_strides,
-          prepare.fdm_H,
-          prepare.fdm_C,
-          reinterpret_cast<CudaT*>(prepare.output_tensor->template MutableData<T>()),
-          prepare.output_tensor->Shape().Size());
-
-      for (int index = 1; index < input_count; index++) {
-        ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(output_tensor, context->Input<Tensor>(index), output_tensor, &prepare));
-        Impl_Compute(
-            prepare.output_rank_or_simple_broadcast,
-            &prepare.lhs_padded_strides,
-            reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
-            &prepare.rhs_padded_strides,
-            reinterpret_cast<const CudaT*>(prepare.rhs_tensor->template Data<T>()),
-            &prepare.fdm_output_strides,
-            prepare.fdm_H,
-            prepare.fdm_C,
-            reinterpret_cast<CudaT*>(prepare.output_tensor->template MutableData<T>()),
-            prepare.output_tensor->Shape().Size());
-      }
-    }
-  }
-  return Status::OK();
-}
-
-template <typename T>
-Status Sum<T>::ComputeInternal(OpKernelContext* context) const {
-  this->ComputeMethod(context, &Impl_Add);
-
-  return Status::OK();
-}
-
-template <typename T>
-Status Max<T>::ComputeInternal(OpKernelContext* context) const {
-  this->ComputeMethod(context, &Impl_Max);
-
-  return Status::OK();
-}
-
-template <typename T>
-Status Min<T>::ComputeInternal(OpKernelContext* context) const {
-  this->ComputeMethod(context, &Impl_Min);
-
-  return Status::OK();
-}
-
 //Greater op output tensor type is bool, so it cannot directly fit in the macros
 //for other elementwise ops
 template <typename T, typename CudaT>
@@ -514,18 +416,10 @@ Status Less<T>::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
-BINARY_OP_REGISTER_UZILHFD(Sum, 8)
-BINARY_OP_REGISTER_VERSIONED_UZILHFD(Sum, 6, 7)
 BINARY_LOGICALOP_REGISTER_UZILHFD(Greater, 9)
 BINARY_OP_REGISTER_VERSIONED_OIL(Equal, 7, 10)
 BINARY_OP_REGISTER_OIL(Equal, 11)
 BINARY_OP_REGISTER_VERSIONED_HFD(Greater, 7, 8)
-BINARY_OP_REGISTER_UZILHFD(Max, 12)
-BINARY_OP_REGISTER_VERSIONED_HFD(Max, 8, 11)
-BINARY_OP_REGISTER_VERSIONED_HFD(Max, 6, 7)
-BINARY_OP_REGISTER_UZILHFD(Min, 12)
-BINARY_OP_REGISTER_VERSIONED_HFD(Min, 8, 11)
-BINARY_OP_REGISTER_VERSIONED_HFD(Min, 6, 7)
 BINARY_LOGICALOP_REGISTER_UZILHFD(Less, 9)
 BINARY_OP_REGISTER_VERSIONED_HFD(Less, 7, 8)
 

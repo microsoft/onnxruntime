@@ -698,7 +698,7 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
   auto dims = gsl::make_span<const int64_t>(dense.dims().data(), dense.dims().size());
 
   // need to read in sparse data first as it could be in a type specific field, in raw data, or in external data
-  size_t sparse_bytes;
+  size_t sparse_bytes = 0;
   ORT_RETURN_IF_ERROR(GetSizeInBytesFromTensorProto<0>(sparse_values, &sparse_bytes));
 
   if (type != TensorProto_DataType_STRING) {

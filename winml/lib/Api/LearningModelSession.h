@@ -13,7 +13,7 @@
 
 namespace WINMLP {
 
-struct LearningModelSession : LearningModelSessionT<LearningModelSession> {
+struct LearningModelSession : LearningModelSessionT<LearningModelSession, ILearningModelSessionNative> {
   /* LearningModelSession constructors (MachineLearningContract 1). */
   LearningModelSession() = delete;
 
@@ -64,6 +64,9 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession> {
   EvaluateFeaturesAsync(
       wfc::IMap<hstring, wf::IInspectable> const features,
       hstring const correlationId);
+
+  STDMETHOD(GetIntraOpNumThreads)
+  (uint32_t* numThreads);
 
  public:
   /* Non-ABI methods */

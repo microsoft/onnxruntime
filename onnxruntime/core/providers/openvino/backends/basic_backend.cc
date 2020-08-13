@@ -32,7 +32,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
 
   // Loading model to the plugin
   std::map<std::string, std::string> config;
-  if(subgraph_context_.set_vpu_config){
+  if(subgraph_context_.device_id == "MYRIAD" && subgraph_context_.set_vpu_config){
     config["VPU_DETECT_NETWORK_BATCH"] = CONFIG_VALUE(NO);
   }
   try {

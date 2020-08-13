@@ -7,11 +7,14 @@ namespace onnxruntime {
 BFCArena::BFCArena(std::unique_ptr<IDeviceAllocator> resource_allocator,
                    size_t total_memory,
                    ArenaExtendStrategy arena_extend_strategy)
-    : device_allocator_(std::move(resource_allocator)),
+    : IArenaAllocator(OrtMemoryInfo(resource_allocator->Info().name,
+                                    OrtAllocatorType::OrtArenaAllocator,
+                                    resource_allocator->Info().device,
+                                    resource_allocator->Info().id,
+                                    resource_allocator->Info().mem_type)),
+      device_allocator_(std::move(resource_allocator)),
       free_chunks_list_(kInvalidChunkHandle),
-      next_allocation_id_(1),
-      info_(device_allocator_->Info().name, OrtAllocatorType::OrtArenaAllocator,
-            device_allocator_->Info().device, device_allocator_->Info().id, device_allocator_->Info().mem_type) {
+      next_allocation_id_(1) {
   LOGS_DEFAULT(INFO) << "Creating BFCArena for " << device_allocator_->Info().name;
 
   // TODO - consider to make the initial chunk size and max 'fragmentation' (kMaxDeadBytesInChunk) values configurable.

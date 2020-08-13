@@ -67,6 +67,9 @@ if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     target_compile_options(onnxruntime_pybind11_state PRIVATE "/wd4244")
 endif()
 target_include_directories(onnxruntime_pybind11_state PRIVATE ${ONNXRUNTIME_ROOT} ${PYTHON_INCLUDE_DIR} ${NUMPY_INCLUDE_DIR} ${pybind11_INCLUDE_DIRS})
+if(onnxruntime_USE_CUDA)
+    target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_CUDNN_HOME}/include)
+endif()
 if (onnxruntime_ENABLE_TRAINING)
   target_include_directories(onnxruntime_pybind11_state PRIVATE ${ORTTRAINING_ROOT})
 endif()
@@ -93,6 +96,8 @@ set(onnxruntime_pybind11_state_libs
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
+    ${PROVIDERS_ACL}
+    ${PROVIDERS_ARMNN}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -184,6 +189,11 @@ file(GLOB onnxruntime_python_tools_srcs CONFIGURE_DEPENDS
 file(GLOB onnxruntime_python_tools_featurizers_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/featurizer_ops/*.py"
 )
+file(GLOB onnxruntime_python_quantization_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/tools/quantization/*.py"
+)
+list(REMOVE_ITEM onnxruntime_python_quantization_src
+  "${ONNXRUNTIME_ROOT}/python/tools/quantization/test_calibrate.py")
 file(GLOB onnxruntime_python_datasets_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/datasets/*.py"
 )
@@ -202,6 +212,7 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/datasets
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/tools
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/tools/featurizer_ops
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/quantization
   COMMAND ${CMAKE_COMMAND} -E copy
       ${ONNXRUNTIME_ROOT}/__init__.py
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/
@@ -242,6 +253,9 @@ add_custom_command(
       ${onnxruntime_python_tools_featurizers_src}
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/tools/featurizer_ops/
   COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_quantization_src}
+      $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/quantization/
+  COMMAND ${CMAKE_COMMAND} -E copy
       ${REPO_ROOT}/VERSION_NUMBER
       $<TARGET_FILE_DIR:${test_data_target}>
 )
@@ -251,6 +265,7 @@ if (onnxruntime_USE_DNNL)
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
         ${DNNL_DLL_PATH} $<TARGET_FILE:onnxruntime_providers_dnnl>
+        $<TARGET_FILE:onnxruntime_providers_shared>
         $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
   )
 endif()
@@ -316,10 +331,4 @@ endif()
 
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   include(onnxruntime_language_interop_ops.cmake)
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-      $<TARGET_FILE:onnxruntime_pywrapper>
-      $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
-  )
 endif()
