@@ -166,7 +166,8 @@ std::vector<std::vector<const EquivalenceClass*>> Normalize(const Node& node, co
 
 template <typename Range>
 bool AreRangesEqual(const Range& lhs, const Range& rhs) {
-  return std::equal(lhs.begin(), lhs.end(), rhs.begin(), rhs.end());
+  return lhs.size() == rhs.size() &&
+         std::equal(lhs.begin(), lhs.end(), rhs.begin());
 }
 
 bool AreEqual(const ONNX_NAMESPACE::AttributeProto& lhs, const ONNX_NAMESPACE::AttributeProto& rhs) {
