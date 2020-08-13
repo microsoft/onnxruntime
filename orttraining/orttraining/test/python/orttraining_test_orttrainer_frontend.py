@@ -22,7 +22,7 @@ import _test_helpers
 ###############################################################################
 
 
-def _load_pytorch_transformer_model(device, legacy_api=False):
+def _load_pytorch_transformer_model(device, dynamic_axes=False, legacy_api=False):
     # Loads external Pytorch TransformerModel into utils
     pytorch_transformer_path = os.path.join('..', '..', '..', 'samples', 'python', 'pytorch_transformer')
     pt_model_path = os.path.join(pytorch_transformer_path, 'pt_model.py')
@@ -36,9 +36,16 @@ def _load_pytorch_transformer_model(device, legacy_api=False):
     model = pt_model.TransformerModel(28785, 200, 2, 200, 2, 0.2).to(device)
     my_loss = ort_utils.my_loss
     if legacy_api:
-        model_desc = ort_utils.legacy_transformer_model_description()
+        if dynamic_axes:
+            model_desc = ort_utils.legacy_transformer_model_description_dynamic_axes()
+        else:
+            model_desc = ort_utils.legacy_transformer_model_description()
     else:
-        model_desc = ort_utils.transformer_model_description()
+        if dynamic_axes:
+            model_desc = ort_utils.transformer_model_description_dynamic_axes()
+        else:
+            model_desc = ort_utils.transformer_model_description()
+
 
     # Preparing data
     train_data, val_data, test_data = utils.prepare_data(device, 20, 20)
@@ -743,6 +750,29 @@ def testORTTrainerGradientAccumulation(seed, device, gradient_accumulation_steps
     # Compare legacy vs experimental APIs
     _test_helpers.assert_model_outputs(expected_loss, actual_loss, rtol=1e-6)
 
+
+@pytest.mark.parametrize("dynamic_axes", [
+    (True),
+    (False),
+])
+def testORTTrainerDynamicShape(dynamic_axes):
+    # Common setup
+    device = 'cuda'
+
+    # Setup ORTTrainer
+    options = orttrainer.ORTTrainerOptions({})
+    model, model_desc, my_loss, batcher_fn,\
+        train_data, val_data, _ = _load_pytorch_transformer_model(device, dynamic_axes=dynamic_axes)
+    optim_config = optim.LambConfig(lr=0.001)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
+
+    # Training loop
+    total_steps = 10
+    for i in range(total_steps):
+        data, targets = batcher_fn(train_data, i)
+        _, _ = trainer.train_step(data, targets)
+
+    assert trainer._onnx_model is not None
 
 ###############################################################################
 # Temporary tests comparing Legacy vs Experimental ORTTrainer APIs ############

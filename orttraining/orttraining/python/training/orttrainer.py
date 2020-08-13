@@ -681,12 +681,16 @@ class ORTTrainer(object):
         for input, i_desc in zip(inputs, inputs_desc):
             for i_idx, i_axis in enumerate(i_desc.shape):
                 if isinstance(i_axis, str):
-                    resolved_dims[i_axis] = input.size()[i_idx]
+                    if i_axis not in resolved_dims:
+                        resolved_dims[i_axis] = input.size()[i_idx]
+                    else:
+                        assert resolved_dims[i_axis] == input.size()[i_idx],\
+                            f"Mismatch in dynamic shape {i_axis}"
 
         for o_desc in outputs:
             for idx_o, o_axis in enumerate(o_desc.shape):
                 if isinstance(o_axis, str):
-                    o_desc.shape_[idx_o] = resolved_dims[o_axis]
+                    o_desc.shape[idx_o] = resolved_dims[o_axis]
 
         unknown_dim = [o_desc.name for dim in o_desc.shape for o_desc in outputs if isinstance(dim, str)]
         if unknown_dim:
