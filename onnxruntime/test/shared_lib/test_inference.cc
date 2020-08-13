@@ -137,12 +137,12 @@ void TestInference(Ort::Env& env, T model_uri,
 
   // Release OrtCustomOpDomain created in custom_op_library.cc.
   // It is safe to do so here.
-  if (custom_op_library_filename) {
-    auto custom_op_domains = session_options.GetCustomOpDomains();
-    for (size_t i = 0; i < custom_op_domains.size(); ++i) {
-      Ort::GetApi().ReleaseCustomOpDomain(custom_op_domains[i]);
-    }
-  }
+  //if (custom_op_library_filename) {
+  //  auto custom_op_domains = session_options.GetCustomOpDomains();
+  //  for (size_t i = 0; i < custom_op_domains.size(); ++i) {
+  //    Ort::GetApi().ReleaseCustomOpDomain(custom_op_domains[i]);
+  //  }
+  //}
 }
 
 static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/mul_1.onnx");
@@ -376,10 +376,7 @@ lib_name = "./libcustom_op_library.so";
   // We use our platform abstraction class - The user can unload the library in any way once they
   // have the handle.
   // This is to avoid leaking the library handle.
-  auto status = onnxruntime::Env::Default().UnloadDynamicLibrary(library_handle);
-  if (!status.IsOK()) {
-    ORT_THROW(status);
-  }
+  //auto status = onnxruntime::Env::Default().UnloadDynamicLibrary(library_handle);
 }
 
 #if defined(ENABLE_LANGUAGE_INTEROP_OPS)
