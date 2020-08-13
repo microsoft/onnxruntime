@@ -270,6 +270,16 @@ if (onnxruntime_USE_DNNL)
   )
 endif()
 
+if (onnxruntime_USE_TENSORRT)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${DNNL_DLL_PATH} $<TARGET_FILE:onnxruntime_providers_tensorrt>
+        $<TARGET_FILE:onnxruntime_providers_shared>
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
+  )
+endif()
+
 if (onnxruntime_USE_NGRAPH)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
