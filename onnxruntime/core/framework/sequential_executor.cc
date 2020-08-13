@@ -204,7 +204,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     if (node.Description() != "Backward pass" && !forward_range.IsBeginCalled()) {
       // Start timing forward pass when encountering the first forward node.
       forward_range.Begin();
-    } else if (node.Description() == "Backward pass" && !backward_range.IsBeginCalled()) {
+    } else if (node.Description() == "Backward pass" && !backward_range.IsBeginCalled() && forward_range.IsBeginCalled()) {
       // Start timing backward pass when encountering the first backward node.
       // In the meanwhile, forward range ends.
       forward_range.End();

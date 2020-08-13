@@ -13,7 +13,8 @@ jobs:
      --enable_onnx_tests
      --enable_training
      --skip_onnx_tests
-     --skip_submodule_sync    
+     --skip_submodule_sync
+     --use_openmp
     BuildArch: 'x64'
     EnvSetupScript: 'setup_env.bat'
     sln_platform: 'x64'

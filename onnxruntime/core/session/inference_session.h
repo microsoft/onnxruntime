@@ -238,7 +238,8 @@ class InferenceSession {
 
   common::Status Run(const RunOptions& run_options, const std::vector<std::string>& feed_names,
                      const std::vector<OrtValue>& feeds, const std::vector<std::string>& output_names,
-                     std::vector<OrtValue>* p_fetches) ORT_MUST_USE_RESULT;
+                     std::vector<OrtValue>* p_fetches,
+                     const std::vector<OrtDevice>* p_fetches_device_info = nullptr) ORT_MUST_USE_RESULT;
 
   /**
     * Run a pre-loaded and pre-intialized model.
@@ -251,7 +252,7 @@ class InferenceSession {
     * @return OK if success.
     */
   common::Status Run(const NameMLValMap& feeds, const std::vector<std::string>& output_names,
-                     std::vector<OrtValue>* p_fetches) ORT_MUST_USE_RESULT;
+                             std::vector<OrtValue>* p_fetches) ORT_MUST_USE_RESULT;
 
   /**
    * See Run(const NameMLValMap& feeds, const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches)
@@ -270,7 +271,7 @@ class InferenceSession {
   common::Status NewIOBinding(std::unique_ptr<IOBinding>* io_binding) ORT_MUST_USE_RESULT;
 
   virtual common::Status Run(const RunOptions& run_options, IOBinding& io_binding) ORT_MUST_USE_RESULT;
-  virtual common::Status Run(IOBinding& io_binding) ORT_MUST_USE_RESULT;
+  common::Status Run(IOBinding& io_binding) ORT_MUST_USE_RESULT;
 
   /**
     * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.
@@ -318,6 +319,18 @@ class InferenceSession {
    */
   const SessionOptions& GetSessionOptions() const;
 
+ 
+  /*
+   * Get the DataTransferManager associated with this session
+   */
+  const DataTransferManager& GetDataTransferManager() const;
+  
+  /*
+   * Get all the providers' options this session was initialized with.
+   */
+  const ProviderOptionsMap& GetAllProviderOptions() const;
+
+
   /**
     * Start profiling on this inference session. This simply turns on profiling events to be
     * recorded. A corresponding EndProfiling has to follow to write profiling data to a file.
@@ -339,6 +352,19 @@ class InferenceSession {
     @return the name of the profile file.
     */
   std::string EndProfiling();
+
+  /**
+    * Search registered execution providers for an allocator that has characteristics
+    * specified within mem_info
+    * @param mem_info is a reference to OrtMemoryInfo that contains required specs
+    * @return a ptr to the allocator or nullptr if not available
+    */
+  AllocatorPtr GetAllocator(const OrtMemoryInfo& mem_info) const;
+  
+   /** 
+    *Get InferenceSession logger.
+    */
+  const logging::Logger* GetLogger() const { return session_logger_; };
 
  protected:
   /**
@@ -552,7 +578,8 @@ class InferenceSession {
   // used to hold the ModelProto parsed in an applicable ctor to be used while calling parameter-less Load()
   ONNX_NAMESPACE::ModelProto model_proto_;
 
-  bool model_loaded_ = false;
+  // Flag indicating if ModelProto has been parsed in an applicable ctor
+  bool is_model_proto_parsed_ = false;
 };
 
 struct SessionIOBinding {

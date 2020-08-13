@@ -423,7 +423,8 @@ static NodeArg* ExtractEmbedding(Graph& graph,
                                  int64_t batch_size,
                                  int64_t sequence_length,
                                  int64_t hidden_size,
-                                 const ONNX_NAMESPACE::TensorProto* tensor) {
+                                 const ONNX_NAMESPACE::TensorProto* tensor,
+                                 bool& modified) {
   assert(nullptr != tensor);
   assert(batch_size > 0);
   assert(sequence_length > 0);
@@ -456,6 +457,7 @@ static NodeArg* ExtractEmbedding(Graph& graph,
   }
 
   NodeArg& node_arg = graph_utils::AddInitializer(graph, initializer);
+  modified = true;
   return &node_arg;
 }
 
@@ -488,9 +490,9 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     }
     // Find Attention after LayerNormalization
     const Node* p_attention = graph_utils::FirstChildByType(layer_norm_node, "Attention");
-    // Stop EmbedLayerNormalization fusion if Attention is not found.
     if (p_attention == nullptr) {
-      return Status::OK();
+      // Support model with multiple EmbedLayerNormalization.
+      continue;
     }
     Node& attention_node = *graph.GetNode(p_attention->Index());
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(attention_node, "Attention", {1}, kMSDomain) ||
@@ -599,7 +601,7 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       }
 
       // The tensor has same data for all batches, and we extract only one batch data as position embedding.
-      position_embedding = ExtractEmbedding(graph, batch_size, sequence_length, hidden_size, position_embed_tensor);
+      position_embedding = ExtractEmbedding(graph, batch_size, sequence_length, hidden_size, position_embed_tensor, modified);
     } else {
       if (!MatchPositionEmbeddingSubgraph(graph, add_node, input_ids, logger, nodes_to_remove, position_embedding)) {
         DEBUG_LOG("Failed to match position embedding subgraph.");

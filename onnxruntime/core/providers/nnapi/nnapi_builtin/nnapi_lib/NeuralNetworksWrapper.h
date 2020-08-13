@@ -17,8 +17,6 @@
 #ifndef ANDROID_ML_NN_RUNTIME_NEURAL_NETWORKS_WRAPPER_H
 #define ANDROID_ML_NN_RUNTIME_NEURAL_NETWORKS_WRAPPER_H
 #include "nnapi_implementation.h"
-#include <math.h>
-#include <string>
 #include <vector>
 #include <numeric>
 
@@ -114,6 +112,8 @@ struct OperandType {
 
   // Get the whole blob size in bytes
   size_t GetOperandBlobByteSize() const;
+
+  void SetDimensions(const std::vector<uint32_t>& d);
 
   operator ANeuralNetworksOperandType() const { return operandType; }
 };

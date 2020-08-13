@@ -113,7 +113,7 @@ class Node {
   initialization for such nodes also happens during node creation. Therefore, 
   initialization of function body will happen via this method only in case 2 mentioned above.
   */ 
-  const Function* GetFunctionBody(bool try_int_func_body = true) noexcept;
+  const Function* GetFunctionBody(bool try_init_func_body = true);
 
   /** Gets the function body if applicable otherwise nullptr. */
   const Function* GetFunctionBody() const noexcept;
@@ -131,6 +131,25 @@ class Node {
   */
   static common::Status ForEachWithIndex(const ConstPointerContainer<std::vector<NodeArg*>>& node_args,
                                          std::function<common::Status(const NodeArg& arg, size_t index)> func) {
+    for (size_t index = 0; index < node_args.size(); ++index) {
+      auto arg = node_args[index];
+      if (!arg->Exists())
+        continue;
+      ORT_RETURN_IF_ERROR(func(*arg, index));
+    }
+    return common::Status::OK();
+  }
+
+  /**
+  Helper to iterate through the container returned by #MutableInputDefs() or #MutableOutputDefs() and call the provided function.
+  @param node_args Collection of NodeArgs returned by #MutableInputDefs() or #MutableOutputDefs()
+  @param func Function to call for each valid NodeArg in the node_args. The function is called with the NodeArg
+              and the index number in the container.
+  @returns common::Status with success or error information.
+  @remarks Returns immediately on error.
+  */
+  static common::Status ForEachMutableWithIndex(std::vector<NodeArg*>& node_args,
+                                                std::function<common::Status(NodeArg& arg, size_t index)> func) {
     for (size_t index = 0; index < node_args.size(); ++index) {
       auto arg = node_args[index];
       if (!arg->Exists())
@@ -507,6 +526,9 @@ class Graph {
   /** Remove the initializer tensor with the provided name from the Graph. */
   void RemoveInitializedTensor(const std::string& tensor_name);
 
+  /** Check if a given name is an initializer tensor's name in this graph. */
+  bool IsInitializedTensor(const std::string& name) const;
+
   /** Replaces the initializer tensor with the same name as the given initializer tensor.
   The replacement initializer tensor must have the same type and shape as the existing initializer tensor.
 
@@ -635,15 +657,14 @@ class Graph {
     if (iter != node_args_.end()) {
       return *(iter->second);
     }
-
     auto result = node_args_.insert(std::make_pair(name, onnxruntime::make_unique<NodeArg>(name, p_arg_type)));
     return *(result.first->second);
   }
 
-  /** Generate a unique name.in this Graph for a NodeArg */
+  /** Generate a unique name in this Graph for a NodeArg */
   std::string GenerateNodeArgName(const std::string& base_name);
 
-  /** Generate a unique name.in this Graph for a Node */
+  /** Generate a unique name in this Graph for a Node */
   std::string GenerateNodeName(const std::string& base_name);
 
   /** Add a Node to this Graph.

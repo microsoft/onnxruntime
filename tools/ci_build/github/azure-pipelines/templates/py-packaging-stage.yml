@@ -84,7 +84,7 @@ stages:
       - task: CmdLine@2
         inputs:
           script: |
-            sudo docker build --pull \
+            docker build --pull \
               -t ${{ parameters.docker_image_prefix }}-manylinux-$(python.version) \
               --build-arg BUILD_USER=onnxruntimedev \
               --build-arg BUILD_UID=$(id -u) \
@@ -94,7 +94,8 @@ stages:
       - task: CmdLine@2
         inputs:
           script: |
-            sudo --preserve-env docker run --rm \
+            docker run --rm \
+              --volume /data/onnx:/data/onnx:ro \
               --volume $(Build.SourcesDirectory):/onnxruntime_src \
               --volume $(Build.BinariesDirectory):/build \
               --volume /data/models:/build/models:ro \
@@ -107,6 +108,7 @@ stages:
                   --skip_submodule_sync \
                   --parallel \
                   --build_wheel \
+                  --use_openmp \
                   --enable_onnx_tests \
                   ${{ parameters.build_py_parameters }} \
                   --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.manylinux.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so
@@ -132,7 +134,7 @@ stages:
 
   - ${{ if eq(parameters.enable_linux_gpu, true) }}:
     - job: Linux_py_GPU_Wheels
-      timeoutInMinutes: 90
+      timeoutInMinutes: 120
       workspace:
         clean: all
       pool: Linux-GPU-CUDA10
@@ -157,7 +159,7 @@ stages:
       - task: CmdLine@2
         inputs:
           script: |
-            sudo docker build --pull \
+            docker build --pull \
               -t ${{ parameters.docker_image_prefix }}-manylinux-gpu-$(python.version) \
               --build-arg BUILD_USER=onnxruntimedev \
               --build-arg BUILD_UID=$(id -u) \
@@ -168,7 +170,8 @@ stages:
       - task: CmdLine@2
         inputs:
           script: |
-            sudo --preserve-env docker run --rm --gpus all \
+            docker run --rm --gpus all \
+              --volume /data/onnx:/data/onnx:ro \
               --volume $(Build.SourcesDirectory):/onnxruntime_src \
               --volume $(Build.BinariesDirectory):/build \
               --volume /data/models:/build/models:ro \
@@ -280,6 +283,7 @@ stages:
             --skip_submodule_sync
             --cmake_generator "Visual Studio 16 2019"
             --enable_pybind
+            --use_openmp
             --enable_onnx_tests
             ${{ parameters.build_py_parameters }}
             --parallel
@@ -485,7 +489,7 @@ stages:
       - script: |
           sudo python -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
           sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
-          ./build.sh --config Release --skip_submodule_sync --parallel --build_wheel ${{ parameters.build_py_parameters }}
+          ./build.sh --config Release --skip_submodule_sync --parallel --build_wheel --use_openmp ${{ parameters.build_py_parameters }}
         displayName: 'Command Line Script'
 
       - task: CopyFiles@2
@@ -570,8 +574,9 @@ stages:
               -DNUMPY_INCLUDE_DIR=/mnt/toolchains \
               $(Build.SourcesDirectory)/cmake
             make -j$(getconf _NPROCESSORS_ONLN)
-            sudo --preserve-env docker run --rm \
+            docker run --rm \
               -e BUILD_BUILDNUMBER \
+              -v /data/onnx:/data/onnx:ro \
               -v /usr/bin/qemu-aarch64-static:/usr/bin/qemu-aarch64-static \
               -v $(Build.BinariesDirectory):/tmp/a \
               -v $(Build.SourcesDirectory):/tmp/b \

@@ -14,7 +14,6 @@
 #include "orttraining/core/framework/mpi_setup.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
 
-
 namespace onnxruntime {
 namespace python {
 namespace py = pybind11;
@@ -47,6 +46,7 @@ struct TrainingParameters {
   int deepspeed_zero_stage = 0;
   bool enable_grad_norm_clip = true;
   bool set_gradients_as_graph_outputs = false;
+  bool use_invertible_layernorm_grad = false;
 };
 
 struct TrainingConfigurationResult {
@@ -89,8 +89,6 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   config.weight_names_to_train = parameters.weights_to_train;
   config.weight_names_to_not_train = parameters.weights_not_to_train;
   config.immutable_weights = parameters.immutable_weights;
-
-  config.set_gradients_as_graph_outputs = parameters.set_gradients_as_graph_outputs;
 
   config.gradient_accumulation_steps = parameters.gradient_accumulation_steps;
 
@@ -144,6 +142,9 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     config.optimizer_config = opt;
   }
 
+  config.gradient_graph_config.use_invertible_layernorm_grad = parameters.use_invertible_layernorm_grad;
+  config.gradient_graph_config.set_gradients_as_graph_outputs = parameters.set_gradients_as_graph_outputs;
+
   training::TrainingSession::TrainingConfigurationResult config_result{};
 
   OrtPybindThrowIfError(sess->ConfigureForTraining(config, config_result));
@@ -177,7 +178,8 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("gradient_accumulation_steps", &TrainingParameters::gradient_accumulation_steps)
       .def_readwrite("deepspeed_zero_stage", &TrainingParameters::deepspeed_zero_stage)
       .def_readwrite("enable_grad_norm_clip", &TrainingParameters::enable_grad_norm_clip)
-      .def_readwrite("set_gradients_as_graph_outputs", &TrainingParameters::set_gradients_as_graph_outputs);
+      .def_readwrite("set_gradients_as_graph_outputs", &TrainingParameters::set_gradients_as_graph_outputs)
+      .def_readwrite("use_invertible_layernorm_grad", &TrainingParameters::use_invertible_layernorm_grad);
 
   py::class_<TrainingConfigurationResult> config_result(m, "TrainingConfigurationResult", "pbdoc(Configuration result for training.)pbdoc");
   config_result.def(py::init())
@@ -190,9 +192,9 @@ void addObjectMethodsForTraining(py::module& m) {
 
   py::class_<onnxruntime::training::TrainingSession, InferenceSession> training_session(m, "TrainingSession");
   training_session.def(py::init([](const SessionOptions& so) {
-      Environment& env = get_env();
-      return onnxruntime::make_unique<onnxruntime::training::TrainingSession>(so, env);
-      }))
+                    Environment& env = get_env();
+                    return onnxruntime::make_unique<onnxruntime::training::TrainingSession>(so, env);
+                  }))
       .def(py::init([]() {
         Environment& env = get_env();
         return onnxruntime::make_unique<onnxruntime::training::TrainingSession>(GetDefaultCPUSessionOptions(), env);
@@ -270,7 +272,6 @@ void addObjectMethodsForTraining(py::module& m) {
       .def("is_output_fp32_node", [](onnxruntime::training::TrainingSession* sess, const std::string& output_name) {
         return sess->IsGraphOutputFp32Node(output_name);
       });
-
 }
 }  // namespace python
 }  // namespace onnxruntime

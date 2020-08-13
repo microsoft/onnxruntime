@@ -34,6 +34,7 @@ class Profiler;
 #define WINML_TLM_MODEL_CREATION_VERSION 0
 #define WINML_TLM_RUNTIME_ERROR_VERSION 0
 #define WINML_TLM_RUNTIME_PERF_VERSION 0
+#define WINML_TLM_NATIVE_API_INTRAOP_THREADS_VERSION 0
 
 #define WinMLTraceLoggingWrite(hProvider, EventName, ...)                \
   TraceLoggingWrite(hProvider,                                           \
@@ -44,7 +45,7 @@ class Profiler;
 // WinMLRuntime Telemetry Support
 //
 // {BCAD6AEE-C08D-4F66-828C-4C43461A033D}
-#define WINML_PROVIDER_DESC "Windows AI Machine Learning"
+#define WINML_PROVIDER_DESC "Microsoft.Windows.AI.MachineLearning"
 #define WINML_PROVIDER_GUID (0xbcad6aee, 0xc08d, 0x4f66, 0x82, 0x8c, 0x4c, 0x43, 0x46, 0x1a, 0x3, 0x3d)
 #define WINML_PROVIDER_KEYWORD_DEFAULT 0x1
 #define WINML_PROVIDER_KEYWORD_LOTUS_PROFILING 0x2
@@ -94,7 +95,8 @@ class WinMLTelemetryHelper {
       uint32_t type_constraint_count,
       uint32_t attribute_count,
       uint32_t default_attribute_count);
-
+  void SetIntraOpNumThreadsOverride(
+      uint32_t num_threads);
   void EndRuntimeSession() { ++runtime_session_id_; };
   bool IsMeasureSampled();
 
