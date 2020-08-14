@@ -81,39 +81,43 @@ stages:
 
       - template: set-py-packaging-variables-step.yml
 
+      - task: Docker@2
+        displayName: login
+        inputs:
+          containerRegistry: onnxruntimeregistry
+          command: login
+          addPipelineData: false
       - task: CmdLine@2
         inputs:
           script: |
-            docker build --pull \
-              -t ${{ parameters.docker_image_prefix }}-manylinux-$(python.version) \
-              --build-arg BUILD_USER=onnxruntimedev \
-              --build-arg BUILD_UID=$(id -u) \
-              --build-arg PYTHON_VERSION=$(python.version) \
-              -f Dockerfile.manylinux2010_cpu .
-          workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
-      - task: CmdLine@2
-        inputs:
-          script: |
+            mkdir -p $HOME/.onnx
             docker run --rm \
               --volume /data/onnx:/data/onnx:ro \
               --volume $(Build.SourcesDirectory):/onnxruntime_src \
               --volume $(Build.BinariesDirectory):/build \
               --volume /data/models:/build/models:ro \
+              --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
-              ${{ parameters.docker_image_prefix }}-manylinux-$(python.version) \
+              onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecpubuild:chn \
                 $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build \
                   --config Release \
                   --skip_submodule_sync \
                   --parallel \
+                  --enable_lto \
                   --build_wheel \
                   --use_openmp \
                   --enable_onnx_tests \
                   ${{ parameters.build_py_parameters }} \
                   --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.manylinux.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so
           workingDirectory: $(Build.SourcesDirectory)
-
+      - task: Docker@2
+        displayName: logout
+        inputs:
+          containerRegistry: onnxruntimeregistry
+          command: logout
+          addPipelineData: false
       - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
         inputs:
@@ -170,11 +174,13 @@ stages:
       - task: CmdLine@2
         inputs:
           script: |
+            mkdir -p $HOME/.onnx
             docker run --rm --gpus all \
               --volume /data/onnx:/data/onnx:ro \
               --volume $(Build.SourcesDirectory):/onnxruntime_src \
               --volume $(Build.BinariesDirectory):/build \
               --volume /data/models:/build/models:ro \
+              --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e NVIDIA_VISIBLE_DEVICES=all \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \

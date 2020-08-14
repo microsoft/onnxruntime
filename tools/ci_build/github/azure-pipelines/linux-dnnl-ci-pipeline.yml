@@ -1,6 +1,6 @@
 jobs:
-- job: Linux_Build
-  timeoutInMinutes: 120
+- job: Linux_py_Wheels
+  timeoutInMinutes: 180
   workspace:
     clean: all
   pool: Linux-CPU
@@ -29,15 +29,15 @@ jobs:
           -e BUILD_BUILDNUMBER \
           onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecpubuild:chn \
             /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-              --build_dir /build --cmake_generator Ninja \
+              --build_dir /build \
               --config Debug Release \
               --skip_submodule_sync \
               --build_shared_lib \
               --parallel \
-              --build_wheel \
+              --enable_pybind \
               --use_openmp \
               --enable_onnx_tests \
-              --use_mklml --enable_pybind --build_java --build_nodejs \
+              --use_dnnl \
               --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp37-cp37m/include/python3.7m PYTHON_LIBRARY=/usr/lib64/librt.so
       workingDirectory: $(Build.SourcesDirectory)
   - task: Docker@2

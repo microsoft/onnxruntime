@@ -157,7 +157,7 @@ except ImportError as error:
 
 # Additional binaries
 if platform.system() == 'Linux':
-  libs = ['onnxruntime_pybind11_state.so', 'libdnnl.so.1', 'libmklml_intel.so', 'libiomp5.so', 'mimalloc.so']
+  libs = ['onnxruntime_pybind11_state.so', 'libdnnl.so.1', 'libmklml_intel.so', 'libmklml_gnu.so', 'libiomp5.so', 'mimalloc.so']
   # DNNL & TensorRT EPs are built as shared libs
   libs.extend(['libonnxruntime_providers_shared.so'])
   libs.extend(['libonnxruntime_providers_dnnl.so'])
