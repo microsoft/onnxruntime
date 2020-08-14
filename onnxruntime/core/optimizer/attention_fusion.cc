@@ -281,13 +281,8 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
           reshape_count++;
         }
       }
-      if (shape_count == 2 && matmul_count == 3) { //DistilBERT
-        if (AttentionFusion::FuseSubGraphDistilBert(node, *add_node, graph, hidden_size, mask_index_map, logger)) {
-          fused_count++;
-          modified = true;
-        }
-      } else if (add_count == 1 && matmul_count == 3) { // BERT
-        if (AttentionFusion::FuseSubGraphDistilBert(node, *add_node, graph, hidden_size, mask_index_map, logger)) {
+      if (add_count == 1 && matmul_count == 3) { // BERT or DistilBert
+        if (AttentionFusion::FuseSubGraph(node, *add_node, graph, hidden_size, mask_index_map, logger)) {
           fused_count++;
           modified = true;
         }
@@ -305,6 +300,328 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
   }
 
   return Status::OK();
+}
+
+static bool FuseSubGraphQKImpl(Node& layer_norm, Graph& graph, AttentionFusionHelper::AttentionMaskNodes& mask_nodes, const std::vector<std::reference_wrapper<const Node>>& parent_path_nodes,
+                                         int64_t hidden_size,  int64_t num_heads, int64_t head_size, std::map<std::string, NodeArg*>& mask_index_map, const logging::Logger& logger) {
+  // path to q
+  std::vector<graph_utils::EdgeEndToMatch> q_path{
+      {0, 0, "Div", {7}, kOnnxDomain},
+      {0, 0, "MatMul", {1, 9}, kOnnxDomain},
+      {0, 0, "Transpose", {1}, kOnnxDomain},
+      {0, 0, "Reshape", {5}, kOnnxDomain},
+      {0, 0, "Add", {7}, kOnnxDomain},
+      {0, 0, "MatMul", {1, 9}, kOnnxDomain},
+      {0, 0, "LayerNormalization", {1}, kOnnxDomain}};
+
+  std::vector<const Node::EdgeEnd*> edges;
+  if (!graph_utils::FindPath(*(mask_nodes.add), true, q_path, edges, logger)) {
+    DEBUG_LOG("Failed to find path for q");
+    return false;
+  }
+
+  const Node& qk_div = edges[0]->GetNode();
+  const Node& qk_matmul = edges[1]->GetNode();
+  const Node& q_transpose = edges[2]->GetNode();
+  const Node& q_reshape = edges[3]->GetNode();
+  const Node& q_add = edges[4]->GetNode();
+  const Node& q_matmul = edges[5]->GetNode();
+  const Node& q_root = edges[6]->GetNode();
+  if (q_root.Index() != layer_norm.Index()) {
+    DEBUG_LOG("q root should be layer normalization");
+    return false;
+  }
+
+  if (!AttentionFusionHelper::CheckNodesInPathQ(graph, qk_div, q_reshape, q_transpose, num_heads, head_size, logger)) {
+    DEBUG_LOG("CheckNodesInPathQ returns false");
+    return false;
+  }
+
+  if (!(ValidateAddBiasInitializer(graph, q_add, hidden_size) &&
+        ValidateMatMulInitializer(graph, q_matmul, hidden_size))) {
+    DEBUG_LOG("q_matmul and q_add shape not matched");
+    return false;
+  }
+
+  // path to k
+  std::vector<graph_utils::EdgeEndToMatch> k_path{
+      {0, 1, "Transpose", {1}, kOnnxDomain},
+      {0, 0, "Reshape", {5}, kOnnxDomain},
+      {0, 0, "Add", {7}, kOnnxDomain},
+      {0, 0, "MatMul", {1, 9}, kOnnxDomain},
+      {0, 0, "LayerNormalization", {1}, kOnnxDomain}};
+
+  if (!graph_utils::FindPath(qk_matmul, true, k_path, edges, logger)) {
+    DEBUG_LOG("Failed to find path for k");
+    return false;
+  }
+
+  const Node& k_transpose = edges[0]->GetNode();
+  const Node& k_reshape = edges[1]->GetNode();
+  const Node& k_add = edges[2]->GetNode();
+  const Node& k_matmul = edges[3]->GetNode();
+  const Node& k_root = edges[4]->GetNode();
+  if (k_root.Index() != layer_norm.Index()) {
+    DEBUG_LOG("k root is not layer norm");
+    return false;
+  }
+
+  if (!AttentionFusionHelper::CheckNodesInPathK(graph, k_reshape, k_transpose, num_heads, head_size, logger)) {
+    DEBUG_LOG("CheckNodesInPathK returns false");
+    return false;
+  }
+
+  if (!(ValidateAddBiasInitializer(graph, k_add, hidden_size) &&
+        ValidateMatMulInitializer(graph, k_matmul, hidden_size))) {
+    DEBUG_LOG("k_matmul and k_add shape not matched");
+    return false;
+  }
+
+  const Node& v_matmul = parent_path_nodes[6];
+  // Load q, k and v weights
+  const ONNX_NAMESPACE::TensorProto* q_weight_tensor = nullptr;
+  const ONNX_NAMESPACE::TensorProto* k_weight_tensor = nullptr;
+  const ONNX_NAMESPACE::TensorProto* v_weight_tensor = nullptr;
+  if (!LoadQkvWeights(graph, q_matmul, k_matmul, v_matmul, q_weight_tensor, k_weight_tensor, v_weight_tensor)) {
+    DEBUG_LOG("Failed to load Q, K and V weights, or data type is not float or float16.");
+    return false;
+  }
+
+  const Node& v_add = parent_path_nodes[5];
+  const ONNX_NAMESPACE::TensorProto* q_bias_tensor = nullptr;
+  const ONNX_NAMESPACE::TensorProto* k_bias_tensor = nullptr;
+  const ONNX_NAMESPACE::TensorProto* v_bias_tensor = nullptr;
+  if (!LoadQkvWeights(graph, q_add, k_add, v_add, q_bias_tensor, k_bias_tensor, v_bias_tensor)) {
+    DEBUG_LOG("Failed to load Q, K and V bias tensors, or data type is not float or float16.");
+    return false;
+  }
+
+  // Now everything is ready, we will start fusing subgraph.
+  NodeArg* mask_input = graph.GetNode(mask_nodes.unsqueeze_1->Index())->MutableInputDefs()[0];
+  NodeArg* mask_index = GetOrCreateMaskIndex(graph, mask_input, mask_index_map, layer_norm.GetExecutionProviderType(), logger);
+  if (nullptr == mask_index) {
+    DEBUG_LOG("Failed to create mask index");
+    return false;
+  }
+
+  // Merge Q, K and V weights
+  NodeArg& qkv_weights = MergeQkvWeights(graph, hidden_size, q_weight_tensor, k_weight_tensor, v_weight_tensor, true);
+  NodeArg& qkv_bias = MergeQkvWeights(graph, hidden_size, q_bias_tensor, k_bias_tensor, v_bias_tensor, false);
+
+  // Create Attention Node.
+  const Node& reshape = parent_path_nodes[0];
+  const std::vector<NodeArg*> input_defs{layer_norm.MutableOutputDefs()[0], &qkv_weights, &qkv_bias, mask_index};
+  const std::vector<NodeArg*> output_defs{graph.GetNode(reshape.Index())->MutableOutputDefs()[0]};
+  Node& attention_node = graph.AddNode(
+      graph.GenerateNodeName("Attention"),
+      "Attention",
+      "Fused Attention subgraphs ",
+      input_defs,
+      output_defs,
+      nullptr,
+      kMSDomain);
+  attention_node.AddAttribute("num_heads", num_heads);
+
+  // Assign provider to this new node.
+  attention_node.SetExecutionProviderType(layer_norm.GetExecutionProviderType());
+
+  // Remove nodes that are not used anymore.
+  std::vector<NodeIndex> nodes_to_remove{
+      parent_path_nodes[0].get().Index(),
+      parent_path_nodes[1].get().Index(),
+      parent_path_nodes[2].get().Index(),
+      parent_path_nodes[3].get().Index(),
+      parent_path_nodes[4].get().Index(),
+      parent_path_nodes[5].get().Index(),
+      parent_path_nodes[6].get().Index(),
+      qk_div.Index(),
+      qk_matmul.Index(),
+      q_transpose.Index(),
+      q_reshape.Index(),
+      q_add.Index(),
+      q_matmul.Index(),
+      k_transpose.Index(),
+      k_reshape.Index(),
+      k_add.Index(),
+      k_matmul.Index()};
+
+  AttentionFusionHelper::SetMaskNodesToRemove(graph, mask_nodes, nodes_to_remove);
+
+  for (const auto& node_index : nodes_to_remove) {
+    Node* node = graph.GetNode(node_index);
+    graph_utils::RemoveNodeOutputEdges(graph, *node);
+    graph.RemoveNode(node->Index());
+  }
+
+  DEBUG_LOG("Fused an attention node.");
+
+  return true;
+}
+
+static bool FuseSubGraphQKDistilBertImpl(Node& layer_norm, Graph& graph, AttentionFusionHelper::AttentionMaskNodesDistilBert& mask_nodes, const std::vector<std::reference_wrapper<const Node>>& parent_path_nodes,
+                                         int64_t hidden_size, int64_t num_heads, int64_t head_size, std::map<std::string, NodeArg*>& mask_index_map, const logging::Logger& logger) {
+  // path to q
+  std::vector<graph_utils::EdgeEndToMatch> q_path{
+      {0, 2, "MatMul", {1, 9}, kOnnxDomain},
+      {0, 0, "Div", {7}, kOnnxDomain},
+      {0, 0, "Transpose", {1}, kOnnxDomain},
+      {0, 0, "Reshape", {5}, kOnnxDomain},
+      {0, 0, "Add", {7}, kOnnxDomain},
+      {0, 0, "MatMul", {1, 9}, kOnnxDomain},
+      {0, 0, "LayerNormalization", {1}, kOnnxDomain}};
+
+  std::vector<const Node::EdgeEnd*> edges;
+  if (!graph_utils::FindPath(*(mask_nodes.Where), true, q_path, edges, logger)) {
+    DEBUG_LOG("Failed to find path for q");
+    return false;
+  }
+
+  const Node& qk_matmul = edges[0]->GetNode();
+  const Node& q_div = edges[1]->GetNode();
+  const Node& q_transpose = edges[2]->GetNode();
+  const Node& q_reshape = edges[3]->GetNode();
+  const Node& q_add = edges[4]->GetNode();
+  const Node& q_matmul = edges[5]->GetNode();
+  const Node& q_root = edges[6]->GetNode();
+  if (q_root.Index() != layer_norm.Index()) {
+    DEBUG_LOG("q root should be layer normalization");
+    return false;
+  }
+
+  if (!AttentionFusionHelper::CheckNodesInPathQ(graph, q_div, q_reshape, q_transpose, num_heads, head_size, logger)) {
+    DEBUG_LOG("CheckNodesInPathQ returns false");
+    return false;
+  }
+
+  if (!(ValidateAddBiasInitializer(graph, q_add, hidden_size) &&
+        ValidateMatMulInitializer(graph, q_matmul, hidden_size))) {
+    DEBUG_LOG("q_matmul and q_add shape not matched");
+    return false;
+  }
+
+  std::vector<graph_utils::EdgeEndToMatch> k_path{
+      {0, 2, "MatMul", {1, 9}, kOnnxDomain},
+      {0, 1, "Transpose", {1}, kOnnxDomain},
+      {0, 0, "Reshape", {5}, kOnnxDomain},
+      {0, 0, "Add", {7}, kOnnxDomain},
+      {0, 0, "MatMul", {1, 9}, kOnnxDomain},
+      {0, 0, "LayerNormalization", {1}, kOnnxDomain}};
+
+  if (!graph_utils::FindPath(*(mask_nodes.Where), true, k_path, edges, logger)) {
+    DEBUG_LOG("Failed to find path for k");
+    return false;
+  }
+
+  const Node& k_transpose = edges[1]->GetNode();
+  const Node& k_reshape = edges[2]->GetNode();
+  const Node& k_add = edges[3]->GetNode();
+  const Node& k_matmul = edges[4]->GetNode();
+  const Node& k_root = edges[5]->GetNode();
+  if (k_root.Index() != layer_norm.Index()) {
+    DEBUG_LOG("k root is not layer norm");
+    return false;
+  }
+
+  if (!AttentionFusionHelper::CheckNodesInPathK(graph, k_reshape, k_transpose, num_heads, head_size, logger)) {
+    DEBUG_LOG("CheckNodesInPathK returns false");
+    return false;
+  }
+
+  if (!(ValidateAddBiasInitializer(graph, k_add, hidden_size) &&
+        ValidateMatMulInitializer(graph, k_matmul, hidden_size))) {
+    DEBUG_LOG("k_matmul and k_add shape not matched");
+    return false;
+  }
+
+  const Node& v_matmul = parent_path_nodes[6];
+  // Load q, k and v weights
+  const ONNX_NAMESPACE::TensorProto* q_weight_tensor = nullptr;
+  const ONNX_NAMESPACE::TensorProto* k_weight_tensor = nullptr;
+  const ONNX_NAMESPACE::TensorProto* v_weight_tensor = nullptr;
+  if (!LoadQkvWeights(graph, q_matmul, k_matmul, v_matmul, q_weight_tensor, k_weight_tensor, v_weight_tensor)) {
+    DEBUG_LOG("Failed to load Q, K and V weights, or data type is not float or float16.");
+    return false;
+  }
+
+  const Node& v_add = parent_path_nodes[5];
+  const ONNX_NAMESPACE::TensorProto* q_bias_tensor = nullptr;
+  const ONNX_NAMESPACE::TensorProto* k_bias_tensor = nullptr;
+  const ONNX_NAMESPACE::TensorProto* v_bias_tensor = nullptr;
+  if (!LoadQkvWeights(graph, q_add, k_add, v_add, q_bias_tensor, k_bias_tensor, v_bias_tensor)) {
+    DEBUG_LOG("Failed to load Q, K and V bias tensors, or data type is not float or float16.");
+    return false;
+  }
+
+  // Now everything is ready, we will start fusing subgraph.
+  NodeArg* mask_input = nullptr;
+  mask_input = graph.GetNode(mask_nodes.Equal->Index())->MutableInputDefs()[0];
+
+  NodeArg* mask_index = GetOrCreateMaskIndex(graph, mask_input, mask_index_map, layer_norm.GetExecutionProviderType(), logger);
+  if (nullptr == mask_index) {
+    DEBUG_LOG("Failed to create mask index");
+    return false;
+  }
+
+  // Merge Q, K and V weights
+  NodeArg& qkv_weights = MergeQkvWeights(graph, hidden_size, q_weight_tensor, k_weight_tensor, v_weight_tensor, true);
+  NodeArg& qkv_bias = MergeQkvWeights(graph, hidden_size, q_bias_tensor, k_bias_tensor, v_bias_tensor, false);
+
+  // Create Attention Node.
+  const Node& reshape = parent_path_nodes[0];
+  const std::vector<NodeArg*> input_defs{layer_norm.MutableOutputDefs()[0], &qkv_weights, &qkv_bias, mask_index};
+  const std::vector<NodeArg*> output_defs{graph.GetNode(reshape.Index())->MutableOutputDefs()[0]};
+  Node& attention_node = graph.AddNode(
+      graph.GenerateNodeName("Attention"),
+      "Attention",
+      "Fused Attention subgraphs ",
+      input_defs,
+      output_defs,
+      nullptr,
+      kMSDomain);
+  attention_node.AddAttribute("num_heads", num_heads);
+
+  // Assign provider to this new node.
+  attention_node.SetExecutionProviderType(layer_norm.GetExecutionProviderType());
+
+  // Remove nodes that are not used anymore.
+  std::vector<NodeIndex> nodes_to_remove{
+    parent_path_nodes[0].get().Index(),
+    parent_path_nodes[1].get().Index(),
+    parent_path_nodes[2].get().Index(),
+    parent_path_nodes[3].get().Index(),
+    parent_path_nodes[4].get().Index(),
+    parent_path_nodes[5].get().Index(),
+    parent_path_nodes[6].get().Index(),
+    qk_matmul.Index(),
+    q_div.Index(),
+    q_transpose.Index(),
+    q_reshape.Index(),
+    q_add.Index(),
+    q_matmul.Index(),
+    k_transpose.Index(),
+    k_reshape.Index(),
+    k_add.Index(),
+    k_matmul.Index()
+  };
+
+  //delete shape after qk_matmul
+  for (auto it = qk_matmul.OutputNodesBegin(); it != qk_matmul.OutputNodesEnd(); ++it) {
+    if ((*it).OpType().compare("Shape") == 0) {
+      nodes_to_remove.push_back((*it).Index());
+    }
+  }
+
+  AttentionFusionHelper::SetMaskNodesToRemove(graph, mask_nodes, nodes_to_remove);
+
+  for (const auto& node_index : nodes_to_remove) {
+    Node* node = graph.GetNode(node_index);
+    graph_utils::RemoveNodeOutputEdges(graph, *node);
+    graph.RemoveNode(node->Index());
+  }
+
+  DEBUG_LOG("Fused an attention node.");
+
+  return true;
 }
 
 /** Fuse Attention SubGraph.
@@ -418,381 +735,21 @@ bool AttentionFusion::FuseSubGraph(Node& layer_norm, const Node& add_after_layer
     return false;
   }
 
+  //store parent path
+  std::vector<std::reference_wrapper<const Node>> parent_path_nodes{reshape, transpose, qkv_matmul, v_transpose, v_reshape, v_add, v_matmul};
+
   // Find mask nodes: Unsqueeze -> Unsqueeze -> (Cast) -> Sub -> Mul -> Add -> Softmax --> [MatMul]
   // The "Cast" node in parentheses is optional.
   AttentionFusionHelper::AttentionMaskNodes mask_nodes;
-  if (!AttentionFusionHelper::MatchInputMaskSubgraph(graph, qkv_matmul, mask_nodes, logger, false)) {
+  AttentionFusionHelper::AttentionMaskNodesDistilBert mask_nodes2 = AttentionFusionHelper::AttentionMaskNodesDistilBert(); //avoid potentially uninitialised local variable
+  if (AttentionFusionHelper::MatchInputMaskSubgraph(graph, qkv_matmul, mask_nodes, logger, false)) {
+    return FuseSubGraphQKImpl(layer_norm, graph, mask_nodes, parent_path_nodes, hidden_size, num_heads, head_size, mask_index_map, logger);
+  } else if (AttentionFusionHelper::MatchInputMaskSubgraph(graph, qkv_matmul, mask_nodes2, logger)) {
+    return FuseSubGraphQKDistilBertImpl(layer_norm, graph, mask_nodes2, parent_path_nodes, hidden_size, num_heads, head_size, mask_index_map, logger);
+  } else {
     DEBUG_LOG("Failed in match input mask subgraph");
     return false;
   }
-
-  // path to q
-  std::vector<graph_utils::EdgeEndToMatch> q_path{
-      {0, 0, "Div", {7}, kOnnxDomain},
-      {0, 0, "MatMul", {1, 9}, kOnnxDomain},
-      {0, 0, "Transpose", {1}, kOnnxDomain},
-      {0, 0, "Reshape", {5}, kOnnxDomain},
-      {0, 0, "Add", {7}, kOnnxDomain},
-      {0, 0, "MatMul", {1, 9}, kOnnxDomain},
-      {0, 0, "LayerNormalization", {1}, kOnnxDomain}};
-
-  if (!graph_utils::FindPath(*(mask_nodes.add), true, q_path, edges, logger)) {
-    DEBUG_LOG("Failed to find path for q");
-    return false;
-  }
-
-  const Node& qk_div = edges[0]->GetNode();
-  const Node& qk_matmul = edges[1]->GetNode();
-  const Node& q_transpose = edges[2]->GetNode();
-  const Node& q_reshape = edges[3]->GetNode();
-  const Node& q_add = edges[4]->GetNode();
-  const Node& q_matmul = edges[5]->GetNode();
-  const Node& q_root = edges[6]->GetNode();
-  if (q_root.Index() != layer_norm.Index()) {
-    DEBUG_LOG("q root should be layer normalization");
-    return false;
-  }
-
-  if (!AttentionFusionHelper::CheckNodesInPathQ(graph, qk_div, q_reshape, q_transpose, num_heads, head_size, logger)) {
-    DEBUG_LOG("CheckNodesInPathQ returns false");
-    return false;
-  }
-
-  if (!(ValidateAddBiasInitializer(graph, q_add, hidden_size) &&
-        ValidateMatMulInitializer(graph, q_matmul, hidden_size))) {
-    DEBUG_LOG("q_matmul and q_add shape not matched");
-    return false;
-  }
-
-  // path to k
-  std::vector<graph_utils::EdgeEndToMatch> k_path{
-      {0, 1, "Transpose", {1}, kOnnxDomain},
-      {0, 0, "Reshape", {5}, kOnnxDomain},
-      {0, 0, "Add", {7}, kOnnxDomain},
-      {0, 0, "MatMul", {1, 9}, kOnnxDomain},
-      {0, 0, "LayerNormalization", {1}, kOnnxDomain}};
-
-  if (!graph_utils::FindPath(qk_matmul, true, k_path, edges, logger)) {
-    DEBUG_LOG("Failed to find path for k");
-    return false;
-  }
-
-  const Node& k_transpose = edges[0]->GetNode();
-  const Node& k_reshape = edges[1]->GetNode();
-  const Node& k_add = edges[2]->GetNode();
-  const Node& k_matmul = edges[3]->GetNode();
-  const Node& k_root = edges[4]->GetNode();
-  if (k_root.Index() != layer_norm.Index()) {
-    DEBUG_LOG("k root is not layer norm");
-    return false;
-  }
-
-  if (!AttentionFusionHelper::CheckNodesInPathK(graph, k_reshape, k_transpose, num_heads, head_size, logger)) {
-    DEBUG_LOG("CheckNodesInPathK returns false");
-    return false;
-  }
-
-  if (!(ValidateAddBiasInitializer(graph, k_add, hidden_size) &&
-        ValidateMatMulInitializer(graph, k_matmul, hidden_size))) {
-    DEBUG_LOG("k_matmul and k_add shape not matched");
-    return false;
-  }
-
-  // Load q, k and v weights
-  const ONNX_NAMESPACE::TensorProto* q_weight_tensor = nullptr;
-  const ONNX_NAMESPACE::TensorProto* k_weight_tensor = nullptr;
-  const ONNX_NAMESPACE::TensorProto* v_weight_tensor = nullptr;
-  if (!LoadQkvWeights(graph, q_matmul, k_matmul, v_matmul, q_weight_tensor, k_weight_tensor, v_weight_tensor)) {
-    DEBUG_LOG("Failed to load Q, K and V weights, or data type is not float or float16.");
-    return false;
-  }
-
-  const ONNX_NAMESPACE::TensorProto* q_bias_tensor = nullptr;
-  const ONNX_NAMESPACE::TensorProto* k_bias_tensor = nullptr;
-  const ONNX_NAMESPACE::TensorProto* v_bias_tensor = nullptr;
-  if (!LoadQkvWeights(graph, q_add, k_add, v_add, q_bias_tensor, k_bias_tensor, v_bias_tensor)) {
-    DEBUG_LOG("Failed to load Q, K and V bias tensors, or data type is not float or float16.");
-    return false;
-  }
-
-  // Now everything is ready, we will start fusing subgraph.
-  NodeArg* mask_input = graph.GetNode(mask_nodes.unsqueeze_1->Index())->MutableInputDefs()[0];
-  NodeArg* mask_index = GetOrCreateMaskIndex(graph, mask_input, mask_index_map, layer_norm.GetExecutionProviderType(), logger);
-  if (nullptr == mask_index) {
-    DEBUG_LOG("Failed to create mask index");
-    return false;
-  }
-
-  // Merge Q, K and V weights
-  NodeArg& qkv_weights = MergeQkvWeights(graph, hidden_size, q_weight_tensor, k_weight_tensor, v_weight_tensor, true);
-  NodeArg& qkv_bias = MergeQkvWeights(graph, hidden_size, q_bias_tensor, k_bias_tensor, v_bias_tensor, false);
-
-  // Create Attention Node.
-  const std::vector<NodeArg*> input_defs{layer_norm.MutableOutputDefs()[0], &qkv_weights, &qkv_bias, mask_index};
-  const std::vector<NodeArg*> output_defs{graph.GetNode(reshape.Index())->MutableOutputDefs()[0]};
-  Node& attention_node = graph.AddNode(
-      graph.GenerateNodeName("Attention"),
-      "Attention",
-      "Fused Attention subgraphs ",
-      input_defs,
-      output_defs,
-      nullptr,
-      kMSDomain);
-  attention_node.AddAttribute("num_heads", num_heads);
-
-  // Assign provider to this new node.
-  attention_node.SetExecutionProviderType(layer_norm.GetExecutionProviderType());
-
-  // Remove nodes that are not used anymore.
-  std::vector<NodeIndex> nodes_to_remove{
-      reshape.Index(),
-      transpose.Index(),
-      qkv_matmul.Index(),
-      v_transpose.Index(),
-      v_reshape.Index(),
-      v_add.Index(),
-      v_matmul.Index(),
-      qk_div.Index(),
-      qk_matmul.Index(),
-      q_transpose.Index(),
-      q_reshape.Index(),
-      q_add.Index(),
-      q_matmul.Index(),
-      k_transpose.Index(),
-      k_reshape.Index(),
-      k_add.Index(),
-      k_matmul.Index()};
-
-  AttentionFusionHelper::SetMaskNodesToRemove(graph, mask_nodes, nodes_to_remove);
-
-  for (const auto& node_index : nodes_to_remove) {
-    Node* node = graph.GetNode(node_index);
-    graph_utils::RemoveNodeOutputEdges(graph, *node);
-    graph.RemoveNode(node->Index());
-  }
-
-  DEBUG_LOG("Fused an attention node.");
-
-  return true;
-}
-
-bool AttentionFusion::FuseSubGraphDistilBert(Node& layer_norm, const Node& add_after_layer_norm, Graph& graph, int64_t hidden_size, std::map<std::string, NodeArg*>& mask_index_map, const logging::Logger& logger) {
-  std::vector<graph_utils::EdgeEndToMatch> parent_path{
-      {0, 0, "Add", {7}, kOnnxDomain},
-      {0, 0, "MatMul", {1, 9}, kOnnxDomain},
-      {0, 0, "Reshape", {5}, kOnnxDomain},
-      {0, 0, "Transpose", {1}, kOnnxDomain},
-      {0, 0, "MatMul", {1, 9}, kOnnxDomain},
-      {0, 1, "Transpose", {1}, kOnnxDomain},
-      {0, 0, "Reshape", {5}, kOnnxDomain},
-      {0, 0, "Add", {7}, kOnnxDomain},
-      {0, 0, "MatMul", {1, 9}, kOnnxDomain},
-      {0, 0, "LayerNormalization", {1}, kOnnxDomain}};
-
-  std::vector<const Node::EdgeEnd*> edges;
-  if (!graph_utils::FindPath(add_after_layer_norm, true, parent_path, edges, logger)) {
-    DEBUG_LOG("Faild to find path v");
-    return false;
-  }
-
-  const Node& add = edges[0]->GetNode();
-  const Node& matmul = edges[1]->GetNode();
-  const Node& reshape = edges[2]->GetNode();
-  const Node& transpose = edges[3]->GetNode();
-  const Node& qkv_matmul = edges[4]->GetNode();
-  const Node& v_transpose = edges[5]->GetNode();
-  const Node& v_reshape = edges[6]->GetNode();
-  const Node& v_add = edges[7]->GetNode();
-  const Node& v_matmul = edges[8]->GetNode();
-  const Node& v_root = edges[9]->GetNode();
-  if (v_root.Index() != layer_norm.Index()) {
-    return false;
-  }
-
-  if (!optimizer_utils::CheckOutputEdges(graph, v_add, 1) ||
-      !optimizer_utils::CheckOutputEdges(graph, v_matmul, 1)) {
-    DEBUG_LOG("Output edge count not expected for Add or MatMul in path v");
-    return false;
-  }
-
-  int64_t num_heads = 0;  // will be updated in CheckNodesInPathV
-  int64_t head_size = 0;  // will be updated in CheckNodesInPathV
-  if (!AttentionFusionHelper::CheckNodesInPathV(graph, reshape, transpose, qkv_matmul, v_transpose, v_reshape, num_heads, head_size, hidden_size, logger)) {
-    DEBUG_LOG("CheckNodesInPathV return false");
-    return false;
-  }
-
-  // Validate the input shape of MatMul and Add according to hidden_size.
-  if (!(ValidateAddBiasInitializer(graph, add, hidden_size) &&
-        ValidateMatMulInitializer(graph, matmul, hidden_size) &&
-        ValidateAddBiasInitializer(graph, v_add, hidden_size) &&
-        ValidateMatMulInitializer(graph, v_matmul, hidden_size))) {
-    DEBUG_LOG("Failed in match v_matmul and v_add input shape");
-    return false;
-  }
-
-  AttentionFusionHelper::AttentionMaskNodesDistilBert mask_nodes = AttentionFusionHelper::AttentionMaskNodesDistilBert(); //avoid potentially uninitialised local variable
-  if (!AttentionFusionHelper::MatchInputMaskSubgraph(graph, qkv_matmul, mask_nodes, logger)) {
-    DEBUG_LOG("Failed in match input mask subgraphdistilbert");
-    return false;
-  }
-
-  // path to q
-  std::vector<graph_utils::EdgeEndToMatch> q_path{
-      {0, 2, "MatMul", {1, 9}, kOnnxDomain},
-      {0, 0, "Div", {7}, kOnnxDomain},
-      {0, 0, "Transpose", {1}, kOnnxDomain},
-      {0, 0, "Reshape", {5}, kOnnxDomain},
-      {0, 0, "Add", {7}, kOnnxDomain},
-      {0, 0, "MatMul", {1, 9}, kOnnxDomain},
-      {0, 0, "LayerNormalization", {1}, kOnnxDomain}};
-
-  if (!graph_utils::FindPath(*(mask_nodes.Where), true, q_path, edges, logger)) {
-    DEBUG_LOG("Failed to find path for q");
-    return false;
-  }
-
-  const Node& qk_matmul = edges[0]->GetNode();
-  const Node& q_div = edges[1]->GetNode();
-  const Node& q_transpose = edges[2]->GetNode();
-  const Node& q_reshape = edges[3]->GetNode();
-  const Node& q_add = edges[4]->GetNode();
-  const Node& q_matmul = edges[5]->GetNode();
-  const Node& q_root = edges[6]->GetNode();
-  if (q_root.Index() != layer_norm.Index()) {
-    DEBUG_LOG("q root should be layer normalization");
-    return false;
-  }
-
-  if (!AttentionFusionHelper::CheckNodesInPathQ(graph, q_div, q_reshape, q_transpose, num_heads, head_size, logger)) {
-    DEBUG_LOG("CheckNodesInPathQ returns false");
-    return false;
-  }
-
-  if (!(ValidateAddBiasInitializer(graph, q_add, hidden_size) &&
-        ValidateMatMulInitializer(graph, q_matmul, hidden_size))) {
-    DEBUG_LOG("q_matmul and q_add shape not matched");
-    return false;
-  }
-
-  std::vector<graph_utils::EdgeEndToMatch> k_path{
-      {0, 2, "MatMul", {1, 9}, kOnnxDomain},
-      {0, 1, "Transpose", {1}, kOnnxDomain},
-      {0, 0, "Reshape", {5}, kOnnxDomain},
-      {0, 0, "Add", {7}, kOnnxDomain},
-      {0, 0, "MatMul", {1, 9}, kOnnxDomain},
-      {0, 0, "LayerNormalization", {1}, kOnnxDomain}};
-
-  if (!graph_utils::FindPath(*(mask_nodes.Where), true, k_path, edges, logger)) {
-    DEBUG_LOG("Failed to find path for k");
-    return false;
-  }
-
-  const Node& k_transpose = edges[1]->GetNode();
-  const Node& k_reshape = edges[2]->GetNode();
-  const Node& k_add = edges[3]->GetNode();
-  const Node& k_matmul = edges[4]->GetNode();
-  const Node& k_root = edges[5]->GetNode();
-  if (k_root.Index() != layer_norm.Index()) {
-    DEBUG_LOG("k root is not layer norm");
-    return false;
-  }
-
-  if (!AttentionFusionHelper::CheckNodesInPathK(graph, k_reshape, k_transpose, num_heads, head_size, logger)) {
-    DEBUG_LOG("CheckNodesInPathK returns false");
-    return false;
-  }
-
-  if (!(ValidateAddBiasInitializer(graph, k_add, hidden_size) &&
-        ValidateMatMulInitializer(graph, k_matmul, hidden_size))) {
-    DEBUG_LOG("k_matmul and k_add shape not matched");
-    return false;
-  }
-
-  // Load q, k and v weights
-  const ONNX_NAMESPACE::TensorProto* q_weight_tensor = nullptr;
-  const ONNX_NAMESPACE::TensorProto* k_weight_tensor = nullptr;
-  const ONNX_NAMESPACE::TensorProto* v_weight_tensor = nullptr;
-  if (!LoadQkvWeights(graph, q_matmul, k_matmul, v_matmul, q_weight_tensor, k_weight_tensor, v_weight_tensor)) {
-    DEBUG_LOG("Failed to load Q, K and V weights, or data type is not float or float16.");
-    return false;
-  }
-
-  const ONNX_NAMESPACE::TensorProto* q_bias_tensor = nullptr;
-  const ONNX_NAMESPACE::TensorProto* k_bias_tensor = nullptr;
-  const ONNX_NAMESPACE::TensorProto* v_bias_tensor = nullptr;
-  if (!LoadQkvWeights(graph, q_add, k_add, v_add, q_bias_tensor, k_bias_tensor, v_bias_tensor)) {
-    DEBUG_LOG("Failed to load Q, K and V bias tensors, or data type is not float or float16.");
-    return false;
-  }
-
-  // Now everything is ready, we will start fusing subgraph.
-  NodeArg* mask_input = nullptr;
-  mask_input = graph.GetNode(mask_nodes.Equal->Index())->MutableInputDefs()[0];
-
-  NodeArg* mask_index = GetOrCreateMaskIndex(graph, mask_input, mask_index_map, layer_norm.GetExecutionProviderType(), logger);
-  if (nullptr == mask_index) {
-    DEBUG_LOG("Failed to create mask index");
-    return false;
-  }
-
-  // Merge Q, K and V weights
-  NodeArg& qkv_weights = MergeQkvWeights(graph, hidden_size, q_weight_tensor, k_weight_tensor, v_weight_tensor, true);
-  NodeArg& qkv_bias = MergeQkvWeights(graph, hidden_size, q_bias_tensor, k_bias_tensor, v_bias_tensor, false);
-
-  // Create Attention Node.
-  const std::vector<NodeArg*> input_defs{layer_norm.MutableOutputDefs()[0], &qkv_weights, &qkv_bias, mask_index};
-  const std::vector<NodeArg*> output_defs{graph.GetNode(reshape.Index())->MutableOutputDefs()[0]};
-  Node& attention_node = graph.AddNode(
-      graph.GenerateNodeName("Attention"),
-      "Attention",
-      "Fused Attention subgraphs ",
-      input_defs,
-      output_defs,
-      nullptr,
-      kMSDomain);
-  attention_node.AddAttribute("num_heads", num_heads);
-
-  // Assign provider to this new node.
-  attention_node.SetExecutionProviderType(layer_norm.GetExecutionProviderType());
-
-  // Remove nodes that are not used anymore.
-  std::vector<NodeIndex> nodes_to_remove{
-    reshape.Index(),
-    transpose.Index(),
-    qkv_matmul.Index(),
-    v_transpose.Index(),
-    v_reshape.Index(),
-    v_add.Index(),
-    v_matmul.Index(),
-    qk_matmul.Index(),
-    q_div.Index(),
-    q_transpose.Index(),
-    q_reshape.Index(),
-    q_add.Index(),
-    q_matmul.Index(),
-    k_transpose.Index(),
-    k_reshape.Index(),
-    k_add.Index(),
-    k_matmul.Index()
-  };
-
-  //delete shape after qk_matmul
-  for (auto it = qk_matmul.OutputNodesBegin(); it != qk_matmul.OutputNodesEnd(); ++it) {
-    if ((*it).OpType().compare("Shape") == 0) {
-      nodes_to_remove.push_back((*it).Index());
-    }
-  }
-
-  AttentionFusionHelper::SetMaskNodesToRemove(graph, mask_nodes, nodes_to_remove);
-
-  for (const auto& node_index : nodes_to_remove) {
-    Node* node = graph.GetNode(node_index);
-    graph_utils::RemoveNodeOutputEdges(graph, *node);
-    graph.RemoveNode(node->Index());
-  }
-
-  DEBUG_LOG("Fused an attention node.");
 
   return true;
 }
