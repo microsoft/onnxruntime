@@ -274,7 +274,7 @@ bool ReshapeFusion::Fuse_Subgraph(Node& reshape, Graph& graph, const logging::Lo
       // Proceed to the next input
       continue;
     }
-std::cout << "263" << std::endl;
+
     // If we haven't been able to match the pattern, check if this is a candidate for subgraph pattern
     // fusion. For this input to be a candidate, the number of elements in the input tensor to Concat
     // has to be 1.
