@@ -242,7 +242,10 @@ function commandMessage(key) {
 
         "windows,Python(3.5-3.7),X64,CUDA":
             "pip install onnxruntime-gpu",
-
+	
+	"linux,Python(3.5-3.7),ARM64,CUDA":
+            "For Jetpack 4.4+, follow installation instructions from <a href='https://elinux.org/Jetson_Zoo#ONNX_Runtime' target='_blank'>here</a>",
+	    
         "linux,C,X64,CUDA":
             "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
 
