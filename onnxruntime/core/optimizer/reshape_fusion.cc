@@ -41,7 +41,7 @@ Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, c
 
 /**
  * Find the subgraph that matches [root] -> Shape -> Gather -> Unsqueeze.
- * If checkOneElementOnly is set to true, this function only checks if the matched subgraph produces a 
+ * If checkOneElementOnly is set to true, this function only checks if the matched subgraph produces a
  * one element output(skip the Gather input indices check).
  */
 bool ReshapeFusion::Match_One_Element_Output_Subgraph_1(Graph& graph, const NodeArg& root_input, const Node& concat,
@@ -58,7 +58,12 @@ bool ReshapeFusion::Match_One_Element_Output_Subgraph_1(Graph& graph, const Node
     const Node& shape = edges[2]->GetNode();
 
     const NodeArg& shape_input = *(shape.InputDefs()[0]);
-    if (shape_input.Name() != root_input.Name()) {
+    const Node* p_node_before_shape = graph_utils::GetInputNode(shape, 0);
+    bool is_distilbert_reshape = false;
+    if (nullptr != p_node_before_shape && (*p_node_before_shape).OpType() == "Add") {
+      is_distilbert_reshape = true;
+    }
+    if (shape_input.Name() != root_input.Name() && !is_distilbert_reshape) {
       return false;
     }
 
@@ -81,7 +86,7 @@ bool ReshapeFusion::Match_One_Element_Output_Subgraph_1(Graph& graph, const Node
 }
 
 /**
- * Find the subgraph that matches [root] -> Shape -> Slice -> Squeeze. Check the inputs of slice 
+ * Find the subgraph that matches [root] -> Shape -> Slice -> Squeeze. Check the inputs of slice
  * to make sure the graph produces output with exactly one element.
  */
 bool ReshapeFusion::Match_One_Element_Output_Subgraph_2(Graph& graph, const NodeArg& root_input, const Node& cur_node,
@@ -117,7 +122,7 @@ bool ReshapeFusion::Match_One_Element_Output_Subgraph_2(Graph& graph, const Node
 }
 
 /**
- * Check if the i-th input of the current node contains exactly one element by checking 
+ * Check if the i-th input of the current node contains exactly one element by checking
  * its inferred shape.
  */
 bool ReshapeFusion::Is_One_Element_Input(const Node& cur_node, int index) {
@@ -140,8 +145,8 @@ bool ReshapeFusion::Is_One_Element_Input(const Node& cur_node, int index) {
 }
 
 /**
- * Search all known patterns of one element subgraphs, which include - 
- * 1. A concat input with inferred shape that can only contain one element. 
+ * Search all known patterns of one element subgraphs, which include -
+ * 1. A concat input with inferred shape that can only contain one element.
  * 2. [root] -> Shape -> Gather(any 1d indice) -> Unsqueeze -> [Concat]
  * 3. [root] -> Shape -> Slice (slice to one element) -> Squeeze -> (Div/Mul) -> Unsqueeze -> [Concat]
  *                                                                      |
@@ -191,7 +196,7 @@ bool ReshapeFusion::Is_One_Element_Output_Subgraph(Graph& graph, const NodeArg& 
     auto input_count = binary_node.InputArgCount().front();
 
     for (int i = 0; i < input_count; ++i) {
-      // For each input, look for "one-element subgraph -> concat" or "shape -> slice -> squeeze" path for 
+      // For each input, look for "one-element subgraph -> concat" or "shape -> slice -> squeeze" path for
       // a potential match.
       if (!ReshapeFusion::Is_One_Element_Input(binary_node, i) &&
           !ReshapeFusion::Match_One_Element_Output_Subgraph_2(graph, root_input, binary_node, i, logger)) {
@@ -207,7 +212,7 @@ bool ReshapeFusion::Is_One_Element_Output_Subgraph(Graph& graph, const NodeArg& 
 Apply Reshape Fusion. The following are subgraphs before and after fusion:
 (a[] and b[] are int64[] constant initializers; Concat may have any number of arguments,
 each of which is a constant initializer or a Shape->Gather->Unsqueeze chain with the
-index corresponding to the index of the argument, or a custom subgraph in which nodes 
+index corresponding to the index of the argument, or a custom subgraph in which nodes
 have only one output edge. Note the resulting shape value should contain no more than one
 value of -1.
 
@@ -269,7 +274,7 @@ bool ReshapeFusion::Fuse_Subgraph(Node& reshape, Graph& graph, const logging::Lo
       // Proceed to the next input
       continue;
     }
-
+std::cout << "263" << std::endl;
     // If we haven't been able to match the pattern, check if this is a candidate for subgraph pattern
     // fusion. For this input to be a candidate, the number of elements in the input tensor to Concat
     // has to be 1.

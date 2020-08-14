@@ -188,27 +188,17 @@ def GenerateModel2(model_name):
                          axis=-1,
                          epsion=0.000009999999960041972),
 
-        # shape path
-        helper.make_node("Shape", ["layernorm_out"], ["shape0_out"], "shape0"),
-        helper.make_node("Gather", ["shape0_out", "indices_0"], ["gather0_out"], "gather0", axis=0),
-        helper.make_node("Shape", ["layernorm_out"], ["shape1_out"], "shape1"),
-        helper.make_node("Gather", ["shape1_out", "indices_1"], ["gather1_out"], "gather1", axis=0),
-
         # v nodes
         helper.make_node("MatMul", ["layernorm_out", "matmul_v_weight"], ["matmul_v_out"], "matmul_v"),
         helper.make_node("Add", ["matmul_v_out", "add_v_weight"], ["add_v_out"], "add_v"),
-        helper.make_node("Unsqueeze", ["gather0_out"], ["unsqueeze0_out"], "unsqueeze0", axes=[0]),
-        helper.make_node("Concat", ["unsqueeze0_out", "dim_-1", "dim_12", "dim_64"], ["concat0_out"], "concat0", axis=0),
-        helper.make_node("Reshape", ["add_v_out", "concat0_out"], ["reshape_v_out"], "reshape_v"),
+        helper.make_node("Reshape", ["add_v_out", "reshape_weight_1"], ["reshape_v_out"], "reshape_v"),
         helper.make_node("Transpose", ["reshape_v_out"], ["transpose_v_out"], "transpose_v",
             perm=[0,2,1,3]),
 
         # q nodes
         helper.make_node("MatMul", ["layernorm_out", "matmul_q_weight"], ["matmul_q_out"], "matmul_q"),
         helper.make_node("Add", ["matmul_q_out", "add_q_weight"], ["add_q_out"], "add_q"),
-        helper.make_node("Unsqueeze", ["gather0_out"], ["unsqueeze1_out"], "unsqueeze1", axes=[0]),
-        helper.make_node("Concat", ["unsqueeze1_out", "dim_-1", "dim_12", "dim_64"], ["concat1_out"], "concat1", axis=0),
-        helper.make_node("Reshape", ["add_q_out", "concat1_out"], ["reshape_q_out"], "reshape_q"),
+        helper.make_node("Reshape", ["add_q_out", "reshape_weight_1"], ["reshape_q_out"], "reshape_q"),
         helper.make_node("Transpose", ["reshape_q_out"], ["transpose_q_out"], "transpose_q",
             perm=[0,2,1,3]),
         helper.make_node("Div", ["transpose_q_out", "div_weight"], ["div_q_out"], "div_q"),
@@ -216,19 +206,9 @@ def GenerateModel2(model_name):
         # k nodes
         helper.make_node("MatMul", ["layernorm_out", "matmul_k_weight"], ["matmul_k_out"], "matmul_k"),
         helper.make_node("Add", ["matmul_k_out", "add_k_weight"], ["add_k_out"], "add_k"),
-        helper.make_node("Unsqueeze", ["gather0_out"], ["unsqueeze2_out"], "unsqueeze2", axes=[0]),
-        helper.make_node("Concat", ["unsqueeze2_out", "dim_-1", "dim_12", "dim_64"], ["concat2_out"], "concat2", axis=0),
-        helper.make_node("Reshape", ["add_k_out", "concat2_out"], ["reshape_k_out"], "reshape_k"),
+        helper.make_node("Reshape", ["add_k_out", "reshape_weight_1"], ["reshape_k_out"], "reshape_k"),
         helper.make_node("Transpose", ["reshape_k_out"], ["transpose_k_out"], "transpose_k",
             perm=[0,2,3,1]),
-
-        # path x
-        helper.make_node("Unsqueeze", ["gather0_out"], ["unsqueeze_x_0_out"], "unsqueeze_x_0", axes=[0]),
-        helper.make_node("Unsqueeze", ["gather1_out"], ["unsqueeze_x_1_out"], "unsqueeze_x_1", axes=[0]),
-        helper.make_node("Concat", ["unsqueeze_x_0_out", "dim_1", "dim_1", "unsqueeze_x_1_out"], ["concat3_out"], "concat3", axis=0),
-        helper.make_node("Unsqueeze", ["gather0_out"], ["unsqueeze_x_2_out"], "unsqueeze_x_2", axes=[0]),
-        helper.make_node("Concat", ["unsqueeze_x_2_out", "dim_-1", "dim_768"], ["concat4_out"], "concat4", axis=0),
-
 
         # mask nodes
         helper.make_node("Constant", [], ["mask_input"], "constant",
@@ -238,7 +218,7 @@ def GenerateModel2(model_name):
 
         #qkx paths
         helper.make_node("MatMul", ["div_q_out", "transpose_k_out"], ["matmul_qk_out"], "matmul_qk"),
-        helper.make_node("Reshape", ["equal_out", "concat3_out"], ["reshape_x_out"], "reshape_x"),
+        helper.make_node("Reshape", ["equal_out", "reshape_weight_2"], ["reshape_x_out"], "reshape_x"),
         helper.make_node("Shape", ["matmul_qk_out"], ["shape_x_out"], "shape_x"),
         helper.make_node("Expand", ["reshape_x_out", "shape_x_out"], ["expand_out"], "expand"),
         helper.make_node("Where", ["expand_out", "where_weight", "matmul_qk_out"], ["where_out"], "where"), #bugbug
@@ -249,7 +229,7 @@ def GenerateModel2(model_name):
         helper.make_node("Transpose", ["matmul_qkv_1_out"], ["transpose_qkv_out"], "transpose_qkv",
             perm=[0,2,1,3]
         ),
-        helper.make_node("Reshape", ["transpose_qkv_out", "concat4_out"], ["reshape_qkv_out"], "reshape_qkv"),
+        helper.make_node("Reshape", ["transpose_qkv_out", "reshape_weight_3"], ["reshape_qkv_out"], "reshape_qkv"),
         helper.make_node("MatMul", ["reshape_qkv_out", "matmul_qkv_weight"], ["matmul_qkv_2_out"], "matmul_qkv_2"),
         helper.make_node("Add", ["matmul_qkv_2_out", "add_qkv_weight"], ["add_qkv_out"], "add_qkv"),
 
@@ -263,30 +243,26 @@ def GenerateModel2(model_name):
         helper.make_tensor('matmul_k_weight', TensorProto.FLOAT, [8, 8], matmul_k_weights),
         helper.make_tensor('matmul_v_weight', TensorProto.FLOAT, [8, 8], matmul_v_weights),
         helper.make_tensor('matmul_qkv_weight', TensorProto.FLOAT, [8, 8], matmul_qkv_weights),
-        helper.make_tensor('div_weight', TensorProto.FLOAT, [1], [8]),
+        helper.make_tensor('div_weight', TensorProto.FLOAT, [1], [2]),
         helper.make_tensor('add_q_weight', TensorProto.FLOAT, [8], add_q_weight),
         helper.make_tensor('add_k_weight', TensorProto.FLOAT, [8], add_k_weight),
         helper.make_tensor('add_v_weight', TensorProto.FLOAT, [8], add_v_weight),
         helper.make_tensor('add_qkv_weight', TensorProto.FLOAT, [8], add_qkv_weight),
-        helper.make_tensor('indices_0', TensorProto.INT64, [], [0]),
-        helper.make_tensor('indices_1', TensorProto.INT64, [], [1]),
-        helper.make_tensor('dim_-1', TensorProto.INT64, [1], [-1]),
-        helper.make_tensor('dim_12', TensorProto.INT64, [1], [12]),
-        helper.make_tensor('dim_64', TensorProto.INT64, [1], [64]),
-        helper.make_tensor('dim_1', TensorProto.INT64, [1], [1]),
-        helper.make_tensor('dim_768', TensorProto.INT64, [1], [768]),
         helper.make_tensor('equal_weight', TensorProto.FLOAT, [], 0),
         helper.make_tensor('where_weight', TensorProto.FLOAT, [], [sys.float_info.min]),
+        helper.make_tensor('reshape_weight_1', TensorProto.INT64, [4], [0, -1, 2, 4]),
+        helper.make_tensor('reshape_weight_2', TensorProto.INT64, [4], [0, 1, 1, -1]),
+        helper.make_tensor('reshape_weight_3', TensorProto.INT64, [3], [0, -1, 8]),
     ]
 
     graph = helper.make_graph(
         nodes,
         "AttentionFusion_DistilBert",  #name
         [  # inputs
-            helper.make_tensor_value_info('input_1', TensorProto.FLOAT, [1, 3, 8])
+            helper.make_tensor_value_info('input_1', TensorProto.FLOAT, [1, 1, 8])
         ],
         [  # outputs
-            helper.make_tensor_value_info('output', TensorProto.FLOAT, [1, 3, 8]),
+            helper.make_tensor_value_info('output', TensorProto.FLOAT, [1, 1, 8]),
         ],
         initializers)
 
@@ -296,4 +272,3 @@ def GenerateModel2(model_name):
 
 GenerateModel('attention_mask_no_cast.onnx')
 GenerateModel2('attention_distilbert.onnx')
-

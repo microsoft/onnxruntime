@@ -287,7 +287,7 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
           modified = true;
         }
       } else if (add_count == 1 && matmul_count == 3) { // BERT
-        if (AttentionFusion::FuseSubGraph(node, *add_node, graph, hidden_size, mask_index_map, logger)) {
+        if (AttentionFusion::FuseSubGraphDistilBert(node, *add_node, graph, hidden_size, mask_index_map, logger)) {
           fused_count++;
           modified = true;
         }
@@ -615,23 +615,12 @@ bool AttentionFusion::FuseSubGraphDistilBert(Node& layer_norm, const Node& add_a
     return false;
   }
 
-  //std::vector<int64_t> v_reshape_shape;
-  //const NodeArg& x = (*(v_reshape.InputDefs()[1]));
-  //const ONNX_NAMESPACE::TensorShapeProto* tensor_shape_proto = y.Shape();
-  //std::cout << (tensor_shape_proto == nullptr) << std::endl;
-  //int64_t num_heads = v_reshape_shape[2];
-  //int64_t head_size = v_reshape_shape[3];
-
-  //bugbug: hardcode for now
-  int64_t num_heads = 12;
-
-  //bugbug: todo
-  //int64_t num_heads = 0;  // will be updated in CheckNodesInPathV
-  //int64_t head_size = 0;  // will be updated in CheckNodesInPathV
-  //if (!AttentionFusionHelper::CheckNodesInPathV(graph, reshape, transpose, qkv_matmul, v_transpose, v_reshape, num_heads, head_size, hidden_size, logger)) {
-  //  DEBUG_LOG("CheckNodesInPathV return false");
-  //  return false;
-  //}
+  int64_t num_heads = 0;  // will be updated in CheckNodesInPathV
+  int64_t head_size = 0;  // will be updated in CheckNodesInPathV
+  if (!AttentionFusionHelper::CheckNodesInPathV(graph, reshape, transpose, qkv_matmul, v_transpose, v_reshape, num_heads, head_size, hidden_size, logger)) {
+    DEBUG_LOG("CheckNodesInPathV return false");
+    return false;
+  }
 
   // Validate the input shape of MatMul and Add according to hidden_size.
   if (!(ValidateAddBiasInitializer(graph, add, hidden_size) &&
@@ -642,7 +631,6 @@ bool AttentionFusion::FuseSubGraphDistilBert(Node& layer_norm, const Node& add_a
     return false;
   }
 
-  //bugbug distilbert
   AttentionFusionHelper::AttentionMaskNodesDistilBert mask_nodes = AttentionFusionHelper::AttentionMaskNodesDistilBert(); //avoid potentially uninitialised local variable
   if (!AttentionFusionHelper::MatchInputMaskSubgraph(graph, qkv_matmul, mask_nodes, logger)) {
     DEBUG_LOG("Failed in match input mask subgraphdistilbert");
@@ -676,11 +664,10 @@ bool AttentionFusion::FuseSubGraphDistilBert(Node& layer_norm, const Node& add_a
     return false;
   }
 
-  //bugbug: todo
-  //if (!AttentionFusionHelper::CheckNodesInPathQ(graph, qk_div, q_reshape, q_transpose, num_heads, head_size, logger)) {
-  //  DEBUG_LOG("CheckNodesInPathQ returns false");
-  //  return false;
-  //}
+  if (!AttentionFusionHelper::CheckNodesInPathQ(graph, q_div, q_reshape, q_transpose, num_heads, head_size, logger)) {
+    DEBUG_LOG("CheckNodesInPathQ returns false");
+    return false;
+  }
 
   if (!(ValidateAddBiasInitializer(graph, q_add, hidden_size) &&
         ValidateMatMulInitializer(graph, q_matmul, hidden_size))) {
@@ -688,7 +675,6 @@ bool AttentionFusion::FuseSubGraphDistilBert(Node& layer_norm, const Node& add_a
     return false;
   }
 
-  //bugbug: path to k
   std::vector<graph_utils::EdgeEndToMatch> k_path{
       {0, 2, "MatMul", {1, 9}, kOnnxDomain},
       {0, 1, "Transpose", {1}, kOnnxDomain},
@@ -702,7 +688,6 @@ bool AttentionFusion::FuseSubGraphDistilBert(Node& layer_norm, const Node& add_a
     return false;
   }
 
-  //const Node& qk_matmul = edges[0]->GetNode();
   const Node& k_transpose = edges[1]->GetNode();
   const Node& k_reshape = edges[2]->GetNode();
   const Node& k_add = edges[3]->GetNode();
@@ -713,11 +698,10 @@ bool AttentionFusion::FuseSubGraphDistilBert(Node& layer_norm, const Node& add_a
     return false;
   }
 
-  //bugbug: todo
-  //if (!AttentionFusionHelper::CheckNodesInPathK(graph, k_reshape, k_transpose, num_heads, head_size, logger)) {
-  //  DEBUG_LOG("CheckNodesInPathK returns false");
-  //  return false;
-  //}
+  if (!AttentionFusionHelper::CheckNodesInPathK(graph, k_reshape, k_transpose, num_heads, head_size, logger)) {
+    DEBUG_LOG("CheckNodesInPathK returns false");
+    return false;
+  }
 
   if (!(ValidateAddBiasInitializer(graph, k_add, hidden_size) &&
         ValidateMatMulInitializer(graph, k_matmul, hidden_size))) {
@@ -792,33 +776,6 @@ bool AttentionFusion::FuseSubGraphDistilBert(Node& layer_norm, const Node& add_a
     k_add.Index(),
     k_matmul.Index()
   };
-
-  //remove redundent nodes
-  std::unordered_set<NodeIndex> unique_concat_node;
-  for (auto it = layer_norm.OutputNodesBegin(); it != layer_norm.OutputNodesEnd(); ++it) {
-    if ((*it).OpType().compare("Shape") == 0) {
-      const Node& shape_node = *it;
-      for (auto it1 = shape_node.OutputNodesBegin(); it1 != shape_node.OutputNodesEnd(); ++it1) {
-        if ((*it1).OpType().compare("Gather") == 0) {
-          const Node& gather_node = *it1;
-          for (auto it2 = gather_node.OutputNodesBegin(); it2 != gather_node.OutputNodesEnd(); ++it2) {
-            const Node& unsqueeze_node = *it2;
-            for (auto it3 = unsqueeze_node.OutputNodesBegin(); it3 != unsqueeze_node.OutputNodesEnd(); ++it3) {
-              const Node& concat_node = *it3;
-              const NodeIndex unique_concat_node_index = concat_node.Index();
-              if (unique_concat_node.find(unique_concat_node_index) == unique_concat_node.end()) {
-                nodes_to_remove.push_back(unique_concat_node_index); //repeated concat-node, need to deduplicate
-                unique_concat_node.insert(unique_concat_node_index);
-              }
-            }
-            nodes_to_remove.push_back(unsqueeze_node.Index());
-          }
-          nodes_to_remove.push_back(gather_node.Index());
-        }
-      }
-      nodes_to_remove.push_back(shape_node.Index());
-    }
-  }
 
   //delete shape after qk_matmul
   for (auto it = qk_matmul.OutputNodesBegin(); it != qk_matmul.OutputNodesEnd(); ++it) {
