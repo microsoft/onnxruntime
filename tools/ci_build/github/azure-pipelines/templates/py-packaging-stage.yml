@@ -188,7 +188,6 @@ stages:
                   --config Release \
                   --skip_submodule_sync \
                   --parallel \
-                  --enable_lto \
                   --build_wheel \
                   --use_openmp \
                   --enable_onnx_tests --use_cuda --cuda_version=10.1 --cuda_home=/usr/local/cuda-10.1 --cudnn_home=/usr/local/cuda-10.1 \
