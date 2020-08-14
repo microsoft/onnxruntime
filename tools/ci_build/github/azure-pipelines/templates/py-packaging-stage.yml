@@ -106,7 +106,7 @@ stages:
               -e BUILD_BUILDNUMBER \
               onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecpubuild:chn \
                 $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-                  --build_dir /build \
+                  --build_dir /build --cmake_generator Ninja \
                   --config Release \
                   --skip_submodule_sync \
                   --parallel \
@@ -184,7 +184,7 @@ stages:
               -e BUILD_BUILDNUMBER \
               onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecpubuild:chn \
                 $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-                  --build_dir /build \
+                  --build_dir /build --cmake_generator Ninja \
                   --config Release \
                   --skip_submodule_sync \
                   --parallel \
@@ -229,9 +229,6 @@ stages:
       pool: Linux-GPU-CUDA10
       strategy:
         matrix:
-          ${{ if eq(parameters.enable_linux_gpu_py35, true) }}:
-            Python35:
-              python.version: '3.5'
           Python36:
             python.version: '3.6'
           Python37:
