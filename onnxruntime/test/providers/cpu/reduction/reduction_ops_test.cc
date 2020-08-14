@@ -1125,7 +1125,7 @@ TEST(ReductionOpTest, ReduceSum_apex_reduction) {
 }
 
 void test_apex_reduce_sum(
-    int64_t m, int64_t n) {
+    int64_t m, int64_t n, bool exclude_openvino = false) {
   OpTester test("ReduceSum");
   // Input tensor.
   std::vector<float> X(m * n, 0.0f);
@@ -1147,7 +1147,12 @@ void test_apex_reduce_sum(
   test.AddInput<float>("data", {m, n}, X);
   test.AddOutput<float>("reduced", {n}, Y);
 
-  test.Run();
+  if (exclude_openvino) {
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+  } else {
+    test.Run();
+  }
+
 }
 
 TEST(ReductionOpTest, ReduceSum_apex_matrix_large) {
@@ -1199,8 +1204,13 @@ TEST(ReductionOpTest, ReduceSum_batch_by_seq_by_30528) {
 #endif
 
 TEST(ReductionOpTest, ReduceSum_bert_selected_batch_size) {
-  test_apex_reduce_sum(85 * 128, 768);
-  test_apex_reduce_sum(86 * 128, 768);
+  #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
+    test_apex_reduce_sum(85 * 128, 768, true);
+    test_apex_reduce_sum(86 * 128, 768, true);
+  #else 
+    test_apex_reduce_sum(85 * 128, 768);
+    test_apex_reduce_sum(86 * 128, 768);
+  #endif  
 }
 
 TEST(ReductionOpTest, ReduceSum_apex_more) {
