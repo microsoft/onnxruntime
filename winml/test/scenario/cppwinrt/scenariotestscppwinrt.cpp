@@ -1028,6 +1028,46 @@ static void Scenario22ImageBindingAsGPUTensor() {
   encoder.FlushAsync().get();
 }
 
+static void Scenario23NominalPixelRange() {
+  std::wstring modulePath = FileHelpers::GetModulePath();
+  std::wstring inputImagePath = modulePath + L"1080.jpg";
+  std::wstring modelPath = modulePath + L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_1.onnx";
+
+  // load model and create session
+  auto model = LearningModel::LoadFromFilePath(modelPath);
+  auto session = LearningModelSession(model);
+  auto binding = LearningModelBinding(session);
+
+  SoftwareBitmap softwareBitmap = FileHelpers::GetSoftwareBitmapFromFile(inputImagePath);
+  auto videoFrame = VideoFrame::CreateWithSoftwareBitmap(softwareBitmap);
+  auto imageValue = ImageFeatureValue::CreateFromVideoFrame(videoFrame);
+
+
+  // bind input
+  auto inputs = model.InputFeatures();
+  for (auto&& input : inputs) {
+    binding.Bind(input.Name(), imageValue);
+  }
+
+  std::vector<int64_t> shape = { 1, 3, 1080, 1920 };
+  auto outputValue = TensorFloat::Create(shape);
+  binding.Bind(L"add_3", outputValue);
+
+  winrt::hstring correlationId;
+  session.EvaluateAsync(binding, correlationId).get();
+
+  auto vector = outputValue.GetAsVectorView();
+  bool output_verified = true;
+  for (unsigned int i = 0; i < vector.Size(); ++i) {
+    float val = vector.GetAt(i);
+    // because the model has single op "add", so the outputs are expected to be <=2 and >=0;
+    if (!(val <= 2 && val >= 0)) {
+      output_verified = false;
+    }
+  }
+  WINML_EXPECT_TRUE(output_verified);
+}
+
 static void QuantizedModels() {
   // load a model
   std::wstring filePath = FileHelpers::GetModulePath() + L"onnxzoo_lotus_inception_v1-dq.onnx";
@@ -1408,6 +1448,7 @@ const ScenarioTestsApi& getapi() {
           Scenario8SetDeviceSampleCPU,
           Scenario17DevDiagnostics,
           Scenario22ImageBindingAsCPUTensor,
+          Scenario23NominalPixelRange,
           QuantizedModels,
           EncryptedStream,
           Scenario3SoftwareBitmapInputBinding,
@@ -1480,6 +1521,7 @@ const ScenarioTestsApi& getapi() {
     api.Scenario21RunModel2ChainZ = SkipTest;
     api.Scenario22ImageBindingAsCPUTensor = SkipTest;
     api.Scenario22ImageBindingAsGPUTensor = SkipTest;
+    api.Scenario23NominalPixelRange = SkipTest;
     api.CustomCommandQueueWithFence = SkipTest;
     api.ReuseVideoFrame = SkipTest;
     api.D2DInterop = SkipTest;

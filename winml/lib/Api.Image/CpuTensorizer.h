@@ -13,6 +13,7 @@ class CpuTensorizer {
   static HRESULT TensorizeData(
       _In_ ImageTensorChannelType formatFrom,
       _In_ ImageTensorChannelType formatTo,
+      _In_ ImageNominalPixelRange pixelRange,
       _In_ BYTE* pBuffer,
       _In_ UINT32 bufferWidth,
       _In_ const wgi::BitmapBounds& inputBounds,
@@ -32,6 +33,19 @@ class CpuTensorizer {
 
     uint32_t xElements = inputBounds.Width - inputBounds.X;
     uint32_t yElements = inputBounds.Height - inputBounds.Y;
+
+    uint32_t channelNum = formatFrom == kImageTensorChannelTypeGRAY8 ? 1 : 3;
+    uint32_t totalElements = channelNum * inputBounds.Width * inputBounds.Height;
+
+    float scale = 1.0; 
+    uint32_t shift = 0;
+    if (pixelRange == ImageNominalPixelRange::kNormalized_0_1) {
+      scale = float(1.0) / 255;
+      shift = 0;
+    } else if (pixelRange == ImageNominalPixelRange::kNormalized_1_1) {
+      scale = float(1.0) / 255 * 2;
+      shift = -1;
+    }
 
     if (formatFrom == kImageTensorChannelTypeBGR8 && formatTo == kImageTensorChannelTypeBGR8 || formatFrom == kImageTensorChannelTypeRGB8 && formatTo == kImageTensorChannelTypeRGB8) {
       // Convert BGR8 -> BGR8 or RGB8 -> RGB8
@@ -93,6 +107,11 @@ class CpuTensorizer {
     else {
       return E_INVALIDARG;
     }
+
+    if (pixelRange != ImageNominalPixelRange::kNominalRange_0_255) {
+      NormalizeData(pCPUTensor, totalElements, scale, shift);
+    }
+
     return S_OK;
   }
 
@@ -107,6 +126,17 @@ class CpuTensorizer {
   template <>
   static DirectX::PackedVector::HALF ConvertByteToFloat(const BYTE& input) {
     return DirectX::PackedVector::XMConvertFloatToHalf(input);
+  }
+
+  template <typename T>
+  static void NormalizeData(
+    _Inout_ T* pCPUTensor,
+    uint32_t totalElements,
+    float scale,
+    uint32_t shift) {
+    for (uint32_t i = 0; i < totalElements; i ++) {
+      pCPUTensor[i] = scale * pCPUTensor[i] + shift;
+    }
   }
 
   template <typename T>
