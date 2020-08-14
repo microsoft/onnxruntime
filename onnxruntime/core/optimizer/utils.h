@@ -78,5 +78,7 @@ bool IsSupportedDataType(const Node& node, const std::vector<std::string>& suppo
 */
 bool CheckOutputEdges(const Graph& graph, const Node& node, size_t expected_output_edges);
 
+bool IsOperationDeterministic(const std::string& domain, const std::string& op);
+
 }  // namespace optimizer_utils
 }  // namespace onnxruntime
