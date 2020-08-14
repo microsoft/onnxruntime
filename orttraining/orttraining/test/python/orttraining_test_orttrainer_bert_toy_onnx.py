@@ -156,8 +156,13 @@ def legacy_remove_extra_info(model_desc):
         output_desc.num_classes_ = None
     return simple_model_desc
 
-def constantlrscheduler(global_step):
-    initial_lr = 1.0
+def constantlrscheduler_1(global_step):
+    return constantlrscheduler(global_step, 1.0)
+
+def constantlrscheduler_5(global_step):
+    return constantlrscheduler(global_step, 0.5)
+
+def constantlrscheduler(global_step, initial_lr):
     warmup = 0.5
     total_steps = 10
     lr = initial_lr
@@ -167,6 +172,49 @@ def constantlrscheduler(global_step):
             warmup_val = x/warmup
         else:
             warmup_val =1
+        lr *= warmup_val
+    return lr
+
+def cosinelrscheduler(global_step):
+    initial_lr = 1.0
+    warmup = 0.5
+    total_steps = 10
+    lr = initial_lr
+    for i in range(global_step+1):
+        x = (i+1) / (total_steps+1)
+        if x < warmup:
+            warmup_val = x/warmup
+        else:
+            warmup_val = 0.5 * (1.0 + math.cos(math.pi * x))
+        lr *= warmup_val
+    return lr
+
+def linearlrscheduler(global_step):
+    initial_lr = 1.0
+    warmup = 0.5
+    total_steps = 10
+    lr = initial_lr
+    for i in range(global_step+1):
+        x = (i+1) / (total_steps+1)
+        if x < warmup:
+            warmup_val = x/warmup
+        else:
+            warmup_val = max((x - 1.0) / (warmup - 1.0), 0.0)
+        lr *= warmup_val
+    return lr
+
+def polylrscheduler(global_step):
+    initial_lr = 1.0
+    warmup = 0.5
+    total_steps = 10
+    degree = 0.5
+    lr = initial_lr
+    for i in range(global_step+1):
+        x = (i+1) / (total_steps+1)
+        if x < warmup:
+            warmup_val = x/warmup
+        else:
+            warmup_val = (1.0 - x) ** degree
         lr *= warmup_val
     return lr
 
@@ -244,14 +292,14 @@ def testToyBERTDeteministicCheck(expected_losses):
     # check that losses match with experimental losses (1e-4)
     _test_helpers.assert_model_outputs(experimental_losses, expected_losses)
 
-@pytest.mark.parametrize("initial_lr, lr_scheduler, expected_losses", [
-    (1.0, optim.lr_scheduler.ConstantWarmupLRScheduler, [10.988012313842773, 11.637386322021484, 11.099013328552246, 11.055734634399414, 11.145816802978516, 10.974218368530273, 10.971613883972168, 11.203381538391113, 11.131250381469727, 11.017223358154297]),
-    (0.5, optim.lr_scheduler.ConstantWarmupLRScheduler, [10.988012313842773, 11.310076713562012, 11.025278091430664, 10.98879623413086, 11.125761032104492, 10.958372116088867, 10.980047225952148, 11.17530632019043, 11.147686004638672, 11.10694694519043]),
-    (1.0, optim.lr_scheduler.CosineWarmupLRScheduler, [10.988012313842773, 11.637386322021484, 11.099013328552246, 11.05573558807373, 11.145816802978516, 10.974218368530273, 10.964020729064941, 11.190014839172363, 11.16644287109375, 11.150431632995605]),
-    (1.0, optim.lr_scheduler.LinearWarmupLRScheduler, [10.988012313842773, 11.637386322021484, 11.099013328552246, 11.05573558807373, 11.145816802978516, 10.974218368530273, 10.970070838928223, 11.198983192443848, 11.134098052978516, 11.067017555236816]),
-    (1.0, optim.lr_scheduler.PolyWarmupLRScheduler, [10.988012313842773, 11.637386322021484, 11.099013328552246, 11.055734634399414, 11.145816802978516, 10.974217414855957, 10.96664810180664, 11.193868637084961, 11.14560604095459, 11.097070693969727])
+@pytest.mark.parametrize("initial_lr, lr_scheduler, expected_learning_rates, expected_losses", [
+    (1.0, optim.lr_scheduler.ConstantWarmupLRScheduler, [0.18181818181818182, 0.06611570247933884, 0.03606311044327573, 0.026227716686018716, 0.02384337880547156, 0.02384337880547156, 0.02384337880547156, 0.02384337880547156, 0.02384337880547156, 0.02384337880547156], [10.988012313842773, 11.637386322021484, 11.099013328552246, 11.055734634399414, 11.145816802978516, 10.974218368530273, 10.971613883972168, 11.203381538391113, 11.131250381469727, 11.017223358154297]),
+    (0.5, optim.lr_scheduler.ConstantWarmupLRScheduler, [0.09090909090909091, 0.03305785123966942, 0.018031555221637866, 0.013113858343009358, 0.01192168940273578, 0.01192168940273578, 0.01192168940273578, 0.01192168940273578, 0.01192168940273578, 0.01192168940273578], [10.988012313842773, 11.310077667236328, 11.025278091430664, 10.988797187805176, 11.125761032104492, 10.958372116088867, 10.980047225952148, 11.175304412841797, 11.147686958312988, 11.10694694519043]),
+    (1.0, optim.lr_scheduler.CosineWarmupLRScheduler, [0.18181818181818182, 0.06611570247933884, 0.03606311044327573, 0.026227716686018716, 0.02384337880547156, 0.010225056103441101, 0.0029887071446425494, 0.0005157600951772063, 4.093754650801759e-05, 8.291291382790071e-07], [10.988012313842773, 11.637386322021484, 11.099013328552246, 11.05573558807373, 11.145816802978516, 10.974218368530273, 10.964020729064941, 11.190014839172363, 11.16644287109375, 11.150431632995605]),
+    (1.0, optim.lr_scheduler.LinearWarmupLRScheduler, [0.18181818181818182, 0.06611570247933884, 0.03606311044327573, 0.026227716686018716, 0.02384337880547156, 0.021675798914065056, 0.015764217392047315, 0.008598664032025808, 0.0031267869207366565, 0.0005685067128612105], [10.988012313842773, 11.637386322021484, 11.099013328552246, 11.05573558807373, 11.145816802978516, 10.974218368530273, 10.970070838928223, 11.198983192443848, 11.134098052978516, 11.067017555236816]),
+    (1.0, optim.lr_scheduler.PolyWarmupLRScheduler, [0.18181818181818182, 0.06611570247933884, 0.03606311044327573, 0.026227716686018716, 0.02384337880547156, 0.01607520271130791, 0.009693711967693117, 0.005062375970537139, 0.0021586043667598935, 0.0006508437050332076], [10.988012313842773, 11.637386322021484, 11.099013328552246, 11.055734634399414, 11.145816802978516, 10.974217414855957, 10.96664810180664, 11.193868637084961, 11.14560604095459, 11.097070693969727])
 ])
-def testToyBERTModelLRScheduler(initial_lr, lr_scheduler, expected_losses):
+def testToyBERTModelLRScheduler(initial_lr, lr_scheduler, expected_learning_rates, expected_losses):
     model_desc = bert_model_description()
     model = load_bert_onnx_model()
 
@@ -271,11 +319,13 @@ def testToyBERTModelLRScheduler(initial_lr, lr_scheduler, expected_losses):
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
   
     losses = []
+    learning_rates = []
     for i in range(total_steps):
         sample_input = generate_random_input_from_model_desc(model_desc, i)
-
         losses.append(trainer.train_step(*sample_input).cpu().item())
-
+        learning_rates.append(trainer.options.lr_scheduler.get_last_lr()[0])
+    
+    _test_helpers.assert_model_outputs(learning_rates, expected_learning_rates)
     _test_helpers.assert_model_outputs(losses, expected_losses)
     
 
@@ -399,7 +449,11 @@ def testToyBERTModelLegacyExperimental():
     _test_helpers.assert_model_outputs(experimental_losses, legacy_losses, True, rtol=1e-4)
 
 @pytest.mark.parametrize("initial_lr, lr_scheduler, legacy_lr_scheduler", [
-    (1.0, optim.lr_scheduler.ConstantWarmupLRScheduler, constantlrscheduler),
+    (1.0, optim.lr_scheduler.ConstantWarmupLRScheduler, constantlrscheduler_1),
+    (0.5, optim.lr_scheduler.ConstantWarmupLRScheduler, constantlrscheduler_5),
+    (1.0, optim.lr_scheduler.CosineWarmupLRScheduler, cosinelrscheduler),
+    (1.0, optim.lr_scheduler.LinearWarmupLRScheduler, linearlrscheduler),
+    (1.0, optim.lr_scheduler.PolyWarmupLRScheduler, polylrscheduler),
 ])
 def testToyBERTModelLRSchedulerLegacyExperimental(initial_lr, lr_scheduler, legacy_lr_scheduler):
     model_desc = bert_model_description()
