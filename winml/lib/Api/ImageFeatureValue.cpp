@@ -396,7 +396,7 @@ std::optional<ImageFeatureValue::ImageResourceMetadata> ImageFeatureValue::GetIn
   }
   
   //NCHW layout
-  auto imageTensorDescriptor = CreateImageTensorDescriptor(tensorKind, pixelFormat.value(), m_batchSize, descriptorWidth, descriptorHeight);
+  auto imageTensorDescriptor = CreateImageTensorDescriptor(tensorKind, pixelFormat.value(), pixelRange, m_batchSize, descriptorWidth, descriptorHeight);
 
   return ImageResourceMetadata{bounds, imageTensorDescriptor};
 }
