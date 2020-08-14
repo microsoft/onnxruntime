@@ -641,7 +641,7 @@ class TestInferenceSession(unittest.TestCase):
         # "Dim1" and "Dim2" have values assigned to them.
         self.assertEqual(input_shape, [4, 6, 5])
 
-    def testSessionOptionsRegisterCustomOpsLibrary(self):
+    def testRegisterCustomOpsLibrary(self):
         if sys.platform.startswith("win"):
             shared_library = 'custom_op_library.dll'
             if not os.path.exists(shared_library):

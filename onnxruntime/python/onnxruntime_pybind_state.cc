@@ -215,11 +215,20 @@ CustomOpLibrary::CustomOpLibrary(const char* library_path, OrtSessionOptions& or
     auto* status = RegisterCustomOps(&ort_so, OrtGetApiBase());
 
     if (status) {
-      // A non-nullptr indicates some error
-      // Free status and throw
+      // A non-nullptr indicates status indicates some error
+
+      // TODO: How to handle unload failure ?
+      // Currently we ignore the returned status assuming it is successful
       platform_env.UnloadDynamicLibrary(library_handle_);
+
+      // Construct error message string
+      std::string error_string = status->msg;
+
+      // Free status
       ::free(status);
-      throw std::runtime_error("TODO");
+
+      // Throw
+      throw std::runtime_error(error_string);
     }
 
     // No status to free if it is a nullptr
@@ -228,7 +237,11 @@ CustomOpLibrary::CustomOpLibrary(const char* library_path, OrtSessionOptions& or
 
 // Unload the library when the destructor is triggered
 CustomOpLibrary::~CustomOpLibrary() {
-  platform_env.UnloadDynamicLibrary(library_handle_);
+  auto status = platform_env.UnloadDynamicLibrary(library_handle_);
+
+  if (!status.IsOK()) {
+    throw std::runtime_error("Unable to unload a custom op shared library");
+  }
 }
 
 void CustomOpLibraries::AddLibrary(std::unique_ptr<CustomOpLibrary> custom_op_library) {
@@ -1120,7 +1133,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
               options->custom_op_domains_.push_back(std::move(ptr));
             }
           },
-          "TODO");
+          "Rpbdoc(Specify the path to the shared library containing the custom op kernels required to run a model.)pbdoc");
 
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())
