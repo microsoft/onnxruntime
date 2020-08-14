@@ -1496,7 +1496,7 @@ def paths_to_execution_provider(args):
     '''return paths to current execution provider delaration file'''
 
     dir_path = os.path.dirname(os.path.abspath(__file__)) +\
-               '/../../onnxruntime/core/providers/{ep}/{ep}_execution_provider.cc'
+        '/../../onnxruntime/core/providers/{ep}/{ep}_execution_provider.cc'
     ep_paths = [os.path.abspath(dir_path.format(ep='cpu'))]
 
     if args.use_cuda:
@@ -1537,7 +1537,7 @@ def main():
 
         rewrite_providers(include_ops_by_model, include_ops_by_file, paths_to_execution_provider(args))
 
-        args.test = False #disable tests since we don't know which ops are enabled
+        args.test = False  # disable tests since we don't know which ops are enabled
 
     if args.use_tensorrt:
         args.use_cuda = True
