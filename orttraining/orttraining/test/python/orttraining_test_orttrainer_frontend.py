@@ -711,6 +711,39 @@ def testORTTrainerMixedPrecisionLossScaler(seed, device, expected_loss, fetches)
     assert trainer._onnx_model is not None
 
 
+@pytest.mark.parametrize("seed,device,gradient_accumulation_steps,total_steps,expected_loss", [
+    (0, 'cuda', 1, 12, [10.5368022919, 10.4146203995, 10.3635568619, 10.2650547028, 10.2284049988, 10.1304626465,\
+        10.0853414536, 9.9987659454, 9.9472427368, 9.8832416534, 9.8223171234, 9.8222122192]),
+    (42, 'cuda', 3, 12, [10.6455879211, 10.6247081757, 10.6361322403, 10.5187482834, 10.5345087051, 10.5487670898,\
+        10.4833698273, 10.4600019455, 10.4535751343, 10.3774127960, 10.4144191742, 10.3757553101]),
+    (123, 'cuda', 7, 12, [10.5353469849, 10.5261383057, 10.5240392685, 10.5013713837, 10.5678377151, 10.5452117920,\
+        10.5184345245, 10.4271221161, 10.4458627701, 10.4864749908, 10.4416503906, 10.4467563629]),
+    (321, 'cuda', 12, 12, [10.5773944855, 10.5428829193, 10.5974750519, 10.5416746140, 10.6009902954, 10.5684127808,\
+        10.5759754181, 10.5636739731, 10.5613927841, 10.5825119019, 10.6031589508, 10.6199369431]),
+])
+def testORTTrainerGradientAccumulation(seed, device, gradient_accumulation_steps, total_steps, expected_loss):
+    torch.manual_seed(seed)
+    set_seed(seed)
+
+    # Setup ORTTrainer
+    options = orttrainer.ORTTrainerOptions({'device' : {'id' : device},
+                                            'batch' : {'gradient_accumulation_steps' : gradient_accumulation_steps},
+                                            'debug' : {'deterministic_compute' : True}})
+    model, model_desc, my_loss, batcher_fn, train_data, val_data, _ = _load_pytorch_transformer_model(device)
+    optim_config = optim.LambConfig(lr=0.001)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
+
+    # Training loop
+    actual_loss = []
+    for i in range(total_steps):
+        data, targets = batcher_fn(train_data, i)
+        loss, _ = trainer.train_step(data, targets)
+        actual_loss.append(loss.cpu())
+
+    # Compare legacy vs experimental APIs
+    _test_helpers.assert_model_outputs(expected_loss, actual_loss, rtol=1e-6)
+
+
 ###############################################################################
 # Temporary tests comparing Legacy vs Experimental ORTTrainer APIs ############
 ###############################################################################
@@ -810,3 +843,48 @@ def testORTTrainerLegacyAndExperimentalPrecisionLossScaler(seed, device):
     assert experimental_preds_dtype == legacy_preds_dtype
     _test_helpers.assert_legacy_onnx_weights(trainer, legacy_trainer, rtol=1e-4, atol=1e-2)
     _test_helpers.assert_model_outputs(legacy_loss, experimental_loss, rtol=1e-4)
+
+
+@pytest.mark.parametrize("seed,device,gradient_accumulation_steps,total_steps", [
+    (0, 'cuda', 1, 12),
+    (42, 'cuda', 3, 12),
+    (123, 'cuda', 7, 12),
+    (321, 'cuda', 12, 12),
+])
+def testORTTrainerLegacyAndExperimentalGradientAccumulation(seed, device, gradient_accumulation_steps, total_steps):
+    # Common data
+    torch.set_printoptions(precision=10)
+
+    # Setup experimental API
+    torch.manual_seed(seed)
+    set_seed(seed)
+    options = orttrainer.ORTTrainerOptions({'device' : {'id' : device},
+                                            'batch' : {'gradient_accumulation_steps' : gradient_accumulation_steps},
+                                            'debug' : {'deterministic_compute' : True}})
+    model, model_desc, my_loss, batcher_fn, train_data, val_data, _ = _load_pytorch_transformer_model(device)
+    optim_config = optim.LambConfig(lr=0.001)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
+    # Training loop
+    experimental_loss = []
+    for i in range(total_steps):
+        data, targets = batcher_fn(train_data, i)
+        exp_loss, exp_preds = trainer.train_step(data, targets)
+        experimental_loss.append(exp_loss.cpu())
+
+    # Setup legacy API
+    torch.manual_seed(seed)
+    set_seed(seed)
+    model, (model_desc, lr_desc), _, _, _, _, _ = _load_pytorch_transformer_model(device, legacy_api=True)
+    legacy_trainer = Legacy_ORTTrainer(model, my_loss, model_desc, "LambOptimizer",
+                                       None, lr_desc, device=device,
+                                       _use_deterministic_compute=True,
+                                       gradient_accumulation_steps=gradient_accumulation_steps)
+    # Training loop
+    legacy_loss = []
+    for i in range(total_steps):
+        data, targets = batcher_fn(train_data, i)
+        leg_loss, leg_preds = legacy_trainer.train_step(data, targets, torch.tensor([optim_config.lr]))
+        legacy_loss.append(leg_loss.cpu())
+
+    # Compare legacy vs experimental APIs
+    _test_helpers.assert_model_outputs(legacy_loss, experimental_loss, rtol=1e-6)
