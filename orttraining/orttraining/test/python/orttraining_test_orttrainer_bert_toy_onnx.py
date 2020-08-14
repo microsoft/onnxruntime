@@ -28,29 +28,45 @@ import _test_helpers
 
 # Generates a sample input for the BERT model using the model desc.
 # Note: this is not a general method that can be applied to any model.
-def generate_random_input_from_model_desc(desc, seed=1):
+def generate_random_input_from_model_desc(desc, seed=1, device = "cuda:0"):
     torch.manual_seed(seed)
     set_seed(seed)
     dtype = torch.int64
     vocab_size = 30528
     num_classes = [vocab_size, 2, 2, vocab_size, 2]
-    device = "cuda:0"
+    dims = {"batch_size":16, "seq_len":1}
     sample_input = []
     for index, input in enumerate(desc['inputs']):
-        sample_input.append(torch.randint(0, num_classes[index], tuple(input[1]), dtype=dtype).to(device))
+        size = []
+        for s in input[1]:
+            if isinstance(s, (int)):
+                size.append(s)
+            else:
+                size.append(dims[s] if s in dims else 1)
+        sample_input.append(torch.randint(0,
+                            num_classes[index],
+                            tuple(size),
+                            dtype=torch.int64).to(device))
     return sample_input
 
 # Creates the model description dictionary with static dimensions
-def bert_model_description():
-    vocab_size = 30528
-    batch_size = 16
-    seq_len = 1
-    model_desc = {'inputs': [('input_ids', [batch_size, seq_len]),
-                             ('segment_ids', [batch_size, seq_len],),
-                             ('input_mask', [batch_size, seq_len],),
-                             ('masked_lm_labels', [batch_size, seq_len],),
-                             ('next_sentence_labels', [batch_size, ],)],
-                  'outputs': [('loss', [], True)]}
+def bert_model_description(dynamic_shape=True):
+    if dynamic_shape:
+        model_desc = {'inputs': [('input_ids', ['batch_size', 'seq_len']),
+                                 ('segment_ids', ['batch_size', 'seq_len'],),
+                                 ('input_mask', ['batch_size', 'seq_len'],),
+                                 ('masked_lm_labels', ['batch_size', 'seq_len'],),
+                                 ('next_sentence_labels', ['batch_size', ],)],
+                                 'outputs': [('loss', [], True)]}
+    else:
+        batch_size = 16
+        seq_len = 1
+        model_desc = {'inputs': [('input_ids', [batch_size, seq_len]),
+                                ('segment_ids', [batch_size, seq_len],),
+                                ('input_mask', [batch_size, seq_len],),
+                                ('masked_lm_labels', [batch_size, seq_len],),
+                                ('next_sentence_labels', [batch_size, ],)],
+                    'outputs': [('loss', [], True)]}
     return model_desc
 
 # A method to assign different hyper parameters for different parameter groups
@@ -175,8 +191,12 @@ def legacy_optim_params_c(name):
 ###############################################################################
 
 
-def testToyBERTModelSimpleTrainStep():
-    model_desc = bert_model_description()
+@pytest.mark.parametrize("dynamic_shape", [
+    (True),
+    (False)
+])
+def testToyBERTModelSimpleTrainStep(dynamic_shape):
+    model_desc = bert_model_description(dynamic_shape)
     model = load_bert_onnx_model()
 
     optim_config = optim.LambConfig()
