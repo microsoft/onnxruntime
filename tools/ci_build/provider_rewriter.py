@@ -48,15 +48,22 @@ def extract_ops_from_model(model_path, referred_ops):
         log.warning('Directory {} does not exist'.format(model_path))
         return referred_ops
 
+    domain_map = {'': 'kOnnxDomain',
+                  'ai.onnx': 'kOnnxDomainAlias',
+                  'ai.onnx.ml': 'kMLDomain',
+                  'com.microsoft': 'kMSDomain',
+                  'com.microsoft.nchwc': 'kMSNchwcDomain',
+                  'com.microsoft.mlfeaturizers': 'kMSFeaturizersDomain',
+                  'com.microsoft.dml': 'kMSDmlDomain',
+                  'com.intel.ai': 'kNGraphDomain',
+                  'com.xilinx': 'kVitisAIDomain'}
+
     def map_domain(domain):
 
-        if domain == 'ai.onnx.ml':
-            return 'kMLDomain'
+        if domain in domain_map:
+            return domain_map[domain]
 
-        if domain == 'com.microsoft':
-            return 'kMSDomain'
-
-        return 'kOnnxDomain'
+        return 'UnknownDomain'
 
     def extract_ops_from_graph(graph, operators):
         '''extract ops from graph and all subgraphs'''
