@@ -12,10 +12,13 @@ __author__ = "Microsoft"
 
 from onnxruntime.capi._pybind_state import get_all_providers, get_available_providers, get_device, set_seed, \
     RunOptions, SessionOptions, set_default_logger_severity, NodeArg, ModelMetadata, GraphOptimizationLevel, \
-    ExecutionMode, OrtDevice, SessionIOBinding
+    ExecutionMode, OrtDevice, SessionIOBinding, set_cuda_mem_limit, set_cuda_device_id
 from onnxruntime.capi.session import InferenceSession, IOBinding
 from onnxruntime.capi import onnxruntime_validation
 
 from onnxruntime.capi.training import *  # noqa: F403
+
+# TODO: thiagofc Temporary namespace
+from . import experimental
 
 onnxruntime_validation.check_distro_info()
