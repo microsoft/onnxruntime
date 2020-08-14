@@ -116,7 +116,7 @@ def rewrite_provider(operators, ep_path):
     onnx_versioned_op_len = len(onnx_versioned_op)
     onnx_versioned_typed_op = 'ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME'
     onnx_versioned_typed_op_len = len(onnx_versioned_typed_op)
-    version_map = {}  # {domain:{op:[v1, v2, v3 ...]}
+    version_map = {}  # {domain:{op:[v1, v2, v3 ...]}}
 
     def fill_version_map(op_type, opset_from, opset_to, domain):
         '''callback func to register op in version_map'''
@@ -253,7 +253,7 @@ def rewrite_provider(operators, ep_path):
             stripped = line.strip()
 
             if stripped.startswith('class ONNX_OPERATOR'):
-                # collection versions of ops
+                # collect op versions
 
                 next_line_offset, _ = process_lines(lines,
                                                     line_offset,
@@ -277,12 +277,12 @@ def rewrite_provider(operators, ep_path):
                     if disabled:  # comment out unused
                         file_to_write.write('//' + lines[index])
 
-                    else:  # leave as it was
+                    else:  # leave as it is
                         file_to_write.write(lines[index])
 
                 line_offset = next_line_offset
 
-            else:  # leave as it was
+            else:  # leave as it is
                 file_to_write.write(line)
                 line_offset += 1
 
