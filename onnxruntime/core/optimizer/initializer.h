@@ -26,10 +26,13 @@ class Initializer final {
     size_ = std::accumulate(dims_.begin(), dims_.end(), int64_t(1), std::multiplies<int64_t>{});
 
     switch (data_type_) {
-      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-      //reuse float16 field
-      case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16: {
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:{
         float16_data_.assign(static_cast<size_t>(size_), math::floatToHalf(0.f));
+        break;
+      }
+      case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16: {
+        // Reuse float16 field
+        float16_data_.assign(static_cast<size_t>(size_), BFloat16(0.f).val);
         break;
       }
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
@@ -248,6 +251,13 @@ class Initializer final {
         double* dst = data<double>();
         for (int i = 0; i < size_; i++) {
           tensor_proto.add_int32_data(math::doubleToHalf(dst[i]));
+        }
+        break;
+      }
+      case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16: {
+        uint16_t* dst = data<uint16_t>();
+        for (int i = 0; i < size_; i++) {
+          tensor_proto.add_int32_data(dst[i]);
         }
         break;
       }
@@ -675,7 +685,7 @@ class Initializer final {
           int index = other.size() == 1 ? 0 : i;
           for (int64_t j = 0; j < num; j++) {
             auto k = i * num + j;
-            dst[k] = BFloat16((reinterpret_cast<BFloat16*>(dst + k))->ToFloat() / (reinterpret_cast<const BFloat16*>(src + index))->ToFloat()).val;
+            dst[k] = BFloat16((reinterpret_cast<BFloat16*>(dst + k))->ToFloat() * (reinterpret_cast<const BFloat16*>(src + index))->ToFloat()).val;
           }
         }
         break;
