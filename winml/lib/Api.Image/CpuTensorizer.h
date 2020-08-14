@@ -38,7 +38,7 @@ class CpuTensorizer {
     uint32_t totalElements = channelNum * inputBounds.Width * inputBounds.Height;
 
     float scale = 1.0; 
-    uint32_t shift = 0;
+    int32_t shift = 0;
     if (pixelRange == ImageNominalPixelRange::kNormalized_0_1) {
       scale = float(1.0) / 255;
       shift = 0;
@@ -133,7 +133,7 @@ class CpuTensorizer {
     _Inout_ T* pCPUTensor,
     uint32_t totalElements,
     float scale,
-    uint32_t shift) {
+    int32_t shift) {
     for (uint32_t i = 0; i < totalElements; i ++) {
       pCPUTensor[i] = scale * pCPUTensor[i] + shift;
     }

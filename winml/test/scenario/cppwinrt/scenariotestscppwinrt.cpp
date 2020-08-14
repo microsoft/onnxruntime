@@ -1031,41 +1031,49 @@ static void Scenario22ImageBindingAsGPUTensor() {
 static void Scenario23NominalPixelRange() {
   std::wstring modulePath = FileHelpers::GetModulePath();
   std::wstring inputImagePath = modulePath + L"1080.jpg";
-  std::wstring modelPath = modulePath + L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_1.onnx";
+  std::vector<std::wstring> modelPaths = {
+    modulePath + L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_1.onnx",
+    modulePath + L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_1_1.onnx"
+  };
 
-  // load model and create session
-  auto model = LearningModel::LoadFromFilePath(modelPath);
-  auto session = LearningModelSession(model);
-  auto binding = LearningModelBinding(session);
+  for (uint32_t model_i = 0; model_i < 2; model_i++) {
+    // load model and create session
+    auto model = LearningModel::LoadFromFilePath(modelPaths[model_i]);
+    auto session = LearningModelSession(model);
+    auto binding = LearningModelBinding(session);
 
-  SoftwareBitmap softwareBitmap = FileHelpers::GetSoftwareBitmapFromFile(inputImagePath);
-  auto videoFrame = VideoFrame::CreateWithSoftwareBitmap(softwareBitmap);
-  auto imageValue = ImageFeatureValue::CreateFromVideoFrame(videoFrame);
+    SoftwareBitmap softwareBitmap = FileHelpers::GetSoftwareBitmapFromFile(inputImagePath);
+    auto videoFrame = VideoFrame::CreateWithSoftwareBitmap(softwareBitmap);
+    auto imageValue = ImageFeatureValue::CreateFromVideoFrame(videoFrame);
 
 
-  // bind input
-  auto inputs = model.InputFeatures();
-  for (auto&& input : inputs) {
-    binding.Bind(input.Name(), imageValue);
-  }
-
-  std::vector<int64_t> shape = { 1, 3, 1080, 1920 };
-  auto outputValue = TensorFloat::Create(shape);
-  binding.Bind(L"add_3", outputValue);
-
-  winrt::hstring correlationId;
-  session.EvaluateAsync(binding, correlationId).get();
-
-  auto vector = outputValue.GetAsVectorView();
-  bool output_verified = true;
-  for (unsigned int i = 0; i < vector.Size(); ++i) {
-    float val = vector.GetAt(i);
-    // because the model has single op "add", so the outputs are expected to be <=2 and >=0;
-    if (!(val <= 2 && val >= 0)) {
-      output_verified = false;
+    // bind input
+    auto inputs = model.InputFeatures();
+    for (auto&& input : inputs) {
+      binding.Bind(input.Name(), imageValue);
     }
+
+    std::vector<int64_t> shape = { 1, 3, 1080, 1920 };
+    auto outputValue = TensorFloat::Create(shape);
+    binding.Bind(L"add_3", outputValue);
+
+    winrt::hstring correlationId;
+    session.EvaluateAsync(binding, correlationId).get();
+
+    auto vector = outputValue.GetAsVectorView();
+    bool output_verified = true;
+    for (unsigned int i = 0; i < vector.Size(); ++i) {
+      float val = vector.GetAt(i);
+      // because the model has single op "add", so the outputs are expected to be <=2 and >=0;
+      if (model_i == 0 && !(val <= 2 && val >= 0)) {
+        output_verified = false;
+      }
+      if (model_i == 1 && !(val <= 2 && val >= -2)) {
+        output_verified = false;
+      }
+    }
+    WINML_EXPECT_TRUE(output_verified);
   }
-  WINML_EXPECT_TRUE(output_verified);
 }
 
 static void QuantizedModels() {
