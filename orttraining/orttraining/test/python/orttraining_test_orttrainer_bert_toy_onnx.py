@@ -326,7 +326,7 @@ def testToyBERTModelLRScheduler(initial_lr, lr_scheduler, expected_learning_rate
         learning_rates.append(trainer.options.lr_scheduler.get_last_lr()[0])
     
     _test_helpers.assert_model_outputs(learning_rates, expected_learning_rates)
-    _test_helpers.assert_model_outputs(losses, expected_losses)
+    _test_helpers.assert_model_outputs(losses, expected_losses, rtol=1e-6)
     
 
 @pytest.mark.parametrize("params, expected_losses", [
@@ -364,7 +364,7 @@ def testToyBERTModelCustomOptimParameters(params, expected_losses):
 
     _test_helpers.assert_model_outputs(losses, expected_losses, rtol=1e-6)
 
-# TODO: check if we need another test for explicitly setting the loss scaler
+# TODO: Copy the expected values from legacy api
 # Dynamic Loss Scaler implemented implicitly
 @pytest.mark.parametrize("loss_scaler", [
     (None),
@@ -604,7 +604,8 @@ def testToyBERTModelMixedPrecisionLossScalerLegacyExperimental(loss_scaler, lega
         legacy_sample_input = [*sample_input, learning_rate]
 
         legacy_losses.append(legacy_trainer.train_step(legacy_sample_input).cpu().item())
-
+    
+    _test_helpers.assert_model_outputs(experimental_losses, legacy_losses, rtol=1e-5)
     print(experimental_losses)
     print(legacy_losses)
 
