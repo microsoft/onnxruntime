@@ -704,11 +704,15 @@ GetCapability_2020_4(const onnxruntime::GraphViewer& graph_viewer, std::string d
 
       bool omit_subgraph = false;
       std::map<std::string, int> slice_map;
+      //Omitting zero dim subgraphs
       for (auto index : this_cluster) {
         const auto& node = graph_viewer.GetNode(index);
         if (node->OpType() == "Mul" || node->OpType() == "Transpose" || node->OpType() == "Unsqueeze" ||
-            node->OpType() == "Cast" || node->OpType() == "Concat" || node->OpType() == "Gather"){
+            node->OpType() == "Cast" || node->OpType() == "Concat" || node->OpType() == "Gather"
+            || node->OpType() == "Div" || node->OpType() == "Sub"){
 
+            if((node->OpType() == "Div" || node->OpType() == "Sub") && device_id != "MYRIAD")
+              continue;
             for (const auto& input : node->InputDefs()) {
               auto input_name = input->Name();
               auto it = find(cluster_graph_inputs.begin(), cluster_graph_inputs.end(), input_name);
@@ -727,9 +731,15 @@ GetCapability_2020_4(const onnxruntime::GraphViewer& graph_viewer, std::string d
           }
         }
         if(node->OpType() == "Slice"){
-          auto input_name = node->InputDefs()[0]->Name();
+          auto input = node->InputDefs()[0];
+          auto input_name = input->Name();
+          const bool is_data_int32 = input->Type()->find("int32") != std::string::npos;
           auto it = find(cluster_graph_inputs.begin(), cluster_graph_inputs.end(), input_name);
           if(it != cluster_graph_inputs.end()){
+            if(device_id == "MYRIAD" && is_data_int32){
+              omit_subgraph = true;
+              break;
+            }
             if(slice_map.count(input_name) == 0){
               slice_map[input_name] = 1;
             }
