@@ -23,6 +23,7 @@ struct CustomOpLibrary {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CustomOpLibrary);
 
  private:
+  void UnloadLibrary();
   void* library_handle_ = nullptr;
 };
 

@@ -237,6 +237,11 @@ CustomOpLibrary::CustomOpLibrary(const char* library_path, OrtSessionOptions& or
 
 // Unload the library when the destructor is triggered
 CustomOpLibrary::~CustomOpLibrary() {
+  UnloadLibrary();
+}
+
+// Logic to unload the library
+void CustomOpLibrary::UnloadLibrary() {
   auto status = platform_env.UnloadDynamicLibrary(library_handle_);
 
   if (!status.IsOK()) {
