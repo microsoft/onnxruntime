@@ -21,10 +21,13 @@ WORKDIR /stage
 
 # install curl and git
 RUN apt-get -y update &&\
+    apt-get install -y sudo git bash unattended-upgrades && \
     apt-get -y --no-install-recommends install \
         curl \
         git \
         language-pack-en
+
+RUN unattended-upgrade
 
 RUN locale-gen en_US.UTF-8 && \
     update-locale LANG=en_US.UTF-8
