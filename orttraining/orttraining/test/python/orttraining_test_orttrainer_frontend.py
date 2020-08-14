@@ -774,6 +774,49 @@ def testORTTrainerDynamicShape(dynamic_axes):
 
     assert trainer._onnx_model is not None
 
+
+@pytest.mark.parametrize("model_params", [
+    (['decoder.weight',
+      'transformer_encoder.layers.0.linear1.bias',
+      'transformer_encoder.layers.0.linear2.weight',
+      'transformer_encoder.layers.1.self_attn.out_proj.weight',
+      'transformer_encoder.layers.1.self_attn.out_proj.bias']),
+])
+def testORTTrainerFrozenWeights(model_params):
+    # Common setup
+    device = 'cuda'
+    total_steps = 10
+
+    # Setup ORTTrainer WITHOUT frozen weights
+    options = orttrainer.ORTTrainerOptions({})
+    model, model_desc, my_loss, batcher_fn,\
+        train_data, val_data, _ = _load_pytorch_transformer_model(device)
+    optim_config = optim.LambConfig(lr=0.001)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
+    for i in range(total_steps):
+        data, targets = batcher_fn(train_data, i)
+        _, _ = trainer.train_step(data, targets)
+
+    # All model_params must be in the session state
+    assert trainer._onnx_model is not None
+    session_state = trainer._training_session.get_state()
+    assert all([param in session_state for param in model_params])
+
+
+    # Setup ORTTrainer WITH frozen weights
+    options = orttrainer.ORTTrainerOptions({'utils' : {'frozen_weights' : model_params}})
+    model, _, _, _, _, _, _ = _load_pytorch_transformer_model(device)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
+    for i in range(total_steps):
+        data, targets = batcher_fn(train_data, i)
+        _, _ = trainer.train_step(data, targets)
+
+    # All model_params CANNOT be in the session state
+    assert trainer._onnx_model is not None
+    session_state = trainer._training_session.get_state()
+    assert not all([param in session_state for param in model_params])
+
+
 ###############################################################################
 # Temporary tests comparing Legacy vs Experimental ORTTrainer APIs ############
 ###############################################################################
