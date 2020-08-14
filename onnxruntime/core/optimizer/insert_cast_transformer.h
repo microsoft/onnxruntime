@@ -31,5 +31,7 @@ class InsertCastTransformer : public onnxruntime::GraphTransformer {
   // A better solution is to have a cost model to evaluate does it works to place the node on float16.
   // Here for simplify, we only force the single-node-float16 sub-graph to float32
   bool force_cpu_fp32_;
+  // Use this prefix to detect whether the node has been casted before
+  const char* insertCastPrefix = "CastDef_";
 };
 }  // namespace onnxruntime

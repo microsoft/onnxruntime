@@ -33,12 +33,14 @@ onnxruntime::NodeArg* AddCastNode(onnxruntime::Graph& graph,
                                   TypeProto* new_type,
                                   bool new_on_input,
                                   int64_t to_type,
-                                  onnxruntime::ProviderType providerType) {
+                                  onnxruntime::ProviderType providerType,
+                                  const char* insertCastPrefix) {
   //insert cast op to cast input
   int id = id_generator.Next();
 
   char str[32];
-  snprintf(str, 32, "CastDef_%d", id);
+  // Create the name for casted node with defined prefix
+  snprintf(str, 32, "%s%d", insertCastPrefix, id);
 
   auto* new_arg = &graph.GetOrCreateNodeArg(str, new_type);
 
@@ -207,6 +209,17 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
   float_tensor_proto.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
   IdGenerator id_generator;
   std::map<onnxruntime::NodeArg*, onnxruntime::NodeArg*> input_def_updates;
+
+  // Get inputName -> nodeName map to check whether the node has been casted
+  std::unordered_map<std::string, std::string> inputToNode;
+  for (onnxruntime::NodeIndex i : order) {
+    auto node = graph.GetNode(i);
+    auto& inputs = node->MutableInputDefs();
+    for (auto input : inputs) {
+      inputToNode[input->Name()] = node->Name();
+    }
+  }
+
   for (onnxruntime::NodeIndex i : order) {
     auto node = graph.GetNode(i);
     if (!node)
@@ -216,6 +229,11 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
     std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> replacement_defs;
     bool casted = false;
     for (auto input : inputs) {
+      // Check whether this Node is casted Node
+      if (node->Name().rfind(insertCastPrefix, 0) == 0) {
+        node->SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
+        continue;
+      }
       if (NeedInsertCast(node, input)) {
         auto src_arg = input;
         if (input_def_updates.count(src_arg)) {
@@ -229,7 +247,8 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
                                      false,
                                      static_cast<int64_t>(TensorProto_DataType_FLOAT),
                                      //right now we only cast for cpu cases.
-                                     onnxruntime::kCpuExecutionProvider);
+                                     onnxruntime::kCpuExecutionProvider,
+                                     insertCastPrefix);
           replacement_defs[src_arg] = dst_arg;
           input_def_updates[src_arg] = dst_arg;
         }
@@ -268,6 +287,11 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
       // then this cpu op's output will be float (if it was inferred to be float16 previously).
       // Not sure if this is always true. Handle any corner case if it does exist.
 
+      // Check whether the next node is casted node
+      if (inputToNode[output->Name()].rfind(insertCastPrefix, 0) == 0) {
+        node->SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
+        continue;
+      }
       if (output->Type() &&
           DataTypeImpl::TypeFromProto(*output->TypeAsProto()) == DataTypeImpl::GetTensorType<MLFloat16>() &&
           casted) {
@@ -279,7 +303,8 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
                                    &float_tensor_proto,
                                    true,
                                    static_cast<int64_t>(TensorProto_DataType_FLOAT16),
-                                   onnxruntime::kCpuExecutionProvider);
+                                   onnxruntime::kCpuExecutionProvider,
+                                   insertCastPrefix);
         replacement_defs[dst_arg] = src_arg;
       }
     }
