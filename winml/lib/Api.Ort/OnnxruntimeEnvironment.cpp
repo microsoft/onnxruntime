@@ -30,7 +30,7 @@ static bool IsCurrentModuleInSystem32() {
 }
 
 static HRESULT GetOnnxruntimeLibrary(HMODULE& module) {
-#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP)
+#if WINAPI_FAMILY == WINAPI_FAMILY_PC_APP
   auto out_module = LoadPackagedLibrary(L"onnxruntime.dll", 0);
 #else
   DWORD flags = 0;

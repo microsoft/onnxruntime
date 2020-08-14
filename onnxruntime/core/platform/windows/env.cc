@@ -494,7 +494,7 @@ class WindowsEnv : public Env {
   }
 
   virtual Status LoadDynamicLibrary(const std::string& library_filename, void** handle) const override {
-#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP)
+#if WINAPI_FAMILY == WINAPI_FAMILY_PC_APP
     *handle = ::LoadPackagedLibrary(ToWideString(library_filename).c_str(), 0);
 #else
     *handle = ::LoadLibraryExA(library_filename.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
