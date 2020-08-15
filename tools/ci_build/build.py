@@ -1495,42 +1495,48 @@ def generate_documentation(source_dir, build_dir, configs):
 def paths_to_execution_provider(args):
     '''return paths to current execution provider delaration file'''
 
-    dir_path = os.path.dirname(os.path.abspath(__file__)) +\
+    ep_path = os.path.dirname(os.path.abspath(__file__)) +\
         '/../../onnxruntime/core/providers/{ep}/{ep}_execution_provider.cc'
-    ep_paths = [os.path.abspath(dir_path.format(ep='cpu'))]
+
+    contrib_ep_path = os.path.dirname(os.path.abspath(__file__)) +\
+        '/../../onnxruntime/contrib_ops/{ep}/{ep}_contrib_kernels.cc'
+
+    ep_paths = [os.path.abspath(ep_path.format(ep='cpu')),
+                os.path.abspath(contrib_ep_path.format(ep='cpu'))]
 
     if args.use_cuda:
-        ep_paths.append(os.path.abspath(dir_path.format(ep='cuda')))
+        ep_paths.append(os.path.abspath(ep_path.format(ep='cuda')))
+        ep_paths.append(os.path.abspath(contrib_ep_path.format(ep='cuda')))
 
     if args.use_tensorrt:
-        ep_paths.append(os.path.abspath(dir_path.format(ep='tensorrt')))
+        ep_paths.append(os.path.abspath(ep_path.format(ep='tensorrt')))
 
     if args.use_openvino:
-        ep_paths.append(os.path.abspath(dir_path.format(ep='openvino')))
+        ep_paths.append(os.path.abspath(ep_path.format(ep='openvino')))
 
     if args.use_dnnl:
-        ep_paths.append(os.path.abspath(dir_path.format(ep='dnnl')))
+        ep_paths.append(os.path.abspath(ep_path.format(ep='dnnl')))
 
     if args.use_migraphx:
-        ep_paths.append(os.path.abspath(dir_path.format(ep='migraphx')))
+        ep_paths.append(os.path.abspath(ep_path.format(ep='migraphx')))
 
     if args.use_nuphar:
-        ep_paths.append(os.path.abspath(dir_path.format(ep='nuphar')))
+        ep_paths.append(os.path.abspath(ep_path.format(ep='nuphar')))
 
     if args.use_ngraph:
-        ep_paths.append(os.path.abspath(dir_path.format(ep='ngraph')))
+        ep_paths.append(os.path.abspath(ep_path.format(ep='ngraph')))
 
     if args.use_vitisai:
-        ep_paths.append(os.path.abspath(dir_path.format(ep='vitisai')))
+        ep_paths.append(os.path.abspath(ep_path.format(ep='vitisai')))
 
     if args.use_rknpu:
-        ep_paths.append(os.path.abspath(dir_path.format(ep='rknpu')))
+        ep_paths.append(os.path.abspath(ep_path.format(ep='rknpu')))
 
     if args.use_acl:
-        ep_paths.append(os.path.abspath(dir_path.format(ep='acl')))
+        ep_paths.append(os.path.abspath(ep_path.format(ep='acl')))
 
     if args.use_armnn:
-        ep_paths.append(os.path.abspath(dir_path.format(ep='armnn')))
+        ep_paths.append(os.path.abspath(ep_path.format(ep='armnn')))
 
     return ep_paths
 
