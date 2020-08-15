@@ -24,7 +24,10 @@ from onnxruntime.capi import onnxruntime_validation
 
 from onnxruntime.capi.training import *  # noqa: F403
 
-# TODO: thiagofc Temporary namespace
-from . import experimental
+# TODO: thiagofc: Temporary experimental namespace for new PyTorch front-end
+try:
+    from . import experimental
+except ImportError:
+    pass
 
 onnxruntime_validation.check_distro_info()

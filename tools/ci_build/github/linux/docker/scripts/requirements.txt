@@ -1,3 +1,4 @@
+cerberus
 numpy==1.16.6
 requests==2.24.0
 mypy

@@ -218,9 +218,6 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/backend
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/training
-  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental
-  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/amp
-  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/optim
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/datasets
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/tools
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/tools/featurizer_ops
@@ -250,15 +247,6 @@ add_custom_command(
       ${onnxruntime_python_capi_training_srcs}
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/training/
   COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_python_root_srcs}
-      $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/
-  COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_python_amp_srcs}
-      $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/amp/
-  COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_python_optim_srcs}
-      $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/optim/
-  COMMAND ${CMAKE_COMMAND} -E copy
       $<TARGET_FILE:onnxruntime_pybind11_state>
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
   COMMAND ${CMAKE_COMMAND} -E copy
@@ -280,6 +268,24 @@ add_custom_command(
       ${REPO_ROOT}/VERSION_NUMBER
       $<TARGET_FILE_DIR:${test_data_target}>
 )
+
+if (onnxruntime_ENABLE_TRAINING)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/amp
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/optim
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_root_srcs}
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_amp_srcs}
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/amp/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_optim_srcs}
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/optim/
+  )
+endif()
 
 if (onnxruntime_USE_DNNL)
   add_custom_command(
