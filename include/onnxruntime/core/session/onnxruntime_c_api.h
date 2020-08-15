@@ -76,6 +76,9 @@ extern "C" {
 #ifdef __cplusplus
 // For any compiler with C++11 support, MSVC 2015 and greater, or Clang version supporting noexcept.
 // Such complex condition is needed because compilers set __cplusplus value differently.
+#ifndef __has_feature
+#define __has_feature(x) 0
+#endif
 #if ((__cplusplus >= 201103L) || (_MSC_VER >= 1900) || (defined(__has_feature) && __has_feature(cxx_noexcept)))
 #define NO_EXCEPTION noexcept
 #else
