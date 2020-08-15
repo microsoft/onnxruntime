@@ -7,7 +7,6 @@
 #include "core/framework/allocatormgr.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/memcpy.h"
-#include "core/framework/op_kernel.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/graph_utils.h"
@@ -61,24 +60,14 @@ ONNX_OPERATOR_KERNEL_EX(
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMIGraphXExecutionProvider, kOnnxDomain, 1, MemcpyFromHost);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMIGraphXExecutionProvider, kOnnxDomain, 1, MemcpyToHost);
 
-template <>
-KernelCreateInfo BuildKernelCreateInfo<void>() {
-  KernelCreateInfo info;
-  return info;
-}
-
 static void RegisterMIGraphXKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
-      BuildKernelCreateInfo<void>, //default entry to avoid the list become empty after ops-reducing
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kMIGraphXExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kMIGraphXExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
   };
 
   for (auto& function_table_entry : function_table) {
-    KernelCreateInfo info = function_table_entry();
-    if (info.kernel_def != nullptr) {  // filter disabled entries where type is void
-      ORT_ENFORCE(kernel_registry.Register(std::move(info)).IsOK());
-    }
+    kernel_registry.Register(function_table_entry());
   }
 }
 

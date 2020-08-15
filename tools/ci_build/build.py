@@ -1509,36 +1509,6 @@ def paths_to_execution_provider(args):
         ep_paths.append(os.path.abspath(ep_path.format(ep='cuda')))
         ep_paths.append(os.path.abspath(contrib_ep_path.format(ep='cuda')))
 
-    if args.use_tensorrt:
-        ep_paths.append(os.path.abspath(ep_path.format(ep='tensorrt')))
-
-    if args.use_openvino:
-        ep_paths.append(os.path.abspath(ep_path.format(ep='openvino')))
-
-    if args.use_dnnl:
-        ep_paths.append(os.path.abspath(ep_path.format(ep='dnnl')))
-
-    if args.use_migraphx:
-        ep_paths.append(os.path.abspath(ep_path.format(ep='migraphx')))
-
-    if args.use_nuphar:
-        ep_paths.append(os.path.abspath(ep_path.format(ep='nuphar')))
-
-    if args.use_ngraph:
-        ep_paths.append(os.path.abspath(ep_path.format(ep='ngraph')))
-
-    if args.use_vitisai:
-        ep_paths.append(os.path.abspath(ep_path.format(ep='vitisai')))
-
-    if args.use_rknpu:
-        ep_paths.append(os.path.abspath(ep_path.format(ep='rknpu')))
-
-    if args.use_acl:
-        ep_paths.append(os.path.abspath(ep_path.format(ep='acl')))
-
-    if args.use_armnn:
-        ep_paths.append(os.path.abspath(ep_path.format(ep='armnn')))
-
     return ep_paths
 
 
