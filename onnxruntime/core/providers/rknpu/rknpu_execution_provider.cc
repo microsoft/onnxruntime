@@ -11,6 +11,7 @@
 #include "core/common/logging/logging.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
+#include "core/framework/op_kernel.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/inference_session.h"
 #include "core/graph/model.h"

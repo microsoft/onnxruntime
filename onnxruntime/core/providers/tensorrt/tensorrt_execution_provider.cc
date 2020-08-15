@@ -130,7 +130,7 @@ KernelCreateInfo BuildKernelCreateInfo<void>() {
 }
 
 static Status RegisterTensorrtKernels(Provider_KernelRegistry& kernel_registry) {
-  static const Provider_BuildKernelCreateInfoFn function_table[] = {
+  static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<void>, //default entry to avoid the list become empty after ops-reducing
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,

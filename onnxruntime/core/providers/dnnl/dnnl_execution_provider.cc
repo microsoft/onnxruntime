@@ -6,6 +6,7 @@
 #endif
 
 #include "core/providers/shared_library/provider_api.h"
+#include "core/framework/op_kernel.h"
 #include <unordered_set>
 #include "subgraph/dnnl_func_kernel.h"
 #include "dnnl_execution_provider.h"
@@ -62,7 +63,7 @@ KernelCreateInfo BuildKernelCreateInfo<void>() {
 }
 
 Status RegisterDNNLKernels(Provider_KernelRegistry& kernel_registry) {
-  static const Provider_BuildKernelCreateInfoFn function_table[] = {
+  static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<void>, //default entry to avoid the list become empty after ops-reducing
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDnnlExecutionProvider, kOnnxDomain, 7, Gemm)>,
   };

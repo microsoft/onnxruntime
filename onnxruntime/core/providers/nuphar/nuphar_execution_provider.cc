@@ -7,6 +7,7 @@
 #include "core/common/cpuid_info.h"
 #include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/framework/op_kernel.h"
 #include "core/providers/nuphar/common/analysis/shape_expr.h"  // TODO: remove this shape_expr after shape_infernece refinement
 #include "core/providers/nuphar/common/analysis/subgraph_partition_stats.h"
 #include "core/providers/nuphar/common/nuphar_settings.h"

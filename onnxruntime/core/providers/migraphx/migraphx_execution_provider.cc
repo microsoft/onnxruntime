@@ -7,6 +7,7 @@
 #include "core/framework/allocatormgr.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/memcpy.h"
+#include "core/framework/op_kernel.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/graph_utils.h"
