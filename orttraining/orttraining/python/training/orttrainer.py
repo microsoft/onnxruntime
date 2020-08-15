@@ -1,3 +1,4 @@
+import copy
 import io
 import os
 import onnx
@@ -8,12 +9,11 @@ import onnxruntime as ort
 from . import optim, ORTTrainerOptions, _utils
 from .model_desc_validation import _ORTTrainerModelDesc
 from .. import postprocess
-from onnxruntime.capi._pybind_state import set_cuda_mem_limit
-from onnxruntime.capi._pybind_state import set_cuda_device_id
+from onnxruntime.capi._pybind_state import set_cuda_mem_limit,\
+                                           set_cuda_device_id
 
 class TrainStepInfo(object):
-    r"""Private class used to store runtime information from current train step.
-
+    r"""
     After every train step, :py:meth:`ORTTrainer.train_step` updates the internal instance of
     :py:class:`.TrainStepInfo` residing on :py:class:`.ORTTrainer` with relevant information
     from the forward pass.
@@ -24,29 +24,33 @@ class TrainStepInfo(object):
 
     Args:
         all_finite (bool): flag that indicates whether all gradients are still finite after last step
-        step (int): indicates current step
+        step (int): indicates current training step. Used for gradient accumulation
+        optimization_step (int): indicates the number of optimizations performed. Used for learning rate scheduling
         optimizer_config (optim._OptimizerConfig): reference to optimizer config
 
     Example:
 
         .. code-block:: python
 
-            info = TrainStepInfo(all_finite=True, step=0, optimizer_config=optim.SGDConfig(lr=0.01))
+            info = TrainStepInfo(all_finite=True, step=0, optimization_step=0, optimizer_config=optim.SGDConfig(lr=0.01))
             if info.all_finite:
                 print(f'Yay, all gradients are finite at {step} step!')
 
     """
 
-    def __init__(self, all_finite=None, step=None, optimizer_config=None):
+    def __init__(self, all_finite=None, step=None, optimization_step=None, optimizer_config=None):
         assert all_finite is None or isinstance(all_finite, bool),\
             "all_finite must be either None or a bool"
         assert step is None or (isinstance(step, int) and step >= 0),\
             "step must be either None or a positive int"
+        assert optimization_step is None or (isinstance(optimization_step, int) and step >= 0),\
+            "optimization_step must be either None or a positive int"
         assert optimizer_config is None or isinstance(optimizer_config, optim._OptimizerConfig),\
             "optimizer_config must be either None or optim._OptimizerConfig"
 
         self.all_finite = all_finite
         self.step = step
+        self.optimization_step = optimization_step
         self.optimizer_config = optimizer_config
 
 
@@ -119,7 +123,7 @@ class ORTTrainer(object):
         assert loss_fn is None or (callable(loss_fn) and len(signature(loss_fn).parameters) == 2),\
             "'loss_fn' must be either 'None' or a callable with two parameters"
         assert options is None or isinstance(options, ORTTrainerOptions),\
-            "'loss_fn' must be either 'None' or 'ORTTrainerOptions'"
+            "'options' must be either 'None' or 'ORTTrainerOptions'"
 
         #            Model + Loss validation
         #           Supported combinarios are
@@ -147,18 +151,49 @@ class ORTTrainer(object):
         self.model_desc = _ORTTrainerModelDesc(model_desc)
         self.optim_config = optim_config
 
+        # ORTTrainerOptions
         if not options:
             options = ORTTrainerOptions()
         self.options = options
+        if self.options.mixed_precision.enabled and not self.options.mixed_precision.loss_scaler:
+            # TODO: Move this to model_desc_validation.py
+            self.options.mixed_precision.loss_scaler = amp.loss_scaler.DynamicLossScaler()
+
+        # Post processing ONNX model given as input
+        if self._onnx_model:
+            if self.options._internal_use.enable_internal_postprocess:
+                self._onnx_model = postprocess.run_postprocess(self._onnx_model)
+            if self.options._internal_use.extra_postprocess:
+                self._onnx_model = self.options._internal_use.extra_postprocess(self._onnx_model)
+
+            # When input model is already ONNX (and not exported from Pytorch within ORTTrainer),
+            # append 'dtype' from ONNX into model description's
+            for idx_i, i_desc in enumerate(self.model_desc.inputs):
+               dtype = None
+               for onnx_input in self._onnx_model.graph.input:
+                  if onnx_input.name == i_desc.name:
+                     dtype = _utils.dtype_onnx_to_torch(onnx_input.type.tensor_type.elem_type)
+                     self.model_desc.add_type_to_input_description(idx_i, dtype)
+                     break
+               assert dtype is not None, f"ONNX model with unknown input type ({i_desc.name})"
+            for idx_o, o_desc in enumerate(self.model_desc.outputs):
+                dtype = None
+                for onnx_output in self._onnx_model.graph.output:
+                    if onnx_output.name == o_desc.name:
+                        dtype = _utils.dtype_onnx_to_torch(onnx_output.type.tensor_type.elem_type)
+                        self.model_desc.add_type_to_output_description(idx_o, dtype)
+                        break
+                assert dtype is not None, f"ONNX model with unknown output type ({o_desc.name})"
 
         # Set GPU device and memory limit
-        device_id = self.options.device.id
-        if 'cuda' in device_id.lower():
-            set_cuda_mem_limit(int(self.options.device.mem_limit))
-            if ':' in device_id:
-                set_cuda_device_id(int(device_id.split(':')[1]))
+        if 'cuda' in self.options.device.id.lower():
+            mem_limit = self.options.device.mem_limit
+            if  mem_limit > 0:
+                set_cuda_mem_limit(self.options.device.mem_limit)
+            set_cuda_device_id(_utils.get_device_index(self.options.device.id))
 
-        self._train_step_info = TrainStepInfo(all_finite=True, step=0, optimizer_config=self.optim_config)
+        self._train_step_info = TrainStepInfo(all_finite=True, step=0, optimization_step=0, optimizer_config=self.optim_config)
+        self._init_session()
 
     def eval_step(self, *args, **kwargs):
         r"""Evaluation step method
@@ -182,7 +217,7 @@ class ORTTrainer(object):
                 raise RuntimeError("Model is uninitialized. Only ONNX and PyTorch models are supported")
 
         # Prepare input/output description
-        input_desc = self.model_desc.inputs[:len(sample_input)]
+        input_desc = self.model_desc.inputs
         output_desc = self.model_desc.outputs
 
         # Normalize input
@@ -200,8 +235,10 @@ class ORTTrainer(object):
                                                                 input_desc,
                                                                 output_desc,
                                                                 run_options)
-        return session_run_results[output_desc.name][0] if len (session_run_results) == 1\
-            else [session_run_results[output_desc.name] for output_desc in output_desc]
+
+        # Output must be returned in the same order as defined in the model description
+        results = [session_run_results[output_desc.name] for output_desc in self.model_desc.outputs]
+        return results[0] if len (results) == 1 else results
 
     def save_as_onnx(self, path):
         r"""Persists ONNX model into :py:attr:`path`
@@ -250,56 +287,93 @@ class ORTTrainer(object):
             sample_input = self._prepare_model_input(self.model_desc.inputs, None, None, *args, **kwargs)
             self._init_onnx_model(sample_input)
 
-        # Prepare input/output description
-        input_desc = [*self.model_desc.inputs, self.model_desc.learning_rate]
+        # Prepare inputs+lr and output descriptions
+        input_desc = self._model_desc_inputs_with_lr
         output_desc = self.model_desc.outputs
+
+        # Train step must be incremented *before* gradient accumulation code
+        # Gradients are accumulated when
+        # self._train_step_info.step % self.options.batch.gradient_accumulation_steps != 0,
+        # and they are updated otherwise
+        self._train_step_info.step += 1
+
+        # RunOptions
+        run_options = None
+        if self._train_step_info.step % self.options.batch.gradient_accumulation_steps != 0:
+            run_options = ort.RunOptions()
+            run_options.only_execute_path_to_fetches = True
+            run_options.training_mode = True
+            output_desc = self._model_desc_outputs_with_gradient_accumulation
+        elif self.options.mixed_precision.enabled:
+            output_desc = self._model_desc_outputs_with_is_finite
 
         # Update Learning Rate if Necessary
         if self.options.lr_scheduler:
             self.options.lr_scheduler.step(self._train_step_info)
 
-        # Get data. CombineTorchModelLossFn takes label as last input and outputs loss first
-        input = self._prepare_model_input(input_desc, self.optim_config.lr, None, *args, **kwargs)
+        # Loss Scale for mixed precision
+        loss_scale = None
+        if self.options.mixed_precision.enabled:
+            loss_scaler = self.options.mixed_precision.loss_scaler
+            assert loss_scaler, "Loss scaler is required when mixed precision is enabled"
+            loss_scale = torch.tensor([loss_scaler.loss_scale])
+            input_desc = self._model_desc_inputs_with_lr_and_loss_scale
 
-        # RunOptions
-        run_options = None
+        # Get data. CombineTorchModelLossFn takes label as last input and outputs loss first
+        input = self._prepare_model_input(input_desc, self.optim_config.lr, loss_scale, *args, **kwargs)
 
         # Normalize input
         if not isinstance(args, (list, tuple)):
             args = (args,)
 
-        _utils.print_tensor("new_trainer inputs:", input)
+        # _utils.print_tensor("new_trainer inputs:", input)
         # Run a train step and return
         session_run_results = self._training_session_run_helper(True, input, input_desc,
                                                                 output_desc, run_options)
-        _utils.print_tensor("new_trainer outputs:", session_run_results)
+        # _utils.print_tensor("new_trainer outputs:", session_run_results)
 
-        # Train step incremented after first train step  based on lr scheduler implementation
-        # which handles initial train step of 0.
-        self._train_step_info.step += 1
+        if self.options.mixed_precision.enabled:
+            # After session run with all_fp32_gradients_finite, we need to clear the training I/O binding's output
+            # Otherwise next run with only_execute_path_to_fetches will lead to gradient all reduce
+            # because all_fp32_gradients_finite is still in the feed.
+            self._train_io_binding.clear_binding_outputs()
 
-        return session_run_results[output_desc.name][0] if len (session_run_results) == 1\
-            else [session_run_results[output_desc.name] for output_desc in self.model_desc.outputs]
+            is_all_finite = session_run_results[self.model_desc.is_finite.name]
+            self._train_step_info.is_finite = is_all_finite
+            if loss_scaler:
+                loss_scaler.update(self._train_step_info)
+            if is_all_finite:
+                # Optimization step must be incremented *after* optimization is successful
+                self._train_step_info.optimization_step += 1
+        elif self._train_step_info.step % self.options.batch.gradient_accumulation_steps == 0:
+            # Optimization step must be incremented *after* optimization is successful
+            self._train_step_info.optimization_step += 1
+
+        # Output must be returned in the same order as defined in the model description
+        results = [session_run_results[output_desc.name] for output_desc in self.model_desc.outputs]
+        return results[0] if len (results) == 1 else results
 
     def _combine_torch_model_with_loss_fn(self):
         # Don't need to wrap model when loss_fn is not set
-        if not self.loss_fn:
-            return self._torch_model
+        # if not self.loss_fn:
+        #     return self._torch_model
 
         # Validate loss_fn
-        sig_loss = signature(self.loss_fn)
-        if len(sig_loss.parameters) != 2:
-            raise RuntimeError(
-                "loss function should take two arguments - predict and label.")
+        if self.loss_fn:
+            sig_loss = signature(self.loss_fn)
+            if len(sig_loss.parameters) != 2:
+                raise RuntimeError(
+                    "loss function should take two arguments - predict and label.")
 
         # Basic input names from model
-        input_names = [input[0] for input in self.model_desc.inputs]
+        input_names = [input.name for input in self.model_desc.inputs]
         sig = signature(self._torch_model.forward)
         ordered_input_list = list(sig.parameters.keys())
 
         # Label from loss_fn goes after model input
-        ordered_input_list = [*ordered_input_list,
-                              list(sig_loss.parameters.keys())[1]]
+        if self.loss_fn:
+            ordered_input_list = [*ordered_input_list,
+                                list(sig_loss.parameters.keys())[1]]
 
         # Check whether input names from model match inputs from ModelDescription
         match = True
@@ -311,43 +385,58 @@ class ORTTrainer(object):
         # Input can be a list or dict
         is_list_input = (match
                          or len(input_names) >= len(ordered_input_list)
-                         or not all(x in ordered_list_kes for x in input_names))
+                         or not all(x in ordered_input_list for x in input_names))
 
-        class CombineTorchModelLossFn(torch.nn.Module):
+        class WrapModel(torch.nn.Module):
             def __init__(self, model, loss_fn, input_names):
-                super(CombineTorchModelLossFn, self).__init__()
-                self.model = model
-                self.loss_fn = loss_fn
-                self.input_names = input_names
+                super(WrapModel, self).__init__()
+                self.model_ = model
+                self.loss_fn_ = loss_fn
+                self.input_names_ = input_names
 
             def forward(self, *inputs):
-                # '*inputs' is given by torch trace and matches the order of 'input_names'
-                # The 'model' input might differ from 'input_names'
-                if is_list_input:
-                    input, label = inputs[:-1], inputs[-1]
-                    preds = self.model(*input)
-                    return self.loss_fn(preds, label), preds
-                else:
-                    sig = signature(self.model.forward)
-                    ordered_input_list = list(sig.parameters.keys())
+                # *inputs is given by torch trace. It is in the order of input_names.
+                # model_ takes input in a order (which can be obtained via inspect.signature(model.forward)) different than input_names.
+                sig = signature(self.model_.forward)
+                ordered_list_keys = list(sig.parameters.keys())
 
-                    input_dict = {}
-                    for key in sig.parameters.keys():
-                        if key in self.input_names:
-                            input_dict[key] = inputs[self.input_names.index(key)]
+                input_dict = {}
+                for key in sig.parameters.keys():
+                    if key in self.input_names_:
+                        input_dict[key] = inputs[self.input_names_.index(key)]
 
-                    model_out = self.model(**input_dict)
-                    if self.loss_fn is None:
-                        return model_out
+                model_out = self.model_(**input_dict)
+                if self.loss_fn_ is None:
+                    return model_out
 
-                    label = inputs[-1]
-                    preds = model_out
-                    return self.loss_fn(preds, label), preds
+                label = inputs[-1]
+                preds = model_out
+                return self.loss_fn_(preds, label), preds
 
-        return CombineTorchModelLossFn(self._torch_model, self.loss_fn, input_names)
+        model = WrapModel(self._torch_model, self.loss_fn, input_names)
 
-    def _convert_torch_model_loss_fn_to_onnx(self, inputs):
-        device = torch.device('cpu') #torch.device(self.options.device.id)
+        return model
+
+        # return CombineTorchModelLossFn(self._torch_model, self.loss_fn, input_names)
+
+    def _convert_torch_model_loss_fn_to_onnx(self, inputs, device):
+        # Dynamic axes
+        dynamic_axes = {}
+        for input in self.model_desc.inputs:
+            symbolic_axis = {}
+            for i, axis in enumerate(input.shape):
+                if isinstance(axis, str):
+                    symbolic_axis[i] = axis
+            if len(symbolic_axis):
+                dynamic_axes[input.name] = symbolic_axis
+        for output in self.model_desc.outputs:
+            symbolic_axis = {}
+            for i, axis in enumerate(output.shape):
+                if isinstance(axis, str):
+                    symbolic_axis[i] = axis
+            if len(symbolic_axis):
+                dynamic_axes[output.name] = symbolic_axis
+
         if isinstance(inputs, torch.Tensor):
             inputs = [inputs]
         if isinstance(inputs, dict):
@@ -370,26 +459,29 @@ class ORTTrainer(object):
             sample_outputs = [sample_outputs]
 
         # Append 'dtype' for model description's inputs/outputs
-        for i, sample_input in enumerate(sample_inputs):
-            if i < len(self.model_desc.inputs):
+        for idx_i, sample_input in enumerate(sample_inputs):
+            if idx_i < len(self.model_desc.inputs):
                 self.model_desc.add_type_to_input_description(
-                    i, sample_input.dtype)
-        for i, sample_output in enumerate(sample_outputs):
-            if i < len(self.model_desc.outputs):
+                    idx_i, sample_input.dtype)
+        for idx_o, sample_output in enumerate(sample_outputs):
+            if idx_o < len(self.model_desc.outputs):
                 self.model_desc.add_type_to_output_description(
-                    i, sample_output.dtype)
+                    idx_o, sample_output.dtype)
 
         # Export the model to ONNX
         f = io.BytesIO()
         torch.onnx._export(model, tuple(sample_inputs), f,
-                           input_names=[input[0] for input in self.model_desc.inputs],
-                           output_names=[output[0] for output in self.model_desc.outputs],
+                           input_names=[input.name for input in self.model_desc.inputs],
+                           output_names=[output.name for output in self.model_desc.outputs],
                            opset_version=self.options._internal_use.onnx_opset_version,
+                           dynamic_axes=dynamic_axes,
                            _retain_param_name=True,
                            example_outputs=tuple(sample_outputs),
                            do_constant_folding=False,
                            training=torch.onnx.TrainingMode.TRAINING)
         onnx_model = onnx.load_model_from_string(f.getvalue())
+        onnx.save(onnx_model, '/bert_ort/liqun/test_out/feapi_new.onnx')
+
 
         # Remove 'model.' prefix introduced by CombineTorchModelLossFn class
         replace_name_dict = {}
@@ -412,8 +504,6 @@ class ORTTrainer(object):
 
         return onnx_model
 
-    # TODO: Test this througly along with train step, including
-    #       various optimizer parameter groups, frozen weights, loss and lr
     def _create_ort_training_session(self):
         # Validating frozen_weights names
         unused_frozen_weights = [n for n in self.options.utils.frozen_weights\
@@ -423,7 +513,7 @@ class ORTTrainer(object):
                 unused_frozen_weights))
 
         # Get loss name from model description
-        loss_name = [item.name for item in self.model_desc.outputs if len(item) == 4 and item[2]]
+        loss_name = [item.name for item in self.model_desc.outputs if item.is_loss]
         assert len(loss_name) == 1, f"Only one loss output is supported ({len(loss_name)} were specified)"
         loss_name = loss_name[0]
 
@@ -458,9 +548,10 @@ class ORTTrainer(object):
         ort_parameters.world_size = self.options.distributed.world_size
         ort_parameters.gradient_accumulation_steps = self.options.batch.gradient_accumulation_steps
         ort_parameters.allreduce_post_accumulation = self.options.distributed.allreduce_post_accumulation
-        ort_parameters.deepspeed_zero_stage = self.options.distributed.deepspeed_zero_stage
+        ort_parameters.deepspeed_zero_stage = self.options.distributed.deepspeed_zero_optimization.stage
         ort_parameters.enable_grad_norm_clip = self.options.utils.grad_norm_clip
         ort_parameters.set_gradients_as_graph_outputs = False
+        ort_parameters.use_invertible_layernorm_grad = self.options.utils.invertible_layer_norm_gradient
         ort_parameters.training_optimizer_name = self.optim_config.name
         ort_parameters.lr_params_feed_name = self.model_desc.learning_rate.name
         ort_parameters.weights_to_train = trainable_params
@@ -472,7 +563,9 @@ class ORTTrainer(object):
         session_options.use_deterministic_compute = self.options.debug.deterministic_compute
 
         # TrainingSession
-        self._training_session = ort.TrainingSession(self._onnx_model.SerializeToString(), ort_parameters, session_options)
+        self._training_session = ort.TrainingSession(self._onnx_model.SerializeToString(),
+                                                     ort_parameters,
+                                                     session_options)
 
         # I/O bindings
         self._train_io_binding = self._training_session.io_binding()
@@ -491,7 +584,13 @@ class ORTTrainer(object):
             self.options.utils.frozen_weights.extend(torch_buffers)
 
             # Export to ONNX
-            self._onnx_model = self._convert_torch_model_loss_fn_to_onnx(inputs)
+            self._onnx_model = self._convert_torch_model_loss_fn_to_onnx(inputs, 'cpu')
+
+            # Post processing for ONNX models expported from PyTorch
+            if self.options._internal_use.enable_internal_postprocess:
+                self._onnx_model = postprocess.run_postprocess(self._onnx_model)
+            if self.options._internal_use.extra_postprocess:
+                self._onnx_model = self.options._internal_use.extra_postprocess(self._onnx_model)
 
         self._init_session()
 
@@ -499,16 +598,41 @@ class ORTTrainer(object):
         if self._onnx_model is None:
             return
 
-        # Perform internal post-processing
-        if self.options._internal_use.enable_internal_postprocess:
-            self._onnx_model = postprocess.run_postprocess(self._onnx_model)
-
-        # Perform user-specified post-processing
-        if self.options._internal_use.extra_postprocess:
-            self.options._internal_use.extra_postprocess(self._onnx_model)
-
         # Create training session used by train_step
         self._create_ort_training_session()
+
+        # Update model description to update dtype when mixed precision is enabled
+        # C++ backend modifies model's output dtype from float32 to float16 for mixed precision
+        # Note that for training we must use float32 and for evaluation we must use float16
+        for idx, o_desc in enumerate(self.model_desc.outputs):
+            if (self.options.mixed_precision.enabled and o_desc.dtype == torch.float32 and
+                    not self._training_session.is_output_fp32_node(o_desc.name)):
+                self.model_desc.add_type_to_output_description(idx, o_desc.dtype, torch.float16)
+
+        # Update model description
+        self._model_desc_inputs_with_lr = [*self.model_desc.inputs, self.model_desc.learning_rate]
+
+        # Update Mixed Precision, if applicable
+        if self.options.mixed_precision.enabled:
+            self.model_desc.loss_scale_input = self._training_session.loss_scale_input_name
+            self._model_desc_inputs_with_lr_and_loss_scale = [
+                *self._model_desc_inputs_with_lr, self.model_desc.loss_scale_input]
+            self.model_desc.is_finite = _utils.get_all_gradients_finite_name_from_session(self._training_session)
+            self._model_desc_outputs_with_is_finite = [*self.model_desc.outputs, self.model_desc.is_finite]
+        elif self.options.mixed_precision.loss_scaler:
+            raise ValueError("Loss Scaler cannot be specified when Mixed Precision is not enabled")
+
+        # Update Loss Scaler Input Name, if applicable
+        if self.options.mixed_precision.enabled and self.options.mixed_precision.loss_scaler:
+            self.options.mixed_precision.loss_scaler.input_name = self.model_desc.loss_scale_input.name
+        elif not self.options.mixed_precision.enabled and self.options.mixed_precision.loss_scaler:
+            raise ValueError("Loss Scaler cannot be specified when Mixed Precision is not enabled")
+
+        # Update Gradient Accumulation, if applicable
+        if self.options.batch.gradient_accumulation_steps > 1:
+            self.model_desc.gradient_accumulation = get_gradient_accumulation_name_from_session(self._training_session)
+            self._model_desc_outputs_with_gradient_accumulation = [
+                *self.model_desc.outputs, self.model_desc.gradient_accumulation]
 
     def _prepare_model_input(self, inputs_desc, lr, loss_scale, *inputs, **kwargs):
         # Normalize input to tuple of samples
@@ -519,20 +643,46 @@ class ORTTrainer(object):
 
         # Append input from 'kwargs'
         for input_desc in inputs_desc:
-            if input_desc[0] in kwargs:
-                input = input + (kwargs[input_desc[0]],)
+            if input_desc.name in kwargs:
+                input = input + (kwargs[input_desc.name],)
 
         # Append learning rate
         extra_inputs = 0
         if lr:
             lr = torch.tensor([lr])
-            input = input + (lr,)
+            input += (lr,)
             extra_inputs += 1
-        assert len(self.model_desc.inputs) + extra_inputs == len(input)
 
+        # Append loss scale
+        if loss_scale:
+            assert self.options.mixed_precision.enabled, "Loss scale cannot be used without mixed precision"
+            loss_scale = torch.tensor(loss_scale)
+            input += (loss_scale, )
+            extra_inputs += 1
+
+        assert len(self.model_desc.inputs) + extra_inputs == len(input)
         return input
 
-    def _training_session_run_helper(self, is_train, inputs, input_descs, output_descs, run_options=None):
+    def _resolve_symbolic_dimensions(self, inputs, inputs_desc, outputs_desc):
+        outputs = copy.deepcopy(outputs_desc)
+        resolved_dims = {}
+        for input, i_desc in zip(inputs, inputs_desc):
+            for i_idx, i_axis in enumerate(i_desc.shape):
+                if isinstance(i_axis, str):
+                    resolved_dims[i_axis] = input.size()[i_idx]
+
+        for o_desc in outputs:
+            for idx_o, o_axis in enumerate(o_desc.shape):
+                if isinstance(o_axis, str):
+                    o_desc.shape[idx_o] = resolved_dims[o_axis]
+
+        unknown_dim = [o_desc.name for dim in o_desc.shape for o_desc in outputs if isinstance(dim, str)]
+        if unknown_dim:
+            raise RuntimeError(f"Cannot execute model with unknown output dimensions ({unknown_dim}")
+
+        return outputs
+
+    def _training_session_run_helper(self, is_train, inputs, inputs_desc, outputs_desc, run_options=None):
         # Select IO binding
         if is_train:
             iobinding = self._train_io_binding
@@ -540,7 +690,7 @@ class ORTTrainer(object):
             iobinding = self._eval_io_binding
 
         # Bind input tensors
-        for input, input_desc in zip(inputs, input_descs):
+        for input, input_desc in zip(inputs, inputs_desc):
             device_index = _utils.get_device_index_from_input(input)
             iobinding.bind_input(input_desc.name,
                                  input.device.type,
@@ -550,12 +700,11 @@ class ORTTrainer(object):
                                  input.data_ptr())
 
         # Bind output tensors
-        # TODO: Add support to symbolic dimensions
-        output_descs_resolved = output_descs
+        outputs_desc_resolved = self._resolve_symbolic_dimensions(inputs, inputs_desc, outputs_desc)
         result = {}
-        for output_desc in output_descs_resolved:
+        for output_desc in outputs_desc_resolved:
             torch_tensor = torch.zeros(output_desc.shape, device=self.options.device.id,
-                                       dtype=output_desc.dtype)
+                                       dtype=output_desc.dtype_amp if output_desc.dtype_amp else output_desc.dtype)
             iobinding.bind_output(output_desc.name, torch_tensor.device.type, _utils.get_device_index(self.options.device.id),
                                   _utils.dtype_torch_to_numpy(torch_tensor.dtype),
                                   list(torch_tensor.size()), torch_tensor.data_ptr())
@@ -563,7 +712,6 @@ class ORTTrainer(object):
 
         # Run a train/eval step
         self._training_session.run_with_iobinding(iobinding, run_options)
-
         return result
 
     def _update_onnx_model_initializers(self, state_tensors):

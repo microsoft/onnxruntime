@@ -13,27 +13,28 @@ class IOpBuilder {
   virtual ~IOpBuilder() = default;
 
   // Check if an operator is supported
-  virtual bool IsOpSupported(ModelBuilder& model_builder,
-                             const ONNX_NAMESPACE::NodeProto& node) = 0;
+  virtual bool IsOpSupported(ModelBuilder& model_builder, const Node& node) = 0;
 
   // Check if the initializers of this operator need preprocess
   // which will not be copied
-  virtual void AddInitializersToSkip(ModelBuilder& model_builder,
-                                     const ONNX_NAMESPACE::NodeProto& node) = 0;
+  virtual void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) = 0;
 
   // Add the operator to NNAPI model
-  virtual void AddToModelBuilder(ModelBuilder& model_builder,
-                                 const ONNX_NAMESPACE::NodeProto& node) = 0;
+  virtual Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node) ORT_MUST_USE_RESULT = 0;
 };
 
 // Generate a lookup table with IOpBuilder delegates
 // for different onnx operators
-std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>
-CreateOpBuilders();
+std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> CreateOpBuilders();
 
-void TransposeNHWCToNCHW(ModelBuilder& model_builder,
-                         const std::string& input,
-                         const std::string& output);
+// Transpose the NHWC input to NCHW output
+Status TransposeNHWCToNCHW(ModelBuilder& model_builder, const std::string& input, const std::string& output)
+    ORT_MUST_USE_RESULT;
+
+// Get the quantized input's scale and zero point for the given input
+Status GetQuantizedInputScaleAndZeroPoint(const ModelBuilder& model_builder,
+                                          const Node& node, const std::string& input_name,
+                                          float& scale, int32_t& zero_point) ORT_MUST_USE_RESULT;
 
 }  // namespace nnapi
 }  // namespace onnxruntime

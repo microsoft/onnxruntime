@@ -39,25 +39,23 @@ struct RknpuFuncState {
 
 RknpuExecutionProvider::RknpuExecutionProvider()
     : IExecutionProvider{onnxruntime::kRknpuExecutionProvider} {
-  auto default_allocator_factory = [](int) {
-    auto memory_info = onnxruntime::make_unique<OrtMemoryInfo>(RKNPU, OrtAllocatorType::OrtDeviceAllocator);
-    return onnxruntime::make_unique<CPUAllocator>(std::move(memory_info));
-  };
   DeviceAllocatorRegistrationInfo default_memory_info{
       OrtMemTypeDefault,
-      std::move(default_allocator_factory),
+      [](int) {
+        return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo(RKNPU, OrtAllocatorType::OrtDeviceAllocator));
+      },
       std::numeric_limits<size_t>::max()};
+
   InsertAllocator(CreateAllocator(default_memory_info));
 
-  auto cpu_allocator_factory = [](int) {
-    auto memory_info = onnxruntime::make_unique<OrtMemoryInfo>(
-        RKNPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput);
-    return onnxruntime::make_unique<CPUAllocator>(std::move(memory_info));
-  };
   DeviceAllocatorRegistrationInfo cpu_memory_info{
       OrtMemTypeCPUOutput,
-      std::move(cpu_allocator_factory),
+      [](int) {
+        return onnxruntime::make_unique<CPUAllocator>(
+            OrtMemoryInfo(RKNPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
+      },
       std::numeric_limits<size_t>::max()};
+
   InsertAllocator(CreateAllocator(cpu_memory_info));
 }
 
@@ -252,7 +250,7 @@ RknpuExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
       }
 
       meta_def->since_version = 1;
-      sub_graph->SetMetaDef(meta_def);
+      sub_graph->SetMetaDef(std::move(meta_def));
 
       result.push_back(
           onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));

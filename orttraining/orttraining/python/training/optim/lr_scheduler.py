@@ -92,8 +92,8 @@ class ConstantWarmupLRScheduler(_LRScheduler):
         self.warmup = warmup
 
     def _warmup_constant(self, train_step_info):
-        # Adds 1 to train_step_info.step and self.total_steps to prevent zero'ing lr
-        x = (train_step_info.step + 1) / (self.total_steps + 1)
+        # Adds 1 to train_step_info.optimization_step and self.total_steps to prevent zero'ing lr
+        x = (train_step_info.optimization_step + 1) / (self.total_steps + 1)
         if x < self.warmup:
             return x/self.warmup
         return 1.0
@@ -144,8 +144,8 @@ class CosineWarmupLRScheduler(_LRScheduler):
         self.warmup = warmup
 
     def _warmup_cosine(self, train_step_info):
-        # Adds 1 to train_step_info.step and self.total_steps to prevent zero'ing lr
-        x = (train_step_info.step + 1) / (self.total_steps + 1)
+        # Adds 1 to train_step_info.optimization_step and self.total_steps to prevent zero'ing lr
+        x = (train_step_info.optimization_step + 1) / (self.total_steps + 1)
         if x < self.warmup:
             return x/self.warmup
         return 0.5 * (1.0 + math.cos(math.pi * x))
@@ -195,8 +195,8 @@ class LinearWarmupLRScheduler(_LRScheduler):
         self.warmup = warmup
 
     def _warmup_linear(self, train_step_info):
-        # Adds 1 to train_step_info.step and self.total_steps to prevent zero'ing lr
-        x = (train_step_info.step + 1) / (self.total_steps + 1)
+        # Adds 1 to train_step_info.optimization_step and self.total_steps to prevent zero'ing lr
+        x = (train_step_info.optimization_step + 1) / (self.total_steps + 1)
         if x < self.warmup:
             return x / self.warmup
         return max((x - 1.) / (self.warmup - 1.), 0.)
@@ -250,8 +250,8 @@ class PolyWarmupLRScheduler(_LRScheduler):
         self.degree = degree
 
     def _warmup_poly(self, train_step_info):
-        # Adds 1 to train_step_info.step and self.total_steps to prevent zero'ing lr
-        x = (train_step_info.step + 1) / (self.total_steps + 1)
+        # Adds 1 to train_step_info.optimization_step and self.total_steps to prevent zero'ing lr
+        x = (train_step_info.optimization_step + 1) / (self.total_steps + 1)
         if x < self.warmup:
             return x/self.warmup
         return (1.0 - x)**self.degree

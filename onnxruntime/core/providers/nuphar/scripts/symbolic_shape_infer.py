@@ -776,10 +776,13 @@ class SymbolicShapeInference:
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], vi.type.tensor_type.elem_type, [input_rank, nz_len]))
 
     def _infer_OneHot(self, node):
-        shape = self._get_shape(node, 0)
+        sympy_shape = self._get_sympy_shape(node, 0)
+        depth = self._try_get_value(node, 1)
         axis = get_attribute(node, 'axis', -1)
-        axis = handle_negative_axis(axis, len(shape)+1)
-        new_shape = shape[:axis] + [self._new_symbolic_dim_from_output(node)] + shape[axis:]
+        axis = handle_negative_axis(axis, len(sympy_shape) + 1)
+        new_shape = get_shape_from_sympy_shape(
+            sympy_shape[:axis] + [self._new_symbolic_dim_from_output(node) if not is_literal(depth) else depth] +
+            sympy_shape[axis:])
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], self.known_vi_[node.input[2]].type.tensor_type.elem_type, new_shape))
 
@@ -898,11 +901,15 @@ class SymbolicShapeInference:
             if sizes is not None:
                 new_sympy_shape = [sympy.simplify(sympy.floor(s)) for s in sizes]
                 self._update_computed_dims(new_sympy_shape)
-            elif roi is not None and scales is not None:
+            elif scales is not None:
                 rank = len(scales)
-                assert len(roi) == 2*rank
-                roi_start = list(roi)[:rank]
-                roi_end = list(roi)[rank:]
+                if get_attribute(node, 'coordinate_transformation_mode') == 'tf_crop_and_resize':
+                    assert len(roi) == 2*rank
+                    roi_start = list(roi)[:rank]
+                    roi_end = list(roi)[rank:]
+                else:
+                    roi_start = [0]*rank
+                    roi_end = [1]*rank
                 scales = list(scales)
                 new_sympy_shape = [sympy.simplify(sympy.floor(d * (end - start) * scale)) for d, start, end, scale in zip(input_sympy_shape, roi_start, roi_end, scales)]
                 self._update_computed_dims(new_sympy_shape)

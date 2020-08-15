@@ -91,11 +91,12 @@ void Check<double>(const OpTester::Data& expected_data,
 #endif
 
   for (int i = 0; i < size; ++i) {
-    if (std::isinf(expected[i])) {  // Test infinity for equality
-      EXPECT_EQ(expected[i], output[i]) << "i:" << i;
-    } else if (std::isnan(expected[i])) {
-      EXPECT_TRUE(std::isnan(output[i])) << "Expected output " << i
-                                         << " to be NaN";
+    // NOTE: Check isnan first to work around MSVC linker bug when /LTCG:incremental is specified.
+    // If the isinf check is first the isnan check and branch gets omitted
+    if (std::isnan(expected[i])) {
+      EXPECT_TRUE(std::isnan(output[i])) << "Expected NaN. i:" << i << ", provider_type: " << provider_type;
+    } else if (std::isinf(expected[i])) {  // Test infinity for equality
+      EXPECT_EQ(expected[i], output[i]) << "Expected infinity. i:" << i << ", provider_type: " << provider_type;
     } else {
       if (!has_abs_err && !has_rel_err) {
         // the default for existing tests
@@ -142,11 +143,12 @@ void InternalNumericalCheck(const OpTester::Data& expected_data,
 #endif
 
   for (int i = 0; i < size; ++i) {
-    if (std::isinf(expected[i])) {  // Test infinity for equality
-      EXPECT_EQ(expected[i], output[i]) << "i:" << i;
-    } else if (std::isnan(expected[i])) {
-      EXPECT_TRUE(std::isnan(output[i])) << "Expected output " << i
-                                         << " to be NaN";
+    // NOTE: Check isnan first to work around MSVC linker bug when /LTCG:incremental is specified.
+    // If the isinf check is first the isnan check and branch gets omitted
+    if (std::isnan(expected[i])) {
+      EXPECT_TRUE(std::isnan(output[i])) << "Expected NaN. i:" << i << ", provider_type: " << provider_type;
+    } else if (std::isinf(expected[i])) {  // Test infinity for equality
+      EXPECT_EQ(expected[i], output[i]) << "Expected infinity. i:" << i << ", provider_type: " << provider_type;
     } else {
       if (!has_abs_err && !has_rel_err) {
         // the default for existing tests
@@ -643,6 +645,7 @@ void OpTester::Run(
     const CustomOutputVerifierFn& custom_output_verifier,
     const Graph::ResolveOptions& options) {
   SessionOptions so;
+  so.use_per_session_threads = false;
   so.session_logid = op_;
   so.session_log_verbosity_level = 1;
   so.execution_mode = execution_mode;
@@ -723,6 +726,7 @@ void OpTester::Run(
         kDmlExecutionProvider,
         kAclExecutionProvider,
         kArmNNExecutionProvider,
+        kNnapiExecutionProvider,
     };
 
     bool has_run = false;
@@ -807,7 +811,8 @@ void OpTester::Run(
           if (provider_type == onnxruntime::kNGraphExecutionProvider ||
               provider_type == onnxruntime::kOpenVINOExecutionProvider ||
               provider_type == onnxruntime::kTensorrtExecutionProvider ||
-              provider_type == onnxruntime::kNupharExecutionProvider)
+              provider_type == onnxruntime::kNupharExecutionProvider ||
+              provider_type == onnxruntime::kNnapiExecutionProvider)
             continue;
           auto reg = execution_provider->GetKernelRegistry();
           if (!KernelRegistry::HasImplementationOf(*reg, node, execution_provider->Type())) {
@@ -877,7 +882,11 @@ void OpTester::AddReferenceOutputs(const std::string& model_path) {
                  [](const onnxruntime::NodeArg* node_arg) -> std::string { return node_arg->Name(); });
 
   NameMLValMap feeds;
-  FillFeeds(feeds);
+  for (size_t i = 0; i < input_data_.size(); ++i) {
+    if (input_data_[i].def_.Exists()) {
+      feeds[input_data_[i].def_.Name()] = input_data_[i].data_;
+    }
+  }
 
   std::vector<MLValue> subgraph_fetches;
   ASSERT_TRUE((status = subgraph_session_object.Run(run_options, feeds, output_names, &subgraph_fetches)).IsOK()) << status;

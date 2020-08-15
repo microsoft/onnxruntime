@@ -81,7 +81,7 @@ class NodeArg {
   @param override_types If true, resolve the two inputs or two outputs type when different
   @returns Success unless there is existing type or shape info that can't be successfully updated. */
   common::Status UpdateTypeAndShape(const NodeArg& node_arg, bool strict, bool override_types, const logging::Logger& logger);
- 
+
   /** Gets this NodeArg as a ValueInfoProto. */
   const NodeArgInfo& ToProto() const noexcept { return node_arg_info_; }
 

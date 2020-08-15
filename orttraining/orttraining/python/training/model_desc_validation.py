@@ -4,6 +4,11 @@ import torch
 from ._utils import static_vars
 
 
+LEARNING_RATE_IO_DESCRIPTION_NAME = "__learning_rate"
+IS_FINITE_IO_DESCRIPTION_NAME = "__is_finite"
+LOSS_SCALE_INPUT_IO_DESCRIPTION_NAME = "__loss_scale_input_name"
+
+
 class _ORTTrainerModelDesc(object):
 
     def __init__(self, model_desc):
@@ -33,38 +38,206 @@ class _ORTTrainerModelDesc(object):
 
         # Normalize outputs to a list of namedtuple(name, shape, is_loss)
         self._OutputDescription = namedtuple('OutputDescription', ['name', 'shape', 'is_loss'])
-        self._OutputDescriptionTyped = namedtuple('OutputDescriptionTyped', ['name', 'shape', 'is_loss', 'dtype'])
+        self._OutputDescriptionTyped = namedtuple('OutputDescriptionTyped',
+                                                  ['name', 'shape', 'is_loss', 'dtype', 'dtype_amp'])
+
         for idx, output in enumerate(self._validated['outputs']):
+            # import pdb; pdb.set_trace()
             if len(output) == 2:
                 self._validated['outputs'][idx] = self._OutputDescription(*output, False)
             else:
                 self._validated['outputs'][idx] = self._OutputDescription(*output)
 
-        # Hard-code learning rate descriptor for the model
-        self._validated['learning_rate'] = self._InputDescriptionTyped('Learning_Rate', [1], torch.float32)
+        # Hard-code learning rate, is_finite descriptors
+        self.learning_rate = self._InputDescriptionTyped(LEARNING_RATE_IO_DESCRIPTION_NAME, [1], torch.float32)
 
         # Convert dict in object
         for k, v in self._validated.items():
             setattr(self, k, self._wrap(v))
 
-        # Keep this in the last line
-        # After this point, this class becomes immutable
-        # NOTE: The embedded lists are still muttable
-        self._initialized = True
-
     def __repr__(self):
-        return '{%s}' % str(', '.join("'%s': %s" % (k, repr(v))
-                                      for (k, v) in self.__dict__.items()
-                                      if k not in ['_main_class_name', '_original', '_validated',
-                                                   '_InputDescription', '_InputDescriptionTyped',
-                                                   '_OutputDescription', '_OutputDescriptionTyped']))
+        '''Pretty representation for a model description class'''
 
-    def __setattr__(self, k, v):
-        if hasattr(self, '_initialized'):
-            raise Exception(f"{self._main_class_name} is an immutable class")
-        return super().__setattr__(k, v)
+        pretty_msg = 'Model description:\n'
+
+        # Inputs
+        inputs = []
+        for i_desc in self.inputs:
+            if isinstance(i_desc, self._InputDescription):
+                inputs.append(f'(name={i_desc.name}, shape={i_desc.shape})')
+            elif isinstance(i_desc, self._InputDescriptionTyped):
+                inputs.append(f'(name={i_desc.name}, shape={i_desc.shape}, dtype={i_desc.dtype})')
+            else:
+                raise ValueError(f'Unexpected type {type(i_desc)} for input description')
+
+        pretty_msg += '\nInputs:'
+        for idx, item in enumerate(inputs):
+            pretty_msg += f'\n\t{idx}: {item}'
+
+        # Outputs
+        outputs = []
+        for o_desc in self.outputs:
+            if isinstance(o_desc, self._OutputDescription):
+                outputs.append(f'(name={o_desc.name}, shape={o_desc.shape})')
+            elif isinstance(o_desc, self._OutputDescriptionTyped):
+                outputs.append(f'(name={o_desc.name}, shape={o_desc.shape}, dtype={o_desc.dtype}, dtype_amp={o_desc.dtype_amp})')
+            else:
+                raise ValueError(f'Unexpected type {type(o_desc)} for output description')
+        pretty_msg += '\nOutputs:'
+        for idx, item in enumerate(outputs):
+            pretty_msg += f'\n\t{idx}: {item}'
+
+        # Learning rate
+        if self.learning_rate:
+            pretty_msg += '\nLearning rate: '
+            pretty_msg += f'(name={self.learning_rate.name}, shape={self.learning_rate.shape}, dtype={self.learning_rate.dtype})'
+
+        # Mixed precision
+        if getattr(self, IS_FINITE_IO_DESCRIPTION_NAME, None) or getattr(self, LOSS_SCALE_INPUT_IO_DESCRIPTION_NAME, None):
+            pretty_msg += '\nMixed Precision:'
+            if getattr(self, IS_FINITE_IO_DESCRIPTION_NAME, None):
+                pretty_msg += '\n\tis gradients finite: '
+                pretty_msg += f'(name={self.is_finite.name}, shape={self.is_finite.shape}, dtype={self.is_finite.dtype})'
+            if getattr(self, LOSS_SCALE_INPUT_IO_DESCRIPTION_NAME, None):
+                pretty_msg += '\n\tloss scale input name: '
+                pretty_msg += f'(name={self.loss_scale_input.name}, shape={self.loss_scale_input.shape}, dtype={self.loss_scale_input.dtype})'
+
+        return pretty_msg
+
+    def add_type_to_input_description(self, index, dtype):
+        '''Updates an existing input description at position 'index' with 'dtype' type information
+
+        Args:
+            index (int): position within 'inputs' description
+            dtype (torch.dtype): input data type
+        '''
+
+        assert isinstance(index, int) and index >= 0,\
+            "input 'index' must be a positive int"
+        assert isinstance(dtype, torch.dtype),\
+            "input 'dtype' must be a torch.dtype type"
+        existing_values = (*self.inputs[index],)
+        if isinstance(self.inputs[index], self._InputDescriptionTyped):
+            existing_values = (*existing_values[:-1],)
+        self.inputs[index] = self._InputDescriptionTyped(*existing_values, dtype)
+
+    def add_type_to_output_description(self, index, dtype, dtype_amp=None):
+        '''Updates an existing output description at position 'index' with 'dtype' type information
+
+        Args:
+            index (int): position within 'inputs' description
+            dtype (torch.dtype): input data type
+            dtype_amp (torch.dtype, default is None): input data type for evaluation with mixed precision
+        '''
+
+        assert isinstance(index, int) and index >= 0,\
+            "output 'index' must be a positive int"
+        assert isinstance(dtype, torch.dtype),\
+            "output 'dtype' must be a torch.dtype type"
+        assert dtype_amp is None or isinstance(dtype_amp, torch.dtype),\
+            "output 'dtype_amp' must be either None or torch.dtype type"
+        existing_values = (*self.outputs[index],)
+        if isinstance(self.outputs[index], self._OutputDescriptionTyped):
+            existing_values = (*existing_values[:-2],)
+        self.outputs[index] = self._OutputDescriptionTyped(*existing_values, dtype, dtype_amp)
+
+
+    @property
+    def is_finite(self):
+        return getattr(self, IS_FINITE_IO_DESCRIPTION_NAME, None)
+
+    @is_finite.setter
+    def is_finite(self, name):
+        self._add_output_description(self, name, [1], False, torch.bool, None, IS_FINITE_IO_DESCRIPTION_NAME)
+
+    @property
+    def loss_scale_input(self):
+        return getattr(self, LOSS_SCALE_INPUT_IO_DESCRIPTION_NAME, None)
+
+    @loss_scale_input.setter
+    def loss_scale_input(self, name):
+        self._add_input_description(self, name, [], torch.float32, LOSS_SCALE_INPUT_IO_DESCRIPTION_NAME)
+
+    def _add_input_description(self, node, name, shape, dtype=None, attr_name=None):
+        '''Add a new input description into the node object
+
+        If 'dtype' is specified, a typed input description namedtuple(name, shape, dtype) is created.
+        Otherwise an untyped input description namedtuple(name, shape) is created instead.
+
+        Args:
+            node (list or object): node to append input description to. When 'node' is 'self.inputs',
+                a new input description is appended to the list.
+                Otherwise, a new input description is created as an attribute into 'node' with name 'attr_name'
+            name (str): name of input description
+            shape (list): shape of input description
+            dtype (torch.dtype): input data type
+            attr_name (str, default is None): friendly name to allow direct access to the output description
+        '''
+
+        assert isinstance(name, str) and len(name) > 0, "'name' is an invalid input name"
+        assert isinstance(shape, list) and all([(isinstance(dim, int) or (isinstance(dim, str) and len(dim) > 0))\
+            for dim in shape]), "'shape' must be a list of int or str with length at least 1"
+        if id(node) == id(self.inputs):
+            assert all([name not in i_desc.name for i_desc in node]), f"'name' {name} already exists in the inputs description"
+        else:
+            assert attr_name not in dir(self), f"'attr_name' {attr_name} already exists in the 'node'"
+        assert dtype is None or isinstance(dtype, torch.dtype), "'dtype' must be either None or a torch.dtype type"
+        if dtype:
+            new_input_desc = self._InputDescriptionTyped(name, shape, dtype)
+        else:
+            new_input_desc = self._InputDescription(name, shape)
+
+        if id(node) == id(self.inputs):
+            self.inputs.append(new_input_desc)
+        else:
+            assert isinstance(attr_name, str) and len(attr_name) > 0, "Invalid 'attr_name'"
+            setattr(node, attr_name, new_input_desc)
+
+    def _add_output_description(self, node, name, shape, is_loss, dtype=None, dtype_amp=None, attr_name=None):
+        '''Add a new output description into the node object as a tuple
+
+        When (name, shape, is_loss, dtype) is specified, a typed output description is created
+        Otherwise an untyped output description (name, shape, is_loss) is created instead
+
+        Args:
+            node (list or object): node to append output description to. When 'node' is 'self.outputs',
+                a new output description is appended to the list.
+                Otherwise, a new output description is created as an attribute into 'node' with name 'attr_name'
+            name (str): name of output description
+            shape (list): shape of output description
+            is_loss (bool): specifies whether this output is a loss
+            dtype (torch.dtype): input data type
+            dtype_amp (torch.dtype, default is None): input data type for evaluation with mixed precision.
+            attr_name (str, default is None): friendly name to allow direct access to the output description
+        '''
+
+        assert isinstance(name, str) and len(name) > 0, "'name' is an invalid output name"
+        assert isinstance(shape, list) and all([(isinstance(dim, int) or (isinstance(dim, str) and len(dim) > 0))\
+            for dim in shape]), "'shape' must be a list of int or str with length at least 1"
+        assert isinstance(is_loss, bool), "'is_loss' must be a bool"
+
+        if id(node) == id(self.outputs):
+            assert all([name not in o_desc.name for o_desc in node]), f"'name' {name} already exists in the outputs description"
+            is_loss_count = 1 if is_loss else 0
+            assert all([o_desc.is_loss is False for o_desc in node]) if is_loss else True,\
+                "Only one 'is_loss' is supported at outputs description"
+        else:
+            assert attr_name not in dir(self), f"'attr_name' {attr_name} already exists in the 'node'"
+
+        assert dtype is None or isinstance(dtype, torch.dtype), "'dtype' must be either None or a torch.dtype type"
+        if dtype:
+            new_output_desc = self._OutputDescriptionTyped(name, shape, is_loss, dtype, dtype_amp=None)
+        else:
+            new_output_desc = self._OutputDescription(name, shape, is_loss)
+
+        if id(node) == id(self.outputs):
+            self.outputs.append(new_output_desc)
+        else:
+            assert isinstance(attr_name, str) and len(attr_name) > 0, "Invalid 'attr_name'"
+            setattr(node, attr_name, new_output_desc)
 
     def _wrap(self, v):
+        '''Add 'v' as self's attribute to allow direct access as self.v'''
         if isinstance(v, (list)):
             return type(v)([self._wrap(v) for v in v])
         elif isinstance(v, (self._InputDescription, self._InputDescriptionTyped,
@@ -75,22 +248,8 @@ class _ORTTrainerModelDesc(object):
         elif isinstance(v, (dict, int, float, bool, str)):
             return _ORTTrainerModelDescInternal(self._main_class_name, v) if isinstance(v, dict) else v
         else:
-            raise ValueError("Unsupported type for model_desc."
+            raise ValueError(f"Unsupported type for model_desc ({v})."
                              "Only int, float, bool, str, list, tuple and dict are supported")
-
-    def add_type_to_input_description(self, index, dtype):
-        assert isinstance(index, int) and index >= 0,\
-            "input 'index' must be a positive int"
-        assert isinstance(dtype, torch.dtype),\
-            "input 'dtype' must be a torch.dtype type"
-        self.inputs[index] = self._InputDescriptionTyped(*self.inputs[index], dtype)
-
-    def add_type_to_output_description(self, index, dtype):
-        assert isinstance(index, int) and index >= 0,\
-            "output 'index' must be a positive int"
-        assert isinstance(dtype, torch.dtype),\
-            "output 'dtype' must be a torch.dtype type"
-        self.outputs[index] = self._OutputDescriptionTyped(*self.outputs[index], dtype)
 
 
 class _ORTTrainerModelDescInternal(_ORTTrainerModelDesc):
@@ -106,11 +265,6 @@ class _ORTTrainerModelDescInternal(_ORTTrainerModelDesc):
         # Convert dict in object
         for k, v in dict(model_desc).items():
             setattr(self, k, self._wrap(v))
-
-        # Keep this in the last line
-        # After this point, this class becomes immutable
-        # NOTE: The embedded lists are still muttable
-        self._initialized = True
 
 
 def _model_desc_inputs_validation(field, value, error):

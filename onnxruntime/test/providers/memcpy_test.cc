@@ -39,9 +39,8 @@ TEST(MemcpyTest, copy1) {
 
   ONNX_NAMESPACE::ModelProto mp;
   std::ifstream model_istream("testdata/matmul_1.onnx", std::ifstream::in | std::ifstream::binary);
-  google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream);
-  const bool result = mp.ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
-  ASSERT_TRUE(result);
+  st = Model::Load(model_istream, &mp);
+  ASSERT_STATUS_OK(st);
 
   Model model(mp, nullptr, DefaultLoggingManager().DefaultLogger());
   ASSERT_STATUS_OK(model.MainGraph().Resolve());
@@ -54,7 +53,7 @@ TEST(MemcpyTest, copy1) {
                  DefaultLoggingManager().DefaultLogger(), profiler);
 
   s.CreateGraphInfo();
-  ASSERT_STATUS_OK(FinalizeSessionState(s, ORT_TSTR(""), kernel_registry_manager, nullptr));
+  ASSERT_STATUS_OK(FinalizeSessionState(s, ORT_TSTR(""), kernel_registry_manager, nullptr, SessionOptions()));
 
   AllocatorPtr allocator =
       execution_providers.Get(onnxruntime::kCpuExecutionProvider)->GetAllocator(0, OrtMemTypeDefault);

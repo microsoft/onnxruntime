@@ -25,34 +25,7 @@ void QGemmWithEigen(const TA* A_data, const TB* B_data, TY* Y_data, int M, int N
   EigenMatrixMapRowMajor<TY>(Y_data, M, N).rowwise() -= B_col_sum;
 }
 
-template <>
-void QGemm<uint8_t, int8_t, int32_t>(
-    int M,
-    int N,
-    int K,
-    const uint8_t* lhs_data,
-    int lda,
-    const uint8_t lhs_offset,
-    const int8_t* rhs_data,
-    int ldb,
-    const int8_t rhs_offset,
-    int32_t* result_data,
-    int ldc,
-    concurrency::ThreadPool* thread_pool) {
-#ifdef MLAS_SUPPORTS_GEMM_U8X8
-  MlasGemm(M, N, K, lhs_data, lda, lhs_offset, rhs_data, ldb, rhs_offset, result_data, ldc, thread_pool);
-#else
-  ORT_UNUSED_PARAMETER(thread_pool);
-
-  ORT_ENFORCE(lda == K && ldb == N && ldc == N, "For Eigen only RowMajor*RowMajor=RowMajor format is supported");
-
-  QGemmWithEigen<uint8_t, int8_t, int32_t>(lhs_data, rhs_data, result_data, M, N, K, lhs_offset, rhs_offset);
-
-#endif
-}
-
-template <>
-void QGemm<uint8_t, uint8_t, int32_t>(
+void QGemm(
     int M,
     int N,
     int K,
@@ -62,38 +35,43 @@ void QGemm<uint8_t, uint8_t, int32_t>(
     const uint8_t* rhs_data,
     int ldb,
     const uint8_t rhs_offset,
+    bool rhs_signed,
     int32_t* result_data,
     int ldc,
     concurrency::ThreadPool* thread_pool) {
 #ifdef MLAS_SUPPORTS_GEMM_U8X8
-  MlasGemm(M, N, K, lhs_data, lda, lhs_offset, rhs_data, ldb, rhs_offset, result_data, ldc, thread_pool);
+  MlasGemm(M, N, K, lhs_data, lda, lhs_offset, rhs_data, ldb, rhs_offset, rhs_signed, result_data, ldc, thread_pool);
 #else
-  ORT_ENFORCE(lda == K && ldb == N && ldc == N, "For gemmlowp only RowMajor*RowMajor=RowMajor format is supported");
+  ORT_ENFORCE(lda == K && ldb == N && ldc == N, "Only RowMajor*RowMajor=RowMajor format is supported");
 
-  GemmlowpMultiplyu8u8_s32(lhs_data, rhs_data, result_data, lhs_offset, rhs_offset, M, N, K, thread_pool);
+  if (rhs_signed) {
+    QGemmWithEigen<uint8_t, int8_t, int32_t>(lhs_data, reinterpret_cast<const int8_t*>(rhs_data), result_data, M, N, K, lhs_offset, static_cast<int8_t>(rhs_offset));
+  } else {
+    GemmlowpMultiplyu8u8_s32(lhs_data, rhs_data, result_data, lhs_offset, rhs_offset, M, N, K, thread_pool);
+  }
 #endif
 }
 
-template <typename LeftScalar, typename RightScalar>
 void QGemm(
     int M,
     int N,
     int K,
-    const LeftScalar* lhs_data,
+    const uint8_t* lhs_data,
     int lda,
-    const LeftScalar lhs_offset,
-    const RightScalar* rhs_data,
+    const uint8_t lhs_offset,
+    const uint8_t* rhs_data,
     int ldb,
-    const RightScalar rhs_offset,
+    const uint8_t rhs_offset,
+    bool rhs_signed,
     float* result_data,
     int ldc,
     const float* result_scale,
     const float* bias,
     concurrency::ThreadPool* thread_pool) {
 #ifdef MLAS_SUPPORTS_GEMM_U8X8
-  MlasGemm(M, N, K, lhs_data, lda, lhs_offset, rhs_data, ldb, rhs_offset, result_data, ldc, result_scale, bias, thread_pool);
+  MlasGemm(M, N, K, lhs_data, lda, lhs_offset, rhs_data, ldb, rhs_offset, rhs_signed, result_data, ldc, result_scale, bias, thread_pool);
 #else
-  QGemm(M, N, K, lhs_data, lda, lhs_offset, rhs_data, ldb, rhs_offset, reinterpret_cast<int32_t*>(result_data), ldc, thread_pool);
+  QGemm(M, N, K, lhs_data, lda, lhs_offset, rhs_data, ldb, rhs_offset, rhs_signed, reinterpret_cast<int32_t*>(result_data), ldc, thread_pool);
   for (int m = 0; m < M; m++) {
     if (bias != nullptr) {
       for (int n = 0; n < N; n++) {
@@ -108,37 +86,5 @@ void QGemm(
   }
 #endif
 }
-
-template void QGemm<uint8_t, int8_t>(
-    int M,
-    int N,
-    int K,
-    const uint8_t* lhs_data,
-    int lda,
-    const uint8_t lhs_offset,
-    const int8_t* rhs_data,
-    int ldb,
-    const int8_t rhs_offset,
-    float* result_data,
-    int ldc,
-    const float* result_scale,
-    const float* bias,
-    concurrency::ThreadPool* thread_pool);
-
-template void QGemm<uint8_t, uint8_t>(
-    int M,
-    int N,
-    int K,
-    const uint8_t* lhs_data,
-    int lda,
-    const uint8_t lhs_offset,
-    const uint8_t* rhs_data,
-    int ldb,
-    const uint8_t rhs_offset,
-    float* result_data,
-    int ldc,
-    const float* result_scale,
-    const float* bias,
-    concurrency::ThreadPool* thread_pool);
 
 }  // namespace onnxruntime

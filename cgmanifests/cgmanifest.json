@@ -130,6 +130,16 @@
          "component": {
             "type": "git",
             "git": {
+               "commitHash": "b31f58de6fa8bbda5353b3c77d9be4914399724d",
+               "repositoryUrl": "https://github.com/pytorch/pytorch.git"
+            },
+            "comments": "pytorch 1.6 used by onnxruntime training image"
+         }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
                "commitHash": "7389dbac82d362f296dc2746f10e43ffa1615660",
                "repositoryUrl": "https://github.com/scikit-learn/scikit-learn.git"
             }
@@ -170,15 +180,6 @@
             "git": {
                "commitHash": "950fbf183274ab7d2092f99bab6c809ae87c7054",
                "repositoryUrl": "https://github.com/NervanaSystems/ngraph.git"
-            }
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "647d4c3f4d47d9cf63fb90ec175c414a005adea7",
-               "repositoryUrl": "https://github.com/JDAI-CV/DNNLibrary.git"
             }
          }
       },
@@ -290,6 +291,27 @@
          "component": {
             "Type": "other",
             "Other": {
+               "Name": "OpenMPI",
+               "Version": "4.0.4",
+               "DownloadUrl": "https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.4.tar.gz"
+            },
+            "comments": "openmpi 4.0.4 used by onnxruntime training image"
+         }
+      },
+      {
+         "component": {
+            "Type": "git",
+            "git": {
+               "commitHash": "7db3f9c741d3dfd8dda14ffb537ed251280d2025",
+               "repositoryUrl": "https://github.com/mpi4py/mpi4py"
+            },
+            "comments": "mpi4py 3.0.3 used by onnxruntime training image"
+         }
+      },
+      {
+         "component": {
+            "Type": "other",
+            "Other": {
                "Name": "NCCL",
                "Version": "2.4.8",
                "DownloadUrl": "https://docs.nvidia.com/deeplearning/sdk/nccl-install-guide/index.html"
@@ -304,6 +326,16 @@
                "repositoryUrl": "https://android.googlesource.com/platform/frameworks/ml"
             },
             "comments": "used by onnxruntime"
+         }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "c30b7da2301202da5f9f0529966944f110e5d6e7",
+               "repositoryUrl": "https://github.com/openucx/ucx"
+            },
+            "comments": "middleware between IB verbs and OpenMPI used by onnxruntime training image"
          }
       }
    ],

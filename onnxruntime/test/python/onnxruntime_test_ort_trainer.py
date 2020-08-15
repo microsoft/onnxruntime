@@ -69,12 +69,30 @@ def generate_sample_batch(desc, batch_size, device):
     sample = generate_sample(desc_, device)
     return sample
 
+def ConvertModelDesc(model_desc):
+    new_input_descs = []
+    for input_desc in model_desc.inputs_:
+        new_input_desc = (input_desc.name_, input_desc.shape_)
+        new_input_descs.append(new_input_desc)
+
+    new_output_descs = []
+    for output_desc in model_desc.outputs_:
+        new_output_desc = (output_desc.name_, output_desc.shape_)
+        new_output_descs.append(new_output_desc)
+
+    new_model_desc = {
+        'inputs': new_input_descs,
+        'outputs': new_output_descs}
+
+    return new_model_desc
+
 def create_ort_trainer(gradient_accumulation_steps,
                         use_mixed_precision,
                         allreduce_post_accumulation,
                         use_simple_model_desc=True,
                         loss_scaler=None,
-                        deepspeed_zero_stage=0):
+                        deepspeed_zero_stage=0,
+                        new_api_trainer=False):
     model_desc = bert_model_description()
     simple_model_desc = remove_extra_info(model_desc) if use_simple_model_desc else model_desc
     learning_rate_description = ort_trainer_learning_rate_description()
@@ -92,8 +110,30 @@ def create_ort_trainer(gradient_accumulation_steps,
                        use_mixed_precision=use_mixed_precision,
                        allreduce_post_accumulation=allreduce_post_accumulation,
                        deepspeed_zero_stage = deepspeed_zero_stage)
-
     return model, model_desc, device
+
+
+def create_new_ort_trainer(
+    gradient_accumulation_steps,
+    use_mixed_precision,
+    loss_scaler=None):
+
+    onnx_model = onnx.load(get_name("bert_toy_postprocessed.onnx"))
+
+    model_desc = bert_model_description()
+    new_model_desc = ConvertModelDesc(model_desc)
+    loss_scaler = amp.DynamicLossScaler()
+    options = orttrainer.ORTTrainerOptions({
+        'device': {'id': 'cuda'},
+        'mixed_precision': {
+            'enabled': use_mixed_precision,
+            'loss_scaler': loss_scaler},
+        'debug': {'deterministic_compute': True, }
+        })
+
+    optim_config = optim.LambOptimizer()
+    model = orttrainer.ORTTrainer(onnx_model, model_desc, optim_config, loss_fn=None, options=options)
+    return model
 
 def runBertTrainingTest(gradient_accumulation_steps,
                         use_mixed_precision,
@@ -110,6 +150,10 @@ def runBertTrainingTest(gradient_accumulation_steps,
                         allreduce_post_accumulation,
                         use_simple_model_desc,
                         loss_scaler)
+    new_trainer = create_new_ort_trainer(
+        gradient_accumulation_steps,
+        use_mixed_precision,
+        loss_scaler)
 
     if loss_scaler is None:
         loss_scaler = LossScaler(model.loss_scale_input_name, True)

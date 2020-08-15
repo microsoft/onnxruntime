@@ -263,9 +263,8 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
     : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
       logging_manager_(session_env.GetLoggingManager()),
       insert_cast_transformer_("CastFloat16Transformer") {
-  google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream);
-  const bool result = model_proto_.ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
-  ORT_ENFORCE(result, "Could not parse model successfully while constructing the inference session");
+  Status st = Model::Load(model_istream, &model_proto_);
+  ORT_ENFORCE(st.IsOK(), "Could not parse model successfully while constructing the inference session");
   is_model_proto_parsed_ = true;
   // Finalize session options and initialize assets of this session instance
   ConstructorCommon(session_options, session_env);
@@ -531,12 +530,9 @@ common::Status InferenceSession::Load(std::istream& model_istream) {
 
   auto loader = [this, &model_istream](std::shared_ptr<onnxruntime::Model>& model) {
     ModelProto model_proto;
-
-    google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream);
-    const bool result = model_proto.ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
-    if (!result) {
-      return Status(common::ONNXRUNTIME, common::INVALID_PROTOBUF,
-                    "Failed to load model because protobuf parsing failed.");
+    Status st = Model::Load(model_istream, &model_proto);
+    if (!st.IsOK()) {
+      return st;
     }
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
     LoadInterOp(model_proto, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
@@ -765,9 +761,11 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
       SessionState* subgraph_session_state = session_state.GetMutableSubgraphSessionState(node.Index(), name);
       ORT_ENFORCE(subgraph_session_state, "CreateSubgraphSessionState should have created an entry earlier.");
 
-      ORT_RETURN_IF_ERROR_SESSIONID_(FinalizeSessionState(*subgraph_session_state, model_location_,
-                                                          kernel_registry_manager_, &node,
-                                                          session_options_.execution_mode));
+      ORT_RETURN_IF_ERROR_SESSIONID_(FinalizeSessionState(*subgraph_session_state,
+                                                          model_location_,
+                                                          kernel_registry_manager_,
+                                                          &node,
+                                                          session_options_));
 
       // LOGS(*session_logger_, VERBOSE) << std::make_pair(subgraph_info.session_state->GetExecutionPlan(),
       //                                                   &*subgraph_info.session_state);
@@ -941,8 +939,11 @@ common::Status InferenceSession::Initialize() {
       }
     }
 
-    ORT_RETURN_IF_ERROR_SESSIONID_(FinalizeSessionState(*session_state_, model_location_, kernel_registry_manager_,
-                                                        nullptr, session_options_.execution_mode));
+    ORT_RETURN_IF_ERROR_SESSIONID_(FinalizeSessionState(*session_state_,
+                                                        model_location_,
+                                                        kernel_registry_manager_,
+                                                        nullptr /*parent_node*/,
+                                                        session_options_));
 
     // handle any subgraphs
     ORT_RETURN_IF_ERROR_SESSIONID_(InitializeSubgraphSessions(graph, *session_state_));
@@ -991,8 +992,16 @@ const std::vector<std::string>& InferenceSession::GetRegisteredProviderTypes() c
   return execution_providers_.GetIds();
 }
 
+const ProviderOptionsMap& InferenceSession::GetAllProviderOptions() const {
+  return execution_providers_.GetAllProviderOptions();
+}
+
 const SessionOptions& InferenceSession::GetSessionOptions() const {
   return session_options_;
+}
+
+const DataTransferManager& InferenceSession::GetDataTransferManager() const {
+  return data_transfer_mgr_;
 }
 
 common::Status InferenceSession::CheckShapes(const std::string& input_name, const TensorShape& input_shape,
@@ -1131,9 +1140,10 @@ common::Status InferenceSession::ValidateOutputs(const std::vector<std::string>&
   return common::Status::OK();
 }
 
-Status InferenceSession::Run(const RunOptions& run_options, const std::vector<std::string>& feed_names,
-                             const std::vector<OrtValue>& feeds, const std::vector<std::string>& output_names,
-                             std::vector<OrtValue>* p_fetches) {
+Status InferenceSession::Run(const RunOptions& run_options,
+                             const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds,
+                             const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches,
+                             const std::vector<OrtDevice>* p_fetches_device_info) {
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.StartTime();
@@ -1171,6 +1181,16 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
     FeedsFetchesInfo info(feed_names, output_names, session_state_->GetOrtValueNameIdxMap());
     FeedsFetchesManager feeds_fetches_manager{std::move(info)};
 
+    if (p_fetches_device_info) {
+      // populate the target device info. ignored if pre-allocated fetches are provided
+      const auto& fetch_device_info = *p_fetches_device_info;
+      auto& fetch_info = feeds_fetches_manager.GetMutableFetchesDeviceCopyInfo();
+
+      for (size_t i = 0, end = output_names.size(); i < end; ++i) {
+        fetch_info[i].target_device = fetch_device_info[i];
+      }
+    }
+
     if (!run_options.run_tag.empty()) {
       LOGS(*session_logger_, INFO) << "Running with tag: " << run_options.run_tag;
     }
@@ -1206,7 +1226,6 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
     ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
                                                  session_options_.execution_mode, run_options.terminate, run_logger,
                                                  run_options.only_execute_path_to_fetches));
-
   } catch (const std::exception& e) {
     retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
   } catch (...) {
@@ -1270,7 +1289,7 @@ common::Status InferenceSession::Run(const RunOptions& run_options, const NameML
     feeds.push_back(pair.second);
   }
 
-  return Run(run_options, feed_names, feeds, output_names, p_fetches);
+  return Run(run_options, feed_names, feeds, output_names, p_fetches, nullptr);
 }
 
 std::pair<common::Status, const ModelMetadata*> InferenceSession::GetModelMetadata() const {
@@ -1341,7 +1360,7 @@ common::Status InferenceSession::Run(const RunOptions& run_options, IOBinding& i
   // TODO should Run() call io_binding.SynchronizeInputs() or should it let the callers do it?
   // io_binding.SynchronizeInputs();
   return Run(run_options, io_binding.GetInputNames(), io_binding.GetInputs(), io_binding.GetOutputNames(),
-             &io_binding.GetOutputs());
+             &io_binding.GetOutputs(), &io_binding.GetOutputsDeviceInfo());
 }
 
 common::Status InferenceSession::Run(IOBinding& io_binding) {
@@ -1382,6 +1401,10 @@ std::string InferenceSession::EndProfiling() {
   LOGS(*session_logger_, ERROR) << "Could not write a profile because no model was loaded.";
   return std::string();
 }
+
+AllocatorPtr InferenceSession::GetAllocator(const OrtMemoryInfo& mem_info) const {
+  return session_state_->GetAllocator(mem_info);
+ }
 
 // assumes model has already been loaded before
 common::Status InferenceSession::DoPostLoadProcessing(onnxruntime::Model& model) {
@@ -1540,9 +1563,8 @@ common::Status InferenceSession::WaitForNotification(Notification* p_executor_do
   return Status::OK();
 }
 
-SessionIOBinding::SessionIOBinding(InferenceSession* session) {
+SessionIOBinding::SessionIOBinding(InferenceSession* session) : sess_(session) {
   ORT_ENFORCE(session->NewIOBinding(&binding_).IsOK());
-  sess_ = session;
 }
 
 InferenceSession* SessionIOBinding::GetInferenceSession() {

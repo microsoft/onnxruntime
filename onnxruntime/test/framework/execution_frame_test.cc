@@ -337,7 +337,7 @@ TEST(ExecutionFrameTestInit, InitializerAsOutput) {
     results[0].Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
                     DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
     RunOptions ro;
-    ASSERT_STATUS_OK(session.Run(ro, {}, {}, {"values"}, &results));
+    ASSERT_STATUS_OK(session.Run(ro, {}, {}, {"values"}, &results, nullptr));
 
     EXPECT_EQ(results[0].Get<Tensor>().DataRaw(), orig_buffer);
     EXPECT_THAT(results[0].Get<Tensor>().DataAsSpan<float>(), ::testing::ContainerEq(gsl::make_span(expected)));
@@ -361,7 +361,7 @@ TEST(ExecutionFrameTestInit, InitializerAsOutput) {
 
     std::vector<OrtValue> results;
     RunOptions ro;
-    ASSERT_STATUS_OK(session.Run(ro, {}, {}, {"values"}, &results));
+    ASSERT_STATUS_OK(session.Run(ro, {}, {}, {"values"}, &results, nullptr));
 
     // output buffer should not be the same as the initializer in SessionState
     const auto& initializers = session.GetSessionState().GetInitializedTensors();

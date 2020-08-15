@@ -31,8 +31,8 @@ class ORTTrainerOptions(object):
                     'schema' : {
                         'gradient_accumulation_steps' : {
                             'type' : 'integer',
-                            'min' : 0,
-                            'default' : 0
+                            'min' : 1,
+                            'default' : 1
                         }
                     },
                 },
@@ -43,7 +43,7 @@ class ORTTrainerOptions(object):
                     'schema' : {
                         'id' : {
                             'type' : 'string',
-                            'default' : 'cpu'
+                            'default' : 'cuda'
                         },
                         'mem_limit' : {
                             'type' : 'integer',
@@ -120,6 +120,10 @@ class ORTTrainerOptions(object):
                         },
                         'grad_norm_clip' : {
                             'type' : 'boolean',
+                            'default' : True
+                        },
+                        'invertible_layer_norm_gradient' : {
+                            'type' : 'boolean',
                             'default' : False
                         }
                     }
@@ -162,11 +166,11 @@ class ORTTrainerOptions(object):
     Keyword arguments:
         batch (dict):
             batch related settings
-        batch.gradient_accumulation_steps (int, 0):
+        batch.gradient_accumulation_steps (int, default is 1):
             number of steps to accumulate before do collective gradient reduction
         device (dict):
             compute device related settings
-        device.id (string, default is 'cpu'):
+        device.id (string, default is 'cuda'):
             device to run training
         device.mem_limit (int):
             maximum memory size (in bytes) used by device.id
@@ -200,8 +204,10 @@ class ORTTrainerOptions(object):
             miscellaneous options
         utils.frozen_weights (list of str, []):
             list of model parameter names to skip training (weights don't change)
-        utils.grad_norm_clip (bool, default is False):
+        utils.grad_norm_clip (bool, default is True):
             enables gradient norm clipping for 'AdamOptimizer' and 'LambOptimizer'
+        utils.invertible_layer_norm_gradient (bool, default is False):
+            enables use of invertible layer norm gradients
         debug (dict):
             debug options
         debug.deterministic_compute (bool, default is False)
@@ -211,7 +217,7 @@ class ORTTrainerOptions(object):
         _internal_use.enable_internal_postprocess (bool, default is True):
             enable internal internal post processing of the ONNX model
         _internal_use.extra_postprocess (callable, default is None)
-            a functor to postprocess the ONNX model.
+            a functor to postprocess the ONNX model and return a new ONNX model.
             It does not override :py:attr:`._internal_use.enable_internal_postprocess`, but complement it
         _internal_use.onnx_opset_version (int, default is 12):
             ONNX opset version used during model exporting.
@@ -255,19 +261,10 @@ class ORTTrainerOptions(object):
         for k, v in self._validated_opts.items():
             setattr(self, k, self._wrap(v))
 
-        # Keep this in the last line
-        # After this point, this class becomes immutable
-        self._initialized = True
-
     def __repr__(self):
         return '{%s}' % str(', '.join("'%s': %s" % (k, repr(v))
                                       for (k, v) in self.__dict__.items()
-                                      if k not in ['_original_opts', '_validated_opts', '_initialized']))
-
-    def __setattr__(self, k, v):
-        if hasattr(self, '_initialized'):
-            raise Exception(f"{self._main_class_name} is an immutable class")
-        return super().__setattr__(k, v)
+                                      if k not in ['_original_opts', '_validated_opts', '_main_class_name']))
 
     def _wrap(self, v):
         if isinstance(v, (tuple, list, set, frozenset)):
@@ -289,10 +286,6 @@ class _ORTTrainerOptionsInternal(ORTTrainerOptions):
         # Convert dict in object
         for k, v in dict(options).items():
             setattr(self, k, self._wrap(v))
-
-        # Keep this in the last line
-        # After this point, this class becomes immutable
-        self._initialized = True
 
 
 class ORTTrainerOptionsValidator(cerberus.Validator):
@@ -327,8 +320,8 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
         'schema': {
             'gradient_accumulation_steps': {
                 'type': 'integer',
-                'min': 0,
-                'default': 0
+                'min': 1,
+                'default': 1
             }
         },
     },
@@ -339,7 +332,7 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
         'schema': {
             'id': {
                 'type': 'string',
-                'default': 'cpu'
+                'default': 'cuda'
             },
             'mem_limit': {
                 'type': 'integer',
@@ -372,11 +365,18 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'type': 'boolean',
                 'default': False
             },
-            'deepspeed_zero_stage' : {
-                'type' : 'integer',
-                'min' : 0,
-                'max' : 1,
-                'default' : 0,
+            'deepspeed_zero_optimization' : {
+                'type' : 'dict',
+                'default_setter': lambda _: {},
+                'required': False,
+                'schema': {
+                    'stage': {
+                        'type': 'integer',
+                        'min': 0,
+                        'max': 1,
+                        'default': 0
+                    },
+                }
             },
             'enable_adasum': {
                 'type': 'boolean',
@@ -416,6 +416,10 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'default': []
             },
             'grad_norm_clip': {
+                'type': 'boolean',
+                'default': True
+            },
+            'invertible_layer_norm_gradient' : {
                 'type': 'boolean',
                 'default': False
             }
