@@ -9,7 +9,7 @@ import torch
 import torch.nn
 import torch.onnx
 import onnxruntime as ort
-import onnxruntime.capi.postprocess as postprocess
+from ..experimental import postprocess
 from distutils.version import LooseVersion
 import warnings
 

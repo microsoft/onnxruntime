@@ -481,6 +481,7 @@ def install_python_deps(numpy_version=""):
                         else 'numpy>=1.16.6')
     dep_packages.append('sympy>=1.1')
     dep_packages.append('packaging')
+    dep_packages.append('cerberus')
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host',
                     'files.pythonhosted.org'] + dep_packages)
 
@@ -1104,6 +1105,7 @@ def run_training_python_frontend_tests(cwd):
         sys.executable, 'orttraining_test_transformers.py',
         'BertModelTest.test_for_pretraining_full_precision_list_and_dict_input'], cwd=cwd)
     run_subprocess([sys.executable, 'orttraining_test_orttrainer_frontend.py'], cwd=cwd)
+    run_subprocess([sys.executable, 'orttraining_test_orttrainer_bert_toy_onnx.py'], cwd=cwd)
 
 
 def run_training_python_frontend_e2e_tests(cwd):

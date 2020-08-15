@@ -6,11 +6,8 @@ import torch
 from inspect import signature
 
 import onnxruntime as ort
-from . import _utils, amp, optim, ORTTrainerOptions
+from . import _utils, amp, optim, postprocess, ORTTrainerOptions
 from .model_desc_validation import _ORTTrainerModelDesc
-from .. import postprocess
-from onnxruntime.capi._pybind_state import set_cuda_mem_limit,\
-                                           set_cuda_device_id
 
 class TrainStepInfo(object):
     r"""Private class used to store runtime information from current train step.
@@ -194,8 +191,8 @@ class ORTTrainer(object):
         if 'cuda' in self.options.device.id.lower():
             mem_limit = self.options.device.mem_limit
             if  mem_limit > 0:
-                set_cuda_mem_limit(self.options.device.mem_limit)
-            set_cuda_device_id(_utils.get_device_index(self.options.device.id))
+                ort.set_cuda_mem_limit(self.options.device.mem_limit)
+            ort.set_cuda_device_id(_utils.get_device_index(self.options.device.id))
 
         self._train_step_info = TrainStepInfo(self.optim_config)
         self._init_session()

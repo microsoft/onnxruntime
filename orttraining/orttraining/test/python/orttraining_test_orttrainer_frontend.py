@@ -6,12 +6,12 @@ import torch
 
 from numpy.testing import assert_allclose
 
-from onnxruntime.capi._pybind_state import set_seed
+from onnxruntime import set_seed
 from onnxruntime.capi.ort_trainer import IODescription as Legacy_IODescription,\
                                          ModelDescription as Legacy_ModelDescription,\
                                          LossScaler as Legacy_LossScaler,\
                                          ORTTrainer as Legacy_ORTTrainer
-from onnxruntime.capi.training import _utils, amp, optim, orttrainer, TrainStepInfo,\
+from onnxruntime.experimental import _utils, amp, optim, orttrainer, TrainStepInfo,\
                                       model_desc_validation as md_val,\
                                       orttrainer_options as orttrainer_options
 import _test_helpers
