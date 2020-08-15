@@ -896,7 +896,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
         const std::string& input_name = input->getName();
         nvinfer1::Dims dims = input->getDimensions();
         int nb_dims = dims.nbDims;
-        std::cout << "input " << i << " : input_name" << input_name << std::endl;//slx
+        std::cout << "---input " << i << " : input_name: " << input_name << std::endl;//slx
 
         // Check and update shape ranges for dynamic shape inputs
         dimension_update[input_name] = false;
@@ -1072,22 +1072,24 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
 
 {
       //slx: test getProfileDimensions() and getProfileShapeValues()
-      std::cout << "Get profile dimensions or shape values from engine:" << std::endl;
+      std::cout << "-----Get profile dimensions or shape values from engine-----" << std::endl;
       int total_bindings = trt_engine->getNbBindings();
       for (int i = 0, end = total_bindings; i < end; ++i) {
+        std::cout << "--i: " << i << ", binding name: " << trt_engine->getBindingName(i) << ":" << std::endl;
         if (trt_engine->bindingIsInput(i)) {
           nvinfer1::Dims dimensions = trt_engine->getBindingDimensions(static_cast<int>(i));
           int nb_dims = dimensions.nbDims;
-          std::cout << "i: " << i << ", input binding name: " << trt_engine->getBindingName(i) << ":" << std::endl;
+          std::cout << "input: binding name: " << trt_engine->getBindingName(i) << ":";
           if (trt_engine->isExecutionBinding(i)) {
+            std::cout << " isExecutionBinding" << std::endl;
             auto dims_min = trt_engine->getProfileDimensions(i, 0, nvinfer1::OptProfileSelector::kMIN);
             auto dims_opt = trt_engine->getProfileDimensions(i, 0, nvinfer1::OptProfileSelector::kOPT);
             auto dims_max = trt_engine->getProfileDimensions(i, 0, nvinfer1::OptProfileSelector::kMAX);
             for (int j = 0, end = nb_dims; j < end; ++j) {
               std::cout << "j: " << j << ", dims_min.d[j]: " << dims_min.d[j] << ", dims_opt.d[j]: " << dims_opt.d[j] << ", dims_max.d[j]: " << dims_max.d[j] << std::endl;
             }
-          }
-          else if (trt_engine->isShapeBinding(i)) {
+          } else if (trt_engine->isShapeBinding(i)) {
+            std::cout << " isShapeBinding" << std::endl;
             auto shapes_min = trt_engine->getProfileShapeValues(0, i, nvinfer1::OptProfileSelector::kMIN);
             auto shapes_opt = trt_engine->getProfileShapeValues(0, i, nvinfer1::OptProfileSelector::kOPT);
             auto shapes_max = trt_engine->getProfileShapeValues(0, i, nvinfer1::OptProfileSelector::kMAX);
