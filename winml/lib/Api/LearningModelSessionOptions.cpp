@@ -38,6 +38,7 @@ uint32_t LearningModelSessionOptions::GetIntraOpNumThreads() {
 
 STDMETHODIMP LearningModelSessionOptions::SetIntraOpNumThreadsOverride(uint32_t intraOpNumThreads) noexcept {
   intra_op_num_threads_override_ = intraOpNumThreads;
+  telemetry_helper.SetIntraOpNumThreadsOverride(intraOpNumThreads);
   return S_OK;
 }
 }  // namespace WINMLP

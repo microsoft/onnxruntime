@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.28307.1082
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microsoft.AI.MachineLearning.Tests.DotNetFramework4_7_2", "Microsoft.AI.MachineLearning.Tests.DotNetFramework4_7_2.csproj", "{717C645E-9C4A-4EBF-A0AF-676B265E8CDA}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Debug|x64 = Debug|x64
+		Release|Any CPU = Release|Any CPU
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{717C645E-9C4A-4EBF-A0AF-676B265E8CDA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{717C645E-9C4A-4EBF-A0AF-676B265E8CDA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{717C645E-9C4A-4EBF-A0AF-676B265E8CDA}.Debug|x64.ActiveCfg = Debug|x64
+		{717C645E-9C4A-4EBF-A0AF-676B265E8CDA}.Debug|x64.Build.0 = Debug|x64
+		{717C645E-9C4A-4EBF-A0AF-676B265E8CDA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{717C645E-9C4A-4EBF-A0AF-676B265E8CDA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{717C645E-9C4A-4EBF-A0AF-676B265E8CDA}.Release|x64.ActiveCfg = Release|x64
+		{717C645E-9C4A-4EBF-A0AF-676B265E8CDA}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {4998D043-F471-4AEC-9959-CCE3D27A444E}
+	EndGlobalSection
+EndGlobal
