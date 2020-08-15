@@ -550,6 +550,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     # for now, disable jemalloc if pybind is also enabled.
     cmake_args = [
         cmake_path, cmake_dir,
+"-G" + "CodeBlocks - Unix Makefiles",#slx
         "-Donnxruntime_RUN_ONNX_TESTS=" + (
             "ON" if args.enable_onnx_tests else "OFF"),
         "-Donnxruntime_BUILD_WINML_TESTS=" + (
