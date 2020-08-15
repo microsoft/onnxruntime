@@ -10,8 +10,6 @@ from onnx import numpy_helper
 from onnx import helper
 from onnx import utils
 from onnx import AttributeProto, TensorProto, GraphProto
-from scipy.spatial import distance
-
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
@@ -147,40 +145,6 @@ def test_size(output_dir):
                           os.path.join(output_dir, 'test_size_string'))
 
 
-def gen_cdist_test(output_dir, dtype, M, N, K):
-    for mode in ['euclidean', 'sqeuclidean']:
-        test_folder = os.path.join(output_dir, "test_cdist_%s_%s_%d_%d_%d" % (dtype.__name__, mode, M, N, K))
-        data_dir = os.path.join(test_folder, "test_data_0")
-        os.makedirs(data_dir, exist_ok=True)
-        a = np.random.randn(M, K).astype(dtype)
-        b = np.random.randn(N, K).astype(dtype)
-        type = onnx.mapping.NP_TYPE_TO_TENSOR_TYPE[a.dtype]
-        c = distance.cdist(a, b, mode).astype(dtype)
-        node_def = helper.make_node('CDist', inputs=['A', 'B'], outputs=['C'], domain="com.microsoft", metric=mode)
-        graph_def = helper.make_graph(
-            [node_def], 'test-model',
-            [helper.make_tensor_value_info('A', type, a.shape),
-             helper.make_tensor_value_info('B', type, b.shape)], [helper.make_tensor_value_info('C', type, c.shape)])
-        model_def = helper.make_model(graph_def,
-                                      producer_name='onnx-example',
-                                      opset_imports=[helper.make_opsetid("com.microsoft", 1)])
-        onnx.save(model_def, os.path.join(test_folder, 'model.onnx'))
-        with open(os.path.join(data_dir, "input_0.pb"), "wb") as f:
-            write_tensor(f, a, "A")
-        with open(os.path.join(data_dir, "input_1.pb"), "wb") as f:
-            write_tensor(f, b, "B")
-        with open(os.path.join(data_dir, "output_0.pb"), "wb") as f:
-            write_tensor(f, c, "C")
-        write_config(test_folder)
-
-
-def test_cdist(output_dir):
-    for dtype in [np.float32, np.float64]:
-        gen_cdist_test(output_dir, dtype, 1000, 2000, 500)
-        gen_cdist_test(output_dir, dtype, 1000, 2000, 1)
-        gen_cdist_test(output_dir, dtype, 1, 1, 1)
-
-
 args = parse_arguments()
 os.makedirs(args.output_dir, exist_ok=True)
 # make test values deterministic but variable
@@ -189,4 +153,4 @@ np.random.seed(today.year + today.month + today.day)
 test_abs(args.output_dir)
 test_size(args.output_dir)
 test_reducesum(args.output_dir)
-test_cdist(args.output_dir)
+

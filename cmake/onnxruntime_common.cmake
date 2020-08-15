@@ -46,6 +46,13 @@ else()
             "${ONNXRUNTIME_ROOT}/core/platform/posix/logging/*.cc"
         )
     endif()
+
+    if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+        list(APPEND onnxruntime_common_src_patterns
+            "${ONNXRUNTIME_ROOT}/core/platform/android/logging/*.h"
+            "${ONNXRUNTIME_ROOT}/core/platform/android/logging/*.cc"
+        )
+    endif()
 endif()
 
 if(CMAKE_GENERATOR_PLATFORM)

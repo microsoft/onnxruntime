@@ -233,9 +233,8 @@ Status KernelRegistry::TryCreateKernel(const onnxruntime::Node& node,
                                        const FuncManager& funcs_mgr,
                                        const DataTransferManager& data_transfer_mgr,
                                        /*out*/ std::unique_ptr<OpKernel>& op_kernel) const {
-  const KernelCreateInfo* kernel_create_info;
+  const KernelCreateInfo* kernel_create_info = nullptr;
   ORT_RETURN_IF_ERROR(TryFindKernel(node, execution_provider.Type(), &kernel_create_info));
-
   OpKernelInfo kernel_info(node,
                            *kernel_create_info->kernel_def,
                            execution_provider,

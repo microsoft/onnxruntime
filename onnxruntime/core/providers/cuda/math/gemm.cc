@@ -60,7 +60,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
   int M = gsl::narrow_cast<int>(helper.M());
   int N = gsl::narrow_cast<int>(helper.N());
   int K = gsl::narrow_cast<int>(helper.K());
-  auto* Y = ctx->Output(0, TensorShape(std::vector<int64_t>{M, N}));
+  auto* Y = ctx->Output(0, {M, N});
   CudaT* out_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
 
   CudaT one = ToCudaType<T>::FromFloat(1.0f);

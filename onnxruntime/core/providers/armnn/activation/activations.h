@@ -24,7 +24,7 @@ class Relu : public OpKernel {
  public:
   explicit Relu(const OpKernelInfo& info) : OpKernel(info) {
   	provider_ = (const_cast<ArmNNExecutionProvider*>(
-        dynamic_cast<const ArmNNExecutionProvider*>(info.GetExecutionProvider())));
+        static_cast<const ArmNNExecutionProvider*>(info.GetExecutionProvider())));
   }
 
   ~Relu() {

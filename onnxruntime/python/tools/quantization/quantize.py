@@ -295,7 +295,46 @@ class ONNXQuantizer:
         # Map of all original value names to quantized value names
         self.quantized_value_map = {}
 
+    def replace_gemm_with_matmul(self):
+        nodes_to_remove = []
+        nodes_to_add = []
+        for node in self.model.graph.node:
+            if node.op_type == 'Gemm':
+                alpha = 1.0
+                beta = 1.0
+                transA = 0
+                transB = 0
+                for attr in node.attribute:
+                    if attr.name == 'alpha':
+                        alpha = onnx.helper.get_attribute_value(attr)
+                    elif attr.name == 'beta':
+                        beta = onnx.helper.get_attribute_value(attr)
+                    elif attr.name == 'transA':
+                        transA = onnx.helper.get_attribute_value(attr)
+                    elif attr.name == 'transB':
+                        transB = onnx.helper.get_attribute_value(attr)
+                if alpha == 1.0 and beta == 1.0 and transA == 0 and transB == 0:
+                    matmul_node = onnx.helper.make_node(
+                        'MatMul',
+                        [node.input[0], node.input[1]],
+                        [node.output[0]+'_MatMul'],
+                        name=node.output[0]+'_MatMul')
+
+                    add_node = onnx.helper.make_node(
+                        'Add',
+                        inputs=[node.output[0]+'_MatMul', node.input[2]],
+                        outputs=node.output,
+                        name=node.output[0]+'_Add')
+
+                    nodes_to_remove.extend([node])
+                    nodes_to_add.extend([matmul_node, add_node])
+
+        self.model.graph.node.extend(nodes_to_add)
+        for node in nodes_to_remove:
+            self.model.graph.node.remove(node)
+
     def quantize_model(self):
+        self.replace_gemm_with_matmul()
         # Create a new topologically sorted list for quantizing a model
         new_list = []
         for node in self.model.graph.node:
@@ -309,7 +348,7 @@ class ONNXQuantizer:
                     new_list += self._quantize_convolution(node, new_list)
                 elif node.op_type == 'MatMul':
                     new_list += self._quantize_matmul(node, new_list)
-                elif node.op_type == 'Gather' and self._is_valid_quantize_value(node.input[0]):
+                elif node.op_type == 'Gather' and self._is_valid_initializer_value(node.input[0]):
                     new_list += self._quantize_gather_ops(node, new_list)
                 elif node.op_type == 'Add' or node.op_type == 'Mul':
                     new_list += self._quantize_binary_math_ops(node, new_list)
@@ -317,6 +356,8 @@ class ONNXQuantizer:
                     new_list += self._handle_activation_ops(node, new_list)
                 elif node.op_type == 'Attention':
                     new_list += self._quantize_attention(node, new_list)
+                elif node.op_type == 'EmbedLayerNormalization':
+                    new_list += self._quantize_embed_layernorm(node, new_list)
                 else:
                     new_list += self._handle_other_ops(node, new_list)
 
@@ -356,6 +397,9 @@ class ONNXQuantizer:
             value_info = self.value_infos[value_name]
             return value_info.type.HasField(
                 'tensor_type') and value_info.type.tensor_type.elem_type == onnx_proto.TensorProto.FLOAT
+        return self._is_valid_initializer_value(value_name)
+
+    def _is_valid_initializer_value(self, value_name):
         weight = _find_by_name(value_name, self.model.graph.initializer)
         return weight is not None and weight.data_type == onnx_proto.TensorProto.FLOAT
 
@@ -1090,6 +1134,15 @@ class ONNXQuantizer:
 
         return nodes
 
+    def _quantize_embed_layernorm(self, node, new_nodes_list):
+        assert (node.op_type == "EmbedLayerNormalization")
+        (quantized_input_names, zero_point_names, scale_names, nodes) = \
+            self._quantize_inputs(node, [2, 3, 4], new_nodes_list)
+
+        nodes.append(node)
+
+        return nodes
+
     def _quantize_convolution_integer_ops(self, node, new_nodes_list):
         '''
         Used when self.mode is QuantizationMode.IntegerOps.
@@ -1361,8 +1414,9 @@ class ONNXQuantizer:
         inputs.extend(quantized_input_names)
         inputs.extend([node.input[2]])
         inputs.extend(scale_names)
-        inputs.extend([node.input[3]])
+        inputs.extend([node.input[3] if len(node.input) > 3 else ""])
         inputs.extend(zero_point_names)
+        inputs.extend([node.input[4] if len(node.input) > 4 else ""])
 
         kwargs = {}
         for attribute in node.attribute:
@@ -1384,7 +1438,11 @@ def check_opset_version(org_model, force_fusions):
         :return: fuse_dynamic_quant boolean value.
     '''
     global onnx_op_set_version
-    opset_version = org_model.opset_import[0].version
+    ai_onnx_domain = [opset for opset in org_model.opset_import if not opset.domain or opset.domain == "ai.onnx"]
+    if 1 != len(ai_onnx_domain):
+        raise ValueError('Failed to find proper ai.onnx domain')
+    opset_version = ai_onnx_domain[0].version
+
     fuse_dynamic_quant = False
 
     if opset_version < 11 and force_fusions == True:

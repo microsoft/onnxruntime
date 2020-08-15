@@ -59,7 +59,12 @@ elif '--use_nuphar' in sys.argv:
 elif '--use_vitisai' in sys.argv:
     package_name = 'onnxruntime-vitisai'
     sys.argv.remove('--use_vitisai')
-# --use_acl is specified in build.py, but not parsed here
+elif '--use_acl' in sys.argv:
+    package_name = 'onnxruntime-acl'
+    sys.argv.remove('--use_acl')
+elif '--use_armnn' in sys.argv:
+    package_name = 'onnxruntime-armnn'
+    sys.argv.remove('--use_armnn')
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
 # PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
@@ -153,8 +158,10 @@ except ImportError as error:
 # Additional binaries
 if platform.system() == 'Linux':
   libs = ['onnxruntime_pybind11_state.so', 'libdnnl.so.1', 'libmklml_intel.so', 'libiomp5.so', 'mimalloc.so']
-  # dnnl EP is built as shared lib
+  # DNNL & TensorRT EPs are built as shared libs
+  libs.extend(['libonnxruntime_providers_shared.so'])
   libs.extend(['libonnxruntime_providers_dnnl.so'])
+  libs.extend(['libonnxruntime_providers_tensorrt.so'])
   # nGraph Libs
   libs.extend(['libngraph.so', 'libcodegen.so', 'libcpu_backend.so', 'libmkldnn.so', 'libtbb_debug.so', 'libtbb_debug.so.2', 'libtbb.so', 'libtbb.so.2'])
   # OpenVINO Libs
@@ -167,14 +174,19 @@ if platform.system() == 'Linux':
     libs.extend(['libonnxruntime_pywrapper.so'])
 elif platform.system() == "Darwin":
   libs = ['onnxruntime_pybind11_state.so', 'libdnnl.1.dylib', 'mimalloc.so'] # TODO add libmklml and libiomp5 later.
-  # dnnl EP is built as shared lib
+  # DNNL & TensorRT EPs are built as shared libs
+  libs.extend(['libonnxruntime_providers_shared.dylib'])
   libs.extend(['libonnxruntime_providers_dnnl.dylib'])
+  libs.extend(['libonnxruntime_providers_tensorrt.dylib'])
   if nightly_build:
     libs.extend(['libonnxruntime_pywrapper.dylib'])
 else:
   libs = ['onnxruntime_pybind11_state.pyd', 'dnnl.dll', 'mklml.dll', 'libiomp5md.dll']
-  # dnnl EP is built as dll
+  # DNNL & TensorRT EPs are built as shared libs
+  libs.extend(['onnxruntime_providers_shared.dll'])
   libs.extend(['onnxruntime_providers_dnnl.dll'])
+  libs.extend(['onnxruntime_providers_tensorrt.dll'])
+  # nGraph Libs
   libs.extend(['ngraph.dll', 'cpu_backend.dll', 'tbb.dll', 'mimalloc-override.dll', 'mimalloc-redirect.dll', 'mimalloc-redirect32.dll'])
   # Nuphar Libs
   libs.extend(['tvm.dll'])
@@ -217,6 +229,7 @@ packages = [
     'onnxruntime.capi.training',
     'onnxruntime.datasets',
     'onnxruntime.tools',
+    'onnxruntime.quantization',
 ]
 
 package_data = {}

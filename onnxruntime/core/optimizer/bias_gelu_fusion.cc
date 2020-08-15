@@ -11,7 +11,7 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
-Status BiasGelu::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
+Status BiasGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 

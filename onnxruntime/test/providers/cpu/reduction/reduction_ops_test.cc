@@ -598,7 +598,7 @@ TEST(ReductionOpTest, ReduceMax_int32) {
 #if defined(OPENVINO_CONFIG_GPU_FP32)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          //TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
 #endif
 }
 
@@ -1614,7 +1614,7 @@ TEST(ReductionOpTest, ArgMax_do_not_keepdims_2) {
                        {1.0f, 2.0f, 3.0f});
   test.AddOutput<int64_t>("reduced", {},
                           {2});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); // TensorRT: node1: at least 2 dimensions are required for input
 }
 
 TEST(ReductionOpTest, ArgMax_int32) {
@@ -1774,7 +1774,7 @@ TEST(ReductionOpTest, ArgMin_do_not_keepdims_2) {
   test.AddInput<float>("data", {3},
                        {1.0f, 2.0f, 3.0f});
   test.AddOutput<int64_t>("reduced", {}, {0});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); // TensorRT: node1: at least 2 dimensions are required for input
 }
 
 TEST(ReductionOpTest, ArgMin_do_not_keepdims_2_select_last) {

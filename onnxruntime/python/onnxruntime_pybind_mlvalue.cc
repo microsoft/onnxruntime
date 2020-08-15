@@ -143,20 +143,21 @@ TensorShape GetArrayShape(PyArrayObject* pyObject) {
 // buffer pointer and will own references to underlying objects.
 class OrtPybindSingleUseAllocator : public IAllocator {
  public:
-   // This constructor is used when we create numpy array from python list
+  // This constructor is used when we create numpy array from python list
   OrtPybindSingleUseAllocator(PyArrayObject* pyObject, const std::string& value_name, const OrtMemoryInfo& mem_info)
-      : pyObject_(pyObject, DecRefFn<PyArrayObject>()),
-        pyObjectContiguous_(PyArray_GETCONTIGUOUS(pyObject), DecRefFn<PyArrayObject>()),
-        mem_info_(mem_info) {
+      : IAllocator(mem_info),
+        pyObject_(pyObject, DecRefFn<PyArrayObject>()),
+        pyObjectContiguous_(PyArray_GETCONTIGUOUS(pyObject), DecRefFn<PyArrayObject>()) {
     ORT_ENFORCE(pyObjectContiguous_ != nullptr, "The object must be a contiguous array for input :", value_name);
   }
 
   // Constructor to use when a contiguous array had to be copied. Instead of creating yet another copy
   // we are still able to use it directly for primitive types
-  OrtPybindSingleUseAllocator(UniqueDecRefPtr<PyArrayObject>&& pyContiguous, const std::string& value_name, const OrtMemoryInfo& mem_info) 
-    : pyObject_(nullptr, DecRefFn<PyArrayObject>()),
-      pyObjectContiguous_(std::move(pyContiguous)),
-      mem_info_(mem_info){
+  OrtPybindSingleUseAllocator(UniqueDecRefPtr<PyArrayObject>&& pyContiguous, const std::string& value_name,
+                              const OrtMemoryInfo& mem_info)
+      : IAllocator(mem_info),
+        pyObject_(nullptr, DecRefFn<PyArrayObject>()),
+        pyObjectContiguous_(std::move(pyContiguous)) {
     ORT_ENFORCE(pyObjectContiguous_ != nullptr, "Expecting a valid contiguous array:", value_name);
   }
 
@@ -178,10 +179,6 @@ class OrtPybindSingleUseAllocator : public IAllocator {
     pyObject_.reset();
   }
 
-  const OrtMemoryInfo& Info() const override {
-    return mem_info_;
-  }
-
   PyArrayObject* GetContiguous() const {
     return pyObjectContiguous_.get();
   }
@@ -189,7 +186,6 @@ class OrtPybindSingleUseAllocator : public IAllocator {
  private:
   UniqueDecRefPtr<PyArrayObject> pyObject_;
   UniqueDecRefPtr<PyArrayObject> pyObjectContiguous_;
-  OrtMemoryInfo mem_info_;
 };
 
 using OrtPybindSingleUseAllocatorPtr = std::shared_ptr<OrtPybindSingleUseAllocator>;

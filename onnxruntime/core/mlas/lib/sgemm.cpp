@@ -915,6 +915,13 @@ Return Value:
             return;
         }
 
+#elif defined(MLAS_TARGET_ARM64) && !defined(_WIN32)
+
+        if (TransB == CblasNoTrans) {
+            MlasGemvFloatKernel(A, B, C, K, N, ldb, (beta == 0.0f));
+            return;
+        }
+
 #endif
 
     }

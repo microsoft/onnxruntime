@@ -341,6 +341,25 @@ class MLTypeCallDispatcherRet {
   }
 };
 
+// Version of the MLTypeDispatcher that has an input type which is passed through ('carried')
+// as the first type parameter in the call to Fn when dispatching.
+template <typename TCarried, template <typename, typename> class Fn, typename... Types>
+class MLTypeCallDispatcherWithCarriedType {
+  int32_t dt_type_;
+
+ public:
+  explicit MLTypeCallDispatcherWithCarriedType(int32_t dt_type) noexcept : dt_type_(dt_type) {}
+
+  template <typename... Args>
+  void Invoke(Args&&... args) const {
+    mltype_dispatcher_internal::CallableDispatchableHelper helper(dt_type_);
+    int results[] = {0, helper.template Invoke<Types>(Fn<TCarried, Types>(), std::forward<Args>(args)...)...};
+    ORT_UNUSED_PARAMETER(results);
+    ORT_ENFORCE(helper.called_ < 2, "Check for duplicate types in MLTypeCallDispatcher");
+    ORT_ENFORCE(helper.called_ == 1, "Unsupported data type: ", dt_type_);
+  }
+};
+
 namespace data_types_internal {
 
 enum class ContainerType : uint16_t {
