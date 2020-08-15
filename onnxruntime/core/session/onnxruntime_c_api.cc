@@ -1700,7 +1700,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
 	In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_4 = {
+static constexpr OrtApi ort_api_1_to_5 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -1847,10 +1847,12 @@ static constexpr OrtApi ort_api_1_to_4 = {
     &OrtApis::AddFreeDimensionOverrideByName,
     // End of Version 3 - DO NOT MODIFY ABOVE (see above text for more information)
 
-    // Version 4 - In development
-
     &OrtApis::GetAvailableProviders,
     &OrtApis::ReleaseAvailableProviders,
+    // End of Version 4 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    // Version 5 - In development, feel free to add/remove/rearrange here
+
     &OrtApis::GetStringTensorElementLength,
     &OrtApis::GetStringTensorElement,
     &OrtApis::FillStringTensorElement,
@@ -1879,8 +1881,8 @@ static constexpr OrtApi ort_api_1_to_4 = {
 static_assert(offsetof(OrtApi, ReleaseCustomOpDomain) / sizeof(void*) == 101, "Size of version 1 API cannot change");
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
-  if (version >= 1 && version <= 4)
-    return &ort_api_1_to_4;
+  if (version >= 1 && version <= 5)
+    return &ort_api_1_to_5;
 
   return nullptr;  // Unsupported version
 }
