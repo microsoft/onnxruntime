@@ -47,12 +47,19 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   // sets number of maximum parallel inferences
   num_inf_reqs_ = 8;
 
-  ie_cnn_network_ = CreateCNNNetwork(model_proto, subgraph_context_.device_id, subgraph_context_.precision, const_outputs_map_);
+  ie_cnn_network_ = CreateCNNNetwork(model_proto, subgraph_context_, const_outputs_map_);
 
-  SetIODefs(model_proto, ie_cnn_network_);
+  SetIODefs(model_proto, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_);
   std::map<std::string, std::string> config;
 
+#if defined(OPENVINO_2020_4)
+  if(const_outputs_map_.size() == subgraph_context_.output_names.size())
+    subgraph_context_.is_constant = true;
+#endif
+
   int i = 0;
+  if(subgraph_context_.is_constant)
+    return;
   // Loading model to the plugin
   //If graph is fully supported and batching is enabled, load the network onto all VPU's and infer
   std::vector<InferenceEngine::ExecutableNetwork> exe_networks;
@@ -230,6 +237,18 @@ void VADMBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, std::vector<OrtV
       std::memcpy(batch_memory_offset, graph_output_buffer, output_data_size);
     }
   }
+#if defined(OPENVINO_2020_4)
+  if(!const_outputs_map_.empty()){
+    size_t j = i;
+    for(auto item : const_outputs_map_){
+
+      auto node = item.second;
+      FillOutputsWithConstantData(ort,node,output_tensors[j]);
+      j++;
+    }
+  }
+#endif
+
 }
 size_t DeduceBatchSize(Ort::CustomOpApi ort, const OrtValue* input_tensor,
                        InferenceEngine::SizeVector graph_dims) {
@@ -277,31 +296,42 @@ void VADMBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   // So using info from first infer_request to allocate all output tensors.
   auto output_tensors = GetOutputTensors(ort, context, batch_size, infer_requests_[0], ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_);
 
-  // Distribute the batched inputs among available Infer Requests
-  // for parallel inference.
+  if(subgraph_context_.is_constant){
+#if defined(OPENVINO_2020_4)
+    size_t i = 0;
+    for(auto item : const_outputs_map_){
+      auto node = item.second;
+      FillOutputsWithConstantData(ort,node, output_tensors[i]);
+      i++;
+    }
+#endif
+  }
+  else{
+    // Distribute the batched inputs among available Infer Requests
+    // for parallel inference.
 
-  // Run parallel inferences as sets of num_inf_reqs_
-  for (size_t set = 0; set < full_parallel_runs; set++) {
-    for (size_t inf_req_idx = 0; inf_req_idx < num_inf_reqs_; inf_req_idx++) {
-      size_t batch_slice_idx = set * num_inf_reqs_ + inf_req_idx;
+    // Run parallel inferences as sets of num_inf_reqs_
+    for (size_t set = 0; set < full_parallel_runs; set++) {
+      for (size_t inf_req_idx = 0; inf_req_idx < num_inf_reqs_; inf_req_idx++) {
+        size_t batch_slice_idx = set * num_inf_reqs_ + inf_req_idx;
+        StartAsyncInference(ort, context, batch_slice_idx, inf_req_idx, infer_requests_, ie_cnn_network_);
+      }
+      for (size_t inf_req_idx = 0; inf_req_idx < num_inf_reqs_; inf_req_idx++) {
+        size_t batch_slice_idx = set * num_inf_reqs_ + inf_req_idx;
+        CompleteAsyncInference(ort, output_tensors, batch_slice_idx, inf_req_idx, infer_requests_, ie_cnn_network_);
+      }
+    }
+
+    // Run parallel inferences for remaining batch slices
+    for (size_t inf_req_idx = 0; inf_req_idx < remainder_parallel_runs; inf_req_idx++) {
+      size_t batch_slice_idx = full_parallel_runs * num_inf_reqs_ + inf_req_idx;
       StartAsyncInference(ort, context, batch_slice_idx, inf_req_idx, infer_requests_, ie_cnn_network_);
     }
-    for (size_t inf_req_idx = 0; inf_req_idx < num_inf_reqs_; inf_req_idx++) {
-      size_t batch_slice_idx = set * num_inf_reqs_ + inf_req_idx;
+    for (size_t inf_req_idx = 0; inf_req_idx < remainder_parallel_runs; inf_req_idx++) {
+      size_t batch_slice_idx = full_parallel_runs * num_inf_reqs_ + inf_req_idx;
       CompleteAsyncInference(ort, output_tensors, batch_slice_idx, inf_req_idx, infer_requests_, ie_cnn_network_);
     }
   }
-
-  // Run parallel inferences for remaining batch slices
-  for (size_t inf_req_idx = 0; inf_req_idx < remainder_parallel_runs; inf_req_idx++) {
-    size_t batch_slice_idx = full_parallel_runs * num_inf_reqs_ + inf_req_idx;
-    StartAsyncInference(ort, context, batch_slice_idx, inf_req_idx, infer_requests_, ie_cnn_network_);
-  }
-  for (size_t inf_req_idx = 0; inf_req_idx < remainder_parallel_runs; inf_req_idx++) {
-    size_t batch_slice_idx = full_parallel_runs * num_inf_reqs_ + inf_req_idx;
-    CompleteAsyncInference(ort, output_tensors, batch_slice_idx, inf_req_idx, infer_requests_, ie_cnn_network_);
-  }
-
   LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
 }
 
