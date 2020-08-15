@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <mutex>
 #include <vector>
 #include <unordered_map>
 
@@ -138,6 +139,26 @@ class ExecutionFrame final : public IExecutionFrame {
   // If the retrival is sucessful, this function returns true and false otherwise.
   bool TryGetInferredShape(int index, TensorShape& shape) const override;
 
+  // Return the size of virtual memory allocated in runtime.
+  // The memory is usually used for activations in forward and backward passes.
+  const std::unordered_map<std::string, size_t>& GetDynamicMemorySizeInfo() {
+    // This function is not thread-safe. Please make sure dynamic_activation_memory_sizes_in_byte_
+    // is not being changed when calling this function.
+    // If one day, race condition happens, please uncomment the following line:
+    //   std::unique_lock<std::mutex> lock(mtx_);
+    return dynamic_activation_memory_sizes_in_byte_;
+  }
+
+  // Return the size of virtual memory allocated before computation.
+  // The memory is usually used for activations in forward and backward passes.
+  const std::unordered_map<std::string, size_t>& GetStaticMemorySizeInfo() {
+    // This function is not thread-safe. Please make sure static_activation_memory_sizes_in_byte_
+    // is not being changed when calling this function.
+    // If one day, race condition happens, please uncomment the following line:
+    //   std::unique_lock<std::mutex> lock(mtx_);
+    return static_activation_memory_sizes_in_byte_;
+  }
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ExecutionFrame);
 
@@ -183,5 +204,20 @@ class ExecutionFrame final : public IExecutionFrame {
   // by i, if the key i exists.
   // inferred_shapes_ is generated togehter with mem_patterns_.
   std::unordered_map<int, TensorShape> inferred_shapes_;
+
+  // Size of virtual memory allocated before any kernel execution.
+  // This field is not physical memory size.
+  // static_activation_memory_sizes_in_byte_[location] is the static memory consumption on "location".
+  std::unordered_map<std::string, size_t> static_activation_memory_sizes_in_byte_;
+
+  // Size of virtual memory allocated during kernel execution (i.e., inside a kernel,
+  // we may allocate some memory for its outputs, if not planned.).
+  // This field is not physical memory size.
+  // dynamic_activation_memory_sizes_in_byte_[location] is the dynamic memory consumption on "location".
+  std::unordered_map<std::string, size_t> dynamic_activation_memory_sizes_in_byte_;
+
+  // Mutex which should be acquired when executing non-thread-safe member functions.
+  // A current example is the tracker of dynamic memory allocation.
+  mutable std::mutex mtx_;
 };
 }  // namespace onnxruntime
