@@ -36,12 +36,14 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
                            const SubGraphContext& subgraph_context)
     : global_context_(global_context), subgraph_context_(subgraph_context) {
 
-  ie_cnn_network_ = CreateCNNNetwork(model_proto, subgraph_context_.device_id, subgraph_context_.precision, const_outputs_map_);
+  ie_cnn_network_ = CreateCNNNetwork(model_proto, subgraph_context_, const_outputs_map_);
   SetIODefs(model_proto, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_);
   InferenceEngine::ExecutableNetwork exe_network;
 
+#if defined(OPENVINO_2020_4)
   if(const_outputs_map_.size() == subgraph_context_.output_names.size())
     subgraph_context_.is_constant = true;
+#endif
 
   // Loading model to the plugin
   if(subgraph_context_.is_constant)
@@ -184,6 +186,7 @@ void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort,
 
     }
   }
+#if defined(OPENVINO_2020_4)
   if(!const_outputs_map_.empty()){
     size_t j = i;
     for(auto item : const_outputs_map_){
@@ -193,6 +196,7 @@ void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort,
       j++;
     }
   }
+#endif
 }
 
 void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
@@ -206,20 +210,20 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   size_t batch_size = 1;
   auto output_tensors = GetOutputTensors(ort, context, batch_size, infer_request_, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_);
   if(subgraph_context_.is_constant){
+#if defined(OPENVINO_2020_4)
     size_t i = 0;
     for(auto item : const_outputs_map_){
       auto node = item.second;
       FillOutputsWithConstantData(ort,node, output_tensors[i]);
       i++;
     }
+#endif
   }
   else{
     StartAsyncInference(ort, context, infer_request_, ie_cnn_network_);
     CompleteAsyncInference(ort, output_tensors, infer_request_, ie_cnn_network_);
   }
   // Get Output tensors
-
-
   LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
 }
 

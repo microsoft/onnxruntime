@@ -34,7 +34,7 @@ class VADMBackend : public IBackend {
                               std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network);
 
   GlobalContext& global_context_;
-  const SubGraphContext& subgraph_context_;
+  SubGraphContext subgraph_context_;
   std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network_;
   std::map<std::string, std::shared_ptr<ngraph::Node>> const_outputs_map_;
   std::vector<InferenceEngine::InferRequest::Ptr> infer_requests_;
