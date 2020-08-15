@@ -12,9 +12,9 @@ namespace contrib {
 class AttentionBase {
  protected:
   AttentionBase(const OpKernelInfo& info);
-  Status CheckInputs(const Tensor* input,
-                     const Tensor* weights,
-                     const Tensor* bias,
+  Status CheckInputs(const TensorShape& input_shape,
+                     const TensorShape& weights_shape,
+                     const TensorShape& bias_shape,
                      const Tensor* mask_index,
                      const Tensor* past) const;
 

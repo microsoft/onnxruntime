@@ -144,7 +144,7 @@ class FuseExecutionProviderX : public CPUExecutionProvider {
 
         meta_def->since_version = 1;
         meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
-        sub_graph->SetMetaDef(meta_def);
+        sub_graph->SetMetaDef(std::move(meta_def));
         //TODO:set fuse kernel func;
         result.push_back(
             onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
