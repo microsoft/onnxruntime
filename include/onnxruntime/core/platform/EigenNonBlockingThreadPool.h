@@ -557,7 +557,7 @@ void RunInParallel(std::function<void()> fn, unsigned n) override {
     // item.  This lets us remove any work items that do not get executed by the threads
     // that we push them to.
     std::vector<std::pair<int, unsigned>> pending_items;
-    Barrier b(n);
+    Barrier b(n, allow_spinning_);
 
     my_pt->in_parallel = true;
     if (!my_pt->tag.Get()) {
