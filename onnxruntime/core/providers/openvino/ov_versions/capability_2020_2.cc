@@ -678,14 +678,14 @@ GetCapability_2020_2(const onnxruntime::GraphViewer& graph_viewer, const std::st
       if (device_id == "MYRIAD" && no_of_clusters == 10) {
         break;
       }
-      std::vector<std::string> cluster_inputs, const_inputs, cluster_outputs;
+      std::vector<std::string> cluster_graph_inputs, cluster_inputs, const_inputs, cluster_outputs;
       //If subgraph only has Identity node, EyeLike or Dropout, OpenVINO EP doesn't support it.
       if (this_cluster.size() == 1) {
         const auto& node = graph_viewer.GetNode(this_cluster[0]);
         if (node->OpType() == "Identity" || node->OpType() == "EyeLike" || node->OpType() == "Dropout" || node->OpType() == "ReduceMin" || node->OpType() == "Concat" || node->OpType() == "Cast")
           continue;
       }
-      GetInputsOutputsOfCluster(graph_viewer, this_cluster, ng_required_initializers, cluster_inputs, const_inputs, cluster_outputs);
+      GetInputsOutputsOfCluster(graph_viewer, this_cluster, ng_required_initializers, cluster_graph_inputs, cluster_inputs, const_inputs, cluster_outputs);
 
       bool omit_subgraph = false;
       for (auto index : this_cluster) {
