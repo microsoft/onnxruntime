@@ -44,6 +44,11 @@ void DumpOnnxModelProto(const ONNX_NAMESPACE::ModelProto& model_proto, std::stri
 std::shared_ptr<InferenceEngine::CNNNetwork>
 CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map) {
 
+
+#if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
+  ORT_UNUSED_PARAMETER(const_outputs_map);
+#endif
+
   InferenceEngine::Precision precision = subgraph_context.precision;
   std::string device_id = subgraph_context.device_id;
 
@@ -53,7 +58,6 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const SubGraphCo
 #ifndef NDEBUG
   if(IsDebugEnabled()){
     DumpOnnxModelProto(model_proto, subgraph_context.subgraph_name + "_static.onnx");
-    std::cout << "Const OutputMaps size " << const_outputs_map.size() << std::endl;
   }
 #endif
 
@@ -132,11 +136,10 @@ void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
   // Configure input & output
   // Prepare input blobs
 
-#ifndef NDEBUG
-  if(IsDebugEnabled()){
-    std::cout << "Const OutputMaps size " << const_outputs_map.size() << std::endl;
-  }
+#if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
+  ORT_UNUSED_PARAMETER(const_outputs_map);
 #endif
+
   auto inputInfo = network->getInputsInfo();
   int input_idx = 0;
   for (auto iter = inputInfo.begin(); iter != inputInfo.end(); ++iter, ++input_idx) {
