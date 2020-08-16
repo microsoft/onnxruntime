@@ -3,6 +3,8 @@ namespace openvino_ep {
 
 int GetInputCount(const Node* node, const InitializedTensorSet& initializer_set);
 
+bool IsOpSupportedOnlyInModel(std::string name);
+
 void AppendClusterToSubGraph(const std::vector<NodeIndex>& nodes,
                                     const std::vector<std::string>& inputs,
                                     const std::vector<std::string>& outputs,
@@ -23,6 +25,7 @@ GetConnectedClusters(const GraphViewer& graph_viewer, const std::vector<std::vec
 void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
                                       const std::vector<NodeIndex>& cluster,
                                       const std::unordered_set<std::string>& ng_required_initializers,
+                                      /*out*/ std::vector<std::string>& cluster_graph_inputs,
                                       /*out*/ std::vector<std::string>& cluster_inputs,
                                       /*out*/ std::vector<std::string>& constant_inputs,
                                       /*out*/ std::vector<std::string>& cluster_outputs);

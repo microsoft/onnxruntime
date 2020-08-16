@@ -14,6 +14,9 @@
 #include "core/common/logging/logging.h"
 
 #include "../backend_utils.h"
+#include <ngraph/frontend/onnx_import/onnx.hpp>
+#include <ngraph/pass/constant_folding.hpp>
+
 #include "basic_backend.h"
 
 namespace onnxruntime {
@@ -33,11 +36,18 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
                            const SubGraphContext& subgraph_context)
     : global_context_(global_context), subgraph_context_(subgraph_context) {
 
-  ie_cnn_network_ = CreateCNNNetwork(model_proto, subgraph_context_.device_id, subgraph_context_.precision);
-  SetIODefs(model_proto, ie_cnn_network_);
+  ie_cnn_network_ = CreateCNNNetwork(model_proto, subgraph_context_, const_outputs_map_);
+  SetIODefs(model_proto, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_);
   InferenceEngine::ExecutableNetwork exe_network;
 
+#if defined(OPENVINO_2020_4)
+  if(const_outputs_map_.size() == subgraph_context_.output_names.size())
+    subgraph_context_.is_constant = true;
+#endif
+
   // Loading model to the plugin
+  if(subgraph_context_.is_constant)
+    return;
   std::map<std::string, std::string> config;
   if(subgraph_context_.device_id == "MYRIAD" && subgraph_context_.set_vpu_config){
     config["VPU_DETECT_NETWORK_BATCH"] = CONFIG_VALUE(NO);
@@ -45,7 +55,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   try {
     exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, subgraph_context_.device_id, config);
   } catch (InferenceEngine::details::InferenceEngineException e) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph: " + subgraph_context_.subgraph_name + e.what());
+    ORT_THROW(log_tag + " Exception while Loading Network for graph: " + subgraph_context_.subgraph_name + ": " +  e.what());
   } catch (...) {
     ORT_THROW(log_tag + " Exception while Loading Network for graph " + subgraph_context_.subgraph_name);
   }
@@ -176,6 +186,17 @@ void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort,
 
     }
   }
+#if defined(OPENVINO_2020_4)
+  if(!const_outputs_map_.empty()){
+    size_t j = i;
+    for(auto item : const_outputs_map_){
+
+      auto node = item.second;
+      FillOutputsWithConstantData(ort,node,output_tensors[j]);
+      j++;
+    }
+  }
+#endif
 }
 
 void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
@@ -187,14 +208,23 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   std::lock_guard<std::mutex> lock(compute_lock_);
 
   size_t batch_size = 1;
+  auto output_tensors = GetOutputTensors(ort, context, batch_size, infer_request_, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_);
+  if(subgraph_context_.is_constant){
+#if defined(OPENVINO_2020_4)
+    size_t i = 0;
+    for(auto item : const_outputs_map_){
+      auto node = item.second;
+      FillOutputsWithConstantData(ort,node, output_tensors[i]);
+      i++;
+    }
+#endif
+  }
+  else{
+    StartAsyncInference(ort, context, infer_request_, ie_cnn_network_);
+    CompleteAsyncInference(ort, output_tensors, infer_request_, ie_cnn_network_);
+  }
   // Get Output tensors
-  auto output_tensors = GetOutputTensors(ort, context, batch_size, infer_request_, ie_cnn_network_, subgraph_context_.output_names);
-
-  StartAsyncInference(ort, context, infer_request_, ie_cnn_network_);
-  CompleteAsyncInference(ort, output_tensors, infer_request_, ie_cnn_network_);
-
   LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
-  std::cout << "Inference successful" << std::endl;
 }
 
 }  // namespace openvino_ep
