@@ -1602,10 +1602,13 @@ ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char*** out_ptr,
       if (out[i]) {
 #ifdef _MSC_VER
         strncpy_s(out[i], MAX_LEN, providers_available[i], MAX_LEN);
-#else
-        strncpy(out[i], providers_available[i], MAX_LEN);
-#endif
         out[i][MAX_LEN] = '\0';
+#elif defined(__APPLE__)
+        strlcpy(out[i], providers_available[i], MAX_LEN);
+#else 
+        strncpy(out[i], providers_available[i], MAX_LEN);
+        out[i][MAX_LEN] = '\0';
+#endif
       }
     }
   }
