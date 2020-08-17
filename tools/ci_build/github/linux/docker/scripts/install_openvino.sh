@@ -7,8 +7,8 @@ o) OPENVINO_VERSION=${OPTARG};;
 esac
 done
 
-OPENVINO_VERSION=${OPENVINO_VERSION:=2020.2}
-export INTEL_OPENVINO_DIR=/data/dldt/openvino_${OPENVINO_VERSION}
+OPENVINO_VERSION=${OPENVINO_VERSION:=2020.4}
+export INTEL_OPENVINO_DIR=/data/dldt/openvino_${OPENVINO_VERSION}.287
 git clone https://github.com/opencv/dldt.git ${INTEL_OPENVINO_DIR}
 
 apt-get update && apt-get -y  install libusb-1.0-0-dev

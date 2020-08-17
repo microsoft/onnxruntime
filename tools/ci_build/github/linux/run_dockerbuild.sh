@@ -83,7 +83,7 @@ else
     elif [ $BUILD_DEVICE = "openvino" ]; then
         IMAGE="$BUILD_OS-openvino"
         DOCKER_FILE=Dockerfile.ubuntu_openvino
-        $DOCKER_CMD build --pull -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg OPENVINO_VERSION=${OPENVINO_VERSION} -f $DOCKER_FILE .
+docker build --pull -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg OPENVINO_VERSION=${OPENVINO_VERSION} -f $DOCKER_FILE --build-arg http_proxy=http://proxy-us.intel.com:911 --build-arg https_proxy=http://proxy-us.intel.com:912 .
     else
         IMAGE="$BUILD_OS"
         if [ $BUILD_ARCH = "x86" ]; then
@@ -126,9 +126,9 @@ fi
 
 $DOCKER_CMD rm -f "onnxruntime-$BUILD_DEVICE" || true
 $DOCKER_CMD run $RUNTIME -h $HOSTNAME $DOCKER_RUN_PARAMETER \
-    -e NIGHTLY_BUILD \
+    -e NIGHTLY_BUILD -e http_proxy=http://proxy-us.intel.com:911 -e https_proxy=http://proxy-us.intel.com:912 \
     "onnxruntime-$IMAGE" \
-    /bin/bash /onnxruntime_src/tools/ci_build/github/linux/run_build.sh \
+ /bin/bash /onnxruntime_src/tools/ci_build/github/linux/run_build.sh \
     -d $BUILD_DEVICE -x "$BUILD_EXTR_PAR" -o $BUILD_OS -y $YOCTO_VERSION &
 wait $!
 
