@@ -81,6 +81,11 @@
         "^test_negative_log_likelihood.*",
         "^test_softmax_cross_entropy.*"
     ],
+    "current_failing_tests_OPENVINO_MYRIAD": [
+         "^test_range",
+         "^test_dynamicquantizelinear",
+         "^test_operator_index"
+    ],
     "current_failing_tests_OPENVINO_GPU": [
         "^test_div",
         // temporarily exclude vgg19 test which comsumes too much memory, run out of memory on Upsquared device.

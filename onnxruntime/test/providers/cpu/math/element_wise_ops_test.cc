@@ -416,7 +416,11 @@ TEST(MathOpTest, Div_int32) {
   test.AddInput<int32_t>("A", {3}, {4, 8, 8});
   test.AddInput<int32_t>("B", {3}, {1, 3, 2});
   test.AddOutput<int32_t>("C", {3}, {4, 2, 4});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT parser:elementwise inputs must not be Int32
+  #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO EP: Hardware limitation
+  #else
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT parser:elementwise inputs must not be Int32
+  #endif
 }
 
 TEST(MathOpTest, Div_int64) {
@@ -424,7 +428,11 @@ TEST(MathOpTest, Div_int64) {
   test.AddInput<int64_t>("A", {3}, {4, 8, 8});
   test.AddInput<int64_t>("B", {3}, {2, 3, 4});
   test.AddOutput<int64_t>("C", {3}, {2, 2, 2});
-  test.Run();
+  #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO EP: Hardware limitation
+  #else
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT parser:elementwise inputs must not be Int32
+  #endif
 }
 
 TEST(MathOpTest, Div) {
@@ -533,7 +541,13 @@ TEST(MathOpTest, Ceil) {
   test.AddOutput<float>("Y", dims,
                         {-1.0f, 1.0f,
                          0.0f, 11.0f});
-  test.Run();
+  #if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
+  //OpenVINO: Disabled due to software limitation for GPU and VPU Plugins.
+  //This test runs fine on CPU Plugin
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+  #else
+    test.Run();
+  #endif
 }
 
 TEST(MathOpTest, Reciprocal) {
