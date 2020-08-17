@@ -102,3 +102,11 @@ static bool SkipGpuTests()
   if (SkipGpuTests()) {                    \
     WINML_SKIP_TEST("Gpu tests disabled"); \
   }
+
+static bool SkipTestsImpactedByOpenMP() {
+#ifdef _OPENMP
+  return true;
+#else
+  return false;
+#endif
+}

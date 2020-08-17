@@ -52,8 +52,10 @@ void CountGemmOp(const onnxruntime::Node& node,
 
   auto inputs = node.InputDefs();
   CountMatrixArgs(inputs[0], inputs[1], node, graph_inputs, shape_func, node_use_counts);
-  // C's use cnt is fixed.
-  CountNodeArg(inputs[2], node, graph_inputs, node_use_counts, 1);
+  if (inputs.size() > 2) {
+    // C's use cnt is fixed.
+    CountNodeArg(inputs[2], node, graph_inputs, node_use_counts, 1);
+  }
 }
 
 void CountMatMulOp(const onnxruntime::Node& node,
