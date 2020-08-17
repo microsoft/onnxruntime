@@ -339,7 +339,7 @@ class ORTTrainer(object):
             self._train_io_binding.clear_binding_outputs()
 
             is_all_finite = session_run_results[self.model_desc.is_finite.name]
-            self._train_step_info.is_finite = is_all_finite
+            self._train_step_info.all_finite = is_all_finite
             if loss_scaler:
                 loss_scaler.update(self._train_step_info)
             if is_all_finite:

@@ -200,7 +200,8 @@ class ORTTransformerTrainer:
                                                     'debug': {'deterministic_compute': True, },
                                                     'utils': {
                                                         'frozen_weights': [],
-                                                        'grad_norm_clip': False}})
+                                                        'grad_norm_clip': False},
+                                                    'distributed': {'allreduce_post_accumulation': True}})
 
             # no_decay = ['bias', 'LayerNorm.weight']
             # param_optimizer = list(self.model.named_parameters())
@@ -214,7 +215,7 @@ class ORTTransformerTrainer:
 
             # optim_config = optim.AdamConfig(params=params,
             #                                 lr=0.001, alpha=0.9, beta=0.999, lambda_coef=0.01, epsilon=1e-6)                                                
-            optim_config = optim.AdamConfig(lr=2e-5)
+            optim_config = optim.AdamConfig(lr=2e-5, do_bias_correction=False)
             self.model = orttrainer.ORTTrainer(self.model, model_desc, optim_config, loss_fn=None, options=options)
         else:
             # def map_optimizer_attributes(name):
@@ -276,7 +277,7 @@ class ORTTransformerTrainer:
 
                 tr_loss += self._training_step(self.model, inputs)
 
-                print("tr_loss: ", tr_loss)
+                # print("tr_loss: ", tr_loss)
 
                 if (step + 1) % self.args.gradient_accumulation_steps == 0 or (
                     len(epoch_iterator) <= self.args.gradient_accumulation_steps
