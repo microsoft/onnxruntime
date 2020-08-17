@@ -57,6 +57,25 @@ inline void CastData<MLFloat16, float>(const Tensor& in, Tensor& out, const Tens
   output_vector = in_vector.template cast<float>();
 #endif
 }
+
+template <>
+inline void CastData<float, BFloat16>(const Tensor& in, Tensor& out, const TensorShape& shape) {
+  auto out_data = out.template MutableData<BFloat16>();
+  auto shape_size = shape.Size();
+  auto in_vector = ConstEigenVectorMap<float>(in.template Data<float>(), shape_size);
+  auto output_vector = EigenVectorMap<BFloat16>(out_data, shape_size);
+  output_vector = in_vector.template cast<BFloat16>();
+}
+
+template <>
+inline void CastData<BFloat16, float>(const Tensor& in, Tensor& out, const TensorShape& shape) {
+  auto out_data = out.template MutableData<float>();
+  auto in_data = in.template Data<BFloat16>();
+  auto shape_size = shape.Size();
+  auto in_vector = ConstEigenVectorMap<BFloat16>(in_data, shape_size);
+  auto output_vector = EigenVectorMap<float>(out_data, shape_size);
+  output_vector = in_vector.unaryExpr([](BFloat16 val) { return val.ToFloat(); });
+}
 #endif
 
 #ifdef CAST_STRING_ENABLED
@@ -208,6 +227,7 @@ const std::vector<MLDataType> castOpTypeConstraints{
     DataTypeImpl::GetTensorType<int64_t>(),
 #ifdef CAST_FLOAT16_ENABLED
     DataTypeImpl::GetTensorType<MLFloat16>(),
+    DataTypeImpl::GetTensorType<BFloat16>(),
 #endif
 #ifdef CAST_STRING_ENABLED
     DataTypeImpl::GetTensorType<std::string>(),
@@ -217,7 +237,7 @@ const std::vector<MLDataType> castOpTypeConstraints{
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Cast,
     6,
-    8,
+    12,
     KernelDefBuilder()
         .TypeConstraint("T1", castOpTypeConstraints)
         .TypeConstraint("T2", castOpTypeConstraints)
@@ -226,7 +246,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
 
 ONNX_CPU_OPERATOR_KERNEL(
     Cast,
-    9,
+    13,
     KernelDefBuilder()
         .TypeConstraint("T1", castOpTypeConstraints)
         .TypeConstraint("T2", castOpTypeConstraints)
@@ -340,7 +360,34 @@ Status Cast::Compute(OpKernelContext* context) const {
         do_cast(from, ONNX_NAMESPACE::TensorProto_DataType_FLOAT, *X, tmp_tensor, shape);
         CastData<float, MLFloat16>(tmp_tensor, *Y, shape);
       }
-    } else
+    } else if (from == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) {
+      if (to_ == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+        CastData<BFloat16, float>(*X, *Y, shape);
+      } else {
+        // need to cast to float first in a temporary buffer
+        AllocatorPtr allocator;
+        ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
+        auto tmp_buffer = IAllocator::MakeUniquePtr<float>(allocator, shape.Size());
+        Tensor tmp_tensor(DataTypeImpl::GetType<float>(), shape, tmp_buffer.get(), allocator->Info());
+
+        CastData<BFloat16, float>(*X, tmp_tensor, shape);
+        do_cast(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, to_, tmp_tensor, *Y, shape);
+      }
+    } else if (to_ == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) {
+      if (from == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+        CastData<float, BFloat16>(*X, *Y, shape);
+      } else {
+        // need to cast to float first in a temporary buffer
+        AllocatorPtr allocator;
+        ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
+        auto tmp_buffer = IAllocator::MakeUniquePtr<float>(allocator, shape.Size());
+        Tensor tmp_tensor(DataTypeImpl::GetType<float>(), shape, tmp_buffer.get(), allocator->Info());
+
+        do_cast(from, ONNX_NAMESPACE::TensorProto_DataType_FLOAT, *X, tmp_tensor, shape);
+        CastData<float, BFloat16>(tmp_tensor, *Y, shape);
+      }
+    }
+    else
 #endif
     {
       do_cast(from, to_, *X, *Y, shape);

@@ -107,7 +107,8 @@ Status TrainingRunner::Initialize() {
   if (params_.use_mixed_precision) {
     TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mp{};
     mp.use_fp16_initializers = params_.use_fp16_initializer;
-
+    if (params_.use_bfloat16)
+      mp.fp16_type = ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
     config.mixed_precision_config = mp;
   }
 
@@ -573,11 +574,13 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const SessionMode mode,
       fetch_names = params_.fetch_names;
 
       if (params_.use_mixed_precision) {
-        auto it = opt_graph_outputs_.find(OptimizerOutputKey::GradientAllIsFinite);
-        ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Gradient norm's IsFinite output is missing in the optimizer output");
-        fetch_names.push_back(it->second);
+        if (!params_.use_bfloat16) {
+          auto it = opt_graph_outputs_.find(OptimizerOutputKey::GradientAllIsFinite);
+          ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Gradient norm's IsFinite output is missing in the optimizer output");
+          fetch_names.push_back(it->second);
+        }
         if (params_.use_adasum) {
-          it = opt_graph_outputs_.find(OptimizerOutputKey::DeltaAllIsFinite);
+          auto it = opt_graph_outputs_.find(OptimizerOutputKey::DeltaAllIsFinite);
           ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Adasum delta's IsFinite output is missing in the optimizer output");
           fetch_names.push_back(it->second);
         }
