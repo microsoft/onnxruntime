@@ -23,15 +23,13 @@ void RunTest(int64_t axis, const std::vector<int64_t> split_sizes, const ShapeAn
   OpTester test("Split", opset_version, onnxruntime::kOnnxDomain);
 
   test.AddAttribute("axis", axis);
-
+  test.AddInput<T>("input", input.first, input.second);
   if (!split_sizes.empty()){
     if (split_as_input)
-      test.AddInput("split", {static_cast<int64_t>(split_sizes.size())}, split_sizes, is_initializer);
+      test.AddInput<int64_t>("split", {static_cast<int64_t>(split_sizes.size())}, split_sizes, is_initializer);
     else
       test.AddAttribute("split", split_sizes);
-  }    
-
-  test.AddInput<T>("input", input.first, input.second);
+  }
 
   int i = 0;
   for (auto& output : outputs) {
@@ -505,6 +503,15 @@ TEST(SplitOperatorTest, Axis0UnequalSplitInputFloat_not_initializer) {
                       7.f, 8.f}});
 
   RunTest<float>(axis, splits, input, outputs, false, false, true, false);
+
+  // outputs.push_back({{2, 2},
+  //                    {1.f, 2.f,
+  //                     3.f, 4.f}});
+
+  // outputs.push_back({{2, 2},
+  //                    {5.f, 6.f,
+  //                     7.f, 8.f}});
+  // RunTest<float>(axis, {}, input, outputs, false, false, true, false);
 }
 
 /*
