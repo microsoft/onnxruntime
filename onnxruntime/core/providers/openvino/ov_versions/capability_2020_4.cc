@@ -389,7 +389,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       return true;
     }
 } else if ((optype == "Equal") || (optype == "And"))  {
-    
+
     using onnx_dtype = ONNX_NAMESPACE::TensorProto_DataType;
     auto supportedOps = std::set<std::vector<onnx_dtype>>{
         {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT },
@@ -403,7 +403,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
         {onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_INT32 },
         {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_FLOAT },
         {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8 }};
-    
+
     if (optype == "Equal") {
       supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_INT32 }),
       supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT });
@@ -420,7 +420,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     } else
       return false;
   }
-    
+
 
   //Op doesn't fall into known any of unsupported modes.
   return false;
@@ -652,8 +652,8 @@ GetCapability_2020_4(const onnxruntime::GraphViewer& graph_viewer, std::string d
         std::cout << "Unsupported node op " << node->OpType() << std::endl;
       }
     }
-  #endif 
-  
+  #endif
+
   //If all ops are supported, no partitioning is required. Short-circuit and avoid splitting.
   if (unsupported_nodes.empty()) {
     std::vector<std::string> inputs;
