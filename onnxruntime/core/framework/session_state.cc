@@ -294,7 +294,7 @@ Status ResolveDimParams(const GraphViewer& graph,
 Status ResolveSizeAndShape(
     const NodeArg* arg,
     const std::unordered_map<std::string, int64_t>& symbolic_dimensions,
-    size_t& size, // total number of elements. It's 0 if shape is unknown.
+    size_t& size,  // total number of elements. It's 0 if shape is unknown.
     std::vector<int64_t>& resolved_shape) {
   if (!arg->Shape()) {
     // 0 means no shape information.
@@ -352,6 +352,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
   for (auto& node_plan : exe_plan->execution_plan) {
     int node_index = node_index_info.GetNodeOffset(node_plan.node_index);
     auto* node = graph_viewer_->GetNode(node_plan.node_index);
+    std::cout << "executing node name " << node->Name() << ", index = " << node_plan.node_index << "\n";
     int output_start = node_index + static_cast<int>(node->InputDefs().size()) + static_cast<int>(node->ImplicitInputDefs().size());
     //allocate output
     for (int i = 0, end = static_cast<int>(node->OutputDefs().size()); i < end; ++i) {
@@ -382,6 +383,8 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
           return Status(ONNXRUNTIME, FAIL, "Size overflow");
         }
 
+        auto location = exe_plan->GetLocation(ml_value_idx);
+        std::cout << "tensor name: " << node->OutputDefs().at(i)->Name() << ", tensor location: "<< location.ToString() << ", tensor index: " << ml_value_idx << "\n";
         mem_planner.TraceAllocation(ml_value_idx, aligned_size);
       }
     }

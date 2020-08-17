@@ -381,10 +381,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCudaExecutionProvider,
     KernelDefBuilder()
-        .MayInplace(AliasRange(0, 1024))
-        .Alias(AliasRange(0, 1024))
-        .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())
-        .TypeConstraint("T1", DataTypeImpl::AllIEEEFloatTensorTypes()),
+        .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
     NcclReduce);
 
 }  // namespace cuda

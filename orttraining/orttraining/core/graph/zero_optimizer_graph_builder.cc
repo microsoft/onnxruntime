@@ -1,5 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+
+#include <iostream>
+#include <fstream>
+
+#include <queue>
+
 #include "onnx/defs/attr_proto_util.h"
 
 #include "orttraining/core/graph/zero_optimizer_graph_builder.h"
@@ -80,17 +86,21 @@ static Status AddNcclReduceForGradients(
     std::vector<ArgDef> reduce_inputs;
 
     auto node_name = nodearg_name_generator("NcclReduce");
+    ArgDef reduce_output(node_name + "Fake_Reduce_Out");
 
     for (int64_t j = lb; j <= ub; ++j) {
       reduce_inputs.push_back(gradient_argdefs[j]);
-      auto reduce_output = ArgDef(gradient_argdefs[j].name + "_Reduce_Out", gradient_argdefs[j].type_proto);
-      reduce_outputs.push_back(reduce_output);
       if (current_rank) {
+        reduce_output = ArgDef(gradient_argdefs[j].name + "_Reduce_Out", gradient_argdefs[j].type_proto);
+        reduce_outputs.push_back(reduce_output);
         gradient_argdefs[j] = reduce_output;
         opt_configs[j].enabled = true;
       } else {
         opt_configs[j].enabled = false;
       }
+    }
+    if (!current_rank) {
+      reduce_outputs.push_back(reduce_output);
     }
     if (i > 0) {
       //fake data edge to enforce dependence
@@ -426,14 +436,59 @@ static std::vector<ArgDef> GetGradientNormInputs(
   return inputs;
 }
 
+/*
+static std::vector<size_t> ComputeTopoOrderInBFS(Graph& graph) {
+  std::unordered_map<size_t, int> in_degrees;
+  std::vector<size_t> nodes_in_topo_order;
+  std::queue<size_t> q;
+
+  auto nodes_in_original_order = graph.Nodes();
+  std::for_each(nodes_in_original_order.cbegin(), nodes_in_original_order.cend(),
+                [&](const Node& node) {
+                  auto index = node.Index();
+                  int input_edge_size = node.GetInputEdgesCount();
+                  std::for_each(node.InputEdgesBegin(), node.InputEdgesEnd(), [&](const Node::EdgeEnd& edge) {
+                    if (edge.GetNode().OpType() == kConstant) {
+                      input_edge_size -= 1;
+                    }
+                  });
+                  ORT_ENFORCE(input_edge_size >= 0);
+
+                  if (input_edge_size == 0) {
+                    q.push(index);
+                  }
+                  in_degrees[index] = input_edge_size;
+                });
+
+  while (q.size() > 0) {
+    size_t currentNode = q.front();
+    q.pop();
+    nodes_in_topo_order.push_back(currentNode);
+    const Node* node = graph.GetNode(currentNode);
+    for (auto iter = node->OutputNodesBegin(); iter != node->OutputNodesEnd(); ++iter) {
+      auto newNode = iter->Index();
+      --in_degrees[newNode];
+      if (in_degrees[newNode] == 0) {
+        q.push(newNode);
+      }
+    }
+  }
+  return nodes_in_topo_order;
+}
+*/
+
 static Status GetGradientArgsInTopoOrder(
     Graph& graph,
     std::vector<ArgDef>& weight_argdefs,
     std::vector<OptimizerNodeConfig>& opt_configs,
-    std::vector<ArgDef>& gradient_argdefs) {
+    std::vector<ArgDef>& gradient_argdefs,
+    int rank) {
   GraphViewer gv(graph);
   const auto& node_indices = gv.GetNodesInTopologicalOrder();
+  //const auto node_indices = ComputeTopoOrderInBFS(graph);
   std::vector<std::string> gradient_names;
+  std::ofstream grad_file;
+  grad_file.open("grad_bfs_" + std::to_string(rank));
   for (auto& g_argdef : gradient_argdefs) {
     gradient_names.push_back(g_argdef.name);
   }
@@ -450,9 +505,11 @@ static Status GetGradientArgsInTopoOrder(
         gradient_argdefs_in_topo_order.push_back(gradient_argdefs.at(std::distance(gradient_names.begin(), itr)));
         weight_argdefs_in_topo_order.push_back(weight_argdefs.at(std::distance(gradient_names.begin(), itr)));
         opt_configs_in_topo_order.push_back(opt_configs.at(std::distance(gradient_names.begin(), itr)));
+        grad_file << gradient_argdefs.at(std::distance(gradient_names.begin(), itr)).name << "\n";
       }
     }
   }
+  grad_file.close();
 
   ORT_ENFORCE(gradient_argdefs_in_topo_order.size() == gradient_argdefs.size());
   ORT_ENFORCE(weight_argdefs_in_topo_order.size() == gradient_argdefs.size());
@@ -489,7 +546,8 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
       return graph.GenerateNodeArgName(base_name);
     };
 
-    ORT_RETURN_IF_ERROR(GetGradientArgsInTopoOrder(graph, weight_argdefs, opt_configs_, gradient_argdefs));
+    //ORT_RETURN_IF_ERROR(GetGradientArgsInTopoOrder(graph, weight_argdefs, opt_configs_, gradient_argdefs,
+    //                                               opt_graph_config_.data_parallel_group_rank));
 
     // handle optimizer partitioning
     ORT_RETURN_IF_ERROR(ModifyParametersForOptimizerPartitioning(
@@ -546,7 +604,8 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
     std::vector<int64_t> partitions;
 
     //Get gradients in topological order, updates the weight, gradients and opt_configs_ following that order
-    ORT_RETURN_IF_ERROR(GetGradientArgsInTopoOrder(graph, weight_argdefs, opt_configs_, gradient_argdefs));
+    ORT_RETURN_IF_ERROR(GetGradientArgsInTopoOrder(graph, weight_argdefs, opt_configs_, gradient_argdefs,
+                                                   opt_graph_config_.data_parallel_group_rank));
 
     // handle optimizer partitioning
     int64_t max_group_size;

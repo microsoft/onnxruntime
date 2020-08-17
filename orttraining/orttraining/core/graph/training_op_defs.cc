@@ -961,10 +961,6 @@ Example 4:
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain to float, float16 and double tensors.")
-      .TypeConstraint(
-          "T1",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain to float, float16 and double tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SparseSoftmaxCrossEntropy)

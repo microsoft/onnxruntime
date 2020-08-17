@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <queue>
+
 #include "core/framework/allocation_planner.h"
 #include <list>
 #include <unordered_map>
@@ -82,7 +84,7 @@ std::ostream& operator<<(std::ostream& out, std::pair<const SequentialExecutionP
     auto node = graph.GetNode(step.node_index);
     ORT_ENFORCE(nullptr != node);
     out << "[" << i << "] ";
-    out << node->OpType() << " (" << node->Name() << ")" << std::endl;
+    out << node->OpType() << " (" << node->Name() << ", " << node->Index() << ")" << std::endl;
     if (step.free_from_index <= step.free_to_index) {
       out << "Free ml-values: ";
       std::string sep;
@@ -741,8 +743,52 @@ class PlannerImpl {
   }
 };  // namespace onnxruntime
 
+/*
+static std::vector<size_t> ComputeTopoOrderInBFS2(const Graph& graph) {
+  std::unordered_map<size_t, int> in_degrees;
+  std::vector<size_t> nodes_in_topo_order;
+  std::queue<size_t> q;
+
+  auto nodes_in_original_order = graph.Nodes();
+  std::for_each(nodes_in_original_order.cbegin(), nodes_in_original_order.cend(),
+                [&](const Node& node) {
+                  auto index = node.Index();
+                  int input_edge_size = node.GetInputEdgesCount();
+                  std::for_each(node.InputEdgesBegin(), node.InputEdgesEnd(), [&](const Node::EdgeEnd& edge) {
+                    if (edge.GetNode().OpType() == kConstant) {
+                      input_edge_size -= 1;
+                    }
+                  });
+                  ORT_ENFORCE(input_edge_size >= 0);
+
+                  if (input_edge_size == 0) {
+                    q.push(index);
+                  }
+                  in_degrees[index] = input_edge_size;
+                });
+
+  while (q.size() > 0) {
+    size_t currentNode = q.front();
+    q.pop();
+    nodes_in_topo_order.push_back(currentNode);
+    const Node* node = graph.GetNode(currentNode);
+    for (auto iter = node->OutputNodesBegin(); iter != node->OutputNodesEnd(); ++iter) {
+      auto newNode = iter->Index();
+      --in_degrees[newNode];
+      if (in_degrees[newNode] == 0) {
+        q.push(newNode);
+      }
+    }
+  }
+  return nodes_in_topo_order;
+}
+*/
+
 Status PlannerImpl::CreatePlan() {
   auto& p_graph_nodes = graph_viewer_.GetNodesInTopologicalOrder();
+  //auto& graph = graph_viewer_.GetGraph();
+  //auto p_graph_nodes = ComputeTopoOrderInBFS2(graph);
+
 
   int num_ml_values = ort_value_name_idx_map_.MaxIdx() + 1;
 
