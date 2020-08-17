@@ -43,11 +43,11 @@ Status AdamOptimizerBuilder::Build(
     const TypeProto* const weight_type_proto = weight_argdefs[i].type_proto;
     const TypeProto* const gradient_type_proto = gradient_argdefs[i].type_proto;
 
-    // Return either the input gradient/weight/fp16-weight or updated gradient/weight/fp16-weight.
+    // Return either the input gradient/weight/mixed-precision-weight or updated gradient/weight/mixed-precision-weight.
     ArgDef output_gradient_argdef = gradient_argdefs[i];
     ArgDef output_weight_argdef = weight_argdefs[i];
-    if (opt_configs[i].fp16_weight_arg != nullptr)
-      output_weight_argdef = ArgDef(opt_configs[i].fp16_weight_arg->Name(), opt_configs[i].fp16_weight_arg->TypeAsProto());
+    if (opt_configs[i].mixed_precision_weight_arg != nullptr)
+      output_weight_argdef = ArgDef(opt_configs[i].mixed_precision_weight_arg->Name(), opt_configs[i].mixed_precision_weight_arg->TypeAsProto());
 
     // In distributed training, some weights may not be updated by all ranks.
     if (opt_configs[i].enabled) {
@@ -86,7 +86,7 @@ Status AdamOptimizerBuilder::Build(
 
         TensorProto moment_tensor_proto;
         TypeProto* moment_type_proto = graph_defs.CopyTypeProto(weight_argdefs[i]);
-        if (opt_configs[i].use_fp16_moments) {
+        if (opt_configs[i].use_mixed_precision_moments) {
           moment_tensor_proto = CreateTensorProto<MLFloat16>(gradient_moment_name, MLFloat16(math::floatToHalf(0.f)), weight_dims);
           moment_type_proto->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16);
         } else {
@@ -110,10 +110,10 @@ Status AdamOptimizerBuilder::Build(
         output_args.push_back(output_gradient_argdef);  // g_new
       }
 
-      if (opt_configs[i].update_weight && opt_configs[i].fp16_weight_arg != nullptr) {
-        input_args.push_back(ArgDef(opt_configs[i].fp16_weight_arg->Name(), opt_configs[i].fp16_weight_arg->TypeAsProto()));
-        std::string output_name = opt_configs[i].fp16_weight_arg->Name() + "_Adam_out";
-        output_weight_argdef = ArgDef(output_name, opt_configs[i].fp16_weight_arg->TypeAsProto());
+      if (opt_configs[i].update_weight && opt_configs[i].mixed_precision_weight_arg != nullptr) {
+        input_args.push_back(ArgDef(opt_configs[i].mixed_precision_weight_arg->Name(), opt_configs[i].mixed_precision_weight_arg->TypeAsProto()));
+        std::string output_name = opt_configs[i].mixed_precision_weight_arg->Name() + "_Adam_out";
+        output_weight_argdef = ArgDef(output_name, opt_configs[i].mixed_precision_weight_arg->TypeAsProto());
         output_args.push_back(output_weight_argdef);
       } else {
         input_args.push_back(ArgDef());

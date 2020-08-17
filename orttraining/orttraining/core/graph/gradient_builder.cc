@@ -67,12 +67,11 @@ static bool SimplifyReshape(const std::vector<Dimension>& target_shape,  // the 
 
 IMPLEMENT_GRADIENT_BUILDER(GetCastGradient) {
   // TODO: handle invalid conversion cases
-  const auto data_type = I(0).type_proto->tensor_type().elem_type();
   return std::vector<NodeDef>{
       NodeDef("Cast",
               {GO(0)},
               {GI(0)},
-              {MakeAttribute("to", int64_t(data_type))})};
+              {MakeAttribute("to", int64_t(IElemType(0)))})};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetSinGradient) {
@@ -90,24 +89,39 @@ IMPLEMENT_GRADIENT_BUILDER(GetLogGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetTanhGradient) {
-  return std::vector<NodeDef>{
-      NodeDef("TanhGrad",
-              {O(0), GO(0)},
-              {GI(0)})};
+  ArgDef Y = O(0);
+  std::vector<NodeDef> result;
+  NodeDef one_constant_node = OneConstantNode(OElemType(0));
+  ArgDef one_arg = one_constant_node.output_args[0];
+  result.push_back(one_constant_node);
+  result.push_back(NodeDef("Mul", {Y, Y}, {IA("Squared_Y")}));
+  result.push_back(NodeDef("Sub", {one_arg, IA("Squared_Y")}, {IA("Sub_Squared_Y")}));
+  result.push_back(NodeDef("Mul", {GO(0), IA("Sub_Squared_Y")}, {GI(0)}));
+  return result;
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetSqrtGradient) {
-  return std::vector<NodeDef>{
-      NodeDef("SqrtGrad",
-              {O(0), GO(0)},
-              {GI(0)})};
+  std::vector<NodeDef> result;
+  NodeDef half_constant_node = HalfConstantNode(OElemType(0));
+  ArgDef half_arg = half_constant_node.output_args[0];
+  result.push_back(half_constant_node);
+  result.push_back(NodeDef("Div", {half_arg, O(0)}, {IA("Div_O0")}));
+  result.push_back(NodeDef("Mul", {GO(0), IA("Div_O0")}, {GI(0)}));
+  return result;
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetErfGradient) {
-  return std::vector<NodeDef>{
-      NodeDef("ErfGrad",
-              {I(0), GO(0)},
-              {GI(0)})};
+  ArgDef X = I(0);
+  std::vector<NodeDef> result;
+  NodeDef two_sqrt_pi_node = ConstantValueNode(static_cast<float>(M_2_SQRTPI), Name("Two_Sqrt_Pi"), IElemType(0));
+  ArgDef two_sqrt_pi_arg = two_sqrt_pi_node.output_args[0];
+  result.push_back(two_sqrt_pi_node);
+  result.push_back(NodeDef("Mul", {X, X}, {IA("Squared_X")}));
+  result.push_back(NodeDef("Neg", {IA("Squared_X")}, {IA("Neg_Squared_X")}));
+  result.push_back(NodeDef("Exp", {IA("Neg_Squared_X")}, {IA("Exp_Neg_Squared_X")}));
+  result.push_back(NodeDef("Mul", {two_sqrt_pi_arg, IA("Exp_Neg_Squared_X")}, {IA("Mul_Exp_Neg_Squared_X")}));
+  result.push_back(NodeDef("Mul", {GO(0), IA("Mul_Exp_Neg_Squared_X")}, {GI(0)}));
+  return result;
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
@@ -122,7 +136,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
     AttributeProto transpose_second_input = MakeAttribute("transB", int64_t(1));
 
     if (A_shape.size() == 2 && B_shape.size() == 2) {
-      NodeDef zero_constant_node = ZeroConstantNode();
+      NodeDef zero_constant_node = ZeroConstantNode(OElemType(0));
       ArgDef ZERO = zero_constant_node.output_args[0];
       result.push_back(zero_constant_node);
 
@@ -228,7 +242,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
           ArgDef dY_shape_2d_arg = dY_shape_2d_node.output_args[0];
           result.push_back(dY_shape_2d_node);
 
-          NodeDef zero_constant_node = ZeroConstantNode();
+          NodeDef zero_constant_node = ZeroConstantNode(IElemType(1));
           ArgDef ZERO = zero_constant_node.output_args[0];
           result.push_back(zero_constant_node);
 
@@ -347,7 +361,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
   AttributeProto transpose_first_input = MakeAttribute("transA", int64_t(1));
   AttributeProto transpose_second_input = MakeAttribute("transB", int64_t(1));
 
-  NodeDef zero_contant_node = ZeroConstantNode();
+  NodeDef zero_contant_node = ZeroConstantNode(OElemType(0));
   ArgDef ZERO = zero_contant_node.output_args[0];
 
   std::vector<NodeDef> result;
@@ -436,7 +450,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
         HandleBroadcasting(dY, C, IA("dC_reduced"), C_axes, result);
 
         if (has_beta && beta != 1.0f) {
-          NodeDef scale_node = ConstantValueNode(beta, Name("Scale"));
+          NodeDef scale_node = ConstantValueNode(beta, Name("Scale"), IElemType(2));
           ArgDef SCALE = scale_node.output_args[0];
           result.push_back(scale_node);
           result.push_back(
@@ -449,7 +463,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
         }
       } else {
         if (has_beta && beta != 1.0f) {
-          NodeDef scale_node = ConstantValueNode(beta, Name("Scale"));
+          NodeDef scale_node = ConstantValueNode(beta, Name("Scale"), IElemType(2));
           ArgDef SCALE = scale_node.output_args[0];
           result.push_back(scale_node);
           result.push_back(
@@ -474,7 +488,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
       HandleBroadcastingDynamic(dY, C, c_shape, IA("dC_reduced"), c_axes, result);
 
       if (has_beta && beta != 1.0f) {
-        NodeDef scale_node = ConstantValueNode(beta, Name("Scale"));
+        NodeDef scale_node = ConstantValueNode(beta, Name("Scale"), IElemType(2));
         ArgDef SCALE = scale_node.output_args[0];
         result.push_back(scale_node);
         result.push_back(
@@ -720,7 +734,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetConvGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetSigmoidGradient) {
-  auto const_one = OneConstantNode();
+  auto const_one = OneConstantNode(OElemType(0));
   return std::vector<NodeDef>{
       const_one,
       NodeDef("Sub",
@@ -1017,7 +1031,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceMeanGradient) {
     result.push_back(NodeDef("Unsqueeze", {GO(0)}, {grad}, {MakeAttribute("axes", axes_values)}));
   }
 
-  const int64_t type_float = static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  const int64_t type_float = static_cast<int64_t>(OElemType(0));
   result.push_back(NodeDef("Size", {I(0)}, {IA("Scale_Denominator")}));
   result.push_back(
       NodeDef("Cast",
@@ -1098,10 +1112,16 @@ IMPLEMENT_GRADIENT_BUILDER(GetPowGradient) {
   if (IsGradientRequiredForSrcNodeInput(1)) {
     ORT_THROW("GradientBuilder is not implemented for CUDA Pow's input exponent.");
   }
-  return std::vector<NodeDef>{
-      NodeDef("PowGrad",
-              {GO(0), I(0), I(1)},
-              {GI(0)})};
+
+  std::vector<NodeDef> result;
+  NodeDef one_constant_node = OneConstantNode(IElemType(0));
+  ArgDef one_arg = one_constant_node.output_args[0];
+  result.push_back(one_constant_node);
+  result.push_back(NodeDef("Sub", {I(1), one_arg}, {IA("Sub_I1")}));
+  result.push_back(NodeDef("Pow", {I(0), IA("Sub_I1")}, {IA("Pow_I0")}));
+  result.push_back(NodeDef("Mul", {IA("Pow_I0"), I(1)}, {IA("Mul_Pow_I0_I1")}));
+  result.push_back(NodeDef("Mul", {IA("Mul_Pow_I0_I1"), GO(0)}, {GI(0)}));
+  return result;
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxCrossEntropyGradient) {
@@ -1167,7 +1187,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGlobalAveragePoolGradient) {
     }
   }
 
-  NodeDef scale_node = ConstantValueNode(1.0f / static_cast<float>(scale), Name("Scale"));
+  NodeDef scale_node = ConstantValueNode(1.0f / static_cast<float>(scale), Name("Scale"), IElemType(0));
   ArgDef SCALE = scale_node.output_args[0];
   return std::vector<NodeDef>{
       scale_node,
@@ -1325,7 +1345,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetSliceGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetWhereGradient) {
   std::vector<NodeDef> result;
-  const int64_t data_type = static_cast<int64_t>(I(1).type_proto->tensor_type().elem_type());
+  const int64_t data_type = static_cast<int64_t>(IElemType(1));
   if (IsGradientRequiredForSrcNodeInput(1)) {
     result.push_back(NodeDef("Cast", {I(0)}, {IA("Positive_Mask")}, {MakeAttribute("to", data_type)}));
     result.push_back(NodeDef("Mul", {GO(0), IA("Positive_Mask")}, {GI(1)}));
