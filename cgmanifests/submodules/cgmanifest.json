@@ -75,7 +75,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "54a0a9c9dd83aad42e79238ec8f0932b2a5e7881",
+          "commitHash": "d10b27fe37736d2944630ecd7557cefa95cf87c9",
           "repositoryUrl": "https://gitlab.com/libeigen/eigen.git"
         },
         "comments": "git submodule at cmake/external/eigen"
