@@ -50,7 +50,7 @@ Status ShapeToInitializer::Apply(Graph& graph, Node& node, RewriteRuleEffect& ru
 }
 
 bool ShapeToInitializer::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const {
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Shape", {1})) {
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Shape", {1, 13})) {
     return false;
   }
 
