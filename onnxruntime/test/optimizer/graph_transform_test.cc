@@ -188,7 +188,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingSubgraph) {
 
   auto create_subgraph = [&](GraphProto& graph_proto) {
     // create subgraph that has an Add node to add a local and parent graph initializer
-    Model model("ConstantFoldingSubgraphTest_subgraph", false, *logger_);
+    Model model("ConstantFoldingSubgraphTest_subgraph", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {}, *logger_);
     auto& graph = model.MainGraph();
 
     TensorProto local_constant(value_tensor);
@@ -209,7 +209,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingSubgraph) {
     graph_proto = graph.ToGraphProto();
   };
 
-  Model model("ConstantFoldingSubgraphTest_main_graph", false, *logger_);
+  Model model("ConstantFoldingSubgraphTest_main_graph", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {}, *logger_);
   auto& graph = model.MainGraph();
 
   // add initializer at parent level
