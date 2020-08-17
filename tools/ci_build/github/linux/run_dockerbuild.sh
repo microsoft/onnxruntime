@@ -125,7 +125,7 @@ if [[ $BUILD_EXTR_PAR = *--enable_training_python_frontend_e2e_tests* ]]; then
 fi
 
 $DOCKER_CMD rm -f "onnxruntime-$BUILD_DEVICE" || true
-$DOCKER_CMD run $RUNTIME -h $HOSTNAME $DOCKER_RUN_PARAMETER \
+$DOCKER_CMD run $RUNTIME -h $HOSTNAME $DOCKER_RUN_PARAMETER -e http_proxy=http://proxy-us.intel.com:911 -e https_proxy=http://proxy-us.intel.com:912 \
     -e NIGHTLY_BUILD -e http_proxy=http://proxy-us.intel.com:911 -e https_proxy=http://proxy-us.intel.com:912 \
     "onnxruntime-$IMAGE" \
  /bin/bash /onnxruntime_src/tools/ci_build/github/linux/run_build.sh \
