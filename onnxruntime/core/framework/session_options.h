@@ -78,5 +78,11 @@ struct SessionOptions {
   // Use this in conjunction with the CreateEnvWithGlobalThreadPools API.
   bool use_per_session_threads = true;
   bool thread_pool_allow_spinning = true;
+
+  // Deterministic compute is likely not as performant. This option is default to false.
+  bool use_deterministic_compute = false;
+
+  // Control the pre-packing of initialized constant tensors
+  bool use_prepacking = true;
 };
 }  // namespace onnxruntime

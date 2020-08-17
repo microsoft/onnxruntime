@@ -78,10 +78,6 @@ class BFCArena : public IArenaAllocator {
     return memory_limit_;
   }
 
-  const OrtMemoryInfo& Info() const override {
-    return info_;
-  }
-
   FencePtr CreateFence(const SessionState* session_state) override {
     // arena always rely on its device allocator to create fence
     return device_allocator_->CreateFence(session_state);
@@ -444,8 +440,6 @@ class BFCArena : public IArenaAllocator {
   int64_t next_allocation_id_;
 
   AllocatorStats stats_;
-
-  OrtMemoryInfo info_;
 
   std::unordered_map<void*, size_t> reserved_chunks_;
 

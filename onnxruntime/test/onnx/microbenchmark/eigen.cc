@@ -11,7 +11,14 @@
 #pragma warning(disable : 4805)
 #pragma warning(disable : 4554)
 #endif
+
+#ifndef EIGEN_USE_THREADS
+#define EIGEN_USE_THREADS
+#endif
+
+#include <unsupported/Eigen/CXX11/ThreadPool>
 #include <unsupported/Eigen/CXX11/Tensor>
+#include <unsupported/Eigen/CXX11/src/Tensor/TensorDeviceThreadPool.h>
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #elif defined(_MSC_VER)
@@ -37,7 +44,9 @@ static void BM_EigenBroadCast(benchmark::State& state) {
   }
 }
 
-BENCHMARK(BM_EigenBroadCast)->UseRealTime()->Unit(benchmark::TimeUnit::kMicrosecond);
+BENCHMARK(BM_EigenBroadCast)
+    ->UseRealTime()
+    ->Unit(benchmark::TimeUnit::kMicrosecond);
 
 static void BM_EigenBroadCast_SingleThread(benchmark::State& state) {
   const std::vector<size_t> dims_vec{1, 64, 75, 75};
@@ -54,4 +63,6 @@ static void BM_EigenBroadCast_SingleThread(benchmark::State& state) {
   }
 }
 
-BENCHMARK(BM_EigenBroadCast_SingleThread)->UseRealTime()->Unit(benchmark::TimeUnit::kMicrosecond);
+BENCHMARK(BM_EigenBroadCast_SingleThread)
+    ->UseRealTime()
+    ->Unit(benchmark::TimeUnit::kMicrosecond);

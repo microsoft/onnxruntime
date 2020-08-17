@@ -12,11 +12,9 @@
 
 namespace onnxruntime {
 
-struct NodeCompare {
-  bool operator()(const Node* n1, const Node* n2) const {
-    return n1->Index() < n2->Index();
-  }
-};
+bool NodeCompare::operator()(const Node* n1, const Node* n2) const {
+  return n1->Index() < n2->Index();
+}
 
 GraphViewer::GraphViewer(const Graph& graph) {
   graph_ = &graph;

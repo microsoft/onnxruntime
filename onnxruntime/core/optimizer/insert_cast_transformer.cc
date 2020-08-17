@@ -237,17 +237,37 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
       }
     }
 
-    if (casted && node->GetExecutionProviderType().empty()) {
-      //set current node to CPU execution provider
+    if (casted) {
+      // Set current node to run on the CPU execution provider
+      // Keep in mind that the EP will be empty because NeedInsertCast() already insures that
       node->SetExecutionProviderType(kCpuExecutionProvider);
+
+      // Some ONNX operators have an attribute `dtype` which define the output type for these operators
+      // (mostly Generator ops like RandomNormal, RandomNormalLike, EyeLike, etc.).
+      // Update that so that `dtype` is now Float. Otherwise there could be a mis-match between the actual
+      // type of the NodeArg and the ONNX inferred type of the NodeArg and Graph Resolve() will complain.
+      auto& attributes = node->GetMutableAttributes();
+      auto dtype_attribute = attributes.find("dtype");
+
+      if (dtype_attribute != attributes.end()) {
+        // Simple sanity check
+        ORT_ENFORCE(dtype_attribute->second.has_i(),
+                    "InsertCastTransformer works on the assumption that `dtype` attribute holds an integer.");
+
+        // Modify the dtype attribute (which defines the output type) to FLOAT if it is FLOAT16.
+        if (dtype_attribute->second.i() == TensorProto_DataType_FLOAT16) {
+          dtype_attribute->second.set_i(TensorProto_DataType_FLOAT);
+        }
+      }
     }
 
     auto& outputs = node->MutableOutputDefs();
     for (auto output : outputs) {
-      // todo: check is the kernel available
-      // here is based on the assumption that if we cast a cpu op's input from float16 to float
-      // then this cpu op's output will become float.
-      // not sure is it always correct...
+      // TODO 1: Check if the kernel available
+      // TODO 2: There is an inherent assumption that if we cast a cpu op's input from float16 to float
+      // then this cpu op's output will be float (if it was inferred to be float16 previously).
+      // Not sure if this is always true. Handle any corner case if it does exist.
+
       if (output->Type() &&
           DataTypeImpl::TypeFromProto(*output->TypeAsProto()) == DataTypeImpl::GetTensorType<MLFloat16>() &&
           casted) {

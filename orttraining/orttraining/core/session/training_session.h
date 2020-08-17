@@ -10,6 +10,7 @@
 #include "orttraining/core/graph/loss_function_registry.h"
 #include "orttraining/core/graph/optimizer_graph_output_key.h"
 #include "orttraining/core/graph/optimizer_config.h"
+#include "orttraining/core/graph/gradient_config.h"
 
 namespace onnxruntime {
 namespace training {
@@ -42,8 +43,8 @@ class TrainingSession : public InferenceSession {
     // The immutable weights specification.
     ImmutableWeights immutable_weights;
 
-    // Whether to set the gradients as graph outputs.
-    bool set_gradients_as_graph_outputs{false};
+    // Gradient graph configuration
+    GradientGraphConfiguration gradient_graph_config{};
 
     // The number of gradient accumulation steps.
     int gradient_accumulation_steps{1};
@@ -70,6 +71,7 @@ class TrainingSession : public InferenceSession {
     struct MixedPrecisionConfiguration {
       // Whether to use FP16 initializers.
       bool use_fp16_initializers{};
+      ONNX_NAMESPACE::TensorProto_DataType fp16_type{ONNX_NAMESPACE::TensorProto_DataType_FLOAT16};
     };
     // The mixed precision configuration.
     // If not provided, mixed precision is disabled.
@@ -125,7 +127,7 @@ class TrainingSession : public InferenceSession {
       // Whether to use NCCL.
       bool use_nccl{};
       // Whether to partition the optimizer state.
-      bool partition_optimizer{};
+      ZeROConfig deepspeed_zero{};
       // Selects the reduction algorithm for Adasum.
       AdasumReductionType adasum_reduction_type{AdasumReductionType::None};
       // Whether to enable gradient clipping.
@@ -172,6 +174,17 @@ class TrainingSession : public InferenceSession {
     // If pipeline is enabled, this field's has_value() returns true.
     // Otherwise, it returns false.
     optional<PipelineConfiguration> pipeline_config{};
+
+    struct GraphTransformerConfiguration {
+      // Whether to enable GELU approximation which is faster but produces different results.
+      bool enable_gelu_approximation{false};
+      // Enable checkpointing of attention dropout to save memory
+      bool attn_dropout_checkpoint{false};
+      // Enable checkpointing of Gelu activation output to save memory
+      bool gelu_checkpoint{false};
+    };
+
+    GraphTransformerConfiguration graph_transformer_config{};
   };
 
   /**
@@ -294,11 +307,10 @@ class TrainingSession : public InferenceSession {
    * @return The list of feed names.
    */
   std::unordered_set<std::string> GetDropoutEvalFeeds() const { return dropout_eval_feeds_; }
-  /** Override Run function in InferenceSession to inject some training-specific logics **/
-  using InferenceSession::Run; // For overload resolution.
-  common::Status Run(const RunOptions& run_options, IOBinding& io_binding) override;
 
-  common::Status Run(IOBinding& io_binding) override;
+  /** Override Run function in InferenceSession to inject some training-specific logics **/
+  using InferenceSession::Run;  // For overload resolution.
+  common::Status Run(const RunOptions& run_options, IOBinding& io_binding) override;
 
  private:
   /** Configures the loss function.
@@ -384,11 +396,13 @@ class TrainingSession : public InferenceSession {
                                    std::string& backward_waited_event_after_recv_name,
                                    std::string& backward_recorded_event_before_send_name);
 
-  common::Status ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train);
+  common::Status ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,
+                                                 const TrainingConfiguration::GraphTransformerConfiguration& config);
 
   /** configure initial transformers for training */
   void AddPreTrainingTransformers(GraphTransformerManager& transformer_manager,
                                   const std::unordered_set<std::string>& weights_to_train,
+                                  const TrainingConfiguration::GraphTransformerConfiguration& config,
                                   TransformerLevel graph_optimization_level = TransformerLevel::MaxLevel,
                                   const std::vector<std::string>& custom_list = {});
 
@@ -400,11 +414,11 @@ class TrainingSession : public InferenceSession {
   /** Perform auto-diff to add backward graph into the model.
   @param weights_to_train a set of weights to be training.
   @param loss_function_output_name the name of the loss function's output.
-  @param set_gradient_as_graph_output if it is true, set gradient of trainable weight as graph output
   */
   common::Status BuildGradientGraph(const std::unordered_set<std::string>& weights_to_train,
                                     const std::string& loss_function_output_name,
-                                    const bool set_gradient_as_graph_output = false);
+                                    const GradientGraphConfiguration& gradient_graph_config,
+                                    const logging::Logger& logger);
 
   common::Status BuildAccumulationNode(const std::unordered_set<std::string>& weights_to_train);
 
@@ -425,20 +439,24 @@ class TrainingSession : public InferenceSession {
   */
   common::Status EnableMixedPrecision(const std::unordered_set<std::string>& weights_to_train,
                                       bool use_fp16_initializer,
-                                      std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_fp16_node_arg);
+                                      std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_fp16_node_arg,
+                                      ONNX_NAMESPACE::TensorProto_DataType fp16_type);
 
   /** Discover all trainable initializers by reverse DFS starting from a given tensor (for example, the loss value)
   @param immutable_weights do not include initializers matching an (op_type, input_index, value) entry from this table
   @param backprop_source_name reverse DFS back propagation source name (i.e. loss name or pipeline send output name)
   */
-  std::unordered_set<std::string> GetTrainableModelInitializers(const ImmutableWeights& immutable_weights, 
+  std::unordered_set<std::string> GetTrainableModelInitializers(const ImmutableWeights& immutable_weights,
                                                                 const std::string& backprop_source_name) const;
 
   std::unordered_set<std::string> GetStateTensorNames() const;
 
-  common::Status SetDropoutEvalFeedNames();
+  common::Status SetEvalFeedNames();
 
   NameMLValMap GetWeights() const;
+
+  void FilterUnusedWeights(const std::unordered_set<std::string>& weight_names_to_train,
+                           std::unordered_set<std::string>& filtered_weight_names_to_train);
 
   static bool IsImmutableWeight(const ImmutableWeights& immutable_weights,
                                 const Node* node,
@@ -464,6 +482,9 @@ class TrainingSession : public InferenceSession {
   std::unordered_set<std::string> dropout_eval_feeds_;
   OptimizerGraphConfig opt_graph_config_;
   std::unordered_map<std::string, OptimizerNodeConfig> opt_configs_;
+
+  GradientGraphConfiguration gradient_graph_config_;
+  static const std::string training_mode_string_;
 };
 }  // namespace training
 }  // namespace onnxruntime

@@ -59,7 +59,7 @@ void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
     ORT_THROW("duplicated allocator");
   }
   allocators_.insert(iter, {key, allocator});
-  allocator_list_.emplace_back(gsl::not_null<IAllocator*>(allocator.get()));
+  allocator_list_.push_back(allocator);
 }
 
 common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& /*fused_node*/,

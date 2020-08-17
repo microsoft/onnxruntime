@@ -27,13 +27,6 @@ class TransformerMemcpyImpl {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TransformerMemcpyImpl);
 
   // use value-based compare to make sure transformer output order is consistent
-  struct NodeCompare {
-    bool operator()(const onnxruntime::Node* lhs, const onnxruntime::Node* rhs) const {
-      return lhs->Index() < rhs->Index();
-    }
-  };
-
-  // use value-based compare to make sure transformer output order is consistent
   struct NodeArgCompare {
     bool operator()(const onnxruntime::NodeArg* lhs, const onnxruntime::NodeArg* rhs) const {
       return lhs->Name() < rhs->Name();

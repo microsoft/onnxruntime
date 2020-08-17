@@ -6,10 +6,109 @@
 #include "orttraining/training_ops/cuda/communication/recv.h"
 #include "orttraining/training_ops/cuda/communication/common.h"
 #include "core/profile/profile.h"
+#include "core/providers/cuda/cuda_common.h"
 #include <mpi.h>
+
+#include "orttraining/core/framework/mpi_setup.h"
 
 namespace onnxruntime {
 namespace cuda {
+
+void Recv::ReceiveShapeInfo(
+    const int src,
+    const int num_tensors,
+    size_t& aggregated_aligned_tensor_bytes,
+    std::vector<size_t>& prefix_tensor_shape_sizes,
+    std::vector<int64_t>& aggregated_tensor_shapes) const {
+  // Resize vector so that the following .data() returns meaningful pointer.
+  prefix_tensor_shape_sizes.resize(num_tensors);
+  CommInfo_t info_shape_sizes{prefix_tensor_shape_sizes.data(),
+                              num_tensors * static_cast<int>(sizeof(size_t)),
+                              src,
+                              static_cast<int>(tag_)};
+  CommInfo_t info_aggregated_size{&aggregated_aligned_tensor_bytes,
+                                  static_cast<int>(sizeof(size_t)),
+                                  src,
+                                  static_cast<int>(tag_)};
+  // Directly use CPU to wait MPI_Recv. We cannot use GPU callback because
+  // MPI_Recv may block the entire GPU until it returns.
+  MPI_CHECK(MPI_Recv(
+      info_shape_sizes.buffer, info_shape_sizes.size, MPI_CHAR,
+      info_shape_sizes.rank, info_shape_sizes.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+
+  MPI_CHECK(MPI_Recv(
+      info_aggregated_size.buffer, info_aggregated_size.size, MPI_CHAR,
+      info_aggregated_size.rank, info_aggregated_size.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+
+  // prefix_tensor_shape_sizes's last element is the number of total dimensions.
+  // If a 3-D tensor and a 2-D tensor are sent, its value is 2 + 3 = 5.
+  aggregated_tensor_shapes.resize(prefix_tensor_shape_sizes[num_tensors - 1]);
+  CommInfo_t info_shapes{aggregated_tensor_shapes.data(),
+                         static_cast<int>(aggregated_tensor_shapes.size()) * static_cast<int>(sizeof(int64_t)),
+                         src,
+                         static_cast<int>(tag_)};
+  MPI_CHECK(MPI_Recv(
+      info_shapes.buffer, info_shapes.size, MPI_CHAR,
+      info_shapes.rank, info_shapes.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+}
+
+void Recv::ReceiveData(
+    const int num_tensors,
+    std::vector<Tensor*> received_tensors,
+    const int src,
+    const size_t aggregated_aligned_tensor_bytes,
+    IAllocatorUniquePtr<char>& buffer) const {
+#ifdef ENABLE_NVTX_PROFILE
+  profile::NvtxRangeCreator recvRange(
+      "Recv-" + std::to_string(src), profile::Color::Green);
+  // Begin of major communication tasks.
+  // The first MPI_Recv is not included because we don't want to
+  // count waiting time before setting up the actual communication.
+  recvRange.Begin();
+#endif
+  buffer = AllocateBufferOnCPUPinned<char>(static_cast<size_t>(aggregated_aligned_tensor_bytes));
+  CommInfo_t info_data{buffer.get(),
+                       static_cast<int>(aggregated_aligned_tensor_bytes),
+                       src,
+                       static_cast<int>(tag_)};
+
+  MPI_CHECK(MPI_Recv(
+      info_data.buffer, info_data.size, MPI_CHAR,
+      info_data.rank, info_data.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+
+#ifdef ENABLE_NVTX_PROFILE
+  // End of actual communication.
+  recvRange.End();
+#endif
+
+#ifdef ENABLE_NVTX_PROFILE
+  profile::NvtxRangeCreator memcpyRange(
+      "RecvMemcpy-" + std::to_string(src), profile::Color::Green);
+  // Begin of host-to-device memory copy.
+  memcpyRange.Begin();
+#endif
+
+  // Copy tensors from buffer to outputs.
+  size_t tensor_offset_in_bytes = 0;
+  for (int i = 0; i < num_tensors; ++i) {
+    Tensor* tensor = received_tensors[i];
+
+    // Find the next aligned offset in the tensor buffer to meet alignment requirement
+    tensor_offset_in_bytes = GetAggregatedAlignedAddress(tensor_offset_in_bytes);
+
+    // Keep the sync copy in the previous design
+    // TODO they can be moved to async call after global stream becoming accessible
+    CUDA_CALL(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
+                              tensor->SizeInBytes(), cudaMemcpyHostToDevice));
+    tensor_offset_in_bytes += tensor->SizeInBytes();
+  }
+  AddDeferredReleaseCPUPtr(buffer.release());
+
+#ifdef ENABLE_NVTX_PROFILE
+  // End of host-to-device copy.
+  memcpyRange.End();
+#endif
+}
 
 ONNX_OPERATOR_KERNEL_EX(
     Recv,
@@ -38,117 +137,107 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
 
 #ifdef ENABLE_NVTX_PROFILE
   profile::NvtxRangeCreator preRange(
-    "PreRecv-" + std::to_string(src), profile::Color::Green);
+      "PreRecv-" + std::to_string(src), profile::Color::Green);
   // Begin of preparation for receiving data.
   preRange.Begin();
 #endif
 
-  // Create buffers
-  const int tensor_num = static_cast<int>(element_types_.size());
-  // TODO move the following variables to member variables for extending life-time
-  // if we want to make the entire call async
-  std::vector<size_t> prefix_tensor_shape_sizes(tensor_num);
-  std::vector<int64_t> aggregated_tensor_shapes;
-  size_t aggregated_aligned_tensor_bytes = 0;
-
   // Start communication
   int world_rank;
-  MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+  MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &world_rank));
   ORT_ENFORCE(world_rank != src, "Receive data from rank ", src, " on the rank ", world_rank, ".");
 
-  // Receive shape sizes and aggregated size
-  CommInfo_t info_shape_sizes{prefix_tensor_shape_sizes.data(),
-                              tensor_num * static_cast<int>(sizeof(size_t)),
-                              src,
-                              static_cast<int>(tag_)};
-  CommInfo_t info_aggregated_size{&aggregated_aligned_tensor_bytes,
-                                  static_cast<int>(sizeof(size_t)),
-                                  src,
-                                  static_cast<int>(tag_)};
+  const int num_tensors = static_cast<int>(element_types_.size());
+  std::vector<size_t> tensor_sizes_in_bytes;
+  std::vector<TensorShape> tensor_shapes;
+  // TODO move the following variables to member variables for extending life-time
+  // if we want to make the entire call async
+  size_t aggregated_aligned_tensor_bytes = 0;
+  std::vector<size_t> prefix_tensor_shape_sizes;
+  std::vector<int64_t> aggregated_tensor_shapes;
+  // tensor_offsets_in_bytes[i] is the starting byte of the i-th tensor in the send tensor buffer
+  std::vector<size_t> tensor_offsets_in_bytes;
 
+  // Whether shapes are statically inferrable.
+  bool all_shapes_inferred = true;
+  // At iteration i, the i-th received tensor is processed.
+  for (int i = 0; i < num_tensors; ++i) {
+    TensorShape inferred_shape;
+    // The first input is a boolean control signal. We only check actual received tensors.
+    auto shape_inferred = ctx->TryGetInferredOutputShape(i + 1, inferred_shape);
+    if (!shape_inferred) {
+      all_shapes_inferred = false;
+      break;
+    }
+  }
 
-  int mpi_code = 0;
+  std::vector<Tensor*> received_tensors(num_tensors);
+  if (all_shapes_inferred) {
+    // Create outputs before communication because all shapes are inferred.
+    for (int i = 0; i < num_tensors; ++i) {
+      TensorShape inferred_shape;
+      // The first input is a boolean control signal. We only work on actual received tensors before that.
+      ORT_ENFORCE(ctx->TryGetInferredOutputShape(i + 1, inferred_shape));
+      // If shape is statically inferred, we declare output here and
+      // access its shape from operator's context in GetTensorShapesAndSizes(...).
+      received_tensors[i] = ctx->Output(i + 1, inferred_shape);
+    }
 
-  // Directly use CPU to wait MPI_Recv. We cannot use GPU callback because
-  // MPI_Recv may block the entire GPU until it returns.
-  mpi_code = MPI_Recv(
-    info_shape_sizes.buffer, info_shape_sizes.size, MPI_CHAR,
-    info_shape_sizes.rank, info_shape_sizes.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Recv fails.");
+    GetTensorShapesAndSizes(
+        false,        // value of "is_index_input". Received tensors are "output"s so this flag is "false".
+        1,            // First received tensor's index.
+        num_tensors,  // Number of tensors to received.
+        ctx,
+        tensor_sizes_in_bytes,
+        tensor_shapes);
+
+    // Extract information needed for copying input tensors from a big buffer
+    // to individual locations.
+    // Only that big buffer will be received through MPI.
+    ComputeShapeRelatedInfo(
+        tensor_sizes_in_bytes,
+        tensor_shapes,
+        aggregated_aligned_tensor_bytes,
+        prefix_tensor_shape_sizes,
+        aggregated_tensor_shapes,
+        tensor_offsets_in_bytes);
+  } else {
+    ReceiveShapeInfo(
+        src,
+        num_tensors,
+        aggregated_aligned_tensor_bytes,
+        prefix_tensor_shape_sizes,
+        aggregated_tensor_shapes);
+
+    // Create output tensors. Unlike the case where we can infer output shapes before communication,
+    // we need to create outputs after receiving shapes.
+    size_t begin = 0;
+    for (int i = 0; i < num_tensors; ++i) {
+      std::vector<int64_t> tensor_shape(aggregated_tensor_shapes.begin() + begin,
+                                        aggregated_tensor_shapes.begin() + prefix_tensor_shape_sizes[i]);
+      received_tensors[i] = ctx->Output(i + 1, tensor_shape);
+      // Move the "begin" to the beginning dimension of the next received tensor.
+      begin = prefix_tensor_shape_sizes[i];
+    }
+  }
 
 #ifdef ENABLE_NVTX_PROFILE
-  // This range object includes the first MPI_Recv which receives a scalar.  
+  // This range object includes the first MPI_Recv which receives a scalar.
   // It means we count the MPI's initialization in pre-recv stage.
   preRange.End();
 #endif
 
-#ifdef ENABLE_NVTX_PROFILE
-  profile::NvtxRangeCreator recvRange(
-    "Recv-" + std::to_string(src), profile::Color::Green);
-  // Begin of major communication tasks.
-  // The first MPI_Recv is not included because we don't want to
-  // count waiting time before setting up the actual communication.
-  recvRange.Begin();
-#endif
-
-  mpi_code = MPI_Recv(
-    info_aggregated_size.buffer, info_aggregated_size.size, MPI_CHAR,
-    info_aggregated_size.rank, info_aggregated_size.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Recv fails.");
-
-  // Prepare receive shapes and data buffer
-  aggregated_tensor_shapes.resize(prefix_tensor_shape_sizes[tensor_num - 1]);
-  IAllocatorUniquePtr<char> buffer =
-      AllocateBufferOnCPUPinned<char>(static_cast<size_t>(aggregated_aligned_tensor_bytes));
-  CommInfo_t info_shapes{aggregated_tensor_shapes.data(),
-                         static_cast<int>(aggregated_tensor_shapes.size()) * static_cast<int>(sizeof(int64_t)),
-                         src,
-                         static_cast<int>(tag_)};
-  CommInfo_t info_data{buffer.get(),
-                       static_cast<int>(aggregated_aligned_tensor_bytes),
-                       src,
-                       static_cast<int>(tag_)};
-
-  // Directly use CPU to wait MPI_Recv. We cannot use GPU callback because
-  // MPI_Recv may block the entire GPU until it returns.
-  mpi_code = MPI_Recv(
-    info_shapes.buffer, info_shapes.size, MPI_CHAR,
-    info_shapes.rank, info_shapes.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Recv fails.");
-  mpi_code = MPI_Recv(
-    info_data.buffer, info_data.size, MPI_CHAR,
-    info_data.rank, info_data.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Recv fails.");
-
-#ifdef ENABLE_NVTX_PROFILE
-  // End of actual communication.
-  recvRange.End();
-#endif
+  // At this stage, all shape information (either inferred locally or received from the source process)
+  // required to receive tensors are ready.
+  // Create buffer and receive data.
+  IAllocatorUniquePtr<char> buffer;
+  ReceiveData(num_tensors, received_tensors, src, aggregated_aligned_tensor_bytes, buffer);
 
 #ifdef ENABLE_NVTX_PROFILE
   profile::NvtxRangeCreator postRange(
-    "PostRecv-" + std::to_string(src), profile::Color::Green);
+      "PostRecv-" + std::to_string(src), profile::Color::Green);
   postRange.Begin();
 #endif
-
-  // Create Tensors
-  size_t begin = 0;
-  size_t tensor_offset_in_bytes = 0;
-  for (int i = 0; i < tensor_num; ++i) {
-    std::vector<int64_t> tensor_shape(aggregated_tensor_shapes.begin() + begin,
-                                      aggregated_tensor_shapes.begin() + prefix_tensor_shape_sizes[i]);
-    begin = prefix_tensor_shape_sizes[i];
-
-    Tensor* x_tensor = ctx->Output(i + 1, tensor_shape);
-    // Find the next aligned offset in the tensor buffer to meet alignment requirement
-    tensor_offset_in_bytes = GetAggregatedAlignedAddress(tensor_offset_in_bytes);
-
-    // Keep the sync copy in the previous design
-    // TODO they can be moved to async call after global stream becoming accessible
-    ORT_ENFORCE(cudaMemcpy(x_tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
-                           x_tensor->SizeInBytes(), cudaMemcpyHostToDevice) == cudaSuccess);
-    tensor_offset_in_bytes += x_tensor->SizeInBytes();
-  }
 
   // Set first output after communication is done.
   Tensor* output_signal_tensor = ctx->Output(0, {});

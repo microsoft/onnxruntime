@@ -33,34 +33,24 @@ constexpr const char* NGRAPH = "nGraph";
 
 NGRAPHExecutionProvider::NGRAPHExecutionProvider(const NGRAPHExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kNGraphExecutionProvider} {
-
   ORT_ENFORCE(info.ng_backend_type == "CPU", "nGraph Execution Provider for onnxruntime currently is only supported for CPU backend.");
 
-  auto default_allocator_factory = [](int) {
-    auto memory_info = onnxruntime::make_unique<OrtMemoryInfo>(NGRAPH, OrtAllocatorType::OrtDeviceAllocator);
-    return onnxruntime::make_unique<CPUAllocator>(std::move(memory_info));
-  };
-
   DeviceAllocatorRegistrationInfo default_memory_info{
-    OrtMemTypeDefault,
-    std::move(default_allocator_factory),
-    std::numeric_limits<size_t>::max()
-  };
+      OrtMemTypeDefault,
+      [](int) {
+        return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo(NGRAPH, OrtAllocatorType::OrtDeviceAllocator));
+      },
+      std::numeric_limits<size_t>::max()};
 
   InsertAllocator(CreateAllocator(default_memory_info));
 
-
-  auto cpu_allocator_factory = [](int) {
-    auto memory_info = onnxruntime::make_unique<OrtMemoryInfo>(
-      NGRAPH, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput);
-    return onnxruntime::make_unique<CPUAllocator>(std::move(memory_info));
-  };
-
   DeviceAllocatorRegistrationInfo cpu_memory_info{
-    OrtMemTypeCPUOutput,
-    std::move(cpu_allocator_factory),
-    std::numeric_limits<size_t>::max()
-  };
+      OrtMemTypeCPUOutput,
+      [](int) {
+        return onnxruntime::make_unique<CPUAllocator>(
+            OrtMemoryInfo(NGRAPH, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
+      },
+      std::numeric_limits<size_t>::max()};
 
   InsertAllocator(CreateAllocator(cpu_memory_info));
 
@@ -129,12 +119,11 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       }
     }
     const auto mode_attr = attributes.find("mode");
-    if(mode_attr != attributes.end())
-    {
-        const auto mode = mode_attr->second.s();
-        static const std::set<std::string> allowed_modes = {"constant", "reflect"};
+    if (mode_attr != attributes.end()) {
+      const auto mode = mode_attr->second.s();
+      static const std::set<std::string> allowed_modes = {"constant", "reflect"};
 
-        return allowed_modes.count(mode) == 0;
+      return allowed_modes.count(mode) == 0;
     }
   } else if (optype == "Slice") {
     //Slice in opset 10 is currently not supported.
@@ -193,7 +182,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       // not found in initializers -> not const
       return initializers.find(a_zero_point->Name()) == initializers.end() ||
              initializers.find(b_zero_point->Name()) == initializers.end();
-    } // else -> azp & bzp are 0 by default according to ONNX spec
+    }  // else -> azp & bzp are 0 by default according to ONNX spec
   } else if (optype == "ConvInteger") {
     // all ConvInteger zero points need to be constants
     const auto inputs = node->InputDefs();
@@ -209,7 +198,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       // not found in initializers -> not const
       return initializers.find(x_zero_point->Name()) == initializers.end() ||
              initializers.find(w_zero_point->Name()) == initializers.end();
-    } // else -> xzp & wzp are 0 by default according to ONNX spec
+    }  // else -> xzp & wzp are 0 by default according to ONNX spec
   } else if (optype == "Expand") {
     // nGraph only supports constant shape input values
     const auto& shape_input = node->InputDefs()[1];
@@ -254,8 +243,8 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
   /*
   1. Check input and output data types are supported.
   2. Check Op is supported
-	 2a. Check if Op is of known unsupported modes (edge cases). If yes return false right away.
-	 2b. If above is not true, check if the op is available in nGraph.
+     2a. Check if Op is of known unsupported modes (edge cases). If yes return false right away.
+     2b. If above is not true, check if the op is available in nGraph.
   */
 
   //Check 1
@@ -299,7 +288,7 @@ static void AppendClusterToSubGraph(const std::vector<NodeIndex>& nodes,
 
   std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
   sub_graph->nodes = nodes;
-  sub_graph->SetMetaDef(meta_def);
+  sub_graph->SetMetaDef(std::move(meta_def));
   result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
 }
 
@@ -441,7 +430,7 @@ static void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
   for (const auto& in_arg : ordered_input_args) {
     if (!output_args.count(in_arg) &&
         !((initializers.count(in_arg) && !original_graph_inputs.count(in_arg)) ||
-        ng_required_initializers.count(in_arg))) {
+          ng_required_initializers.count(in_arg))) {
       cluster_inputs.push_back(in_arg);
     }
   }
