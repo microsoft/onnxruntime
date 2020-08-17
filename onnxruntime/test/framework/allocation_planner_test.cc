@@ -166,7 +166,7 @@ class PlannerTest : public ::testing::Test {
 
  public:
   PlannerTest()
-      : model_("test", false, DefaultLoggingManager().DefaultLogger()),
+      : model_("test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 10}}, {}, DefaultLoggingManager().DefaultLogger()),
         graph_(model_.MainGraph()),
         tp_(concurrency::CreateThreadPool(&onnxruntime::Env::Default(), OrtThreadPoolParams(),
                                           concurrency::ThreadPoolType::INTRA_OP)),
