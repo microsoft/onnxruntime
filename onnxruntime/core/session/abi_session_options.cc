@@ -182,8 +182,5 @@ ORT_API_STATUS_IMPL(OrtApis::DisablePerSessionThreads, _In_ OrtSessionOptions* o
 
 ORT_API_STATUS_IMPL(OrtApis::AddSessionConfigEntry, _Inout_ OrtSessionOptions* options,
                     _In_z_ const char* config_key, _In_z_ const char* config_value) {
-  if (!AddSessionConfigEntryImpl(options->value, config_key, config_value))
-    return OrtApis::CreateStatus(ORT_FAIL, "Error calling AddSessionConfigEntryImpl");
-
-  return nullptr;
+  return onnxruntime::ToOrtStatus(AddSessionConfigEntryImpl(options->value, config_key, config_value));
 }

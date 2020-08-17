@@ -100,12 +100,9 @@ Status FinalizeSessionState(SessionState& session_state,
 
   ORT_RETURN_IF_ERROR(session_state.CreateKernels(kernel_registry_manager));
 
-  bool disable_prepacking = HasSessionConfigEntry(session_options, kDisablePrePacking) &&
-                            session_options.session_configurations.at(kDisablePrePacking) == "1";
-
-  if (!disable_prepacking) {
+  const auto disable_prepacking = GetSessionConfigOrDefault(session_options, kDisablePrePacking, "0");
+  if (disable_prepacking != "1")
     ORT_RETURN_IF_ERROR(session_state.PrepackInitializedConstantTensors());
-  }
 
   ORT_RETURN_IF_ERROR(SaveInputOutputNamesToNodeMapping(graph_viewer, kernel_registry_manager, session_state,
                                                         valid_outer_scope_node_args));

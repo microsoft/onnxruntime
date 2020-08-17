@@ -642,5 +642,13 @@ class TestInferenceSession(unittest.TestCase):
         so.add_session_config_entry(key, val)
         self.assertEqual(so.get_session_config_entry(key), val)
 
+    def testInvalidSessionOptionsConfigEntry(self):
+        so = onnxrt.SessionOptions()
+        invalide_key = "INVALID_KEY"
+        with self.assertRaises(RuntimeError) as context:
+            so.get_session_config_entry(invalide_key)
+        self.assertTrue(
+            'SessionOptions does not have configuration with key: ' + invalide_key in str(context.exception))
+
 if __name__ == '__main__':
     unittest.main()

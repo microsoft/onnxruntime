@@ -83,9 +83,14 @@ struct SessionOptions {
   bool use_deterministic_compute = false;
 
   // Stores the configurations for this session
+  // To add an configuration to this session, call OrtApis::AddSessionConfigEntry
+  // The configuration keys and values are defined in /include/onnxruntime/core/common/common.h
   std::unordered_map<std::string, std::string> session_configurations;
 };
 
 bool HasSessionConfigEntry(const SessionOptions& options, const std::string& config_key);
-bool AddSessionConfigEntryImpl(SessionOptions& options, _In_z_ const char* config_key, _In_z_ const char* config_value);
+const std::string GetSessionConfigOrDefault(const SessionOptions& options,
+                                            const std::string& config_key,
+                                            const std::string& default_value = "");
+Status AddSessionConfigEntryImpl(SessionOptions& options, _In_z_ const char* config_key, _In_z_ const char* config_value);
 }  // namespace onnxruntime

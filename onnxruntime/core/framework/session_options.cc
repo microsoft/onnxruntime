@@ -10,24 +10,28 @@ bool HasSessionConfigEntry(const SessionOptions& options, const std::string& con
   return options.session_configurations.find(config_key) != options.session_configurations.cend();
 }
 
-bool AddSessionConfigEntryImpl(SessionOptions& options, const char* config_key, const char* config_value) {
+const std::string GetSessionConfigOrDefault(const SessionOptions& options,
+                                            const std::string& config_key,
+                                            const std::string& default_value) {
+  if (!HasSessionConfigEntry(options, config_key))
+    return default_value;
+
+  return options.session_configurations.at(config_key);
+}
+
+Status AddSessionConfigEntryImpl(SessionOptions& options, const char* config_key, const char* config_value) {
   std::string key(config_key);
-  if (key.empty() || key.length() > 128) {
-    LOGS_DEFAULT(ERROR) << "config_key is empty or longer than maximum length 128";
-    return false;
-  }
+  if (key.empty() || key.length() > 128)
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "config_key is empty or longer than maximum length 128");
 
   std::string val(config_value);
-  if (val.length() > 1024) {
-    LOGS_DEFAULT(ERROR) << "config_value is longer than maximum length 1024";
-    return false;
-  }
+  if (val.length() > 1024)
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "config_value is longer than maximum length 1024");
 
-  auto& configs = options.session_configurations;
-  if (configs.find(key) != configs.end())
+  if (HasSessionConfigEntry(options, config_key))
     LOGS_DEFAULT(WARNING) << "Session Config with key [" << key << "] already exists, it will be overwritten";
 
-  configs[std::move(key)] = std::move(val);
-  return true;
+  options.session_configurations[std::move(key)] = std::move(val);
+  return Status::OK();
 }
 }  // namespace onnxruntime
