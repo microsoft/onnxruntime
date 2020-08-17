@@ -168,7 +168,6 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         #endregion
-        #region Public Properties
 
         internal IntPtr Handle
         {
@@ -178,6 +177,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        #region Public Properties
         /// <summary>
         /// Enables the use of the memory allocation patterns in the first Run() call for subsequent runs. Default = true.
         /// </summary>
@@ -413,6 +413,32 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
         private ExecutionMode _executionMode = ExecutionMode.ORT_SEQUENTIAL;
+
+        /// <summary>
+        /// Enables the use of pre-packing. Default = true.
+        /// </summary>
+        public bool EnablePrePacking
+        {
+            get
+            {
+                return _enablePrePacking;
+            }
+            set
+            {
+                if (!_enablePrePacking && value)
+                {
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtEnablePrePacking(_nativePtr));
+                    _enablePrePacking = true;
+                }
+                else if (_enablePrePacking && !value)
+                {
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtDisablePrePacking(_nativePtr));
+                    _enablePrePacking = false;
+                }
+            }
+        }
+        private bool _enablePrePacking = true;
+
         #endregion
 
         #region Private Methods
@@ -447,12 +473,7 @@ namespace Microsoft.ML.OnnxRuntime
 
 
         #endregion
-        #region destructors disposers
-
-        ~SessionOptions()
-        {
-            Dispose(false);
-        }
+        #region IDisposable
 
         public void Dispose()
         {
@@ -464,9 +485,9 @@ namespace Microsoft.ML.OnnxRuntime
         {
             if (disposing)
             {
-                // cleanup managed resources
+                NativeMethods.OrtReleaseSessionOptions(_nativePtr);
+                _nativePtr = IntPtr.Zero;
             }
-            NativeMethods.OrtReleaseSessionOptions(_nativePtr);
         }
 
         #endregion

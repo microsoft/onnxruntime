@@ -17,13 +17,11 @@ import logging
 import torch
 import onnx
 from transformers import AutoConfig
-from gpt2_helper import Gpt2Helper, MODEL_CLASSES, DEFAULT_TOLERANCE
+from gpt2_helper import Gpt2Helper, MODEL_CLASSES, DEFAULT_TOLERANCE, PRETRAINED_GPT2_MODELS
 from quantize_helper import QuantizeHelper
 from benchmark_helper import create_onnxruntime_session, setup_logger, prepare_environment, Precision
 
 logger = logging.getLogger('')
-
-PRETRAINED_MODELS = ['gpt2', 'distilgpt2']
 
 
 def parse_arguments():
@@ -33,8 +31,8 @@ def parse_arguments():
                         '--model_name',
                         required=True,
                         type=str,
-                        choices=PRETRAINED_MODELS,
-                        help='Pretrained model selected in the list: ' + ', '.join(PRETRAINED_MODELS))
+                        choices=PRETRAINED_GPT2_MODELS,
+                        help='Pretrained model selected in the list: ' + ', '.join(PRETRAINED_GPT2_MODELS))
 
     parser.add_argument('--model_class',
                         required=False,
@@ -86,8 +84,8 @@ def parse_arguments():
 
     parser.add_argument('-b', '--batch_sizes', nargs='+', type=int, default=[1], help="batch size")
 
-    parser.add_argument('-s',
-                        '--past_sequence_lengths',
+    parser.add_argument('--past_sequence_lengths',
+                        '-s',
                         nargs='+',
                         type=int,
                         default=[8, 16, 32, 64, 128, 256],
@@ -96,6 +94,9 @@ def parse_arguments():
     parser.add_argument("-r", "--result_csv", required=False, default=None, help="CSV file for saving summary results.")
 
     parser.add_argument("--thread_num", required=False, type=int, default=-1, help="Threads to use")
+
+    parser.add_argument('--include_copy_output_latency', required=False, action='store_true')
+    parser.set_defaults(include_copy_output_latency=False)
 
     parser.add_argument('--verbose', required=False, action='store_true')
     parser.set_defaults(verbose=False)
@@ -136,20 +137,24 @@ def main():
 
     device = torch.device("cuda:0" if args.use_gpu else "cpu")
     model.to(device)
-
-    onnx_model_paths = Gpt2Helper.get_onnx_paths(output_dir, args.model_name, args.model_class)
+    use_external_data_format = (config.n_layer > 24)  #TODO: find a way to check model size > 2GB
+    onnx_model_paths = Gpt2Helper.get_onnx_paths(output_dir,
+                                                 args.model_name,
+                                                 args.model_class,
+                                                 has_past=True,
+                                                 new_folder=use_external_data_format)
 
     onnx_model_path = onnx_model_paths["raw"]
-    Gpt2Helper.export_onnx(model, device, onnx_model_path, args.verbose)
+    Gpt2Helper.export_onnx(model, device, onnx_model_path, args.verbose, use_external_data_format)
 
     if args.optimize_onnx or args.precision != Precision.FLOAT32:
         onnx_model_path = onnx_model_paths[str(args.precision)]
         Gpt2Helper.optimize_onnx(onnx_model_paths["raw"], onnx_model_path, args.precision == Precision.FLOAT16,
-                                 model.config.num_attention_heads, model.config.hidden_size)
+                                 model.config.num_attention_heads, model.config.hidden_size, use_external_data_format)
 
         if args.precision == Precision.INT8:
             logger.info("quantizing model...")
-            QuantizeHelper.quantize_onnx_model(onnx_model_path, onnx_model_path)
+            QuantizeHelper.quantize_onnx_model(onnx_model_path, onnx_model_path, use_external_data_format)
             model = QuantizeHelper.quantize_torch_model(model)
             logger.info("finished quantizing model")
 
@@ -195,7 +200,14 @@ def main():
                     outputs, torch_latency = Gpt2Helper.pytorch_inference(model, dummy_inputs, args.test_times)
                     ort_outputs, ort_latency = Gpt2Helper.onnxruntime_inference(session, dummy_inputs, args.test_times)
                     ort_io_outputs, ort_io_latency = Gpt2Helper.onnxruntime_inference_with_binded_io(
-                        session, dummy_inputs, output_buffers, output_shapes, args.test_times)
+                        session,
+                        dummy_inputs,
+                        output_buffers,
+                        output_shapes,
+                        args.test_times,
+                        return_numpy=False,
+                        include_copy_output_latency=args.include_copy_output_latency)
+
                     if args.validate_onnx:
                         if Gpt2Helper.compare_outputs(outputs,
                                                       ort_outputs,
@@ -204,6 +216,9 @@ def main():
                             logger.info(
                                 f'Pytorch and ONNX Runtime outputs are all close (tolerance={DEFAULT_TOLERANCE[args.precision]}).'
                             )
+
+                        for i in ort_io_outputs:
+                            ort_io_outputs[i] = ort_io_outputs[i].cpu().numpy()
                         if Gpt2Helper.compare_outputs(outputs,
                                                       ort_io_outputs,
                                                       rtol=DEFAULT_TOLERANCE[args.precision],

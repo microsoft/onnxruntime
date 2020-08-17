@@ -254,7 +254,10 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
         ORT_ENFORCE(dtype_attribute->second.has_i(),
                     "InsertCastTransformer works on the assumption that `dtype` attribute holds an integer.");
 
-        dtype_attribute->second.set_i(TensorProto_DataType_FLOAT);
+        // Modify the dtype attribute (which defines the output type) to FLOAT if it is FLOAT16.
+        if (dtype_attribute->second.i() == TensorProto_DataType_FLOAT16) {
+          dtype_attribute->second.set_i(TensorProto_DataType_FLOAT);
+        }
       }
     }
 

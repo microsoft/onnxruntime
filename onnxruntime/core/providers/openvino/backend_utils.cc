@@ -139,7 +139,6 @@ void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
 #if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
   ORT_UNUSED_PARAMETER(const_outputs_map);
 #endif
-
   auto inputInfo = network->getInputsInfo();
   int input_idx = 0;
   for (auto iter = inputInfo.begin(); iter != inputInfo.end(); ++iter, ++input_idx) {

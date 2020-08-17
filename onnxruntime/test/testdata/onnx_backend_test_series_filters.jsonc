@@ -63,8 +63,8 @@
         "^test_pow_types_int32_float32_*",
         "^test_pow_types_int_*",
         "^test_pow_types_int64_float32_*",
-        "^test_dropout_default_mask_*", // 11 : EP_FAIL : Non-zero status code returned while running NGRAPHCustomOp_100 node. Name:'NGRAPHExecutionProvider_NGRAPHCustomOp_100_0' Status Message: [NGRAPHCustomOp] - NGRAPHExecutionProvider_NGRAPHCustomOp_100_0 - Exception while importing model to nGraph: deque::_M_range_check: __n (which is 0)>= this->size() 
-        "^test_dropout_default_mask_ratio_*" // 11 : EP_FAIL : Non-zero status code returned while running NGRAPHCustomOp_100 node. Name:'NGRAPHExecutionProvider_NGRAPHCustomOp_100_0' Status Message: [NGRAPHCustomOp] - NGRAPHExecutionProvider_NGRAPHCustomOp_100_0 - Exception while importing model to nGraph: deque::_M_range_check: __n (which is 0)>= this->size() 
+        "^test_dropout_default_mask_*", // 11 : EP_FAIL : Non-zero status code returned while running NGRAPHCustomOp_100 node. Name:'NGRAPHExecutionProvider_NGRAPHCustomOp_100_0' Status Message: [NGRAPHCustomOp] - NGRAPHExecutionProvider_NGRAPHCustomOp_100_0 - Exception while importing model to nGraph: deque::_M_range_check: __n (which is 0)>= this->size()
+        "^test_dropout_default_mask_ratio_*" // 11 : EP_FAIL : Non-zero status code returned while running NGRAPHCustomOp_100 node. Name:'NGRAPHExecutionProvider_NGRAPHCustomOp_100_0' Status Message: [NGRAPHCustomOp] - NGRAPHExecutionProvider_NGRAPHCustomOp_100_0 - Exception while importing model to nGraph: deque::_M_range_check: __n (which is 0)>= this->size()
     ],
     "current_failing_tests_DNNL": [
         "^test_range_float_type_positive_delta_expanded",
@@ -81,15 +81,18 @@
         "^test_negative_log_likelihood.*",
         "^test_softmax_cross_entropy.*"
     ],
+    "current_failing_tests_OPENVINO_MYRIAD": [
+         "^test_range",
+         "^test_dynamicquantizelinear",
+         "^test_operator_index"
+    ],
     "current_failing_tests_OPENVINO_GPU": [
         "^test_div",
         // temporarily exclude vgg19 test which comsumes too much memory, run out of memory on Upsquared device.
         // single test pass for vgg19, need furture investigation
         "^test_vgg19",
         "^test_negative_log_likelihood.*", // Does not support 5-D or above tensors for SUB op.
-        "^test_softmax_cross_entropy.*" // Does not support 5-D or above tensors for SUB op.
-    ],
-    "current_failing_tests_OPENVINO_GPU_FP32": [
+        "^test_softmax_cross_entropy.*", // Does not support 5-D or above tensors for SUB op.
         "^test_operator_permute2",
         "^test_operator_repeat",
         "^test_operator_repeat_dim_overflow",

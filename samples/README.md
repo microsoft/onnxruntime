@@ -38,6 +38,8 @@ For a list of available dockerfiles and published images to help with getting st
 
 ## C#
 * [Inference Tutorial](../docs/CSharp_API.md#getting-started)
+* [ResNet50 v2 Tutorial](../csharp/sample/Microsoft.ML.OnnxRuntime.ResNet50v2Sample)
+* [Faster R-CNN Tutorial](../csharp/sample/Microsoft.ML.OnnxRuntime.FasterRcnnSample)
 
 ## C/C++
 * [C: SqueezeNet](../csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp)
