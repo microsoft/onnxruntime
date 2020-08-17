@@ -86,7 +86,7 @@ def main():
     if (len(nuget_packages_found_in_path) != 1):
         print('Nuget packages found in path: ')
         print(nuget_packages_found_in_path)
-        raise Exception('No Nuget packages / more than one Nuget packages found in the given path.')
+        raise Exception('No Nuget packages / more than one Nuget packages found in the given path: ' + str(nuget_packages_found_in_path).strip('[]'))
     nuget_file_name = nuget_packages_found_in_path[0]
     full_nuget_path = os.path.join(args.nuget_path, nuget_file_name)
 
