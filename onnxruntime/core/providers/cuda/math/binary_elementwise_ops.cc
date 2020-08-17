@@ -143,7 +143,7 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
   template <>                                                                                                    \
   Status x<T>::ComputeInternal(OpKernelContext* context) const {                                                 \
     BinaryElementwisePreparation prepare;                                                                        \
-    Prepare(context, &prepare);                                                                                  \
+    ORT_RETURN_IF_ERROR(Prepare(context, &prepare));                                                             \
     Impl_##x<typename ToCudaType<T>::MappedType>(                                                                \
         prepare.output_rank_or_simple_broadcast,                                                                 \
         &prepare.lhs_padded_strides,                                                                             \
@@ -337,7 +337,7 @@ Status DispatchOnFirstArg(const BinaryElementwisePreparation& prepare) {
 
 Status Pow::ComputeInternal(OpKernelContext* context) const {
   BinaryElementwisePreparation prepare;
-  Prepare(context, &prepare);
+  ORT_RETURN_IF_ERROR(Prepare(context, &prepare));
   namespace on = ONNX_NAMESPACE;
   using namespace pow12_internal;
 
