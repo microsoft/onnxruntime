@@ -44,7 +44,6 @@ void DumpOnnxModelProto(const ONNX_NAMESPACE::ModelProto& model_proto, std::stri
 std::shared_ptr<InferenceEngine::CNNNetwork>
 CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map) {
 
-
 #if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
   ORT_UNUSED_PARAMETER(const_outputs_map);
 #endif
@@ -54,6 +53,7 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const SubGraphCo
 
   std::istringstream model_stream{model_proto.SerializeAsString()};
   std::shared_ptr<ngraph::Function> ng_function;
+  std::cout << "CreateNgraphFunc" << std::endl;
 
 #ifndef NDEBUG
   if(IsDebugEnabled()){
