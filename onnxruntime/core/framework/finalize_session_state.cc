@@ -100,7 +100,8 @@ Status FinalizeSessionState(SessionState& session_state,
 
   ORT_RETURN_IF_ERROR(session_state.CreateKernels(kernel_registry_manager));
 
-  const auto disable_prepacking = GetSessionConfigOrDefault(session_options, kDisablePrePacking, "0");
+  const auto disable_prepacking =
+      GetSessionConfigOrDefault(session_options, ORT_SESSION_OPTIONS_CONFIG_DISABLEPREPACKING, "0");
   if (disable_prepacking != "1")
     ORT_RETURN_IF_ERROR(session_state.PrepackInitializedConstantTensors());
 

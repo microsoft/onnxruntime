@@ -84,13 +84,20 @@ struct SessionOptions {
 
   // Stores the configurations for this session
   // To add an configuration to this session, call OrtApis::AddSessionConfigEntry
-  // The configuration keys and values are defined in /include/onnxruntime/core/common/common.h
+  // The configuration keys and value formats are defined in
+  // /include/onnxruntime/core/session/session_options_config_keys.h
   std::unordered_map<std::string, std::string> session_configurations;
 };
 
+// Check if the given SessionOptions has a config using the given config_key
 bool HasSessionConfigEntry(const SessionOptions& options, const std::string& config_key);
+
+// Get the config string of the given SessionOptions using the given config_key
+// If there is no such config, the given default string will be returned
 const std::string GetSessionConfigOrDefault(const SessionOptions& options,
                                             const std::string& config_key,
-                                            const std::string& default_value = "");
+                                            const std::string& default_value);
+
+// Add a config pair (config_key, config_value) to the given SessionOptions
 Status AddSessionConfigEntryImpl(SessionOptions& options, _In_z_ const char* config_key, _In_z_ const char* config_value);
 }  // namespace onnxruntime

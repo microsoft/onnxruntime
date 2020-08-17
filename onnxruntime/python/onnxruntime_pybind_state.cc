@@ -1047,10 +1047,11 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
       .def(
           "get_session_config_entry",
           [](SessionOptions* options, const char* config_key) -> std::string {
-            if (!HasSessionConfigEntry(*options, config_key))
-              throw std::runtime_error("SessionOptions does not have configuration with key: " + config_key);
+            const std::string key(config_key);
+            if (!HasSessionConfigEntry(*options, key))
+              throw std::runtime_error("SessionOptions does not have configuration with key: " + key);
 
-            return options->session_configurations.at(config_key);
+            return options->session_configurations.at(key);
           },
           "Rpbdoc(Get a single session configuration value using the given configuration key.)pbdoc");
 

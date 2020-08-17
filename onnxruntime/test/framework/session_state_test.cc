@@ -258,7 +258,7 @@ TEST_P(SessionStatePrepackingTest, PrePackingTest) {
 
   SessionOptions sess_options;
   bool use_prepacking = GetParam();
-  sess_options.session_configurations[kDisablePrePacking] = use_prepacking ? "0" : "1";
+  sess_options.session_configurations[ORT_SESSION_OPTIONS_CONFIG_DISABLEPREPACKING] = use_prepacking ? "0" : "1";
   ASSERT_STATUS_OK(FinalizeSessionState(session_state,
                                         std::basic_string<PATH_CHAR_TYPE>() /*graph_loc*/,
                                         kernel_registry_manager,

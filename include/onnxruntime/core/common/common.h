@@ -242,12 +242,4 @@ inline std::wstring ToWideString(const std::wstring& s) { return s; }
 inline std::string ToWideString(const std::string& s) { return s; }
 #endif
 
-// Naming Convention for a Session Options Config Key
-// "[Area][.[SubArea1].[SubArea2]...].[Keyname]"
-// Such as "ep.cuda.use_arena"
-
-// Key for disable PrePacking,
-// if the config value is set to "1" then the prepacking is disabled, otherwise prepacking is enabled by default
-constexpr const char* kDisablePrePacking = "session_state.disable_prepacking";
-
 }  // namespace onnxruntime
