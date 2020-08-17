@@ -21,11 +21,11 @@ WORKDIR /stage
 
 # install curl and git
 RUN apt-get -y update &&\
-    apt-get install -y sudo git bash unattended-upgrades && \
     apt-get -y --no-install-recommends install \
         curl \
         git \
-        language-pack-en
+        language-pack-en \
+        unattended-upgrades
 
 RUN unattended-upgrade
 
