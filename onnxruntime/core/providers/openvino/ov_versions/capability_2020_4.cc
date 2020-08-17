@@ -79,7 +79,6 @@ bool IsOpSupported(std::string name, std::string device) {
       "Gather",
       "Gemm",
       "GlobalAveragePool",
-      "GlobalLpPool",
       "Greater",
       "Identity",
       "InstanceNormalization",
@@ -95,7 +94,6 @@ bool IsOpSupported(std::string name, std::string device) {
       "Min",
       "Mul",
       "Neg",
-      "Not",
       "OneHot",
       "Pad",
       "Pow",
@@ -107,7 +105,6 @@ bool IsOpSupported(std::string name, std::string device) {
       "ReduceSum",
       "Relu",
       "Reshape",
-      "Selu",
       "Shape",
       "Sigmoid",
       "Slice",
@@ -136,11 +133,14 @@ bool IsOpSupported(std::string name, std::string device) {
     "Atanh",
     "Cos",
     "Cosh",
+    "GlobalLpPool",
     "HardSigmoid",
+    "Not",
     "ReduceLogSum",
     "ReduceProd",
     "ReduceSumSquare",
     "Resize",
+    "Selu",
     "Sign",
     "Sinh",
     "Softsign",
@@ -154,12 +154,14 @@ bool IsOpSupported(std::string name, std::string device) {
     "Asinh",
     "Atan",
     "Ceil",
+    "GlobalLpPool",
     "HardSigmoid",
+    "Not",
+    "Selu",
     "Tan",
   };
   std::set<std::string> supported_ops_vpu = {
     "ReduceLogSum",
-    "ReduceProd",
     "ReduceSumSquare",
     "SinFloat",
   };
@@ -386,7 +388,39 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     if (dtype != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
       return true;
     }
+} else if ((optype == "Equal") || (optype == "And"))  {
+
+    using onnx_dtype = ONNX_NAMESPACE::TensorProto_DataType;
+    auto supportedOps = std::set<std::vector<onnx_dtype>>{
+        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT },
+        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_FLOAT },
+        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_INT8 },
+        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_FLOAT },
+        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8 },
+        {onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_INT8 },
+        {onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_UINT8 },
+        {onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_INT8 },
+        {onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_INT32 },
+        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_FLOAT },
+        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8 }};
+
+    if (optype == "Equal") {
+      supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_INT32 }),
+      supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT });
+    }
+
+    onnx_dtype input_0_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    onnx_dtype input_1_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
+    onnx_dtype output_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+
+    const std::vector<onnx_dtype> typePair{output_data_type, input_0_data_type, input_1_data_type};
+    const auto match = supportedOps.find(typePair);
+    if (match == supportedOps.end()) {
+      return true;
+    } else
+      return false;
   }
+
 
   //Op doesn't fall into known any of unsupported modes.
   return false;
@@ -624,7 +658,6 @@ GetCapability_2020_4(const onnxruntime::GraphViewer& graph_viewer, std::string d
   if (unsupported_nodes.empty()) {
     std::vector<std::string> inputs;
     std::vector<std::string> outputs;
-
     //Fill inputs with names
     std::for_each(graph_viewer.GetInputs().begin(), graph_viewer.GetInputs().end(),
                   [&inputs](const NodeArg* node_arg) { inputs.push_back(node_arg->Name()); });
@@ -725,7 +758,7 @@ GetCapability_2020_4(const onnxruntime::GraphViewer& graph_viewer, std::string d
         if(node->OpType() == "Conv"){
           auto output_name = node->OutputDefs()[0]->Name();
           auto it = find(cluster_outputs.begin(), cluster_outputs.end(), output_name);
-          if(it != cluster_outputs.end()){
+          if(it != cluster_outputs.end() && node->GetOutputEdgesCount() != 0){
             omit_subgraph = true;
             break;
           }
