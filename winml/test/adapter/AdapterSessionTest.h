@@ -20,6 +20,7 @@ struct AdapterSessionTestAPI
   VoidTest Profiling;
   VoidTest CopyInputAcrossDevices;
   VoidTest CopyInputAcrossDevices_DML;
+  VoidTest GetNumberOfIntraOpThreads;
 };
 const AdapterSessionTestAPI& getapi();
 
@@ -41,4 +42,5 @@ WINML_TEST(AdapterSessionTest, LoadAndPurloinModel)
 WINML_TEST(AdapterSessionTest, Profiling)
 WINML_TEST(AdapterSessionTest, CopyInputAcrossDevices)
 WINML_TEST(AdapterSessionTest, CopyInputAcrossDevices_DML)
+WINML_TEST(AdapterSessionTest, GetNumberOfIntraOpThreads)
 WINML_TEST_CLASS_END()

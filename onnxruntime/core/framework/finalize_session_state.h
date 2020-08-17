@@ -20,6 +20,6 @@ Status FinalizeSessionState(SessionState& session_state,
                             const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                             KernelRegistryManager& kernel_registry_manager,
                             _In_opt_ const Node* parent_node,
-                            ExecutionMode execution_mode = ORT_SEQUENTIAL);
+                            const SessionOptions& session_options);
 
 }  // namespace onnxruntime

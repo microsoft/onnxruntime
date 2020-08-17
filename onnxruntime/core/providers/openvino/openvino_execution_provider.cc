@@ -30,14 +30,12 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   InsertAllocator(CreateAllocator(device_info));
 }
 
-
 std::vector<std::unique_ptr<ComputeCapability>>
 OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                          const std::vector<const KernelRegistry*>& kernel_registries) const {
   ORT_UNUSED_PARAMETER(kernel_registries);
 
   std::vector<std::unique_ptr<ComputeCapability>> result;
-  std::cout << "In the OpenVINO EP" << std::endl;
 
 #if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
   result = openvino_ep::GetCapability_2020_2(graph_viewer, info_.device_id_);
