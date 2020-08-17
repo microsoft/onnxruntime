@@ -222,7 +222,6 @@ struct OrtKernelInfo;
 typedef struct OrtKernelInfo OrtKernelInfo;
 struct OrtKernelContext;
 typedef struct OrtKernelContext OrtKernelContext;
-
 struct OrtCustomOp;
 typedef struct OrtCustomOp OrtCustomOp;
 
@@ -870,7 +869,7 @@ struct OrtApi {
   /**
      * \param value - A tensor created from OrtCreateTensor... function.
      * \param s - A null terminated UTF-8 encoded string.
-     * \param index - index of string tensor element to fill
+     * \param index - index of string tensor element to fill 
      */
   ORT_API2_STATUS(FillStringTensorElement, _Inout_ OrtValue* value, _In_ const char* s, size_t index);
 
@@ -956,7 +955,7 @@ struct OrtApi {
   /**
     * The function returns an array of pointers to individually allocated OrtValues that contain results of a model execution with RunWithBinding()
     * The array contains the same number of OrtValues and they are in the same order as they were bound with BindOutput()
-    * or BindOutputToDevice().
+    * or BindOutputToDevice(). 
     * The returned OrtValues must be individually released after they are no longer needed.
     * The array is allocated using the specified instance of the allocator and must be freed using the same allocator after
     * all the OrtValues contained therein are individually released.
@@ -982,7 +981,7 @@ struct OrtApi {
    * e.g.
    * Given a tensor with overall shape [3,224,224], an element at
    * location [2,150,128] can be accessed directly.
-   *
+   * 
    * This function only works for numeric tensors.
    * This is a no-copy method whose pointer is only valid until the backing OrtValue is free'd.
    */

@@ -650,7 +650,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetBoundOutputValues, _In_ const OrtIoBinding* bind
   // Used to destroy and de-allocate on exception
   size_t created = 0;
   IAllocatorUniquePtr<OrtValue*> ortvalues_alloc(reinterpret_cast<OrtValue**>(allocator->Alloc(allocator, outputs.size() * sizeof(OrtValue*))),
-                                                [&created, allocator](OrtValue** buffer) {
+                                                [&created, allocator](OrtValue** buffer) { 
                                                  if (buffer) {
                                                     while (created > 0) {
                                                      auto p = buffer + --created;
