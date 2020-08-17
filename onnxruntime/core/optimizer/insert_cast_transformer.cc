@@ -296,12 +296,12 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
         // insert cast op to cast output back to float16
         auto dst_arg = output;
         auto src_arg = AddCastNode(graph,
-                                  id_generator,
-                                  dst_arg,
-                                  &float_tensor_proto,
-                                  true,
-                                  static_cast<int64_t>(TensorProto_DataType_FLOAT16),
-                                  onnxruntime::kCpuExecutionProvider);
+                                   id_generator,
+                                   dst_arg,
+                                   &float_tensor_proto,
+                                   true,
+                                   static_cast<int64_t>(TensorProto_DataType_FLOAT16),
+                                   onnxruntime::kCpuExecutionProvider);
         replacement_defs[dst_arg] = src_arg;
       }
     }
