@@ -374,6 +374,45 @@ def testToyBERTModelMixedPrecisionLossScaler(loss_scaler, expected_losses):
 
     _test_helpers.assert_model_outputs(losses, expected_losses, rtol=1e-5)
 
+@pytest.mark.parametrize("gradient_accumulation_steps, expected_losses", [
+    (1, [10.988012313842773, 10.99226188659668, 11.090812683105469, 11.042860984802246, 10.988919258117676,
+        11.105875015258789, 10.981894493103027, 11.081543922424316, 10.997451782226562, 11.10739517211914]),
+    (4, [10.988012313842773, 10.99213981628418, 11.090258598327637, 11.039335250854492, 10.986993789672852,
+        11.110128402709961, 10.989538192749023, 11.072074890136719, 11.001150131225586, 11.100043296813965]),
+    (7, [10.988012313842773, 10.99213981628418, 11.090258598327637, 11.039335250854492, 10.993097305297852,
+        11.112862586975098, 10.996183395385742, 11.072013854980469, 11.00184154510498, 11.097928047180176])
+])
+def testToyBERTModelGradientAccumulationLegacyExperimental(gradient_accumulation_steps, expected_losses):
+    total_steps = 10
+    device = "cuda"
+
+    model_desc = bert_model_description()
+    model = load_bert_onnx_model()
+
+    optim_config = optim.LambConfig()
+    opts =  orttrainer.ORTTrainerOptions({
+        'debug' : {
+            'deterministic_compute': True
+        },
+        'device': {
+            'id': device,
+            'mem_limit': 0
+        },
+        'batch' : {
+            'gradient_accumulation_steps' : gradient_accumulation_steps
+        },
+    })
+    
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
+    
+    losses = []
+    for i in range(total_steps):
+        sample_input = generate_random_input_from_model_desc(model_desc, i)
+        losses.append(trainer.train_step(*sample_input).cpu().item())
+    
+    _test_helpers.assert_model_outputs(losses, expected_losses)
+
+
 ###############################################################################
 # Temporary tests comparing Legacy vs Experimental ORTTrainer APIs ############
 ###############################################################################
@@ -542,3 +581,57 @@ def testToyBERTModelMixedPrecisionLossScalerLegacyExperimental(loss_scaler, lega
     
     _test_helpers.assert_model_outputs(experimental_losses, legacy_losses, rtol=1e-5)
 
+@pytest.mark.parametrize("gradient_accumulation_steps", [
+    (1),
+    (4),
+    (7)
+])
+def testToyBERTModelGradientAccumulationLegacyExperimental(gradient_accumulation_steps):
+    total_steps = 10
+    device = "cuda"
+
+    model_desc = bert_model_description()
+    model = load_bert_onnx_model()
+
+    optim_config = optim.LambConfig()
+    opts =  orttrainer.ORTTrainerOptions({
+        'debug' : {
+            'deterministic_compute': True
+        },
+        'device': {
+            'id': device,
+            'mem_limit': 0
+        },
+        'batch' : {
+            'gradient_accumulation_steps' : gradient_accumulation_steps
+        },
+    })
+    
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
+    
+    experimental_losses = []
+    for i in range(total_steps):
+        sample_input = generate_random_input_from_model_desc(model_desc, i)
+        experimental_losses.append(trainer.train_step(*sample_input).cpu().item())
+
+    # LEGACY IMPLEMENTATION
+    device = torch.device(device)
+    legacy_model_desc, learning_rate_description, learning_rate = legacy_model_params() 
+    torch.manual_seed(DEFAULT_SEED)
+    set_seed(DEFAULT_SEED)
+    
+    legacy_trainer = Legacy_ORTTrainer(model, None, legacy_model_desc, "LambOptimizer",
+                       None,
+                       learning_rate_description,
+                       device,
+                       _use_deterministic_compute=True,
+                       gradient_accumulation_steps=gradient_accumulation_steps)
+    legacy_losses = []
+    for i in range(total_steps):
+        sample_input = generate_random_input_from_model_desc(model_desc, i)
+        legacy_sample_input = [*sample_input, learning_rate]
+
+        legacy_losses.append(legacy_trainer.train_step(legacy_sample_input).cpu().item())
+    
+    _test_helpers.assert_model_outputs(experimental_losses, legacy_losses)
+    print(legacy_losses)
