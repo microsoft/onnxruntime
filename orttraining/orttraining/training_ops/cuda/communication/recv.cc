@@ -72,10 +72,15 @@ void Recv::ReceiveData(
                        src,
                        static_cast<int>(tag_)};
 
+  std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
   MPI_CHECK(MPI_Recv(
       info_data.buffer, info_data.size, MPI_CHAR,
       info_data.rank, info_data.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
 
+  std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count();
+  auto bandwidth = static_cast<double>(info_data.size)/static_cast<double>(duration);
+  std::cout<<"[MPI_Recv] receiving data size: "<<info_data.size<<" with time (ms): "<<duration<<", so the band width for MPI is (MBps): "<<bandwidth<<std::endl;
 #ifdef ENABLE_NVTX_PROFILE
   // End of actual communication.
   recvRange.End();
