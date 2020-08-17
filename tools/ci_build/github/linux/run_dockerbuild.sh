@@ -125,9 +125,10 @@ if [[ $BUILD_EXTR_PAR = *--enable_training_python_frontend_e2e_tests* ]]; then
 fi
 
 $DOCKER_CMD rm -f "onnxruntime-$BUILD_DEVICE" || true
-$DOCKER_CMD run $RUNTIME -h $HOSTNAME $DOCKER_RUN_PARAMETER -e NIGHTLY_BUILD  \
+$DOCKER_CMD run $RUNTIME -h $HOSTNAME $DOCKER_RUN_PARAMETER \
+    -e NIGHTLY_BUILD \
     "onnxruntime-$IMAGE" \
- /bin/bash /onnxruntime_src/tools/ci_build/github/linux/run_build.sh \
+    /bin/bash /onnxruntime_src/tools/ci_build/github/linux/run_build.sh \
     -d $BUILD_DEVICE -x "$BUILD_EXTR_PAR" -o $BUILD_OS -y $YOCTO_VERSION &
 wait $!
 
