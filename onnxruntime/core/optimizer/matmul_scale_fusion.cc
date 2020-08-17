@@ -43,7 +43,7 @@ optional<float> GetScalarConstantInitializer(const Graph& graph, const NodeArg& 
     return {};
   }
 
-  float scalar;
+  float scalar=0.f;
   utils::MLTypeCallDispatcherRet<
       Status, ExtractScalarAsFloatDispatchTarget,
       uint32_t, uint64_t, int32_t, int64_t, MLFloat16, float, double>
