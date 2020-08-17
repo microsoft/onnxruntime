@@ -17,15 +17,15 @@ class IdGenerator {
  private:
   int id = 0;
 };
-bool InsertCastTransformer::isCastedNode(const onnxruntime::Node& node) const {
-  //Check whether this node is Cast to float 
+bool InsertCastTransformer::hasNodeBeenCast(const onnxruntime::Node& node) const {
+  // Check whether this node is Cast to float
   return node.OpType() == "Cast" &&
         node.GetAttributes().at("to").i() == static_cast<int64_t>(TensorProto_DataType_FLOAT);
 }
 bool InsertCastTransformer::NeedInsertCast(const onnxruntime::Node* node, const onnxruntime::NodeArg* input) const {
-  //If the node's input is float16 and currently the node is not assigned to any XP.
-  //we need insert a cast to float, and put the node on CPU for default behavior.
-  //TODO: a better check is to check does the CPU kernel with float exist or not.
+  // If the node's input is float16 and currently the node is not assigned to any XP.
+  // we need insert a cast to float, and put the node on CPU for default behavior.
+  // TODO: a better check is to check does the CPU kernel with float exist or not.
   return input->Type() != nullptr &&
          DataTypeImpl::TypeFromProto(*input->TypeAsProto()) == DataTypeImpl::GetTensorType<MLFloat16>() &&
          node->GetExecutionProviderType().empty();
@@ -38,7 +38,7 @@ onnxruntime::NodeArg* AddCastNode(onnxruntime::Graph& graph,
                                   bool new_on_input,
                                   int64_t to_type,
                                   onnxruntime::ProviderType providerType) {
-  //insert cast op to cast input
+  // insert cast op to cast input
   int id = id_generator.Next();
 
   char str[32];
@@ -217,24 +217,24 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
     if (!node)
       return Status(ONNXRUNTIME, INVALID_ARGUMENT);
     
-    // Map for mapping input Node name to input Node
-    std::unordered_map<std::string, const onnxruntime::Node*> strToNode;
+    // Map for mapping input node name to input node
+    std::unordered_map<std::string, const onnxruntime::Node*> nodeNameToNode;
     for (auto inputNodeIter = node->InputNodesBegin(); inputNodeIter != node->InputNodesEnd(); ++inputNodeIter) {
-        strToNode[inputNodeIter->Name()] = &(*inputNodeIter);
+        nodeNameToNode[inputNodeIter->Name()] = &(*inputNodeIter);
     }
     
     auto& inputs = node->MutableInputDefs();
     std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> replacement_defs;
     bool casted = false;
-    // Check whether current node has been casted before
-    if (isCastedNode(*node)) {
+    // Check whether current node has been cast before
+    if (hasNodeBeenCast(*node)) {
       node->SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
       continue;
     }
     for (auto input : inputs) {
       // Check whether this input has been added a Cast node before
       // If yes, this input does not need to be added again
-      if (strToNode.count(input->Name()) > 0 && isCastedNode(*strToNode[input->Name()])) {
+      if (nodeNameToNode.count(input->Name()) > 0 && hasNodeBeenCast(*nodeNameToNode[input->Name()])) {
         node->SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
         continue;
       }
@@ -243,7 +243,7 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
         if (input_def_updates.count(src_arg)) {
           replacement_defs[src_arg] = input_def_updates[src_arg];
         } else {
-          //insert cast op to cast input
+          // insert cast op to cast input
           auto dst_arg = AddCastNode(graph,
                                      id_generator,
                                      src_arg,
@@ -284,30 +284,28 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
     }
 
     auto& outputs = node->MutableOutputDefs();
-    
-      for (auto output : outputs) {
-        // TODO 1: Check if the kernel available
-        // TODO 2: There is an inherent assumption that if we cast a cpu op's input from float16 to float
-        // then this cpu op's output will be float (if it was inferred to be float16 previously).
-        // Not sure if this is always true. Handle any corner case if it does exist.
+    for (auto output : outputs) {
+      // TODO 1: Check if the kernel available
+      // TODO 2: There is an inherent assumption that if we cast a cpu op's input from float16 to float
+      // then this cpu op's output will be float (if it was inferred to be float16 previously).
+      // Not sure if this is always true. Handle any corner case if it does exist.
 
-        if (output->Type() &&
-            DataTypeImpl::TypeFromProto(*output->TypeAsProto()) == DataTypeImpl::GetTensorType<MLFloat16>() &&
-            casted) {
-          //insert cast op to cast output back to float16
-          auto dst_arg = output;
-          auto src_arg = AddCastNode(graph,
-                                    id_generator,
-                                    dst_arg,
-                                    &float_tensor_proto,
-                                    true,
-                                    static_cast<int64_t>(TensorProto_DataType_FLOAT16),
-                                    onnxruntime::kCpuExecutionProvider);
-          replacement_defs[dst_arg] = src_arg;
-        }
+      if (output->Type() &&
+          DataTypeImpl::TypeFromProto(*output->TypeAsProto()) == DataTypeImpl::GetTensorType<MLFloat16>() &&
+          casted) {
+        // insert cast op to cast output back to float16
+        auto dst_arg = output;
+        auto src_arg = AddCastNode(graph,
+                                  id_generator,
+                                  dst_arg,
+                                  &float_tensor_proto,
+                                  true,
+                                  static_cast<int64_t>(TensorProto_DataType_FLOAT16),
+                                  onnxruntime::kCpuExecutionProvider);
+        replacement_defs[dst_arg] = src_arg;
       }
+    }
     
-
     node->ReplaceDefs(replacement_defs);
     modified = modified || casted;
 
