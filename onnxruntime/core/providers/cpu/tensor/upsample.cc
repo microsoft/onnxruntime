@@ -97,67 +97,69 @@ Status UpsampleNearest(const T* input,
   int64_t output_idx = 0;
   int64_t input_idx = 0;
 
-#define OneDimensionProcessor(dim_inx)                                                                                                                                                                                                               \
-  use_extrapolation_value[dim_inx] = false;                                                                                                                                                                                                          \
-  float original_##dim_inx##_idx = get_original_coordinate(static_cast<float>(output_dim##dim_inx##_inx), scales[dim_inx], static_cast<float>(output_shape[dim_inx]), static_cast<float>(input_shape[dim_inx]), roi[dim_inx], roi[n_dim + dim_inx]); \
-  if (extrapolation_enabled && (original_##dim_inx##_idx < 0 || original_##dim_inx##_idx > input_shape[dim_inx] - 1)) use_extrapolation_value[dim_inx] = true;                                                                                       \
-  int64_t input_dim##dim_inx##_inx = get_nearest_pixel(original_##dim_inx##_idx, scales[dim_inx] < 1);                                                                                                                                               \
-  if (input_dim##dim_inx##_inx > input_shape[dim_inx] - 1) input_dim##dim_inx##_inx = input_shape[dim_inx] - 1;                                                                                                                                      \
-  if (input_dim##dim_inx##_inx < 0) input_dim##dim_inx##_inx = 0;                                                                                                                                                                                    \
-  if (input_dim##dim_inx##_inx != input_dim_counters[dim_inx]) {                                                                                                                                                                                     \
-    input_idx += (input_dim##dim_inx##_inx - input_dim_counters[dim_inx]) * input_dim_factor[dim_inx];                                                                                                                                               \
-    input_dim_counters[dim_inx] = input_dim##dim_inx##_inx;                                                                                                                                                                                          \
-  }
-
   if (n_dim == 1) {
     for (int64_t output_dim0_inx = 0; output_dim0_inx < output_shape[0]; output_dim0_inx++) {
-      OneDimensionProcessor(0);
-      output[output_idx++] = use_extrapolation_value[0] ? static_cast<T>(extrapolation_value) : input[input_idx];
+      use_extrapolation_value[0] = false;
+      float original_0_idx = get_original_coordinate(static_cast<float>(output_dim0_inx), scales[0],
+                                                     static_cast<float>(output_shape[0]), static_cast<float>(input_shape[0]),
+                                                     roi[0], roi[n_dim + 0]);
+      if (extrapolation_enabled && (original_0_idx < 0 || original_0_idx > input_shape[0] - 1)) use_extrapolation_value[0] = true;
+      int64_t input_dim0_inx = get_nearest_pixel(original_0_idx, scales[0] < 1);
+      if (input_dim0_inx > input_shape[0] - 1) input_dim0_inx = input_shape[0] - 1;
+      if (input_dim0_inx < 0) input_dim0_inx = 0;
+      output[output_idx++] = use_extrapolation_value[0] ? static_cast<T>(extrapolation_value) : input[input_dim0_inx];
     }
     return Status::OK();
   }
 
+  auto CalculateInputMapping =
+      [n_dim, input_size, &input_shape, &output_shape, &input_dim_factor, &scales, &roi, extrapolation_enabled, &get_original_coordinate, &get_nearest_pixel](
+          std::vector<int64_t>& input_mapping, const int64_t axis) {
+        for (int64_t dim = 0; dim < output_shape[axis]; dim++) {
+          float original_dim = get_original_coordinate(static_cast<float>(dim), scales[axis], static_cast<float>(output_shape[axis]),
+                                                       static_cast<float>(input_shape[axis]), roi[axis], roi[n_dim + axis]);
+          bool need_extrapolation = (extrapolation_enabled && (original_dim < 0 || original_dim > input_shape[axis] - 1));
+          int64_t input_dim = get_nearest_pixel(original_dim, scales[axis] < 1);
+          if (input_dim >= input_shape[axis]) input_dim = input_shape[axis] - 1;
+          if (input_dim < 0) input_dim = 0;
+          input_mapping[dim] = need_extrapolation ? (-4 * input_size) : (input_dim * input_dim_factor[axis]);
+        }
+        return;
+      };
+
   if (n_dim == 2) {
+    std::vector<int64_t> input_mapping_0(output_shape[0]);
+    std::vector<int64_t> input_mapping_1(output_shape[1]);
+    CalculateInputMapping(input_mapping_0, 0);
+    CalculateInputMapping(input_mapping_1, 1);
     for (int64_t output_dim0_inx = 0; output_dim0_inx < output_shape[0]; output_dim0_inx++) {
-      OneDimensionProcessor(0);
+      int64_t input_idx_0 = input_mapping_0[output_dim0_inx];
       for (int64_t output_dim1_inx = 0; output_dim1_inx < output_shape[1]; output_dim1_inx++) {
-        OneDimensionProcessor(1);
-        output[output_idx++] = (use_extrapolation_value[0] || use_extrapolation_value[1])
-                                   ? static_cast<T>(extrapolation_value)
-                                   : input[input_idx];
+        int64_t input_idx_1 = input_idx_0 + input_mapping_1[output_dim1_inx];
+        output[output_idx++] = (input_idx_1 < 0) ? static_cast<T>(extrapolation_value) : input[input_idx_1];
       }
     }
     return Status::OK();
   }
 
   if (n_dim == 3) {
+    std::vector<int64_t> input_mapping_0(output_shape[0]);
+    std::vector<int64_t> input_mapping_1(output_shape[1]);
+    std::vector<int64_t> input_mapping_2(output_shape[2]);
+    CalculateInputMapping(input_mapping_0, 0);
+    CalculateInputMapping(input_mapping_1, 1);
+    CalculateInputMapping(input_mapping_2, 2);
     for (int64_t output_dim0_inx = 0; output_dim0_inx < output_shape[0]; output_dim0_inx++) {
-      OneDimensionProcessor(0);
+      int64_t input_idx_0 = input_mapping_0[output_dim0_inx];
       for (int64_t output_dim1_inx = 0; output_dim1_inx < output_shape[1]; output_dim1_inx++) {
-        OneDimensionProcessor(1);
+        int64_t input_idx_1 = input_idx_0 + input_mapping_1[output_dim1_inx];
         for (int64_t output_dim2_inx = 0; output_dim2_inx < output_shape[2]; output_dim2_inx++) {
-          OneDimensionProcessor(2);
-          bool use_extrapolation = std::any_of(use_extrapolation_value.begin(), use_extrapolation_value.end(),
-                                               [](bool use_extrapolation) {
-                                                 return use_extrapolation == true;
-                                               });
-
-          output[output_idx++] = use_extrapolation ? static_cast<T>(extrapolation_value) : input[input_idx];
+          int64_t input_idx_2 = input_idx_1 + input_mapping_2[output_dim2_inx];
+          output[output_idx++] = (input_idx_2 < 0) ? static_cast<T>(extrapolation_value) : input[input_idx_2];
         }
       }
     }
     return Status::OK();
-  }
-
-#define OneDimensionProcessorSaveVector(dim_inx)                                                                                                                                                                                                       \
-  std::vector<int64_t> input_strided##dim_inx##_position(output_shape[dim_inx]);                                                                                                                                                                       \
-  for (int64_t output_dim##dim_inx##_inx = 0; output_dim##dim_inx##_inx < output_shape[dim_inx]; output_dim##dim_inx##_inx++) {                                                                                                                        \
-    float original_##dim_inx##_idx = get_original_coordinate(static_cast<float>(output_dim##dim_inx##_inx), scales[dim_inx], static_cast<float>(output_shape[dim_inx]), static_cast<float>(input_shape[dim_inx]), roi[dim_inx], roi[n_dim + dim_inx]); \
-    bool need_extrapolation = (extrapolation_enabled && (original_##dim_inx##_idx < 0 || original_##dim_inx##_idx > input_shape[dim_inx] - 1));                                                                                                        \
-    int64_t input_dim##dim_inx##_inx = get_nearest_pixel(original_##dim_inx##_idx, scales[dim_inx] < 1);                                                                                                                                               \
-    if (input_dim##dim_inx##_inx > input_shape[dim_inx] - 1) input_dim##dim_inx##_inx = input_shape[dim_inx] - 1;                                                                                                                                      \
-    if (input_dim##dim_inx##_inx < 0) input_dim##dim_inx##_inx = 0;                                                                                                                                                                                    \
-    input_strided##dim_inx##_position[output_dim##dim_inx##_inx] = need_extrapolation ? (-input_size * 4) : input_dim##dim_inx##_inx * input_dim_factor[dim_inx];                                                                                      \
   }
 
   if (n_dim == 4) {
@@ -165,29 +167,29 @@ Status UpsampleNearest(const T* input,
       UpsampleNearest2x<T>(input_shape[0], input_shape[1], input_shape[2], input_shape[3], input, output);
       return Status::OK();
     }
-
-    OneDimensionProcessorSaveVector(0);
-    OneDimensionProcessorSaveVector(1);
-    OneDimensionProcessorSaveVector(2);
-    OneDimensionProcessorSaveVector(3);
+    std::vector<int64_t> input_mapping_0(output_shape[0]);
+    std::vector<int64_t> input_mapping_1(output_shape[1]);
+    std::vector<int64_t> input_mapping_2(output_shape[2]);
+    std::vector<int64_t> input_mapping_3(output_shape[3]);
+    CalculateInputMapping(input_mapping_0, 0);
+    CalculateInputMapping(input_mapping_1, 1);
+    CalculateInputMapping(input_mapping_2, 2);
+    CalculateInputMapping(input_mapping_3, 3);
     for (int64_t output_dim0_inx = 0; output_dim0_inx < output_shape[0]; output_dim0_inx++) {
-      int64_t input_index0 = input_strided0_position[output_dim0_inx];
+      int64_t input_idx_0 = input_mapping_0[output_dim0_inx];
       for (int64_t output_dim1_inx = 0; output_dim1_inx < output_shape[1]; output_dim1_inx++) {
-        int64_t input_index1 = input_index0 + input_strided1_position[output_dim1_inx];
+        int64_t input_idx_1 = input_idx_0 + input_mapping_1[output_dim1_inx];
         for (int64_t output_dim2_inx = 0; output_dim2_inx < output_shape[2]; output_dim2_inx++) {
-          int64_t input_index2 = input_index1 + input_strided2_position[output_dim2_inx];
+          int64_t input_idx_2 = input_idx_1 + input_mapping_2[output_dim2_inx];
           for (int64_t output_dim3_inx = 0; output_dim3_inx < output_shape[3]; output_dim3_inx++) {
-            int64_t input_index3 = input_index2 + input_strided3_position[output_dim3_inx];
-            output[output_idx++] = (input_index3 < 0) ? static_cast<T>(extrapolation_value) : input[input_index3];
+            int64_t input_idx_3 = input_idx_2 + input_mapping_3[output_dim3_inx];
+            output[output_idx++] = (input_idx_3 < 0) ? static_cast<T>(extrapolation_value) : input[input_idx_3];
           }
         }
       }
     }
     return Status::OK();
   }
-
-#undef OneDimensionProcessorSaveVector
-#undef OneDimensionProcessor
 
   std::vector<int64_t> output_dim_counter(n_dim);
   output_dim_counter[n_dim - 1] = -1;  // initialize dimension counter
