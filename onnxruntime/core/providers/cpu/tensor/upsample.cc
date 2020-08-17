@@ -92,7 +92,6 @@ Status UpsampleNearest(const T* input,
   for (int64_t dim_idx = n_dim - 2; dim_idx >= 0; dim_idx--) {
     input_dim_factor[dim_idx] = input_dim_factor[dim_idx + 1] * input_shape[dim_idx + 1];
   }
-  int64_t input_size = input_dim_factor[0] * input_shape[0];
 
   int64_t output_idx = 0;
   int64_t input_idx = 0;
@@ -113,8 +112,9 @@ Status UpsampleNearest(const T* input,
   }
 
   auto CalculateInputMapping =
-      [n_dim, input_size, &input_shape, &output_shape, &input_dim_factor, &scales, &roi, extrapolation_enabled, &get_original_coordinate, &get_nearest_pixel](
+      [n_dim, &input_shape, &output_shape, &input_dim_factor, &scales, &roi, extrapolation_enabled, &get_original_coordinate, &get_nearest_pixel](
           std::vector<int64_t>& input_mapping, const int64_t axis) {
+        const int64_t input_size = input_dim_factor[0] * input_shape[0];
         for (int64_t dim = 0; dim < output_shape[axis]; dim++) {
           float original_dim = get_original_coordinate(static_cast<float>(dim), scales[axis], static_cast<float>(output_shape[axis]),
                                                        static_cast<float>(input_shape[axis]), roi[axis], roi[n_dim + axis]);
@@ -122,7 +122,7 @@ Status UpsampleNearest(const T* input,
           int64_t input_dim = get_nearest_pixel(original_dim, scales[axis] < 1);
           if (input_dim >= input_shape[axis]) input_dim = input_shape[axis] - 1;
           if (input_dim < 0) input_dim = 0;
-          input_mapping[dim] = need_extrapolation ? (-4 * input_size) : (input_dim * input_dim_factor[axis]);
+          input_mapping[dim] = need_extrapolation ? (-input_size) : (input_dim * input_dim_factor[axis]);
         }
         return;
       };
