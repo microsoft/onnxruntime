@@ -477,6 +477,7 @@ def install_python_deps(numpy_version=""):
                         else 'numpy>=1.16.6')
     dep_packages.append('sympy>=1.1')
     dep_packages.append('packaging')
+    dep_packages.append('cerberus')
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host',
                     'files.pythonhosted.org'] + dep_packages)
 
@@ -1091,6 +1092,8 @@ def run_training_python_frontend_tests(cwd):
     run_subprocess([
         sys.executable, 'orttraining_test_transformers.py',
         'BertModelTest.test_for_pretraining_full_precision_list_and_dict_input'], cwd=cwd)
+    run_subprocess([sys.executable, 'orttraining_test_orttrainer_frontend.py'], cwd=cwd)
+    run_subprocess([sys.executable, 'orttraining_test_orttrainer_bert_toy_onnx.py'], cwd=cwd)
 
 
 def run_training_python_frontend_e2e_tests(cwd):
@@ -1328,7 +1331,7 @@ def run_nodejs_tests(nodejs_binding_dir):
 def build_python_wheel(
         source_dir, build_dir, configs, use_cuda, use_ngraph, use_dnnl,
         use_tensorrt, use_openvino, use_nuphar, use_vitisai, use_acl, use_armnn,
-        wheel_name_suffix, nightly_build=False, featurizers_build=False, use_ninja=False):
+        wheel_name_suffix, enable_training, nightly_build=False, featurizers_build=False, use_ninja=False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows() and not use_ninja:
@@ -1354,6 +1357,8 @@ def build_python_wheel(
             args.append("--use_featurizers")
         if wheel_name_suffix:
             args.append('--wheel_name_suffix={}'.format(wheel_name_suffix))
+        if enable_training:
+            args.append("--enable_training")
 
         # The following arguments are mutually exclusive
         if use_tensorrt:
@@ -1668,6 +1673,7 @@ def main():
                 args.use_acl,
                 args.use_armnn,
                 args.wheel_name_suffix,
+                args.enable_training,
                 nightly_build=nightly_build,
                 featurizers_build=args.use_featurizers,
                 use_ninja=(args.cmake_generator == 'Ninja')

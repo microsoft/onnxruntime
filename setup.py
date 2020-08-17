@@ -232,6 +232,13 @@ packages = [
     'onnxruntime.quantization',
 ]
 
+# TODO: thiagofc: Temporary 'experimental' namespace for new PyTorch front-end
+if '--enable_training' in sys.argv:
+    packages.extend(['onnxruntime.experimental',
+                     'onnxruntime.experimental.amp',
+                     'onnxruntime.experimental.optim'])
+    sys.argv.remove('--enable_training')
+
 package_data = {}
 data_files = []
 

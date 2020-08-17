@@ -47,6 +47,9 @@ RUN conda install -y \
     pip install \
         onnx=="${ONNX_VERSION}"
 
+# install cerberus for the new pytorch front-end
+RUN pip install cerberus
+
 # build ucx suite
 # note: openmpi will not select ucx without multithreading enabled
 ARG UCX_VERSION
