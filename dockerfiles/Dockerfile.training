@@ -27,6 +27,7 @@ RUN apt-get -y update &&\
         language-pack-en \
         unattended-upgrades
 
+# update existing packages to minimize security vulnerabilities
 RUN unattended-upgrade
 
 RUN locale-gen en_US.UTF-8 && \
