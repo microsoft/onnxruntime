@@ -14,11 +14,13 @@ from onnxruntime.capi.ort_trainer import IODescription as Legacy_IODescription,\
                                          ModelDescription as Legacy_ModelDescription,\
                                          LossScaler as Legacy_LossScaler,\
                                          ORTTrainer as Legacy_ORTTrainer
-from onnxruntime.capi.training import _utils, amp, optim, orttrainer, TrainStepInfo,\
+from onnxruntime.experimental import _utils, amp, optim, orttrainer, TrainStepInfo,\
                                       model_desc_validation as md_val,\
                                       orttrainer_options as orttrainer_options
 
 import _test_helpers
+
+DEFAULT_SEED = 1
 
 ###############################################################################
 # Helper functions ############################################################
@@ -114,7 +116,6 @@ def legacy_model_params(device = torch.device("cuda", 0)):
     learning_rate = torch.tensor([lr]).to(device)
     return (legacy_model_desc, learning_rate_description, learning_rate)
 
-    print(name)
     no_decay_keys = ["bias", "gamma", "beta", "LayerNorm"]
     no_decay = any(no_decay_key in name for no_decay_key in no_decay_keys)
     if no_decay:
@@ -246,6 +247,7 @@ def testToyBERTModelSimpleTrainStep(dynamic_shape):
 ])
 def testToyBERTDeteministicCheck(expected_losses):
     train_steps = 10
+    device = 'cuda'
 
     model_desc = bert_model_description()
     model = load_bert_onnx_model()
@@ -256,10 +258,14 @@ def testToyBERTDeteministicCheck(expected_losses):
         'debug' : {
             'deterministic_compute': True
         },
+        'device': {
+            'id': device,
+            'mem_limit': 0
+        },
     })
     
-    torch.manual_seed(1)
-    set_seed(1)
+    torch.manual_seed(DEFAULT_SEED)
+    set_seed(DEFAULT_SEED)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
     
     experimental_losses = []
@@ -297,17 +303,22 @@ def testToyBERTModelLRScheduler(initial_lr, lr_scheduler, expected_learning_rate
     model_desc = bert_model_description()
     model = load_bert_onnx_model()
 
+    device = 'cuda'
     total_steps = 10
     optim_config = optim.LambConfig(lr=initial_lr)
     opts =  orttrainer.ORTTrainerOptions({
         'debug' : {
             'deterministic_compute': True
         },
+        'device': {
+            'id': device,
+            'mem_limit': 0
+        },
         'lr_scheduler' : lr_scheduler(total_steps=total_steps, warmup=0.5)
     })
     
-    torch.manual_seed(1)
-    set_seed(1)
+    torch.manual_seed(DEFAULT_SEED)
+    set_seed(DEFAULT_SEED)
 
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
   
@@ -322,15 +333,18 @@ def testToyBERTModelLRScheduler(initial_lr, lr_scheduler, expected_learning_rate
     _test_helpers.assert_model_outputs(losses, expected_losses, rtol=1e-6)
     
 
-# TODO: Copy the expected values from legacy api
 # Dynamic Loss Scaler implemented implicitly
-@pytest.mark.parametrize("loss_scaler", [
-    (None),
-    (amp.DynamicLossScaler()),
-    (CustomLossScaler())
+@pytest.mark.parametrize("loss_scaler, expected_losses", [
+    (None, [10.98803424835205, 10.99240493774414, 11.090575218200684, 11.042827606201172, 10.988829612731934,
+        11.105679512023926, 10.981969833374023, 11.081724166870117, 10.997172355651855, 11.107305526733398]),
+    (amp.DynamicLossScaler(), [10.98803424835205, 10.99240493774414, 11.090575218200684, 11.042827606201172, 10.988829612731934,
+        11.105679512023926, 10.981969833374023, 11.08173656463623, 10.997119903564453, 11.107370376586914]),
+    (CustomLossScaler(), [10.98803424835205, 10.99240493774414, 11.090554237365723, 11.042823791503906, 10.98877239227295,
+        11.105667114257812, 10.981982231140137, 11.081768035888672, 10.997129440307617, 11.107320785522461])
 ])
-def testToyBERTModelMixedPrecisionLossScaler(loss_scaler):
+def testToyBERTModelMixedPrecisionLossScaler(loss_scaler, expected_losses):
     total_steps = 10
+    device = 'cuda'
 
     model_desc = bert_model_description()
     model = load_bert_onnx_model()
@@ -339,6 +353,10 @@ def testToyBERTModelMixedPrecisionLossScaler(loss_scaler):
     opts =  orttrainer.ORTTrainerOptions({
         'debug' : {
             'deterministic_compute': True
+        },
+        'device': {
+            'id': device,
+            'mem_limit': 0
         },
         'mixed_precision': {
             'enabled': True,
@@ -354,6 +372,7 @@ def testToyBERTModelMixedPrecisionLossScaler(loss_scaler):
 
         losses.append(trainer.train_step(*sample_input).cpu().item())
 
+    _test_helpers.assert_model_outputs(losses, expected_losses, rtol=1e-5)
 
 ###############################################################################
 # Temporary tests comparing Legacy vs Experimental ORTTrainer APIs ############
@@ -362,6 +381,7 @@ def testToyBERTModelMixedPrecisionLossScaler(loss_scaler):
 
 def testToyBERTModelLegacyExperimentalBasicTraining():
     train_steps = 10
+    device = 'cuda'
 
     # EXPERIMENTAL API
     model_desc = bert_model_description()
@@ -373,11 +393,14 @@ def testToyBERTModelLegacyExperimentalBasicTraining():
         'debug' : {
             'deterministic_compute': True
         },
+        'device': {
+            'id': device,
+            'mem_limit': 0
+        },
     })
    
-    seed = 1
-    torch.manual_seed(seed)
-    set_seed(seed)
+    torch.manual_seed(DEFAULT_SEED)
+    set_seed(DEFAULT_SEED)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
     
     experimental_losses = []
@@ -387,11 +410,10 @@ def testToyBERTModelLegacyExperimentalBasicTraining():
         experimental_losses.append(trainer.train_step(*sample_input).cpu().item())
 
     # LEGACY IMPLEMENTATION
-    device = torch.device("cuda", 0)
+    device = torch.device(device)
     legacy_model_desc, learning_rate_description, learning_rate = legacy_model_params() 
-    seed = 1
-    torch.manual_seed(seed)
-    set_seed(seed)
+    torch.manual_seed(DEFAULT_SEED)
+    set_seed(DEFAULT_SEED)
     
     legacy_trainer = Legacy_ORTTrainer(model, None, legacy_model_desc, "LambOptimizer",
                        None,
@@ -419,16 +441,21 @@ def testToyBERTModelLegacyExperimentalLRScheduler(initial_lr, lr_scheduler, lega
     model = load_bert_onnx_model()
 
     total_steps = 10
+    device = 'cuda'
     optim_config = optim.LambConfig(lr=initial_lr)
     opts =  orttrainer.ORTTrainerOptions({
         'debug' : {
             'deterministic_compute': True
         },
+        'device': {
+            'id': device,
+            'mem_limit': 0
+        },
         'lr_scheduler' : lr_scheduler(total_steps=total_steps, warmup=0.5)
     })
     
-    torch.manual_seed(1)
-    set_seed(1)
+    torch.manual_seed(DEFAULT_SEED)
+    set_seed(DEFAULT_SEED)
 
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
   
@@ -440,10 +467,10 @@ def testToyBERTModelLegacyExperimentalLRScheduler(initial_lr, lr_scheduler, lega
         assert trainer.options.lr_scheduler.get_last_lr()[0] == legacy_lr_scheduler(i)
 
     # LEGACY IMPLEMENTATION
-    device = torch.device("cuda", 0)
+    device = torch.device(device)
     legacy_model_desc, learning_rate_description, learning_rate = legacy_model_params() 
-    torch.manual_seed(1)
-    set_seed(1)
+    torch.manual_seed(DEFAULT_SEED)
+    set_seed(DEFAULT_SEED)
     
     legacy_trainer = Legacy_ORTTrainer(model, None, legacy_model_desc, "LambOptimizer",
                        None,
@@ -458,7 +485,6 @@ def testToyBERTModelLegacyExperimentalLRScheduler(initial_lr, lr_scheduler, lega
         legacy_losses.append(legacy_trainer.train_step(sample_input).cpu().item())
 
     _test_helpers.assert_model_outputs(experimental_losses, legacy_losses)
-    print(legacy_losses)
 
 @pytest.mark.parametrize("loss_scaler, legacy_loss_scaler", [
     (None, Legacy_LossScaler("ort_test_input_loss_scaler", True)),
@@ -467,6 +493,7 @@ def testToyBERTModelLegacyExperimentalLRScheduler(initial_lr, lr_scheduler, lega
 ])
 def testToyBERTModelMixedPrecisionLossScalerLegacyExperimental(loss_scaler, legacy_loss_scaler):
     total_steps = 10
+    device = "cuda"
 
     model_desc = bert_model_description()
     model = load_bert_onnx_model()
@@ -475,6 +502,10 @@ def testToyBERTModelMixedPrecisionLossScalerLegacyExperimental(loss_scaler, lega
     opts =  orttrainer.ORTTrainerOptions({
         'debug' : {
             'deterministic_compute': True
+        },
+        'device': {
+            'id': device,
+            'mem_limit': 0
         },
         'mixed_precision': {
             'enabled': True,
@@ -490,10 +521,10 @@ def testToyBERTModelMixedPrecisionLossScalerLegacyExperimental(loss_scaler, lega
         experimental_losses.append(trainer.train_step(*sample_input).cpu().item())
 
     # LEGACY IMPLEMENTATION
-    device = torch.device("cuda", 0)
+    device = torch.device(device)
     legacy_model_desc, learning_rate_description, learning_rate = legacy_model_params() 
-    torch.manual_seed(1)
-    set_seed(1)
+    torch.manual_seed(DEFAULT_SEED)
+    set_seed(DEFAULT_SEED)
     
     legacy_trainer = Legacy_ORTTrainer(model, None, legacy_model_desc, "LambOptimizer",
                        None,
@@ -510,6 +541,4 @@ def testToyBERTModelMixedPrecisionLossScalerLegacyExperimental(loss_scaler, lega
         legacy_losses.append(legacy_trainer.train_step(legacy_sample_input).cpu().item())
     
     _test_helpers.assert_model_outputs(experimental_losses, legacy_losses, rtol=1e-5)
-    print(experimental_losses)
-    print(legacy_losses)
 
