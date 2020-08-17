@@ -82,7 +82,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(compatible_eps));
       transformers.emplace_back(onnxruntime::make_unique<FastGeluFusion>(compatible_eps));
 
-      transformers.emplace_back(onnxruntime::make_unique<BiasGeluFusion>(compatible_eps));
+      //transformers.emplace_back(onnxruntime::make_unique<BiasGeluFusion>(compatible_eps));
 
       if (config.enable_gelu_approximation) {
         transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(compatible_eps));
@@ -161,7 +161,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(onnxruntime::make_unique<MatMulAddFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));
       transformers.emplace_back(onnxruntime::make_unique<MatmulTransposeFusion>(l1_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<BiasDropoutFusion>(l1_execution_providers));
+      // only enable bias dropout fusing for gpu
+      transformers.emplace_back(onnxruntime::make_unique<BiasDropoutFusion>(std::unordered_set<std::string>{kCudaExecutionProvider}));
       transformers.emplace_back(onnxruntime::make_unique<MatMulScaleFusion>(l1_execution_providers, weights_to_train));
 
       rule_transformer = optimizer_utils::GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable, l1_execution_providers);
