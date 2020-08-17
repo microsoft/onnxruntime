@@ -43,24 +43,39 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 
 | **ONNX Layers** | **CPU** | **GPU** | **VPU** |
 | --- | --- | --- | --- |
+| Abs | Yes | Yes | No |
+| Acos | Yes | No | No |
+| Acosh | Yes | No | No |
 | Add | Yes | Yes | Yes |
-| ArgMax | Yes | Yes | Yes |
+| ArgMax | Yes | No | No |
+| ArgMin | Yes | No | No |
+| Asin | Yes | Yes | No |
+| Asinh | Yes | Yes | No |
+| Atan | Yes | Yes | No |
+| Atanh | Yes | No | No |
 | AveragePool | Yes | Yes | Yes |
 | BatchNormalization | Yes | Yes | Yes |
 | Cast | Yes | Yes | Yes |
 | Clip | Yes | Yes | Yes |
 | Concat | Yes | Yes | Yes |
 | Constant | Yes | Yes | Yes |
+| ConstantOfShape | Yes | Yes | Yes |
 | Conv | Yes | Yes | Yes |
 | ConvTranspose | Yes | Yes | Yes |
+| Cos | Yes | No | No |
+| Cosh | Yes | No | No |
+| DepthToSpace | Yes | Yes | Yes |
 | Div | Yes | Yes | Yes |
 | Dropout | Yes | Yes | Yes |
+| Elu | Yes | Yes | Yes |
+| Erf | Yes | Yes | Yes |
 | Flatten | Yes | Yes | Yes |
 | Floor | Yes | Yes | Yes |
 | Gather | Yes | Yes | Yes |
-| GatherND | Yes | Yes | Yes |
 | Gemm | Yes | Yes | Yes |
 | GlobalAveragePool | Yes | Yes | Yes |
+| GlobalLpPool | Yes | Yes | Yes |
+| HardSigmoid | Yes | Yes | No |
 | Identity | Yes | Yes | Yes |
 | LeakyRelu | Yes | Yes | Yes |
 | Log | Yes | Yes | Yes |
@@ -69,28 +84,40 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | MatMul | Yes | Yes | Yes |
 | Max | Yes | Yes | Yes |
 | MaxPool | Yes | Yes | Yes |
+| Mean | Yes | Yes | Yes |
 | Min | Yes | Yes | Yes |
 | Mul | Yes | Yes | Yes |
+| Neg | Yes | Yes | Yes |
 | Pad | Yes | Yes | Yes |
 | Pow | Yes | Yes | Yes |
 | PRelu | Yes | Yes | Yes |
+| ReduceLogSum | Yes | No | Yes |
 | ReduceMax | Yes | Yes | Yes |
 | ReduceMean | Yes | Yes | Yes |
 | ReduceMin | Yes | Yes | Yes |
+| ReduceProd | Yes | No | Yes |
 | ReduceSum | Yes | Yes | Yes |
+| ReduceSumSquare | Yes | No | Yes |
 | Relu | Yes | Yes | Yes |
 | Reshape | Yes | Yes | Yes |
+| Selu | Yes | Yes | Yes |
+| Shape | Yes | Yes | Yes |
 | Sigmoid | Yes | Yes | Yes |
+| Sign | Yes | No | No |
+| SinFloat | No | No | Yes |
+| Sinh | Yes | No | No |
 | Slice | Yes | Yes | Yes |
 | Softmax | Yes | Yes | Yes |
+| Softsign | Yes | No | No |
+| SpaceToDepth | Yes | Yes | Yes |
 | Squeeze | Yes | Yes | Yes |
 | Sub | Yes | Yes | Yes |
 | Sum | Yes | Yes | Yes |
+| Tan | Yes | Yes | No |
 | Tanh | Yes | Yes | Yes |
 | TopK | Yes | Yes | Yes |
 | Transpose | Yes | Yes | Yes |
 | Unsqueeze | Yes | Yes | Yes |
-
 
 ## Topology Support
 
