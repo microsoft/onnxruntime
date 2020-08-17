@@ -191,33 +191,28 @@ Status UpsampleNearest(const T* input,
     return Status::OK();
   }
 
+  std::vector<std::vector<int64_t>> input_mappings(n_dim);
+  for (int64_t dim_idx = 0; dim_idx < n_dim; ++dim_idx) {
+    input_mappings[dim_idx].resize(output_shape[dim_idx]);
+    CalculateInputMapping(input_mappings[dim_idx], dim_idx);
+  }
+
   std::vector<int64_t> output_dim_counter(n_dim);
-  output_dim_counter[n_dim - 1] = -1;  // initialize dimension counter
+  for (int64_t dim_idx = 0; dim_idx < n_dim; dim_idx++) {
+    input_idx += input_mappings[dim_idx][0 /* output_dim_counter[dim_idx] */];
+  }
 
-  for (; output_idx < output_shape.Size(); output_idx++) {
+  for (int64_t output_size = output_shape.Size(); output_idx < output_size; output_idx++) {
+    output[output_idx] = (input_idx < 0) ? static_cast<T>(extrapolation_value) : input[input_idx];
     for (int64_t dim_idx = n_dim - 1; dim_idx >= 0; dim_idx--) {
+      input_idx -= input_mappings[dim_idx][output_dim_counter[dim_idx]];
       if (++output_dim_counter[dim_idx] < output_shape[dim_idx]) {
-        int64_t current_input_dim_counter = 0;
-        auto original_idx = get_original_coordinate(static_cast<float>(output_dim_counter[dim_idx]), scales[dim_idx],
-                                                    static_cast<float>(output_shape[dim_idx]), static_cast<float>(input_shape[dim_idx]),
-                                                    roi[dim_idx], roi[n_dim + dim_idx]);
-        current_input_dim_counter = get_nearest_pixel(original_idx, scales[dim_idx] < 1);
-        current_input_dim_counter = std::max((int64_t)0,
-                                             std::min(current_input_dim_counter, (input_shape[dim_idx] - 1)));
-
-        if (current_input_dim_counter != input_dim_counters[dim_idx]) {
-          input_idx += (current_input_dim_counter - input_dim_counters[dim_idx]) * input_dim_factor[dim_idx];
-          input_dim_counters[dim_idx] = current_input_dim_counter;
-        }
+        input_idx += input_mappings[dim_idx][output_dim_counter[dim_idx]];
         break;
-      } else {
-        output_dim_counter[dim_idx] = 0;
-        input_idx += (0 - input_dim_counters[dim_idx]) * input_dim_factor[dim_idx];
-        input_dim_counters[dim_idx] = 0;
       }
+      output_dim_counter[dim_idx] = 0;
+      input_idx += input_mappings[dim_idx][0 /* output_dim_counter[dim_idx] */ ];
     }
-
-    output[output_idx] = input[input_idx];
   }
 
   return Status::OK();
