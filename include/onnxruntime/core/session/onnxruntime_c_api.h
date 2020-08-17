@@ -983,6 +983,13 @@ struct OrtApi {
    * This is a no-copy method whose pointer is only valid until the backing OrtValue is free'd.
    */
   ORT_API2_STATUS(TensorAt, _Inout_ OrtValue* value, size_t* location_values, size_t location_values_count, _Outptr_ void** out);
+
+  /*
+  * Creates a custom environment with global threadpools and logger that will be shared across sessions.
+  * Use this in conjunction with DisablePerSessionThreads API or else the session will use
+  * its own thread pools.
+  */
+  ORT_API2_STATUS(CreateCustomEnv, OrtLoggingFunction logging_function, _In_opt_ void* logger_param, OrtLoggingLevel default_logging_level, _In_ const char* logid, _In_ const OrtThreadingOptions* t_options, _Outptr_ OrtEnv** out);
 };
 
 /*

@@ -230,4 +230,6 @@ ORT_API_STATUS_IMPL(DisablePrePacking, _Inout_ OrtSessionOptions* options);
 
 ORT_API_STATUS_IMPL(TensorAt, _Inout_ OrtValue* value, size_t* location_values, size_t location_values_count, _Outptr_ void** out);
 
+ORT_API_STATUS_IMPL(CreateCustomEnv, OrtLoggingFunction logging_function, _In_opt_ void* logger_param, OrtLoggingLevel default_warning_level, _In_ const char* logid, _In_ const struct OrtThreadingOptions* tp_options, _Outptr_ OrtEnv** out)
+ORT_ALL_ARGS_NONNULL;
 }  // namespace OrtApis

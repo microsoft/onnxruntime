@@ -102,6 +102,34 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithGlobalThreadPools, OrtLoggingLevel def
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::CreateCustomEnv,
+                    OrtLoggingFunction logging_function,
+                    _In_opt_ void* logger_param,
+                    OrtLoggingLevel default_warning_level,
+                    _In_ const char* logid,
+                    _In_ const struct OrtThreadingOptions* tp_options,
+                    _Outptr_ OrtEnv** out) {
+  API_IMPL_BEGIN
+  OrtEnv::LoggingManagerConstructionInfo lm_info{logging_function, logger_param, default_warning_level, logid};
+  // OrtEnv::LoggingManagerConstructionInfo* lm_info;
+  // if (!logger_param) {
+  //   OrtEnv::LoggingManagerConstructionInfo log_manager{logging_function, logger_param, default_warning_level, logid};
+  //   lm_info = &log_manager;
+  // } else {
+  //   OrtEnv::LoggingManagerConstructionInfo log_manager{nullptr, nullptr, default_warning_level, logid};
+  //   lm_info = &log_manager;
+  // }
+  Status status;
+  *out = OrtEnv::GetInstance(lm_info, status, tp_options);
+  // if (!tp_options) {
+  //   *out = OrtEnv::GetInstance(*lm_info, status, tp_options);
+  // } else {
+  //   *out = OrtEnv::GetInstance(*lm_info, status);
+  // }
+  return ToOrtStatus(status);
+  API_IMPL_END
+}
+
 // enable platform telemetry
 ORT_API_STATUS_IMPL(OrtApis::EnableTelemetryEvents, _In_ const OrtEnv* ort_env) {
   API_IMPL_BEGIN
@@ -1874,6 +1902,7 @@ static constexpr OrtApi ort_api_1_to_4 = {
     &OrtApis::ClearBoundOutputs,
 
     &OrtApis::TensorAt,
+    &OrtApis::CreateCustomEnv,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
