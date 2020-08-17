@@ -153,8 +153,7 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
         y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
       } else {
         // Post slicing needed. Create and fill in the Conv results in an intermediate buffer.
-        IAllocatorUniquePtr<void> temp = GetScratchBuffer<void>(TensorShape(y_dims_with_adjusted_pads).Size() * element_size);
-        memory_for_cudnn_conv_results = std::move(temp);
+        memory_for_cudnn_conv_results = GetScratchBuffer<void>(TensorShape(y_dims_with_adjusted_pads).Size() * element_size);
         y_data = reinterpret_cast<CudaT*>(memory_for_cudnn_conv_results.get());
       }
 
@@ -245,8 +244,7 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
         y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
       } else {
         // Post slicing needed. Create and fill in the Conv results in an intermediate buffer.
-        IAllocatorUniquePtr<void> temp = GetScratchBuffer<void>(TensorShape(s_.y_dims_with_adjusted_pads).Size() * element_size);
-        memory_for_cudnn_conv_results = std::move(temp);
+        memory_for_cudnn_conv_results = GetScratchBuffer<void>(TensorShape(s_.y_dims_with_adjusted_pads).Size() * element_size);
         y_data = reinterpret_cast<CudaT*>(memory_for_cudnn_conv_results.get());
       }
     }
@@ -256,19 +254,19 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
 
     IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(s_.workspace_bytes);
 
-    (cudnnConvolutionForward(CudnnHandle(),
-                             &alpha,
-                             s_.x_tensor,
-                             x_data,
-                             s_.filter_desc,
-                             w_data,
-                             s_.conv_desc,
-                             s_.algo,
-                             workspace.get(),
-                             s_.workspace_bytes,
-                             &beta,
-                             s_.y_tensor,
-                             y_data));
+    CUDNN_RETURN_IF_ERROR(cudnnConvolutionForward(CudnnHandle(),
+                                                  &alpha,
+                                                  s_.x_tensor,
+                                                  x_data,
+                                                  s_.filter_desc,
+                                                  w_data,
+                                                  s_.conv_desc,
+                                                  s_.algo,
+                                                  workspace.get(),
+                                                  s_.workspace_bytes,
+                                                  &beta,
+                                                  s_.y_tensor,
+                                                  y_data));
 
     if (has_bias) {
       const Tensor* B = context->Input<Tensor>(2);

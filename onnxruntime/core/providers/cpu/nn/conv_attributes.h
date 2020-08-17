@@ -112,12 +112,25 @@ struct ConvAttributes {
                           std::vector<int64_t>& output_shape,
                           bool force_symmetric_auto_padding = false) const {
     size_t rank = input_shape.NumDimensions();
+
+    // Make sure all "metadata" containers have the right number of elements
+    if (rank > strides_p.size())
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Not enough elements in strides. Expected: ", rank, " Got: ", strides_p.size());
+
+    if (rank > kernel_shape.size())
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Not enough elements in kernel shape. Expected: ", rank, " Got: ", kernel_shape.size());
+
+    if (rank > dilations_p.size())
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Not enough elements in dilations. Expected: ", rank, " Got: ", dilations_p.size());
+
+    if ((2 * rank) > pads_p.size())
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Not enough elements in pads. Expected: ", (2 * rank), " Got: ", pads_p.size());
+
     for (size_t dim = 0; dim < rank; ++dim) {
-      if (dim >= strides_p.size() || dim >= kernel_shape.size() ||
-          dim >= dilations_p.size() || dim >= pads_p.size() ||
-          rank + dim >= pads_p.size()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Out of bound access to array");
-      }
       int64_t output_dim_size = 0;
       ORT_RETURN_IF_ERROR(ComputePadAndOutputShape(input_shape[dim],
                                                    strides_p[dim],
@@ -151,12 +164,24 @@ struct ConvAttributes {
                                           std::vector<int64_t>& slice_ends,
                                           std::vector<int64_t>& slice_axes) const {
     size_t rank = input_shape.NumDimensions();
+    // Make sure all "metadata" containers have the right number of elements
+    if (rank > strides_p.size())
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Not enough elements in strides. Expected: ", rank, " Got: ", strides_p.size());
+
+    if (rank > kernel_shape.size())
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Not enough elements in kernel shape. Expected: ", rank, " Got: ", kernel_shape.size());
+
+    if (rank > dilations_p.size())
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Not enough elements in dilations. Expected: ", rank, " Got: ", dilations_p.size());
+
+    if ((2 * rank) > pads_p.size())
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Not enough elements in pads. Expected: ", (2 * rank), " Got: ", pads_p.size());
+
     for (size_t dim = 0; dim < rank; ++dim) {
-      if (dim >= strides_p.size() || dim >= kernel_shape.size() ||
-          dim >= dilations_p.size() || dim >= pads_p.size() ||
-          rank + dim >= pads_p.size()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Out of bound access to array");
-      }
       int64_t output_dim_size = 0;
       ORT_RETURN_IF_ERROR(ComputePadAndOutputShape(input_shape[dim],
                                                    strides_p[dim],
