@@ -156,11 +156,11 @@ def testORTTrainerModelDescValidSchemas(input_dict, input_dtype, output_dtype):
         is_loss = input_dict['outputs'][idx][2] if len(input_dict['outputs'][idx]) == 3 else False
         assert is_loss == o_desc.is_loss
 
-    # Set is_finite name and check its description
-    model_description.is_finite = md_val.IS_FINITE_IO_DESCRIPTION_NAME
-    assert model_description.is_finite.name == md_val.IS_FINITE_IO_DESCRIPTION_NAME
-    assert model_description.is_finite.shape == [1]
-    assert model_description.is_finite.dtype == torch.bool
+    # Set all_finite name and check its description
+    model_description.all_finite = md_val.ALL_FINITE_IO_DESCRIPTION_NAME
+    assert model_description.all_finite.name == md_val.ALL_FINITE_IO_DESCRIPTION_NAME
+    assert model_description.all_finite.shape == [1]
+    assert model_description.all_finite.dtype == torch.bool
 
     # Set loss_scale_input and check its description
     model_description.loss_scale_input = md_val.LOSS_SCALE_INPUT_IO_DESCRIPTION_NAME
