@@ -103,6 +103,7 @@ bool IsOpSupported(std::string name, std::string device) {
       "ReduceMean",
       "ReduceMin",
       "ReduceSum",
+      "Relu",
       "Reshape",
       "Shape",
       "Sigmoid",
@@ -138,7 +139,6 @@ bool IsOpSupported(std::string name, std::string device) {
     "ReduceLogSum",
     "ReduceProd",
     "ReduceSumSquare",
-    "Relu",
     "Resize",
     "Selu",
     "Sign",
@@ -157,7 +157,6 @@ bool IsOpSupported(std::string name, std::string device) {
     "GlobalLpPool",
     "HardSigmoid",
     "Not",
-    "Relu",
     "Selu",
     "Tan",
   };
