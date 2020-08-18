@@ -827,7 +827,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
 */
 
     if (!has_dynamic_shape) {
-	  std::string engine_path_and_name = GetEnginePath(engine_cache_path_, trt_node_name_with_precision);
+	  const std::string engine_path_and_name = GetEnginePath(engine_cache_path_, trt_node_name_with_precision);
       std::ifstream planFile(engine_path_and_name, std::ios::binary | std::ios::in);
       if (planFile && engine_cache_enable_) {
         planFile.seekg(0, std::ios::end);
@@ -853,7 +853,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         size_t engine_size = 0;
         if (!engine_decryption(engine_path_and_name.c_str(), nullptr, &engine_size))  {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                 "TensorRT EP could not get engine engine_size");
+                                 "TensorRT EP could not get engine buffer size");
         }		
         std::unique_ptr<char[]> engine_buf{new char[engine_size]};
         if (!engine_decryption(engine_path_and_name.c_str(), &engine_buf[0], &engine_size))  {
@@ -876,10 +876,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
 
         if (engine_cache_enable_) {
           nvinfer1::IHostMemory* serializedModel = trt_engine->serialize();
-          std::ofstream file(GetEnginePath(engine_cache_path_, trt_node_name_with_precision), std::ios::binary | std::ios::out);
+          std::ofstream file(engine_path_and_name, std::ios::binary | std::ios::out);
           file.write(reinterpret_cast<char*>(serializedModel->data()), serializedModel->size());
           serializedModel->destroy();
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + GetEnginePath(engine_cache_path_, trt_node_name_with_precision);
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + engine_path_and_name;
         }
       }
       trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
@@ -1118,8 +1118,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         }
         trt_state->context->reset();
         trt_state->engine->reset();
-
-        std::ifstream planFile(GetEnginePath(trt_state->engine_path, trt_node_name_with_precision), std::ios::binary | std::ios::in);
+        
+		const std::string engine_path_and_name = GetEnginePath(trt_state->engine_path, trt_node_name_with_precision);
+        std::ifstream planFile(engine_path_and_name, std::ios::binary | std::ios::in);
         if (planFile && trt_state->engine_cache_enable) {
           planFile.seekg(0, std::ios::end);
           int engine_size = planFile.tellg();
@@ -1128,7 +1129,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
           planFile.read((char*)engine_buf.get(), engine_size);
           planFile.close();
           *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(trt_state->runtime->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + GetEnginePath(trt_state->engine_path, trt_node_name_with_precision);
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_path_and_name;
         } else {
           *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_state->network, *trt_config));
           if (trt_state->engine->get() == nullptr) {
@@ -1138,10 +1139,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
 
           if (trt_state->engine_cache_enable) {
             nvinfer1::IHostMemory* serializedModel = trt_state->engine->get()->serialize();
-            std::ofstream file(GetEnginePath(trt_state->engine_path, trt_node_name_with_precision), std::ios::binary | std::ios::out);
+            std::ofstream file(engine_path_and_name, std::ios::binary | std::ios::out);
             file.write(reinterpret_cast<char*>(serializedModel->data()), serializedModel->size());
             serializedModel->destroy();
-            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + GetEnginePath(trt_state->engine_path, trt_node_name_with_precision);
+            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + engine_path_and_name;
           }
         }
         *(trt_state->context) = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(
