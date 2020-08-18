@@ -23,7 +23,8 @@ def parse_arguments():
     parser.add_argument("--is_release_build", required=False, default=None, type=str,
                         help="Flag indicating if the build is a release build. Accepted values: true/false.")
     parser.add_argument("--is_linux_build", required=False, default='false', type=str,
-                        help="Flag indicating if we are building a Nuget for Linux. This will look for `libonnxruntime.so`. Accepted values: true/false.")
+                        help="Flag indicating if we are building a Nuget for Linux. This will look for `libonnxruntime.so`. " +
+                        "Accepted values: true/false.")
 
     return parser.parse_args()
 
