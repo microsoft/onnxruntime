@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+#
+# Test export of pytorch operators using ONNX Runtime contrib ops
+
 import torch
 import onnxruntime
 import numpy as np
@@ -32,7 +37,7 @@ def ort_test_with_input(ort_sess, input, output, rtol, atol):
 
 # These set of tests verify ONNX model export and compare onnxruntime outputs to pytorch.
 # To register custom ops and run the tests, you should set PYTHONPATH as:
-# PYTHONPATH=<path_to_onnxruntime/tools> pytest -v test_custom_ops_pytorch_exporter.py
+# PYTHONPATH=<path_to_onnxruntime/tools> python -m pytest -v test_custom_ops_pytorch_exporter.py
 class ONNXExporterTest(unittest.TestCase):
     from torch.onnx.symbolic_helper import _export_onnx_opset_version
     opset_version = _export_onnx_opset_version
@@ -105,21 +110,68 @@ class ONNXExporterTest(unittest.TestCase):
         x = torch.randn(3, 3)
         self.run_test(model, x, custom_opsets={'com.microsoft': 1})
 
+    def test_triu(self):
+        for i in range(-5, 5):
+            class Module(torch.nn.Module):
+                def forward(self, input):
+                    return input.triu(diagonal=i)
 
-# opset 10 tests
-TestONNXRuntime_opset10 = type(str("TestONNXRuntime_opset10"),
-                               (unittest.TestCase,),
-                               dict(ONNXExporterTest.__dict__, opset_version=10))
+            model = Module()
+            x = torch.randn(5, 4, 7, dtype=torch.float32)
+            self.run_test(model, x, custom_opsets={'com.microsoft': 1})
 
-# opset 11 tests
-ONNXExporterTest_opset11 = type(str("TestONNXRuntime_opset11"),
-                                (unittest.TestCase,),
-                                dict(ONNXExporterTest.__dict__, opset_version=11))
+            x = torch.randn(5, 4, 0, dtype=torch.float32)
+            self.run_test(model, x, custom_opsets={'com.microsoft': 1})
 
-# opset 12 tests
-ONNXExporterTest_opset12 = type(str("TestONNXRuntime_opset12"),
-                                (unittest.TestCase,),
-                                dict(ONNXExporterTest.__dict__, opset_version=12))
+            x = torch.randn(5, 0, 0, dtype=torch.float32)
+            self.run_test(model, x, custom_opsets={'com.microsoft': 1})
+
+        for i in range(-5, 5):
+            class Module2D(torch.nn.Module):
+                def forward(self, input):
+                    return input.triu(diagonal=i)
+
+            model = Module2D()
+            x = torch.randn(4, 7, dtype=torch.float32)
+            self.run_test(model, x, custom_opsets={'com.microsoft': 1})
+
+            x = torch.randn(0, 7, dtype=torch.float32)
+            self.run_test(model, x, custom_opsets={'com.microsoft': 1})
+
+            x = torch.randn(0, 0, dtype=torch.float32)
+            self.run_test(model, x, custom_opsets={'com.microsoft': 1})
+
+    def test_tril(self):
+        for i in range(-5, 5):
+            class Module(torch.nn.Module):
+                def forward(self, input):
+                    return input.tril(diagonal=i)
+
+            model = Module()
+            x = torch.randn(5, 4, 7, dtype=torch.float32)
+            self.run_test(model, x, custom_opsets={'com.microsoft': 1})
+
+            x = torch.randn(5, 4, 0, dtype=torch.float32)
+            self.run_test(model, x, custom_opsets={'com.microsoft': 1})
+
+            x = torch.randn(5, 0, 0, dtype=torch.float32)
+            self.run_test(model, x, custom_opsets={'com.microsoft': 1})
+
+        for i in range(-5, 5):
+            class Module2D(torch.nn.Module):
+                def forward(self, input):
+                    return input.tril(diagonal=i)
+
+            model = Module2D()
+            x = torch.randn(4, 7, dtype=torch.float32)
+            self.run_test(model, x, custom_opsets={'com.microsoft': 1})
+
+            x = torch.randn(0, 7, dtype=torch.float32)
+            self.run_test(model, x, custom_opsets={'com.microsoft': 1})
+
+            x = torch.randn(0, 0, dtype=torch.float32)
+            self.run_test(model, x, custom_opsets={'com.microsoft': 1})
+
 
 # opset 9 tests, with keep_initializers_as_inputs=False for
 # IR version 4 style export.
@@ -128,27 +180,6 @@ ONNXExporterTest_opset9_IRv4 = type(str("TestONNXRuntime_opset9_IRv4"),
                                     dict(ONNXExporterTest.__dict__,
                                          keep_initializers_as_inputs=False))
 
-# opset 10 tests, with keep_initializers_as_inputs=False for
-# IR version 4 style export.
-ONNXExporterTest_opset10_IRv4 = type(str("TestONNXRuntime_opset10_IRv4"),
-                                     (unittest.TestCase,),
-                                     dict(ONNXExporterTest.__dict__, opset_version=10,
-                                          keep_initializers_as_inputs=False))
-
-
-# opset 11 tests, with keep_initializers_as_inputs=False for
-# IR version 4 style export.
-ONNXExporterTest_opset11_IRv4 = type(str("TestONNXRuntime_opset11_IRv4"),
-                                     (unittest.TestCase,),
-                                     dict(ONNXExporterTest.__dict__, opset_version=11,
-                                          keep_initializers_as_inputs=False))
-
-# opset 12 tests, with keep_initializers_as_inputs=False for
-# IR version 4 style export.
-ONNXExporterTest_opset12_IRv4 = type(str("TestONNXRuntime_opset12_IRv4"),
-                                     (unittest.TestCase,),
-                                     dict(ONNXExporterTest.__dict__, opset_version=12,
-                                          keep_initializers_as_inputs=False))
 
 if __name__ == '__main__':
     unittest.main()

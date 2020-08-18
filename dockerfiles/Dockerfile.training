@@ -24,7 +24,11 @@ RUN apt-get -y update &&\
     apt-get -y --no-install-recommends install \
         curl \
         git \
-        language-pack-en
+        language-pack-en \
+        unattended-upgrades
+
+# update existing packages to minimize security vulnerabilities
+RUN unattended-upgrade
 
 RUN locale-gen en_US.UTF-8 && \
     update-locale LANG=en_US.UTF-8
@@ -46,6 +50,9 @@ RUN conda install -y \
         numpy=${NUMPY_VERSION} &&\
     pip install \
         onnx=="${ONNX_VERSION}"
+
+# install cerberus for the new pytorch front-end
+RUN pip install cerberus
 
 # build ucx suite
 # note: openmpi will not select ucx without multithreading enabled
