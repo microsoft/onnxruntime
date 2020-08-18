@@ -192,7 +192,7 @@ class LambConfig(_OptimizerConfig):
         ratio_min (float, default is -inf): Lower bound on confidence ratio.
         ratio_max (float, default is inf): Upper bound on confidence ratio.
         epsilon (float, default is 1e-6): Small scalar to avoid dividing by zero.
-        do_bias_correction (bool, default is True): Compute unbiased 1st and 2nd momentums.
+        do_bias_correction (bool, default is False): Compute unbiased 1st and 2nd momentums.
 
     NOTE: To prevent model parameters to be trained, refer to :py:attr:`.ORTTrainerOptions.utils.frozen_weights`.
 
@@ -208,7 +208,7 @@ class LambConfig(_OptimizerConfig):
     """
 
     def __init__(self, params=[], lr=0.001, alpha=0.9, beta=0.999, lambda_coef=0.0,
-                 ratio_min=float('-inf'), ratio_max=float('inf'), epsilon=1e-6, do_bias_correction=True):
+                 ratio_min=float('-inf'), ratio_max=float('inf'), epsilon=1e-6, do_bias_correction=False):
         assert lr >= 0, "'lr' must be a positive number"
         assert alpha >= 0, "'alpha' must be a positive number"
         assert beta >= 0, "'beta' must be a positive number"
