@@ -119,7 +119,6 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
 
         public static void SplitStrides(int[] strides, int[] splitAxes, int[] newStrides, int stridesOffset, int[] splitStrides, int splitStridesOffset)
         {
-            // TODO: Handle scalars
             int newStrideIndex = 0;
             for (int i = 0; i < strides.Length; i++)
             {
