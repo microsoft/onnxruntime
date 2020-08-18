@@ -363,32 +363,3 @@ graph = helper.make_graph(
 )
 
 save_model(graph, 'reshape_fusion_concat_subgraph_mul.onnx')
-
-save_model(graph, 'reshape_fusion_concat_subgraph_mul.onnx')
-
-graph = helper.make_graph(
-    [ # nodes
-        helper.make_node("Add", ["Input", "Bias"], ["add0_out"], "add0"),
-        helper.make_node("Shape", ["add0_out"], ["shape0_out"], "shape0"),
-        helper.make_node("Gather", ["shape0_out", "indices0"], ["gather0_out"], "gather0", axis=0),
-        helper.make_node("Unsqueeze", ["gather0_out"], ["unsqueeze0_out"], "unsqueeze0", axes=[0]),
-        helper.make_node("Concat", ["unsqueeze0_out", "dim_-1", "dim_12", "dim_64"], ["concat_out"], "concat", axis=0),
-        helper.make_node("Reshape", ["add0_out", "concat_out"], ["Result"], "reshape"),
-    ],
-    "Reshape_Fusion",  #name
-    [  # inputs
-        helper.make_tensor_value_info('Input', TensorProto.FLOAT, [1, 768]),
-    ],
-    [  # outputs
-        helper.make_tensor_value_info('Result', TensorProto.FLOAT, [1, -1, 12, 64]),
-    ],
-    [  # initializers
-        helper.make_tensor('Bias', TensorProto.FLOAT, [1], [1, 2, 3]),
-        helper.make_tensor('dim_-1', TensorProto.INT64, [1], [-1]),
-        helper.make_tensor('dim_12', TensorProto.INT64, [1], [12]),
-        helper.make_tensor('dim_64', TensorProto.INT64, [1], [64]),
-        helper.make_tensor('indices0', TensorProto.INT64, [], [0]),
-    ]
-)
-
-save_model(graph, 'reshape_fusion_distillbert.onnx')

@@ -1532,43 +1532,6 @@ TEST_F(GraphTransformationTests, ReshapeFusionConcatSubgraphWithMul) {
   }
 }
 
-// Test Reshape Fusion with 2 constant initializers for Concat inputs.
-TEST_F(GraphTransformationTests, ReshapeFusionDistilBertTest) {
-  auto model_uri = MODEL_FOLDER "fusion/reshape_fusion_distillbert.onnx";
-  std::shared_ptr<Model> p_model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
-  Graph& graph = p_model->MainGraph();
-
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<ReshapeFusion>(), TransformerLevel::Level1);
-  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
-  ASSERT_TRUE(ret.IsOK());
-
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Shape"] == 0);
-  ASSERT_TRUE(op_to_count["Gather"] == 0);
-  ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
-  ASSERT_TRUE(op_to_count["Concat"] == 0);
-  ASSERT_TRUE(op_to_count["Reshape"] == 1);
-
-  for (const Node& node : graph.Nodes()) {
-    if (node.OpType() == "Reshape") {
-      const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
-      ASSERT_TRUE(tensor_proto != nullptr);
-
-      auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
-      EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
-      EXPECT_EQ(initializer->size(), 4);
-
-      const int64_t* val = initializer->data<int64_t>();
-      EXPECT_EQ(val[0], 0);
-      EXPECT_EQ(val[1], -1);
-      EXPECT_EQ(val[2], 12);
-      EXPECT_EQ(val[3], 64);
-    }
-  }
-}
-
 TEST_F(GraphTransformationTests, ExpandElimination) {
   auto model_uri = MODEL_FOLDER "expand_elimination.onnx";
   std::shared_ptr<Model> model;
@@ -1867,6 +1830,7 @@ TEST_F(GraphTransformationTests, AttentionFusionDistilBertTest) {
   EXPECT_EQ(op_to_count["Concat"], 0);
   EXPECT_EQ(op_to_count["Transpose"], 0);
   EXPECT_EQ(op_to_count["Softmax"], 0);
+  EXPECT_EQ(op_to_count["Shape"], 0);
 }
 
 TEST_F(GraphTransformationTests, GeluFusionTest) {

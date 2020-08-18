@@ -804,7 +804,6 @@ bool CheckNodesInPathV(const Graph& graph, const Node& reshape, const Node& tran
     DEBUG_LOG("Output edge count not expected for nodes in path v");
     return false;
   }
-
   std::vector<int64_t> perm;
   if (!(graph_utils::GetRepeatedNodeAttributeValues(transpose, "perm", perm) && perm.size() == 4 && perm[0] == 0 && perm[1] == 2 && perm[2] == 1 && perm[3] == 3)) {
     DEBUG_LOG("Failed in match Transpose attribute perm. Expected: 0, 2, 1, 3");
@@ -840,14 +839,31 @@ bool CheckNodesInPathV(const Graph& graph, const Node& reshape, const Node& tran
 
   // Check reshape for attention output has shape input (0, 0, -1) or (0, 0, N*H)
   std::vector<int64_t> reshape_shape;
-  if (!optimizer_utils::AppendTensorFromInitializer(graph, *(reshape.InputDefs()[1]), reshape_shape) ||
-      reshape_shape.size() != 3 ||
+  if (!optimizer_utils::AppendTensorFromInitializer(graph, *(reshape.InputDefs()[1]), reshape_shape)) {
+    const Node* p_concat = graph_utils::GetInputNode(reshape, 1);
+    if (p_concat == nullptr || (*p_concat).OpType() != "Concat")
+      return false;
+    if ((*p_concat).InputDefs().size() != 3)
+      return false;
+    for (size_t input_arg_id = 0; input_arg_id < (*p_concat).InputDefs().size(); ++input_arg_id) {
+      const NodeArg& concat_input_arg_i = *((*p_concat).InputDefs()[input_arg_id]);
+      std::vector<int64_t> shape;
+      if (!optimizer_utils::AppendTensorFromInitializer(graph, concat_input_arg_i, shape)) {
+        reshape_shape.push_back(0);
+        continue;
+      }
+      reshape_shape.insert(reshape_shape.end(), shape.begin(), shape.end());
+    }
+  }
+
+  if (reshape_shape.size() != 3 ||
       reshape_shape[0] != 0 ||
       (reshape_shape[1] != 0 && reshape_shape[1] != -1) ||  //reshape_shape[1] != -1 added for supporting distilbert
       (reshape_shape[2] != num_heads * head_size && reshape_shape[2] != -1)) {
     DEBUG_LOG("reshape initializer value is not expected");
     return false;
   }
+
   DEBUG_LOG("Pass CheckNodesInPathV");
   return true;
 }

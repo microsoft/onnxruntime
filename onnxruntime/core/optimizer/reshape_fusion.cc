@@ -39,6 +39,42 @@ Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, c
   return Status::OK();
 }
 
+static bool DistilBertCheck(Graph& graph, const Node& concat, const Node& layernorm_add) {
+  if (!optimizer_utils::CheckOutputEdges(graph, concat, 1))
+    return false;
+
+  auto reshape_itr = concat.OutputNodesBegin();
+  if ((*reshape_itr).OpType().compare("Reshape") != 0)
+    return false;
+
+  const Node& reshape = *reshape_itr;
+  const Node* add = graph_utils::GetInputNode(reshape, 0);
+
+  if (add == nullptr || (*add).OpType() != "Add")
+    return false;
+
+  const NodeArg& add_input_b = *((*add).InputDefs()[1]);
+  if (!graph_utils::IsInitializer(graph, add_input_b.Name(), true)) {
+    return false;
+  }
+
+  auto shape = add_input_b.Shape();
+  if (shape == nullptr || shape->dim_size() != 1)
+    return false;
+
+  auto dim = shape->dim(0);
+  if (!utils::HasDimValue(dim))
+    return false;
+  int hidden_size = dim.dim_value();
+
+  const NodeArg& layernorm_add_input_b = *(layernorm_add.InputDefs()[1]);
+  if (!graph_utils::IsInitializer(graph, layernorm_add_input_b.Name(), true)) {
+    return false;
+  }
+
+  return optimizer_utils::ValidateShape(layernorm_add_input_b, {hidden_size});
+}
+
 /**
  * Find the subgraph that matches [root] -> Shape -> Gather -> Unsqueeze.
  * If checkOneElementOnly is set to true, this function only checks if the matched subgraph produces a
@@ -61,6 +97,8 @@ bool ReshapeFusion::Match_One_Element_Output_Subgraph_1(Graph& graph, const Node
     const Node* p_node_before_shape = graph_utils::GetInputNode(shape, 0);
     bool is_distilbert_reshape = false;
     if (nullptr != p_node_before_shape && (*p_node_before_shape).OpType() == "Add") {
+      if (!DistilBertCheck(graph, concat, *p_node_before_shape))
+        return false;
       is_distilbert_reshape = true;
     }
     if (shape_input.Name() != root_input.Name() && !is_distilbert_reshape) {

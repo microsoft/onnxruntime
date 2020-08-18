@@ -252,7 +252,7 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     Node& node = *p_node;
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
-    if (node.GetOutputEdgesCount() == 4 &&
+    if ((node.GetOutputEdgesCount() == 4 || node.GetOutputEdgesCount() == 6) &&  // Add node.GetOutputEdgesCount() == 6 for distilbert
         graph_utils::IsSupportedOptypeVersionAndDomain(node, "LayerNormalization", {1}, kOnnxDomain) &&
         graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders())) {
       // Get hidden size from layer norm bias tensor shape.
@@ -475,7 +475,6 @@ static bool FuseSubGraphQKDistilBertImpl(Node& layer_norm, Graph& graph, Attenti
     DEBUG_LOG("Failed to find path for q");
     return false;
   }
-
   const Node& qk_matmul = edges[0]->GetNode();
   const Node& q_div = edges[1]->GetNode();
   const Node& q_transpose = edges[2]->GetNode();
@@ -521,7 +520,6 @@ static bool FuseSubGraphQKDistilBertImpl(Node& layer_norm, Graph& graph, Attenti
     DEBUG_LOG("k root is not layer norm");
     return false;
   }
-
   if (!AttentionFusionHelper::CheckNodesInPathK(graph, k_reshape, k_transpose, num_heads, head_size, logger)) {
     DEBUG_LOG("CheckNodesInPathK returns false");
     return false;
@@ -565,7 +563,6 @@ static bool FuseSubGraphQKDistilBertImpl(Node& layer_norm, Graph& graph, Attenti
   // Merge Q, K and V weights
   NodeArg& qkv_weights = MergeQkvWeights(graph, hidden_size, q_weight_tensor, k_weight_tensor, v_weight_tensor, true);
   NodeArg& qkv_bias = MergeQkvWeights(graph, hidden_size, q_bias_tensor, k_bias_tensor, v_bias_tensor, false);
-
   // Create Attention Node.
   const Node& reshape = parent_path_nodes[0];
   const std::vector<NodeArg*> input_defs{layer_norm.MutableOutputDefs()[0], &qkv_weights, &qkv_bias, mask_index};
@@ -585,7 +582,7 @@ static bool FuseSubGraphQKDistilBertImpl(Node& layer_norm, Graph& graph, Attenti
 
   // Remove nodes that are not used anymore.
   std::vector<NodeIndex> nodes_to_remove{
-    parent_path_nodes[0].get().Index(),
+    parent_path_nodes[0].get().Index(), //reshape
     parent_path_nodes[1].get().Index(),
     parent_path_nodes[2].get().Index(),
     parent_path_nodes[3].get().Index(),
@@ -603,6 +600,16 @@ static bool FuseSubGraphQKDistilBertImpl(Node& layer_norm, Graph& graph, Attenti
     k_add.Index(),
     k_matmul.Index()
   };
+
+  const Node& reshape_1 = parent_path_nodes[0];
+  const Node& reshape_2 = *(mask_nodes.Reshape);
+
+  const Node* p_concat_1 = graph_utils::GetInputNode(reshape_1, 1);
+  const Node* p_concat_2 = graph_utils::GetInputNode(reshape_2, 1);
+  if (p_concat_1 != nullptr && p_concat_2 != nullptr) {
+    graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *p_concat_1);
+    graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *p_concat_2);
+  }
 
   //delete shape after qk_matmul
   for (auto it = qk_matmul.OutputNodesBegin(); it != qk_matmul.OutputNodesEnd(); ++it) {
