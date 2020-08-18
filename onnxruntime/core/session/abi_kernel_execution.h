@@ -90,7 +90,9 @@ class SingleKernelExecutionFrame final : public IExecutionFrame {
   }
 
   Status
-  CopyTensor(__attribute__((unused)) const Tensor &src, __attribute__((unused)) Tensor &dest) const override {
+  CopyTensor(const Tensor &src, Tensor &dest) const override {
+    ORT_UNUSED_PARAMETER(src);
+    ORT_UNUSED_PARAMETER(dest);
     return Status(ONNXRUNTIME, NOT_IMPLEMENTED, "CopyTensor is not implemented for Single Kernel Execution.");
   }
 
