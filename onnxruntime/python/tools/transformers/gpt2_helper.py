@@ -52,8 +52,23 @@ class MyGPT2LMHeadModel(GPT2LMHeadModel):
         return super().forward(input_ids, position_ids=position_ids, attention_mask=attention_mask, past=past)
 
 
-# Maps model class name to a tuple of model class and name of first output
-MODEL_CLASSES = {'GPT2LMHeadModel': (MyGPT2LMHeadModel, 'logits'), 'GPT2Model': (MyGPT2Model, 'last_state')}
+class MyGPT2LMHeadModel_NoPadding(GPT2LMHeadModel):
+    """ Here we wrap a class for Onnx model conversion for GPT2LMHeadModel with past state.
+        It does not use position_ids and attention_mask so it can only handle inputs without padding (like batch_size=1).
+    """
+    def __init__(self, config):
+        super().__init__(config)
+
+    def forward(self, input_ids, *past):
+        return super().forward(input_ids, past=past)
+
+
+# Maps model class name to a tuple of model class, name of first output and use padding or not
+MODEL_CLASSES = {
+    'GPT2LMHeadModel': (MyGPT2LMHeadModel, 'logits', True),
+    'GPT2Model': (MyGPT2Model, 'last_state', True),
+    'GPT2LMHeadModel_NoPadding': (MyGPT2LMHeadModel_NoPadding, 'logits', False),
+}
 
 
 class Gpt2Helper:
@@ -68,7 +83,8 @@ class Gpt2Helper:
                          num_layer,
                          vocab_size,
                          device,
-                         float16=False):
+                         float16=False,
+                         use_padding=True):
         """ Create random inputs for GPT2 model.
         Returns torch tensors of input_ids, position_ids, attention_mask and a list of past state tensors.
         """
@@ -81,6 +97,9 @@ class Gpt2Helper:
                                   size=(batch_size, sequence_length),
                                   dtype=torch.int64,
                                   device=device)
+
+        if not use_padding:
+            return input_ids, past
 
         total_sequence_length = past_sequence_length + sequence_length
         attention_mask = torch.ones([batch_size, total_sequence_length], dtype=float_type, device=device)
@@ -107,7 +126,8 @@ class Gpt2Helper:
         output_name = MODEL_CLASSES[model_class][1]
 
         last_state_shape = [
-            batch_size, sequence_length, vocab_size if model_class == "GPT2LMHeadModel" else hidden_size
+            batch_size, sequence_length,
+            vocab_size if model_class in ["GPT2LMHeadModel", "GPT2LMHeadModel_NoPadding"] else hidden_size
         ]
         present_state_shape = [
             2, batch_size, num_attention_heads, past_sequence_length + sequence_length,
@@ -176,8 +196,8 @@ class Gpt2Helper:
         return is_all_close
 
     @staticmethod
-    def export_onnx(model, device, onnx_model_path, verbose=False, use_external_data_format=False):
-        """ Export GPT-2 model with past state to ONNX model
+    def export_onnx(model, device, onnx_model_path, verbose=False, use_external_data_format=False, use_padding=True):
+        """ Export GPT-2 model with past state to ONNX model.
         """
         config: GPT2Config = model.config
         num_layer = config.n_layer
@@ -189,11 +209,15 @@ class Gpt2Helper:
                                                    num_layer=num_layer,
                                                    vocab_size=config.vocab_size,
                                                    device=device,
-                                                   float16=False)
+                                                   float16=False,
+                                                   use_padding=use_padding)
 
-        dummy_input_ids, dummy_position_ids, dummy_attention_mask, dummy_past = dummy_inputs
-
-        input_list = [dummy_input_ids, dummy_position_ids, dummy_attention_mask] + dummy_past
+        if use_padding:
+            dummy_input_ids, dummy_position_ids, dummy_attention_mask, dummy_past = dummy_inputs
+            input_list = [dummy_input_ids, dummy_position_ids, dummy_attention_mask] + dummy_past
+        else:
+            dummy_input_ids, dummy_past = dummy_inputs
+            input_list = [dummy_input_ids] + dummy_past
         with torch.no_grad():
             outputs = model(*input_list)
 
@@ -218,8 +242,12 @@ class Gpt2Helper:
         for name in present_names:
             dynamic_axes[name] = {1: 'batch_size', 3: 'total_seq_len'}
 
-        dynamic_axes['attention_mask'] = {0: 'batch_size', 1: 'total_seq_len'}
-        dynamic_axes['position_ids'] = {0: 'batch_size', 1: 'seq_len'}
+        if use_padding:
+            dynamic_axes['attention_mask'] = {0: 'batch_size', 1: 'total_seq_len'}
+            dynamic_axes['position_ids'] = {0: 'batch_size', 1: 'seq_len'}
+            input_names = ['input_ids', 'position_ids', 'attention_mask'] + past_names
+        else:
+            input_names = ['input_ids'] + past_names
 
         logger.info(
             f"Shapes: input_ids={dummy_input_ids.shape} past={dummy_past[0].shape} output={outputs[0].shape} present={outputs[1][0].shape}"
@@ -228,7 +256,7 @@ class Gpt2Helper:
         torch.onnx.export(model,
                           args=tuple(input_list),
                           f=onnx_model_path,
-                          input_names=['input_ids', 'position_ids', 'attention_mask'] + past_names,
+                          input_names=input_names,
                           output_names=output_names,
                           example_outputs=outputs,
                           dynamic_axes=dynamic_axes,
@@ -263,14 +291,22 @@ class Gpt2Helper:
         """ Run inference of PyTorch model, and returns average latency in ms when total_runs > 0 besides outputs.
         """
         logger.debug(f"start pytorch_inference")
-        input_ids, position_ids, attention_mask, past = inputs
+        if len(inputs) == 4:
+            input_ids, position_ids, attention_mask, past = inputs
+        else:
+            input_ids, past = inputs
+            position_ids = None
+            attention_mask = None
 
         # Convert it back to fp32 as the PyTroch model cannot deal with half input.
         if attention_mask is not None:
             attention_mask = attention_mask.to(dtype=torch.float32)
         past = [p.to(dtype=torch.float32) for p in past]
 
-        input_list = [input_ids, position_ids, attention_mask] + past
+        if position_ids is None and attention_mask is None:
+            input_list = [input_ids] + past
+        else:
+            input_list = [input_ids, position_ids, attention_mask] + past
 
         with torch.no_grad():
             outputs = model(*input_list)
@@ -295,7 +331,12 @@ class Gpt2Helper:
         """ Run inference of ONNX model, and returns average latency in ms when total_runs > 0 besides outputs.
         """
         logger.debug(f"start onnxruntime_inference")
-        input_ids, position_ids, attention_mask, past = inputs
+        if len(inputs) == 4:
+            input_ids, position_ids, attention_mask, past = inputs
+        else:
+            input_ids, past = inputs
+            position_ids = None
+            attention_mask = None
 
         ort_inputs = {'input_ids': numpy.ascontiguousarray(input_ids.cpu().numpy())}
 
@@ -393,7 +434,12 @@ class Gpt2Helper:
         """ Inference with IO binding. Returns outputs, and optional latency when total_runs > 0.
         """
         logger.debug(f"start onnxruntime_inference_with_binded_io")
-        input_ids, position_ids, attention_mask, past = inputs
+        if len(inputs) == 4:
+            input_ids, position_ids, attention_mask, past = inputs
+        else:
+            input_ids, past = inputs
+            position_ids = None
+            attention_mask = None
 
         # Bind inputs and outputs to onnxruntime session
         io_binding = Gpt2Helper.prepare_io_binding(ort_session, input_ids, position_ids, attention_mask, past,
@@ -433,7 +479,8 @@ class Gpt2Helper:
                     atol=5e-4,
                     total_test_cases=100,
                     use_io_binding=True,
-                    model_class="GPT2LMHeadModel"):
+                    model_class="GPT2LMHeadModel",
+                    use_padding=True):
         """ Generate random inputs and compare the results of PyTorch and Onnx Runtime.
         """
 
@@ -463,8 +510,8 @@ class Gpt2Helper:
                 f"Running parity test for batch_size={batch_size} past_sequence_length={past_sequence_length}...")
             dummy_inputs = Gpt2Helper.get_dummy_inputs(batch_size, past_sequence_length, sequence_length,
                                                        config.num_attention_heads, config.hidden_size, config.n_layer,
-                                                       config.vocab_size, device, is_float16)
-            outputs = Gpt2Helper.pytorch_inference(model, dummy_inputs)
+                                                       config.vocab_size, device, is_float16, use_padding)
+            outputs = Gpt2Helper.pytorch_inference(model, dummy_inputs, use_padding)
             if use_io_binding:
                 ort_outputs = Gpt2Helper.onnxruntime_inference(ort_session, dummy_inputs)
             else:
@@ -482,7 +529,7 @@ class Gpt2Helper:
         return passed_test_cases == total_test_cases
 
     @staticmethod
-    def torchscript(model, config, device):
+    def torchscript(model, config, device, use_padding=True):
         """ JIT trace for TorchScript.
         """
         dummy_inputs = Gpt2Helper.get_dummy_inputs(batch_size=1,
@@ -493,9 +540,14 @@ class Gpt2Helper:
                                                    num_layer=config.n_layer,
                                                    vocab_size=config.vocab_size,
                                                    device=device,
-                                                   float16=False)
-        dummy_input_ids, dummy_position_ids, dummy_attention_mask, dummy_past = dummy_inputs
-        return torch.jit.trace(model, [dummy_input_ids, dummy_position_ids, dummy_attention_mask] + dummy_past)
+                                                   float16=False,
+                                                   use_padding=use_padding)
+        if use_padding:
+            dummy_input_ids, dummy_position_ids, dummy_attention_mask, dummy_past = dummy_inputs
+            return torch.jit.trace(model, [dummy_input_ids, dummy_position_ids, dummy_attention_mask] + dummy_past)
+        else:
+            dummy_input_ids, dummy_past = dummy_inputs
+            return torch.jit.trace(model, [dummy_input_ids] + dummy_past)
 
     @staticmethod
     def get_onnx_paths(output_dir,

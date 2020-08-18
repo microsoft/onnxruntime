@@ -141,7 +141,13 @@ def main():
         (args.precision == Precision.FLOAT32 and not args.optimize_onnx)) else onnx_model_paths[str(args.precision)]
 
     logger.info(f"Exporting ONNX model to {raw_onnx_model}")
-    Gpt2Helper.export_onnx(model, device, raw_onnx_model, args.verbose, use_external_data_format)
+    use_padding = MODEL_CLASSES[args.model_class][2]
+    Gpt2Helper.export_onnx(model,
+                           device,
+                           raw_onnx_model,
+                           args.verbose,
+                           use_external_data_format,
+                           use_padding=use_padding)
 
     if args.optimize_onnx or args.precision != Precision.FLOAT32:
         logger.info(f"Optimizing model to {output_path}")
@@ -162,33 +168,42 @@ def main():
                                args.precision == Precision.FLOAT16,
                                rtol=args.tolerance,
                                atol=args.tolerance,
-                               model_class=args.model_class)
+                               model_class=args.model_class,
+                               use_padding=use_padding)
 
     if args.input_test_file:
         test_inputs = []
+        # Each line of test file is a JSON string like:
+        # {"input_ids": [[14698, 257, 1310, 13688, 319, 326]]}
         with open(args.input_test_file) as read_f:
             for i, line in enumerate(read_f):
                 line = line.rstrip()
                 data = json.loads(line)
                 input_ids = torch.from_numpy(numpy.asarray(data["input_ids"], dtype=numpy.int64)).to(device)
 
-                if "attention_mask" in data:
-                    numpy_float = numpy.float16 if args.precision == Precision.FLOAT16 else numpy.float32
-                    attention_mask = torch.from_numpy(numpy.asarray(data["attention_mask"],
-                                                                    dtype=numpy_float)).to(device)
-                else:
-                    padding = -1
-                    attention_mask = (input_ids != padding
-                                      ).type(torch.float16 if args.precision == Precision.FLOAT16 else torch.float32)
-                    input_ids.masked_fill_(input_ids == padding, 0)
+                if use_padding:
+                    if "attention_mask" in data:
+                        numpy_float = numpy.float16 if args.precision == Precision.FLOAT16 else numpy.float32
+                        attention_mask = torch.from_numpy(numpy.asarray(data["attention_mask"],
+                                                                        dtype=numpy_float)).to(device)
+                    else:
+                        padding = -1
+                        attention_mask = (
+                            input_ids !=
+                            padding).type(torch.float16 if args.precision == Precision.FLOAT16 else torch.float32)
+                        input_ids.masked_fill_(input_ids == padding, 0)
 
-                if "position_ids" in data:
-                    position_ids = torch.from_numpy(numpy.asarray(data["position_ids"], dtype=numpy.int64)).to(device)
-                else:
-                    position_ids = (attention_mask.long().cumsum(-1) - 1)
-                    position_ids.masked_fill_(position_ids < 0, 0)
+                    if "position_ids" in data:
+                        position_ids = torch.from_numpy(numpy.asarray(data["position_ids"],
+                                                                      dtype=numpy.int64)).to(device)
+                    else:
+                        position_ids = (attention_mask.long().cumsum(-1) - 1)
+                        position_ids.masked_fill_(position_ids < 0, 0)
 
-                inputs = {"input_ids": input_ids, "position_ids": position_ids, "attention_mask": attention_mask}
+                    inputs = {"input_ids": input_ids, "position_ids": position_ids, "attention_mask": attention_mask}
+                else:
+                    inputs = {"input_ids": input_ids}
+
                 test_inputs.append(inputs)
         Gpt2Tester.test_generation(session,
                                    model,
@@ -200,7 +215,8 @@ def main():
                                    top_k_no_order=True,
                                    max_steps=24,
                                    max_inputs=0,
-                                   verbose=args.verbose)
+                                   verbose=args.verbose,
+                                   use_padding=use_padding)
 
     logger.info(f"Done. Output model: {output_path}")
 

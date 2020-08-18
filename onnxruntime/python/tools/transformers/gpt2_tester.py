@@ -123,15 +123,22 @@ class Gpt2Tester:
                  device,
                  is_fp16=False,
                  top_k=20,
-                 top_k_required_order=False):
+                 top_k_required_order=False,
+                 use_padding=True):
 
         self.batch_size = input_ids.shape[0]
         self.input_length = input_ids.shape[1]
         self.n_layer = num_layer
 
         self.input_ids = input_ids
-        self.position_ids = position_ids
-        self.attention_mask = attention_mask
+
+        self.use_padding = use_padding
+        if use_padding:
+            self.position_ids = position_ids
+            self.attention_mask = attention_mask
+        else:
+            self.position_ids = None
+            self.attention_mask = None
 
         # Emtpy past state for first inference
         self.past = []
@@ -147,7 +154,10 @@ class Gpt2Tester:
         self.top_k_required_order = top_k_required_order
 
     def get_input_tuple(self):
-        return self.input_ids, self.position_ids, self.attention_mask, self.past
+        if self.use_padding:
+            return self.input_ids, self.position_ids, self.attention_mask, self.past
+        else:
+            return self.input_ids, self.past
 
     def update(self, output, step, device):
         """
@@ -160,10 +170,14 @@ class Gpt2Tester:
         self.top_k_tokens = Gpt2Tester.predict_next_token(self.logits, self.top_k, self.top_k_required_order)
 
         self.input_ids = self.top_1_tokens.clone().detach().reshape([self.batch_size, 1]).to(device)
-        self.position_ids = torch.tensor([self.input_length + step - 1]).unsqueeze(0).repeat(self.batch_size,
-                                                                                             1).to(device)
-        self.attention_mask = torch.cat(
-            [self.attention_mask, torch.ones([self.batch_size, 1]).type_as(self.attention_mask)], 1).to(device)
+
+        if self.use_padding:
+            self.position_ids = torch.tensor([self.input_length + step - 1]).unsqueeze(0).repeat(self.batch_size,
+                                                                                                 1).to(device)
+            self.attention_mask = torch.cat(
+                [self.attention_mask,
+                 torch.ones([self.batch_size, 1]).type_as(self.attention_mask)], 1).to(device)
+
         self.past = []
 
         if isinstance(output[1], tuple):  # past in torch output is tuple
@@ -188,11 +202,12 @@ class Gpt2Tester:
         if not torch.all(self.input_ids == baseline.input_ids):
             print('Input_ids is different', self.input_ids, baseline.input_ids)
 
-        if not torch.all(self.position_ids == baseline.position_ids):
-            print('position_ids is different', self.position_ids, baseline.position_ids)
+        if self.use_padding:
+            if not torch.all(self.position_ids == baseline.position_ids):
+                print('position_ids is different', self.position_ids, baseline.position_ids)
 
-        if not torch.all(self.attention_mask == baseline.attention_mask):
-            print('attention_mask is different', self.attention_mask, baseline.attention_mask)
+            if not torch.all(self.attention_mask == baseline.attention_mask):
+                print('attention_mask is different', self.attention_mask, baseline.attention_mask)
 
         assert len(self.past) == len(baseline.past)
 
@@ -258,13 +273,14 @@ class Gpt2Tester:
                         top_k_no_order=True,
                         max_steps=24,
                         max_inputs=0,
-                        verbose=False):
+                        verbose=False,
+                        use_padding=True):
         """
         Test Generation using greedy beam search (without sampling) to compare PyTorch and ONNX model.
         It will print top 1 and top k errors on the given test inputs.
         """
         print(
-            f"start test generation: (top_k={top_k} top_k_no_order={top_k_no_order} max_steps={max_steps} test_inputs={len(test_inputs)} max_inputs={max_inputs})"
+            f"start test generation: (top_k={top_k} top_k_no_order={top_k_no_order} max_steps={max_steps} test_inputs={len(test_inputs)} max_inputs={max_inputs} use_padding={use_padding})"
         )
         n_layer = model.config.n_layer
         n_head = model.config.n_head
@@ -301,15 +317,19 @@ class Gpt2Tester:
             if i % 10 == 0:
                 print(f"{i}")
             input_ids = inputs["input_ids"]
-            position_ids = inputs["position_ids"]
-            attention_mask = inputs["attention_mask"]
+            if use_padding:
+                position_ids = inputs["position_ids"]
+                attention_mask = inputs["attention_mask"]
+            else:
+                position_ids = None
+                attention_mask = None
 
             onnx_runner = Gpt2Tester(input_ids, position_ids, attention_mask, n_head, n_embd, n_layer, device,
-                                     is_float16, top_k, not top_k_no_order)
+                                     is_float16, top_k, not top_k_no_order, use_padding)
             onnx_io_runner = Gpt2Tester(input_ids, position_ids, attention_mask, n_head, n_embd, n_layer, device,
-                                        is_float16, top_k, not top_k_no_order)
+                                        is_float16, top_k, not top_k_no_order, use_padding)
             torch_runner = Gpt2Tester(input_ids, position_ids, attention_mask, n_head, n_embd, n_layer, device,
-                                      is_float16, top_k, not top_k_no_order)
+                                      is_float16, top_k, not top_k_no_order, use_padding)
 
             batch_size = torch_runner.batch_size
             onnx_metric.start_batch(batch_size)
