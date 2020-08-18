@@ -6,14 +6,32 @@
 import os
 import argparse
 import shutil
-import json
 import onnx
 from onnx import AttributeProto as AP
 from logger import log
 
 
+domain_map = {'': 'kOnnxDomain',
+              'ai.onnx': 'kOnnxDomain',
+              'ai.onnx.ml': 'kMLDomain',
+              'com.microsoft': 'kMSDomain',
+              'com.microsoft.nchwc': 'kMSNchwcDomain',
+              'com.microsoft.mlfeaturizers': 'kMSFeaturizersDomain',
+              'com.microsoft.dml': 'kMSDmlDomain',
+              'com.intel.ai': 'kNGraphDomain',
+              'com.xilinx': 'kVitisAIDomain'}
+
+
+def map_domain(domain):
+
+    if domain in domain_map:
+        return domain_map[domain]
+
+    return 'UnknownDomain'
+
+
 def extract_ops_from_file(file_path, referred_ops):
-    '''extract ops from json file - {domain:{opset:[]}}'''
+    '''extract ops from file of format: domain;opset;op1,op2...'''
 
     if not file_path:
         return referred_ops
@@ -24,16 +42,28 @@ def extract_ops_from_file(file_path, referred_ops):
 
     with open(file_path, 'r') as file_to_read:
 
-        jobj = json.load(file_to_read)
-        for domain in jobj:
+        for stripped_line in [line.strip() for line in
+                              file_to_read.readlines()]:
+
+            if stripped_line.startswith("#"):  # skip comments
+                continue
+
+            raw_domain, opset, raw_ops =\
+                [segment.strip() for segment in stripped_line.split(';')]
+
+            domain = map_domain(raw_domain)
+            operators = [raw_op.strip() for raw_op in raw_ops.split(',')]
+
             if domain not in referred_ops:
-                referred_ops[domain] = jobj[domain]
-            for opset in jobj[domain]:
-                if opset not in referred_ops[domain]:
-                    referred_ops[domain][opset] = jobj[domain][opset]
-                for op_type in jobj[domain][opset]:
-                    if op_type not in referred_ops[domain][opset]:
-                        referred_ops[domain][opset].append(op_type)
+                referred_ops[domain] = {opset: operators}
+
+            elif opset not in referred_ops[domain]:
+                referred_ops[domain][opset] = operators
+
+            else:
+                for operator in operators:
+                    if operator not in referred_ops[domain][opset]:
+                        referred_ops[domain][opset].append(operator)
 
     return referred_ops  # end of extract_ops_from_file(...)
 
@@ -47,23 +77,6 @@ def extract_ops_from_model(model_path, referred_ops):
     if not os.path.isdir(model_path):
         log.warning('Directory {} does not exist'.format(model_path))
         return referred_ops
-
-    domain_map = {'': 'kOnnxDomain',
-                  'ai.onnx': 'kOnnxDomainAlias',
-                  'ai.onnx.ml': 'kMLDomain',
-                  'com.microsoft': 'kMSDomain',
-                  'com.microsoft.nchwc': 'kMSNchwcDomain',
-                  'com.microsoft.mlfeaturizers': 'kMSFeaturizersDomain',
-                  'com.microsoft.dml': 'kMSDmlDomain',
-                  'com.intel.ai': 'kNGraphDomain',
-                  'com.xilinx': 'kVitisAIDomain'}
-
-    def map_domain(domain):
-
-        if domain in domain_map:
-            return domain_map[domain]
-
-        return 'UnknownDomain'
 
     def extract_ops_from_graph(graph, operators):
         '''extract ops from graph and all subgraphs'''
@@ -101,17 +114,17 @@ def extract_ops_from_model(model_path, referred_ops):
     return referred_ops  # end of extract_ops_from_model(...)
 
 
-def rewrite_providers(model_path, file_path, ep_paths):
+def disable_ops_in_providers(model_path, file_path, ep_paths):
     '''rewrite multiple provider files'''
 
     operators = extract_ops_from_file(file_path, extract_ops_from_model(model_path, {}))
     for ep_path in ep_paths:
-        rewrite_provider(operators, ep_path)
+        disable_ops_in_provider(operators, ep_path)
 
-    # end of rewrite_providers(...)
+    # end of disable_ops_in_providers(...)
 
 
-def rewrite_provider(operators, ep_path):
+def disable_ops_in_provider(operators, ep_path):
     '''rewrite provider file to exclude unused ops'''
 
     log.info("Rewriting {}".format(ep_path))
@@ -316,6 +329,6 @@ if __name__ == "__main__":
         "--ep_path", required=True, type=str, help="path to a execution provider file")
 
     ARGS = PARSER.parse_args()
-    rewrite_providers(ARGS.model_path if ARGS.model_path else '',
-                      ARGS.file_path if ARGS.file_path else '',
-                      [ARGS.ep_path])
+    disable_ops_in_providers(ARGS.model_path if ARGS.model_path else '',
+                             ARGS.file_path if ARGS.file_path else '',
+                             [ARGS.ep_path])

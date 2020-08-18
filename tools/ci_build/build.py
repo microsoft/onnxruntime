@@ -1537,12 +1537,12 @@ def main():
     if (args.include_ops_by_model and len(args.include_ops_by_model) > 0) or\
        (args.include_ops_by_file and len(args.include_ops_by_file) > 0):
 
-        from provider_rewriter import rewrite_providers
+        from provider_ops_disabler import disable_ops_in_providers
 
         include_ops_by_model = args.include_ops_by_model if args.include_ops_by_model else ''
         include_ops_by_file = args.include_ops_by_file if args.include_ops_by_file else ''
 
-        rewrite_providers(include_ops_by_model, include_ops_by_file, paths_to_execution_provider(args))
+        disable_ops_in_providers(include_ops_by_model, include_ops_by_file, paths_to_execution_provider(args))
 
         args.test = False  # disable tests since we don't know which ops are enabled
 
