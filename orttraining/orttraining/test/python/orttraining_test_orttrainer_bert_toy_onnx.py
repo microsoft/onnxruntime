@@ -9,7 +9,7 @@ import torch
 
 from numpy.testing import assert_allclose
 
-from onnxruntime.capi._pybind_state import set_seed
+from onnxruntime import set_seed
 from onnxruntime.capi.ort_trainer import IODescription as Legacy_IODescription,\
                                          ModelDescription as Legacy_ModelDescription,\
                                          LossScaler as Legacy_LossScaler,\
