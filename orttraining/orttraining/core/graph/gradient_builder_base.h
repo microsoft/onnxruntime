@@ -37,7 +37,7 @@ typedef std::vector<NodeDef> GradientDef;
 class GradientBuilderBase {
  public:
   GradientBuilderBase(const GradientGraphConfiguration& gradient_graph_config,
-                      const Graph* graph,
+                      Graph* graph,
                       const Node* node,
                       const std::unordered_set<std::string>& gradient_inputs,
                       const std::unordered_set<std::string>& gradient_outputs,
@@ -217,13 +217,13 @@ class GradientBuilderBase {
     if (!name.empty()) {
       unique_prefix << name << "_Grad/";
     } else {
-      unique_prefix << node_->OpType() << "_" << node_->Index() << "_Grad/";
+      unique_prefix << graph_->GenerateNodeName(node_->OpType()) << "_Grad/";
     }
     return unique_prefix.str();
   }
 
   const GradientGraphConfiguration& gradient_graph_config_;
-  const Graph* graph_;
+  Graph* graph_;
   const Node* node_;
   std::string unique_node_prefix_;
 

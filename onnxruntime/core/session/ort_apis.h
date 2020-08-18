@@ -228,6 +228,8 @@ ORT_API_STATUS_IMPL(ReleaseAvailableProviders, _In_ char** ptr,
 ORT_API_STATUS_IMPL(EnablePrePacking, _Inout_ OrtSessionOptions* options);
 ORT_API_STATUS_IMPL(DisablePrePacking, _Inout_ OrtSessionOptions* options);
 
+ORT_API_STATUS_IMPL(TensorAt, _Inout_ OrtValue* value, size_t* location_values, size_t location_values_count, _Outptr_ void** out);
+
 ORT_API_STATUS_IMPL(CreateAllocatorForSharing, _In_ const OrtMemoryInfo* mem_info, _In_ const OrtArenaCfg* arena_cfg,
                     _Outptr_ OrtAllocator** out);
 ORT_API_STATUS_IMPL(RegisterSharedAllocator, _Inout_ OrtEnv* env, _Inout_ OrtAllocator* allocator);

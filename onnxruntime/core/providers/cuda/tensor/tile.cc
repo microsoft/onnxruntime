@@ -8,10 +8,26 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace cuda {
 
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Tile,
     kOnnxDomain,
     6,
+    12,
+    kCudaExecutionProvider,
+    KernelDefBuilder()
+        .InputMemoryType<OrtMemTypeCPUInput>(1)
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                              DataTypeImpl::GetTensorType<double>(),
+                              DataTypeImpl::GetTensorType<int32_t>(),
+                              DataTypeImpl::GetTensorType<int64_t>(),
+                              DataTypeImpl::GetTensorType<MLFloat16>()})
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
+    Tile);
+
+ONNX_OPERATOR_KERNEL_EX(
+    Tile,
+    kOnnxDomain,
+    13,
     kCudaExecutionProvider,
     KernelDefBuilder()
         .InputMemoryType<OrtMemTypeCPUInput>(1)

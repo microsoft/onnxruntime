@@ -7,6 +7,10 @@
 
 #include "LearningModelDevice.h"
 #include "OnnxruntimeProvider.h"
+#include "Dummy.h"
+
+#define STRINGIFY(x) #x
+#define XSTRINGIFY(x) STRINGIFY(x)
 
 using namespace winmlp;
 
@@ -85,6 +89,34 @@ STDAPI DllCanUnloadNow() {
   return S_FALSE;
 }
 
+STDAPI DllGetExperimentalActivationFactory(void* classId, void** factory) noexcept {
+  try {
+    *factory = nullptr;
+    uint32_t length{};
+    wchar_t const* const buffer = WINRT_WindowsGetStringRawBuffer(classId, &length);
+    std::wstring_view const name{buffer, length};
+
+    auto requal = [](std::wstring_view const& left, std::wstring_view const& right) noexcept {
+      return std::equal(left.rbegin(), left.rend(), right.rbegin(), right.rend());
+    };
+
+    std::wostringstream dummy_class;
+    dummy_class << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.Dummy";
+    if (requal(name, dummy_class.str())) {
+      *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::Dummy>());
+      return 0;
+    }
+
+    return winrt::hresult_class_not_available(name).to_abi();
+  } catch (...) {
+    return winrt::to_hresult();
+  }
+}
+
 STDAPI DllGetActivationFactory(HSTRING classId, void** factory) {
-  return WINRT_GetActivationFactory(classId, factory);
+  auto ret = WINRT_GetActivationFactory(classId, factory);
+  if (ret != 0)
+    return DllGetExperimentalActivationFactory(classId, factory);
+
+  return 0;
 }

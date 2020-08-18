@@ -69,11 +69,21 @@ extern "C" {
 
 // Any pointer marked with _In_ or _Out_, cannot be NULL.
 
-#ifdef __cplusplus
 // Windows users should use unicode paths when possible to bypass the MAX_PATH limitation
 // Every pointer marked with _In_ or _Out_, cannot be NULL. Caller should ensure that.
 // for ReleaseXXX(...) functions, they can accept NULL pointer.
+
+#ifdef __cplusplus
+// For any compiler with C++11 support, MSVC 2015 and greater, or Clang version supporting noexcept.
+// Such complex condition is needed because compilers set __cplusplus value differently.
+#ifndef __has_feature
+#define __has_feature(x) 0
+#endif
+#if ((__cplusplus >= 201103L) || (_MSC_VER >= 1900) || (defined(__has_feature) && __has_feature(cxx_noexcept)))
 #define NO_EXCEPTION noexcept
+#else
+#define NO_EXCEPTION throw()
+#endif
 #else
 #define NO_EXCEPTION
 #endif
@@ -968,6 +978,19 @@ struct OrtApi {
   void(ORT_API_CALL* ClearBoundInputs)(_Inout_ OrtIoBinding* binding_ptr) NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
   void(ORT_API_CALL* ClearBoundOutputs)(_Inout_ OrtIoBinding* binding_ptr) NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
 
+  /**
+   * Provides element-level access into a tensor.
+   * \param location_values a pointer to an array of index values that specify an element's location in the tensor data blob
+   * \param location_values_count length of location_values
+   * \param out a pointer to the element specified by location_values
+   * e.g.
+   * Given a tensor with overall shape [3,224,224], an element at
+   * location [2,150,128] can be accessed directly.
+   * 
+   * This function only works for numeric tensors.
+   * This is a no-copy method whose pointer is only valid until the backing OrtValue is free'd.
+   */
+  ORT_API2_STATUS(TensorAt, _Inout_ OrtValue* value, size_t* location_values, size_t location_values_count, _Outptr_ void** out);
   // Supports CPU device only.
   ORT_API2_STATUS(CreateAllocatorForSharing, _In_ const OrtMemoryInfo* mem_info, _In_ const OrtArenaCfg* arena_cfg,
                   _Outptr_ OrtAllocator** out);

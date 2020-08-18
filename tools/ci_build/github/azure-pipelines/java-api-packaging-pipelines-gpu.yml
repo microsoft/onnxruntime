@@ -1,8 +1,16 @@
+schedules:
+- cron: "0 8 * * *"
+  displayName: Daily Build
+  branches:
+    include:
+    - master
+  always: true
+
 jobs:
 - job: Linux_Java_API_Build_GPU_x64
   workspace:
     clean: all
-  timeoutInMinutes:  60
+  timeoutInMinutes:  120
   pool: 'Linux-GPU-CUDA10'
   steps:
     - template: templates/set-version-number-variables-step.yml
