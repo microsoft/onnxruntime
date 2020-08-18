@@ -36,6 +36,7 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   ORT_UNUSED_PARAMETER(kernel_registries);
 
   std::vector<std::unique_ptr<ComputeCapability>> result;
+  std::cout << "In the OpenVINO EP" << std::endl;
 
 #if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
   result = openvino_ep::GetCapability_2020_2(graph_viewer, info_.device_id_);
