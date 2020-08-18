@@ -374,6 +374,11 @@ def testToyBERTModelMixedPrecisionLossScaler(loss_scaler, expected_losses):
 
     _test_helpers.assert_model_outputs(losses, expected_losses, rtol=1e-5)
 
+###############################################################################
+# Temporary tests comparing Legacy vs Experimental ORTTrainer APIs ############
+###############################################################################
+
+
 @pytest.mark.parametrize("gradient_accumulation_steps, expected_losses", [
     (1, [10.988012313842773, 10.99226188659668, 11.090812683105469, 11.042860984802246, 10.988919258117676,
         11.105875015258789, 10.981894493103027, 11.081543922424316, 10.997451782226562, 11.10739517211914]),
@@ -414,10 +419,6 @@ def testToyBERTModelGradientAccumulationLegacyExperimental(gradient_accumulation
     
     _test_helpers.assert_model_outputs(losses, expected_losses)
 
-
-###############################################################################
-# Temporary tests comparing Legacy vs Experimental ORTTrainer APIs ############
-###############################################################################
 
 
 def testToyBERTModelLegacyExperimentalBasicTraining():
