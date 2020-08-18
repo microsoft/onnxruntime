@@ -433,7 +433,7 @@ SingleKernelExecutionFrame::Info::Info(std::unique_ptr<OpKernel> kernel, const l
                         });
 }
 
-Status SingleKernelExecutionFrame::Info::AddOutput(OrtValue value, int index, const std::string& name) {
+Status SingleKernelExecutionFrame::Info::AddOutput(OrtValue value, size_t index, const std::string& name) {
   int mlvalue_idx = value_name_idx_map_.Add(name);
   ort_value_idx_nodearg_map_[mlvalue_idx] = kernel_->Info().GetOutputType(index);
 
@@ -443,7 +443,7 @@ Status SingleKernelExecutionFrame::Info::AddOutput(OrtValue value, int index, co
   return Status::OK();
 }
 
-Status SingleKernelExecutionFrame::Info::AddInput(OrtValue value, int index, const std::string& name) {
+Status SingleKernelExecutionFrame::Info::AddInput(OrtValue value, size_t index, const std::string& name) {
   int mlvalue_idx = value_name_idx_map_.Add(name);
 
   input_index_to_mlvalue_map_[index] = mlvalue_idx;
@@ -606,9 +606,13 @@ Status ExecutableKernelContextImpl::SetupTensorType(const std::unique_ptr<ONNX_N
 
 // taken from OptimizerExecutionFrame
 Status
-SingleKernelExecutionFrame::CreateNodeOutputMLValueImpl(__attribute__((unused)) OrtValue &ort_value, int ort_value_idx,
-                                                        __attribute__((unused)) const TensorShape *shape,
-                                                        __attribute__((unused)) size_t nnz) {
+SingleKernelExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue &ort_value,
+                                                        int ort_value_idx,
+                                                        const TensorShape *shape,
+                                                        size_t nnz) {
+  ORT_UNUSED_PARAMETER(ort_value);
+  ORT_UNUSED_PARAMETER(shape);
+  ORT_UNUSED_PARAMETER(nnz);
   std::string name;
   Status status = info_->value_name_idx_map_.GetName(ort_value_idx, name);
   if (!status.IsOK()) {

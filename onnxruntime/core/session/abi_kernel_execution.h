@@ -19,9 +19,9 @@ class SingleKernelExecutionFrame final : public IExecutionFrame {
       return allocator_;
     }
 
-    Status AddOutput(OrtValue value, int index, const std::string &name);
+    Status AddOutput(OrtValue value, size_t index, const std::string &name);
 
-    Status AddInput(OrtValue value, int index, const std::string &name);
+    Status AddInput(OrtValue value, size_t index, const std::string &name);
 
    protected:
 
