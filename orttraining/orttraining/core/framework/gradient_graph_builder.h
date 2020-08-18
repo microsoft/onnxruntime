@@ -41,6 +41,7 @@ static std::unordered_map<std::string, std::unordered_set<size_t>>
         {"OneHot", {0, 1, 2}},
         {"Where", {0}},
         {"Range", {0, 1, 2}},
+        {"Tile", {1}},
         {"BroadcastGradientArgs", {0, 1}}};
 
 class GradientGraphBuilder {

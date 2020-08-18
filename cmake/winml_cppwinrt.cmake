@@ -107,13 +107,14 @@ function(target_cppwinrt
         # Get directory
         get_filename_component(idl_source_directory ${file} DIRECTORY)
 
+        convert_forward_slashes_to_back(${CMAKE_CURRENT_BINARY_DIR} cmake_current_binary_dir_back_slash)
+
         set(target_outputs ${CMAKE_CURRENT_BINARY_DIR}/${target_name})
         convert_forward_slashes_to_back(${target_outputs}/comp output_dir_back_slash)
         convert_forward_slashes_to_back(${target_outputs}/temp temp_dir_back_slash)
         convert_forward_slashes_to_back(${target_outputs}/comp_generated generated_dir_back_slash)
         convert_forward_slashes_to_back(${generated_dir_back_slash}/module.g.cpp module_g_cpp_back_slash)
         convert_forward_slashes_to_back(${generated_dir_back_slash}/module.g.excl.cpp module_g_ecxl_cpp_back_slash)
-  
         if (set_ns_prefix)
           set(ns_prefix "/ns_prefix")
         else()
@@ -140,10 +141,10 @@ function(target_cppwinrt
                 /metadata_dir ${sdk_metadata_directory}
                 /W1 /char signed /nomidl /nologo /winrt
                 /no_settings_comment /no_def_idir /target "NT60"
+                /I ${idl_source_directory}
                 /I ${um_sdk_directory}
                 /I ${shared_sdk_directory}
                 /I ${winrt_sdk_directory}
-                /I ${idl_source_directory}
                 /winmd ${winmd_filename}
                 ${ns_prefix}
                 /h ${header_filename}

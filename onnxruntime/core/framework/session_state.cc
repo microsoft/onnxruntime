@@ -732,7 +732,10 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 
   ORT_RETURN_IF_ERROR(CreateKernels(kernel_registry_manager));
 
-  if (session_options.use_prepacking) {
+  const auto disable_prepacking =
+      GetSessionConfigOrDefault(session_options, ORT_SESSION_OPTIONS_CONFIG_DISABLEPREPACKING, "0");
+
+  if (disable_prepacking != "1") {
     ORT_RETURN_IF_ERROR(PrepackInitializedConstantTensors());
   }
 
