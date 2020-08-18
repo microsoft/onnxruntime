@@ -331,7 +331,6 @@ def testToyBERTModelLRScheduler(initial_lr, lr_scheduler, expected_learning_rate
     _test_helpers.assert_model_outputs(losses, expected_losses, rtol=1e-6)
     
 
-# Dynamic Loss Scaler implemented implicitly
 @pytest.mark.parametrize("loss_scaler, expected_losses", [
     (None, [10.98803424835205, 10.99240493774414, 11.090575218200684, 11.042827606201172, 10.988829612731934,
         11.105679512023926, 10.981969833374023, 11.08173656463623, 10.997121810913086, 11.10731315612793]),
