@@ -19,6 +19,8 @@ static const std::string kFP16Enable = "ORT_TENSORRT_FP16_ENABLE";
 static const std::string kDumpSubgraphs = "ORT_TENSORRT_DUMP_SUBGRAPHS";
 static const std::string kEngineCacheEnable = "ORT_TENSORRT_ENGINE_CACHE_ENABLE";
 static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
+static const std::string kDecryptionEnable = "ORT_TENSORRT_ENGINE_DECRYPTION_ENABLE";
+static const std::string kDecryptionLibPath = "ORT_TENSORRT_ENGINE_DECRYPTION_LIB_PATH";
 }  // namespace tensorrt_env_vars
 
 class TensorrtLogger : public nvinfer1::ILogger {
@@ -111,6 +113,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool engine_cache_enable_ = false;
   std::string engine_cache_path_;
   nvinfer1::IRuntime* runtime_ = nullptr;
+  bool engine_decryption_enable_ = false;
+  std::string engine_decryption_lib_path_;
 
   OrtMutex tensorrt_mu_;
   int device_id_;
