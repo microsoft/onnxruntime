@@ -4,6 +4,7 @@
 #include "qlinear_lookup_table.h"
 #include "core/providers/common.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/platform/threadpool.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -98,11 +99,20 @@ Status QLinearLeakyRelu<T>::Compute(OpKernelContext* context) const {
         context->Input<Tensor>(3), context->Input<Tensor>(4), alpha_);
   }
 
-  QLinearLookupTableTransform(
-      reinterpret_cast<const uint8_t*>(X.template Data<T>()),
-      is_fixed_parameters_ ? fixed_lookup_table_ : table,
-      reinterpret_cast<uint8_t*>(Y.template MutableData<T>()),
-      static_cast<size_t>(N));
+  using onnxruntime::concurrency::ThreadPool;
+  using onnxruntime::TensorOpCost;
+  ThreadPool* tp = context->GetOperatorThreadPool();
+  const uint8_t* x_data = reinterpret_cast<const uint8_t*>(X.template Data<T>());
+  uint8_t* y_data = reinterpret_cast<uint8_t*>(Y.template MutableData<T>());
+  ThreadPool::TryParallelFor(
+      tp, N, TensorOpCost{1.0, 1.0, 1.0},
+      [this, x_data, y_data, &table](std::ptrdiff_t first, std::ptrdiff_t last) {
+        QLinearLookupTableTransform(
+            x_data + first,
+            is_fixed_parameters_ ? fixed_lookup_table_ : table,
+            y_data + first,
+            last - first);
+      });
 
   return Status::OK();
 }
