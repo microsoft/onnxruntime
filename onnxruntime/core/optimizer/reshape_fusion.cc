@@ -65,7 +65,7 @@ static bool DistilBertCheck(Graph& graph, const Node& concat, const Node& layern
   auto dim = shape->dim(0);
   if (!utils::HasDimValue(dim))
     return false;
-  int hidden_size = dim.dim_value();
+  int64_t hidden_size = dim.dim_value();
 
   const NodeArg& layernorm_add_input_b = *(layernorm_add.InputDefs()[1]);
   if (!graph_utils::IsInitializer(graph, layernorm_add_input_b.Name(), true)) {
