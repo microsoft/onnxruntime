@@ -331,6 +331,7 @@ def testToyBERTModelLRScheduler(initial_lr, lr_scheduler, expected_learning_rate
     _test_helpers.assert_model_outputs(losses, expected_losses, rtol=1e-6)
     
 
+# Dynamic Loss Scaler implemented implicitly
 @pytest.mark.parametrize("loss_scaler, expected_losses", [
     (None, [10.98803424835205, 10.99240493774414, 11.090575218200684, 11.042827606201172, 10.988829612731934,
         11.105679512023926, 10.981969833374023, 11.08173656463623, 10.997121810913086, 11.10731315612793]),
@@ -373,11 +374,6 @@ def testToyBERTModelMixedPrecisionLossScaler(loss_scaler, expected_losses):
 
     _test_helpers.assert_model_outputs(losses, expected_losses, rtol=1e-5)
 
-###############################################################################
-# Temporary tests comparing Legacy vs Experimental ORTTrainer APIs ############
-###############################################################################
-
-
 @pytest.mark.parametrize("gradient_accumulation_steps, expected_losses", [
     (1, [10.988012313842773, 10.99226188659668, 11.090812683105469, 11.042860984802246, 10.988919258117676,
         11.105875015258789, 10.981894493103027, 11.081543922424316, 10.997451782226562, 11.10739517211914]),
@@ -386,7 +382,7 @@ def testToyBERTModelMixedPrecisionLossScaler(loss_scaler, expected_losses):
     (7, [10.988012313842773, 10.99213981628418, 11.090258598327637, 11.039335250854492, 10.993097305297852,
         11.112862586975098, 10.996183395385742, 11.072013854980469, 11.00184154510498, 11.097928047180176])
 ])
-def testToyBERTModelGradientAccumulationLegacyExperimental(gradient_accumulation_steps, expected_losses):
+def testToyBERTModelGradientAccumulation(gradient_accumulation_steps, expected_losses):
     total_steps = 10
     device = "cuda"
     seed = 1
@@ -418,6 +414,10 @@ def testToyBERTModelGradientAccumulationLegacyExperimental(gradient_accumulation
     
     _test_helpers.assert_model_outputs(losses, expected_losses)
 
+
+###############################################################################
+# Temporary tests comparing Legacy vs Experimental ORTTrainer APIs ############
+###############################################################################
 
 
 def testToyBERTModelLegacyExperimentalBasicTraining():
@@ -585,12 +585,13 @@ def testToyBERTModelMixedPrecisionLossScalerLegacyExperimental(loss_scaler, lega
     
     _test_helpers.assert_model_outputs(experimental_losses, legacy_losses, rtol=1e-5)
 
+
 @pytest.mark.parametrize("gradient_accumulation_steps", [
     (1),
     (4),
     (7)
 ])
-def testToyBERTModelGradientAccumulation(gradient_accumulation_steps):
+def testToyBERTModelGradientAccumulationLegacyExperimental(gradient_accumulation_steps):
     total_steps = 10
     device = "cuda"
     seed = 1
