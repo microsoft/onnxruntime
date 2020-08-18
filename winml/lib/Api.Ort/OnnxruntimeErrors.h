@@ -38,6 +38,15 @@ inline HRESULT OrtErrorCodeToHRESULT(OrtErrorCode status) noexcept {
 }
 #endif
 
+static inline HRESULT OriginateError(HRESULT hresult, const char *message) {
+#if WINVER >= _WIN32_WINNT_WIN8
+    auto hstring_message = _winml::Strings::HStringFromUTF8(message);
+    RoOriginateError(hresult, reinterpret_cast<HSTRING>(winrt::get_abi(hstring_message)));
+#else
+    RETURN_HR_MSG(hresult, message);
+#endif
+}
+
 #define RETURN_HR_IF_NOT_OK_MSG(status, ort_api)                                                               \
   do {                                                                                                         \
     auto _status = status;                                                                                     \
@@ -45,10 +54,8 @@ inline HRESULT OrtErrorCodeToHRESULT(OrtErrorCode status) noexcept {
       auto error_code = ort_api->GetErrorCode(_status);                                                        \
       auto error_message = ort_api->GetErrorMessage(_status);                                                  \
       HRESULT hresult = OrtErrorCodeToHRESULT(error_code);                                                     \
-      telemetry_helper.LogRuntimeError(hresult, std::string(error_message), __FILE__, __FUNCTION__, __LINE__); \
-      auto message = _winml::Strings::HStringFromUTF8(error_message);                                           \
-      RoOriginateError(hresult, reinterpret_cast<HSTRING>(winrt::get_abi(message)));                           \
-      return hresult;                                                                                          \
+      telemetry_helper.LogRuntimeError(hresult, error_message, __FILE__, __FUNCTION__, __LINE__); \
+      return OriginateError(hresult, error_message);                                                           \
     }                                                                                                          \
   } while (0)
 
