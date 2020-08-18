@@ -99,10 +99,6 @@ class SingleKernelExecutionFrame final : public IExecutionFrame {
 
  private:
   const std::unique_ptr<const Info> info_;
-
-  const int device_id_{0};
-  const OrtMemType mem_type_{OrtMemTypeDefault};
-
 };
 
 
