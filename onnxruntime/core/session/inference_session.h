@@ -252,7 +252,7 @@ class InferenceSession {
     * @return OK if success.
     */
   common::Status Run(const NameMLValMap& feeds, const std::vector<std::string>& output_names,
-                             std::vector<OrtValue>* p_fetches) ORT_MUST_USE_RESULT;
+                     std::vector<OrtValue>* p_fetches) ORT_MUST_USE_RESULT;
 
   /**
    * See Run(const NameMLValMap& feeds, const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches)
@@ -319,17 +319,15 @@ class InferenceSession {
    */
   const SessionOptions& GetSessionOptions() const;
 
- 
   /*
    * Get the DataTransferManager associated with this session
    */
   const DataTransferManager& GetDataTransferManager() const;
-  
+
   /*
    * Get all the providers' options this session was initialized with.
    */
   const ProviderOptionsMap& GetAllProviderOptions() const;
-
 
   /**
     * Start profiling on this inference session. This simply turns on profiling events to be
@@ -360,8 +358,8 @@ class InferenceSession {
     * @return a ptr to the allocator or nullptr if not available
     */
   AllocatorPtr GetAllocator(const OrtMemoryInfo& mem_info) const;
-  
-   /** 
+
+  /** 
     *Get InferenceSession logger.
     */
   const logging::Logger* GetLogger() const { return session_logger_; };
@@ -431,8 +429,6 @@ class InferenceSession {
                                 const ExecutionProviders& providers, KernelRegistryManager& kernel_registry_manager,
                                 const InsertCastTransformer& insert_cast_transformer,
                                 SessionState& session_state) ORT_MUST_USE_RESULT;
-
-  common::Status CreateSubgraphSessionState(Graph& graph, SessionState& session_state) ORT_MUST_USE_RESULT;
 
   void InitLogger(logging::LoggingManager* logging_manager);
 

@@ -592,10 +592,6 @@ const SessionState* SessionState::GetSubgraphSessionState(onnxruntime::NodeIndex
   return const_cast<SessionState*>(this)->GetMutableSubgraphSessionState(index, attribute_name);
 }
 
-void SessionState::RemoveSubgraphSessionState(onnxruntime::NodeIndex index) {
-  subgraph_session_states_.erase(index);
-}
-
 const NodeIndexInfo& SessionState::GetNodeIndexInfo() const {
   ORT_ENFORCE(node_index_info_, "SetGraphAndCreateKernels must be called prior to GetExecutionInfo.");
   return *node_index_info_;
@@ -634,6 +630,39 @@ const std::unordered_set<NodeIndex>* SessionState::GetToBeExecutedNodes(
   return (it != to_be_executed_nodes_.end()) ? &it->second : nullptr;
 }
 
+Status SessionState::CreateSubgraphSessionState() {
+  for (auto& node : graph_.Nodes()) {
+    for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
+      const auto& ep = node.GetExecutionProviderType();
+      if (ep != kCpuExecutionProvider && ep != kCudaExecutionProvider) {
+        // SessionState is only used by ORT EPs
+        continue;
+      }
+
+      auto& attr_name = entry.first;
+      Graph* subgraph = entry.second;
+      ORT_ENFORCE(subgraph, "Main Graph instance should have populated all subgraphs when being resolved.");
+
+      auto subgraph_session_state =
+          onnxruntime::make_unique<SessionState>(*subgraph, execution_providers_, enable_mem_pattern_,
+                                                 thread_pool_, inter_op_thread_pool_, data_transfer_mgr_,
+                                                 logger_, profiler_);
+
+      // Pass fused function manager to subgraph
+      subgraph_session_state->fused_funcs_mgr_.SetFusedFuncs(fused_funcs_mgr_);
+
+      // recurse
+      ORT_RETURN_IF_ERROR(subgraph_session_state->CreateSubgraphSessionState());
+
+      // add the subgraph SessionState instance to the parent graph SessionState so it can be retrieved
+      // by Compute() via OpKernelContextInternal.
+      AddSubgraphSessionState(node.Index(), attr_name, std::move(subgraph_session_state));
+    }
+  }
+
+  return Status::OK();
+}
+
 Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
                                           KernelRegistryManager& kernel_registry_manager,
                                           const SessionOptions& session_options,
@@ -647,10 +676,11 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                               _In_opt_ const Node* parent_node,
                                               const SessionOptions& session_options,
                                               bool remove_initializers) {
-  // recursively populate the kernel create info.
-  // it's simpler to do recursively when deserializing,
-  // so also do it recursively when calling PopulateKernelCreateInfo for consistency
+  // recursively create the subgraph session state instances and populate the kernel create info in them.
+  // it's simpler to handle the kernel create info recursively when deserializing,
+  // so also do it recursively when calling PopulateKernelCreateInfo for consistency.
   if (parent_node == nullptr) {
+    ORT_RETURN_IF_ERROR(CreateSubgraphSessionState());
     ORT_RETURN_IF_ERROR(PopulateKernelCreateInfo(kernel_registry_manager));
   }
 
@@ -709,8 +739,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   ORT_RETURN_IF_ERROR(
       session_state_utils::SaveInputOutputNamesToNodeMapping(*graph_viewer_, *this, valid_outer_scope_node_args));
 
-  // Need to recurse into subgraph session state to finalize
-  // and add the execution info
+  // Need to recurse into subgraph session state instances to finalize them and add the execution info
 
   // Currently all subgraphs need to be executed using the sequential EP due to potential deadlock with the current
   // parallel executor implementation
@@ -720,18 +749,10 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   for (const auto& node_to_subgraph_ss : subgraph_session_states_) {
     Node& node = *graph_.GetNode(node_to_subgraph_ss.first);
 
-    // We only need subgraph session state for control flow nodes being handled by our CPU or CUDA execution provider.
-    // Remove it if it's not needed.
-    const auto ep = node.GetExecutionProviderType();
-    if (ep != kCpuExecutionProvider && ep != kCudaExecutionProvider) {
-      RemoveSubgraphSessionState(node_to_subgraph_ss.first);
-      continue;
-    }
-
     for (const auto& attr_subgraph_pair : node.GetAttributeNameToMutableSubgraphMap()) {
       auto& attr_name = attr_subgraph_pair.first;
       auto entry = node_to_subgraph_ss.second.find(attr_name);
-      // InferenceSession::CreateSubgraphSessionState should ensure all these entries are created
+      // CreateSubgraphSessionState should ensure all these entries are created
       ORT_ENFORCE(entry != node_to_subgraph_ss.second.cend(),
                   "Missing session state for subgraph. Node:'", node.Name(),
                   "' OpType:", node.OpType(), " Index:", node.Index(), " Attribute:", attr_name);
@@ -746,7 +767,8 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
       auto* p_op_kernel = GetMutableKernel(node.Index());
       ORT_ENFORCE(p_op_kernel);
 
-      // Downcast is safe, since only control flow nodes have subgraphs (node.GetAttributeNameToMutableSubgraphMap() is non-empty)
+      // Downcast is safe, since only control flow nodes have subgraphs
+      // (node.GetAttributeNameToMutableSubgraphMap() is non-empty)
       auto& control_flow_kernel = static_cast<controlflow::IControlFlowKernel&>(*p_op_kernel);
       ORT_RETURN_IF_ERROR(control_flow_kernel.SetupSubgraphExecutionInfo(*this, attr_name, subgraph_session_state));
     }

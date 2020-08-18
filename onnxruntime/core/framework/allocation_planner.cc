@@ -411,16 +411,9 @@ class PlannerImpl {
       // This is determined by the OpKernel bound to the node.
       const KernelCreateInfo& kernel_create_info = GetKernel(kernel_create_info_map_, pnode->Index());
 
-      auto p_kernel_def = kernel_create_info.kernel_def.get();
-      if (nullptr == p_kernel_def) {
-        std::ostringstream errormsg;
-        errormsg << "No suitable kernel definition found for op " << pnode->OpType();
-        if (pnode->Op() != nullptr) {
-          errormsg << "(" << pnode->Op()->since_version() << ")";
-        }
-        if (!pnode->Name().empty()) errormsg << " (node " << pnode->Name() << ")";
-        return Status(ONNXRUNTIME, FAIL, errormsg.str());
-      }
+      const auto* p_kernel_def = kernel_create_info.kernel_def.get();
+
+      ORT_ENFORCE(p_kernel_def, "Should not have entry in kernel create info with nullptr for kernel_def");
 
       auto exec_provider = execution_providers_.Get(*pnode);
       if (exec_provider == nullptr) {

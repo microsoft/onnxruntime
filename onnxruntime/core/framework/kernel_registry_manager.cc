@@ -58,16 +58,26 @@ bool KernelRegistryManager::HasImplementationOf(const KernelRegistryManager& r, 
 
 Status KernelRegistryManager::SearchKernelRegistry(const onnxruntime::Node& node,
                                                    /*out*/ const KernelCreateInfo** kernel_create_info) const {
+  Status status;
+
+  auto create_error_message = [&node, &status](const std::string& prefix) {
+    std::ostringstream errormsg;
+    errormsg << prefix << node.OpType();
+    if (node.Op() != nullptr) errormsg << "(" << node.Op()->since_version() << ")";
+    if (!node.Name().empty()) errormsg << " (node " << node.Name() << "). ";
+    if (!status.IsOK()) errormsg << status.ErrorMessage();
+
+    return errormsg.str();
+  };
+
   const std::string& ptype = node.GetExecutionProviderType();
   if (ptype.empty()) {
-    return Status(ONNXRUNTIME, FAIL, "The node is not placed on any Execution Provider");
+    return Status(ONNXRUNTIME, FAIL, create_error_message("The node is not placed on any Execution Provider. "));
   }
-  Status status;
-  {
-    for (auto& registry : custom_kernel_registries_) {
-      status = registry->TryFindKernel(node, std::string(), kernel_create_info);
-      if (status.IsOK()) return status;
-    }
+
+  for (auto& registry : custom_kernel_registries_) {
+    status = registry->TryFindKernel(node, std::string(), kernel_create_info);
+    if (status.IsOK()) return status;
   }
 
   KernelRegistry* p = nullptr;
@@ -81,12 +91,7 @@ Status KernelRegistryManager::SearchKernelRegistry(const onnxruntime::Node& node
     if (status.IsOK()) return status;
   }
 
-  std::ostringstream errormsg;
-  errormsg << "Failed to find kernel for " << node.OpType();
-  if (node.Op() != nullptr) errormsg << "(" << node.Op()->since_version() << ")";
-  if (!node.Name().empty()) errormsg << " (node " << node.Name() << ").";
-  if (!status.IsOK()) errormsg << status.ErrorMessage();
-  return Status(ONNXRUNTIME, NOT_IMPLEMENTED, errormsg.str());
+  return Status(ONNXRUNTIME, NOT_IMPLEMENTED, create_error_message("Failed to find kernel for "));
 }
 
 }  // namespace onnxruntime

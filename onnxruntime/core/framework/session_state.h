@@ -231,13 +231,6 @@ class SessionState {
   // Get the KernelCreateInfo entry for a node. SessionState must be finalized before calling.
   const KernelCreateInfo& GetNodeKernelCreateInfo(NodeIndex node_index) const;
 
-  /// Add a SessionState instance for executing a subgraph in a Node
-  /// @param index Index of Node containing subgraph
-  /// @param attribute_name Name of attribute containing the subgraph GraphProto
-  /// @param session_state SessionState for subgraph execution
-  void AddSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name,
-                               std::unique_ptr<SessionState> session_state);
-
   /// Return SessionState for the given Node index and attribute name if found.
   const SessionState* GetSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name) const;
 
@@ -286,9 +279,10 @@ class SessionState {
 
   SessionState* GetMutableSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name);
 
-  // Remove the SessionState for a node containing a subgraph.
-  // If the node isn't going to be executed by the CPU provider we don't need it.
-  void RemoveSubgraphSessionState(onnxruntime::NodeIndex index);
+  Status CreateSubgraphSessionState();
+
+  void AddSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name,
+                               std::unique_ptr<SessionState> session_state);
 
   Status PopulateKernelCreateInfo(KernelRegistryManager& kernel_registry_manager);
 

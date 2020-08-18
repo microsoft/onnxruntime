@@ -700,40 +700,6 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   return common::Status::OK();
 }
 
-/// Create SessionState instance for each subgraph as we need that for the GraphPartitioner
-/// This will be initialized by InitializeSubgraphSessions.
-common::Status InferenceSession::CreateSubgraphSessionState(Graph& graph, SessionState& session_state) {
-  for (auto& node : graph.Nodes()) {
-    for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
-      auto& name = entry.first;
-      Graph* subgraph = entry.second;
-      ORT_ENFORCE(subgraph, "Main Graph instance should have populated all subgraphs when being resolved.");
-
-      auto subgraph_session_state = onnxruntime::make_unique<SessionState>(
-          *subgraph,
-          execution_providers_,
-          session_state.GetEnableMemoryPattern(),
-          session_state.GetThreadPool(),
-          session_state.GetInterOpThreadPool(),
-          session_state.GetDataTransferMgr(),
-          *session_logger_,
-          session_profiler_);
-
-      // Pass fused function manager to subgraph
-      subgraph_session_state->GetMutableFuncMgr().SetFusedFuncs(session_state.GetFuncMgr());
-
-      // recurse
-      ORT_RETURN_IF_ERROR_SESSIONID_(CreateSubgraphSessionState(*subgraph, *subgraph_session_state));
-
-      // add the subgraph SessionState instance to the parent graph SessionState so it can be retrieved
-      // by Compute() via OpKernelContextInternal.
-      session_state.AddSubgraphSessionState(node.Index(), name, std::move(subgraph_session_state));
-    }
-  }
-
-  return Status::OK();
-}
-
 bool InferenceSession::IsInitialized() const {
   std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
   return is_inited_;
@@ -857,9 +823,6 @@ common::Status InferenceSession::Initialize() {
     //
     // Register 2nd registries into KernelRegistryManager.
     ORT_RETURN_IF_ERROR_SESSIONID_(kernel_registry_manager_.RegisterKernels(execution_providers_));
-
-    // create SessionState for subgraphs as it's needed by the transformers
-    ORT_RETURN_IF_ERROR_SESSIONID_(CreateSubgraphSessionState(graph, *session_state_));
 
     AddPredefinedTransformers(graph_transformation_mgr_, session_options_.graph_optimization_level,
                               transformers_to_enable_);
@@ -1349,7 +1312,7 @@ std::string InferenceSession::EndProfiling() {
 
 AllocatorPtr InferenceSession::GetAllocator(const OrtMemoryInfo& mem_info) const {
   return session_state_->GetAllocator(mem_info);
- }
+}
 
 // assumes model has already been loaded before
 common::Status InferenceSession::DoPostLoadProcessing(onnxruntime::Model& model) {
