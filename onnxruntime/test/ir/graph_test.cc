@@ -231,12 +231,12 @@ TEST_F(GraphTest, SimpleUnique) {
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
 }
-  
+
 TEST_F(GraphTest, UnusedValueInfoSerializes) {
   ModelProto m;
   m.set_ir_version(4);
   ImportOpset(m, "", 11);
-  GraphProto& g = *m.mutable_graph();   
+  GraphProto& g = *m.mutable_graph();
   NodeProto* node = g.add_node();
   *node->add_input() = "x";
   *node->add_output() = "sum";
@@ -593,7 +593,7 @@ TEST_F(GraphTest, GraphConstruction_CheckIsAcyclic) {
 
   EXPECT_TRUE(Model::Save(model, "graph_1.onnx").IsOK());
   std::shared_ptr<Model> model2;
-  EXPECT_TRUE(Model::Load(ORT_TSTR("graph_1.onnx"), model2, nullptr, *logger_).IsOK());
+  ASSERT_TRUE(Model::Load(ORT_TSTR("graph_1.onnx"), model2, nullptr, *logger_).IsOK());
 
   auto model_proto = model.ToProto();
   auto model_proto2 = model2->ToProto();
@@ -972,7 +972,7 @@ TEST_F(GraphTest, GraphConstruction_TypeInference) {
 
   EXPECT_TRUE(Model::Save(model, "model_x.onnx").IsOK());
   std::shared_ptr<Model> loaded_model;
-  EXPECT_TRUE(Model::Load(ORT_TSTR("model_x.onnx"), loaded_model, nullptr, *logger_).IsOK());
+  ASSERT_TRUE(Model::Load(ORT_TSTR("model_x.onnx"), loaded_model, nullptr, *logger_).IsOK());
   EXPECT_EQ(2u, loaded_model->MainGraph().GetInputs().size());
 
   auto& graph_proto = graph.ToGraphProto();
