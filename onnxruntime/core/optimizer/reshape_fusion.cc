@@ -71,7 +71,7 @@ static bool DistilBertCheck(Graph& graph, const Node& concat, const Node& layern
   if (!graph_utils::IsInitializer(graph, layernorm_add_input_b.Name(), true)) {
     return false;
   }
-std::cout << "pass" << std::endl;
+  
   return optimizer_utils::ValidateShape(layernorm_add_input_b, {hidden_size});
 }
 
