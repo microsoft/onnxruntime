@@ -1,5 +1,6 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+find_package(XCTest REQUIRED)
 
 set(TEST_SRC_DIR ${ONNXRUNTIME_ROOT}/test)
 set(TEST_INC_DIR ${ONNXRUNTIME_ROOT})
@@ -37,7 +38,11 @@ function(AddTest)
   if (MSVC)
     target_compile_options(${_UT_TARGET} PRIVATE "/wd6330")
   endif()
-  set_target_properties(${_UT_TARGET} PROPERTIES FOLDER "ONNXRuntimeTest")
+  set_target_properties(${_UT_TARGET} PROPERTIES FOLDER "ONNXRuntimeTest"
+    MACOSX_BUNDLE_BUNDLE_NAME ONNXRuntimeTest
+    MACOSX_BUNDLE_GUI_IDENTIFIER ONNXRuntimeTest
+    MACOSX_BUNDLE_SHORT_VERSION_STRING 1.42.0
+    MACOSX_BUNDLE_BUNDLE_VERSION 1.42.0)
 
   if (_UT_DEPENDS)
     add_dependencies(${_UT_TARGET} ${_UT_DEPENDS})
@@ -655,6 +660,7 @@ endif()
 install(TARGETS onnx_test_runner
         ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
         LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        BUNDLE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
         RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 if(onnxruntime_BUILD_BENCHMARKS)

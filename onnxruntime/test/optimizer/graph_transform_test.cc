@@ -1970,6 +1970,8 @@ TEST_F(GraphTransformationTests, BiasGeluSwitchedInputOrder) {
   // Compare results
   double per_sample_tolerance = 1e-3;
   double relative_per_sample_tolerance = 0.0;
+  ASSERT_TRUE(!optimized_fetches.empty());
+  ASSERT_TRUE(!unoptimized_fetches.empty());
   auto ret = CompareOrtValue(optimized_fetches[0], unoptimized_fetches[0], per_sample_tolerance, relative_per_sample_tolerance, false);
   EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
 }
