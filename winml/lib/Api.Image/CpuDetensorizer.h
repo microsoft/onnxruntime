@@ -13,6 +13,8 @@ class CpuDetensorizer {
   static HRESULT Detensorize(
       _In_ ImageTensorChannelType formatFrom,
       _In_ ImageTensorChannelType formatTo,
+      _In_ ImageNominalPixelRange pixelRange,
+      _In_ T* pCPUTensor,
       _In_ const T* pCPUTensor,
       _In_ uint32_t bufferWidth,
       _In_ uint32_t tensorHeight,
@@ -29,6 +31,24 @@ class CpuDetensorizer {
     uint32_t bytesPerRow = tensorWidth * bytesPerPixel;
     uint32_t end = bufferWidth * tensorHeight;
     size_t tensorPlaneSize = tensorWidth * tensorHeight;
+
+    uint32_t channelNum = formatFrom == kImageTensorChannelTypeGRAY8 ? 1 : 3;
+    uint32_t totalElements = channelNum * tensorWidth * tensorHeight;
+
+    float scale = 255.0;
+    int32_t shift = 0;
+    if (pixelRange == ImageNominalPixelRange::kNormalized_0_1) {
+      scale = 255.0;
+      shift = 0;
+    }
+    else if (pixelRange == ImageNominalPixelRange::kNormalized_1_1) {
+      scale = 255.0 / 2;
+      shift = 1;
+    }
+
+    if (pixelRange != ImageNominalPixelRange::kNominalRange_0_255) {
+      DeNormalizeData(pCPUTensor, totalElements, scale, shift);
+    }
 
     if (formatFrom == formatTo && (formatFrom == kImageTensorChannelTypeBGR8 || formatFrom == kImageTensorChannelTypeRGB8)) {
       for (uint32_t i = 0; i < tensorHeight; i++) {
@@ -128,6 +148,17 @@ class CpuDetensorizer {
     return static_cast<BYTE>(std::max(0.0f, std::min(255.0f, ReadTensor(pCPUTensor) + 0.5f)));
   }
 
+  template <typename T>
+  static void DeNormalizeData(
+    _Inout_ T* pCPUTensor,
+    uint32_t totalElements,
+    float scale,
+    int32_t shift) {
+    for (uint32_t i = 0; i < totalElements; i++) {
+      pCPUTensor[i] = scale * (pCPUTensor[i] + shift);
+    }
+  }
+  
   template <typename T>
   static void InterleaveRowFloatToByte(
       const T* xChannel,

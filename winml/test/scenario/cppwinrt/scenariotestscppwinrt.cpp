@@ -1031,27 +1031,40 @@ static void Scenario22ImageBindingAsGPUTensor() {
 static void Scenario23NominalPixelRange() {
   std::wstring modulePath = FileHelpers::GetModulePath();
   std::wstring inputImagePath = modulePath + L"1080.jpg";
+
+  // The following models have single op "add", with different metadata
   std::vector<std::wstring> modelPaths = {
+    // Normalized_0_1 and tensor output
+    modulePath + L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_1_tensor.onnx",
+    // Normalized_1_1 and tensor output
+    modulePath + L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_1_1_tensor.onnx",
+    // Normalized_0_1 and image output
     modulePath + L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_1.onnx",
+    // Normalized_0_1 and image output
     modulePath + L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_1_1.onnx"
   };
 
-  for (uint32_t model_i = 0; model_i < 2; model_i++) {
+  bool outputVerified = true;
+  for (uint32_t model_i = 0; model_i < modelPaths.size(); model_i++) {
     // load model and create session
     auto model = LearningModel::LoadFromFilePath(modelPaths[model_i]);
-    auto session = LearningModelSession(model);
+    auto session = LearningModelSession(model, LearningModelDevice(LearningModelDeviceKind::DirectX));
     auto binding = LearningModelBinding(session);
 
     SoftwareBitmap softwareBitmap = FileHelpers::GetSoftwareBitmapFromFile(inputImagePath);
     auto videoFrame = VideoFrame::CreateWithSoftwareBitmap(softwareBitmap);
     auto imageValue = ImageFeatureValue::CreateFromVideoFrame(videoFrame);
 
-
-    // bind input
-    auto inputs = model.InputFeatures();
-    for (auto&& input : inputs) {
-      binding.Bind(input.Name(), imageValue);
-    }
+    // Create Zero tensor
+    auto inputShape = std::vector<int64_t>{ 1, 3, 1080, 1920 };
+    auto inputData = std::vector<float>(3 * 1080 * 1920, 0);
+    auto zeroValue =
+      TensorFloat::CreateFromIterable(
+        inputShape,
+        winrt::single_threaded_vector<float>(std::move(inputData)).GetView());
+    // bind inputs
+    binding.Bind(L"input_39", imageValue);
+    binding.Bind(L"input_40", zeroValue);
 
     std::vector<int64_t> shape = { 1, 3, 1080, 1920 };
     auto outputValue = TensorFloat::Create(shape);
@@ -1061,19 +1074,27 @@ static void Scenario23NominalPixelRange() {
     session.EvaluateAsync(binding, correlationId).get();
 
     auto vector = outputValue.GetAsVectorView();
-    bool output_verified = true;
     for (unsigned int i = 0; i < vector.Size(); ++i) {
       float val = vector.GetAt(i);
-      // because the model has single op "add", so the outputs are expected to be <=2 and >=0;
+      // Normalized_0_1 and tensor output -> outputs should be in range of [0, 2]
       if (model_i == 0 && !(val <= 2 && val >= 0)) {
-        output_verified = false;
+        outputVerified = false;
       }
+      // Normalized_1_1 and tensor output -> outputs should be in range of [-2, 2]
       if (model_i == 1 && !(val <= 2 && val >= -2)) {
-        output_verified = false;
+        outputVerified = false;
+      }
+      // Normalized_0_1 and image output -> outputs should be in range of [0, 255]
+      if (model_i == 2 && !(val <= 255 && val >= 0)) {
+        outputVerified = false;
+      }
+      // Normalized_1_1 and image output -> outputs should be in range of [0, 255]
+      if (model_i == 3 && !(val <= 255 && val >= 0)) {
+        outputVerified = false;
       }
     }
-    WINML_EXPECT_TRUE(output_verified);
   }
+  WINML_EXPECT_TRUE(outputVerified);
 }
 
 static void QuantizedModels() {
