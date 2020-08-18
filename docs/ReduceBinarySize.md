@@ -2,7 +2,7 @@
 To reduce compiled binary size, two arguments are available:
 
 - --include_ops_by_model=<path to directory of models\>
-- --include_ops_by_file=<path to a json file\>
+- --include_ops_by_file=<path to a file\>
 
 The arguments empower building script of commenting out operators listed in execution provider(s), thereby downsizing build output.
 
@@ -10,22 +10,11 @@ The arguments empower building script of commenting out operators listed in exec
 The argument enables the compile binary of including only operators consumed by models in the specified directory.
 
 ## include_ops_by_file
-The argument enables the compiled binary of including only operators referred. Json file has format like:
+The argument enables the compiled binary of including only operators referred. The file has format like:
 ```
-{
-    "kOnnxDomain":
-    {
-        "1":
-        [
-            "MemcpyToHost",
-            "MemcpyFromHost"
-        ],
-        "11":
-        [
-            "Gemm"
-        ]
-    }
-}
+#domain;opset;op1,op2...
+ai.onnx;1;MemcpyToHost,MemcpyFromHost
+ai.onnx;11;Gemm
 ```
 
 ## More usage tips
@@ -33,5 +22,5 @@ The argument enables the compiled binary of including only operators referred. J
 - If both are specified, operators referred from either argument will be kept active;
 - The script is located under toos/ci_build/, and could go solo as:
 ```
-python provider_rewriter.py --model_path d:\ReduceSize\models --file_path d:\ReduceSize\ops.json --ep_path d:\onnxruntime\onnxruntime\core\providers\cpu\cpu_execution_provider.cc
+python provider_rewriter.py --model_path d:\ReduceSize\models --file_path d:\ReduceSize\ops.txt --ep_path d:\onnxruntime\onnxruntime\core\providers\cpu\cpu_execution_provider.cc
 ```
