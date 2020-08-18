@@ -175,7 +175,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
 
   if (engine_decryption_enable_) {
     engine_decryption_lib_path_ = env_instance.GetEnvironmentVar(tensorrt_env_vars::kDecryptionLibPath);
-  }  
+  }
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {}
@@ -773,7 +773,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         for (int j = 0, end = nb_dims; j < end; ++j) {
           if (dims.d[j] == -1) {
             //input_shape_ranges[input_name][j] = std::make_pair(INT_MAX, INT_MIN);//slx
-			input_shape_ranges[input_name][j] = std::make_pair(1, INT_MIN);
+            input_shape_ranges[input_name][j] = std::make_pair(1, INT_MIN);
             has_dynamic_shape = true;
           }
         }
@@ -792,7 +792,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine> trt_engine;
     tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext> trt_context;
     if (!has_dynamic_shape) {
-	  const std::string engine_path_and_name = GetEnginePath(engine_cache_path_, trt_node_name_with_precision);
+      const std::string engine_path_and_name = GetEnginePath(engine_cache_path_, trt_node_name_with_precision);
       std::ifstream planFile(engine_path_and_name, std::ios::binary | std::ios::in);
       if (planFile && engine_cache_enable_) {
         planFile.seekg(0, std::ios::end);
@@ -806,9 +806,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         if (trt_engine == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                  "TensorRT EP could not deserialize engine from file", engine_path_and_name);
-        }		
+        }
       } else if (!planFile && engine_decryption_enable_ && engine_cache_enable_) {
-        void* handle = dlopen (engine_decryption_lib_path_.c_str(), RTLD_LAZY);
+        void* handle = dlopen(engine_decryption_lib_path_.c_str(), RTLD_LAZY);
         if (handle == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                  "TensorRT EP could not open shared library from " + engine_decryption_lib_path_);
@@ -816,12 +816,12 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         int (*engine_decryption)(const char*, char*, size_t*);
         engine_decryption = (int (*)(const char*, char*, size_t*))dlsym(handle, "decrypt");
         size_t engine_size = 0;
-        if (!engine_decryption(engine_path_and_name.c_str(), nullptr, &engine_size))  {
+        if (!engine_decryption(engine_path_and_name.c_str(), nullptr, &engine_size)) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                  "TensorRT EP could not get engine buffer size");
-        }		
+        }
         std::unique_ptr<char[]> engine_buf{new char[engine_size]};
-        if (!engine_decryption(engine_path_and_name.c_str(), &engine_buf[0], &engine_size))  {
+        if (!engine_decryption(engine_path_and_name.c_str(), &engine_buf[0], &engine_size)) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                  "TensorRT EP could not call engine encryption function decrypt");
         }
@@ -831,7 +831,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                  "TensorRT EP could not deserialize engine from decrypted engine buffer");
         }
-        dlclose(handle);		
+        dlclose(handle);
       } else {
         trt_engine = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *trt_config));
         if (trt_engine == nullptr) {
@@ -852,7 +852,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                "TensorRT EP could not build execution context for fused node: " + fused_node->Name());
       }
-    }	
+    }
 
     // Create input to index map
     for (int i = 0; i < num_inputs; ++i) {
@@ -1083,8 +1083,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         }
         trt_state->context->reset();
         trt_state->engine->reset();
-        
-		const std::string engine_path_and_name = GetEnginePath(trt_state->engine_path, trt_node_name_with_precision);
+
+        const std::string engine_path_and_name = GetEnginePath(trt_state->engine_path, trt_node_name_with_precision);
         std::ifstream planFile(engine_path_and_name, std::ios::binary | std::ios::in);
         if (planFile && trt_state->engine_cache_enable) {
           planFile.seekg(0, std::ios::end);
