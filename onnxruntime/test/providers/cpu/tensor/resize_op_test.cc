@@ -352,7 +352,8 @@ TEST(ResizeOpTest, ResizeOpNearestDownSample5dTest_tf_crop_and_resize_with_extra
                           10.0f, 10.0f, 10.0f};
 
   test.AddOutput<float>("Y", {1, N, C, static_cast<int64_t>(H * scales[3]), static_cast<int64_t>(W * scales[4])}, Y);
-  test.Run();
+  // Current cuda provider do not support more than 4d
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider});
 }
 
 TEST(ResizeOpTest, ResizeOpNearestUpSampleTest) {
@@ -433,7 +434,8 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample5dTest_WithSizes_CeilMode) {
                           3.0f, 3.0f, 4.0f, 4.0f, 4.0f, 4.0f, 4.0f, 4.0f};
 
   test.AddOutput<float>("Y", {1, N, C, sizes[3], sizes[4]}, Y);
-  test.Run();
+  // Current cuda provider do not support more than 4d
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider});
 }
 
 
