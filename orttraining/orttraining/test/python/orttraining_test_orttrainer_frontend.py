@@ -403,7 +403,7 @@ def testOptimizerConfigInvalidInputs(optim_name, defaults, params):
             name=optim_name, params=params, defaults=defaults)
 
 
-def testSGDConfig():
+def testOptimizerConfigSGD():
     '''Test initialization of SGD'''
     cfg = optim.SGDConfig()
     assert cfg.name == 'SGDOptimizer'
@@ -422,7 +422,7 @@ def testSGDConfig():
     assert str(e.value) == "'params' must be an empty list for SGD optimizer"
 
 
-def testAdamConfig():
+def testOptimizerConfigAdam():
     '''Test initialization of Adam'''
     cfg = optim.AdamConfig()
     assert cfg.name == 'AdamOptimizer'
@@ -438,7 +438,7 @@ def testAdamConfig():
     assert cfg.weight_decay_mode == optim.AdamConfig.DecayMode.BEFORE_WEIGHT_UPDATE, "weight_decay_mode mismatch"
 
 
-def testLambConfig():
+def testOptimizerConfigLamb():
     '''Test initialization of Lamb'''
     cfg = optim.LambConfig()
     assert cfg.name == 'LambOptimizer'
@@ -451,14 +451,14 @@ def testLambConfig():
     assert cfg.ratio_min == float('-inf'), "ratio_min mismatch"
     assert cfg.ratio_max == float('inf'), "ratio_max mismatch"
     assert_allclose(1e-6, cfg.epsilon, rtol=rtol, err_msg="epsilon mismatch")
-    assert cfg.do_bias_correction == True, "lambda_coef mismatch"
+    assert cfg.do_bias_correction == False, "do_bias_correction mismatch"
 
 
 @pytest.mark.parametrize("optim_name", [
     ('Adam'),
     ('Lamb')
 ])
-def testParamparams(optim_name):
+def testOptimizerConfigParams(optim_name):
     rtol = 1e-5
     params = [{'params': ['layer1.weight'], 'alpha': 0.1}]
     if optim_name == 'Adam':
@@ -476,7 +476,7 @@ def testParamparams(optim_name):
     ('Adam'),
     ('Lamb')
 ])
-def testInvalidParamparams(optim_name):
+def testOptimizerConfigInvalidParams(optim_name):
     # lr is not supported within params
     with pytest.raises(AssertionError) as e:
         params = [{'params': ['layer1.weight'], 'lr': 0.1}]
