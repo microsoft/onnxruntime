@@ -30,7 +30,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateKernelSession,
                     _Outptr_ OrtKernelSession **session_) {
   API_IMPL_BEGIN
     ORT_ENFORCE(session_, "OrtKernelSession pointer must not be null");
-    std::unique_ptr<Model> model = std::make_unique<Model>("KernelExecutionModel", true,
+    std::unique_ptr<Model> model = onnxruntime::make_unique<Model>("KernelExecutionModel", true,
                                                            logging::LoggingManager::DefaultLogger());
 
     KernelSessionImpl *session = new KernelSessionImpl(std::move(model));
@@ -454,7 +454,7 @@ Status SingleKernelExecutionFrame::Info::AddInput(OrtValue value, int index, con
 }
 
 Status ExecutableKernelContextImpl::AddInput(ONNXTensorElementDataType type) {
-  std::unique_ptr<ONNX_NAMESPACE::TypeProto> type_proto = std::make_unique<ONNX_NAMESPACE::TypeProto>();
+  std::unique_ptr<ONNX_NAMESPACE::TypeProto> type_proto = onnxruntime::make_unique<ONNX_NAMESPACE::TypeProto>();
 
   Status status = SetupTensorType(type_proto, type);
   if (!status.IsOK()) {
@@ -465,7 +465,7 @@ Status ExecutableKernelContextImpl::AddInput(ONNXTensorElementDataType type) {
   oss << name_ << "_Input_" << input_args_.size();
   std::string name = oss.str();
 
-  std::unique_ptr<NodeArg> arg_ptr = std::make_unique<NodeArg>(name, type_proto.get());
+  std::unique_ptr<NodeArg> arg_ptr = onnxruntime::make_unique<NodeArg>(name, type_proto.get());
   input_args_.push_back(arg_ptr.get());
   types_.push_back(std::move(type_proto));
   args_.push_back(std::move(arg_ptr));
@@ -474,7 +474,7 @@ Status ExecutableKernelContextImpl::AddInput(ONNXTensorElementDataType type) {
 
 Status ExecutableKernelContextImpl::AddOutput(ONNXTensorElementDataType type) {
 
-  std::unique_ptr<ONNX_NAMESPACE::TypeProto> type_proto = std::make_unique<ONNX_NAMESPACE::TypeProto>();
+  std::unique_ptr<ONNX_NAMESPACE::TypeProto> type_proto = onnxruntime::make_unique<ONNX_NAMESPACE::TypeProto>();
 
   Status status = SetupTensorType(type_proto, type);
   if (!status.IsOK()) {
@@ -485,7 +485,7 @@ Status ExecutableKernelContextImpl::AddOutput(ONNXTensorElementDataType type) {
   oss << name_ << "_Output_" << output_args_.size();
   std::string name = oss.str();
 
-  std::unique_ptr<NodeArg> arg_ptr = std::make_unique<NodeArg>(name, type_proto.get());
+  std::unique_ptr<NodeArg> arg_ptr = onnxruntime::make_unique<NodeArg>(name, type_proto.get());
 
   output_args_.push_back(arg_ptr.get());
   types_.push_back(std::move(type_proto));
@@ -533,7 +533,7 @@ Status ExecutableKernelContextImpl::CreateExecutionFrame(KernelSessionImpl* sess
   }
 
   // create the context info
-  std::unique_ptr<SingleKernelExecutionFrame::Info> info = std::make_unique<SingleKernelExecutionFrame::Info>(
+  std::unique_ptr<SingleKernelExecutionFrame::Info> info = onnxruntime::make_unique<SingleKernelExecutionFrame::Info>(
       std::move(op_kernel),
       logging::LoggingManager::DefaultLogger(),
       execution_provider);
