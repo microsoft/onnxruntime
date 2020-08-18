@@ -826,3 +826,53 @@ TEST(CApiTest, get_available_providers_cpp) {
   ASSERT_TRUE(providers.size() > 0);
   ASSERT_TRUE(providers[0] == std::string("CPUExecutionProvider"));
 }
+
+// This test registers an allocator with the env, creates 2 sessions and then runs those 2 sessions one after another
+TEST(CApiTest, TestSharedAllocator) {
+  // simple inference test
+  // prepare inputs
+  std::vector<Input> inputs(1);
+  Input& input = inputs.back();
+  input.name = "X";
+  input.dims = {3, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_y = {3, 2};
+  std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
+  OrtEnv* env_ptr = (OrtEnv*)(*ort_env);
+
+  OrtMemoryInfo* mem_info = nullptr;
+  const auto& api = Ort::GetApi();
+  std::unique_ptr<OrtMemoryInfo, decltype(api.ReleaseMemoryInfo)> rel_info(mem_info, api.ReleaseMemoryInfo);
+  ASSERT_TRUE(api.CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &mem_info) == nullptr);
+
+  OrtAllocator* ort_allocator = nullptr;
+  std::unique_ptr<OrtAllocator, decltype(api.ReleaseAllocator)> r2(ort_allocator, api.ReleaseAllocator);
+  OrtArenaCfg arena_cfg{-1, -1, -1, -1};
+  ASSERT_TRUE(api.CreateAllocatorForSharing(mem_info, &arena_cfg, &ort_allocator) == nullptr);
+  ASSERT_TRUE(api.RegisterSharedAllocator(env_ptr, ort_allocator) == nullptr);
+
+  Ort::SessionOptions session_options;
+  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+
+  // create session 1
+  Ort::Session session1(*ort_env, MODEL_URI, session_options);
+  RunSession<float>(default_allocator.get(),
+                    session1,
+                    inputs,
+                    "Y",
+                    expected_dims_y,
+                    expected_values_y,
+                    nullptr);
+
+  // create session 2
+  Ort::Session session2(*ort_env, MODEL_URI, session_options);
+  RunSession<float>(default_allocator.get(),
+                    session2,
+                    inputs,
+                    "Y",
+                    expected_dims_y,
+                    expected_values_y,
+                    nullptr);
+}

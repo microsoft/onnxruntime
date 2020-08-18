@@ -61,7 +61,13 @@ Status Environment::RegisterSharedAllocator(OrtAllocator* allocator) {
   if (ite != shared_allocators_.end()) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Duplicate allocator found.");
   }
-  onnxruntime::AllocatorPtr allocator_ptr = std::make_shared<onnxruntime::AllocatorWrapper>(allocator);
+  onnxruntime::AllocatorPtr allocator_ptr;
+
+  if (mem_info_ptr->alloc_type == OrtArenaAllocator) {
+    allocator_ptr = std::make_shared<onnxruntime::ArenaAllocatorWrapper>(allocator);
+  } else {
+    allocator_ptr = std::make_shared<onnxruntime::AllocatorWrapper>(allocator);
+  }
   shared_allocators_.insert(ite, allocator_ptr);
   return Status::OK();
 }

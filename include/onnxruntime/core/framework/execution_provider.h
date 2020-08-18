@@ -166,7 +166,7 @@ class IExecutionProvider {
   virtual common::Status OnSessionInitializationEnd();
 
   void InsertAllocator(AllocatorPtr allocator);
-  void UpdateAllocator(AllocatorPtr allocator);
+  void ReplaceAllocator(AllocatorPtr allocator);
 
   /**
   Given a list of fused_node, return create_state/compute/release_state func for each node.
@@ -195,7 +195,7 @@ class IExecutionProvider {
  private:
   const std::string type_;
   AllocatorMap allocators_;
-  MemoryInfoSet mem_info_set_;
+  MemoryInfoSet mem_info_set_;  // to ensure only allocators with unique OrtMemoryInfo are registered in the provider.
   //It will be set when this object is registered to a session
   const logging::Logger* logger_ = nullptr;
   // convenience list of the allocators so GetAllocatorList doesn't have to build a new vector each time

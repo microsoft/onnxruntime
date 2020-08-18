@@ -42,8 +42,7 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
         // Arena has a specific way to store static memory.
         // Arena does not reuse static memory allocated by Reserve.
         buffer = static_cast<IArenaAllocator*>(alloc.get())->Reserve(peak_size);
-      }
-      else {
+      } else {
         buffer = alloc->Alloc(peak_size);
       }
       weights_buffers_.push_back(BufferUniquePtr(buffer, alloc));

@@ -55,7 +55,15 @@ class Environment {
     return create_global_thread_pools_;
   }
 
+  /*!
+  * Registers an allocator for sharing between multiple sessions. The environment
+  * does not own the allocator.
+  */
   Status RegisterSharedAllocator(OrtAllocator* allocator);
+
+  /*!
+  * Return the list of registered allocators in this env.
+  */
   const std::vector<AllocatorPtr>& GetRegisteredSharedAllocators() const {
     return shared_allocators_;
   }

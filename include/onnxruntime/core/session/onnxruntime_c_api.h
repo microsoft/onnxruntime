@@ -143,10 +143,10 @@ typedef enum OrtErrorCode {
   ORT_EP_FAIL,
 } OrtErrorCode;
 
-// use -1 to allow ORT to choose good defaults
-typedef struct OrtArenaCfg {
+// use -1 to allow ORT to choose good defaults for all the options below
+typedef struct OrtArenaCfg {  // TODO add docs
   int max_mem;
-  int arena_extend_strategy;  // 0 = kNextPowerOfTwo, 1 = kSameAsRequested // TODO can be an enum
+  int arena_extend_strategy;  // 0 = kNextPowerOfTwo, 1 = kSameAsRequested
   int initial_chunk_size_bytes;
   int max_dead_bytes_per_chunk;
 } OrtArenaCfg;
@@ -202,6 +202,11 @@ typedef struct OrtAllocator {
   void*(ORT_API_CALL* Alloc)(struct OrtAllocator* this_, size_t size);
   void(ORT_API_CALL* Free)(struct OrtAllocator* this_, void* p);
   const struct OrtMemoryInfo*(ORT_API_CALL* Info)(const struct OrtAllocator* this_);
+
+  // following functions are meant for arena based allocators
+  void*(ORT_API_CALL* Reserve)(struct OrtAllocator* this_, size_t size);
+  size_t(ORT_API_CALL* Used)(struct OrtAllocator* this_);
+  size_t(ORT_API_CALL* Max)(struct OrtAllocator* this_);
 } OrtAllocator;
 
 typedef void(ORT_API_CALL* OrtLoggingFunction)(

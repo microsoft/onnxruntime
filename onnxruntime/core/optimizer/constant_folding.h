@@ -18,9 +18,11 @@ it statically computes parts of the graph that rely only on constant initializer
 */
 class ConstantFolding : public GraphTransformer {
  public:
-  /** Constant folding will not be applied to nodes that have one of initializers from excluded_initializers as input.
-      For pre-training, the trainable weights are those initializers to be excluded. */
-  ConstantFolding(const IExecutionProvider* cpu_execution_provider,
+  /*! Constant folding will not be applied to nodes that have one of initializers from excluded_initializers as input.
+      For pre-training, the trainable weights are those initializers to be excluded.
+      \param execution_provider Execution provider instance to execute constant folding.
+  */
+  ConstantFolding(const IExecutionProvider& execution_provider,
                   const std::unordered_set<std::string>& compatible_execution_providers = {},
                   const std::unordered_set<std::string>& excluded_initializers = {}) noexcept;
 
@@ -28,7 +30,7 @@ class ConstantFolding : public GraphTransformer {
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 
   const std::unordered_set<std::string> excluded_initializers_;
-  const IExecutionProvider* cpu_execution_provider_;
+  const IExecutionProvider& execution_provider_;
 };
 
 }  // namespace onnxruntime

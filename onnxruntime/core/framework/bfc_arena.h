@@ -56,7 +56,7 @@ class BFCArena : public IArenaAllocator {
  public:
   static const ArenaExtendStrategy DEFAULT_ARENA_EXTEND_STRATEGY = ArenaExtendStrategy::kNextPowerOfTwo;
   static const int DEFAULT_INITIAL_CHUNK_SIZE_BYTES = 1048576;
-  static const int DEFAULT_MAX_DEAD_BYTES_PER_CHUNK = 128 << 20;
+  static const int DEFAULT_MAX_DEAD_BYTES_PER_CHUNK = 128 * 1024 * 1024;
 
   BFCArena(std::unique_ptr<IDeviceAllocator> resource_allocator,
            size_t total_memory,
@@ -449,8 +449,8 @@ class BFCArena : public IArenaAllocator {
 
   std::unordered_map<void*, size_t> reserved_chunks_;
 
-  int initial_chunk_size_bytes_;
-  int max_dead_bytes_per_chunk_;
+  const int initial_chunk_size_bytes_;
+  const int max_dead_bytes_per_chunk_;
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(BFCArena);
 };

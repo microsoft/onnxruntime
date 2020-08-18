@@ -33,6 +33,8 @@
 #endif
 #include "core/session/environment.h"
 #include "core/session/IOBinding.h"
+#include "core/session/device_allocator.h"
+#include "core/session/allocator_impl.h"
 #include "dummy_provider.h"
 #include "test_utils.h"
 #include "test/capturing_sink.h"
@@ -2385,6 +2387,103 @@ TEST(InferenceSessionTests, InvalidSessionEnvCombination) {
                     " threadpools, the env must be created with the the CreateEnvWithGlobalThreadPools API") !=
                 std::string::npos);
   }
+}
+
+// Tests for sharing allocators between sessions
+class InferenceSessionTestSharingAllocator : public InferenceSession {
+ public:
+  InferenceSessionTestSharingAllocator(const SessionOptions& session_options,
+                                       const Environment& env)
+      : InferenceSession(session_options, env) {
+  }
+
+  const SessionState& GetSessionState() { return InferenceSession::GetSessionState(); }
+};
+
+// Ensure sessions use the same allocator
+TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsUseSameAllocator) {
+  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  std::unique_ptr<Environment> env;
+  auto st = Environment::Create(std::move(logging_manager), env);
+  ASSERT_TRUE(st.IsOK());
+  // create allocator to register with the env
+  OrtMemoryInfo mem_info{onnxruntime::CPU, OrtArenaAllocator};
+  size_t max_mem = std::numeric_limits<size_t>::max();
+  DeviceAllocatorRegistrationInfo device_info{
+      OrtMemTypeDefault,
+      [mem_info](int) { return onnxruntime::make_unique<TAllocator>(mem_info); },
+      max_mem};
+  AllocatorPtr allocator_ptr = CreateAllocator(device_info, 0, true);
+  std::unique_ptr<OrtAllocator> alloc_to_register(new OrtAllocatorForDevice(std::move(allocator_ptr)));
+  st = env->RegisterSharedAllocator(alloc_to_register.get());
+  ASSERT_STATUS_OK(st);
+  // create sessions to share the allocator
+
+  SessionOptions so1;
+  so1.use_shared_allocator = true;
+  InferenceSessionTestSharingAllocator sess1(so1, *env);
+  ASSERT_STATUS_OK(sess1.Load(MODEL_URI));
+  ASSERT_STATUS_OK(sess1.Initialize());
+
+  SessionOptions so2;
+  so2.use_shared_allocator = true;
+  InferenceSessionTestSharingAllocator sess2(so2, *env);
+  ASSERT_STATUS_OK(sess2.Load(MODEL_URI));
+  ASSERT_STATUS_OK(sess2.Initialize());
+
+  // This line ensures the allocator in the session is the same as that in the env
+  ASSERT_EQ(static_cast<AllocatorWrapper*>(sess1.GetSessionState().GetAllocator(mem_info).get())->GetOrtAllocator(),
+            alloc_to_register.get());
+
+  // This line ensures the underlying OrtAllocator* is the same across 2 sessions.
+  ASSERT_EQ(static_cast<AllocatorWrapper*>(sess1.GetSessionState().GetAllocator(mem_info).get())->GetOrtAllocator(),
+            static_cast<AllocatorWrapper*>(sess2.GetSessionState().GetAllocator(mem_info).get())->GetOrtAllocator());
+}
+
+// Ensure sessions don't use the same allocator
+TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsDontUseSameAllocator) {
+  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  std::unique_ptr<Environment> env;
+  auto st = Environment::Create(std::move(logging_manager), env);
+  ASSERT_TRUE(st.IsOK());
+  // create allocator to register with the env
+  OrtMemoryInfo mem_info{onnxruntime::CPU, OrtArenaAllocator};
+  size_t max_mem = std::numeric_limits<size_t>::max();
+  DeviceAllocatorRegistrationInfo device_info{
+      OrtMemTypeDefault,
+      [mem_info](int) { return onnxruntime::make_unique<TAllocator>(mem_info); },
+      max_mem};
+  AllocatorPtr allocator_ptr = CreateAllocator(device_info, 0, true);
+  std::unique_ptr<OrtAllocator> alloc_to_register(new OrtAllocatorForDevice(std::move(allocator_ptr)));
+  st = env->RegisterSharedAllocator(alloc_to_register.get());
+  ASSERT_STATUS_OK(st);
+  // create sessions to share the allocator
+
+  SessionOptions so1;
+  so1.use_shared_allocator = false;
+  InferenceSessionTestSharingAllocator sess1(so1, *env);
+  ASSERT_STATUS_OK(sess1.Load(MODEL_URI));
+  ASSERT_STATUS_OK(sess1.Initialize());
+
+  SessionOptions so2;
+  so2.use_shared_allocator = true;
+  InferenceSessionTestSharingAllocator sess2(so2, *env);
+  ASSERT_STATUS_OK(sess2.Load(MODEL_URI));
+  ASSERT_STATUS_OK(sess2.Initialize());
+
+  // This line ensures sess2 has the same allocator has the env since its use_shared_allocator = true
+  ASSERT_EQ(static_cast<AllocatorWrapper*>(sess2.GetSessionState().GetAllocator(mem_info).get())->GetOrtAllocator(),
+            alloc_to_register.get());
+
+  // This line ensures the underlying OrtAllocator* is the same across 2 sessions.
+  ASSERT_NE(static_cast<AllocatorWrapper*>(sess1.GetSessionState().GetAllocator(mem_info).get())->GetOrtAllocator(),
+            static_cast<AllocatorWrapper*>(sess2.GetSessionState().GetAllocator(mem_info).get())->GetOrtAllocator());
 }
 
 }  // namespace test

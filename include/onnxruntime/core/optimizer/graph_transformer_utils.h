@@ -26,7 +26,7 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(TransformerLevel 
     and the transformers_and_rules_to_enable. */
 std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerLevel level,
                                                                     gsl::span<const FreeDimensionOverride> free_dimension_overrides,
-                                                                    const IExecutionProvider* cpu_execution_provider,
+                                                                    const IExecutionProvider& execution_provider /*required by constant folding*/,
                                                                     const std::vector<std::string>& rules_and_transformers_to_enable = {});
 
 /** Given a TransformerLevel, this method generates a name for the rule-based graph transformer of that level. */

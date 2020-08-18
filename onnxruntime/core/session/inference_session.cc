@@ -887,7 +887,8 @@ common::Status InferenceSession::Initialize() {
     // it doesn't make sense to just update the allocator map inside session state with these shared allocators; doing
     // so would cause inconsistency between the allocator map inside session sate and that inside the providers.
     // TODO: we could refactor the allocators to not require the call to GetAllocator but that change is much bigger
-    // since we've to take into account the per-thread cuda allocators.
+    // since we've to take into account the per-thread cuda allocators. We could also possibly absorb the per-thread
+    // logic in a new allocator decorator that derives from IAllocator to keep things clean. This
     if (session_options_.use_shared_allocator) {
       UpdateProvidersWithSharedAllocators();
     }
@@ -1003,7 +1004,7 @@ common::Status InferenceSession::Initialize() {
   return status;
 }
 
-// This method should be called from within Initialize() only and before the creation of the session sate.
+// This method should be called from within Initialize() only and before the creation of the session state.
 // This ensures all providers have been registered in the session and the session state is consistent with the providers.
 void InferenceSession::UpdateProvidersWithSharedAllocators() {
   using namespace std;
@@ -1011,7 +1012,7 @@ void InferenceSession::UpdateProvidersWithSharedAllocators() {
   for (const auto& one_shared_alloc : environment_.GetRegisteredSharedAllocators()) {
     for (const auto& id : provider_ids) {
       auto* provider_ptr = execution_providers_.Get(id);
-      provider_ptr->UpdateAllocator(one_shared_alloc);
+      provider_ptr->ReplaceAllocator(one_shared_alloc);
     }
   }
 }
@@ -1569,7 +1570,7 @@ void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transf
     // Generate and register transformers for level
     auto transformers_to_register =
         optimizer_utils::GenerateTransformers(level, session_options_.free_dimension_overrides,
-                                              execution_providers_.Get(onnxruntime::kCpuExecutionProvider),
+                                              *execution_providers_.Get(onnxruntime::kCpuExecutionProvider),
                                               custom_list);
     for (auto& entry : transformers_to_register) {
       transformer_manager.Register(std::move(entry), level);

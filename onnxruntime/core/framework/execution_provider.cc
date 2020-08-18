@@ -52,7 +52,7 @@ common::Status IExecutionProvider::OnRunEnd() { return Status::OK(); }
 common::Status IExecutionProvider::OnSessionInitializationEnd() { return Status::OK(); }
 
 // Update allocator in the provider if already present; ignore if not.
-void IExecutionProvider::UpdateAllocator(AllocatorPtr allocator) {
+void IExecutionProvider::ReplaceAllocator(AllocatorPtr allocator) {
   const auto& info = allocator->Info();
   auto ite = mem_info_set_.find(info);
   if (ite != mem_info_set_.end()) {
