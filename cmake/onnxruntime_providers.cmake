@@ -35,10 +35,6 @@ file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/*.cc"
 )
 
-if(onnxruntime_USE_DNNL)
-  set(PROVIDERS_DNNL onnxruntime_providers_dnnl)
-  list(APPEND ONNXRUNTIME_PROVIDER_NAMES dnnl)
-endif()
 if(onnxruntime_USE_NGRAPH)
   set(PROVIDERS_NGRAPH onnxruntime_providers_ngraph)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES ngraph)
@@ -314,6 +310,8 @@ if (onnxruntime_USE_TENSORRT OR onnxruntime_USE_DNNL)
 endif()
 
 if (onnxruntime_USE_DNNL)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES dnnl)
+
   file(GLOB_RECURSE onnxruntime_providers_dnnl_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/dnnl/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/dnnl/*.cc"
@@ -323,8 +321,9 @@ if (onnxruntime_USE_DNNL)
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_dnnl_cc_srcs})
   add_library(onnxruntime_providers_dnnl SHARED ${onnxruntime_providers_dnnl_cc_srcs})
+  target_link_directories(onnxruntime_providers_dnnl PRIVATE ${DNNL_LIB_DIR})
   onnxruntime_add_include_to_target(onnxruntime_providers_dnnl onnxruntime_common onnx) # onnx needed for stl_backports.h
-  add_dependencies(onnxruntime_providers_dnnl onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  add_dependencies(onnxruntime_providers_dnnl onnxruntime_providers_shared project_dnnl ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_include_directories(onnxruntime_providers_dnnl PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${DNNL_INCLUDE_DIR})
   target_link_libraries(onnxruntime_providers_dnnl PRIVATE dnnl onnxruntime_providers_shared)
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/dnnl  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)

@@ -22,8 +22,9 @@ def parse_arguments():
     parser.add_argument("--commit_id", required=True, help="The last commit id included in this package.")
     parser.add_argument("--is_release_build", required=False, default=None, type=str,
                         help="Flag indicating if the build is a release build. Accepted values: true/false.")
-    parser.add_argument("--linux_build", required=False, default=False, type=bool,
-                        help="specify the libonnxruntime.so lib values")
+    parser.add_argument("--is_linux_build", required=False, default='false', type=str,
+                        help="Flag indicating if we are building a Nuget for Linux. This will look for " +
+                        "`libonnxruntime.so`. Accepted values: true/false.")
 
     return parser.parse_args()
 
@@ -227,7 +228,7 @@ def generate_files(list, args):
 
     # Process runtimes
     # Process linux
-    if (args.linux_build is True):
+    if args.is_linux_build.lower() == 'true':
         files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'libonnxruntime.so') +
                           '" target="runtimes\\linux-' + args.target_architecture + '\\native" />')
 
