@@ -60,13 +60,11 @@ inline MemoryAllocation::~MemoryAllocation() {
   }
 }
 
-inline MemoryAllocation::MemoryAllocation(MemoryAllocation&& o) :
-  allocator_(nullptr), p_(nullptr), size_(0) {
+inline MemoryAllocation::MemoryAllocation(MemoryAllocation&& o) : allocator_(nullptr), p_(nullptr), size_(0) {
   *this = std::move(o);
 }
 
 inline MemoryAllocation& MemoryAllocation::operator=(MemoryAllocation&& o) {
-
   OrtAllocator* alloc = nullptr;
   void* p = nullptr;
   size_t sz = 0;
@@ -113,7 +111,7 @@ inline const OrtMemoryInfo* AllocatorWithDefaultOptions::GetInfo() const {
   return out;
 }
 
-template<typename B>
+template <typename B>
 inline std::string BaseMemoryInfo<B>::GetAllocatorName() const {
   const char* name = nullptr;
   ThrowOnError(GetApi().MemoryInfoGetName(*this, &name));
@@ -253,7 +251,7 @@ inline std::vector<Value> Ort::IoBinding::GetOutputValuesHelper(OrtAllocator* al
       allocator->Free(allocator, buffer);
     }
   };
-  using Ptr = std::unique_ptr<OrtValue*, decltype(free_fn)> ;
+  using Ptr = std::unique_ptr<OrtValue*, decltype(free_fn)>;
 
   OrtValue** output_buffer = nullptr;
   ThrowOnError(GetApi().GetBoundOutputValues(p_, allocator, &output_buffer, &output_count));
@@ -300,7 +298,8 @@ inline Env::Env(const OrtThreadingOptions* tp_options, OrtLoggingLevel default_l
   ThrowOnError(GetApi().CreateEnvWithGlobalThreadPools(default_logging_level, logid, tp_options, &p_));
 }
 
-inline Env::Env(const OrtThreadingOptions* tp_options, OrtLoggingFunction logging_function, void* logger_param, OrtLoggingLevel default_logging_level, _In_ const char* logid) {
+inline Env::Env(const OrtThreadingOptions* tp_options, OrtLoggingFunction logging_function, void* logger_param,
+                OrtLoggingLevel default_logging_level, _In_ const char* logid) {
   ThrowOnError(GetApi().CreateCustomEnv(logging_function, logger_param, default_logging_level, logid, tp_options, &p_));
 }
 
