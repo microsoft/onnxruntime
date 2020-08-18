@@ -2710,8 +2710,8 @@ Example 4:
       .Input(1, "scale", "Scale tensor.", "T")
       .Input(2, "B", "Bias tensor.", "T")
       .Output(0, "Y", "Output data tensor.", "T")
-      .Output(1, "mean", "Saved mean used during training to speed up gradient computation", "U", OpSchema::Optional)
-      .Output(2, "inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation.", "U", OpSchema::Optional)
+      .Output(1, "mean", "Saved mean used during training to speed up gradient computation", "T", OpSchema::Optional)
+      .Output(2, "inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation.", "T", OpSchema::Optional)
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},

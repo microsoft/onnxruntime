@@ -1102,7 +1102,7 @@ Example 4:
       .Output(0, "reduced", "Reduced output tensor.", "T")
       .TypeConstraint(
           "T",
-          OpSchema::numeric_types_for_math_reduction(),
+          OpSchema::numeric_types_for_math_reduction_with_bfloat(),
           "Constrain input and output types to high-precision numeric tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
@@ -1602,8 +1602,8 @@ Example 4:
       .Input(0, "Y_grad", "The gradient tensor from output.", "T")
       .Input(1, "X", "Input data tensor from the forward path", "T")
       .Input(2, "scale", "Scale tensor.", "T")
-      .Input(3, "mean", "mean of X.", "U")
-      .Input(4, "inv_std_var", "inverse std variance of X.", "U")
+      .Input(3, "mean", "mean of X.", "T")
+      .Input(4, "inv_std_var", "inverse std variance of X.", "T")
       .Output(0, "X_grad", "Gradient of the input.", "T")
       .Output(1, "scale_grad", "Gradient of the scale.", "T")
       .Output(2, "bias_grad", "Gradient of the bias.", "T")
