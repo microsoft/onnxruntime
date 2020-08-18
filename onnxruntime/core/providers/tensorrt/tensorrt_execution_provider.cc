@@ -791,41 +791,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     // be built at runtime
     tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine> trt_engine;
     tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext> trt_context;
-/*
-    if (!has_dynamic_shape) {
-      std::ifstream planFile(GetEnginePath(engine_cache_path_, trt_node_name_with_precision), std::ios::binary | std::ios::in);
-      if (planFile && engine_cache_enable_) {
-        planFile.seekg(0, std::ios::end);
-        int engine_size = planFile.tellg();
-        planFile.seekg(0, std::ios::beg);
-        std::unique_ptr<char[]> engine_buf{new char[engine_size]};
-        planFile.read((char*)engine_buf.get(), engine_size);
-        planFile.close();
-        trt_engine = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
-        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + GetEnginePath(engine_cache_path_, trt_node_name_with_precision);
-      } else {
-        trt_engine = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *trt_config));
-        if (trt_engine == nullptr) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                 "TensorRT EP could not build Engine for fused node: " + fused_node->Name());
-        }
-
-        if (engine_cache_enable_) {
-          nvinfer1::IHostMemory* serializedModel = trt_engine->serialize();
-          std::ofstream file(GetEnginePath(engine_cache_path_, trt_node_name_with_precision), std::ios::binary | std::ios::out);
-          file.write(reinterpret_cast<char*>(serializedModel->data()), serializedModel->size());
-          serializedModel->destroy();
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + GetEnginePath(engine_cache_path_, trt_node_name_with_precision);
-        }
-      }
-      trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
-      if (trt_context == nullptr) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                               "TensorRT EP could not build Execution Context for fused node: " + fused_node->Name());
-      }
-    }
-*/
-
     if (!has_dynamic_shape) {
 	  const std::string engine_path_and_name = GetEnginePath(engine_cache_path_, trt_node_name_with_precision);
       std::ifstream planFile(engine_path_and_name, std::ios::binary | std::ios::in);
