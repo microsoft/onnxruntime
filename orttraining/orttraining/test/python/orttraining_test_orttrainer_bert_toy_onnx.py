@@ -79,6 +79,9 @@ def optimizer_parameters(model):
         if any(key in initializer.name for key in no_decay_keys):
             no_decay_param_group.append(initializer.name)
     params = [{'params': no_decay_param_group, "alpha": 0.9, "beta": 0.999, "lambda_coef": 0.0, "epsilon": 1e-6}]
+    print("this is a test _____")
+    print(no_decay_param_group)
+    
     return params
 
 
@@ -593,6 +596,58 @@ def testToyBertCheckpointFrozenWeights():
     loaded_state_dict = checkpoint.experimental_state_dict(trainer2)
     assert state_dict.keys() == loaded_state_dict.keys()
 
+@pytest.mark.parametrize("model_params", [
+    (['bert.embeddings.LayerNorm.bias']),
+    (['bert.embeddings.LayerNorm.bias',
+      'bert.embeddings.LayerNorm.weight',
+      'bert.encoder.layer.0.attention.output.LayerNorm.bias']),
+])
+def testORTTrainerFrozenWeights(model_params):
+    device = 'cuda'
+    total_steps = 10
+    seed = 1
+
+    # EXPERIMENTAL API
+    model_desc = bert_model_description()
+    model = load_bert_onnx_model()
+
+    optim_config = optim.LambConfig()
+    # Setup ORTTrainer WITHOUT frozen weights
+    opts_dict = {
+        'debug' : {
+            'deterministic_compute': True
+        },
+        'device': {
+            'id': device,
+        },
+    }
+    opts =  orttrainer.ORTTrainerOptions(opts_dict)
+   
+    torch.manual_seed(seed)
+    set_seed(seed)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
+
+    for i in range(total_steps):
+        sample_input = generate_random_input_from_model_desc(model_desc, i)
+
+    # All model_params must be in the session state
+    assert trainer._onnx_model is not None
+    session_state = trainer._training_session.get_state()
+    assert all([param in session_state for param in model_params])
+
+    # Setup ORTTrainer WITH frozen weights
+    opts_dict.update({'utils' : {'frozen_weights' : model_params}})
+    opts =  orttrainer.ORTTrainerOptions(opts_dict)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
+
+    for i in range(total_steps):
+        sample_input = generate_random_input_from_model_desc(model_desc, i)
+
+    # All model_params CANNOT be in the session state
+    assert trainer._onnx_model is not None
+    session_state = trainer._training_session.get_state()
+    assert not all([param in session_state for param in model_params])
+
 
 ###############################################################################
 # Temporary tests comparing Legacy vs Experimental ORTTrainer APIs ############
@@ -682,7 +737,7 @@ def testToyBERTModelLegacyExperimentalLRScheduler(initial_lr, lr_scheduler, lega
     for i in range(total_steps):
         sample_input = generate_random_input_from_model_desc(model_desc, i)
         experimental_losses.append(trainer.train_step(*sample_input).cpu().item())
-        assert trainer.options.lr_scheduler.get_last_lr()[0] == legacy_lr_scheduler(i)
+        assert_allclose(trainer.options.lr_scheduler.get_last_lr()[0], legacy_lr_scheduler(i))
 
     # LEGACY IMPLEMENTATION
     torch.manual_seed(seed)
