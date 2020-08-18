@@ -28,11 +28,6 @@ Status SliceGrad::Compute(OpKernelContext* context) const {
   Tensor& output = *context->Output(0, data_shape);
   memset(output.MutableDataRaw(), 0, output.SizeInBytes());
   // Initialize the starts & ends to the actual tensor shape
-  std::vector<int64_t> starts(data_shape.GetDims().size(), 0);
-  std::vector<int64_t> steps(data_shape.GetDims().size(), 1);
-  std::vector<int64_t> output_dims(data_shape.GetDims());
-  std::vector<int64_t> flattened_output_dims;
-  std::vector<int64_t>* p_flattened_output_dims = &flattened_output_dims;
   std::vector<int64_t> input_starts;
   std::vector<int64_t> input_ends;
   std::vector<int64_t> input_axes;
@@ -40,17 +35,18 @@ Status SliceGrad::Compute(OpKernelContext* context) const {
   FillVectorsFromInput(*context->Input<Tensor>(2), *context->Input<Tensor>(3), context->Input<Tensor>(4),
                        context->Input<Tensor>(5), input_starts, input_ends, input_axes, input_steps);
 
-  ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes, input_steps,
-                                        data_shape.GetDims(), starts, steps, output_dims,
-                                        p_flattened_output_dims));
+  SliceOp::PrepareForComputeMetadata compute_metadata(data_shape.GetDims());
+  ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes, input_steps, compute_metadata));
 
   MLDataType T_type = grad.DataType();
   if (T_type == DataTypeImpl::GetType<float>()) {
-    return ComputeImpl<float>(context, output, output_dims, p_flattened_output_dims, starts, steps);
+    return ComputeImpl<float>(context, output, compute_metadata.output_dims_, compute_metadata.p_flattened_output_dims_,
+                              compute_metadata.starts_, compute_metadata.steps_);
   }
 
   if (T_type == DataTypeImpl::GetType<double>()) {
-    return ComputeImpl<double>(context, output, output_dims, p_flattened_output_dims, starts, steps);
+    return ComputeImpl<double>(context, output, compute_metadata.output_dims_, compute_metadata.p_flattened_output_dims_,
+                               compute_metadata.starts_, compute_metadata.steps_);
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Type for T or Tind not supported yet in SliceGrad.");

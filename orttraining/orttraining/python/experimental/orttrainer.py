@@ -316,7 +316,7 @@ class ORTTrainer(object):
             outputs_desc = self._model_desc_outputs_with_gradient_accumulation
         elif self.options.mixed_precision.enabled:
             mixed_precision_without_fetches = True
-            outputs_desc = self._model_desc_outputs_with_is_finite
+            outputs_desc = self._model_desc_outputs_with_all_finite
 
         # Update Learning Rate if Necessary
         if self.options.lr_scheduler:
@@ -346,8 +346,8 @@ class ORTTrainer(object):
             # because all_fp32_gradients_finite is still in the feed.
             self._train_io_binding.clear_binding_outputs()
 
-            is_all_finite = session_run_results[self.model_desc.is_finite.name]
-            self._train_step_info.is_finite = is_all_finite
+            is_all_finite = session_run_results[self.model_desc.all_finite.name]
+            self._train_step_info.all_finite = is_all_finite
             if loss_scaler:
                 loss_scaler.update(self._train_step_info)
             if is_all_finite:
@@ -626,8 +626,8 @@ class ORTTrainer(object):
             self.model_desc.loss_scale_input = self._training_session.loss_scale_input_name
             self._model_desc_inputs_with_lr_and_loss_scale = [
                 *self._model_desc_inputs_with_lr, self.model_desc.loss_scale_input]
-            self.model_desc.is_finite = _utils.get_all_gradients_finite_name_from_session(self._training_session)
-            self._model_desc_outputs_with_is_finite = [*self.model_desc.outputs, self.model_desc.is_finite]
+            self.model_desc.all_finite = _utils.get_all_gradients_finite_name_from_session(self._training_session)
+            self._model_desc_outputs_with_all_finite = [*self.model_desc.outputs, self.model_desc.all_finite]
         elif self.options.mixed_precision.loss_scaler:
             raise ValueError("Loss Scaler cannot be specified when Mixed Precision is not enabled")
 
