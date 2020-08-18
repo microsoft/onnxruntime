@@ -397,15 +397,19 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         }
 
         /// <summary>
-        /// Initialize an n-dimensional tensor with the specified dimensions and layout.  ReverseStride=true gives a stride of 1-element witdth to the first dimension (0).  ReverseStride=false gives a stride of 1-element width to the last dimension (n-1).
+        /// Initialize an n-dimensional tensor with the specified dimensions and layout.  ReverseStride=true gives a stride of 1-element width to the first dimension (0).  ReverseStride=false gives a stride of 1-element width to the last dimension (n-1).
         /// </summary>
         /// <param name="dimensions">An span of integers that represent the size of each dimension of the Tensor to create.</param>
         /// <param name="reverseStride">False (default) to indicate that the first dimension is most major (farthest apart) and the last dimension is most minor (closest together): akin to row-major in a rank-2 tensor.  True to indicate that the last dimension is most major (farthest apart) and the first dimension is most minor (closest together): akin to column-major in a rank-2 tensor.</param>
         protected Tensor(ReadOnlySpan<int> dimensions, bool reverseStride) : base(typeof(T))
         {
+            // Scalar tensor
             if (dimensions.Length == 0)
             {
-                throw new ArgumentException("Dimensions must contain elements.", nameof(dimensions));
+                this.dimensions = new int[] { };
+                strides = new int[] { };
+                isReversedStride = reverseStride;
+                length = 1;
             }
 
             this.dimensions = new int[dimensions.Length];
@@ -427,7 +431,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         }
 
         /// <summary>
-        /// Initializes tensor with same dimensions as array, content of array is ignored.  ReverseStride=true gives a stride of 1-element witdth to the first dimension (0).  ReverseStride=false gives a stride of 1-element width to the last dimension (n-1).
+        /// Initializes tensor with same dimensions as array, content of array is ignored.  ReverseStride=true gives a stride of 1-element width to the first dimension (0).  ReverseStride=false gives a stride of 1-element width to the last dimension (n-1).
         /// </summary>
         /// <param name="fromArray">Array from which to derive dimensions.</param>
         /// <param name="reverseStride">False (default) to indicate that the first dimension is most major (farthest apart) and the last dimension is most minor (closest together): akin to row-major in a rank-2 tensor.  True to indicate that the last dimension is most major (farthest apart) and the first dimension is most minor (closest together): akin to column-major in a rank-2 tensor.</param>
@@ -438,9 +442,15 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
                 throw new ArgumentNullException(nameof(fromArray));
             }
 
+
+            // Scalar tensor
+            // TODO: Check if it is possible to create a zero-ranked array ?
             if (fromArray.Rank == 0)
             {
-                throw new ArgumentException("Array must contain elements.", nameof(fromArray));
+                dimensions = new int[] { };
+                strides = new int[] { };
+                isReversedStride = reverseStride;
+                length = 1;
             }
 
             dimensions = new int[fromArray.Rank];
