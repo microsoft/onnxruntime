@@ -340,11 +340,13 @@ class ORTTrainer(object):
 
             is_all_finite = session_run_results[self.model_desc.is_finite.name]
             self._train_step_info.all_finite = is_all_finite
+            if not is_all_finite:
+                print("is_all_finite is False: {is_all_finite}, at step: {self._train_step_info.step}")
             if loss_scaler:
                 loss_scaler.update(self._train_step_info)
             if is_all_finite:
                 # Optimization step must be incremented *after* optimization is successful
-                self._train_step_info.optimization_step += 1
+                self._train_step_info.optimization_step += 1                
         elif self._train_step_info.step % self.options.batch.gradient_accumulation_steps == 0:
             # Optimization step must be incremented *after* optimization is successful
             self._train_step_info.optimization_step += 1
@@ -390,14 +392,14 @@ class ORTTrainer(object):
         class WrapModel(torch.nn.Module):
             def __init__(self, model, loss_fn, input_names):
                 super(WrapModel, self).__init__()
-                self.model_ = model
+                self.model = model
                 self.loss_fn_ = loss_fn
                 self.input_names_ = input_names
 
             def forward(self, *inputs):
                 # *inputs is given by torch trace. It is in the order of input_names.
-                # model_ takes input in a order (which can be obtained via inspect.signature(model.forward)) different than input_names.
-                sig = signature(self.model_.forward)
+                # model takes input in a order (which can be obtained via inspect.signature(model.forward)) different than input_names.
+                sig = signature(self.model.forward)
                 ordered_list_keys = list(sig.parameters.keys())
 
                 input_dict = {}
@@ -405,7 +407,7 @@ class ORTTrainer(object):
                     if key in self.input_names_:
                         input_dict[key] = inputs[self.input_names_.index(key)]
 
-                model_out = self.model_(**input_dict)
+                model_out = self.model(**input_dict)
                 if self.loss_fn_ is None:
                     return model_out
 

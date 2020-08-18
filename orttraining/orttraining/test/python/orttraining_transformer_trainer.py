@@ -30,6 +30,7 @@ from onnxruntime.capi.ort_trainer import ORTTrainer, LossScaler, ModelDescriptio
 from onnxruntime.capi.training import _utils, amp, optim, orttrainer, TrainStepInfo,\
                                       model_desc_validation as md_val,\
                                       orttrainer_options as orttrainer_options
+from onnxruntime.capi.training.optim import LinearWarmupLRScheduler, _LRScheduler
 
 try:
     from torch.utils.tensorboard import SummaryWriter
@@ -92,6 +93,26 @@ def get_const_lr(base_lr):
     def get_lr(current_step):
         return base_lr
     return get_lr
+
+class MyLinearWarmupLRScheduler(_LRScheduler):
+
+    def __init__(self, num_warmup_steps, num_training_steps, base_lr):
+        super().__init__()
+
+        self.num_warmup_steps = num_warmup_steps
+        self.num_training_steps = num_training_steps
+        self.base_lr = base_lr
+
+    def lr_lambda_linear(self, current_step):
+        if current_step < self.num_warmup_steps:
+            return float(current_step) / float(max(1, self.num_warmup_steps))
+        return max(
+            0.0, float(self.num_training_steps - current_step) / float(max(1, self.num_training_steps - self.num_warmup_steps))
+        )
+
+    def get_lr(self, train_step_info):
+        # LambdaLR increment self.last_epoch at evert sept()
+        return [self.base_lr * self.lr_lambda_linear(train_step_info.optimization_step)]
 
 
 class ORTTransformerTrainer:
@@ -177,9 +198,8 @@ class ORTTransformerTrainer:
             t_total = int(len(train_dataloader) // self.args.gradient_accumulation_steps * self.args.num_train_epochs)
             num_train_epochs = self.args.num_train_epochs
 
-        # get_lr_this_step = get_linear_schedule_with_warmup(self.args.warmup_steps, t_total, self.args.learning_rate)
-        get_lr_this_step = get_const_lr(self.args.learning_rate)
-        loss_scaler = LossScaler('loss_scale_input_name', True, up_scale_window=2000)
+        get_lr_this_step = get_linear_schedule_with_warmup(self.args.warmup_steps, t_total, self.args.learning_rate)
+        # get_lr_this_step = get_const_lr(self.args.learning_rate)
 
         if self.use_new_api:
             model_desc = {
@@ -191,6 +211,7 @@ class ORTTransformerTrainer:
                 'outputs': [('loss', [], True),
                             ('logits', ['batch', 2])]}
 
+            lr_scheduler = MyLinearWarmupLRScheduler(self.args.warmup_steps, t_total, self.args.learning_rate)
 
             loss_scaler = amp.DynamicLossScaler() if self.args.fp16 else None
             options = orttrainer.ORTTrainerOptions({'device': {'id': 'cuda'},
@@ -201,35 +222,38 @@ class ORTTransformerTrainer:
                                                     'utils': {
                                                         'frozen_weights': [],
                                                         'grad_norm_clip': False},
-                                                    'distributed': {'allreduce_post_accumulation': True}})
+                                                    'distributed': {'allreduce_post_accumulation': True},
+                                                    'lr_scheduler': lr_scheduler
+                                                    })
 
-            # no_decay = ['bias', 'LayerNorm.weight']
-            # param_optimizer = list(self.model.named_parameters())
+            no_decay = ['bias', 'LayerNorm.weight']
+            param_optimizer = list(self.model.named_parameters())
 
-            # params = [{
-            #     'params': [n for n, p in param_optimizer if not any(nd in n for nd in no_decay)],
-            #     "weight_decay": 0.0, "weight_decay_mode" : 1}, {
-            #     'params': [n for n, p in param_optimizer if not any(nd in n for nd in no_decay)],
-            #     "weight_decay": self.args.weight_decay, "weight_decay_mode" : 1}
-            #     ]
+            params = [{
+                'params': [n for n, p in param_optimizer if "bias" in n or "LayerNorm.weight" in n],
+                "weight_decay_mode": 1, }, {
+                'params': [n for n, p in param_optimizer if not ("bias" in n or "LayerNorm.weight" in n)],
+                "weight_decay_mode": 1, }
+                ]
 
-            # optim_config = optim.AdamConfig(params=params,
-            #                                 lr=0.001, alpha=0.9, beta=0.999, lambda_coef=0.01, epsilon=1e-6)                                                
-            optim_config = optim.AdamConfig(lr=2e-5, do_bias_correction=False)
+            optim_config = optim.AdamConfig(params=params,
+                                            lr=2e-5, do_bias_correction=True)
+            # optim_config = optim.AdamConfig(lr=2e-5, do_bias_correction=True)
             self.model = orttrainer.ORTTrainer(self.model, model_desc, optim_config, loss_fn=None, options=options)
         else:
-            # def map_optimizer_attributes(name):
-            #     # no_decay_keys = ["bias", "LayerNorm.weight"]
-            #     no_decay = "bias" in name or "LayerNorm.weight" in name
-            #     if no_decay:
-            #         return {"weight_decay": 0.0, "weight_decay_mode" : 1}
-            #     else:
-            #         return {"weight_decay": self.args.weight_decay, "weight_decay_mode" : 1}
+            def map_optimizer_attributes(name):
+                # no_decay_keys = ["bias", "LayerNorm.weight"]
+                no_decay = "bias" in name or "LayerNorm.weight" in name
+                if no_decay:
+                    return {"weight_decay_mode" : 1}
+                else:
+                    return {"weight_decay_mode" : 1}
 
+            loss_scaler = LossScaler('loss_scale_input_name', True, up_scale_window=2000) if self.args.fp16 else None
             self.model = ORTTrainer(self.model, None,
                 self.model_desc, 
                 "AdamOptimizer",
-                map_optimizer_attributes=None,
+                map_optimizer_attributes=map_optimizer_attributes,
                 learning_rate_description=IODescription('Learning_Rate', [1,], torch.float32),
                 device=self.args.device,
                 gradient_accumulation_steps=self.args.gradient_accumulation_steps,

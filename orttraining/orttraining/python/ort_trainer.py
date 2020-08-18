@@ -879,7 +879,7 @@ class ORTTrainer():
         learning_rate, loss_scale = None, None
         if self.get_lr_this_step_ is not None:
             # $args, **kwargs contains inputs to the pytorch model
-            lr_this_step = self.get_lr_this_step_(self.global_step_ + 1)
+            lr_this_step = self.get_lr_this_step_(self.global_step_)
             learning_rate = torch.tensor([lr_this_step])
         if self.loss_scaler_ is not None and self.use_mixed_precision:
             loss_scale = torch.tensor([self.loss_scaler_.loss_scale_])
