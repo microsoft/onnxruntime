@@ -1311,7 +1311,7 @@ Status ApplyPipelinePartitionToMainGraph(
 
   // Check to see if there are any initializers that is being shared between different partitions. If there
   // is, keep the initializer in the first seen partition and have it pass through by send/recv to the others.
-  //ORT_RETURN_IF_ERROR(HandleSharedInitializer(graph, send_nodes, recv_nodes));
+  ORT_RETURN_IF_ERROR(HandleSharedInitializer(graph, send_nodes, recv_nodes));
 
   // Now remove the partitions that are not tie to the current pipeline stage and generate the sub-graph.
   if (pipeline_stage_id < split_count) {
