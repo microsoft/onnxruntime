@@ -102,30 +102,13 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithGlobalThreadPools, OrtLoggingLevel def
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CreateCustomEnv,
-                    OrtLoggingFunction logging_function,
-                    _In_opt_ void* logger_param,
-                    OrtLoggingLevel default_warning_level,
-                    _In_ const char* logid,
-                    _In_ const struct OrtThreadingOptions* tp_options,
+ORT_API_STATUS_IMPL(OrtApis::CreateCustomEnv, OrtLoggingFunction logging_function, _In_opt_ void* logger_param,
+                    OrtLoggingLevel default_logging_level, _In_ const char* logid, _In_ const struct OrtThreadingOptions* tp_options,
                     _Outptr_ OrtEnv** out) {
   API_IMPL_BEGIN
-  OrtEnv::LoggingManagerConstructionInfo lm_info{logging_function, logger_param, default_warning_level, logid};
-  // OrtEnv::LoggingManagerConstructionInfo* lm_info;
-  // if (!logger_param) {
-  //   OrtEnv::LoggingManagerConstructionInfo log_manager{logging_function, logger_param, default_warning_level, logid};
-  //   lm_info = &log_manager;
-  // } else {
-  //   OrtEnv::LoggingManagerConstructionInfo log_manager{nullptr, nullptr, default_warning_level, logid};
-  //   lm_info = &log_manager;
-  // }
+  OrtEnv::LoggingManagerConstructionInfo lm_info{logging_function, logger_param, default_logging_level, logid};
   Status status;
   *out = OrtEnv::GetInstance(lm_info, status, tp_options);
-  // if (!tp_options) {
-  //   *out = OrtEnv::GetInstance(*lm_info, status, tp_options);
-  // } else {
-  //   *out = OrtEnv::GetInstance(*lm_info, status);
-  // }
   return ToOrtStatus(status);
   API_IMPL_END
 }
@@ -666,7 +649,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetBoundOutputNames, _In_ const OrtIoBinding* bindi
 }
 
 ORT_API_STATUS_IMPL(OrtApis::GetBoundOutputValues, _In_ const OrtIoBinding* binding_ptr, _In_ OrtAllocator* allocator,
-                   _Out_writes_all_(output_count) OrtValue*** output, _Out_ size_t* output_count) {
+                    _Out_writes_all_(output_count) OrtValue*** output, _Out_ size_t* output_count) {
   API_IMPL_BEGIN
   const auto& outputs = binding_ptr->binding_->GetOutputs();
   if (outputs.empty()) {
@@ -678,15 +661,15 @@ ORT_API_STATUS_IMPL(OrtApis::GetBoundOutputValues, _In_ const OrtIoBinding* bind
   // Used to destroy and de-allocate on exception
   size_t created = 0;
   IAllocatorUniquePtr<OrtValue*> ortvalues_alloc(reinterpret_cast<OrtValue**>(allocator->Alloc(allocator, outputs.size() * sizeof(OrtValue*))),
-                                                [&created, allocator](OrtValue** buffer) { 
-                                                 if (buffer) {
-                                                    while (created > 0) {
-                                                     auto p = buffer + --created;
-                                                      delete (*p);
-                                                    }
-                                                    allocator->Free(allocator, buffer);
-                                                  }
-                                                });
+                                                 [&created, allocator](OrtValue** buffer) {
+                                                   if (buffer) {
+                                                     while (created > 0) {
+                                                       auto p = buffer + --created;
+                                                       delete (*p);
+                                                     }
+                                                     allocator->Free(allocator, buffer);
+                                                   }
+                                                 });
 
   if (!ortvalues_alloc) {
     return OrtApis::CreateStatus(ORT_FAIL, "Output buffer allocation failed");
@@ -706,7 +689,6 @@ ORT_API_STATUS_IMPL(OrtApis::GetBoundOutputValues, _In_ const OrtIoBinding* bind
   return nullptr;
   API_IMPL_END
 }
-
 
 ORT_API(void, OrtApis::ClearBoundInputs, _Inout_ OrtIoBinding* binding_ptr) {
   binding_ptr->binding_->ClearInputs();
@@ -827,7 +809,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetStringTensorElement, _In_ const OrtValue* value,
 
   size_t ret = input[index].size();
   if (s_len < ret) {
-    return OrtApis::CreateStatus(ORT_FAIL,"buffer size is too small for string");
+    return OrtApis::CreateStatus(ORT_FAIL, "buffer size is too small for string");
   }
 
   memcpy(s, input[index].data(), input[index].size());
@@ -1659,7 +1641,7 @@ ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char** ptr,
 }
 
 ORT_API_STATUS_IMPL(OrtApis::TensorAt, _Inout_ OrtValue* value, size_t* location_values, size_t location_values_count,
-                   _Outptr_ void** out) {
+                    _Outptr_ void** out) {
   TENSOR_READWRITE_API_BEGIN
   //TODO: test if it's a string tensor
   if (location_values_count != tensor->Shape().NumDimensions())
@@ -1674,11 +1656,11 @@ ORT_API_STATUS_IMPL(OrtApis::TensorAt, _Inout_ OrtValue* value, size_t* location
   size_t offset = 0;
   for (size_t i = 1; i <= tensor->Shape().NumDimensions(); i++) {
     size_t sum = 1;
-    for (size_t j = i+1; j <= tensor->Shape().NumDimensions(); j++) sum *= (size_t)tensor->Shape()[j-1];
-    offset += location[i-1] * sum;
+    for (size_t j = i + 1; j <= tensor->Shape().NumDimensions(); j++) sum *= (size_t)tensor->Shape()[j - 1];
+    offset += location[i - 1] * sum;
   }
-  auto data = ((char *)tensor->MutableDataRaw()) + (tensor->DataType()->Size() * offset);
-  *out = (void *)data;
+  auto data = ((char*)tensor->MutableDataRaw()) + (tensor->DataType()->Size() * offset);
+  *out = (void*)data;
   return nullptr;
   API_IMPL_END
 }

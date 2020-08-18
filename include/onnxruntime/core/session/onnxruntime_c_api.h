@@ -989,7 +989,8 @@ struct OrtApi {
   * Use this in conjunction with DisablePerSessionThreads API or else the session will use
   * its own thread pools.
   */
-  ORT_API2_STATUS(CreateCustomEnv, OrtLoggingFunction logging_function, _In_opt_ void* logger_param, OrtLoggingLevel default_logging_level, _In_ const char* logid, _In_ const OrtThreadingOptions* t_options, _Outptr_ OrtEnv** out);
+  ORT_API2_STATUS(CreateCustomEnv, OrtLoggingFunction logging_function, _In_opt_ void* logger_param, OrtLoggingLevel default_logging_level,
+                  _In_ const char* logid, _In_ const struct OrtThreadingOptions* tp_options, _Outptr_ OrtEnv** out);
 };
 
 /*
