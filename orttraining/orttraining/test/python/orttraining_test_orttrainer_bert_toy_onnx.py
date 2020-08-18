@@ -590,7 +590,7 @@ def testToyBERTModelMixedPrecisionLossScalerLegacyExperimental(loss_scaler, lega
     (4),
     (7)
 ])
-def testToyBERTModelGradientAccumulationLegacyExperimental(gradient_accumulation_steps):
+def testToyBERTModelGradientAccumulation(gradient_accumulation_steps):
     total_steps = 10
     device = "cuda"
     seed = 1
