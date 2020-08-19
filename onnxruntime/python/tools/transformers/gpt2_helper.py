@@ -66,8 +66,8 @@ class MyGPT2LMHeadModel_NoPadding(GPT2LMHeadModel):
 # Maps model class name to a tuple of model class, name of first output and use padding or not
 MODEL_CLASSES = {
     'GPT2LMHeadModel': (MyGPT2LMHeadModel, 'logits', True),
-    'GPT2Model': (MyGPT2Model, 'last_state', True),
     'GPT2LMHeadModel_NoPadding': (MyGPT2LMHeadModel_NoPadding, 'logits', False),
+    'GPT2Model': (MyGPT2Model, 'last_state', True),
 }
 
 

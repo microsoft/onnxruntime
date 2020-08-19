@@ -23,7 +23,7 @@ import torch
 import numpy
 import json
 from transformers import AutoConfig
-from gpt2_helper import Gpt2Helper, MODEL_CLASSES, DEFAULT_TOLERANCE
+from gpt2_helper import Gpt2Helper, MODEL_CLASSES, DEFAULT_TOLERANCE, PRETRAINED_GPT2_MODELS
 from gpt2_tester import Gpt2Tester
 from quantize_helper import QuantizeHelper
 from benchmark_helper import create_onnxruntime_session, setup_logger, prepare_environment, Precision
@@ -38,7 +38,7 @@ def parse_arguments():
                         '--model_name_or_path',
                         required=True,
                         type=str,
-                        help='Model path, or pretrained model name in the list: ' + ', '.join(['gpt2', 'distilgpt2']))
+                        help='Model path, or pretrained model name in the list: ' + ', '.join(PRETRAINED_GPT2_MODELS))
 
     parser.add_argument('--model_class',
                         required=False,
