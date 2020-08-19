@@ -2423,13 +2423,13 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsUseSameAllocator) {
   // create sessions to share the allocator
 
   SessionOptions so1;
-  so1.use_shared_allocator = true;
+  AddSessionConfigEntryImpl(so1, ORT_SESSION_OPTIONS_CONFIG_USE_ENV_ALLOCATORS, "1");
   InferenceSessionTestSharingAllocator sess1(so1, *env);
   ASSERT_STATUS_OK(sess1.Load(MODEL_URI));
   ASSERT_STATUS_OK(sess1.Initialize());
 
   SessionOptions so2;
-  so2.use_shared_allocator = true;
+  AddSessionConfigEntryImpl(so2, ORT_SESSION_OPTIONS_CONFIG_USE_ENV_ALLOCATORS, "1");
   InferenceSessionTestSharingAllocator sess2(so2, *env);
   ASSERT_STATUS_OK(sess2.Load(MODEL_URI));
   ASSERT_STATUS_OK(sess2.Initialize());
@@ -2466,13 +2466,13 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsDontUseSameAllocator)
   // create sessions to share the allocator
 
   SessionOptions so1;
-  so1.use_shared_allocator = false;
+  AddSessionConfigEntryImpl(so1, ORT_SESSION_OPTIONS_CONFIG_USE_ENV_ALLOCATORS, "0");
   InferenceSessionTestSharingAllocator sess1(so1, *env);
   ASSERT_STATUS_OK(sess1.Load(MODEL_URI));
   ASSERT_STATUS_OK(sess1.Initialize());
 
   SessionOptions so2;
-  so2.use_shared_allocator = true;
+  AddSessionConfigEntryImpl(so2, ORT_SESSION_OPTIONS_CONFIG_USE_ENV_ALLOCATORS, "1");
   InferenceSessionTestSharingAllocator sess2(so2, *env);
   ASSERT_STATUS_OK(sess2.Load(MODEL_URI));
   ASSERT_STATUS_OK(sess2.Initialize());

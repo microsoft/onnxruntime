@@ -236,6 +236,8 @@ jobs:
     clean: all
   variables:
   - group: Dashboard_MySQL_Secret
+  - name: GDN_CODESIGN_TARGETDIRECTORY
+    value: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
   pool: 'Win-CPU-2019'
   condition: and (succeeded(), and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master')))
   dependsOn:

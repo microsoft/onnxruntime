@@ -46,9 +46,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.Equal(0, opt.IntraOpNumThreads);
                 Assert.Equal(0, opt.InterOpNumThreads);
                 Assert.Equal(GraphOptimizationLevel.ORT_ENABLE_ALL, opt.GraphOptimizationLevel);
-                Assert.True(opt.EnablePrePacking);
 
-                // try setting options 
+                // try setting options
                 opt.ExecutionMode = ExecutionMode.ORT_PARALLEL;
                 Assert.Equal(ExecutionMode.ORT_PARALLEL, opt.ExecutionMode);
 
@@ -84,9 +83,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.Equal(GraphOptimizationLevel.ORT_ENABLE_EXTENDED, opt.GraphOptimizationLevel);
 
                 Assert.Throws<OnnxRuntimeException>(() => { opt.GraphOptimizationLevel = (GraphOptimizationLevel)10; });
-
-                opt.EnablePrePacking = false;
-                Assert.False(opt.EnablePrePacking);
 
                 opt.AppendExecutionProvider_CPU(1);
 #if USE_DNNL
@@ -2080,7 +2076,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
 #if USE_CUDA
-            using (var option = (cudaDeviceId.HasValue) ? 
+            using (var option = (cudaDeviceId.HasValue) ?
                 SessionOptions.MakeSessionOptionWithCudaProvider(cudaDeviceId.Value) :
                 new SessionOptions())
             {

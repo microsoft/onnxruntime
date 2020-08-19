@@ -23,7 +23,7 @@ Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, c
     Node& reshape = *p_reshape;
     ORT_RETURN_IF_ERROR(Recurse(reshape, modified, graph_level, logger));
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(reshape, "Reshape", {5}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(reshape, "Reshape", {5, 13}) ||
         !graph_utils::IsSupportedProvider(reshape, GetCompatibleExecutionProviders())) {
       continue;
     }
@@ -48,9 +48,9 @@ bool ReshapeFusion::Match_One_Element_Output_Subgraph_1(Graph& graph, const Node
                                                         int index, std::vector<int64_t> shape_value, bool checkOneElementOnly,
                                                         const logging::Logger& logger) {
   std::vector<graph_utils::EdgeEndToMatch> parent_path{
-      {0, index, "Unsqueeze", {1, 11}, kOnnxDomain},
-      {0, 0, "Gather", {1, 11}, kOnnxDomain},
-      {0, 0, "Shape", {1}, kOnnxDomain}};
+      {0, index, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Gather", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Shape", {1, 13}, kOnnxDomain}};
   std::vector<const Node::EdgeEnd*> edges;
   if (graph_utils::FindPath(concat, true, parent_path, edges, logger)) {
     const Node& unsqueeze = edges[0]->GetNode();
@@ -87,9 +87,9 @@ bool ReshapeFusion::Match_One_Element_Output_Subgraph_1(Graph& graph, const Node
 bool ReshapeFusion::Match_One_Element_Output_Subgraph_2(Graph& graph, const NodeArg& root_input, const Node& cur_node,
                                                         int index, const logging::Logger& logger) {
   std::vector<graph_utils::EdgeEndToMatch> parent_path{
-      {0, index, "Squeeze", {1, 11}, kOnnxDomain},
-      {0, 0, "Slice", {1, 11}, kOnnxDomain},
-      {0, 0, "Shape", {1}, kOnnxDomain}};
+      {0, index, "Squeeze", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Slice", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Shape", {1, 13}, kOnnxDomain}};
   std::vector<const Node::EdgeEnd*> edges;
   if (graph_utils::FindPath(cur_node, true, parent_path, edges, logger)) {
     const Node& slice = edges[1]->GetNode();
@@ -157,15 +157,15 @@ bool ReshapeFusion::Is_One_Element_Output_Subgraph(Graph& graph, const NodeArg& 
   }
 
   std::vector<graph_utils::EdgeEndToMatch> div_path{
-      {0, index, "Unsqueeze", {1, 11}, kOnnxDomain},
-      {0, 0, "Div", {7}, kOnnxDomain}};
+      {0, index, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Div", {7, 13}, kOnnxDomain}};
 
   std::vector<graph_utils::EdgeEndToMatch> mul_path{
-      {0, index, "Unsqueeze", {1, 11}, kOnnxDomain},
-      {0, 0, "Mul", {7}, kOnnxDomain}};
+      {0, index, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Mul", {7, 13}, kOnnxDomain}};
 
   std::vector<graph_utils::EdgeEndToMatch> unsqueeze_path{
-      {0, index, "Unsqueeze", {1, 11}, kOnnxDomain}};
+      {0, index, "Unsqueeze", {1, 11, 13}, kOnnxDomain}};
 
   std::vector<const Node::EdgeEnd*> edges;
   if (graph_utils::FindPath(concat, true, div_path, edges, logger) ||
@@ -242,7 +242,7 @@ bool ReshapeFusion::Fuse_Subgraph(Node& reshape, Graph& graph, const logging::Lo
   }
   const Node& concat = *p_concat;
 
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(concat, "Concat", {1, 4, 11})) {
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(concat, "Concat", {1, 4, 11, 13})) {
     return false;
   }
 

@@ -889,7 +889,9 @@ common::Status InferenceSession::Initialize() {
     // TODO: we could refactor the allocators to not require the call to GetAllocator but that change is much bigger
     // since we've to take into account the per-thread cuda allocators. We could also possibly absorb the per-thread
     // logic in a new allocator decorator that derives from IAllocator to keep things clean. This
-    if (session_options_.use_shared_allocator) {
+    std::string use_env_allocators = GetSessionConfigOrDefault(session_options_,
+                                                               ORT_SESSION_OPTIONS_CONFIG_USE_ENV_ALLOCATORS, "0");
+    if (use_env_allocators == "1") {
       UpdateProvidersWithSharedAllocators();
     }
 

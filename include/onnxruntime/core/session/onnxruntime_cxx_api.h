@@ -224,8 +224,7 @@ struct SessionOptions : Base<OrtSessionOptions> {
 
   SessionOptions& DisablePerSessionThreads();
 
-  SessionOptions& EnablePrePacking();
-  SessionOptions& DisablePrePacking();
+  SessionOptions& AddConfigEntry(const char* config_key, const char* config_value);
 };
 
 struct ModelMetadata : Base<OrtModelMetadata> {
