@@ -1120,7 +1120,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           "Rpbdoc(Specify values of named dimensions within model inputs.)pbdoc")
       .def(
           "add_session_config_entry",
-          [](SessionOptions* options, const char* config_key, const char* config_value) -> void {
+          [](PySessionOptions* options, const char* config_key, const char* config_value) -> void {
             const Status status = AddSessionConfigEntryImpl(*options, config_key, config_value);
             if (!status.IsOK())
               throw std::runtime_error(status.ErrorMessage());
@@ -1128,7 +1128,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           "Rpbdoc(Set a single session configuration entry as a pair of strings.)pbdoc")
       .def(
           "get_session_config_entry",
-          [](SessionOptions* options, const char* config_key) -> std::string {
+          [](PySessionOptions* options, const char* config_key) -> std::string {
             const std::string key(config_key);
             if (!HasSessionConfigEntry(*options, key))
               throw std::runtime_error("SessionOptions does not have configuration with key: " + key);
