@@ -60,7 +60,8 @@ Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
                                                         reinterpret_cast<CudaT*>(output_data),
                                                         static_cast<int>(N),
                                                         static_cast<int>(output_stride),
-                                                        static_cast<int>(num_batches)));
+                                                        static_cast<int>(num_batches),
+                                                        static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->GetDeviceProp()));
 
   return Status::OK();
 }

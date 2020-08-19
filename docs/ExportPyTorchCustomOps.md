@@ -34,11 +34,11 @@ If you are adding a symbolic function for a new custom op, add the function to t
 
 ### 2. Extending ONNX Runtime with Custom Ops
 The next step is to add op schema and kernel implementation in ONNX Runtime.
-THe exmaple Inverse custom op is added in:
+Consider the Inverse custom op as an example added in:
 https://github.com/microsoft/onnxruntime/pull/3485
 
 
-Custom op schema and shape inference function should be added under ```onnxruntime/core/graph/contrib_ops/contrib_defs.cc ```
+Custom op schema and shape inference function should be added in ```onnxruntime/core/graph/contrib_ops/contrib_defs.cc ```
 using ```ONNX_CONTRIB_OPERATOR_SCHEMA```.
 
 ```c++
@@ -47,6 +47,17 @@ ONNX_CONTRIB_OPERATOR_SCHEMA(Inverse)
     .SinceVersion(1) // Same version used at op (symbolic) registration
     ...
 ```
+
+To comply with ONNX guideline for new operators, a new operator should have complete reference implementation tests and 
+shape inference tests. 
+
+Reference implementation python tests should be added in:
+``onnxruntime/test/python/contrib_ops``
+E.g.: ``onnxruntime/test/python/contrib_ops/onnx_test_trilu.py``
+
+Shape inference C++ tests should be added in:
+``onnxruntime/test/contrib_ops``
+E.g.: ``onnxruntime/test/contrib_ops/trilu_shape_inference_test.cc``
 
 The operator kernel should be implemented using ```Compute``` function
 under contrib namespace in ```onnxruntime/contrib_ops/cpu/<operator>.cc``` 
@@ -90,7 +101,7 @@ Now you should be able to build and install ONNX Runtime to start using your cus
 
 ##### ONNX Runtime Tests
 
-ONNX Runtime custom op tests should be added in: ```onnxruntime/test/contrib_ops/<operator>_test.cc ```
+ONNX Runtime custom op kernel tests should be added in: ```onnxruntime/test/contrib_ops/<operator>_test.cc ```
 
 ```c++
 namespace onnxruntime {

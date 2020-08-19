@@ -1,0 +1,33 @@
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+import "Windows.Foundation.idl";
+import "dualapipartitionattribute.idl";
+import "Windows.AI.MachineLearning.idl";
+
+#include <sdkddkver.h>
+
+#ifdef BUILD_INBOX
+#define ROOT_NS Windows
+#define INBOX_ONLY(x) x
+#define OTB_ONLY(x)
+#else
+#define INBOX_ONLY(x)
+#define OTB_ONLY(x) x
+#endif
+
+#ifndef ROOT_NS
+#define ROOT_NS Microsoft
+#endif
+
+namespace ROOT_NS.AI.MachineLearning.Experimental {
+
+  [threading(both)]
+  [marshaling_behavior(agile)]
+  [dualapipartition(1)]
+  runtimeclass Dummy {
+    Dummy();
+
+    void Test();
+  }
+}  // namespace Microsoft.AI.MachineLearning.Experimental

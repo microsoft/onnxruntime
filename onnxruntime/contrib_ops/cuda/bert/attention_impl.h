@@ -16,6 +16,7 @@ size_t GetAttentionWorkspaceSize(
     int past_sequence_length);
 
 bool LaunchAttentionKernel(
+    const cudaDeviceProp& prop,                   // Device Properties
     const void* input,                            // Input tensor
     const int* mask_index,                        // Attention mask raw data or index (end position of each sequence, or end positions and start positions). NULL means no mask.
     const std::vector<int64_t>* mask_index_dims,  // Mask index shape

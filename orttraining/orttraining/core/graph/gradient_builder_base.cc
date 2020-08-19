@@ -91,6 +91,8 @@ Status GetShape(const ArgDef& arg_def, std::vector<Dimension>& shape) {
                     "During GetShape, ", arg_def.name, "'s shape is null.");
   const auto& dims = arg_def.type_proto->tensor_type().shape().dim();
   for (auto dim = dims.begin(); dim < dims.end(); dim++) {
+    ORT_RETURN_IF_NOT(dim->dim_value() > 0 || dim->has_dim_param(),
+                      "During GetShape, ", arg_def.name, "'s dim value is invalid ", dim->dim_value());
     shape.push_back(*dim);
   }
   return Status::OK();

@@ -5,9 +5,10 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include "onnxruntime_session_options_config_keys.h"
 
 // This value is used in structures passed to ORT so that a newer version of ORT will still work with them
-#define ORT_API_VERSION 4
+#define ORT_API_VERSION 5
 
 #ifdef __cplusplus
 extern "C" {
@@ -69,11 +70,21 @@ extern "C" {
 
 // Any pointer marked with _In_ or _Out_, cannot be NULL.
 
-#ifdef __cplusplus
 // Windows users should use unicode paths when possible to bypass the MAX_PATH limitation
 // Every pointer marked with _In_ or _Out_, cannot be NULL. Caller should ensure that.
 // for ReleaseXXX(...) functions, they can accept NULL pointer.
+
+#ifdef __cplusplus
+// For any compiler with C++11 support, MSVC 2015 and greater, or Clang version supporting noexcept.
+// Such complex condition is needed because compilers set __cplusplus value differently.
+#ifndef __has_feature
+#define __has_feature(x) 0
+#endif
+#if ((__cplusplus >= 201103L) || (_MSC_VER >= 1900) || (defined(__has_feature) && __has_feature(cxx_noexcept)))
 #define NO_EXCEPTION noexcept
+#else
+#define NO_EXCEPTION throw()
+#endif
 #else
 #define NO_EXCEPTION
 #endif
@@ -141,6 +152,7 @@ typedef enum OrtErrorCode {
 ORT_RUNTIME_CLASS(Env);
 ORT_RUNTIME_CLASS(Status);  // nullptr for Status* indicates success
 ORT_RUNTIME_CLASS(MemoryInfo);
+ORT_RUNTIME_CLASS(IoBinding);
 ORT_RUNTIME_CLASS(Session);  //Don't call OrtReleaseSession from Dllmain (because session owns a thread pool)
 ORT_RUNTIME_CLASS(Value);
 ORT_RUNTIME_CLASS(RunOptions);
@@ -587,7 +599,7 @@ struct OrtApi {
    * std::map<int64_t, int64_t>
    * std::map<int64_t, float>
    * std::map<int64_t, double>
-   * 
+   *
    * Sequence types
    * ==============
    * std::vector<std::string>
@@ -750,8 +762,8 @@ struct OrtApi {
 
   /**
    * \param out is set to a null terminated string allocated using 'allocator'. The caller is responsible for freeing it.
-   * Profiling is turned ON automatically if enabled for the particular session by invoking EnableProfiling() 
-   * on the SessionOptions instance used to create the session.  
+   * Profiling is turned ON automatically if enabled for the particular session by invoking EnableProfiling()
+   * on the SessionOptions instance used to create the session.
    */
   ORT_API2_STATUS(SessionEndProfiling, _In_ OrtSession* sess, _Inout_ OrtAllocator* allocator, _Outptr_ char** out);
 
@@ -804,7 +816,7 @@ struct OrtApi {
 
   /**
    * \param num_keys contains the number of keys in the custom metadata map
-   * \param keys is an array of null terminated strings (array count = num_keys) allocated using 'allocator'. 
+   * \param keys is an array of null terminated strings (array count = num_keys) allocated using 'allocator'.
    * The caller is responsible for freeing each string and the pointer array.
    * 'keys' will be a nullptr if custom metadata map is empty.
    */
@@ -826,25 +838,26 @@ struct OrtApi {
    * The caller is responsible for freeing each char * and the pointer
    * array by calling ReleaseAvailableProviders().
    */
-  ORT_API2_STATUS(GetAvailableProviders, _Outptr_ char ***out_ptr,
-                  _In_ int *provider_length);
+  ORT_API2_STATUS(GetAvailableProviders, _Outptr_ char*** out_ptr,
+                  _In_ int* provider_length);
 
   /**
    * \param ptr is the pointer to an array of available providers you
    * get after calling GetAvailableProviders().
    * \param providers_length is the number of available providers.
    */
-  ORT_API2_STATUS(ReleaseAvailableProviders, _In_ char **ptr,
+  ORT_API2_STATUS(ReleaseAvailableProviders, _In_ char** ptr,
                   _In_ int providers_length);
 
   /**
-     * \param value A tensor created from OrtCreateTensor... function.
-     * \param index index of string tensor element, length of element at index will be returned.
+     * \param value - A tensor created from OrtCreateTensor... function.
+     * \param index - index of string tensor element, length of element at index will be returned.
+     * \param out - number of UTF-8 bytes that the string contains
      */
   ORT_API2_STATUS(GetStringTensorElementLength, _In_ const OrtValue* value, size_t index, _Out_ size_t* out);
 
   /**
-     * \param s string element contents. The string is NOT null-terminated.
+     * \param s string element contents in UTF-8 encoding. The string is NOT null-terminated.
      * \param value A tensor created from OrtCreateTensor... function.
      * \param s_len element length, get it from OrtGetStringTensorElementLength.
      * \param index offset of element of tensor to return.
@@ -852,11 +865,131 @@ struct OrtApi {
   ORT_API2_STATUS(GetStringTensorElement, _In_ const OrtValue* value, size_t s_len, size_t index, _Out_writes_bytes_all_(s_len) void* s);
 
   /**
-     * \param value A tensor created from OrtCreateTensor... function.
-     * \param s A null terminated string.
-     * \param index index of string tensor element to fill 
+     * \param value - A tensor created from OrtCreateTensor... function.
+     * \param s - A null terminated UTF-8 encoded string.
+     * \param index - index of string tensor element to fill
      */
   ORT_API2_STATUS(FillStringTensorElement, _Inout_ OrtValue* value, _In_ const char* s, size_t index);
+
+  /**
+     * Set a single session configuration entry as a pair of strings
+     * If a configuration with same key exists, this will overwrite the configuration with the given config_value
+     * \param config_key    A null terminated string representation of the config key
+     * \param config_value  A null terminated string representation of the config value
+     * The config_key and the format of config_value are defined in onnxruntime_session_options_config_keys.h
+     */
+  ORT_API2_STATUS(AddSessionConfigEntry, _Inout_ OrtSessionOptions* options,
+                  _In_z_ const char* config_key, _In_z_ const char* config_value);
+
+  /**
+   * \param sess valid OrtSession instance
+   * \param mem_info - valid OrtMemoryInfo instance
+   * \param - out a ptr to a new instance of OrtAllocator according to the spec within mem_info
+   *         if successful
+   * \return OrtStatus or nullptr if successful
+   */
+  ORT_API2_STATUS(CreateAllocator, _In_ const OrtSession* sess, _In_ const OrtMemoryInfo* mem_info,
+                  _Outptr_ OrtAllocator** out);
+
+  // Release instance of OrtAllocator obtained from CreateAllocator API
+  ORT_CLASS_RELEASE(Allocator);
+
+  ORT_API2_STATUS(RunWithBinding, _Inout_ OrtSession* sess, _In_opt_ const OrtRunOptions* run_options, _In_ const OrtIoBinding* binding_ptr);
+
+  // Creates an IoBinding instance that allows one to bind pre-allocated OrtValues
+  // to input names. Thus if you want to use a raw on device buffer as input or output
+  // you can avoid extra copy during runtime.
+  ORT_API2_STATUS(CreateIoBinding, _Inout_ OrtSession* sess, _Outptr_ OrtIoBinding** out);
+
+  // Release instance or OrtIoBinding obtained from CreateIoBinding API
+  ORT_CLASS_RELEASE(IoBinding);
+
+  /**
+   * The function will bind the OrtValue to a specified input name.
+   * The OrtValue must be a Tensor. ORT would use that value in place of input for the specified name.
+   * \param binding_ptr - an instance of OrtIoBinding created by CreateIoBinding()
+   * \param name - name for the model input
+   * \param  val_ptr - OrtValue of Tensor type.
+   * \return OrtStatus instance on error which the caller is responsible to free or nullptr on success
+   */
+  ORT_API2_STATUS(BindInput, _Inout_ OrtIoBinding* binding_ptr, _In_ const char* name, _In_ const OrtValue* val_ptr);
+
+  /**
+   * The function will bind the OrtValue to the specified output name.
+   * The OrtValue must be a Tensor. ORT would use that value in place of output for the specified name.
+   *
+   * \param binding_ptr - an instance of OrtIoBinding created by CreateIoBinding()
+   * \param name - name for the model output
+   * \param  val_ptr - OrtValue of Tensor type.
+   * \return OrtStatus instance on error which the caller is responsible to free or nullptr on success
+   */
+  ORT_API2_STATUS(BindOutput, _Inout_ OrtIoBinding* binding_ptr, _In_ const char* name, _In_ const OrtValue* val_ptr);
+
+  /**
+   * The function will bind the OrtValue to a device which specification is contained within OrtMemoryInfo
+   * You can either create an instance of OrtMemoryInfo with a device id or obtain one from the allocator that you are created/using
+   * This is useful when one or more outputs have dynamic shapes and, it is hard to pre-allocated and bind a chunk of
+   * memory within OrtValue ahead of time.
+   *
+   * \param binding_ptr - an instance of OrtIoBinding created by CreateIoBinding()
+   * \param name - name for the model output
+   * \param  mem_info_ptr - OrtMemoryInfo
+   * \return OrtStatus instance on error which the caller is responsible to free or nullptr on success
+   */
+  ORT_API2_STATUS(BindOutputToDevice, _Inout_ OrtIoBinding* binding_ptr, _In_ const char* name, _In_ const OrtMemoryInfo* val_ptr);
+
+  /**
+    * The function returns the names of the outputs in the order they were bound. This is useful after running the model
+    * with bound outputs because the returned names are in order in which output OrtValues are returned. This API is optional
+    * to use. If you knew the order of outputs and its names you used for binding you would not need to use this API.
+    *
+    * \param  binding_ptr - a ptr to an instance of OrtIoBinding created obtained from CreateIoBinding()
+    * \param  allocator - a ptr to an instance of OrtAllocator obtained with CreateAllocator() or GetAllocatorWithDefaultOptions()
+    *                      the specified allocator will be used to allocate continuous buffers for output strings and lengths.
+    * \param buffer - pointer to a continuous buffer of non-zero terminated UTF-8 encoded strings. The number of strings stored is returned count parameter.
+    *                 this buffer will be allocated with the specified allocator and must be freed after it is no longer needed.
+    * \param lengths - a pointer to a continuous buffer of size_t lengths of strings returned in the buffer. The number of items is returned
+    *                  in the count. This buffer is allocated with the specified allocator and must be freed after it is no longer needed.
+    * \para count - is the number of strings returned. If the instance of OrtIoBiding has no bound outputs, zero is returned,
+    *              no memory allocation is performed and buffer and lengths are nullptr on return.
+    */
+  ORT_API2_STATUS(GetBoundOutputNames, _In_ const OrtIoBinding* binding_ptr, _In_ OrtAllocator* allocator,
+                  _Out_ char** buffer, _Out_writes_all_(count) size_t** lengths, _Out_ size_t* count);
+
+  /**
+    * The function returns an array of pointers to individually allocated OrtValues that contain results of a model execution with RunWithBinding()
+    * The array contains the same number of OrtValues and they are in the same order as they were bound with BindOutput()
+    * or BindOutputToDevice().
+    * The returned OrtValues must be individually released after they are no longer needed.
+    * The array is allocated using the specified instance of the allocator and must be freed using the same allocator after
+    * all the OrtValues contained therein are individually released.
+    *
+    * \param binding_ptr - instance of OrtIoBidning
+    * \param allocator - instance of allocator to allocate output array
+    * \param output - pointer to the allocated buffer. Returns nullptr if no outputs.
+    * \param output_count - pointer to the number of OrtValues returned. Zero if no outputs.
+    */
+  ORT_API2_STATUS(GetBoundOutputValues, _In_ const OrtIoBinding* binding_ptr, _In_ OrtAllocator* allocator,
+                  _Out_writes_all_(output_count) OrtValue*** output, _Out_ size_t* output_count);
+
+  /** Clears any previously specified bindings for inputs/outputs
+   */
+  void(ORT_API_CALL* ClearBoundInputs)(_Inout_ OrtIoBinding* binding_ptr) NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
+  void(ORT_API_CALL* ClearBoundOutputs)(_Inout_ OrtIoBinding* binding_ptr) NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
+
+  /**
+   * Provides element-level access into a tensor.
+   * \param location_values a pointer to an array of index values that specify an element's location in the tensor data blob
+   * \param location_values_count length of location_values
+   * \param out a pointer to the element specified by location_values
+   * e.g.
+   * Given a tensor with overall shape [3,224,224], an element at
+   * location [2,150,128] can be accessed directly.
+   *
+   * This function only works for numeric tensors.
+   * This is a no-copy method whose pointer is only valid until the backing OrtValue is free'd.
+   */
+  ORT_API2_STATUS(TensorAt, _Inout_ OrtValue* value, size_t* location_values, size_t location_values_count, _Outptr_ void** out);
 };
 
 /*
