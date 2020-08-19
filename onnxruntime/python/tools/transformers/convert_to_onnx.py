@@ -123,8 +123,6 @@ def main():
 
     model_class = MODEL_CLASSES[args.model_class][0]
     config = AutoConfig.from_pretrained(args.model_name_or_path, cache_dir=cache_dir)
-    if hasattr(config, 'return_tuple'):
-        config.return_tuple = True
     model = model_class.from_pretrained(args.model_name_or_path, config=config, cache_dir=cache_dir)
 
     device = torch.device("cuda:0" if args.use_gpu else "cpu")
@@ -147,7 +145,8 @@ def main():
                            raw_onnx_model,
                            args.verbose,
                            use_external_data_format,
-                           use_padding=use_padding)
+                           has_position_ids=use_padding,
+                           has_attention_mask=use_padding)
 
     if args.optimize_onnx or args.precision != Precision.FLOAT32:
         logger.info(f"Optimizing model to {output_path}")
@@ -169,7 +168,8 @@ def main():
                                rtol=args.tolerance,
                                atol=args.tolerance,
                                model_class=args.model_class,
-                               use_padding=use_padding)
+                               has_position_ids=use_padding,
+                               has_attention_mask=use_padding)
 
     if args.input_test_file:
         test_inputs = []
@@ -216,7 +216,8 @@ def main():
                                    max_steps=24,
                                    max_inputs=0,
                                    verbose=args.verbose,
-                                   use_padding=use_padding)
+                                   has_position_ids=use_padding,
+                                   has_attention_mask=use_padding)
 
     logger.info(f"Done. Output model: {output_path}")
 

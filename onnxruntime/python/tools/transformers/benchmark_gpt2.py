@@ -144,7 +144,13 @@ def main():
 
     onnx_model_path = onnx_model_paths["raw"]
     use_padding = MODEL_CLASSES[args.model_class][2]
-    Gpt2Helper.export_onnx(model, device, onnx_model_path, args.verbose, use_external_data_format, use_padding)
+    Gpt2Helper.export_onnx(model,
+                           device,
+                           onnx_model_path,
+                           args.verbose,
+                           use_external_data_format,
+                           has_position_ids=use_padding,
+                           has_attention_mask=use_padding)
 
     if args.optimize_onnx or args.precision != Precision.FLOAT32:
         onnx_model_path = onnx_model_paths[str(args.precision)]
@@ -158,7 +164,7 @@ def main():
             logger.info("finished quantizing model")
 
     if args.torchscript:
-        model = Gpt2Helper.torchscript(model, config, device)
+        model = Gpt2Helper.torchscript(model, config, device, has_position_ids, has_attention_mask)
 
     session = create_onnxruntime_session(onnx_model_path,
                                          args.use_gpu,
@@ -188,10 +194,17 @@ def main():
         for batch_size in args.batch_sizes:
             for past_sequence_length in args.past_sequence_lengths:
                 logger.debug(f"Running test for batch_size={batch_size} past_sequence_length={past_sequence_length}...")
-                dummy_inputs = Gpt2Helper.get_dummy_inputs(batch_size, past_sequence_length, sequence_length,
-                                                           config.num_attention_heads, config.hidden_size,
-                                                           config.n_layer, config.vocab_size, device,
-                                                           args.precision == Precision.FLOAT16, use_padding)
+                dummy_inputs = Gpt2Helper.get_dummy_inputs(batch_size,
+                                                           past_sequence_length,
+                                                           sequence_length,
+                                                           config.num_attention_heads,
+                                                           config.hidden_size,
+                                                           config.n_layer,
+                                                           config.vocab_size,
+                                                           device,
+                                                           float16=(args.precision == Precision.FLOAT16),
+                                                           has_position_ids=use_padding,
+                                                           has_attention_mask=use_padding)
                 output_shapes = Gpt2Helper.get_output_shapes(batch_size, past_sequence_length, sequence_length, config,
                                                              args.model_class)
 
