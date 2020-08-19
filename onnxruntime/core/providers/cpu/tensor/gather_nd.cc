@@ -26,8 +26,9 @@ ONNX_OPERATOR_KERNEL_EX(GatherND, kMSDomain, 1, kCpuExecutionProvider,
 
 #endif
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     GatherND,
+    11,
     11,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
@@ -35,6 +36,7 @@ ONNX_CPU_OPERATOR_KERNEL(
         .TypeConstraint("Tind", DataTypeImpl::GetTensorType<int64_t>()),
     GatherND);
 
+// opset 12 added batch_dims attribute
 ONNX_CPU_OPERATOR_KERNEL(
     GatherND,
     12,
