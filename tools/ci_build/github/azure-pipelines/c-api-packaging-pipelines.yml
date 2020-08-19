@@ -7,18 +7,27 @@ jobs:
     vmImage: 'ubuntu-latest'
   steps:
     - template: templates/set-version-number-variables-step.yml
+    - task: Docker@2
+      displayName: login
+      inputs:
+        containerRegistry: onnxruntimeregistry
+        command: login
+        addPipelineData: false
     - task: CmdLine@2
       inputs:
         script: |
-          docker build --pull -t onnxruntime-centos6 --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=3.6 -f Dockerfile.centos6 .
-        workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
-    - task: CmdLine@2
-      inputs:
-        script: |
+          mkdir -p $HOME/.onnx
           docker run --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro \
-          -e NIGHTLY_BUILD onnxruntime-centos6 /usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib \
-          --use_openmp --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest
+          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecpubuild:chn /opt/python/cp37-cp37m/bin/python3 \
+          /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --enable_lto \
+          --skip_submodule_sync  --parallel --build_shared_lib --use_openmp
         workingDirectory: $(Build.SourcesDirectory)
+    - task: Docker@2
+      displayName: logout
+      inputs:
+        containerRegistry: onnxruntimeregistry
+        command: logout
+        addPipelineData: false
     - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
           buildConfig: 'Release'
