@@ -1034,13 +1034,9 @@ static void Scenario23NominalPixelRange() {
 
   // The following models have single op "add", with different metadata
   std::vector<std::wstring> modelPaths = {
-    // Normalized_0_1 and tensor output
-    modulePath + L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_1_tensor.onnx",
-    // Normalized_1_1 and tensor output
-    modulePath + L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_1_1_tensor.onnx",
     // Normalized_0_1 and image output
     modulePath + L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_1.onnx",
-    // Normalized_0_1 and image output
+    // Normalized_1_1 and image output
     modulePath + L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_1_1.onnx"
   };
 
@@ -1076,20 +1072,12 @@ static void Scenario23NominalPixelRange() {
     auto vector = outputValue.GetAsVectorView();
     for (unsigned int i = 0; i < vector.Size(); ++i) {
       float val = vector.GetAt(i);
-      // Normalized_0_1 and tensor output -> outputs should be in range of [0, 2]
-      if (model_i == 0 && !(val <= 2 && val >= 0)) {
-        outputVerified = false;
-      }
-      // Normalized_1_1 and tensor output -> outputs should be in range of [-2, 2]
-      if (model_i == 1 && !(val <= 2 && val >= -2)) {
-        outputVerified = false;
-      }
       // Normalized_0_1 and image output -> outputs should be in range of [0, 255]
-      if (model_i == 2 && !(val <= 255 && val >= 0)) {
+      if (model_i == 0 && !(val <= 255 && val >= 0)) {
         outputVerified = false;
       }
       // Normalized_1_1 and image output -> outputs should be in range of [0, 255]
-      if (model_i == 3 && !(val <= 255 && val >= 0)) {
+      if (model_i == 1 && !(val <= 255 && val >= 0)) {
         outputVerified = false;
       }
     }
