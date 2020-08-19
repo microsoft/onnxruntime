@@ -500,14 +500,17 @@ class PlannerImpl {
     for (auto& node : graph_viewer_.Nodes()) {
       ORT_RETURN_IF_ERROR(onnxruntime::Node::ForEachWithIndex(
           node.InputDefs(), [this, &locations, &node, &weights](const onnxruntime::NodeArg& def, size_t index) {
-            try {
+            ORT_TRY {
               auto& def_name = def.Name();
               if (!weights.count(def_name)) return Status::OK();
               auto wt_index = Index(def_name);
               locations[wt_index].emplace_back(GetLocationForNodeInput(index, node));
-            } catch (std::exception& ex) {
+            }
+#ifndef ORT_NO_EXCEPTIONS
+            catch (std::exception& ex) {
               return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
             }
+#endif
             return Status::OK();
           }));
     }

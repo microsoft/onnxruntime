@@ -79,18 +79,22 @@ Status BFCArena::Extend(size_t rounded_bytes) {
 
   auto safe_alloc = [this](size_t alloc_bytes) {
     void* new_mem = nullptr;
-    try {
+    ORT_TRY {
       new_mem = device_allocator_->Alloc(alloc_bytes);
-    } catch (const std::bad_alloc&) {
+    }
+#ifndef ORT_NO_EXCEPTIONS
+    catch (const std::bad_alloc&) {
       // attempted allocation can throw std::bad_alloc. we want to treat this the same as if it returned nullptr
       // so swallow the exception
-    } catch (const OnnxRuntimeException& ort_exception) {
+    }
+    catch (const OnnxRuntimeException& ort_exception) {
       // swallow if exception is our throw from a failed cudaMalloc call.
       // re-throw otherwise.
       if (std::string(ort_exception.what()).find("cudaMalloc") == std::string::npos) {
         throw;
       }
     }
+#endif
 
     return new_mem;
   };

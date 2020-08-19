@@ -262,17 +262,21 @@ void LoopDir(const std::string& dir_name, T func) {
     std::string s = oss.str();
     throw std::runtime_error(s);
   }
-  try {
+  ORT_TRY {
     struct dirent* dp;
     while ((dp = readdir(dir)) != nullptr) {
       if (!func(dp->d_name, DTToFileType(dp->d_type))) {
         break;
       }
     }
-  } catch (std::exception& ex) {
+  }
+#ifndef ORT_NO_EXCEPTIONS
+  catch (std::exception& ex) {
     closedir(dir);
     throw;
   }
+#endif
+
   closedir(dir);
 }
 #endif

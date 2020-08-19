@@ -51,11 +51,14 @@ common::Status OnnxRuntimeOpSchemaRegistry::RegisterOpSchema(ONNX_NAMESPACE::OpS
 }
 
 common::Status OnnxRuntimeOpSchemaRegistry::RegisterOpSchemaInternal(ONNX_NAMESPACE::OpSchema&& op_schema) {
-  try {
+  ORT_TRY {
     op_schema.Finalize();
-  } catch (const std::exception& e) {
+  }
+#ifndef ORT_NO_EXCEPTIONS
+  catch (const std::exception& e) {
     return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Schema error: " + std::string(e.what()));
   }
+#endif
 
   auto& op_name = op_schema.Name();
   auto& op_domain = op_schema.domain();

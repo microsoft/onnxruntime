@@ -260,15 +260,15 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
             // due to that we can still run and use those blocks (inside the arena logic) instead of one large one.
             // it's less efficient (the arena will add some overhead to coalesce individual allocations
             // back into blocks on 'free'), but better than failing completely.
-            try {
+            ORT_TRY {
               auto peak_size = mem_patterns_->patterns[i].PeakSize();
               // Planning of one memory type should only happen once.
               ORT_ENFORCE(
-                static_activation_memory_sizes_in_byte_.find(location.name) ==
-                static_activation_memory_sizes_in_byte_.end(),
-                "Memory type ",
-                location.name,
-                " should only appear once.");
+                  static_activation_memory_sizes_in_byte_.find(location.name) ==
+                      static_activation_memory_sizes_in_byte_.end(),
+                  "Memory type ",
+                  location.name,
+                  " should only appear once.");
               // static_activation_memory_in_bytes_ is max virtual memory size the planner computes.
               // Memory dynamically allocated when executing kernels is not recorded using this field.
               static_activation_memory_sizes_in_byte_[location.name] = peak_size;
@@ -279,11 +279,13 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
                 LOGS(session_state_.Logger(), INFO) << "Allocation of memory pattern buffer for "
                                                     << location.ToString() << " returned nullptr";
               }
-
-            } catch (const OnnxRuntimeException& ex) {
+            }
+#ifndef ORT_NO_EXCEPTIONS
+            catch (const OnnxRuntimeException& ex) {
               LOGS(session_state_.Logger(), INFO) << "Allocation of memory pattern buffer for "
                                                   << location.ToString() << " failed. Error:" << ex.what();
             }
+#endif
 
             if (buffer != nullptr) {
               buffers_[location] = BufferUniquePtr(buffer, alloc);
@@ -395,7 +397,6 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     TraceAllocate(ort_value_index, size);
   }
 
-  
   {
     // This code block is not thread-safe.
     // Dynamic activation size would be accessed by multiple threads

@@ -103,11 +103,14 @@ class OpKernelContext {
   template <typename T>
   const T* Input(int index) const {
     const OrtValue* p_ml_value = GetInputMLValue(index);
-    try {
+    ORT_TRY {
       return p_ml_value ? &(p_ml_value->Get<T>()) : nullptr;
-    } catch (const std::exception& /*e*/) {
+    }
+#ifndef ORT_NO_EXCEPTIONS
+    catch (const std::exception& /*e*/) {
       throw OnnxRuntimeException(ORT_WHERE_WITH_STACK, "Missing Input: " + kernel_->Node().InputDefs()[index]->Name());
     }
+#endif
   }
 
   // Fetch a required input, enforcing that it is present.

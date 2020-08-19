@@ -295,11 +295,14 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 #endif
       Status compute_status;
 
-      try {
+      ORT_TRY {
         compute_status = p_op_kernel->Compute(&op_kernel_context);
-      } catch (const std::exception& ex) {
+      }
+#ifndef ORT_NO_EXCEPTIONS
+      catch (const std::exception& ex) {
         compute_status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());
       }
+#endif
 
       if (!compute_status.IsOK()) {
         std::ostringstream ss;
@@ -445,12 +448,12 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     session_state.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", tp);
   }
 
-  for (auto i: frame.GetStaticMemorySizeInfo()) {
+  for (auto i : frame.GetStaticMemorySizeInfo()) {
     LOGS(logger, INFO) << "[Memory] ExecutionFrame statically allocates "
                        << i.second << " bytes for " << i.first << std::endl;
   }
 
-  for (auto i: frame.GetDynamicMemorySizeInfo()) {
+  for (auto i : frame.GetDynamicMemorySizeInfo()) {
     LOGS(logger, INFO) << "[Memory] ExecutionFrame dynamically allocates "
                        << i.second << " bytes for " << i.first << std::endl;
   }

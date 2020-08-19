@@ -190,11 +190,14 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
     VLOGS(logger, 1) << "Computing kernel: " << node.Name();
 
     // Execute the kernel.
-    try {
+    ORT_TRY {
       status = p_op_kernel->Compute(&op_kernel_context);
-    } catch (const std::exception& ex) {
+    }
+#ifndef ORT_NO_EXCEPTIONS
+    catch (const std::exception& ex) {
       status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());
     }
+#endif
 
     if (!status.IsOK()) {
       std::ostringstream ss;
@@ -286,6 +289,7 @@ void ParallelExecutor::EnqueueNode(size_t p_node_index, const SessionState& sess
   }
 
   executor_pool_->Schedule([this, p_node_index, &session_state, &logger]() {
+#ifndef ORT_NO_EXCEPTIONS
     auto create_exception_message = [p_node_index, &session_state](const std::exception* ex) {
       const auto* node = session_state.GetGraphViewer().GetNode(p_node_index);
 
@@ -293,16 +297,21 @@ void ParallelExecutor::EnqueueNode(size_t p_node_index, const SessionState& sess
                              " node '", node->Name(), "'. ",
                              ex ? ex->what() : "Unknown exception was caught by catch-all handler.");
     };
+#endif
 
     Status status;
-    try {
+    ORT_TRY {
       status = ParallelExecutor::RunNodeAsync(p_node_index, std::cref(session_state), std::cref(logger));
-    } catch (const std::exception& ex) {
+    }
+#ifndef ORT_NO_EXCEPTIONS
+    catch (const std::exception& ex) {
       status = create_exception_message(&ex);
-    } catch (...) {
+    }
+    catch (...) {
       // catch node processing failure exceptions here to prevent app crash.
       status = create_exception_message(nullptr);
     }
+#endif
 
     FinishNodeRun(status);
   });
