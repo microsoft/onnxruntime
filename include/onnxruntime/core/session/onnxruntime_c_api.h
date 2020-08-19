@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
-#include "session_options_config_keys.h"
+#include "onnxruntime_session_options_config_keys.h"
 
 // This value is used in structures passed to ORT so that a newer version of ORT will still work with them
 #define ORT_API_VERSION 5
@@ -876,7 +876,7 @@ struct OrtApi {
      * If a configuration with same key exists, this will overwrite the configuration with the given config_value
      * \param config_key    A null terminated string representation of the config key
      * \param config_value  A null terminated string representation of the config value
-     * The config_key and the format of config_value are defined in session_options_config_keys.h
+     * The config_key and the format of config_value are defined in onnxruntime_session_options_config_keys.h
      */
   ORT_API2_STATUS(AddSessionConfigEntry, _Inout_ OrtSessionOptions* options,
                   _In_z_ const char* config_key, _In_z_ const char* config_value);
