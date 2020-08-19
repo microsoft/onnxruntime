@@ -83,7 +83,6 @@ ORT_DEFINE_RELEASE(IoBinding);
 // This is used internally by the C++ API. This is the common base class used by the wrapper objects.
 template <typename T>
 struct Base {
-
   using contained_type = T;
 
   Base() = default;
@@ -119,7 +118,6 @@ struct Base {
 
 template <typename T>
 struct Base<const T> {
-
   using contained_type = const T;
 
   Base() = default;
@@ -142,7 +140,7 @@ struct Base<const T> {
   const T* p_{};
 };
 
-template<typename T> 
+template <typename T>
 struct Unowned : T {
   Unowned(decltype(T::p_) p) : T{p} {}
   Unowned(Unowned&& v) : T{v.p_} {}
@@ -226,9 +224,7 @@ struct SessionOptions : Base<OrtSessionOptions> {
 
   SessionOptions& DisablePerSessionThreads();
 
-  SessionOptions& EnablePrePacking();
-  SessionOptions& DisablePrePacking();
-
+  SessionOptions& AddConfigEntry(const char* config_key, const char* config_value);
 };
 
 struct ModelMetadata : Base<OrtModelMetadata> {
@@ -328,7 +324,7 @@ struct Value : Base<OrtValue> {
   template <typename T>
   T* GetTensorMutableData();
 
-  template<typename T>
+  template <typename T>
   const T* GetTensorData() const;
 
   template <typename T>
@@ -357,7 +353,6 @@ struct MemoryAllocation {
   size_t size() const { return size_; }
 
  private:
-
   OrtAllocator* allocator_;
   void* p_;
   size_t size_;
@@ -392,7 +387,7 @@ struct BaseMemoryInfo : B {
   OrtAllocatorType GetAllocatorType() const;
   int GetDeviceId() const;
   OrtMemType GetMemoryType() const;
-  template<typename U>
+  template <typename U>
   bool operator==(const BaseMemoryInfo<U>& o) const;
 };
 
@@ -423,6 +418,7 @@ struct IoBinding : public Base<OrtIoBinding> {
  private:
   std::vector<std::string> GetOutputNamesHelper(OrtAllocator*) const;
   std::vector<Value> GetOutputValuesHelper(OrtAllocator*) const;
+
  public:
   explicit IoBinding(Session& session);
   void BindInput(const char* name, const Value&);
