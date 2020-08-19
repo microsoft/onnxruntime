@@ -21,9 +21,27 @@ class Sign final : public OpKernel {
   Status Compute(OpKernelContext* ctx) const override;
 };
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Sign,
     9,
+    12,
+    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                            DataTypeImpl::GetTensorType<double>(),
+                                            DataTypeImpl::GetTensorType<int64_t>(),
+                                            DataTypeImpl::GetTensorType<uint64_t>(),
+                                            DataTypeImpl::GetTensorType<int32_t>(),
+                                            DataTypeImpl::GetTensorType<uint32_t>(),
+                                            DataTypeImpl::GetTensorType<int16_t>(),
+                                            DataTypeImpl::GetTensorType<uint16_t>(),
+                                            DataTypeImpl::GetTensorType<int8_t>(),
+                                            DataTypeImpl::GetTensorType<uint8_t>(),
+                                            DataTypeImpl::GetTensorType<MLFloat16>(),
+                                            DataTypeImpl::GetTensorType<BFloat16>()}),
+    Sign);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    Sign,
+    13,
     KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
                                             DataTypeImpl::GetTensorType<double>(),
                                             DataTypeImpl::GetTensorType<int64_t>(),

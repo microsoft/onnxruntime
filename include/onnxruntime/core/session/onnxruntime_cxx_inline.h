@@ -60,13 +60,11 @@ inline MemoryAllocation::~MemoryAllocation() {
   }
 }
 
-inline MemoryAllocation::MemoryAllocation(MemoryAllocation&& o) :
-  allocator_(nullptr), p_(nullptr), size_(0) {
+inline MemoryAllocation::MemoryAllocation(MemoryAllocation&& o) : allocator_(nullptr), p_(nullptr), size_(0) {
   *this = std::move(o);
 }
 
 inline MemoryAllocation& MemoryAllocation::operator=(MemoryAllocation&& o) {
-
   OrtAllocator* alloc = nullptr;
   void* p = nullptr;
   size_t sz = 0;
@@ -113,7 +111,7 @@ inline const OrtMemoryInfo* AllocatorWithDefaultOptions::GetInfo() const {
   return out;
 }
 
-template<typename B>
+template <typename B>
 inline std::string BaseMemoryInfo<B>::GetAllocatorName() const {
   const char* name = nullptr;
   ThrowOnError(GetApi().MemoryInfoGetName(*this, &name));
@@ -253,7 +251,7 @@ inline std::vector<Value> Ort::IoBinding::GetOutputValuesHelper(OrtAllocator* al
       allocator->Free(allocator, buffer);
     }
   };
-  using Ptr = std::unique_ptr<OrtValue*, decltype(free_fn)> ;
+  using Ptr = std::unique_ptr<OrtValue*, decltype(free_fn)>;
 
   OrtValue** output_buffer = nullptr;
   ThrowOnError(GetApi().GetBoundOutputValues(p_, allocator, &output_buffer, &output_count));
@@ -439,12 +437,8 @@ inline SessionOptions& SessionOptions::Add(OrtCustomOpDomain* custom_op_domain) 
   return *this;
 }
 
-inline SessionOptions& SessionOptions::EnablePrePacking() {
-  ThrowOnError(GetApi().EnablePrePacking(p_));
-  return *this;
-}
-inline SessionOptions& SessionOptions::DisablePrePacking() {
-  ThrowOnError(GetApi().DisablePrePacking(p_));
+inline SessionOptions& SessionOptions::AddConfigEntry(const char* config_key, const char* config_value) {
+  ThrowOnError(GetApi().AddSessionConfigEntry(p_, config_key, config_value));
   return *this;
 }
 

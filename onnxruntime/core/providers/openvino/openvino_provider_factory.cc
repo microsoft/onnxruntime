@@ -20,7 +20,7 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
  private:
-  const char* device_;
+  std::string device_;
 };
 
 std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
