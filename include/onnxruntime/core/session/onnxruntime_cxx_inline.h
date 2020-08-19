@@ -442,12 +442,8 @@ inline SessionOptions& SessionOptions::Add(OrtCustomOpDomain* custom_op_domain) 
   return *this;
 }
 
-inline SessionOptions& SessionOptions::EnablePrePacking() {
-  ThrowOnError(GetApi().EnablePrePacking(p_));
-  return *this;
-}
-inline SessionOptions& SessionOptions::DisablePrePacking() {
-  ThrowOnError(GetApi().DisablePrePacking(p_));
+inline SessionOptions& SessionOptions::AddConfigEntry(const char* config_key, const char* config_value) {
+  ThrowOnError(GetApi().AddSessionConfigEntry(p_, config_key, config_value));
   return *this;
 }
 

@@ -80,7 +80,7 @@ class TestInferenceSession(unittest.TestCase):
                 options = sess.get_provider_options()
                 self.assertEqual(options['CUDAExecutionProvider']['cuda_mem_limit'], str(new_mem_limit))
 
-                option['cuda_mem_limit'] = ori_mem_limit 
+                option['cuda_mem_limit'] = ori_mem_limit
                 sess.set_providers(['CUDAExecutionProvider'], [option])
                 options = sess.get_provider_options()
                 self.assertEqual(options['CUDAExecutionProvider']['cuda_mem_limit'], ori_mem_limit)
@@ -152,7 +152,7 @@ class TestInferenceSession(unittest.TestCase):
             def runAdvancedTest():
                 num_device = getCudaDeviceCount()
                 if num_device < 0:
-                    return 
+                    return
 
                 # Configure session to be ready to run on all available cuda devices
                 for i in range(num_device):
@@ -511,12 +511,6 @@ class TestInferenceSession(unittest.TestCase):
 
         res = sess.run([], {'input1:0': a, 'input:0': b})
 
-    def testPrePacking(self):
-        opt = onnxrt.SessionOptions()
-        self.assertTrue(opt.use_prepacking)
-        opt.use_prepacking = False
-        self.assertFalse(opt.use_prepacking)
-
     def testSequenceLength(self):
         sess = onnxrt.InferenceSession(get_name("sequence_length.onnx"))
         x = [
@@ -641,6 +635,20 @@ class TestInferenceSession(unittest.TestCase):
         # "Dim1" and "Dim2" have values assigned to them.
         self.assertEqual(input_shape, [4, 6, 5])
 
+    def testSessionOptionsAddConfigEntry(self):
+        so = onnxrt.SessionOptions()
+        key = "CONFIG_KEY"
+        val = "CONFIG_VAL"
+        so.add_session_config_entry(key, val)
+        self.assertEqual(so.get_session_config_entry(key), val)
+
+    def testInvalidSessionOptionsConfigEntry(self):
+        so = onnxrt.SessionOptions()
+        invalide_key = "INVALID_KEY"
+        with self.assertRaises(RuntimeError) as context:
+            so.get_session_config_entry(invalide_key)
+        self.assertTrue(
+            'SessionOptions does not have configuration with key: ' + invalide_key in str(context.exception))
 
 if __name__ == '__main__':
     unittest.main()

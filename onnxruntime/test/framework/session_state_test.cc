@@ -257,7 +257,8 @@ TEST_P(SessionStatePrepackingTest, PrePackingTest) {
   kernel_registry_manager.RegisterKernelRegistry(kernel_registry);
 
   SessionOptions sess_options;
-  sess_options.use_prepacking = GetParam();
+  bool use_prepacking = GetParam();
+  sess_options.session_configurations[ORT_SESSION_OPTIONS_CONFIG_DISABLEPREPACKING] = use_prepacking ? "0" : "1";
   ASSERT_STATUS_OK(FinalizeSessionState(session_state,
                                         std::basic_string<PATH_CHAR_TYPE>() /*graph_loc*/,
                                         kernel_registry_manager,
@@ -265,7 +266,7 @@ TEST_P(SessionStatePrepackingTest, PrePackingTest) {
                                         sess_options));
   const auto& const_initialized_tensors = session_state.GetConstantInitializedTensors();
   // check prepacking
-  ASSERT_EQ(const_initialized_tensors.size(), size_t(sess_options.use_prepacking ? 0 : 1));
+  ASSERT_EQ(const_initialized_tensors.size(), size_t(use_prepacking ? 0 : 1));
 }
 
 INSTANTIATE_TEST_SUITE_P(SessionStateTests, SessionStatePrepackingTest, testing::Values(true, false));

@@ -225,8 +225,8 @@ ORT_API_STATUS_IMPL(GetAvailableProviders, _Outptr_ char*** out_ptr,
 ORT_API_STATUS_IMPL(ReleaseAvailableProviders, _In_ char** ptr,
                     _In_ int providers_length);
 
-ORT_API_STATUS_IMPL(EnablePrePacking, _Inout_ OrtSessionOptions* options);
-ORT_API_STATUS_IMPL(DisablePrePacking, _Inout_ OrtSessionOptions* options);
+ORT_API_STATUS_IMPL(AddSessionConfigEntry, _Inout_ OrtSessionOptions* options,
+                    _In_z_ const char* config_key, _In_z_ const char* config_value);
 
 ORT_API_STATUS_IMPL(TensorAt, _Inout_ OrtValue* value, size_t* location_values, size_t location_values_count, _Outptr_ void** out);
 

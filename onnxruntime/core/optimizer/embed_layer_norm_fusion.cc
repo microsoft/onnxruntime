@@ -501,20 +501,20 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     }
     // Find ReduceSum --> Attention
     std::vector<const Node::EdgeEnd*> edges;
-    if (!graph_utils::FindPath(attention_node, true, {{0, 3, "ReduceSum", {1, 11}, kOnnxDomain}}, edges, logger)) {
+    if (!graph_utils::FindPath(attention_node, true, {{0, 3, "ReduceSum", {1, 11, 13}, kOnnxDomain}}, edges, logger)) {
       continue;
     }
     Node& reduce_sum_node = *graph.GetNode(edges[0]->GetNode().Index());
 
     // Find Add --> LayerNormalization
-    if (!graph_utils::FindPath(layer_norm_node, true, {{0, 0, "Add", {7}, kOnnxDomain}}, edges, logger)) {
+    if (!graph_utils::FindPath(layer_norm_node, true, {{0, 0, "Add", {7, 13}, kOnnxDomain}}, edges, logger)) {
       continue;
     }
     Node& layer_norm_add_node = *graph.GetNode(edges[0]->GetNode().Index());
 
     // Trace back to find the Gather for segment embedding.
     std::vector<graph_utils::EdgeEndToMatch> segment_embedding_path{
-        {0, 1, "Gather", {1, 11}, kOnnxDomain}};
+        {0, 1, "Gather", {1, 11, 13}, kOnnxDomain}};
     if (!graph_utils::FindPath(layer_norm_add_node, true, segment_embedding_path, edges, logger)) {
       continue;
     }
@@ -534,8 +534,8 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
 
     // Trace back to find Gather --> Add --> LayerNormalization
     std::vector<graph_utils::EdgeEndToMatch> word_embedding_path{
-        {0, 0, "Add", {7}, kOnnxDomain},
-        {0, 0, "Gather", {1, 11}, kOnnxDomain}};
+        {0, 0, "Add", {7, 13}, kOnnxDomain},
+        {0, 0, "Gather", {1, 11, 13}, kOnnxDomain}};
     if (!graph_utils::FindPath(layer_norm_add_node, true, word_embedding_path, edges, logger)) {
       continue;
     }

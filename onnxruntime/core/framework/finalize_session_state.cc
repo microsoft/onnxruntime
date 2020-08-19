@@ -99,9 +99,11 @@ Status FinalizeSessionState(SessionState& session_state,
   session_state.CleanInitializedTensorsFromGraph();
 
   ORT_RETURN_IF_ERROR(session_state.CreateKernels(kernel_registry_manager));
-  if (session_options.use_prepacking) {
+
+  const auto disable_prepacking =
+      GetSessionConfigOrDefault(session_options, ORT_SESSION_OPTIONS_CONFIG_DISABLEPREPACKING, "0");
+  if (disable_prepacking != "1")
     ORT_RETURN_IF_ERROR(session_state.PrepackInitializedConstantTensors());
-  }
 
   ORT_RETURN_IF_ERROR(SaveInputOutputNamesToNodeMapping(graph_viewer, kernel_registry_manager, session_state,
                                                         valid_outer_scope_node_args));
