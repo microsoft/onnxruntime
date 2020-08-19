@@ -49,6 +49,7 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const SubGraphCo
   ORT_UNUSED_PARAMETER(const_outputs_map);
 #endif
 
+  InferenceEngine::Precision precision = subgraph_context.precision;
   std::string device_id = subgraph_context.device_id;
 
   std::istringstream model_stream{model_proto.SerializeAsString()};
@@ -67,6 +68,12 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const SubGraphCo
     ORT_THROW(log_tag + "[OpenVINO-EP] Exception while importing model to nGraph Func: " + std::string(exp.what()));
   } catch (...) {
     ORT_THROW(log_tag + "[OpenVINO-EP] Unknown exception while importing model to nGraph Func");
+  }
+
+  if (device_id == "GPU" && precision == InferenceEngine::Precision::FP16) {
+    //FP16 transformations
+    ngraph::pass::ConvertFP32ToFP16().run_on_function(ng_function);
+    ng_function->validate_nodes_and_infer_types();
   }
 
 #if defined(OPENVINO_2020_4)
