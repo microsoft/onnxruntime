@@ -82,3 +82,17 @@ def _assert_state_dict_weights(state_dict_a, state_dict_b, verbose, rtol, atol):
         if verbose:
             print(f'Weight name: {a_name}: absolute difference: {np.abs(np_a_vals-np_b_vals).max()}')
         assert_allclose(a_val, b_val, rtol=rtol, atol=atol, err_msg=f"Weight mismatch for {a_name}")
+
+# TODO: thiagofc: Checkpoint related for redesign
+def _get_name(name):
+    if os.path.exists(name):
+        return name
+    rel = os.path.join("testdata", name)
+    if os.path.exists(rel):
+        return rel
+    this = os.path.dirname(__file__)
+    data = os.path.join(this, "..", "testdata")
+    res = os.path.join(data, name)
+    if os.path.exists(res):
+        return res
+    raise FileNotFoundError("Unable to find '{0}' or '{1}' or '{2}'".format(name, rel, res))
