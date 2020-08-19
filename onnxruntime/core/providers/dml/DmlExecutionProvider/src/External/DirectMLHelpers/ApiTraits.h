@@ -24,7 +24,7 @@ struct EnumTraits<DML_TENSOR_TYPE>
 template <>
 struct EnumTraits<DML_OPERATOR_TYPE>
 {
-    static constexpr auto ValueCount = 121;
+    static constexpr auto ValueCount = 124;
     static constexpr size_t ActivationFunctionCount = 20;
 };
 
@@ -62,7 +62,7 @@ struct EnumTraits<DML_CONVOLUTION_DIRECTION>
 template <>
 struct EnumTraits<DML_PADDING_MODE>
 {
-    static constexpr auto ValueCount = 3;
+    static constexpr auto ValueCount = 4;
 };
 
 template <>
@@ -86,7 +86,7 @@ struct EnumTraits<DML_FEATURE>
 template <>
 struct EnumTraits<DML_FEATURE_LEVEL>
 {
-    static constexpr auto ValueCount = 2;
+    static constexpr auto ValueCount = 4;
 };
 
 template <>
@@ -111,6 +111,12 @@ template <>
 struct EnumTraits<DML_ROUNDING_MODE>
 {
     static constexpr auto ValueCount = 3;
+};
+
+template <>
+struct EnumTraits<DML_RANDOM_GENERATOR_TYPE>
+{
+    static constexpr auto ValueCount = 1;
 };
 
 template <typename T>
@@ -403,6 +409,18 @@ template <>
 struct OperatorDescTraits<DML_REDUCE_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_REDUCE;
+};
+
+template <>
+struct OperatorDescTraits<DML_ARGMIN_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ARGMIN;
+};
+
+template <>
+struct OperatorDescTraits<DML_ARGMAX_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ARGMAX;
 };
 
 template <>
@@ -757,6 +775,12 @@ template <>
 struct OperatorDescTraits<DML_MEAN_VARIANCE_NORMALIZATION1_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION1;
+};
+
+template <>
+struct OperatorDescTraits<DML_RESAMPLE1_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_RESAMPLE1;
 };
 
 template <>
@@ -1144,6 +1168,18 @@ struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_REDUCE>
 };
 
 template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ARGMIN>
+{
+    using DescType = DML_ARGMIN_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ARGMAX>
+{
+    using DescType = DML_ARGMAX_OPERATOR_DESC;
+};
+
+template <>
 struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_AVERAGE_POOLING>
 {
     using DescType = DML_AVERAGE_POOLING_OPERATOR_DESC;
@@ -1498,6 +1534,12 @@ struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_MEAN_VARIANCE_NORMALIZ
 };
 
 template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_RESAMPLE1>
+{
+    using DescType = DML_RESAMPLE1_OPERATOR_DESC;
+};
+
+template <>
 struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_MATRIX_MULTIPLY_INTEGER>
 {
     using DescType = DML_MATRIX_MULTIPLY_INTEGER_OPERATOR_DESC;
@@ -1732,6 +1774,10 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
         return std::invoke(std::forward<Visitor>(visitor), DML_GEMM_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_REDUCE:
         return std::invoke(std::forward<Visitor>(visitor), DML_REDUCE_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ARGMIN:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ARGMIN_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ARGMAX:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ARGMAX_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_AVERAGE_POOLING:
         return std::invoke(std::forward<Visitor>(visitor), DML_AVERAGE_POOLING_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_LP_POOLING:
@@ -1951,6 +1997,8 @@ inline gsl::czstring ToString(DML_OPERATOR_TYPE value)
     case DML_OPERATOR_CONVOLUTION: return "DML_OPERATOR_CONVOLUTION";
     case DML_OPERATOR_GEMM: return "DML_OPERATOR_GEMM";
     case DML_OPERATOR_REDUCE: return "DML_OPERATOR_REDUCE";
+    case DML_OPERATOR_ARGMIN: return "DML_OPERATOR_ARGMIN";
+    case DML_OPERATOR_ARGMAX: return "DML_OPERATOR_ARGMAX";
     case DML_OPERATOR_AVERAGE_POOLING: return "DML_OPERATOR_AVERAGE_POOLING";
     case DML_OPERATOR_LP_POOLING: return "DML_OPERATOR_LP_POOLING";
     case DML_OPERATOR_MAX_POOLING: return "DML_OPERATOR_MAX_POOLING";

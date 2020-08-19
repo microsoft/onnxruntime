@@ -344,6 +344,26 @@ inline std::vector<OperatorField> GetFields(const DML_REDUCE_OPERATOR_DESC& desc
         OperatorField(&DML_REDUCE_OPERATOR_SCHEMA.Fields[4], ToOperatorFieldType(static_cast<const UINT*>(desc.Axes), desc.AxisCount)),
     };
 }
+inline std::vector<OperatorField> GetFields(const DML_ARGMIN_OPERATOR_DESC& desc)
+{
+    return {
+        OperatorField(&DML_ARGMIN_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputTensor))),
+        OperatorField(&DML_ARGMIN_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
+        OperatorField(&DML_ARGMIN_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<UINT>(desc.AxisCount))),
+        OperatorField(&DML_ARGMIN_OPERATOR_SCHEMA.Fields[3], ToOperatorFieldType(static_cast<const UINT*>(desc.Axes), desc.AxisCount)),
+        OperatorField(&DML_ARGMIN_OPERATOR_SCHEMA.Fields[4], ToOperatorFieldType(static_cast<UINT>(desc.AxisDirection))),
+    };
+}
+inline std::vector<OperatorField> GetFields(const DML_ARGMAX_OPERATOR_DESC& desc)
+{
+    return {
+        OperatorField(&DML_ARGMAX_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputTensor))),
+        OperatorField(&DML_ARGMAX_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
+        OperatorField(&DML_ARGMAX_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<UINT>(desc.AxisCount))),
+        OperatorField(&DML_ARGMAX_OPERATOR_SCHEMA.Fields[3], ToOperatorFieldType(static_cast<const UINT*>(desc.Axes), desc.AxisCount)),
+        OperatorField(&DML_ARGMAX_OPERATOR_SCHEMA.Fields[4], ToOperatorFieldType(static_cast<UINT>(desc.AxisDirection))),
+    };
+}
 inline std::vector<OperatorField> GetFields(const DML_AVERAGE_POOLING_OPERATOR_DESC& desc)
 {
     return {
@@ -1211,6 +1231,8 @@ inline const DML_OPERATOR_SCHEMA& GetSchema(DML_OPERATOR_TYPE operatorType)
     case DML_OPERATOR_CONVOLUTION: return DML_CONVOLUTION_OPERATOR_SCHEMA;
     case DML_OPERATOR_GEMM: return DML_GEMM_OPERATOR_SCHEMA;
     case DML_OPERATOR_REDUCE: return DML_REDUCE_OPERATOR_SCHEMA;
+    case DML_OPERATOR_ARGMIN: return DML_ARGMIN_OPERATOR_SCHEMA;
+    case DML_OPERATOR_ARGMAX: return DML_ARGMAX_OPERATOR_SCHEMA;
     case DML_OPERATOR_AVERAGE_POOLING: return DML_AVERAGE_POOLING_OPERATOR_SCHEMA;
     case DML_OPERATOR_LP_POOLING: return DML_LP_POOLING_OPERATOR_SCHEMA;
     case DML_OPERATOR_MAX_POOLING: return DML_MAX_POOLING_OPERATOR_SCHEMA;
@@ -1460,6 +1482,14 @@ inline AbstractOperatorDesc ConvertOperatorDesc(const DML_OPERATOR_DESC& opDesc)
         return AbstractOperatorDesc(
             &DML_REDUCE_OPERATOR_SCHEMA,
             GetFields(*static_cast<const DML_REDUCE_OPERATOR_DESC*>(opDesc.Desc)));
+    case DML_OPERATOR_ARGMIN:
+        return AbstractOperatorDesc(
+            &DML_ARGMIN_OPERATOR_SCHEMA,
+            GetFields(*static_cast<const DML_ARGMIN_OPERATOR_DESC*>(opDesc.Desc)));
+    case DML_OPERATOR_ARGMAX:
+        return AbstractOperatorDesc(
+            &DML_ARGMAX_OPERATOR_SCHEMA,
+            GetFields(*static_cast<const DML_ARGMAX_OPERATOR_DESC*>(opDesc.Desc)));
     case DML_OPERATOR_AVERAGE_POOLING:
         return AbstractOperatorDesc(
             &DML_AVERAGE_POOLING_OPERATOR_SCHEMA,

@@ -256,6 +256,8 @@ namespace OperatorHelper
         static const int sc_sinceVer_MaxPool = 12;
         static const int sc_sinceVer_ReduceMax = 12;
         static const int sc_sinceVer_ReduceMin = 12;
+        static const int sc_sinceVer_ArgMin = 12;
+        static const int sc_sinceVer_ArgMax = 12;
     } // namespace OnnxOperatorSet12
 
     namespace MsftOperatorSet1
