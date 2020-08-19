@@ -65,6 +65,8 @@ struct TensorrtFuncState {
   bool engine_cache_enable;
   std::string engine_path;
   nvinfer1::IRuntime* runtime = nullptr;
+  bool engine_decryption_enable;
+  std::string engine_decryption_lib_path;								
   AllocateFunc test_allocate_func = nullptr;
   DestroyFunc test_release_func = nullptr;
   AllocatorHandle allocator = nullptr;
