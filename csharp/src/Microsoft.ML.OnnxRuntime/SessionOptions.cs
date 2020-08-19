@@ -414,31 +414,6 @@ namespace Microsoft.ML.OnnxRuntime
         }
         private ExecutionMode _executionMode = ExecutionMode.ORT_SEQUENTIAL;
 
-        /// <summary>
-        /// Enables the use of pre-packing. Default = true.
-        /// </summary>
-        public bool EnablePrePacking
-        {
-            get
-            {
-                return _enablePrePacking;
-            }
-            set
-            {
-                if (!_enablePrePacking && value)
-                {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtEnablePrePacking(_nativePtr));
-                    _enablePrePacking = true;
-                }
-                else if (_enablePrePacking && !value)
-                {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtDisablePrePacking(_nativePtr));
-                    _enablePrePacking = false;
-                }
-            }
-        }
-        private bool _enablePrePacking = true;
-
         #endregion
 
         #region Private Methods
