@@ -635,7 +635,8 @@ Status SessionState::CreateSubgraphSessionState() {
     for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
       const auto& ep = node.GetExecutionProviderType();
       if (ep != kCpuExecutionProvider && ep != kCudaExecutionProvider) {
-        // SessionState is only used by ORT EPs
+        // SessionState is only used when ORT is executing the subgraph. If a non-ORT EP has taken the control flow
+        // node containing the subgraph it will create whatever state it needs internally.
         continue;
       }
 
