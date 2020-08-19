@@ -1118,8 +1118,6 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
                                 onnxruntime::FreeDimensionOverrideType::Name,
                                 dim_value}); },
           "Rpbdoc(Specify values of named dimensions within model inputs.)pbdoc")
-      .def_readwrite("use_prepacking", &SessionOptions::use_prepacking,
-                     R"pbdoc(Whether to use prepacking. Default is true.)pbdoc")
       .def(
           "add_session_config_entry",
           [](SessionOptions* options, const char* config_key, const char* config_value) -> void {
@@ -1161,7 +1159,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())
       .def_readwrite("log_severity_level", &RunOptions::run_log_severity_level,
-                     R"pbdoc(Log severity level for a particular Run() invocation. 0:Verbose, 1:Info, 2:Warn. 3:Error, 4:Fatal. Default is 2.)pbdoc")
+                     R"pbdoc(Log severity level for a particular Run() invocation. 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.)pbdoc")
       .def_readwrite("log_verbosity_level", &RunOptions::run_log_verbosity_level,
                      R"pbdoc(VLOG level if DEBUG build and run_log_severity_level is 0.
 Applies to a particular Run() invocation. Default is 0.)pbdoc")
