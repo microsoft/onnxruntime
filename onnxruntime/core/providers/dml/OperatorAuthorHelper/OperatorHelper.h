@@ -733,6 +733,7 @@ class ReduceHelperBase {
   template <typename Info_t, typename Shape_t>
   ReduceHelperBase(const Info_t& info, const Shape_t& shape, bool usingAxes) {
     m_keepDims = info.GetOptionalAttribute<int>(AttrName::KeepDims, 1);
+    m_selectLastIndex = info.GetOptionalAttribute<int>(AttrName::SelectLastIndex, 0);
     if (usingAxes) {
       m_axes = info.GetOptionalAttributeVectorInt32(AttrName::Axes);
     } else {
@@ -751,6 +752,7 @@ class ReduceHelperBase {
  protected:
   std::vector<int> m_axes;
   int m_keepDims = 0;
+  int m_selectLastIndex = 0;
 };
 
 class ArgMinArgMaxHelper : public ReduceHelperBase {

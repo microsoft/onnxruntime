@@ -45,6 +45,7 @@ namespace AttrName
     static constexpr const char* InputForget = "input_forget";
     static constexpr const char* K = "k";
     static constexpr const char* KeepDims = "keepdims";
+    static constexpr const char* SelectLastIndex = "select_last_index";
     static constexpr const char* KernelShape = "kernel_shape";
     static constexpr const char* LinearBeforeReset = "linear_before_reset";
     static constexpr const char* Lambda = "lambd"; // Deliberate typo to match ONNX spec.
