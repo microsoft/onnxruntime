@@ -801,8 +801,6 @@ struct OrtApi {
   ORT_API2_STATUS(CreateEnvWithGlobalThreadPools, OrtLoggingLevel default_logging_level, _In_ const char* logid,
                   _In_ const OrtThreadingOptions* t_options, _Outptr_ OrtEnv** out);
 
-  /* TODO: Should there be a version of CreateEnvWithGlobalThreadPools with custom logging function? */
-
   /*
   * Calling this API will make the session use the global threadpools shared across sessions.
   * This API should be used in conjunction with CreateEnvWithGlobalThreadPools API.
