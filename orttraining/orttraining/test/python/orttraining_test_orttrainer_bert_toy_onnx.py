@@ -646,7 +646,7 @@ def testORTTrainerFrozenWeights(model_params):
     # All model_params CANNOT be in the session state
     assert trainer._onnx_model is not None
     session_state = trainer._training_session.get_state()
-    assert not all([param in session_state for param in model_params])
+    assert not any([param in session_state for param in model_params])
 
 def testToyBERTSaveAsONNX():
     device = 'cuda'
