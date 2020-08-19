@@ -667,6 +667,13 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
                                           KernelRegistryManager& kernel_registry_manager,
                                           const SessionOptions& session_options,
                                           bool remove_initializers) {
+  // recursively create the subgraph session state instances and populate the kernel create info in them.
+  // it's simpler to handle the kernel create info recursively when deserializing,
+  // so also do it recursively when calling PopulateKernelCreateInfo for consistency.
+  ORT_RETURN_IF_ERROR(CreateSubgraphSessionState());
+
+  ORT_RETURN_IF_ERROR(PopulateKernelCreateInfo(kernel_registry_manager));
+
   return FinalizeSessionStateImpl(graph_location, kernel_registry_manager, nullptr, session_options,
                                   remove_initializers);
 }
@@ -676,14 +683,6 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                               _In_opt_ const Node* parent_node,
                                               const SessionOptions& session_options,
                                               bool remove_initializers) {
-  // recursively create the subgraph session state instances and populate the kernel create info in them.
-  // it's simpler to handle the kernel create info recursively when deserializing,
-  // so also do it recursively when calling PopulateKernelCreateInfo for consistency.
-  if (parent_node == nullptr) {
-    ORT_RETURN_IF_ERROR(CreateSubgraphSessionState());
-    ORT_RETURN_IF_ERROR(PopulateKernelCreateInfo(kernel_registry_manager));
-  }
-
   CreateGraphInfo();
 
   // ignore any outer scope args we don't know about. this can happen if a node contains multiple subgraphs.

@@ -100,7 +100,7 @@ std::ostream& operator<<(std::ostream& out, std::pair<const SequentialExecutionP
   return out;
 }
 
-static const KernelCreateInfo& GetKernel(
+static const KernelCreateInfo& GetKernelCreateInfo(
     const std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map,
     NodeIndex node_index) {
   auto entry = kernel_create_info_map.find(node_index);
@@ -217,7 +217,7 @@ class PlannerImpl {
   // Find if there exists some input tensor that we can use in-place for output_arg_num-th input in the node.
   bool FindReusableInput(const onnxruntime::Node& node, int output_arg_num, OrtValueIndex* reusable_input) {
     auto p_output_arg = node.OutputDefs()[output_arg_num];
-    const KernelCreateInfo& ci = GetKernel(kernel_create_info_map_, node.Index());
+    const KernelCreateInfo& ci = GetKernelCreateInfo(kernel_create_info_map_, node.Index());
 
     if (ci.kernel_def == nullptr) {
       return false;
@@ -409,7 +409,7 @@ class PlannerImpl {
 
       // Identify where each output of this node should be allocated.
       // This is determined by the OpKernel bound to the node.
-      const KernelCreateInfo& kernel_create_info = GetKernel(kernel_create_info_map_, pnode->Index());
+      const KernelCreateInfo& kernel_create_info = GetKernelCreateInfo(kernel_create_info_map_, pnode->Index());
 
       const auto* p_kernel_def = kernel_create_info.kernel_def.get();
 
@@ -490,7 +490,7 @@ class PlannerImpl {
     auto* p_provider = execution_providers_.Get(node);
     ORT_ENFORCE(p_provider);
 
-    const KernelCreateInfo& kernel_create_info = GetKernel(kernel_create_info_map_, node.Index());
+    const KernelCreateInfo& kernel_create_info = GetKernelCreateInfo(kernel_create_info_map_, node.Index());
 
     if (kernel_create_info.kernel_def->IsInputOnCpu(input_index))
       // weights are not output from any node, so it's OK to put its location on CPU provider
