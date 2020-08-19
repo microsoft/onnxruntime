@@ -450,7 +450,7 @@ def testToyBertCheckpointBasic():
     model = load_bert_onnx_model()
     model_desc = bert_model_description()
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
-    sd = trainer.experimental_state_dict()
+    sd = checkpoint.experimental_state_dict(trainer)
 
     ## All initializers must be present in the state_dict
     ##  when the specified model for ORTTRainer is an ONNX model
@@ -459,7 +459,7 @@ def testToyBertCheckpointBasic():
 
     ## Modify one of the state values and load into ORTTrainer
     sd['bert.encoder.layer.0.attention.output.LayerNorm.weight'] += 10
-    trainer.experimental_load_state_dict(sd)
+    checkpoint.experimental_load_state_dict(trainer, sd)
 
     ## Save a checkpoint
     ckpt_dir = _test_helpers._get_name("ort_ckpt")
@@ -472,7 +472,7 @@ def testToyBertCheckpointBasic():
     model_desc2 = bert_model_description()
     trainer2 = orttrainer.ORTTrainer(model2, model_desc2, optim_config, options=opts)
     checkpoint.experimental_load_checkpoint(trainer2, ckpt_dir, 'bert_toy_save_test')
-    loaded_sd = trainer2.experimental_state_dict()
+    loaded_sd = checkpoint.experimental_state_dict(trainer2)
 
     # Assert whether original state and the one loaded from checkpoint matches
     for k,v in loaded_sd.items():
@@ -541,7 +541,7 @@ def testToyBertStateDictWrapModelLossFn():
     trainer = orttrainer.ORTTrainer(pt_model, model_desc, optim_config, loss_fn=loss_fn)
 
     # Compare resulting state_dict keys before train
-    state_dict = trainer.experimental_state_dict()
+    state_dict = checkpoint.experimental_state_dict(trainer)
     assert state_dict == {}
 
     # Executing train_step() once
@@ -550,7 +550,7 @@ def testToyBertStateDictWrapModelLossFn():
     trainer.train_step(x=data, label=label)
 
     # Compare resulting state_dict keys after train
-    state_dict = trainer.experimental_state_dict()
+    state_dict = checkpoint.experimental_state_dict(trainer)
     assert state_dict.keys() == {'linear.bias', 'linear.weight'}
 
 
@@ -577,20 +577,20 @@ def testToyBertCheckpointFrozenWeights():
     # Evaluate once to get a base loss
     loss = trainer.eval_step(*sample_input)
     # Save checkpoint
-    state_dict = trainer.experimental_state_dict()
+    state_dict = checkpoint.experimental_state_dict(trainer)
 
     # Load previous state into another instance of ORTTrainer
     model2 = load_bert_onnx_model()
     model_desc2 = bert_model_description()
     optim_config2 = optim.LambConfig()
     trainer2 = orttrainer.ORTTrainer(model2, model_desc2, optim_config2, options=opts)
-    trainer2.experimental_load_state_dict(state_dict)
+    checkpoint.experimental_load_state_dict(trainer2, state_dict)
     # Evaluate once to get a base loss
     ckpt_loss = trainer2.eval_step(*sample_input)
 
     # Must match as both trainers have the same dict state
     assert_allclose(loss.cpu(), ckpt_loss.cpu())
-    loaded_state_dict = trainer2.experimental_state_dict()
+    loaded_state_dict = checkpoint.experimental_state_dict(trainer2)
     assert state_dict.keys() == loaded_state_dict.keys()
 
 

@@ -1,5 +1,7 @@
-import os
 from collections import OrderedDict
+import numpy as np
+import onnx
+import os
 import torch
 import warnings
 
@@ -9,11 +11,63 @@ import warnings
 ################################################################################
 
 
+def experimental_state_dict(ort_trainer):
+    if not ort_trainer._training_session:
+        warnings.warn("ONNX Runtime training session is not initialized yet. "
+                        "Please run train_step or eval_step at least once before calling state_dict().")
+        return {}
+
+    # extract trained weights
+    session_state = ort_trainer._training_session.get_state()
+    torch_state = {}
+    for name in session_state:
+        torch_state[name] = torch.from_numpy(session_state[name])
+
+    # extract untrained weights and buffer
+    for n in ort_trainer._onnx_model.graph.initializer:
+        if n.name not in torch_state:
+            torch_state[n.name] = torch.from_numpy(np.array(onnx.numpy_helper.to_array(n)))
+
+    # Need to remove redundant initializers and name suffices to map back to original torch state names
+    torch_state_to_return = {key: torch_state[key] for key in ort_trainer._original_model_state_keys if key in torch_state} \
+                            if ort_trainer._original_model_state_keys else torch_state
+    return torch_state_to_return
+
+def experimental_load_state_dict(ort_trainer, state_dict, strict=False):
+    # Note: It may happen ONNX model has not yet been initialized
+    # In this case we cache a reference to desired state and delay the restore until after initialization
+    # Unexpected behavior will result if the user changes the reference before initialization
+    if not ort_trainer._training_session:
+        ort_trainer.state_dict_ = state_dict
+        ort_trainer.strict_ = strict
+        return
+
+    # update onnx model from loaded state dict
+    cur_initializers_names = [n.name for n in ort_trainer._onnx_model.graph.initializer]
+    new_initializers = {}
+
+    for name in state_dict:
+        if name in cur_initializers_names:
+            new_initializers[name] = state_dict[name].numpy()
+        elif strict:
+            raise RuntimeError("Checkpoint tensor: {} is not present in the model.".format(name))
+
+    ort_trainer._update_onnx_model_initializers(new_initializers)
+
+    # create new session based on updated onnx model
+    ort_trainer.state_dict_ = None
+    ort_trainer._init_session()
+
+    # load training state
+    session_state = {name:state_dict[name].numpy() for name in state_dict}
+    ort_trainer._training_session.load_state(session_state, strict)
+
+
 def experimental_save_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", checkpoint_state_dict=None):
     if checkpoint_state_dict == None:
-        checkpoint_state_dict = {'model': ort_trainer.experimental_state_dict()}
+        checkpoint_state_dict = {'model': experimental_state_dict(ort_trainer)}
     else:
-        checkpoint_state_dict.update({'model': ort_trainer.experimental_state_dict()})
+        checkpoint_state_dict.update({'model': experimental_state_dict(ort_trainer)})
 
     assert os.path.exists(checkpoint_dir), f"checkpoint_dir ({checkpoint_dir}) directory doesn't exist"
 
@@ -62,8 +116,7 @@ def _load_single_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix, is_p
     assert os.path.exists(checkpoint_file), assert_msg
 
     checkpoint_state = torch.load(checkpoint_file, map_location='cpu')
-    ort_trainer.experimental_load_state_dict(
-        checkpoint_state['model'], strict=strict)
+    experimental_load_state_dict(ort_trainer, checkpoint_state['model'], strict=strict)
     del(checkpoint_state['model'])
     return checkpoint_state
 
@@ -74,7 +127,7 @@ def _load_multi_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix, stric
     ckpt_agg = _CombineZeroCheckpoint(checkpoint_files)
     aggregate_state_dict = ckpt_agg.aggregate_checkpoints()
 
-    ort_trainer.experimental_load_state_dict(aggregate_state_dict, strict=strict)
+    experimental_load_state_dict(ort_trainer, aggregate_state_dict, strict=strict)
 
     # aggregate other keys in the state_dict.
     # Values will be overwritten for matching keys among workers
