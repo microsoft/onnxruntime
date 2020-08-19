@@ -7,7 +7,6 @@
 // pybind11/stl.h is needed to support std::unordered_set, etc.
 #include <pybind11/stl.h>
 
-#include "core/framework/session_options.h"
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/graph/optimizer_config.h"
@@ -191,7 +190,7 @@ void addObjectMethodsForTraining(py::module& m) {
       });
 
   py::class_<onnxruntime::training::TrainingSession, InferenceSession> training_session(m, "TrainingSession");
-  training_session.def(py::init([](const SessionOptions& so) {
+  training_session.def(py::init([](const PySessionOptions& so) {
                     Environment& env = get_env();
                     return onnxruntime::make_unique<onnxruntime::training::TrainingSession>(so, env);
                   }))
