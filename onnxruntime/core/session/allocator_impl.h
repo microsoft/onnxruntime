@@ -18,10 +18,6 @@ class AllocatorWrapper : public IAllocator {
     return impl_->Free(impl_, p);
   }
 
-  const OrtAllocator* GetOrtAllocator() const {
-    return impl_;
-  }
-
  private:
   OrtAllocator* impl_;
 };
@@ -46,6 +42,10 @@ class ArenaAllocatorWrapper : public IArenaAllocator {
 
   virtual size_t Max() const {
     return impl_->Max(impl_);
+  }
+
+  const OrtAllocator* GetOrtAllocator() const {
+    return impl_;
   }
 
  private:

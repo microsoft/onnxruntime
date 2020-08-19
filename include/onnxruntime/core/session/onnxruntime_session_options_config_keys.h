@@ -22,4 +22,4 @@
 
 // A value of "1" means allocators registered in the env will be used. "0" means the allocators created in the session
 // will be used. Use this to override the usage of env allocators on a per session level.
-#define ORT_SESSION_OPTIONS_CONFIG_USE_ENV_ALLOCATORS "session_state.use_env_allocators"
+#define ORT_SESSION_OPTIONS_CONFIG_USE_ENV_ALLOCATORS "session.use_env_allocators"

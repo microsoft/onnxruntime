@@ -55,14 +55,15 @@ class Environment {
     return create_global_thread_pools_;
   }
 
-  /*!
-  * Registers an allocator for sharing between multiple sessions. The environment
-  * does not own the allocator.
+  /**
+   * Registers an allocator for sharing between multiple sessions.
+   * If an allocator with the same OrtMemoryInfo is already registered, this will override the
+   * previous entry and a warning will be emitted.
   */
-  Status RegisterSharedAllocator(OrtAllocator* allocator);
+  Status RegisterAllocator(AllocatorPtr allocator);
 
-  /*!
-  * Return the list of registered allocators in this env.
+  /**
+   * Returns the list of registered allocators in this env.
   */
   const std::vector<AllocatorPtr>& GetRegisteredSharedAllocators() const {
     return shared_allocators_;

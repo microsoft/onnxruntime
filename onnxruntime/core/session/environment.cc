@@ -49,26 +49,16 @@ Status Environment::Create(std::unique_ptr<logging::LoggingManager> logging_mana
   return status;
 }
 
-Status Environment::RegisterSharedAllocator(OrtAllocator* allocator) {
-  const auto* mem_info_ptr = allocator->Info(allocator);
-  if (!mem_info_ptr) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Nullptr for memory info in input allocator.");
-  }
+Status Environment::RegisterAllocator(AllocatorPtr allocator) {
+  const auto& mem_info = allocator->Info();
   // We don't expect millions of allocators getting registered. Hence linear search should be fine.
   auto ite = std::find_if(std::begin(shared_allocators_),
                           std::end(shared_allocators_),
-                          [mem_info_ptr](const AllocatorPtr& alloc_ptr) { return alloc_ptr->Info() == *mem_info_ptr; });
+                          [&mem_info](const AllocatorPtr& alloc_ptr) { return alloc_ptr->Info() == mem_info; });
   if (ite != shared_allocators_.end()) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Duplicate allocator found.");
+    LOGS_DEFAULT(WARNING) << "Allocator with this OrtMemoryInfo is already registered. Overriding the previous entry.";
   }
-  onnxruntime::AllocatorPtr allocator_ptr;
-
-  if (mem_info_ptr->alloc_type == OrtArenaAllocator) {
-    allocator_ptr = std::make_shared<onnxruntime::ArenaAllocatorWrapper>(allocator);
-  } else {
-    allocator_ptr = std::make_shared<onnxruntime::AllocatorWrapper>(allocator);
-  }
-  shared_allocators_.insert(ite, allocator_ptr);
+  shared_allocators_.insert(ite, allocator);
   return Status::OK();
 }
 

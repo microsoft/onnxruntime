@@ -19,8 +19,8 @@ struct OrtAllocatorForDevice : public OrtAllocator {
     OrtAllocator::Info = [](const OrtAllocator* this_) { return static_cast<const OrtAllocatorForDevice*>(this_)->Info(); };
 
     OrtAllocator::Reserve = [](OrtAllocator* this_, size_t size) { return static_cast<OrtAllocatorForDevice*>(this_)->Reserve(size); };
-    OrtAllocator::Used = [](OrtAllocator* this_) { return static_cast<OrtAllocatorForDevice*>(this_)->Used(); };
-    OrtAllocator::Max = [](OrtAllocator* this_) { return static_cast<OrtAllocatorForDevice*>(this_)->Max(); };
+    OrtAllocator::Used = [](const OrtAllocator* this_) { return static_cast<const OrtAllocatorForDevice*>(this_)->Used(); };
+    OrtAllocator::Max = [](const OrtAllocator* this_) { return static_cast<const OrtAllocatorForDevice*>(this_)->Max(); };
   }
 
   ~OrtAllocatorForDevice() = default;

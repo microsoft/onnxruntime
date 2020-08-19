@@ -687,17 +687,6 @@ ORT_API(void, OrtApis::ClearBoundOutputs, _Inout_ OrtIoBinding* binding_ptr) {
   binding_ptr->binding_->ClearOutputs();
 }
 
-ORT_API_STATUS_IMPL(OrtApis::RegisterSharedAllocator, _Inout_ OrtEnv* env, _Inout_ OrtAllocator* allocator) {
-  if (!allocator) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Input allocator is nullptr");
-  }
-  onnxruntime::Status status = env->RegisterSharedAllocator(allocator);
-  if (!status.IsOK()) {
-    return ToOrtStatus(status);
-  }
-  return nullptr;
-}
-
 ORT_API_STATUS_IMPL(OrtApis::IsTensor, _In_ const OrtValue* value, _Out_ int* out) {
   auto v = reinterpret_cast<const ::OrtValue*>(value);
   *out = v->IsTensor() ? 1 : 0;
@@ -1887,8 +1876,8 @@ static constexpr OrtApi ort_api_1_to_5 = {
     &OrtApis::ClearBoundInputs,
     &OrtApis::ClearBoundOutputs,
     &OrtApis::TensorAt,
-    &OrtApis::CreateAllocatorForSharing,
-    &OrtApis::RegisterSharedAllocator,
+    &OrtApis::CreateAndRegisterAllocator,
+    &OrtApis::RegisterAllocator,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

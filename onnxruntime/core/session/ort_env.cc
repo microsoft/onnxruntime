@@ -8,6 +8,7 @@
 #include "ort_env.h"
 #include "core/session/ort_apis.h"
 #include "core/session/environment.h"
+#include "core/session/allocator_impl.h"
 #include "core/common/logging/logging.h"
 #ifdef __ANDROID__
 #include "core/platform/android/logging/android_log_sink.h"
@@ -102,7 +103,7 @@ void OrtEnv::SetLoggingManager(std::unique_ptr<onnxruntime::logging::LoggingMana
   value_->SetLoggingManager(std::move(logging_manager));
 }
 
-onnxruntime::Status OrtEnv::RegisterSharedAllocator(OrtAllocator* allocator) {
-  auto status = value_->RegisterSharedAllocator(allocator);
+onnxruntime::Status OrtEnv::RegisterAllocator(AllocatorPtr allocator) {
+  auto status = value_->RegisterAllocator(allocator);
   return status;
 }

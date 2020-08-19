@@ -308,6 +308,16 @@ inline Env& Env::DisableTelemetryEvents() {
   return *this;
 }
 
+inline Env& Env::CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const OrtArenaCfg* arena_cfg) {
+  ThrowOnError(GetApi().CreateAndRegisterAllocator(p_, mem_info, arena_cfg));
+  return *this;
+}
+
+inline Env& Env::RegisterAllocator(OrtAllocator* allocator) {
+  ThrowOnError(GetApi().RegisterAllocator(p_, allocator));
+  return *this;
+}
+
 inline CustomOpDomain::CustomOpDomain(const char* domain) {
   ThrowOnError(GetApi().CreateCustomOpDomain(domain, &p_));
 }

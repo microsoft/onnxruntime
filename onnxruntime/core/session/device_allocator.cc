@@ -3,6 +3,8 @@
 
 #include "device_allocator.h"
 #include "core/session/inference_session.h"
+#include "core/session/ort_env.h"
+#include "core/session/allocator_impl.h"
 
 #define API_IMPL_BEGIN try {
 #define API_IMPL_END                                                \
@@ -23,9 +25,13 @@ ORT_API_STATUS_IMPL(OrtApis::CreateAllocator, const OrtSession* sess, const OrtM
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CreateAllocatorForSharing, _In_ const OrtMemoryInfo* mem_info,
-                    _In_ const OrtArenaCfg* arena_cfg, _Outptr_ OrtAllocator** out) {
+ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterAllocator, _Inout_ OrtEnv* env, _In_ const OrtMemoryInfo* mem_info,
+                    _In_ const OrtArenaCfg* arena_cfg) {
   using namespace onnxruntime;
+  if (!env) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Env is null");
+  }
+
   if (!mem_info) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtMemoryInfo is null");
   }
@@ -83,7 +89,29 @@ ORT_API_STATUS_IMPL(OrtApis::CreateAllocatorForSharing, _In_ const OrtMemoryInfo
     allocator_ptr = CreateAllocator(device_info, 0, create_arena);
   }
 
-  *out = new onnxruntime::OrtAllocatorForDevice(std::move(allocator_ptr));
+  auto st = env->RegisterAllocator(allocator_ptr);
+  if (!st.IsOK()) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, st.ErrorMessage().c_str());
+  }
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::RegisterAllocator, _Inout_ OrtEnv* env, _In_ OrtAllocator* allocator) {
+  using namespace onnxruntime::common;
+  const auto* mem_info_ptr = allocator->Info(allocator);
+  if (!mem_info_ptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Nullptr for memory info in input allocator.");
+  }
+  onnxruntime::AllocatorPtr allocator_ptr;
+  if (mem_info_ptr->alloc_type == OrtArenaAllocator) {
+    allocator_ptr = std::make_shared<onnxruntime::ArenaAllocatorWrapper>(allocator);
+  } else {
+    allocator_ptr = std::make_shared<onnxruntime::AllocatorWrapper>(allocator);
+  }
+  auto status = env->RegisterAllocator(allocator_ptr);
+  if (!status.IsOK()) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, status.ErrorMessage().c_str());
+  }
   return nullptr;
 }
 

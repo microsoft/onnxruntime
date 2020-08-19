@@ -887,8 +887,9 @@ common::Status InferenceSession::Initialize() {
     // it doesn't make sense to just update the allocator map inside session state with these shared allocators; doing
     // so would cause inconsistency between the allocator map inside session sate and that inside the providers.
     // TODO: we could refactor the allocators to not require the call to GetAllocator but that change is much bigger
-    // since we've to take into account the per-thread cuda allocators. We could also possibly absorb the per-thread
-    // logic in a new allocator decorator that derives from IAllocator to keep things clean. This
+    // since we've to take into account the per-thread cuda allocators.
+    // TODO (contd.) We could also possibly absorb the per-thread logic in a new allocator decorator that derives
+    // from IAllocator to keep things clean.
     std::string use_env_allocators = GetSessionConfigOrDefault(session_options_,
                                                                ORT_SESSION_OPTIONS_CONFIG_USE_ENV_ALLOCATORS, "0");
     if (use_env_allocators == "1") {
