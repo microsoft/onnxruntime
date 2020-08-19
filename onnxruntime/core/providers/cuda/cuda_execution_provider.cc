@@ -19,6 +19,8 @@
 #include "orttraining/training_ops/cuda/cuda_training_kernels.h"
 #endif
 
+#include <queue>
+
 using namespace onnxruntime::common;
 
 namespace {
@@ -29,6 +31,22 @@ struct KernelRegistryAndStatus {
 }  // namespace
 
 namespace onnxruntime {
+
+namespace {
+
+const int64_t Small_Initializer_Threshold = 100;
+
+bool IsSmallInitializer(const onnxruntime::GraphViewer& graph, const NodeArg* arg) {
+  const ONNX_NAMESPACE::TensorProto* initializer_tensor;
+  if (!graph.GetInitializedTensor(arg->Name(), initializer_tensor))
+    return false;
+  int64_t size = 1;
+  for (auto& dim : initializer_tensor->dims()) {
+    size *= dim;
+  }
+  return size <= Small_Initializer_Threshold;
+}
+}  // namespace
 
 namespace cuda {
 
@@ -1425,6 +1443,9 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                      const std::vector<const KernelRegistry*>& kernel_registries) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
   std::unordered_set<const NodeArg*> defs_outside_cuda;
+  // tensors that are output of cuda kernel, usually it is just a small cpu tensor like shape
+  std::unordered_set<const NodeArg*> small_cpu_output_args;
+  std::unordered_set<NodeIndex> cuda_nodes;
 
   for (auto& node_index : graph.GetNodesInTopologicalOrder()) {
     const auto* p_node = graph.GetNode(node_index);
@@ -1523,15 +1544,84 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       ORT_THROW_IF_ERROR(node.ForEachWithIndex(
           node.OutputDefs(),
           [&](const NodeArg& def, size_t out_index) {
-            if (cuda_kernel_def->kernel_def->OutputMemoryType(out_index) != OrtMemTypeDefault)
+            if (cuda_kernel_def->kernel_def->OutputMemoryType(out_index) != OrtMemTypeDefault) {
               defs_outside_cuda.insert(&def);
+              small_cpu_output_args.insert(&def);
+            }
             return Status::OK();
           }));
-      std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
-      sub_graph->nodes.push_back(node.Index());
-      result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
+      cuda_nodes.insert(node.Index());
     }
   }
+
+#ifdef ENABLE_TRAINING
+  std::unordered_set<NodeIndex> visited;
+  std::queue<NodeIndex> candidates;
+  // first, find all the direct consumer of small cpu tensors.
+  for (auto* def : small_cpu_output_args) {
+    auto consumers = graph.GetConsumerNodes(def->Name());
+    for (auto* node : consumers) {
+      candidates.push(node->Index());
+
+      std::cout << "Canditiate for CPU nodes: " << node->Name() << "\n";
+    }
+  }
+
+  // The algo below is trying to identity a subgraph that only depends on small cpu tensors.
+  // Usually it is a subgraph that doing shape calculation based on a GPU tensor,
+  // Then reshape it back.
+  // The detail:
+  // for each candidate, if one of its input is a small cpu tensor
+  // and the cuda kernel doesn't mark it as cpu input
+  // force the node to CPU to avoid memory cpu.
+  // and add its output to the small cpu tensors.
+  while (!candidates.empty()) {
+    auto cur = candidates.front();
+    candidates.pop();
+    if (visited.count(cur) != 0)
+      continue;
+    visited.insert(cur);
+    auto cuda_it = cuda_nodes.find(cur);
+    if (cuda_it == cuda_nodes.end())
+      continue;
+    auto* node = graph.GetNode(cur);
+
+    const KernelCreateInfo* cuda_kernel_def;
+    Status st = GetKernelRegistry()->TryFindKernel(*node, Type(), &cuda_kernel_def);
+
+    bool cause_unworthy_copy = false;
+    for (auto i = 0; i < node->InputDefs().size(); ++i) {
+      auto* input = node->InputDefs()[i];
+      if ((small_cpu_output_args.find(input) != small_cpu_output_args.end() && !cuda_kernel_def->kernel_def->IsInputOnCpu(i)) ||
+          IsSmallInitializer(graph, input)) {
+        cause_unworthy_copy = true;
+      } else {
+        cause_unworthy_copy = false;
+        break;
+      }
+    }
+
+    if (cause_unworthy_copy) {
+      cuda_nodes.erase(cuda_it);
+
+      auto* cpu_node = graph.GetNode(*cuda_it);
+      std::cout << "Warning: " << cpu_node->Name() << " is placed on CPU.\n";
+      for (auto* output : node->OutputDefs()) {
+        small_cpu_output_args.insert(output);
+      }
+      for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
+        candidates.push((*it).Index());
+      }
+    }
+  }
+#endif
+
+  for (auto index : cuda_nodes) {
+    std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+    sub_graph->nodes.push_back(index);
+    result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+  }
+
   return result;
 }
 
