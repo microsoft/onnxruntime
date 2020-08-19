@@ -24,16 +24,24 @@ namespace cuda {
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);                                                                 \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
+      name,                                                                     \
+      kOnnxDomain,                                                              \
+      11, 12,                                                                    \
+      T,                                                                        \
+      kCudaExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);                                                                 \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       name,                                                                     \
       kOnnxDomain,                                                              \
-      11,                                                                       \
+      13,                                                                       \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);
 
-// Register with the latest version 12
+// Register those with changes in OpSet12.
 #define REGISTER_KERNEL_TYPED_12(name, T)                                       \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
       name,                                                                     \
@@ -51,10 +59,18 @@ namespace cuda {
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);                                                                 \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
+      name,                                                                     \
+      kOnnxDomain,                                                              \
+      12, 12,                                                                   \
+      T,                                                                        \
+      kCudaExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);                                                                 \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       name,                                                                     \
       kOnnxDomain,                                                              \
-      12,                                                                       \
+      13,                                                                       \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
@@ -890,8 +906,14 @@ template Tensor ReduceCompute<double, CUDNN_REDUCE_TENSOR_NO_INDICES>(
   REGISTER_KERNEL_TYPED(name, float)     \
   REGISTER_KERNEL_TYPED(name, double)
 
-REGISTER_KERNEL_HFD(ArgMax)
-REGISTER_KERNEL_HFD(ArgMin)
+REGISTER_KERNEL_TYPED_12(ArgMax, MLFloat16)
+REGISTER_KERNEL_TYPED_12(ArgMax, float)
+REGISTER_KERNEL_TYPED_12(ArgMax, double)
+
+REGISTER_KERNEL_TYPED_12(ArgMin, MLFloat16)
+REGISTER_KERNEL_TYPED_12(ArgMin, float)
+REGISTER_KERNEL_TYPED_12(ArgMin, double)
+
 REGISTER_KERNEL_HFD(ReduceL1)
 REGISTER_KERNEL_HFD(ReduceL2)
 
