@@ -151,6 +151,25 @@ class ONNXCalibrater:
 
         final_dict = dict(zip(node_names, pairs))
         return final_dict
+
+    def _get_next_nodes(self,curr_node):
+        '''
+            Helper function to get child nodes for a given node
+        '''
+        model = onnx.load(self.model_path)
+        input_name_to_nodes = {}
+        for node in model.graph.node:
+            for input_name in node.input:
+                if input_name not in input_name_to_nodes:
+                    input_name_to_nodes[input_name] = [node]
+                else:
+                    input_name_to_nodes[input_name].append(node)
+        children = []
+        for output in curr_node.output:
+            if output in input_name_to_nodes:
+                for child_node in input_name_to_nodes[output]:
+                    children.append(child_node)
+        return children
     
     def calculate_scale_zeropoint(self, node, next_node, rmin, rmax):
         zp_and_scale = []
@@ -206,12 +225,15 @@ class ONNXCalibrater:
     
         quantization_params = {}
         model = onnx.load(self.model_path)
-        for index, node in enumerate(model.graph.node):
-            node_output_name = node.output[0]
-            if node_output_name in quantization_thresholds:
-                node_thresholds = quantization_thresholds[node_output_name]
-                node_params = self.calculate_scale_zeropoint(node, model.graph.node[index + 1], node_thresholds[0],node_thresholds[1])
-                quantization_params[node_output_name] = node_params
+
+        for node in model.graph.node:
+            next_nodes = self._get_next_nodes(node)
+            for next_node in next_nodes:
+                node_output_name = next_node.output[0]
+                if node_output_name in quantization_thresholds:
+                    node_thresholds = quantization_thresholds[node_output_name]
+                    node_params = self.calculate_scale_zeropoint(node, next_node, node_thresholds[0],node_thresholds[1])
+                    quantization_params[node_output_name] = node_params
 
         return quantization_params
 
