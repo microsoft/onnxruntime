@@ -1,9 +1,9 @@
 jobs:
-- job: Linux_Build
+- job: Linux_CI_Multi_GPU_Dev
   timeoutInMinutes: 120
   workspace:
     clean: all
-  pool: Linux-GPU-CUDA10
+  pool: Linux-Multi-GPU
   steps:
   - checkout: self
     clean: true
@@ -35,7 +35,6 @@ jobs:
               --build_shared_lib \
               --parallel \
               --build_wheel \
-              --use_openmp \
               --enable_onnx_tests --use_cuda --cuda_version=10.1 --cuda_home=/usr/local/cuda-10.1 --cudnn_home=/usr/local/cuda-10.1 \
               --enable_pybind --build_java --build_nodejs --enable_multi_device_test \
               --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp37-cp37m/include/python3.7m PYTHON_LIBRARY=/usr/lib64/librt.so
