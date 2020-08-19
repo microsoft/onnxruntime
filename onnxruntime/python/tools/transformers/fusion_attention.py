@@ -17,6 +17,7 @@ class AttentionMaskFormat:
     MaskIndexEnd = 0
     MaskIndexEndAndStart = 1
     AttentionMask = 2
+    NoMask = 3
 
 
 class AttentionMask():
@@ -45,6 +46,9 @@ class AttentionMask():
         return next(iter(self.mask_indice))
 
     def process_mask(self, input):
+        if self.mask_format == AttentionMaskFormat.NoMask:
+            return None
+
         if input in self.mask_indice:
             return self.mask_indice[input]
 
@@ -136,7 +140,10 @@ class FusionAttention(Fusion):
                                   vals=qkv_bias.flatten().tolist())
         self.model.add_initializer(bias)
 
-        attnetion_inputs = [input, attention_node_name + '_qkv_weight', attention_node_name + '_qkv_bias', mask_index]
+        attnetion_inputs = [input, attention_node_name + '_qkv_weight', attention_node_name + '_qkv_bias']
+        if mask_index is not None:
+            attnetion_inputs.append(mask_index)
+
         attention_node = helper.make_node('Attention',
                                           inputs=attnetion_inputs,
                                           outputs=[output],

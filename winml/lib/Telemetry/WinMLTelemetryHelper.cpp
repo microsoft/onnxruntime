@@ -124,3 +124,20 @@ void WinMLTelemetryHelper::SetIntraOpNumThreadsOverride(
       TraceLoggingInt32(std::thread::hardware_concurrency(), "maxThreadsOnMachine"),
       TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
 }
+
+void WinMLTelemetryHelper::SetNamedDimensionOverride(
+    winrt::hstring name, uint32_t value) {
+  if (!telemetry_enabled_)
+    return;
+  WinMLTraceLoggingWrite(
+      provider_,
+      "SetNamedDimensionOverride",
+      TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
+      TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+      //Telemetry info
+      TraceLoggingUInt8(WINML_TLM_NAMED_DIMENSION_OVERRIDE_VERSION, "schemaVersion"),
+      // num threads info
+      TraceLoggingWideString(name.c_str(), "dimension name"),
+      TraceLoggingInt32(value, "override value"),
+      TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
+}

@@ -420,14 +420,14 @@ index 7dfa97c..6d99e71 100644
 #### Build Instructions
 ##### Windows
 ```
-.\build.bat --use_tvm --use_llvm --llvm_path=\llvm\install\path\lib\cmake\llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
+.\build.bat --llvm_path=\llvm\install\path\lib\cmake\llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
 ```
 
 * These instructions build the release flavor. The Debug build of LLVM would be needed to build with the Debug flavor of ONNX Runtime.
 
 ##### Linux:
 ```
-./build.sh --use_tvm --use_llvm --llvm_path=/llvm/install/path/lib/cmake/llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
+./build.sh --llvm_path=/llvm/install/path/lib/cmake/llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
 ```
 
 Dockerfile instructions are available [here](./dockerfiles#nuphar).
@@ -584,7 +584,7 @@ The Vitis-AI execution provider is only supported on Linux.
 .\build.bat --use_openmp
 ```
 
-##### Linux
+##### Linux/Mac OS X
 ```
 ./build.sh --use_openmp
 
@@ -866,10 +866,10 @@ pip3 install numpy
 # Build the latest cmake
 mkdir /code
 cd /code
-wget https://cmake.org/files/v3.13/cmake-3.13.5.tar.gz;
-tar zxf cmake-3.13.5.tar.gz
+wget https://cmake.org/files/v3.13/cmake-3.16.1.tar.gz;
+tar zxf cmake-3.16.1.tar.gz
 
-cd /code/cmake-3.13.5
+cd /code/cmake-3.16.1
 ./configure --system-curl
 make
 sudo make install

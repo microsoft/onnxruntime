@@ -9,11 +9,12 @@ ARG NUMPY_VERSION=1.18.5
 ARG ONNX_VERSION=1.7.0
 ARG PYTORCH_VERSION=1.6.0
 
-ARG BUILD_VERSION=Release
-ARG OPENMPI_PATH=/opt/openmpi-${OPENMPI_VERSION} 
+ARG BUILD_CONFIG=Release
+ARG OPENMPI_PATH=/opt/openmpi-${OPENMPI_VERSION}
+ARG COMMIT=master
 
 # cuda development image for building sources
-FROM nvidia/cuda:10.2-cudnn7-devel-ubuntu18.04 as build
+FROM nvidia/cuda:10.2-cudnn7-devel-ubuntu18.04 as builder
 
 # set location for builds
 WORKDIR /stage
@@ -22,8 +23,16 @@ WORKDIR /stage
 RUN apt-get -y update &&\
     apt-get -y --no-install-recommends install \
         curl \
-        git
-    
+        git \
+        language-pack-en \
+        unattended-upgrades
+
+# update existing packages to minimize security vulnerabilities
+RUN unattended-upgrade
+
+RUN locale-gen en_US.UTF-8 && \
+    update-locale LANG=en_US.UTF-8
+
 # install miniconda (comes with python 3.7 default)
 ARG CONDA_VERSION
 ARG CONDA_URL=https://repo.anaconda.com/miniconda/Miniconda3-${CONDA_VERSION}-Linux-x86_64.sh
@@ -41,6 +50,9 @@ RUN conda install -y \
         numpy=${NUMPY_VERSION} &&\
     pip install \
         onnx=="${ONNX_VERSION}"
+
+# install cerberus for the new pytorch front-end
+RUN pip install cerberus
 
 # build ucx suite
 # note: openmpi will not select ucx without multithreading enabled
@@ -97,7 +109,7 @@ RUN pip install torch==${PYTORCH_VERSION}
 #     CUDNN_LIBRARY="/usr/lib/x86_64-linux-gnu" \
 #     NCCL_INCLUDE_DIR="/usr/include" \
 #     NCCL_LIB_DIR="/usr/lib/x86_64-linux-gnu" \
-#     USE_SYSTEM_NCCL=1 
+#     USE_SYSTEM_NCCL=1
 # RUN conda install -y \
 #         mkl \
 #         mkl-include \
@@ -112,16 +124,17 @@ RUN pip install torch==${PYTORCH_VERSION}
 #     pip install build/wheel/*.whl
 
 # build onnxruntime wheel with cuda and mpi support
-ARG BUILD_VERSION
+ARG BUILD_CONFIG
+ARG COMMIT
 RUN cd /stage && git clone https://github.com/microsoft/onnxruntime.git &&\
     cd onnxruntime &&\
-    git checkout master &&\
+    git checkout ${COMMIT} &&\
     cp ThirdPartyNotices.txt /stage/ThirdPartyNotices.txt &&\
     cp dockerfiles/LICENSE-IMAGE.txt /stage/LICENSE-IMAGE.txt &&\
     python tools/ci_build/build.py \
         --cmake_extra_defines \
             ONNXRUNTIME_VERSION=`cat ./VERSION_NUMBER` \
-        --config ${BUILD_VERSION} \
+        --config ${BUILD_CONFIG} \
         --enable_training \
         --mpi_home ${OPENMPI_PATH} \
         --use_cuda \
@@ -134,7 +147,10 @@ RUN cd /stage && git clone https://github.com/microsoft/onnxruntime.git &&\
         --build \
         --build_wheel \
         --skip_tests &&\
-    pip install build/${BUILD_VERSION}/dist/*.whl
+    pip install build/${BUILD_CONFIG}/dist/*.whl
+
+# Install AzureML support and commonly used packages.
+RUN pip install azureml-defaults transformers==2.11.0 msgpack tensorboardX==1.8 tensorboard==2.3.0
 
 # switch to cuda runtime environment
 # note: launch with --gpus all or nvidia-docker
@@ -143,7 +159,7 @@ WORKDIR /stage
 
 # install ucx
 # note: launch with --cap-add=sys_nice to avoid 'mbind' warnings
-COPY --from=build /opt/ucx /opt/ucx
+COPY --from=builder /opt/ucx /opt/ucx
 ENV PATH=/opt/ucx/bin:$PATH
 ENV LD_LIBRARY_PATH=/opt/ucx/lib:$LD_LIBRARY_PATH
 
@@ -152,7 +168,7 @@ ENV LD_LIBRARY_PATH=/opt/ucx/lib:$LD_LIBRARY_PATH
 # note: enforce openmpi select ucx or fail
 ARG OPENMPI_VERSION
 ARG OPENMPI_PATH
-COPY --from=build ${OPENMPI_PATH} ${OPENMPI_PATH}
+COPY --from=builder ${OPENMPI_PATH} ${OPENMPI_PATH}
 ENV PATH=${OPENMPI_PATH}/bin:$PATH
 ENV LD_LIBRARY_PATH=${OPENMPI_PATH}/lib:$LD_LIBRARY_PATH
 ENV OMPI_ALLOW_RUN_AS_ROOT=1
@@ -166,7 +182,7 @@ RUN apt-get -y update && apt-get -y --no-install-recommends install \
     ldconfig
 
 # copy conda environment (includes numpy, mpi4py, pytorch, onnxruntime)
-COPY --from=build /opt/conda /opt/conda
+COPY --from=builder /opt/conda /opt/conda
 ENV PATH=/opt/conda/bin:${PATH}
 
 # make ssh/sshd less strict for wiring containers on Azure VM scale set
@@ -203,4 +219,4 @@ RUN conda remove -y cmake &&\
     apt-get autoremove -y &&\
     rm -fr /stage
 WORKDIR /workspace
-COPY --from=build /stage/*.txt /workspace/
+COPY --from=builder /stage/*.txt /workspace/
