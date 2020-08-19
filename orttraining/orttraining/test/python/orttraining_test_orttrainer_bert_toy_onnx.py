@@ -79,8 +79,6 @@ def optimizer_parameters(model):
         if any(key in initializer.name for key in no_decay_keys):
             no_decay_param_group.append(initializer.name)
     params = [{'params': no_decay_param_group, "alpha": 0.9, "beta": 0.999, "lambda_coef": 0.0, "epsilon": 1e-6}]
-    print("this is a test _____")
-    print(no_decay_param_group)
     
     return params
 
@@ -629,6 +627,7 @@ def testORTTrainerFrozenWeights(model_params):
 
     for i in range(total_steps):
         sample_input = generate_random_input_from_model_desc(model_desc, i)
+        trainer.train_step(*sample_input)
 
     # All model_params must be in the session state
     assert trainer._onnx_model is not None
@@ -642,11 +641,52 @@ def testORTTrainerFrozenWeights(model_params):
 
     for i in range(total_steps):
         sample_input = generate_random_input_from_model_desc(model_desc, i)
+        trainer.train_step(*sample_input)
 
     # All model_params CANNOT be in the session state
     assert trainer._onnx_model is not None
     session_state = trainer._training_session.get_state()
     assert not all([param in session_state for param in model_params])
+
+def testToyBERTSaveAsONNX():
+    device = 'cuda'
+    onnx_file_name = os.path.join('..','..','..','temp_toy_bert_onnx_model.onnx')
+    if os.path.exists(onnx_file_name):
+        os.remove(onnx_file_name)
+    assert not os.path.exists(onnx_file_name)
+
+    # Load trainer
+    model_desc = bert_model_description()
+    model = load_bert_onnx_model()
+
+    optim_config = optim.LambConfig()
+    opts =  orttrainer.ORTTrainerOptions({
+        'debug' : {
+            'deterministic_compute': True
+        },
+        'device': {
+            'id': device,
+        },
+    })
+
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config)#, options=opts)
+
+    trainer.save_as_onnx(onnx_file_name)
+    assert os.path.exists(onnx_file_name)
+
+    with open(onnx_file_name, "rb") as f:
+        bin_str = f.read()
+        reload_onnx_model = onnx.load_model_from_string(bin_str)
+    os.remove(onnx_file_name)
+
+    # Create a new trainer from persisted ONNX model and compare with original ONNX model
+    trainer_from_onnx = orttrainer.ORTTrainer(reload_onnx_model, model_desc, optim_config)#, options=opts)
+    assert trainer_from_onnx._onnx_model is not None
+    assert (id(trainer_from_onnx._onnx_model) != id(trainer._onnx_model))
+    for initializer, loaded_initializer in zip(trainer._onnx_model.graph.initializer, trainer_from_onnx._onnx_model.graph.initializer):
+        assert initializer.name == loaded_initializer.name
+    assert (onnx.helper.printable_graph(trainer_from_onnx._onnx_model.graph) == onnx.helper.printable_graph(trainer._onnx_model.graph))
+    _test_helpers.assert_onnx_weights(trainer, trainer_from_onnx)
 
 
 ###############################################################################
