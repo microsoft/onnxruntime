@@ -40,8 +40,7 @@ class _ORTTrainerModelDesc(object):
         # Normalize outputs to a list of namedtuple(name, shape, is_loss)
         self._OutputDescription = namedtuple('OutputDescription', ['name', 'shape', 'is_loss'])
         self._OutputDescriptionTyped = namedtuple('OutputDescriptionTyped',
-                                                  ['name', 'shape', 'is_loss', 'dtype', 'dtype_amp'],
-                                                  defaults=[None])
+                                                  ['name', 'shape', 'is_loss', 'dtype', 'dtype_amp'])
         for idx, output in enumerate(self._validated['outputs']):
             # import pdb; pdb.set_trace()
             if len(output) == 2:
