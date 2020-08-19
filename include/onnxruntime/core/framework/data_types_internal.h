@@ -112,7 +112,7 @@ constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<BFloat16
       function<int8_t>(__VA_ARGS__);                              \
       break;                                                      \
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:              \
-      function<uint32_t>(__VA_ARGS__);                            \
+      function<uint8_t>(__VA_ARGS__);                            \
       break;                                                      \
     case ONNX_NAMESPACE::TensorProto_DataType_INT16:              \
       function<int16_t>(__VA_ARGS__);                             \
