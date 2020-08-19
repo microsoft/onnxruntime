@@ -3,14 +3,6 @@
 
 #pragma once
 
-#include <windows.h>
-
-#if WINVER < _WIN32_WINNT_WIN8
-// Stubs for WRL to build for Windows 7
-constexpr BOOL RoTransformError(HRESULT, HRESULT, void*) { return true; }
-constexpr HRESULT SetRestrictedErrorInfo(void*) { return S_OK; }
-#endif
-
 #include "common.h"
 
 #include <winrt/windows.media.h>
