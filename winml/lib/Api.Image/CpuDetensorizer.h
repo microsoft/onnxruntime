@@ -15,7 +15,6 @@ class CpuDetensorizer {
       _In_ ImageTensorChannelType formatTo,
       _In_ ImageNominalPixelRange pixelRange,
       _In_ T* pCPUTensor,
-      _In_ const T* pCPUTensor,
       _In_ uint32_t bufferWidth,
       _In_ uint32_t tensorHeight,
       _In_ uint32_t tensorWidth,
@@ -158,7 +157,7 @@ class CpuDetensorizer {
       pCPUTensor[i] = scale * (pCPUTensor[i] + shift);
     }
   }
-  
+
   template <typename T>
   static void InterleaveRowFloatToByte(
       const T* xChannel,
