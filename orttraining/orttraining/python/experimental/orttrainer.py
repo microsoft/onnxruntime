@@ -4,6 +4,7 @@ import os
 import onnx
 import torch
 from inspect import signature
+import warnings
 
 import onnxruntime as ort
 from . import _utils, amp, optim, postprocess, ORTTrainerOptions
@@ -194,7 +195,12 @@ class ORTTrainer(object):
                 ort.set_cuda_mem_limit(self.options.device.mem_limit)
             ort.set_cuda_device_id(_utils.get_device_index(self.options.device.id))
 
+        # TODO: thiagofc: Checkpoint related for redesign
+        self._original_model_state_keys = list(model.state_dict().keys()) if hasattr(model, 'state_dict') else []
+        self._state_dict = None
+
         self._train_step_info = TrainStepInfo(self.optim_config)
+        self._training_session = None
         self._init_session()
 
     def eval_step(self, *args, **kwargs):
@@ -245,6 +251,7 @@ class ORTTrainer(object):
         # Output must be returned in the same order as defined in the model description
         results = [session_run_results[o_desc.name] for o_desc in outputs_desc]
         return results[0] if len (results) == 1 else results
+
 
     def save_as_onnx(self, path):
         r"""Persists ONNX model into :py:attr:`path`
@@ -395,7 +402,7 @@ class ORTTrainer(object):
         # Input can be a list or dict
         is_list_input = (match
                          or len(input_names) >= len(ordered_input_list)
-                         or not all(x in ordered_list_kes for x in input_names))
+                         or not all(x in ordered_input_list for x in input_names))
 
         class CombineTorchModelLossFn(torch.nn.Module):
             def __init__(self, model, loss_fn, input_names):
@@ -643,6 +650,11 @@ class ORTTrainer(object):
             self._model_desc_outputs_with_gradient_accumulation = [
                 *self.model_desc.outputs, self.model_desc.gradient_accumulation]
 
+        # TODO: thiagofc: Checkpoint related for redesign
+        if self._state_dict:
+            self.load_state_dict(self._state_dict, self._load_state_dict_strict)
+        self._state_dict = None
+
     def _prepare_model_input(self, inputs_desc, lr, loss_scale, *inputs, **kwargs):
         # Normalize input to tuple of samples
         if type(inputs) == tuple and len(inputs) == 1 and type(inputs[0]) == list:
@@ -665,7 +677,7 @@ class ORTTrainer(object):
         # Append loss scale
         if loss_scale:
             assert self.options.mixed_precision.enabled, "Loss scale cannot be used without mixed precision"
-            loss_scale = torch.tensor(loss_scale)
+            loss_scale = loss_scale.clone().detach()
             input += (loss_scale, )
             extra_inputs += 1
 

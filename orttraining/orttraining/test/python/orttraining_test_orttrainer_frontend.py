@@ -659,7 +659,7 @@ def testORTDeterministicCompute(seed, device):
     data, targets = batcher_fn(train_data, 0)
     _ = first_trainer.train_step(data, targets)
     assert first_trainer._onnx_model is not None
-    
+
     # Setup for the second ORTTRainer run
     torch.manual_seed(seed)
     set_seed(seed)
