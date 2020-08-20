@@ -372,16 +372,13 @@ class ORTTrainer(object):
             results = [session_run_results[o_desc.name] for o_desc in self.model_desc.outputs]
         return results[0] if len (results) == 1 else results
 
-    def _combine_torch_model_with_loss_fn(self):
-        # Don't need to wrap model when loss_fn is not set
-        if not self.loss_fn:
-            return self._torch_model
-
+    def _combine_torch_model_with_loss_fn_and_wrap_input(self):
         # Validate loss_fn
-        sig_loss = signature(self.loss_fn)
-        if len(sig_loss.parameters) != 2:
-            raise RuntimeError(
-                "loss function should take two arguments - predict and label.")
+        if self.loss_fn:
+            sig_loss = signature(self.loss_fn)
+            if len(sig_loss.parameters) != 2:
+                raise RuntimeError(
+                    "loss function should take two arguments - predict and label.")
 
         # Basic input names from model
         input_names = [input.name for input in self.model_desc.inputs]
@@ -389,8 +386,9 @@ class ORTTrainer(object):
         ordered_input_list = list(sig.parameters.keys())
 
         # Label from loss_fn goes after model input
-        ordered_input_list = [*ordered_input_list,
-                              list(sig_loss.parameters.keys())[1]]
+        if self.loss_fn:
+            ordered_input_list = [*ordered_input_list,
+                                list(sig_loss.parameters.keys())[1]]
 
         # Check whether input names from model match inputs from ModelDescription
         match = True
@@ -399,43 +397,32 @@ class ORTTrainer(object):
                 match = False
                 break
 
-        # Input can be a list or dict
-        is_list_input = (match
-                         or len(input_names) >= len(ordered_input_list)
-                         or not all(x in ordered_input_list for x in input_names))
-
-        class CombineTorchModelLossFn(torch.nn.Module):
+        class CombineTorchModelLossFnWrapInput(torch.nn.Module):
             def __init__(self, model, loss_fn, input_names):
-                super(CombineTorchModelLossFn, self).__init__()
+                super().__init__()
                 self.model = model
                 self.loss_fn = loss_fn
                 self.input_names = input_names
 
             def forward(self, *inputs):
-                # '*inputs' is given by torch trace and matches the order of 'input_names'
-                # The 'model' input might differ from 'input_names'
-                if is_list_input:
-                    input, label = inputs[:-1], inputs[-1]
-                    preds = self.model(*input)
-                    return self.loss_fn(preds, label), preds
-                else:
-                    sig = signature(self.model.forward)
-                    ordered_input_list = list(sig.parameters.keys())
+                sig = signature(self.model.forward)
+                ordered_list_keys = list(sig.parameters.keys())
 
-                    input_dict = {}
-                    for key in sig.parameters.keys():
-                        if key in self.input_names:
-                            input_dict[key] = inputs[self.input_names.index(key)]
+                input_dict = {}
+                for key in sig.parameters.keys():
+                    if key in self.input_names:
+                        input_dict[key] = inputs[self.input_names.index(key)]
 
-                    model_out = self.model(**input_dict)
-                    if self.loss_fn is None:
-                        return model_out
+                model_out = self.model(**input_dict)
+                if self.loss_fn is None:
+                    return model_out
 
-                    label = inputs[-1]
-                    preds = model_out
-                    return self.loss_fn(preds, label), preds
+                label = inputs[-1]
+                preds = model_out
+                return self.loss_fn(preds, label), preds
 
-        return CombineTorchModelLossFn(self._torch_model, self.loss_fn, input_names)
+        return CombineTorchModelLossFnWrapInput(self._torch_model, self.loss_fn, input_names)
+
 
     def _convert_torch_model_loss_fn_to_onnx(self, inputs, device):
         # Dynamic axes
@@ -466,7 +453,7 @@ class ORTTrainer(object):
 
         # PyTorch ONNX exporter does not match argument names
         # This is an issue because the ONNX graph depends on all inputs to be specified
-        model = self._combine_torch_model_with_loss_fn()
+        model = self._combine_torch_model_with_loss_fn_and_wrap_input()
 
         # Do an inference to grab output types
         model.eval()
