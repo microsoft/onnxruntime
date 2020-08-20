@@ -79,7 +79,7 @@ table Node {
   name:string;
   doc_string:string;
   domain:string;
-  since_version:long;
+  since_version:int;
 
   index:uint;
   op_type:string;
@@ -202,4 +202,4 @@ table InferenceSession {
 }
 
 root_type InferenceSession;
-file_identifier "ORTL";
+file_identifier "ORTM";
