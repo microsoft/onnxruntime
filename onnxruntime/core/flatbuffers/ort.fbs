@@ -180,11 +180,21 @@ table Model {
   graph:Graph;
 }
 
-// TODO add support of session state
-table Session {
-  ort_version:string;
-  model:Model;
+struct KernelCreateInfo {
+  node_index:uint;
+  kernal_def_hash:ulong;
 }
 
-root_type Session;
+table SessionState {
+  graph_id:string;
+  kernels:[KernelCreateInfo];
+}
+
+table InferenceSession {
+  ort_version:string;
+  model:Model;
+  session_states:[SessionState];
+}
+
+root_type InferenceSession;
 file_identifier "ORTL";
