@@ -40,8 +40,7 @@ class _ORTTrainerModelDesc(object):
         # Normalize outputs to a list of namedtuple(name, shape, is_loss)
         self._OutputDescription = namedtuple('OutputDescription', ['name', 'shape', 'is_loss'])
         self._OutputDescriptionTyped = namedtuple('OutputDescriptionTyped',
-                                                  ['name', 'shape', 'is_loss', 'dtype', 'dtype_amp'],
-                                                  defaults=[None])
+                                                  ['name', 'shape', 'is_loss', 'dtype', 'dtype_amp'])
         for idx, output in enumerate(self._validated['outputs']):
             # import pdb; pdb.set_trace()
             if len(output) == 2:
@@ -239,7 +238,7 @@ class _ORTTrainerModelDesc(object):
 
         assert dtype is None or isinstance(dtype, torch.dtype), "'dtype' must be either None or a torch.dtype type"
         if dtype:
-            new_output_desc = self._OutputDescriptionTyped(name, shape, is_loss, dtype)
+            new_output_desc = self._OutputDescriptionTyped(name, shape, is_loss, dtype, None)
         else:
             new_output_desc = self._OutputDescription(name, shape, is_loss)
 
