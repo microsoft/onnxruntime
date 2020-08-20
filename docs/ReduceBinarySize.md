@@ -1,10 +1,10 @@
 # Reduce binary size
-To reduce compiled binary size, two arguments are available:
+To reduce compiled binary size, two options are available:
 
 - --include_ops_by_model=<path to directory of models\>
 - --include_ops_by_file=<path to a file\>
 
-The arguments empower building script of commenting out operators listed in execution provider(s), thereby downsizing build output.
+The options empower building to comment out operators listed in execution provider(s), thereby downsizing the output.
 
 ## include_ops_by_model
 The argument enables the compile binary of including only operators consumed by models in the specified directory.
@@ -22,5 +22,6 @@ ai.onnx;11;Gemm
 - If both are specified, operators referred from either argument will be kept active;
 - The script is located under toos/ci_build/, and could go solo as:
 ```
-python provider_rewriter.py --model_path d:\ReduceSize\models --file_path d:\ReduceSize\ops.txt --ep_path d:\onnxruntime\onnxruntime\core\providers\cpu\cpu_execution_provider.cc
+#apply trimming on all cpu/cuda providers
+python provider_rewriter.py --model_path d:\ReduceSize\models --file_path d:\ReduceSize\ops.txt --ort_root d:\onnxruntime
 ```
