@@ -9,7 +9,7 @@ jobs:
     AgentPool : 'Win-CPU-2019'
     ArtifactName: 'drop-nodejs-win32'
     JobName: 'Windows_CI'
-    BuildCommand:  '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_nodejs --enable_onnx_tests --enable_wcos --cmake_generator "Visual Studio 16 2019"'
+    BuildCommand:  '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_nodejs --enable_onnx_tests --enable_wcos --use_telemetry --cmake_generator "Visual Studio 16 2019"'
     BuildArch: 'x64'
     EnvSetupScript: 'setup_env.bat'
     sln_platform: 'x64'
