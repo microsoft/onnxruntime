@@ -184,8 +184,8 @@ def generate_files(list, args):
                               'dnnl_ep_shared_lib': 'onnxruntime_providers_dnnl.dll',
                               'tensorrt_ep_shared_lib': 'onnxruntime_providers_tensorrt.dll',
                               'onnxruntime_perf_test': 'onnxruntime_perf_test.exe',
-                              'onnx_test_runner': 'onnx_test_runner.exe',
-                            }
+                              'onnx_test_runner': 'onnx_test_runner.exe'}
+
         copy_command = "copy"
         runtimes_target = '" target="runtimes\\win-'
     else:
@@ -197,8 +197,8 @@ def generate_files(list, args):
                               'dnnl_ep_shared_lib': 'libonnxruntime_providers_dnnl.so',
                               'tensorrt_ep_shared_lib': 'libonnxruntime_providers_tensorrt.so',
                               'onnxruntime_perf_test': 'onnxruntime_perf_test',
-                              'onnx_test_runner': 'onnx_test_runner',
-                            }
+                              'onnx_test_runner': 'onnx_test_runner'}
+
         copy_command = "cp"
         runtimes_target = '" target="runtimes\\linux-'
 
@@ -216,7 +216,7 @@ def generate_files(list, args):
                           os.path.join(args.sources_path,
                                        'include\\onnxruntime\\core\\providers\\cuda\\cuda_provider_factory.h') +
                           '" target="build\\native\\include" />')
-    
+
     if args.execution_provider == 'openvino':
         files_list.append('<file src=' + '"' +
                           os.path.join(args.sources_path,
@@ -304,15 +304,19 @@ def generate_files(list, args):
                           '\\native\\Microsoft.AI.MachineLearning.pdb" />')
     # Process execution providers which are built as shared libs
     if args.execution_provider == "tensorrt":
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, nuget_dependencies['providers_shared_lib']) +
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
+                          nuget_dependencies['providers_shared_lib']) +
                           runtimes_target + args.target_architecture + '\\native" />')
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, nuget_dependencies['tensorrt_ep_shared_lib']) +
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
+                          nuget_dependencies['tensorrt_ep_shared_lib']) +
                           runtimes_target + args.target_architecture + '\\native" />')
 
     if args.execution_provider == "dnnl":
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, nuget_dependencies['providers_shared_lib']) +
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
+                          nuget_dependencies['providers_shared_lib']) +
                           runtimes_target + args.target_architecture + '\\native" />')
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, nuget_dependencies['dnnl_ep_shared_lib']) +
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
+                          nuget_dependencies['dnnl_ep_shared_lib']) +
                           runtimes_target + args.target_architecture + '\\native" />')
 
     # process all other library dependencies
@@ -341,12 +345,14 @@ def generate_files(list, args):
         # These are copied to the runtimes folder for convenience of loading with the dlls
         if args.is_release_build.lower() != 'true' and args.target_architecture == 'x64' and \
                 os.path.exists(os.path.join(args.native_build_path, nuget_dependencies['onnxruntime_perf_test'])):
-            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, nuget_dependencies['onnxruntime_perf_test']) +
+            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
+                              nuget_dependencies['onnxruntime_perf_test']) +
                               runtimes_target + args.target_architecture + '\\native" />')
 
         if args.is_release_build.lower() != 'true' and args.target_architecture == 'x64' and \
                 os.path.exists(os.path.join(args.native_build_path, nuget_dependencies['onnx_test_runner'])):
-            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, nuget_dependencies['onnx_test_runner']) +
+            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
+                              nuget_dependencies['onnx_test_runner']) +
                               runtimes_target + args.target_architecture + '\\native" />')
 
     # Process props and targets files
@@ -419,13 +425,16 @@ def is_linux():
 
 
 def validate_platform():
-    if not (is_windows() or is_linux()):
-        raise Exception ('Native Nuget generation is currently supported only on Windows and Linux')
+    if not(is_windows() or is_linux()):
+        raise Exception('Native Nuget generation is currently supported only on Windows and Linux')
+
 
 def validate_execution_provider(execution_provider):
     if is_linux():
-        if not (execution_provider == '' or execution_provider == 'dnnl' or execution_provider == 'tensorrt' or execution_provider == 'openvino'):
-            raise Exception('On Linux platform nuget generation is supported only for cpu|cuda|dnnl|tensorrt|openvino execution providers.')
+        if not (execution_provider == 'None' or execution_provider == 'dnnl'
+                or execution_provider == 'tensorrt' or execution_provider == 'openvino'):
+            raise Exception('On Linux platform nuget generation is supported only '
+                            'for cpu|cuda|dnnl|tensorrt|openvino execution providers.')
 
 
 def main():
