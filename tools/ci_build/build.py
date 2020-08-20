@@ -154,7 +154,13 @@ def parse_arguments():
     # C-Sharp bindings
     parser.add_argument(
         "--build_csharp", action='store_true',
-        help="Build C#.Net DLL and NuGet package")
+        help="Build C#.Net DLL and NuGet package. This should be only used in CI pipelines. "
+        "For building C# bindings and packaging them into nuget package use --build_nuget arg.")
+
+    parser.add_argument(
+        "--build_nuget", action='store_true',
+        help="Build C#.Net DLL and NuGet package on the local machine. "
+        "Currently only Windows and Linux platforms are supported.")
 
     # Java bindings
     parser.add_argument(
@@ -372,6 +378,10 @@ def is_windows():
 
 def is_macOS():
     return sys.platform.startswith("darwin")
+
+
+def is_linux():
+    return sys.platform.startswith("linux")
 
 
 def get_linux_distro():
@@ -1383,6 +1393,42 @@ def build_python_wheel(
         run_subprocess(args, cwd=cwd)
 
 
+def build_nuget_package(configs, use_cuda, use_openvino, use_tensorrt, use_dnnl):
+    if not (is_windows() or is_linux()):
+        raise BuildError(
+            'Currently csharp builds and nuget package creation is only supportted '
+            'on Windows and Linux platforms.')
+
+    build_dir = os.path.join(os.getcwd(), 'csharp')
+    is_linux_build = ""
+    if is_windows():
+        is_linux_build = "/p:IsLinuxBuild=\"false\""
+    else:
+        is_linux_build = "/p:IsLinuxBuild=\"true\""
+
+    execution_provider = "/p:ExecutionProvider=\"None\""
+    if use_openvino:
+        execution_provider = "/p:ExecutionProvider=\"openvino\""
+    elif use_tensorrt:
+        execution_provider = "/p:ExecutionProvider=\"tensorrt\""
+    elif use_dnnl:
+        execution_provider = "/p:ExecutionProvider=\"dnnl\""
+    else:
+        pass
+
+    cmd_args = ["dotnet",  "restore", "OnnxRuntime.CSharp.sln", "--configfile", "Nuget.CSharp.config" ]
+    run_subprocess(cmd_args, cwd=build_dir)
+
+    for config in configs:
+        configuration = "/p:Configuration=\"" + config + "\""
+
+        cmd_args = ["dotnet", "msbuild", "OnnxRuntime.CSharp.sln", configuration, is_linux_build]
+        run_subprocess(cmd_args, cwd=build_dir)
+
+        cmd_args=["dotnet", "msbuild", "OnnxRuntime.CSharp.proj", "/t:CreatePackage", configuration, execution_provider, is_linux_build]
+        run_subprocess(cmd_args, cwd=build_dir)
+
+
 def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
     if (args.arm or args.arm64) and (not is_windows() and not args.ios):
         raise BuildError(
@@ -1514,8 +1560,12 @@ def main():
     if args.build_wheel or args.gen_doc:
         args.enable_pybind = True
 
-    if args.build_csharp or args.build_java or args.build_nodejs:
+    if args.build_csharp or build_nuget or args.build_java or args.build_nodejs:
         args.build_shared_lib = True
+
+    if args.build_nuget and cross_compiling:
+        raise BuildError(
+                'Currently nuget package creation is not supported while cross-compiling')
 
     # Disabling unit tests for VAD-F as FPGA only supports
     # models with NCHW layout
@@ -1677,6 +1727,14 @@ def main():
                 nightly_build=nightly_build,
                 featurizers_build=args.use_featurizers,
                 use_ninja=(args.cmake_generator == 'Ninja')
+            )
+        if args.build_nuget:
+            build_nuget_package(
+                configs,
+                args.use_cuda,
+                args.use_openvino,
+                args.use_tensorrt,
+                args.use_dnnl
             )
 
     if args.gen_doc and (args.build or args.test):

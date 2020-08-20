@@ -17,7 +17,7 @@ CMake creates a target to this project
     <TargetArchitecture Condition=" '$(TargetArchitecture)' == '' ">x64</TargetArchitecture>
     <IsReleaseBuild Condition=" '$(IsReleaseBuild)' == '' ">false</IsReleaseBuild>
     <IsLinuxBuild Condition=" '$(IsLinuxBuild)' == '' ">false</IsLinuxBuild>
-    <ExecutionProvider Condition=" '$(ExecutionProvider)' == '' ">cpu</ExecutionProvider>
+    <ExecutionProvider Condition=" '$(ExecutionProvider)' == '' ">None</ExecutionProvider>
 
     <!--internal build related properties-->
     <OnnxRuntimeSourceDirectory Condition="'$(OnnxRuntimeSourceDirectory)'==''">..</OnnxRuntimeSourceDirectory>

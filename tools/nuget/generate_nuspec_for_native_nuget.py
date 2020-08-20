@@ -22,8 +22,8 @@ def parse_arguments():
     parser.add_argument("--commit_id", required=True, help="The last commit id included in this package.")
     parser.add_argument("--is_release_build", required=False, default=None, type=str,
                         help="Flag indicating if the build is a release build. Accepted values: true/false.")
-    parser.add_argument("--execution_provider", required=False, default="cpu", type=str,
-                        choices=['cpu', 'cuda', 'dml', 'dnnl', 'openvino', 'tensorrt', 'winml'],
+    parser.add_argument("--execution_provider", required=False, default='None', type=str,
+                        choices=['dnnl', 'openvino', 'tensorrt', 'None'],
                         help="Flag indicating if the build is a release build. Accepted values: true/false.")
 
     return parser.parse_args()
@@ -424,7 +424,7 @@ def validate_platform():
 
 def validate_execution_provider(execution_provider):
     if is_linux():
-        if not (execution_provider == 'cpu' or execution_provider == 'cuda' or execution_provider == 'dnnl' or execution_provider == 'tensorrt' or execution_provider == 'openvino'):
+        if not (execution_provider == '' or execution_provider == 'dnnl' or execution_provider == 'tensorrt' or execution_provider == 'openvino'):
             raise Exception('On Linux platform nuget generation is supported only for cpu|cuda|dnnl|tensorrt|openvino execution providers.')
 
 
