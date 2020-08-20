@@ -69,10 +69,10 @@ class ORTGlueTest(unittest.TestCase):
         self.rtol = 1e-02
 
     def test_roberta_with_mrpc(self):
-        expected_acc = 0.8676470588235294
-        expected_f1 = 0.9035714285714286
-        expected_acc_and_f1 = 0.885609243697479
-        expected_loss = 0.3022572344862947
+        expected_acc = 0.8848039215686274
+        expected_f1 = 0.917975567190227
+        expected_acc_and_f1 = 0.9013897443794272
+        expected_loss = 0.35917433314755853
 
         for use_new_api in [True, False]:
             results = self.run_glue(model_name="roberta-base", task_name="MRPC", fp16=False, use_new_api=use_new_api)
@@ -83,9 +83,9 @@ class ORTGlueTest(unittest.TestCase):
 
     def test_roberta_fp16_with_mrpc(self):
         expected_acc = 0.8946078431372549
-        expected_f1 = 0.9244288224956063
-        expected_acc_and_f1 = 0.9095183328164307
-        expected_loss = 0.2860557144763423
+        expected_f1 = 0.924693520140105
+        expected_acc_and_f1 = 0.90965068163868
+        expected_loss = 0.3052181116506165
 
         for use_new_api in [True, False]:
             results = self.run_glue(model_name="roberta-base", task_name="MRPC", fp16=True, use_new_api=use_new_api)
@@ -108,10 +108,10 @@ class ORTGlueTest(unittest.TestCase):
             assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
 
     def test_bert_fp16_with_mrpc(self):
-        expected_acc = 0.8431372549019608
-        expected_f1 = 0.888888888888889
-        expected_acc_and_f1 = 0.8660130718954249
-        expected_loss = 0.39904916637084065
+        expected_acc = 0.8529411764705882
+        expected_f1 = 0.8972602739726027
+        expected_acc_and_f1 = 0.8751007252215954
+        expected_loss = 0.412924896998732
 
         for use_new_api in [True, False]:
             results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=True, use_new_api=use_new_api)
