@@ -156,7 +156,7 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
     }
 
     inline bool operator<(const BoxInfo& rhs) const {
-      return score_ < rhs.score_;
+      return score_ < rhs.score_ || (score_ == rhs.score_ && index_ > rhs.index_);
     }
 
     inline bool SuppressByIOU(const BoxInfo& rhs, float iou_threshold) const {
@@ -180,7 +180,7 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
 
   std::vector<SelectedIndex> selected_indices;
   std::vector<BoxInfo> selected_boxes_inside_class;
-  selected_boxes_inside_class.reserve(max_output_boxes_per_class);
+  selected_boxes_inside_class.reserve(std::min(max_output_boxes_per_class, pc.num_boxes_));
 
   for (int64_t batch_index = 0; batch_index < pc.num_batches_; ++batch_index) {
     for (int64_t class_index = 0; class_index < pc.num_classes_; ++class_index) {
