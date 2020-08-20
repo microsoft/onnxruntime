@@ -66,7 +66,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
 
   auto data_group_size = parameters.world_size / parameters.horizontal_parallel_size;
   if (data_group_size != parameters.data_parallel_size) {
-    LOGS(*(sess->GetLogger()), WARNING) << "WARNING: data_parallel_size is not correct, tuned automatically to "
+    LOGS(*(sess->GetLogger()), WARNING) << "data_parallel_size is not correct, tuned automatically to "
               << data_group_size;
     parameters.data_parallel_size = data_group_size;
   }
@@ -146,21 +146,21 @@ TrainingConfigurationResult ConfigureSessionForTraining(
 
 #if defined(USE_NCCL)
 void CopyMPIContextToTrainingParameters(TrainingParameters& parameters, const logging::Logger* logger) {
-    LOGS(*logger, WARNING) << "MPIContext::GetInstance().GetWorldRank(): " << MPIContext::GetInstance().GetWorldRank();
-    LOGS(*logger, WARNING) << "MPIContext::GetInstance().GetLocalRank(): " << MPIContext::GetInstance().GetLocalRank();
-    LOGS(*logger, WARNING) << "MPIContext::GetInstance().GetWorldSize(): " << MPIContext::GetInstance().GetWorldSize();
-    LOGS(*logger, WARNING) << "MPIContext::GetInstance().GetLocalSize(): " << MPIContext::GetInstance().GetLocalSize();
+    LOGS(*logger, INFO) << "MPIContext::GetInstance().GetWorldRank(): " << MPIContext::GetInstance().GetWorldRank();
+    LOGS(*logger, INFO) << "MPIContext::GetInstance().GetLocalRank(): " << MPIContext::GetInstance().GetLocalRank();
+    LOGS(*logger, INFO) << "MPIContext::GetInstance().GetWorldSize(): " << MPIContext::GetInstance().GetWorldSize();
+    LOGS(*logger, INFO) << "MPIContext::GetInstance().GetLocalSize(): " << MPIContext::GetInstance().GetLocalSize();
 
     parameters.local_rank = MPIContext::GetInstance().GetLocalRank();
     parameters.local_size = MPIContext::GetInstance().GetLocalSize();
     if (parameters.world_rank != MPIContext::GetInstance().GetWorldRank()) {
       if (parameters.world_rank != 0)
-        LOGS(*logger, WARNING) << "WARNING: TrainingParameters world_rank is not correct, tuned automatically to " << MPIContext::GetInstance().GetWorldRank();
+        LOGS(*logger, WARNING) << "TrainingParameters world_rank is not correct, tuned automatically to " << MPIContext::GetInstance().GetWorldRank();
       parameters.world_rank = MPIContext::GetInstance().GetWorldRank();
     }
     if (parameters.world_size != MPIContext::GetInstance().GetWorldSize()) {
       if (parameters.world_size != 1)
-        LOGS(*logger, WARNING) << "WARNING: TrainingParameters world_size is not correct, tuned automatically to " << MPIContext::GetInstance().GetWorldSize();
+        LOGS(*logger, WARNING) << "TrainingParameters world_size is not correct, tuned automatically to " << MPIContext::GetInstance().GetWorldSize();
       parameters.world_size = MPIContext::GetInstance().GetWorldSize();
     }
 }
@@ -215,8 +215,13 @@ void addObjectMethodsForTraining(py::module& m) {
         return onnxruntime::make_unique<onnxruntime::training::TrainingSession>(GetDefaultCPUSessionOptions(), env);
       }))
       .def("finalize", [](py::object) {
+#if defined(USE_NCCL)
 #ifdef _WIN32
+        // https://docs.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-best-practices
+        // shutdown_mpi() is not called within MPIContext destructor because of DllMain's restriction
+        // call shutdown_mpi() here instead.
         MPIContext::shutdown_mpi();
+#endif
 #endif
       })
       .def("load_model", [](onnxruntime::training::TrainingSession* sess, const std::string& path, TrainingParameters& parameters) {

@@ -18,6 +18,9 @@ MPIContext::MPIContext() {
 MPIContext::~MPIContext() {
 #if defined(USE_NCCL)
 #ifndef _WIN32
+  // https://docs.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-best-practices
+  // cannot call shutdown_mpi() in MPIContext destructor because of DllMain's restriction
+  // shutdown_mpi shall be called specifically in user code.
   shutdown_mpi();
 #endif
 #endif

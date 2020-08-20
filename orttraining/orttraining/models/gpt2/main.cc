@@ -477,5 +477,13 @@ int main(int argc, char* argv[]) {
     RETURN_IF_FAIL(RunTraining(params, *env));
   }
 
+#if defined(USE_NCCL)
+#ifdef _WIN32
+  // https://docs.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-best-practices
+  // shutdown_mpi() is not called within MPIContext destructor because of DllMain's restriction
+  // call shutdown_mpi() here instead.
+  MPIContext::shutdown_mpi();
+#endif
+#endif
   return 0;
 }
