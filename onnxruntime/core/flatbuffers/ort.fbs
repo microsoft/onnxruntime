@@ -180,20 +180,25 @@ table Model {
   graph:Graph;
 }
 
-struct KernelCreateInfo {
-  node_index:uint;
-  kernal_def_hash:ulong;
+table KernelCreateInfos {
+  node_indices:[uint];
+  kernel_def_hashes:[ulong];
+}
+
+table SubGraphSessionState {
+  graph_id:string (key);
+  session_state:SessionState;
 }
 
 table SessionState {
-  graph_id:string;
-  kernels:[KernelCreateInfo];
+  kernels:KernelCreateInfos;
+  sub_graph_session_states:[SubGraphSessionState];
 }
 
 table InferenceSession {
   ort_version:string;
   model:Model;
-  session_states:[SessionState];
+  session_state:SessionState;
 }
 
 root_type InferenceSession;
