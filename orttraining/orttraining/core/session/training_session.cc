@@ -512,7 +512,7 @@ void TrainingSession::AddPreTrainingTransformers(GraphTransformerManager& transf
   auto add_transformers = [&](TransformerLevel level) {
     // Generate and register transformers for level
     auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(
-        level, weights_to_train, config, custom_list);
+        level, weights_to_train, config, *execution_providers_.Get(onnxruntime::kCpuExecutionProvider), custom_list);
     for (auto& entry : transformers_to_register) {
       transformer_manager.Register(std::move(entry), level);
     }

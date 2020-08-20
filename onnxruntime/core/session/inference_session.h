@@ -471,9 +471,6 @@ class InferenceSession {
   // Profiler for this session.
   profiling::Profiler session_profiler_;
 
-  // The list of execution providers.
-  ExecutionProviders execution_providers_;
-
  protected:
   bool IsInitialized() const;
 
@@ -492,6 +489,9 @@ class InferenceSession {
   onnxruntime::concurrency::ThreadPool* GetInterOpThreadPoolToUse() const {
     return session_options_.use_per_session_threads ? inter_op_thread_pool_.get() : inter_op_thread_pool_from_env_;
   }
+
+  // The list of execution providers.
+  ExecutionProviders execution_providers_;  // protected to allow access to training session
 
  private:
   void UpdateProvidersWithSharedAllocators();

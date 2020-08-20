@@ -206,10 +206,15 @@ typedef struct OrtAllocator {
   void(ORT_API_CALL* Free)(struct OrtAllocator* this_, void* p);
   const struct OrtMemoryInfo*(ORT_API_CALL* Info)(const struct OrtAllocator* this_);
 
-  // following functions are meant for arena based allocators and optional to implement
+  // Following functions are meant for arena based allocators and optional to implement
   // if you're not implementing your allocator based on an arena.
+  // Reserve size bytes
   void*(ORT_API_CALL* Reserve)(struct OrtAllocator* this_, size_t size);
+
+  // Return the number of bytes in use
   size_t(ORT_API_CALL* Used)(const struct OrtAllocator* this_);
+
+  // Return the max memory in bytes configured for this arena
   size_t(ORT_API_CALL* Max)(const struct OrtAllocator* this_);
 } OrtAllocator;
 

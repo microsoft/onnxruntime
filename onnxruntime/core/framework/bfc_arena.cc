@@ -24,10 +24,9 @@ BFCArena::BFCArena(std::unique_ptr<IDeviceAllocator> resource_allocator,
                      << " with following configs: initial_chunk_size_bytes: " << initial_chunk_size_bytes_
                      << " max_dead_bytes_per_chunk: " << max_dead_bytes_per_chunk_
                      << " memory limit: " << total_memory
-                     << " arena_extend_strategy " << static_cast<std::underlying_type_t<ArenaExtendStrategy>>(arena_extend_strategy);
-  // TODO - consider to make the initial chunk size and max 'fragmentation' (kMaxDeadBytesInChunk) values configurable.
-  // But first we need to add a mechanism to allow that sort of low level configuration to be done
-  // without adding separate parameters to SessionOptions for every single one of them.
+                     << " arena_extend_strategy " << static_cast<int32_t>(arena_extend_strategy);
+  // static_cast<std::underlying_type_t<ArenaExtendStrategy>>(arena_extend_strategy); doesn't work on this compiler
+
   curr_region_allocation_bytes_ = RoundedBytes(std::min(total_memory, static_cast<size_t>(initial_chunk_size_bytes_)));
   // Allocate the requested amount of memory.
   memory_limit_ = total_memory;

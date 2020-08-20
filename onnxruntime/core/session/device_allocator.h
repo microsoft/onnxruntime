@@ -36,7 +36,7 @@ struct OrtAllocatorForDevice : public OrtAllocator {
     if (device_allocator_->Info().alloc_type == OrtArenaAllocator) {
       return static_cast<IArenaAllocator*>(device_allocator_.get())->Reserve(size);
     } else {
-      return nullptr;  // TODO throw here? shouldn't matter since it won't get used for non-arena cases
+      ORT_THROW("This method cannot be used since this is not an arena based allocator.");
     }
   }
 
@@ -44,7 +44,7 @@ struct OrtAllocatorForDevice : public OrtAllocator {
     if (device_allocator_->Info().alloc_type == OrtArenaAllocator) {
       return static_cast<IArenaAllocator*>(device_allocator_.get())->Used();
     } else {
-      return 0;  // TODO throw here? shouldn't matter since it won't get used for non-arena cases
+      ORT_THROW("This method cannot be used since this is not an arena based allocator.");
     }
   }
 
@@ -52,7 +52,7 @@ struct OrtAllocatorForDevice : public OrtAllocator {
     if (device_allocator_->Info().alloc_type == OrtArenaAllocator) {
       return static_cast<IArenaAllocator*>(device_allocator_.get())->Max();
     } else {
-      return 0;  // TODO throw here? shouldn't matter since it won't get used for non-arena cases
+      ORT_THROW("This method cannot be used since this is not an arena based allocator.");
     }
   }
 

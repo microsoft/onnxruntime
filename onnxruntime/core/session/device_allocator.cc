@@ -102,6 +102,14 @@ ORT_API_STATUS_IMPL(OrtApis::RegisterAllocator, _Inout_ OrtEnv* env, _In_ OrtAll
   if (!mem_info_ptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Nullptr for memory info in input allocator.");
   }
+
+#if !(defined(__amd64__) || defined(_M_AMD64))
+  if (mem_info_ptr->alloc_type == OrtArenaAllocator) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Allocators of type arena are not currently supported for 32bit builds.");
+  }
+#endif
+
   onnxruntime::AllocatorPtr allocator_ptr;
   if (mem_info_ptr->alloc_type == OrtArenaAllocator) {
     allocator_ptr = std::make_shared<onnxruntime::ArenaAllocatorWrapper>(allocator);

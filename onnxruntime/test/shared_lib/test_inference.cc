@@ -896,11 +896,16 @@ TEST(CApiTest, TestSharedAllocatorUsingRegisterAllocator) {
 
   OrtMemoryInfo* mem_info = nullptr;
   const auto& api = Ort::GetApi();
+  bool use_arena = true;
+#if !(defined(__amd64__) || defined(_M_AMD64))
+  use_arena = false;
+#endif
   std::unique_ptr<OrtMemoryInfo, decltype(api.ReleaseMemoryInfo)> rel_info(mem_info, api.ReleaseMemoryInfo);
-  ASSERT_TRUE(api.CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &mem_info) == nullptr);
+  ASSERT_TRUE(api.CreateCpuMemoryInfo(use_arena ? OrtArenaAllocator : OrtDeviceAllocator,
+                                      OrtMemTypeDefault, &mem_info) == nullptr);
 
   // Create and test using user supplied allocator
-  struct OrtAllocatorWrapper : OrtAllocator {
+  struct OrtAllocatorWrapper : public OrtAllocator {
     OrtAllocatorWrapper(OrtMemoryInfo* mem_info) : cpu_memory_info(mem_info) {
       OrtAllocator::version = ORT_API_VERSION;
       OrtAllocator::Alloc = [](OrtAllocator*, size_t size) { return malloc(size); };
@@ -919,8 +924,7 @@ TEST(CApiTest, TestSharedAllocatorUsingRegisterAllocator) {
     OrtMemoryInfo* cpu_memory_info;
   };
 
-  std::unique_ptr<OrtAllocator, decltype(api.ReleaseAllocator)> ort_allocator(new OrtAllocatorWrapper(mem_info),
-                                                                              api.ReleaseAllocator);
+  std::unique_ptr<OrtAllocator> ort_allocator(new OrtAllocatorWrapper(mem_info));
   ASSERT_TRUE(api.RegisterAllocator(env_ptr, ort_allocator.get()) == nullptr);
 
   Ort::SessionOptions session_options;

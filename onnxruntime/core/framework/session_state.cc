@@ -294,7 +294,7 @@ Status ResolveDimParams(const GraphViewer& graph,
 Status ResolveSizeAndShape(
     const NodeArg* arg,
     const std::unordered_map<std::string, int64_t>& symbolic_dimensions,
-    size_t& size,  // total number of elements. It's 0 if shape is unknown.
+    size_t& size, // total number of elements. It's 0 if shape is unknown.
     std::vector<int64_t>& resolved_shape) {
   if (!arg->Shape()) {
     // 0 means no shape information.

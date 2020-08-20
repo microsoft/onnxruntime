@@ -32,15 +32,15 @@ class ArenaAllocatorWrapper : public IArenaAllocator {
     return impl_->Free(impl_, p);
   }
 
-  virtual void* Reserve(size_t size) {
+  virtual void* Reserve(size_t size) override {
     return impl_->Reserve(impl_, size);
   }
 
-  virtual size_t Used() const {
+  virtual size_t Used() const override {
     return impl_->Used(impl_);
   }
 
-  virtual size_t Max() const {
+  virtual size_t Max() const override {
     return impl_->Max(impl_);
   }
 

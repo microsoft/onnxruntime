@@ -43,6 +43,7 @@ class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kArmNNExecutionProvider, kOnnxDo
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kArmNNExecutionProvider, kOnnxDomain, 4, 10, Concat);
 
 static void RegisterArmNNKernels(KernelRegistry& kernel_registry) {
+
 #ifdef RELU_ARMNN
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kArmNNExecutionProvider, kOnnxDomain, 6, Relu)>());
 #endif
@@ -111,7 +112,7 @@ std::shared_ptr<KernelRegistry> ArmNNExecutionProvider::GetKernelRegistry() cons
 
 std::vector<std::unique_ptr<ComputeCapability>>
 ArmNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
-                                      const std::vector<const KernelRegistry*>& kernel_registries) const {
+                                    const std::vector<const KernelRegistry*>& kernel_registries) const {
   std::vector<std::unique_ptr<ComputeCapability>>
       result = IExecutionProvider::GetCapability(graph, kernel_registries);
 
