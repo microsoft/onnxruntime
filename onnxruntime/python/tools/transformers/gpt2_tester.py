@@ -269,15 +269,13 @@ class Gpt2Tester:
                         top_k_no_order=True,
                         max_steps=24,
                         max_inputs=0,
-                        verbose=False,
-                        has_position_ids=True,
-                        has_attention_mask=True):
+                        verbose=False):
         """
         Test Generation using greedy beam search (without sampling) to compare PyTorch and ONNX model.
         It will print top 1 and top k errors on the given test inputs.
         """
         print(
-            f"start test generation: (top_k={top_k} top_k_no_order={top_k_no_order} max_steps={max_steps} test_inputs={len(test_inputs)} max_inputs={max_inputs} has_position_ids={has_position_ids} has_attention_mask={has_attention_mask})"
+            f"start test generation: (top_k={top_k} top_k_no_order={top_k_no_order} max_steps={max_steps} test_inputs={len(test_inputs)} max_inputs={max_inputs})"
         )
         n_layer = model.config.n_layer
         n_head = model.config.n_head
@@ -314,8 +312,8 @@ class Gpt2Tester:
             if i % 10 == 0:
                 print(f"{i}")
             input_ids = inputs["input_ids"]
-            position_ids = inputs["position_ids"] if has_position_ids else None
-            attention_mask = inputs["attention_mask"] if has_attention_mask else None
+            position_ids = inputs["position_ids"] if "position_ids" in inputs else None
+            attention_mask = inputs["attention_mask"] if "attention_mask" in inputs else None
 
             onnx_runner = Gpt2Tester(input_ids, position_ids, attention_mask, n_head, n_embd, n_layer, device,
                                      is_float16, top_k, not top_k_no_order)

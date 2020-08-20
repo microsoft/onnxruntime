@@ -205,6 +205,7 @@ def main():
                     inputs = {"input_ids": input_ids}
 
                 test_inputs.append(inputs)
+
         Gpt2Tester.test_generation(session,
                                    model,
                                    device,
@@ -215,9 +216,7 @@ def main():
                                    top_k_no_order=True,
                                    max_steps=24,
                                    max_inputs=0,
-                                   verbose=args.verbose,
-                                   has_position_ids=use_padding,
-                                   has_attention_mask=use_padding)
+                                   verbose=args.verbose)
 
     logger.info(f"Done. Output model: {output_path}")
 
