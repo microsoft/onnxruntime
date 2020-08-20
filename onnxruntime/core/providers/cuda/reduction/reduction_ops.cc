@@ -108,20 +108,12 @@ namespace cuda {
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
       name,                                                                     \
       kOnnxDomain,                                                              \
-      11, 11,                                                                   \
+      11, 12,                                                                   \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);                                                                 \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
-      name,                                                                     \
-      kOnnxDomain,                                                              \
-      12, 12,                                                                   \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);                                                                 \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
+   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       name,                                                                     \
       kOnnxDomain,                                                              \
       13,                                                                       \

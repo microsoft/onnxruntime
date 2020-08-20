@@ -23,9 +23,10 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Split);
 
 // Opset 11 starts to support Neg Axis.
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Split,
     11,
+    12,
     KernelDefBuilder().TypeConstraint("T",
                                       std::vector<MLDataType>{
                                           DataTypeImpl::GetTensorType<float>(),
