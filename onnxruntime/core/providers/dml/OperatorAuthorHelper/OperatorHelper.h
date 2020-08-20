@@ -1042,26 +1042,51 @@ class PoolingHelper : public PoolingHelperBase {
   PoolingHelper(const Info_t& info, const Shape_t& shape) : PoolingHelperBase(info, shape, false) {}
 };
 
-class RoiPoolingHelper {
- public:
-  enum InputTensors { INPUT,
-                      ROIS };
+class RoiPoolingHelperBase
+{
+public:
+    enum InputTensors { INPUT, ROIS, BATCH_INDICES };
 
-  // Info_t is used to obtain attributes which will be used for calculating the output shape later.
-  // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
-  template <typename Info_t, typename Shape_t>
-  RoiPoolingHelper(const Info_t& info, const Shape_t& shape) {
-    std::vector<int> pooledShape = info.GetOptionalAttributeVectorInt32(AttrName::PooledShape);
-    ML_CHECK_VALID_ARGUMENT(pooledShape.size() == 2, "Pooled shape must be 2.");
-    m_pooledSizeH = pooledShape[0];
-    m_pooledSizeW = pooledShape[1];
-  }
+    RoiPoolingHelperBase()
+    {}
 
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 
- protected:
-  uint32_t m_pooledSizeW;
-  uint32_t m_pooledSizeH;
+protected:
+    uint32_t m_outputSizeW = 1;
+    uint32_t m_outputSizeH = 1;
+};
+
+class RoiPoolingHelper : public RoiPoolingHelperBase
+{
+public:
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+    template <typename Info_t, typename Shape_t>
+    RoiPoolingHelper(const Info_t& info, const Shape_t& shape)
+    {
+        std::vector<int> pooledShape = info.GetOptionalAttributeVectorInt32(AttrName::PooledShape);
+        ML_CHECK_VALID_ARGUMENT(pooledShape.size() == 2, "Pooled shape must be 2.");
+        m_outputSizeH = pooledShape[0];
+        m_outputSizeW = pooledShape[1];
+    }
+
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+};
+
+class RoiAlignHelper : public RoiPoolingHelperBase
+{
+public:
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+    template <typename Info_t, typename Shape_t>
+    RoiAlignHelper(const Info_t& info, const Shape_t& shape, uint32_t opsetVersion)
+    {
+        m_outputSizeW = info.GetOptionalAttribute<uint32_t>(AttrName::OutputWidth, 1);
+        m_outputSizeH = info.GetOptionalAttribute<uint32_t>(AttrName::OutputHeight, 1);
+    }
+
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 };
 
 class SqueezeHelper {
@@ -1332,6 +1357,7 @@ using ShapeInferenceHelper_MaxUnpool = UnpoolingHelper;
 using ShapeInferenceHelper_LpPool = PoolingHelper;
 using ShapeInferenceHelper_GlobalLpPool = GlobalPoolingHelper;
 using ShapeInferenceHelper_MaxRoiPool = RoiPoolingHelper;
+using ShapeInferenceHelper_RoiAlign10 = VersionedOpsetHelper<RoiAlignHelper, 10>;
 using ShapeInferenceHelper_InstanceNormalization = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_BatchNormalization = GetOutputShapeAsInputShapeHelper;
 

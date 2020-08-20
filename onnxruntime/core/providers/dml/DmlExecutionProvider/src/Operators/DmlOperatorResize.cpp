@@ -304,10 +304,10 @@ void CALLBACK QueryResize(IMLOperatorSupportQueryContextPrivate* context, bool* 
     *isSupported = true;
 }
 
-DML_OP_DEFINE_CREATION_FUNCTION(Resize10, DmlOperatorResizeTemplate<10>);
-DML_OP_DEFINE_CREATION_FUNCTION(Resize11, DmlOperatorResizeTemplate<11>);
-DML_OP_DEFINE_CREATION_FUNCTION(Upsample7, DmlOperatorResizeTemplate<7>);
-DML_OP_DEFINE_CREATION_FUNCTION(Upsample9, DmlOperatorResizeTemplate<9>);
-DML_OP_DEFINE_CREATION_FUNCTION(Upsample10, DmlOperatorResizeTemplate<10>);
+DML_OP_DEFINE_CREATION_FUNCTION(Resize10, VersionedKernel<DmlOperatorResize, 10>);
+DML_OP_DEFINE_CREATION_FUNCTION(Resize11, VersionedKernel<DmlOperatorResize, 11>);
+DML_OP_DEFINE_CREATION_FUNCTION(Upsample7, VersionedKernel<DmlOperatorResize, 7>);
+DML_OP_DEFINE_CREATION_FUNCTION(Upsample9, VersionedKernel<DmlOperatorResize, 9>);
+DML_OP_DEFINE_CREATION_FUNCTION(Upsample10, VersionedKernel<DmlOperatorResize, 10>);
 
 } // namespace Dml
