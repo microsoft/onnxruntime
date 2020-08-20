@@ -267,8 +267,9 @@ class ORTTrainer(object):
             ValueError: raised when `path` is not valid path
         """
         if not self._training_session:
-            raise RuntimeWarning("Training session is not initialized yet. "
+            warnings.warn("Training session is not initialized yet. "
                                  "'train_step' or 'eval_step' methods must be executed at least once before calling 'save_as_onnx()'.")
+            return
         state_tensors = self._training_session.get_state()
         self._update_onnx_model_initializers(state_tensors)
 
@@ -276,7 +277,8 @@ class ORTTrainer(object):
         dir_name = os.path.dirname(path)
         file_name = os.path.basename(path)
         if not dir_name or not os.path.exists(dir_name) or not file_name:
-            raise ValueError("'path' is not valid. It must contain an existing folder + filename")
+            warnings.warn("'path' is not valid. It must contain an existing folder + filename")
+            return
 
         with open(path, "wb") as f:
             f.write(self._onnx_model.SerializeToString())
