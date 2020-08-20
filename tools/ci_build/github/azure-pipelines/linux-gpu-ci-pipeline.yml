@@ -39,17 +39,6 @@ jobs:
               --enable_onnx_tests --use_cuda --cuda_version=10.1 --cuda_home=/usr/local/cuda-10.1 --cudnn_home=/usr/local/cuda-10.1 \
               --use_mklml --enable_pybind --build_java --build_nodejs \
               --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp37-cp37m/include/python3.7m PYTHON_LIBRARY=/usr/lib64/librt.so
-            /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-              --build_dir /build --cmake_generator Ninja \
-              --config Release \
-              --skip_submodule_sync \
-              --build_shared_lib \
-              --parallel \
-              --build_wheel \
-              --use_openmp \
-              --include_ops_by_model=/onnxruntime_src/onnxruntime/test/testdata --use_cuda --cuda_version=10.1 --cuda_home=/usr/local/cuda-10.1 --cudnn_home=/usr/local/cuda-10.1 \
-              --use_mklml --enable_pybind --build_java --build_nodejs \
-              --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp37-cp37m/include/python3.7m PYTHON_LIBRARY=/usr/lib64/librt.so
       workingDirectory: $(Build.SourcesDirectory)
   - task: Docker@2
     displayName: logout
