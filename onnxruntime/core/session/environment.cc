@@ -71,6 +71,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
   }
 
   try {
+#if !defined(ORT_MINIMAL_BUILD)
     // Register Microsoft domain with min/max op_set version as 1/1.
     std::call_once(schemaRegistrationOnceFlag, []() {
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSDomain, 1, 1);
@@ -137,6 +138,7 @@ Internal copy node
 Internal copy node
 )DOC");
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
     // fire off startup telemetry (this call is idempotent)
     const Env& env = Env::Default();
     env.GetTelemetryProvider().LogProcessInfo();

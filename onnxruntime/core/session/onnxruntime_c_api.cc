@@ -423,7 +423,7 @@ ORT_STATUS_PTR LoadAndInitializeSession(_In_ const OrtEnv* /*env*/, _In_ const O
   }
 
 #if defined(ORT_MINIMAL_BUILD)
-    // TODO: Add path to load from ORT format model
+  // TODO: Add path to load from ORT format model
 #else
   status = sess->Load();
   if (!status.IsOK())
@@ -445,19 +445,30 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSession, _In_ const OrtEnv* env, _In_ const O
   API_IMPL_BEGIN
   std::unique_ptr<onnxruntime::InferenceSession> sess;
   try {
+#if !defined(ORT_MINIMAL_BUILD)
     sess = onnxruntime::make_unique<onnxruntime::InferenceSession>(
         options == nullptr ? onnxruntime::SessionOptions() : options->value,
         env->GetEnvironment(), model_path);
+
+    return LoadAndInitializeSession(env, options, sess, out);
+#else
+    ORT_UNUSED_PARAMETER(env);
+    ORT_UNUSED_PARAMETER(model_path);
+    ORT_UNUSED_PARAMETER(options);
+    ORT_UNUSED_PARAMETER(out);
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Pending");
+#endif
+
   } catch (const std::exception& e) {
     return OrtApis::CreateStatus(ORT_FAIL, e.what());
   }
-  return LoadAndInitializeSession(env, options, sess, out);
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArray, _In_ const OrtEnv* env, _In_ const void* model_data, size_t model_data_length,
-                    _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out) {
+ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArray, _In_ const OrtEnv* env, _In_ const void* model_data,
+                    size_t model_data_length, _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out) {
   API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
   std::unique_ptr<onnxruntime::InferenceSession> sess;
   try {
     sess = onnxruntime::make_unique<onnxruntime::InferenceSession>(
@@ -467,6 +478,14 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArray, _In_ const OrtEnv* env, _In
     return OrtApis::CreateStatus(ORT_FAIL, e.what());
   }
   return LoadAndInitializeSession(env, options, sess, out);
+#else
+  ORT_UNUSED_PARAMETER(env);
+  ORT_UNUSED_PARAMETER(model_data);
+  ORT_UNUSED_PARAMETER(model_data_length);
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(out);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Pending");
+#endif
   API_IMPL_END
 }
 
