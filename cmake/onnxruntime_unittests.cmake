@@ -593,7 +593,7 @@ if(WIN32)
   endif()
 endif()
 
-add_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/onnx/tml.proto)
+add_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/tml.proto)
 add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
 #onnx_proto target should mark this definition as public, instead of private
 target_compile_definitions(onnx_test_data_proto PRIVATE "-DONNX_API=")
