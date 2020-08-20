@@ -125,7 +125,7 @@ table Node{
 }
 
 table Graph{
-  ir_version:int;
+  ir_version:long;
   initializers:[onnxruntime.Tensor];
   node_args:[NodeArg];
   nodes:[Node];
