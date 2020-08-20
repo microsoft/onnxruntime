@@ -9,11 +9,7 @@
 
 using namespace onnxruntime;
 
-extern onnxruntime::ProviderHost* g_host;
-
 namespace onnxruntime {
-
-void SetProviderHost(ProviderHost& host);
 
 struct DnnlProviderFactory : Provider_IExecutionProviderFactory {
   DnnlProviderFactory(bool create_arena) : create_arena_(create_arena) {}

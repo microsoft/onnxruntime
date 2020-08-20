@@ -70,28 +70,30 @@ class ORTGlueTest(unittest.TestCase):
         self.rtol = 1e-02
 
     def test_roberta_with_mrpc(self):
-        expected_acc = 0.8676470588235294
-        expected_f1 = 0.9035714285714286
-        expected_acc_and_f1 = 0.885609243697479
-        expected_loss = 0.3022572344862947
+        expected_acc = 0.8848039215686274
+        expected_f1 = 0.917975567190227
+        expected_acc_and_f1 = 0.9013897443794272
+        expected_loss = 0.35917433314755853
 
-        results = self.run_glue(model_name="roberta-base", task_name="MRPC", fp16=False)
-        assert_allclose(results['acc'], expected_acc, rtol=self.rtol)
-        assert_allclose(results['f1'], expected_f1, rtol=self.rtol)
-        assert_allclose(results['acc_and_f1'], expected_acc_and_f1, rtol=self.rtol)
-        assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
+        for use_new_api in [True, False]:
+            results = self.run_glue(model_name="roberta-base", task_name="MRPC", fp16=False, use_new_api=use_new_api)
+            assert_allclose(results['acc'], expected_acc, rtol=self.rtol)
+            assert_allclose(results['f1'], expected_f1, rtol=self.rtol)
+            assert_allclose(results['acc_and_f1'], expected_acc_and_f1, rtol=self.rtol)
+            assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
 
     def test_roberta_fp16_with_mrpc(self):
         expected_acc = 0.8946078431372549
-        expected_f1 = 0.9244288224956063
-        expected_acc_and_f1 = 0.9095183328164307
-        expected_loss = 0.2860557144763423
+        expected_f1 = 0.924693520140105
+        expected_acc_and_f1 = 0.90965068163868
+        expected_loss = 0.3052181116506165
 
-        results = self.run_glue(model_name="roberta-base", task_name="MRPC", fp16=True)
-        assert_allclose(results['acc'], expected_acc, rtol=self.rtol)
-        assert_allclose(results['f1'], expected_f1, rtol=self.rtol)
-        assert_allclose(results['acc_and_f1'], expected_acc_and_f1, rtol=self.rtol)
-        assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
+        for use_new_api in [True, False]:
+            results = self.run_glue(model_name="roberta-base", task_name="MRPC", fp16=True, use_new_api=use_new_api)
+            assert_allclose(results['acc'], expected_acc, rtol=self.rtol)
+            assert_allclose(results['f1'], expected_f1, rtol=self.rtol)
+            assert_allclose(results['acc_and_f1'], expected_acc_and_f1, rtol=self.rtol)
+            assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
 
     def test_bert_with_mrpc(self):
         if self.local_rank == -1:
@@ -100,12 +102,20 @@ class ORTGlueTest(unittest.TestCase):
             expected_acc_and_f1 = 0.8762126578380043
             expected_loss = 0.42737212419217707
         elif self.local_rank == 0:
-            expected_acc = 0.8308823529411765
-            expected_f1 = 0.881646655231561
-            expected_acc_and_f1 = 0.8562645040863688
-            expected_loss = 0.42491564023144107
+            expected_acc = 0.8431372549019608
+            expected_f1 = 0.8904109589041096
+            expected_acc_and_f1 = 0.8667741069030352
+            expected_loss = 0.4239199038083647
+        
+        if self.local_rank == -1:
+            # not parallel case, we can run both new and old api tests
+            for use_new_api in [True, False]:
+                results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=False, use_new_api=use_new_api)
+        else:
+            # with parallel training, TrainingArguments can only be created once (due to its cached _setup_devices)
+            # thus we can only choose one test case to run.
+            results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=False, use_new_api=True)
 
-        results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=False)
         if self.local_rank in [-1, 0]:
             assert_allclose(results['acc'], expected_acc, rtol=self.rtol)
             assert_allclose(results['f1'], expected_f1, rtol=self.rtol)
@@ -113,19 +123,28 @@ class ORTGlueTest(unittest.TestCase):
             assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
 
     def test_bert_fp16_with_mrpc(self):
-        expected_acc = 0.8431372549019608
-        expected_f1 = 0.888888888888889
-        expected_acc_and_f1 = 0.8660130718954249
-        expected_loss = 0.39904916637084065
+        expected_acc = 0.8529411764705882
+        expected_f1 = 0.8972602739726027
+        expected_acc_and_f1 = 0.8751007252215954
+        expected_loss = 0.412924896998732
 
-        results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=True)
-        assert_allclose(results['acc'], expected_acc, rtol=self.rtol)
-        assert_allclose(results['f1'], expected_f1, rtol=self.rtol)
-        assert_allclose(results['acc_and_f1'], expected_acc_and_f1, rtol=self.rtol)
-        assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
+        for use_new_api in [True, False]:
+            results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=True, use_new_api=use_new_api)
+            assert_allclose(results['acc'], expected_acc, rtol=self.rtol)
+            assert_allclose(results['f1'], expected_f1, rtol=self.rtol)
+            assert_allclose(results['acc_and_f1'], expected_acc_and_f1, rtol=self.rtol)
+            assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
 
     def model_to_desc(self, model_name, model):
         if model_name.startswith('bert') or model_name.startswith('xlnet'):
+            new_model_desc = {
+                'inputs': [
+                    ('input_ids', ['batch', 'max_seq_len_in_batch'],),
+                    ('attention_mask', ['batch', 'max_seq_len_in_batch'],),
+                    ('token_type_ids', ['batch', 'max_seq_len_in_batch'],),
+                    ('labels', ['batch', ],)],
+                'outputs': [('loss', [], True),
+                            ('logits', ['batch', 2])]}
             model_desc = ModelDescription([
                 IODescription('input_ids', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=model.config.vocab_size),
                 IODescription('attention_mask', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=2),
@@ -134,6 +153,13 @@ class ORTGlueTest(unittest.TestCase):
                 IODescription('loss', [], torch.float32),
                 IODescription('logits', ['batch', 2], torch.float32)])
         elif model_name.startswith('roberta'):
+            new_model_desc = {
+                'inputs': [
+                    ('input_ids', ['batch', 'max_seq_len_in_batch'],),
+                    ('attention_mask', ['batch', 'max_seq_len_in_batch'],),
+                    ('labels', ['batch', ],)],
+                'outputs': [('loss', [], True),
+                            ('logits', ['batch', 2])]}
             model_desc = ModelDescription([
                 IODescription('input_ids', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=model.config.vocab_size),
                 IODescription('attention_mask', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=2),
@@ -143,9 +169,9 @@ class ORTGlueTest(unittest.TestCase):
         else:
             raise RuntimeError("unsupported base model name {}.".format(model_name))
 
-        return model_desc
+        return model_desc, new_model_desc
 
-    def run_glue(self, model_name, task_name, fp16):
+    def run_glue(self, model_name, task_name, fp16, use_new_api):
         model_args = ModelArguments(model_name_or_path=model_name, cache_dir=self.cache_dir)
         data_args = GlueDataTrainingArguments(
             task_name=task_name, data_dir=os.path.join(self.data_dir, task_name),
@@ -221,15 +247,17 @@ class ORTGlueTest(unittest.TestCase):
                 preds = np.squeeze(p.predictions)
             return glue_compute_metrics(data_args.task_name, preds, p.label_ids)
 
-        model_desc = self.model_to_desc(model_name, model)
+        model_desc, new_model_desc = self.model_to_desc(model_name, model)
         # Initialize the ORTTrainer within ORTTransformerTrainer
         trainer = ORTTransformerTrainer(
             model=model,
             model_desc=model_desc,
+            new_model_desc=new_model_desc,
             args=training_args,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
             compute_metrics=compute_metrics,
+            use_new_api=use_new_api
         )
 
         # Training
