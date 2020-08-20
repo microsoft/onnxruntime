@@ -874,6 +874,7 @@ def testToyBERTModelGradientAccumulationLegacyExperimental(gradient_accumulation
     (optimizer_parameters(load_bert_onnx_model()), legacy_optim_params_c)
 ])
 def testToyBERTModelLegacyExperimentalCustomOptimParameters(params, legacy_optim_map):
+    # Common setup
     total_steps = 10
     device = "cuda"
     seed = 1
