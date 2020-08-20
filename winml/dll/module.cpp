@@ -113,21 +113,21 @@ STDAPI DllGetExperimentalActivationFactory(void* classId, void** factory) noexce
     std::wostringstream learning_model_builder_class;
     learning_model_builder_class << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelBuilder";
     if (requal(name, learning_model_builder_class.str())) {
-      *factory = winrt::detach_abi(winrt::make<winrt::Windows::AI::MachineLearning::More::factory_implementation::LearningModelBuilder>());
+      *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelBuilder>());
       return 0;
     }
 
     std::wostringstream learning_model_operator_class;
     learning_model_operator_class << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelOperator";
     if (requal(name, learning_model_operator_class.str())) {
-      *factory = winrt::detach_abi(winrt::make<winrt::Windows::AI::MachineLearning::More::factory_implementation::LearningModelOperator>());
+      *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelOperator>());
       return 0;
     }
 
     std::wostringstream learning_model_operator_resolution_policy_class;
     learning_model_operator_resolution_policy_class << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelOperatorResolutionPolicy";
     if (requal(name, learning_model_operator_resolution_policy_class.str())) {
-      *factory = winrt::detach_abi(winrt::make<winrt::Windows::AI::MachineLearning::More::factory_implementation::LearningModelOperatorResolutionPolicy>());
+      *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelOperatorResolutionPolicy>());
       return 0;
     }
 

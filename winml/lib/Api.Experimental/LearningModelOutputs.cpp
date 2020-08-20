@@ -1,20 +1,20 @@
 ﻿#include "pch.h"
-#include "More.LearningModelOutputs.h"
-#include "More.LearningModelBuilder.h"
+#include "LearningModelOutputs.h"
+#include "LearningModelBuilder.h"
 #include "TensorFeatureDescriptor.h"
 
-namespace MOREP
+namespace WINML_EXPERIMENTALP
 {
 
-LearningModelOutputs::LearningModelOutputs(winml::More::LearningModelBuilder builder) :
+LearningModelOutputs::LearningModelOutputs(winml_experimental::LearningModelBuilder builder) :
     builder_(builder),
     output_descriptors_(winrt::single_threaded_vector<winml::ILearningModelFeatureDescriptor>()) {
 }
 
-more::LearningModelBuilder LearningModelOutputs::Add(winml::ILearningModelFeatureDescriptor const& output)
+winml_experimental::LearningModelBuilder LearningModelOutputs::Add(winml::ILearningModelFeatureDescriptor const& output)
 {
   // Perform model update inside the builder
-  auto model = builder_.as<morep::LearningModelBuilder>()->UseModel();
+  auto model = builder_.as<winml_experimentalp::LearningModelBuilder>()->UseModel();
 
   auto descriptor_provider = output.as<_winml::IDescriptorInfoProvider>();
 
@@ -25,4 +25,4 @@ more::LearningModelBuilder LearningModelOutputs::Add(winml::ILearningModelFeatur
   return builder_;
 }
 
-} // namespace MOREP
+} // namespace WINML_EXPERIMENTALP

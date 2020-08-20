@@ -35,15 +35,6 @@ namespace winml = WINML;
 namespace WINMLP {}
 namespace winmlp = WINMLP;
 
-<<<<<<< HEAD
-#define MORE winrt::WINML_ROOT_NS::AI::MachineLearning::More
-namespace MORE {}
-namespace more = MORE;
-
-#define MOREP winrt::WINML_ROOT_NS::AI::MachineLearning::More::implementation
-namespace MOREP {}
-namespace morep = MOREP;
-=======
 #define WINML_EXPERIMENTAL winrt::WINML_ROOT_NS::AI::MachineLearning::Experimental
 namespace WINML_EXPERIMENTAL {}
 namespace winml_experimental = WINML_EXPERIMENTAL;
@@ -51,7 +42,6 @@ namespace winml_experimental = WINML_EXPERIMENTAL;
 #define WINML_EXPERIMENTALP winrt::WINML_ROOT_NS::AI::MachineLearning::Experimental::implementation
 namespace WINML_EXPERIMENTALP {}
 namespace winml_experimentalp = WINML_EXPERIMENTALP;
->>>>>>> master
 
 namespace _winml::Adapter {}
 namespace winmla = ::_winml::Adapter;

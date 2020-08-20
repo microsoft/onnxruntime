@@ -533,6 +533,7 @@ target_precompiled_header(winml_lib_api_experimental pch.h)
 # Includes
 target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                   # windows machine learning generated component headers
 target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated)    # windows machine learning generated component headers
+target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api_experimental)      # windows machine learning generated component headers
 target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api_experimental/comp_generated) # windows machine learning generated component headers
 target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)  # sdk cppwinrt headers
 

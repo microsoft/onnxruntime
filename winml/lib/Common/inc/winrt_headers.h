@@ -26,6 +26,8 @@
 #include CREATE_NATIVE_HEADER()
 #include CREATE_NATIVE_INTERNAL_HEADER()
 
-#include "winrt/Microsoft.AI.MachineLearning.More.h"
+//#define CPPWINRT_EXPERIMENTAL_HEADER(root_ns) comp_generated / winrt / ##root_ns##.AI.MachineLearning.Experimental.h
+//#define CREATE_CPPWINRT_EXPERIMENTAL_COMPONENT_HEADER() XSTRINGIFY(CPPWINRT_EXPERIMENTAL_HEADER(WINML_ROOT_NS))
+//#include CREATE_CPPWINRT_EXPERIMENTAL_COMPONENT_HEADER()
 
 #include "Errors.h"

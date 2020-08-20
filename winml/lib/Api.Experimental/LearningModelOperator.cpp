@@ -1,7 +1,7 @@
 ﻿#include "pch.h"
-#include "More.LearningModelOperator.h"
+#include "LearningModelOperator.h"
 
-namespace MOREP {
+namespace WINML_EXPERIMENTALP {
 
 static uint32_t c_operator_index = 0;
 
@@ -15,11 +15,11 @@ LearningModelOperator::LearningModelOperator(hstring const& type, hstring const&
   }
 }
 
-void LearningModelOperator::SetBuilder(more::LearningModelBuilder& builder) {
+void LearningModelOperator::SetBuilder(winml_experimental::LearningModelBuilder& builder) {
   builder_ = builder;
 }
 
-void LearningModelOperator::GetBuilder(more::LearningModelBuilder& builder) {
+void LearningModelOperator::GetBuilder(winml_experimental::LearningModelBuilder& builder) {
   builder = builder_;
 }
 
@@ -27,7 +27,7 @@ void LearningModelOperator::JoinAfterInternal(wfc::IVectorView<winml::ILearningM
   auto operator_name = _winml::Strings::UTF8FromHString(name_);
   auto operator_type = _winml::Strings::UTF8FromHString(type_);
 
-  auto builder = builder_.as<morep::LearningModelBuilder>();
+  auto builder = builder_.as<winml_experimentalp::LearningModelBuilder>();
 
   // Expect that the Outputs of the current node are fully inferred already!!!!
 
@@ -91,12 +91,12 @@ void LearningModelOperator::JoinAfterInternal(wfc::IVectorView<winml::ILearningM
       outputs.data(), outputs.size()));
 }
 
-void LearningModelOperator::JoinAfter(more::LearningModelInputs const& inputs) {
-  auto input_descriptors = inputs.as<morep::LearningModelInputs>()->Inputs().GetView();
+void LearningModelOperator::JoinAfter(winml_experimental::LearningModelInputs const& inputs) {
+  auto input_descriptors = inputs.as<winml_experimentalp::LearningModelInputs>()->Inputs().GetView();
   return JoinAfterInternal(input_descriptors);
 }
 
-void LearningModelOperator::JoinAfter(more::LearningModelOperator const& previous_operator) {
+void LearningModelOperator::JoinAfter(winml_experimental::LearningModelOperator const& previous_operator) {
   auto output_descriptors = previous_operator.Outputs();
   return JoinAfterInternal(output_descriptors);
 }
@@ -135,29 +135,29 @@ void LearningModelOperator::SetAttributeInternal(const char* const name, wf::IIn
     */
 }
 
-more::LearningModelOperator LearningModelOperator::Then(more::LearningModelOperator const& next_operator) {
-  auto operator_impl = next_operator.as<morep::LearningModelOperator>();
+winml_experimental::LearningModelOperator LearningModelOperator::Then(winml_experimental::LearningModelOperator const& next_operator) {
+  auto operator_impl = next_operator.as<winml_experimentalp::LearningModelOperator>();
   operator_impl->SetBuilder(builder_);
   operator_impl->JoinAfter(*this);
   return next_operator;
 }
 
-more::LearningModelOperator LearningModelOperator::Then(more::LearningModelOperator const& next_operator, more::LearningModelOperatorResolutionPolicy const& /*policy*/) {
-  auto operator_impl = next_operator.as<morep::LearningModelOperator>();
+winml_experimental::LearningModelOperator LearningModelOperator::Then(winml_experimental::LearningModelOperator const& next_operator, winml_experimental::LearningModelOperatorResolutionPolicy const& /*policy*/) {
+  auto operator_impl = next_operator.as<winml_experimentalp::LearningModelOperator>();
   operator_impl->SetBuilder(builder_);
   operator_impl->JoinAfter(*this);
   return next_operator;
 }
 
-more::LearningModelBuilder LearningModelOperator::ConnectToOutputs() {
+winml_experimental::LearningModelBuilder LearningModelOperator::ConnectToOutputs() {
   return builder_;
 }
 
-more::LearningModelBuilder LearningModelOperator::ConnectToOutputs(more::LearningModelOperatorResolutionPolicy const& /*policy*/) {
+winml_experimental::LearningModelBuilder LearningModelOperator::ConnectToOutputs(winml_experimental::LearningModelOperatorResolutionPolicy const& /*policy*/) {
   return builder_;
 }
 
-more::LearningModelOperator LearningModelOperator::SetAttribute(hstring const& name, Windows::Foundation::IInspectable const& value) {
+winml_experimental::LearningModelOperator LearningModelOperator::SetAttribute(hstring const& name, Windows::Foundation::IInspectable const& value) {
   SetAttributeInternal(_winml::Strings::UTF8FromHString(name).c_str(), value);
   return *this;
 }
@@ -182,11 +182,11 @@ hstring LearningModelOperator::Name() {
   return name_;
 }
 
-more::LearningModelOperator LearningModelOperator::Gemm() {
-  return winrt::make<morep::LearningModelOperator>(L"Gemm", winrt::hstring());
+winml_experimental::LearningModelOperator LearningModelOperator::Gemm() {
+  return winrt::make<winml_experimentalp::LearningModelOperator>(L"Gemm", winrt::hstring());
 }
 
-more::LearningModelOperator LearningModelOperator::Gemm(hstring const& name) {
-  return winrt::make<morep::LearningModelOperator>(L"Gemm", name);
+winml_experimental::LearningModelOperator LearningModelOperator::Gemm(hstring const& name) {
+  return winrt::make<winml_experimentalp::LearningModelOperator>(L"Gemm", name);
 }
-}  // namespace MOREP
+}  // namespace WINML_EXPERIMENTALP

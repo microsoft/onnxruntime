@@ -9,7 +9,7 @@
 #include "protobufHelpers.h"
 #include "winrt/Windows.Storage.h"
 
-#include "winrt/Windows.AI.MachineLearning.More.h"
+#include "winrt/Microsoft.AI.MachineLearning.Experimental.h"
 
 #include <D3d11_4.h>
 #include <dxgi1_6.h>
@@ -403,8 +403,8 @@ static void CloseSession()
 
 static void TestModelBuilding() {
 
-    using namespace winrt::Windows::AI::MachineLearning::More;
-    using Operator = winrt::Windows::AI::MachineLearning::More::LearningModelOperator;
+    using namespace winml_experimental;
+    using Operator = winml_experimental::LearningModelOperator;
     auto builder = LearningModelBuilder::Create();
 
     std::vector<int64_t> shape = {256, 256};
