@@ -525,12 +525,29 @@ class ORTTrainer(object):
             trainable_params.add(initializer.name)
             optimizer_attributes_map[initializer.name] = {}
             optimizer_int_attributes_map[initializer.name] = {}
+            not_in_param_groups = True
             for param_group in self.optim_config.params:
                 if initializer.name not in param_group['params']:
                     continue  # keep looking for a matching param_group
+                not_in_param_groups = False
                 for k, v in param_group.items():
-                    if k == 'params':
+                    if k == 'params' or k == 'lr' or k == 'ratio_min' or k == 'ratio_max':
                         continue  # 'params' is not a hyper parameter, skip it
+                    if k == 'lambda_coef':
+                        k = 'lambda'
+                    if isinstance(v, float):
+                        optimizer_attributes_map[initializer.name][k] = v
+                    elif isinstance(v, int):
+                        optimizer_int_attributes_map[initializer.name][k] = v
+                    else:
+                        raise ValueError("Optimizer attributes must be either float or int.")
+ 
+            if not_in_param_groups:
+                for k, v in self.optim_config.defaults.items():
+                    if k == 'lr' or k == 'ratio_min' or k == 'ratio_max':
+                        continue
+                    if k == 'lambda_coef':
+                        k = 'lambda'
                     if isinstance(v, float):
                         optimizer_attributes_map[initializer.name][k] = v
                     elif isinstance(v, int):
@@ -555,7 +572,7 @@ class ORTTrainer(object):
         ort_parameters.weights_to_train = trainable_params
         ort_parameters.optimizer_attributes_map = optimizer_attributes_map
         ort_parameters.optimizer_int_attributes_map = optimizer_int_attributes_map
-
+ 
         # SessionOptions
         session_options = ort.SessionOptions()
         session_options.use_deterministic_compute = self.options.debug.deterministic_compute

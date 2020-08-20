@@ -75,6 +75,20 @@ def optimizer_parameters(model):
 
     no_decay_keys = ["bias", "gamma", "beta", "LayerNorm"]
     no_decay_param_group = []
+    decay_param_group = []
+    for initializer in model.graph.initializer:
+        if any(key in initializer.name for key in no_decay_keys):
+            no_decay_param_group.append(initializer.name)
+        else:
+            decay_param_group.append(initializer.name)
+    params = [{'params': no_decay_param_group, "alpha": 0.9, "beta": 0.999, "lambda_coef": 0.0, "epsilon": 1e-6},
+              {'params': decay_param_group, "alpha": 0.9, "beta": 0.999, "lambda_coef": 0.01, "epsilon": 1e-6}]
+    return params
+
+def optimizer_parameters_old(model):
+    '''A method to assign different hyper parameters for different model parameter groups'''
+    no_decay_keys = ["bias", "gamma", "beta", "LayerNorm"]
+    no_decay_param_group = []
     for initializer in model.graph.initializer:
         if any(key in initializer.name for key in no_decay_keys):
             no_decay_param_group.append(initializer.name)
@@ -849,3 +863,57 @@ def testToyBERTModelGradientAccumulationLegacyExperimental(gradient_accumulation
 
     # Check results
     _test_helpers.assert_model_outputs(experimental_losses, legacy_losses, rtol=1e-6)
+
+@pytest.mark.parametrize("params, legacy_optim_map", [
+    # Change the hyper parameters for all parameters
+    ([], legacy_optim_params_a),
+    # Change the hyperparameters for a subset of hardcoded parameters
+    ([{'params':['bert.embeddings.LayerNorm.bias', 'bert.embeddings.LayerNorm.weight'], "alpha": 0.9, "beta": 0.999, "lambda_coef": 0.0, "epsilon": 1e-6}], legacy_optim_params_b),
+    # Change the hyperparameters for a generated set of paramers
+    (optimizer_parameters_old(load_bert_onnx_model()), legacy_optim_params_c)
+])
+def testToyBERTModelLegacyExperimentalCustomOptimParameters(params, legacy_optim_map):
+    total_steps = 10
+
+    # EXPERIMENTAL API
+    model_desc = bert_model_description()
+    model = load_bert_onnx_model()
+
+    #optim_config = optim.LambConfig(params, do_bias_correction=False)
+    optim_config = optim.LambConfig(params, alpha= 0.9, beta= 0.999, lambda_coef= 0.01, epsilon= 1e-6, do_bias_correction=False)
+    opts =  orttrainer.ORTTrainerOptions({
+        'debug' : {
+            'deterministic_compute': True
+        },
+    })
+    
+    torch.manual_seed(1)
+    set_seed(1)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
+
+    experimental_losses = []
+    for i in range(total_steps):
+        sample_input = generate_random_input_from_model_desc(model_desc, i)
+        experimental_losses.append(trainer.train_step(*sample_input).cpu().item())
+        
+    # LEGACY IMPLEMENTATION
+    device = torch.device("cuda", 0)
+    legacy_model_desc, learning_rate_description, learning_rate = legacy_model_params() 
+    torch.manual_seed(1)
+    set_seed(1)
+    
+    legacy_trainer = Legacy_ORTTrainer(model, None, legacy_model_desc, "LambOptimizer",
+                       legacy_optim_map,
+                       learning_rate_description,
+                       device,
+                       _use_deterministic_compute=True)
+    legacy_losses = []
+    for i in range(total_steps):
+        sample_input = generate_random_input_from_model_desc(model_desc, i)
+        legacy_sample_input = [*sample_input, learning_rate]
+
+        legacy_losses.append(legacy_trainer.train_step(legacy_sample_input).cpu().item())
+
+    _test_helpers.assert_model_outputs(experimental_losses, legacy_losses)
+    print(legacy_losses)
+
