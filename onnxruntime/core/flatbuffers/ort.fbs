@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-namespace onnxruntime.Attribute;
+namespace onnxruntime.experimental.fbs.Attribute;
 
 enum Type : int {
   UNDEFINED = 0,
@@ -19,7 +19,7 @@ enum Type : int {
   SPARSE_TENSORS = 12,
 }
 
-namespace onnxruntime.Tensor.Shape;
+namespace onnxruntime.experimental.fbs.Tensor.Shape;
 
 table Info {
 dim:[Dimension];
@@ -35,7 +35,7 @@ table DimensionValue {
   dim_param:string;
 }
 
-namespace onnxruntime.Tensor;
+namespace onnxruntime.experimental.fbs.Tensor;
 
 enum DataType : int {
   UNDEFINED = 0,
@@ -62,7 +62,7 @@ table TypeInfo{
   shape:Shape.Info;
 }
 
-namespace onnxruntime.Graph;
+namespace onnxruntime.experimental.fbs.Graph;
 
 enum NodeType : int {
   Primitive = 0,
@@ -88,13 +88,13 @@ table Node {
   
   inputs:[string];
   outputs:[string];
-  attributes:[onnxruntime.Attribute];
+  attributes:[onnxruntime.experimental.fbs.Attribute];
 
   input_arg_counts:[int];
   implicit_inputs:[string];
 }
 
-namespace onnxruntime;
+namespace onnxruntime.experimental.fbs;
 
 table OperatorSetId {
   domain:string;
@@ -107,14 +107,14 @@ table ValueInfo {
   type:TypeInfo;
 }
 
+// TODO add support of Sequence/Map/SparseTensor/Opaque
+union TypeInfoValue {
+  tensor_type:Tensor.TypeInfo,
+}
+
 table TypeInfo {
   denotation:string;
   value:TypeInfoValue;
-}
-
-// TODO add support of Sequence/Map/SparseTensor/Opaque
-table TypeInfoValue {
-  tensor_type: Tensor.TypeInfo;
 }
 
 // For simplicity, we will have only two data fields
@@ -178,3 +178,6 @@ table Model{
 
   graph:Graph;
 }
+
+root_type Model;
+file_identifier "ORTL";
