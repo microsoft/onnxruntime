@@ -31,5 +31,16 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
     Shape);
 
+ONNX_OPERATOR_KERNEL_EX(
+    Shape,
+    kOnnxDomain,
+    13,
+    kCudaExecutionProvider,
+    KernelDefBuilder()
+        .OutputMemoryType<OrtMemTypeCPUOutput>(0)
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
+    Shape);
+
 }  // namespace cuda
 }  // namespace onnxruntime

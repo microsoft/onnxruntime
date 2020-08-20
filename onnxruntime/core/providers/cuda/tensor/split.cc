@@ -23,13 +23,6 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Split,
                                   KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
                                   Split);
 
-ONNX_OPERATOR_KERNEL_EX(Split,
-                        kOnnxDomain,
-                        13,
-                        kCudaExecutionProvider,
-                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
-                        Split);
-
 // explicitly supports 'split' as optional input
 ONNX_OPERATOR_KERNEL_EX(Split,
                         kOnnxDomain,
