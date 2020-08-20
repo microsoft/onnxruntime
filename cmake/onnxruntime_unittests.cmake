@@ -472,6 +472,7 @@ set(onnx_test_runner_common_srcs
 
 
 add_library(onnx_test_runner_common ${onnx_test_runner_common_srcs})
+target_compile_definitions(onnx_test_runner_common PUBLIC "-DONNX_API=")
 if(MSVC)
   target_compile_options(onnx_test_runner_common PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
           "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
@@ -593,7 +594,7 @@ if(WIN32)
   endif()
 endif()
 
-add_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/tml.proto)
+add_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/onnx/tml.proto)
 add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 if(WIN32)
@@ -610,12 +611,14 @@ else()
   endif()
 endif()
 add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
+get_target_property(VAR1111 onnx_proto INTERFACE_COMPILE_DEFINITIONS)
 
+message("AAAA ${VAR1111}")
 onnxruntime_add_include_to_target(onnx_test_data_proto onnx_proto)
 target_include_directories(onnx_test_data_proto PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx)
 set_target_properties(onnx_test_data_proto PROPERTIES FOLDER "ONNXRuntimeTest")
-onnxruntime_protobuf_generate(APPEND_PATH IMPORT_DIRS ${ONNXRUNTIME_ROOT}/core/protobuf TARGET onnx_test_data_proto)
-
+onnxruntime_protobuf_generate(APPEND_PATH IMPORT_DIRS external/onnx TARGET onnx_test_data_proto)
+target_compile_definitions(onnx_test_data_proto PUBLIC "-DONNX_API=")
 
 
 if(WIN32)

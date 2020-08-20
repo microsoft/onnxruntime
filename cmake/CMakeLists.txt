@@ -633,7 +633,12 @@ if (APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Android")
   string(APPEND CMAKE_C_FLAGS " -Wno-deprecated")
 endif()
 # ONNX
-add_subdirectory(onnx)
+if(NOT onnxruntime_USE_FULL_PROTOBUF)
+  set(ONNX_USE_LITE_PROTO ON CACHE BOOL "" FORCE)
+else()
+  set(ONNX_USE_LITE_PROTO OFF CACHE BOOL "" FORCE)
+endif()
+add_subdirectory(external/onnx)
 
 #set_target_properties(gen_onnx_proto PROPERTIES FOLDER "External/ONNX")
 # fix a warning in onnx code we can't do anything about
