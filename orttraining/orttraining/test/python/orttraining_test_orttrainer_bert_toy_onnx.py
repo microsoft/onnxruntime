@@ -70,7 +70,7 @@ def bert_model_description(dynamic_shape=True):
     return model_desc
 
 
-def optimizer_parameters(model):
+def optimizer_parameters_mutiple_groups(model):
     '''A method to assign different hyper parameters for different model parameter groups'''
 
     no_decay_keys = ["bias", "gamma", "beta", "LayerNorm"]
@@ -85,7 +85,7 @@ def optimizer_parameters(model):
               {'params': decay_param_group, "alpha": 0.9, "beta": 0.999, "lambda_coef": 0.01, "epsilon": 1e-6}]
     return params
 
-def optimizer_parameters_old(model):
+def optimizer_parameters(model):
     '''A method to assign different hyper parameters for different model parameter groups'''
     no_decay_keys = ["bias", "gamma", "beta", "LayerNorm"]
     no_decay_param_group = []
@@ -870,7 +870,7 @@ def testToyBERTModelGradientAccumulationLegacyExperimental(gradient_accumulation
     # Change the hyperparameters for a subset of hardcoded parameters
     ([{'params':['bert.embeddings.LayerNorm.bias', 'bert.embeddings.LayerNorm.weight'], "alpha": 0.9, "beta": 0.999, "lambda_coef": 0.0, "epsilon": 1e-6}], legacy_optim_params_b),
     # Change the hyperparameters for a generated set of paramers
-    (optimizer_parameters_old(load_bert_onnx_model()), legacy_optim_params_c)
+    (optimizer_parameters(load_bert_onnx_model()), legacy_optim_params_c)
 ])
 def testToyBERTModelLegacyExperimentalCustomOptimParameters(params, legacy_optim_map):
     total_steps = 10
