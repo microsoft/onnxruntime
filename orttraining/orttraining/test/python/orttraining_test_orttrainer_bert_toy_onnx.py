@@ -883,7 +883,6 @@ def testToyBERTModelLegacyExperimentalCustomOptimParameters(params, legacy_optim
     model_desc = bert_model_description()
     model = load_bert_onnx_model()
 
-    #optim_config = optim.LambConfig(params, do_bias_correction=False)
     optim_config = optim.LambConfig(params, alpha= 0.9, beta= 0.999, lambda_coef= 0.01, epsilon= 1e-6, do_bias_correction=False)
     opts =  orttrainer.ORTTrainerOptions({
         'debug' : {
