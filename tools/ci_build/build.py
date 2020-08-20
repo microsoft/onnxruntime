@@ -1487,25 +1487,6 @@ def generate_documentation(source_dir, build_dir, configs):
             str(docdiff))
 
 
-def paths_to_execution_provider(args):
-    '''return paths to current execution provider delaration file'''
-
-    ep_path = os.path.dirname(os.path.abspath(__file__)) +\
-        '/../../onnxruntime/core/providers/{ep}/{ep}_execution_provider.cc'
-
-    contrib_ep_path = os.path.dirname(os.path.abspath(__file__)) +\
-        '/../../onnxruntime/contrib_ops/{ep}/{ep}_contrib_kernels.cc'
-
-    ep_paths = [os.path.abspath(ep_path.format(ep='cpu')),
-                os.path.abspath(contrib_ep_path.format(ep='cpu'))]
-
-    if args.use_cuda:
-        ep_paths.append(os.path.abspath(ep_path.format(ep='cuda')))
-        ep_paths.append(os.path.abspath(contrib_ep_path.format(ep='cuda')))
-
-    return ep_paths
-
-
 def main():
     args = parse_arguments()
     cmake_extra_defines = (args.cmake_extra_defines
@@ -1531,12 +1512,12 @@ def main():
     if (args.include_ops_by_model and len(args.include_ops_by_model) > 0) or\
        (args.include_ops_by_file and len(args.include_ops_by_file) > 0):
 
-        from provider_ops_disabler import disable_ops_in_providers
+        from provider_ops_disabler import disable_ops_in_providers, get_ep_paths
 
         include_ops_by_model = args.include_ops_by_model if args.include_ops_by_model else ''
         include_ops_by_file = args.include_ops_by_file if args.include_ops_by_file else ''
 
-        disable_ops_in_providers(include_ops_by_model, include_ops_by_file, paths_to_execution_provider(args))
+        disable_ops_in_providers(include_ops_by_model, include_ops_by_file, get_ep_paths(use_cuda=args.use_cuda))
 
         args.test = False  # disable tests since we don't know which ops are enabled
 

@@ -52,7 +52,7 @@ def extract_ops_from_file(file_path, referred_ops):
                 [segment.strip() for segment in stripped_line.split(';')]
 
             domain = map_domain(raw_domain)
-            operators = [raw_op.strip() for raw_op in raw_ops.split(',')]
+            operators = list(set([raw_op.strip() for raw_op in raw_ops.split(',')]))
 
             if domain not in referred_ops:
                 referred_ops[domain] = {opset: operators}
@@ -118,6 +118,7 @@ def disable_ops_in_providers(model_path, file_path, ep_paths):
     '''rewrite multiple provider files'''
 
     operators = extract_ops_from_file(file_path, extract_ops_from_model(model_path, {}))
+
     for ep_path in ep_paths:
         disable_ops_in_provider(operators, ep_path)
 
@@ -178,6 +179,7 @@ def disable_ops_in_provider(operators, ep_path):
 
         if domain not in operators or\
            op_type not in version_map[domain]:
+            log.info("Disable {0} {1} {2} {3}".format(domain, opset_from, opset_to, op_type))
             return True
 
         opset_from = int(opset_from)
@@ -198,19 +200,32 @@ def disable_ops_in_provider(operators, ep_path):
         log.info("Disable {0} {1} {2} {3}".format(domain, opset_from, raw_opset_to, op_type))
         return True  # end of disable_op(...)
 
-    def process_lines(lines, offset, end_mark, call_back):
+    def process_lines(lines, offset, end_marks, call_back):
         '''extract op info from a logic code line start from offset to the line end
-           with end_mark, then trigger callback(op_type, opset_from, opset_to, domain)
+           with any of end_marks, then trigger callback(op_type, opset_from, opset_to, domain)
            return next line offset and whether current lines are disabled
         '''
 
+        end_mark = ''
         lines_to_process = []
+
         while True:  # collect the logical code line
+
             lines_to_process.append(lines[offset])
             stripped = lines[offset].strip()
-            if stripped.endswith(end_mark):
+            line_end = False
+
+            for mark in end_marks:
+                if stripped.endswith(mark):
+                    end_mark = mark
+                    line_end = True
+                    break
+
+            if line_end:
                 break
-            offset += 1
+
+            offset += 1  # end of while
+
         code_line = ''.join([line.strip() for line in lines_to_process])
 
         call_back_ret = False
@@ -277,7 +292,7 @@ def disable_ops_in_provider(operators, ep_path):
 
                 next_line_offset, _ = process_lines(lines,
                                                     line_offset,
-                                                    ');',
+                                                    tuple([');']),
                                                     fill_version_map)
 
                 for index in range(line_offset, next_line_offset):
@@ -290,12 +305,15 @@ def disable_ops_in_provider(operators, ep_path):
 
                 next_line_offset, disabled = process_lines(lines,
                                                            line_offset,
-                                                           ')>,',
+                                                           tuple([')>', ')>,', ')>,};', ')>};']),
                                                            disable_op)
 
                 for index in range(line_offset, next_line_offset):
                     if disabled:  # comment out unused
-                        file_to_write.write('//' + lines[index])
+                        if lines[index].rstrip().endswith('};'):
+                            file_to_write.write('/*' + lines[index].rstrip() + '*/};\n')
+                        else:
+                            file_to_write.write('//' + lines[index])
 
                     else:  # leave as it is
                         file_to_write.write(lines[index])
@@ -309,14 +327,32 @@ def disable_ops_in_provider(operators, ep_path):
     # end of rewrite_cpu_provider(...)
 
 
+def get_ep_paths(ort_root='', use_cuda=False):
+    '''return paths to cpu and cuda providers'''
+
+    if not ort_root:
+        ort_root = os.path.dirname(os.path.abspath(__file__)) + '/../..'
+
+    ep_path = ort_root + '/onnxruntime/core/providers/{ep}/{ep}_execution_provider.cc'
+    contrib_ep_path = ort_root + '/onnxruntime/contrib_ops/{ep}/{ep}_contrib_kernels.cc'
+    ep_paths = [ep_path.format(ep='cpu'),
+                contrib_ep_path.format(ep='cpu')]
+
+    if use_cuda:
+        ep_paths.append(ep_path.format(ep='cuda'))
+        ep_paths.append(contrib_ep_path.format(ep='cuda'))
+
+    return ep_paths  # end of get_ep_paths
+
+
 if __name__ == "__main__":
 
     PARSER = argparse.ArgumentParser(
         description="provider rewriter",
         usage="""
         --model_path <path to model(s) folder>
-        --file_path <path to file of ops>
-        --ep_path <path to provider file>
+        --file_path <path to file whose line formated like 'domain;opset;op1,op2...'>
+        --ort_root <path to ort root with current as default>
         """)
 
     PARSER.add_argument(
@@ -326,9 +362,20 @@ if __name__ == "__main__":
         "--file_path", type=str, help="path to file of ops")
 
     PARSER.add_argument(
-        "--ep_path", required=True, type=str, help="path to a execution provider file")
+        "--ort_root", type=str, help="path to ort root with current as default")
 
     ARGS = PARSER.parse_args()
-    disable_ops_in_providers(ARGS.model_path if ARGS.model_path else '',
-                             ARGS.file_path if ARGS.file_path else '',
-                             [ARGS.ep_path])
+
+    model_path = ARGS.model_path if ARGS.model_path else ''
+    file_path = ARGS.file_path if ARGS.file_path else ''
+    ort_root = ARGS.ort_root if ARGS.ort_root else ''
+
+    if not model_path and not file_path:
+        log.warning('Please specify at least either model path or file path.')
+
+    if not ort_root:
+        log.info('ort root not specified, taking current as root')
+
+    disable_ops_in_providers(model_path,
+                             file_path,
+                             get_ep_paths(ort_root, use_cuda=True))
