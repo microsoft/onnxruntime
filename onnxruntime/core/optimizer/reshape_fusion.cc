@@ -58,15 +58,6 @@ DistilBert reshape pattern:
                 Reshape
 */
 static bool DistilBert_Check(Graph& graph, const Node& concat, const Node& root, const logging::Logger& logger) {
-  std::vector<graph_utils::EdgeEndToMatch> shape_path{
-    {0, 0, "Unsqueeze", {1, 11}, kOnnxDomain},
-    {0, 0, "Gather", {1, 11}, kOnnxDomain},
-    {0, 0, "Shape", {1}, kOnnxDomain}};
-  std::vector<const Node::EdgeEnd*> edges;
-  if (!graph_utils::FindPath(concat, true, shape_path, edges, logger)) {
-    return false;
-  }
-
   if (!optimizer_utils::CheckOutputEdges(graph, concat, 1)) {
     return false;
   }
@@ -79,6 +70,7 @@ static bool DistilBert_Check(Graph& graph, const Node& concat, const Node& root,
   std::vector<graph_utils::EdgeEndToMatch> linear_path{
     {0, 0, "Add", {7}, kOnnxDomain},
     {0, 0, "MatMul", {1, 9}, kOnnxDomain}};
+  std::vector<const Node::EdgeEnd*> edges;
   if (!graph_utils::FindPath(reshape, true, linear_path, edges, logger)) {
     return false;
   }
@@ -86,8 +78,8 @@ static bool DistilBert_Check(Graph& graph, const Node& concat, const Node& root,
   const Node& linear_path_add = edges[0]->GetNode();
   const Node& linear_path_matmul = edges[1]->GetNode();
 
-  const Node& node_before_matmul = *graph_utils::GetInputNode(linear_path_matmul, 0);
-  if (node_before_matmul.Index() != root.Index()) {
+  const Node* p_node_before_matmul = graph_utils::GetInputNode(linear_path_matmul, 0);
+  if (p_node_before_matmul != nullptr && p_node_before_matmul->Index() != root.Index()) {
     return false;
   }
 
@@ -99,20 +91,11 @@ static bool DistilBert_Check(Graph& graph, const Node& concat, const Node& root,
     return false;
   }
 
-  const ONNX_NAMESPACE::TensorShapeProto* linear_path_add_b_shape = linear_path_add_b.Shape();
-  if (linear_path_add_b_shape == nullptr || linear_path_add_b_shape->dim_size() != 1) {
+  if (!optimizer_utils::IsShapeKnownOnAllDims(linear_path_add_b, 1)) {
     return false;
   }
+  int64_t hidden_size = linear_path_add_b.Shape()->dim(0).dim_value();
 
-  const ONNX_NAMESPACE::TensorShapeProto_Dimension& linear_path_add_b_shape_dim = linear_path_add_b_shape->dim(0);
-  if (!utils::HasDimValue(linear_path_add_b_shape_dim)) {
-    return false;
-  }
-  int64_t hidden_size = linear_path_add_b_shape_dim.dim_value();
-
-  if (linear_path_matmul.InputDefs().size() < 2) {
-    return false;
-  }
   if (!optimizer_utils::ValidateShape(*(linear_path_matmul.InputDefs()[1]), {hidden_size, hidden_size})) {
     return false;
   }
