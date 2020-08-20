@@ -72,19 +72,8 @@ private:
     ComPtr<IDMLCompiledOperator> m_zeroOperator;
 };
 
-// A specific type of operation for registration.
-template <uint32_t OpsetVersion>
-class DmlOperatorTopKTemplate : public DmlOperatorTopK
-{
-public:
-    DmlOperatorTopKTemplate(const MLOperatorKernelCreationContext& kernelInfo)
-    :   DmlOperatorTopK(kernelInfo, OpsetVersion)
-    {
-    }
-};
-
-DML_OP_DEFINE_CREATION_FUNCTION(TopK7, DmlOperatorTopKTemplate<7>);
-DML_OP_DEFINE_CREATION_FUNCTION(TopK10, DmlOperatorTopKTemplate<10>);
-DML_OP_DEFINE_CREATION_FUNCTION(TopK11, DmlOperatorTopKTemplate<11>);
+DML_OP_DEFINE_CREATION_FUNCTION(TopK7,  VersionedKernel<DmlOperatorTopK, 7 >);
+DML_OP_DEFINE_CREATION_FUNCTION(TopK10, VersionedKernel<DmlOperatorTopK, 10>);
+DML_OP_DEFINE_CREATION_FUNCTION(TopK11, VersionedKernel<DmlOperatorTopK, 11>);
 
 } // namespace Dml

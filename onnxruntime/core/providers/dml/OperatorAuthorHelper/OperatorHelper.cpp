@@ -1135,8 +1135,25 @@ namespace OperatorHelper
         {
             roiShape[0], // number of ROIs
             inputShape[C], // number of channels
-            static_cast<DimensionType>(m_pooledSizeH),
-            static_cast<DimensionType>(m_pooledSizeW),
+            static_cast<DimensionType>(m_outputSizeH),
+            static_cast<DimensionType>(m_outputSizeW),
+        };
+
+        return { std::move(EdgeShapes(outputDimensions)) };
+    }
+
+    std::vector<EdgeShapes> RoiAlignHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    {
+        auto roiShape = shapeInfo.GetInputTensorShape(InputTensors::ROIS);
+        auto inputShape = shapeInfo.GetInputTensorShape(InputTensors::INPUT);
+        ML_CHECK_VALID_ARGUMENT(inputShape.size() >= 4, "inputShape must be >= 4.");
+
+        DimensionType outputDimensions[4] =
+        {
+            roiShape[0], // number of ROIs
+            inputShape[C], // number of channels
+            static_cast<DimensionType>(m_outputSizeH),
+            static_cast<DimensionType>(m_outputSizeW),
         };
 
         return { std::move(EdgeShapes(outputDimensions)) };

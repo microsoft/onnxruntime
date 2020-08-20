@@ -58,12 +58,15 @@ namespace AttrName
     static constexpr const char* NearestMode = "nearest_mode";
     static constexpr const char* NormalizeVariance = "normalize_variance";
     static constexpr const char* P = "p";
+    static constexpr const char* OutputHeight = "output_height";
     static constexpr const char* OutputShape = "output_shape";
     static constexpr const char* OutputPadding = "output_padding";
+    static constexpr const char* OutputWidth = "output_width";
     static constexpr const char* Pads = "pads";
     static constexpr const char* PooledShape = "pooled_shape";
     static constexpr const char* Reverse = "reverse";
     static constexpr const char* SampleSize = "sample_size";
+    static constexpr const char* SamplingRatio = "sampling_ratio";
     static constexpr const char* Scale = "scale";
     static constexpr const char* Scales = "scales";
     static constexpr const char* Seed = "seed";

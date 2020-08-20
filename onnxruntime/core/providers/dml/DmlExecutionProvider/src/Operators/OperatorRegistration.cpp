@@ -92,6 +92,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(GlobalMaxPool);
 DML_OP_EXTERN_CREATION_FUNCTION(LpPool);
 DML_OP_EXTERN_CREATION_FUNCTION(GlobalLpPool);
 DML_OP_EXTERN_CREATION_FUNCTION(MaxRoiPool);
+DML_OP_EXTERN_CREATION_FUNCTION(RoiAlign10);
 DML_OP_EXTERN_CREATION_FUNCTION(InstanceNormalization);
 DML_OP_EXTERN_CREATION_FUNCTION(BatchNormalization);
 DML_OP_EXTERN_CREATION_FUNCTION(LRN);
@@ -287,6 +288,7 @@ constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListLogica
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListSigned = { SupportedTensorDataTypes::Float16to32 | SupportedTensorDataTypes::Int32 | SupportedTensorDataTypes::Int16 | SupportedTensorDataTypes::Int8 };
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListRange = {SupportedTensorDataTypes::Int16|SupportedTensorDataTypes::Int32|SupportedTensorDataTypes::Float32};
 constexpr static std::array<SupportedTensorDataTypes, 3> supportedTypeListInteger = {SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8, SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8, SupportedTensorDataTypes::Int32 };
+constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListRoiAlign = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Int32|SupportedTensorDataTypes::Int64 };
 constexpr static std::array<SupportedTensorDataTypes, 3> supportedTypeListQLinearMatMul = {
     SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8, 
     SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8, 
@@ -336,36 +338,37 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
 ///                                                                                                                                                              Support query function
 
     // Deep Learning Standard Layers
-    {REG_INFO(      7,  Conv,                               typeNameListDefault,             supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
-    {REG_INFO(     11,  Conv,                               typeNameListDefault,             supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
-    {REG_INFO(      7,  ConvTranspose,                      typeNameListDefault,             supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
-    {REG_INFO(     11,  ConvTranspose,                      typeNameListDefault,             supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
-    {REG_INFO(      7,  AveragePool,                        typeNameListDefault,             supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
-    {REG_INFO(     10,  AveragePool,                        typeNameListDefault,             supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
-    {REG_INFO(     11,  AveragePool,                        typeNameListDefault,             supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
-    {REG_INFO(      7,  GlobalAveragePool,                  typeNameListDefault,             supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
-    {REG_INFO(      7,  MaxPool,                            typeNameListDefault,             supportedTypeListFloat16to32,       DmlGraphSupport::Supported|DmlGraphSupport::SupportedWith64BitTensorsVia32BitStrides)},
-    {REG_INFO(      8,  MaxPool,                            typeNameListDefault,             supportedTypeListFloat16to32,       DmlGraphSupport::Supported|DmlGraphSupport::SupportedWith64BitTensorsVia32BitStrides, requiredConstantCpuInputs(), std::nullopt, QueryMaxPool)},
-    {REG_INFO(      10, MaxPool,                            typeNameListDefault,             supportedTypeListFloat16to32,       DmlGraphSupport::Supported|DmlGraphSupport::SupportedWith64BitTensorsVia32BitStrides, requiredConstantCpuInputs(), std::nullopt, QueryMaxPool)},
-    {REG_INFO(      11, MaxPool,                            typeNameListDefault,             supportedTypeListFloat16to32,       DmlGraphSupport::Supported|DmlGraphSupport::SupportedWith64BitTensorsVia32BitStrides, requiredConstantCpuInputs(), std::nullopt, QueryMaxPool)},
-    {REG_INFO(      12, MaxPool,                            typeNameListDefault,             supportedTypeListFloat16to32Int8,   DmlGraphSupport::Supported|DmlGraphSupport::SupportedWith64BitTensorsVia32BitStrides, requiredConstantCpuInputs(), std::nullopt, QueryMaxPool)},
-    
-    {REG_INFO(      7,  GlobalMaxPool,                      typeNameListDefault,             supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
-    {REG_INFO(      7,  LpPool,                             typeNameListDefault,             supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
-    {REG_INFO(     11,  LpPool,                             typeNameListDefault,             supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
-    {REG_INFO(      7,  GlobalLpPool,                       typeNameListDefault,             supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
-    {REG_INFO(      7,  MaxRoiPool,                         typeNameListDefault,             supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
-    {REG_INFO(      7,  InstanceNormalization,              typeNameListDefault,             supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
-    {REG_INFO(      7,  BatchNormalization,                 typeNameListDefault,             supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
-    {REG_INFO(      9,  BatchNormalization,                 typeNameListDefault,             supportedTypeListFloat16to32,       DmlGraphSupport::Supported)}, // v9 just removes 'spatial' attribute.
-    {REG_INFO(      7,  LRN,                                typeNameListDefault,             supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
-    {REG_INFO(      7,  MeanVarianceNormalization,          typeNameListDefault,             supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
-    {REG_INFO(      9,  MeanVarianceNormalization,          typeNameListDefault,             supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
-    {REG_INFO(      7,  LpNormalization,                    typeNameListDefault,             supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
-    {REG_INFO(      7,  RNN,                                typeNameListDefault,             supportedTypeListFloat16to32,       DmlGraphSupport::NotSupported)},
-    {REG_INFO(      7,  GRU,                                typeNameListDefault,             supportedTypeListFloat16to32,       DmlGraphSupport::NotSupported)},
-    {REG_INFO(      7,  LSTM,                               typeNameListDefault,             supportedTypeListFloat16to32,       DmlGraphSupport::NotSupported)},
-    {REG_INFO_MS(   1,  ConvTransposeWithDynamicPads,       typeNameListDefault,             supportedTypeListFloat16to32,       DmlGraphSupport::Supported,      requiredConstantCpuInputs(2))},
+    {REG_INFO(      7,  Conv,                               typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
+    {REG_INFO(     11,  Conv,                               typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
+    {REG_INFO(      7,  ConvTranspose,                      typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
+    {REG_INFO(     11,  ConvTranspose,                      typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
+    {REG_INFO(      7,  AveragePool,                        typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
+    {REG_INFO(     10,  AveragePool,                        typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
+    {REG_INFO(     11,  AveragePool,                        typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
+    {REG_INFO(      7,  GlobalAveragePool,                  typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
+    {REG_INFO(      7,  MaxPool,                            typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported|DmlGraphSupport::SupportedWith64BitTensorsVia32BitStrides)},
+    {REG_INFO(      8,  MaxPool,                            typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported|DmlGraphSupport::SupportedWith64BitTensorsVia32BitStrides, requiredConstantCpuInputs(), std::nullopt, QueryMaxPool)},
+    {REG_INFO(      10, MaxPool,                            typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported|DmlGraphSupport::SupportedWith64BitTensorsVia32BitStrides, requiredConstantCpuInputs(), std::nullopt, QueryMaxPool)},
+    {REG_INFO(      11, MaxPool,                            typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported|DmlGraphSupport::SupportedWith64BitTensorsVia32BitStrides, requiredConstantCpuInputs(), std::nullopt, QueryMaxPool)},
+    {REG_INFO(      12, MaxPool,                            typeNameListDefault,            supportedTypeListFloat16to32Int8,   DmlGraphSupport::Supported|DmlGraphSupport::SupportedWith64BitTensorsVia32BitStrides, requiredConstantCpuInputs(), std::nullopt, QueryMaxPool)},
+
+    {REG_INFO(      7,  GlobalMaxPool,                      typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
+    {REG_INFO(      7,  LpPool,                             typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
+    {REG_INFO(     11,  LpPool,                             typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
+    {REG_INFO(      7,  GlobalLpPool,                       typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
+    {REG_INFO(      7,  MaxRoiPool,                         typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
+    {REG_INFO_VER( 10,  RoiAlign,                           typeNameListTwo,                supportedTypeListRoiAlign,          DmlGraphSupport::Supported|DmlGraphSupport::SupportedWith64BitTensorsVia32BitStridesFromAnyEp)},
+    {REG_INFO(      7,  InstanceNormalization,              typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
+    {REG_INFO(      7,  BatchNormalization,                 typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
+    {REG_INFO(      9,  BatchNormalization,                 typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)}, // v9 just removes 'spatial' attribute.
+    {REG_INFO(      7,  LRN,                                typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
+    {REG_INFO(      7,  MeanVarianceNormalization,          typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
+    {REG_INFO(      9,  MeanVarianceNormalization,          typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
+    {REG_INFO(      7,  LpNormalization,                    typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
+    {REG_INFO(      7,  RNN,                                typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::NotSupported)},
+    {REG_INFO(      7,  GRU,                                typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::NotSupported)},
+    {REG_INFO(      7,  LSTM,                               typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::NotSupported)},
+    {REG_INFO_MS(   1,  ConvTransposeWithDynamicPads,       typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported,      requiredConstantCpuInputs(2))},
 
     // Data Reorganization Layers
     {REG_INFO(      7,  Split,                              typeNameListDefault,            supportedTypeListNumericDefault,    DmlGraphSupport::Supported|DmlGraphSupport::SupportedWith64BitTensorsVia32BitStrides)},
