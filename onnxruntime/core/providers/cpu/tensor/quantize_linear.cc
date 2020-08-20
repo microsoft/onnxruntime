@@ -7,6 +7,37 @@
 
 namespace onnxruntime {
 
+void PrepareForQDQ(const TensorShape& input_shape,
+                   const Tensor& scale,
+                   const Tensor* zero_point_ptr,
+                   int64_t axis,
+                   int64_t& block_count,
+                   int64_t& broadcast_dim,
+                   int64_t& block_size) {
+  if (IsScalarOr1ElementVector(&scale)) {  // per-tensor QuantizeLinear/DequantizeLinear
+    block_count = 1;
+    broadcast_dim = 1;
+    block_size = static_cast<size_t>(input_shape.Size());
+
+    // enforce that zero point are scalars
+    ORT_ENFORCE(zero_point_ptr == nullptr || IsScalarOr1ElementVector(zero_point_ptr),
+                "x_zero_point must be null or a scalar or 1D tensor or size 1.");
+  } else {  // per-channel QuantizeLinear/DequantizeLinear
+    const int64_t axis_no_neg = HandleNegativeAxis(axis, input_shape.NumDimensions());
+    block_count = input_shape.SizeToDimension(axis_no_neg);
+    broadcast_dim = input_shape[axis_no_neg];
+    block_size = input_shape.SizeFromDimension(axis_no_neg + 1);
+
+    // if an axis was specified, ensure the scale and zero point are compatible
+    ORT_ENFORCE(scale.Shape().NumDimensions() == 1 && scale.Shape().Size() == broadcast_dim,
+                "scale must be 1D tensor with size ",
+                broadcast_dim);
+    ORT_ENFORCE(zero_point_ptr == nullptr || (zero_point_ptr->Shape().NumDimensions() == 1 && zero_point_ptr->Shape().Size() == broadcast_dim),
+                "x_zero_point must be null or 1D tensor with size ",
+                broadcast_dim);
+  }
+}
+
 #define REGISTER_DEQUANTIZELINEAR(T)                              \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                 \
       DequantizeLinear,                                           \
@@ -45,28 +76,7 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   int64_t broadcast_dim;
   int64_t block_size;
 
-  if (IsScalarOr1ElementVector(&x_scale)) {  // per-tensor DequantizeLinear
-    N = 1;
-    broadcast_dim = 1;
-    block_size = static_cast<size_t>(x_shape.Size());
-
-    // enforce that zero point are scalars
-    ORT_ENFORCE(x_zero_point == nullptr || IsScalarOr1ElementVector(x_zero_point),
-                "x_zero_point must be null or a scalar or 1D tensor or size 1.");
-  } else {  // per-channel DequantizeLinear
-    const int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
-    N = x_shape.SizeToDimension(axis);
-    broadcast_dim = x_shape[axis];
-    block_size = x_shape.SizeFromDimension(axis + 1);
-
-    // if an axis was specified, ensure the scale and zero point are compatible
-    ORT_ENFORCE(x_scale.Shape().NumDimensions() == 1 && x_scale.Shape().Size() == broadcast_dim,
-                "x_scale must be 1D tensor with size ",
-                broadcast_dim);
-    ORT_ENFORCE(x_zero_point == nullptr || (x_zero_point->Shape().NumDimensions() == 1 && x_zero_point->Shape().Size() == broadcast_dim),
-                "x_zero_point must be nulll or 1D tensor with size ",
-                broadcast_dim);
-  }
+  PrepareForQDQ(x.Shape(), x_scale, x_zero_point, axis_, N, broadcast_dim, block_size);
 
   const T* zero_point = x_zero_point ? x_zero_point->template Data<T>() : nullptr;
   const float* scale = x_scale.template Data<float>();
@@ -125,29 +135,7 @@ Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   int64_t N;
   int64_t broadcast_dim;
   int64_t block_size;
-
-  if (IsScalarOr1ElementVector(&y_scale)) {  // per-tensor QuantizeLinear
-    N = 1;
-    broadcast_dim = 1;
-    block_size = x_shape.Size();
-
-    // enforce zero point are scalars
-    ORT_ENFORCE(y_zero_point == nullptr || IsScalarOr1ElementVector(y_zero_point),
-                "y_zero_point must be a scalar or 1D tensor or size 1, same as the y_scale.");
-  } else {  // per-channel QuantizeLinear
-    const int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
-    N = x_shape.SizeToDimension(axis);
-    broadcast_dim = x_shape[axis];
-    block_size = x_shape.SizeFromDimension(axis + 1);
-
-    // ensure the scale and zero point are compatible
-    ORT_ENFORCE(y_scale.Shape().NumDimensions() == 1 && y_scale.Shape().Size() == broadcast_dim,
-                "y_scale must be 1D tensor with size ",
-                broadcast_dim);
-    ORT_ENFORCE(y_zero_point == nullptr || (y_zero_point->Shape().NumDimensions() == 1 && y_zero_point->Shape().Size() == broadcast_dim),
-                "y_zero_point must be null or 1D tensor with size ",
-                broadcast_dim);
-  }
+  PrepareForQDQ(x.Shape(), y_scale, y_zero_point, axis_, N, broadcast_dim, block_size);
 
   const T* zero_point = y_zero_point != nullptr ? y_zero_point->template Data<T>() : nullptr;
   const float* scale = y_scale.template Data<float>();

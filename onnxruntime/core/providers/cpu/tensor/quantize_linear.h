@@ -21,7 +21,7 @@ class DequantizeLinear final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  int64_t axis_ = 0;
+  int64_t axis_;
 };
 
 template <typename T>
@@ -36,6 +36,6 @@ class QuantizeLinear final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  int64_t axis_ = 0;
+  int64_t axis_;
 };
 }  // namespace onnxruntime
