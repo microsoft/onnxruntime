@@ -8,12 +8,6 @@
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
-bool InsertCastTransformer::hasNodeBeenCast(const onnxruntime::Node& node) const {
-  // Check whether this node is Cast to float
-  return false && node.OpType() == "Cast";
-  //return node.OpType() == "Cast" &&
-  //      node.GetAttributes().at("to").i() == static_cast<int64_t>(TensorProto_DataType_FLOAT);
-}
 bool InsertCastTransformer::NeedInsertCast(const onnxruntime::Node* node, const onnxruntime::NodeArg* input) const {
   // If the node's input is float16 and currently the node is not assigned to any XP.
   // we need insert a cast to float, and put the node on CPU for default behavior.
@@ -213,18 +207,7 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
     auto& inputs = node->MutableInputDefs();
     std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> replacement_defs;
     bool casted = false;
-    // Check whether current node has been cast before
-    if (hasNodeBeenCast(*node)) {
-      node->SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
-      continue;
-    }
     for (auto input : inputs) {
-      // Check whether this input has been added a Cast node before
-      // If yes, this input does not need to be added again
-      if (nodeNameToNode.count(input->Name()) > 0 && hasNodeBeenCast(*nodeNameToNode[input->Name()])) {
-        node->SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
-        continue;
-      }
       if (NeedInsertCast(node, input)) {
         auto src_arg = input;
         if (input_def_updates.count(src_arg)) {
