@@ -834,8 +834,6 @@ namespace Microsoft.ML.OnnxRuntime
                                                                               out long /* (int64_t*) */ value);
         public static DOrtModelMetadataGetVersion OrtModelMetadataGetVersion;
 
-
-
         /// <summary>
         /// Gets all the keys in the custom metadata map in the ModelMetadata instance
         /// </summary>
@@ -849,7 +847,7 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtModelMetadataGetCustomMetadataMapKeys OrtModelMetadataGetCustomMetadataMapKeys;
 
         /// <summary>
-        /// Gets the the value associated with the given key in custom metadata map in the ModelMetadata instance
+        /// Gets the value associated with the given key in custom metadata map in the ModelMetadata instance
         /// </summary>
         /// <param name="modelMetadata">instance of OrtModelMetadata</param>
         /// <param name="allocator">instance of OrtAllocator</param>
