@@ -1,25 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-namespace onnxruntime;
+namespace onnxruntime.Attribute;
 
-enum Version : int {
-  _START_VERSION = 0,
-  IR_VERSION_2017_10_10 = 1,
-  IR_VERSION_2017_10_30 = 2,
-  IR_VERSION_2017_11_3 = 3,
-  IR_VERSION_2019_1_22 = 4,
-  IR_VERSION_2019_3_18 = 5,
-  IR_VERSION_2019_9_19 = 6,
-  IR_VERSION = 7,
-}
-
-enum OperatorStatus : int {
-  EXPERIMENTAL = 0,
-  STABLE = 1,
-}
-
-enum AttributeType : int {
+enum Type : int {
   UNDEFINED = 0,
   FLOAT = 1,
   INT = 2,
@@ -35,22 +19,23 @@ enum AttributeType : int {
   SPARSE_TENSORS = 12,
 }
 
-table Attribute{
-  name:string;
-  ref_attr_name:string;
-  doc_string:string;
-  type:onnxruntime.AttributeType;
-  f:float;
-  i:long;
-  s:[ubyte];
-  t:onnxruntime.Tensor;
-  g:onnxruntime.Graph.Graph;
-  floats:[float];
-  ints:[long];
-  strings:[string];
-  tensors:[onnxruntime.Tensor];
-  graphs:[onnxruntime.Graph.Graph];
+namespace onnxruntime.Tensor.Shape;
+
+table Info {
+dim:[Dimension];
 }
+
+table Dimension {
+  value:DimensionValue;
+  denotation:string;
+}
+
+table DimensionValue {
+  dim_value:long;
+  dim_param:string;
+}
+
+namespace onnxruntime.Tensor;
 
 enum DataType : int {
   UNDEFINED = 0,
@@ -72,21 +57,9 @@ enum DataType : int {
   BFLOAT16 = 16,
 }
 
-table Tensor {
-  name:string;
-  doc_string:string;
-  dims:[long];
-  data_type:onnxruntime.DataType;
-  string_data:[string];
-  raw_data:[ubyte];
-  //external_data:[onnx.StringStringEntryProto];
-  //data_location:onnx.TensorProto_.DataLocation;
-  //segment:onnx.TensorProto_.Segment;
-  //float_data:[float];
-  //int32_data:[int];
-  //double_data:[double];
-  //int64_data:[long];
-  //uint64_data:[ulong];
+table TypeInfo{
+  elem_type:DataType;
+  shape:Shape.Info;
 }
 
 namespace onnxruntime.Graph;
@@ -96,54 +69,108 @@ enum NodeType : int {
   Fused = 1,
 }
 
-// This is a direct serialization of the ValueInfoProto
-table NodeArg {
-  data:[uint8];
-}
-
 struct EdgeEnd {
   node_index:uint;
   src_arg_index:int;
   dst_arg_index:int;
 }
 
-table Node{
+table Node {
   name:string;
-  index:uint;
-  execution_provider_type:string;
-  since_version:long;
-  inputs:[string];
-  outputs:[string];
-  op_type:string;
-  domain:string;
-  attribute:[onnxruntime.Attribute];
   doc_string:string;
-  type:onnxruntime.Graph.NodeType;
-  description:string;
-  input_arg_count:[int];
-  implicit_inputs:[string];
-}
+  domain:string;
+  since_version:long;
 
-table Graph{
-  ir_version:long;
-  initializers:[onnxruntime.Tensor];
-  node_args:[NodeArg];
-  nodes:[Node];
-  input_edges:[EdgeEnd];
-  output_edges:[EdgeEnd];
+  index:uint;
+  op_type:string;
+  type:NodeType;
+  execution_provider_type:string;
+  
   inputs:[string];
   outputs:[string];
-  outer_scope_node_args:[string];
+  attributes:[onnxruntime.Attribute];
+
+  input_arg_counts:[int];
+  implicit_inputs:[string];
 }
 
 namespace onnxruntime;
 
+table OperatorSetId {
+  domain:string;
+  version:long;
+}
+
+table ValueInfo {
+  name:string;
+  doc_string:string;
+  type:TypeInfo;
+}
+
+table TypeInfo {
+  denotation:string;
+  value:TypeInfoValue;
+}
+
+table TypeInfoValue {
+  tensor_type: Tensor.TypeInfo;
+}
+
+table Tensor {
+  name:string;
+  doc_string:string;
+  
+  dims:[long];
+  data_type:Tensor.DataType;
+
+  raw_data:[ubyte];
+
+  // string_data is least used, leave it at the end
+  string_data:[string];
+}
+
+table Attribute{
+  name:string;
+  doc_string:string;
+  
+  type:Attribute.Type;
+  
+  f:float;
+  i:long;
+  s:[ubyte];
+  t:Tensor;
+  g:Graph;
+  
+  floats:[float];
+  ints:[long];
+  strings:[string];
+  tensors:[Tensor];
+  graphs:[Graph];
+}
+
+table Graph{
+  initializers:[Tensor];
+
+  node_args:[ValueInfo];
+  nodes:[Graph.Node];
+
+  input_edges:[Graph.EdgeEnd];
+  output_edges:[Graph.EdgeEnd];
+
+  inputs:[string];
+  outputs:[string];
+
+  outer_scope_node_args:[string];
+}
+
 table Model{
   ir_version:long;
+  opset_import:OperatorSetId;
   producer_name:string;
   producer_version:string;
   domain:string;
   model_version:long;
   doc_string:string;
-  graph:onnxruntime.Graph.Graph;
+
+  graph:Graph;
 }
