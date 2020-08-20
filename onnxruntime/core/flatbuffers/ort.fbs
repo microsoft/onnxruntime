@@ -112,10 +112,14 @@ table TypeInfo {
   value:TypeInfoValue;
 }
 
+// TODO add support of Sequence/Map/SparseTensor/Opaque
 table TypeInfoValue {
   tensor_type: Tensor.TypeInfo;
 }
 
+// For simplicity, we will have only two data fields
+// - string_data for string
+// - raw_data for all other types
 table Tensor {
   name:string;
   doc_string:string;
