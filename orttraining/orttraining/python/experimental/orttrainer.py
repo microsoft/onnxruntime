@@ -531,7 +531,7 @@ class ORTTrainer(object):
                     continue  # keep looking for a matching param_group
                 not_in_param_groups = False
                 for k, v in param_group.items():
-                    if k == 'params' or k == 'lr' or k == 'ratio_min' or k == 'ratio_max':
+                    if k == 'params' or k == 'lr':
                         continue  # 'params' is not a hyper parameter, skip it
                     if k == 'lambda_coef':
                         k = 'lambda'
@@ -542,9 +542,10 @@ class ORTTrainer(object):
                     else:
                         raise ValueError("Optimizer attributes must be either float or int.")
  
+            # set default values for params not found in groups
             if not_in_param_groups:
                 for k, v in self.optim_config.defaults.items():
-                    if k == 'lr' or k == 'ratio_min' or k == 'ratio_max':
+                    if k == 'lr':
                         continue
                     if k == 'lambda_coef':
                         k = 'lambda'
