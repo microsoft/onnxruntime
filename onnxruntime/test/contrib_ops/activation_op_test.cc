@@ -48,12 +48,6 @@ TEST_F(ActivationOpTest, Gelu) {
       false, 1, kMSDomain);
 }
 
-// TEST_F(ActivationOpTest, Relu) {
-//   TestActivationOp(
-//       "Relu", input_values, [](float x) { return (x > 0) ? x : 0;}, {},
-//       false, 1, kMSDomain);
-// }
-
 TEST_F(ActivationOpTest, Relu) {
   TestActivationOp("Relu",
     input_values,
