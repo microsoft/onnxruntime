@@ -533,8 +533,6 @@ class ORTTrainer(object):
                 for k, v in param_group.items():
                     if k == 'params' or k == 'lr':
                         continue  # 'params' is not a hyper parameter, skip it
-                    if k == 'lambda_coef':
-                        k = 'lambda'
                     if isinstance(v, float):
                         optimizer_attributes_map[initializer.name][k] = v
                     elif isinstance(v, int):
@@ -547,8 +545,6 @@ class ORTTrainer(object):
                 for k, v in self.optim_config.defaults.items():
                     if k == 'lr':
                         continue
-                    if k == 'lambda_coef':
-                        k = 'lambda'
                     if isinstance(v, float):
                         optimizer_attributes_map[initializer.name][k] = v
                     elif isinstance(v, int):
@@ -573,7 +569,7 @@ class ORTTrainer(object):
         ort_parameters.weights_to_train = trainable_params
         ort_parameters.optimizer_attributes_map = optimizer_attributes_map
         ort_parameters.optimizer_int_attributes_map = optimizer_int_attributes_map
- 
+
         # SessionOptions
         session_options = ort.SessionOptions()
         session_options.use_deterministic_compute = self.options.debug.deterministic_compute
