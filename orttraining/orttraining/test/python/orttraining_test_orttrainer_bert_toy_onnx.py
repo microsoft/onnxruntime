@@ -874,6 +874,7 @@ def testToyBERTModelGradientAccumulationLegacyExperimental(gradient_accumulation
 ])
 def testToyBERTModelLegacyExperimentalCustomOptimParameters(params, legacy_optim_map):
     total_steps = 10
+    seed = 1
 
     # EXPERIMENTAL API
     model_desc = bert_model_description()
@@ -887,8 +888,8 @@ def testToyBERTModelLegacyExperimentalCustomOptimParameters(params, legacy_optim
         },
     })
     
-    torch.manual_seed(1)
-    set_seed(1)
+    torch.manual_seed(seed)
+    onnxruntime.set_seed(seed)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
 
     experimental_losses = []
@@ -898,9 +899,9 @@ def testToyBERTModelLegacyExperimentalCustomOptimParameters(params, legacy_optim
         
     # LEGACY IMPLEMENTATION
     device = torch.device("cuda", 0)
-    legacy_model_desc, learning_rate_description, learning_rate = legacy_model_params() 
-    torch.manual_seed(1)
-    set_seed(1)
+    legacy_model_desc, learning_rate_description, learning_rate = legacy_model_params(trainer.optim_config.lr) 
+    torch.manual_seed(seed)
+    onnxruntime.set_seed(seed)
     
     legacy_trainer = Legacy_ORTTrainer(model, None, legacy_model_desc, "LambOptimizer",
                        legacy_optim_map,

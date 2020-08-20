@@ -531,8 +531,9 @@ class ORTTrainer(object):
                     continue  # keep looking for a matching param_group
                 not_in_param_groups = False
                 for k, v in param_group.items():
+                    # 'params' is not a hyper parameter, skip it. 'lr' per weight is not supported
                     if k == 'params' or k == 'lr':
-                        continue  # 'params' is not a hyper parameter, skip it
+                        continue  
                     if isinstance(v, float):
                         optimizer_attributes_map[initializer.name][k] = v
                     elif isinstance(v, int):
