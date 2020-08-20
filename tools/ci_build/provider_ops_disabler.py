@@ -366,8 +366,8 @@ if __name__ == "__main__":
 
     ARGS = PARSER.parse_args()
 
-    model_path = ARGS.model_path if ARGS.model_path else ''
-    file_path = ARGS.file_path if ARGS.file_path else ''
+    model_path = os.path.abspath(ARGS.model_path) if ARGS.model_path else ''
+    file_path = os.path.abspath(ARGS.file_path) if ARGS.file_path else ''
     ort_root = ARGS.ort_root if ARGS.ort_root else ''
 
     if not model_path and not file_path:
