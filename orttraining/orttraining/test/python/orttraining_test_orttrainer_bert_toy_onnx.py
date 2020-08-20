@@ -919,5 +919,5 @@ def testToyBERTModelLegacyExperimentalCustomOptimParameters(params, legacy_optim
         legacy_sample_input = [*sample_input, learning_rate]
         legacy_losses.append(legacy_trainer.train_step(legacy_sample_input).cpu().item())
 
+     # Check results
     _test_helpers.assert_model_outputs(experimental_losses, legacy_losses)
-
