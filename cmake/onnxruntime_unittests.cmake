@@ -107,10 +107,12 @@ file(GLOB onnxruntime_test_ir_src CONFIGURE_DEPENDS
   "${TEST_SRC_DIR}/ir/*.h"
   )
 
+if (NOT onnxruntime_MINIMAL_BUILD)
 file(GLOB onnxruntime_test_optimizer_src CONFIGURE_DEPENDS
   "${TEST_SRC_DIR}/optimizer/*.cc"
   "${TEST_SRC_DIR}/optimizer/*.h"
   )
+endif()
 
 set(onnxruntime_test_framework_src_patterns
   "${TEST_SRC_DIR}/framework/*.cc"
@@ -160,9 +162,11 @@ endif()
 
 file(GLOB onnxruntime_test_providers_src CONFIGURE_DEPENDS
   ${onnxruntime_test_providers_src_patterns})
-file(GLOB_RECURSE onnxruntime_test_providers_cpu_src CONFIGURE_DEPENDS
-  "${TEST_SRC_DIR}/providers/cpu/*"
-  )
+if (NOT onnxruntime_REDUCED_OPS_BUILD)
+  file(GLOB_RECURSE onnxruntime_test_providers_cpu_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/providers/cpu/*"
+    )
+endif()
 
 if(onnxruntime_DISABLE_ML_OPS)
   list(FILTER onnxruntime_test_providers_cpu_src EXCLUDE REGEX ".*/ml/.*")
