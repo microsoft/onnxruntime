@@ -1107,24 +1107,11 @@ def run_training_python_frontend_e2e_tests(cwd):
     # frontend tests are to be added here:
     log.info("Running python frontend e2e tests.")
 
-    def mpirun_subprocess(mpicmd, cwd):
-        log.debug("Running mpi subprocess in '{0}'\n{1}".format(cwd or os.getcwd(), mpicmd))
-        mpi = subprocess.Popen(
-            mpicmd,
-            cwd=cwd,
-            shell=True)
-        mpi.wait()
-        if mpi.returncode != 0:
-            raise TestFailure(mpicmd, "Test failed with returncode={}.".format(mpi.returncode))
-
-        log.debug("MPI subprocess completed. Return code=" + str(mpi.returncode))
-
     import torch
     ngpus = torch.cuda.device_count()
     if ngpus > 1:
-        run_glue_mpicmd = 'mpirun -n {} {} orttraining_run_glue.py'.format(ngpus, sys.executable)
-        log.debug("RUN: " + run_glue_mpicmd)
-        mpirun_subprocess(run_glue_mpicmd, cwd)
+        log.debug('RUN: mpirun -n {} {} orttraining_run_glue.py'.format(ngpus, sys.executable))
+        run_subprocess(['mpirun', '-n', str(ngpus), sys.executable, 'orttraining_run_glue.py'], cwd=cwd)
 
     # with orttraining_run_glue.py.
     # 1. we like to force to use single GPU (with CUDA_VISIBLE_DEVICES)

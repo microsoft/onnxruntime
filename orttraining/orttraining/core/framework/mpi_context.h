@@ -35,13 +35,16 @@ class MPIContext {
     int GetWorldSize() const { return world_size; }
     int GetLocalSize() const { return local_size; }
 
-  private:
-    MPIContext();
 #if defined(USE_NCCL)
-    void setup_mpi();
-    void shutdown_mpi();
+    static void shutdown_mpi();
 #endif
 
+  private:
+    MPIContext();
+
+#if defined(USE_NCCL)
+    void setup_mpi();
+#endif
     int world_rank;
     int local_rank;
     int world_size;

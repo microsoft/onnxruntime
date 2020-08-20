@@ -17,7 +17,9 @@ MPIContext::MPIContext() {
 
 MPIContext::~MPIContext() {
 #if defined(USE_NCCL)
+#ifndef _WIN32
   shutdown_mpi();
+#endif
 #endif
 }
 

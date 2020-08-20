@@ -215,6 +215,9 @@ void addObjectMethodsForTraining(py::module& m) {
         return onnxruntime::make_unique<onnxruntime::training::TrainingSession>(GetDefaultCPUSessionOptions(), env);
       }))
       .def("finalize", [](py::object) {
+#ifdef _WIN32
+        MPIContext::shutdown_mpi();
+#endif
       })
       .def("load_model", [](onnxruntime::training::TrainingSession* sess, const std::string& path, TrainingParameters& parameters) {
         OrtPybindThrowIfError(sess->Load(path));
