@@ -1034,17 +1034,12 @@ static void Scenario23NominalPixelRange() {
 
   // The following models have single op "add", with different metadata
   std::vector<std::wstring> modelPaths = {
-    // Normalized_0_1 and tensor output
-    modulePath + L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_1_tensor.onnx",
-    // Normalized_1_1 and tensor output
-    modulePath + L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_1_1_tensor.onnx",
     // Normalized_0_1 and image output
     modulePath + L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_1.onnx",
     // Normalized_1_1 and image output
     modulePath + L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_1_1.onnx"
   };
 
-  bool outputVerified = true;
   for (uint32_t model_i = 0; model_i < modelPaths.size(); model_i++) {
     // load model and create session
     auto model = LearningModel::LoadFromFilePath(modelPaths[model_i]);
@@ -1066,35 +1061,15 @@ static void Scenario23NominalPixelRange() {
     binding.Bind(L"input_39", imageValue);
     binding.Bind(L"input_40", zeroValue);
 
-    std::vector<int64_t> shape = { 1, 3, 1080, 1920 };
-    auto outputValue = TensorFloat::Create(shape);
-    binding.Bind(L"add_3", outputValue);
+    VideoFrame outputimage(BitmapPixelFormat::Bgra8, 1920, 1080);
+    ImageFeatureValue outputIfv = ImageFeatureValue::CreateFromVideoFrame(outputimage);
+    binding.Bind(L"add_3", outputIfv);
 
     winrt::hstring correlationId;
     session.EvaluateAsync(binding, correlationId).get();
 
-    auto vector = outputValue.GetAsVectorView();
-    for (unsigned int i = 0; i < vector.Size(); ++i) {
-      float val = vector.GetAt(i);
-      // Normalized_0_1 and tensor output -> outputs should be in range of [0, 2]
-      if (model_i == 0 && !(val <= 2 && val >= 0)) {
-        outputVerified = false;
-      }
-      // Normalized_1_1 and tensor output -> outputs should be in range of [-2, 2]
-      if (model_i == 1 && !(val <= 2 && val >= -2)) {
-        outputVerified = false;
-      }
-      // Normalized_0_1 and image output -> outputs should be in range of [0, 255]
-      if (model_i == 2 && !(val <= 255 && val >= 0)) {
-        outputVerified = false;
-      }
-      // Normalized_1_1 and image output -> outputs should be in range of [0, 255]
-      if (model_i == 3 && !(val <= 255 && val >= 0)) {
-        outputVerified = false;
-      }
-    }
+    WINML_EXPECT_TRUE(VerifyHelper(imageValue, outputIfv));
   }
-  WINML_EXPECT_TRUE(outputVerified);
 }
 
 static void QuantizedModels() {

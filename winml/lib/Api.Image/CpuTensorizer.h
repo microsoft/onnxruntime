@@ -7,6 +7,45 @@
 
 namespace _winml {
 
+class Normalizer {
+ public:
+  Normalizer(ImageNominalPixelRange pixelRange) {
+    if (pixelRange == ImageNominalPixelRange::kNominalRange_0_255) {
+      // [0, 255] --> [0, 255]
+      scale = 1.f;
+      shift = 0;
+    } else if (pixelRange == ImageNominalPixelRange::kNormalized_0_1) {
+      // [0, 255] / 255 --> [0, 1]
+      scale = (1.f / 255.f);
+      shift = 0;
+    } else if (pixelRange == ImageNominalPixelRange::kNormalized_1_1) {
+      // [0, 255] * 2 / 255 - 1 --> [-1, 1]
+      scale = (2.f / 255.f);
+      shift = -1;
+    }
+  };
+
+  float NormalizeData(float val) const {
+    return val * scale + shift;
+  }
+
+  DirectX::PackedVector::HALF NormalizeData(DirectX::PackedVector::HALF val) const {
+    return val * scale + shift;
+  }
+
+  auto NormalizeData(__m128 sse_data) const {
+    __m128 sse_shift = _mm_set1_ps(shift);
+    __m128 sse_scale = _mm_set1_ps(scale);
+
+    auto sse_muled = _mm_mul_ps(sse_data, sse_scale);
+    return _mm_add_ps(sse_muled, sse_shift);
+  }
+
+ private:
+  float scale;
+  int32_t shift;
+};
+
 class CpuTensorizer {
  public:
   template <typename T>
@@ -34,18 +73,7 @@ class CpuTensorizer {
     uint32_t xElements = inputBounds.Width - inputBounds.X;
     uint32_t yElements = inputBounds.Height - inputBounds.Y;
 
-    uint32_t channelNum = formatFrom == kImageTensorChannelTypeGRAY8 ? 1 : 3;
-    uint32_t totalElements = channelNum * inputBounds.Width * inputBounds.Height;
-
-    float scale = 1.0; 
-    int32_t shift = 0;
-    if (pixelRange == ImageNominalPixelRange::kNormalized_0_1) {
-      scale = float(1.0) / 255;
-      shift = 0;
-    } else if (pixelRange == ImageNominalPixelRange::kNormalized_1_1) {
-      scale = float(1.0) / 255 * 2;
-      shift = -1;
-    }
+    auto normalizer = Normalizer(pixelRange);
 
     if (formatFrom == kImageTensorChannelTypeBGR8 && formatTo == kImageTensorChannelTypeBGR8 || formatFrom == kImageTensorChannelTypeRGB8 && formatTo == kImageTensorChannelTypeRGB8) {
       // Convert BGR8 -> BGR8 or RGB8 -> RGB8
@@ -56,7 +84,8 @@ class CpuTensorizer {
             pCPUTensor + (inputBounds.Height * inputBounds.Width) + y * inputBounds.Width,
             pCPUTensor + (inputBounds.Height * inputBounds.Width) * 2 + y * inputBounds.Width,
             xElements,
-            bytesPerPixel);
+            bytesPerPixel,
+            normalizer);
       }
     } else if (formatFrom == kImageTensorChannelTypeBGR8 && formatTo == kImageTensorChannelTypeRGB8 || formatFrom == kImageTensorChannelTypeRGB8 && formatTo == kImageTensorChannelTypeBGR8) {
       // Convert RGB8 -> BGR8 or BGR8 -> RGB8
@@ -67,7 +96,8 @@ class CpuTensorizer {
             pCPUTensor + (inputBounds.Height * inputBounds.Width) + y * inputBounds.Width,
             pCPUTensor + y * inputBounds.Width,
             xElements,
-            bytesPerPixel);
+            bytesPerPixel,
+            normalizer);
       }
     } else if (formatTo == kImageTensorChannelTypeGRAY8 && (formatFrom == kImageTensorChannelTypeBGR8 || formatFrom == kImageTensorChannelTypeRGB8)) {
       // Convert BGR8 -> GRAY8 or RGB8 -> GRAY8
@@ -80,7 +110,7 @@ class CpuTensorizer {
           float green = float(pBuffer[j + 1]);
           float blue = float(pBuffer[j + blueIncrement]);
           float gray = 0.2126f * red + 0.7152f * green + 0.0722f * blue;
-          pCPUTensor[pixelInd] = ConvertByteToFloat<T>(static_cast<BYTE>(gray));
+          pCPUTensor[pixelInd] = ConvertByteToFloat<T>(static_cast<BYTE>(gray), normalizer);
           pixelInd++;
         }
       }
@@ -88,9 +118,9 @@ class CpuTensorizer {
       // Convert GRAY8 -> BGR8 or GRAY8 -> RGB8
       for (UINT32 i = start; i < end; i += bufferWidth) {
         for (UINT32 j = i; j < i + bytesPerRow; j += bytesPerPixel) {
-          pCPUTensor[pixelInd] = ConvertByteToFloat<T>(pBuffer[j]);
-          pCPUTensor[(inputBounds.Height * inputBounds.Width) + pixelInd] = ConvertByteToFloat<T>(pBuffer[j]);
-          pCPUTensor[(inputBounds.Height * inputBounds.Width * 2) + pixelInd] = ConvertByteToFloat<T>(pBuffer[j]);
+          pCPUTensor[pixelInd] = ConvertByteToFloat<T>(pBuffer[j], normalizer);
+          pCPUTensor[(inputBounds.Height * inputBounds.Width) + pixelInd] = ConvertByteToFloat<T>(pBuffer[j], normalizer);
+          pCPUTensor[(inputBounds.Height * inputBounds.Width * 2) + pixelInd] = ConvertByteToFloat<T>(pBuffer[j], normalizer);
           pixelInd++;
         }
       }
@@ -98,7 +128,7 @@ class CpuTensorizer {
       // Convert GRAY8 -> GRAY8
       for (UINT32 i = start; i < end; i += bufferWidth) {
         for (UINT32 j = i; j < i + bytesPerRow; j += bytesPerPixel) {
-          pCPUTensor[pixelInd] = ConvertByteToFloat<T>(pBuffer[j]);
+          pCPUTensor[pixelInd] = ConvertByteToFloat<T>(pBuffer[j], normalizer);
           pixelInd++;
         }
       }
@@ -107,36 +137,21 @@ class CpuTensorizer {
     else {
       return E_INVALIDARG;
     }
-
-    if (pixelRange != ImageNominalPixelRange::kNominalRange_0_255) {
-      NormalizeData(pCPUTensor, totalElements, scale, shift);
-    }
-
     return S_OK;
   }
 
  private:
-  template <typename T>
-  static T ConvertByteToFloat(const BYTE& input);
-
-  template <>
-  static float ConvertByteToFloat(const BYTE& input) {
-    return static_cast<float>(input);
-  }
-  template <>
-  static DirectX::PackedVector::HALF ConvertByteToFloat(const BYTE& input) {
-    return DirectX::PackedVector::XMConvertFloatToHalf(input);
-  }
 
   template <typename T>
-  static void NormalizeData(
-    _Inout_ T* pCPUTensor,
-    uint32_t totalElements,
-    float scale,
-    int32_t shift) {
-    for (uint32_t i = 0; i < totalElements; i ++) {
-      pCPUTensor[i] = scale * pCPUTensor[i] + shift;
-    }
+  static T ConvertByteToFloat(const BYTE& input, const Normalizer& normalizer);
+
+  template <>
+  static float ConvertByteToFloat(const BYTE& input, const Normalizer& normalizer) {
+    return normalizer.NormalizeData(static_cast<float>(input));
+  }
+  template <>
+  static DirectX::PackedVector::HALF ConvertByteToFloat(const BYTE& input, const Normalizer& normalizer) {
+    return normalizer.NormalizeData(DirectX::PackedVector::XMConvertFloatToHalf(input));
   }
 
   template <typename T>
@@ -146,29 +161,30 @@ class CpuTensorizer {
       _Inout_ T* yChannel,
       _Inout_ T* zChannel,
       uint32_t pixelElements,
-      uint32_t bytesPerPixel) {
+      uint32_t bytesPerPixel,
+      const Normalizer& normalizer) {
     UINT32 j;
 
     for (j = 0; j < (pixelElements & 0xFFFFFFFC); j += 4) {
-      xChannel[j] = ConvertByteToFloat<T>(pBuffer[0]);
-      yChannel[j] = ConvertByteToFloat<T>(pBuffer[1]);
-      zChannel[j] = ConvertByteToFloat<T>(pBuffer[2]);
-      xChannel[j + 1] = ConvertByteToFloat<T>(pBuffer[4]);
-      yChannel[j + 1] = ConvertByteToFloat<T>(pBuffer[5]);
-      zChannel[j + 1] = ConvertByteToFloat<T>(pBuffer[6]);
-      xChannel[j + 2] = ConvertByteToFloat<T>(pBuffer[8]);
-      yChannel[j + 2] = ConvertByteToFloat<T>(pBuffer[9]);
-      zChannel[j + 2] = ConvertByteToFloat<T>(pBuffer[10]);
-      xChannel[j + 3] = ConvertByteToFloat<T>(pBuffer[12]);
-      yChannel[j + 3] = ConvertByteToFloat<T>(pBuffer[13]);
-      zChannel[j + 3] = ConvertByteToFloat<T>(pBuffer[14]);
+      xChannel[j] = ConvertByteToFloat<T>(pBuffer[0], normalizer);
+      yChannel[j] = ConvertByteToFloat<T>(pBuffer[1], normalizer);
+      zChannel[j] = ConvertByteToFloat<T>(pBuffer[2], normalizer);
+      xChannel[j + 1] = ConvertByteToFloat<T>(pBuffer[4], normalizer);
+      yChannel[j + 1] = ConvertByteToFloat<T>(pBuffer[5], normalizer);
+      zChannel[j + 1] = ConvertByteToFloat<T>(pBuffer[6], normalizer);
+      xChannel[j + 2] = ConvertByteToFloat<T>(pBuffer[8], normalizer);
+      yChannel[j + 2] = ConvertByteToFloat<T>(pBuffer[9], normalizer);
+      zChannel[j + 2] = ConvertByteToFloat<T>(pBuffer[10], normalizer);
+      xChannel[j + 3] = ConvertByteToFloat<T>(pBuffer[12], normalizer);
+      yChannel[j + 3] = ConvertByteToFloat<T>(pBuffer[13], normalizer);
+      zChannel[j + 3] = ConvertByteToFloat<T>(pBuffer[14], normalizer);
       pBuffer += bytesPerPixel * 4;
     }
 
     for (; j < pixelElements; j++) {
-      xChannel[j] = ConvertByteToFloat<T>(pBuffer[0]);
-      yChannel[j] = ConvertByteToFloat<T>(pBuffer[1]);
-      zChannel[j] = ConvertByteToFloat<T>(pBuffer[2]);
+      xChannel[j] = ConvertByteToFloat<T>(pBuffer[0], normalizer);
+      yChannel[j] = ConvertByteToFloat<T>(pBuffer[1], normalizer);
+      zChannel[j] = ConvertByteToFloat<T>(pBuffer[2], normalizer);
       pBuffer += bytesPerPixel;
     }
   }
@@ -181,7 +197,8 @@ class CpuTensorizer {
       _Inout_ float* yChannel,
       _Inout_ float* zChannel,
       uint32_t pixelElements,
-      uint32_t bytesPerPixel) {
+      uint32_t bytesPerPixel,
+      const Normalizer& normalizer) {
     assert(bytesPerPixel == 4);
 
     __m128i ZeroVector = _mm_setzero_si128();
@@ -219,8 +236,8 @@ class CpuTensorizer {
       __m128i vXIntsHi = _mm_unpackhi_epi16(vXWords, ZeroVector);
 
       // store 256 bits of X channel Floats
-      _mm_storeu_ps(xChannel, _mm_cvtepi32_ps(vXIntsLo));
-      _mm_storeu_ps(xChannel + 4, _mm_cvtepi32_ps(vXIntsHi));
+      _mm_storeu_ps(xChannel, normalizer.NormalizeData(_mm_cvtepi32_ps(vXIntsLo)));
+      _mm_storeu_ps(xChannel + 4, normalizer.NormalizeData(_mm_cvtepi32_ps(vXIntsHi)));
       xChannel += 8;
 
       // unpack again for Y
@@ -229,8 +246,8 @@ class CpuTensorizer {
       __m128i vYIntsLo = _mm_unpacklo_epi16(vYWords, ZeroVector);
       __m128i vYIntsHi = _mm_unpackhi_epi16(vYWords, ZeroVector);
 
-      _mm_storeu_ps(yChannel, _mm_cvtepi32_ps(vYIntsLo));
-      _mm_storeu_ps(yChannel + 4, _mm_cvtepi32_ps(vYIntsHi));
+      _mm_storeu_ps(yChannel, normalizer.NormalizeData(_mm_cvtepi32_ps(vYIntsLo)));
+      _mm_storeu_ps(yChannel + 4, normalizer.NormalizeData(_mm_cvtepi32_ps(vYIntsHi)));
       yChannel += 8;
 
       // unpack again for Z
@@ -239,8 +256,8 @@ class CpuTensorizer {
       __m128i vZIntsLo = _mm_unpacklo_epi16(vZWords, ZeroVector);
       __m128i vZIntsHi = _mm_unpackhi_epi16(vZWords, ZeroVector);
 
-      _mm_storeu_ps(zChannel, _mm_cvtepi32_ps(vZIntsLo));
-      _mm_storeu_ps(zChannel + 4, _mm_cvtepi32_ps(vZIntsHi));
+      _mm_storeu_ps(zChannel, normalizer.NormalizeData(_mm_cvtepi32_ps(vZIntsLo)));
+      _mm_storeu_ps(zChannel + 4, normalizer.NormalizeData(_mm_cvtepi32_ps(vZIntsHi)));
       zChannel += 8;
 
       pBuffer += 32;
@@ -270,9 +287,9 @@ class CpuTensorizer {
       _MM_TRANSPOSE4_PS(vFloats0, vFloats1, vFloats2, vFloats3);
 
       // Drop alpha channel transposed to vFloats3 write out rest
-      _mm_storeu_ps(xChannel, vFloats0);
-      _mm_storeu_ps(yChannel, vFloats1);
-      _mm_storeu_ps(zChannel, vFloats2);
+      _mm_storeu_ps(xChannel, normalizer.NormalizeData(vFloats0));
+      _mm_storeu_ps(yChannel, normalizer.NormalizeData(vFloats1));
+      _mm_storeu_ps(zChannel, normalizer.NormalizeData(vFloats2));
 
       xChannel += 4;
       yChannel += 4;
@@ -283,9 +300,9 @@ class CpuTensorizer {
 
     // Any remainder just do one at a time
     for (uint32_t j = 0; j < pixelElements; j++) {
-      xChannel[j] = static_cast<float>(pBuffer[0]);
-      yChannel[j] = static_cast<float>(pBuffer[1]);
-      zChannel[j] = static_cast<float>(pBuffer[2]);
+      xChannel[j] = normalizer.NormalizeData(static_cast<float>(pBuffer[0]));
+      yChannel[j] = normalizer.NormalizeData(static_cast<float>(pBuffer[1]));
+      zChannel[j] = normalizer.NormalizeData(static_cast<float>(pBuffer[2]));
       pBuffer += bytesPerPixel;
     }
   }
