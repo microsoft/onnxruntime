@@ -57,18 +57,13 @@ DistilBert reshape pattern:
                 \      /
                 Reshape
 */
-static bool DistilBert_Check(Graph& graph, const Node& concat, const Node& layernorm_add, const logging::Logger& logger) {
+static bool DistilBert_Check(Graph& graph, const Node& concat, const Node& root, const logging::Logger& logger) {
   std::vector<graph_utils::EdgeEndToMatch> shape_path{
     {0, 0, "Unsqueeze", {1, 11}, kOnnxDomain},
     {0, 0, "Gather", {1, 11}, kOnnxDomain},
-    {0, 0, "Shape", {1}, kOnnxDomain},
-    {0, 0, "Add", {7, 13}, kOnnxDomain}};
+    {0, 0, "Shape", {1}, kOnnxDomain}};
   std::vector<const Node::EdgeEnd*> edges;
   if (!graph_utils::FindPath(concat, true, shape_path, edges, logger)) {
-    return false;
-  }
-  const Node& shape_path_add = edges[3]->GetNode();
-  if (shape_path_add.Index() != layernorm_add.Index()) {
     return false;
   }
 
@@ -83,42 +78,42 @@ static bool DistilBert_Check(Graph& graph, const Node& concat, const Node& layer
 
   std::vector<graph_utils::EdgeEndToMatch> linear_path{
     {0, 0, "Add", {7}, kOnnxDomain},
-    {0, 0, "MatMul", {1, 9}, kOnnxDomain},
-    {0, 0, "Add", {7}, kOnnxDomain}};
+    {0, 0, "MatMul", {1, 9}, kOnnxDomain}};
   if (!graph_utils::FindPath(reshape, true, linear_path, edges, logger)) {
     return false;
   }
-  const Node& linear_path_root_add = edges[2]->GetNode();
-  if (linear_path_root_add.Index() != layernorm_add.Index()) {
-    return false;
-  }
+
   const Node& linear_path_add = edges[0]->GetNode();
   const Node& linear_path_matmul = edges[1]->GetNode();
 
-  if (layernorm_add.InputDefs().size() < 2) {
-    return false;
-  }
-  const NodeArg& layernorm_add_b = *(layernorm_add.InputDefs()[1]);
-  if (!graph_utils::IsInitializer(graph, layernorm_add_b.Name(), true)) {
+  const Node& node_before_matmul = *graph_utils::GetInputNode(linear_path_matmul, 0);
+  if (node_before_matmul.Index() != root.Index()) {
     return false;
   }
 
-  const ONNX_NAMESPACE::TensorShapeProto* layernorm_add_b_shape = layernorm_add_b.Shape();
-  if (layernorm_add_b_shape == nullptr || layernorm_add_b_shape->dim_size() != 1) {
+  if (linear_path_add.InputDefs().size() < 2) {
+    return false;
+  }
+  const NodeArg& linear_path_add_b = *(linear_path_add.InputDefs()[1]);
+  if (!graph_utils::IsInitializer(graph, linear_path_add_b.Name(), true)) {
     return false;
   }
 
-  const ONNX_NAMESPACE::TensorShapeProto_Dimension& layernorm_add_b_shape_dim = layernorm_add_b_shape->dim(0);
-  if (!utils::HasDimValue(layernorm_add_b_shape_dim)) {
+  const ONNX_NAMESPACE::TensorShapeProto* linear_path_add_b_shape = linear_path_add_b.Shape();
+  if (linear_path_add_b_shape == nullptr || linear_path_add_b_shape->dim_size() != 1) {
     return false;
   }
-  int64_t hidden_size = layernorm_add_b_shape_dim.dim_value();
 
-  if (linear_path_add.InputDefs().size() < 2 || linear_path_matmul.InputDefs().size() < 2) {
+  const ONNX_NAMESPACE::TensorShapeProto_Dimension& linear_path_add_b_shape_dim = linear_path_add_b_shape->dim(0);
+  if (!utils::HasDimValue(linear_path_add_b_shape_dim)) {
     return false;
   }
-  if (!optimizer_utils::ValidateShape(*(linear_path_add.InputDefs()[1]), {hidden_size}) ||
-      !optimizer_utils::ValidateShape(*(linear_path_matmul.InputDefs()[1]), {hidden_size, hidden_size})) {
+  int64_t hidden_size = linear_path_add_b_shape_dim.dim_value();
+
+  if (linear_path_matmul.InputDefs().size() < 2) {
+    return false;
+  }
+  if (!optimizer_utils::ValidateShape(*(linear_path_matmul.InputDefs()[1]), {hidden_size, hidden_size})) {
     return false;
   }
 
@@ -164,17 +159,6 @@ bool ReshapeFusion::Match_One_Element_Output_Subgraph_1(Graph& graph, const Node
     const Node& unsqueeze = edges[0]->GetNode();
     const Node& gather = edges[1]->GetNode();
     const Node& shape = edges[2]->GetNode();
-
-    //const Node* p_node_before_shape = graph_utils::GetInputNode(shape, 0);
-    //bool is_distilbert_reshape = false;
-    //if (nullptr != p_node_before_shape && (*p_node_before_shape).OpType() == "Add") {
-    //  if (!DistilBertCheck(graph, concat, *p_node_before_shape, logger))
-    //    return false;
-    //  is_distilbert_reshape = true;
-    //}
-    //if (shape_input.Name() != root_input.Name() && !is_distilbert_reshape) {
-    //  return false;
-    //}
 
     std::vector<int64_t> axes;
     if (!(graph_utils::GetRepeatedNodeAttributeValues(unsqueeze, "axes", axes) && axes.size() == 1 && axes[0] == 0)) {
