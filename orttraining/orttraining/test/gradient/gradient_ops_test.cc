@@ -1395,10 +1395,6 @@ TEST(GradientCheckerTest, FastGeluGrad) {
   UnaryOpGradientTest("FastGelu", kMSDomain, 1);
 }
 
-// TEST(GradientCheckerTest, ReluGrad) {
-//   UnaryOpGradientTest("Relu", kMSDomain, 1);
-// }
-
 // used for BiasGelu and FastGelu
 void TestBiasGeluGrad(const std::string& op_type, const std::string& domain, int opset_version) {
   const TensorShape input_shape({2, 3, 4});

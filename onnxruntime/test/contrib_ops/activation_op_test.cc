@@ -47,6 +47,18 @@ TEST_F(ActivationOpTest, Gelu) {
       "Gelu", input_values, [](float x) { return x * 0.5f * (1.0f + std::erf(x * static_cast<float>(M_SQRT1_2))); }, {},
       false, 1, kMSDomain);
 }
+
+// TEST_F(ActivationOpTest, Relu) {
+//   TestActivationOp(
+//       "Relu", input_values, [](float x) { return (x > 0) ? x : 0;}, {},
+//       false, 1, kMSDomain);
+// }
+
+TEST_F(ActivationOpTest, Relu) {
+  TestActivationOp("Relu",
+    input_values,
+    [](float x) { return std::max(x, 0.0f); });
+}
 }  // namespace test
 
 }  // namespace onnxruntime
