@@ -157,6 +157,7 @@ table Graph{
 
   node_args:[ValueInfo];
   nodes:[Graph.Node];
+  max_node_index:uint;
 
   input_edges:[Graph.EdgeEnd];
   output_edges:[Graph.EdgeEnd];
@@ -167,7 +168,7 @@ table Graph{
   outer_scope_node_args:[string];
 }
 
-table Model{
+table Model {
   ir_version:long;
   opset_import:OperatorSetId;
   producer_name:string;
@@ -179,5 +180,11 @@ table Model{
   graph:Graph;
 }
 
-root_type Model;
+// TODO add support of session state
+table Session {
+  ort_version:string;
+  model:Model;
+}
+
+root_type Session;
 file_identifier "ORTL";
