@@ -52,7 +52,7 @@ def extract_ops_from_file(file_path, referred_ops):
                 [segment.strip() for segment in stripped_line.split(';')]
 
             domain = map_domain(raw_domain)
-            operators = list(set([raw_op.strip() for raw_op in raw_ops.split(',')]))
+            operators = set([raw_op.strip() for raw_op in raw_ops.split(',')])
 
             if domain not in referred_ops:
                 referred_ops[domain] = {opset: operators}
@@ -61,9 +61,7 @@ def extract_ops_from_file(file_path, referred_ops):
                 referred_ops[domain][opset] = operators
 
             else:
-                for operator in operators:
-                    if operator not in referred_ops[domain][opset]:
-                        referred_ops[domain][opset].append(operator)
+                referred_ops[domain][opset].update(operators)
 
     return referred_ops  # end of extract_ops_from_file(...)
 
@@ -82,10 +80,7 @@ def extract_ops_from_model(model_path, referred_ops):
         '''extract ops from graph and all subgraphs'''
 
         for operator in graph.node:
-
-            if operator.op_type not in operators:
-                operators.append(operator.op_type)
-
+            operators.add(operator.op_type)
             for attr in operator.attribute:
                 if attr.type == AP.GRAPH:  # process subgraph
                     extract_ops_from_graph(attr.g, operators)
@@ -99,17 +94,22 @@ def extract_ops_from_model(model_path, referred_ops):
                 model_path = os.path.join(root, file)
                 model = onnx.load(model_path)
 
-                all_ops = []
+                all_ops = set()
                 extract_ops_from_graph(model.graph, all_ops)
 
                 for opset in model.opset_import:
 
+                    opset_version = str(opset.version)
                     mapped_domain = map_domain(opset.domain)
-                    if mapped_domain not in referred_ops:
-                        referred_ops[mapped_domain] = {str(opset.version): all_ops}
 
-                    elif opset.version not in referred_ops[mapped_domain]:
-                        referred_ops[mapped_domain][str(opset.version)] = all_ops
+                    if mapped_domain not in referred_ops:
+                        referred_ops[mapped_domain] = {opset_version: all_ops}
+
+                    elif opset_version not in referred_ops[mapped_domain]:
+                        referred_ops[mapped_domain][opset_version] = all_ops
+
+                    else:
+                        referred_ops[mapped_domain][opset_version].update(all_ops)
 
     return referred_ops  # end of extract_ops_from_model(...)
 
@@ -118,7 +118,6 @@ def disable_ops_in_providers(model_path, file_path, ep_paths):
     '''rewrite multiple provider files'''
 
     operators = extract_ops_from_file(file_path, extract_ops_from_model(model_path, {}))
-
     for ep_path in ep_paths:
         disable_ops_in_provider(operators, ep_path)
 
