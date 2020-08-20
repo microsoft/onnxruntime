@@ -523,6 +523,10 @@ TEST(GradientCheckerTest, ReduceLogSumExpGrad) {
   RunReductionTests(op_def);
 }
 
+TEST(GradientCheckerTest, ReluGrad) {
+  UnaryOpGradientTest("Relu");
+}
+
 #ifndef USE_CUDA
 TEST(GradientCheckerTest, CastGrad) {
   // A dummy test that cast float to float
@@ -538,10 +542,6 @@ TEST(GradientCheckerTest, CastGrad) {
                                           {MakeAttribute("to", int64_t(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))});
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
-}
-
-TEST(GradientCheckerTest, ReluGrad) {
-  UnaryOpGradientTest("Relu");
 }
 
 TEST(GradientCheckerTest, SplitGrad) {
@@ -1394,6 +1394,10 @@ TEST(GradientCheckerTest, GeluGrad) {
 TEST(GradientCheckerTest, FastGeluGrad) {
   UnaryOpGradientTest("FastGelu", kMSDomain, 1);
 }
+
+// TEST(GradientCheckerTest, ReluGrad) {
+//   UnaryOpGradientTest("Relu", kMSDomain, 1);
+// }
 
 // used for BiasGelu and FastGelu
 void TestBiasGeluGrad(const std::string& op_type, const std::string& domain, int opset_version) {

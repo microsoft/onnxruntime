@@ -12,7 +12,7 @@ namespace cuda {
 template <typename T>
 struct OP_ReluGrad : public CtxReluGrad {
   __device__ __inline__ T operator()(const T& dy, const T& x) const {
-    return dy ? x > 0 : 0;
+    return x > (T)0 ? dy : (T)0;
   }
 };
 
@@ -32,8 +32,9 @@ struct OP_ReluGrad : public CtxReluGrad {
   SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, float)    \
   SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, double)
 
-//  BINARY_ELEMENTWISE_IMPL(name);      
+//       
 #define RELU_GRAD_OP_NAME(name) \
+  BINARY_ELEMENTWISE_IMPL(name); \
   SPECIALIZED_BINARY_ELEMENTWISE_IMPL_HFD(name)
 
 RELU_GRAD_OPS()
