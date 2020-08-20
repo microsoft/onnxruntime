@@ -44,12 +44,12 @@ table Attribute{
   i:long;
   s:[ubyte];
   t:onnxruntime.Tensor;
-  //g:onnx.GraphProto;
+  g:onnxruntime.Graph.Graph;
   floats:[float];
   ints:[long];
   strings:[string];
   tensors:[onnxruntime.Tensor];
-  //graphs:[onnx.GraphProto];
+  graphs:[onnxruntime.Graph.Graph];
 }
 
 enum DataType : int {
