@@ -165,17 +165,6 @@ bool ReshapeFusion::Match_One_Element_Output_Subgraph_1(Graph& graph, const Node
     const Node& gather = edges[1]->GetNode();
     const Node& shape = edges[2]->GetNode();
 
-    //const Node* p_node_before_shape = graph_utils::GetInputNode(shape, 0);
-    //bool is_distilbert_reshape = false;
-    //if (nullptr != p_node_before_shape && (*p_node_before_shape).OpType() == "Add") {
-    //  if (!DistilBertCheck(graph, concat, *p_node_before_shape, logger))
-    //    return false;
-    //  is_distilbert_reshape = true;
-    //}
-    //if (shape_input.Name() != root_input.Name() && !is_distilbert_reshape) {
-    //  return false;
-    //}
-
     std::vector<int64_t> axes;
     if (!(graph_utils::GetRepeatedNodeAttributeValues(unsqueeze, "axes", axes) && axes.size() == 1 && axes[0] == 0)) {
       return false;
