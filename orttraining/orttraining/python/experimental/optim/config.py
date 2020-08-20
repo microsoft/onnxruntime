@@ -76,7 +76,7 @@ class _OptimizerConfig(object):
                 param_group.setdefault(name, value)
 
         if "lambda_coef" in param_group:
-            param_group["lambda"] = param_group.pop("lambda_coef", None)
+            param_group["lambda"] = param_group.pop("lambda_coef")
 
         self.params.append(param_group)
 
