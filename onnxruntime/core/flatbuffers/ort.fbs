@@ -1,0 +1,149 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+namespace onnxruntime;
+
+enum Version : int {
+  _START_VERSION = 0,
+  IR_VERSION_2017_10_10 = 1,
+  IR_VERSION_2017_10_30 = 2,
+  IR_VERSION_2017_11_3 = 3,
+  IR_VERSION_2019_1_22 = 4,
+  IR_VERSION_2019_3_18 = 5,
+  IR_VERSION_2019_9_19 = 6,
+  IR_VERSION = 7,
+}
+
+enum OperatorStatus : int {
+  EXPERIMENTAL = 0,
+  STABLE = 1,
+}
+
+enum AttributeType : int {
+  UNDEFINED = 0,
+  FLOAT = 1,
+  INT = 2,
+  STRING = 3,
+  TENSOR = 4,
+  GRAPH = 5,
+  FLOATS = 6,
+  INTS = 7,
+  STRINGS = 8,
+  TENSORS = 9,
+  GRAPHS = 10,
+  SPARSE_TENSOR = 11,
+  SPARSE_TENSORS = 12,
+}
+
+table Attribute{
+  name:string;
+  ref_attr_name:string;
+  doc_string:string;
+  type:onnxruntime.AttributeType;
+  f:float;
+  i:long;
+  s:[ubyte];
+  t:onnxruntime.Tensor;
+  //g:onnx.GraphProto;
+  floats:[float];
+  ints:[long];
+  strings:[string];
+  tensors:[onnxruntime.Tensor];
+  //graphs:[onnx.GraphProto];
+}
+
+enum DataType : int {
+  UNDEFINED = 0,
+  FLOAT = 1,
+  UINT8 = 2,
+  INT8 = 3,
+  UINT16 = 4,
+  INT16 = 5,
+  INT32 = 6,
+  INT64 = 7,
+  STRING = 8,
+  BOOL = 9,
+  FLOAT16 = 10,
+  DOUBLE = 11,
+  UINT32 = 12,
+  UINT64 = 13,
+  COMPLEX64 = 14,
+  COMPLEX128 = 15,
+  BFLOAT16 = 16,
+}
+
+table Tensor {
+  name:string;
+  doc_string:string;
+  dims:[long];
+  data_type:onnxruntime.DataType;
+  string_data:[string];
+  raw_data:[ubyte];
+  //external_data:[onnx.StringStringEntryProto];
+  //data_location:onnx.TensorProto_.DataLocation;
+  //segment:onnx.TensorProto_.Segment;
+  //float_data:[float];
+  //int32_data:[int];
+  //double_data:[double];
+  //int64_data:[long];
+  //uint64_data:[ulong];
+}
+
+namespace onnxruntime.Graph;
+
+enum NodeType : int {
+  Primitive = 0,
+  Fused = 1,
+}
+
+// This is a direct serialization of the ValueInfoProto
+table NodeArg {
+  data:[uint8];
+}
+
+struct EdgeEnd {
+  node_index:uint;
+  src_arg_index:int;
+  dst_arg_index:int;
+}
+
+table Node{
+  name:string;
+  index:uint;
+  execution_provider_type:string;
+  since_version:long;
+  inputs:[string];
+  outputs:[string];
+  op_type:string;
+  domain:string;
+  attribute:[onnxruntime.Attribute];
+  doc_string:string;
+  type:onnxruntime.Graph.NodeType;
+  description:string;
+  input_arg_count:[int];
+  implicit_inputs:[string];
+}
+
+table Graph{
+  ir_version:int;
+  initializers:[onnxruntime.Tensor];
+  node_args:[NodeArg];
+  nodes:[Node];
+  input_edges:[EdgeEnd];
+  output_edges:[EdgeEnd];
+  inputs:[string];
+  outputs:[string];
+  outer_scope_node_args:[string];
+}
+
+namespace onnxruntime;
+
+table Model{
+  ir_version:long;
+  producer_name:string;
+  producer_version:string;
+  domain:string;
+  model_version:long;
+  doc_string:string;
+  graph:onnxruntime.Graph.Graph;
+}
