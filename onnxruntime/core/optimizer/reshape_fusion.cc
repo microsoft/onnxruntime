@@ -39,7 +39,7 @@ Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, c
   return Status::OK();
 }
 
-static bool DistilBertCheck(Graph& graph, const Node& concat, const Node& layernorm_add) {
+static bool DistilBertCheck(Graph& graph, const Node& concat, const Node& layernorm_add, const logging::Logger& logger) {
   if (!optimizer_utils::CheckOutputEdges(graph, concat, 1))
     return false;
 
@@ -53,26 +53,74 @@ static bool DistilBertCheck(Graph& graph, const Node& concat, const Node& layern
   if (add == nullptr || (*add).OpType() != "Add")
     return false;
 
-  const NodeArg& add_input_b = *((*add).InputDefs()[1]);
-  if (!graph_utils::IsInitializer(graph, add_input_b.Name(), true)) {
+  if ((*add).InputDefs().size() <= 1 || layernorm_add.InputDefs().size() <= 1)
+    return false;
+
+  const NodeArg& add_input = *((*add).InputDefs()[0]);
+  const NodeArg& layernorm_add_input = *(layernorm_add.InputDefs()[0]);
+
+  const ONNX_NAMESPACE::TensorShapeProto* add_input_shape = add_input.Shape();
+  const ONNX_NAMESPACE::TensorShapeProto* layernorm_add_input_shape = layernorm_add_input.Shape();
+
+  if (add_input_shape != nullptr && layernorm_add_input_shape != nullptr)
+    return optimizer_utils::CompareShape(*add_input_shape, *layernorm_add_input_shape);
+
+  std::vector<graph_utils::EdgeEndToMatch> shape_path{
+    {0, 0, "Unsqueeze", {1, 11}, kOnnxDomain},
+    {0, 0, "Gather", {1, 11}, kOnnxDomain},
+    {0, 0, "Shape", {1}, kOnnxDomain},
+    {0, 0, "Add", {7, 13}, kOnnxDomain}};
+  std::vector<const Node::EdgeEnd*> edges;
+  if (!graph_utils::FindPath(concat, true, shape_path, edges, logger)) {
+    return false;
+  }
+  const Node& shape_path_add = edges[3]->GetNode();
+  if (shape_path_add.Index() != layernorm_add.Index()) {
     return false;
   }
 
-  auto shape = add_input_b.Shape();
-  if (shape == nullptr || shape->dim_size() != 1)
-    return false;
-
-  auto dim = shape->dim(0);
-  if (!utils::HasDimValue(dim))
-    return false;
-  int64_t hidden_size = dim.dim_value();
-
-  const NodeArg& layernorm_add_input_b = *(layernorm_add.InputDefs()[1]);
-  if (!graph_utils::IsInitializer(graph, layernorm_add_input_b.Name(), true)) {
+  std::vector<graph_utils::EdgeEndToMatch> linear_path{
+    {0, 0, "Add", {7}, kOnnxDomain},
+    {0, 0, "MatMul", {1, 9}, kOnnxDomain},
+    {0, 0, "Add", {7}, kOnnxDomain}};
+  if (!graph_utils::FindPath(reshape, true, linear_path, edges, logger)) {
     return false;
   }
-  
-  return optimizer_utils::ValidateShape(layernorm_add_input_b, {hidden_size});
+  const Node& linear_path_root_add = edges[2]->GetNode();
+  if (linear_path_root_add.Index() != layernorm_add.Index()) {
+    return false;
+  }
+  const Node& linear_path_add = edges[0]->GetNode();
+  const Node& linear_path_matmul = edges[1]->GetNode();
+
+  if (layernorm_add.InputDefs().size() < 2) {
+    return false;
+  }
+  const NodeArg& layernorm_add_b = *(layernorm_add.InputDefs()[1]);
+  if (!graph_utils::IsInitializer(graph, layernorm_add_b.Name(), true)) {
+    return false;
+  }
+
+  const ONNX_NAMESPACE::TensorShapeProto* layernorm_add_b_shape = layernorm_add_b.Shape();
+  if (layernorm_add_b_shape == nullptr || layernorm_add_b_shape->dim_size() != 1) {
+    return false;
+  }
+
+  const ONNX_NAMESPACE::TensorShapeProto_Dimension& layernorm_add_b_shape_dim = layernorm_add_b_shape->dim(0);
+  if (!utils::HasDimValue(layernorm_add_b_shape_dim)) {
+    return false;
+  }
+  int64_t hidden_size = layernorm_add_b_shape_dim.dim_value();
+
+  if (linear_path_add.InputDefs().size() < 2 || linear_path_matmul.InputDefs().size() < 2) {
+    return false;
+  }
+  if (!optimizer_utils::ValidateShape(*(linear_path_add.InputDefs()[1]), {hidden_size}) ||
+      !optimizer_utils::ValidateShape(*(linear_path_matmul.InputDefs()[1]), {hidden_size, hidden_size})) {
+    return false;
+  }
+
+  return true;
 }
 
 /**
@@ -97,7 +145,7 @@ bool ReshapeFusion::Match_One_Element_Output_Subgraph_1(Graph& graph, const Node
     const Node* p_node_before_shape = graph_utils::GetInputNode(shape, 0);
     bool is_distilbert_reshape = false;
     if (nullptr != p_node_before_shape && (*p_node_before_shape).OpType() == "Add") {
-      if (!DistilBertCheck(graph, concat, *p_node_before_shape))
+      if (!DistilBertCheck(graph, concat, *p_node_before_shape, logger))
         return false;
       is_distilbert_reshape = true;
     }

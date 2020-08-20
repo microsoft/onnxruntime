@@ -1581,8 +1581,8 @@ TEST_F(GraphTransformationTests, ReshapeFusionDistilBertTest) {
       const int64_t* val = initializer->data<int64_t>();
       EXPECT_EQ(val[0], 0);
       EXPECT_EQ(val[1], -1);
-      EXPECT_EQ(val[2], 12);
-      EXPECT_EQ(val[3], 64);
+      EXPECT_EQ(val[2], 2);
+      EXPECT_EQ(val[3], 4);
     }
   }
 }
