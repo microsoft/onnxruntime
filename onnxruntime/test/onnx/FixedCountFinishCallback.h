@@ -32,7 +32,7 @@ class FixedCountFinishCallbackImpl {
     if (finish_event_) OrtCloseEvent(finish_event_);
   }
 
-  ::onnxruntime::common::Status fail(ORT_CALLBACK_INSTANCE pci) {
+  ::onnxruntime::common::Status Fail(ORT_CALLBACK_INSTANCE pci) {
     {
       std::lock_guard<onnxruntime::OrtMutex> g(m_);
       failed = true;
@@ -41,7 +41,7 @@ class FixedCountFinishCallbackImpl {
     return OnnxRuntimeSetEventWhenCallbackReturns(pci, finish_event_);
   }
 
-  ::onnxruntime::common::Status onFinished(size_t task_index, std::shared_ptr<T> result, ORT_CALLBACK_INSTANCE pci) {
+  ::onnxruntime::common::Status OnFinished(size_t task_index, std::shared_ptr<T> result, ORT_CALLBACK_INSTANCE pci) {
     int v;
     {
       std::lock_guard<onnxruntime::OrtMutex> g(m_);
@@ -54,12 +54,12 @@ class FixedCountFinishCallbackImpl {
     return ::onnxruntime::common::Status::OK();
   }
 
-  bool shouldStop() {
+  bool ShouldStop() {
     std::lock_guard<onnxruntime::OrtMutex> g(m_);
     return failed;
   }
   //this function can only be invoked once
-  bool wait() {
+  bool Wait() {
     ORT_ENFORCE(WaitAndCloseEvent(finish_event_).IsOK());
     {
       std::lock_guard<onnxruntime::OrtMutex> g(m_);

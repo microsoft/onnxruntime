@@ -103,16 +103,35 @@ void LearningModelSession::Initialize() {
   engine_factory_.copy_from(model_impl->GetEngineFactory());
 
   com_ptr<_winml::IEngineBuilder> engine_builder;
-  engine_factory_->CreateEngineBuilder(engine_builder.put());
+  WINML_THROW_IF_FAILED(engine_factory_->CreateEngineBuilder(engine_builder.put()));
 
   if (device_impl->IsCpuDevice() == false) {
-    engine_builder->SetD3D12Resources(device_impl->GetD3DDevice(), device_impl->GetDeviceQueue());
-    engine_builder->SetMetacommandsEnabled(device_impl->MetacommandsEnabled());
+    WINML_THROW_IF_FAILED(engine_builder->SetD3D12Resources(device_impl->GetD3DDevice(), device_impl->GetDeviceQueue()));
+    WINML_THROW_IF_FAILED(engine_builder->SetMetacommandsEnabled(device_impl->MetacommandsEnabled()));
   }
 
+
   // Make onnxruntime apply the batch size override, if any
-  if (session_options_ && session_options_.BatchSizeOverride() != 0) {
-    engine_builder->SetBatchSizeOverride(session_options_.BatchSizeOverride());
+  if (session_options_) {
+    if (session_options_.BatchSizeOverride() != 0) {
+      WINML_THROW_IF_FAILED(engine_builder->SetBatchSizeOverride(session_options_.BatchSizeOverride()));
+    }
+    // Make Onnxruntime apply the number of intra op threads
+    uint32_t numIntraOpThreads = session_options_.as<WINMLP::LearningModelSessionOptions>()->GetIntraOpNumThreads();
+    WINML_THROW_IF_FAILED(engine_builder->SetIntraOpNumThreadsOverride(numIntraOpThreads)
+    );
+    
+    // Make onnxruntime apply named dimension overrides, if any
+    com_ptr<winmlp::LearningModelSessionOptions> session_options_impl = session_options_.as<winmlp::LearningModelSessionOptions>();
+    if (session_options_impl && session_options_impl->NamedDimensionOverrides().Size() > 0) {
+      WINML_THROW_IF_FAILED(engine_builder->SetNamedDimensionOverrides(session_options_impl->NamedDimensionOverrides()));
+    }
+  } else {
+    // Onnxruntime will use half the number of concurrent threads supported on the system
+    // by default. This causes MLAS to not exercise every logical core.
+    // If session options aren't provided, force the thread pool size to be maxxed out
+    // to ensure that WinML always runs the fastest.
+    WINML_THROW_IF_FAILED(engine_builder->SetIntraOpNumThreadsOverride(std::thread::hardware_concurrency()));
   }
 
   com_ptr<_winml::IEngine> engine;
@@ -123,7 +142,7 @@ void LearningModelSession::Initialize() {
   WINML_THROW_IF_FAILED(engine->RegisterCustomRegistry(operator_registry_.get()));
 
   // Register transformers - this should probably not be exposed on IEngine, but an internal call as this configuration step is ort specific.
-  engine->RegisterGraphTransformers();
+  WINML_THROW_IF_FAILED(engine->RegisterGraphTransformers());
 
   // Load the model into the session
   WINML_THROW_IF_FAILED(engine->LoadModel(model.get()));
@@ -229,17 +248,17 @@ uint64_t LearningModelSession::Run(winrt::com_ptr<winmlp::LearningModelBinding> 
       std::back_inserter(outputs_raw),
       [&](auto& input) { return input.get(); });
 
-  engine_->Run(input_names_raw.data(),
+  WINML_THROW_IF_FAILED(engine_->Run(input_names_raw.data(),
                inputs_raw.data(),
                input_names_raw.size(),
                output_names_raw.data(),
                outputs_raw.data(),
-               output_names_raw.size());
+               output_names_raw.size()));
 
   if (!device->IsCpuDevice()) {
     // Flush the D3D12 work from the DML execution provider and queue a fence before we release the lock.
     // This allows us to wait without holding onto the lock in GetResults.
-    engine_->FlushContext();
+    WINML_THROW_IF_FAILED(engine_->FlushContext());
     return device->GetD3DDeviceCache()->QueueFenceToD3D12();
   }
 
@@ -268,10 +287,10 @@ LearningModelSession::GetResults(
   if (is_gpu_evaluation) {
     // For DML we aren't using the Sync function because we want to make fencing the
     // completed frame thread safe while not holding the lock while waiting for the gpu.
-    engine_->ReleaseCompletedReferences();
+    WINML_THROW_IF_FAILED(engine_->ReleaseCompletedReferences());
   } else {
     // For CPU call the standard Sync function
-    engine_->Sync();
+    WINML_THROW_IF_FAILED(engine_->Sync());
   }
 
   // This isn't the best we are holding the lock while we wait for detensorize on the GPU.
@@ -407,5 +426,10 @@ void LearningModelSession::CheckClosed() {
   if (!engine_) {
     WINML_THROW_HR(RO_E_CLOSED);
   }
+}
+
+STDMETHODIMP LearningModelSession::GetIntraOpNumThreads(uint32_t* numThreads)
+{
+  return engine_->GetNumberOfIntraOpThreads(numThreads);
 }
 }  // namespace WINMLP

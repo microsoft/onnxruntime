@@ -1,12 +1,10 @@
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-#--------------------------------------------------------------------------
-
-import sys
-import os
+# --------------------------------------------------------------------------
 
 from onnxruntime.capi import _pybind_state as C
+
 
 def get_ort_device_type(device):
     if device == 'cuda':
@@ -14,7 +12,8 @@ def get_ort_device_type(device):
     elif device == 'cpu':
         return C.OrtDevice.cpu()
     else:
-        raise Exception('Unsupported device type: ' + torch_device.type)
+        raise Exception('Unsupported device type: ' + device)
+
 
 class Session:
     """
@@ -33,6 +32,15 @@ class Session:
         self._model_meta = None
         self._providers = None
         self._sess = None
+
+        # At this point, _sess object is still referenced by _sess_options,
+        # because of previously _sess_options = _sess.sess_options being executed in _load_model().
+        # Therefore, _sess reference count is not zero and not being released by python gc yet.
+        #
+        # In order to make _sess reference count become 0 and being destroyed by python gc before
+        # creating new session object, we need to reset _sess_options as well.
+        self._sess_options = None
+        self._sess_options = self._sess_options_initial
 
     def get_session_options(self):
         "Return the session options. See :class:`onnxruntime.SessionOptions`."
@@ -58,20 +66,40 @@ class Session:
         "Return list of registered execution providers."
         return self._providers
 
-    def set_providers(self, providers):
+    def get_provider_options(self):
+        "Return registered execution providers' configurations."
+        return self._provider_options
+
+    def set_providers(self, providers, provider_options=None):
         """
         Register the input list of execution providers. The underlying session is re-created.
 
         :param providers: list of execution providers
+        :param provider_options: list of provider options dict
 
-        The list of providers is ordered by Priority. For example ['CUDAExecutionProvider', 'CPUExecutionProvider'] means
-        execute a node using CUDAExecutionProvider if capable, otherwise execute using CPUExecutionProvider.
+        The list of providers is ordered by Priority. For example ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        means execute a node using CUDAExecutionProvider if capable, otherwise execute using CPUExecutionProvider.
         """
         if not set(providers).issubset(C.get_available_providers()):
             raise ValueError("{} does not contain a subset of available providers {}".format(
                 providers, C.get_available_providers()))
+
+        if provider_options:
+            if not isinstance(providers, list) or not isinstance(provider_options, list):
+                raise ValueError("Inputs must be two python lists.")
+
+            if len(providers) != len(provider_options):
+                raise ValueError("Two input lists must have same length.")
+
+            for option in provider_options:
+                if not isinstance(option, dict):
+                    raise ValueError("Provider options must be list of python dict.")
+
+                for key, val in option.items():
+                    option[key] = str(val)
+
         self._reset_session()
-        self._load_model(providers)
+        self._load_model(providers, provider_options)
 
     def disable_fallback(self):
         """
@@ -81,8 +109,8 @@ class Session:
 
     def enable_fallback(self):
         """
-        Enable session.Run() fallback mechanism. If session.Run() fails due to an internal Execution Provider failure, reset the Execution Providers
-        enabled for this session.
+        Enable session.Run() fallback mechanism. If session.Run() fails due to an internal Execution Provider failure,
+        reset the Execution Providers enabled for this session.
         If GPU is enabled, fall back to CUDAExecutionProvider.
         otherwise fall back to CPUExecutionProvider.
         """
@@ -142,11 +170,12 @@ class Session:
         """
         self._sess.run_with_iobinding(iobinding._iobinding, run_options)
 
+
 class InferenceSession(Session):
     """
     This is the main class used to run a model.
     """
-    def __init__(self, path_or_bytes, sess_options=None, providers=[]):
+    def __init__(self, path_or_bytes, sess_options=None, providers=None):
         """
         :param path_or_bytes: filename or serialized model in a byte string
         :param sess_options: session options
@@ -155,11 +184,12 @@ class InferenceSession(Session):
         """
         self._path_or_bytes = path_or_bytes
         self._sess_options = sess_options
-        self._load_model(providers)
+        self._sess_options_initial = sess_options
+        self._load_model(providers or [])
         self._enable_fallback = True
         Session.__init__(self, self._sess)
 
-    def _load_model(self, providers=[]):
+    def _load_model(self, providers, provider_options=None):
         if isinstance(self._path_or_bytes, str):
             self._sess = C.InferenceSession(
                 self._sess_options if self._sess_options else C.get_default_session_options(), self._path_or_bytes,
@@ -174,7 +204,10 @@ class InferenceSession(Session):
         else:
             raise TypeError("Unable to load from type '{0}'".format(type(self._path_or_bytes)))
 
-        self._sess.load_model(providers)
+        if provider_options:
+            self._sess.load_model(providers, provider_options)
+        else:
+            self._sess.load_model(providers)
 
         self._sess_options = self._sess.session_options
         self._inputs_meta = self._sess.inputs_meta
@@ -182,6 +215,7 @@ class InferenceSession(Session):
         self._overridable_initializers = self._sess.overridable_initializers
         self._model_meta = self._sess.model_meta
         self._providers = self._sess.get_providers()
+        self._provider_options = self._sess.get_provider_options()
 
         # Tensorrt can fall back to CUDA. All others fall back to CPU.
         if 'TensorrtExecutionProvider' in C.get_available_providers():
@@ -191,18 +225,65 @@ class InferenceSession(Session):
 
 
 class IOBinding:
+    '''
+    This class provides API to bind input/output to a specified device, e.g. GPU.
+    '''
     def __init__(self, session):
         self._iobinding = C.SessionIOBinding(session._sess)
 
+    def bind_cpu_input(self, name, arr_on_cpu):
+        '''
+        bind an input to array on CPU
+        :param name: input name
+        :param arr_on_cpu: input values as a python array on CPU
+        '''
+        self._iobinding.bind_input(name, arr_on_cpu)
+
     def bind_input(self, name, device_type, device_id, element_type, shape, buffer_ptr):
+        '''
+        :param name: input name
+        :param device_type: e.g. CPU, CUDA
+        :param device_id: device id, e.g. 0
+        :param element_type: input element type
+        :param shape: input shape
+        :param buffer_ptr: memory pointer to input data
+        '''
         self._iobinding.bind_input(name,
-                                   C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(), device_id),
+                                   C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(),
+                                               device_id),
                                    element_type, shape, buffer_ptr)
 
-    def bind_output(self, name, device_type, device_id, element_type, shape, buffer_ptr):
-        self._iobinding.bind_output(name,
-                                    C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(), device_id),
-                                    element_type, shape, buffer_ptr)
+    def bind_output(self, name, device_type='cpu', device_id=0, element_type=None, shape=None, buffer_ptr=None):
+        '''
+        :param name: output name
+        :param device_type: e.g. CPU, CUDA, CPU by default
+        :param device_id: device id, e.g. 0
+        :param element_type: output element type
+        :param shape: output shape
+        :param buffer_ptr: memory pointer to output data
+        '''
+
+        # Follow the `if` path when the user has not provided any pre-allocated buffer but still
+        # would like to bind an output to a specific device (e.g. cuda).
+        # Pre-allocating an output buffer may not be an option for the user as :
+        # (1) They may not want to use a custom allocator specific to the device they want to bind the output to,
+        # in which case ORT will allocate the memory for the user
+        # (2) The output has a dynamic shape and hence the size of the buffer may not be fixed across runs
+        if buffer_ptr is None:
+            self._iobinding.bind_output(name,
+                                        C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(),
+                                                    device_id))
+        else:
+            if element_type is None or shape is None:
+                raise ValueError("`element_type` and `shape` are to be provided if pre-allocated memory is provided")
+            self._iobinding.bind_output(name,
+                                        C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(),
+                                                    device_id),
+                                        element_type, shape, buffer_ptr)
+
+    def copy_outputs_to_cpu(self):
+        '''Copy output contents to CPU (if on another device). No-op if already on the CPU.'''
+        return self._iobinding.copy_outputs_to_cpu()
 
     def clear_binding_inputs(self):
         self._iobinding.clear_binding_inputs()

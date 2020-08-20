@@ -1,16 +1,17 @@
-# RKNPU Execution Provider
-RKNPU DDK is an advanced interface to access Rockchip NPU, currently support platform as follow:
-- RK1808 Linux
+# RKNPU Execution Provider (preview)
+RKNPU DDK is an advanced interface to access Rockchip NPU. RKNPU Execution Provider enables deep learning inference on Rockchip NPU via RKNPU DDK.
 
-  Note: RK3399Pro platform is not supported.
+## Supported platforms
 
-RKNPU Execution Provider enables deep learning inference on Rockchip NPU via RKNPU DDK.
+* RK1808 Linux
+
+*Note: RK3399Pro platform is not supported.*
 
 
 ## Build 
 For build instructions, please see the [BUILD page](../../BUILD.md#RKNPU).
 
-## Using
+## Usage
 ### C/C++
 To use RKNPU as execution provider for inferencing, please register it as below.
 ```
@@ -29,9 +30,9 @@ status = session_object.Load(model_file_name);
 The C API details are [here](../C_API.md#c-api).
 
 
-## ONNX Op supported using RKNPU
+## Supported Operators
 
-The table below shows the ONNX Ops supported using RKNPU Execution Provider and the mapping between ONNX Ops and RKNPU Ops. 
+The table below shows the ONNX Ops supported using RKNPU Execution Provider and the mapping between ONNX Ops and RKNPU Ops.
 
 | **ONNX Ops** | **RKNPU Ops** |
 | --- | --- |
@@ -60,7 +61,7 @@ The table below shows the ONNX Ops supported using RKNPU Execution Provider and 
 | Clip | CLIP |
 
 
-## Model Supported
+## Supported Models
 
 Below Models are supported from ONNX open model zoo using RKNPU Execution Provider
 

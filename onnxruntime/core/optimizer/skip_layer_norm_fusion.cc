@@ -12,7 +12,7 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 
 // LayerNorm supports limited data types.
-static std::vector<std::string> supported_data_types{"tensor(float16)", "tensor(float)"};
+static std::vector<std::string> supported_data_types{"tensor(float16)", "tensor(float)", "tensor(bfloat16)"};
 
 static bool IsSupportedDataType(const Node& node) {
   for (const auto& input_arg : node.InputDefs()) {
@@ -163,8 +163,8 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
 
     // Format 1
     std::vector<graph_utils::EdgeEndToMatch> format1_parent_path{
-        {0, 0, "Add", {7}, kOnnxDomain},
-        {0, 0, "Add", {7}, kOnnxDomain}};
+        {0, 0, "Add", {7, 13}, kOnnxDomain},
+        {0, 0, "Add", {7, 13}, kOnnxDomain}};
 
     std::vector<const Node::EdgeEnd*> edges;
     if (graph_utils::FindPath(ln_node, true, format1_parent_path, edges, logger)) {
@@ -172,7 +172,9 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
       p_add2 = const_cast<Node*>(&edges[1]->GetNode());
 
       if (CheckFirstAdd(*p_add1, ln_node.GetExecutionProviderType()) &&
-          CheckSecondAdd(graph, *p_add2, ln_node.GetExecutionProviderType())) {
+          CheckSecondAdd(graph, *p_add2, ln_node.GetExecutionProviderType()) &&
+          graph.GetNodeOutputsInGraphOutputs(*p_add1).empty() &&
+          graph.GetNodeOutputsInGraphOutputs(*p_add2).empty()) {
         matched_format = Format::Format1;
       }
     }
@@ -180,15 +182,17 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     if (matched_format == Format::None) {
       // Format 2
       std::vector<graph_utils::EdgeEndToMatch> format2_parent_path{
-          {0, 0, "Add", {7}, kOnnxDomain},
-          {0, 1, "Add", {7}, kOnnxDomain}};
+          {0, 0, "Add", {7, 13}, kOnnxDomain},
+          {0, 1, "Add", {7, 13}, kOnnxDomain}};
 
       if (graph_utils::FindPath(ln_node, true, format2_parent_path, edges, logger)) {
         p_add1 = const_cast<Node*>(&edges[0]->GetNode());
         p_add2 = const_cast<Node*>(&edges[1]->GetNode());
 
         if (CheckFirstAdd(*p_add1, ln_node.GetExecutionProviderType()) &&
-            CheckSecondAdd(graph, *p_add2, ln_node.GetExecutionProviderType())) {
+            CheckSecondAdd(graph, *p_add2, ln_node.GetExecutionProviderType()) &&
+            graph.GetNodeOutputsInGraphOutputs(*p_add1).empty() &&
+            graph.GetNodeOutputsInGraphOutputs(*p_add2).empty()) {
           matched_format = Format::Format2;
         }
       }
@@ -197,12 +201,13 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     if (matched_format == Format::None) {
       // Format 3
       std::vector<graph_utils::EdgeEndToMatch> format3_parent_path{
-          {0, 0, "Add", {7}, kOnnxDomain}};
+          {0, 0, "Add", {7, 13}, kOnnxDomain}};
 
       if (graph_utils::FindPath(ln_node, true, format3_parent_path, edges, logger)) {
         p_add1 = const_cast<Node*>(&edges[0]->GetNode());
 
-        if (CheckFirstAdd(*p_add1, ln_node.GetExecutionProviderType())) {
+        if (CheckFirstAdd(*p_add1, ln_node.GetExecutionProviderType()) &&
+            graph.GetNodeOutputsInGraphOutputs(*p_add1).empty()) {
           matched_format = Format::Format3;
         }
       }
@@ -237,7 +242,7 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
                                                skip_layer_norm_input_defs,
                                                ln_node.MutableOutputDefs(), {}, kMSDomain);
 
-    // Get attribute "epsilon" from "LayerNormalization" node if available. Else, default value 
+    // Get attribute "epsilon" from "LayerNormalization" node if available. Else, default value
     // will be used.
     NodeAttributes ln_attrs = ln_node.GetAttributes();
     NodeAttributes::const_iterator epsilon = ln_attrs.find("epsilon");

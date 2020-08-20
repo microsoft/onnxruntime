@@ -10,7 +10,7 @@ class Format(Enum):
     Format3 = 3
 
 
-def GenerateModel(format, model_name, multi_output_add=False):
+def GenerateModel(format, model_name, multi_output_add=False, add_output_in_graph_output=False):
     nodes = [  # LayerNorm subgraph
         helper.make_node("ReduceMean", ["ln_in"], ["rd1_out"], "reduce1", axes=[-1], keepdims=1),
         helper.make_node("Sub", ["ln_in", "rd1_out"], ["sb1_out"], "sub1"),
@@ -67,6 +67,10 @@ def GenerateModel(format, model_name, multi_output_add=False):
             helper.make_tensor_value_info('C', TensorProto.FLOAT, [16, 32, 4]),
         ],
         initializers)
+    
+    if add_output_in_graph_output:
+        extra_output = "ln_in" if format is Format.Format3 else "add3_out"
+        graph.output.extend([helper.make_tensor_value_info(extra_output, TensorProto.FLOAT, [16, 32, 4])])
 
     model = helper.make_model(graph)
     onnx.save(model, model_name)
@@ -75,6 +79,10 @@ def GenerateModel(format, model_name, multi_output_add=False):
 GenerateModel(Format.Format1, 'skip_layer_norm_format1.onnx')
 GenerateModel(Format.Format2, 'skip_layer_norm_format2.onnx')
 GenerateModel(Format.Format3, 'skip_layer_norm_format3.onnx')
-GenerateModel(Format.Format1, 'skip_layer_norm_format1_partial.onnx', True)
-GenerateModel(Format.Format2, 'skip_layer_norm_format2_partial.onnx', True)
-GenerateModel(Format.Format3, 'skip_layer_norm_format3_no_fusion.onnx', True)
+GenerateModel(Format.Format1, 'skip_layer_norm_format1_partial.onnx', multi_output_add = True)
+GenerateModel(Format.Format2, 'skip_layer_norm_format2_partial.onnx', multi_output_add = True)
+GenerateModel(Format.Format3, 'skip_layer_norm_format3_no_fusion.onnx', multi_output_add = True)
+
+GenerateModel(Format.Format1, 'skip_layer_norm_format1_graph_output.onnx', add_output_in_graph_output = True)
+GenerateModel(Format.Format2, 'skip_layer_norm_format2_graph_output.onnx', add_output_in_graph_output = True)
+GenerateModel(Format.Format3, 'skip_layer_norm_format3_graph_output.onnx', add_output_in_graph_output = True)

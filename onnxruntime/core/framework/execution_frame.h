@@ -3,7 +3,9 @@
 
 #pragma once
 
+#include <mutex>
 #include <vector>
+#include <unordered_map>
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
@@ -25,10 +27,15 @@ class NodeIndexInfo;
 
 class IExecutionFrame {
  protected:
-  IExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
-                  const std::unordered_map<int, OrtValue>& initializers, const std::vector<int>& fetch_mlvalue_idxs,
-                  const std::vector<OrtValue>& fetches, const OrtValueNameIdxMap& ort_value_idx_map,
-                  const NodeIndexInfo& node_index_info);
+  // Derived class must call Init in its ctor. We need to use some of the virtual methods in Init and those aren't
+  // initialized until the derived class is constructed.
+  IExecutionFrame(const OrtValueNameIdxMap& ort_value_idx_map,
+                  const NodeIndexInfo& node_index_info,
+                  const std::vector<int>& fetch_mlvalue_idxs);
+
+  void Init(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
+            const std::unordered_map<int, OrtValue>& initializers,
+            const std::vector<OrtValue>& fetches);
 
  public:
   virtual ~IExecutionFrame();
@@ -47,6 +54,10 @@ class IExecutionFrame {
   // Return S_OK and nullptr if index map to an value that is an unused optional input/output
   // Shape is required for tensors but not traditional ML values.
   Status GetOrCreateNodeOutputMLValue(int index, const TensorShape* shape, OrtValue*& p_ort_value, size_t nnz = 0);
+
+  // This function try retrieve the inferred shapes for the given NodeArg index.
+  // If the retrival is sucessful, this function returns true and false otherwise.
+  virtual bool TryGetInferredShape(int index, TensorShape& shape) const;
 
   /**
    * write the output values to the 'fetches' vector
@@ -72,10 +83,6 @@ class IExecutionFrame {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(IExecutionFrame);
 
-  void Init(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
-            const std::unordered_map<int, OrtValue>& initializers,
-            const std::vector<OrtValue>& fetches);
-
   const OrtValue& GetMLValue(int ort_value_index) const {
     ORT_ENFORCE(ort_value_index >= 0 && static_cast<size_t>(ort_value_index) < all_values_size_);
     return all_values_[ort_value_index];
@@ -83,7 +90,10 @@ class IExecutionFrame {
 
   virtual AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const = 0;
 
-  virtual Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape, size_t nnz) = 0;
+  virtual Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape,
+                                             size_t nnz) = 0;
+
+  virtual Status CopyTensor(const Tensor& src, Tensor& dest) const = 0;
 
   const NodeIndexInfo& node_index_info_;
 
@@ -125,12 +135,37 @@ class ExecutionFrame final : public IExecutionFrame {
     return planner_ != nullptr;
   }
 
+  // This function try retrieve the inferred shapes for the given NodeArg index.
+  // If the retrival is sucessful, this function returns true and false otherwise.
+  bool TryGetInferredShape(int index, TensorShape& shape) const override;
+
+  // Return the size of virtual memory allocated in runtime.
+  // The memory is usually used for activations in forward and backward passes.
+  const std::unordered_map<std::string, size_t>& GetDynamicMemorySizeInfo() {
+    // This function is not thread-safe. Please make sure dynamic_activation_memory_sizes_in_byte_
+    // is not being changed when calling this function.
+    // If one day, race condition happens, please uncomment the following line:
+    //   std::unique_lock<std::mutex> lock(mtx_);
+    return dynamic_activation_memory_sizes_in_byte_;
+  }
+
+  // Return the size of virtual memory allocated before computation.
+  // The memory is usually used for activations in forward and backward passes.
+  const std::unordered_map<std::string, size_t>& GetStaticMemorySizeInfo() {
+    // This function is not thread-safe. Please make sure static_activation_memory_sizes_in_byte_
+    // is not being changed when calling this function.
+    // If one day, race condition happens, please uncomment the following line:
+    //   std::unique_lock<std::mutex> lock(mtx_);
+    return static_activation_memory_sizes_in_byte_;
+  }
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ExecutionFrame);
 
   AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const override;
   Status ReleaseMLValueImpl(int ort_value_idx) override;
   Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape, size_t nnz) override;
+  Status CopyTensor(const Tensor& src, Tensor& dest) const override;
 
   common::Status AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_value_index, const TensorShape* shape,
                                              size_t nnz);
@@ -163,5 +198,26 @@ class ExecutionFrame final : public IExecutionFrame {
 
   // Big chunks on different locations that will be used by mem_pattern.
   std::map<OrtMemoryInfo, BufferUniquePtr> buffers_;
+
+  // Given the input shapes of the executed graph, ExecutionFrame tries inferring
+  // all symbolic shapes. inferred_shapes_[i] is the shape of OrtValue indexed
+  // by i, if the key i exists.
+  // inferred_shapes_ is generated togehter with mem_patterns_.
+  std::unordered_map<int, TensorShape> inferred_shapes_;
+
+  // Size of virtual memory allocated before any kernel execution.
+  // This field is not physical memory size.
+  // static_activation_memory_sizes_in_byte_[location] is the static memory consumption on "location".
+  std::unordered_map<std::string, size_t> static_activation_memory_sizes_in_byte_;
+
+  // Size of virtual memory allocated during kernel execution (i.e., inside a kernel,
+  // we may allocate some memory for its outputs, if not planned.).
+  // This field is not physical memory size.
+  // dynamic_activation_memory_sizes_in_byte_[location] is the dynamic memory consumption on "location".
+  std::unordered_map<std::string, size_t> dynamic_activation_memory_sizes_in_byte_;
+
+  // Mutex which should be acquired when executing non-thread-safe member functions.
+  // A current example is the tracker of dynamic memory allocation.
+  mutable std::mutex mtx_;
 };
 }  // namespace onnxruntime

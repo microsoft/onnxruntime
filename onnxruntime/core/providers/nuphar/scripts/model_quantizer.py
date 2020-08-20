@@ -53,7 +53,7 @@ class QuantizeConfig:
                      ('QuantizationType', 'Signed' if self.sign_bit_ else 'Unsigned'),
                      ('ReservedBit', self.reserved_bits_)])
 
-def quantize_matmul_2d_with_weight(in_node, in_graph, nf, converted_weights, quantized_inputs, qcfg_dict, update_qcfg_dict, default_qcfg):
+def quantize_matmul_2d_with_weight(in_node, in_graph, nf, converted_weights, quantized_inputs, qcfg_dict, update_qcfg_dict, default_qcfg, onnx_opset_ver):
     assert in_node.op_type == 'MatMul'
 
     # quantize weight
@@ -158,7 +158,11 @@ def quantize_matmul_2d_with_weight(in_node, in_graph, nf, converted_weights, qua
             Q_Xf = nf.make_node('Mul', [norm_X, np.asarray(x_qcfg.q_range()).astype(np.float32)])
             Q_Xf = nf.make_node('Add', [Q_Xf, np.asarray(0.5).astype(np.float32)])
             Q_Xf = nf.make_node('Floor', Q_Xf)
-            Q_Xf = nf.make_node('Clip', Q_Xf, {'max':x_qcfg.q_max(), 'min':x_qcfg.q_min()})
+            if onnx_opset_ver < 11:
+                Q_Xf = nf.make_node('Clip', Q_Xf, {'max':x_qcfg.q_max(), 'min':x_qcfg.q_min()})
+            else:
+                # Clip changed min max to inputs in opset 11
+                Q_Xf = nf.make_node('Clip', [Q_Xf, np.asarray(x_qcfg.q_min()).astype(np.float32), np.asarray(x_qcfg.q_max()).astype(np.float32)])
             Q_X = nf.make_node('Cast', Q_Xf, {'to':int({np.uint8  : onnx.TensorProto.UINT8,
                                                         np.int8   : onnx.TensorProto.INT8,
                                                         np.uint16 : onnx.TensorProto.UINT16,
@@ -238,7 +242,7 @@ def convert_matmul_model(input_model, output_model, only_for_scan=False, share_i
     out_mp = onnx.ModelProto()
     out_mp.CopyFrom(in_mp)
     out_mp.ir_version = 5 # update ir version to avoid requirement of initializer in graph input
-    ensure_opset(out_mp, 10) # bump up to ONNX opset 10, which is required for MatMulInteger
+    onnx_opset_ver = ensure_opset(out_mp, 10) # bump up to ONNX opset 10, which is required for MatMulInteger
     ensure_opset(out_mp, 1, 'com.microsoft') # add MS domain for MatMulInteger16
     out_mp.graph.ClearField('node')
     nf = NodeFactory(out_mp.graph)
@@ -249,12 +253,12 @@ def convert_matmul_model(input_model, output_model, only_for_scan=False, share_i
             continue
 
         if in_n.op_type == 'MatMul' and not only_for_scan:
-            if quantize_matmul_2d_with_weight(in_n, in_mp.graph, nf, converted_weights, quantized_inputs, qcfg_dict, export_qcfg_json, default_qcfg):
+            if quantize_matmul_2d_with_weight(in_n, in_mp.graph, nf, converted_weights, quantized_inputs, qcfg_dict, export_qcfg_json, default_qcfg, onnx_opset_ver):
                 continue
 
         out_n = out_mp.graph.node.add()
         out_n.CopyFrom(in_n)
-        if in_n.op_type == 'Scan':
+        if in_n.op_type == 'Scan' or in_n.op_type == 'Loop':
             in_subgraph = NodeFactory.get_attribute(in_n, 'body')
             out_subgraph = NodeFactory.get_attribute(out_n, 'body')
             out_subgraph.ClearField('node')
@@ -262,7 +266,7 @@ def convert_matmul_model(input_model, output_model, only_for_scan=False, share_i
             subgraph_quantized_inputs = {} if share_input_quantization else None # remember quantized inputs that might be able to share between MatMuls
             for in_sn in in_subgraph.node:
                 if in_sn.op_type == 'MatMul':
-                    if quantize_matmul_2d_with_weight(in_sn, in_subgraph, scan_nf, converted_weights, subgraph_quantized_inputs, qcfg_dict, export_qcfg_json, default_qcfg):
+                    if quantize_matmul_2d_with_weight(in_sn, in_subgraph, scan_nf, converted_weights, subgraph_quantized_inputs, qcfg_dict, export_qcfg_json, default_qcfg, onnx_opset_ver):
                         continue
 
                 if upgrade_op(scan_nf, in_sn):

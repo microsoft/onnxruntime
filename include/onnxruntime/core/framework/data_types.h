@@ -139,6 +139,10 @@ struct BFloat16 {
     }
     return result;
   }
+
+  operator float() const {
+    return ToFloat();
+  }
 };
 
 inline void BFloat16ToFloat(const BFloat16* blf, float* flt, size_t size) {
@@ -432,8 +436,12 @@ struct SetMapTypes {
     TensorElementTypeSetter<K>::SetMapKeyType(proto);
     MLDataType dt = GetMLDataType<V, IsTensorContainedType<V>::value>::Get();
     const auto* value_proto = dt->GetTypeProto();
+#ifdef ORT_NO_RTTI
+    ORT_ENFORCE(value_proto != nullptr, "expected a registered ONNX type");
+#else
     ORT_ENFORCE(value_proto != nullptr, typeid(V).name(),
                 " expected to be a registered ONNX type");
+#endif
     CopyMutableMapValue(*value_proto, proto);
   }
 };
@@ -449,8 +457,12 @@ struct SetSequenceType {
   static void Set(ONNX_NAMESPACE::TypeProto& proto) {
     MLDataType dt = GetMLDataType<T, IsTensorContainedType<T>::value>::Get();
     const auto* elem_proto = dt->GetTypeProto();
+#ifdef ORT_NO_RTTI
+    ORT_ENFORCE(elem_proto != nullptr, "expected a registered ONNX type");
+#else
     ORT_ENFORCE(elem_proto != nullptr, typeid(T).name(),
                 " expected to be a registered ONNX type");
+#endif
     CopyMutableSeqElement(*elem_proto, proto);
   }
 };

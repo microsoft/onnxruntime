@@ -673,7 +673,7 @@ namespace OperatorHelper
         ML_CHECK_VALID_ARGUMENT(inputDimensions.size() >= 1);
         ML_CHECK_VALID_ARGUMENT(indicesDimensions.size() >= 0);
         int outDimCount = gsl::narrow_cast<int>(inputDimensions.size() + indicesDimensions.size() - 1);
-        ML_CHECK_VALID_ARGUMENT(outDimCount > 0 && outDimCount <= NchwDimensionCount);
+        ML_CHECK_VALID_ARGUMENT(outDimCount >= 0 && outDimCount <= NchwDimensionCount);
 
         std::vector<DimensionType> outputDimensions(outDimCount, 1);
 

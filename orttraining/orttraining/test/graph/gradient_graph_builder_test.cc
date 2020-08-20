@@ -5,6 +5,8 @@
 #include "gtest/gtest.h"
 #include "orttraining/core/optimizer/gist_encode_decode.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/framework/test_utils.h"
+#include "core/common/path_utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/environment.h"
 #include "orttraining/models/runner/training_runner.h"
@@ -19,6 +21,7 @@
 using namespace onnxruntime::logging;
 using namespace onnxruntime::training;
 using namespace google::protobuf::util;
+using namespace onnxruntime::path_utils;
 
 namespace onnxruntime {
 namespace test {
@@ -26,6 +29,7 @@ namespace test {
 namespace {
 constexpr auto ORIGINAL_MODEL_PATH = ORT_TSTR("testdata/test_training_model.onnx");
 constexpr auto BACKWARD_MODEL_PATH = ORT_TSTR("testdata/temp_backward_model.onnx");
+constexpr auto CONCAT_MODEL_PATH = ORT_TSTR("testdata/transform/concat_trainable.onnx");
 
 std::unordered_set<std::string> GetModelOutputNames(const InferenceSession& session) {
   const auto outputs_result = session.GetModelOutputs();
@@ -73,30 +77,31 @@ static Status BuildBackPropGraph(
 /**
  * Run a training session for this model for 1 epoch, using batch size of 1 and synthetic input data.
  * @param so - SessionOptions for this run.
- * @param backprop_model_file - Mocel file to be run. This should already contain loss function and backward prop nodes.
+ * @param backprop_model_file - Model file to be run. This should already contain loss function and backward prop nodes.
  * @return TrainingSession for this run.
  */
 static std::unique_ptr<TrainingSession> RunTrainingSessionWithChecks(
     const SessionOptions& so, const PathString& backprop_model_file) {
   std::unique_ptr<Environment> env;
-  EXPECT_TRUE(Environment::Create(nullptr, env).IsOK());
+  ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
 
   std::unique_ptr<TrainingSession> training_session = onnxruntime::make_unique<TrainingSession>(so, *env);
 
-  EXPECT_TRUE(training_session->Load(backprop_model_file).IsOK());
+  ORT_THROW_IF_ERROR(training_session->Load(backprop_model_file));
 
   std::pair<common::Status, const ModelMetadata*> res = training_session->GetModelMetadata();
-  EXPECT_TRUE(res.first.IsOK());
-  EXPECT_TRUE(res.second != nullptr);
+  ORT_THROW_IF_ERROR(res.first);
+  ORT_ENFORCE(res.second != nullptr);
   auto model_metadata = res.second;
   std::cout << "Loaded " << model_metadata->graph_name << '\n';
 
-  EXPECT_TRUE(training_session->Initialize().IsOK());
+  ORT_THROW_IF_ERROR(training_session->Initialize());
 
   std::vector<MLValue> gradient_fetches;
   RunOptions run_options;
   run_options.run_log_verbosity_level = so.session_log_verbosity_level;
   run_options.run_tag = so.session_logid;
+  run_options.training_mode = true;
 
   // Create dummy feeds
   std::vector<int64_t> image_dims = {1, 784};
@@ -116,7 +121,7 @@ static std::unique_ptr<TrainingSession> RunTrainingSessionWithChecks(
 
   auto start_time = std::chrono::high_resolution_clock::now();
 
-  EXPECT_TRUE(training_session->Run(run_options, fw_feeds.first, fw_feeds.second, training_output_names, &gradient_fetches).IsOK());
+  ORT_THROW_IF_ERROR(training_session->Run(run_options, fw_feeds.first, fw_feeds.second, training_output_names, &gradient_fetches));
 
   auto end_time = std::chrono::high_resolution_clock::now();
   auto elapsed = TimeDiffMicroSeconds(start_time, end_time);
@@ -162,6 +167,27 @@ TEST(GradientGraphBuilderTest, BuildGradientGraphTest) {
               << " Name=" << node_name
               << '\n';
   }
+}
+
+TEST(GradientGraphBuilderTest, BuildConcatGradientGraphTest) {
+  const auto config = MakeBasicTrainingConfig();
+  PathString backprop_model_file;
+  ASSERT_STATUS_OK(BuildBackPropGraph(CONCAT_MODEL_PATH, config, backprop_model_file));
+
+  std::shared_ptr<Model> pModel;
+  ASSERT_STATUS_OK(Model::Load(backprop_model_file, pModel, nullptr, DefaultLoggingManager().DefaultLogger()));
+
+  Graph& graph = pModel->MainGraph();
+  EXPECT_FALSE(graph.GraphResolveNeeded());
+  EXPECT_TRUE(graph.NumberOfNodes() > 0);
+  EXPECT_TRUE(graph.MaxNodeIndex() > 0);
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  ASSERT_EQ(op_to_count["Concat"], 0);
+  ASSERT_EQ(op_to_count["Split"], 0);
+  ASSERT_EQ(op_to_count["ConcatTraining"], 1);
+  ASSERT_EQ(op_to_count["SplitTraining"], 1);
 }
 
 TEST(GradientGraphBuilderTest, TrainingSession_Basic) {
@@ -297,14 +323,14 @@ static void RunBertTrainingWithChecks(
     const SessionOptions& so,
     const PathString& backprop_model_file) {
   std::unique_ptr<Environment> env;
-  EXPECT_TRUE(Environment::Create(nullptr, env).IsOK());
+  ASSERT_STATUS_OK(Environment::Create(nullptr, env));
 
   std::unique_ptr<TrainingSession> training_session = onnxruntime::make_unique<TrainingSession>(so, *env);
 
-  EXPECT_TRUE(training_session->Load(backprop_model_file).IsOK());
+  ASSERT_STATUS_OK(training_session->Load(backprop_model_file));
 
   std::pair<common::Status, const ModelMetadata*> res = training_session->GetModelMetadata();
-  EXPECT_TRUE(res.first.IsOK());
+  ASSERT_STATUS_OK(res.first);
   ASSERT_TRUE(res.second != nullptr);
   auto model_metadata = res.second;
   std::cout << "Loaded " << model_metadata->graph_name << '\n';
@@ -317,6 +343,7 @@ static void RunBertTrainingWithChecks(
   RunOptions run_options;
   run_options.run_log_verbosity_level = so.session_log_verbosity_level;
   run_options.run_tag = so.session_logid;
+  run_options.training_mode = true;
 
   // Creating feeds
   int batch_size = 13;
@@ -328,7 +355,6 @@ static void RunBertTrainingWithChecks(
       "masked_lm_ids",
       "next_sentence_labels",
       "masked_lm_positions",
-      "masked_lm_weights",
   };
   std::vector<TensorShape> tensor_shapes = {
       {batch_size, max_seq_len_in_batch},
@@ -412,20 +438,18 @@ static void RunBertTrainingWithChecks(
        0, 1, 2, 3, 4, 5, 6,
        0, 1, 2, 3, 4, 5, 6,
        0, 1, 2, 3, 4, 5, 6}};
-  std::vector<float> masked_lm_weights(13 * 7, 1.0f);
 
   std::vector<OrtValue> feeds(feed_names.size());
   for (size_t i = 0; i < 6; ++i) {
     TrainingUtil::CreateCpuMLValue(tensor_shapes[i].GetDims(), tensor_values[i], &feeds[i]);
   }
-  TrainingUtil::CreateCpuMLValue(tensor_shapes[6].GetDims(), masked_lm_weights, &feeds[6]);
 
   auto output_names_include_gradients = GetModelOutputNames(*training_session);
   std::vector<std::string> fetch_names(output_names_include_gradients.begin(), output_names_include_gradients.end());
 
   std::vector<OrtValue> fetches;
 
-  EXPECT_TRUE(training_session->Run(run_options, feed_names, feeds, fetch_names, &fetches).IsOK());
+  ASSERT_STATUS_OK(training_session->Run(run_options, feed_names, feeds, fetch_names, &fetches));
 
   for (size_t i = 0; i < fetch_names.size(); ++i) {
     if (!fetches[i].IsAllocated() || !!fetches[i].IsTensor())
@@ -473,7 +497,6 @@ TEST(GradientGraphBuilderTest, TrainingSession_BertToy) {
                         /*prediction_next_sentence*/ "seq_relationship_score",
                         /*masked_lm_positions*/ "masked_lm_positions",
                         /*masked_lm_ids*/ "masked_lm_ids",
-                        /*masked_lm_weights*/ "masked_lm_weights",
                         /*next_sentence_labels*/ "next_sentence_labels",
                         /*mlm_loss*/ "mlm_loss",
                         /*nsp_loss*/ "nsp_loss"});
@@ -997,86 +1020,437 @@ class PipelineBatchPlanner {
   }
 };
 
+void RetrieveEventOperators(
+  Graph& graph,
+  Node** forward_wait_before_recv,
+  Node** forward_wait_after_recv,
+  Node** forward_record_before_send,
+  Node** forward_record_after_send,
+  Node** backward_wait_before_recv,
+  Node** backward_wait_after_recv,
+  Node** backward_record_before_send,
+  Node** backward_record_after_send) {
+  // Initialize retrieved nodes.
+  // Non-existing nodes may hold NULL forever.
+  // Existing nodes may get valid pointers below.
+  *forward_wait_before_recv = nullptr;
+  *forward_wait_after_recv = nullptr;
+  *forward_record_before_send = nullptr;
+  *forward_record_after_send = nullptr;
+  *backward_wait_before_recv = nullptr;
+  *backward_wait_after_recv = nullptr;
+  *backward_record_before_send = nullptr;
+  *backward_record_after_send = nullptr;
+
+  // Declare container for WaitEvent's in topological order.
+  std::vector<Node*> waits;
+  // Declare container for RecordEvent's in topological order.
+  std::vector<Node*> records;
+
+  // Find out WaitEvent's and RecordEvent's.
+  GraphViewer graph_viewer(graph);
+  for (auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
+    Node* node = graph.GetNode(node_idx);
+    if (node->OpType() == "WaitEvent") {
+      waits.push_back(node);
+    } else if (node->OpType() == "RecordEvent") {
+      records.push_back(node);
+    }
+  }
+
+  if (waits.size() == size_t(4)) {
+    // Each of first stage and middle stages has 4 WaitEvent's.
+    *forward_wait_before_recv = waits[0];
+    *forward_wait_after_recv = waits[1];
+    *backward_wait_before_recv = waits[2];
+    *backward_wait_after_recv = waits[3];
+  } else if (waits.size() == size_t(2)) {
+    // Last stage has 2 WaitEvent's.
+    *forward_wait_before_recv = waits[0];
+    *forward_wait_after_recv = waits[1];
+  } else {
+    ORT_THROW("Wrong number of WaitEvent operators: ", waits.size(), "Expected value is either 2 or 4.");
+  }
+
+  if (records.size() == size_t(4)) {
+    // Each of first stage and middle stages has 4 RecordEvent's.
+    *forward_record_before_send = records[0];
+    *forward_record_after_send = records[1];
+    *backward_record_before_send = records[2];
+    *backward_record_after_send = records[3];
+  } else if (waits.size() == size_t(2)) {
+    // Last stage has 2 RecordEvent's.
+    *backward_record_before_send = records[0];
+    *backward_record_after_send = records[1];
+  } else {
+    ORT_THROW("Wrong number of RecordEvent operators: ", waits.size(), ". Expected value is either 2 or 4.");
+  }
+}
+
+void RetrieveSendRecvOperators(
+  Graph& graph,
+  Node** forward_recv,
+  Node** forward_send,
+  Node** backward_recv,
+  Node** backward_send) {
+  // Initialize retrieved nodes.
+  // Non-existing nodes may hold NULL forever.
+  // Existing nodes may get valid pointers below.
+  *forward_recv = nullptr;
+  *forward_send = nullptr;
+  *backward_recv = nullptr;
+  *backward_send = nullptr;
+
+  auto is_backward = [](Node& node) {
+    return (node.Description() == "Backward pass");
+  };
+
+  // Search for Send's and Recv's by assuming that
+  // there are only one Send and one Recv in forward/backward.
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "Send") {
+      if (is_backward(node)) {
+        // backward_send can only be assigned one valid pointer.
+        // If it is assigned more than once, it means we have multiple
+        // Send in backward pass and therefore our assumption doesn't hold.
+        // This check ensure that only we only update *backward_send when
+        // its value is NULL and guards our one-Recv assumption.
+        ASSERT_TRUE(!(*backward_send));
+        *backward_send = &node;
+      } else {
+        // Guard the uniqueness of Send in the forward pass by throwing
+        // when *forward_send already carries a valid pointer.
+        ASSERT_TRUE(!(*forward_send));
+        *forward_send = &node;
+      }
+    } else if (node.OpType() == "Recv") {
+      if (is_backward(node)) {
+        // Guard the uniqueness of Recv in the backward pass by throwing
+        // when *backward_recv already carries a valid pointer.
+        ASSERT_TRUE(!(*backward_recv));
+        *backward_recv = &node;
+      } else {
+        // Guard the uniqueness of Recv in the forwaard pass by throwing
+        // when *forward_recv already carries a valid pointer.
+        *forward_recv = &node;
+      }
+    }
+  }
+}
+
+PathString GenerateFileNameWithIndex(const std::string& base_str, int index, const std::string& file_suffix) {
+  return path_utils::MakePathString(base_str, index, file_suffix);
+}
+
+TEST(GradientGraphBuilderTest, PipelineOnlinePartition_bert_tiny) {
+  const auto model_path = ORT_TSTR("testdata/bert_toy_optimized.onnx");
+
+  const size_t total_partition_count = 3;
+  TrainingSession::TrainingConfiguration::PipelineConfiguration pipe{};
+  pipe.do_partition = true;
+
+  // cut model in 3 partitions
+  TrainingSession::TrainingConfiguration::CutInfo cut0 = {
+      onnxruntime::training::TrainingSession::TrainingConfiguration::CutEdge("326"),
+      onnxruntime::training::TrainingSession::TrainingConfiguration::CutEdge("103", {"413", "529"})};
+
+  TrainingSession::TrainingConfiguration::CutInfo cut1 = {
+      onnxruntime::training::TrainingSession::TrainingConfiguration::CutEdge("558"),
+      onnxruntime::training::TrainingSession::TrainingConfiguration::CutEdge("103", {"645"})};
+
+  pipe.cut_list.emplace_back(cut0);
+  pipe.cut_list.emplace_back(cut1);
+
+  TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mixed_precision_config{};
+  mixed_precision_config.use_fp16_initializers = true;
+
+  // 2 test variations - full precision and mixed precision
+  const std::vector<bool> test_with_fp32{true, false};
+  for (auto is_fp32 : test_with_fp32) {
+    // graph is partitioned into 3 parts.
+    for (int i = 0; i < static_cast<int>(total_partition_count); ++i) {
+
+      PathString output_file = GenerateFileNameWithIndex("pipeline_partition_", i, "_back.onnx");
+      auto config = MakeBasicTrainingConfig();
+
+      if (i == static_cast<int>(total_partition_count - 1)) {
+        config.loss_function_config = TrainingSession::TrainingConfiguration::LossFunctionConfiguration{};
+        config.loss_function_config.value().loss_function_info =
+            LossFunctionInfo(OpDef("BertLoss", kOnnxDomain),
+                             "total_loss",
+                             {/*prediction_masked_lm*/ "prediction_scores",
+                              /*prediction_next_sentence*/ "seq_relationship_score",
+                              /*masked_lm_positions*/ "masked_lm_positions",
+                              /*masked_lm_ids*/ "masked_lm_ids",
+                              /*next_sentence_labels*/ "next_sentence_labels",
+                              /*mlm_loss*/ "mlm_loss",
+                              /*nsp_loss*/ "nsp_loss"});
+      }
+
+      // Add weight_names_to_not_train to avoid generating backward graph on those tensor
+      config.weight_names_to_not_train = {
+          "position_01",            // Slice's dat input
+          "op_min_ends_expand_10",  //op_min_ends_expand_10
+      };
+
+      config.pipeline_config = pipe;
+      config.distributed_config.world_rank = i;
+      config.distributed_config.world_size = total_partition_count;
+      config.distributed_config.local_rank = i;
+      config.distributed_config.local_size = total_partition_count;
+      config.distributed_config.data_parallel_size = 1;
+      config.distributed_config.horizontal_parallel_size = 1;
+      config.distributed_config.pipeline_parallel_size = total_partition_count;
+      config.model_with_training_graph_path = output_file;
+
+      if (!is_fp32) {
+        config.mixed_precision_config = mixed_precision_config;
+      }
+
+      PathString backprop_model_file;
+      Status status = BuildBackPropGraph(model_path, config, backprop_model_file);
+      ASSERT_TRUE(status.IsOK()) << status << " (is_fp32 = " << is_fp32 << ", stage = " << i << ").\n";
+
+      // Skip the re-load for mixed-precision case. This model contains grad op that has function body,
+      // which takes a const tensor input. Const cast for input in function body won't be saved in the output
+      // model so reload will run into error.
+      // For the purpose of testing mixed-precision, BuildBackPropGraph above will be sufficient to verify the
+      // partition logic and validate the graph.
+      if (is_fp32) {
+        std::shared_ptr<Model> model;
+        // Ensure the partitioned model load.
+        status = Model::Load(backprop_model_file, model, nullptr, DefaultLoggingManager().DefaultLogger());
+        ASSERT_TRUE(status.IsOK()) << status << " (is_fp32 = " << is_fp32 << ", stage = " << i << ").\n";
+
+        // verify the first stage contains word embedding as input and the last stage doesn't
+        auto model_proto = model->ToProto();
+        const auto& graph_proto = model_proto.graph();
+
+        bool found_word_embedding = false;
+        for (auto& tensor : graph_proto.initializer()) {
+          if (tensor.name() == "bert.embeddings.word_embeddings.weight") {
+            found_word_embedding = true;
+          }
+        }
+        if (i == 0) {
+          ASSERT_TRUE(found_word_embedding) << " (is_fp32 = " << is_fp32 << ", stage = " << i << ").\n";
+        } else {
+          ASSERT_FALSE(found_word_embedding) << " (is_fp32 = " << is_fp32 << ", stage = " << i << ").\n";
+        }
+      }
+    }
+  }
+}
+
+TEST(GradientGraphBuilderTest, PipelineOnlinePartition_MLP) {
+  auto model_uri = ORIGINAL_MODEL_PATH;
+
+  TrainingSession::TrainingConfiguration::PipelineConfiguration pipe{};
+  pipe.do_partition = true;
+
+  // evenly cut the MLP model in 3 partitions
+  TrainingSession::TrainingConfiguration::CutInfo cut0 = {TrainingSession::TrainingConfiguration::CutEdge("T3")};
+  TrainingSession::TrainingConfiguration::CutInfo cut1 = {TrainingSession::TrainingConfiguration::CutEdge("T6")};
+  pipe.cut_list.emplace_back(cut0);
+  pipe.cut_list.emplace_back(cut1);
+
+  TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mixed_precision_config{};
+  mixed_precision_config.use_fp16_initializers = true;
+
+  // 2 test variations - full precision and mixed precision
+  const std::vector<bool> test_with_fp32{true, false};
+  for(auto is_fp32 : test_with_fp32) {
+    // graph is partitioned into 3 parts.
+    for (int i = 0; i < 3; ++i) {
+      PathString output_file = GenerateFileNameWithIndex("pipeline_partition_", i, "_back.onnx");
+
+      auto config = MakeBasicTrainingConfig();
+
+      config.pipeline_config = pipe;
+      config.distributed_config.world_rank = i;
+      config.distributed_config.world_size = 3;
+      config.distributed_config.local_rank = i;
+      config.distributed_config.local_size = 3;
+      config.distributed_config.data_parallel_size = 1;
+      config.distributed_config.horizontal_parallel_size = 1;
+      config.distributed_config.pipeline_parallel_size = 3;
+      config.model_with_training_graph_path = output_file;
+
+      if (!is_fp32) {
+        config.mixed_precision_config = mixed_precision_config;
+      }
+
+      PathString backprop_model_file;
+      Status status = BuildBackPropGraph(model_uri, config, backprop_model_file);
+      ASSERT_TRUE(status.IsOK()) << status<<" (is_fp32 = " << is_fp32 << ", stage = " << i << ").\n";
+
+      // Skip the re-load for mixed-precision case. This model contains grad op that has function body,
+      // which takes a const tensor input. Const cast for input in function body won't be saved in the output
+      // model so reload will run into error.
+      // For the purpose of testing mixed-precision, BuildBackPropGraph above will be sufficient to verify the
+      // partition logic and validate the graph.
+      if (is_fp32) {
+        std::shared_ptr<Model> model;
+        // Ensure the partitioned model load.
+        status = Model::Load(backprop_model_file, model, nullptr, DefaultLoggingManager().DefaultLogger());
+        ASSERT_TRUE(status.IsOK()) << status<<" (is_fp32 = " << is_fp32 << ", stage = " << i << ").\n";
+      }
+    }
+  }
+}
+
+Status RunOnlinePartition(const std::vector<TrainingSession::TrainingConfiguration::CutInfo>& cut_list,
+                          int pipeline_stage_size,
+                          std::set<int> status_check_stages = {}) {
+  auto model_uri = ORIGINAL_MODEL_PATH;
+
+  TrainingSession::TrainingConfiguration::PipelineConfiguration pipe{};
+  pipe.do_partition = true;
+  pipe.cut_list = cut_list;
+
+  for (int i = 0; i < pipeline_stage_size; ++i) {
+    PathString output_file = GenerateFileNameWithIndex("pipeline_partition_", i, "_back.onnx");
+
+    auto config = MakeBasicTrainingConfig();
+    config.pipeline_config = pipe;
+
+    config.distributed_config.world_rank = i;
+    config.distributed_config.world_size = pipeline_stage_size;
+    config.distributed_config.local_rank = i;
+    config.distributed_config.local_size = pipeline_stage_size;
+    config.distributed_config.data_parallel_size = 1;
+    config.distributed_config.horizontal_parallel_size = 1;
+    config.distributed_config.pipeline_parallel_size = pipeline_stage_size;
+    config.model_with_training_graph_path = output_file;
+
+    PathString backprop_model_file;
+    if (status_check_stages.count(i) > 0) {
+      auto status = BuildBackPropGraph(model_uri, config, backprop_model_file);
+      EXPECT_FALSE(status.IsOK());
+    } else {
+      EXPECT_THROW(BuildBackPropGraph(model_uri, config, backprop_model_file), OnnxRuntimeException);
+    }
+  }
+  return Status::OK();
+}
+
+TEST(GradientGraphBuilderTest, PipelineOnlinePartition_Invalid_Input) {
+  using CutEdge = TrainingSession::TrainingConfiguration::CutEdge;
+  using CutInfo = TrainingSession::TrainingConfiguration::CutInfo;
+
+  // Test with invalid cut edge
+  TrainingSession::TrainingConfiguration::CutInfo invalid_cut_edge = {TrainingSession::TrainingConfiguration::CutEdge("3")};
+  ASSERT_STATUS_OK(RunOnlinePartition(std::vector<TrainingSession::TrainingConfiguration::CutInfo>{invalid_cut_edge}, 2 /* pipeline_stage_size */));
+
+  // Test mis-matched cut list with stage size
+  TrainingSession::TrainingConfiguration::CutInfo cut_edge = {TrainingSession::TrainingConfiguration::CutEdge("T3")};
+  ASSERT_STATUS_OK(RunOnlinePartition(std::vector<TrainingSession::TrainingConfiguration::CutInfo>{cut_edge}, 3 /* pipeline_stage_size */));
+
+  // Test unordered cut_info list
+  CutInfo cut0 = {CutEdge("T3")};
+  CutInfo cut1 = {CutEdge("T6")};
+  ASSERT_STATUS_OK(RunOnlinePartition(std::vector<CutInfo>{cut1, cut0}, 3 /* pipeline_stage_size */, {0, 2} /* status_check_stages */));
+}
+
 // verify pipeline config can load and gradient graph can construct.
 TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
-  PathString filename_base = ORT_TSTR("testdata/test_training_model_");
+ std::string filename_base = "testdata/test_training_model_";
 
-  auto load_gradient_graph = [](int stageIdx, PathString& input_file, PathString& output_file) {
+  auto load_and_check_gradient_graph = [](int stageIdx, PathString& input_file, PathString& output_file) {
     auto config = MakeBasicTrainingConfig();
 
-    config.use_pipeline = true;
+    TrainingSession::TrainingConfiguration::PipelineConfiguration pipe_config{};
+    config.pipeline_config = pipe_config;
 
     PathString backprop_model_file;
     ASSERT_STATUS_OK(BuildBackPropGraph(input_file, config, backprop_model_file));
 
     std::shared_ptr<Model> model;
-    ASSERT_TRUE(Model::Load(backprop_model_file, model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+    ASSERT_STATUS_OK(Model::Load(backprop_model_file, model, nullptr, DefaultLoggingManager().DefaultLogger()));
 
     Graph& graph = model->MainGraph();
-    auto is_backward = [](Node& node) {
-      return (node.Description() == "Backward pass");
-    };
-    // check for wait/record node
-    Node* wait_fw{nullptr};
-    Node* wait_bw{nullptr};
-    Node* record_fw{nullptr};
-    Node* record_bw{nullptr};
-    for (auto& node : graph.Nodes()) {
-      if (node.OpType() == "WaitEvent") {
-        if (is_backward(node)) {
-          wait_bw = &node;
-        } else {
-          wait_fw = &node;
-        }
-      } else if (node.OpType() == "RecordEvent") {
-        if (is_backward(node)) {
-          record_bw = &node;
-        } else {
-          record_fw = &node;
-        }
-      }
-    }
-    // every partition should have wait forward and record backward
-    ASSERT_TRUE(wait_fw && record_bw);
+
+    // Declare forward event nodes.
+    // The nodes are declared according to their topological order.
+    Node* forward_wait_before_recv{nullptr};
+    Node* forward_wait_after_recv{nullptr};
+    Node* forward_record_before_send{nullptr};
+    Node* forward_record_after_send{nullptr};
+
+    // Declare backward event nodes.
+    // The nodes are declared according to their topological order.
+    Node* backward_wait_before_recv{nullptr};
+    Node* backward_wait_after_recv{nullptr};
+    Node* backward_record_before_send{nullptr};
+    Node* backward_record_after_send{nullptr};
+
+    // Find event nodes.
+    RetrieveEventOperators(
+      graph,
+      &forward_wait_before_recv,
+      &forward_wait_after_recv,
+      &forward_record_before_send,
+      &forward_record_after_send,
+      &backward_wait_before_recv,
+      &backward_wait_after_recv,
+      &backward_record_before_send,
+      &backward_record_after_send);
+
+    // Check event nodes.
     if (stageIdx == 2) {
-      // the last partition can perform back prop right away. It won't have record
-      // forward and wait backward
-      ASSERT_TRUE(!record_fw && !wait_bw);
+      ASSERT_TRUE(forward_wait_before_recv);
+      ASSERT_TRUE(forward_wait_after_recv);
+
+      // Last pipeline stage can perform backward right after its forward.
+      // It won't have event operators to divide forward from backward.
+      ASSERT_TRUE(!forward_record_before_send);
+      ASSERT_TRUE(!forward_record_after_send);
+      ASSERT_TRUE(!backward_wait_before_recv);
+      ASSERT_TRUE(!backward_wait_after_recv);
+
+      ASSERT_TRUE(backward_record_before_send);
+      ASSERT_TRUE(backward_record_after_send);
     } else {
-      ASSERT_TRUE(record_fw && wait_bw);
+      // Beginning of forward.
+      ASSERT_TRUE(forward_wait_before_recv);
+      ASSERT_TRUE(forward_wait_after_recv);
+
+      // End of forward.
+      ASSERT_TRUE(forward_record_before_send);
+      ASSERT_TRUE(forward_record_after_send);
+
+      // Beginning of backward.
+      ASSERT_TRUE(backward_wait_before_recv);
+      ASSERT_TRUE(backward_wait_after_recv);
+
+      // End of backward.
+      ASSERT_TRUE(backward_record_before_send);
+      ASSERT_TRUE(backward_record_after_send);
     }
 
-    // check for send/recv node
-    Node* send_fw{nullptr};
-    Node* send_bw{nullptr};
-    Node* recv_fw{nullptr};
-    Node* recv_bw{nullptr};
-    for (auto& node : graph.Nodes()) {
-      if (node.OpType() == "Send") {
-        if (is_backward(node)) {
-          send_bw = &node;
-        } else {
-          send_fw = &node;
-        }
-      } else if (node.OpType() == "Recv") {
-        if (is_backward(node)) {
-          recv_bw = &node;
-        } else {
-          recv_fw = &node;
-        }
-      }
-    }
-    // except the last partion, each partition should have send forward and recv backward
+    Node* forward_send{nullptr};
+    Node* forward_recv{nullptr};
+    Node* backward_recv{nullptr};
+    Node* backward_send{nullptr};
+
+    RetrieveSendRecvOperators(
+      graph,
+      &forward_recv,
+      &forward_send,
+      &backward_recv,
+      &backward_send);
+
+    // Except the last partion, each partition should have send forward and recv backward.
     if (stageIdx == 0 || stageIdx == 1) {
-      ASSERT_TRUE(send_fw && recv_bw);
+      ASSERT_TRUE(forward_send && backward_recv);
     } else {
-      ASSERT_TRUE(!send_fw && !recv_bw);
+      ASSERT_TRUE(!forward_send && !backward_recv);
     }
-    // except the first partion, each partition should have recv forward and send backward
+    // Except the first partion, each partition should have recv forward and send backward.
     if (stageIdx == 1 || stageIdx == 2) {
-      ASSERT_TRUE(recv_fw && send_bw);
+      ASSERT_TRUE(forward_recv && backward_send);
     } else {
-      ASSERT_TRUE(!recv_fw && !send_bw);
+      ASSERT_TRUE(!forward_recv && !backward_send);
     }
 
     auto mp = model->ToProto();
@@ -1086,14 +1460,10 @@ TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
   };
 
   for (int i = 0; i < 3; ++i) {
-#ifdef _WIN32
-    auto surfix = std::to_wstring(i);
-#else
-    auto surfix = std::to_string(i);
-#endif
-    PathString input_file = filename_base + surfix + ORT_TSTR(".onnx");
-    PathString output_file = filename_base + surfix + ORT_TSTR("_back.onnx");
-    load_gradient_graph(i, input_file, output_file);
+    PathString input_file = GenerateFileNameWithIndex(filename_base, i, ".onnx");
+    PathString output_file = GenerateFileNameWithIndex(filename_base, i, "_back.onnx");
+
+    load_and_check_gradient_graph(i, input_file, output_file);
   }
 }
 
@@ -1133,7 +1503,22 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
         {},
         {},
         {}},
-       {{"MeanSquaredError_reduce_mean_Grad/Unqueezed_Grad", "MeanSquaredError_reduce_mean_Grad/Tiled_Grad", "MeanSquaredError_diff_square_grad", "MeanSquaredError_diff_grad", "predictions_grad", "B3_grad", "T7_grad", "W3_grad", "T6_grad"},
+       {{
+            "MeanSquaredError_reduce_mean_Grad/Scale_Denominator",
+            "MeanSquaredError_reduce_mean_Grad/Casted_Scale_Denominator",
+            "MeanSquaredError_reduce_mean_Grad/Scale_Numerator",
+            "MeanSquaredError_reduce_mean_Grad/Casted_Scale_Numerator",
+            "MeanSquaredError_reduce_mean_Grad/Scale",
+            "MeanSquaredError_reduce_mean_Grad/Scaled_Grad",
+            "MeanSquaredError_reduce_mean_Grad/Shaped_X",
+            "MeanSquaredError_diff_square_grad",
+            "MeanSquaredError_diff_grad",
+            "predictions_grad",
+            "B3_grad",
+            "T7_grad",
+            "W3_grad",
+            "T6_grad"
+        },
         {},
         {"T6_grad"},
         {},
@@ -1143,12 +1528,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
 
   std::vector<PathString> sub_model_files(num_subs);
   for (size_t sub_id = 0; sub_id < num_subs; ++sub_id) {
-#ifdef _WIN32
-    auto sub_id_str = std::to_wstring(sub_id);
-#else
-    auto sub_id_str = std::to_string(sub_id);
-#endif
-    sub_model_files[sub_id] = ORT_TSTR("sub_") + sub_id_str + ORT_TSTR(".onnx");
+    sub_model_files[sub_id] = GenerateFileNameWithIndex("sub_", static_cast<int>(sub_id), ".onnx");
   }
 
   PipelineSplitter splitter;
@@ -1168,15 +1548,11 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
   for (size_t sub_id = 0; sub_id < num_subs; ++sub_id) {
     auto& sub_sess = subs[sub_id];
     sub_sess.so.enable_profiling = true;
-#ifdef _WIN32
-    auto sub_id_str = std::to_wstring(sub_id);
-#else
-    auto sub_id_str = std::to_string(sub_id);
-#endif
-    sub_sess.so.profile_file_prefix = ORT_TSTR("pipeline") + sub_id_str;
+    sub_sess.so.profile_file_prefix = GenerateFileNameWithIndex("pipeline", static_cast<int>(sub_id), "");
 
     sub_sess.run_options.run_log_verbosity_level = sub_sess.so.session_log_verbosity_level;
     sub_sess.run_options.run_tag = sub_sess.so.session_logid;
+    sub_sess.run_options.training_mode = true;
 
     sub_sess.sess = onnxruntime::make_unique<TrainingSession>(sub_sess.so, *env);
     ASSERT_STATUS_OK(sub_sess.sess->Load(sub_model_files[sub_id]));

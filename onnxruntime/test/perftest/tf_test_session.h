@@ -7,6 +7,7 @@
 #include "test_configuration.h"
 #include "tensorflow/c/c_api.h"
 #include "test_session.h"
+extern const OrtApi* g_ort;
 
 namespace onnxruntime {
 namespace perftest {
@@ -117,21 +118,21 @@ class TensorflowTestSession : public TestSession {
 
     TF_Status* s = TF_NewStatus();
     void* input_buffer = nullptr;
-    ORT_THROW_ON_ERROR(OrtGetTensorMutableData(const_cast<OrtValue*>(value), &input_buffer));
+    Ort::ThrowOnError(g_ort->GetTensorMutableData(value, &input_buffer));
     assert(input_buffer != nullptr);
     OrtTensorTypeAndShapeInfo* shape = nullptr;
-    ORT_THROW_ON_ERROR(OrtGetTensorTypeAndShape(value, &shape));
+    Ort::ThrowOnError(g_ort->GetTensorTypeAndShape(value, &shape));
     size_t buffer_length = 0;
     std::vector<int64_t> dims;
     size_t dim_count;
-    ORT_THROW_ON_ERROR(OrtGetDimensionsCount(shape, &dim_count));
+    Ort::ThrowOnError(g_ort->GetDimensionsCount(shape, &dim_count));
     dims.resize(dim_count);
-    ORT_THROW_ON_ERROR(OrtGetDimensions(shape, dims.data(), dim_count));
+    Ort::ThrowOnError(g_ort->GetDimensions(shape, dims.data(), dim_count));
     size_t ele_count;
-    ORT_THROW_ON_ERROR(OrtGetTensorShapeElementCount(shape, &ele_count));
+    Ort::ThrowOnError(g_ort->GetTensorShapeElementCount(shape, &ele_count));
     TF_DataType tf_datatype;
     ONNXTensorElementDataType element_type;
-    ORT_THROW_ON_ERROR(OrtGetTensorElementType(shape, &element_type));
+    Ort::ThrowOnError(g_ort->GetTensorElementType(shape, &element_type));
     switch (element_type) {
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:  // maps to c type float
         buffer_length = ele_count * sizeof(float);

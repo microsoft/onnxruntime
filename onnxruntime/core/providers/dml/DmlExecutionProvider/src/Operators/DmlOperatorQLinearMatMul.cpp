@@ -36,6 +36,57 @@ public:
         m_inputTensorDescs[IN_A] = CreateTensorDescFromInput(kernelInfo, 0/*A OnnxIndex*/, TensorAxis::DoNotCoerce, TensorAxis::W, TensorAxis::RightAligned, inputShape0);
         m_inputTensorDescs[IN_B] = CreateTensorDescFromInput(kernelInfo, 3/*B OnnxIndex*/, TensorAxis::DoNotCoerce, TensorAxis::W, TensorAxis::RightAligned, inputShape1);
 
+        uint32_t dmlDimSize = m_inputTensorDescs[0].GetDimensionCount();
+        // Resize the A Scale to be the same dimension as the input tensor.
+        // The 1D tensor needs to be moved to the H channel.
+        m_inputTensorDescs[IN_A_SCALE] = CreateTensorDescFromInput(
+            kernelInfo, 
+            1/*Onnx Index*/, 
+            TensorAxis::DoNotCoerce, 
+            TensorAxis::H,
+            TensorAxis::LeftAligned,
+            std::nullopt,
+            dmlDimSize
+            );
+
+        // Resize the A ZeroPoint to be the same dimension as the input tensor.
+        // The 1D tensor needs to be moved to the H channel.
+        m_inputTensorDescs[IN_A_ZERO_POINT] = CreateTensorDescFromInput(
+            kernelInfo, 
+            2/*Onnx Index*/, 
+            TensorAxis::DoNotCoerce, 
+            TensorAxis::H,
+            TensorAxis::LeftAligned,
+            std::nullopt,
+            dmlDimSize
+            );
+        
+        // B Zeropoint and BScale are already aligned in the W dimension so no need to align them
+
+        // Resize the Output Scale to be the same dimension as the input tensor.
+        // The 1D tensor needs to be moved to the H channel.
+        m_inputTensorDescs[IN_Y_SCALE] = CreateTensorDescFromInput(
+            kernelInfo, 
+            6/*Onnx Index*/, 
+            TensorAxis::DoNotCoerce, 
+            TensorAxis::H,
+            TensorAxis::LeftAligned,
+            std::nullopt,
+            dmlDimSize
+            );
+
+        // Resize the Output ZeroPoint to be the same dimension as the input tensor.
+        // The 1D tensor needs to be moved to the H channel.
+        m_inputTensorDescs[IN_Y_ZERO_POINT] = CreateTensorDescFromInput(
+            kernelInfo, 
+            7/*Onnx Index*/, 
+            TensorAxis::DoNotCoerce, 
+            TensorAxis::H,
+            TensorAxis::LeftAligned,
+            std::nullopt,
+            dmlDimSize
+            );
+        
         // Initialize the output description while overriding the shape
         m_outputTensorDescs[0] = CreateTensorDescFromOutput(kernelInfo, 0, TensorAxis::DoNotCoerce, TensorAxis::W, TensorAxis::RightAligned, outputShape);
 

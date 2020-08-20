@@ -15,7 +15,7 @@ inline bool AreIntervalsOverlap(int start1, int end1, int start2, int end2) {
 
 template <typename T>
 inline bool AreVectorsOverlap(const std::vector<T>& v1, const std::vector<T>& v2) {
-  for (T type : v1) {
+  for (const T& type : v1) {
     if (std::find(v2.begin(), v2.end(), type) != v2.end()) {
       return true;
     }
@@ -24,7 +24,10 @@ inline bool AreVectorsOverlap(const std::vector<T>& v1, const std::vector<T>& v2
 }
 }  // namespace
 
-//TODO: Tell user why it has conflicts
+// TODO: Tell user why it has conflicts
+// TODO: Investigate why IsConflict() was not triggered when there were duplicate Tile CUDA
+// kernels registered. Removing `InputMemoryType<OrtMemTypeCPUInput>(1)` in the kernel definition
+// triggered the conflict.
 bool KernelDef::IsConflict(const KernelDef& other) const {
   if (op_name_ != other.OpName() || provider_type_ != other.Provider())
     return false;
@@ -44,7 +47,7 @@ bool KernelDef::IsConflict(const KernelDef& other) const {
   //only one case they don't conflict:
   //There is a type_constraint, it exists in both hands, but they don't overlap
   //check types
-  auto other_types = other.TypeConstraints();
+  const auto& other_types = other.TypeConstraints();
   bool type_has_conflict = true;
   for (const auto& it : type_constraints_) {
     auto iter = other_types.find(it.first);

@@ -2,9 +2,6 @@
 // Licensed under the MIT License.
 
 #include "pch.h"
-
-#include <thread>
-
 #include "OnnxruntimeCpuSessionBuilder.h"
 #include "OnnxruntimeEngine.h"
 #include "OnnxruntimeErrors.h"
@@ -32,13 +29,6 @@ OnnxruntimeCpuSessionBuilder::CreateSessionOptions(
 
   // set the graph optimization level to all (used to be called level 3)
   RETURN_HR_IF_NOT_OK_MSG(ort_api->SetSessionGraphOptimizationLevel(session_options.get(), GraphOptimizationLevel::ORT_ENABLE_ALL),
-                          ort_api);
-
-  // Onnxruntime will use half the number of concurrent threads supported on the system
-  // by default. This causes MLAS to not exercise every logical core.
-  // We force the thread pool size to be maxxed out to ensure that WinML always
-  // runs the fastest.
-  RETURN_HR_IF_NOT_OK_MSG(ort_api->SetIntraOpNumThreads(session_options.get(), std::thread::hardware_concurrency()),
                           ort_api);
 
 #ifndef _WIN64

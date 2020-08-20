@@ -45,7 +45,7 @@ Status NonZero<T>::Compute(OpKernelContext* context) const {
   const auto X = context->Input<Tensor>(0);
   ORT_ENFORCE(X, "X input is required!");
 
-  const auto X_shape = X->Shape();
+  const auto& X_shape = X->Shape();
   assert(X_shape.Size() >= 0);
 
   const Eigen::Index coordinate_size = X_shape.IsScalar() ? 1 : X_shape.NumDimensions();
@@ -94,7 +94,7 @@ Status NonZero<T>::Compute(OpKernelContext* context) const {
       non_zero_indices_buffer.data(),
       num_non_zero_values, coordinate_size};
 
-  Tensor* const Y = context->Output(0, TensorShape{coordinate_size, num_non_zero_values});
+  Tensor* const Y = context->Output(0, {coordinate_size, num_non_zero_values});
   ORT_ENFORCE(Y, "failed to get first output!");
 
   EigenMatrixMapRowMajor<int64_t> y_matrix{
@@ -103,5 +103,6 @@ Status NonZero<T>::Compute(OpKernelContext* context) const {
   y_matrix = non_zero_indices_matrix.transpose();
 
   return Status::OK();
-}  // namespace onnxruntime
+}
+
 }  // namespace onnxruntime

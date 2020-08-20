@@ -59,7 +59,7 @@ class CudaKernel : public OpKernel {
   explicit CudaKernel(const OpKernelInfo& info)
       : OpKernel(info),
         // Is this OK to have a non-const execution provider?
-        provider_(const_cast<CUDAExecutionProvider*>(dynamic_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider()))) {
+        provider_(const_cast<CUDAExecutionProvider*>(static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider()))) {
   }
 
   Status Compute(OpKernelContext* p_op_kernel_context) const override {
@@ -225,15 +225,20 @@ inline bool CalculateFdmStrides(gsl::span<fast_divmod> p, const std::vector<int6
 
 class CublasMathModeSetter {
  public:
-  CublasMathModeSetter(cublasHandle_t handle, cublasMath_t mode) : handle_(handle) {
-    cublasGetMathMode(handle, &mode_);
-    cublasSetMathMode(handle, mode);
+  CublasMathModeSetter(const cudaDeviceProp& prop,cublasHandle_t handle, cublasMath_t mode) : prop_(prop), handle_(handle) {
+    if (prop_.major >= 7) {
+      cublasGetMathMode(handle, &mode_);
+      cublasSetMathMode(handle, mode);
+    }
   }
   ~CublasMathModeSetter() {
-    cublasSetMathMode(handle_, mode_);
+    if (prop_.major >= 7) {
+      cublasSetMathMode(handle_, mode_);
+    }
   }
 
  private:
+  const cudaDeviceProp& prop_;
   cublasHandle_t handle_;
   cublasMath_t mode_;
 };

@@ -135,22 +135,30 @@ REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Min, 6, 7, float, Min_6);
 REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Min, 8, 11, Min_8, float);
 REG_ELEMENTWISE_KERNEL_NONT(Min, 12, Min_8, float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t);
 
-REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 7, 9, float, Less);
-REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 7, 9, double, Less);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 7, 8, float, Less);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 7, 8, double, Less);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Less, 9, float, Less);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Less, 9, double, Less);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Less, 9, int32_t, Less);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Less, 9, int64_t, Less);
 
-REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Greater, 7, 9, float, Greater)
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Greater, 7, 8, float, Greater);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Greater, 7, 8, double, Greater);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Greater, 9, float, Greater);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Greater, 9, double, Greater);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Greater, 9, int32_t, Greater);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Greater, 9, int64_t, Greater);
 
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 7, 10, bool, Equal);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 7, 10, int32_t, Equal);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 7, 10, int64_t, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 7, 10, float, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 7, 10, double, Equal);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 11, bool, Equal);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 11, int32_t, Equal);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 11, int64_t, Equal);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 11, float, Equal);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 11, double, Equal);
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Mean, 6, 7, float, Mean_6);
 REG_ELEMENTWISE_TYPED_KERNEL(Mean, 8, float, Mean_8);
@@ -392,6 +400,18 @@ Status Exp<T>::Compute(OpKernelContext* ctx) const {
   auto& Y = *ctx->Output(0, X.Shape());
 
   EigenMap<T>(Y) = EigenMap<T>(X).array().exp();
+
+  return Status::OK();
+}
+
+template <>
+Status Exp<float>::Compute(OpKernelContext* context) const {
+  const auto* X = context->Input<Tensor>(0);
+  const auto& x_shape = X->Shape();
+  auto* Y = context->Output(0, x_shape);
+  const size_t N = static_cast<size_t>(x_shape.Size());
+
+  MlasComputeExp(X->template Data<float>(), Y->template MutableData<float>(), N);
 
   return Status::OK();
 }
@@ -1072,12 +1092,12 @@ REG_EXPAND_KERNEL(MLFloat16)
 
 template <>
 Status Erf<float>::Compute(OpKernelContext* context) const {
-  auto X_ptr = context->Input<Tensor>(0);
-  ORT_ENFORCE(X_ptr != nullptr);
-  auto& X = *X_ptr;
-  auto& Y = *context->Output(0, X.Shape());
+  const auto* X = context->Input<Tensor>(0);
+  const auto& x_shape = X->Shape();
+  auto* Y = context->Output(0, x_shape);
+  const size_t N = static_cast<size_t>(x_shape.Size());
 
-  MlasComputeErf(X.template Data<float>(), Y.template MutableData<float>(), X.Shape().Size());
+  MlasComputeErf(X->template Data<float>(), Y->template MutableData<float>(), N);
 
   return Status::OK();
 }

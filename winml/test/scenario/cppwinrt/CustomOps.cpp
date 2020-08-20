@@ -33,11 +33,6 @@ static void CustomOpsScenarioTestsClassSetup()
   winrt::init_apartment();
 }
 
-static void CustomOpsScenarioTestsGpuMethodSetup()
-{
-  GPUTEST;
-}
-
 // Tests that the execution provider correctly fuses operators together when custom ops are involved.
 static void CustomOperatorFusion() {
   constexpr const wchar_t* c_modelFilename = L"squeezenet_tensor_input.onnx";
@@ -85,7 +80,7 @@ static void CustomOperatorFusion() {
       auto winml_dll_name =  dll.str();
 
 #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
-      auto m_library = LoadLibraryW(winml_dll_name.c_str());
+      auto m_library = LoadLibraryExW(winml_dll_name.c_str(), nullptr, 0);
 #elif WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_PC_APP)
       auto m_library = LoadPackagedLibrary(winml_dll_name.c_str(), 0 /*Reserved*/);
 #endif
@@ -175,7 +170,7 @@ struct LocalCustomOperatorProvider : winrt::implements<
     auto winml_dll_name =  dll.str();
 
 #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
-    auto m_library = LoadLibraryW(winml_dll_name.c_str());
+    auto m_library = LoadLibraryExW(winml_dll_name.c_str(), nullptr, 0);
 #elif WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_PC_APP)
     auto m_library = LoadPackagedLibrary(winml_dll_name.c_str(), 0 /*Reserved*/);
 #endif
@@ -677,12 +672,19 @@ static void CustomKernelWithCustomSchema() {
 }
 
 const CustomOpsTestsApi& getapi() {
-  static constexpr CustomOpsTestsApi api = 
+  static CustomOpsTestsApi api = 
       {
           CustomOpsScenarioTestsClassSetup,
-          CustomOpsScenarioTestsGpuMethodSetup,
           CustomOperatorFusion,
           CustomKernelWithBuiltInSchema,
-          CustomKernelWithCustomSchema};
+          CustomKernelWithCustomSchema
+      };
+
+  if (SkipGpuTests()) {
+    api.CustomOperatorFusion = SkipTest;
+  }
+  if (RuntimeParameterExists(L"noVideoFrameTests")) {
+    api.CustomOperatorFusion = SkipTest;
+  }
   return api;
 }

@@ -106,14 +106,21 @@ void DefaultActivationsSimpleWeightsNoBias(std::string direction,
                                            const std::vector<float>& Y_h_data,
                                            bool linear_before_reset = false) {
   int64_t seq_length = 2;
-  int batch_size = 2;
+  int batch_size = linear_before_reset ? 3 : 2;  // extra row to validate usage of linear_output_
   int64_t input_size = 1;
   int64_t hidden_size = 3;
 
   int num_directions = direction == "bidirectional" ? 2 : 1;
 
-  std::vector<float> X_data{1.f, 2.f,
-                            10.f, 11.f};
+  std::vector<float> X_data;
+
+  if (linear_before_reset) {
+    X_data = {1.f, 2.f, 3.f,
+              10.f, 11.f, 12.f};
+  } else {
+    X_data = {1.f, 2.f,
+              10.f, 11.f};
+  }
 
   std::vector<float> W_data{0.1f, 0.2f, 0.3f,   // wz
                             1.f, 2.f, 3.f,      // wr
@@ -170,7 +177,7 @@ TEST(GRUTest, ReverseDefaultActivationsSimpleWeightsNoBiasTwoRows) {
   DefaultActivationsSimpleWeightsNoBias("reverse", Y_data, Y_h_data);
 }
 
-TEST(GRUTest, BidirectionalDefaultActivationsSimpleWeightsNoBiasTwoRows) {
+TEST(GRUTest, BidirectionalDefaultActivationsSimpleWeightsNoBias) {
   std::vector<float> Y_data{
       // forward output for input sequence 0
       0.4750208f, 0.450166f, 0.4255575f,
@@ -200,32 +207,38 @@ TEST(GRUTest, BidirectionalDefaultActivationsSimpleWeightsNoBiasTwoRows) {
   DefaultActivationsSimpleWeightsNoBias("bidirectional", Y_data, Y_h_data);
 }
 
-TEST(GRUTest, BidirectionalDefaultActivationsSimpleWeightsNoBiasTwoRowsLinearBeforeReset) {
+TEST(GRUTest, BidirectionalDefaultActivationsSimpleWeightsNoBiasLinearBeforeReset) {
   std::vector<float> Y_data{
       // forward output for input sequence 0
-      0.47502081f, 0.450166f, 0.42555748f,
-      0.450166f, 0.40131234f, 0.35434369f,
+      0.4750208f, 0.450166f, 0.4255575f,
+      0.45016602f, 0.40131235f, 0.35434368f,
+      0.42555748f, 0.35434369f, 0.28905049f,
 
       // reverse output for input sequence 0 [sequence 1 in reversed input]
-      0.60827853f, 0.50623393f, 0.4426924f,
-      0.5803454f, 0.4527356f, 0.36886264f,
+      0.6082785f, 0.50623393f, 0.4426924f,
+      0.5803454f, 0.4527356f, 0.36886263f,
+      0.5521325f, 0.40092295f, 0.30118297f,
 
       // forward output for input sequence 1
-      0.60270932f, 0.50830227f, 0.44950222f,
-      0.57543688f, 0.45485455f, 0.37478411f,
+      0.6027093f, 0.5083023f, 0.44950223f,
+      0.5754369f, 0.45485455f, 0.3747841f,
+      0.54791767f, 0.40301081f, 0.30608854f,
 
       // reverse output for input sequence 1 [sequence 0 in reversed input]
-      0.26894142f, 0.11920292f, 0.04742587f,
-      0.24973989f, 0.09975048f, 0.03557118f};
+      0.26894143f, 0.11920292f, 0.04742587f,
+      0.24973989f, 0.09975048f, 0.03557118f,
+      0.23147521f, 0.08317269f, 0.02659699f};
 
   std::vector<float> Y_h_data{
       // we did the forward processing of input[1] last
-      0.60270932f, 0.50830227f, 0.44950222f,
-      0.57543688f, 0.45485455f, 0.37478411f,
+      0.6027093f, 0.5083023f, 0.44950223f,
+      0.5754369f, 0.45485455f, 0.3747841f,
+      0.54791767f, 0.40301081f, 0.30608854f,
 
       // and the reverse processing of input[0] last as the input order was reversed
-      0.60827853f, 0.50623393f, 0.4426924f,
-      0.5803454f, 0.4527356f, 0.36886264f};
+      0.6082785f, 0.50623393f, 0.4426924f,
+      0.5803454f, 0.4527356f, 0.36886263f,
+      0.5521325f, 0.40092295f, 0.30118297f};
 
   DefaultActivationsSimpleWeightsNoBias("bidirectional", Y_data, Y_h_data, true);
 }

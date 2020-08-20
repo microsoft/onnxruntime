@@ -42,7 +42,7 @@ struct DeviceHelpers {
 }  // namespace scan
 
 template <int OpSet>
-class Scan : public OpKernel, public controlflow::IControlFlowKernel {
+class Scan : public controlflow::IControlFlowKernel {
  public:
   Scan(const OpKernelInfo& info);
 

@@ -12,6 +12,11 @@ struct IndexedSubGraph;
 
 namespace onnxruntime {
 
+// use value-based compare to make sure transformer output order is consistent
+struct NodeCompare {
+  bool operator()(const Node* n1, const Node* n2) const;
+};
+
 /**
 @class GraphViewer
 Class that provides a read-only view of the Graph.

@@ -8,7 +8,7 @@
 #include "runtimeParameters.h"
 
 namespace RuntimeParameters {
-std::unordered_map<std::string, std::string> Parameters;
+std::unordered_map<std:: string, std::string> Parameters;
 }
 
 namespace {

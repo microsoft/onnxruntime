@@ -3,8 +3,7 @@ ONNX Runtime is an active, fast-paced project backed by a strong team of Microso
 ONNX Runtime as a robust, versatile, and high performance inference engine for DNN and traditional ML models.
 
 ## High Level Goals
-ONNX Runtime fully aligns with the goals of the [ONNX](https://onnx.ai/) community to bring openness and interoperability to the AI industry. 
-ONNX is a standardization specification, and ONNX Runtime is an inference engine for models in the ONNX format to efficiently productionize models with high performance. For key technical design objectives and considerations, please see [ONNX Runtime High Level Design](./HighLevelDesign.md).
+ONNX Runtime is a runtime accelerator that supports interoperable ML and DNN models based on the [ONNX](https://onnx.ai/) spec. For key technical design objectives and considerations, see [ONNX Runtime Inference High Level Design](./InferenceHighLevelDesign.md).
 
 We recognize the challenges involved in operationalizing ML models performantly in an agile way, and we understand that high volume production services can be highly performance-sensitive and often need to support a variety of compute targets (we experience these first-hand at Microsoft across our vast array of products and services). 
 
@@ -15,7 +14,7 @@ As such, our investments are directly in support of solving those challenges, fo
 * Model coverage
 * Quality and ease of use - including backwards compatibility of models (older opsets) and APIs
 
-In addition to our OSS participation, we also internally use this technology in core products at Microsoft, with over 60 models in production providing an average of 2x+ performance improvement. 
+In addition to our OSS participation, we also internally use this technology in core products at Microsoft, with over 80 models in production providing an average of 2x+ performance improvement. 
 
 ## Investments
 In support of the high level goals outlined above, the investment areas listed below represent our active and backlog projects, 
@@ -24,22 +23,11 @@ quickly as possible, and if there are any specific features or enhancements you 
 these efforts or any of the [enhancements suggested on Github](https://github.com/microsoft/onnxruntime/issues?q=is%3Aopen+is%3Aissue+label%3Aenhancement). If you have a specific suggestion or unsupported use case, please let us 
 know by filing a [Github issue](https://github.com/microsoft/onnxruntime/issues).
 
-**Platform coverage**
-* [Expanded platform compatibility](#exapnded-platform-compatibility)
-
-**Extensibility and customization**
-* [Accelerators and Execution Providers](#accelerators-and-execution-providers)
-* [Confidential AI](#confidential-AI)
-
-**Performance**
-* [Continued performance optimizations](#continued-performance-optimizations)
-  
-**Model coverage**
-* [Expanded model compatibility](#expanded-model-compatibility)
-  
-**Quality and ease of use**
-* [Increased integration with popular ML products](#increased-integration-with-popular-products)
-
+* **Platform coverage** - [Expanded platform compatibility](#expanded-platform-compatibility)
+* **Extensibility and customization** - [Accelerators and Execution Providers](#accelerators-and-execution-providers)
+* **Performance** - [Continued performance optimizations](#continued-performance-optimizations) 
+* **Model coverage** - [Expanded model compatibility](#expanded-model-compatibility)  
+* **Quality and ease of use** - [Increased integration with popular ML products](#increased-integration-with-popular-products)
 ---
 
 ### Expanded platform compatibility
@@ -47,48 +35,34 @@ ONNX Runtime already supports a wide range of architectures, platforms, and lang
 Additionally, we understand that lightweight devices and local applications may have constraints for package size, so there is active awareness to opportunistically minimize binary size.
 
 #### Architectures
-|Supported|Future|
-|---|---|
-|X64|Additional as-needed|
-|X86| |
-|ARM64 (Limited)| |
-|ARM32 (Limited)| |
+Supported
+* X64
+* X86
+* ARM64
+* ARM32 (Limited)
 
 #### Platforms
-|Supported|Future|
-|---|---|
-|Windows 7+|iOS|
-|Linux (various)| |
-|Mac OS X| |
-|Android (community contribution, Preview)| |
+Supported
+* Windows 7+
+* Linux (various)
+* Mac OS X
+* Android (community contribution, Preview)
+
+*Future*
+* *iOS*
 
 #### Languages
-|Supported|Future|
-|---|---|
-|Python (3.5, 3.6, 3.7)| Javascript |
-|C++| |
-|C#| |
-|C| |
-|Ruby (community project)| |
-|Java | |
-
+Supported languages are listed in [API Documentation](../README.md#api-documentation). The core team is not actively working on other language bindings at this time. If there is a missing API, please file a request in [Issues](https://github.com/microsoft/onnxruntime/issues). Community contributions are welcome for other languages.
 
 ### Accelerators and Execution Providers
 #### New EPs
 To achieve the best performance on a growing set of compute targets across cloud and the intelligent edge, we invest in and partner with hardware partners and community members to add new execution providers. The flexible pluggability of ONNX Runtime is critical to support a broad range of scenarios and compute options.
 
-|Supported|Future|
-|---|---|
-|MLAS (Microsoft Linear Algebra Subprograms)|AMD GPU|
-|Intel DNNL / MKL-ML|Xilinx FPGA|
-|Intel nGraph| |
-|NVIDIA CUDA| |
-|NVIDIA TensorRT| |
-|Intel OpenVINO| |
-|Nuphar Model Compiler| |
-|Microsoft Direct ML| |
-|Android NN API (Preview)| |
-|ARM Compute Library (Preview)| |
+Supported
+
+Supported EPs are listed [here](../README.md#supported-accelerators). Upcoming EPs include:
+* Xilinx FPGA
+
 
 #### CUDA operator coverage
 To maximize performance potential, we will be continually adding additional CUDA implementations for supported operators.
@@ -102,7 +76,7 @@ Performance is a key focus for ONNX Runtime. From latency to memory utilization 
 #### Examples of projects the team is working on:
 * Improvements to batch processing for scikit-learn models
 * More quantization support
-* Improved multithreading (e.g. smarter work sharding, consolidation of different types of thread pools, user supplied thread pools, etc)
+* Improved multithreading (e.g. smarter work sharding, user supplied thread pools, etc)
 * Graph optimizations
 * Intelligent graph partitioning to maximize the value of different accelerators
 
@@ -114,11 +88,10 @@ The ONNX spec focuses on ML model interoperability rather than coverage of all o
 We aim to continuously improve coverage to support popular as well as new state-of-the-art models.
 
 #### Spec coverage 
-As more operators are added to the ONNX spec, ONNX Runtime will provide implementations (default CPU and GPU-CUDA) of each to stay in compliance with the latest ONNX spec. 
+As more operators are added to the ONNX spec, ONNX Runtime will provide implementations (default CPU and GPU-CUDA) of each to stay in compliance with the latest ONNX spec.
 
-A few specific items include:
+This includes:
 * Sparse Tensor support
-* Generic function logic without separate kernels
 
 #### Investments in popular converters
 We work with the OSS and ONNX community to ensure popular frameworks can export or be converted to ONNX format. 

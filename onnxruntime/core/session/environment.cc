@@ -26,7 +26,7 @@
 #endif
 
 #ifdef ENABLE_TRAINING
-#include "orttraining/core/graph/gradient_schema_defs.h"
+#include "orttraining/core/graph/training_op_defs.h"
 #include "orttraining/core/graph/gradient_builder_registry.h"
 #include "orttraining/core/graph/loss_function_registry.h"
 #include "orttraining/core/graph/optimizer_builder.h"
@@ -91,12 +91,18 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
       dml::RegisterDmlSchemas();
 #endif
       RegisterOnnxOperatorSetSchema();
+
+#ifndef DISABLE_ML_OPS
       RegisterOnnxMLOperatorSetSchema();
+#endif
+
+#ifdef ENABLE_TRAINING
       RegisterOnnxTrainingOperatorSetSchema();
+#endif
 
 #ifdef ENABLE_TRAINING
       // preserve this order: this depends on operatorsetschema registration.
-      training::RegisterGradientSchemas();
+      training::RegisterTrainingOpSchemas();
       training::GradientBuilderRegistry::GetInstance().RegisterGradientBuilders();
       training::LossFunctionRegistry::GetInstance().RegisterNonOperatorLossFunctions();
       training::OptimizerBuilderRegistry::GetInstance().RegisterBuilders();
@@ -112,7 +118,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
         .Output(0, "Y", "output", "T")
         .TypeConstraint(
             "T",
-            OpSchema::all_tensor_types(),
+            OpSchema::all_tensor_types_with_bfloat(),
             "Constrain to any tensor type. If the dtype attribute is not provided this must be a valid output type.")
         .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput)
         .SetDoc(R"DOC(
@@ -124,7 +130,7 @@ Internal copy node
         .Output(0, "Y", "output", "T")
         .TypeConstraint(
             "T",
-            OpSchema::all_tensor_types(),
+            OpSchema::all_tensor_types_with_bfloat(),
             "Constrain to any tensor type. If the dtype attribute is not provided this must be a valid output type.")
         .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput)
         .SetDoc(R"DOC(

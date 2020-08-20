@@ -18,7 +18,7 @@ Abstract:
 
 void
 MlasExecuteThreaded(
-    MLAS_THREADED_ROUTINE ThreadedRoutine,
+    PMLAS_THREADED_ROUTINE ThreadedRoutine,
     void* Context,
     int32_t Iterations,
     MLAS_THREADPOOL* ThreadPool
@@ -53,6 +53,9 @@ MlasExecuteThreaded(
     //
     // Schedule the threaded iterations using the thread pool object.
     //
-    MLAS_THREADPOOL::TrySimpleParallelFor(ThreadPool, Iterations, [&](ptrdiff_t tid) { ThreadedRoutine(Context, static_cast<int>(tid)); });
+
+    MLAS_THREADPOOL::TrySimpleParallelFor(ThreadPool, Iterations, [&](ptrdiff_t tid) {
+        ThreadedRoutine(Context, static_cast<int>(tid));
+    });
 #endif
 }

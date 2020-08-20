@@ -1,5 +1,4 @@
 import onnx
-import sys
 import argparse
 
 

@@ -183,6 +183,9 @@ IEngine : IUnknown {
 
   STDMETHOD(GetSequenceOfTensorValues)
   (_winml::IValue* sequence_value, _Out_ std::vector<winrt::com_ptr<_winml::IValue>>& out_values) PURE;
+
+  STDMETHOD(GetNumberOfIntraOpThreads)
+  (uint32_t * num_threads) PURE;
 };
 
 MIDL_INTERFACE("8ac0b6b9-4561-492b-b63d-a07bdd8292c6")
@@ -201,6 +204,12 @@ IEngineBuilder : IUnknown {
 
   STDMETHOD(SetBatchSizeOverride)
   (uint32_t batch_size_override) PURE;
+
+  STDMETHOD(SetNamedDimensionOverrides)
+  (wfc::IMapView<winrt::hstring, uint32_t> named_dimension_overrides) PURE;
+
+  STDMETHOD(SetIntraOpNumThreadsOverride)
+  (uint32_t intra_op_num_threads) PURE;
 
   STDMETHOD(CreateEngine)
   (IEngine * *out) PURE;

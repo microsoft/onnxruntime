@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 #include "testPch.h"
@@ -17,13 +17,14 @@ static void LearningModelAPITestsClassSetup() {
   init_apartment();
 }
 
-static void LearningModelAPITestsGpuMethodSetup() {
-  GPUTEST;
-}
-
 static void CreateModelFromFilePath() {
   LearningModel learningModel = nullptr;
   WINML_EXPECT_NO_THROW(APITest::LoadModel(L"squeezenet_modifiedforruntimestests.onnx", learningModel));
+}
+
+static void CreateModelFromUnicodeFilePath() {
+  LearningModel learningModel = nullptr;
+  WINML_EXPECT_NO_THROW(APITest::LoadModel(L"UnicodePath\\こんにちは maçã\\foo.onnx", learningModel));
 }
 
 static void CreateModelFileNotFound() {
@@ -34,6 +35,18 @@ static void CreateModelFileNotFound() {
     winrt::hresult_error,
     [](const winrt::hresult_error& e) -> bool {
           return e.code() == __HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
+    });
+}
+
+static void CreateCorruptModel() {
+  LearningModel learningModel = nullptr;
+
+  WINML_EXPECT_THROW_SPECIFIC(
+    APITest::LoadModel(L"corrupt-model.onnx", learningModel),
+    winrt::hresult_error,
+    [](const winrt::hresult_error& e) -> bool {
+        auto f = __HRESULT_FROM_WIN32(e.code());
+          return e.code() == __HRESULT_FROM_WIN32(ERROR_FILE_CORRUPT);
     });
 }
 
@@ -269,11 +282,11 @@ static void CheckMetadataCaseInsensitive() {
 }
 
 const LearningModelApiTestsApi& getapi() {
-  static constexpr LearningModelApiTestsApi api =
+  static LearningModelApiTestsApi api =
   {
     LearningModelAPITestsClassSetup,
-    LearningModelAPITestsGpuMethodSetup,
     CreateModelFromFilePath,
+    CreateModelFromUnicodeFilePath,
     CreateModelFileNotFound,
     CreateModelFromIStorage,
     CreateModelFromIStorageOutsideCwd,
@@ -288,7 +301,12 @@ const LearningModelApiTestsApi& getapi() {
     CloseModelCheckMetadata,
     CloseModelCheckEval,
     CloseModelNoNewSessions,
-    CheckMetadataCaseInsensitive
+    CheckMetadataCaseInsensitive,
+    CreateCorruptModel
   };
+
+  if (RuntimeParameterExists(L"noVideoFrameTests")) {
+    api.CloseModelCheckEval = SkipTest;
+  }
   return api;
 }

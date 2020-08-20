@@ -640,7 +640,8 @@ void NchwcTransformerImpl::TransformConcat(Node& node) {
 }
 
 // After doing a Conv/Add fusion, there may be an activation node that could now
-// be fused into the Conv node as well.
+// be fused into the Conv node as well. Otherwise, this is an elementwise
+// operation that can directly use the NCHWc input.
 void NchwcTransformerImpl::TransformActivation(Node& node) {
   auto& input_defs = node.MutableInputDefs();
 
@@ -936,21 +937,23 @@ void NchwcTransformerImpl::Transform(Node& node) {
     // node may already have all inputs converted to NCHWc format and is not
     // needed for correct operation. This avoids doing extra string checks for
     // nodes unrelated to this transformer.
-    if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7}) ||
-        graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sum", {6, 8})) {
+    if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7, 13}) ||
+        graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sum", {6, 8, 13})) {
       TransformBinary(node, true);
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Mul", {7})) {
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Mul", {7, 13})) {
       TransformBinary(node, false);
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Concat", {4, 11})) {
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Concat", {4, 11, 13})) {
       TransformConcat(node);
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6})) {
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6, 13}) ||
+               graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sigmoid", {6, 13}) ||
+               graph_utils::IsSupportedOptypeVersionAndDomain(node, "Tanh", {6, 13})) {
       TransformActivation(node);
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "BatchNormalization", {7, 9})) {
       TransformBatchNormalization(node);
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Transpose", {1})) {
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Transpose", {1, 13})) {
       TransformTranspose(node);
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Upsample", {9}) ||
-               graph_utils::IsSupportedOptypeVersionAndDomain(node, "Resize", {10, 11})) {
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Upsample", {9, 13}) ||
+               graph_utils::IsSupportedOptypeVersionAndDomain(node, "Resize", {10, 11, 13})) {
       TransformResize(node);
     }
   }

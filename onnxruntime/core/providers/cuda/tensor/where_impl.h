@@ -12,10 +12,13 @@ namespace cuda {
 template <typename T>
 void WhereImpl(
     size_t output_rank_or_simple_broadcast,
+    BroadcastIndexType cond_index_type,
     const TArray<int64_t>& cond_padded_strides,
     const bool* cond_data,
+    BroadcastIndexType x_index_type,
     const TArray<int64_t>& x_padded_strides,
     const T* x_data,
+    BroadcastIndexType y_index_type,
     const TArray<int64_t>& y_padded_strides,
     const T* y_data,
     const TArray<fast_divmod>& fdm_output_strides,

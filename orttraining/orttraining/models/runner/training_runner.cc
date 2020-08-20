@@ -2,20 +2,27 @@
 // Licensed under the MIT License.
 
 #include "orttraining/models/runner/training_runner.h"
-
 #include <algorithm>
 #include <memory>
 #include <sstream>
+#include <thread>
 
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/platform/env.h"
 #include "core/platform/path_lib.h"
+#ifdef ENABLE_NVTX_PROFILE
+#include "core/profile/context.h"
+#endif
 #include "core/session/environment.h"
 #include "orttraining/core/framework/checkpointing.h"
 #include "orttraining/core/graph/optimizer_graph_builder.h"
 #include "orttraining/models/runner/training_util.h"
+#include "single_include/nlohmann/json.hpp"
+#include "test/perftest/utils.h"
+
+using json = nlohmann::json;
 
 namespace onnxruntime {
 namespace training {
@@ -37,7 +44,9 @@ static SessionOptions SESSION_OPTION = {
     {},                                //inter_op_param
     overrides,                         //free_dimension_overrides
     true,                              //use_per_session_threads
-    true                               //thread_pool_allow_spinning
+    true,                              //thread_pool_allow_spinning
+    false,                             //use_deterministic_compute
+    {},                                //session_configurations
 };
 
 TrainingRunner::TrainingRunner(Parameters params, const Environment& env)
@@ -52,17 +61,29 @@ TrainingRunner::TrainingRunner(Parameters params, const Environment& env, Sessio
       params_(params),
       session_options_(session_options),
       session_(session_options, env),
-      input_allocator_(params.input_allocator ? params.input_allocator : TrainingUtil::GetCpuAllocator()) {
+      input_allocator_(params.input_allocator ? params.input_allocator : TrainingUtil::GetCpuAllocator()),
+      pipeline_schedule_(params.gradient_accumulation_steps, params_.pipeline_parallel_size),
+      pipeline_worker_pool_(params_.pipeline_parallel_size) {
   ORT_ENFORCE(!params_.model_path.empty());
   if (!params.weights_to_train.empty())
     ORT_ENFORCE(params.weights_not_to_train.empty());
   ORT_ENFORCE(!params_.training_optimizer_name.empty());
-  if (params.partition_optimizer)
-    ORT_ENFORCE(params.use_nccl, "Optimizer partitioning is only supported with NCCL distributed training.");
+  if (params.deepspeed_zero.stage != 0)
+    ORT_ENFORCE(params.use_nccl,
+                "DeepSpeed ZeRO partitioning is only supported with NCCL distributed training.");
+  ORT_ENFORCE(params.num_train_steps % params.gradient_accumulation_steps == 0,
+              "Number of training steps must be a multiple of number of gradient accumulation step.");
 }
 
 Status TrainingRunner::Initialize() {
-  ORT_RETURN_IF_ERROR(session_.Load(params_.model_path));
+  if (params_.pipeline_parallel_size > 1 && !params_.pipeline_stage_paths.empty()) {
+    // Pipeline partition happens outside ORT. We just load the result of partitioning forward graph.
+    // Backward graph will be generated using ORT's graph transformers.
+    ORT_ENFORCE(static_cast<size_t>(params_.mpi_context.world_size) == params_.pipeline_stage_paths.size());
+    ORT_RETURN_IF_ERROR(session_.Load(params_.pipeline_stage_paths[params_.mpi_context.world_rank]));
+  } else {
+    ORT_RETURN_IF_ERROR(session_.Load(params_.model_path));
+  }
 
   TrainingSession::TrainingConfiguration config{};
   config.model_with_loss_function_path = params_.model_with_loss_func_path;
@@ -72,7 +93,8 @@ Status TrainingRunner::Initialize() {
   config.weight_names_to_not_train = params_.weights_not_to_train;
   config.immutable_weights = params_.immutable_weights;
 
-  config.set_gradients_as_graph_outputs = false;
+  config.gradient_graph_config.use_invertible_layernorm_grad = params_.use_invertible_layernorm_grad;
+  config.gradient_graph_config.set_gradients_as_graph_outputs = false;
 
   config.gradient_accumulation_steps = params_.gradient_accumulation_steps;
 
@@ -82,17 +104,18 @@ Status TrainingRunner::Initialize() {
   config.distributed_config.local_rank = params_.mpi_context.local_rank;
   config.distributed_config.data_parallel_size = params_.data_parallel_size;
   config.distributed_config.horizontal_parallel_size = params_.horizontal_parallel_size;
-  config.distributed_config.pipeline_stage_size = params_.pipeline_stage_size;
+  config.distributed_config.pipeline_parallel_size = params_.pipeline_parallel_size;
 
   if (params_.use_mixed_precision) {
     TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mp{};
     mp.use_fp16_initializers = params_.use_fp16_initializer;
-
+    if (params_.use_bfloat16)
+      mp.fp16_type = ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
     config.mixed_precision_config = mp;
   }
 
   // always configure the loss function
-  {
+  if (params_.pipeline_parallel_size == 1 || params_.mpi_context.world_rank == params_.mpi_context.world_size - 1) {
     TrainingSession::TrainingConfiguration::LossFunctionConfiguration lf{};
     lf.loss_function_info = params_.loss_func_info;
 
@@ -109,7 +132,7 @@ Status TrainingRunner::Initialize() {
     opt.use_fp16_moments = params_.use_fp16_moments;
     opt.do_all_reduce_in_fp16 = params_.allreduce_in_fp16;
     opt.use_nccl = params_.use_nccl;
-    opt.partition_optimizer = params_.partition_optimizer;
+    opt.deepspeed_zero = params_.deepspeed_zero;
     opt.adasum_reduction_type = params_.GetAdasumReductionType();
     opt.enable_grad_norm_clip = params_.enable_grad_norm_clip;
     config.optimizer_config = opt;
@@ -132,6 +155,28 @@ Status TrainingRunner::Initialize() {
     config.gist_config = gist;
   }
 
+  // Prepare pipeline information to do configuration.
+  if (params_.pipeline_parallel_size > 1) {
+    TrainingSession::TrainingConfiguration::PipelineConfiguration pipe{};
+    // If partition is done outside and the paths to partitioned model are provided,
+    // the session already loads a pipeline stage.
+    pipe.do_partition = params_.pipeline_stage_paths.empty() ? true : false;
+    pipe.fetch_names = params_.fetch_names;
+    pipe.cut_list = params_.pipeline_partition_cut_list;
+    // Do not assign value to config.pipeline_config if pipeline is not used.
+    config.pipeline_config = pipe;
+  }
+
+  // always configure the graph transformer
+  {
+    TrainingSession::TrainingConfiguration::GraphTransformerConfiguration gt_config{};
+    gt_config.enable_gelu_approximation = params_.enable_gelu_approximation;
+    gt_config.attn_dropout_checkpoint = params_.attn_dropout_checkpoint;
+    gt_config.gelu_checkpoint = params_.gelu_checkpoint;
+
+    config.graph_transformer_config = gt_config;
+  }
+
   TrainingSession::TrainingConfigurationResult config_result{};
 
   ORT_RETURN_IF_ERROR(session_.ConfigureForTraining(config, config_result));
@@ -150,11 +195,114 @@ Status TrainingRunner::Initialize() {
 
   opt_graph_outputs_ = config_result.opt_config_result.value().output_key_to_graph_output_name;
 
-  // Expose all fetches as graph outputs
-  VectorString fetch_names = params_.fetch_names;
+  // Retrieve pipeline information from configuration result.
+  VectorString fetch_names;
+  if (params_.pipeline_parallel_size > 1) {
+    fetch_names = config_result.pipeline_config_result.value().fetch_names;
+    // Exposes forward waited event tensor ID name to TrainingRunner.
+    // It's an input of a graph.
+    // Wait->Recv->Wait->FW->Record->Send->Record
+    //  ^
+    //  |
+    // this event's operator.
+    pipeline_context_.forward_waited_event_name = config_result.pipeline_config_result.value().forward_waited_event_name;
+
+    // Exposes forward waited event tensor ID name to TrainingRunner.
+    // It's an input of a graph.
+    // Wait->Recv->Wait->FW->Record->Send->Record
+    //              ^
+    //              |
+    //             this event's operator.
+    pipeline_context_.forward_waited_event_after_recv_name = config_result.pipeline_config_result.value().forward_waited_event_after_recv_name;
+
+    // Exposes forward recorded event tensor ID name to TrainingRunner.
+    // It's an input of a graph.
+    // Wait->Recv->Wait->FW->Record->Send->Record
+    //                         ^
+    //                         |
+    //                        this event's operator.
+    pipeline_context_.forward_recorded_event_before_send_name = config_result.pipeline_config_result.value().forward_recorded_event_before_send_name;
+
+    // Exposes forward recorded event tensor ID name to TrainingRunner.
+    // It's an input of a graph.
+    // Wait->Recv->Wait->FW->Record->Send->Record
+    //                                       ^
+    //                                       |
+    //                                      this event's operator.
+    pipeline_context_.forward_recorded_event_name = config_result.pipeline_config_result.value().forward_recorded_event_name;
+
+    // Exposes backward waited event tensor ID name to TrainingRunner.
+    // It's an input of a graph.
+    // Wait->Recv->Wait->BW->Record->Send->Record
+    //  ^
+    //  |
+    // this event's operator.
+    pipeline_context_.backward_waited_event_name = config_result.pipeline_config_result.value().backward_waited_event_name;
+
+    // Exposes backward waited event tensor ID name to TrainingRunner.
+    // It's an input of a graph.
+    // Wait->Recv->Wait->BW->Record->Send->Record
+    //              ^
+    //              |
+    //             this event's operator.
+    pipeline_context_.backward_waited_event_after_recv_name = config_result.pipeline_config_result.value().backward_waited_event_after_recv_name;
+
+    // Exposes backward recorded event tensor ID name to TrainingRunner.
+    // It's an input of a graph.
+    // Wait->Recv->Wait->BW->Record->Send->Record
+    //                         ^
+    //                         |
+    //                        this event's operator.
+    pipeline_context_.backward_recorded_event_before_send_name = config_result.pipeline_config_result.value().backward_recorded_event_before_send_name;
+
+    // Exposes backward recorded event tensor ID name to TrainingRunner.
+    // It's an input of a graph.
+    // Wait->Recv->Wait->BW->Record->Send->Record
+    //                                       ^
+    //                                       |
+    //                                      this event's operator.
+    pipeline_context_.backward_recorded_event_name = config_result.pipeline_config_result.value().backward_recorded_event_name;
+
+    pipeline_context_.forward_wait_output_name = config_result.pipeline_config_result.value().forward_wait_output_name;
+    pipeline_context_.forward_record_output_name = config_result.pipeline_config_result.value().forward_record_output_name;
+    pipeline_context_.backward_wait_output_name = config_result.pipeline_config_result.value().backward_wait_output_name;
+    pipeline_context_.backward_record_output_name = config_result.pipeline_config_result.value().backward_record_output_name;
+
+    if (!pipeline_context_.forward_wait_output_name.empty()) {
+      fetch_names.push_back(pipeline_context_.forward_wait_output_name);
+    }
+
+    if (!pipeline_context_.forward_record_output_name.empty()) {
+      fetch_names.push_back(pipeline_context_.forward_record_output_name);
+    }
+
+    if (!pipeline_context_.backward_wait_output_name.empty()) {
+      fetch_names.push_back(pipeline_context_.backward_wait_output_name);
+    }
+
+    if (!pipeline_context_.backward_record_output_name.empty()) {
+      fetch_names.push_back(pipeline_context_.backward_record_output_name);
+    }
+
+    // Names of allowed inputs after pipeline partition.
+    pipeline_context_.feed_names = config_result.pipeline_config_result.value().feed_names;
+    // Names of allowed outputs after pipeline partition.
+    pipeline_context_.fetch_names = config_result.pipeline_config_result.value().fetch_names;
+
+    // Configure dimension of this pipeline.
+    pipeline_context_.pipeline_stage_id = config_result.pipeline_config_result.value().pipeline_stage_id;
+    pipeline_context_.num_pipeline_batches = params_.gradient_accumulation_steps;
+  } else {
+    fetch_names = params_.fetch_names;
+    pipeline_context_.pipeline_stage_id = 0;
+  }
+
+  // Expose all optimizer outputs as graph outputs.
   for (const auto& it : opt_graph_outputs_) {
     fetch_names.push_back(it.second);
   }
+
+  // Expose all optimizer outputs and pipeline outputs and as graph outputs.
   ORT_RETURN_IF_ERROR(session_.OverrideGraphOutputs(fetch_names));
 
   for (const auto& factory : params_.providers) {
@@ -187,7 +335,8 @@ Status TrainingRunner::Initialize() {
   return Status::OK();
 }
 
-Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_data_loader) {
+Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_data_loader,
+                           const MapStringToString& mapped_dimensions) {
   if (params_.mpi_context.world_rank == 0 && !params_.model_actual_running_graph_path.empty()) {
     session_.Save(params_.model_actual_running_graph_path, TrainingSession::SaveOption::NO_RELOAD);
   }
@@ -198,46 +347,475 @@ Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_
     return Status::OK();
   }
 
-  ORT_RETURN_IF_ERROR(TrainingLoop(*training_data_loader, test_data_loader));
+  ORT_RETURN_IF_ERROR(TrainingLoop(*training_data_loader, test_data_loader, mapped_dimensions));
 
   // after successful Run(), update counters
-  round_++;
+  ++round_;
   step_ = 0;
 
   return Status::OK();
 }
 
-Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader) {
+// Prepare feeds for a call to one session run.
+Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
+                                                IDataLoader& training_data_loader,
+                                                DataSet& training_data,
+                                                LearningRateScheduler* lr_scheduler,
+                                                const size_t batch_index,
+                                                std::vector<std::string>& feed_names,
+                                                std::vector<MLValue>& feeds) {
+  // Initialize outputs of this function.
+  feed_names = std::vector<std::string>();
+  feeds = std::vector<MLValue>();
+
+  auto allowed_feed_begin = pipeline_context_.feed_names.begin();
+  auto allowed_feed_end = pipeline_context_.feed_names.end();
+
+  // Pick up feeds from data loader
+  {
+    std::vector<std::string> data_feed_names = training_data_loader.DataSetTensorNames();
+    std::vector<MLValue> data_feeds = training_data.GetKthBatch(params_.batch_size, batch_index, input_allocator_);
+    for (size_t i = 0; i < data_feed_names.size(); ++i) {
+      const auto name = data_feed_names[i];
+      if (params_.pipeline_parallel_size == 1 || std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
+        feed_names.push_back(name);
+        feeds.push_back(data_feeds[i]);
+      }
+    }
+  }
+
+  // Pick up feed from loss scaling.
+  if (loss_scaler_) {
+    const auto name = loss_scaler_->GetLossScaleInputName();
+    if (params_.pipeline_parallel_size == 1 || std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
+      feed_names.push_back(name);
+      const float loss_scale = (mode == EvaluateStep) ? 1.0f : loss_scaler_->GetLossScale();
+      OrtValue loss_scale_val;
+      TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{loss_scale}, &loss_scale_val, input_allocator_);
+      feeds.push_back(loss_scale_val);
+    }
+  }
+
+  // Pick up feed from learning rate schedule.
+  {
+    const auto name = params_.lr_params.feed_name;
+    if (params_.pipeline_parallel_size == 1 || std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
+      feed_names.push_back(name);
+      // learning rate is 0 if there is no learning-rate scheduler. Otherwise, learning rate is obtained from the scheduler.
+      const float learning_rate = lr_scheduler ? lr_scheduler->GetLearningRate(step_ + 1) : 0.0f;
+      OrtValue lr_val;
+      TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{learning_rate}, &lr_val, input_allocator_);
+      feeds.push_back(lr_val);
+    }
+  }
+
+  // Create feed of the first waited event in forward pass.
+  if (!pipeline_context_.forward_waited_event_name.empty()) {
+    ORT_RETURN_IF(params_.pipeline_parallel_size <= 1, "Internal event name should be empty if there is no pipeline.");
+    feed_names.push_back(pipeline_context_.forward_waited_event_name);
+    OrtValue event_id;
+    const int64_t id =
+        (mode == EvaluateStep) ? -1
+                               : pipeline_schedule_.GetForwardWaitedEventBeforeRecv(
+                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches,
+                                     pipeline_context_.pipeline_stage_id);
+    TrainingUtil::CreateCpuMLScalar(
+        id,
+        &event_id,
+        input_allocator_);
+    feeds.push_back(event_id);
+  }
+
+  // Create feed of the second waited event in forward pass.
+  if (!pipeline_context_.forward_waited_event_after_recv_name.empty()) {
+    ORT_RETURN_IF(params_.pipeline_parallel_size <= 1, "Internal event name should be empty if there is no pipeline.");
+    feed_names.push_back(pipeline_context_.forward_waited_event_after_recv_name);
+    OrtValue event_id;
+    const int64_t id =
+        (mode == EvaluateStep) ? -1
+                               : pipeline_schedule_.GetForwardWaitedEventAfterRecv(
+                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches,
+                                     pipeline_context_.pipeline_stage_id);
+    TrainingUtil::CreateCpuMLScalar(
+        id,
+        &event_id,
+        input_allocator_);
+    feeds.push_back(event_id);
+  }
+
+  // Create feed of first recorded event in forward pass.
+  if (!pipeline_context_.forward_recorded_event_before_send_name.empty()) {
+    ORT_RETURN_IF(params_.pipeline_parallel_size <= 1, "Internal event name should be empty if there is no pipeline.");
+    feed_names.push_back(pipeline_context_.forward_recorded_event_before_send_name);
+    OrtValue event_id;
+    const int64_t id =
+        (mode == EvaluateStep) ? -1
+                               : pipeline_schedule_.GetForwardRecordedEventBeforeSend(
+                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches,
+                                     pipeline_context_.pipeline_stage_id);
+    TrainingUtil::CreateCpuMLScalar(
+        id,
+        &event_id,
+        input_allocator_);
+    feeds.push_back(event_id);
+  }
+
+  // Create feed of second recorded event in forward pass.
+  if (!pipeline_context_.forward_recorded_event_name.empty()) {
+    ORT_RETURN_IF(params_.pipeline_parallel_size <= 1, "Internal event name should be empty if there is no pipeline.");
+    feed_names.push_back(pipeline_context_.forward_recorded_event_name);
+    OrtValue event_id;
+    const int64_t id =
+        (mode == EvaluateStep) ? -1
+                               : pipeline_schedule_.GetForwardRecordedEventAfterSend(
+                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches,
+                                     pipeline_context_.pipeline_stage_id);
+    TrainingUtil::CreateCpuMLScalar(
+        id,
+        &event_id,
+        input_allocator_);
+    feeds.push_back(event_id);
+  }
+
+  // Create feed of first waited event in backward pass.
+  if (!pipeline_context_.backward_waited_event_name.empty()) {
+    ORT_RETURN_IF(params_.pipeline_parallel_size <= 1, "Internal event name should be empty if there is no pipeline.");
+    feed_names.push_back(pipeline_context_.backward_waited_event_name);
+    OrtValue event_id;
+    const int64_t id =
+        (mode == EvaluateStep) ? -1
+                               : pipeline_schedule_.GetBackwardWaitedEventBeforeRecv(
+                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches,
+                                     pipeline_context_.pipeline_stage_id);
+    TrainingUtil::CreateCpuMLScalar(
+        id,
+        &event_id,
+        input_allocator_);
+    feeds.push_back(event_id);
+  }
+
+  // Create feed of second waited event in backward pass.
+  if (!pipeline_context_.backward_waited_event_after_recv_name.empty()) {
+    ORT_RETURN_IF(params_.pipeline_parallel_size <= 1, "Internal event name should be empty if there is no pipeline.");
+    feed_names.push_back(pipeline_context_.backward_waited_event_after_recv_name);
+    OrtValue event_id;
+    const int64_t id =
+        (mode == EvaluateStep) ? -1
+                               : pipeline_schedule_.GetBackwardWaitedEventAfterRecv(
+                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches,
+                                     pipeline_context_.pipeline_stage_id);
+    TrainingUtil::CreateCpuMLScalar(
+        id,
+        &event_id,
+        input_allocator_);
+    feeds.push_back(event_id);
+  }
+
+  // Create feed of first recorded event in backward pass.
+  if (!pipeline_context_.backward_recorded_event_before_send_name.empty()) {
+    ORT_RETURN_IF(params_.pipeline_parallel_size <= 1, "Internal event name should be empty if there is no pipeline.");
+    feed_names.push_back(pipeline_context_.backward_recorded_event_before_send_name);
+    OrtValue event_id;
+    int64_t id =
+        (mode == EvaluateStep) ? -1
+                               : pipeline_schedule_.GetBackwardRecordedEventBeforeSend(
+                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches,
+                                     pipeline_context_.pipeline_stage_id);
+    TrainingUtil::CreateCpuMLScalar(
+        id,
+        &event_id,
+        input_allocator_);
+    feeds.push_back(event_id);
+  }
+
+  // Create feed of second recorded event in backward pass.
+  if (!pipeline_context_.backward_recorded_event_name.empty()) {
+    ORT_RETURN_IF(params_.pipeline_parallel_size <= 1, "Internal event name should be empty if there is no pipeline.");
+    feed_names.push_back(pipeline_context_.backward_recorded_event_name);
+    OrtValue event_id;
+    int64_t id =
+        (mode == EvaluateStep) ? -1
+                               : pipeline_schedule_.GetBackwardRecordedEventAfterSend(
+                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches,
+                                     pipeline_context_.pipeline_stage_id);
+    TrainingUtil::CreateCpuMLScalar(
+        id,
+        &event_id,
+        input_allocator_);
+    feeds.push_back(event_id);
+  }
+
+  return Status::OK();
+}
+
+Status TrainingRunner::PrepareFetchNamesAndFetches(const SessionMode mode,
+                                                   std::vector<std::string>& fetch_names,
+                                                   std::vector<MLValue>& fetches) {
+  // Initialize outputs of this function.
+  fetch_names = std::vector<std::string>();
+  fetches = std::vector<MLValue>();
+
+  const auto& allowed_fetch_names = pipeline_context_.fetch_names;
+
+  if (mode == ModelUpdateStep) {
+    // Set up tensor to be fetched when doing model update.
+
+    if (params_.pipeline_parallel_size > 1) {
+      // If pipeline is used, we need to filter out fetches which are not in this pipeline stage.
+
+      for (size_t i = 0; i < params_.fetch_names.size(); ++i) {
+        const auto name = params_.fetch_names[i];
+        auto it = std::find(allowed_fetch_names.begin(), allowed_fetch_names.end(), name);
+        if (it == allowed_fetch_names.end()) {
+          continue;
+        }
+        fetch_names.push_back(name);
+      }
+    } else {
+      // No pipeline. All fetched names should appear in the graph handled by this process.
+      fetch_names = params_.fetch_names;
+
+      if (params_.use_mixed_precision) {
+        if (!params_.use_bfloat16) {
+          auto it = opt_graph_outputs_.find(OptimizerOutputKey::GradientAllIsFinite);
+          ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Gradient norm's IsFinite output is missing in the optimizer output");
+          fetch_names.push_back(it->second);
+        }
+        if (params_.use_adasum) {
+          auto it = opt_graph_outputs_.find(OptimizerOutputKey::DeltaAllIsFinite);
+          ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Adasum delta's IsFinite output is missing in the optimizer output");
+          fetch_names.push_back(it->second);
+        }
+      }
+    }
+  } else if (mode == GradientAccumulateStep) {
+    // Set up tensor to be fetched when doing gradient accumulation.
+
+    if (params_.gradient_accumulation_steps > 1) {
+      auto it = opt_graph_outputs_.find(OptimizerOutputKey::GradientAccumulation);
+      ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Gradient accumulation output is missing in the optimizer output");
+      fetch_names.push_back(it->second);
+    }
+
+    // Always execute event operators to avoid deadlock if pipeline is used.
+    // TODO: create a list of must-to-fetch tensors and pass it to all graph transformer.
+    if (params_.pipeline_parallel_size) {
+      if (!pipeline_context_.forward_wait_output_name.empty()) {
+        fetch_names.push_back(pipeline_context_.forward_wait_output_name);
+      }
+      if (!pipeline_context_.forward_record_output_name.empty()) {
+        fetch_names.push_back(pipeline_context_.forward_record_output_name);
+      }
+      if (!pipeline_context_.backward_wait_output_name.empty()) {
+        fetch_names.push_back(pipeline_context_.backward_wait_output_name);
+      }
+      if (!pipeline_context_.backward_record_output_name.empty()) {
+        fetch_names.push_back(pipeline_context_.backward_record_output_name);
+      }
+    }
+  } else if (mode == EvaluateStep) {
+    // Set up tensor to be fetched when doing model evaluation.
+    // Ideally, this path should not fetch optimizer and gradient accumulation.
+    // This path may fetch predicted scores, loss value, and so on.
+
+    if (params_.pipeline_parallel_size > 1) {
+      // If pipeline is used, we need to filter out fetches which are not in this pipeline stage.
+
+      for (size_t i = 0; i < params_.fetch_names.size(); ++i) {
+        const auto name = params_.fetch_names[i];
+        auto it = std::find(allowed_fetch_names.begin(), allowed_fetch_names.end(), name);
+        if (it == allowed_fetch_names.end()) {
+          continue;
+        }
+        fetch_names.push_back(name);
+      }
+    } else {
+      // No pipeline. All fetched names should appear in the graph handled by this process.
+      fetch_names = params_.fetch_names;
+    }
+  }
+
+  // We need to fetch at least one variable.
+  // If there is nothing to fetch, we fetch all model outputs.
+  if (fetch_names.empty()) {
+    fetch_names = allowed_fetch_names;
+  }
+
+  return Status::OK();
+}
+
+// If any exceptions happen during worker execution, it means there is an error
+// during training. The worker thread propagates the exception to the main thread so
+// we can properly cleanup and exit the execution.
+void TrainingRunner::CheckWorkerException(const std::exception_ptr& p) {
+  try {
+    if (p) {
+      std::rethrow_exception(p);
+    }
+  } catch (const std::exception& e) {
+    ORT_THROW("Error in worker thread: ", e.what());
+  }
+}
+
+// Launch synced session.Run on the main thread.
+void TrainingRunner::RunWithUpdate(VectorString& feed_names,
+                                   VectorString& fetch_names,
+                                   std::vector<MLValue>& feeds,
+                                   std::vector<MLValue>& fetches) {
+  // Cyclically pick up a worker ID.
+  const size_t worker_id = step_ % params_.pipeline_parallel_size;
+
+  // Wait for the previous work to finish its job.
+  // Its resource cannot be overrided when it's still working.
+  pipeline_worker_pool_.Join(worker_id);
+  CheckWorkerException(pipeline_worker_pool_.worker_states[worker_id].execution_exception);
+
+  // Copy thread-used variable to thread-specific buffer to maintain their life.
+  pipeline_worker_pool_.worker_states[worker_id].feed_names = feed_names;
+  pipeline_worker_pool_.worker_states[worker_id].feeds = feeds;
+  pipeline_worker_pool_.worker_states[worker_id].fetch_names = fetch_names;
+  pipeline_worker_pool_.worker_states[worker_id].fetches = std::vector<MLValue>();
+
+  pipeline_worker_pool_.workers[worker_id] = std::thread([&](const size_t worker_id, const size_t step) {
+    try {
+#ifdef ENABLE_NVTX_PROFILE
+      // Store the tag for the thread which runs session_.Run(...).
+      // It will be used to name range in Nvidia's visual profiler.
+      auto& profile_context = profile::Context::GetInstance();
+      profile_context.SetThreadTag(
+          std::this_thread::get_id(), std::to_string(step));
+#else
+      ORT_UNUSED_PARAMETER(step);
+#endif
+      RunOptions run_options;
+      auto status = session_.Run(
+          run_options,
+          pipeline_worker_pool_.worker_states[worker_id].feed_names,
+          pipeline_worker_pool_.worker_states[worker_id].feeds,
+          pipeline_worker_pool_.worker_states[worker_id].fetch_names,
+          &(pipeline_worker_pool_.worker_states[worker_id].fetches));
+
+      ORT_THROW_IF_ERROR(status);
+    } catch (std::exception&) {
+      // If exception happens during worker execution, propogate the exception to main thread.
+      pipeline_worker_pool_.worker_states[worker_id].execution_exception = std::current_exception();
+    }
+  },
+                                                         worker_id, step_);
+
+  // Wait all workers to finish this round of pipeline parallelism.
+  // The last batch in a pipeline collects gradient and update the model.
+  // We must join here because main thread needs to access thread-produced
+  // fetches and those fetches must be ready.
+  pipeline_worker_pool_.JoinAll();
+  for (auto& status : pipeline_worker_pool_.worker_states) {
+    CheckWorkerException(status.execution_exception);
+  }
+
+  // Copy back from thread-specific buffer to main thread's memory.
+  fetches = pipeline_worker_pool_.worker_states[worker_id].fetches;
+
+  if (loss_scaler_) {
+    auto it = std::find(fetch_names.begin(), fetch_names.end(), opt_graph_outputs_[OptimizerOutputKey::GradientAllIsFinite]);
+    if (it != fetch_names.end()) {
+      const size_t index = static_cast<size_t>(std::distance(fetch_names.begin(), it));
+      const Tensor& all_is_finite_t = fetches[index].Get<Tensor>();
+      const bool is_all_finite = *(all_is_finite_t.template Data<bool>());
+      loss_scaler_->UpdateLossScale(is_all_finite);
+    }
+  }
+
+  // Assume that only the last pipeline stage can see loss, predicted value, and so on.
+  // Thus, the error function should only be called when we are at the last stage.
+  const bool session_can_see_loss = params_.pipeline_parallel_size == 1 ||
+                                    pipeline_context_.pipeline_stage_id == params_.pipeline_parallel_size - 1;
+  if (session_can_see_loss &&
+      !params_.is_perf_test &&
+      weight_update_step_count_ % params_.display_loss_steps == 0) {
+    if (params_.error_function) {
+      params_.error_function(feed_names, feeds, fetch_names, fetches, weight_update_step_count_);
+    }
+    if (params_.post_evaluation_callback) {
+      params_.post_evaluation_callback(params_.batch_size, weight_update_step_count_, "train");
+    }
+  }
+
+  // Wait all workers to finish this around of pipeline parallism.
+  // The last batch in a pipeline collects gradient and update the model.
+  pipeline_worker_pool_.JoinAll();
+  for (auto& status : pipeline_worker_pool_.worker_states) {
+    CheckWorkerException(status.execution_exception);
+  }
+
+  // Add one after process one batch.
+  ++step_;
+  // Add one after update the model once.
+  ++weight_update_step_count_;
+}
+
+// Launch async session.Run on non-main thread.
+void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
+                                      VectorString& fetch_names,
+                                      std::vector<MLValue>& feeds,
+                                      size_t& gradient_accumulation_step_count) {
+  // Cyclically pick up a worker ID.
+  const size_t worker_id = step_ % params_.pipeline_parallel_size;
+
+  // Wait for the previous work to finish its job.
+  // Its resource cannot be overrided when it's still working.
+  pipeline_worker_pool_.Join(worker_id);
+  CheckWorkerException(pipeline_worker_pool_.worker_states[worker_id].execution_exception);
+
+  // Prepare async launch of session.
+  // All used variables have to be copied to a buffer object to maintain their lifetime.
+  pipeline_worker_pool_.worker_states[worker_id].feeds = feeds;
+  pipeline_worker_pool_.worker_states[worker_id].feed_names = feed_names;
+  pipeline_worker_pool_.worker_states[worker_id].fetch_names = fetch_names;
+  pipeline_worker_pool_.worker_states[worker_id].fetches = std::vector<MLValue>();
+
+  // Async launch of a session.
+  pipeline_worker_pool_.workers[worker_id] = std::thread([&](const size_t worker_id, const size_t step) {
+    try {
+#ifdef ENABLE_NVTX_PROFILE
+      // Store the tag for the thread which runs session_.Run(...).
+      // It will be used to name range in Nvidia's visual profiler.
+      auto& profile_context = profile::Context::GetInstance();
+      profile_context.SetThreadTag(
+          std::this_thread::get_id(), std::to_string(step));
+#else
+      ORT_UNUSED_PARAMETER(step);
+#endif
+      RunOptions run_options;
+      run_options.only_execute_path_to_fetches = true;
+      run_options.training_mode = true;
+      auto status = session_.Run(
+          run_options,
+          pipeline_worker_pool_.worker_states[worker_id].feed_names,
+          pipeline_worker_pool_.worker_states[worker_id].feeds,
+          pipeline_worker_pool_.worker_states[worker_id].fetch_names,
+          &(pipeline_worker_pool_.worker_states[worker_id].fetches));
+      ORT_THROW_IF_ERROR(status);
+    } catch (std::exception&) {
+      pipeline_worker_pool_.worker_states[worker_id].execution_exception = std::current_exception();
+    }
+  },
+                                                         worker_id, step_);
+
+  // Add one after process one batch.
+  ++step_;
+  // Add one after comuting one forward-backward path without applying optimizer.
+  ++gradient_accumulation_step_count;
+}
+
+Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader,
+                                    const MapStringToString& mapped_dimensions) {
   const bool enable_checkpoint_saving =
       params_.mpi_context.world_rank == 0 &&
       checkpoint_registry_ && params_.checkpoint_period > 0;
 
-  VectorString feed_names = training_data_loader.DataSetTensorNames();
-  if (loss_scaler_) {
-    feed_names.push_back(loss_scaler_->GetLossScaleInputName());
-  }
-  feed_names.push_back(params_.lr_params.feed_name);
-
-  OrtValue loss_scale_val;
-  OrtValue lr_ort_val;
-
-  VectorString fetch_names = params_.fetch_names;
-  if (params_.use_mixed_precision) {
-    auto it = opt_graph_outputs_.find(OptimizerOutputKey::GradientAllIsFinite);
-    ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Gradient norm's IsFinite output is missing in the optimizer output");
-    fetch_names.push_back(it->second);
-    if (params_.use_adasum) {
-      it = opt_graph_outputs_.find(OptimizerOutputKey::DeltaAllIsFinite);
-      ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Adasum delta's IsFinite output is missing in the optimizer output");
-      fetch_names.push_back(it->second);
-    }
-  }
-
-  VectorString fetch_grad_accumulator_output;
-  if (params_.gradient_accumulation_steps > 1) {
-    auto it = opt_graph_outputs_.find(OptimizerOutputKey::GradientAccumulation);
-    ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Gradient accumulation output is missing in the optimizer output");
-    fetch_grad_accumulator_output.push_back(it->second);
+  std::unique_ptr<perftest::utils::ICPUUsage> cpu_usage_calculator;
+  if (!params_.perf_output_dir.empty()) {
+    cpu_usage_calculator = perftest::utils::CreateICPUUsage();
   }
 
   if (test_data_loader) {
@@ -258,7 +836,11 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
   const size_t stabilized_perf_total_step_count = std::min(static_cast<size_t>(128), params_.num_train_steps);
   const size_t stabilized_perf_start_step = params_.num_train_steps - stabilized_perf_total_step_count;
   double stabilized_total_time{0};
+  const size_t end_to_end_perf_start_step = 128;
+  auto end_to_end_start = std::chrono::high_resolution_clock::now();
+  bool end_to_end_measurement_started = false;
 
+  auto all_steps_time_start = std::chrono::high_resolution_clock::now();
   while (step_ < params_.num_train_steps) {
     for (size_t shard_it = 0; shard_it < num_shards_to_visit; ++shard_it) {
       auto training_data = training_data_loader.CurrentDataSet();
@@ -279,72 +861,60 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
       // loop through the data
       size_t batch_num_cur_shard = training_data->TotalBatch(params_.batch_size);
       for (size_t batch = 0; batch < batch_num_cur_shard && step_ < params_.num_train_steps; ++batch) {
-        std::vector<MLValue> feeds = training_data->GetKthBatch(params_.batch_size, batch, input_allocator_);
-        if (loss_scaler_) {
-          float loss_scale = loss_scaler_->GetLossScale();
-          TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{loss_scale}, &loss_scale_val, input_allocator_);
-          feeds.push_back(loss_scale_val);
+        const bool is_weight_update_step = (step_ + 1) % params_.gradient_accumulation_steps == 0;
+
+        const bool stablized_perf_measurement_started = step_ >= stabilized_perf_start_step;
+        if (!end_to_end_measurement_started && step_ >= end_to_end_perf_start_step) {
+          end_to_end_start = std::chrono::high_resolution_clock::now();
+          end_to_end_measurement_started = true;
         }
 
-        {
-          float learning_rate = lr_scheduler->GetLearningRate(step_ + 1);
-          TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{learning_rate}, &lr_ort_val, input_allocator_);
-          feeds.push_back(lr_ort_val);
-        }
-
+        VectorString feed_names;
+        VectorString fetch_names;
+        std::vector<MLValue> feeds;
         std::vector<MLValue> fetches;
 
-        const bool is_weight_update_step = (step_ + 1) % params_.gradient_accumulation_steps == 0;
         auto start = std::chrono::high_resolution_clock::now();
 
         if (is_weight_update_step) {
-          ORT_RETURN_IF_ERROR(session_.Run(RunOptions(),
-                                           feed_names,
-                                           feeds,
-                                           fetch_names,
-                                           &fetches));
-
-          if (loss_scaler_) {
-            auto it = std::find(fetch_names.begin(), fetch_names.end(), opt_graph_outputs_[OptimizerOutputKey::GradientAllIsFinite]);
-            if (it != fetch_names.end()) {
-              const size_t index = static_cast<size_t>(std::distance(fetch_names.begin(), it));
-              const Tensor& all_is_finite_t = fetches[index].Get<Tensor>();
-              const bool is_all_finite = *(all_is_finite_t.template Data<bool>());
-              loss_scaler_->UpdateLossScale(is_all_finite);
-            }
-          }
-
-          if (!params_.is_perf_test && weight_update_step_count_ % params_.display_loss_steps == 0) {
-            if (params_.error_function) {
-              params_.error_function(feed_names, feeds, fetch_names, fetches, weight_update_step_count_);
-            }
-            if (params_.post_evaluation_callback) {
-              params_.post_evaluation_callback(params_.batch_size, weight_update_step_count_, "train");
-            }
-          }
-
-          weight_update_step_count_++;
+          ORT_RETURN_IF_ERROR(PrepareFeedNamesAndFeeds(ModelUpdateStep,
+                                                       training_data_loader,
+                                                       *training_data,
+                                                       lr_scheduler.get(),
+                                                       batch,
+                                                       feed_names,
+                                                       feeds));
+          ORT_RETURN_IF_ERROR(
+              PrepareFetchNamesAndFetches(ModelUpdateStep,
+                                          fetch_names,
+                                          fetches));
+          RunWithUpdate(feed_names, fetch_names, feeds, fetches);
         } else {
-          RunOptions run_options;
-          run_options.only_execute_path_to_fetches = true;
-          ORT_RETURN_IF_ERROR(session_.Run(run_options,
-                                           feed_names,
-                                           feeds,
-                                           fetch_grad_accumulator_output,
-                                           &fetches));
-          gradient_accumulation_step_count++;
+          ORT_RETURN_IF_ERROR(PrepareFeedNamesAndFeeds(GradientAccumulateStep,
+                                                       training_data_loader,
+                                                       *training_data,
+                                                       lr_scheduler.get(),
+                                                       batch,
+                                                       feed_names,
+                                                       feeds));
+          ORT_RETURN_IF_ERROR(
+              PrepareFetchNamesAndFetches(GradientAccumulateStep,
+                                          fetch_names,
+                                          fetches));
+          RunWithoutUpdate(feed_names, fetch_names, feeds,
+                           gradient_accumulation_step_count);
         }
-        step_++;
 
+        // at this point, step_ already be increased by 1.
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> duration_seconds = end - start;
         total_time += duration_seconds.count();
-        if (step_ >= stabilized_perf_start_step) {
+        if (stablized_perf_measurement_started) {
           stabilized_total_time += duration_seconds.count();
         }
 
-        // Print some info when reaching the end of the batch.
-        printf("Round %d, Step: %d, epoch: %d, batch: %d/%d, shard_iteration: %d/%d, time: %.2f ms, throughput: %.2f ex/sec \n",
+        printf("Stage %d, Round %d, Step: %d, epoch: %d, batch: %d/%d, shard_iteration: %d/%d, time: %.2f ms, throughput: %.2f ex/sec \n",
+               pipeline_context_.pipeline_stage_id,
                static_cast<int>(round_),
                static_cast<int>(step_),
                static_cast<int>(epoch),
@@ -389,24 +959,139 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
         }
       }  // end of one file/shard
 
+      pipeline_worker_pool_.JoinAll();
       if (step_ < params_.num_train_steps) {
         training_data_loader.MoveToNextDataSet();
       }
     }  // end of one epoch
 
-    epoch++;
+    ++epoch;
+  }
+  auto all_steps_time_end = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> all_steps_duration_seconds = all_steps_time_end - all_steps_time_start;
+
+  const double e2e_throughput = [&]() {
+    if (end_to_end_perf_start_step >= params_.num_train_steps) return 0.0;
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration_seconds = end - end_to_end_start;
+    const double total_e2e_time = duration_seconds.count();
+    const size_t end_to_end_step_count = params_.num_train_steps - std::max(step_start, end_to_end_perf_start_step);
+    return params_.batch_size * end_to_end_step_count / total_e2e_time;
+  }();
+
+  const size_t number_of_batches = step_ - step_start;
+  const size_t weight_update_steps = weight_update_step_count_ - weight_update_step_count_start;
+  const double avg_time_per_batch = total_time / (step_ - step_start) * 1000;
+  const double throughput = params_.batch_size * (step_ - step_start) / total_time;
+  const double stabilized_throughput = params_.batch_size / (stabilized_total_time / stabilized_perf_total_step_count);
+
+  if (params_.perf_output_dir.empty()) {
+    printf("No perf output directory specified, skipping save of trained perf metrics.\n");
+  } else {
+    const short average_cpu_usage = cpu_usage_calculator->GetUsage();
+    const size_t peak_workingset_size = perftest::utils::GetPeakWorkingSetSize();
+    ORT_RETURN_IF_ERROR(Env::Default().CreateFolder(params_.perf_output_dir));
+    // saving json file
+    ORT_RETURN_IF_ERROR(SavePerfMetrics(number_of_batches, gradient_accumulation_step_count, weight_update_steps,
+                                        total_time, avg_time_per_batch, throughput, stabilized_throughput,
+                                        e2e_throughput, mapped_dimensions,
+                                        average_cpu_usage, peak_workingset_size));
   }
 
   std::cout << "Round: " << round_ << "\n"
             << "Batch size: " << params_.batch_size << "\n"
-            << "Number of Batches: " << (step_ - step_start) << "\n"
+            << "Number of Batches: " << number_of_batches << "\n"
             << "Gradient Accumulation Steps: " << gradient_accumulation_step_count << "\n"
-            << "Weight Update Steps: " << (weight_update_step_count_ - weight_update_step_count_start) << "\n"
+            << "Weight Update Steps: " << weight_update_steps << "\n"
             << "Total Running Time: " << total_time << " Seconds \n"
-            << "Average Running Time Per Batch: " << total_time / (step_ - step_start) * 1000 << " ms\n"
-            << "Throughput: " << params_.batch_size * (step_ - step_start) / total_time << " Examples / Second\n"
-            << "Stabilized Throughput: " << params_.batch_size / (stabilized_total_time / stabilized_perf_total_step_count)
-            << " Examples / Second\n";
+            << "Average Running Time Per Batch: " << avg_time_per_batch << " ms\n"
+            << "Throughput: " << throughput << " Examples / Second\n"
+            << "Stabilized Throughput: " << stabilized_throughput << " Examples / Second\n"
+            << "EndToEnd Throughput: " << e2e_throughput << " Examples / Second\n"
+            << "Average Step Time: " << all_steps_duration_seconds.count() / (step_ - step_start) << " Second\n"
+            << "Average Step Throughput: " << params_.batch_size * (step_ - step_start) / (all_steps_duration_seconds.count()) << " Examples / Second\n";
+
+  return Status::OK();
+}
+
+Status TrainingRunner::SavePerfMetrics(const size_t number_of_batches, const size_t gradient_accumulation_steps,
+                                       const size_t weight_update_steps, const double total_time,
+                                       const double avg_time_per_batch, const double throughput, const double stabilized_throughput,
+                                       const double e2e_throughput, const MapStringToString& mapped_dimensions,
+                                       const short average_cpu_usage, const size_t peak_workingset_size) {
+  // populate metrics for reporting
+  json perf_metrics;
+  perf_metrics["Model"] = params_.model_type;
+
+  // loop thru the mapped_dimensions and put it in json sub-structure
+  std::string seq_len;
+  for (auto const& it : mapped_dimensions) {
+    if (it.first == "SeqLen") {
+      seq_len = it.second;
+    }
+    perf_metrics["DerivedProperties"][it.first] = it.second;
+  }
+
+  perf_metrics["Round"] = round_;
+  perf_metrics["BatchSize"] = params_.batch_size;
+  perf_metrics["NumOfBatches"] = number_of_batches;
+  perf_metrics["GradAccSteps"] = gradient_accumulation_steps;
+  perf_metrics["WeightUpdateSteps"] = weight_update_steps;
+  perf_metrics["TotalTime"] = total_time;
+  perf_metrics["AvgTimePerBatch"] = avg_time_per_batch;
+  perf_metrics["Throughput"] = throughput;
+  perf_metrics["StabilizedThroughput"] = stabilized_throughput;
+  perf_metrics["EndToEndThroughput"] = e2e_throughput;
+  perf_metrics["UseMixedPrecision"] = params_.use_mixed_precision;
+
+  std::string optimizer = params_.training_optimizer_name;
+  std::size_t pos = optimizer.find("Optimizer");
+  if (pos != std::string::npos)
+    optimizer = optimizer.substr(0, pos);
+  perf_metrics["Optimizer"] = optimizer;
+
+  Path model_path{};
+  ORT_RETURN_IF_ERROR(Path::Parse(params_.model_path, model_path));
+  PathString leaf = model_path.GetComponents().back();
+  std::string model_name = ToMBString(leaf.c_str());
+  perf_metrics["ModelName"] = model_name;
+
+  std::string display_name = model_name + "_" + params_.model_type + "_" + (params_.use_mixed_precision ? "fp16" : "fp32") +
+                             (seq_len.empty() ? "" : "_" + seq_len) + "_" + optimizer;
+  perf_metrics["DisplayName"] = display_name;
+
+  perf_metrics["Memory"] = peak_workingset_size >> 20;  // mb
+  perf_metrics["AvgCPU"] = average_cpu_usage;
+
+  //
+  // we will get date/time and commitId in post-run pipeline
+  //
+
+  // populate other basic params for bookkeeping - add more as needed
+  json bookkeeping_params;
+  bookkeeping_params["LearningRate"] = params_.lr_params.initial_lr;
+  bookkeeping_params["WarmupRatio"] = params_.lr_params.warmup_ratio;
+  bookkeeping_params["WarmupMode"] = params_.lr_params.warmup_mode;
+  bookkeeping_params["TrainSteps"] = params_.num_train_steps;
+  bookkeeping_params["ModelPath"] = ToMBString(params_.model_path.c_str());
+  bookkeeping_params["TrainDataDir"] = ToMBString(params_.train_data_dir.c_str());
+  bookkeeping_params["TestDataDir"] = ToMBString(params_.test_data_dir.c_str());
+
+  perf_metrics["RunConfig"] = bookkeeping_params.dump();  // serialize the params as json string
+
+  std::string json_string = perf_metrics.dump();
+
+  // write to a file - the next task in CI will pick up all files with the same prefix
+  const PathString perf_metrics_path =
+      params_.perf_output_dir + GetPathSep<PathChar>() + ORT_TSTR("onnxruntime_perf_metrics_") +
+      ToPathString(display_name) + ORT_TSTR(".json");
+
+  std::ofstream perf_metrics_stream;
+  perf_metrics_stream.open(perf_metrics_path, std::ios::out | std::ios::trunc);
+  ORT_RETURN_IF_NOT(perf_metrics_stream << json_string << "\n", "Failed to write to output file.");
+
+  std::cout << "\n\nSaved perf metrics file: " << ToMBString(perf_metrics_path) << "\n\n";
+
   return Status::OK();
 }
 
@@ -416,11 +1101,6 @@ Status TrainingRunner::EndTraining(IDataLoader* data_loader) {
     // We do this first in case there are any problems saving the trained model.
     std::string profile_file = session_.EndProfiling();
     std::cout << "Profiler data written to file " << profile_file << "\n";
-  }
-
-  if (params_.mpi_context.world_rank != 0) {
-    printf("Skipping end-training on Device #%d, as it's not the root.\n", params_.mpi_context.world_rank);
-    return Status::OK();
   }
 
   if (data_loader) {
@@ -455,24 +1135,14 @@ Status TrainingRunner::EndTraining(IDataLoader* data_loader) {
   return Status::OK();
 }
 
-Status TrainingRunner::Evaluate(InferenceSession& session, IDataLoader& data_loader) {
+Status TrainingRunner::Evaluate(TrainingSession& session, IDataLoader& data_loader) {
   if (params_.skip_evaluation) {
     printf("Skipping evaluation...\n");
     return Status::OK();
   }
 
-  if (params_.mpi_context.world_rank != 0) {
-    printf("Skipping evaluation on Device #%d, as it's not the root.\n", params_.mpi_context.world_rank);
-    return Status::OK();
-  }
-
   // A static batch index representing current test batch
   static size_t current_batch = 0;
-  std::vector<std::string> feed_names = data_loader.DataSetTensorNames();
-  if (loss_scaler_) {
-    feed_names.push_back(loss_scaler_->GetLossScaleInputName());
-  }
-  feed_names.push_back(params_.lr_params.feed_name);
   auto test_data = data_loader.CurrentDataSet();
   if (params_.shuffle_data && current_batch == 0) {
     printf("Randomly shuffle test data.\n");
@@ -495,28 +1165,90 @@ Status TrainingRunner::Evaluate(InferenceSession& session, IDataLoader& data_loa
         num_batches * params_.batch_size);
   }
 
-  OrtValue loss_scale_val;
-  TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{params_.loss_scale}, &loss_scale_val);
-
   RunOptions run_options;
-  run_options.only_execute_path_to_fetches = true;
   for (size_t batch_idx = 0; batch_idx < num_batches; ++batch_idx) {
-    std::vector<MLValue> feeds = test_data->GetKthBatch(params_.batch_size, current_batch);
-    if (loss_scaler_) {
-      feeds.push_back(loss_scale_val);
-    }
-    OrtValue lr_ort_val;
-    TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{params_.lr_params.initial_lr}, &lr_ort_val);
-    feeds.push_back(lr_ort_val);
+    std::vector<std::string> feed_names;
+    std::vector<MLValue> feeds;
+    std::vector<std::string> fetch_names;
     std::vector<MLValue> fetches;
-    ORT_RETURN_IF_ERROR(session.Run(run_options,
-                                    feed_names,
-                                    feeds,
-                                    params_.fetch_names,
-                                    &fetches));
+
+    PrepareFeedNamesAndFeeds(EvaluateStep,
+                             data_loader,
+                             *test_data,
+                             nullptr,
+                             batch_idx,
+                             feed_names,
+                             feeds);
+    if (!session.GetDropoutEvalFeeds().empty()) {
+      float eval_ratio = 0.0f;
+      for (auto& dropout_ratio : session.GetDropoutEvalFeeds()) {
+        feed_names.push_back(dropout_ratio);
+        OrtValue ratio_val;
+        TrainingUtil::CreateCpuMLScalar(eval_ratio, &ratio_val, input_allocator_);
+        feeds.push_back(ratio_val);
+      }
+    }
+    const std::string training_mode_string = "training_mode";
+    auto input_list = session.GetOverridableInitializers().second;
+    for (auto input : *input_list) {
+      if (input->Name().compare(training_mode_string) == 0) {
+        feed_names.push_back("training_mode");
+        OrtValue mode_val;
+        TrainingUtil::CreateCpuMLScalar(false, &mode_val, input_allocator_);
+        feeds.push_back(mode_val);
+        break;
+      }
+    }
+
+    PrepareFetchNamesAndFetches(EvaluateStep,
+                                fetch_names,
+                                fetches);
+
+    if (params_.pipeline_parallel_size == 1) {
+      auto status = Status::OK();
+      // When there is no pipeline, we always use the first thread
+      // to launch session_.Run(...) to avoid multiple activation allocations.
+
+      // Always use the first thread to evaluate.
+      const size_t worker_id = 0;
+      // Wait for the previous work to finish its job.
+      // Its resource cannot be overrided when it's still working.
+      pipeline_worker_pool_.Join(worker_id);
+      // Declare Run(...)'s status in thread.
+      // Launch Run(...).
+      pipeline_worker_pool_.workers[worker_id] = std::thread([&]() {
+        RunOptions run_options;
+        run_options.only_execute_path_to_fetches = true;
+        run_options.training_mode = false;
+        status = session.Run(
+            run_options,
+            feed_names,
+            feeds,
+            fetch_names,
+            &fetches);
+      });
+      // Wait Run(...) to finish.
+      pipeline_worker_pool_.Join(worker_id);
+      ORT_RETURN_IF_ERROR(status);
+    } else {
+      // Training threads are fully used by pipeline stages.
+      // Pipeline cannot reuse training threads to do evaluation.
+      // Otherwise, deadlock may happens.
+      ORT_RETURN_IF_ERROR(session.Run(run_options,
+                                      feed_names,
+                                      feeds,
+                                      fetch_names,
+                                      &fetches));
+    }
+
+    // Assume that user-specified fetches are avaliable only on the last pipeline stage.
+    // When there is no pipeline, all pipeline_context_.pipeline_stage_id should be 0 and
+    // params_.pipeline_parallel_size is 1. Thus, the following condition is always true if there
+    // is no pipeline.
+    const bool session_can_see_loss = pipeline_context_.pipeline_stage_id == params_.pipeline_parallel_size - 1;
 
     // Call error function
-    if (params_.error_function) {
+    if (session_can_see_loss && params_.error_function) {
       params_.error_function(feed_names, feeds, params_.fetch_names, fetches, step_);
     }
 

@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "Eigen/Core"
-
 #include "test/providers/compare_provider_test_utils.h"
 
 namespace onnxruntime {

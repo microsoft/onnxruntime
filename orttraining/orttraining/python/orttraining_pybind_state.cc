@@ -12,19 +12,13 @@
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/framework/mpi_setup.h"
+#include "python/onnxruntime_pybind_mlvalue.h"
 
 namespace onnxruntime {
 namespace python {
 namespace py = pybind11;
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
-
-// BEGIN: forward declaration for stuff in onnxruntime_pybind_state
-void InitializeSession(InferenceSession* sess, const std::vector<std::string>& provider_types);
-void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj, const DataTransferManager* data_transfer_manager = nullptr);
-void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, AllocatorPtr alloc, const std::string& name_input,
-                          py::object& value, OrtValue* p_mlvalue);
-// END: forward declaration
 
 struct TrainingParameters {
   std::string loss_output_name;
@@ -49,8 +43,10 @@ struct TrainingParameters {
   int gradient_accumulation_steps = 1;
   int data_parallel_size = 1;
   int horizontal_parallel_size = 1;
-  bool partition_optimizer = false;
+  int deepspeed_zero_stage = 0;
   bool enable_grad_norm_clip = true;
+  bool set_gradients_as_graph_outputs = false;
+  bool use_invertible_layernorm_grad = false;
 };
 
 struct TrainingConfigurationResult {
@@ -73,13 +69,13 @@ TrainingConfigurationResult ConfigureSessionForTraining(
               << data_group_size << std::endl;
     parameters.data_parallel_size = data_group_size;
   }
-#ifdef USE_HOROVOD
+#if defined(USE_NCCL) || defined(USE_HOROVOD)
   // this condition block is temporary.
   // For now, nccl allreduce kernel only implements for allreduce_post_accumulation
   // hovorod allreduce kernel only implements for not allreduce_post_accumulation.
   bool use_nccl = parameters.allreduce_post_accumulation;
   if (!use_nccl && parameters.world_size > 1) {
-    auto mpi_context = training::setup_horovod();
+    auto mpi_context = training::setup_mpi();
     std::cout << "mpi_context.world_rank: " << mpi_context.world_rank << std::endl;
     std::cout << "mpi_context.local_rank: " << mpi_context.local_rank << std::endl;
     std::cout << "mpi_context.world_size: " << mpi_context.world_size << std::endl;
@@ -93,8 +89,6 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   config.weight_names_to_train = parameters.weights_to_train;
   config.weight_names_to_not_train = parameters.weights_not_to_train;
   config.immutable_weights = parameters.immutable_weights;
-
-  config.set_gradients_as_graph_outputs = false;
 
   config.gradient_accumulation_steps = parameters.gradient_accumulation_steps;
 
@@ -115,7 +109,6 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   config.loss_name = parameters.loss_output_name;
 
   if (!parameters.training_optimizer_name.empty()) {
-    config.set_gradients_as_graph_outputs = true;
     training::TrainingSession::TrainingConfiguration::OptimizerConfiguration opt{};
     opt.name = parameters.training_optimizer_name;
     opt.learning_rate_input_name = parameters.lr_params_feed_name;
@@ -141,13 +134,16 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     // eventually we will have one all reduce kernel and let opt to have
     // an allreduce_post_accumulation option and remove the use_nccl option.
     opt.use_nccl = parameters.allreduce_post_accumulation;
-    opt.partition_optimizer = parameters.partition_optimizer;
+    opt.deepspeed_zero = onnxruntime::training::ZeROConfig(parameters.deepspeed_zero_stage);
     // TODO: The norm clipping value is 1.0f which is the default used in most frameworks.
     // Need to have another option to support more values in the future.
     opt.enable_grad_norm_clip = parameters.enable_grad_norm_clip;
 
     config.optimizer_config = opt;
   }
+
+  config.gradient_graph_config.use_invertible_layernorm_grad = parameters.use_invertible_layernorm_grad;
+  config.gradient_graph_config.set_gradients_as_graph_outputs = parameters.set_gradients_as_graph_outputs;
 
   training::TrainingSession::TrainingConfigurationResult config_result{};
 
@@ -180,8 +176,10 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("world_rank", &TrainingParameters::world_rank)
       .def_readwrite("world_size", &TrainingParameters::world_size)
       .def_readwrite("gradient_accumulation_steps", &TrainingParameters::gradient_accumulation_steps)
-      .def_readwrite("partition_optimizer", &TrainingParameters::partition_optimizer)
-      .def_readwrite("enable_grad_norm_clip", &TrainingParameters::enable_grad_norm_clip);
+      .def_readwrite("deepspeed_zero_stage", &TrainingParameters::deepspeed_zero_stage)
+      .def_readwrite("enable_grad_norm_clip", &TrainingParameters::enable_grad_norm_clip)
+      .def_readwrite("set_gradients_as_graph_outputs", &TrainingParameters::set_gradients_as_graph_outputs)
+      .def_readwrite("use_invertible_layernorm_grad", &TrainingParameters::use_invertible_layernorm_grad);
 
   py::class_<TrainingConfigurationResult> config_result(m, "TrainingConfigurationResult", "pbdoc(Configuration result for training.)pbdoc");
   config_result.def(py::init())
@@ -194,16 +192,16 @@ void addObjectMethodsForTraining(py::module& m) {
 
   py::class_<onnxruntime::training::TrainingSession, InferenceSession> training_session(m, "TrainingSession");
   training_session.def(py::init([](const SessionOptions& so) {
-      Environment& env = get_env();
-      return onnxruntime::make_unique<onnxruntime::training::TrainingSession>(so, env);
-      }))
+                    Environment& env = get_env();
+                    return onnxruntime::make_unique<onnxruntime::training::TrainingSession>(so, env);
+                  }))
       .def(py::init([]() {
         Environment& env = get_env();
         return onnxruntime::make_unique<onnxruntime::training::TrainingSession>(GetDefaultCPUSessionOptions(), env);
       }))
       .def("finalize", [](py::object) {
-#ifdef USE_HOROVOD
-        training::shutdown_horovod();
+#if defined(USE_NCCL) || defined(USE_HOROVOD)
+        training::shutdown_mpi();
 #endif
       })
       .def("load_model", [](onnxruntime::training::TrainingSession* sess, const std::string& path, TrainingParameters& parameters) {
@@ -274,7 +272,6 @@ void addObjectMethodsForTraining(py::module& m) {
       .def("is_output_fp32_node", [](onnxruntime::training::TrainingSession* sess, const std::string& output_name) {
         return sess->IsGraphOutputFp32Node(output_name);
       });
-
 }
 }  // namespace python
 }  // namespace onnxruntime

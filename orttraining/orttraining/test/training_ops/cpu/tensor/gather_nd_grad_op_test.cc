@@ -9,8 +9,7 @@
 namespace onnxruntime {
 namespace test {
 
-#ifdef USE_CUDA
-TEST(GatherNDGradOpTest, GatherNDGrad_slice_float_int64_t_batch_dims_1) {
+TEST(GatherNDGradOpTest, GatherNDGrad_slice_float_int64_t_batch_dims_zero) {
   OpTester test("GatherNDGrad", 1, kMSDomain);
   test.AddAttribute<int64_t>("batch_dims", 0);
   test.AddInput<int64_t>("shape", {3}, {2LL, 2LL, 3LL});
@@ -20,8 +19,20 @@ TEST(GatherNDGradOpTest, GatherNDGrad_slice_float_int64_t_batch_dims_1) {
   test.Run();
 }
 
+TEST(GatherNDGradOpTest, GatherNDGrad_slice_float_int64_t_batch_dims_zero_negative_indices) {
+  OpTester test("GatherNDGrad", 1, kMSDomain);
+  test.AddAttribute<int64_t>("batch_dims", 0);
+  test.AddInput<int64_t>("shape", {3}, {2LL, 2LL, 3LL});
+  test.AddInput<int64_t>("indices", {2, 2}, {-2LL, -1LL, -1LL, -2LL});
+  test.AddInput<float>("update", {2, 3}, ValueRange(6, 1.0f));
+  test.AddOutput<float>("output", {2, 2, 3}, {0, 0, 0, 1, 2, 3, 4, 5, 6, 0, 0, 0});
+  test.Run();
+}
+
 TEST(GatherNDGradOpTest, GatherNDGrad_slice_double_int32_t_batch_dims_3) {
-  if (!HasCudaEnvironment(600 /*min_cuda_architecture*/)) return;
+  if (NeedSkipIfCudaArchLowerThan(600)) {
+    return;
+  }
 
   OpTester test("GatherNDGrad", 1, kMSDomain);
   test.AddAttribute<int64_t>("batch_dims", 1);
@@ -32,9 +43,11 @@ TEST(GatherNDGradOpTest, GatherNDGrad_slice_double_int32_t_batch_dims_3) {
   test.Run();
 }
 
-
 TEST(GatherNDGradOpTest, GatherNDGrad_slice_half_int32_t_batch_dims_3) {
-  if (!HasCudaEnvironment(600 /*min_cuda_architecture*/)) return;
+  if (!HasCudaEnvironment(600)) {
+    // CPU GatherNDGrad did not support MLFloat16, so we need skip as well.
+    return;
+  }
 
   OpTester test("GatherNDGrad", 1, kMSDomain);
   test.AddAttribute<int64_t>("batch_dims", 1);
@@ -74,7 +87,30 @@ TEST(GatherNDGradOpTest, GatherNDGrad_batch_dims_of_2) {
       });
   test.Run();
 }
-#endif
+
+TEST(GatherNDGradOpTest, GatherNDGrad_batch_dims_two_negative_indices) {
+  OpTester test("GatherNDGrad", 1, kMSDomain);
+  test.AddAttribute<int64_t>("batch_dims", 2);
+  test.AddInput<int64_t>("shape", {4}, {2, 2, 2, 3});
+  test.AddInput<int64_t>(
+      "indices", {2, 2, 1},
+      {
+          -1,  // batch 0
+          -1,  // batch 1
+          -2,  // batch 2
+          1,   // batch 3
+      });
+  test.AddInput<float>("update", {2, 2, 3}, ValueRange<float>(12));
+  test.AddOutput<float>(
+      "output", {2, 2, 2, 3},
+      {
+          0, 0, 0, 0, 1, 2,    // batch 0
+          0, 0, 0, 3, 4, 5,    // batch 1
+          6, 7, 8, 0, 0, 0,    // batch 2
+          0, 0, 0, 9, 10, 11,  // batch 3
+      });
+  test.Run();
+}
 
 }  // namespace test
 }  // namespace onnxruntime

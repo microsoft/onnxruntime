@@ -20,19 +20,14 @@ using namespace onnxruntime::common;
 
 namespace onnxruntime {
 
-IExecutionFrame::IExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
-                                 const std::unordered_map<int, OrtValue>& initializers,
-                                 const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
-                                 const OrtValueNameIdxMap& ort_value_idx_map, const NodeIndexInfo& node_index_info)
+IExecutionFrame::IExecutionFrame(const OrtValueNameIdxMap& ort_value_idx_map,
+                                 const NodeIndexInfo& node_index_info,
+                                 const std::vector<int>& fetch_mlvalue_idxs)
     : node_index_info_(node_index_info),
       all_values_size_(static_cast<size_t>(ort_value_idx_map.MaxIdx()) + 1),
       fetch_mlvalue_idxs_(fetch_mlvalue_idxs) {
-  ORT_ENFORCE(feeds.size() == feed_mlvalue_idxs.size());
-  ORT_ENFORCE(fetches.empty() || fetches.size() == fetch_mlvalue_idxs_.size());
   ORT_ENFORCE(node_index_info_.GetMaxMLValueIdx() == ort_value_idx_map.MaxIdx(),
               "node_index_info and ort_value_idx_map are out of sync and cannot be used");
-
-  Init(feed_mlvalue_idxs, feeds, initializers, fetches);
 }
 
 IExecutionFrame::~IExecutionFrame() = default;
@@ -78,6 +73,13 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(int index, const TensorShap
   return status;
 }
 
+bool IExecutionFrame::TryGetInferredShape(int /*index*/, TensorShape& /*shape*/) const {
+  // By default, there is not information about inferred shape, so this default
+  // implementation always returns false. The derived class of IExecutionFrame
+  // can override this function to provide, for example, activations' shape information.
+  return false;
+}
+
 AllocatorPtr IExecutionFrame::GetAllocator(const OrtMemoryInfo& info) const {
   return GetAllocatorImpl(info);
 }
@@ -109,6 +111,9 @@ int IExecutionFrame::GetNodeIdxToMLValueIdx(int index) const {
 void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
                            const std::unordered_map<int, OrtValue>& initializers,
                            const std::vector<OrtValue>& fetches) {
+  ORT_ENFORCE(feeds.size() == feed_mlvalue_idxs.size());
+  ORT_ENFORCE(fetches.empty() || fetches.size() == fetch_mlvalue_idxs_.size());
+
   // 1. resize the all_value_ vector
   all_values_.resize(all_values_size_);
 
@@ -123,15 +128,44 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
   }
 
   // 3. handle the weights.
-  // We do this after the fetches to handle an edge case (possibly dubious) where a Constant is an output.
-  // The Constant gets lifted to an initializer so there's no Node producing the value as an output during Graph
-  // execution (i.e. Graph execution won't write the value to all_values_).
+  // We do this after the fetches to handle an edge case where an initializer is an output.
+  // e.g. A Constant node gets lifted to an initializer so there's no Node producing the value as an output during
+  // Graph execution (i.e. Graph execution won't write the value to all_values_).
   // A non-empty fetches vector will overwrite the actual weight in all_values_[ort_value_idx] if we did this earlier.
   // This makes the ONNX Constant test (onnx\backend\test\data\node\test_constant) happy as that
   // involves a graph with a single Constant node.
   for (const auto& entry : initializers) {
     int ort_value_index = entry.first;
-    all_values_[ort_value_index] = entry.second;
+
+    // if the initializer is an output we need to allocate or use a provided fetch buffer and copy the data
+    // so it can be returned to the caller.
+    //
+    // The alternative to handling this as a special case would be to disallow an initializer providing a graph output.
+    // There's nothing in the ONNX spec that says a graph output must come from a node output though.
+    // If we took that approach we'd need to:
+    //   - reject a model with an initializer or Constant node (as we convert those to initializers in Graph::Graph)
+    //     that produces a graph output even though it conforms to the ONNX spec
+    //   - update optimizers to not convert something to an initializer that is a graph output
+    //     (e.g. constant folding)
+    if (IsOutput(ort_value_index)) {
+      const Tensor& src = entry.second.Get<Tensor>();  // all initializers in ONNX are tensors
+      OrtValue& dest = all_values_[ort_value_index];
+
+      if (!dest.IsAllocated()) {
+        // NOTE: This doesn't need to support ExecutionFrame custom allocators as they only come into play
+        // for a subgraph with an output of unknown shape that needs to be accumulated by the control flow node.
+        // If the initializer is providing the output, the shape is known.
+        AllocatorPtr allocator = GetAllocator(src.Location());
+
+        auto p_tensor = onnxruntime::make_unique<Tensor>(src.DataType(), src.Shape(), allocator);
+        auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+        dest.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
+      }
+
+      ORT_THROW_IF_ERROR(CopyTensor(src, *dest.GetMutable<Tensor>()));
+    } else {
+      all_values_[ort_value_index] = entry.second;
+    }
   }
 
   // 4. handle feed in values. these can override initializer values so must be last
@@ -171,11 +205,12 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
                                const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                const SessionState& session_state)
-    : IExecutionFrame(feed_mlvalue_idxs, feeds, session_state.GetInitializedTensors(), fetch_mlvalue_idxs, fetches,
-                      session_state.GetOrtValueNameIdxMap(), session_state.GetNodeIndexInfo()),
+    : IExecutionFrame(session_state.GetOrtValueNameIdxMap(), session_state.GetNodeIndexInfo(), fetch_mlvalue_idxs),
       session_state_(session_state),
       mem_patterns_(nullptr),
       planner_(nullptr) {
+  Init(feed_mlvalue_idxs, feeds, session_state.GetInitializedTensors(), fetches);
+
   // map the custom allocators to ort_value_idx entries
   if (!fetch_allocators.empty()) {
     for (size_t idx = 0, end = fetch_mlvalue_idxs.size(); idx < end; ++idx) {
@@ -207,7 +242,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
 
     //if there are some traditional ml value type in inputs disable the memory pattern optimization.
     if (all_tensors) {
-      mem_patterns_ = session_state.GetMemoryPatternGroup(input_shapes, feed_mlvalue_idxs);
+      mem_patterns_ = session_state.GetMemoryPatternGroup(input_shapes, feed_mlvalue_idxs, inferred_shapes_);
       // if no existing patterns, generate one in this executionframe
       if (!mem_patterns_) {
         planner_ = onnxruntime::make_unique<OrtValuePatternPlanner>(*session_state.GetExecutionPlan());
@@ -215,15 +250,49 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
         // pre-allocate the big chunk requested in memory pattern.
         // all the internal kernel's input/output tensors will be allocated on these buffer.
         for (size_t i = 0; i < mem_patterns_->locations.size(); i++) {
-          ORT_ENFORCE(buffers_.find(mem_patterns_->locations[i]) == buffers_.end());
-          AllocatorPtr alloc = GetAllocator(mem_patterns_->locations[i]);
-          void* buffer = mem_patterns_->patterns[i].PeakSize() > 0
-                             ? alloc->Alloc(mem_patterns_->patterns[i].PeakSize())
-                             : nullptr;
-          buffers_[mem_patterns_->locations[i]] = BufferUniquePtr(buffer, alloc);
+          const auto& location = mem_patterns_->locations[i];
+          ORT_ENFORCE(buffers_.find(location) == buffers_.end());
+          if (mem_patterns_->patterns[i].PeakSize() > 0) {
+            AllocatorPtr alloc = GetAllocator(location);
+            void* buffer = nullptr;
+            // it's possible we can't allocate the large block. if we have memory patterns we know we have successfully
+            // executed once before, so if there's an arena involved it probably has smaller blocks available.
+            // due to that we can still run and use those blocks (inside the arena logic) instead of one large one.
+            // it's less efficient (the arena will add some overhead to coalesce individual allocations
+            // back into blocks on 'free'), but better than failing completely.
+            try {
+              auto peak_size = mem_patterns_->patterns[i].PeakSize();
+              // Planning of one memory type should only happen once.
+              ORT_ENFORCE(
+                static_activation_memory_sizes_in_byte_.find(location.name) ==
+                static_activation_memory_sizes_in_byte_.end(),
+                "Memory type ",
+                location.name,
+                " should only appear once.");
+              // static_activation_memory_in_bytes_ is max virtual memory size the planner computes.
+              // Memory dynamically allocated when executing kernels is not recorded using this field.
+              static_activation_memory_sizes_in_byte_[location.name] = peak_size;
+              buffer = alloc->Alloc(peak_size);
+              // handle allocator that doesn't throw
+              if (buffer == nullptr) {
+                // INFO level as this may fire on every run and there may not be much a user can do
+                LOGS(session_state_.Logger(), INFO) << "Allocation of memory pattern buffer for "
+                                                    << location.ToString() << " returned nullptr";
+              }
 
-          // log size of activation. Keep it commented out for now to avoid log flooding.
-          // VLOGS(session_state_.Logger(), 1) << "Allocated memory for activations, size: " << mem_patterns_->patterns[i].PeakSize();
+            } catch (const OnnxRuntimeException& ex) {
+              LOGS(session_state_.Logger(), INFO) << "Allocation of memory pattern buffer for "
+                                                  << location.ToString() << " failed. Error:" << ex.what();
+            }
+
+            if (buffer != nullptr) {
+              buffers_[location] = BufferUniquePtr(buffer, alloc);
+            }
+
+            // log size of activation. Keep it commented out for now to avoid log flooding.
+            // VLOGS(session_state_.Logger(), 1) << "Allocated memory for activations, size: "
+            //                                   << mem_patterns_->patterns[i].PeakSize();
+          }
         }
       }
     }
@@ -231,6 +300,10 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
 }
 
 ExecutionFrame::~ExecutionFrame() = default;
+
+Status ExecutionFrame::CopyTensor(const Tensor& src, Tensor& dest) const {
+  return session_state_.GetDataTransferMgr().CopyTensor(src, dest);
+}
 
 Status ExecutionFrame::AllocateMLValueTensorSelfOwnBuffer(OrtValue& ort_value, int ort_value_index,
                                                           MLDataType element_type, const OrtMemoryInfo& location,
@@ -259,11 +332,13 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     return Status(ONNXRUNTIME, FAIL, "size overflow");
   }
 
-  auto alloc = GetAllocator(location);
+  // Lazily get the allocator only if needed.
+  AllocatorPtr alloc = nullptr;
 
   // create fence if needed
   if (create_fence) {
     ORT_ENFORCE(ort_value.Fence() == nullptr);
+    alloc = GetAllocator(location);
     FencePtr f = alloc->CreateFence(&session_state_);
     // it is OK to have fence been nullptr if the execution provider has no async execution,
     // and allocator::CreateFence returns nullptr
@@ -280,31 +355,32 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
       // if block not found, fall back to default behavior
       if (block) {
         auto it = buffers_.find(location);
-        // if the block is not correct, log message then fall back to default behavior
-        if (it != buffers_.end() && block->size_ == size) {
-          void* buffer = it->second.get();
-          auto status = AllocateTensorWithPreAllocateBufferHelper(
-              ort_value, static_cast<void*>(static_cast<char*>(buffer) + block->offset_), element_type, location,
-              shape);
-          return status;
+        if (it != buffers_.end()) {
+          // if the block is not correct, log message then fall back to default behavior
+          if (block->size_ == size) {
+            void* buffer = it->second.get();
+            auto status = AllocateTensorWithPreAllocateBufferHelper(
+                ort_value, static_cast<void*>(static_cast<char*>(buffer) + block->offset_), element_type, location,
+                shape);
+            return status;
+          } else {
+            // the block size may vary especially if the model has NonZero ops, or different sequence lengths are
+            // fed in, so use VERBOSE as the log level as it's expected.
+            // TODO: Should we re-use the block if the size is large enough? Would probably need to allow it
+            // to be freed if the size difference was too large so our memory usage doesn't stick at a high water mark
+            LOGS(session_state_.Logger(), VERBOSE) << "For ort_value with index: " << ort_value_index
+                                                   << ", block in memory pattern size is: " << block->size_
+                                                   << " but the actually size is: " << size
+                                                   << ", fall back to default allocation behavior";
+          }
         }
-        if (block->size_ != size) {
-          // the block size may vary especially if the model has NonZero ops, or different sequence lengths are
-          // fed in, so use VERBOSE as the log level as it's expected.
-          // TODO: Should we re-use the block if the size is large enough? Would probably need to allow it
-          // to be freed if the size difference was too large so our memory usage doesn't stick at a high water mark
-          LOGS(session_state_.Logger(), VERBOSE) << "For ort_value with index: " << ort_value_index
-                                                 << ", block in memory pattern size is: " << block->size_
-                                                 << " but the actually size is: " << size
-                                                 << ", fall back to default allocation behavior";
-        } else if (it == buffers_.end()) {
-          LOGS(session_state_.Logger(), WARNING) << "For ort_value with index: " << ort_value_index
-                                                 << ", block not found in target location. fall back to default allocation behavior";
-        }
+        // else { we couldn't allocate the large block for the buffer so we didn't insert an entry }
       }
     }
   }
+
   //no memory pattern, or the pattern is not correct.
+  if (!alloc) alloc = GetAllocator(location);
   std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, alloc);
 
   {
@@ -317,6 +393,15 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
   // placement new, we don't support it in memory pattern optimization.
   if (!utils::IsDataTypeString(element_type)) {
     TraceAllocate(ort_value_index, size);
+  }
+
+  
+  {
+    // This code block is not thread-safe.
+    // Dynamic activation size would be accessed by multiple threads
+    // if parallel executor is used.
+    std::unique_lock<std::mutex> lock(mtx_);
+    dynamic_activation_memory_sizes_in_byte_[location.name] += size;
   }
 
   return Status::OK();
@@ -343,7 +428,7 @@ Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_valu
 
     // be generous and use the buffer if it's large enough. log a warning though as it indicates a bad model
     if (buffer_num_elements >= required_num_elements) {
-      // View Operator is reusing the buffer bigger than the required size. 
+      // View Operator is reusing the buffer bigger than the required size.
       // Disabling warning message for now. The op is in the process of being deprecated.
 #ifndef ENABLE_TRAINING
       LOGS(session_state_.Logger(), WARNING) << message;
@@ -455,13 +540,13 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
       }
       case AllocKind::kReuse: {
         int reuse_mlvalue_index = per_alloc_plan.reused_buffer;
-        
+
         // In case OrtRunOptions.only_execute_path_to_fetches == true, it is possible that 'reuse_value'
         // is not allocated (its upstream op is not executed due to the option).
-        // In this case we need to allocate 'reuse_value' and then let 'ort_value' to reuse it. 
+        // In this case we need to allocate 'reuse_value' and then let 'ort_value' to reuse it.
         OrtValue& reuse_value = GetMutableMLValue(reuse_mlvalue_index);
         if (!reuse_value.IsAllocated()) {
-         ORT_RETURN_IF_ERROR(AllocateAsPerAllocationPlan(reuse_value, reuse_mlvalue_index, shape, nnz));
+          ORT_RETURN_IF_ERROR(AllocateAsPerAllocationPlan(reuse_value, reuse_mlvalue_index, shape, nnz));
         }
         ORT_RETURN_IF_ERROR(AllocateMLValueTensorPreAllocateBuffer(
             ort_value, reuse_mlvalue_index, ml_data_type, alloc_info, *shape, per_alloc_plan.create_fence_if_async));
@@ -492,12 +577,13 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
 }
 
 AllocatorPtr ExecutionFrame::GetAllocatorImpl(const OrtMemoryInfo& info) const {
-  return utils::GetAllocator(session_state_, info);
+  return session_state_.GetAllocator(info);
 }
 
 // This method is not thread safe!
 // Return S_OK and nullptr if index map to an value that is an unused optional input/output
-Status ExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape, size_t nnz) {
+Status ExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx,
+                                                   const TensorShape* shape, size_t nnz) {
   return AllocateAsPerAllocationPlan(ort_value, ort_value_idx, shape, nnz);
 }
 
@@ -559,6 +645,27 @@ Status ExecutionFrame::GeneratePatterns(MemoryPatternGroup* out) const {
   }
 
   return planner_->GeneratePatterns(out);
+}
+
+bool ExecutionFrame::TryGetInferredShape(int index, TensorShape& shape) const {
+  // NodeArg index to OrtValue index.
+  int ort_value_idx = GetNodeIdxToMLValueIdx(index);
+
+  // Check if index is valid.
+  if (ort_value_idx == NodeIndexInfo::kInvalidEntry) {
+    return false;
+  }
+
+  // Search for inferred shape.
+  // If inferred shape is found, it's assigned to "shape" so that caller can use it.
+  auto it = inferred_shapes_.find(ort_value_idx);
+  if (it != inferred_shapes_.end()) {
+    shape = it->second;
+    return true;
+  }
+
+  // Tell the caller if the search is successful or not.
+  return false;
 }
 
 }  // namespace onnxruntime

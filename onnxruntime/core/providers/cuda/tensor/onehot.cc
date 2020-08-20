@@ -59,12 +59,22 @@ Status OneHotOp<in_type, out_type, depth_type>::ComputeInternal(OpKernelContext*
   if (output->Shape().Size() == 0)
     return Status::OK();
 
-  const fast_divmod fdm_depth_suffix(gsl::narrow_cast<int>(depth_val * suffix_dim_size));
   const fast_divmod fdm_suffix(gsl::narrow_cast<int>(suffix_dim_size));
-
   const auto* indices_data = indices->Data<in_type>();
   auto* output_data = reinterpret_cast<CudaT_Out*>(output->MutableData<out_type>());
 
+  if (values_data[0] == CudaT_Out(0.f)) {
+    CUDA_RETURN_IF_ERROR(cudaMemset(output->MutableDataRaw(), 0, output->SizeInBytes()));
+    OneHotWithZeroOffValueImpl(indices_data,
+                               fdm_suffix,
+                               depth_val,
+                               values_data[1],
+                               output_data,
+                               indices->Shape().Size());
+    return Status::OK();
+  }
+
+  const fast_divmod fdm_depth_suffix(gsl::narrow_cast<int>(depth_val * suffix_dim_size));
   OneHotImpl(indices_data, fdm_depth_suffix, fdm_suffix, depth_val,
              values_data[1],
              values_data[0],

@@ -599,6 +599,11 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
 
   Tensor* Y = context->Output(0, output_dims);
 
+  // Return early if the output tensor is going to be of size 0
+  if (Y->Shape().Size() == 0) {
+    return Status::OK();
+  }
+
   if (dims.size() != scales.size())
     return Status(ONNXRUNTIME, INVALID_ARGUMENT,
                   is_resize_ ? "Resize: input tensor's dimension does not match the scales."

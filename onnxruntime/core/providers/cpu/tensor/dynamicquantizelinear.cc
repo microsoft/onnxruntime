@@ -2,11 +2,11 @@
 // Licensed under the MIT License.
 
 #include "dynamicquantizelinear.h"
+
+#include "core/mlas/inc/mlas.h"
 #include "core/providers/common.h"
 #include "core/util/math_cpuonly.h"
-#include "core/mlas/inc/mlas.h"
-#include <cmath>
-#include <cfenv>
+#include "core/util/qmath.h"
 
 namespace onnxruntime {
 
@@ -17,12 +17,6 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     KernelDefBuilder()
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),
     DynamicQuantizeLinear<uint8_t>);
-
-static float RoundHalfToEven(float input) {
-  std::fesetround(FE_TONEAREST);
-  auto result = std::nearbyintf(input);
-  return result;
-}
 
 // formula is Y = X / Scale + ZeroPoint
 template <typename T>
@@ -47,8 +41,8 @@ Status DynamicQuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   }
 
   // find input range min and max
-  auto min = ConstEigenVectorMap<float>(x_data, num_of_elements).minCoeff();
-  auto max = ConstEigenVectorMap<float>(x_data, num_of_elements).maxCoeff();
+  float min, max;
+  MlasFindMinMaxElement(x_data, &min, &max, num_of_elements);
 
   // ensure the input range includes zero
   min = std::min(min, 0.0f);

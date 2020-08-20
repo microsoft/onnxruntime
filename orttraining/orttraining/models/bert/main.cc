@@ -67,6 +67,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
         cxxopts::value<std::string>()->default_value(""))
       ("output_dir", "The output directory where the trained model files will be written.",
         cxxopts::value<std::string>()->default_value(""))
+      ("perf_output_dir", "The output directory where the trained perf metrics files will be written.",
+        cxxopts::value<std::string>()->default_value(""))
       ("checkpoints_dir", "The output directory where the checkpoint files will be written.",
         cxxopts::value<std::string>()->default_value(""))
       ("checkpoint_to_load_path",
@@ -131,7 +133,9 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
         "Maximum number of masked LM predictions per sequence. "
         "Must match data generation.", cxxopts::value<int>()->default_value("80"))
       ("optimizer", "Adam or Lamb", cxxopts::value<std::string>()->default_value("Adam"))
-      ("partition_optimizer", "Whether to partition the optimizer state for distributed training.", cxxopts::value<bool>()->default_value("false"))
+      ("deepspeed_zero_stage", "Controls whether to partition state using the DeepSpeed ZeRO technique. "
+       "Stages 0 (disabled) and 1 (optimizer state partitioning) are supported.",
+       cxxopts::value<int>()->default_value("0"))
       ("alpha", "Adam/Lamb alpha parameter", cxxopts::value<float>()->default_value("0.9"))
       ("beta", "Adam/Lamb beta parameter", cxxopts::value<float>()->default_value("0.999"))
       ("lambda", "Adam/Lamb lambda parameter", cxxopts::value<float>()->default_value("0.01"))
@@ -151,9 +155,23 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       ("cuda_mem_limit_in_gb", "Max cuda memory ort can use, in GB", cxxopts::value<float>()->default_value("-1.0"))
       ("data_parallel_size", "Data parallel group size.", cxxopts::value<int>()->default_value("1"))
       ("horizontal_parallel_size", "Horizontal model parallel group size.", cxxopts::value<int>()->default_value("1"))
-      ("pipeline_stage_size", "pipeline model parallel group size.", cxxopts::value<int>()->default_value("1"))
+      ("pipeline_parallel_size", "Number of pipeline stages.", cxxopts::value<int>()->default_value("1"))
+      ("pipeline_stage_paths", "Specify the forward ONNX files for pipeline evaluation.", cxxopts::value<std::vector<std::string>>()->default_value(""))
+      ("cut_group_info", "Specify the cutting info for graph partition (pipeline only). An example of a cut_group_info of "
+      "size two is: 1393:407-1463/1585/1707,2369:407-2439/2561/2683. Here, the cut info is split by ',', with the first "
+      "cut_info equal to 1393:407-1463/1585/1707, and second cut_info equal to 2369:407-2439/2561/2683. Each CutEdge is "
+      "seperated by ':'. If consumer nodes need to be specified, specify them after producer node with a '-' delimiter and "
+      "separate each consumer node with a '/'. ", cxxopts::value<std::vector<std::string>>()->default_value(""))
       ("enable_grad_norm_clip", "Specify whether to enable gradient clipping for optimizers.",
-        cxxopts::value<bool>()->default_value("true"));
+        cxxopts::value<bool>()->default_value("true"))
+      ("enable_gelu_approximation", "Specify whether to enable GELU approximation.",
+        cxxopts::value<bool>()->default_value("true"))
+      ("attn_dropout_checkpoint", "Enable checkpointing of attention dropout to save memory.",
+        cxxopts::value<bool>()->default_value("false"))
+      ("gelu_checkpoint", "Enable checkpointing of Gelu activation output to save memory.",
+        cxxopts::value<bool>()->default_value("false"))
+      ("use_invertible_layernorm_grad", "Specify whether to use invertible laynorm(dropping the input activation)",
+        cxxopts::value<bool>()->default_value("false"));
   options
     .add_options("ORT configuration")
       ("ort_log_severity", "ORT minimum logging severity (see onnxruntime::logging::Severity values)",
@@ -238,6 +256,10 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     if (params.output_dir.empty()) {
       printf("No output directory specified. Trained model files will not be saved.\n");
     }
+    params.perf_output_dir = ToPathString(flags["perf_output_dir"].as<std::string>());
+    if (params.perf_output_dir.empty()) {
+      printf("No perf output directory specified. Trained perf metrics will not be saved.\n");
+    }
     params.checkpoints_dir = ToPathString(flags["checkpoints_dir"].as<std::string>());
     if (params.checkpoints_dir.empty()) {
       printf("No checkpoints directory specified. Checkpoint files will not be saved.\n");
@@ -311,8 +333,9 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Incorrect optimizer type: it must be one of [Adam|Lamb]");
     }
 
-    params.partition_optimizer = flags["partition_optimizer"].as<bool>();
+    params.deepspeed_zero = ZeROConfig(flags["deepspeed_zero_stage"].as<int>());
     params.enable_grad_norm_clip = flags["enable_grad_norm_clip"].as<bool>();
+
     float alpha = flags["alpha"].as<float>();
     float beta = flags["beta"].as<float>();
     float lambda = flags["lambda"].as<float>();
@@ -345,33 +368,97 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
           {"lambda", zero_lambda ? 0.f : lambda},
           {"epsilon", epsilon},
           {"ratio_min", ratio_min},
-          {"ratio_max", ratio_max}
-      };
+          {"ratio_max", ratio_max}};
     };
 
     // Optimizer's int attributes.
     params.optimizer_int_attributes = [=](const std::string& /*weight*/) {
       return std::unordered_map<std::string, int64_t>{
           {"do_bias_correction", do_bias_correction ? static_cast<int64_t>(1) : static_cast<int64_t>(0)},
-          {"weight_decay_mode", weight_decay_mode}
-      };
+          {"weight_decay_mode", weight_decay_mode}};
     };
 
     params.data_parallel_size = flags["data_parallel_size"].as<int>();
     params.horizontal_parallel_size = flags["horizontal_parallel_size"].as<int>();
-    params.pipeline_stage_size = flags["pipeline_stage_size"].as<int>();
     ORT_RETURN_IF_NOT(params.data_parallel_size > 0, "data_parallel_size must > 0");
     ORT_RETURN_IF_NOT(params.horizontal_parallel_size > 0, "horizontal_parallel_size must > 0");
-    ORT_RETURN_IF_NOT(params.pipeline_stage_size > 0, "pipeline_stage_size must > 0");
+
+    // pipeline_parallel_size controls the number of pipeline's stages.
+    // pipeline_parallel_size=1 means no model partition, which means all processes run
+    // the same model. We only partition model when pipeline_parallel_size > 1.
+    params.pipeline_parallel_size = flags["pipeline_parallel_size"].as<int>();
+    ORT_RETURN_IF_NOT(params.pipeline_parallel_size > 0, "pipeline_parallel_size must > 0");
+
+    // If user provides partitioned model files, the number of files should match the number of
+    // processes. The i-th file should correspond to the i-th process' pipeline stage.
+    // All files only store forward pass with a Recv and a Send.
+    // Backward pass and optimizer nodes are implicitly generated by ORT.
+    params.pipeline_stage_paths = flags["pipeline_stage_paths"].as<std::vector<std::string>>();
+
+    // If user doesn't provide partitioned model files, a cut list should be provided for ORT to do partition
+    // online. If the pipeline contains n stages, the cut list should be of length (n-1), in order to cut the
+    // graph into n partitions.
+    if (params.pipeline_parallel_size > 1 && params.pipeline_stage_paths.empty()) {
+      auto cut_info_groups = flags["cut_group_info"].as<std::vector<std::string>>();
+
+      ORT_RETURN_IF_NOT(static_cast<int>(cut_info_groups.size() + 1) == params.pipeline_parallel_size,
+                        "cut_info length plus one must match pipeline parallel size");
+
+      auto process_with_delimiter = [](std::string& input_str, const std::string& delimiter) {
+        std::vector<std::string> result;
+        size_t pos = 0;
+        std::string token;
+        while ((pos = input_str.find(delimiter)) != std::string::npos) {
+          token = input_str.substr(0, pos);
+          result.emplace_back(token);
+          input_str.erase(0, pos + delimiter.length());
+        }
+        // push the last split of substring into result.
+        result.emplace_back(input_str);
+        return result;
+      };
+
+      auto process_cut_info = [&](std::string& cut_info_string) {
+        TrainingSession::TrainingConfiguration::CutInfo cut_info;
+        const std::string edge_delimiter = ":";
+        const std::string consumer_delimiter = "/";
+        const std::string producer_consumer_delimiter = "-";
+
+        auto cut_edges = process_with_delimiter(cut_info_string, edge_delimiter);
+        for (auto& cut_edge : cut_edges) {
+          auto process_edge = process_with_delimiter(cut_edge, producer_consumer_delimiter);
+          if (process_edge.size() == 1) {
+            TrainingSession::TrainingConfiguration::CutEdge edge{process_edge[0]};
+            cut_info.emplace_back(edge);
+          } else {
+            ORT_ENFORCE(process_edge.size() == 2);
+            auto consumer_list = process_with_delimiter(process_edge[1], consumer_delimiter);
+
+            TrainingSession::TrainingConfiguration::CutEdge edge{process_edge[0], consumer_list};
+            cut_info.emplace_back(edge);
+          }
+        }
+        return cut_info;
+      };
+
+      for (auto& cut_info : cut_info_groups) {
+        TrainingSession::TrainingConfiguration::CutInfo cut = process_cut_info(cut_info);
+        params.pipeline_partition_cut_list.emplace_back(cut);
+      }
+    }
 
     int64_t seed = flags["seed"].as<int64_t>();
     if (params.horizontal_parallel_size > 1 && seed <= 0) {
-      seed = 8211; // Megatron needs a random seed.
+      seed = 8211;  // Megatron needs a random seed.
     }
     if (seed > 0) {
       utils::SetRandomSeed(seed);
       std::cout << "Random seed is set to: " << seed << std::endl;
     }
+
+    params.enable_gelu_approximation = flags["enable_gelu_approximation"].as<bool>();
+    params.attn_dropout_checkpoint = flags["attn_dropout_checkpoint"].as<bool>();
+    params.gelu_checkpoint = flags["gelu_checkpoint"].as<bool>();
 
     ort_params.log_severity = static_cast<logging::Severity>(flags["ort_log_severity"].as<int>());
     ORT_RETURN_IF_NOT(
@@ -380,12 +467,15 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
         "Log severity must be in the range [", static_cast<int>(logging::Severity::kVERBOSE),
         ", ", static_cast<int>(logging::Severity::kFATAL), "].");
     ort_params.vlog_level = flags["ort_vlog_level"].as<int>();
+
+    params.use_invertible_layernorm_grad = flags["use_invertible_layernorm_grad"].as<bool>();
   } catch (const exception& e) {
     const std::string msg = "Failed to parse the command line arguments";
     cerr << msg << ": " << e.what() << "\n"
          << options.help() << "\n";
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, msg);
   }
+
   return Status::OK();
 }
 
@@ -417,14 +507,36 @@ float GetLossValue(const Tensor& loss_tensor) {
   return loss;
 }
 
-void setup_training_params(BertParameters& params) {
-  params.model_path = ToPathString(params.model_name) + ORT_TSTR(".onnx");
-  params.model_with_loss_func_path = ToPathString(params.model_name) + ORT_TSTR("_with_cost.onnx");
-  params.model_with_training_graph_path = ToPathString(params.model_name) + ORT_TSTR("_bw.onnx");
-  params.model_actual_running_graph_path = ToPathString(params.model_name) + ORT_TSTR("_bw_running.onnx");
+// use this table mapping to define what to be stored in mapped_dimensions, and ultimately in json structure
+// Be mindful on the position, if it's invalid or out of bound, the property population process will be
+// either incorrect or aborted. Also make sure to substract the index position by 1 to get valid correspondent value
+// namely, in the graph, sequence is at position 1, but in initial tensor shape vector loaded from training data is at position 0,
+// batch is not part of the initial tensor shape vector till later
+// see GetTensorDimensionsFromInputs() in training_util.h and training_runner.cc for more details
+const std::map<std::string, std::pair<std::string, size_t>> input_to_dimension_mapping = {
+    {"input1", {"SeqLen", 0}},                   // int64[batch,sequence]    "sequence" -> "SeqLen", 0
+    {"masked_lm_ids", {"PredictionsPerSeq", 0}}  // int64[batch,dynamic_prediction_count]
+};
 
-#ifdef USE_HOROVOD
-  params.mpi_context = setup_horovod();
+// generic properties for storing perf metrics
+MapStringToString mapped_dimensions;
+
+void setup_training_params(BertParameters& params) {
+  auto model_name_base = ToPathString(params.model_name);
+  params.model_path = model_name_base + ORT_TSTR(".onnx");
+  params.model_with_loss_func_path = model_name_base + ORT_TSTR("_with_cost.onnx");
+  params.model_with_training_graph_path = model_name_base + ORT_TSTR("_bw.onnx");
+  params.model_actual_running_graph_path = model_name_base + ORT_TSTR("_bw_running.onnx");
+
+#if defined(USE_NCCL) || defined(USE_HOROVOD)
+  params.mpi_context = setup_mpi();
+
+  if (params.pipeline_parallel_size > 1) {
+    auto pipeline_model_name_base = model_name_base + ToPathString(std::to_string(params.mpi_context.world_rank));
+    params.model_with_loss_func_path = pipeline_model_name_base + ORT_TSTR("_with_cost.onnx");
+    params.model_with_training_graph_path = pipeline_model_name_base + ORT_TSTR("_bw.onnx");
+    params.model_actual_running_graph_path = pipeline_model_name_base + ORT_TSTR("_bw_running.onnx");
+  }
   ORT_ENFORCE(params.horizontal_parallel_size <= params.mpi_context.world_size);
   ORT_ENFORCE(params.data_parallel_size <= params.mpi_context.world_size);
   if (params.mpi_context.world_size % params.horizontal_parallel_size != 0) {
@@ -432,7 +544,8 @@ void setup_training_params(BertParameters& params) {
     return;
   }
 
-  auto data_group_size = params.mpi_context.world_size / (params.horizontal_parallel_size * params.pipeline_stage_size);
+  auto data_group_size = params.mpi_context.world_size / (params.horizontal_parallel_size * params.pipeline_parallel_size);
+  ORT_ENFORCE(data_group_size > 0, "Insufficient processes lead to zero-way data parallelism, which should be at least one-way.");
   if (data_group_size != params.data_parallel_size) {
     LOGS_DEFAULT(WARNING) << "WARNING: data_parallel_size is not correct, tuned automatically to "
                           << data_group_size << std::endl;
@@ -459,15 +572,10 @@ void setup_training_params(BertParameters& params) {
                                             /*prediction_next_sentence*/ "output2",
                                             /*masked_lm_positions*/ "masked_lm_positions",
                                             /*masked_lm_ids*/ "masked_lm_ids",
-                                            /*masked_lm_weights*/ "masked_lm_weights",
                                             /*next_sentence_labels*/ "next_sentence_labels",
                                             /*mlm_loss*/ "mlm_loss",
                                             /*nsp_loss*/ "nsp_loss"});
 
-  params.weights_not_to_train = {
-      "position_01",            // Slice's dat input
-      "op_min_ends_expand_10",  //op_min_ends_expand_10
-  };
   params.fetch_names = {"total_loss", "mlm_loss", "nsp_loss"};
 
   if (params.EnableTensorboard()) {
@@ -490,8 +598,9 @@ void setup_training_params(BertParameters& params) {
       {"input_mask", "input3"},
       {"masked_lm_positions", "masked_lm_positions"},
       {"masked_lm_ids", "masked_lm_ids"},
-      {"masked_lm_weights", "masked_lm_weights"},
       {"next_sentence_label", "next_sentence_labels"}};
+
+  params.model_type = "bert";
 
   params.skip_evaluation = params.is_perf_test;
 
@@ -591,12 +700,10 @@ static Status RunPerformanceTest(const BertParameters& params, const Environment
                                            "input3", /*input_mask*/
                                            "masked_lm_positions",
                                            "masked_lm_ids",
-                                           "masked_lm_weights",
                                            "next_sentence_labels"};
   std::vector<TensorShape> tensor_shapes = {{batch_size, params.max_sequence_length},
                                             {batch_size, params.max_sequence_length},
                                             {batch_size, params.max_sequence_length},
-                                            {batch_size, params.max_predictions_per_sequence},
                                             {batch_size, params.max_predictions_per_sequence},
                                             {batch_size, params.max_predictions_per_sequence},
                                             {batch_size}};
@@ -605,7 +712,6 @@ static Status RunPerformanceTest(const BertParameters& params, const Environment
                                                           onnx::TensorProto_DataType_INT64,
                                                           onnx::TensorProto_DataType_INT64,
                                                           onnx::TensorProto_DataType_INT64,
-                                                          onnx::TensorProto_DataType_FLOAT,
                                                           onnx::TensorProto_DataType_INT64};
   const size_t num_of_perf_samples = params.num_train_steps * params.batch_size;
   auto random_perf_data = std::make_shared<RandomDataSet>(num_of_perf_samples, tensor_names, tensor_shapes, tensor_types);
@@ -642,18 +748,21 @@ static Status RunTraining(const BertParameters& params, const Environment& env) 
                                                               max_num_files_preload);
     }
 
-    ORT_RETURN_IF_ERROR(runner->Run(training_data_loader.get(), test_data_loader.get()));
+    if (!params.perf_output_dir.empty()) {
+      // collecting Bert related params from training data
+      auto training_data = training_data_loader->CurrentDataSet();
+      ORT_RETURN_IF_ERROR(training_data->GetTensorDimensionsFromInputs(input_to_dimension_mapping, mapped_dimensions));
+    }
+
+    ORT_RETURN_IF_ERROR(runner->Run(training_data_loader.get(), test_data_loader.get(), mapped_dimensions));
 
     ORT_RETURN_IF_ERROR(runner->ResetLossScaler());
   }
 
-  // only test and save trained model on device #0
   if (params_for_phase.mpi_context.world_rank == 0) {
-    auto test_data_loader = onnxruntime::make_unique<DataLoader>(params_for_phase.input_name_map,
-                                                                 params_for_phase.test_data_dir,
-                                                                 max_num_files_preload);
-
-    ORT_RETURN_IF_ERROR(runner->EndTraining(test_data_loader.get()));
+    // Pass in empty dataloader to disable evaluation in EndTraining
+    // to avoid a redundant synchronization caused by Tensorboard's SummaryMerge Op.
+    ORT_RETURN_IF_ERROR(runner->EndTraining(nullptr));
   }
 
   return Status::OK();
@@ -698,8 +807,8 @@ int main(int argc, char* argv[]) {
     RETURN_IF_FAIL(RunTraining(params, *env));
   }
 
-#ifdef USE_HOROVOD
-  shutdown_horovod();
+#if defined(USE_NCCL) || defined(USE_HOROVOD)
+  shutdown_mpi();
 #endif
 
   return 0;

@@ -36,4 +36,5 @@ export declare namespace Binding {
 // export native binding
 export const binding =
     // eslint-disable-next-line @typescript-eslint/no-require-imports, import/no-internal-modules
-    require('../bin/onnxruntime_binding.node') as {InferenceSession: Binding.InferenceSessionConstructor};
+    require(`../bin/napi-v3/${process.platform}/${process.arch}/onnxruntime_binding.node`) as
+    {InferenceSession: Binding.InferenceSessionConstructor};

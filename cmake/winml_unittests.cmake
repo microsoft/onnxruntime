@@ -15,8 +15,9 @@ set(WINML_TEST_INC_DIR
   ${CMAKE_CURRENT_BINARY_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated
-  ${CMAKE_CURRENT_BINARY_DIR}/winml_more_api/comp_generated
-  ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)
+  ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include
+  ${CMAKE_CURRENT_BINARY_DIR}/winml_api_experimental/comp_generated
+)
 
 function(set_winml_target_properties target)
   set_target_properties(${target} PROPERTIES
@@ -71,7 +72,8 @@ function(get_winml_test_scenario_src
   else()
     set(winml_test_scenario_src
         "${winml_test_src_path}/scenario/cppwinrt/scenariotestscppwinrt.h"
-        "${winml_test_src_path}/scenario/cppwinrt/scenariotestscppwinrt.cpp")
+        "${winml_test_src_path}/scenario/cppwinrt/scenariotestscppwinrt.cpp"
+        )
   endif()
   set(${output_winml_test_scenario_src} ${winml_test_scenario_src} PARENT_SCOPE)
 endfunction()
@@ -81,11 +83,32 @@ function(get_winml_test_api_src
   output_winml_test_api_src
 )
   file(GLOB winml_test_api_src CONFIGURE_DEPENDS
-      "${winml_test_src_path}/api/*.h"
-      "${winml_test_src_path}/api/*.cpp"
-      "${winml_test_src_path}/api/raw/*.h"
-      "${winml_test_src_path}/api/raw/*.cpp")
-  set(${output_winml_test_api_src} ${winml_test_api_src} PARENT_SCOPE)
+      "${winml_test_src_path}/api/APITest.h"
+      "${winml_test_src_path}/api/LearningModelAPITest.h"
+      "${winml_test_src_path}/api/LearningModelBindingAPITest.h"
+      "${winml_test_src_path}/api/LearningModelSessionAPITest.h"
+      "${winml_test_src_path}/api/LearningModelAPITest.cpp"
+      "${winml_test_src_path}/api/LearningModelBindingAPITest.cpp"
+      "${winml_test_src_path}/api/LearningModelSessionAPITest.cpp")
+
+  set(${output_winml_test_api_src} ${winml_test_api_src} ${winml_redist_only_api_src} PARENT_SCOPE)
+endfunction()
+
+function(get_winml_test_api_redist_only_src
+  winml_test_src_path
+  output_winml_test_api_src
+)
+  file(GLOB winml_redist_only_api_src CONFIGURE_DEPENDS
+  "${winml_test_src_path}/api/RawApiHelpers.h"
+  "${winml_test_src_path}/api/RawApiTests.h"
+  "${winml_test_src_path}/api/RawApiTestsGpu.h"
+  "${winml_test_src_path}/api/RawApiHelpers.cpp"
+  "${winml_test_src_path}/api/RawApiTests.cpp"
+  "${winml_test_src_path}/api/RawApiTestsGpu.cpp"
+  "${winml_test_src_path}/api/raw/*.h"
+  "${winml_test_src_path}/api/raw/*.cpp")
+
+  set(${output_winml_test_api_src} ${winml_test_api_src} ${winml_redist_only_api_src} PARENT_SCOPE)
 endfunction()
 
 function(get_winml_test_concurrency_src
@@ -138,31 +161,36 @@ set_winml_target_properties(winml_google_test_lib)
 
 set_winml_target_properties(winml_test_common)
 get_winml_test_api_src(${WINML_TEST_SRC_DIR} winml_test_api_src)
+
+if (NOT ${winml_is_inbox})
+  get_winml_test_api_redist_only_src(${WINML_TEST_SRC_DIR} winml_test_api_redist_only_src)
+endif()
+
 add_winml_test(
   TARGET winml_test_api
-  SOURCES ${winml_test_api_src}
-  LIBS winml_test_common delayimp.lib
+  SOURCES ${winml_test_api_src} ${winml_test_api_redist_only_src}
+  LIBS winml_test_common
 )
-target_link_options(winml_test_api PRIVATE /DELAYLOAD:dxgi.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:api-ms-win-core-file-l1-2-2.dll /DELAYLOAD:api-ms-win-core-synch-l1-2-1.dll)
+target_delayload(winml_test_api d3d11.dll dxgi.dll d3d12.dll api-ms-win-core-file-l1-2-2.dll api-ms-win-core-synch-l1-2-1.dll)
 if (onnxruntime_USE_DML)
-  target_link_options(winml_test_api PRIVATE /DELAYLOAD:directml.dll)
+  target_delayload(winml_test_api directml.dll)
 endif()
 if (EXISTS ${dxcore_header})
-  target_link_options(winml_test_api PRIVATE /DELAYLOAD:ext-ms-win-dxcore-l1-*.dll)
+  target_delayload(winml_test_api ext-ms-win-dxcore-l1-*.dll)
 endif()
 
 get_winml_test_scenario_src(${WINML_TEST_SRC_DIR} winml_test_scenario_src winml_test_scenario_libs)
 add_winml_test(
   TARGET winml_test_scenario
   SOURCES ${winml_test_scenario_src}
-  LIBS winml_test_common delayimp.lib ${winml_test_scenario_libs}
+  LIBS winml_test_common ${winml_test_scenario_libs}
 )
-target_link_options(winml_test_scenario PRIVATE /DELAYLOAD:d2d1.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:api-ms-win-core-libraryloader-l1-2-1.dll /DELAYLOAD:api-ms-win-core-file-l1-2-2.dll /DELAYLOAD:api-ms-win-core-synch-l1-2-1.dll)
+target_delayload(winml_test_scenario d2d1.dll d3d11.dll dxgi.dll d3d12.dll api-ms-win-core-libraryloader-l1-2-1.dll api-ms-win-core-file-l1-2-2.dll api-ms-win-core-synch-l1-2-1.dll)
 if (onnxruntime_USE_DML)
-  target_link_options(winml_test_scenario PRIVATE /DELAYLOAD:directml.dll)
+  target_delayload(winml_test_scenario directml.dll)
 endif()
 if (EXISTS ${dxcore_header})
-  target_link_options(winml_test_scenario PRIVATE /DELAYLOAD:ext-ms-win-dxcore-l1-*.dll)
+  target_delayload(winml_test_scenario ext-ms-win-dxcore-l1-*.dll)
 endif()
 
 # necessary for winml_test_scenario because of a still unknown reason, api-ms-win-core-libraryloader-l1-2-1.dll is linked against
@@ -173,13 +201,13 @@ get_winml_test_image_src(${WINML_TEST_SRC_DIR} winml_test_image_src winml_test_i
 add_winml_test(
   TARGET winml_test_image
   SOURCES ${winml_test_image_src}
-  LIBS winml_test_common delayimp.lib ${winml_test_image_libs}
+  LIBS winml_test_common ${winml_test_image_libs}
 )
 target_precompiled_header(winml_test_image testPch.h)
 
-target_link_options(winml_test_image PRIVATE /DELAYLOAD:d3d12.dll /DELAYLOAD:api-ms-win-core-file-l1-2-2.dll /DELAYLOAD:api-ms-win-core-synch-l1-2-1.dll)
+target_delayload(winml_test_image d3d12.dll api-ms-win-core-file-l1-2-2.dll api-ms-win-core-synch-l1-2-1.dll)
 if (EXISTS ${dxcore_header})
-  target_link_options(winml_test_image PRIVATE /DELAYLOAD:ext-ms-win-dxcore-l1-*.dll)
+  target_delayload(winml_test_image ext-ms-win-dxcore-l1-*.dll)
 endif()
 
 get_winml_test_concurrency_src(${WINML_TEST_SRC_DIR} winml_test_concurrency_src)
@@ -247,6 +275,8 @@ add_winml_collateral("${WINML_TEST_SRC_DIR}/image/images/*.jpg")
 add_winml_collateral("${WINML_TEST_SRC_DIR}/image/images/*.png")
 add_winml_collateral("${WINML_TEST_SRC_DIR}/image/groundTruth/*.jpg")
 add_winml_collateral("${WINML_TEST_SRC_DIR}/image/groundTruth/*.png")
+add_winml_collateral("${WINML_TEST_SRC_DIR}/image/batchGroundTruth/*.jpg")
+add_winml_collateral("${WINML_TEST_SRC_DIR}/image/batchGroundTruth/*.png")
 add_winml_collateral("${WINML_TEST_SRC_DIR}/image/models/*.onnx")
 add_winml_collateral("${WINML_TEST_SRC_DIR}/scenario/cppwinrt/*.onnx")
 add_winml_collateral("${WINML_TEST_SRC_DIR}/scenario/models/*.onnx")

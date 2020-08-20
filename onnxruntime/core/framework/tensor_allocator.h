@@ -12,17 +12,27 @@
 
 namespace onnxruntime {
 class ExecutionPlanBase;
-class ExecutionProviders;
+class SessionState;
 class MemBuffer;
 
 class ITensorAllocator {
- private:
-  const ExecutionProviders& exec_providers_;
-
  public:
+  // Create an ITensorAllocator instance based on enable_mem_pattern
+  static std::unique_ptr<ITensorAllocator> Create(bool enable_mem_pattern, const ExecutionPlanBase& execution_plan,
+                                                  const SessionState& session_state,
+                                                  std::vector<BufferUniquePtr>& weights_buffers);
+
   AllocatorPtr GetAllocator(const OrtMemoryInfo& memory_info);
 
-  virtual common::Status FinalizePlan() = 0;
+  /**
+   *
+   * \param planned_memory_sizes_in_byte The sizes of memory allocated inside FinalizePlan on different devices.
+   *
+   * When there is no more tensor to trace, call this function to finalize the
+   * allocation.
+   */
+  virtual common::Status FinalizePlan(std::unordered_map<std::string, size_t>& planned_memory_sizes_in_byte) = 0;
+
   /**
    *
    * \param ort_value_index The index in planner
@@ -37,13 +47,16 @@ class ITensorAllocator {
    * Reserve memory for ort_value_index
    */
   virtual common::Status Trace(int ort_value_index, const ONNX_NAMESPACE::TensorProto* value) = 0;
+
   virtual ~ITensorAllocator() = default;
-  explicit ITensorAllocator(const ExecutionProviders& exec_providers) : exec_providers_(exec_providers) {}
+
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ITensorAllocator);
 
-  static std::unique_ptr<ITensorAllocator> Create(bool enable_mem_pattern, const ExecutionPlanBase& execution_plan,
-                                                  const ExecutionProviders& exec_providers,
-                                                  std::vector<BufferUniquePtr>& weights_buffers);
+ protected:
+  explicit ITensorAllocator(const SessionState& session_state) : session_state_(session_state) {}
+
+ private:
+  const SessionState& session_state_;
 };
 
 }  // namespace onnxruntime

@@ -16,16 +16,16 @@ it statically computes parts of the graph that rely only on constant initializer
 */
 class ConstantFolding : public GraphTransformer {
  public:
-  ConstantFolding(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
-      : GraphTransformer("ConstantFolding", compatible_execution_providers) {}
+  /** Constant folding will not be applied to nodes that have one of initializers from excluded_initializers as input.
+      For pre-training, the trainable weights are those initializers to be excluded. */
+  ConstantFolding(const std::unordered_set<std::string>& compatible_execution_providers = {},
+                  const std::unordered_set<std::string>& excluded_initializers = {}) noexcept
+      : GraphTransformer("ConstantFolding", compatible_execution_providers), excluded_initializers_(excluded_initializers) {}
 
  private:
-  /** Constant folding will not be applied to nodes whose op_type is included in this set.
-      All non-deterministic operators should be included in this set. */
-  const std::unordered_set<std::string> excluded_op_types_ =
-      {"RandomUniform", "RandomNormal", "RandomUniformLike", "RandomNormalLike", "Multinomial"};
-
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
+
+  const std::unordered_set<std::string> excluded_initializers_;
 };
 
 }  // namespace onnxruntime

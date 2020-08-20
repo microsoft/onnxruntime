@@ -5,7 +5,6 @@
 
 struct LearningModelBindingAPITestsApi {
   SetupClass LearningModelBindingAPITestsClassSetup;
-  SetupTest LearningModelBindingAPITestsGpuMethodSetup;
   VoidTest CpuSqueezeNet;
   VoidTest CpuSqueezeNetEmptyOutputs;
   VoidTest CpuSqueezeNetUnboundOutputs;
@@ -46,16 +45,10 @@ WINML_TEST(LearningModelBindingAPITests, VerifyOutputAfterEvaluateAsyncCalledTwi
 WINML_TEST(LearningModelBindingAPITests, VerifyOutputAfterImageBindCalledTwice)
 WINML_TEST(LearningModelBindingAPITests, SequenceLengthTensorFloat)
 WINML_TEST(LearningModelBindingAPITests, SequenceConstructTensorString)
-WINML_TEST_CLASS_END()
-
-WINML_TEST_CLASS_BEGIN(LearningModelBindingAPITestsGPU)
-WINML_TEST_CLASS_SETUP_CLASS(LearningModelBindingAPITestsClassSetup)
-WINML_TEST_CLASS_SETUP_METHOD(LearningModelBindingAPITestsGpuMethodSetup)
-WINML_TEST_CLASS_BEGIN_TESTS
-WINML_TEST(LearningModelBindingAPITestsGPU, GpuSqueezeNet)
-WINML_TEST(LearningModelBindingAPITestsGPU, GpuSqueezeNetEmptyOutputs)
-WINML_TEST(LearningModelBindingAPITestsGPU, GpuSqueezeNetUnboundOutputs)
-WINML_TEST(LearningModelBindingAPITestsGPU, ImageBindingDimensions)
-WINML_TEST(LearningModelBindingAPITestsGPU, VerifyInvalidBindExceptions)
-WINML_TEST(LearningModelBindingAPITestsGPU, BindInvalidInputName)
+WINML_TEST(LearningModelBindingAPITests, GpuSqueezeNet)
+WINML_TEST(LearningModelBindingAPITests, GpuSqueezeNetEmptyOutputs)
+WINML_TEST(LearningModelBindingAPITests, GpuSqueezeNetUnboundOutputs)
+WINML_TEST(LearningModelBindingAPITests, ImageBindingDimensions)
+WINML_TEST(LearningModelBindingAPITests, VerifyInvalidBindExceptions)
+WINML_TEST(LearningModelBindingAPITests, BindInvalidInputName)
 WINML_TEST_CLASS_END()

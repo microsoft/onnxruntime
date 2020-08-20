@@ -134,6 +134,7 @@ class Env {
    * Gets the length of the specified file.
    */
   virtual common::Status GetFileLength(_In_z_ const ORTCHAR_T* file_path, size_t& length) const = 0;
+  virtual common::Status GetFileLength(int fd, /*out*/ size_t& file_size) const = 0;
 
   /**
    * Copies the content of the file into the provided buffer.
@@ -205,6 +206,12 @@ class Env {
   virtual common::Status LoadDynamicLibrary(const std::string& library_filename, void** handle) const = 0;
 
   virtual common::Status UnloadDynamicLibrary(void* handle) const = 0;
+
+  // \brief Gets the file path of the onnx runtime code
+  //
+  // Used to help load other shared libraries that live in the same folder as the core code, for example
+  // The DNNL provider shared library. Without this path, the module won't be found on windows in all cases.
+  virtual std::string GetRuntimePath() const { return ""; }
 
   // \brief Get a pointer to a symbol from a dynamic library.
   //

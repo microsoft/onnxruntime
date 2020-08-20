@@ -1,13 +1,13 @@
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-#--------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 """
 Implements ONNX's backend API.
 """
-import numpy as np
 from onnxruntime import RunOptions
 from onnx.backend.base import BackendRep
+from typing import Any, Tuple
 
 
 class OnnxRuntimeBackendRep(BackendRep):

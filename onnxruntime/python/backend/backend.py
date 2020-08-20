@@ -1,10 +1,11 @@
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-#--------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 """
 Implements ONNX's backend API.
 """
+from onnx import ModelProto
 from onnx.checker import check_model
 from onnx.backend.base import Backend
 from onnxruntime import InferenceSession, SessionOptions, get_device
@@ -20,7 +21,8 @@ class OnnxRuntimeBackend(Backend):
     multiple runtimes with the same API.
     `Importing models from ONNX to Caffe2 <https://github.com/onnx/tutorials/blob/master/tutorials/OnnxCaffe2Import.ipynb>`_
     shows how to use *caffe2* as a backend for a converted model.
-    """
+    Note: This is not the official Python API.
+    """  # noqa: E501
 
     @classmethod
     def is_compatible(cls, model, device=None, **kwargs):

@@ -68,19 +68,25 @@ if (NOT WIN32)
   endif()
 endif()
 
+if(${CMAKE_SYSTEM_NAME} MATCHES "Android")
+  set_target_properties(onnxruntime PROPERTIES LINK_FLAGS_RELEASE -s)
+  set_target_properties(onnxruntime PROPERTIES LINK_FLAGS_MINSIZEREL -s)
+endif()
+
 target_link_libraries(onnxruntime PRIVATE
     onnxruntime_session
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
-    ${PROVIDERS_DNNL}
     ${PROVIDERS_NGRAPH}
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_RKNPU}
-    ${PROVIDERS_TENSORRT}
+    ${PROVIDERS_MIGRAPHX}
     ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NUPHAR}
+    ${PROVIDERS_VITISAI}
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
+    ${PROVIDERS_ARMNN}
     ${onnxruntime_winml}
     onnxruntime_optimizer
     onnxruntime_providers

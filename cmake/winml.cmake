@@ -6,6 +6,7 @@ if (NOT WINDOWS_STORE)
 endif()
 
 include(precompiled_header.cmake)
+include(target_delayload.cmake)
 include(winml_sdk_helpers.cmake)
 include(winml_cppwinrt.cmake)
 
@@ -19,27 +20,30 @@ set(winml_api_root ${REPO_ROOT}/winml/api)
 set(winml_dll_dir ${REPO_ROOT}/winml/dll)
 set(winml_lib_dir ${REPO_ROOT}/winml/lib)
 set(winml_lib_api_dir ${REPO_ROOT}/winml/lib/api)
+set(winml_lib_api_experimental_dir ${REPO_ROOT}/winml/lib/api.experimental)
 set(winml_lib_api_image_dir ${REPO_ROOT}/winml/lib/api.image)
 set(winml_lib_api_ort_dir ${REPO_ROOT}/winml/lib/api.ort)
 set(winml_lib_common_dir ${REPO_ROOT}/winml/lib/common)
 set(winml_lib_telemetry_dir ${REPO_ROOT}/winml/lib/telemetry)
 
+set(winml_is_inbox OFF)
 if (onnxruntime_WINML_NAMESPACE_OVERRIDE)
   set(output_name "${onnxruntime_WINML_NAMESPACE_OVERRIDE}.AI.MachineLearning")
-  set(more_output_name "${onnxruntime_WINML_NAMESPACE_OVERRIDE}.AI.MachineLearning.More")
+  set(experimental_output_name "${onnxruntime_WINML_NAMESPACE_OVERRIDE}.AI.MachineLearning.Experimental")
   set(idl_native_output_name "${onnxruntime_WINML_NAMESPACE_OVERRIDE}.AI.MachineLearning.Native")
   set(idl_native_internal_output_name "${onnxruntime_WINML_NAMESPACE_OVERRIDE}.AI.MachineLearning.Native.Internal")
-
+  
   if (onnxruntime_WINML_NAMESPACE_OVERRIDE STREQUAL "Windows")
     set(winml_midl_defines "/DBUILD_INBOX=1")
+    set(winml_is_inbox ON)
   endif()
-  
+
   set(winml_root_ns "${onnxruntime_WINML_NAMESPACE_OVERRIDE}")
   set(BINARY_NAME "${onnxruntime_WINML_NAMESPACE_OVERRIDE}.AI.MachineLearning.dll")
   set(winml_api_use_ns_prefix false)
 else()
   set(output_name "Microsoft.AI.MachineLearning")
-  set(more_output_name "Microsoft.AI.MachineLearning.More")
+  set(experimental_output_name "Microsoft.AI.MachineLearning.Experimental")
   set(idl_native_output_name "Microsoft.AI.MachineLearning.Native")
   set(idl_native_internal_output_name "Microsoft.AI.MachineLearning.Native.Internal")
   set(winml_midl_defines "/DROOT_NS=Microsoft")
@@ -61,7 +65,7 @@ convert_forward_slashes_to_back(${exclusions} CPPWINRT_COMPONENT_EXCLUSION_LIST)
 #
 # For native idl files there are no casing restrictions.
 get_filename_component(winrt_idl "${winml_api_root}/Windows.AI.MachineLearning.idl" ABSOLUTE)
-get_filename_component(winrt_more_idl "${winml_api_root}/Microsoft.AI.MachineLearning.More.idl" ABSOLUTE)
+get_filename_component(winrt_experimental_idl "${winml_api_root}/Microsoft.AI.MachineLearning.Experimental.idl" ABSOLUTE)
 get_filename_component(idl_native "${winml_api_root}/windows.ai.machineLearning.native.idl" ABSOLUTE)
 get_filename_component(idl_native_internal "${winml_api_root}/windows.ai.machineLearning.native.internal.idl" ABSOLUTE)
 
@@ -82,23 +86,22 @@ target_cppwinrt(winml_api
   ${sdk_folder}              # location of sdk folder
   ${sdk_version}             # sdk version
   ${target_folder}           # the folder this target will be placed under
-  ${winml_midl_defines}      # the midl compiler defines
+  "${winml_midl_defines}"    # the midl compiler defines
   ${winml_api_use_ns_prefix} # set ns_prefix
 )
 
-# generate winml.more headers from idl
-target_cppwinrt(winml_more_api
-  ${winrt_more_idl}                       # winml winrt idl to compile
-  "Microsoft.AI.MachineLearning.More"     # outputs name
-  ${winml_lib_api_dir}                    # location for cppwinrt generated component sources
-  ${sdk_folder}                           # location of sdk folder
-  ${sdk_version}                          # sdk version
-  ${target_folder}                        # the folder this target will be placed under
-  ${winml_midl_defines}                   # the midl compiler defines
-  ${winml_api_use_ns_prefix}              # set ns_prefix
+# generate winml.experimental headers from idl
+target_cppwinrt(winml_api_experimental
+  ${winrt_experimental_idl}                    # winml winrt idl to compile
+  ${experimental_output_name}                  # outputs name
+  ${winml_lib_api_dir}                         # location for cppwinrt generated component sources
+  ${sdk_folder}                                # location of sdk folder
+  ${sdk_version}                               # sdk version
+  ${target_folder}                             # the folder this target will be placed under
+  ${winml_midl_defines}                        # the midl compiler defines
+  ${winml_api_use_ns_prefix}                   # set ns_prefix
 )
 
-add_dependencies(winml_more_api winml_api)
 
 target_midl(winml_api_native
   ${idl_native}             # winml native idl to compile
@@ -106,7 +109,7 @@ target_midl(winml_api_native
   ${sdk_folder}             # location of sdk folder
   ${sdk_version}            # sdk version
   ${target_folder}          # the folder this target will be placed under
-  ${winml_midl_defines}     # the midl compiler defines
+  "${winml_midl_defines}"   # the midl compiler defines
 )
 
 target_midl(winml_api_native_internal
@@ -115,7 +118,7 @@ target_midl(winml_api_native_internal
   ${sdk_folder}                      # location of sdk folder
   ${sdk_version}                     # sdk version
   ${target_folder}                   # the folder this target will be placed under
-  ${winml_midl_defines}              # the midl compiler defines
+  "${winml_midl_defines}"            # the midl compiler defines
 )
 
 ###########################
@@ -204,6 +207,9 @@ target_compile_options(winml_lib_ort PRIVATE /GR- /await /wd4238)
 target_compile_definitions(winml_lib_ort PRIVATE WINML_ROOT_NS=${winml_root_ns})
 target_compile_definitions(winml_lib_ort PRIVATE PLATFORM_WINDOWS)
 target_compile_definitions(winml_lib_ort PRIVATE _SCL_SECURE_NO_WARNINGS)                         # remove warnings about unchecked iterators
+if (onnxruntime_WINML_NAMESPACE_OVERRIDE STREQUAL "Windows")
+  target_compile_definitions(winml_lib_ort PRIVATE "BUILD_INBOX=1")
+endif()
 
 # Specify the usage of a precompiled header
 target_precompiled_header(winml_lib_ort pch.h)
@@ -267,6 +273,10 @@ if (onnxruntime_USE_DML)
 endif()
 
 add_library(winml_adapter ${winml_adapter_files})
+
+if (onnxruntime_WINML_NAMESPACE_OVERRIDE STREQUAL "Windows") 
+  target_compile_definitions(winml_adapter PRIVATE "BUILD_INBOX=1") 
+endif()
 
 # wil requires C++17
 set_target_properties(winml_adapter PROPERTIES CXX_STANDARD 17)
@@ -415,20 +425,7 @@ add_library(winml_lib_api STATIC
   ${winml_lib_api_dir}/SequenceFeatureDescriptor.cpp
   ${winml_lib_api_dir}/SequenceFeatureDescriptor.h
   ${winml_lib_api_dir}/TensorFeatureDescriptor.cpp
-  ${winml_lib_api_dir}/TensorFeatureDescriptor.h
-
-  ## WinML.More
-  ${winml_lib_api_dir}/More.LearningModelBuilder.cpp
-  ${winml_lib_api_dir}/More.LearningModelBuilder.h
-  ${winml_lib_api_dir}/More.LearningModelInputs.cpp
-  ${winml_lib_api_dir}/More.LearningModelInputs.h
-  ${winml_lib_api_dir}/More.LearningModelOutputs.cpp
-  ${winml_lib_api_dir}/More.LearningModelOutputs.h
-  ${winml_lib_api_dir}/More.LearningModelOperator.cpp
-  ${winml_lib_api_dir}/More.LearningModelOperator.h
-  ${winml_lib_api_dir}/More.LearningModelOperatorResolutionPolicy.cpp
-  ${winml_lib_api_dir}/More.LearningModelOperatorResolutionPolicy.h
-  
+  ${winml_lib_api_dir}/TensorFeatureDescriptor.h  
   ${winml_lib_api_dir}/pch/pch.h
 )
 
@@ -451,7 +448,7 @@ target_precompiled_header(winml_lib_api pch.h)
 # Includes
 target_include_directories(winml_lib_api PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                   # windows machine learning generated component headers
 target_include_directories(winml_lib_api PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated)    # windows machine learning generated component headers
-target_include_directories(winml_lib_api PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_more_api/comp_generated) # windows machine learning generated component headers
+target_include_directories(winml_lib_api PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api_experimental/comp_generated) # windows machine learning generated component headers
 target_include_directories(winml_lib_api PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)  # sdk cppwinrt headers
 
 target_include_directories(winml_lib_api PRIVATE ${winml_lib_api_dir})
@@ -494,6 +491,92 @@ add_dependencies(winml_lib_api winml_api_native_internal)
 target_link_libraries(winml_lib_api PRIVATE wil winml_lib_telemetry)
 if (onnxruntime_USE_DML)
   target_add_dml(winml_lib_api)
+endif(onnxruntime_USE_DML)
+
+
+###########################
+# Add winml_lib_api_experimental_dir
+###########################
+
+# Add static library that will be archived/linked for both static/dynamic library
+add_library(winml_lib_api_experimental STATIC
+  ${winml_lib_api_experimental_dir}/Dummy.cpp
+  ${winml_lib_api_experimental_dir}/Dummy.h
+  ${winml_lib_api_experimental_dir}/LearningModelBuilder.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelBuilder.h
+  ${winml_lib_api_experimental_dir}/LearningModelInputs.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelInputs.h
+  ${winml_lib_api_experimental_dir}/LearningModelOutputs.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelOutputs.h
+  ${winml_lib_api_experimental_dir}/LearningModelOperator.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelOperator.h
+  ${winml_lib_api_experimental_dir}/LearningModelOperatorResolutionPolicy.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelOperatorResolutionPolicy.h
+)
+
+# Compiler options
+target_compile_features(winml_lib_api_experimental PRIVATE cxx_std_17)
+target_compile_options(winml_lib_api_experimental PRIVATE /GR- /await /bigobj /wd4238)
+
+# Compiler flags
+target_compile_definitions(winml_lib_api_experimental PRIVATE WINML_ROOT_NS=${winml_root_ns})
+target_compile_definitions(winml_lib_api_experimental PRIVATE ONNX_NAMESPACE=onnx)
+target_compile_definitions(winml_lib_api_experimental PRIVATE ONNX_ML)
+target_compile_definitions(winml_lib_api_experimental PRIVATE LOTUS_LOG_THRESHOLD=2)
+target_compile_definitions(winml_lib_api_experimental PRIVATE LOTUS_ENABLE_STDERR_LOGGING)
+target_compile_definitions(winml_lib_api_experimental PRIVATE PLATFORM_WINDOWS)
+target_compile_definitions(winml_lib_api_experimental PRIVATE _SCL_SECURE_NO_WARNINGS)                         # remove warnings about unchecked iterators
+
+# Specify the usage of a precompiled header
+target_precompiled_header(winml_lib_api_experimental pch.h)
+
+# Includes
+target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                   # windows machine learning generated component headers
+target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated)    # windows machine learning generated component headers
+target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api_experimental/comp_generated) # windows machine learning generated component headers
+target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)  # sdk cppwinrt headers
+
+target_include_directories(winml_lib_api_experimental PRIVATE ${winml_lib_api_dir})
+target_include_directories(winml_lib_api_experimental PRIVATE ${winml_lib_api_dir}/pch)
+target_include_directories(winml_lib_api_experimental PRIVATE ${winml_adapter_dir})
+target_include_directories(winml_lib_api_experimental PRIVATE ${winml_lib_api_image_dir}/inc)
+target_include_directories(winml_lib_api_experimental PRIVATE ${winml_lib_api_ort_dir}/inc)
+target_include_directories(winml_lib_api_experimental PRIVATE ${winml_lib_telemetry_dir}/inc)
+target_include_directories(winml_lib_api_experimental PRIVATE ${winml_lib_common_dir}/inc)
+
+target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/external/date/include)
+target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/external/gsl/include)
+target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/external/onnx)
+
+target_include_directories(winml_lib_api_experimental PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})
+target_include_directories(winml_lib_api_experimental PRIVATE ${ONNXRUNTIME_INCLUDE_DIR}/core/graph)
+target_include_directories(winml_lib_api_experimental PRIVATE ${ONNXRUNTIME_ROOT})
+target_include_directories(winml_lib_api_experimental PRIVATE ${ONNXRUNTIME_ROOT}/core/graph)
+target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake/external/eigen)
+target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake/external/onnx)
+target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake/external/protobuf/src)
+target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake/external/gsl/include)
+target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake/external/SafeInt)
+
+# Properties
+set_target_properties(winml_lib_api_experimental
+  PROPERTIES
+  FOLDER
+  ${target_folder})
+
+# Add deps
+add_dependencies(winml_lib_api_experimental onnx)
+add_dependencies(winml_lib_api_experimental winml_sdk_cppwinrt)
+add_dependencies(winml_lib_api_experimental winml_api)
+add_dependencies(winml_lib_api_experimental winml_api_native)
+add_dependencies(winml_lib_api_experimental winml_api_native_internal)
+add_dependencies(winml_lib_api_experimental winml_api_experimental)
+
+# Link libraries
+target_link_libraries(winml_lib_api_experimental PRIVATE wil winml_lib_telemetry)
+if (onnxruntime_USE_DML)
+  target_add_dml(winml_lib_api_experimental)
 endif(onnxruntime_USE_DML)
 
 ###########################
@@ -594,12 +677,13 @@ target_precompiled_header(winml_dll pch.h)
 # Includes
 target_include_directories(winml_dll PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                   # windows machine learning generated component headers
 target_include_directories(winml_dll PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated)    # windows machine learning generated component headers
-target_include_directories(winml_dll PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_more_api/comp_generated)    # windows machine learning generated component headers
+target_include_directories(winml_dll PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api_experimental/comp_generated)    # windows machine learning generated component headers
 target_include_directories(winml_dll PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)  # sdk cppwinrt headers
 
 target_include_directories(winml_dll PRIVATE ${winml_dll_dir})
 target_include_directories(winml_dll PRIVATE ${winml_lib_api_dir})
 target_include_directories(winml_dll PRIVATE ${winml_lib_api_dir}/impl)
+target_include_directories(winml_dll PRIVATE ${winml_lib_api_experimental_dir})
 target_include_directories(winml_dll PRIVATE ${winml_lib_api_ort_dir}/inc)
 target_include_directories(winml_dll PRIVATE ${winml_adapter_dir})
 target_include_directories(winml_dll PRIVATE ${winml_lib_api_image_dir}/inc)
@@ -629,11 +713,11 @@ set_target_properties(winml_dll
 set(os_component_link_flags_list ${os_component_link_flags})
 separate_arguments(os_component_link_flags_list)
 
-target_link_options(winml_dll PRIVATE /DEF:${WINML_DIR}/winml.def ${os_component_link_flags_list} /DELAYLOAD:api-ms-win-core-libraryloader-l1-2-1.dll /DELAYLOAD:api-ms-win-core-threadpool-legacy-l1-1-0.dll /DELAYLOAD:api-ms-win-core-processtopology-obsolete-l1-1-0.dll /DELAYLOAD:api-ms-win-core-kernel32-legacy-l1-1-0.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:directml.dll)
-
+target_link_options(winml_dll PRIVATE /DEF:${WINML_DIR}/winml.def ${os_component_link_flags_list})
+target_delayload(winml_dll api-ms-win-core-libraryloader-l1-2-1.dll api-ms-win-core-threadpool-legacy-l1-1-0.dll api-ms-win-core-processtopology-obsolete-l1-1-0.dll api-ms-win-core-kernel32-legacy-l1-1-0.dll d3d12.dll d3d11.dll dxgi.dll directml.dll)
 
 if (EXISTS ${dxcore_header})
-  target_link_options(winml_dll PRIVATE /DELAYLOAD:ext-ms-win-dxcore-l1-*.dll)
+  target_delayload(winml_dll ext-ms-win-dxcore-l1-*.dll)
 endif()
 
 set_target_properties(winml_dll
@@ -647,23 +731,16 @@ add_dependencies(winml_dll winml_api_native)
 add_dependencies(winml_dll winml_api_native_internal)
 
 # Link libraries
-target_link_libraries(winml_dll PRIVATE onnxruntime)
 target_link_libraries(winml_dll PRIVATE re2)
 target_link_libraries(winml_dll PRIVATE wil)
 target_link_libraries(winml_dll PRIVATE winml_lib_api)
+target_link_libraries(winml_dll PRIVATE winml_lib_api_experimental)
 target_link_libraries(winml_dll PRIVATE winml_lib_image)
 target_link_libraries(winml_dll PRIVATE winml_lib_ort)
 target_link_libraries(winml_dll PRIVATE winml_lib_telemetry)
 
 target_link_libraries(winml_dll PRIVATE RuntimeObject.lib)
 target_link_libraries(winml_dll PRIVATE windowsapp.lib)
-
-if (onnxruntime_BUILD_FOR_WINDOWS_STORE)
-  target_link_libraries(winml_dll PRIVATE dloadhelper.lib)
-else()
-  target_link_libraries(winml_dll PRIVATE delayimp.lib)
-endif()
-
 
 # Any project that links in debug_alloc.obj needs this lib.
 # unresolved external symbol __imp_SymSetOptions

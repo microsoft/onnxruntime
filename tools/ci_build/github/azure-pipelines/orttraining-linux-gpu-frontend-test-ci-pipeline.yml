@@ -6,14 +6,25 @@ trigger: none
 jobs:
 - job: Onnxruntime_Linux_GPU_Training_FrontEnd
 
-  timeoutInMinutes: 120
+  timeoutInMinutes: 240
   
   steps:
   - checkout: self
     clean: true
     submodules: recursive
   
-  - template: templates/linux-set-variables-and-download.yml
+  - template: templates/set-test-data-variables-step.yml
+
+  - task: CmdLine@2
+    displayName: 'Clean untagged docker images'
+    inputs:
+      script: |
+        docker rm $(docker ps -a | grep Exited | awk '{print $1;}') || true
+        docker container prune -f
+        docker image prune -f
+      workingDirectory: $(Build.BinariesDirectory)
+    continueOnError: true
+    condition: always()
 
   # insert a python frontend test data preparation step here
 

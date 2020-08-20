@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/providers/compare_provider_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -16,7 +17,8 @@ void TransposeTest(std::vector<int64_t>& input_shape,
                    std::vector<int64_t>* p_perm,
                    std::vector<int64_t> expected_shape,
                    std::initializer_list<T>& expected_vals,
-                   bool is_tensorrt_supported = true) {
+                   bool is_tensorrt_supported = true,
+                   bool is_openvino_supported = true) {
   OpTester test("Transpose");
   if (nullptr != p_perm)
     test.AddAttribute("perm", *p_perm);
@@ -27,6 +29,9 @@ void TransposeTest(std::vector<int64_t>& input_shape,
   std::unordered_set<std::string> excluded_providers;
   if (!is_tensorrt_supported) {
     excluded_providers.insert(kTensorrtExecutionProvider);
+  }
+  if (!is_openvino_supported) {
+    excluded_providers.insert(kOpenVINOExecutionProvider);
   }
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
@@ -119,7 +124,11 @@ TEST(TransposeOpTest, TwoDim_int16) {
       2, 5,
       3, 6};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals);
+  #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
+    TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, true, false);
+  #else
+    TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals);
+  #endif
 }
 
 TEST(TransposeOpTest, TwoDim_mlfloat16) {
@@ -409,5 +418,47 @@ TEST(TransposeOpTest, SingleAxisMovingInwardsBlockCopy) {
 
   TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
 }
+
+#ifdef USE_CUDA
+static void TestTranspose(
+    const std::vector<int64_t>& perm,
+    const std::vector<int64_t>& x_dims,
+    const std::vector<int64_t>& y_dims,
+    double error_tolerance = 1e-4) {
+  CompareOpTester test{"Transpose"};
+
+  RandomValueGenerator random{};
+  const auto X_data = random.Uniform<float>(x_dims, -10.0, 10.0);
+  const auto Y_data = FillZeros<float>(y_dims);
+
+  test.AddAttribute("perm", perm);
+  test.AddInput("X", x_dims, X_data);
+  test.AddOutput("Y", y_dims, Y_data);
+
+  test.CompareWithCPU(kCudaExecutionProvider, error_tolerance);
+}
+
+TEST(TransposeOpTest, Transpose0213) {
+  const std::vector<int64_t> X_dims{64, 128, 16, 64};
+  const std::vector<int64_t> perm{0, 2, 1, 3};
+  const std::vector<int64_t> Y_dims{64, 16, 128, 64};
+  TestTranspose(perm, X_dims, Y_dims);
+}
+
+TEST(TransposeOpTest, Transpose0231) {
+  const std::vector<int64_t> X_dims{64, 128, 16, 64};
+  const std::vector<int64_t> perm{0, 2, 3, 1};
+  const std::vector<int64_t> Y_dims{64, 16, 64, 128};
+  TestTranspose(perm, X_dims, Y_dims);
+}
+
+TEST(TransposeOpTest, Transpose0312) {
+  const std::vector<int64_t> X_dims{64, 16, 64, 128};
+  const std::vector<int64_t> perm{0, 3, 1, 2};
+  const std::vector<int64_t> Y_dims{64, 128, 16, 64};
+  TestTranspose(perm, X_dims, Y_dims);
+}
+#endif
+
 }  // namespace test
 }  // namespace onnxruntime

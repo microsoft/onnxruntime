@@ -67,7 +67,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
 
   {
     std::lock_guard<OrtMutex> lock(s_.mutex);
-    // TODO: add a global cache if need to handle cases for multiple frames running simultaneuously with different batch_size
+    // TODO: add a global cache if need to handle cases for multiple frames running simultaneously with different batch_size
     bool input_dims_changed = (s_.last_x_dims != x_dims);
     bool w_dims_changed = (s_.last_w_dims != w_dims);
     if (input_dims_changed || w_dims_changed) {
@@ -82,11 +82,6 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
       ConvTransposeAttributes::Prepare p;
       ORT_RETURN_IF_ERROR(conv_transpose_attrs_.PrepareForCompute(context, has_bias, p, dynamic_padding));
 
-      // Bail out early if one of the dimensions is zero.
-      if (p.Y->Shape().Size() == 0) {
-        return Status::OK();
-      }
-
       auto y_dims = p.Y->Shape().GetDims();
       if (x_dimensions == 3) {
         y_dims.insert(y_dims.begin() + 2, 1);
@@ -98,11 +93,19 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
       }
       s_.y_dims = y_dims;
 
-      ORT_RETURN_IF_ERROR(s_.x_tensor.Set(x_dims, CudnnTensor::GetDataType<CudaT>()));
-      ORT_RETURN_IF_ERROR(s_.y_tensor.Set(y_dims, CudnnTensor::GetDataType<CudaT>()));
-
       if (w_dims_changed)
         ORT_RETURN_IF_ERROR(s_.filter_desc.Set(w_dims, CudnnTensor::GetDataType<CudaT>()));
+
+      // Special case when there is a dim value of 0 in the shape.
+      // Return only after we have cached the following for subsequent runs :
+      // 1) `w_dims` in the `filter_desc`
+      // 2) `y_dims` in s_.y_dims
+      if (p.Y->Shape().Size() == 0) {
+        return Status::OK();
+      }
+
+      ORT_RETURN_IF_ERROR(s_.x_tensor.Set(x_dims, CudnnTensor::GetDataType<CudaT>()));
+      ORT_RETURN_IF_ERROR(s_.y_tensor.Set(y_dims, CudnnTensor::GetDataType<CudaT>()));
 
       cudnnConvolutionMode_t mode = CUDNN_CROSS_CORRELATION;
       ORT_RETURN_IF_ERROR(s_.conv_desc.Set(p.kernel_shape.size(), p.pads, p.strides,
@@ -155,42 +158,49 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
       s_.algo = perf.algo;
       s_.workspace_bytes = perf.memory;
     }
-  }
 
-  if (!y_data) {
-    auto y_dims = s_.y_dims;
-    if (x_dimensions == 3) {
-      y_dims.erase(y_dims.begin() + 2);
+    // The following block will be executed in case there has been no change in the shapes of the
+    // input and the filter compared to the previous run
+    if (!y_data) {
+      auto y_dims = s_.y_dims;
+      if (x_dimensions == 3) {
+        y_dims.erase(y_dims.begin() + 2);
+      }
+      Tensor* Y = context->Output(0, TensorShape(y_dims));
+      y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
+
+      // Bail out early if one of the output dimensions is zero.
+      if (Y->Shape().Size() == 0) {
+        return Status::OK();
+      }
     }
-    Tensor* Y = context->Output(0, TensorShape(y_dims));
-    y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
-  }
 
-  const auto alpha = Consts<CudaT>::One;
-  const auto beta = Consts<CudaT>::Zero;
+    const auto alpha = Consts<CudaT>::One;
+    const auto beta = Consts<CudaT>::Zero;
 
-  IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(s_.workspace_bytes);
+    IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(s_.workspace_bytes);
 
-  CUDNN_RETURN_IF_ERROR(
-      cudnnConvolutionBackwardData(
-          CudnnHandle(),
-          &alpha,
-          s_.filter_desc,
-          w_data,
-          s_.x_tensor,
-          x_data,
-          s_.conv_desc,
-          s_.algo,
-          workspace.get(),
-          s_.workspace_bytes,
-          &beta,
-          s_.y_tensor,
-          y_data));
+    CUDNN_RETURN_IF_ERROR(
+        cudnnConvolutionBackwardData(
+            CudnnHandle(),
+            &alpha,
+            s_.filter_desc,
+            w_data,
+            s_.x_tensor,
+            x_data,
+            s_.conv_desc,
+            s_.algo,
+            workspace.get(),
+            s_.workspace_bytes,
+            &beta,
+            s_.y_tensor,
+            y_data));
 
-  if (has_bias) {
-    const Tensor* B = dynamic_padding ? context->Input<Tensor>(3) : context->Input<Tensor>(2);
-    auto b_data = reinterpret_cast<const CudaT*>(B->template Data<T>());
-    CUDNN_RETURN_IF_ERROR(cudnnAddTensor(CudnnHandle(), &alpha, s_.b_tensor, b_data, &alpha, s_.y_tensor, y_data));
+    if (has_bias) {
+      const Tensor* B = dynamic_padding ? context->Input<Tensor>(3) : context->Input<Tensor>(2);
+      auto b_data = reinterpret_cast<const CudaT*>(B->template Data<T>());
+      CUDNN_RETURN_IF_ERROR(cudnnAddTensor(CudnnHandle(), &alpha, s_.b_tensor, b_data, &alpha, s_.y_tensor, y_data));
+    }
   }
 
   return Status::OK();

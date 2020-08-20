@@ -1,5 +1,7 @@
+import glob
 import numpy as np
 import onnx
+import onnx_test_data_utils
 import onnxruntime as ort
 import os
 import shutil
@@ -19,7 +21,7 @@ def _get_numpy_type(model_info, name):
     raise ValueError(f"{name} was not found in the model info.")
 
 
-def create_missing_input_data(model_inputs, name_input_map, symbolic_dim_values_map):
+def _create_missing_input_data(model_inputs, name_input_map, symbolic_dim_values_map):
     """
     Update name_input_map with random input for any missing values in the model inputs.
 
@@ -51,15 +53,15 @@ def create_missing_input_data(model_inputs, name_input_map, symbolic_dim_values_
                 # shape for the input name instead.
                 raise ValueError("Unsupported model. Unknown dim with no value or symbolic name.")
 
-        # create random data. give it range -10 to 10 so if we convert to an integer type it's not all 0s and 1s
-        # TODO: consider if the range should be configurable
         np_type = onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[input.type.tensor_type.elem_type]
+        # create random data. give it range -10 to 10 so if we convert to an integer type it's not all 0s and 1s
         data = (np.random.standard_normal(dims) * 10).astype(np_type)
+
         name_input_map[input.name] = data
 
 
 def create_test_dir(model_path, root_path, test_name,
-                    name_input_map={}, symbolic_dim_values_map={},
+                    name_input_map=None, symbolic_dim_values_map=None,
                     name_output_map=None):
     """
     Create a test directory that can be used with onnx_test_runner or onnxruntime_perf_test.
@@ -80,12 +82,12 @@ def create_test_dir(model_path, root_path, test_name,
     model_path = os.path.abspath(model_path)
     root_path = os.path.abspath(root_path)
     test_dir = os.path.join(root_path, test_name)
-    test_data_dir = os.path.join(test_dir, f"test_data_set_0")
+    test_data_dir = os.path.join(test_dir, "test_data_set_0")
 
     if not os.path.exists(test_dir) or not os.path.exists(test_data_dir):
         os.makedirs(test_data_dir)
 
-    model_filename = model_path.split('\\')[-1]
+    model_filename = os.path.split(model_path)[-1]
     test_model_filename = os.path.join(test_dir, model_filename)
     shutil.copy(model_path, test_model_filename)
 
@@ -111,7 +113,13 @@ def create_test_dir(model_path, root_path, test_name,
 
             idx += 1
 
-    create_missing_input_data(model_inputs, name_input_map, symbolic_dim_values_map)
+    if not name_input_map:
+        name_input_map = {}
+
+    if not symbolic_dim_values_map:
+        symbolic_dim_values_map = {}
+
+    _create_missing_input_data(model_inputs, name_input_map, symbolic_dim_values_map)
 
     save_data("input", name_input_map, model_inputs)
 
@@ -126,3 +134,84 @@ def create_test_dir(model_path, root_path, test_name,
 
     save_data("output", name_output_map, model_outputs)
 
+
+def read_test_dir(dir_name):
+    """
+    Read the input and output .pb files from the provided directory.
+    Input files should have a prefix of 'input_'
+    Output files, which are optional, should have a prefix of 'output_'
+    :param dir_name: Directory to read files from
+    :return: tuple(dictionary of input name to numpy.ndarray of data,
+                   dictionary of output name to numpy.ndarray)
+    """
+
+    inputs = {}
+    outputs = {}
+    input_files = glob.glob(os.path.join(dir_name, 'input_*.pb'))
+    output_files = glob.glob(os.path.join(dir_name, 'output_*.pb'))
+
+    for i in input_files:
+        name, data = onnx_test_data_utils.read_tensorproto_pb_file(i)
+        inputs[name] = data
+
+    for o in output_files:
+        name, data = onnx_test_data_utils.read_tensorproto_pb_file(o)
+        outputs[name] = data
+
+    return inputs, outputs
+
+
+def run_test_dir(model_or_dir):
+    """
+    Run the test/s from a directory in ONNX test format.
+    All subdirectories with a prefix of 'test' are considered test input for one test run.
+
+    :param model_or_dir: Path to onnx model in test directory,
+                         or the test directory name if the directory only contains one .onnx model.
+    :return: None
+    """
+
+    if os.path.isdir(model_or_dir):
+        model_dir = os.path.abspath(model_or_dir)
+        # check there's only one onnx file
+        models = glob.glob(os.path.join(model_dir, '*.onnx'))
+        if len(models) > 1:
+            raise ValueError(f"'Multiple .onnx files found in {model_dir}. '"
+                             "'Please provide specific .onnx file as input.")
+        elif len(models) == 0:
+            raise ValueError(f"'No .onnx files found in {model_dir}.")
+
+        model_path = models[0]
+    else:
+        model_path = os.path.abspath(model_or_dir)
+        model_dir = os.path.dirname(model_path)
+
+    print(f'Running tests in {model_dir}')
+
+    test_dirs = [d for d in glob.glob(os.path.join(model_dir, 'test*')) if os.path.isdir(d)]
+    if not test_dirs:
+        raise ValueError(f"No directories with name starting with 'test' were found in {model_dir}.")
+
+    sess = ort.InferenceSession(model_path)
+
+    for d in test_dirs:
+        print(d)
+        inputs, expected_outputs = read_test_dir(d)
+
+        if expected_outputs:
+            output_names = list(expected_outputs.keys())
+        else:
+            output_names = [o.name for o in sess.get_outputs()]
+
+        run_outputs = sess.run(output_names, inputs)
+        failed = False
+        if expected_outputs:
+            for idx in range(len(output_names)):
+                expected = expected_outputs[output_names[idx]]
+                actual = run_outputs[idx]
+
+                if not np.isclose(expected, actual, rtol=1.e-3, atol=1.e-3).all():
+                    print(f'Mismatch for {output_names[idx]}:\nExpected:{expected}\nGot:{actual}')
+                    failed = True
+
+        print('FAILED' if failed else 'PASS')

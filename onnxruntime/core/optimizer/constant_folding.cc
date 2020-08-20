@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/optimizer/constant_folding.h"
+#include "core/optimizer/utils.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/optimizer_execution_frame.h"
 #include "core/framework/op_kernel.h"
@@ -11,7 +12,43 @@ using namespace onnxruntime::common;
 
 namespace onnxruntime {
 
+// We need to handle a Shape node separately as the input doesn't need to be a constant initializer for
+// Shape to be able to be constant folded.
+static bool ConstantFoldShapeNode(Graph& graph, Node& node) {
+  auto shape = node.MutableInputDefs()[0]->Shape();
+  bool is_concrete_shape = true;
+  std::vector<int64_t> dim_values;
+  if (shape != nullptr) {
+    for (int dim_index = 0; dim_index < shape->dim_size(); dim_index++) {
+      auto dim = shape->dim(dim_index);
+      if (!utils::HasDimValue(dim)) {
+        is_concrete_shape = false;
+        break;
+      }
+      dim_values.push_back(dim.dim_value());
+    }
+  } else {
+    is_concrete_shape = false;
+  }
+
+  if (is_concrete_shape) {
+    ONNX_NAMESPACE::TensorProto shape_constant;
+    auto* constant_arg_out = node.MutableOutputDefs()[0];
+    shape_constant.set_name(constant_arg_out->Name());
+    shape_constant.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+    shape_constant.add_dims(dim_values.size());
+    shape_constant.set_raw_data(dim_values.data(), dim_values.size() * sizeof(int64_t));
+    ONNX_NAMESPACE::TensorShapeProto result_shape;
+    result_shape.add_dim()->set_dim_value(dim_values.size());
+    constant_arg_out->SetShape(result_shape);
+    graph.AddInitializedTensor(shape_constant);
+  }
+
+  return is_concrete_shape;  // convert to constant if this is true
+}
+
 Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
+  bool have_updated_nodes = false;
   GraphViewer graph_viewer(graph);
   auto& order = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -23,93 +60,122 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
     ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level, logger));
 
-    InitializedTensorSet constant_inputs;
-
-    // we currently constant fold using the CPU EP only.
-    // if the node is assigned to a different EP we can run it if it's an ONNX op as we have CPU based implementations
-    // for all ONNX ops. if it's from a different domain we can't.
-    // NOTE: This is in addition to the IsSupportedProvider check below which will optionally do further filtering
-    // on the EPs we constant fold for.
-    auto ep_type = node->GetExecutionProviderType();
-    bool cpu_ep = ep_type == kCpuExecutionProvider;
-    if (!cpu_ep && node->Domain() != kOnnxDomain) {
-      continue;
+    // Updating a node may allow shape inferencing to infer output shapes of following nodes,
+    // so re-run the shape inferencing. use have_updated_nodes as that only applies to this Graph
+    // (vs. 'modified' which is passed into subgraphs and applies to the main graph and all subgraphs)
+    // Ignore any control flow node containing subgraphs as UpdateShapeInference is not intended to be used on it.
+    if (have_updated_nodes && !node->ContainsSubgraph()) {
+      ORT_RETURN_IF_ERROR(graph.UpdateShapeInference(*node));
     }
 
-    // Check if constant folding can be applied on this node.
-    if (!graph_utils::IsSupportedProvider(*node, GetCompatibleExecutionProviders()) ||
-        excluded_op_types_.find(node->OpType()) != excluded_op_types_.end() ||
-        // constant folding does not support executing a node that includes subgraphs (control flow operators,
-        // such as If/Loop/Scan, fall into this category). individual nodes in the subgraph will be processed
-        // by the Recurse call above
-        node->ContainsSubgraph() || !graph_utils::AllNodeInputsAreConstant(graph, *node, constant_inputs)) {
-      continue;
-    }
+    bool converted_to_constant = false;
+    if (node->OpType().compare("Shape") == 0) {
+      converted_to_constant = ConstantFoldShapeNode(graph, *node);
+    } else {
+      InitializedTensorSet constant_inputs;
 
-    // override the EP while setting up OptimizerExecutionFrame::Info so that it will use the CPU kernel for Compute.
-    if (!cpu_ep) {
-      node->SetExecutionProviderType(kCpuExecutionProvider);
-    }
-
-    // Create execution frame for executing constant nodes.
-    OptimizerExecutionFrame::Info info({node}, constant_inputs);
-
-    // undo the EP change in case something fails prior to node removal
-    if (!cpu_ep) {
-      node->SetExecutionProviderType(ep_type);
-    }
-
-    std::vector<int> fetch_mlvalue_idxs;
-    for (const auto* node_out : node->OutputDefs()) {
-      fetch_mlvalue_idxs.push_back(info.GetMLValueIndex(node_out->Name()));
-    }
-
-    OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs);
-
-    auto* kernel = info.GetKernel(node->Index());
-    if (kernel == nullptr)
-      continue;
-    OpKernelContext op_kernel_context(&frame, kernel, nullptr, logger);
-
-    ORT_RETURN_IF_ERROR(kernel->Compute(&op_kernel_context));
-
-    std::vector<OrtValue> fetches;
-    ORT_RETURN_IF_ERROR(frame.GetOutputs(fetches));
-
-    // Go over all output node args and substitute them with the newly computed tensors, which will be
-    // added to the graph as initializers.
-    ORT_ENFORCE(fetches.size() == node->OutputDefs().size());
-    bool unsupported_output_type = false;
-    for (size_t fetch_idx = 0; fetch_idx < fetches.size(); ++fetch_idx) {
-      OrtValue& ort_value = fetches[fetch_idx];
-
-      if (!ort_value.IsTensor()) {
-        LOGS(logger, WARNING) << "Unsupported output type of " << ort_value.Type()
-                              << ". Can't constant fold " << node->OpType() << " node '" << node->Name() << "'";
-        unsupported_output_type = true;
-        break;
+      // we currently constant fold using the CPU EP only.
+      // if the node is assigned to a different EP we can run it if it's an ONNX op as we have CPU based
+      // implementations for all ONNX ops. If the node/op is from a different op domain or if the CPU implementation
+      // does not support the specific input type(s) required by the node (currently we only support a subset of
+      // types in some CPU kernels) then we can't proceed with constant folding for the node.
+      auto ep_type = node->GetExecutionProviderType();
+      bool cpu_ep = ep_type == kCpuExecutionProvider;
+      if (!cpu_ep && node->Domain() != kOnnxDomain) {
+        continue;
       }
 
-      // Build the TensorProto that corresponds to the computed OrtValue and add it as initializer to the graph.
-      const auto* constant_arg_out = node->OutputDefs()[fetch_idx];
-      ORT_ENFORCE(ort_value.IsTensor());
-      const Tensor& out_tensor = ort_value.Get<Tensor>();
-      ONNX_NAMESPACE::TensorProto out_tensorproto = utils::TensorToTensorProto(out_tensor, constant_arg_out->Name());
+      // Check if constant folding can be applied on this node.
+      if (!graph_utils::IsSupportedProvider(*node, GetCompatibleExecutionProviders()) ||
+          !optimizer_utils::IsOperationDeterministic(node->Domain(), node->OpType()) ||
+          // constant folding does not support executing a node that includes subgraphs (control flow operators,
+          // such as If/Loop/Scan, fall into this category). individual nodes in the subgraph will be processed
+          // by the Recurse call above
+          node->ContainsSubgraph() || !graph_utils::AllNodeInputsAreConstant(graph, *node, constant_inputs, excluded_initializers_)) {
+        continue;
+      }
 
-      graph.AddInitializedTensor(out_tensorproto);
+      // Create execution frame for executing constant nodes.
+      std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
+          onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+
+      // Create execution frame for executing constant nodes.
+      OptimizerExecutionFrame::Info info({node}, constant_inputs, std::move(cpu_execution_provider));
+
+      std::vector<int> fetch_mlvalue_idxs;
+      for (const auto* node_out : node->OutputDefs()) {
+        fetch_mlvalue_idxs.push_back(info.GetMLValueIndex(node_out->Name()));
+      }
+
+      // override the EP assigned to the node so that it will use the CPU kernel for Compute.
+      if (!cpu_ep) {
+        node->SetExecutionProviderType(kCpuExecutionProvider);
+      }
+
+      auto kernel = info.CreateKernel(node);
+
+      // undo the EP change to the value that was assigned at graph partitioning time
+      if (!cpu_ep) {
+        node->SetExecutionProviderType(ep_type);
+      }
+
+      if (kernel == nullptr) {
+        LOGS(logger, WARNING) << "Could not find a CPU kernel and hence "
+                              << "can't constant fold " << node->OpType() << " node '" << node->Name() << "'";
+
+        // Move on to the next candidate node
+        continue;
+      }
+
+      OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs);
+
+      OpKernelContext op_kernel_context(&frame, kernel.get(), nullptr, logger);
+      ORT_RETURN_IF_ERROR(kernel->Compute(&op_kernel_context));
+
+      std::vector<OrtValue> fetches;
+      ORT_RETURN_IF_ERROR(frame.GetOutputs(fetches));
+
+      // Go over all output node args and substitute them with the newly computed tensors, which will be
+      // added to the graph as initializers.
+      ORT_ENFORCE(fetches.size() == node->OutputDefs().size());
+      converted_to_constant = true;
+      for (size_t fetch_idx = 0; fetch_idx < fetches.size(); ++fetch_idx) {
+        OrtValue& ort_value = fetches[fetch_idx];
+
+        if (!ort_value.IsTensor()) {
+          LOGS(logger, WARNING) << "Unsupported output type of " << ort_value.Type()
+                                << ". Can't constant fold " << node->OpType() << " node '" << node->Name() << "'";
+          converted_to_constant = false;
+          break;
+        }
+      }
+
+      if (converted_to_constant) {
+        for (size_t fetch_idx = 0; fetch_idx < fetches.size(); ++fetch_idx) {
+          OrtValue& ort_value = fetches[fetch_idx];
+          // Build the TensorProto that corresponds to the computed OrtValue and add it as initializer to the graph.
+          auto* constant_arg_out = node->MutableOutputDefs()[fetch_idx];
+          const Tensor& out_tensor = ort_value.Get<Tensor>();
+          ONNX_NAMESPACE::TensorProto out_tensorproto = utils::TensorToTensorProto(out_tensor, constant_arg_out->Name());
+
+          ONNX_NAMESPACE::TensorShapeProto result_shape;
+          for (auto& dim : out_tensor.Shape().GetDims()) {
+            result_shape.add_dim()->set_dim_value(dim);
+          }
+
+          constant_arg_out->SetShape(result_shape);
+          graph.AddInitializedTensor(out_tensorproto);
+        }
+      }
     }
 
-    if (unsupported_output_type)
-      continue;
-
-    // Remove the output edges of the constant node and then remove the node itself.
-    graph_utils::RemoveNodeOutputEdges(graph, *node);
-    graph.RemoveNode(node->Index());
-
-    // The output nodes already have the right input arg, since we used the same name in the initializer.
-    // We could remove unused graph initializers here, but Graph::Resolve() will take care of it.
-
-    modified = true;
+    if (converted_to_constant) {
+      // Remove the output edges of the constant node and then remove the node itself.
+      graph_utils::RemoveNodeOutputEdges(graph, *node);
+      graph.RemoveNode(node->Index());
+      modified = true;
+      have_updated_nodes = true;
+    }
   }
 
   return Status::OK();

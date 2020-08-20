@@ -88,8 +88,8 @@ Status OnnxRuntimeSetEventWhenCallbackReturns(ORT_CALLBACK_INSTANCE pci, ORT_EVE
     finish_event->finish_event_data.notify_all();
     return Status::OK();
   }
-    pci->AddEvent(finish_event);
-    return Status::OK();
+  pci->AddEvent(finish_event);
+  return Status::OK();
 }
 
 void OnnxRuntimeCallbackInstance::AddEvent(ORT_EVENT event) {

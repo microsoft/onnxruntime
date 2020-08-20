@@ -390,9 +390,7 @@ static void write_scores(std::vector<T>& scores, POST_EVAL_TRANSFORM post_transf
   write_scores(scores, post_transform, out_p, add_second_class);
 }
 
-// TODO: Starting with just the pieces needed for LinearRegressor from write_scores (see above).
-//       Will see what can be sensibly added to a batched in-place update of the scores for LinearClassifier, the SVM*
-//       and TreeEnsemble* ops when updating those.
+// TODO: Update TreeEnsemble* ops to use this instead of write_scores if possible.
 //       Attempted to parallelize the calculations if the number of scores to process was large, but no clear benefit
 //       was seen from testing with the arbitrary values of 1000 scores per threads.
 template <typename T>
@@ -407,8 +405,6 @@ void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches_in, 
   SafeInt<int32_t> num_scores = num_batches * batch_size;
   SafeInt<int32_t> expected_num_scores = num_scores * (batch_size == 1 && add_second_class >= 0 ? 2 : 1);
   ORT_ENFORCE(scores.size() == static_cast<size_t>(expected_num_scores));
-
-  ORT_UNUSED_PARAMETER(threadpool);  // TBD whether we need to parallelize code here
 
   // convert from span to pointer for efficiency. we've checked scores.size() matches num_scores so don't need the
   // extra checking/overhead from using operator[] for each access
@@ -429,11 +425,36 @@ void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches_in, 
         break;
       }
       case POST_EVAL_TRANSFORM::SOFTMAX: {
-        while (s < s_end) {
-          gsl::span<float> scores_for_batch(s, s + batch_size);
-          ComputeSoftmax(scores_for_batch);
-          s += batch_size;
+        bool use_mlas = true;
+        // if there are less than 8 items in each batch it may be slower to use mlas.
+        // currently MlasComputeSoftmax adds threads on 16K blocks of work.
+        // for smaller batches it takes more threads to counter some of the overhead.
+        switch (batch_size) {
+          case 1:
+            use_mlas = false;  // mlas is mildly slower
+            break;
+          case 2:
+            use_mlas = num_scores >= 32 * 1024;
+            break;
+          case 3:
+          case 4:
+            use_mlas = num_scores >= 16 * 1024;
+            break;
+          default:
+            // toss up if num_scores is low (<200), but the more scores to process the larger the win by mlas
+            break;
         }
+
+        if (use_mlas) {
+          MlasComputeSoftmax(s, s, num_batches, batch_size, false, threadpool);
+        } else {
+          while (s < s_end) {
+            gsl::span<float> scores_for_batch(s, s + batch_size);
+            ComputeSoftmax(scores_for_batch);
+            s += batch_size;
+          }
+        }
+
         break;
       }
       case POST_EVAL_TRANSFORM::SOFTMAX_ZERO: {

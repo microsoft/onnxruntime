@@ -121,7 +121,7 @@ Return Value:
 
         float Value = *Input++;
 
-        Value = (std::min)(MlasLogisticConstants.UpperRange, (std::max)(MlasLogisticConstants.LowerRange, Value));
+        Value = std::min(MlasLogisticConstants.UpperRange, std::max(MlasLogisticConstants.LowerRange, Value));
 
         float ValueSquared = Value * Value;
 

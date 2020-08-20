@@ -16,7 +16,7 @@ elif [ "$os_major_version" == "6" ] && [ ! -d "/opt/python/cp35-cp35m" ]; then
   #The base image we are using already contains devtoolset-2
   yum install -y redhat-lsb-core expat-devel libcurl-devel tar unzip curl zlib-devel make libunwind icu aria2 rsync bzip2 git bzip2-devel
   #Install python 3.6
-  yum install -y https://centos6.iuscommunity.org/ius-release.rpm 
+  yum install -y https://repo.ius.io/ius-release-el6.rpm
   yum --enablerepo=ius install -y python36u python36u-devel python36u-pip python36u-numpy python36u-setuptools python36u-wheel
   /usr/bin/python3.6 -m pip install --upgrade pip
 else
@@ -31,6 +31,7 @@ else
   fi
 fi
 
+yum install -y java-1.8.0-openjdk-devel
 
 #If the /opt/python folder exists, we assume this is the manylinux docker image
 if [ "$os_major_version" != "6" ] && [ ! -d "/opt/python/cp35-cp35m"  ] 

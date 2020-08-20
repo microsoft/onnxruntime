@@ -1,8 +1,10 @@
 import os
+import json
+
 
 def update_version():
     version = ''
-    cwd = os.path.dirname(os.path.realpath(__file__)) 
+    cwd = os.path.dirname(os.path.realpath(__file__))
     with open(os.path.join(cwd, '..', '..', 'VERSION_NUMBER')) as f:
         version = f.readline().strip()
     lines = []
@@ -13,13 +15,13 @@ def update_version():
         for line in lines:
             if line.startswith('|'):
                 sections = line.split('|')
-                if len(sections) == 8 and sections[1].strip()[0].isdigit() :
+                if len(sections) == 8 and sections[1].strip()[0].isdigit():
                     current_version = sections[1].strip()
                     break
-    print ('Current version of ORT seems to be: ' + current_version)
+    print('Current version of ORT seems to be: ' + current_version)
     if version != current_version:
         with open(file_path, 'w') as f:
-            for i,line in enumerate(lines):
+            for i, line in enumerate(lines):
                 f.write(line)
                 if line.startswith('|--'):
                     sections = lines[i+1].split('|')
@@ -42,13 +44,15 @@ def update_version():
                 break
     if version != current_version:
         inserted = False
-        with open(file_path,'w') as f:
+        with open(file_path, 'w') as f:
             for line in lines:
                 sections = line.strip().split('.')
-                if inserted == False and len(sections) == 3 and sections[0].isdigit() and sections[1].isdigit() and sections[2].isdigit():
+                if inserted is False and len(sections) == 3 and \
+                        sections[0].isdigit() and sections[1].isdigit() and sections[2].isdigit():
                     f.write(version + '\n')
                     f.write('^^^^^\n\n')
-                    f.write('Release Notes : https://github.com/Microsoft/onnxruntime/releases/tag/v' + version.strip() + '\n\n')
+                    f.write('Release Notes : https://github.com/Microsoft/onnxruntime/releases/tag/v'
+                            + version.strip() + '\n\n')
                     inserted = True
                 f.write(line)
     lines = []
@@ -83,6 +87,20 @@ def update_version():
                     f.write('__version__ = "' + version + '"\n')
                     continue
                 f.write(line)
+
+    # update version for node.js binding
+    current_version = ''
+    file_names = ['package.json', 'package-lock.json']
+    file_paths = [os.path.join(cwd, '..', '..', 'nodejs', file_name) for file_name in file_names]
+    for file_path in file_paths:
+        with open(file_path) as f:
+            content = json.load(f)
+            current_version = content['version']
+        if version != current_version:
+            content['version'] = version
+            with open(file_path, 'w') as f:
+                json.dump(content, f, indent=2)
+
 
 if __name__ == "__main__":
     update_version()

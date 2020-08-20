@@ -4,8 +4,7 @@
 #include "orttraining/core/session/training_session.h"
 
 // TODO: solve the op version issue in the entire training framework
-// Here is to reference GRADIENT_OP_VERSION temporarily for global version control.
-#include "orttraining/core/graph/gradient_schema_defs.h"
+#define GRADIENT_OP_VERSION 9
 
 namespace onnxruntime {
 namespace training {

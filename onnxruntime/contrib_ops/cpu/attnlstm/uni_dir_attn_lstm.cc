@@ -9,6 +9,8 @@
 
 #include "uni_dir_attn_lstm.h"
 
+#include <thread>
+
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif

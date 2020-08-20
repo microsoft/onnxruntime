@@ -10,8 +10,11 @@ namespace contrib {
 
 void record_event_in_tensor(const Tensor& event_id_tensor) {
   const int64_t event_id = *event_id_tensor.template Data<int64_t>();
-  ORT_ENFORCE(event_id != -1, "-1 is reserved for skip wait, so cannot be used in RecordEvent");
-  OrtEventPool::GetInstance().SignalEvent(event_id);
+  // event_id -1 means no event should be recorded and this operator works
+  // like an Identity operator.
+  if (event_id != -1) {
+    OrtEventPool::GetInstance().SignalEvent(event_id);
+  }
 }
 
 ONNX_OPERATOR_KERNEL_EX(

@@ -573,6 +573,32 @@ public class InferenceTest {
     }
   }
 
+  @Test
+  public void testCUDA() throws OrtException {
+    if (System.getProperty("USE_CUDA") != null) {
+      SqueezeNetTuple tuple = openSessionSqueezeNet(0);
+      try (OrtEnvironment env = tuple.env;
+          OrtSession session = tuple.session) {
+        float[] inputData = tuple.inputData;
+        float[] expectedOutput = tuple.outputData;
+        NodeInfo inputMeta = session.getInputInfo().values().iterator().next();
+        Map<String, OnnxTensor> container = new HashMap<>();
+        long[] inputShape = ((TensorInfo) inputMeta.getInfo()).shape;
+        Object tensor = OrtUtil.reshape(inputData, inputShape);
+        container.put(inputMeta.getName(), OnnxTensor.createTensor(env, tensor));
+        try (OrtSession.Result result = session.run(container)) {
+          OnnxValue resultTensor = result.get(0);
+          float[] resultArray = TestHelpers.flattenFloat(resultTensor.getValue());
+          assertEquals(expectedOutput.length, resultArray.length);
+          assertArrayEquals(expectedOutput, resultArray, 1e-6f);
+        } catch (OrtException e) {
+          throw new IllegalStateException("Failed to execute a scoring operation", e);
+        }
+        OnnxValue.close(container.values());
+      }
+    }
+  }
+
   private static File getTestModelsDir() throws IOException {
     // get build directory, append downloaded models location
     String cwd = System.getProperty("user.dir");
@@ -881,9 +907,9 @@ public class InferenceTest {
         // So we look it up as a classpath resource and resolve it to a real path
         customLibraryName = getResourcePath("/custom_op_library.dll").toString();
       } else if (osName.contains("mac")) {
-        customLibraryName = "libcustom_op_library.dylib";
+        customLibraryName = getResourcePath("/libcustom_op_library.dylib").toString();
       } else if (osName.contains("linux")) {
-        customLibraryName = "./libcustom_op_library.so";
+        customLibraryName = getResourcePath("/libcustom_op_library.so").toString();
       } else {
         fail("Unknown os/platform '" + osName + "'");
       }
@@ -1399,7 +1425,7 @@ public class InferenceTest {
   private static StringTensorPair loadTensorFromFilePb(
       OrtEnvironment env, File filename, Map<String, NodeInfo> nodeMetaDict)
       throws IOException, OrtException {
-    InputStream is = new BufferedInputStream(new FileInputStream(filename));
+    InputStream is = new BufferedInputStream(new FileInputStream(filename), 1024 * 1024 * 4);
     OnnxMl.TensorProto tensor = OnnxMl.TensorProto.parseFrom(is);
     is.close();
 

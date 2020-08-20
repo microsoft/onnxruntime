@@ -4,7 +4,7 @@
 
 # build docker image for CPU
 
-set -x
+set -x -e
 
 SOURCE_ROOT=$1
 BUILD_DIR=$2
@@ -22,44 +22,19 @@ OldDir=$(pwd)
 
 cd $SOURCE_ROOT/tools/ci_build/github/linux/docker
 
-if [ $UseCentos7 = "false" ]; then
-  echo "Image used for testing is onnxruntime-$IMAGE"
-  if [ $Arch = "x86" ]; then
-    docker build -t "onnxruntime-$IMAGE" --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu_x86 .
-  else
-    docker build -t "onnxruntime-$IMAGE" --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu .
-  fi
-else
-  IMAGE="centos7"
-  PYTHON_VER=3.6
-  echo "Image used for testing is onnxruntime-$IMAGE"
 
-  docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.centos .
-fi
-
-docker rm -f "onnxruntime-cpu" || true
-
-set +e
-
-docker run -h $HOSTNAME \
-        --rm \
+docker run --rm \
         --name "onnxruntime-cpu" \
         --volume "$SOURCE_ROOT:/onnxruntime_src" \
         --volume "$BUILD_DIR:/home/onnxruntimedev" \
+        --volume /data/models:/home/onnxruntimedev/models:ro \
         -e "OnnxRuntimeBuildDirectory=/home/onnxruntimedev" \
         -e "IsReleaseBuild=$ISRELEASEBUILD" \
         -e "PackageName=$PackageName" \
         -e "DisableContribOps=$DISABLECONTRIBOPS" \
+        -e "DisableMlOps=$DISABLEMLOPS" \
         -e "RunTestCsharp=$RunTestCsharp" \
         -e "RunTestNative=$RunTestNative" \
-        "onnxruntime-$IMAGE" \
+        onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecpubuild:chn \
         /bin/bash /onnxruntime_src/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh \
-        /home/onnxruntimedev/$NUGET_REPO_DIRNAME /onnxruntime_src /home/onnxruntimedev $CurrentOnnxRuntimeVersion &
-
-wait -n
-
-EXIT_CODE=$?
-
-set -e
-exit $EXIT_CODE
-cd $OldDir
+        /home/onnxruntimedev/$NUGET_REPO_DIRNAME /onnxruntime_src /home/onnxruntimedev $CurrentOnnxRuntimeVersion

@@ -32,6 +32,7 @@ TEST(TrainingRunnerTest, Basic) {
   params.eval_batch_size = 1;
   params.num_train_steps = 1;
   params.display_loss_steps = 10;
+  params.pipeline_parallel_size = 1;
   params.fetch_names = {"predictions"};
   params.loss_func_info = LossFunctionInfo(OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
 

@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 namespace Microsoft.ML.OnnxRuntime
 {
     /// Sets various runtime options. 
-    public class RunOptions: IDisposable
+    public class RunOptions : IDisposable
     {
         private IntPtr _nativePtr;
         internal IntPtr Handle
@@ -23,30 +23,45 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateRunOptions(out _nativePtr));
         }
 
-
         /// <summary>
-        /// LogVerbosityLevel for the Run 
-        /// default == LogLevel.Verbose
+        /// Log Severity Level for the session logs. Default = ORT_LOGGING_LEVEL_WARNING
         /// </summary>
-        public LogLevel LogVerbosityLevel 
+        public OrtLoggingLevel LogSeverityLevel
         {
             get
             {
-                LogLevel level;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsGetRunLogVerbosityLevel(_nativePtr, out level));
-                return level;
+                return _logSeverityLevel;
+            }
+            set
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsSetRunLogSeverityLevel(_nativePtr, value));
+                _logSeverityLevel = value;
+            }
+        }
+        private OrtLoggingLevel _logSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING;
+
+        /// <summary>
+        /// Log Verbosity Level for the session logs. Default = 0. Valid values are >=0.
+        /// This takes into effect only when the LogSeverityLevel is set to ORT_LOGGING_LEVEL_VERBOSE.
+        /// </summary>
+        public int LogVerbosityLevel
+        {
+            get
+            {
+                return _logVerbosityLevel;
             }
             set
             {
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsSetRunLogVerbosityLevel(_nativePtr, value));
+                _logVerbosityLevel = value;
             }
         }
-
+        private int _logVerbosityLevel = 0;
 
         /// <summary>
         /// Log tag to be used during the run. default = ""
         /// </summary>
-        public string LogId 
+        public string LogId
         {
             get
             {
@@ -91,13 +106,7 @@ namespace Microsoft.ML.OnnxRuntime
         private bool _terminate = false; //value set to default value of the C++ RunOptions
 
 
-        #region destructors disposers
-
-        ~RunOptions()
-        {
-            Dispose(false);
-        }
-
+        #region IDisposable
 
         public void Dispose()
         {
@@ -110,9 +119,8 @@ namespace Microsoft.ML.OnnxRuntime
         {
             if (disposing)
             {
-                // cleanup managed resources
+                NativeMethods.OrtReleaseRunOptions(_nativePtr);
             }
-            NativeMethods.OrtReleaseRunOptions(_nativePtr);
         }
 
         #endregion

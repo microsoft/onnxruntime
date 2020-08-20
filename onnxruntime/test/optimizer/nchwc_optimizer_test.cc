@@ -1219,6 +1219,41 @@ TEST(NchwcOptimizerTests, Upsample) {
   }
 }
 
+TEST(NchwcOptimizerTests, Activation) {
+  auto test_case = [&](const std::string& activation_op_type) {
+    auto build_test_case = [&](NchwcTestHelper& helper) {
+      auto* input_arg = helper.MakeInput({1, 48, 11, 15});
+      auto* conv1_output_arg = helper.MakeIntermediate();
+      auto* activation_output_arg = helper.MakeIntermediate();
+      auto* mul_output_arg = helper.MakeIntermediate();
+      auto* output_arg = helper.MakeOutput();
+
+      helper.AddConvNode(input_arg, conv1_output_arg, {32, 48, 3, 3});
+      helper.AddNode(activation_op_type, {conv1_output_arg}, {activation_output_arg});
+      helper.AddNode("Add", {conv1_output_arg, activation_output_arg}, {mul_output_arg});
+      helper.AddConvNode(mul_output_arg, output_arg, {16, 32, 1, 1});
+    };
+
+    auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
+      auto op_to_count = session.CountOpsInGraph();
+      EXPECT_EQ(op_to_count["nchwc.Conv"], 2);
+      EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 1);
+      EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 1);
+      EXPECT_EQ(op_to_count[activation_op_type], 1);
+      EXPECT_EQ(op_to_count["Add"], 1);
+    };
+
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+  };
+
+  // Verify that the optimizer doesn't add reorders for these activations that
+  // cannot be fused with a convolution.
+  std::vector<std::string> activation_op_types{"Relu", "Sigmoid", "Tanh"};
+  for (auto& activation_op_type : activation_op_types) {
+    test_case(activation_op_type);
+  }
+}
+
 #endif
 
 }  // namespace test

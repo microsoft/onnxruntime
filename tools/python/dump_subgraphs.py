@@ -26,13 +26,12 @@ def dump_subgraph(model, output_dir, level=0):
             export_and_recurse(node, then_attribute, output_dir, level)
             export_and_recurse(node, else_attribute, output_dir, level)
 
+
 def parse_args():
     parser = argparse.ArgumentParser(os.path.basename(__file__),
                                      description='Dump all subgraphs from an ONNX model into separate onnx files.')
     parser.add_argument('-m', '--model', required=True, help='model file')
-    parser.add_argument('-o', '--out',
-                        default=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                        help='output directory (default: %(default)s)')
+    parser.add_argument('-o', '--out', required=True, help='output directory')
     return parser.parse_args()
 
 
@@ -43,10 +42,11 @@ def main():
     out = os.path.abspath(args.out)
 
     if not os.path.exists(out):
-        os.mkdir(out)
+        os.makedirs(out)
 
     model = onnx.load_model(model_path)
     dump_subgraph(model, out)
+
 
 if __name__ == '__main__':
     main()

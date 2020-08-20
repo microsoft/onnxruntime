@@ -68,11 +68,14 @@ struct TernaryElementwisePreparation {
   const Tensor* a_tensor = nullptr;
   const Tensor* b_tensor = nullptr;
   const Tensor* c_tensor = nullptr;
-  size_t output_rank_or_simple_broadcast = 0;             // for no_broadcast cases, output_rank uses SimpleBroadcast enums
-  TArray<int64_t> a_padded_strides;  // for a shape == output shape, this is nullptr
-  TArray<int64_t> b_padded_strides;  // for b shape == output shape, this is nullptr
-  TArray<int64_t> c_padded_strides;  // for c shape == output shape, this is nullptr
+  size_t output_rank_or_simple_broadcast = 0;  // for no_broadcast cases, output_rank uses SimpleBroadcast enums
+  TArray<int64_t> a_padded_strides;            // for a shape == output shape, this is nullptr
+  TArray<int64_t> b_padded_strides;            // for b shape == output shape, this is nullptr
+  TArray<int64_t> c_padded_strides;            // for c shape == output shape, this is nullptr
   TArray<fast_divmod> fdm_output_strides;
+  BroadcastIndexType a_index_type = BroadcastIndexType::NoBroadcast;
+  BroadcastIndexType b_index_type = BroadcastIndexType::NoBroadcast;
+  BroadcastIndexType c_index_type = BroadcastIndexType::NoBroadcast;
 
   TernaryElementwisePreparation(const Tensor* a, const Tensor* b, const Tensor* c)
       : a_tensor(a), b_tensor(b), c_tensor(c) {}
@@ -95,7 +98,7 @@ struct TernaryElementwisePreparation {
     output_rank_or_simple_broadcast = out_rank;
 
     auto padder = [out_rank](int32_t rank, const TensorShape& shape, TArray<int64_t>& padded_strides) {
-      padded_strides.size_ = out_rank;
+      padded_strides.SetSize(out_rank);
       if (rank > 0) {
         TensorPitches pitches(shape.GetDims());
         auto offset = out_rank - rank;
@@ -108,20 +111,38 @@ struct TernaryElementwisePreparation {
       }
     };
 
-    if (a_shape != output_shape) {
+    bool has_need_compute = false;
+    if (a_shape.Size() == 1) {
+      a_index_type = BroadcastIndexType::Scalar;
+    } else if (a_shape != output_shape) {
       padder(a_rank, a_shape, a_padded_strides);
+      a_index_type = BroadcastIndexType::NeedCompute;
+      has_need_compute = true;
     }
 
-    if (b_shape != output_shape) {
-     padder(b_rank, b_shape, b_padded_strides);
+    if (b_shape.Size() == 1) {
+      b_index_type = BroadcastIndexType::Scalar;
+    } else if (b_shape != output_shape) {
+      padder(b_rank, b_shape, b_padded_strides);
+      b_index_type = BroadcastIndexType::NeedCompute;
+      has_need_compute = true;
     }
 
-    if (c_shape != output_shape) {
+    if (c_shape.Size() == 1) {
+      c_index_type = BroadcastIndexType::Scalar;
+    } else if (c_shape != output_shape) {
       padder(c_rank, c_shape, c_padded_strides);
+      c_index_type = BroadcastIndexType::NeedCompute;
+      has_need_compute = true;
+    }
+
+    if (!has_need_compute) {
+      output_rank_or_simple_broadcast = static_cast<size_t>(SimpleBroadcast::NoBroadcast);
+      return Status::OK();
     }
 
     TensorPitches output_pitches(output_shape.GetDims());
-    fdm_output_strides.size_ = out_rank;
+    fdm_output_strides.SetSize(out_rank);
     for (auto i = 0; i < out_rank; ++i) {
       fdm_output_strides[i] = fast_divmod(static_cast<int32_t>(output_pitches[i]));
     }
@@ -154,10 +175,13 @@ Status Where<T>::ComputeInternal(OpKernelContext* context) const {
 
   WhereImpl<CudaT>(
       prepare.output_rank_or_simple_broadcast,
+      prepare.a_index_type,
       prepare.a_padded_strides,
       reinterpret_cast<const bool*>(prepare.a_tensor->template Data<bool>()),
+      prepare.b_index_type,
       prepare.b_padded_strides,
       reinterpret_cast<const CudaT*>(prepare.b_tensor->template Data<T>()),
+      prepare.c_index_type,
       prepare.c_padded_strides,
       reinterpret_cast<const CudaT*>(prepare.c_tensor->template Data<T>()),
       prepare.fdm_output_strides,

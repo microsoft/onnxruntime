@@ -35,6 +35,8 @@ limitations under the License.
 
 #include "core/platform/path_lib.h"  // for LoopDir()
 
+EXTERN_C IMAGE_DOS_HEADER __ImageBase;
+
 namespace onnxruntime {
 
 namespace {
@@ -188,6 +190,30 @@ class WindowsEnv : public Env {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetFileLength: File is too large");
     }
     length = static_cast<size_t>(filesize.QuadPart);
+    return Status::OK();
+  }
+
+  common::Status GetFileLength(int fd, /*out*/ size_t& file_size) const override {
+    using namespace common;
+    if (fd < 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid fd was supplied: ", fd);
+    }
+
+    struct _stat buf;
+    int rc = _fstat(fd, &buf);
+    if (rc < 0) {
+      return Status(SYSTEM, errno);
+    }
+
+    if (buf.st_size < 0) {
+      return ORT_MAKE_STATUS(SYSTEM, FAIL, "Received negative size from stat call");
+    }
+
+    if (static_cast<unsigned long long>(buf.st_size) > std::numeric_limits<size_t>::max()) {
+      return ORT_MAKE_STATUS(SYSTEM, FAIL, "File is too large.");
+    }
+
+    file_size = static_cast<size_t>(buf.st_size);
     return Status::OK();
   }
 
@@ -428,9 +454,25 @@ class WindowsEnv : public Env {
     return Status::OK();
   }
 
+  // Return the path of the executable/shared library for the current running code. This is to make it
+  // possible to load other shared libraries installed next to our core runtime code.
+  std::string GetRuntimePath() const override {
+    char buffer[MAX_PATH];
+    if (!GetModuleFileNameA(reinterpret_cast<HINSTANCE>(&__ImageBase), buffer, _countof(buffer)))
+      return "";
+
+    // Remove the filename at the end, but keep the trailing slash
+    std::string path(buffer);
+    auto slash_index = path.find_last_of('\\');
+    if (slash_index == std::string::npos)
+      return "";
+
+    return path.substr(0, slash_index + 1);
+  }
+
   virtual Status LoadDynamicLibrary(const std::string& library_filename, void** handle) const override {
-    *handle = ::LoadLibraryA(library_filename.c_str());
-    if (!handle)
+    *handle = ::LoadLibraryExA(library_filename.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
+    if (!*handle)
       return common::Status(common::ONNXRUNTIME, common::FAIL, "Failed to load library");
     return common::Status::OK();
   }
