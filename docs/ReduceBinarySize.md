@@ -20,8 +20,7 @@ ai.onnx;11;Gemm
 ## More usage tips
 - By default, the trimming happens only on cpu execution provider, with --use_cuda it will also be applied to cuda;
 - If both are specified, operators referred from either argument will be kept active;
-- The script is located under toos/ci_build/, and could go solo as:
+- The script is located under toos/ci_build/, and could go solo to apply to cpu and cuda providers as:
 ```
-#apply trimming on all cpu/cuda providers
-python provider_rewriter.py --model_path d:\ReduceSize\models --file_path d:\ReduceSize\ops.txt --ort_root d:\onnxruntime
+python provider_ops_disabler.py --model_path d:\ReduceSize\models --file_path d:\ReduceSize\ops.txt --ort_root d:\onnxruntime
 ```
