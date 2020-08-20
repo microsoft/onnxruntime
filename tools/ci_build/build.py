@@ -1416,7 +1416,7 @@ def build_nuget_package(configs, use_cuda, use_openvino, use_tensorrt, use_dnnl)
     else:
         pass
 
-    cmd_args = ["dotnet",  "restore", "OnnxRuntime.CSharp.sln", "--configfile", "Nuget.CSharp.config" ]
+    cmd_args = ["dotnet",  "restore", "OnnxRuntime.CSharp.sln", "--configfile", "Nuget.CSharp.config"]
     run_subprocess(cmd_args, cwd=build_dir)
 
     for config in configs:
@@ -1425,7 +1425,9 @@ def build_nuget_package(configs, use_cuda, use_openvino, use_tensorrt, use_dnnl)
         cmd_args = ["dotnet", "msbuild", "OnnxRuntime.CSharp.sln", configuration, is_linux_build]
         run_subprocess(cmd_args, cwd=build_dir)
 
-        cmd_args=["dotnet", "msbuild", "OnnxRuntime.CSharp.proj", "/t:CreatePackage", configuration, execution_provider, is_linux_build]
+        cmd_args = [
+            "dotnet", "msbuild", "OnnxRuntime.CSharp.proj", "/t:CreatePackage",
+            configuration, execution_provider, is_linux_build]
         run_subprocess(cmd_args, cwd=build_dir)
 
 
@@ -1560,7 +1562,7 @@ def main():
     if args.build_wheel or args.gen_doc:
         args.enable_pybind = True
 
-    if args.build_csharp or build_nuget or args.build_java or args.build_nodejs:
+    if args.build_csharp or args.build_nuget or args.build_java or args.build_nodejs:
         args.build_shared_lib = True
 
     if args.build_nuget and cross_compiling:
