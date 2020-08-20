@@ -335,7 +335,6 @@ class InferenceSession {
    * Get all the providers' options this session was initialized with.
    */
   const ProviderOptionsMap& GetAllProviderOptions() const;
-
   /**
     * Start profiling on this inference session. This simply turns on profiling events to be
     * recorded. A corresponding EndProfiling has to follow to write profiling data to a file.
@@ -452,15 +451,6 @@ class InferenceSession {
     return !custom_schema_registries_.empty();
   }
 #endif
-
-  common::Status CreateSubgraphSessionState(Graph& graph, SessionState& session_state) ORT_MUST_USE_RESULT;
-
-  common::Status InitializeSubgraphSessions(Graph& graph, SessionState& session_state) ORT_MUST_USE_RESULT;
-
-  virtual void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                         TransformerLevel graph_optimization_level,
-                                         const std::vector<std::string>& custom_list);
-
   void InitLogger(logging::LoggingManager* logging_manager);
 
   common::Status CheckShapes(const std::string& input_name, const TensorShape& input_shape,
@@ -478,6 +468,10 @@ class InferenceSession {
   void StartProfiling(const std::basic_string<T>& file_prefix);
 
 #if !defined(ORT_MINIMAL_BUILD)
+  virtual void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
+                                         TransformerLevel graph_optimization_level,
+                                         const std::vector<std::string>& custom_list);
+
   common::Status TransformGraph(onnxruntime::Graph& graph,
                                 const onnxruntime::GraphTransformerManager& graph_transformer_mgr,
                                 const ExecutionProviders& providers, KernelRegistryManager& kernel_registry_manager,

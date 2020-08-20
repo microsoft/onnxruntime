@@ -10,48 +10,18 @@
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
-Status KernelRegistryManager::CreateKernel(const onnxruntime::Node& node,
-                                           const IExecutionProvider& execution_provider,
-                                           const SessionState& session_state,
-                                           /*out*/ std::unique_ptr<OpKernel>& op_kernel) const {
-  auto create_error_message = [&node](const std::string& error) {
-    std::ostringstream errormsg;
-    errormsg << error << node.OpType();
-    if (node.Op() != nullptr) errormsg << "(" << node.Op()->since_version() << ")";
-    if (!node.Name().empty()) errormsg << " (node " << node.Name() << ")";
-    return errormsg.str();
-  };
+std::unique_ptr<OpKernel> KernelRegistryManager::CreateKernel(const onnxruntime::Node& node,
+                                                              const IExecutionProvider& execution_provider,
+                                                              const SessionState& session_state,
+                                                              const KernelCreateInfo& kernel_create_info) const {
+  OpKernelInfo kernel_info(node, *kernel_create_info.kernel_def, execution_provider,
+                           session_state.GetConstantInitializedTensors(),
+                           session_state.GetOrtValueNameIdxMap(),
+                           session_state.GetFuncMgr(),
+                           session_state.GetDataTransferMgr());
 
-  const std::string& ptype = node.GetExecutionProviderType();
-  if (ptype.empty()) {
-    return Status(ONNXRUNTIME, FAIL,
-                  create_error_message("The node is not placed on any Execution Provider, "
-                                       "therefore, can't find a suitable kernel for "));
-  }
-
-  Status status;
-  {
-    for (auto& registry : custom_kernel_registries_) {
-      status = registry->TryCreateKernel(node, execution_provider, session_state.GetConstantInitializedTensors(),
-                                         session_state.GetOrtValueNameIdxMap(), session_state.GetFuncMgr(), session_state.GetDataTransferMgr(), op_kernel);
-      if (status.IsOK()) {
-        return status;
-      }
-    }
-  }
-
-  KernelRegistry* p = nullptr;
-  auto iter = provider_type_to_registry_.find(ptype);
-  if (iter != provider_type_to_registry_.end()) p = iter->second.get();
-  if (p != nullptr) {
-    status = p->TryCreateKernel(node, execution_provider, session_state.GetConstantInitializedTensors(),
-                                session_state.GetOrtValueNameIdxMap(), session_state.GetFuncMgr(), session_state.GetDataTransferMgr(), op_kernel);
-    if (status.IsOK()) {
-      return status;
-    }
-  }
-
-  return Status(ONNXRUNTIME, NOT_IMPLEMENTED, create_error_message("Failed to find kernel for "));
+  // OpKernel is abstract base class so can't use make_unique
+  return std::unique_ptr<OpKernel>(kernel_create_info.kernel_create_func(kernel_info));
 }
 
 Status KernelRegistryManager::RegisterKernels(const ExecutionProviders& execution_providers) {
@@ -88,32 +58,40 @@ bool KernelRegistryManager::HasImplementationOf(const KernelRegistryManager& r, 
 
 Status KernelRegistryManager::SearchKernelRegistry(const onnxruntime::Node& node,
                                                    /*out*/ const KernelCreateInfo** kernel_create_info) const {
+  Status status;
+
+  auto create_error_message = [&node, &status](const std::string& prefix) {
+    std::ostringstream errormsg;
+    errormsg << prefix << node.OpType();
+    if (node.Op() != nullptr) errormsg << "(" << node.Op()->since_version() << ")";
+    if (!node.Name().empty()) errormsg << " (node " << node.Name() << "). ";
+    if (!status.IsOK()) errormsg << status.ErrorMessage();
+
+    return errormsg.str();
+  };
+
   const std::string& ptype = node.GetExecutionProviderType();
   if (ptype.empty()) {
-    return Status(ONNXRUNTIME, FAIL, "The node is not placed on any Execution Provider");
+    return Status(ONNXRUNTIME, FAIL, create_error_message("The node is not placed on any Execution Provider. "));
   }
-  Status status;
-  {
-    for (auto& registry : custom_kernel_registries_) {
-      status = registry->TryFindKernel(node, std::string(), kernel_create_info);
-      if (status.IsOK()) return status;
-    }
+
+  for (auto& registry : custom_kernel_registries_) {
+    status = registry->TryFindKernel(node, std::string(), kernel_create_info);
+    if (status.IsOK()) return status;
   }
 
   KernelRegistry* p = nullptr;
   auto iter = provider_type_to_registry_.find(ptype);
-  if (iter != provider_type_to_registry_.end()) p = iter->second.get();
+  if (iter != provider_type_to_registry_.end()) {
+    p = iter->second.get();
+  }
+
   if (p != nullptr) {
     status = p->TryFindKernel(node, std::string(), kernel_create_info);
     if (status.IsOK()) return status;
   }
 
-  std::ostringstream errormsg;
-  errormsg << "Failed to find kernel for " << node.OpType();
-  if (node.Op() != nullptr) errormsg << "(" << node.Op()->since_version() << ")";
-  if (!node.Name().empty()) errormsg << " (node " << node.Name() << ").";
-  if (!status.IsOK()) errormsg << status.ErrorMessage();
-  return Status(ONNXRUNTIME, NOT_IMPLEMENTED, errormsg.str());
+  return Status(ONNXRUNTIME, NOT_IMPLEMENTED, create_error_message("Failed to find kernel for "));
 }
 
 }  // namespace onnxruntime
