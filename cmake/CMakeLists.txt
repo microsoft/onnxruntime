@@ -108,6 +108,9 @@ option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 #It's default OFF because it's experimental now.
 option(onnxruntime_PREFER_SYSTEM_LIB "Experimental: Build with the preinstalled libraries in your system" OFF)
 
+option(onnxruntime_MINIMAL_BUILD "Exclude as much as possible from the build. Support ORT format models. No support for ONNX format models." OFF)
+option(onnxruntime_REDUCED_OPS_BUILD "Reduced set of kernels are registered in build via modification of the kernel registration source files." OFF)
+
 # training options
 option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
 option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
@@ -201,6 +204,14 @@ if(onnxruntime_ENABLE_LTO)
     else()
       set (CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
     endif()
+endif()
+
+# ORT build with as much excluded as possible. Supports ORT flatbuffers models only.
+# Will expose option in build.py when all pieces are available
+if(onnxruntime_MINIMAL_BUILD)
+  add_compile_definitions(ORT_MINIMAL_BUILD)
+  set(onnxruntime_REDUCED_OPS_BUILD ON)  # TODO Defaulting to ON. TBD if we should always do that.
+  set(onnxruntime_DISABLE_RTTI ON)
 endif()
 
 if(onnxruntime_DISABLE_RTTI)
