@@ -85,6 +85,7 @@ def optimizer_parameters_mutiple_groups(model):
               {'params': decay_param_group, "alpha": 0.9, "beta": 0.999, "lambda_coef": 0.01, "epsilon": 1e-6}]
     return params
 
+
 def optimizer_parameters(model):
     '''A method to assign different hyper parameters for different model parameter groups'''
     
