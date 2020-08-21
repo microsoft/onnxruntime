@@ -909,10 +909,10 @@ def testToyBERTModelLegacyExperimentalCustomOptimParameters(params, legacy_optim
     onnxruntime.set_seed(seed)
     
     legacy_trainer = Legacy_ORTTrainer(model, None, legacy_model_desc, "LambOptimizer",
-                                                          legacy_optim_map,
-                                                          learning_rate_description,
-                                                          device,
-                                                          _use_deterministic_compute=True)
+                                       legacy_optim_map,
+                                       learning_rate_description,
+                                       device,
+                                       _use_deterministic_compute=True)
     legacy_losses = []
     for i in range(total_steps):
         sample_input = generate_random_input_from_model_desc(model_desc, i)
