@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-namespace onnxruntime.experimental.fbs.Attribute;
+namespace onnxruntime.experimental.fbs.Attribute_;
 
 enum Type : int {
   UNDEFINED = 0,
@@ -19,7 +19,7 @@ enum Type : int {
   SPARSE_TENSORS = 12,
 }
 
-namespace onnxruntime.experimental.fbs.Tensor.Shape;
+namespace onnxruntime.experimental.fbs.Tensor_.Shape_;
 
 table Info {
 dim:[Dimension];
@@ -35,7 +35,7 @@ table DimensionValue {
   dim_param:string;
 }
 
-namespace onnxruntime.experimental.fbs.Tensor;
+namespace onnxruntime.experimental.fbs.Tensor_;
 
 enum DataType : int {
   UNDEFINED = 0,
@@ -59,10 +59,10 @@ enum DataType : int {
 
 table TypeInfo{
   elem_type:DataType;
-  shape:Shape.Info;
+  shape:Shape_.Info;
 }
 
-namespace onnxruntime.experimental.fbs.Graph;
+namespace onnxruntime.experimental.fbs.Graph_;
 
 enum NodeType : int {
   Primitive = 0,
@@ -85,7 +85,7 @@ table Node {
   op_type:string;
   type:NodeType;
   execution_provider_type:string;
-  
+
   inputs:[string];
   outputs:[string];
   attributes:[onnxruntime.experimental.fbs.Attribute];
@@ -109,7 +109,7 @@ table ValueInfo {
 
 // TODO add support of Sequence/Map/SparseTensor/Opaque
 union TypeInfoValue {
-  tensor_type:Tensor.TypeInfo,
+  tensor_type:Tensor_.TypeInfo,
 }
 
 table TypeInfo {
@@ -123,9 +123,9 @@ table TypeInfo {
 table Tensor {
   name:string;
   doc_string:string;
-  
+
   dims:[long];
-  data_type:Tensor.DataType;
+  data_type:Tensor_.DataType;
 
   raw_data:[ubyte];
 
@@ -136,15 +136,15 @@ table Tensor {
 table Attribute{
   name:string;
   doc_string:string;
-  
-  type:Attribute.Type;
-  
+
+  type:Attribute_.Type;
+
   f:float;
   i:long;
   s:[ubyte];
   t:Tensor;
   g:Graph;
-  
+
   floats:[float];
   ints:[long];
   strings:[string];
@@ -156,11 +156,11 @@ table Graph{
   initializers:[Tensor];
 
   node_args:[ValueInfo];
-  nodes:[Graph.Node];
+  nodes:[Graph_.Node];
   max_node_index:uint;
 
-  input_edges:[Graph.EdgeEnd];
-  output_edges:[Graph.EdgeEnd];
+  input_edges:[Graph_.EdgeEnd];
+  output_edges:[Graph_.EdgeEnd];
 
   inputs:[string];
   outputs:[string];
