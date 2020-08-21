@@ -35,6 +35,12 @@ TEST_F(ActivationOpTest, Tanh) {
                          [](float x) { return std::tanh(x); });
 }
 
+TEST_F(ActivationOpTest, Relu) {
+  TestActivationOp("Relu",
+    input_values,
+    [](float x) { return std::max(x, 0.0f); });
+}
+
 TEST_F(ActivationOpTest, Elu) {
   float alpha = 0.1f;
   TestActivationOp("Elu",
