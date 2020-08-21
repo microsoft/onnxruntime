@@ -121,7 +121,7 @@ bool KernelRegistry::VerifyKernelDef(const onnxruntime::Node& node,
   int kernel_end_version;
   kernel_def.SinceVersion(&kernel_start_version, &kernel_end_version);
 
-  int node_since_version = node.Op()->since_version();
+  int node_since_version = node.SinceVersion();
   // Ideal case is, if schema is Since(5), current opset version is opset 7,
   // kernel_def Since(8)     Invalid
   // kernel_def Since(6)     Valid
