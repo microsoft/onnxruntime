@@ -103,12 +103,13 @@ class Node {
   // TEMPORARY
   // Need to add field for SinceVersion instead of getting from the OpSchema in order to remove from the minial build.
   // will do as separate PR given it touches a number of operators. Leave Op() enabled temporarily.
-  // int SinceVersion() const noexcept { return since_version_; }
-  // #if !defined(ORT_MINIMAL_BUILD)
+  int SinceVersion() const noexcept { return since_version_; }
+
+#if !defined(ORT_MINIMAL_BUILD)
   /** Gets the Node's OpSchema.
   @remarks The graph containing this node must be resolved, otherwise nullptr will be returned. */
   const ONNX_NAMESPACE::OpSchema* Op() const noexcept { return op_; }
-  // #endif
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD)
   /** 
@@ -453,10 +454,10 @@ class Node {
   void CreateSubgraph(const std::string& attr_name);
 
   // internal only method to allow selected classes to directly alter the input/output definitions and arg counts
-  Definitions& MutableDefinitions() noexcept { return definitions_; }
+  Definitions& MutableDefinitions() noexcept;
 
   // internal only method to allow selected classes to directly alter the links between nodes.
-  Relationships& MutableRelationships() noexcept { return relationships_; }
+  Relationships& MutableRelationships() noexcept;
 
   const std::vector<std::unique_ptr<Graph>>& MutableSubgraphs() noexcept { return subgraphs_; }
 
@@ -487,12 +488,12 @@ class Node {
   // TEMPORARY
   // Need to add field for SinceVersion instead of getting from the OpSchema in order to remove from the minial build.
   // will do as separate PR given it touches a number of operators. Leave op_ enabled temporarily.
-  // int since_version_ = -1;
-  //
-  // #if !defined(ORT_MINIMAL_BUILD)
+  int since_version_ = -1;
+
+#if !defined(ORT_MINIMAL_BUILD)
   // OperatorSchema that <*this> node refers to.
   const ONNX_NAMESPACE::OpSchema* op_ = nullptr;
-  // #endif
+#endif
 
   Node::Type node_type_ = Node::Type::Primitive;
 

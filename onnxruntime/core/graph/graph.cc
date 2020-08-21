@@ -747,8 +747,8 @@ Graph::Graph(const Model& owning_model,
       graph_proto_(graph_proto),
       schema_registry_(schema_registry),
       graph_resolve_needed_(true),
-      domain_to_version_(domain_to_version),
       model_functions_(model_functions),
+      domain_to_version_(domain_to_version),
       ir_version_(ir_version),
       using_latest_onnx_opset_(UsingLatestOnnxOpset(domain_to_version)),
       parent_graph_(parent_graph),
@@ -2027,6 +2027,8 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
       if (!node.op_) {
         return Status(ONNXRUNTIME, FAIL, "Fatal error: " + node.OpType() + " is not a registered function/op");
       }
+
+      node.since_version_ = node.op_->since_version();
     }
 
     ORT_RETURN_IF_ERROR(node.UpdateInputArgCount());
