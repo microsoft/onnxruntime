@@ -1446,6 +1446,9 @@ def build_nuget_package(configs, use_cuda, use_openvino, use_tensorrt, use_dnnl,
 
 
 def run_csharp_tests(use_cuda, use_openvino, use_tensorrt, use_dnnl):
+    # Currently only running tests on windows.
+    if not is_windows():
+        return
     build_dir = os.path.join(os.getcwd(), 'csharp')
     is_linux_build = derive_linux_build_property()
 
@@ -1781,7 +1784,7 @@ def main():
                 args.use_mklml
             )
 
-    if args.test:
+    if args.test and args.build_nuget:
         run_csharp_tests(
             args.use_cuda,
             args.use_openvino,
