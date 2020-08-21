@@ -156,7 +156,7 @@ class ONNXCalibrater:
     def _get_input_name_to_nodes(self,model):
 
         '''
-            Helper function to get input_name_to_nodes dicti
+            Helper function to get input_name_to_nodes dictionary
         '''
         input_name_to_nodes = {}
 
@@ -170,12 +170,13 @@ class ONNXCalibrater:
         return input_name_to_nodes 
 
 
-    def _get_next_nodes(self,model,curr_node):
+    def _get_next_nodes(self,model,curr_node,input_name_to_nodes):
+
         '''
             Helper function to get child nodes for a given node
         '''
         if input_name_to_nodes is None:
-            input_name_to_nodes = self.input_name_to_nodes()
+            input_name_to_nodes = self._get_input_name_to_nodes(model)
 
         children = []
         for output in curr_node.output:
