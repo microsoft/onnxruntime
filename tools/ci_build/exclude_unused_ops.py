@@ -77,19 +77,17 @@ def extract_ops_from_model(model_path, referred_ops):
         log.warning('Directory {} does not exist'.format(model_path))
         return referred_ops
 
-    def extract_ops_from_graph(graph, operators):
+    def extract_ops_from_graph(graph, operators, domain_opset_map):
         '''extract ops from graph and all subgraphs'''
 
         for operator in graph.node:
 
             mapped_domain = map_domain(operator.domain)
-
-            for opset in operators[mapped_domain]:
-                operators[mapped_domain][opset].add(operator.op_type)
+            operators[mapped_domain][domain_opset_map[mapped_domain]].add(operator.op_type)
 
             for attr in operator.attribute:
                 if attr.type == AP.GRAPH:  # process subgraph
-                    extract_ops_from_graph(attr.g, operators)
+                    extract_ops_from_graph(attr.g, operators, domain_opset_map)
 
     # end of extract_ops_from_graph(...)
 
@@ -99,10 +97,12 @@ def extract_ops_from_model(model_path, referred_ops):
             if file.endswith('.onnx'):
                 model_path = os.path.join(root, file)
                 model = onnx.load(model_path)
+                domain_opset_map = {}
 
                 for opset in model.opset_import:
 
                     mapped_domain = map_domain(opset.domain)
+                    domain_opset_map[mapped_domain] = opset.version
 
                     if mapped_domain not in referred_ops:
                         referred_ops[mapped_domain] = {opset.version: set()}
@@ -110,7 +110,7 @@ def extract_ops_from_model(model_path, referred_ops):
                     elif opset.version not in referred_ops[mapped_domain]:
                         referred_ops[mapped_domain][opset.version] = set()
 
-                extract_ops_from_graph(model.graph, referred_ops)
+                extract_ops_from_graph(model.graph, referred_ops, domain_opset_map)
 
     return referred_ops  # end of extract_ops_from_model(...)
 
