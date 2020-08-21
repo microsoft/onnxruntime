@@ -87,24 +87,6 @@ def get_linear_schedule_with_warmup(num_warmup_steps, num_training_steps, base_l
     return lambda_lr_get_lr
 
 
-class CustomLRSchedulerLinearWarmup(_LRScheduler):
-
-    def __init__(self, num_warmup_steps, num_training_steps, base_lr):
-        super().__init__()
-        self.num_warmup_steps = num_warmup_steps
-        self.num_training_steps = num_training_steps
-        self.base_lr = base_lr
-
-    def lr_lambda_linear(self, current_step):
-        if current_step < self.num_warmup_steps:
-            return float(current_step) / float(max(1, self.num_warmup_steps))
-        return max(0.0, float(self.num_training_steps - current_step) / float(max(1, self.num_training_steps - self.num_warmup_steps)))
-
-    def get_lr(self, train_step_info):
-        # LambdaLR increment self.last_epoch at every step()
-        return [self.base_lr * self.lr_lambda_linear(train_step_info.optimization_step)]
-
-
 class ORTTransformerTrainer:
     """
     """
@@ -198,7 +180,7 @@ class ORTTransformerTrainer:
                 'outputs': [('loss', [], True),
                             ('logits', ['batch', 2])]}
 
-            lr_scheduler = CustomLRSchedulerLinearWarmup(self.args.warmup_steps, t_total, self.args.learning_rate)
+            lr_scheduler = orttrainer.optim.LinearWarmupLRScheduler(t_total, self.args.warmup_steps/float(t_total))
 
             loss_scaler = amp.DynamicLossScaler() if self.args.fp16 else None
             device = self.args.device.type
