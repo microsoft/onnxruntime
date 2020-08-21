@@ -197,13 +197,6 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
     auto node = graph.GetNode(i);
     if (!node)
       return Status(ONNXRUNTIME, INVALID_ARGUMENT);
-    
-    // Map for mapping input node name to input node
-    std::unordered_map<std::string, const onnxruntime::Node*> nodeNameToNode;
-    for (auto inputNodeIter = node->InputNodesBegin(); inputNodeIter != node->InputNodesEnd(); ++inputNodeIter) {
-        nodeNameToNode[inputNodeIter->Name()] = &(*inputNodeIter);
-    }
-    
     auto& inputs = node->MutableInputDefs();
     std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> replacement_defs;
     bool casted = false;
@@ -273,7 +266,7 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
         replacement_defs[dst_arg] = src_arg;
       }
     }
-    
+  
     node->ReplaceDefs(replacement_defs);
     modified = modified || casted;
 
