@@ -56,7 +56,7 @@ enum TensorDataType : int {
   BFLOAT16 = 16,
 }
 
-table TensorTypeInfo{
+table TensorTypeAndShape{
   elem_type:TensorDataType;
   shape:Shape;
 }
@@ -101,7 +101,7 @@ table ValueInfo {
 
 // TODO add support of Sequence/Map/SparseTensor/Opaque
 union TypeInfoValue {
-  tensor_type:TensorTypeInfo,
+  tensor_type:TensorTypeAndShape,
 }
 
 table TypeInfo {
