@@ -453,6 +453,7 @@ const Function* Node::GetFunctionBody() const noexcept {
 void Node::SetFunctionBody(const Function& func) {
   func_body_ = &func;
   op_ = &func.OpSchema();
+  since_version_ = op_->since_version();
 }
 
 const std::string& Node::GetExecutionProviderType() const noexcept {
@@ -2053,11 +2054,13 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
         node.op_ = nullptr;
       }
 
-	  InitFunctionBodyForNode(node);
+      InitFunctionBodyForNode(node);
 
       if (!node.op_) {
         return Status(ONNXRUNTIME, FAIL, "Fatal error: " + node.OpType() + " is not a registered function/op");
       }
+
+      node.since_version_ = node.op_->since_version();
     }
 
     ORT_RETURN_IF_ERROR(node.UpdateInputArgCount());

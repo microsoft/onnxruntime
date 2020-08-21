@@ -787,15 +787,28 @@ endif()
 
 if(onnxruntime_USE_OPENVINO)
 
-  if (NOT onnxruntime_USE_FULL_PROTOBUF)
-    message(FATAL_ERROR "Please set onnxruntime_USE_FULL_PROTOBUF=ON for OpenVINO execution provider.")
+  add_definitions(-DUSE_OPENVINO=1)
+
+  # Check OpenVINO version for support
+  if ($ENV{INTEL_OPENVINO_DIR} MATCHES "2020.2")
+    set(OPENVINO_VERSION "2020.2")
+    add_definitions(-DOPENVINO_2020_2=1)
+  elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "2020.3")
+    set(OPENVINO_VERSION "2020.3")
+    add_definitions(-DOPENVINO_2020_3=1)
+  elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "2020.4")
+    set(OPENVINO_VERSION "2020.4")
+    add_definitions(-DOPENVINO_2020_4=1)
+  else()
+    message(FATAL_ERROR "Unsupported OpenVINO version: ${INTEL_OPENVINO_DIR}")
   endif()
 
-  add_definitions(-DUSE_OPENVINO=1)
   if (NOT WIN32)
-    include(openvino)
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES ovep_ngraph)
-    list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_ngraph)
+    if(OPENVINO_VERSION STREQUAL "2020.2")
+      include(openvino)
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES ovep_ngraph)
+      list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_ngraph)
+    endif()
   endif()
 
   if(onnxruntime_USE_OPENVINO_MYRIAD)
@@ -894,7 +907,7 @@ if (onnxruntime_USE_CUDA)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${ONNXRUNTIME_CUDA_LIBRARIES})
 
   if(CMAKE_LIBRARY_ARCHITECTURE STREQUAL "aarch64-linux-gnu")
-    string (APPEND CMAKE_CUDA_FLAGS "-gencode=arch=compute_53,code=sm_53 -gencode=arch=compute_62,code=sm_62") #nano, TX1, TX2
+    string (APPEND CMAKE_CUDA_FLAGS "-gencode=arch=compute_53,code=sm_53 -gencode=arch=compute_62,code=sm_62 ") #nano, TX1, TX2
     string (APPEND CMAKE_CUDA_FLAGS "-gencode=arch=compute_72,code=sm_72") # Jetson N
   else()
     # the following compute capabilities are deprecated in CUDA 11 Toolkit

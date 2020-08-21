@@ -294,11 +294,11 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
 }
 
 bool MatchesOpSinceVersion(const Node& node, const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions) {
-  return std::find(versions.begin(), versions.end(), node.Op()->SinceVersion()) != versions.end();
+  return std::find(versions.begin(), versions.end(), node.SinceVersion()) != versions.end();
 }
 
 bool MatchesOpSinceVersion(const Node& node, const std::vector<ONNX_NAMESPACE::OperatorSetVersion>& versions) {
-  return std::find(versions.begin(), versions.end(), node.Op()->SinceVersion()) != versions.end();
+  return std::find(versions.begin(), versions.end(), node.SinceVersion()) != versions.end();
 }
 
 bool MatchesOpSetDomain(const Node& node, const std::string& domain) {
@@ -722,7 +722,8 @@ bool FindPath(const Node& node, bool is_input_edge, const std::vector<EdgeEndToM
     for (auto it = edges_begin; it != edges_end; ++it) {
 #ifndef NDEBUG
       LOGS(logger, VERBOSE) << "E:" << it->GetSrcArgIndex() << "," << it->GetDstArgIndex()
-                            << "," << it->GetNode().OpType() << "," << it->GetNode().Domain() << "," << it->GetNode().Op()->SinceVersion();
+                            << "," << it->GetNode().OpType() << "," << it->GetNode().Domain() << ","
+                            << it->GetNode().SinceVersion();
 #endif
       if (edge.dst_arg_index == it->GetDstArgIndex() &&
           edge.src_arg_index == it->GetSrcArgIndex() &&
