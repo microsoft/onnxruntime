@@ -267,8 +267,9 @@ class ORTTrainer(object):
             ValueError: raised when `path` is not valid path
         """
         if not self._training_session:
-            raise RuntimeWarning("Training session is not initialized yet. "
+            warnings.warn("Training session is not initialized yet. "
                                  "'train_step' or 'eval_step' methods must be executed at least once before calling 'save_as_onnx()'.")
+            return
         state_tensors = self._training_session.get_state()
         self._update_onnx_model_initializers(state_tensors)
 
@@ -276,7 +277,8 @@ class ORTTrainer(object):
         dir_name = os.path.dirname(path)
         file_name = os.path.basename(path)
         if not dir_name or not os.path.exists(dir_name) or not file_name:
-            raise ValueError("'path' is not valid. It must contain an existing folder + filename")
+            warnings.warn("'path' is not valid. It must contain an existing folder + filename")
+            return
 
         with open(path, "wb") as f:
             f.write(self._onnx_model.SerializeToString())
@@ -326,8 +328,9 @@ class ORTTrainer(object):
             outputs_desc = self._model_desc_outputs_with_all_finite
 
         # Update Learning Rate if Necessary
+        lr = self.optim_config.lr
         if self.options.lr_scheduler:
-            self.options.lr_scheduler.step(self._train_step_info)
+            lr = self.options.lr_scheduler._step(self._train_step_info)[0]
 
         # Loss Scale for mixed precision
         loss_scale = None
@@ -338,7 +341,7 @@ class ORTTrainer(object):
             inputs_desc = self._model_desc_inputs_with_lr_and_loss_scale
 
         # Get data. CombineTorchModelLossFn takes label as last input and outputs loss first
-        input = self._prepare_model_input(inputs_desc, self.optim_config.lr, loss_scale, *args, **kwargs)
+        input = self._prepare_model_input(inputs_desc, lr, loss_scale, *args, **kwargs)
 
         # Normalize input
         if not isinstance(args, (list, tuple)):
@@ -656,13 +659,13 @@ class ORTTrainer(object):
 
         # Append learning rate
         extra_inputs = 0
-        if lr:
+        if lr is not None:
             lr = torch.tensor([lr])
             input += (lr,)
             extra_inputs += 1
 
         # Append loss scale
-        if loss_scale:
+        if loss_scale is not None:
             assert self.options.mixed_precision.enabled, "Loss scale cannot be used without mixed precision"
             loss_scale = loss_scale.clone().detach()
             input += (loss_scale, )
