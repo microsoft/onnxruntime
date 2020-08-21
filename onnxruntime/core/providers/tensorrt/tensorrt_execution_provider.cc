@@ -4,6 +4,7 @@
 #include <fstream>
 #include <list>
 #include <unordered_set>
+#include <iostream> //slx
 #include "core/providers/shared_library/provider_api.h"
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
@@ -199,6 +200,18 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   const std::string fp16_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kFP16Enable);
   if (!fp16_enable_env.empty()) {
     fp16_enable_ = (std::stoi(fp16_enable_env) == 0 ? false : true);
+  }
+
+  const std::string int8_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kINT8Enable);
+  if (!int8_enable_env.empty()) {
+    int8_enable_ = (std::stoi(int8_enable_env) == 0 ? false : true);
+  }
+
+  if (int8_enable_) {
+    const std::string int8_calibration_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kINT8CalibrationEnable);
+    if (!int8_calibration_enable_env.empty()) {
+      int8_calibration_enable_ = (std::stoi(int8_calibration_enable_env) == 0 ? false : true);
+    }
   }
 
   const std::string dump_subgraphs_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDumpSubgraphs);
@@ -870,7 +883,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       *p = {context->allocate_func, context->release_func, context->allocator_handle, parsers_[context->node_name].get(),
             &engines_[context->node_name], &contexts_[context->node_name], builders_[context->node_name].get(),
             networks_[context->node_name].get(), input_info_[context->node_name], output_info_[context->node_name],
-            input_shape_ranges_[context->node_name], &tensorrt_mu_, &fp16_enable_,
+            input_shape_ranges_[context->node_name], &tensorrt_mu_, &fp16_enable_, &int8_enable_, &int8_calibration_enable_,
             &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, engine_cache_path_, runtime_};
       *state = p.release();
       return 0;
@@ -1045,6 +1058,107 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
         }
       }
 
+{
+      //slx INT8
+      // Calibrator life time needs to last until after the engine is built.
+	if (*(trt_state->int8_enable_ptr) && *(trt_state->int8_calibration_enable_ptr) && trt_builder->platformHasFastInt8()) {
+	std::cout << "-----TensorRT INT8 Calibration-----" << std::endl;
+	std::cout << "engine_update: " << engine_update << std::endl;
+	std::cout << "trt_builder->platformHasFastInt8(): " << trt_builder->platformHasFastInt8() << std::endl;
+	std::unique_ptr<nvinfer1::IInt8Calibrator> calibrator;
+	  std::cout << "platformHasFastInt8() is true" << std::endl;
+	  // Get input names and data pointers
+	  std::vector<std::string> input_tensor_names(num_inputs);//num_inputs=num_binding_inputs?????
+	  std::vector<void*> input_bindings(num_inputs);
+	  std::cout << "num_inputs: " << num_inputs << std::endl;
+	  for (int i = 0, end = num_inputs; i < end; ++i) {
+                auto input = trt_state->network->getInput(i);
+                const std::string& input_name = input->getName();
+		std::cout << "i: " << i << ", input_name: " << input_name << std::endl;
+		input_tensor_names[i] = input_name;
+
+            int input_index = 0;
+            const auto& iter = input_indexes.find(input_name);
+            if (iter != input_indexes.end()) {
+              input_index = iter->second;
+            }
+
+          const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index);
+		///const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_indexes[i]);
+		auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
+		const auto& tensor_shape = ort.GetTensorShape(tensor_info);
+		auto tensor_type = ort.GetTensorElementType(tensor_info);
+		
+		if (tensor_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
+		  input_bindings[i] = const_cast<float*>(ort.GetTensorData<float>(input_tensor));
+                  std::cout << "input_bindings[i]: " << input_bindings[i] << std::endl;
+
+
+		  ///nvinfer1::Dims dimensions = trt_context->getBindingDimensions(static_cast<int>(i));//i -> binding_index = trt_engine->getBindingIndex(input_name.c_str());
+                  nvinfer1::Dims dimensions = input->getDimensions();
+		  int nb_dims = dimensions.nbDims;
+		  int input_dim_size = 1;// SafeInt<int>
+		  for (int j = 0, end = nb_dims; j < end; ++j) {
+                        std::cout << "j: " << j << ", tensor_shape[j]: " << tensor_shape[j] << std::endl;
+                        ///if (tensor_shape[j] > 0) {
+			  input_dim_size *= tensor_shape[j];
+                        ///}
+		  }
+		  std::cout << "input_dim_size: " << input_dim_size << std::endl;
+		  float* input = new float[input_dim_size];
+		  cudaMemcpy(input, input_bindings[i], input_dim_size * sizeof(float), cudaMemcpyDeviceToHost);//const_cast<float*>(ort.GetTensorData<float>(input_tensor))
+		  for (int j = 0; j < std::min(10, input_dim_size); ++j) {
+			std::cout << input[j] << ",";
+		  }
+		  delete[] input;
+		  std::cout << std::endl;
+		  
+		} else {
+		  return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+								 "TensorRT INT8 calibration doesn't support data type: " + std::to_string(tensor_type));
+		}
+		ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
+	  }
+
+          auto trt_config = tensorrt_ptr::unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
+          trt_config->setMaxWorkspaceSize(*(trt_state->max_workspace_size_ptr));
+          trt_config->addOptimizationProfile(trt_profile);//trt_profile from dynamic shape model!!
+	  trt_config->setFlag(nvinfer1::BuilderFlag::kINT8);
+	  //nvinfer1::Dims dims{};
+	  std::string networkName = "vision_yolov3";
+	  //std::vector<std::string> inputTensorNames = {"input"};
+	  //BatchStream calibrationStream(1, 1, dims);
+	  //calibrator.reset(new Int8EntropyCalibrator2<BatchStream>(calibrationStream, 0, networkName.c_str(), inputTensorNames[0].c_str()));
+	  std::cout << "input_tensor_names[0]: " << input_tensor_names[0] << std::endl;
+	  calibrator.reset(new MyInt8EntropyCalibrator2(1, 1, input_bindings[0], networkName.c_str(), input_tensor_names[0].c_str()));
+	  //MyInt8EntropyCalibrator2(/*ImageStream& stream,*/ int batchSize, int maxBatches, void* input_bindings[], const string networkName, const char* inputBlobName, bool readCache = true)
+
+	  trt_config->setInt8Calibrator(calibrator.get());
+	  //trt_int8_calibration = true;
+	  *(trt_state->int8_calibration_enable_ptr) = true;
+
+          trt_state->context->reset();
+          trt_state->engine->reset();
+		//trt_state->engine = trt_builder->buildEngineWithConfig(*trt_state->network, *trt_config);
+                *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
+                      trt_builder->buildEngineWithConfig(*trt_state->network, *trt_config));
+          if (trt_state->engine->get() == nullptr) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
+          }
+          trt_engine = trt_state->engine->get();
+
+		//trt_state->context = trt_state->engine->get()->createExecutionContext();
+               *(trt_state->context) = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(
+                  trt_state->engine->get()->createExecutionContext());
+        if (trt_state->context->get() == nullptr) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
+        }
+        trt_context = trt_state->context->get();	
+	
+	}
+	  std::cout << "INT8 calibration: trt_state->engine: " << trt_state->engine << ", trt_state->context: " << trt_state->context << ", trt_context: " << trt_context << std::endl;	
+}	  
+
       // Regenerate engine
       // Only one profile is generated, so no need to explicitly set optimization profile
       if (engine_update) {
@@ -1072,8 +1186,161 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           auto trt_config = tensorrt_ptr::unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
           trt_config->setMaxWorkspaceSize(*(trt_state->max_workspace_size_ptr));
           trt_config->addOptimizationProfile(trt_profile);
-          if (*(trt_state->fp16_enable_ptr) && trt_builder->platformHasFastFp16()) {
-            trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
+          //if (*(trt_state->fp16_enable_ptr) && trt_builder->platformHasFastFp16()) {
+          //  trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
+          //}
+          if (*(trt_state->int8_enable_ptr) && trt_builder->platformHasFastInt8()) {
+            ///trt_config->setFlag(nvinfer1::BuilderFlag::kINT8);
+/*
+{//slx INT8    
+      // Calibrator life time needs to last until after the engine is built.
+	//if (*(trt_state->int8_calibration_enable_ptr)) {
+	  std::cout << "-----TensorRT INT8 Calibration-----" << std::endl;
+	  std::cout << "engine_update: " << engine_update << std::endl;
+	  std::cout << "trt_builder->platformHasFastInt8(): " << trt_builder->platformHasFastInt8() << std::endl;
+	  std::unique_ptr<nvinfer1::IInt8Calibrator> calibrator;
+	  std::cout << "platformHasFastInt8() is true" << std::endl;
+	  // Get input names and data pointers
+	  std::vector<std::string> input_tensor_names(num_inputs);//num_inputs=num_binding_inputs?????
+	  std::vector<void*> input_bindings(num_inputs);
+	  std::cout << "num_inputs: " << num_inputs << std::endl;
+	  for (int i = 0, end = num_inputs; i < end; ++i) {
+            auto input = trt_state->network->getInput(i);
+            const std::string& input_name = input->getName();
+	    std::cout << "i: " << i << ", input_name: " << input_name << std::endl;
+	    input_tensor_names[i] = input_name;
+
+            int input_index = 0;
+            const auto& iter = input_indexes.find(input_name);
+            if (iter != input_indexes.end()) {
+              input_index = iter->second;
+            }
+
+            const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index);
+            auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
+	    auto tensor_type = ort.GetTensorElementType(tensor_info);
+		
+	    if (tensor_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
+	      input_bindings[i] = const_cast<float*>(ort.GetTensorData<float>(input_tensor));
+              std::cout << "input_bindings[i]: " << input_bindings[i] << std::endl;	  
+	    } else {
+	      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+		"TensorRT INT8 calibration doesn't support data type: " + std::to_string(tensor_type));
+	    }
+	    ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
+	  }
+
+	  std::string networkName = "vision_yolov3";
+	  std::cout << "input_bindings[0]: " << input_bindings[0] << ", networkName: " << networkName << ", input_tensor_names[0]: " << input_tensor_names[0] << std::endl;
+	  calibrator.reset(new MyInt8EntropyCalibrator2(1, 1, input_bindings[0], networkName.c_str(), input_tensor_names[0].c_str()));
+          std::cout << "calibrator.get(): " << calibrator.get() << std::endl;
+	  trt_config->setInt8Calibrator(calibrator.get());
+	  ///  *(trt_state->int8_calibration_enable_ptr) = true;
+          std::cout << 	"trt_config->setInt8Calibrator(calibrator.get()) done" << std::endl;
+
+}
+*/
+{
+      //slx INT8
+      // Calibrator life time needs to last until after the engine is built.
+	if (*(trt_state->int8_enable_ptr) && *(trt_state->int8_calibration_enable_ptr) && trt_builder->platformHasFastInt8()) {
+	std::cout << "-----TensorRT INT8 Calibration-----" << std::endl;
+	std::cout << "engine_update: " << engine_update << std::endl;
+	std::cout << "trt_builder->platformHasFastInt8(): " << trt_builder->platformHasFastInt8() << std::endl;
+	std::unique_ptr<nvinfer1::IInt8Calibrator> calibrator;
+	  std::cout << "platformHasFastInt8() is true" << std::endl;
+	  // Get input names and data pointers
+	  std::vector<std::string> input_tensor_names(num_inputs);//num_inputs=num_binding_inputs?????
+	  std::vector<void*> input_bindings(num_inputs);
+	  std::cout << "num_inputs: " << num_inputs << std::endl;
+	  for (int i = 0, end = num_inputs; i < end; ++i) {
+                auto input = trt_state->network->getInput(i);
+                const std::string& input_name = input->getName();
+		std::cout << "i: " << i << ", input_name: " << input_name << std::endl;
+		input_tensor_names[i] = input_name;
+
+            int input_index = 0;
+            const auto& iter = input_indexes.find(input_name);
+            if (iter != input_indexes.end()) {
+              input_index = iter->second;
+            }
+
+          const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index);
+		///const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_indexes[i]);
+		auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
+		const auto& tensor_shape = ort.GetTensorShape(tensor_info);
+		auto tensor_type = ort.GetTensorElementType(tensor_info);
+		
+		if (tensor_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
+		  input_bindings[i] = const_cast<float*>(ort.GetTensorData<float>(input_tensor));
+                  std::cout << "input_bindings[i]: " << input_bindings[i] << std::endl;
+
+
+		  ///nvinfer1::Dims dimensions = trt_context->getBindingDimensions(static_cast<int>(i));//i -> binding_index = trt_engine->getBindingIndex(input_name.c_str());
+                  nvinfer1::Dims dimensions = input->getDimensions();
+		  int nb_dims = dimensions.nbDims;
+		  int input_dim_size = 1;// SafeInt<int>
+		  for (int j = 0, end = nb_dims; j < end; ++j) {
+                        std::cout << "j: " << j << ", tensor_shape[j]: " << tensor_shape[j] << std::endl;
+                        ///if (tensor_shape[j] > 0) {
+			  input_dim_size *= tensor_shape[j];
+                        ///}
+		  }
+		  std::cout << "input_dim_size: " << input_dim_size << std::endl;
+		  float* input = new float[input_dim_size];
+		  cudaMemcpy(input, input_bindings[i], input_dim_size * sizeof(float), cudaMemcpyDeviceToHost);//const_cast<float*>(ort.GetTensorData<float>(input_tensor))
+		  for (int j = 0; j < std::min(10, input_dim_size); ++j) {
+			std::cout << input[j] << ",";
+		  }
+		  delete[] input;
+		  std::cout << std::endl;
+		  
+		} else {
+		  return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+								 "TensorRT INT8 calibration doesn't support data type: " + std::to_string(tensor_type));
+		}
+		ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
+	  }
+
+          ///auto trt_config = tensorrt_ptr::unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
+          ///trt_config->setMaxWorkspaceSize(*(trt_state->max_workspace_size_ptr));
+          ///trt_config->addOptimizationProfile(trt_profile);//trt_profile from dynamic shape model!!
+	  trt_config->setFlag(nvinfer1::BuilderFlag::kINT8);
+	  //nvinfer1::Dims dims{};
+	  std::string networkName = "vision_yolov3";
+	  //std::vector<std::string> inputTensorNames = {"input"};
+	  //BatchStream calibrationStream(1, 1, dims);
+	  //calibrator.reset(new Int8EntropyCalibrator2<BatchStream>(calibrationStream, 0, networkName.c_str(), inputTensorNames[0].c_str()));
+	  std::cout << "input_tensor_names[0]: " << input_tensor_names[0] << std::endl;
+	  calibrator.reset(new MyInt8EntropyCalibrator2(1, 1, input_bindings[0], networkName.c_str(), input_tensor_names[0].c_str()));
+	  //MyInt8EntropyCalibrator2(/*ImageStream& stream,*/ int batchSize, int maxBatches, void* input_bindings[], const string networkName, const char* inputBlobName, bool readCache = true)
+
+	  trt_config->setInt8Calibrator(calibrator.get());
+	  //trt_int8_calibration = true;
+	  *(trt_state->int8_calibration_enable_ptr) = true;
+/*
+          trt_state->context->reset();
+          trt_state->engine->reset();
+		//trt_state->engine = trt_builder->buildEngineWithConfig(*trt_state->network, *trt_config);
+                *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
+                      trt_builder->buildEngineWithConfig(*trt_state->network, *trt_config));
+          if (trt_state->engine->get() == nullptr) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
+          }
+          trt_engine = trt_state->engine->get();
+
+		//trt_state->context = trt_state->engine->get()->createExecutionContext();
+               *(trt_state->context) = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(
+                  trt_state->engine->get()->createExecutionContext());
+        if (trt_state->context->get() == nullptr) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
+        }
+        trt_context = trt_state->context->get();	
+*/
+	}
+	//std::cout << "INT8 calibration: trt_state->engine: " << trt_state->engine << ", trt_state->context: " << trt_state->context << ", trt_context: " << trt_context << std::endl;	
+
+}
           }
           trt_state->context->reset();
           trt_state->engine->reset();
@@ -1084,6 +1351,8 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
           }
           trt_engine = trt_state->engine->get();
+          std::cout << 	"trt_engine is created" << std::endl;
+
           if (trt_state->engine_cache_enable) {
             nvinfer1::IHostMemory* serializedModel = trt_engine->serialize();
             std::ofstream file(cached_path, std::ios::binary | std::ios::out);
@@ -1099,6 +1368,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
         }
         trt_context = trt_state->context->get();
+        std::cout << 	"trt_context is created" << std::endl;
       }
 
       // Get input and output binding names
