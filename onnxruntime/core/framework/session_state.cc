@@ -118,6 +118,7 @@ void SessionState::CreateGraphInfo() {
   LOGS(logger_, VERBOSE) << "Done saving OrtValue mappings.";
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 Status SessionState::PopulateKernelCreateInfo(KernelRegistryManager& kernel_registry_manager) {
   for (auto& node : graph_.Nodes()) {
     const KernelCreateInfo* kci = nullptr;
@@ -135,6 +136,7 @@ Status SessionState::PopulateKernelCreateInfo(KernelRegistryManager& kernel_regi
 
   return Status::OK();
 }
+#endif
 
 const KernelCreateInfo& SessionState::GetNodeKernelCreateInfo(NodeIndex node_index) const {
   auto entry = kernel_create_info_map_.find(node_index);
@@ -597,6 +599,7 @@ const NodeIndexInfo& SessionState::GetNodeIndexInfo() const {
   return *node_index_info_;
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 void SessionState::UpdateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue_idxs) {
   std::vector<int> sorted_idxs = fetch_mlvalue_idxs;
   std::sort(sorted_idxs.begin(), sorted_idxs.end());
@@ -629,6 +632,7 @@ const std::unordered_set<NodeIndex>* SessionState::GetToBeExecutedNodes(
   auto it = to_be_executed_nodes_.find(sorted_idxs);
   return (it != to_be_executed_nodes_.end()) ? &it->second : nullptr;
 }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 Status SessionState::CreateSubgraphSessionState() {
   for (auto& node : graph_.Nodes()) {
@@ -673,10 +677,17 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
   // so also do it recursively when calling PopulateKernelCreateInfo for consistency.
   ORT_RETURN_IF_ERROR(CreateSubgraphSessionState());
 
+#if !defined(ORT_MINIMAL_BUILD)
   ORT_RETURN_IF_ERROR(PopulateKernelCreateInfo(kernel_registry_manager));
-
   return FinalizeSessionStateImpl(graph_location, kernel_registry_manager, nullptr, session_options,
                                   remove_initializers);
+#else
+  ORT_UNUSED_PARAMETER(graph_location);
+  ORT_UNUSED_PARAMETER(kernel_registry_manager);
+  ORT_UNUSED_PARAMETER(session_options);
+  ORT_UNUSED_PARAMETER(remove_initializers);
+  return Status(ONNXRUNTIME, NOT_IMPLEMENTED, "TODO: Add deserialization of kernel create info.");
+#endif
 }
 
 Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_TYPE>& graph_location,

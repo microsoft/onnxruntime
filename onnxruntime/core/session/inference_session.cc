@@ -95,6 +95,7 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
                                      const ONNX_NAMESPACE::ModelProto& model_proto,
                                      bool is_model_proto_parsed,
                                      /*out*/ SessionOptions& finalized_session_options) {
+#if !defined(ORT_MINIMAL_BUILD)
   const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
 
   // By now the environment should have initialized. (It is enforced prior to this.)
@@ -151,6 +152,11 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
     // use user provided session options instance
     finalized_session_options = user_provided_session_options;
   }
+#else
+  ORT_UNUSED_PARAMETER(model_proto);
+  ORT_UNUSED_PARAMETER(is_model_proto_parsed);
+  finalized_session_options = user_provided_session_options;
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   return Status::OK();
 }
@@ -165,8 +171,11 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   // after the invocation of FinalizeSessionOptions.
   InitLogger(logging_manager_);  // this sets session_logger_ so that it can be used for logging after this point.
 
+#if !defined(ORT_MINIMAL_BUILD)
   // Update the number of steps for the graph transformer manager using the "finalized" session options
   ORT_ENFORCE(graph_transformation_mgr_.SetSteps(session_options_.max_num_graph_transformation_steps).IsOK());
+#endif
+
   use_per_session_threads_ = session_options.use_per_session_threads;
 
   if (use_per_session_threads_) {
@@ -219,19 +228,23 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 }
 
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env)
-    : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
-      logging_manager_(session_env.GetLoggingManager()),
-      insert_cast_transformer_("CastFloat16Transformer") {
+    :
+#if !defined(ORT_MINIMAL_BUILD)
+      graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
+      insert_cast_transformer_("CastFloat16Transformer"),
+#endif
+      logging_manager_(session_env.GetLoggingManager()) {
   // Initialize assets of this session instance
   ConstructorCommon(session_options, session_env);
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env,
                                    const std::string& model_uri)
     : model_location_(ToWideString(model_uri)),
       graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
-      logging_manager_(session_env.GetLoggingManager()),
-      insert_cast_transformer_("CastFloat16Transformer") {
+      insert_cast_transformer_("CastFloat16Transformer"),
+      logging_manager_(session_env.GetLoggingManager()) {
   auto status = Model::Load(model_location_, model_proto_);
   ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session. Error message: ",
               status.ErrorMessage());
@@ -245,8 +258,8 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
                                    const Environment& session_env,
                                    const std::wstring& model_uri)
     : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
-      logging_manager_(session_env.GetLoggingManager()),
-      insert_cast_transformer_("CastFloat16Transformer") {
+      insert_cast_transformer_("CastFloat16Transformer"),
+      logging_manager_(session_env.GetLoggingManager()) {
   model_location_ = ToWideString(model_uri);
   auto status = Model::Load(model_location_, model_proto_);
   ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session. Error message: ",
@@ -260,8 +273,8 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env,
                                    std::istream& model_istream)
     : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
-      logging_manager_(session_env.GetLoggingManager()),
-      insert_cast_transformer_("CastFloat16Transformer") {
+      insert_cast_transformer_("CastFloat16Transformer"),
+      logging_manager_(session_env.GetLoggingManager()) {
   Status st = Model::Load(model_istream, &model_proto_);
   ORT_ENFORCE(st.IsOK(), "Could not parse model successfully while constructing the inference session");
   is_model_proto_parsed_ = true;
@@ -272,14 +285,16 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env,
                                    const void* model_data, int model_data_len)
     : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
-      logging_manager_(session_env.GetLoggingManager()),
-      insert_cast_transformer_("CastFloat16Transformer") {
+      insert_cast_transformer_("CastFloat16Transformer"),
+      logging_manager_(session_env.GetLoggingManager()) {
   const bool result = model_proto_.ParseFromArray(model_data, model_data_len);
   ORT_ENFORCE(result, "Could not parse model successfully while constructing the inference session");
   is_model_proto_parsed_ = true;
   // Finalize session options and initialize assets of this session instance
   ConstructorCommon(session_options, session_env);
 }
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 InferenceSession::~InferenceSession() {
   if (session_options_.enable_profiling) {
@@ -343,6 +358,8 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
   p_exec_provider->SetLogger(session_logger_);
   return execution_providers_.Add(provider_type, std::move(p_exec_provider));
 }
+
+#if !defined(ORT_MINIMAL_BUILD)
 
 common::Status InferenceSession::RegisterGraphTransformer(
     std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer, TransformerLevel level) {
@@ -698,6 +715,8 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   return common::Status::OK();
 }
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 bool InferenceSession::IsInitialized() const {
   std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
   return is_inited_;
@@ -822,6 +841,8 @@ common::Status InferenceSession::Initialize() {
     // Register 2nd registries into KernelRegistryManager.
     ORT_RETURN_IF_ERROR_SESSIONID_(kernel_registry_manager_.RegisterKernels(execution_providers_));
 
+#if !defined(ORT_MINIMAL_BUILD)
+    // add predefined transformers
     AddPredefinedTransformers(graph_transformation_mgr_, session_options_.graph_optimization_level,
                               transformers_to_enable_);
 
@@ -833,6 +854,7 @@ common::Status InferenceSession::Initialize() {
 
     // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
     ORT_RETURN_IF_ERROR_SESSIONID_(graph.Resolve());
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
     // need to keep the initializers if we're going to save the optimized model
     bool keep_initializers = !session_options_.optimized_model_filepath.empty();
@@ -841,6 +863,7 @@ common::Status InferenceSession::Initialize() {
                                                                         session_options_,
                                                                         !keep_initializers));
 
+#if !defined(ORT_MINIMAL_BUILD)
     if (!session_options_.optimized_model_filepath.empty()) {
       // Serialize optimized ONNX model.
       ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(*model_, session_options_.optimized_model_filepath));
@@ -852,6 +875,7 @@ common::Status InferenceSession::Initialize() {
                                            " the model was optimized for.";
       }
     }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
     session_state_->ResolveMemoryPatternFlag();
     is_inited_ = true;
@@ -1125,9 +1149,12 @@ Status InferenceSession::Run(const RunOptions& run_options,
       ORT_CHECK_AND_SET_RETVAL(start_func());
     }
 
+#if !defined(ORT_MINIMAL_BUILD)
     if (run_options.only_execute_path_to_fetches) {
       session_state_->UpdateToBeExecutedNodes(feeds_fetches_manager.GetFeedsFetchesInfo().fetches_mlvalue_idxs);
     }
+#endif
+
     // execute the graph
     ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
                                                  session_options_.execution_mode, run_options.terminate, run_logger,
@@ -1312,12 +1339,14 @@ AllocatorPtr InferenceSession::GetAllocator(const OrtMemoryInfo& mem_info) const
   return session_state_->GetAllocator(mem_info);
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 // assumes model has already been loaded before
 common::Status InferenceSession::DoPostLoadProcessing(onnxruntime::Model& model) {
   // TODO add other post load processing here
   common::Status status = SaveModelMetadata(model);
   return status;
 }
+#endif
 
 common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& model) {
   VLOGS(*session_logger_, 1) << "Saving model metadata";
@@ -1435,6 +1464,8 @@ void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
   }
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+
 // Registers all the predefined transformers with transformer manager
 void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
                                                  TransformerLevel graph_optimization_level,
@@ -1459,6 +1490,8 @@ void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transf
     }
   }
 }
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 common::Status InferenceSession::WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms) {
   if (timeout_in_ms > 0) {
