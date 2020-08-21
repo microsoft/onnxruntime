@@ -22,5 +22,5 @@ ai.onnx;11;Gemm
 - If both are specified, operators referred from either argument will be kept active;
 - The script is located under toos/ci_build/, and could go solo to apply to cpu and cuda providers as:
 ```
-python provider_ops_disabler.py --model_path d:\ReduceSize\models --file_path d:\ReduceSize\ops.txt --ort_root d:\onnxruntime
+python exclude_unused_ops.py --model_path d:\ReduceSize\models --file_path d:\ReduceSize\ops.txt --ort_root d:\onnxruntime
 ```

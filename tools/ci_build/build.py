@@ -1512,12 +1512,12 @@ def main():
     if (args.include_ops_by_model and len(args.include_ops_by_model) > 0) or\
        (args.include_ops_by_file and len(args.include_ops_by_file) > 0):
 
-        from provider_ops_disabler import disable_ops_in_providers, get_ep_paths
+        from exclude_unused_ops import exclude_unused_ops, get_provider_path
 
         include_ops_by_model = args.include_ops_by_model if args.include_ops_by_model else ''
         include_ops_by_file = args.include_ops_by_file if args.include_ops_by_file else ''
 
-        disable_ops_in_providers(include_ops_by_model, include_ops_by_file, get_ep_paths(use_cuda=args.use_cuda))
+        exclude_unused_ops(include_ops_by_model, include_ops_by_file, get_provider_path(use_cuda=args.use_cuda))
 
         args.test = False  # disable tests since we don't know which ops are enabled
 
