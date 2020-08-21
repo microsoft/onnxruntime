@@ -45,19 +45,23 @@ Provide check for Reshape Fusion for DistilBert. The following are subgraphs tha
 match the pattern for DistilBert
 
 DistilBert reshape pattern:
-             [Add](768)
+             [Add](w)
              /   \ _ _ _ _ _ _ _
          Shape                  \
-           |                  MatMul(768 * 768)
+           |                  MatMul(w * w)
     Gather(indices=0)             |
             \                     |
-        Unsqueeze               Add(768)
+        Unsqueeze               Add(w)
               \                  /
              Concat     _ _ _ _ /
                 \      /
                 Reshape
+
+                                  - -> Shape
+                                  |
+Check the subgraph that matches [root] -> MatMul(w * w) -> Add(w) -> Reshape.
 */
-static bool DistilBert_Check(Graph& graph, const Node& concat, const Node& root, const logging::Logger& logger) {
+static bool Match_Linear_Subgraph_1(Graph& graph, const Node& concat, const Node& root, const logging::Logger& logger) {
   if (!optimizer_utils::CheckOutputEdges(graph, concat, 1)) {
     return false;
   }
@@ -119,7 +123,7 @@ static bool Match_Shape(Graph& graph, const Node& concat, const Node& shape, con
   if (p_node_before_shape == nullptr) {
     return false;
   }
-  if (DistilBert_Check(graph, concat, *p_node_before_shape, logger)) {
+  if (Match_Linear_Subgraph_1(graph, concat, *p_node_before_shape, logger)) {
     return true;
   }
   return false;
