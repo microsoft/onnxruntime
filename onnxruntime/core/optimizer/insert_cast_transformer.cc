@@ -24,14 +24,14 @@ onnxruntime::NodeArg* AddCastNode(onnxruntime::Graph& graph,
                                   int64_t to_type,
                                   onnxruntime::ProviderType providerType) {
   // insert cast op to cast input
-  std::string nodeName = graph.GenerateNodeName("Inserted_Cast");
+  std::string node_name = graph.GenerateNodeName("Inserted_Cast");
 
-  auto* new_arg = &graph.GetOrCreateNodeArg(nodeName, new_type);
+  auto* new_arg = &graph.GetOrCreateNodeArg(node_name, new_type);
 
   std::vector<onnxruntime::NodeArg*> input_defs = {new_on_input ? new_arg : old_arg};
   std::vector<onnxruntime::NodeArg*> output_defs = {new_on_input ? old_arg : new_arg};
 
-  auto& cast_node = graph.AddNode(nodeName, "Cast", "cast node to cast from float16 to float32 on cpu", input_defs, output_defs);
+  auto& cast_node = graph.AddNode(node_name, "Cast", "cast node to cast from float16 to float32 on cpu", input_defs, output_defs);
   cast_node.AddAttribute("to", to_type);
   cast_node.SetExecutionProviderType(providerType);
   return new_arg;
@@ -197,6 +197,7 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
     auto node = graph.GetNode(i);
     if (!node)
       return Status(ONNXRUNTIME, INVALID_ARGUMENT);
+
     auto& inputs = node->MutableInputDefs();
     std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> replacement_defs;
     bool casted = false;
