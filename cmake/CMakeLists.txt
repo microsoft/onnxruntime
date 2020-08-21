@@ -1128,6 +1128,7 @@ if (WIN32)
     link_directories("${msvc_path}/lib/${onnxruntime_target_platform}/store")
     add_link_options(/APPCONTAINER)
   else()
+    add_compile_definitions(WINAPI_FAMILY=3)
     add_compile_definitions(WINVER=0x0601)  # Support Windows 7 and newer
     # FIXME add _WIN32_WINNT=0x0601
   endif()
