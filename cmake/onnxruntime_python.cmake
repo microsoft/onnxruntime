@@ -182,6 +182,9 @@ if (onnxruntime_ENABLE_TRAINING)
   file(GLOB onnxruntime_python_optim_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/experimental/optim/*.py"
   )
+  file(GLOB onnxruntime_python_train_tools_srcs CONFIGURE_DEPENDS
+    "${REPO_ROOT}/tools/python/register_custom_ops_pytorch_exporter.py"
+  )
 else()
   file(GLOB onnxruntime_python_capi_training_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/training/*.py"
@@ -284,6 +287,9 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_optim_srcs}
         $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/optim/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_train_tools_srcs}
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/
   )
 endif()
 
