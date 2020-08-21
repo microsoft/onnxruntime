@@ -403,13 +403,9 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         /// <param name="reverseStride">False (default) to indicate that the first dimension is most major (farthest apart) and the last dimension is most minor (closest together): akin to row-major in a rank-2 tensor.  True to indicate that the last dimension is most major (farthest apart) and the first dimension is most minor (closest together): akin to column-major in a rank-2 tensor.</param>
         protected Tensor(ReadOnlySpan<int> dimensions, bool reverseStride) : base(typeof(T))
         {
-            // Scalar tensor
-            if (dimensions.Length == 0)
+            if (dimensions == null)
             {
-                this.dimensions = new int[] { };
-                strides = new int[] { };
-                isReversedStride = reverseStride;
-                length = 1;
+                throw new ArgumentNullException(nameof(dimensions));
             }
 
             this.dimensions = new int[dimensions.Length];
@@ -440,17 +436,6 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
             if (fromArray == null)
             {
                 throw new ArgumentNullException(nameof(fromArray));
-            }
-
-
-            // Scalar tensor
-            // TODO: Check if it is possible to create a zero-ranked array ?
-            if (fromArray.Rank == 0)
-            {
-                dimensions = new int[] { };
-                strides = new int[] { };
-                isReversedStride = reverseStride;
-                length = 1;
             }
 
             dimensions = new int[fromArray.Rank];

@@ -159,8 +159,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(24, tensor.Length);
             Assert.Equal(tensorConstructor.IsReversedStride, tensor.IsReversedStride);
 
-            //Assert.Throws<ArgumentNullException>("dimensions", () => tensorConstructor.CreateFromDimensions<int>(dimensions: null));
-
+            Assert.Throws<ArgumentNullException>("dimensions", () => tensorConstructor.CreateFromDimensions<int>(dimensions: null));
             Assert.Throws<ArgumentOutOfRangeException>("dimensions", () => tensorConstructor.CreateFromDimensions<int>(dimensions: new[] { 1, -1 }));
 
             // ensure dimensions are immutable
