@@ -954,11 +954,15 @@ common::Status OpenVINOExecutionProvider::Compile(
         };
     compute_info.compute_func = [](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
       auto function_state = static_cast<OpenVINOEPFunctionState*>(state);
-      try {
+      ORT_TRY {
         function_state->backend_manager->Compute(*api, context);
-      } catch (const char* msg) {
+      }
+#ifndef ORT_NO_EXCEPTIONS
+      catch (const char* msg) {
         return common::Status(common::ONNXRUNTIME, common::FAIL, msg);
       }
+#endif
+
       return Status::OK();
     };
 

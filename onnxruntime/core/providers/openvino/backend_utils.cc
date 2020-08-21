@@ -44,18 +44,20 @@ void DumpOnnxModelProto(const ONNX_NAMESPACE::ModelProto& model_proto, std::stri
 std::shared_ptr<InferenceEngine::CNNNetwork>
 CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, std::string device_id,
                  InferenceEngine::Precision precision) {
-
   std::istringstream model_stream{model_proto.SerializeAsString()};
   std::shared_ptr<ngraph::Function> ng_function;
-  try {
+  ORT_TRY {
     ng_function = ngraph::onnx_import::import_onnx_model(model_stream);
     LOGS_DEFAULT(INFO) << "ONNX Import Done";
-  } catch (const std::exception& exp) {
+  }
+#ifndef ORT_NO_EXCEPTIONS
+  catch (const std::exception& exp) {
     ORT_THROW(log_tag + "[OpenVINO-EP] Exception while importing model to nGraph Func: " + std::string(exp.what()));
-  } catch (...) {
+  }
+  catch (...) {
     ORT_THROW(log_tag + "[OpenVINO-EP] Unknown exception while importing model to nGraph Func");
   }
-
+#endif
 
   if (device_id == "GPU" && precision == InferenceEngine::Precision::FP16) {
     //FP16 transformations
@@ -63,13 +65,17 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, std::string devi
     ng_function->validate_nodes_and_infer_types();
   }
 
-  try {
+  ORT_TRY {
     return std::make_shared<InferenceEngine::CNNNetwork>(ng_function);
-  } catch (InferenceEngine::details::InferenceEngineException e) {
+  }
+#ifndef ORT_NO_EXCEPTIONS
+  catch (InferenceEngine::details::InferenceEngineException e) {
     ORT_THROW(log_tag + " Exception thrown while making IE::CNNNetwork: " + e.what());
-  } catch (...) {
+  }
+  catch (...) {
     ORT_THROW(log_tag + " Exception thrown while making IE::CNNNetwork");
   }
+#endif
 }
 
 InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type) {
@@ -217,13 +223,12 @@ GetOutputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_
   return output_tensors;
 }
 
-int GetFirstAvailableDevice(GlobalContext& global_context){
-
+int GetFirstAvailableDevice(GlobalContext& global_context) {
   int i = 0;
   //Get the first available VAD-M device and set the device to busy
-  while(i < 8){
+  while (i < 8) {
     bool device = global_context.deviceAvailableList[i];
-    if(device){
+    if (device) {
       global_context.deviceAvailableList[i] = false;
       break;
     }
@@ -231,10 +236,10 @@ int GetFirstAvailableDevice(GlobalContext& global_context){
   }
   //If all of the devices are busy, assign the first device and
   //make all remaining devices free
-  if(i == 8){
+  if (i == 8) {
     i = 0;
     global_context.deviceAvailableList[i] = false;
-    for(int j = 1; j < 8; j++){
+    for (int j = 1; j < 8; j++) {
       global_context.deviceAvailableList[j] = true;
     }
   }

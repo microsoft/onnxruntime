@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <core/common/common.h>
 #include <core/common/make_unique.h>
 #include "core/session/onnxruntime_cxx_api.h"
 #include <functional>
@@ -57,11 +58,15 @@ TEST(CApiTest, CreateGetVectorOfMapsInt64Float) {  // support zipmap output type
 
   // test negative case
   bool failed = false;
-  try {
+  ORT_TRY {
     auto temp = seq_ort.GetValue(999, default_allocator.get());
-  } catch (const Ort::Exception& e) {
+  }
+#ifndef ORT_NO_EXCEPTIONS
+  catch (const Ort::Exception& e) {
     failed = e.GetOrtErrorCode() == ORT_RUNTIME_EXCEPTION;
   }
+#endif
+
   ASSERT_EQ(failed, true);
 
   // Fetch

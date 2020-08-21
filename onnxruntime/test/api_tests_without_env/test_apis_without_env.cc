@@ -53,13 +53,16 @@ TEST(TestSessionOptions, SetIntraOpNumThreadsWithoutEnv) {
 
 int main(int argc, char** argv) {
   int status = 0;
-  try {
+  ORT_TRY {
     ::testing::InitGoogleTest(&argc, argv);
     status = RUN_ALL_TESTS();
-  } catch (const std::exception& ex) {
+  }
+#ifndef ORT_NO_EXCEPTIONS
+  catch (const std::exception& ex) {
     std::cerr << ex.what();
     status = -1;
   }
+#endif
 
 #ifndef USE_ONNXRUNTIME_DLL
   //make memory leak checker happy

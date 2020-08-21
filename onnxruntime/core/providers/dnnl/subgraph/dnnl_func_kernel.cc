@@ -252,13 +252,17 @@ class SubgraphPrimitivePool : public PrimitivePool<T> {
 template <typename T>
 Status DnnlFuncKernel<T>::Compute(const OrtCustomOpApi* api, OrtKernelContext* context) const {
   Status status;
-  try {
+  ORT_TRY {
     SubgraphPrimitive<T>* primitive = SubgraphPrimitivePool<T>::Get(api, context, params_);
     primitive->UpdateProvider(params_);
     status = primitive->Compute(api, context);
-  } catch (const dnnl::error& e) {
+  }
+#ifndef ORT_NO_EXCEPTIONS
+  catch (const dnnl::error& e) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Status: ", e.status, ", message: ", e.what());
   }
+#endif
+
   return status;
 }
 

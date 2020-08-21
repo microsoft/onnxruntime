@@ -61,11 +61,14 @@ class PerformanceRunner {
   Status RunOneIteration() {
     std::chrono::duration<double> duration_seconds;
 
-    try {
+    ORT_TRY {
       duration_seconds = session_->Run();
-    } catch (const std::exception& ex) {
+    }
+#ifndef ORT_NO_EXCEPTIONS
+    catch (const std::exception& ex) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "PerformanceRunner::RunOneIteration caught exception: ", ex.what());
     }
+#endif
 
     if (!isWarmup) {
       std::lock_guard<OrtMutex> guard(results_mutex_);

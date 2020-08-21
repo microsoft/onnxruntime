@@ -670,7 +670,7 @@ void OpTester::Run(
     const CustomOutputVerifierFn& custom_output_verifier,
     const Graph::ResolveOptions& options) {
   std::string cur_provider = "not set";
-  try {
+  ORT_TRY {
 #ifndef NDEBUG
     run_called_ = true;
 #endif
@@ -684,11 +684,14 @@ void OpTester::Run(
       if (add_shape_to_tensor_data_ &&
           expect_result == ExpectResult::kExpectFailure) {
         // capture possible exceptions from shape inference for invalid testcase
-        try {
+        ORT_TRY {
           status = graph.Resolve(options);
-        } catch (const std::exception& ex) {
+        }
+#ifndef ORT_NO_EXCEPTIONS
+        catch (const std::exception& ex) {
           status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
         }
+#endif
       } else {
         status = graph.Resolve(options);
       }
@@ -851,11 +854,14 @@ void OpTester::Run(
       EXPECT_TRUE(has_run)
           << "No registered execution providers were able to run the model.";
     }
-  } catch (const std::exception& ex) {
+  }
+#ifndef ORT_NO_EXCEPTIONS
+  catch (const std::exception& ex) {
     std::cerr << ex.what() << "\nProvider:" << cur_provider << "\n";
     // rethrow as some tests for error handling expect this
     throw;
   }
+#endif
 }
 
 void OpTester::AddReferenceOutputs(const std::string& model_path) {

@@ -66,7 +66,7 @@ std::vector<int64_t> GetTensorShapeFromTensorProto(const onnx::TensorProto& tens
 static bool CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) {
   bool ok = true;
 
-  try {
+  ORT_TRY {
     SafeInt<size_t> alloc_size(size);
     if (alignment == 0) {
       *out = alloc_size * nmemb;
@@ -74,10 +74,13 @@ static bool CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t a
       size_t alignment_mask = alignment - 1;
       *out = (alloc_size * nmemb + alignment_mask) & ~static_cast<size_t>(alignment_mask);
     }
-  } catch (const OnnxRuntimeException&) {
+  }
+#ifndef ORT_NO_EXCEPTIONS
+  catch (const OnnxRuntimeException&) {
     // overflow in calculating the size thrown by SafeInt.
     ok = false;
   }
+#endif
 
   return ok;
 }
@@ -304,16 +307,20 @@ struct UnInitializeParam {
 
 OrtStatus* OrtInitializeBufferForTensor(void* input, size_t input_len,
                                         ONNXTensorElementDataType type) {
-  try {
+  ORT_TRY {
     if (type != ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING || input == nullptr) return nullptr;
     size_t tensor_size = input_len / sizeof(std::string);
     std::string* ptr = reinterpret_cast<std::string*>(input);
     for (size_t i = 0, n = tensor_size; i < n; ++i) {
       new (ptr + i) std::string();
     }
-  } catch (std::exception& ex) {
+  }
+#ifndef ORT_NO_EXCEPTIONS
+  catch (std::exception& ex) {
     return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
   }
+#endif
+
   return nullptr;
 }
 

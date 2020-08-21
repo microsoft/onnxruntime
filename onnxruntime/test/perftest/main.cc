@@ -23,21 +23,25 @@ int real_main(int argc, char* argv[]) {
     return -1;
   }
   Ort::Env env{nullptr};
-  try {
+  ORT_TRY {
     OrtLoggingLevel logging_level = test_config.run_config.f_verbose
                                         ? ORT_LOGGING_LEVEL_VERBOSE
                                         : ORT_LOGGING_LEVEL_WARNING;
     env = Ort::Env(logging_level, "Default");
-  } catch (const Ort::Exception& e) {
+  }
+#ifndef ORT_NO_EXCEPTIONS
+  catch (const Ort::Exception& e) {
     fprintf(stderr, "Error creating environment: %s \n", e.what());
     return -1;
   }
-  if(test_config.machine_config.provider_type_name == onnxruntime::kOpenVINOExecutionProvider){
-    if(test_config.run_config.concurrent_session_runs != 1){
+#endif
+
+  if (test_config.machine_config.provider_type_name == onnxruntime::kOpenVINOExecutionProvider) {
+    if (test_config.run_config.concurrent_session_runs != 1) {
       fprintf(stderr, "OpenVINO doesn't support more than 1 session running simultaneously default value of 1 will be set \n");
       test_config.run_config.concurrent_session_runs = 1;
     }
-    if(test_config.run_config.execution_mode == ExecutionMode::ORT_PARALLEL){
+    if (test_config.run_config.execution_mode == ExecutionMode::ORT_PARALLEL) {
       fprintf(stderr, "OpenVINO doesn't support parallel executor using sequential executor\n");
       test_config.run_config.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
     }
@@ -61,12 +65,15 @@ int wmain(int argc, wchar_t* argv[]) {
 int main(int argc, char* argv[]) {
 #endif
   int retval = -1;
-  try {
+  ORT_TRY {
     retval = real_main(argc, argv);
-  } catch (std::exception& ex) {
+  }
+#ifndef ORT_NO_EXCEPTIONS
+  catch (std::exception& ex) {
     fprintf(stderr, "%s\n", ex.what());
     retval = -1;
   }
+#endif
 
   ::google::protobuf::ShutdownProtobufLibrary();
 

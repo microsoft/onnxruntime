@@ -51,7 +51,7 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo &info) {
   size_t argsLength = info.Length();
   ORT_NAPI_THROW_TYPEERROR_IF(argsLength == 0, env, "Expect argument: model file path or buffer.");
 
-  try {
+  ORT_TRY {
     defaultRunOptions_.reset(new Ort::RunOptions{});
     Ort::SessionOptions sessionOptions;
 
@@ -108,11 +108,16 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo &info) {
                                                      ? typeInfo.GetTensorTypeAndShapeInfo().GetElementType()
                                                      : ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED);
     }
-  } catch (Napi::Error const &e) {
+  }
+#ifndef ORT_NO_EXCEPTIONS
+  catch (Napi::Error const &e) {
     throw e;
-  } catch (std::exception const &e) {
+  }
+  catch (std::exception const &e) {
     ORT_NAPI_THROW_ERROR(env, e.what());
   }
+#endif
+
   this->initialized_ = true;
   return env.Undefined();
 }
@@ -155,7 +160,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo &info) {
   size_t inputIndex = 0;
   size_t outputIndex = 0;
 
-  try {
+  ORT_TRY {
     for (auto &name : inputNames_) {
       if (feed.Has(name)) {
         inputIndex++;
@@ -192,9 +197,13 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo &info) {
     }
 
     return scope.Escape(result);
-  } catch (Napi::Error const &e) {
+  }
+#ifndef ORT_NO_EXCEPTIONS
+  catch (Napi::Error const &e) {
     throw e;
-  } catch (std::exception const &e) {
+  }
+  catch (std::exception const &e) {
     ORT_NAPI_THROW_ERROR(env, e.what());
   }
+#endif
 }

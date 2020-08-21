@@ -9,14 +9,17 @@
 int main(int argc, char** argv) {
   int status = 0;
 
-  try {
+  ORT_TRY {
     onnxruntime::test::TestEnvironment test_environment{argc, argv};
 
     status = RUN_ALL_TESTS();
-  } catch (const std::exception& ex) {
+  }
+#ifndef ORT_NO_EXCEPTIONS
+  catch (const std::exception& ex) {
     std::cerr << ex.what();
     status = -1;
   }
+#endif
 
   return status;
 }

@@ -54,10 +54,9 @@ static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::
 
 VitisAICustomOp::VitisAICustomOp(const ComputeContext* context,
                                  const onnxruntime::Node* fused_node,
-                                 const std::string &backend_type,
+                                 const std::string& backend_type,
                                  const logging::Logger* logger)
-  : backend_type_(backend_type)
-{
+    : backend_type_(backend_type) {
   SetLogger(logger);
 
   allocate_func_ = context->allocate_func;
@@ -81,7 +80,7 @@ VitisAICustomOp::VitisAICustomOp(const ComputeContext* context,
   for (auto odef : output_defs) {
     out_tensor_names_.push_back(odef->Name());
   }
-  
+
   pyxir::RunOptionsHolder run_options(new pyxir::runtime::RunOptions());
   run_options->on_the_fly_quantization = true;
   rt_mod_ = pyxir::build_rt(xg_, backend_type_, in_tensor_names_, out_tensor_names_,
@@ -90,17 +89,16 @@ VitisAICustomOp::VitisAICustomOp(const ComputeContext* context,
 
 VitisAICustomOp::~VitisAICustomOp() {}
 
-
-Status VitisAICustomOp::Compute(const OrtApi* api, OrtKernelContext* context) const { 
+Status VitisAICustomOp::Compute(const OrtApi* api, OrtKernelContext* context) const {
   Ort::CustomOpApi ort{*api};
-  const unsigned num_inputs = (unsigned) xg_->get_nb_inputs();
+  const unsigned num_inputs = (unsigned)xg_->get_nb_inputs();
 
   ssize_t batch_size = 1;
   std::vector<pyxir::XBufferHolder> in_tensors;
   std::vector<pyxir::XBufferHolder> out_tensors;
 
   // Initialize input tensors.
-  try {
+  ORT_TRY {
     for (unsigned i = 0; i < num_inputs; ++i) {
       const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
       auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
@@ -108,24 +106,28 @@ Status VitisAICustomOp::Compute(const OrtApi* api, OrtKernelContext* context) co
       auto ort_shape = ort.GetTensorShape(tensor_info);
       std::vector<ssize_t> tensor_shape{ort_shape.begin(), ort_shape.end()};
       batch_size = tensor_shape[0];
-      
+
       if (tensor_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT)
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-          "VITIS-AI EP input onnx tensor data type: " + std::to_string(tensor_type) + " not supported.");
-      
+                               "VITIS-AI EP input onnx tensor data type: " + std::to_string(tensor_type) + " not supported.");
+
       void* input_data = const_cast<void*>(ort.GetTensorData<void>(input_tensor));
       in_tensors.push_back(std::shared_ptr<pyxir::XBuffer>(
-        new pyxir::XBuffer(input_data, 4, "f", tensor_shape.size(), tensor_shape,
-                            false, false)));
+          new pyxir::XBuffer(input_data, 4, "f", tensor_shape.size(), tensor_shape,
+                             false, false)));
     }
-  } catch (const std::exception& exp) {
+  }
+#ifndef ORT_NO_EXCEPTIONS
+  catch (const std::exception& exp) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, name_ + ": Exception while copying input data to Pyxir: " + std::string(exp.what()));
-  } catch (...) {
+  }
+  catch (...) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, name_ + ": Unknown exception while copying input data to Pyxir");
   }
+#endif
 
   // Initialize output tensors
-  try {
+  ORT_TRY {
     for (unsigned i = 0; i < out_tensor_names_.size(); ++i) {
       auto shape = xg_->get(out_tensor_names_[i])->shapes[0];
       std::vector<ssize_t> out_shape{shape.begin(), shape.end()};
@@ -137,29 +139,37 @@ Status VitisAICustomOp::Compute(const OrtApi* api, OrtKernelContext* context) co
       auto tensor_type = ort.GetTensorElementType(tensor_info);
       if (tensor_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT)
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-          "VITIS-AI EP input onnx tensor data type: " + std::to_string(tensor_type) + " not supported.");
+                               "VITIS-AI EP input onnx tensor data type: " + std::to_string(tensor_type) + " not supported.");
 
       void* output_data = ort.GetTensorMutableData<void>(output_tensor);
       out_tensors.push_back(std::shared_ptr<pyxir::XBuffer>(
-        new pyxir::XBuffer(output_data, 4, "f", out_shape.size(), out_shape,
-                            false, false)));
+          new pyxir::XBuffer(output_data, 4, "f", out_shape.size(), out_shape,
+                             false, false)));
     }
-  } catch (const std::exception& exp) {
+  }
+#ifndef ORT_NO_EXCEPTIONS
+  catch (const std::exception& exp) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, name_ + ": Exception while creating Pyxir output Tensor: " + std::string(exp.what()));
-  } catch (...) {
+  }
+  catch (...) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, name_ + ": Unknown exception while creating Pyxir output Tensor");
   }
+#endif
 
   // Run the graph through Vitis-AI Pyxir
-  try {
+  ORT_TRY {
     // std::lock_guard<std::mutex> lock(compute_lock_);
     rt_mod_->execute(in_tensors, out_tensors);
-  } catch (const std::exception& exp) {
+  }
+#ifndef ORT_NO_EXCEPTIONS
+  catch (const std::exception& exp) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, name_ + ": Exception while executing Pyxir computation: " + std::string(exp.what()));
-  } catch (...) {
+  }
+  catch (...) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, name_ + ": Unknown exception while executing Pyxir computation");
   }
-  
+#endif
+
   return Status::OK();
 }
 

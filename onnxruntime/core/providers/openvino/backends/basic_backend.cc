@@ -25,33 +25,42 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
                            GlobalContext& global_context,
                            const SubGraphContext& subgraph_context)
     : global_context_(global_context), subgraph_context_(subgraph_context) {
-
   ie_cnn_network_ = CreateCNNNetwork(model_proto, subgraph_context_.device_id, subgraph_context_.precision);
   SetIODefs(model_proto, ie_cnn_network_);
   InferenceEngine::ExecutableNetwork exe_network;
 
   // Loading model to the plugin
   std::map<std::string, std::string> config;
-  if(subgraph_context_.device_id == "MYRIAD" && subgraph_context_.set_vpu_config){
+  if (subgraph_context_.device_id == "MYRIAD" && subgraph_context_.set_vpu_config) {
     config["VPU_DETECT_NETWORK_BATCH"] = CONFIG_VALUE(NO);
   }
-  try {
+  ORT_TRY {
     exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, subgraph_context_.device_id, config);
-  } catch (InferenceEngine::details::InferenceEngineException e) {
+  }
+#ifndef ORT_NO_EXCEPTIONS
+  catch (InferenceEngine::details::InferenceEngineException e) {
     ORT_THROW(log_tag + " Exception while Loading Network for graph: " + subgraph_context_.subgraph_name + e.what());
-  } catch (...) {
+  }
+  catch (...) {
     ORT_THROW(log_tag + " Exception while Loading Network for graph " + subgraph_context_.subgraph_name);
   }
+#endif
+
   LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
 
   // Create infer request
-  try {
+  ORT_TRY {
     infer_request_ = exe_network.CreateInferRequestPtr();
-  } catch (InferenceEngine::details::InferenceEngineException e) {
+  }
+#ifndef ORT_NO_EXCEPTIONS
+  catch (InferenceEngine::details::InferenceEngineException e) {
     ORT_THROW(log_tag + " Exception while creating InferRequest object: " + e.what());
-  } catch (...) {
+  }
+  catch (...) {
     ORT_THROW(log_tag + "Exception while creating InferRequest object");
   }
+#endif
+
   LOGS_DEFAULT(INFO) << log_tag << "Infer request created";
 }
 
@@ -68,13 +77,17 @@ void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort,
        input_info_iter != graph_input_info.end(); ++input_info_iter, ++i) {
     // Get OpenVINO's input buffer
     InferenceEngine::Blob::Ptr graph_input_blob;
-    try {
+    ORT_TRY {
       graph_input_blob = infer_request->GetBlob(input_info_iter->first);
-    } catch (InferenceEngine::details::InferenceEngineException e) {
+    }
+#ifndef ORT_NO_EXCEPTIONS
+    catch (InferenceEngine::details::InferenceEngineException e) {
       ORT_THROW(log_tag + " Cannot access IE Blob for input: " + input_info_iter->first + e.what());
-    } catch (...) {
+    }
+    catch (...) {
       ORT_THROW(log_tag + " Cannot access IE Blob for input: " + input_info_iter->first);
     }
+#endif
 
     auto graph_input_buffer = graph_input_blob->buffer()
                                   .as<InferenceEngine::PrecisionTrait<InferenceEngine::Precision::FP32>::value_type*>();
@@ -86,13 +99,17 @@ void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort,
   }
 
   // Start Async inference
-  try {
+  ORT_TRY {
     infer_request->StartAsync();
-  } catch (InferenceEngine::details::InferenceEngineException e) {
+  }
+#ifndef ORT_NO_EXCEPTIONS
+  catch (InferenceEngine::details::InferenceEngineException e) {
     ORT_THROW(log_tag + " Couldn't start Inference: " + e.what());
-  } catch (...) {
+  }
+  catch (...) {
     ORT_THROW(log_tag + " Couldn't start Inference");
   }
+#endif
 }
 
 // Wait for asynchronous inference completion on an Infer Request object indexed by infer_req_idx
@@ -102,13 +119,18 @@ void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort,
                                           InferenceEngine::InferRequest::Ptr infer_request,
                                           std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network) {
   // Wait for Async inference completion
-  try {
+  ORT_TRY {
     infer_request->Wait(InferenceEngine::IInferRequest::WaitMode::RESULT_READY);
-  } catch (InferenceEngine::details::InferenceEngineException e) {
+  }
+#ifndef ORT_NO_EXCEPTIONS
+  catch (InferenceEngine::details::InferenceEngineException e) {
     ORT_THROW(log_tag + " Exception with completing Inference: " + e.what());
-  } catch (...) {
+  }
+  catch (...) {
     ORT_THROW(log_tag + " Exception with completing Inference");
   }
+#endif
+
   auto graph_output_info = ie_cnn_network->getOutputsInfo();
 
   size_t i = 0;
@@ -116,13 +138,17 @@ void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort,
        output_info_iter != graph_output_info.end(); ++output_info_iter, ++i) {
     // Get OpenVINO's output blob
     InferenceEngine::Blob::Ptr graph_output_blob;
-    try {
+    ORT_TRY {
       graph_output_blob = infer_request->GetBlob(output_info_iter->first);
-    } catch (InferenceEngine::details::InferenceEngineException e) {
+    }
+#ifndef ORT_NO_EXCEPTIONS
+    catch (InferenceEngine::details::InferenceEngineException e) {
       ORT_THROW(log_tag + " Cannot access IE Blob for output: " + output_info_iter->first + e.what());
-    } catch (...) {
+    }
+    catch (...) {
       ORT_THROW(log_tag + " Cannot access IE Blob for output: " + output_info_iter->first);
     }
+#endif
     auto graph_output_buffer = graph_output_blob->buffer()
                                    .as<InferenceEngine::PrecisionTrait<InferenceEngine::Precision::FP32>::value_type*>();
     size_t output_data_size = graph_output_blob->byteSize();

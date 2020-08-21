@@ -36,7 +36,7 @@ static Status SetInterOpNumThreads(SessionOptions& session_options,
   }
 
   LOGS(logger, INFO) << "Setting inter_op_num_threads to " << value;
-  session_options.inter_op_param.thread_pool_size= value;
+  session_options.inter_op_param.thread_pool_size = value;
   return Status::OK();
 }
 
@@ -119,14 +119,16 @@ Status InferenceSessionUtils::ParseOrtConfigJsonInModelProto(const ONNX_NAMESPAC
       LOGS(logger_, INFO)
           << "Found session/run/environment configuration in the model file to be used while running the model";
 
-      try {
+      ORT_TRY {
         const auto& val = metadata_field.value();
         LOGS(logger_, INFO) << "ORT config json from the model: " << val;
 
         parsed_json_ = json::parse(val);
         // set the flag indicating that the model has the ORT config json.
         is_ort_config_json_available_ = true;
-      } catch (const std::exception& e) {
+      }
+#ifndef ORT_NO_EXCEPTIONS
+      catch (const std::exception& e) {
         std::ostringstream message_stream;
         message_stream << "Json stored in the `ort_config` key cannot be parsed. Error message: " << e.what();
 
@@ -135,6 +137,7 @@ Status InferenceSessionUtils::ParseOrtConfigJsonInModelProto(const ONNX_NAMESPAC
         LOGS(logger_, ERROR) << message;
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, message);
       }
+#endif
 
       break;
     }

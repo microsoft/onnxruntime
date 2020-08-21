@@ -153,8 +153,6 @@ static int ExtractFileNo(const std::basic_string<CHAR_T>& name) {
 }
 using PATH_STRING_TYPE = std::basic_string<PATH_CHAR_TYPE>;
 
-
-
 static void SortTensorFileNames(std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_pb_files) {
   if (input_pb_files.size() <= 1) return;
   std::sort(input_pb_files.begin(), input_pb_files.end(),
@@ -210,7 +208,7 @@ void LoopDataFile(int test_data_pb_fd, bool is_input, const TestModelInfo& model
   for (proto::TraditionalMLData data;
        ParseDelimitedFromCodedStream(&data, &coded_input, &clean_eof);
        ++item_id, data.Clear()) {
-    try {
+    ORT_TRY {
       ORT_VALUE_HOLDER gvalue(nullptr, Ort::GetApi().ReleaseValue);
       switch (data.values_case()) {
         case proto::TraditionalMLData::kVectorMapStringToFloat:
@@ -263,15 +261,19 @@ void LoopDataFile(int test_data_pb_fd, bool is_input, const TestModelInfo& model
         ORT_THROW("duplicated test data name");
         break;
       }
-    } catch (onnxruntime::NotImplementedException& ex) {
+    }
+#ifndef ORT_NO_EXCEPTIONS
+    catch (onnxruntime::NotImplementedException& ex) {
       std::ostringstream oss2;
       oss2 << "load the " << item_id << "-th item failed," << ex.what();
       ORT_NOT_IMPLEMENTED(oss2.str());
-    } catch (std::exception& ex) {
+    }
+    catch (std::exception& ex) {
       std::ostringstream oss2;
       oss2 << "load the " << item_id << "-th item failed," << ex.what();
       ORT_THROW(oss2.str());
     }
+#endif
   }
   if (!clean_eof) {
     ORT_THROW("parse input file failed, has extra unparsed data");
@@ -451,13 +453,17 @@ void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
       std::lock_guard<OrtMutex> l(m_);
       oss << debuginfo_strings_[id];
     }
-    try {
+    ORT_TRY {
       LoopDataFile(test_data_pb_fd, is_input, *model_info_, name_data_map, b, oss);
-    } catch (std::exception& ex) {
+    }
+#ifndef ORT_NO_EXCEPTIONS
+    catch (std::exception& ex) {
       std::ostringstream oss2;
       oss2 << "parse data file \"" << ToMBString(test_data_pb) << "\" failed:" << ex.what();
       ORT_THROW(oss.str());
     }
+#endif
+
     {
       std::lock_guard<OrtMutex> l(m_);
       debuginfo_strings_[id] = oss.str();

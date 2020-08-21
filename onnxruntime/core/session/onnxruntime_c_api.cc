@@ -435,13 +435,17 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSession, _In_ const OrtEnv* env, _In_ const O
                     _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out) {
   API_IMPL_BEGIN
   std::unique_ptr<onnxruntime::InferenceSession> sess;
-  try {
+  ORT_TRY {
     sess = onnxruntime::make_unique<onnxruntime::InferenceSession>(
         options == nullptr ? onnxruntime::SessionOptions() : options->value,
         env->GetEnvironment(), model_path);
-  } catch (const std::exception& e) {
+  }
+#ifndef ORT_NO_EXCEPTIONS
+  catch (const std::exception& e) {
     return OrtApis::CreateStatus(ORT_FAIL, e.what());
   }
+#endif
+
   return LoadAndInitializeSession(env, options, sess, out);
   API_IMPL_END
 }
@@ -450,13 +454,17 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArray, _In_ const OrtEnv* env, _In
                     _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out) {
   API_IMPL_BEGIN
   std::unique_ptr<onnxruntime::InferenceSession> sess;
-  try {
+  ORT_TRY {
     sess = onnxruntime::make_unique<onnxruntime::InferenceSession>(
         options == nullptr ? onnxruntime::SessionOptions() : options->value,
         env->GetEnvironment(), model_data, static_cast<int>(model_data_length));
-  } catch (const std::exception& e) {
+  }
+#ifndef ORT_NO_EXCEPTIONS
+  catch (const std::exception& e) {
     return OrtApis::CreateStatus(ORT_FAIL, e.what());
   }
+#endif
+
   return LoadAndInitializeSession(env, options, sess, out);
   API_IMPL_END
 }
@@ -1604,7 +1612,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char*** out_ptr,
         out[i][MAX_LEN] = '\0';
 #elif defined(__APPLE__)
         strlcpy(out[i], providers_available[i], MAX_LEN);
-#else 
+#else
         strncpy(out[i], providers_available[i], MAX_LEN);
         out[i][MAX_LEN] = '\0';
 #endif

@@ -9,7 +9,7 @@
 #ifdef _MSC_VER
 #include <codecvt>
 #include <locale.h>
-#elif defined (__APPLE__) or defined (__ANDROID__)
+#elif defined(__APPLE__) or defined(__ANDROID__)
 #include <codecvt>
 #else
 #include <limits>
@@ -77,15 +77,19 @@ using Utf8Converter = std::wstring_convert<std::codecvt_utf8<wchar_t>>;
 
 const std::string default_locale("en-US");
 
-#else // MS_VER
+#else  // MS_VER
 
 class Locale {
  public:
-  explicit Locale(const std::string& name) try : loc_(name.c_str()) {
-  } catch (const std::runtime_error& e) {
+  explicit Locale(const std::string& name)
+      ORT_TRY : loc_(name.c_str()) {
+  }
+#ifndef ORT_NO_EXCEPTIONS
+  catch (const std::runtime_error& e) {
     ORT_THROW("Failed to construct locale with name:",
               name, ":", e.what(), ":Please, install necessary language-pack-XX and configure locales");
   }
+#endif
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Locale);
 
@@ -112,7 +116,6 @@ using Utf8Converter = std::wstring_convert<std::codecvt_utf8<wchar_t>>;
 // All others (Linux)
 class Utf8Converter {
  public:
-
   Utf8Converter(const std::string&, const std::wstring&) {}
 
   std::wstring from_bytes(const std::string& s) const {
@@ -182,11 +185,11 @@ class Utf8Converter {
   }
 };
 
-#endif // __APPLE__
+#endif  // __APPLE__
 
-const std::string default_locale("en_US.UTF-8"); // All non-MS
+const std::string default_locale("en_US.UTF-8");  // All non-MS
 
-#endif // MS_VER
+#endif  // MS_VER
 
 template <class ForwardIter>
 Status CopyCaseAction(ForwardIter first, ForwardIter end, OpKernelContext* ctx,
