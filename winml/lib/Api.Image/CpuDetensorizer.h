@@ -4,47 +4,9 @@
 #pragma once
 
 #include "inc/ImageConversionTypes.h"
+#include "inc/NominalRangeConverter.h"
 
 namespace _winml {
-class DeNormalizer {
- public:
-  DeNormalizer(ImageNominalPixelRange pixelRange) {
-    if (pixelRange == ImageNominalPixelRange::kNominalRange_0_255) {
-      // [0, 255] -> [0, 255]
-      scale = 1.0;
-      shift = 0;
-    }
-    if (pixelRange == ImageNominalPixelRange::kNormalized_0_1) {
-      // [0, 1] * 255 -> [0, 255]
-      scale = 255.0;
-      shift = 0;
-    } else if (pixelRange == ImageNominalPixelRange::kNormalized_1_1) {
-      // ([-1, 1] + 1) * 255 / 2 -> [0, 255]
-      scale = 255.0 / 2;
-      shift = 1;
-    }
-  };
-
-  float DeNormalizeData(float val) const {
-    return scale * (val + shift);
-  }
-
-  DirectX::PackedVector::HALF DeNormalizeData(DirectX::PackedVector::HALF val) const {
-    return scale * (val + shift);
-  }
-
-  auto DeNormalizeData(__m128 sse_data) const {
-    __m128 sse_shift = _mm_set1_ps(shift);
-    __m128 sse_scale = _mm_set1_ps(scale);
-
-    auto sse_added = _mm_add_ps(sse_data, sse_shift);
-    return _mm_mul_ps(sse_added, sse_scale);
-  }
-
- private:
-  float scale;
-  int32_t shift;
-};
 
 class CpuDetensorizer {
  public:
@@ -70,7 +32,7 @@ class CpuDetensorizer {
     uint32_t end = bufferWidth * tensorHeight;
     size_t tensorPlaneSize = tensorWidth * tensorHeight;
 
-    auto deNormalizer = DeNormalizer(pixelRange);
+    auto nominalRangeConverter = NominalRangeConverter(pixelRange);
 
     if (formatFrom == formatTo && (formatFrom == kImageTensorChannelTypeBGR8 || formatFrom == kImageTensorChannelTypeRGB8)) {
       for (uint32_t i = 0; i < tensorHeight; i++) {
@@ -83,7 +45,7 @@ class CpuDetensorizer {
             tensorWidth,
             pPixel,
             bytesPerPixel,
-            deNormalizer);
+            nominalRangeConverter);
 
         pData += bufferWidth;
       }
@@ -98,7 +60,7 @@ class CpuDetensorizer {
             tensorWidth,
             pPixel,
             bytesPerPixel,
-            deNormalizer);
+            nominalRangeConverter);
 
         pData += bufferWidth;
       }
@@ -106,7 +68,7 @@ class CpuDetensorizer {
       // just replicate the gray data across each channel
       for (uint32_t i = 0; i < end; i += bufferWidth) {
         for (uint32_t j = i; j < i + bytesPerRow; j += 4) {
-          BYTE bGray = DetensorizeValue<T>(pCPUTensor, deNormalizer);
+          BYTE bGray = DetensorizeValue<T>(pCPUTensor, nominalRangeConverter);
           pData[j] = bGray;
           pData[j + 1] = bGray;
           pData[j + 2] = bGray;
@@ -117,7 +79,7 @@ class CpuDetensorizer {
     } else if (formatFrom == kImageTensorChannelTypeGRAY8 && formatTo == kImageTensorChannelTypeGRAY8) {
       for (uint32_t i = 0; i < end; i += bufferWidth) {
         for (uint32_t j = i; j < i + bytesPerRow; j += 1) {
-          BYTE bGray = DetensorizeValue<T>(pCPUTensor, deNormalizer);
+          BYTE bGray = DetensorizeValue<T>(pCPUTensor, nominalRangeConverter);
           pData[j] = bGray;
           pCPUTensor++;
         }
@@ -127,9 +89,9 @@ class CpuDetensorizer {
         for (uint32_t j = i; j < i + bytesPerRow; j += 1) {
           BYTE red, green, blue;
 
-          blue = DetensorizeValue(pCPUTensor, deNormalizer);
-          green = DetensorizeValue(pCPUTensor + tensorPlaneSize, deNormalizer);
-          red = DetensorizeValue(pCPUTensor + tensorPlaneSize * 2, deNormalizer);
+          blue = DetensorizeValue(pCPUTensor, nominalRangeConverter);
+          green = DetensorizeValue(pCPUTensor + tensorPlaneSize, nominalRangeConverter);
+          red = DetensorizeValue(pCPUTensor + tensorPlaneSize * 2, nominalRangeConverter);
 
           pData[j] = static_cast<BYTE>(0.2126f * red + 0.7152f * green + 0.0722f * blue);
           pCPUTensor++;
@@ -140,9 +102,9 @@ class CpuDetensorizer {
         for (uint32_t j = i; j < i + bytesPerRow; j += 1) {
           BYTE red, green, blue;
 
-          red = DetensorizeValue(pCPUTensor, deNormalizer);
-          green = DetensorizeValue(pCPUTensor + tensorPlaneSize, deNormalizer);
-          blue = DetensorizeValue(pCPUTensor + tensorPlaneSize * 2, deNormalizer);
+          red = DetensorizeValue(pCPUTensor, nominalRangeConverter);
+          green = DetensorizeValue(pCPUTensor + tensorPlaneSize, nominalRangeConverter);
+          blue = DetensorizeValue(pCPUTensor + tensorPlaneSize * 2, nominalRangeConverter);
 
           pData[j] = static_cast<BYTE>(0.2126f * red + 0.7152f * green + 0.0722f * blue);
           pCPUTensor++;
@@ -158,21 +120,21 @@ class CpuDetensorizer {
 
  private:
   template <typename T>
-  static float ReadTensor(const T* pCPUTensor, const DeNormalizer& deNormalizer) {
-    return deNormalizer.DeNormalizeData(*pCPUTensor);
+  static float ReadTensor(const T* pCPUTensor, const NominalRangeConverter& nominalRangeConverter) {
+    return nominalRangeConverter.Denormalize(*pCPUTensor);
   }
 
   template <>
   static float ReadTensor<DirectX::PackedVector::HALF>(
     const DirectX::PackedVector::HALF* pCPUTensor,
-    const DeNormalizer& deNormalizer) {
-    return deNormalizer.DeNormalizeData(
+    const NominalRangeConverter& nominalRangeConverter) {
+    return nominalRangeConverter.Denormalize(
       DirectX::PackedVector::XMConvertHalfToFloat(*pCPUTensor));
   }
 
   template <typename T>
-  static BYTE DetensorizeValue(const T* pCPUTensor, const DeNormalizer& deNormalizer) {
-    return static_cast<BYTE>(std::max(0.0f, std::min(255.0f, ReadTensor(pCPUTensor, deNormalizer) + 0.5f)));
+  static BYTE DetensorizeValue(const T* pCPUTensor, const NominalRangeConverter& nominalRangeConverter) {
+    return static_cast<BYTE>(std::max(0.0f, std::min(255.0f, ReadTensor(pCPUTensor, nominalRangeConverter) + 0.5f)));
   }
 
   template <typename T>
@@ -183,14 +145,14 @@ class CpuDetensorizer {
       uint32_t tensorWidth,
       BYTE* pData,
       uint32_t bytesPerPixel,
-      const DeNormalizer& deNormalizer) {
+      const NominalRangeConverter& nominalRangeConverter) {
     BYTE* pPixel = pData;
     uint32_t tensorWidthRemaining = tensorWidth;
 
     while (tensorWidthRemaining > 0) {
-      pPixel[0] = DetensorizeValue(xChannel, deNormalizer);
-      pPixel[1] = DetensorizeValue(yChannel, deNormalizer);
-      pPixel[2] = DetensorizeValue(zChannel, deNormalizer);
+      pPixel[0] = DetensorizeValue(xChannel, nominalRangeConverter);
+      pPixel[1] = DetensorizeValue(yChannel, nominalRangeConverter);
+      pPixel[2] = DetensorizeValue(zChannel, nominalRangeConverter);
       pPixel[3] = 255;
 
       pPixel += 4;
@@ -210,7 +172,7 @@ class CpuDetensorizer {
       uint32_t tensorWidth,
       BYTE* pData,
       uint32_t bytesPerPixel,
-      const DeNormalizer& deNormalizer
+      const NominalRangeConverter& nominalRangeConverter
     ) {
     BYTE* pPixel = pData;
     uint32_t tensorWidthRemaining = tensorWidth;
@@ -225,22 +187,22 @@ class CpuDetensorizer {
 
     while (tensorWidthRemaining >= 8) {
       // Load, saturate, and convert to ints, 8 - 32 bit floats from X channel
-      __m128i vXIntsLo = _mm_cvtps_epi32(_mm_min_ps(deNormalizer.DeNormalizeData(_mm_loadu_ps(xChannel)), maxv));
-      __m128i vXIntsHi = _mm_cvtps_epi32(_mm_min_ps(deNormalizer.DeNormalizeData(_mm_loadu_ps(xChannel + 4)), maxv));
+      __m128i vXIntsLo = _mm_cvtps_epi32(_mm_min_ps(nominalRangeConverter.Denormalize(_mm_loadu_ps(xChannel)), maxv));
+      __m128i vXIntsHi = _mm_cvtps_epi32(_mm_min_ps(nominalRangeConverter.Denormalize(_mm_loadu_ps(xChannel + 4)), maxv));
 
       // Pack 32 bit ints into 16 bit ints
       __m128i vXWords = _mm_packs_epi32(vXIntsLo, vXIntsHi);
 
       // Load, saturate, and convert to ints, 8 - 32 bit floats from Y channel
-      __m128i vYIntsLo = _mm_cvtps_epi32(_mm_min_ps(deNormalizer.DeNormalizeData(_mm_loadu_ps(yChannel)), maxv));
-      __m128i vYIntsHi = _mm_cvtps_epi32(_mm_min_ps(deNormalizer.DeNormalizeData(_mm_loadu_ps(yChannel + 4)), maxv));
+      __m128i vYIntsLo = _mm_cvtps_epi32(_mm_min_ps(nominalRangeConverter.Denormalize(_mm_loadu_ps(yChannel)), maxv));
+      __m128i vYIntsHi = _mm_cvtps_epi32(_mm_min_ps(nominalRangeConverter.Denormalize(_mm_loadu_ps(yChannel + 4)), maxv));
 
       // Pack 32 bit ints into 16 bit ints
       __m128i vYWords = _mm_packs_epi32(vYIntsLo, vYIntsHi);
 
       // Load, saturate, and convert to ints, 8 - 32 bit floats from Z channel
-      __m128i vZIntsLo = _mm_cvtps_epi32(_mm_min_ps(deNormalizer.DeNormalizeData(_mm_loadu_ps(zChannel)), maxv));
-      __m128i vZIntsHi = _mm_cvtps_epi32(_mm_min_ps(deNormalizer.DeNormalizeData(_mm_loadu_ps(zChannel + 4)), maxv));
+      __m128i vZIntsLo = _mm_cvtps_epi32(_mm_min_ps(nominalRangeConverter.Denormalize(_mm_loadu_ps(zChannel)), maxv));
+      __m128i vZIntsHi = _mm_cvtps_epi32(_mm_min_ps(nominalRangeConverter.Denormalize(_mm_loadu_ps(zChannel + 4)), maxv));
 
       // Pack 32 bit ints into 16 bit ints
       __m128i vZWords = _mm_packs_epi32(vZIntsLo, vZIntsHi);
@@ -271,9 +233,9 @@ class CpuDetensorizer {
 
     // Anything remaining deal with it one at a time
     while (tensorWidthRemaining > 0) {
-      pPixel[0] = DetensorizeValue(xChannel, deNormalizer);
-      pPixel[1] = DetensorizeValue(yChannel, deNormalizer);
-      pPixel[2] = DetensorizeValue(zChannel, deNormalizer);
+      pPixel[0] = DetensorizeValue(xChannel, nominalRangeConverter);
+      pPixel[1] = DetensorizeValue(yChannel, nominalRangeConverter);
+      pPixel[2] = DetensorizeValue(zChannel, nominalRangeConverter);
       pPixel[3] = 255;
 
       pPixel += bytesPerPixel;
