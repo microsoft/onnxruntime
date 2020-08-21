@@ -403,12 +403,13 @@ ORT_STATUS_PTR LoadAndInitializeSession(_In_ const OrtEnv* /*env*/, _In_ const O
   Status status;
   if (options) {
     if (!options->custom_op_domains_.empty()) {
-#if defined(ORT_MINIMAL_BUILD)
-      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Custom operator domains are not supported in this build.");
-#else
+#if !defined(ORT_MINIMAL_BUILD)
       status = sess->AddCustomOpDomains(options->custom_op_domains_);
-      if (!status.IsOK())
+      if (!status.IsOK()) {
         return ToOrtStatus(status);
+      }
+#else
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Custom operator domains are not supported in this build.");
 #endif
     }
   }
@@ -422,14 +423,14 @@ ORT_STATUS_PTR LoadAndInitializeSession(_In_ const OrtEnv* /*env*/, _In_ const O
     }
   }
 
-#if defined(ORT_MINIMAL_BUILD)
-  // TODO: Add path to load from ORT format model
-#else
+#if !defined(ORT_MINIMAL_BUILD)
   status = sess->Load();
   if (!status.IsOK())
     return ToOrtStatus(status);
 
   status = sess->Initialize();
+#else
+  // TODO: Add path to load from ORT format model
 #endif
 
   if (!status.IsOK())

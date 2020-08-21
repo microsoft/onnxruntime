@@ -95,11 +95,7 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
                                      const ONNX_NAMESPACE::ModelProto& model_proto,
                                      bool is_model_proto_parsed,
                                      /*out*/ SessionOptions& finalized_session_options) {
-#if defined(ORT_MINIMAL_BUILD)
-  ORT_UNUSED_PARAMETER(model_proto);
-  ORT_UNUSED_PARAMETER(is_model_proto_parsed);
-  finalized_session_options = user_provided_session_options;
-#else
+#if !defined(ORT_MINIMAL_BUILD)
   const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
 
   // By now the environment should have initialized. (It is enforced prior to this.)
@@ -156,6 +152,10 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
     // use user provided session options instance
     finalized_session_options = user_provided_session_options;
   }
+#else
+  ORT_UNUSED_PARAMETER(model_proto);
+  ORT_UNUSED_PARAMETER(is_model_proto_parsed);
+  finalized_session_options = user_provided_session_options;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   return Status::OK();
@@ -243,8 +243,8 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
                                    const std::string& model_uri)
     : model_location_(ToWideString(model_uri)),
       graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
-      logging_manager_(session_env.GetLoggingManager()),
-      insert_cast_transformer_("CastFloat16Transformer") {
+      insert_cast_transformer_("CastFloat16Transformer"),
+      logging_manager_(session_env.GetLoggingManager()) {
   auto status = Model::Load(model_location_, model_proto_);
   ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session. Error message: ",
               status.ErrorMessage());
@@ -258,8 +258,8 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
                                    const Environment& session_env,
                                    const std::wstring& model_uri)
     : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
-      logging_manager_(session_env.GetLoggingManager()),
-      insert_cast_transformer_("CastFloat16Transformer") {
+      insert_cast_transformer_("CastFloat16Transformer"),
+      logging_manager_(session_env.GetLoggingManager()) {
   model_location_ = ToWideString(model_uri);
   auto status = Model::Load(model_location_, model_proto_);
   ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session. Error message: ",
@@ -273,8 +273,8 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env,
                                    std::istream& model_istream)
     : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
-      logging_manager_(session_env.GetLoggingManager()),
-      insert_cast_transformer_("CastFloat16Transformer") {
+      insert_cast_transformer_("CastFloat16Transformer"),
+      logging_manager_(session_env.GetLoggingManager()) {
   Status st = Model::Load(model_istream, &model_proto_);
   ORT_ENFORCE(st.IsOK(), "Could not parse model successfully while constructing the inference session");
   is_model_proto_parsed_ = true;
@@ -285,8 +285,8 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env,
                                    const void* model_data, int model_data_len)
     : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
-      logging_manager_(session_env.GetLoggingManager()),
-      insert_cast_transformer_("CastFloat16Transformer") {
+      insert_cast_transformer_("CastFloat16Transformer"),
+      logging_manager_(session_env.GetLoggingManager()) {
   const bool result = model_proto_.ParseFromArray(model_data, model_data_len);
   ORT_ENFORCE(result, "Could not parse model successfully while constructing the inference session");
   is_model_proto_parsed_ = true;
@@ -842,7 +842,6 @@ common::Status InferenceSession::Initialize() {
     //
     // Register 2nd registries into KernelRegistryManager.
     ORT_RETURN_IF_ERROR_SESSIONID_(kernel_registry_manager_.RegisterKernels(execution_providers_));
-
 
 #if !defined(ORT_MINIMAL_BUILD)
     // add predefined transformers

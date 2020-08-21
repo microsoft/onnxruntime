@@ -677,16 +677,16 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
   // so also do it recursively when calling PopulateKernelCreateInfo for consistency.
   ORT_RETURN_IF_ERROR(CreateSubgraphSessionState());
 
-#if defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD)
+  ORT_RETURN_IF_ERROR(PopulateKernelCreateInfo(kernel_registry_manager));
+  return FinalizeSessionStateImpl(graph_location, kernel_registry_manager, nullptr, session_options,
+                                  remove_initializers);
+#else
   ORT_UNUSED_PARAMETER(graph_location);
   ORT_UNUSED_PARAMETER(kernel_registry_manager);
   ORT_UNUSED_PARAMETER(session_options);
   ORT_UNUSED_PARAMETER(remove_initializers);
   return Status(ONNXRUNTIME, NOT_IMPLEMENTED, "TODO: Add deserialization of kernel create info.");
-#else
-  ORT_RETURN_IF_ERROR(PopulateKernelCreateInfo(kernel_registry_manager));
-  return FinalizeSessionStateImpl(graph_location, kernel_registry_manager, nullptr, session_options,
-                                  remove_initializers);
 #endif
 }
 
