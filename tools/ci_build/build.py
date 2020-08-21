@@ -1393,42 +1393,83 @@ def build_python_wheel(
         run_subprocess(args, cwd=cwd)
 
 
-def build_nuget_package(configs, use_cuda, use_openvino, use_tensorrt, use_dnnl):
+def derive_linux_build_property():
+    if is_windows():
+        return "/p:IsLinuxBuild=\"false\""
+    else:
+        return "/p:IsLinuxBuild=\"true\""
+
+
+def build_nuget_package(configs, use_cuda, use_openvino, use_tensorrt, use_dnnl, use_mklml):
     if not (is_windows() or is_linux()):
         raise BuildError(
             'Currently csharp builds and nuget package creation is only supportted '
             'on Windows and Linux platforms.')
 
     build_dir = os.path.join(os.getcwd(), 'csharp')
-    is_linux_build = ""
-    if is_windows():
-        is_linux_build = "/p:IsLinuxBuild=\"false\""
-    else:
-        is_linux_build = "/p:IsLinuxBuild=\"true\""
+    is_linux_build = derive_linux_build_property()
 
+    # derive package name and execution provider based on the build args
     execution_provider = "/p:ExecutionProvider=\"None\""
+    package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime\""
     if use_openvino:
         execution_provider = "/p:ExecutionProvider=\"openvino\""
+        package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.OpenVino\""
     elif use_tensorrt:
         execution_provider = "/p:ExecutionProvider=\"tensorrt\""
+        package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.TensorRT\""
     elif use_dnnl:
         execution_provider = "/p:ExecutionProvider=\"dnnl\""
+        package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.DNNL\""
+    elif use_cuda:
+        package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.Gpu\""
+    elif use_mklml:
+        package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.MKLML\""
     else:
         pass
 
-    cmd_args = ["dotnet",  "restore", "OnnxRuntime.CSharp.sln", "--configfile", "Nuget.CSharp.config"]
+    # dotnet restore
+    cmd_args = ["dotnet", "restore", "OnnxRuntime.CSharp.sln", "--configfile", "Nuget.CSharp.config"]
     run_subprocess(cmd_args, cwd=build_dir)
 
+    # build csharp bindings and create nuget package for each config
     for config in configs:
         configuration = "/p:Configuration=\"" + config + "\""
 
-        cmd_args = ["dotnet", "msbuild", "OnnxRuntime.CSharp.sln", configuration, is_linux_build]
+        cmd_args = ["dotnet", "msbuild", "OnnxRuntime.CSharp.sln", configuration, package_name, is_linux_build]
         run_subprocess(cmd_args, cwd=build_dir)
 
         cmd_args = [
             "dotnet", "msbuild", "OnnxRuntime.CSharp.proj", "/t:CreatePackage",
-            configuration, execution_provider, is_linux_build]
+            package_name, configuration, execution_provider, is_linux_build]
         run_subprocess(cmd_args, cwd=build_dir)
+
+
+def run_csharp_tests(use_cuda, use_openvino, use_tensorrt, use_dnnl):
+    build_dir = os.path.join(os.getcwd(), 'csharp')
+    is_linux_build = derive_linux_build_property()
+
+    # define macros based on build args
+    macros = ""
+    if use_openvino:
+        macros += "USE_OPENVINO;"
+    if use_tensorrt:
+        macros += "USE_TENSORRT;"
+    if use_dnnl:
+        macros += "USE_DNNL;"
+    if use_cuda:
+        macros += "USE_CUDA;"
+
+    define_constants = ""
+    if macros != "":
+        define_constants = "/p:DefineConstants=\"" + macros + "\""
+
+    # Skip pretrained models test. Only run unit tests as part of the build
+    # "/property:DefineConstants=\"USE_CUDA;USE_OPENVINO\"",
+    cmd_args = ["dotnet", "test", "test\\Microsoft.ML.OnnxRuntime.Tests\\Microsoft.ML.OnnxRuntime.Tests.csproj",
+                "--filter", "FullyQualifiedName!=Microsoft.ML.OnnxRuntime.Tests.InferenceTest.TestPreTrainedModels",
+                is_linux_build, define_constants, "--verbosity", "detailed"]
+    run_subprocess(cmd_args, cwd=build_dir)
 
 
 def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
@@ -1736,8 +1777,16 @@ def main():
                 args.use_cuda,
                 args.use_openvino,
                 args.use_tensorrt,
-                args.use_dnnl
+                args.use_dnnl,
+                args.use_mklml
             )
+
+    if args.test:
+        run_csharp_tests(
+            args.use_cuda,
+            args.use_openvino,
+            args.use_tensorrt,
+            args.use_dnnl)
 
     if args.gen_doc and (args.build or args.test):
         generate_documentation(source_dir, build_dir, configs)
