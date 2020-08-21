@@ -100,6 +100,7 @@ class ONNXCalibrater:
 
         model.graph.node.extend(added_nodes)
         model.graph.output.extend(added_outputs)
+
         return model
 
     #Using augmented outputs to generate inputs for quantization
@@ -150,14 +151,15 @@ class ONNXCalibrater:
             raise ValueError('Unknown value for calib_mode. Currently only naive mode is supported.')
 
         final_dict = dict(zip(node_names, pairs))
+
         return final_dict
 
     
-    def _get_input_name_to_nodes(self,model):
-
+    def _get_input_name_to_nodes(self, model):
         '''
             Helper function to get input_name_to_nodes dictionary
         '''
+
         input_name_to_nodes = {}
 
         for node in model.graph.node:
@@ -170,11 +172,11 @@ class ONNXCalibrater:
         return input_name_to_nodes 
 
 
-    def _get_next_nodes(self,model,curr_node,input_name_to_nodes):
-
+    def _get_next_nodes(self, model, curr_node, input_name_to_nodes):
         '''
             Helper function to get child nodes for a given node
         '''
+
         if input_name_to_nodes is None:
             input_name_to_nodes = self._get_input_name_to_nodes(model)
 
@@ -183,9 +185,12 @@ class ONNXCalibrater:
             if output in input_name_to_nodes:
                 for child_node in input_name_to_nodes[output]:
                     children.append(child_node)
+
         return children
+
     
     def calculate_scale_zeropoint(self, node, next_node, rmin, rmax):
+
         zp_and_scale = []
         # adjust rmin and rmax such that 0 is included in the range. This is required
         # to make sure zero can be uniquely represented.
@@ -212,6 +217,7 @@ class ONNXCalibrater:
 
         zp_and_scale.append(zero_point)
         zp_and_scale.append(scale)
+
         return zp_and_scale
 
     def calculate_quantization_params(self,quantization_thresholds):
@@ -239,16 +245,15 @@ class ONNXCalibrater:
     
         quantization_params = {}
         model = onnx.load(self.model_path)
-        
         input_name_to_nodes = self._get_input_name_to_nodes(model)
 
         for node in model.graph.node:
-            next_nodes = self._get_next_nodes(model,node,input_name_to_nodes)
+            next_nodes = self._get_next_nodes(model, node, input_name_to_nodes)
             for next_node in next_nodes:
                 node_output_name = next_node.output[0]
                 if node_output_name in quantization_thresholds:
                     node_thresholds = quantization_thresholds[node_output_name]
-                    node_params = self.calculate_scale_zeropoint(node, next_node, node_thresholds[0],node_thresholds[1])
+                    node_params = self.calculate_scale_zeropoint(node, next_node, node_thresholds[0], node_thresholds[1])
                     quantization_params[node_output_name] = node_params
 
         return quantization_params
@@ -271,10 +276,10 @@ def calibrate(model_path,
     :param augmented_model_path: save augmented_model to this path
     '''
     #1. initialize a calibrater
-    calibrater = ONNXCalibrater(model_path,data_reader,op_types,black_nodes,white_nodes,augmented_model_path)
+    calibrater = ONNXCalibrater(model_path, data_reader, op_types, black_nodes, white_nodes, augmented_model_path)
     #2. augment
     augmented_model = calibrater.augment_graph()
-    onnx.save(augmented_model,augmented_model_path)
+    onnx.save(augmented_model, augmented_model_path)
     #3. generate quantization thresholds 
     dict_for_quantization = calibrater.get_intermediate_outputs()
     #4. generate quantization parameters dict
@@ -282,11 +287,3 @@ def calibrate(model_path,
 
     print("Calibrated,quantized parameters calculated and returned.")
     return quantization_params_dict
-
-
-
-
-
-
-    
-
