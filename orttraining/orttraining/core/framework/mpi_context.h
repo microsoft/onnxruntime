@@ -28,6 +28,10 @@ class MPIContext {
     MPIContext(MPIContext const&) = delete;
     void operator=(MPIContext const&) = delete;
     
+    // within ~MPIContext() we need to check for _WIN32 before calling shutdown_mpi().
+    // https://docs.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-best-practices
+    // cannot call shutdown_mpi() in MPIContext destructor because of DllMain's restriction
+    // shutdown_mpi shall be called specifically in user code.
     ~MPIContext();
 
     int GetWorldRank() const { return world_rank; }
