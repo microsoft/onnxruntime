@@ -502,14 +502,16 @@ def testLinearLRSchedulerCreation():
 
 
 @pytest.mark.parametrize("lr_scheduler,expected_values", [
-    (optim.lr_scheduler.ConstantWarmupLRScheduler, [0.181818, 0.066116, 0.036063, 0.026228, 0.023843,
-                                                    0.023843, 0.023843, 0.023843, 0.023843, 0.023843]),
-    (optim.lr_scheduler.CosineWarmupLRScheduler, [0.181818, 0.066116, 0.036063, 0.026228, 0.023843,
-                                                  0.010225, 0.002989, 0.0005158, 0.000040937, 0.0000008291]),
-    (optim.lr_scheduler.LinearWarmupLRScheduler, [0.181818, 0.066116, 0.036063, 0.026228, 0.023843,
-                                                  0.021675, 0.0157636, 0.0085983, 0.0031266, 0.00056847]),
-    (optim.lr_scheduler.PolyWarmupLRScheduler, [0.181818, 0.066116, 0.036063, 0.026228, 0.023843,
-                                                0.0160749, 0.0096935, 0.0050622, 0.0021585, 0.000650833])
+    (optim.lr_scheduler.ConstantWarmupLRScheduler,
+        [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.0, 1.0, 1.0, 1.0]),
+    (optim.lr_scheduler.CosineWarmupLRScheduler,
+        [0.0, 0.9763960957919413, 0.9059835861602854, 0.7956724530494887, 0.6563036824392345,\
+         0.5015739416158049, 0.34668951940611276, 0.2068719061737831, 0.09586187986225325, 0.0245691111902418]),
+    (optim.lr_scheduler.LinearWarmupLRScheduler,
+        [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 0.8, 0.6, 0.4, 0.2]),
+    (optim.lr_scheduler.PolyWarmupLRScheduler,
+        [0.0, 0.9509018036072144, 0.9008016032064128, 0.8507014028056112, 0.8006012024048097,\
+         0.750501002004008, 0.7004008016032064, 0.6503006012024048, 0.6002004008016032, 0.5501002004008015])
 ])
 def testLRSchedulerUpdateImpl(lr_scheduler, expected_values):
     # Test tolerance
@@ -527,7 +529,7 @@ def testLRSchedulerUpdateImpl(lr_scheduler, expected_values):
         # Emulate ORTTRainer.train_step() call that updates its train_step_info
         train_step_info = TrainStepInfo(optimizer_config=optimizer_config, optimization_step=optimization_step)
 
-        lr_scheduler.step(train_step_info)
+        lr_scheduler._step(train_step_info)
         lr_list = lr_scheduler.get_last_lr()
         assert len(lr_list) == 1
         assert_allclose(lr_list[0],
@@ -537,14 +539,15 @@ def testLRSchedulerUpdateImpl(lr_scheduler, expected_values):
 @pytest.mark.parametrize("step_fn, lr_scheduler, expected_lr_values, device", [
     ('train_step', None, None, 'cuda'),
     ('eval_step', None, None, 'cpu'),
-    ('train_step', optim.lr_scheduler.ConstantWarmupLRScheduler, [0.181818, 0.066116, 0.036063, 0.026228, 0.023843,
-                                                    0.023843, 0.023843, 0.023843, 0.023843, 0.023843], 'cpu'),
-    ('train_step', optim.lr_scheduler.CosineWarmupLRScheduler, [0.181818, 0.066116, 0.036063, 0.026228, 0.023843,
-                                                  0.010225, 0.002989, 0.0005158, 0.000040937, 0.0000008291], 'cuda'),
-    ('train_step', optim.lr_scheduler.LinearWarmupLRScheduler, [0.181818, 0.066116, 0.036063, 0.026228, 0.023843,
-                                                  0.021675, 0.0157636, 0.0085983, 0.0031266, 0.00056847], 'cpu'),
-    ('train_step', optim.lr_scheduler.PolyWarmupLRScheduler, [0.181818, 0.066116, 0.036063, 0.026228, 0.023843,
-                                                0.0160749, 0.0096935, 0.0050622, 0.0021585, 0.000650833], 'cuda')
+    ('train_step', optim.lr_scheduler.ConstantWarmupLRScheduler,
+        [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.0, 1.0, 1.0, 1.0], 'cpu'),
+    ('train_step', optim.lr_scheduler.CosineWarmupLRScheduler,
+        [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 0.9045084971874737, 0.6545084971874737, 0.34549150281252633, 0.09549150281252633],
+        'cuda'),
+    ('train_step', optim.lr_scheduler.LinearWarmupLRScheduler,
+        [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 0.8, 0.6, 0.4, 0.2], 'cpu'),
+    ('train_step', optim.lr_scheduler.PolyWarmupLRScheduler,
+        [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 0.80000002, 0.60000004, 0.40000006000000005, 0.20000007999999997], 'cuda')
 ])
 def testInstantiateORTTrainer(step_fn, lr_scheduler, expected_lr_values, device):
     total_steps = 1
