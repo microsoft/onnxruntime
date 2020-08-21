@@ -190,8 +190,14 @@
   <Target Name="CopyMiscFiles" BeforeTargets="Pack">
     <Copy SourceFiles="@(LicenseFile)" DestinationFiles="@(LicenseFile->'$(OnnxRuntimeCsharpRoot)\..\%(Filename).txt')" />
     <Copy SourceFiles="@(TargetsFile)" DestinationFiles="@(TargetsFile->'$(OnnxRuntimeCsharpRoot)\src\\Microsoft.ML.OnnxRuntime\$(PackageId).targets')" />
-
   </Target>
+
+  <Target Name="CopyPackage" AfterTargets="Pack">
+  <Copy
+    SourceFiles="$(OutputPath)..\$(PackageId).$(PackageVersion).nupkg"
+    DestinationFolder="$(NativeBuildOutputDir)\nuget-artifacts"
+    />
+</Target>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All" />
@@ -199,4 +205,3 @@
   </ItemGroup>
 
 </Project>
-
