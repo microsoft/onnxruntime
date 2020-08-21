@@ -1,13 +1,13 @@
 from functools import partial
 import inspect
 import math
-
+from numpy.testing import assert_allclose
 import onnx
 import os
 import pytest
 import torch
+import unittest
 
-from numpy.testing import assert_allclose
 
 from onnxruntime import set_seed
 from onnxruntime.capi.ort_trainer import IODescription as Legacy_IODescription,\
@@ -966,8 +966,6 @@ def testORTTrainerLegacyAndExperimentalGradientAccumulation(seed, device, gradie
     _test_helpers.assert_model_outputs(legacy_loss, experimental_loss, rtol=1e-6)
 
 
-
-
 @pytest.mark.parametrize("seed,device,optimizer_config,lr_scheduler, get_lr_this_step", [
     (0, 'cuda', optim.AdamConfig, optim.lr_scheduler.ConstantWarmupLRScheduler, _test_commons.legacy_constant_lr_scheduler),
     (0, 'cuda', optim.LambConfig, optim.lr_scheduler.ConstantWarmupLRScheduler, _test_commons.legacy_constant_lr_scheduler),
@@ -1053,3 +1051,8 @@ def testORTTrainerLegacyAndExperimentalLRScheduler(seed, device, optimizer_confi
 
     # Compare legacy vs experimental APIs
     _test_helpers.assert_model_outputs(legacy_loss, experimental_loss)
+
+
+if __name__ == "__main__":
+    unittest.main()
+

@@ -8,6 +8,7 @@ import os
 import pytest
 import torch
 import torch.nn.functional as F
+import unittest
 
 import onnxruntime
 from onnxruntime.capi.ort_trainer import IODescription as Legacy_IODescription,\
@@ -922,3 +923,8 @@ def testToyBERTModelLegacyExperimentalCustomOptimParameters(params, legacy_optim
 
      # Check results
     _test_helpers.assert_model_outputs(experimental_losses, legacy_losses)
+
+
+if __name__ == "__main__":
+    unittest.main()
+
