@@ -1011,20 +1011,17 @@ namespace Microsoft.ML.OnnxRuntime
         {
             IntPtr modelMetadataHandle = IntPtr.Zero;
 
-            IntPtr producerNameHandle = IntPtr.Zero;
-            IntPtr graphNameHandle = IntPtr.Zero;
-            IntPtr domainHandle = IntPtr.Zero;
-            IntPtr descriptionHandle = IntPtr.Zero;
-
             var allocator = OrtAllocator.DefaultInstance;
+
+            // Get the native ModelMetadata instance associated with the InferenceSession
+
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetModelMetadata(session.Handle, out modelMetadataHandle));
+
             try
             {
-                // Get the native ModelMetadata instance associated with the InferenceSession
-
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetModelMetadata(session.Handle, out modelMetadataHandle));
 
                 // Process producer name
-
+                IntPtr producerNameHandle = IntPtr.Zero;
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetProducerName(modelMetadataHandle, allocator.Pointer, out producerNameHandle));
                 using (var ortAllocation = new OrtMemoryAllocation(allocator, producerNameHandle, 0))
                 {
@@ -1032,7 +1029,7 @@ namespace Microsoft.ML.OnnxRuntime
                 }
 
                 // Process graph name
-
+                IntPtr graphNameHandle = IntPtr.Zero;
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetGraphName(modelMetadataHandle, allocator.Pointer, out graphNameHandle));
                 using (var ortAllocation = new OrtMemoryAllocation(allocator, graphNameHandle, 0))
                 {
@@ -1041,7 +1038,7 @@ namespace Microsoft.ML.OnnxRuntime
 
 
                 // Process domain
-
+                IntPtr domainHandle = IntPtr.Zero;
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetDomain(modelMetadataHandle, allocator.Pointer, out domainHandle));
                 using (var ortAllocation = new OrtMemoryAllocation(allocator, domainHandle, 0))
                 {
@@ -1049,7 +1046,7 @@ namespace Microsoft.ML.OnnxRuntime
                 }
 
                 // Process description
-
+                IntPtr descriptionHandle = IntPtr.Zero;
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetDescription(modelMetadataHandle, allocator.Pointer, out descriptionHandle));
                 using (var ortAllocation = new OrtMemoryAllocation(allocator, descriptionHandle, 0))
                 {
@@ -1057,31 +1054,34 @@ namespace Microsoft.ML.OnnxRuntime
                 }
 
                 // Process version
-
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetVersion(modelMetadataHandle, out _version));
 
 
                 // Process CustomMetadata Map
-
                 IntPtr customMetadataMapKeysHandle = IntPtr.Zero;
                 long numKeys;
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetCustomMetadataMapKeys(modelMetadataHandle, allocator.Pointer, out customMetadataMapKeysHandle, out numKeys));
 
                 // We have received an array of null terminated C strings which are the keys that we can use to lookup the custom metadata map
                 // The OrtAllocator will finally free the customMetadataMapKeysHandle
-                using (var ortAllocation = new OrtMemoryAllocation(allocator, customMetadataMapKeysHandle, 0))
+                using (var ortAllocationKeysArray = new OrtMemoryAllocation(allocator, customMetadataMapKeysHandle, 0))
+                using (var ortAllocationKeys = new DisposableList<OrtMemoryAllocation>((int)numKeys))
                 {
+                    // Put all the handles to each key in the DisposableList to be disposed off in an exception-safe manner
                     for (int i = 0; i < (int)numKeys; ++i)
                     {
-                        IntPtr keyHandle = IntPtr.Zero;
+                        ortAllocationKeys.Add(new OrtMemoryAllocation(allocator, Marshal.ReadIntPtr(customMetadataMapKeysHandle, IntPtr.Size * i), 0));
+                    }
+
+                    // Process each key via the stored key handles
+                    foreach(var allocation in ortAllocationKeys)
+                    {
+                        IntPtr keyHandle = allocation.Pointer;
                         IntPtr valueHandle = IntPtr.Zero;
+                        NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataLookupCustomMetadataMap(modelMetadataHandle, allocator.Pointer, keyHandle, out valueHandle));
 
-                        try
+                        using (var ortAllocationValue = new OrtMemoryAllocation(allocator, valueHandle, 0))
                         {
-                            keyHandle = Marshal.ReadIntPtr(customMetadataMapKeysHandle, IntPtr.Size * i);
-
-                            NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataLookupCustomMetadataMap(modelMetadataHandle, allocator.Pointer, keyHandle, out valueHandle));
-
                             var key = NativeOnnxValueHelper.StringFromNativeUtf8(keyHandle);
                             var value = NativeOnnxValueHelper.StringFromNativeUtf8(valueHandle);
 
@@ -1089,28 +1089,15 @@ namespace Microsoft.ML.OnnxRuntime
                             _customMetadataMap[key] = value;
 
                         }
-
-                        finally
-                        {
-                            // Free the memory associated with this single key value pair
-                            allocator.FreeMemory(keyHandle);
-                            allocator.FreeMemory(valueHandle);
-                        }
                     }
-
                 }
-
             }
 
             finally
             {
-                // producerHandle, graphNameHandle,  domainHandle, descriptionHandle will be released when the corresponding OrtMemoryAllocation instance above gets disposed
 
                 // Free ModelMetadata handle
-                if (modelMetadataHandle != IntPtr.Zero)
-                {
-                    NativeMethods.OrtReleaseModelMetadata(modelMetadataHandle);
-                }
+                 NativeMethods.OrtReleaseModelMetadata(modelMetadataHandle);
 
              }
 
