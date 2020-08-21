@@ -657,10 +657,8 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
       oss << "Could not find an implementation for the node ";
       if (!node.Name().empty())
         oss << node.Name() << ":";
-      oss << node.OpType();
-      if (node.Op()) {
-        oss << "(" << node.Op()->since_version() << ")";
-      }
+      oss << node.OpType() << "(" << node.SinceVersion() << ")";
+      
       return Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED, oss.str());
     } else {
       if (is_verbose_mode) {  // TODO: should we disable this if the number of nodes are above a certain threshold?
