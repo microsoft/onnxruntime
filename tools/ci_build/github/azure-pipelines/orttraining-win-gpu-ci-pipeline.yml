@@ -3,7 +3,7 @@ trigger: none
 jobs:
 - template: templates/win-ci-2019.yml
   parameters:
-    AgentPool : 'ettao-test-win-gpu'
+    AgentPool : 'Win-GPU-2019'
     JobName: 'Win_GPU_Training'
     # TODO fix test failures and remove --skip_onnx_tests
     BuildCommand: >-
@@ -23,5 +23,4 @@ jobs:
     sln_platform: 'x64'
     CudaVersion: '10.1'
     OrtPackageId: 'Microsoft.ML.OnnxRuntime.Gpu'
-    BuildConfigurations: ['RelWithDebInfo']
-    # BuildConfigurations: ['Debug', 'RelWithDebInfo']
+    BuildConfigurations: ['Debug', 'RelWithDebInfo']
