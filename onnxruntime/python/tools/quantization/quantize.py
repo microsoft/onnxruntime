@@ -15,10 +15,10 @@ from onnx import onnx_pb as onnx_proto
 from onnx import shape_inference
 from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
 
-from quant_utils import QuantizationMode,QuantizedValueType,QuantizedInitializer,QuantizedValue,quantization_modes
-from quant_utils import _find_by_name,_get_elem_index,_get_mul_node,_generate_identified_filename,_attribute_to_kwarg
+from .quant_utils import QuantizationMode,QuantizedValueType,QuantizedInitializer,QuantizedValue,quantization_modes
+from .quant_utils import _find_by_name,_get_elem_index,_get_mul_node,_generate_identified_filename,_attribute_to_kwarg
 
-from registry import CreateOpQuantizer, CreateDefaultOpQuantizer
+from .registry import CreateOpQuantizer, CreateDefaultOpQuantizer
 
 __producer__ = "onnx.quantize"
 __version__ = "0.1.0"
@@ -879,7 +879,7 @@ class ONNXQuantizer:
 
         return
 
-    def _quantize_bias(self, node, new_node_list):
+    def quantize_bias(self, node, new_node_list):
         '''
         Quantized the bias. Zero Point == 0 and Scale == Input_Scale * Weight_Scale
         '''
@@ -1115,13 +1115,13 @@ def quantize(model_path,
         weight_qType = onnx_proto.TensorProto.INT8 if symmetric_weight else onnx_proto.TensorProto.UINT8
         mode = quantization_mode
 
-        #check opset version of the original model
-        fuse_dynamic_quant = check_opset_version(onnx.load(model_path), force_fusions)
-
         #optimize the original model
         optimized_model = optimize_model(Path(model_path))
         copy_model = onnx_proto.ModelProto()
         copy_model.CopyFrom(optimized_model)
+
+        #check opset version of the original model
+        fuse_dynamic_quant = check_opset_version(onnx.load(model_path), force_fusions)
         
         #apply shape inference to the ModelProto and get value informations
         inferred_model = shape_inference.infer_shapes(copy_model)

@@ -230,6 +230,7 @@ packages = [
     'onnxruntime.datasets',
     'onnxruntime.tools',
     'onnxruntime.quantization',
+    'onnxruntime.quantization.operators',
 ]
 
 # TODO: thiagofc: Temporary 'experimental' namespace for new PyTorch front-end
