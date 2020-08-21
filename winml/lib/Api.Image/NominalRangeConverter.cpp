@@ -3,23 +3,25 @@
 
 namespace _winml {
   NominalRangeConverter::NominalRangeConverter(ImageNominalPixelRange pixelRange) {
+    // For Normalization: the formula is input_range[min, max] / scale - shift
+    // For DeNormalization: the formula is (input_range[min, max] + shift) * scale
     if (pixelRange == ImageNominalPixelRange::kNominalRange_0_255) {
-      // [0, 255] --> [0, 255]
       scale = 1.f;
       shift = 0;
     }
     else if (pixelRange == ImageNominalPixelRange::kNormalized_0_1) {
-      // [0, 255] / 255 --> [0, 1]
       scale = 255.f;
       shift = 0;
     }
     else if (pixelRange == ImageNominalPixelRange::kNormalized_1_1) {
-      // [0, 255] * 2 / 255 - 1 --> [-1, 1]
       scale = (255.f / 2.f);
       shift = 1;
     }
   };
 
+  // [0, 255] --> [0, 255]
+  // [0, 255] / 255 --> [0, 1]
+  // [0, 255] * 2 / 255 - 1 --> [-1, 1]
   float NominalRangeConverter::Normalize(float val) const {
     return val / scale - shift;
   }
@@ -36,6 +38,9 @@ namespace _winml {
     return _mm_sub_ps(sse_dived, sse_shift);
   }
 
+  // [0, 255] --> [0, 255]
+  // ([0, 1] + 0 ) * 255 -> [0, 1]
+  // ([-1, 1] + 1) * 255 / 2 --> [-1, 1]
   float NominalRangeConverter::Denormalize(float val) const {
     return scale * (val + shift);
   }
