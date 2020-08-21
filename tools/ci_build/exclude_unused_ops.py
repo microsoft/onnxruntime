@@ -1,4 +1,4 @@
-'''rewrite execution providers to disable ops'''
+'''exclude unused ops from build'''
 # !/usr/bin/env python3
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
@@ -128,7 +128,11 @@ def exclude_unused_ops(model_path, file_path, provider_paths):
 def exclude_unused_ops_in_provider(operators, provider_path):
     '''rewrite provider file to exclude unused ops'''
 
-    log.info("Rewriting {}".format(provider_path))
+    if not os.path.isfile(provider_path):
+        log.warning('File {} does not exist'.format(provider_path))
+        return
+
+    log.info("Processing {}".format(provider_path))
     onnx_op = 'ONNX_OPERATOR_KERNEL_CLASS_NAME'
     onnx_op_len = len(onnx_op)
     onnx_typed_op = 'ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME'
@@ -309,7 +313,7 @@ if __name__ == "__main__":
 
     model_path = os.path.abspath(ARGS.model_path) if ARGS.model_path else ''
     file_path = os.path.abspath(ARGS.file_path) if ARGS.file_path else ''
-    ort_root = ARGS.ort_root if ARGS.ort_root else ''
+    ort_root = os.path.abspath(ARGS.ort_root) if ARGS.ort_root else ''
 
     if not model_path and not file_path:
         log.warning('Please specify at least either model path or file path.')
