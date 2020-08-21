@@ -139,14 +139,6 @@ def legacy_model_params(lr, device = torch.device("cuda", 0)):
     learning_rate = torch.tensor([lr]).to(device)
     return (legacy_model_desc, learning_rate_description, learning_rate)
 
-    no_decay_keys = ["bias", "gamma", "beta", "LayerNorm"]
-    no_decay = any(no_decay_key in name for no_decay_key in no_decay_keys)
-    if no_decay:
-        return {"alpha": 0.9, "beta": 0.999, "lambda": 0.0, "epsilon": 1e-6}
-    else:
-        return {"alpha": 0.9, "beta": 0.999, "lambda": 0.01, "epsilon": 1e-6}
-
-
 def legacy_ort_trainer_learning_rate_description():
     return Legacy_IODescription('Learning_Rate', [1, ], torch.float32)
 
