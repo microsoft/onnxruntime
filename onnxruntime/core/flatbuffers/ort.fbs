@@ -1,0 +1,205 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+namespace onnxruntime.experimental.fbs.Attribute;
+
+enum Type : int {
+  UNDEFINED = 0,
+  FLOAT = 1,
+  INT = 2,
+  STRING = 3,
+  TENSOR = 4,
+  GRAPH = 5,
+  FLOATS = 6,
+  INTS = 7,
+  STRINGS = 8,
+  TENSORS = 9,
+  GRAPHS = 10,
+  SPARSE_TENSOR = 11,
+  SPARSE_TENSORS = 12,
+}
+
+namespace onnxruntime.experimental.fbs.Tensor.Shape;
+
+table Info {
+dim:[Dimension];
+}
+
+table Dimension {
+  value:DimensionValue;
+  denotation:string;
+}
+
+table DimensionValue {
+  dim_value:long;
+  dim_param:string;
+}
+
+namespace onnxruntime.experimental.fbs.Tensor;
+
+enum DataType : int {
+  UNDEFINED = 0,
+  FLOAT = 1,
+  UINT8 = 2,
+  INT8 = 3,
+  UINT16 = 4,
+  INT16 = 5,
+  INT32 = 6,
+  INT64 = 7,
+  STRING = 8,
+  BOOL = 9,
+  FLOAT16 = 10,
+  DOUBLE = 11,
+  UINT32 = 12,
+  UINT64 = 13,
+  COMPLEX64 = 14,
+  COMPLEX128 = 15,
+  BFLOAT16 = 16,
+}
+
+table TypeInfo{
+  elem_type:DataType;
+  shape:Shape.Info;
+}
+
+namespace onnxruntime.experimental.fbs.Graph;
+
+enum NodeType : int {
+  Primitive = 0,
+  Fused = 1,
+}
+
+struct EdgeEnd {
+  node_index:uint;
+  src_arg_index:int;
+  dst_arg_index:int;
+}
+
+table Node {
+  name:string;
+  doc_string:string;
+  domain:string;
+  since_version:int;
+
+  index:uint;
+  op_type:string;
+  type:NodeType;
+  execution_provider_type:string;
+  
+  inputs:[string];
+  outputs:[string];
+  attributes:[onnxruntime.experimental.fbs.Attribute];
+
+  input_arg_counts:[int];
+  implicit_inputs:[string];
+}
+
+namespace onnxruntime.experimental.fbs;
+
+table OperatorSetId {
+  domain:string;
+  version:long;
+}
+
+table ValueInfo {
+  name:string;
+  doc_string:string;
+  type:TypeInfo;
+}
+
+// TODO add support of Sequence/Map/SparseTensor/Opaque
+union TypeInfoValue {
+  tensor_type:Tensor.TypeInfo,
+}
+
+table TypeInfo {
+  denotation:string;
+  value:TypeInfoValue;
+}
+
+// For simplicity, we will have only two data fields
+// - string_data for string
+// - raw_data for all other types
+table Tensor {
+  name:string;
+  doc_string:string;
+  
+  dims:[long];
+  data_type:Tensor.DataType;
+
+  raw_data:[ubyte];
+
+  // string_data is least used, leave it at the end
+  string_data:[string];
+}
+
+table Attribute{
+  name:string;
+  doc_string:string;
+  
+  type:Attribute.Type;
+  
+  f:float;
+  i:long;
+  s:[ubyte];
+  t:Tensor;
+  g:Graph;
+  
+  floats:[float];
+  ints:[long];
+  strings:[string];
+  tensors:[Tensor];
+  graphs:[Graph];
+}
+
+table Graph{
+  initializers:[Tensor];
+
+  node_args:[ValueInfo];
+  nodes:[Graph.Node];
+  max_node_index:uint;
+
+  input_edges:[Graph.EdgeEnd];
+  output_edges:[Graph.EdgeEnd];
+
+  inputs:[string];
+  outputs:[string];
+
+  outer_scope_node_args:[string];
+}
+
+table Model {
+  ir_version:long;
+  opset_import:OperatorSetId;
+  producer_name:string;
+  producer_version:string;
+  domain:string;
+  model_version:long;
+  doc_string:string;
+
+  graph:Graph;
+}
+
+table KernelCreateInfos {
+  node_indices:[uint];
+  kernel_def_hashes:[ulong];
+}
+
+table SubGraphSessionState {
+  graph_id:string (key);
+  session_state:SessionState;
+}
+
+table SessionState {
+  kernels:KernelCreateInfos;
+  sub_graph_session_states:[SubGraphSessionState];
+}
+
+table InferenceSession {
+  ort_version:string;
+  model:Model;
+  session_state:SessionState;
+}
+
+root_type InferenceSession;
+file_identifier "ORTM";
