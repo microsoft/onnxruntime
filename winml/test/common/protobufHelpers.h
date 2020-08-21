@@ -7,7 +7,7 @@
 #include "winrt_headers.h"
 #pragma warning(push)
 #pragma warning(disable : 4100)
-#include "onnx/onnx-ml.pb.h"
+#include "onnx/onnx_pb.h"
 #pragma warning(pop)
 namespace ProtobufHelpers
 {
