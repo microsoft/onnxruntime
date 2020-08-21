@@ -570,6 +570,9 @@ set(all_dependencies ${onnxruntime_test_providers_dependencies} )
 set(TEST_DATA_SRC ${TEST_SRC_DIR}/testdata)
 set(TEST_DATA_DES $<TARGET_FILE_DIR:${test_data_target}>/testdata)
 
+set(TEST_DATA_SRC ${REPO_ROOT}/samples)
+set(TEST_DATA_DES $<TARGET_FILE_DIR:${test_data_target}>/samples)
+
 # Copy test data from source to destination.
 add_custom_command(
   TARGET ${test_data_target} POST_BUILD

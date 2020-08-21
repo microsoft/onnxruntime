@@ -276,8 +276,8 @@ class ORTTrainer(object):
         assert isinstance(path, str), "'path' must be a valid path string"
         dir_name = os.path.dirname(path)
         file_name = os.path.basename(path)
-        if not dir_name or not os.path.exists(dir_name) or not file_name:
-            warnings.warn("'path' is not valid. It must contain an existing folder + filename")
+        if (dir_name and not os.path.exists(dir_name)) or not file_name:
+            warnings.warn("'path' is not valid or does not exist")
             return
 
         with open(path, "wb") as f:
