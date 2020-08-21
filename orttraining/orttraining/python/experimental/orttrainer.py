@@ -328,8 +328,9 @@ class ORTTrainer(object):
             outputs_desc = self._model_desc_outputs_with_all_finite
 
         # Update Learning Rate if Necessary
+        lr = self.optim_config.lr
         if self.options.lr_scheduler:
-            self.options.lr_scheduler.step(self._train_step_info)
+            lr = self.options.lr_scheduler._step(self._train_step_info)[0]
 
         # Loss Scale for mixed precision
         loss_scale = None
@@ -340,7 +341,7 @@ class ORTTrainer(object):
             inputs_desc = self._model_desc_inputs_with_lr_and_loss_scale
 
         # Get data. CombineTorchModelLossFn takes label as last input and outputs loss first
-        input = self._prepare_model_input(inputs_desc, self.optim_config.lr, loss_scale, *args, **kwargs)
+        input = self._prepare_model_input(inputs_desc, lr, loss_scale, *args, **kwargs)
 
         # Normalize input
         if not isinstance(args, (list, tuple)):
@@ -658,13 +659,13 @@ class ORTTrainer(object):
 
         # Append learning rate
         extra_inputs = 0
-        if lr:
+        if lr is not None:
             lr = torch.tensor([lr])
             input += (lr,)
             extra_inputs += 1
 
         # Append loss scale
-        if loss_scale:
+        if loss_scale is not None:
             assert self.options.mixed_precision.enabled, "Loss scale cannot be used without mixed precision"
             loss_scale = loss_scale.clone().detach()
             input += (loss_scale, )
