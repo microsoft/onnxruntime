@@ -3,7 +3,7 @@ trigger: none
 jobs:
 - template: templates/win-ci-2019.yml
   parameters:
-    AgentPool : 'Win-GPU-2019'
+    AgentPool : 'ettao-test-win-gpu'
     JobName: 'Win_GPU_Training'
     # TODO fix test failures and remove --skip_onnx_tests
     BuildCommand: >-
