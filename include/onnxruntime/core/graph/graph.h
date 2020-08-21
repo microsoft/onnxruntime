@@ -102,7 +102,7 @@ class Node {
   @returns Opset version. If -1 the Node's operator has not been set.
   @remarks Prefer over Op()->SinceVersion() as Op() is disabled in a minimal build
   */
-  const int SinceVersion() const noexcept { return since_version_; }
+  int SinceVersion() const noexcept { return since_version_; }
 
   /** Gets the Node's Node::Type. */
   Node::Type NodeType() const noexcept;
