@@ -334,7 +334,7 @@ add_library(winml_lib_image STATIC
   ${winml_lib_api_image_dir}/ImageConverter.cpp
   ${winml_lib_api_image_dir}/TensorToVideoFrameConverter.cpp
   ${winml_lib_api_image_dir}/VideoFrameToTensorConverter.cpp
-  ${winml_lib_api_image_dir}/inc/NominalRangeConverter.cpp
+  ${winml_lib_api_image_dir}/NominalRangeConverter.cpp
 )
 
 # Compiler options
