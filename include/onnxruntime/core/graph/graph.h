@@ -100,18 +100,17 @@ class Node {
   /** Gets the Node's Node::Type. */
   Node::Type NodeType() const noexcept { return node_type_; }
 
-  // TEMPORARY
-  // Need to add field for SinceVersion instead of getting from the OpSchema in order to remove from the minial build.
-  // will do as separate PR given it touches a number of operators. Leave Op() enabled temporarily.
+  /** Gets the opset version that the Node's operator was first defined in. 
+  @returns Opset version. If -1 the Node's operator has not been set.
+  @remarks Prefer over Op()->SinceVersion() as Op() is disabled in a minimal build
+  */
   int SinceVersion() const noexcept { return since_version_; }
 
 #if !defined(ORT_MINIMAL_BUILD)
   /** Gets the Node's OpSchema.
   @remarks The graph containing this node must be resolved, otherwise nullptr will be returned. */
   const ONNX_NAMESPACE::OpSchema* Op() const noexcept { return op_; }
-#endif
 
-#if !defined(ORT_MINIMAL_BUILD)
   /** 
   Gets the function body if applicable otherwise nullptr
   @param try_init_func_body If not already intialized, initialize the function body
@@ -128,7 +127,6 @@ class Node {
 
   /** Gets the function body if applicable otherwise nullptr. */
   const Function* GetFunctionBody() const noexcept { return func_body_; }
-
 #endif
 
   /**
@@ -485,15 +483,13 @@ class Node {
   // OperatorSet domain of op_type_.
   std::string domain_;
 
-  // TEMPORARY
-  // Need to add field for SinceVersion instead of getting from the OpSchema in order to remove from the minial build.
-  // will do as separate PR given it touches a number of operators. Leave op_ enabled temporarily.
-  int since_version_ = -1;
-
 #if !defined(ORT_MINIMAL_BUILD)
   // OperatorSchema that <*this> node refers to.
   const ONNX_NAMESPACE::OpSchema* op_ = nullptr;
 #endif
+
+  // set from op_->SinceVersion() or via deserialization when OpSchema is not available
+  int since_version_ = -1;
 
   Node::Type node_type_ = Node::Type::Primitive;
 

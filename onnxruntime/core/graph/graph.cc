@@ -420,6 +420,7 @@ const Function* Node::GetFunctionBody(bool try_init_func_body) {
 void Node::SetFunctionBody(const Function& func) {
   func_body_ = &func;
   op_ = &func.OpSchema();
+  since_version_ = op_->since_version();
 }
 
 void Node::SetExecutionProviderType(ProviderType execution_provider_type) {
