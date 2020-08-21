@@ -347,6 +347,14 @@ class ORTTrainer(object):
         if not isinstance(args, (list, tuple)):
             args = (args,)
 
+        # DEBUG START ---
+        print("MADE IT HERE")
+        _inference_sess = ort.InferenceSession(self._onnx_model.SerializeToString())
+        _inference_outs = _inference_sess.run(None, input)
+        print(_inference_outs)
+
+        # DEBUG END ---
+
         # Run a train step and return
         session_run_results = self._training_session_run_helper(True, input, inputs_desc,
                                                                 outputs_desc, run_options)
