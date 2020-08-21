@@ -89,7 +89,7 @@ const char* CudaErrString<ncclResult_t>(ncclResult_t e) {
 template <typename ERRTYPE, bool THRW>
 bool CudaCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRTYPE successCode, const char* msg) {
   if (retCode != successCode) {
-    ORT_TRY {
+    try {
 #ifdef _WIN32
       auto del = [](char* p) { free(p); };
       std::unique_ptr<char, decltype(del)> hostname_ptr(nullptr, del);
@@ -118,17 +118,13 @@ bool CudaCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRT
       } else {
         LOGS_DEFAULT(ERROR) << str;
       }
-    }
-#ifndef ORT_NO_EXCEPTIONS
-    catch (const std::exception& e) {  // catch, log, and rethrow since CUDA code sometimes hangs in destruction, so we'd never get to see the error
+    } catch (const std::exception& e) {  // catch, log, and rethrow since CUDA code sometimes hangs in destruction, so we'd never get to see the error
       if (THRW) {
         ORT_THROW(e.what());
       } else {
         LOGS_DEFAULT(ERROR) << e.what();
       }
     }
-#endif
-
     return false;
   }
   return true;

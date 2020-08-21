@@ -13,7 +13,8 @@
 
 using namespace Microsoft::WRL;
 
-namespace Windows::AI::MachineLearning::Adapter {
+namespace Windows::AI::MachineLearning::Adapter
+{
 
 size_t AttributeValue::ElementCount() const {
   switch (type) {
@@ -91,8 +92,8 @@ bool IsAllocationInterface(const ::OrtMemoryInfo& info) {
 // the ABI. The translation is determined by the provider and based on options with which the
 // kernels are registered.
 void TranslateAllocationDataToAbi(
-    IWinmlExecutionProvider* winmlProvider,
-    bool isInternalOperator,
+    IWinmlExecutionProvider* winmlProvider, 
+    bool isInternalOperator, 
     const ::OrtMemoryInfo& allocInfo,
     IUnknown* allocation,
     IUnknown** abiAllocation) {
@@ -213,9 +214,9 @@ struct MLTypeTraits<onnxruntime::MLFloat16> {
   static const MLOperatorTensorDataType TensorType = MLOperatorTensorDataType::Float16;
 };
 
-#define ML_TENSOR_TYPE_CASE(x)                            \
+#define ML_TENSOR_TYPE_CASE(x)          \
   if (onnxruntime::utils::IsPrimitiveDataType<x>(type)) { \
-    return MLTypeTraits<x>::TensorType;                   \
+    return MLTypeTraits<x>::TensorType; \
   }
 
 ::MLOperatorTensorDataType ToMLTensorDataType(onnxruntime::MLDataType type) {
@@ -1020,15 +1021,12 @@ HRESULT STDMETHODCALLTYPE OnnxTensorWrapper::GetShape(
 CATCH_RETURN();
 
 MLOperatorTensorDataType STDMETHODCALLTYPE OnnxTensorWrapper::GetTensorDataType() const noexcept {
-  ORT_TRY {
+  try {
     VerifyNotClosed();
     return ToMLTensorDataType(static_cast<onnx::TensorProto_DataType>(m_impl->data_type()));
-  }
-#ifndef ORT_NO_EXCEPTIONS
-  catch (...) {
+  } catch (...) {
     return MLOperatorTensorDataType::Undefined;
   }
-#endif
 }
 
 bool STDMETHODCALLTYPE OnnxTensorWrapper::IsCpuData() const noexcept {
@@ -1110,15 +1108,12 @@ HRESULT STDMETHODCALLTYPE TensorWrapper::GetShape(
 CATCH_RETURN();
 
 MLOperatorTensorDataType STDMETHODCALLTYPE TensorWrapper::GetTensorDataType() const noexcept {
-  ORT_TRY {
+  try {
     VerifyNotClosed();
     return ToMLTensorDataType(m_impl->DataType());
-  }
-#ifndef ORT_NO_EXCEPTIONS
-  catch (...) {
+  } catch (...) {
     return MLOperatorTensorDataType::Undefined;
   }
-#endif
 }
 
 bool STDMETHODCALLTYPE TensorWrapper::IsCpuData() const noexcept {
@@ -1509,12 +1504,13 @@ onnxruntime::Status AbiOpKernel::Compute(onnxruntime::OpKernelContext* context) 
   MLOperatorTensorGetter constantInputGetter = [context, winmlProviderCapture, internalOpCapture](uint32_t index) {
     Microsoft::WRL::ComPtr<IMLOperatorTensor> tensorWrapper = nullptr;
     const onnxruntime::Tensor* tensor = context->Input<onnxruntime::Tensor>(static_cast<int>(index));
-    if (tensor != nullptr) {
-      tensorWrapper = wil::MakeOrThrow<TensorWrapper>(
-          const_cast<onnxruntime::Tensor*>(tensor),
-          tensor ? IsAllocationInterface(tensor->Location()) : false,
-          winmlProviderCapture.Get(),
-          internalOpCapture);
+    if (tensor != nullptr)
+    {
+        tensorWrapper = wil::MakeOrThrow<TensorWrapper>(
+            const_cast<onnxruntime::Tensor*>(tensor),
+            tensor ? IsAllocationInterface(tensor->Location()) : false,
+            winmlProviderCapture.Get(),
+            internalOpCapture);
     }
 
     return tensorWrapper;
@@ -1559,7 +1555,8 @@ onnxruntime::Status AbiOpKernel::Compute(onnxruntime::OpKernelContext* context) 
         const onnxruntime::Tensor* weakTensor = context->Input<onnxruntime::Tensor>(static_cast<int>(index));
 
         // Skip optional constant tensors.
-        if (weakTensor != nullptr) {
+        if (weakTensor != nullptr)
+        {
           MLOperatorTensor tensor = MLOperatorTensor(constantInputGetter(index).Get());
 
           if (index >= static_cast<uint32_t>(context->InputCount())) {
@@ -1679,18 +1676,20 @@ EdgeShapes AbiOpKernel::GetInputShapes(onnxruntime::OpKernelContext* context) co
 
 void AbiOpKernel::InferAndVerifyOutputSizes(
     gsl::span<const uint32_t> requiredConstantCpuInputs,
-    MLOperatorTensorGetter& constantInputGetter,
-    const EdgeShapes* inputShapes,
-    EdgeShapes& outputShapes) const {
-  // call the non member function (below)
-  Windows::AI::MachineLearning::Adapter::InferAndVerifyOutputSizes(
-      Node(),
-      m_defaultAttributes,
-      m_shapeInferrer.Get(),
-      requiredConstantCpuInputs,
-      constantInputGetter,
-      inputShapes,
-      outputShapes);
+    MLOperatorTensorGetter& constantInputGetter, 
+    const EdgeShapes* inputShapes, 
+    EdgeShapes& outputShapes) const
+{
+    // call the non member function (below)
+    Windows::AI::MachineLearning::Adapter::InferAndVerifyOutputSizes(
+        Node(),
+        m_defaultAttributes, 
+        m_shapeInferrer.Get(), 
+        requiredConstantCpuInputs,
+        constantInputGetter,
+        inputShapes, 
+        outputShapes
+    );
 }
 
 void InferAndVerifyOutputSizes(
@@ -1807,8 +1806,10 @@ HRESULT STDMETHODCALLTYPE MLKernelInferenceContext::SetOutputTensorShape(
 CATCH_RETURN();
 
 MLSupportQueryContext::MLSupportQueryContext(
-    onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext>* info,
-    const AttributeMap* defaultAttributes) : OpNodeInfoWrapper(info, nullptr, defaultAttributes, gsl::span<const uint32_t>(), MLOperatorTensorGetter()) {
+        onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext>* info,
+        const AttributeMap* defaultAttributes) : 
+    OpNodeInfoWrapper(info, nullptr, defaultAttributes, gsl::span<const uint32_t>(), MLOperatorTensorGetter())
+{
 }
 
 bool TryGetStaticShapeIfTensor(
@@ -1923,4 +1924,4 @@ std::tuple<std::unique_ptr<std::byte[]>, size_t> UnpackTensor(const onnx::Tensor
 
   return std::make_tuple(std::move(unpackedTensor), tensorByteSize);
 }
-}  // namespace Windows::AI::MachineLearning::Adapter
+}  // namespace winrt::Windows::AI::MachineLearning::implementation

@@ -249,15 +249,11 @@ class FuseExecutionProviderX : public CPUExecutionProvider {
         auto evaluate_func_ = tvm_state->module->GetFunction(eval_func_name);
         tvm::TVMArgs tvm_args(&tvm_values[0], &tvm_type_codes[0], static_cast<int>(n_args));
         tvm::TVMRetValue rvalue;
-        ORT_TRY {
+        try {
           evaluate_func_.CallPacked(tvm_args, &rvalue);
-        }
-#ifndef ORT_NO_EXCEPTIONS
-        catch (std::exception& ex) {
+        } catch (std::exception&) {
           return Status(common::ONNXRUNTIME, common::FAIL);  // TODO: Translate exception to error code
         }
-#endif
-
         if (rvalue.type_code() != kNull) {
           return Status(common::ONNXRUNTIME, common::FAIL);  // TODO: get error code.
         } else {

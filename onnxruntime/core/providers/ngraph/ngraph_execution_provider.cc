@@ -54,18 +54,14 @@ NGRAPHExecutionProvider::NGRAPHExecutionProvider(const NGRAPHExecutionProviderIn
 
   InsertAllocator(CreateAllocator(cpu_memory_info));
 
-  ORT_TRY {
+  try {
     ng_backend_ = ngraph::runtime::Backend::create(info.ng_backend_type);
-  }
-#ifndef ORT_NO_EXCEPTIONS
-  catch (const std::exception& exp) {
+  } catch (const std::exception& exp) {
     LOGS_DEFAULT(FATAL) << "Exception while creating nGraph " << info.ng_backend_type << " Backend: " << std::string(exp.what());
-  }
-  catch (...) {
+  } catch (...) {
     LOGS_DEFAULT(FATAL) << "Unknown exception while while creating nGraph " << info.ng_backend_type << " Backend";
     throw;
   }
-#endif
 }
 
 // Returns true only if op is in a mode that is not currently supported
