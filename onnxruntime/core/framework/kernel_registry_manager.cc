@@ -62,8 +62,7 @@ Status KernelRegistryManager::SearchKernelRegistry(const onnxruntime::Node& node
 
   auto create_error_message = [&node, &status](const std::string& prefix) {
     std::ostringstream errormsg;
-    errormsg << prefix << node.OpType();
-    if (node.Op() != nullptr) errormsg << "(" << node.Op()->since_version() << ")";
+    errormsg << prefix << node.OpType() << "(" << node.SinceVersion() << ")";
     if (!node.Name().empty()) errormsg << " (node " << node.Name() << "). ";
     if (!status.IsOK()) errormsg << status.ErrorMessage();
 

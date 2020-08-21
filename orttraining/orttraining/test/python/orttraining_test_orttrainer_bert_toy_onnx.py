@@ -79,7 +79,7 @@ def optimizer_parameters(model):
         if any(key in initializer.name for key in no_decay_keys):
             no_decay_param_group.append(initializer.name)
     params = [{'params': no_decay_param_group, "alpha": 0.9, "beta": 0.999, "lambda_coef": 0.0, "epsilon": 1e-6}]
-    
+
     return params
 
 
@@ -158,61 +158,63 @@ def legacy_constant_lr_scheduler_5(global_step):
 def legacy_constant_lr_scheduler(global_step, initial_lr):
     warmup = 0.5
     total_steps = 10
-    lr = initial_lr
-    for i in range(global_step+1):
-        x = (i+1) / (total_steps+1)
-        if x < warmup:
-            warmup_val = x/warmup
-        else:
-            warmup_val =1
-        lr *= warmup_val
-    return lr
+
+    num_warmup_steps = warmup * total_steps
+    if global_step < num_warmup_steps:
+        new_lr = initial_lr * float(global_step) / float(max(1, num_warmup_steps))
+    else:
+        new_lr = initial_lr
+    return new_lr
 
 
 def legacy_cosine_lr_scheduler(global_step):
     initial_lr = 1.0
     warmup = 0.5
     total_steps = 10
-    lr = initial_lr
-    for i in range(global_step+1):
-        x = (i+1) / (total_steps+1)
-        if x < warmup:
-            warmup_val = x/warmup
-        else:
-            warmup_val = 0.5 * (1.0 + math.cos(math.pi * x))
-        lr *= warmup_val
-    return lr
+    cycles = 0.5
+
+    num_warmup_steps = warmup * total_steps
+    if global_step < num_warmup_steps:
+        new_lr = initial_lr * float(global_step) / float(max(1, num_warmup_steps))
+    else:
+        progress = float(global_step - num_warmup_steps) / float(max(1, total_steps - num_warmup_steps))
+        new_lr = initial_lr * max(0.0, 0.5 * (1.0 + math.cos(math.pi * float(cycles) * 2.0 * progress)))
+    return new_lr
+
 
 
 def legacy_linear_lr_scheduler(global_step):
     initial_lr = 1.0
     warmup = 0.5
     total_steps = 10
-    lr = initial_lr
-    for i in range(global_step+1):
-        x = (i+1) / (total_steps+1)
-        if x < warmup:
-            warmup_val = x/warmup
-        else:
-            warmup_val = max((x - 1.0) / (warmup - 1.0), 0.0)
-        lr *= warmup_val
-    return lr
+
+    num_warmup_steps = warmup * total_steps
+    if global_step < num_warmup_steps:
+        new_lr = initial_lr * float(global_step) / float(max(1, num_warmup_steps))
+    else:
+        new_lr = max(0.0, float(total_steps - global_step) / float(max(1, total_steps - num_warmup_steps)))
+    return new_lr
 
 
 def legacy_poly_lr_scheduler(global_step):
     initial_lr = 1.0
     warmup = 0.5
     total_steps = 10
-    degree = 0.5
-    lr = initial_lr
-    for i in range(global_step+1):
-        x = (i+1) / (total_steps+1)
-        if x < warmup:
-            warmup_val = x/warmup
-        else:
-            warmup_val = (1.0 - x) ** degree
-        lr *= warmup_val
-    return lr
+    lr_end = 1e-7
+    power = 1.0
+
+    num_warmup_steps = warmup * total_steps
+    if global_step < num_warmup_steps:
+        new_lr = initial_lr * float(global_step) / float(max(1, num_warmup_steps))
+    elif global_step > total_steps:
+        new_lr = lr_end / initial_lr
+    else:
+        lr_range = initial_lr - lr_end
+        decay_steps = total_steps - num_warmup_steps
+        pct_remaining = 1 - (global_step - num_warmup_steps) / decay_steps
+        decay = lr_range * pct_remaining ** power + lr_end
+        new_lr = decay / initial_lr
+    return new_lr
 
 
 def legacy_optim_params_a(name):
@@ -294,26 +296,26 @@ def testToyBERTDeterministicCheck(expected_losses):
 
 
 @pytest.mark.parametrize("initial_lr, lr_scheduler, expected_learning_rates, expected_losses", [
-    (1.0, optim.lr_scheduler.ConstantWarmupLRScheduler, [0.18181818181818182, 0.06611570247933884, 0.03606311044327573, 0.026227716686018716, 0.02384337880547156,\
-            0.02384337880547156, 0.02384337880547156, 0.02384337880547156, 0.02384337880547156, 0.02384337880547156],
-            [10.988012313842773, 11.637386322021484, 11.099013328552246, 11.055734634399414, 11.145816802978516,\
-            10.974218368530273, 10.971613883972168, 11.203381538391113, 11.131250381469727, 11.017223358154297]),
-    (0.5, optim.lr_scheduler.ConstantWarmupLRScheduler, [0.09090909090909091, 0.03305785123966942, 0.018031555221637866, 0.013113858343009358, 0.01192168940273578,\
-            0.01192168940273578, 0.01192168940273578, 0.01192168940273578, 0.01192168940273578, 0.01192168940273578],
-            [10.988012313842773, 11.310077667236328, 11.025278091430664, 10.988797187805176, 11.125761032104492,\
-            10.958372116088867, 10.980047225952148, 11.175304412841797, 11.147686958312988, 11.10694694519043]),
-    (1.0, optim.lr_scheduler.CosineWarmupLRScheduler, [0.18181818181818182, 0.06611570247933884, 0.03606311044327573, 0.026227716686018716, 0.02384337880547156,\
-            0.010225056103441101, 0.0029887071446425494, 0.0005157600951772063, 4.093754650801759e-05, 8.291291382790071e-07],
-            [10.988012313842773, 11.637386322021484, 11.099013328552246, 11.05573558807373, 11.145816802978516,\
-            10.974218368530273, 10.964020729064941, 11.190014839172363, 11.16644287109375, 11.150431632995605]),
-    (1.0, optim.lr_scheduler.LinearWarmupLRScheduler, [0.18181818181818182, 0.06611570247933884, 0.03606311044327573, 0.026227716686018716, 0.02384337880547156,\
-            0.021675798914065056, 0.015764217392047315, 0.008598664032025808, 0.0031267869207366565, 0.0005685067128612105],
-            [10.988012313842773, 11.637386322021484, 11.099013328552246, 11.05573558807373, 11.145816802978516,\
-            10.974218368530273, 10.970070838928223, 11.198983192443848, 11.134098052978516, 11.067017555236816]),
-    (1.0, optim.lr_scheduler.PolyWarmupLRScheduler, [0.18181818181818182, 0.06611570247933884, 0.03606311044327573, 0.026227716686018716, 0.02384337880547156,\
-            0.01607520271130791, 0.009693711967693117, 0.005062375970537139, 0.0021586043667598935, 0.0006508437050332076],
-            [10.988012313842773, 11.637386322021484, 11.099013328552246, 11.055734634399414, 11.145816802978516,\
-            10.974217414855957, 10.96664810180664, 11.193868637084961, 11.14560604095459, 11.097070693969727])
+    (1.0, optim.lr_scheduler.ConstantWarmupLRScheduler,\
+        [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.0, 1.0, 1.0, 1.0],
+        [10.988012313842773, 10.99213981628418, 18.11327362060547, 35.164119720458984, 40.68449401855469,\
+         24.585613250732422, 90.66416931152344, 97.23558044433594, 123.73894500732422, 185.28268432617188]),
+    (0.5, optim.lr_scheduler.ConstantWarmupLRScheduler,\
+        [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.5, 0.5, 0.5, 0.5],
+        [10.988012313842773, 10.99213981628418, 14.942025184631348, 32.938804626464844, 15.188745498657227,\
+         31.730798721313477, 38.70293045043945, 29.556488037109375, 34.914039611816406, 43.36301040649414]),
+    (1.0, optim.lr_scheduler.CosineWarmupLRScheduler,\
+        [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 0.9045084971874737, 0.6545084971874737, 0.34549150281252633, 0.09549150281252633],
+        [10.988012313842773, 10.99213981628418, 18.11327362060547, 35.164119720458984, 40.68449401855469,\
+         24.585613250732422, 90.66416931152344, 95.54305267333984, 77.43124389648438, 111.71074676513672]),
+    (1.0, optim.lr_scheduler.LinearWarmupLRScheduler,\
+        [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 0.8, 0.6, 0.4, 0.2],\
+        [10.988012313842773, 10.99213981628418, 18.11327362060547, 35.164119720458984, 40.68449401855469, 24.585613250732422,\
+         90.66416931152344, 94.88548278808594, 77.90852355957031, 116.56438446044922]),
+    (1.0, optim.lr_scheduler.PolyWarmupLRScheduler,\
+        [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 0.80000002, 0.60000004, 0.40000006000000005, 0.20000007999999997],
+        [10.988012313842773, 10.99213981628418, 18.11327362060547, 35.164119720458984, 40.68449401855469, 24.585613250732422,\
+         90.66416931152344, 94.88548278808594, 77.90852355957031, 116.56439971923828])
 ])
 def testToyBERTModelLRScheduler(initial_lr, lr_scheduler, expected_learning_rates, expected_losses):
     # Common setup
@@ -326,7 +328,7 @@ def testToyBERTModelLRScheduler(initial_lr, lr_scheduler, expected_learning_rate
     # Modeling
     model_desc = bert_model_description()
     model = load_bert_onnx_model()
-    optim_config = optim.LambConfig(lr=initial_lr)
+    optim_config = optim.AdamConfig(lr=initial_lr)
     opts =  orttrainer.ORTTrainerOptions({
         'debug' : {
             'deterministic_compute': True
@@ -620,9 +622,9 @@ def testORTTrainerFrozenWeights(model_params):
         },
     }
     opts =  orttrainer.ORTTrainerOptions(opts_dict)
-   
+
     torch.manual_seed(seed)
-    set_seed(seed)
+    onnxruntime.set_seed(seed)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
 
     for i in range(total_steps):
@@ -762,7 +764,7 @@ def testToyBERTModelLegacyExperimentalLRScheduler(initial_lr, lr_scheduler, lega
     model = load_bert_onnx_model()
     torch.manual_seed(seed)
     onnxruntime.set_seed(seed)
-    optim_config = optim.LambConfig(lr=initial_lr)
+    optim_config = optim.AdamConfig(lr=initial_lr)
     opts =  orttrainer.ORTTrainerOptions({
         'debug' : {
             'deterministic_compute': True
@@ -784,7 +786,7 @@ def testToyBERTModelLegacyExperimentalLRScheduler(initial_lr, lr_scheduler, lega
     onnxruntime.set_seed(seed)
     device = torch.device(device)
     legacy_model_desc, learning_rate_description, learning_rate = legacy_model_params(initial_lr)
-    legacy_trainer = Legacy_ORTTrainer(model, None, legacy_model_desc, "LambOptimizer",
+    legacy_trainer = Legacy_ORTTrainer(model, None, legacy_model_desc, "AdamOptimizer",
                        None,
                        learning_rate_description,
                        device,
