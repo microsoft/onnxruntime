@@ -7,7 +7,6 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_apis.h"
-#include "core/framework/customregistry.h"
 #include "core/framework/data_types.h"
 #include "core/framework/op_kernel_info.h"
 #include "core/framework/op_kernel_context_internal.h"
@@ -67,6 +66,9 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_string, _In_ const OrtKernel
   }
   return onnxruntime::ToOrtStatus(status);
 }
+
+#if !defined(ORT_MINIMAL_BUILD)
+#include "core/framework/customregistry.h"
 
 namespace onnxruntime {
 
@@ -149,3 +151,5 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
 }
 
 }  // namespace onnxruntime
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
