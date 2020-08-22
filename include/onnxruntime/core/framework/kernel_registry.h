@@ -20,6 +20,12 @@ class KernelRegistry {
   Status Register(KernelCreateInfo&& create_info) ORT_MUST_USE_RESULT;
 
 #if !defined(ORT_MINIMAL_BUILD)
+  static bool HasImplementationOf(const KernelRegistry& r, const onnxruntime::Node& node,
+                                  onnxruntime::ProviderType exec_provider) {
+    const KernelCreateInfo* info;
+    Status st = r.TryFindKernel(node, exec_provider, &info);
+    return st.IsOK();
+  }
 
   // factory functions should always return a unique_ptr for maximum flexibility
   // for its clients unless the factory is managing the lifecycle of the pointer
@@ -34,6 +40,7 @@ class KernelRegistry {
   // Check if an execution provider can create kernel for a node and return the kernel if so
   Status TryFindKernel(const onnxruntime::Node& node, onnxruntime::ProviderType exec_provider,
                        const KernelCreateInfo** out) const;
+
 #endif
 
   // Check if an execution provider can create kernel for a node and return the kernel if so.
@@ -41,13 +48,6 @@ class KernelRegistry {
   Status TryFindKernel(const onnxruntime::Node& node, onnxruntime::ProviderType exec_provider,
                        uint64_t kernel_def_hash,
                        const KernelCreateInfo** out) const;
-
-  static bool HasImplementationOf(const KernelRegistry& r, const onnxruntime::Node& node,
-                                  onnxruntime::ProviderType exec_provider) {
-    const KernelCreateInfo* info;
-    Status st = r.TryFindKernel(node, exec_provider, uint64_t(0), &info);
-    return st.IsOK();
-  }
 
   bool IsEmpty() const { return kernel_creator_fn_map_.empty(); }
 
