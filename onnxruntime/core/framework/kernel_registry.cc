@@ -220,12 +220,74 @@ Status KernelRegistry::TryCreateKernel(const onnxruntime::Node& node,
   return Status::OK();
 }
 
+// It's often this function returns a failed status, but it is totally expected.
+// It just means this registry doesn't have such a kernel, please search it elsewhere.
+// if this function is called before graph partition, then node.provider is not set.
+// In this case, the kernel's provider must equal to exec_provider
+// otherwise, kernel_def.provider must equal to node.provider. exec_provider is ignored.
 Status KernelRegistry::TryFindKernel(const onnxruntime::Node& node,
                                      onnxruntime::ProviderType exec_provider,
                                      const KernelCreateInfo** out) const {
-  return TryFindKernel(node, exec_provider, uint64_t(0), out);
+  const auto& node_provider = node.GetExecutionProviderType();
+  const auto& expected_provider = (node_provider.empty() ? exec_provider : node_provider);
+
+  auto range = kernel_creator_fn_map_.equal_range(GetMapKey(node.OpType(), node.Domain(), expected_provider));
+
+  std::vector<std::string> verify_kernel_def_error_strs;
+
+  for (auto i = range.first; i != range.second; ++i) {
+    std::string error_str;
+    if (VerifyKernelDef(node, *i->second.kernel_def, error_str)) {
+      *out = &i->second;
+      return Status::OK();
+    }
+    verify_kernel_def_error_strs.push_back(error_str);
+  }
+
+  *out = nullptr;
+
+  if (!verify_kernel_def_error_strs.empty()) {
+    std::ostringstream oss;
+    oss << "Op with name (" << node.Name() << ")"
+        << " and type (" << node.OpType() << ")"
+        << " kernel is not supported in " << expected_provider << "."
+        << " Encountered following errors: (" << ToString(verify_kernel_def_error_strs) << ")";
+
+    return Status(ONNXRUNTIME, FAIL, oss.str());
+  }
+
+  return Status(ONNXRUNTIME, FAIL, "Kernel not found");
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
+
+// hash based kernel matching for ORT format model
+Status KernelRegistry::TryFindKernel(const onnxruntime::Node& node,
+                                     onnxruntime::ProviderType exec_provider,
+                                     uint64_t kernel_def_hash,
+                                     const KernelCreateInfo** out) const {
+  ORT_ENFORCE(kernel_def_hash != 0, "Kernel hash must be provided");
+
+  const auto& node_provider = node.GetExecutionProviderType();
+  const auto& expected_provider = (node_provider.empty() ? exec_provider : node_provider);
+
+  auto range = kernel_creator_fn_map_.equal_range(GetMapKey(node.OpType(), node.Domain(), expected_provider));
+
+  for (auto i = range.first; i != range.second; ++i) {
+    if (i->second.kernel_def->GetHash() == kernel_def_hash) {
+      *out = &i->second;
+      return Status::OK();
+    }
+  }
+
+  std::ostringstream oss;
+  oss << "Op with name (" << node.Name() << ")"
+      << " and type (" << node.OpType() << ")"
+      << " kernel not found in " << expected_provider << "."
+      << " No matching hash for " << kernel_def_hash;
+
+  *out = nullptr;
+  return Status(ONNXRUNTIME, FAIL, oss.str());
+}
 
 Status KernelRegistry::Register(KernelDefBuilder& kernel_builder,
                                 const KernelCreateFn& kernel_creator) {
@@ -259,56 +321,6 @@ static std::string ToString(const std::vector<std::string>& error_strs) {
   std::for_each(std::begin(error_strs), std::end(error_strs),
                 [&ostr](const std::string& str) { ostr << str << "\n"; });
   return ostr.str();
-}
-
-// It's often this function returns a failed status, but it is totally expected.
-// It just means this registry doesn't have such a kernel, please search it elsewhere.
-// if this function is called before graph partition, then node.provider is not set.
-// In this case, the kernel's provider must equal to exec_provider
-// otherwise, kernel_def.provider must equal to node.provider. exec_provider is ignored.
-
-Status KernelRegistry::TryFindKernel(const onnxruntime::Node& node,
-                                     onnxruntime::ProviderType exec_provider,
-                                     uint64_t kernel_def_hash,
-                                     const KernelCreateInfo** out) const {
-  const auto& node_provider = node.GetExecutionProviderType();
-  const auto& expected_provider = (node_provider.empty() ? exec_provider : node_provider);
-
-  auto range = kernel_creator_fn_map_.equal_range(GetMapKey(node.OpType(), node.Domain(), expected_provider));
-  std::vector<std::string> verify_kernel_def_error_strs;
-
-  for (auto i = range.first; i != range.second; ++i) {
-    // prefer hash based lookup
-    if (kernel_def_hash != 0) {
-      if (i->second.kernel_def->GetHash() == kernel_def_hash) {
-        *out = &i->second;
-        return Status::OK();
-      }
-    }
-
-#if !defined(ORT_MINIMAL_BUILD)
-    std::string error_str;
-    if (VerifyKernelDef(node, *i->second.kernel_def, error_str)) {
-      *out = &i->second;
-      return Status::OK();
-    }
-    verify_kernel_def_error_strs.push_back(error_str);
-#else
-    ORT_ENFORCE(kernel_def_hash != 0, "Lookup of kernel for ORT format model requires the hash of the kernel def");
-#endif
-  }
-
-  if (!verify_kernel_def_error_strs.empty()) {
-    std::ostringstream oss;
-    oss << "Op with name (" << node.Name() << ")"
-        << " and type (" << node.OpType() << ")"
-        << " kernel is not supported in " << expected_provider << "."
-        << " Encountered following errors: (" << ToString(verify_kernel_def_error_strs) << ")";
-    return Status(ONNXRUNTIME, FAIL, oss.str());
-  }
-
-  *out = nullptr;
-  return Status(ONNXRUNTIME, FAIL, "Kernel not found");
 }
 
 }  // namespace onnxruntime

@@ -36,6 +36,8 @@ class KernelRegistry {
                        const KernelCreateInfo** out) const;
 #endif
 
+  // Check if an execution provider can create kernel for a node and return the kernel if so.
+  // Kernel matching is via kernel_def_hash.
   Status TryFindKernel(const onnxruntime::Node& node, onnxruntime::ProviderType exec_provider,
                        uint64_t kernel_def_hash,
                        const KernelCreateInfo** out) const;
