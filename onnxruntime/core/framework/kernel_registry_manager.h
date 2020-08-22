@@ -53,21 +53,7 @@ class KernelRegistryManager {
    * Whether this node can be run on this provider
    */
   static bool HasImplementationOf(const KernelRegistryManager& r, const Node& node, const std::string& provider_type);
-#endif
 
-  Status SearchKernelRegistry(const onnxruntime::Node& node,
-                              uint64_t kernel_def_hash,
-                              /*out*/ const KernelCreateInfo** kernel_create_info) const;
-
-  std::unique_ptr<OpKernel> CreateKernel(const onnxruntime::Node& node,
-                                         const IExecutionProvider& execution_provider,
-                                         const SessionState& session_state,
-                                         const KernelCreateInfo& kernel_create_info) const ORT_MUST_USE_RESULT;
-
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(KernelRegistryManager);
-
- private:
-#if !defined(ORT_MINIMAL_BUILD)
   /**
    * Search kernel registry by provider type.
    * @param type provider type string
@@ -85,6 +71,18 @@ class KernelRegistryManager {
   }
 #endif
 
+  Status SearchKernelRegistry(const onnxruntime::Node& node,
+                              uint64_t kernel_def_hash,
+                              /*out*/ const KernelCreateInfo** kernel_create_info) const;
+
+  std::unique_ptr<OpKernel> CreateKernel(const onnxruntime::Node& node,
+                                         const IExecutionProvider& execution_provider,
+                                         const SessionState& session_state,
+                                         const KernelCreateInfo& kernel_create_info) const ORT_MUST_USE_RESULT;
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(KernelRegistryManager);
+
+ private:
   // key is provider type. Each kernel registry in this collection only belongs to one specific provider
   std::unordered_map<std::string, std::shared_ptr<KernelRegistry>> provider_type_to_registry_;
   // Each kernel registry may contain kernels from many different providers.
