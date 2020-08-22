@@ -152,7 +152,7 @@ std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCPUAllocator(std::uniq
   return g_host->CreateCPUAllocator(std::move(info));
 }
 
-#ifdef USE_TENSORRT
+#if 0
 std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCUDAAllocator(int16_t device_id, const char* name) {
   return g_host->CreateCUDAAllocator(device_id, name);
 }

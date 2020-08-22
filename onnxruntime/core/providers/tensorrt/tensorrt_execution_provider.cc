@@ -10,12 +10,16 @@
 #include "core/common/safeint.h"
 
 #include "tensorrt_execution_provider.h"
-#include "core/providers/cuda/cuda_allocator.h"
+#include "core/framework/allocator.h"
+//#include "core/providers/cuda/cuda_allocator.h"
+//#include "core/providers/cuda/shared_inc/cuda_call.h"
+#include "unary_elementwise_ops_impl.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
-#include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
-#include "cuda_runtime_api.h"
+//#include "cuda_runtime_api.h"
+#include "gpu_data_transfer.h"
 #include "gsl/gsl"
 #include <experimental/filesystem>
+#include "cuda_allocator.h"
 
 #define CUDA_RETURN_IF_ERROR(expr)               \
   ORT_RETURN_IF_ERROR(CUDA_CALL(expr)            \
@@ -56,6 +60,48 @@ struct ShutdownProtobuf {
 
 namespace onnxruntime {
 
+#if 0
+namespace cuda {
+
+template <typename InT, typename OutT>
+struct OP_Cast {
+  __device__ __inline__ OutT operator()(const InT& a) const {
+    const bool any_float16 = std::is_same<half, InT>::value || std::is_same<half, OutT>::value;
+    typedef typename std::conditional<any_float16, half, OutT>::type T;
+    typedef typename ViaTypeMap<T>::ViaT ViaT;
+    return (OutT)((ViaT)a);
+  }
+};
+
+template <typename InT, typename OutT, typename FuncT>
+void UnaryElementWiseImpl(
+    const InT* input_data,
+    OutT* output_data,
+    const FuncT& func,
+    size_t count) {
+  if (count == 0)  // special case where there's a dim value of 0 in the shape
+    return;
+
+  input_data;
+  output_data;
+  func;
+}
+
+template <typename InT, typename OutT>
+void Impl_Cast(
+    const InT* input_data,
+    OutT* output_data,
+    size_t count) {
+  UnaryElementWiseImpl(input_data,
+                       output_data,
+                       OP_Cast<InT, OutT>(),
+                       count);
+}
+
+}  // namespace cuda
+#endif
+
+#if 1
 namespace cuda {
 template <>
 void Impl_Cast(
@@ -70,18 +116,8 @@ void Impl_Cast(
     size_t count) {
   return g_host->cuda__Impl_Cast(input_data, output_data, count);
 }
-
 }  // namespace cuda
-
-template <>
-bool CudaCall<cudaError, false>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg) {
-  return g_host->CudaCall_false(retCode, exprString, libName, successCode, msg);
-}
-
-template <>
-bool CudaCall<cudaError, true>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg) {
-  return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg);
-}
+#endif
 
 class Memcpy final : public Provider_OpKernel {
  public:
@@ -142,7 +178,7 @@ KernelRegistryAndStatus GetTensorrtKernelRegistry() {
 }
 
 std::shared_ptr<Provider_KernelRegistry> TensorrtExecutionProvider::Provider_GetKernelRegistry() const {
-  static KernelRegistryAndStatus k = onnxruntime::GetTensorrtKernelRegistry();
+  static KernelRegistryAndStatus k = GetTensorrtKernelRegistry();
   // throw if the registry failed to initialize
   ORT_THROW_IF_ERROR(k.st);
   return k.kernel_registry;
@@ -159,12 +195,12 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
 
   Provider_DeviceAllocatorRegistrationInfo default_memory_info(
-      {OrtMemTypeDefault, [](int id) { return Provider_CreateCUDAAllocator(id, TRT); }, std::numeric_limits<size_t>::max()});
+      {OrtMemTypeDefault, [](int id) { return onnxruntime::make_unique<CUDAAllocator>(id, TRT); }, std::numeric_limits<size_t>::max()});
   allocator_ = CreateAllocator(default_memory_info, device_id_);
   Provider_InsertAllocator(allocator_);
 
   Provider_DeviceAllocatorRegistrationInfo pinned_allocator_info(
-      {OrtMemTypeCPUOutput, [](int) { return Provider_CreateCUDAPinnedAllocator(0, TRT_PINNED); }, std::numeric_limits<size_t>::max()});
+      {OrtMemTypeCPUOutput, [](int) { return onnxruntime::make_unique<CUDAPinnedAllocator>(0, TRT_PINNED); }, std::numeric_limits<size_t>::max()});
   Provider_InsertAllocator(CreateAllocator(pinned_allocator_info, device_id_));
 
   // Get environment variables
@@ -220,7 +256,7 @@ Provider_AllocatorPtr TensorrtExecutionProvider::Provider_GetAllocator(int id, O
 }
 
 std::unique_ptr<onnxruntime::Provider_IDataTransfer> TensorrtExecutionProvider::Provider_GetDataTransfer() const {
-  return onnxruntime::Provider_CreateGPUDataTransfer();
+  return onnxruntime::make_unique<GPUDataTransfer>();
 }
 
 // Convert GraphViewer graph to GraphProto
@@ -272,7 +308,7 @@ bool FindCycleHelper(int i, const std::list<int>* adjacency_map,
 }
 
 std::unique_ptr<Provider_IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph_t graph_nodes_index, int& kernels_index, const onnxruntime::Provider_GraphViewer& graph) const {
-    const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
+  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
   std::unordered_set<size_t> node_set;
   node_set.reserve(graph_nodes_index.first.size());
   for (const auto& index : graph_nodes_index.first) {
@@ -1333,4 +1369,5 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
 
   return Status::OK();
 }
+
 }  // namespace onnxruntime

@@ -16,6 +16,8 @@
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
 #include "core/session/onnxruntime_c_api.h"
+#include "core/framework/ortdevice.h"
+#include "core/framework/ortmemoryinfo.h"
 #include "provider_interfaces.h"
 
 namespace ONNX_NAMESPACE {
@@ -85,13 +87,6 @@ constexpr const char* kMSDomain = "com.microsoft";
 constexpr const char* kDnnlExecutionProvider = "DnnlExecutionProvider";
 constexpr const char* kTensorrtExecutionProvider = "TensorrtExecutionProvider";
 
-enum CUDAStreamType : int {
-  kCudaStreamDefault = 0,
-  kCudaStreamCopyIn,
-  kCudaStreamCopyOut,
-  kTotalCudaStreams,
-};
-
 class DataTypeImpl {
  public:
   virtual ~DataTypeImpl() = default;
@@ -158,11 +153,7 @@ template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
 
 std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCPUAllocator(std::unique_ptr<Provider_OrtMemoryInfo> memory_info);
-std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCUDAAllocator(int16_t device_id, const char* name);
-std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
 Provider_AllocatorPtr CreateAllocator(const Provider_DeviceAllocatorRegistrationInfo& info, int16_t device_id = 0, bool use_arena = true);
-
-std::unique_ptr<Provider_IDataTransfer> Provider_CreateGPUDataTransfer();
 
 std::string GetEnvironmentVar(const std::string& var_name);
 
