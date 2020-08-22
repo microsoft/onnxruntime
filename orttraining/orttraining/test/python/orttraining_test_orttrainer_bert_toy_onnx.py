@@ -43,7 +43,7 @@ def generate_random_input_from_model_desc(desc, seed=1, device = "cuda:0"):
                 size.append(s)
             else:
                 size.append(dims[s] if s in dims else 1)
-        sample_input.append(torch.randint(0, num_classes[index], tuple(size), dtype=torch.int64).to(device))
+        sample_input.append(torch.randint(0, num_classes[index], tuple(size), dtype=dtype).to(device))
     return sample_input
 
 # EXPERIMENTAL HELPER FUNCTIONS
@@ -84,7 +84,7 @@ def optimizer_parameters(model):
 
 
 def load_bert_onnx_model():
-    bert_onnx_model_path = os.path.join('..', '..', '..', 'onnxruntime', 'test', 'testdata', "bert_toy_postprocessed.onnx")
+    bert_onnx_model_path = os.path.join('testdata', "bert_toy_postprocessed.onnx")
     model = onnx.load(bert_onnx_model_path)
     return model
 
@@ -564,7 +564,7 @@ def testORTTrainerFrozenWeights(model_params):
 
 def testToyBERTSaveAsONNX():
     device = 'cuda'
-    onnx_file_name = os.path.join('..','..','..','temp_toy_bert_onnx_model.onnx')
+    onnx_file_name = '_____temp_toy_bert_onnx_model.onnx'
     if os.path.exists(onnx_file_name):
         os.remove(onnx_file_name)
     assert not os.path.exists(onnx_file_name)
@@ -583,7 +583,7 @@ def testToyBERTSaveAsONNX():
         },
     })
 
-    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config)#, options=opts)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
 
     trainer.save_as_onnx(onnx_file_name)
     assert os.path.exists(onnx_file_name)
