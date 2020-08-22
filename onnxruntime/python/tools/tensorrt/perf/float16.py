@@ -83,7 +83,11 @@ def convert_float_to_float16(model):
                      'FeatureVectorizer', 'Imputer', 'LabelEncoder', 'LinearClassifier', 'LinearRegressor',
                      'Normalizer', 'OneHotEncoder', 'SVMClassifier', 'SVMRegressor', 'Scaler', 'TreeEnsembleClassifier',
                      'TreeEnsembleRegressor', 'ZipMap', 'NonMaxSuppression', 'TopK', 'RoiAlign', 'Resize',
-                     'Range', 'CumSum']
+                     # 'Range', 'CumSum']
+                     'Range', 'CumSum', 'Upsample']
+    input_of_op_black_list = []
+    output_of_op_black_list = []
+    op_need_to_modify = []
     # create a queue for BFS
     queue = []
     value_info_list = []
@@ -104,6 +108,8 @@ def convert_float_to_float16(model):
                     # if n is in the black list (doesn't support float16), no conversion for the node,
                     # and save the node for further processing
                     if n.op_type in op_black_list:
+                        input_of_op_black_list += n.input
+                        output_of_op_black_list += n.output
                         node_list.append(n)
                     else:
                         if n.op_type == 'Cast':
@@ -113,6 +119,16 @@ def convert_float_to_float16(model):
                                     break
                         for attr in n.attribute:
                             next_level.append(attr)
+
+                        # workaround.
+                        # if input of op is output of another op in black list
+                        # need to take care of this situation
+                        if n.op_type == 'Concat':
+                            for input in n.input:
+                                if input in output_of_op_black_list:
+                                    op_need_to_modify.append(n)
+                                    break
+
             # if q is model.graph.node.attribute, push q.g and q.graphs (GraphProto)
             # and process node.attribute.t and node.attribute.tensors (TensorProto)
             if isinstance(q, onnx_proto.AttributeProto):
@@ -125,6 +141,8 @@ def convert_float_to_float16(model):
             # if q is graph, process graph.initializer(TensorProto), input, output and value_info (ValueInfoProto)
             if isinstance(q, onnx_proto.GraphProto):
                 for n in q.initializer:  # TensorProto type
+                    if n.name in input_of_op_black_list:
+                        continue
                     n = convert_tensor_float_to_float16(n)
                 # for all ValueInfoProto with tensor(float) type in input, output and value_info, convert them to
                 # tensor(float16) except map and seq(map). And save them in value_info_list for further processing
@@ -175,4 +193,34 @@ def convert_float_to_float16(model):
                     # change current node's input name
                     node.output[i] = input_name
                     continue
+
+        for i in range(len(op_need_to_modify)):
+            target_node = op_need_to_modify[i]
+
+            for j in range(len(target_node.input)):
+                target_input = target_node.input[j]
+
+                if target_input not in output_of_op_black_list:
+                    continue
+
+                if target_input not in node.input and target_input not in node.output:
+                    continue
+
+                # create new value_info for current node's new input name
+                from onnx import TensorProto
+                x = helper.make_tensor_value_info('X', TensorProto.FLOAT, None)
+                new_value_info = model.graph.value_info.add()
+                new_value_info.CopyFrom(x)
+                output_name = target_node.name + '_input_cast_' + str(i)
+                new_value_info.name = output_name
+                new_value_info.type.tensor_type.elem_type = onnx_proto.TensorProto.FLOAT16
+                # add Cast node (from tensor(float) to tensor(float16) after current node
+                node_name = target_node.name + '_output_cast' + str(i)
+                new_node = [helper.make_node('Cast', [node.output[0]], [output_name], to=10, name=node_name)]
+                model.graph.node.extend(new_node)
+                # change current node's input name
+                target_node.input[j] = output_name
+
+                continue
+
     return model

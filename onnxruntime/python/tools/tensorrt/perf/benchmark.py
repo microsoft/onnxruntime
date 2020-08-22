@@ -10,12 +10,15 @@ import argparse
 import copy
 import json
 import re
+import sys
+import onnxruntime
 from onnx import numpy_helper
-from perf_utils import * 
+from perf_utils import *
 import pprint
-# import torch
+import time
 from float16 import *
 
+sys.path.append('./models/')
 from BERTSquad import *
 from Resnet18v1 import *
 from Resnet18v2 import *
@@ -59,11 +62,18 @@ from SeresnextGeneral import *
 from YoloV2V2LOGO import *
 from YoloV2V3 import *
 from YoloV3PyTorch import *
+# import torch
 
+debug = False
 sys.path.append('.')
 
 logger = logging.getLogger('')
 
+########################################
+#
+# model name: (model class, model path)
+#
+########################################
 MODELS = {
     "bert-squad": (BERTSquad, "bert-squad"),
     "faster-rcnn": (FasterRCNN, "faster-rcnn"),
@@ -98,7 +108,7 @@ MODELS = {
     "yolov4": (YoloV4, "yolov4"),
     "Resnet101-DUC": (Resnet101DucHdc, "Resnet101-DUC"),
     "Arc-Face": (ArcFace, "arc-face"),
-    #### "Super-Resolution": (SuperResolution, "super-resolution"), # can't read output
+    # #### "Super-Resolution": (SuperResolution, "super-resolution"), # can't read output
     "Fast-Neural": (FastNeural, "Fast-Neural"),
     "BiDAF": (BiDAF, "BiDAF"),
     "GPT2": (GPT2, "GPT2"),
@@ -106,8 +116,8 @@ MODELS = {
 
 # Additional models that onwed by Custom Vision Service
 CVS_MODELS = {
-    "vehicle-detector": (VehicleDetector, "vehicle-detector"), 
-    "two-stage-product-reco": (TwoStageProductReco, "two-stage-product-reco"), 
+    "vehicle-detector": (VehicleDetector, "vehicle-detector"),
+    "two-stage-product-reco": (TwoStageProductReco, "two-stage-product-reco"),
     "seresnext-general": (SeresnextGeneral, "seresnext-general"),
     "yolov2v2-logo": (YoloV2V2LOGO, "yolov2v2-logo"),
     "yolov2v3": (YoloV2V3, "yolov2v3"),
@@ -143,7 +153,7 @@ def inference_ort(args, model, ep, ort_inputs, result_template, repeat_times, ba
 
     runtimes = []
     for ort_input in ort_inputs:
-        session = model.get_session() 
+        session = model.get_session()
 
         inputs = model.get_ort_inputs(ort_input)
         outputs = model.get_ort_outputs()
@@ -153,7 +163,7 @@ def inference_ort(args, model, ep, ort_inputs, result_template, repeat_times, ba
 
             if ep in ["TensorrtExecutionProvider", "TensorrtExecutionProvider_fp16"]:
                 runtime = timeit.repeat(lambda: session.run(outputs, inputs), number=1, repeat=repeat_times+1)
-                runtime[:] = runtime[1:] 
+                runtime[:] = runtime[1:]
             else:
                 runtime = timeit.repeat(lambda: session.run(outputs, inputs), number=1, repeat=repeat_times)
 
@@ -171,38 +181,10 @@ def inference_ort(args, model, ep, ort_inputs, result_template, repeat_times, ba
     result.update(get_latency_result(runtimes, batch_size))
     return result
 
-def inference_ort_ori(model, ep, ort_inputs, result_template, repeat_times, batch_size):
-
-    runtimes = []
-    for ort_input in ort_inputs:
-        session = model.get_session() 
-
-        inputs = model.get_ort_inputs(ort_input)
-        outputs = model.get_ort_outputs()
-        try:
-            if ep in ["TensorrtExecutionProvider", "TensorrtExecutionProvider_fp16"]:
-                repeat_times += 1
-
-            runtime = timeit.repeat(lambda: session.run(outputs, inputs), number=1, repeat=repeat_times)
-            print(runtime)
-            runtimes.append(runtime[-1])
-
-        except Exception as e:
-            logger.error(e)
-            return None
-
-    print(runtimes)
-
-    result = {}
-    result.update(result_template)
-    result.update({"io_binding": False})
-    result.update(get_latency_result(runtimes, batch_size))
-    return result
-
 def inference_ort_with_io_binding(model, ort_inputs, result_template, repeat_times, batch_size, device='cuda'):
     runtimes = []
 
-    session = model.get_session() 
+    session = model.get_session()
 
     # Bind inputs and outputs to onnxruntime session
     io_binding = session.io_binding()
@@ -275,7 +257,7 @@ def get_cuda_version_old():
     p = subprocess.Popen(["cat", "/usr/local/cuda/version.txt"], stdout=subprocess.PIPE) # (stdout, stderr)
     stdout, sterr = p.communicate()
     stdout = stdout.decode("ascii").strip()
-    
+
     return stdout
 
 def get_trt_version():
@@ -306,10 +288,10 @@ def get_trt_version_old():
     p2 = subprocess.Popen(["grep", "TensorRT runtime libraries"], stdin=p1.stdout, stdout=subprocess.PIPE)
     stdout, sterr = p2.communicate()
     stdout = stdout.decode("ascii").strip()
-    
+
     if stdout != "":
         stdout = re.sub('\s+', ' ', stdout)
-        return stdout 
+        return stdout
 
     if os.path.exists("/usr/lib/x86_64-linux-gnu/libnvinfer.so"):
         p1 = subprocess.Popen(["readelf", "-s", "/usr/lib/x86_64-linux-gnu/libnvinfer.so"], stdout=subprocess.PIPE)
@@ -326,7 +308,7 @@ def get_trt_version_old():
         stdout = stdout.decode("ascii").strip()
         stdout = stdout.split(" ")[-1]
         return stdout
-    
+
     return ""
 
 #
@@ -342,7 +324,7 @@ def load_onnx_model_zoo_test_data(path, data_type="fp32"):
     p2 = subprocess.Popen(["sort"], stdin=p1.stdout, stdout=subprocess.PIPE)
     stdout, sterr = p2.communicate()
     stdout = stdout.decode("ascii").strip()
-    test_data_set_dir = stdout.split("\n") 
+    test_data_set_dir = stdout.split("\n")
     print(test_data_set_dir)
 
     inputs = []
@@ -358,10 +340,10 @@ def load_onnx_model_zoo_test_data(path, data_type="fp32"):
         p2 = subprocess.Popen(["sort"], stdin=p1.stdout, stdout=subprocess.PIPE)
         stdout, sterr = p2.communicate()
         stdout = stdout.decode("ascii").strip()
-        input_data = stdout.split("\n") 
+        input_data = stdout.split("\n")
         print(input_data)
 
-        input_data_pb = [] 
+        input_data_pb = []
         for data in input_data:
             tensor = onnx.TensorProto()
             with open(data, 'rb') as f:
@@ -376,15 +358,15 @@ def load_onnx_model_zoo_test_data(path, data_type="fp32"):
                 print(np.array(input_data_pb[-1]).shape)
         inputs.append(input_data_pb)
 
-        # load outputs 
+        # load outputs
         p1 = subprocess.Popen(["find", ".", "-name", "output*"], stdout=subprocess.PIPE)
         p2 = subprocess.Popen(["sort"], stdin=p1.stdout, stdout=subprocess.PIPE)
         stdout, sterr = p2.communicate()
         stdout = stdout.decode("ascii").strip()
-        output_data = stdout.split("\n") 
+        output_data = stdout.split("\n")
         print(output_data)
 
-        output_data_pb = [] 
+        output_data_pb = []
         for data in output_data:
             tensor = onnx.TensorProto()
             with open(data, 'rb') as f:
@@ -408,10 +390,10 @@ def load_onnx_model_zoo_test_data(path, data_type="fp32"):
 
 def generate_onnx_model_random_input(test_times, ref_input):
 
-    test_input_data = [] 
+    test_input_data = []
 
     for i in range(test_times):
-    
+
         input_data = []
         for tensor in ref_input:
             shape = tensor.shape
@@ -420,7 +402,7 @@ def generate_onnx_model_random_input(test_times, ref_input):
             input_data.append(new_tensor)
         test_input_data.append(input_data)
 
-    return test_input_data 
+    return test_input_data
 
 def validate(all_ref_outputs, all_outputs, decimal):
     print('Reference {} results.'.format(len(all_ref_outputs)))
@@ -432,8 +414,6 @@ def validate(all_ref_outputs, all_outputs, decimal):
     # if np.array(all_ref_outputs).shape != np.array(all_outputs).shape:
         # print("output result shares are not the same!")
 
-    # print(all_ref_outputs)
-    # print(all_outputs)
     try:
         for i in range(len(all_outputs)):
             ref_outputs = all_ref_outputs[i]
@@ -447,9 +427,10 @@ def validate(all_ref_outputs, all_outputs, decimal):
 
                 # Compare the results with reference outputs up to x decimal places
                 for ref_o, o in zip(ref_output, output):
+                    # abs(desired-actual) < 1.5 * 10**(-decimal)
                     np.testing.assert_almost_equal(ref_o, o, decimal)
     except Exception as e:
-        logger.error(e) 
+        logger.error(e)
         return False, e
 
     print('ONNX Runtime outputs are similar to reference outputs!')
@@ -460,19 +441,22 @@ def cleanup_files():
     p = subprocess.Popen(["find", ".", "-name", "test_data_set*", "-type", "d"], stdout=subprocess.PIPE)
     stdout, sterr = p.communicate()
     stdout = stdout.decode("ascii").strip()
-    files = files + stdout.split("\n") 
+    files = files + stdout.split("\n")
 
     p = subprocess.Popen(["find", ".", "-name", "*.onnx"], stdout=subprocess.PIPE)
     stdout, sterr = p.communicate()
     stdout = stdout.decode("ascii").strip()
-    files = files + stdout.split("\n") 
+    files = files + stdout.split("\n")
 
     p = subprocess.Popen(["find", ".", "-name", "*.gz"], stdout=subprocess.PIPE)
     stdout, sterr = p.communicate()
     stdout = stdout.decode("ascii").strip()
-    files = files + stdout.split("\n") 
+    files = files + stdout.split("\n")
 
     for f in files:
+        if "custom_test_data" in f:
+            print(f)
+            continue
         subprocess.Popen(["rm","-rf", f], stdout=subprocess.PIPE)
 
 def remove_profiling_files(path):
@@ -480,24 +464,27 @@ def remove_profiling_files(path):
     p = subprocess.Popen(["find", path, "-name", "onnxruntime_profile*"], stdout=subprocess.PIPE)
     stdout, sterr = p.communicate()
     stdout = stdout.decode("ascii").strip()
-    files = files + stdout.split("\n") 
+    files = files + stdout.split("\n")
 
     for f in files:
+        if "custom_test_data" in f:
+            continue
         subprocess.Popen(["rm","-rf", f], stdout=subprocess.PIPE)
 
 
-def update_fail_result(fail_results, args, model, ep, e):
+def update_fail_report(fail_results, args, model, ep, e_type, e):
     result = {}
 
-    result["performance_type"] = args.performance_type
+    # result["running_mode"] = args.running_mode
     result["model"] = model
     result["ep"] = ep
-    result["error message"] = re.sub('^\n', '', str(e)) 
+    result["error type"] = e_type
+    result["error message"] = re.sub('^\n', '', str(e))
 
     fail_results.append(result)
 
 
-def update_fail_model(model_ep_fail_map, fail_results, args, model_name, ep, e):
+def update_fail_model(model_ep_fail_map, fail_results, args, model_name, ep, e_type, e):
 
     if not model_name in model_ep_fail_map:
         model_ep_fail_map[model_name] = [ep]
@@ -505,13 +492,13 @@ def update_fail_model(model_ep_fail_map, fail_results, args, model_name, ep, e):
         if ep not in model_ep_fail_map[model_name]:
             model_ep_fail_map[model_name].append(ep)
 
-    update_fail_result(fail_results, args, model_name, ep, e)
+    update_fail_report(fail_results, args, model_name, ep, e_type, e)
 
     # If TRT fails, TRT FP16 should fail as well
     if ep == 'TensorrtExecutionProvider':
         ep_ = "TensorrtExecutionProvider_fp16"
         e_ = "Not benchmarking TRT FP16 since TRT failed already."
-        update_fail_result(fail_results, args, model_name, ep_, e_)
+        update_fail_report(fail_results, args, model_name, ep_, e_type, e_)
         model_ep_fail_map[model_name].append(ep_)
 
 
@@ -524,18 +511,9 @@ def skip_ep(model_name, ep, model_ep_fail_map):
     if ep in ep_fail_list:
         return True
 
-    # parsing security issue when convering fp32 model to fp16 model:
-    # 
-    # Reading dangerously large protocol message.  
-    # If the message turns out to be larger than 2147483647 bytes, parsing will be halted for security reasons.
-    if ep == "CUDAExecutionProvider_fp16" and model_name in ['vgg16', 'vgg19bn']:
-        return True
-
     return False
 
 def read_model_ep_fail_map_from_file(map_file):
-    import json
-
     with open(map_file) as f:
         try:
             data = json.load(f)
@@ -545,8 +523,6 @@ def read_model_ep_fail_map_from_file(map_file):
     return data
 
 def write_model_ep_fail_map_to_file(model_ep_fail_map):
-    import json
-
     with open('.model_ep_fail_map.json', 'w') as file:
      file.write(json.dumps(model_ep_fail_map)) # use `json.loads` to do the reverse
 
@@ -563,7 +539,7 @@ def get_system_info(info):
         row = re.sub('=', ':  ', row)
         row = re.sub('"', '', row)
         infos.append(row)
-    info["linux_distro"] = infos 
+    info["linux_distro"] = infos
 
     p = subprocess.Popen(["lscpu"], stdout=subprocess.PIPE)
     stdout, sterr = p.communicate()
@@ -575,18 +551,18 @@ def get_system_info(info):
             # row = row.replace(":\s+", ":  ")
             row = re.sub(': +', ':  ', row)
             infos.append(row)
-    info["cpu_info"] = infos 
+    info["cpu_info"] = infos
 
     p1 = subprocess.Popen(["lspci", "-v"], stdout=subprocess.PIPE)
     p2 = subprocess.Popen(["grep", "NVIDIA"], stdin=p1.stdout, stdout=subprocess.PIPE)
     stdout, sterr = p2.communicate()
     stdout = stdout.decode("ascii").strip()
-    stdout = stdout.split("\n") 
+    stdout = stdout.split("\n")
     infos = []
     for row in stdout:
         row = re.sub('.*:', '', row)
         infos.append(row)
-    info["gpu_info"] = infos 
+    info["gpu_info"] = infos
 
     p = subprocess.Popen(["cat", "/proc/meminfo"], stdout=subprocess.PIPE)
     stdout, sterr = p.communicate()
@@ -597,47 +573,38 @@ def get_system_info(info):
         if "Mem" in row:
             row = re.sub(': +', ':  ', row)
             infos.append(row)
-    info["memory"] = infos 
+    info["memory"] = infos
 
 def run_onnxruntime(args, models=MODELS):
-    import onnxruntime
 
     success_results = []
     fail_results = []
-    latency_comparison_map = {} 
-    profile_metrics_map = {}
-    
+    latency_comparison_map = {} # model -> CUDA/TRT latency
+    profile_metrics_map = {} # model -> metrics from profiling file
     model_ep_fail_map = {} # model -> failing ep
-    if args.performance_type == 'benchmark':
+
+
+    # read failing ep information if file exists
+    if args.running_mode == 'benchmark':
         if os.path.exists('.model_ep_fail_map.json'):
             model_ep_fail_map = read_model_ep_fail_map_from_file('.model_ep_fail_map.json')
 
-    sys_info = {} 
-    get_system_info(sys_info)
-
     if args.fp16:
-        provider_list = ["CUDAExecutionProvider", "CUDAExecutionProvider_fp16", "TensorrtExecutionProvider","TensorrtExecutionProvider_fp16"]
+        provider_list = ["CUDAExecutionProvider", "TensorrtExecutionProvider", "CUDAExecutionProvider_fp16", "TensorrtExecutionProvider_fp16"]
     else:
         provider_list = ["CUDAExecutionProvider", "TensorrtExecutionProvider"]
-
-    # provider_list = ["TensorrtExecutionProvider", "CUDAExecutionProvider"]
-    # provider_list = ["CUDAExecutionProvider", "TensorrtExecutionProvider"]
-    # provider_list = ["CUDAExecutionProvider"]
-    # provider_list = ["TensorrtExecutionProvider"]
-    # provider_list = ["CUDAExecutionProvider", "CUDAExecutionProvider_fp16"]
-    # provider_list = ["CUDAExecutionProvider_fp16"]
 
 
     if args.model_zoo == "cvs":
         models.update(CVS_MODELS)
 
     #######################
-    # iterate model 
+    # iterate model
     #######################
     for name in models.keys():
-        info = models[name] 
+        info = models[name]
         model_class = info[0]
-        path = info[1]
+        path = os.path.join(os.getcwd(), 'models', info[1])
         latency_result = {}
 
         pwd = os.getcwd()
@@ -645,9 +612,10 @@ def run_onnxruntime(args, models=MODELS):
             os.mkdir(path)
         os.chdir(path)
         path = os.getcwd()
-        
+
         # cleanup files before running a new inference
-        remove_profiling_files(path)
+        if args.running_mode == "validate":
+            remove_profiling_files(path)
 
         inputs = []
         ref_outputs = []
@@ -655,12 +623,12 @@ def run_onnxruntime(args, models=MODELS):
         ref_outputs_fp32 = []
         inputs_fp16 = []
         ref_outputs_fp16 = []
-        ep_op_map = {} # ep -> { ep -> operator }
+        ep_to_ep_op_map = {} # ep -> { ep -> operator }
         profile_already_parsed = set()
 
 
         #######################
-        # iterate ep 
+        # iterate ep
         #######################
         for ep in provider_list:
 
@@ -674,18 +642,17 @@ def run_onnxruntime(args, models=MODELS):
 
             if "fp16" in ep:
                 os.environ["ORT_TENSORRT_FP16_ENABLE"] = "1"
-                fp16 = True 
+                fp16 = True
                 logger.info("\nInitializing {} with float16 enabled to run on {} ...".format(name, ep))
             else:
                 os.environ["ORT_TENSORRT_FP16_ENABLE"] = "0"
-                fp16 = False 
-                model = None
+                fp16 = False
                 logger.info("\nInitializing {} to run on {} ...".format(name, ep))
-                
+
             # create model instance
             model = model_class(providers=ep_to_provider_list[ep])
             if ep == "CUDAExecutionProvider_fp16":
-                model.convert_model_from_float_to_float16() 
+                model.convert_model_from_float_to_float16()
             model_name = model.get_model_name()
             model.set_model_zoo_source(args.model_zoo)
 
@@ -711,22 +678,22 @@ def run_onnxruntime(args, models=MODELS):
                 inputs = inputs_fp32
                 ref_outputs = ref_outputs_fp32
 
-            
+
             if args.input_data == "random":
-                inputs = generate_onnx_model_random_input(args.test_times, inputs[0]) 
+                inputs = generate_onnx_model_random_input(args.test_times, inputs[0])
 
             #######################################
             # benchmark or validation
             #######################################
-            if args.performance_type == 'benchmark':
+            if args.running_mode == 'benchmark':
 
-                try: 
+                try:
                     # create onnxruntime inference session
                     if args.model_zoo ==  "onnx":
                         model.create_session()
                     elif args.model_zoo == "cvs":
                         model.create_session(model.get_cvs_model_path())
-                    
+
                 except Exception as e:
                     logger.error(e)
                     # update_fail_model(model_ep_fail_map, fail_results, args, name, ep, e)
@@ -735,72 +702,56 @@ def run_onnxruntime(args, models=MODELS):
                 sess = model.get_session()
                 logger.info("Start to inference {} with {} ...".format(model_name, ep))
                 logger.info(sess.get_providers())
-                logger.info("ORT_TENSORRT_FP16_ENABLE={}".format(os.environ["ORT_TENSORRT_FP16_ENABLE"]))
 
-                if model.get_input_nodes():
+                if sess:
                     logger.info("Model inputs nodes:")
-                    for input_meta in model.get_input_nodes():
+                    for input_meta in sess.get_inputs():
                         logger.info(input_meta)
-                if model.get_output_nodes():
                     logger.info("Model outputs nodes:")
-                    for output_meta in model.get_output_nodes():
+                    for output_meta in sess.get_outputs():
                         logger.info(output_meta)
 
+
                 batch_size = 1
+                result_template = {
+                    "engine": "onnxruntime",
+                    "version": onnxruntime.__version__,
+                    "device": ep,
+                    "optimizer": False,
+                    "fp16": fp16,
+                    "io_binding": False,
+                    "model_name": model_name,
+                    "inputs": len(sess.get_inputs()),
+                    "batch_size": batch_size,
+                    "sequence_length": 1,
+                    "datetime": str(datetime.now()),}
 
-                # for io_binding in [True, False]:
-                for io_binding in [False]:
-                    result_template = {
-                        "engine": "onnxruntime",
-                        "version": onnxruntime.__version__,
-                        "device": ep,
-                        "optimizer": False,
-                        "fp16": fp16,
-                        "io_binding": io_binding,
-                        "model_name": model_name,
-                        "inputs": len(sess.get_inputs()),
-                        "batch_size": batch_size,
-                        "sequence_length": 1,
-                        "datetime": str(datetime.now()),}
+                result = inference_ort(args, model, ep, inputs, result_template, args.test_times, batch_size)
+                success_results.append(result)
+                logger.info(result)
 
-                    result = None
-
-                    # measure inference
-                    if io_binding:
-                        # can't do io-binding for BiDAF
-                        if model.get_model_name() != 'BiDAF':
-                            result = inference_ort_with_io_binding(model, inputs, result_template, args.test_times, batch_size)
-                            latency_result[ep + "_io_binding"] = result["average_latency_ms"]
-                    else:
-                        result = inference_ort(args, model, ep, inputs, result_template, args.test_times, batch_size)
-                        latency_result[ep] = result["average_latency_ms"]
-                        logger.info(result)
-
-
-                    if result:
-                        success_results.append(result)
-
+                latency_result[ep] = result["average_latency_ms"]
                 latency_comparison_map[model_name] = copy.deepcopy(latency_result)
 
 
-            elif args.performance_type == 'validate':
+            elif args.running_mode == 'validate':
 
                 # enable profiling to generate profiling file for analysis
                 options = onnxruntime.SessionOptions()
-                options.enable_profiling = True 
+                options.enable_profiling = True
                 options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
                 model.set_session_options(options)
 
-                try: 
+                try:
                     # create onnxruntime inference session
                     if args.model_zoo ==  "onnx":
                         model.create_session()
                     elif args.model_zoo == "cvs":
                         model.create_session(model.get_cvs_model_path())
-                    
+
                 except Exception as e:
                     logger.error(e)
-                    update_fail_model(model_ep_fail_map, fail_results, args, name, ep, e)
+                    update_fail_model(model_ep_fail_map, fail_results, args, name, ep, 'runtime error', e)
                     continue
 
 
@@ -809,94 +760,110 @@ def run_onnxruntime(args, models=MODELS):
 
                 logger.info("Start to inference {} with {} ...".format(model_name, ep))
                 logger.info(sess.get_providers())
-                logger.info("ORT_TENSORRT_FP16_ENABLE={}".format(os.environ["ORT_TENSORRT_FP16_ENABLE"]))
 
-                if model.get_input_nodes():
+                if sess:
                     logger.info("Model inputs nodes:")
-                    for input_meta in model.get_input_nodes():
+                    for input_meta in sess.get_inputs():
                         logger.info(input_meta)
-                if model.get_output_nodes():
                     logger.info("Model outputs nodes:")
-                    for output_meta in model.get_output_nodes():
+                    for output_meta in sess.get_outputs():
                         logger.info(output_meta)
 
-                # first, run inference and validate the result
-                if ep in ['CUDAExecutionProvider', 'CUDAExecutionProvider_fp16', 'TensorrtExecutionProvider']:
-                    try:
-                        model.set_inputs(inputs)
-                        model.inference()
-                        status = validate(ref_outputs, model.get_outputs(), model.get_decimal())
-                        if not status[0]:
-                            update_fail_model(model_ep_fail_map, fail_results, args, name, ep, status[1])
-                            continue
-                    except Exception as e:
-                        logger.error(e)
-                        update_fail_model(model_ep_fail_map, fail_results, args, name, ep, e)
-                        continue
+                # run inference and validate the result
+                try:
+                    model.set_inputs(inputs)
+                    model.inference()
 
-                # make sure profiling file will be generated by runing one inference
-                batch_size = 1
-                inference_ort(args, model, ep, inputs, {}, args.test_times, batch_size)
+                    # lower accuracy exepectation if using FP16
+                    if ep == 'CUDAExecutionProvider_fp16' or ep == 'TensorrtExecutionProvider_fp16':
+                        decimal = 0
+                    else:
+                        decimal = model.get_decimal()
+
+                    status = validate(ref_outputs, model.get_outputs(), decimal)
+                    if not status[0]:
+                        update_fail_model(model_ep_fail_map, fail_results, args, name, ep, 'result accuracy issue', status[1])
+                        continue
+                except Exception as e:
+                    logger.error(e)
+                    update_fail_model(model_ep_fail_map, fail_results, args, name, ep, 'runtime error', e)
+                    continue
+
+                # Run inference again. the reason is that some ep like tensorrt
+                # it takes much longer time to generate graph on first run and
+                # we need to skip the perf result of that expensive run.
+                model.inference()
+
                 sess.end_profiling()
-                # logger.info(sess.get_providers())
-            
+                time.sleep(1) # avoid to generate same profile file name
+
+                # get metrics from profiling file
                 metrics = get_profile_metrics(path, profile_already_parsed)
                 if metrics:
-                    ep_op_map[ep] = metrics
+                    print(ep)
+                    ep_to_ep_op_map[ep] = metrics
 
-            # end of ep
+        ####################
+        # end of iterate ep
+        ####################
 
 
-        # get TRT operators/latency percentage
-        if len(ep_op_map) > 0:
-            trt_op_map = None 
-            trt_fp16_op_map = None 
-            cuda_op_map = None 
+        # get percentage of execution time and operators in TRT
+        if len(ep_to_ep_op_map) > 0:
+            trt_op_map = None
+            trt_fp16_op_map = None
+            cuda_op_map = None
+            cuda_fp16_op_map = None
 
-            for ep, op_map in ep_op_map.items():  
+            for ep, op_map in ep_to_ep_op_map.items():
                 if ep == "CUDAExecutionProvider":
                     cuda_op_map = op_map
+                elif ep == "CUDAExecutionProvider_fp16":
+                    cuda_fp16_op_map = op_map
                 elif ep == "TensorrtExecutionProvider":
                     trt_op_map = op_map
                 elif ep == "TensorrtExecutionProvider_fp16":
                     trt_fp16_op_map = op_map
 
             if trt_op_map:
-                ratio_of_execution_time_in_trt = calculate_trt_latency_percentage(trt_op_map)
+                total_trt_execution_time, total_execution_time, ratio_of_execution_time_in_trt = calculate_trt_latency_percentage(trt_op_map)
                 profile_metrics_map[model_name] = {}
-                profile_metrics_map[model_name]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt 
+                profile_metrics_map[model_name]['total_trt_execution_time'] = total_trt_execution_time
+                profile_metrics_map[model_name]['total_execution_time'] = total_execution_time
+                profile_metrics_map[model_name]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt
                 if cuda_op_map:
                     total_ops_in_trt, total_ops, ratio_of_ops_in_trt = calculate_trt_op_percentage(trt_op_map, cuda_op_map)
+                    profile_metrics_map[model_name]['total_ops_in_trt'] = total_ops_in_trt
                     profile_metrics_map[model_name]['total_ops'] = total_ops
-                    profile_metrics_map[model_name]['ratio_of_ops_in_trt'] = ratio_of_ops_in_trt 
-                    profile_metrics_map[model_name]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt 
+                    profile_metrics_map[model_name]['ratio_of_ops_in_trt'] = ratio_of_ops_in_trt
 
             if trt_fp16_op_map:
-                ratio_of_execution_time_in_trt = calculate_trt_latency_percentage(trt_fp16_op_map)
-                model_name_ = model_name + "(TRT FP16)"
+                total_trt_execution_time, total_execution_time, ratio_of_execution_time_in_trt = calculate_trt_latency_percentage(trt_fp16_op_map)
+                model_name_ = model_name + " (FP16)"
                 profile_metrics_map[model_name_] = {}
-                profile_metrics_map[model_name_]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt 
-                if cuda_op_map:
+                profile_metrics_map[model_name_]['total_trt_execution_time'] = total_trt_execution_time
+                profile_metrics_map[model_name_]['total_execution_time'] = total_execution_time
+                profile_metrics_map[model_name_]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt
+                if cuda_fp16_op_map:
                     total_ops_in_trt, total_ops, ratio_of_ops_in_trt = calculate_trt_op_percentage(trt_fp16_op_map, cuda_op_map)
+                    profile_metrics_map[model_name_]['total_ops_in_trt'] = total_ops_in_trt
                     profile_metrics_map[model_name_]['total_ops'] = total_ops
-                    profile_metrics_map[model_name_]['ratio_of_ops_in_trt'] = ratio_of_ops_in_trt 
-                    profile_metrics_map[model_name_]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt 
+                    profile_metrics_map[model_name_]['ratio_of_ops_in_trt'] = ratio_of_ops_in_trt
 
-            # if True:
-            if False:
+            if debug:
                 pp = pprint.PrettyPrinter(indent=4)
-                print('TRT operator map:')
-                pp.pprint(trt_op_map)
-                print('TRT FP16 operator map:')
-                pp.pprint(trt_fp16_op_map)
                 print('CUDA operator map:')
                 pp.pprint(cuda_op_map)
-                # print('CPU operator map:')
-                # pp.pprint(cpu_op_map)
+                print('TRT operator map:')
+                pp.pprint(trt_op_map)
+                print('CUDA FP16 operator map:')
+                pp.pprint(cuda_fp16_op_map)
+                print('TRT FP16 operator map:')
+                pp.pprint(trt_fp16_op_map)
 
 
 
-        # cleanup_files()
+        cleanup_files()
         os.chdir(pwd)
 
         # end of model
@@ -911,13 +878,13 @@ def add_improvement_information(latency_comparison_map):
         trt_latency = float(value['TensorrtExecutionProvider'])
         cuda_latency = float(value['CUDAExecutionProvider'])
         gain = (cuda_latency - trt_latency)*100/cuda_latency
-        value["Tensorrt_gain(%)"] = "{:.2f} %".format(gain) 
+        value["Tensorrt_gain(%)"] = "{:.2f} %".format(gain)
 
         if "TensorrtExecutionProvider_fp16" in value and "CUDAExecutionProvider_fp16" in value:
             trt_fp16_latency = float(value['TensorrtExecutionProvider_fp16'])
             cuda_fp16_latency = float(value['CUDAExecutionProvider_fp16'])
             gain = (cuda_fp16_latency - trt_fp16_latency)*100/cuda_fp16_latency
-            value["Tensorrt_fp16_gain(%)"] = "{:.2f} %".format(gain) 
+            value["Tensorrt_fp16_gain(%)"] = "{:.2f} %".format(gain)
 
 def output_details(results, csv_filename):
     with open(csv_filename, mode="a", newline='') as csv_file:
@@ -937,7 +904,7 @@ def output_details(results, csv_filename):
 def output_fail(results, csv_filename):
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = [
-            "performance_type", "model", "ep", "error message"
+            "model", "ep", "error type", "error message"
         ]
 
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
@@ -945,7 +912,7 @@ def output_fail(results, csv_filename):
         for result in results:
             csv_writer.writerow(result)
 
-    logger.info(f"Fail results are saved to csv file: {csv_filename}")
+    logger.info(f"Failing results are saved to csv file: {csv_filename}")
 
 def output_latency(results, csv_filename):
     with open(csv_filename, mode="a", newline='') as csv_file:
@@ -975,7 +942,6 @@ def output_latency(results, csv_filename):
                    value['Tensorrt_fp16_gain(%)'] if 'Tensorrt_fp16_gain(%)' in value else "  "
                    ]
             csv_writer.writerow(row)
-            
 
     logger.info(f"CUDA/TRT latency comparison are saved to csv file: {csv_filename}")
 
@@ -985,6 +951,8 @@ def output_ratio(results, csv_filename):
                         "Total TRT operators",
                         "Total operators",
                         "% TRT operator",
+                        "Total TRT execution time",
+                        "Total execution time",
                         "% TRT execution time"]
         csv_writer = csv.writer(csv_file)
         csv_writer.writerow(column_names)
@@ -994,19 +962,34 @@ def output_ratio(results, csv_filename):
                    value['total_ops_in_trt'] if 'total_ops_in_trt' in value else "  ",
                    value['total_ops'] if 'total_ops' in value else "  ",
                    value['ratio_of_ops_in_trt'] if 'ratio_of_ops_in_trt' in value else "  ",
+                   value['total_trt_execution_time'] if 'total_trt_execution_time' in value else "  ",
+                   value['total_execution_time'] if 'total_execution_time' in value else "  ",
                    value['ratio_of_execution_time_in_trt'] if 'ratio_of_execution_time_in_trt' in value else "  ",
                    ]
             csv_writer.writerow(row)
-            
 
     logger.info(f"Tensorrt ratio metrics are saved to csv file: {csv_filename}")
+
+def output_system_info(result, csv_filename):
+    with open(csv_filename, mode="a", newline='') as csv_file:
+        column_names = [
+            "cpu_info", "cuda", "gpu_info", "linux_distro", "memory", "trt"
+        ]
+
+        csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
+        csv_writer.writeheader()
+        csv_writer.writerow(result)
+
+    logger.info(f"System information are saved to csv file: {csv_filename}")
+
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("-m", "--model_zoo", required=False, default="onnx", choices=["onnx", "cvs"], help="Models pool for perf.")
+    parser.add_argument("-m", "--model_zoo", required=False, default="onnx", choices=["onnx", "cvs"], help="Source of the models.")
 
-    parser.add_argument("-p", "--performance_type", required=False, default="benchmark", choices=["validate", "benchmark"], help="Testing mode.")
+    parser.add_argument("-r", "--running_mode", required=False, default="benchmark", choices=["validate", "benchmark"], help="Testing mode.")
+
     parser.add_argument("-i", "--input_data", required=False, default="zoo", choices=["zoo", "random"], help="source of input data.")
 
     parser.add_argument("--fp16", required=False, default=True, action="store_true", help="Inlcude Float16 into benchmarking.")
@@ -1017,10 +1000,6 @@ def parse_arguments():
                         default=1,
                         type=int,
                         help="Number of repeat times to get average inference latency.")
-
-    parser.add_argument("-d", "--detail_csv", required=False, default=None, help="CSV file for saving detail results.")
-    parser.add_argument("-r", "--ratio_csv", required=False, default=None, help="CSV file for saving detail results.")
-    parser.add_argument("-l", "--latency_csv", required=False, default=None, help="CSV file for saving detail results.")
 
     args = parser.parse_args()
     return args
@@ -1048,6 +1027,16 @@ def main():
     logger.info("Fail models: {}".format(len(failing_models)))
     logger.info("Models FAIL/SUCCESS: {}/{}".format(len(failing_models), len(MODELS) - len(failing_models)))
 
+    path = "perf_result"
+    if not os.path.exists(path):
+        os.mkdir(path)
+
+    path = os.path.join(os.getcwd(), path)
+    if not os.path.exists(path):
+        os.mkdir(path)
+
+    time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+
     if len(failing_models) > 0:
         logger.info("\n============================================")
         logger.info("========== Failing Models/EPs ==============")
@@ -1061,8 +1050,8 @@ def main():
         logger.info("=========================================")
         add_improvement_information(latency_comparison_map)
         pp.pprint(latency_comparison_map)
-        time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        csv_filename = args.latency_csv or f"benchmark_latency_{time_stamp}.csv"
+        csv_filename = f"benchmark_latency_{time_stamp}.csv"
+        csv_filename = os.path.join(path, csv_filename)
         output_latency(latency_comparison_map, csv_filename)
 
     if len(profile_metrics_map) > 0:
@@ -1070,8 +1059,8 @@ def main():
         logger.info("========== TRT detail metrics ==========")
         logger.info("========================================")
         pp.pprint(profile_metrics_map)
-        time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        csv_filename = args.ratio_csv or f"benchmark_ratio_{time_stamp}.csv"
+        csv_filename = f"benchmark_ratio_{time_stamp}.csv"
+        csv_filename = os.path.join(path, csv_filename)
         output_ratio(profile_metrics_map, csv_filename)
 
 
@@ -1081,16 +1070,18 @@ def main():
     info = {}
     get_system_info(info)
     pp.pprint(info)
-
-    if success_results:
-        time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        csv_filename = args.detail_csv or f"benchmark_success_{time_stamp}.csv"
-        output_details(success_results, csv_filename)
+    csv_filename = os.path.join(path, f"system_info_{time_stamp}.csv")
+    output_system_info(info, csv_filename)
 
     if fail_results:
-        time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         csv_filename = f"benchmark_fail_{time_stamp}.csv"
+        csv_filename = os.path.join(path, csv_filename)
         output_fail(fail_results, csv_filename)
+
+    if success_results:
+        csv_filename = f"benchmark_success_{time_stamp}.csv"
+        csv_filename = os.path.join(path, csv_filename)
+        output_details(success_results, csv_filename)
 
 
 if __name__ == "__main__":
