@@ -570,12 +570,22 @@ set(all_dependencies ${onnxruntime_test_providers_dependencies} )
 set(TEST_DATA_SRC ${TEST_SRC_DIR}/testdata)
 set(TEST_DATA_DES $<TARGET_FILE_DIR:${test_data_target}>/testdata)
 
+set(TEST_SAMPLES_SRC ${REPO_ROOT}/samples)
+set(TEST_SAMPLES_DES $<TARGET_FILE_DIR:${test_data_target}>/samples)
+
 # Copy test data from source to destination.
 add_custom_command(
   TARGET ${test_data_target} POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_directory
   ${TEST_DATA_SRC}
   ${TEST_DATA_DES})
+
+# Copy test samples from source to destination.
+add_custom_command(
+  TARGET ${test_data_target} POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+  ${TEST_SAMPLES_SRC}
+  ${TEST_SAMPLES_DES})
 
 if (onnxruntime_USE_DNNL)
   list(APPEND onnx_test_libs dnnl)
