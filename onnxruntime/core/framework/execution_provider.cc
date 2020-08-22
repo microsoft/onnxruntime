@@ -51,14 +51,25 @@ common::Status IExecutionProvider::OnRunEnd() { return Status::OK(); }
 
 common::Status IExecutionProvider::OnSessionInitializationEnd() { return Status::OK(); }
 
+// Update allocator in the provider if already present; ignore if not.
+void IExecutionProvider::ReplaceAllocator(AllocatorPtr allocator) {
+  const auto& info = allocator->Info();
+  auto ite = mem_info_set_.find(info);
+  if (ite != mem_info_set_.end()) {
+    const int key = MakeKey(info.id, info.mem_type);
+    allocators_[key] = allocator;
+  }
+}
+
 void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
   const OrtMemoryInfo& info = allocator->Info();
-  const int key = MakeKey(info.id, info.mem_type);
-  auto iter = allocators_.find(key);
-  if (iter != allocators_.end()) {
+  auto ite = mem_info_set_.find(info);
+  if (ite != mem_info_set_.end()) {
     ORT_THROW("duplicated allocator");
   }
-  allocators_.insert(iter, {key, allocator});
+  const int key = MakeKey(info.id, info.mem_type);
+  allocators_.insert({key, allocator});
+  mem_info_set_.insert(ite, info);
   allocator_list_.push_back(allocator);
 }
 

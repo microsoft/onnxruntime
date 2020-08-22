@@ -233,7 +233,8 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
       graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
       insert_cast_transformer_("CastFloat16Transformer"),
 #endif
-      logging_manager_(session_env.GetLoggingManager()) {
+      logging_manager_(session_env.GetLoggingManager()),
+      environment_(session_env) {
   // Initialize assets of this session instance
   ConstructorCommon(session_options, session_env);
 }
@@ -244,7 +245,8 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
     : model_location_(ToWideString(model_uri)),
       graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
       insert_cast_transformer_("CastFloat16Transformer"),
-      logging_manager_(session_env.GetLoggingManager()) {
+      logging_manager_(session_env.GetLoggingManager()),
+      environment_(session_env) {
   auto status = Model::Load(model_location_, model_proto_);
   ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session. Error message: ",
               status.ErrorMessage());
@@ -259,7 +261,8 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
                                    const std::wstring& model_uri)
     : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
       insert_cast_transformer_("CastFloat16Transformer"),
-      logging_manager_(session_env.GetLoggingManager()) {
+      logging_manager_(session_env.GetLoggingManager()),
+      environment_(session_env) {
   model_location_ = ToWideString(model_uri);
   auto status = Model::Load(model_location_, model_proto_);
   ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session. Error message: ",
@@ -274,7 +277,8 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
                                    std::istream& model_istream)
     : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
       insert_cast_transformer_("CastFloat16Transformer"),
-      logging_manager_(session_env.GetLoggingManager()) {
+      logging_manager_(session_env.GetLoggingManager()),
+      environment_(session_env) {
   Status st = Model::Load(model_istream, &model_proto_);
   ORT_ENFORCE(st.IsOK(), "Could not parse model successfully while constructing the inference session");
   is_model_proto_parsed_ = true;
@@ -286,7 +290,8 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
                                    const void* model_data, int model_data_len)
     : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
       insert_cast_transformer_("CastFloat16Transformer"),
-      logging_manager_(session_env.GetLoggingManager()) {
+      logging_manager_(session_env.GetLoggingManager()),
+      environment_(session_env) {
   const bool result = model_proto_.ParseFromArray(model_data, model_data_len);
   ORT_ENFORCE(result, "Could not parse model successfully while constructing the inference session");
   is_model_proto_parsed_ = true;
@@ -675,7 +680,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
       if (!node.Name().empty())
         oss << node.Name() << ":";
       oss << node.OpType() << "(" << node.SinceVersion() << ")";
-      
+
       return Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED, oss.str());
     } else {
       if (is_verbose_mode) {  // TODO: should we disable this if the number of nodes are above a certain threshold?
@@ -804,6 +809,24 @@ common::Status InferenceSession::Initialize() {
     // re-acquire mutex
     std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
 
+    // At this time we know all the providers that will be part of this session.
+    // Read shared allocators from the environment and update them in the respective providers.
+    //
+    // The reason for updating the providers is so that when the session state is created the allocators
+    // are setup appropariately keyed by OrtMemoryInfo with delegates going to the respective providers.
+    // Secondly, the GetAllocator() method inside IExecutionProvider is still used in various places, hence
+    // it doesn't make sense to just update the allocator map inside session state with these shared allocators; doing
+    // so would cause inconsistency between the allocator map inside session sate and that inside the providers.
+    // TODO: we could refactor the allocators to not require the call to GetAllocator but that change is much bigger
+    // since we've to take into account the per-thread cuda allocators.
+    // TODO (contd.) We could also possibly absorb the per-thread logic in a new allocator decorator that derives
+    // from IAllocator to keep things clean.
+    std::string use_env_allocators = GetSessionConfigOrDefault(session_options_,
+                                                               ORT_SESSION_OPTIONS_CONFIG_USE_ENV_ALLOCATORS, "0");
+    if (use_env_allocators == "1") {
+      UpdateProvidersWithSharedAllocators();
+    }
+
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
     TraceLoggingWriteStart(session_activity, "OrtInferenceSessionActivity");
     session_activity_started_ = true;
@@ -912,6 +935,19 @@ common::Status InferenceSession::Initialize() {
   }
 
   return status;
+}
+
+// This method should be called from within Initialize() only and before the creation of the session state.
+// This ensures all providers have been registered in the session and the session state is consistent with the providers.
+void InferenceSession::UpdateProvidersWithSharedAllocators() {
+  using namespace std;
+  const auto& provider_ids = execution_providers_.GetIds();
+  for (const auto& one_shared_alloc : environment_.GetRegisteredSharedAllocators()) {
+    for (const auto& id : provider_ids) {
+      auto* provider_ptr = execution_providers_.Get(id);
+      provider_ptr->ReplaceAllocator(one_shared_alloc);
+    }
+  }
 }
 
 int InferenceSession::GetCurrentNumRuns() const {
@@ -1473,7 +1509,9 @@ void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transf
   auto add_transformers = [&](TransformerLevel level) {
     // Generate and register transformers for level
     auto transformers_to_register =
-        optimizer_utils::GenerateTransformers(level, session_options_.free_dimension_overrides, custom_list);
+        optimizer_utils::GenerateTransformers(level, session_options_.free_dimension_overrides,
+                                              *execution_providers_.Get(onnxruntime::kCpuExecutionProvider),
+                                              custom_list);
     for (auto& entry : transformers_to_register) {
       transformer_manager.Register(std::move(entry), level);
     }
