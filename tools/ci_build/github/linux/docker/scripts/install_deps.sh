@@ -114,6 +114,17 @@ elif [ $DEVICE_TYPE = "gpu" ]; then
       ${PYTHON_EXE} -m pip install  transformers==v2.10.0
       # transformers requires sklearn
       ${PYTHON_EXE} -m pip install sklearn
+
+      if [[ $BUILD_EXTR_PAR = *--enable_training_python_frontend_e2e_tests* ]]; then
+        echo "install openmpi"
+        curl -fsSL https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.0.tar.gz -O
+        tar zxf openmpi-4.0.0.tar.gz
+        cd openmpi-4.0.0
+        ./configure --enable-orterun-prefix-by-default
+        make all
+        make install
+        ldconfig
+      fi
     fi
 fi
 

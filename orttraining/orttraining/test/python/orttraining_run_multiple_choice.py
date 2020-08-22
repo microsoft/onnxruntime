@@ -214,6 +214,7 @@ class ORTMultipleChoiceTest(unittest.TestCase):
         trainer = ORTTransformerTrainer(
             model=model,
             model_desc=model_desc,
+            new_model_desc=None,
             args=training_args,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,

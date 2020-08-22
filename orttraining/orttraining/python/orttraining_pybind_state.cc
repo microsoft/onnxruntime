@@ -11,7 +11,7 @@
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/graph/optimizer_config.h"
-#include "orttraining/core/framework/mpi_setup.h"
+#include "orttraining/core/framework/mpi_context.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
 
 namespace onnxruntime {
@@ -19,6 +19,7 @@ namespace python {
 namespace py = pybind11;
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
+using namespace onnxruntime::training;
 
 struct TrainingParameters {
   std::string loss_output_name;
@@ -65,25 +66,10 @@ TrainingConfigurationResult ConfigureSessionForTraining(
 
   auto data_group_size = parameters.world_size / parameters.horizontal_parallel_size;
   if (data_group_size != parameters.data_parallel_size) {
-    std::cout << "WARNING: data_parallel_size is not correct, tuned automatically to "
-              << data_group_size << std::endl;
+    LOGS(*(sess->GetLogger()), WARNING) << "data_parallel_size is not correct, tuned automatically to "
+              << data_group_size;
     parameters.data_parallel_size = data_group_size;
   }
-#if defined(USE_NCCL) || defined(USE_HOROVOD)
-  // this condition block is temporary.
-  // For now, nccl allreduce kernel only implements for allreduce_post_accumulation
-  // hovorod allreduce kernel only implements for not allreduce_post_accumulation.
-  bool use_nccl = parameters.allreduce_post_accumulation;
-  if (!use_nccl && parameters.world_size > 1) {
-    auto mpi_context = training::setup_mpi();
-    std::cout << "mpi_context.world_rank: " << mpi_context.world_rank << std::endl;
-    std::cout << "mpi_context.local_rank: " << mpi_context.local_rank << std::endl;
-    std::cout << "mpi_context.world_size: " << mpi_context.world_size << std::endl;
-    std::cout << "mpi_context.local_size: " << mpi_context.local_size << std::endl;
-    parameters.local_size = mpi_context.local_size;
-    parameters.local_rank = mpi_context.local_rank;
-  }
-#endif
 
   training::TrainingSession::TrainingConfiguration config{};
   config.weight_names_to_train = parameters.weights_to_train;
@@ -158,6 +144,28 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   return python_config_result;
 }
 
+#if defined(USE_NCCL)
+void CopyMPIContextToTrainingParameters(TrainingParameters& parameters, const logging::Logger* logger) {
+    LOGS(*logger, INFO) << "MPIContext::GetInstance().GetWorldRank(): " << MPIContext::GetInstance().GetWorldRank();
+    LOGS(*logger, INFO) << "MPIContext::GetInstance().GetLocalRank(): " << MPIContext::GetInstance().GetLocalRank();
+    LOGS(*logger, INFO) << "MPIContext::GetInstance().GetWorldSize(): " << MPIContext::GetInstance().GetWorldSize();
+    LOGS(*logger, INFO) << "MPIContext::GetInstance().GetLocalSize(): " << MPIContext::GetInstance().GetLocalSize();
+
+    parameters.local_rank = MPIContext::GetInstance().GetLocalRank();
+    parameters.local_size = MPIContext::GetInstance().GetLocalSize();
+    if (parameters.world_rank != MPIContext::GetInstance().GetWorldRank()) {
+      if (parameters.world_rank != 0)
+        LOGS(*logger, WARNING) << "TrainingParameters world_rank is not correct, tuned automatically to " << MPIContext::GetInstance().GetWorldRank();
+      parameters.world_rank = MPIContext::GetInstance().GetWorldRank();
+    }
+    if (parameters.world_size != MPIContext::GetInstance().GetWorldSize()) {
+      if (parameters.world_size != 1)
+        LOGS(*logger, WARNING) << "TrainingParameters world_size is not correct, tuned automatically to " << MPIContext::GetInstance().GetWorldSize();
+      parameters.world_size = MPIContext::GetInstance().GetWorldSize();
+    }
+}
+#endif
+
 void addObjectMethodsForTraining(py::module& m) {
   py::class_<TrainingParameters> parameters(m, "TrainingParameters", R"pbdoc(Configuration information for training.)pbdoc");
   parameters.def(py::init())
@@ -181,6 +189,13 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("set_gradients_as_graph_outputs", &TrainingParameters::set_gradients_as_graph_outputs)
       .def_readwrite("use_invertible_layernorm_grad", &TrainingParameters::use_invertible_layernorm_grad);
 
+#if defined(USE_NCCL)
+  m.def("get_mpi_context_local_rank", []() -> int { return MPIContext::GetInstance().GetLocalRank(); });
+  m.def("get_mpi_context_local_size", []() -> int { return MPIContext::GetInstance().GetLocalSize(); });
+  m.def("get_mpi_context_world_rank", []() -> int { return MPIContext::GetInstance().GetWorldRank(); });
+  m.def("get_mpi_context_world_size", []() -> int { return MPIContext::GetInstance().GetWorldSize(); });
+#endif
+
   py::class_<TrainingConfigurationResult> config_result(m, "TrainingConfigurationResult", "pbdoc(Configuration result for training.)pbdoc");
   config_result.def(py::init())
       .def_property_readonly("loss_scale_input_name", [](const TrainingConfigurationResult& result) -> py::object {
@@ -200,13 +215,21 @@ void addObjectMethodsForTraining(py::module& m) {
         return onnxruntime::make_unique<onnxruntime::training::TrainingSession>(GetDefaultCPUSessionOptions(), env);
       }))
       .def("finalize", [](py::object) {
-#if defined(USE_NCCL) || defined(USE_HOROVOD)
-        training::shutdown_mpi();
+#if defined(USE_NCCL)
+#ifdef _WIN32
+        // https://docs.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-best-practices
+        // shutdown_mpi() is not called within MPIContext destructor because of DllMain's restriction
+        // call shutdown_mpi() here instead.
+        MPIContext::shutdown_mpi();
+#endif
 #endif
       })
       .def("load_model", [](onnxruntime::training::TrainingSession* sess, const std::string& path, TrainingParameters& parameters) {
         OrtPybindThrowIfError(sess->Load(path));
 
+#if defined(USE_NCCL)
+        CopyMPIContextToTrainingParameters(parameters, sess->GetLogger());
+#endif
         const auto config_result = ConfigureSessionForTraining(sess, parameters);
 
         std::vector<std::string> provider_types = {};
@@ -218,6 +241,9 @@ void addObjectMethodsForTraining(py::module& m) {
         std::istringstream buffer(serialized_model);
         OrtPybindThrowIfError(sess->Load(buffer));
 
+#if defined(USE_NCCL)
+        CopyMPIContextToTrainingParameters(parameters, sess->GetLogger());
+#endif
         const auto config_result = ConfigureSessionForTraining(sess, parameters);
 
         std::vector<std::string> provider_types = {};
