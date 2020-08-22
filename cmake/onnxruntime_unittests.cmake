@@ -102,21 +102,25 @@ file(GLOB onnxruntime_test_common_src CONFIGURE_DEPENDS
   "${TEST_SRC_DIR}/common/logging/*.h"
   )
 
-file(GLOB onnxruntime_test_ir_src CONFIGURE_DEPENDS
-  "${TEST_SRC_DIR}/ir/*.cc"
-  "${TEST_SRC_DIR}/ir/*.h"
-  )
+if(NOT onnxruntime_MINIMAL_BUILD)
+  file(GLOB onnxruntime_test_ir_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/ir/*.cc"
+    "${TEST_SRC_DIR}/ir/*.h"
+    )
 
-file(GLOB onnxruntime_test_optimizer_src CONFIGURE_DEPENDS
-  "${TEST_SRC_DIR}/optimizer/*.cc"
-  "${TEST_SRC_DIR}/optimizer/*.h"
-  )
+  file(GLOB onnxruntime_test_optimizer_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/optimizer/*.cc"
+    "${TEST_SRC_DIR}/optimizer/*.h"
+    )
 
-set(onnxruntime_test_framework_src_patterns
-  "${TEST_SRC_DIR}/framework/*.cc"
-  "${TEST_SRC_DIR}/framework/*.h"
-  "${TEST_SRC_DIR}/platform/*.cc"
-  )
+  set(onnxruntime_test_framework_src_patterns
+    "${TEST_SRC_DIR}/framework/*.cc"
+    "${TEST_SRC_DIR}/framework/*.h"
+    "${TEST_SRC_DIR}/platform/*.cc"
+    )
+else()
+  # TODO: Add tests that can be used in a minimal build
+endif()
 
 file(GLOB onnxruntime_test_training_src
   "${ORTTRAINING_SOURCE_DIR}/test/model/*.cc"
@@ -137,32 +141,44 @@ if(onnxruntime_USE_CUDA)
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/framework/cuda/*)
 endif()
 
-set(onnxruntime_test_providers_src_patterns
-  "${TEST_SRC_DIR}/providers/*.h"
-  "${TEST_SRC_DIR}/providers/*.cc"
-  "${TEST_SRC_DIR}/opaque_api/test_opaque_api.cc"
-  "${TEST_SRC_DIR}/framework/TestAllocatorManager.cc"
-  "${TEST_SRC_DIR}/framework/TestAllocatorManager.h"
-  "${TEST_SRC_DIR}/framework/test_utils.cc"
-  "${TEST_SRC_DIR}/framework/test_utils.h"
+if(NOT onnxruntime_MINIMAL_BUILD)
+  set(onnxruntime_test_providers_src_patterns
+    "${TEST_SRC_DIR}/providers/*.h"
+    "${TEST_SRC_DIR}/providers/*.cc"
+    "${TEST_SRC_DIR}/opaque_api/test_opaque_api.cc"
+    "${TEST_SRC_DIR}/framework/TestAllocatorManager.cc"
+    "${TEST_SRC_DIR}/framework/TestAllocatorManager.h"
+    "${TEST_SRC_DIR}/framework/test_utils.cc"
+    "${TEST_SRC_DIR}/framework/test_utils.h"
   )
-if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
-  list(APPEND onnxruntime_test_providers_src_patterns
-    "${TEST_SRC_DIR}/contrib_ops/*.h"
-    "${TEST_SRC_DIR}/contrib_ops/*.cc")
+
+  if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
+    list(APPEND onnxruntime_test_providers_src_patterns
+      "${TEST_SRC_DIR}/contrib_ops/*.h"
+      "${TEST_SRC_DIR}/contrib_ops/*.cc")
+  endif()
+
+  if(onnxruntime_USE_FEATURIZERS)
+    list(APPEND onnxruntime_test_providers_src_patterns
+      "${TEST_SRC_DIR}/featurizers_ops/*.h"
+      "${TEST_SRC_DIR}/featurizers_ops/*.cc")
+  endif()
+
+else()
+  set(onnxruntime_test_providers_src_patterns
+    "${TEST_SRC_DIR}/framework/test_utils.cc"
+    "${TEST_SRC_DIR}/framework/test_utils.h"
+    # TODO: Add anything that is needed for testing a minimal build
+  )
 endif()
 
-if(onnxruntime_USE_FEATURIZERS)
-  list(APPEND onnxruntime_test_providers_src_patterns
-    "${TEST_SRC_DIR}/featurizers_ops/*.h"
-    "${TEST_SRC_DIR}/featurizers_ops/*.cc")
-endif()
+file(GLOB onnxruntime_test_providers_src CONFIGURE_DEPENDS ${onnxruntime_test_providers_src_patterns})
 
-file(GLOB onnxruntime_test_providers_src CONFIGURE_DEPENDS
-  ${onnxruntime_test_providers_src_patterns})
-file(GLOB_RECURSE onnxruntime_test_providers_cpu_src CONFIGURE_DEPENDS
-  "${TEST_SRC_DIR}/providers/cpu/*"
-  )
+if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
+  file(GLOB_RECURSE onnxruntime_test_providers_cpu_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/providers/cpu/*"
+    )
+endif()
 
 if(onnxruntime_DISABLE_ML_OPS)
   list(FILTER onnxruntime_test_providers_cpu_src EXCLUDE REGEX ".*/ml/.*")
@@ -560,22 +576,23 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy_directory
   ${TEST_DATA_SRC}
   ${TEST_DATA_DES})
-if(WIN32)
-  if (onnxruntime_USE_DNNL)
-    list(APPEND onnx_test_libs dnnl)
-    add_custom_command(
-      TARGET ${test_data_target} POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy ${DNNL_DLL_PATH} $<TARGET_FILE_DIR:${test_data_target}>
-      )
-  endif()
-  if (onnxruntime_USE_MKLML)
-    add_custom_command(
-      TARGET ${test_data_target} POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy
-      ${MKLML_LIB_DIR}/${MKLML_SHARED_LIB} ${MKLML_LIB_DIR}/${IOMP5MD_SHARED_LIB}
-      $<TARGET_FILE_DIR:${test_data_target}>
+
+if (onnxruntime_USE_DNNL)
+  list(APPEND onnx_test_libs dnnl)
+  add_custom_command(
+    TARGET ${test_data_target} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy ${DNNL_DLL_PATH} $<TARGET_FILE_DIR:${test_data_target}>
     )
-  endif()
+endif()
+if (onnxruntime_USE_MKLML)
+  add_custom_command(
+    TARGET ${test_data_target} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+    ${MKLML_LIB_DIR}/${MKLML_SHARED_LIB} ${MKLML_LIB_DIR}/${IOMP5MD_SHARED_LIB}
+    $<TARGET_FILE_DIR:${test_data_target}>
+  )
+endif()
+if(WIN32)
   if (onnxruntime_USE_NGRAPH)
     add_custom_command(
       TARGET ${test_data_target} POST_BUILD
@@ -834,6 +851,9 @@ target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/cor
 set(onnxruntime_mlas_test_libs onnxruntime_mlas onnxruntime_common)
 if(NOT WIN32)
   list(APPEND onnxruntime_mlas_test_libs nsync_cpp ${CMAKE_DL_LIBS})
+endif()
+if (onnxruntime_USE_OPENMP)
+  list(APPEND onnxruntime_mlas_test_libs OpenMP::OpenMP_CXX)
 endif()
 list(APPEND onnxruntime_mlas_test_libs Threads::Threads)
 target_link_libraries(onnxruntime_mlas_test PRIVATE ${onnxruntime_mlas_test_libs})

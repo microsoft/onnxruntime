@@ -101,13 +101,13 @@ class LpPool {
 class PoolBase {
  private:
   static int GetStartVersion(const OpKernelInfo& info) {
-    return info.node().Op()->since_version();
+    return info.node().SinceVersion();
   }
 
  protected:
   PoolBase(const OpKernelInfo& info)
-   : op_name_(info.GetKernelDef().OpName()),
-     pool_attrs_(info, op_name_, GetStartVersion(info)) {
+      : op_name_(info.GetKernelDef().OpName()),
+        pool_attrs_(info, op_name_, GetStartVersion(info)) {
   }
 
   ~PoolBase() = default;

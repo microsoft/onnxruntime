@@ -200,8 +200,7 @@ __global__ void reduce_all_kernel(const int size, const TIn * data, TOut* output
 }
 
 template<typename TIn, typename TOut, typename TOp, typename TFinalOp, bool DivideResultBySize>
-void call_reduce_all_kernel(const TIn *data, TOut *output, int size, TOut *buffer)
-{
+void call_reduce_all_kernel(const TIn *data, TOut *output, int size, TOut *buffer) {
   const auto block_size = compute_block_size(size);
   const int num_blocks = compute_grid_size(size);
   const dim3 block(block_size.first, block_size.second, 1);
@@ -216,57 +215,57 @@ void call_reduce_all_kernel(const TIn *data, TOut *output, int size, TOut *buffe
   reduce_all_kernel<TIn, TOut, TOp, TFinalOp, DivideResultBySize><<<grid, block, shared_mem_size>>>(size, data, output, buffer);
 }
 
-template<typename TIn, typename TOut>
+template <typename TIn, typename TOut>
 void reduce_sum(const TIn* data, TOut* output, int size, TOut* buffer) {
   call_reduce_all_kernel<TIn, TOut, Cast<TOut, TIn>, Identity<TOut>, false>(
-    data, output, size, buffer);
+      data, output, size, buffer);
 }
 
-template<typename TIn, typename TOut>
+template <typename TIn, typename TOut>
 void reduce_square_sum(const TIn* data, TOut* output, int size, TOut* buffer) {
   call_reduce_all_kernel<TIn, TOut, Square<TOut, TIn>, Identity<TOut>, false>(
-    data, output, size, buffer);
+      data, output, size, buffer);
 }
 
-template<typename TIn, typename TOut>
+template <typename TIn, typename TOut>
 void reduce_l2_norm(const TIn* data, TOut* output, int size, TOut* buffer) {
   call_reduce_all_kernel<TIn, TOut, Square<TOut, TIn>, Sqrt<TOut>, false>(
-    data, output, size, buffer);
+      data, output, size, buffer);
 }
 
-template<typename TIn, typename TOut>
+template <typename TIn, typename TOut>
 void reduce_mean(const TIn* data, TOut* output, int size, TOut* buffer) {
   call_reduce_all_kernel<TIn, TOut, Cast<TOut, TIn>, Identity<TOut>, true>(
-    data, output, size, buffer);
+      data, output, size, buffer);
 }
 
 template void reduce_sum<half, float>(
-  const half* data, float* output, int size, float* buffer);
+    const half* data, float* output, int size, float* buffer);
 template void reduce_sum<float, float>(
-  const float* data, float* output, int size, float* buffer);
+    const float* data, float* output, int size, float* buffer);
 template void reduce_sum<double, double>(
-  const double* data, double* output, int size, double* buffer);
+    const double* data, double* output, int size, double* buffer);
 
 template void reduce_square_sum<half, float>(
-  const half* data, float* output, int size, float* buffer);
+    const half* data, float* output, int size, float* buffer);
 template void reduce_square_sum<float, float>(
-  const float* data, float* output, int size, float* buffer);
+    const float* data, float* output, int size, float* buffer);
 template void reduce_square_sum<double, double>(
-  const double* data, double* output, int size, double* buffer);
+    const double* data, double* output, int size, double* buffer);
 
 template void reduce_l2_norm<half, float>(
-  const half* data, float* output, int size, float* buffer);
+    const half* data, float* output, int size, float* buffer);
 template void reduce_l2_norm<float, float>(
-  const float* data, float* output, int size, float* buffer);
+    const float* data, float* output, int size, float* buffer);
 template void reduce_l2_norm<double, double>(
-  const double* data, double* output, int size, double* buffer);
+    const double* data, double* output, int size, double* buffer);
 
 template void reduce_mean<half, float>(
-  const half* data, float* output, int size, float* buffer);
+    const half* data, float* output, int size, float* buffer);
 template void reduce_mean<float, float>(
-  const float* data, float* output, int size, float* buffer);
+    const float* data, float* output, int size, float* buffer);
 template void reduce_mean<double, double>(
-  const double* data, double* output, int size, double* buffer);
+    const double* data, double* output, int size, double* buffer);
 
 bool is_matrix_row_reduction(
     const cudnnReduceTensorOp_t cudnn_reduce_op,
@@ -286,23 +285,15 @@ bool is_matrix_row_reduction(
   if (cudnn_reduce_op != CUDNN_REDUCE_TENSOR_ADD)
     return false;
 
-  // Check if all but the last axis are reduced. For example, reducing
-  // [N, C, H, W]-tensor to [W]-tensor can pass these two checks but reducing
-  // [N, C]-tensor to [N, 1]-tensor cannot.
-  if (axes.size() != rank - 1)
-    return false;
-
-  // The last reduced axis should be the second last axis. For
-  // [N, C, H, W]-input, the sorted axes should be [0, 1, 2].
-  std::sort(axes.begin(), axes.end());
-  if (axes.back() != rank - 2)
+  //empty axes, default reduction
+  if (axes.size() < 1)
     return false;
 
   return true;
 }
 
-template<typename TIn, typename TOut, typename TBuf>
-__global__ void reduce_matrix_rows_kernel(const TIn *input, TOut *output, int m, int n) {
+template <typename TIn, typename TOut, typename TBuf>
+__global__ void reduce_matrix_rows_kernel(const TIn* input, TOut* output, int m, int n) {
   constexpr int x_load_count_per_thread = 1;
   constexpr int y_load_count_per_thread = 4;
   const int t_count_x_in_grid = blockDim.x * gridDim.x;
@@ -315,7 +306,10 @@ __global__ void reduce_matrix_rows_kernel(const TIn *input, TOut *output, int m,
 
   // Shape is blockDim.y-by-blockDim.x and element type is TBuf.
   extern __shared__ unsigned char shared_memory_[];
-  TBuf *shared_memory = reinterpret_cast<TBuf*>(shared_memory_);
+  TBuf* shared_memory = reinterpret_cast<TBuf*>(shared_memory_);
+
+  // to prevent int overflow in index calculation for input size m*n
+  const int64_t n_int64 = static_cast<int64_t>(n);
 
   for (int col = tid_x_in_grid; col < n; col += x_grid_stride) {
     shared_memory[tid_in_block] = TBuf(0.0f);
@@ -323,14 +317,14 @@ __global__ void reduce_matrix_rows_kernel(const TIn *input, TOut *output, int m,
     // This loops load multiple blockDim.y-by-blockDim.x sub-tensors from the input.
     for (int row = tid_y_in_grid; row < m; row += y_grid_stride) {
       TBuf sum = 0.0f;
-      // Thread-level reduction. Each thread loads y_load_count_per_thread values
-      // and aggregrate them.
+// Thread-level reduction. Each thread loads y_load_count_per_thread values
+// and aggregrate them.
 #pragma unroll(y_load_count_per_thread)
       for (int row_inner = 0; row_inner < y_load_count_per_thread; ++row_inner) {
         int row_final = row + row_inner * t_count_y_in_grid;
         int col_final = col;
         if (row_final < m && col_final < n) {
-          sum += TBuf(input[row_final * n + col_final]);
+          sum += TBuf(input[row_final * n_int64 + col_final]);
         }
       }
       // Write thread-level reduction result into shared memory.
@@ -340,8 +334,8 @@ __global__ void reduce_matrix_rows_kernel(const TIn *input, TOut *output, int m,
     // Wait all threads to finish their thread-level reductions.
     __syncthreads();
 
-    // This loop conducts reduction on elements stored in shared memory.
-    // Each block reduces blockDim.y-by-blockDim.x tensor to 1-by-blockDim.x tensor.
+// This loop conducts reduction on elements stored in shared memory.
+// Each block reduces blockDim.y-by-blockDim.x tensor to 1-by-blockDim.x tensor.
 #pragma unroll(4)
     for (int stride = blockDim.y / 2; stride > 0; stride /= 2) {
       if (threadIdx.y < stride) {
@@ -362,8 +356,8 @@ __global__ void reduce_matrix_rows_kernel(const TIn *input, TOut *output, int m,
 // This function reduces the given input tensor along all but the last axis.
 // For example, [N, C, H, W]-tensor may lead to a output [W]-tensor.
 // It's implementation is in reduction_ops.cu and called in reduction_ops.cc.
-template<typename TIn, typename TOut, typename TBuf>
-void call_reduce_matrix_rows(const TIn *input, TOut *output, int m, int n) {
+template <typename TIn, typename TOut, typename TBuf>
+void call_reduce_matrix_rows(const TIn* input, TOut* output, int m, int n) {
   constexpr int max_num_threads_in_block = 512;
   constexpr int max_num_blocks_in_grid = 512;
   constexpr int load_count_per_thread = 4;
@@ -380,21 +374,20 @@ void call_reduce_matrix_rows(const TIn *input, TOut *output, int m, int n) {
       input, output, m, n);
 }
 
-template<typename TIn, typename TOut>
-void reduce_matrix_rows(const TIn* data, TOut* output, int m, int n)
-{
+template <typename TIn, typename TOut>
+void reduce_matrix_rows(const TIn* data, TOut* output, int m, int n) {
   call_reduce_matrix_rows<TIn, TOut, TOut>(data, output, m, n);
 }
 
-template<> void reduce_matrix_rows<half, half>(const half* data, half* output, int m, int n)
-{
+template <>
+void reduce_matrix_rows<half, half>(const half* data, half* output, int m, int n) {
   call_reduce_matrix_rows<half, half, float>(data, output, m, n);
 }
 
 template void reduce_matrix_rows<float, float>(
-  const float* data, float* output, int m, int n);
+    const float* data, float* output, int m, int n);
 template void reduce_matrix_rows<double, double>(
-  const double* data, double* output, int m, int n);
+    const double* data, double* output, int m, int n);
 
 }  // namespace cuda
 }  // namespace onnxruntime

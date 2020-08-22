@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
+//// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 #pragma once
@@ -7,26 +7,30 @@
 #include <map>
 #include <unordered_map>
 #include <vector>
+
 #include "gsl/gsl"
-#include "core/graph/onnx_protobuf.h"
+
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/profiler.h"
 #include "core/framework/allocation_planner.h"
+#include "core/framework/callback.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/framework_common.h"
+#include "core/framework/fuse_nodes_funcs.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/mem_pattern.h"
 #include "core/framework/ml_value.h"
-#include "core/framework/callback.h"
-#include "core/framework/ort_value_name_idx_map.h"
 #include "core/framework/node_index_info.h"
+#include "core/framework/op_kernel.h"
+#include "core/framework/ort_value_name_idx_map.h"
 #include "core/graph/graph_viewer.h"
-#include "core/framework/fuse_nodes_funcs.h"
-#include "core/platform/threadpool.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/platform/ort_mutex.h"
+#include "core/platform/path_lib.h"
+#include "core/platform/threadpool.h"
 
 namespace onnxruntime {
 
@@ -76,13 +80,6 @@ class SessionState {
         use_deterministic_compute_(use_deterministic_compute) {
     SetupAllocators();
   }
-
-  // Populate OrtValueNameIdxMap and create the graph viewer.
-  // Call once all graph modifications like transforms are completed.
-  void CreateGraphInfo();
-
-  // Call CreateKernels after CreateGraphInfo
-  Status CreateKernels(const KernelRegistryManager& custom_registry_manager);
 
   ~SessionState() {
     for (auto* p : session_kernels_) {
@@ -141,18 +138,6 @@ class SessionState {
    */
   const std::unordered_map<int, OrtValue>& GetConstantInitializedTensors() const;
 
-  /**
-  Cleans the initialized tensors that have been added to SessionState as OrtValue instances from the Graph instance 
-  where they are present as TensorProto instances and will not be used when executing the model.
-  */
-  void CleanInitializedTensorsFromGraph();
-
-  /**
-  * Prepack the constant initialized tensors for better performance.
-  * The original constant initialized tensors will be removed to save memory.
-  */
-  Status PrepackInitializedConstantTensors();
-
 #ifdef ENABLE_TRAINING
   /**
   Get some initialized tensors (weights).
@@ -173,8 +158,7 @@ class SessionState {
   NameMLValMap GetInitializedTensors(const std::unordered_set<std::string>& interested_weights) const;
 #endif
 
-  // execution plan
-  void SetExecutionPlan(std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan);
+  // execution plan. nullptr until FinalizeSessionState is called
   const SequentialExecutionPlan* GetExecutionPlan() const;
   /**
   Get the logger for this session.
@@ -235,6 +219,7 @@ class SessionState {
   };
 
   using NameNodeInfoMapType = std::unordered_map<std::string, std::vector<NodeInfo>>;
+
   common::Status AddInputNameToNodeInfoMapping(const std::string& input_name, const NodeInfo& node_info);
   common::Status GetInputNodeInfo(const std::string& input_name, std::vector<NodeInfo>& node_info_vec) const;
   const NameNodeInfoMapType& GetInputNodeInfoMap() const;
@@ -243,21 +228,11 @@ class SessionState {
   common::Status GetOutputNodeInfo(const std::string& output_name, std::vector<NodeInfo>& node_info_vec) const;
   const NameNodeInfoMapType& GetOutputNodeInfoMap() const;
 
-  /// Add a SessionState instance for executing a subgraph in a Node
-  /// @param index Index of Node containing subgraph
-  /// @param attribute_name Name of attribute containing the subgraph GraphProto
-  /// @param session_state SessionState for subgraph execution
-  void AddSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name,
-                               std::unique_ptr<SessionState> session_state);
+  // Get the KernelCreateInfo entry for a node. SessionState must be finalized before calling.
+  const KernelCreateInfo& GetNodeKernelCreateInfo(NodeIndex node_index) const;
 
   /// Return SessionState for the given Node index and attribute name if found.
   const SessionState* GetSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name) const;
-
-  SessionState* GetMutableSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name);
-
-  // Remove the SessionState for a node containing a subgraph.
-  // If the node isn't going to be executed by the CPU provider we don't need it.
-  void RemoveSubgraphSessionState(onnxruntime::NodeIndex index);
 
   concurrency::ThreadPool* GetThreadPool() const noexcept { return thread_pool_; }
   concurrency::ThreadPool* GetInterOpThreadPool() const noexcept { return inter_op_thread_pool_; }
@@ -271,15 +246,56 @@ class SessionState {
   const DataTransferManager& GetDataTransferMgr() const noexcept { return data_transfer_mgr_; }
 
   std::vector<BufferUniquePtr>& GetMutableWeightsBuffers() noexcept { return weights_buffers_; }
+
   const NodeIndexInfo& GetNodeIndexInfo() const;
 
+#if !defined(ORT_MINIMAL_BUILD)
   void UpdateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue_idxs);
   const std::unordered_set<NodeIndex>* GetToBeExecutedNodes(const std::vector<int>& fetch_mlvalue_idxs) const;
+#endif
+
+  Status FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
+                              KernelRegistryManager& kernel_registry_manager,
+                              const SessionOptions& session_options = {},
+                              bool remove_initializers = true);
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
   void SetupAllocators();
+
+  // Populate OrtValueNameIdxMap and create the graph viewer.
+  void CreateGraphInfo();
+
+  // create kernels using info in kernel_create_info_map_
+  Status CreateKernels(const KernelRegistryManager& custom_registry_manager);
+
+  // remove TensorProto versions of initializers from Graph instance
+  // (replaced byOrtValue instances in initialized_tensors_)
+  void CleanInitializedTensorsFromGraph();
+
+  /**
+  * Prepack the constant initialized tensors for better performance.
+  * The original constant initialized tensors will be removed to save memory.
+  */
+  Status PrepackInitializedConstantTensors();
+
+  SessionState* GetMutableSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name);
+
+  Status CreateSubgraphSessionState();
+
+  void AddSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name,
+                               std::unique_ptr<SessionState> session_state);
+
+#if !defined(ORT_MINIMAL_BUILD)
+  Status PopulateKernelCreateInfo(KernelRegistryManager& kernel_registry_manager);
+#endif
+
+  Status FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
+                                  KernelRegistryManager& kernel_registry_manager,
+                                  _In_opt_ const Node* parent_node,
+                                  const SessionOptions& session_options,
+                                  bool remove_initializers);
 
 #ifdef ENABLE_TRAINING
   Status GeneratePatternGroupCache(
@@ -288,6 +304,9 @@ class SessionState {
       MemoryPatternGroup* output,
       std::unordered_map<int, TensorShape>& inferred_shapes) const;
 #endif
+
+  // KernelCreateInfo for each node so we do kernel lookup once
+  std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>> kernel_create_info_map_;
 
   // cache of the constructed kernels to avoid spending construction time per executor
   std::vector<OpKernel*> session_kernels_;
@@ -377,7 +396,10 @@ class SessionState {
 
   std::unique_ptr<NodeIndexInfo> node_index_info_;
   std::multimap<int, std::unique_ptr<FeedsFetchesManager>> cached_feeds_fetches_managers_;
+
+#if !defined(ORT_MINIMAL_BUILD)
   std::map<std::vector<int>, std::unordered_set<NodeIndex>> to_be_executed_nodes_;
+#endif
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   SessionState* parent_ = nullptr;
