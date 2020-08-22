@@ -165,7 +165,6 @@ struct Env : Base<OrtEnv> {
   Env& DisableTelemetryEvents();
 
   Env& CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const OrtArenaCfg* arena_cfg);
-  Env& RegisterAllocator(OrtAllocator* allocator);
 
   static const OrtApi* s_api;
 };

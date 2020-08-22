@@ -22,33 +22,4 @@ class AllocatorWrapper : public IAllocator {
   OrtAllocator* impl_;
 };
 
-class ArenaAllocatorWrapper : public IArenaAllocator {
- public:
-  ArenaAllocatorWrapper(OrtAllocator* impl) : IArenaAllocator(*impl->Info(impl)), impl_(impl) {}
-  void* Alloc(size_t size) override {
-    return impl_->Alloc(impl_, size);
-  }
-  void Free(void* p) override {
-    return impl_->Free(impl_, p);
-  }
-
-  virtual void* Reserve(size_t size) override {
-    return impl_->Reserve(impl_, size);
-  }
-
-  virtual size_t Used() const override {
-    return impl_->Used(impl_);
-  }
-
-  virtual size_t Max() const override {
-    return impl_->Max(impl_);
-  }
-
-  const OrtAllocator* GetOrtAllocator() const {
-    return impl_;
-  }
-
- private:
-  OrtAllocator* impl_;
-};
 }  // namespace onnxruntime

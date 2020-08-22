@@ -1906,7 +1906,6 @@ static constexpr OrtApi ort_api_1_to_5 = {
     &OrtApis::ClearBoundOutputs,
     &OrtApis::TensorAt,
     &OrtApis::CreateAndRegisterAllocator,
-    &OrtApis::RegisterAllocator,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

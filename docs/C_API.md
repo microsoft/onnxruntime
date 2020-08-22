@@ -24,11 +24,10 @@ is as follows
 * **Share allocator(s) between sessions:** Allow multiple sessions in the same process to use the same allocator(s). This
 allocator is first registered in the env and then reused by all sessions that use the same env instance unless a session
 chooses to override this by setting ```session_state.use_env_allocators``` to "0". Usage of this feature is as follows
-   * Either implement your own allocator that you want to share using the ```OrtAllocator``` interface and register it
-     with the env using the ```RegisterAllocator``` API OR use an allocator provided by ORT using the ```CreateAndRegisterAllocator``` API.
-   * Set ```session_state.use_env_allocators``` to "1" for each session that wants to use the env registered allocators.
-   * See tests ```TestSharedAllocatorUsingCreateAndRegisterAllocator``` and ```TestSharedAllocatorUsingRegisterAllocator``` in
-     onnxruntime/test/shared_lib/test_inference.cc for examples.
+   * Register an allocator created by ORT using the ```CreateAndRegisterAllocator``` API.
+   * Set ```session.use_env_allocators``` to "1" for each session that wants to use the env registered allocators.
+   * See test ```TestSharedAllocatorUsingCreateAndRegisterAllocator``` in
+     onnxruntime/test/shared_lib/test_inference.cc for an example.
 
 ## Usage Overview
 

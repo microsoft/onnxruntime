@@ -313,11 +313,6 @@ inline Env& Env::CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const
   return *this;
 }
 
-inline Env& Env::RegisterAllocator(OrtAllocator* allocator) {
-  ThrowOnError(GetApi().RegisterAllocator(p_, allocator));
-  return *this;
-}
-
 inline CustomOpDomain::CustomOpDomain(const char* domain) {
   ThrowOnError(GetApi().CreateCustomOpDomain(domain, &p_));
 }

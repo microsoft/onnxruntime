@@ -205,17 +205,6 @@ typedef struct OrtAllocator {
   void*(ORT_API_CALL* Alloc)(struct OrtAllocator* this_, size_t size);
   void(ORT_API_CALL* Free)(struct OrtAllocator* this_, void* p);
   const struct OrtMemoryInfo*(ORT_API_CALL* Info)(const struct OrtAllocator* this_);
-
-  // Following functions are meant for arena based allocators and optional to implement
-  // if you're not implementing your allocator based on an arena.
-  // Reserve size bytes
-  void*(ORT_API_CALL* Reserve)(struct OrtAllocator* this_, size_t size);
-
-  // Return the number of bytes in use
-  size_t(ORT_API_CALL* Used)(const struct OrtAllocator* this_);
-
-  // Return the max memory in bytes configured for this arena
-  size_t(ORT_API_CALL* Max)(const struct OrtAllocator* this_);
 } OrtAllocator;
 
 typedef void(ORT_API_CALL* OrtLoggingFunction)(
@@ -1017,23 +1006,13 @@ struct OrtApi {
    * Creates an allocator instance and registers it with the env to enable
    * sharing between multiple sessions that use the same env instance.
    * Lifetime of the created allocator will be valid for the duration of the environment.
-   * If an allocator with the same OrtMemoryInfo is already registered, this will override the
-   * previous entry and a warning will be emitted.
+   * Returns an error if an allocator with the same OrtMemoryInfo is already registered.
    * \param mem_info must be non-null.
    * \param arena_cfg if nullptr defaults will be used.
    * See docs/C_API.md for details.
   */
   ORT_API2_STATUS(CreateAndRegisterAllocator, _Inout_ OrtEnv* env, _In_ const OrtMemoryInfo* mem_info,
                   _In_ const OrtArenaCfg* arena_cfg);
-
-  /**
-   * Register an allocator for sharing between multiple sessions that use the same env instance.
-   * Lifetime of the allocator is managed by the user.
-   * If an allocator with the same OrtMemoryInfo is already registered, this will override the
-   * previous entry and a warning will be emitted.
-   * See docs/C_API.md for details.
-  */
-  ORT_API2_STATUS(RegisterAllocator, _Inout_ OrtEnv* env, _Inout_ OrtAllocator* allocator);
 };
 
 /*

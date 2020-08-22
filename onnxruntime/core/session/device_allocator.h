@@ -17,10 +17,6 @@ struct OrtAllocatorForDevice : public OrtAllocator {
     OrtAllocator::Alloc = [](OrtAllocator* this_, size_t size) { return static_cast<OrtAllocatorForDevice*>(this_)->Alloc(size); };
     OrtAllocator::Free = [](OrtAllocator* this_, void* p) { static_cast<OrtAllocatorForDevice*>(this_)->Free(p); };
     OrtAllocator::Info = [](const OrtAllocator* this_) { return static_cast<const OrtAllocatorForDevice*>(this_)->Info(); };
-
-    OrtAllocator::Reserve = [](OrtAllocator* this_, size_t size) { return static_cast<OrtAllocatorForDevice*>(this_)->Reserve(size); };
-    OrtAllocator::Used = [](const OrtAllocator* this_) { return static_cast<const OrtAllocatorForDevice*>(this_)->Used(); };
-    OrtAllocator::Max = [](const OrtAllocator* this_) { return static_cast<const OrtAllocatorForDevice*>(this_)->Max(); };
   }
 
   ~OrtAllocatorForDevice() = default;
@@ -30,30 +26,6 @@ struct OrtAllocatorForDevice : public OrtAllocator {
   }
   void Free(void* p) const {
     device_allocator_->Free(p);
-  }
-
-  void* Reserve(size_t size) {
-    if (device_allocator_->Info().alloc_type == OrtArenaAllocator) {
-      return static_cast<IArenaAllocator*>(device_allocator_.get())->Reserve(size);
-    } else {
-      ORT_THROW("This method cannot be used since this is not an arena based allocator.");
-    }
-  }
-
-  size_t Used() const {
-    if (device_allocator_->Info().alloc_type == OrtArenaAllocator) {
-      return static_cast<IArenaAllocator*>(device_allocator_.get())->Used();
-    } else {
-      ORT_THROW("This method cannot be used since this is not an arena based allocator.");
-    }
-  }
-
-  size_t Max() const {
-    if (device_allocator_->Info().alloc_type == OrtArenaAllocator) {
-      return static_cast<IArenaAllocator*>(device_allocator_.get())->Max();
-    } else {
-      ORT_THROW("This method cannot be used since this is not an arena based allocator.");
-    }
   }
 
   const OrtMemoryInfo* Info() const {

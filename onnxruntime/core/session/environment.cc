@@ -56,7 +56,7 @@ Status Environment::RegisterAllocator(AllocatorPtr allocator) {
                           std::end(shared_allocators_),
                           [&mem_info](const AllocatorPtr& alloc_ptr) { return alloc_ptr->Info() == mem_info; });
   if (ite != shared_allocators_.end()) {
-    LOGS_DEFAULT(WARNING) << "Allocator with this OrtMemoryInfo is already registered. Overriding the previous entry.";
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Allocator with this OrtMemoryInfo is already registered.");
   }
   shared_allocators_.insert(ite, allocator);
   return Status::OK();

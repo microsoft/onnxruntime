@@ -57,8 +57,7 @@ class Environment {
 
   /**
    * Registers an allocator for sharing between multiple sessions.
-   * If an allocator with the same OrtMemoryInfo is already registered, this will override the
-   * previous entry and a warning will be emitted.
+   * Return an error if an allocator with the same OrtMemoryInfo is already registered.
   */
   Status RegisterAllocator(AllocatorPtr allocator);
 
