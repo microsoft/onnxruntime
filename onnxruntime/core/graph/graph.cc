@@ -1580,7 +1580,7 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
 
     // only return data if it's for a constant initializer. checks for outer scope initializers
     // if this is a subgraph and the name isn't found locally.
-    const TensorProto* initializer = GetConstantInitializer(graph_, def->Name(), true);
+    const TensorProto* initializer = graph_.GetConstantInitializer(def->Name(), true);
     return initializer;
   }
 
