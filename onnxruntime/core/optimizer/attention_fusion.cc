@@ -143,38 +143,6 @@ static NodeArg& MergeQkvWeights(Graph& graph, int64_t hidden_size,
   return graph_utils::AddInitializer(graph, initializer);
 }
 
-static NodeArg& AddMaskReduceSum(Graph& graph, NodeArg* reduce_sum_input, TypeProto& output_type, ProviderType provider_type) {
-  NodeArg& reduce_sum_output = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("MaskIndex_Int32"), &output_type);
-
-  const std::vector<NodeArg*> input_defs{reduce_sum_input};
-  const std::vector<NodeArg*> output_defs{&reduce_sum_output};
-  Node& node = graph.AddNode(
-      graph.GenerateNodeName("MaskIndex"),
-      "ReduceSum",
-      "Count number of words",
-      input_defs,
-      output_defs,
-      {},
-      kOnnxDomain);
-
-  // Add attribute: "axes" = [1]
-  ONNX_NAMESPACE::AttributeProto axes;
-  axes.set_name("axes");
-  axes.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
-  axes.add_ints(1);
-  node.AddAttribute("axes", axes);
-
-  // Add attribute: "keepdims" = 0
-  ONNX_NAMESPACE::AttributeProto keepdims;
-  keepdims.set_name("keepdims");
-  keepdims.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
-  keepdims.set_i(static_cast<int64_t>(0));
-  node.AddAttribute("keepdims", keepdims);
-
-  node.SetExecutionProviderType(provider_type);
-
-  return reduce_sum_output;
-}
 
 static NodeArg* ProcessMask(Graph& graph, NodeArg* mask_input, ProviderType provider_type, const logging::Logger& logger) {
   // Validate mask input shape (batch_size, sequence_length) and data type.
@@ -193,21 +161,13 @@ static NodeArg* ProcessMask(Graph& graph, NodeArg* mask_input, ProviderType prov
     return nullptr;
   }
 
-  NodeArg* reduce_sum_input = mask_input;
-  if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64 ||
-    data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+  NodeArg* mask_int32 = mask_input;
+  if (data_type != ONNX_NAMESPACE::TensorProto_DataType_INT32) {
     NodeArg& cast_int32 = AttentionFusionHelper::CastMaskToInt32(graph, mask_input, provider_type);
-    reduce_sum_input = &cast_int32;
+    mask_int32 = &cast_int32;
   }
 
-  // Construct shape based on mask input shape. Note that batch_size could be symbolic.
-  TypeProto output_type;
-  output_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
-  auto dim = output_type.mutable_tensor_type()->mutable_shape()->add_dim();
-  *dim = mask_shape->dim(0);
-
-  NodeArg& output = AddMaskReduceSum(graph, reduce_sum_input, output_type, provider_type);
-  return &output;
+  return mask_int32;
 }
 
 static NodeArg* GetOrCreateMaskIndex(

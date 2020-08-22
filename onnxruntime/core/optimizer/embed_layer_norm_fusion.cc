@@ -499,12 +499,8 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
         !graph_utils::IsSupportedProvider(attention_node, GetCompatibleExecutionProviders())) {
       continue;
     }
-    // Find ReduceSum --> Attention
+
     std::vector<const Node::EdgeEnd*> edges;
-    if (!graph_utils::FindPath(attention_node, true, {{0, 3, "ReduceSum", {1, 11}, kOnnxDomain}}, edges, logger)) {
-      continue;
-    }
-    Node& reduce_sum_node = *graph.GetNode(edges[0]->GetNode().Index());
 
     // Find Add --> LayerNormalization
     if (!graph_utils::FindPath(layer_norm_node, true, {{0, 0, "Add", {7}, kOnnxDomain}}, edges, logger)) {
@@ -635,21 +631,9 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       continue;
     }
 
-    // Get input "mask" from "ReduceSum" node.
-    NodeArg* mask = reduce_sum_node.MutableInputDefs()[0];
-    if (!CheckInput(mask, logger)) {
-      DEBUG_LOG("Mask is not valid. ");
-      continue;
-    }
-
     if (utils::GetTensorShapeFromTensorShapeProto(*(input_ids->Shape())) !=
         utils::GetTensorShapeFromTensorShapeProto(*(segment_ids->Shape()))) {
       DEBUG_LOG("Input_ids and segment id should have the same shape. ");
-      continue;
-    }
-    if (utils::GetTensorShapeFromTensorShapeProto(*(input_ids->Shape())) !=
-        utils::GetTensorShapeFromTensorShapeProto(*(mask->Shape()))) {
-      DEBUG_LOG("Input_ids and mask should have the same shape. ");
       continue;
     }
 
@@ -665,10 +649,9 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       continue;
     }
 
-    // Cast input_ids, segment_ids, and mask to int32 if needed.
+    // Cast input_ids and segment_ids to int32 if needed.
     input_ids = CastToInt32(graph, input_ids, layer_norm_node.GetExecutionProviderType());
     segment_ids = CastToInt32(graph, segment_ids, layer_norm_node.GetExecutionProviderType());
-    mask = CastToInt32(graph, mask, layer_norm_node.GetExecutionProviderType());
 
     const std::vector<NodeArg*> embed_layer_norm_input_defs{
         input_ids,
@@ -677,13 +660,15 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
         position_embedding,
         segment_embedding,
         layer_norm_node.MutableInputDefs()[1],
-        layer_norm_node.MutableInputDefs()[2],
-        mask};
+        layer_norm_node.MutableInputDefs()[2]};
+    
+    auto& mask_index = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("mask_index"), nullptr);
+
     Node& embed_layer_norm_node = graph.AddNode(graph.GenerateNodeName("EmbedLayerNormalization"),
                                                 "EmbedLayerNormalization",
                                                 "fused EmbedLayerNorm subgraphs ",
                                                 embed_layer_norm_input_defs,
-                                                {layer_norm_node.MutableOutputDefs()[0], reduce_sum_node.MutableOutputDefs()[0]},
+                                                {layer_norm_node.MutableOutputDefs()[0], &mask_index},
                                                 {}, kMSDomain);
 
     // Get attribute "epsilon" from "LayerNormalization" node if available. Else, default value
@@ -702,7 +687,6 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     nodes_to_remove.push_back(word_gather_node.Index());
     nodes_to_remove.push_back(segment_gather_node.Index());
     nodes_to_remove.push_back(add_node.Index());
-    nodes_to_remove.push_back(reduce_sum_node.Index());
     nodes_to_remove.push_back(layer_norm_add_node.Index());
     nodes_to_remove.push_back(layer_norm_node.Index());
 
