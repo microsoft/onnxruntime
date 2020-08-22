@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-namespace onnxruntime.experimental.fbs.Attribute;
+namespace onnxruntime.experimental.fbs;
 
-enum Type : int {
+// Attribute
+enum AttributeType : int {
   UNDEFINED = 0,
   FLOAT = 1,
   INT = 2,
@@ -19,9 +20,8 @@ enum Type : int {
   SPARSE_TENSORS = 12,
 }
 
-namespace onnxruntime.experimental.fbs.Tensor.Shape;
-
-table Info {
+// Shape
+table Shape {
 dim:[Dimension];
 }
 
@@ -35,9 +35,8 @@ table DimensionValue {
   dim_param:string;
 }
 
-namespace onnxruntime.experimental.fbs.Tensor;
-
-enum DataType : int {
+// Tensor
+enum TensorDataType : int {
   UNDEFINED = 0,
   FLOAT = 1,
   UINT8 = 2,
@@ -57,13 +56,12 @@ enum DataType : int {
   BFLOAT16 = 16,
 }
 
-table TypeInfo{
-  elem_type:DataType;
-  shape:Shape.Info;
+table TensorTypeAndShape{
+  elem_type:TensorDataType;
+  shape:Shape;
 }
 
-namespace onnxruntime.experimental.fbs.Graph;
-
+// Node
 enum NodeType : int {
   Primitive = 0,
   Fused = 1,
@@ -85,7 +83,7 @@ table Node {
   op_type:string;
   type:NodeType;
   execution_provider_type:string;
-  
+
   inputs:[string];
   outputs:[string];
   attributes:[onnxruntime.experimental.fbs.Attribute];
@@ -94,13 +92,7 @@ table Node {
   implicit_inputs:[string];
 }
 
-namespace onnxruntime.experimental.fbs;
-
-table OperatorSetId {
-  domain:string;
-  version:long;
-}
-
+// ValueInfo
 table ValueInfo {
   name:string;
   doc_string:string;
@@ -109,12 +101,18 @@ table ValueInfo {
 
 // TODO add support of Sequence/Map/SparseTensor/Opaque
 union TypeInfoValue {
-  tensor_type:Tensor.TypeInfo,
+  tensor_type:TensorTypeAndShape,
 }
 
 table TypeInfo {
   denotation:string;
   value:TypeInfoValue;
+}
+
+// OpSetId
+table OperatorSetId {
+  domain:string;
+  version:long;
 }
 
 // For simplicity, we will have only two data fields
@@ -123,9 +121,9 @@ table TypeInfo {
 table Tensor {
   name:string;
   doc_string:string;
-  
+
   dims:[long];
-  data_type:Tensor.DataType;
+  data_type:TensorDataType;
 
   raw_data:[ubyte];
 
@@ -136,15 +134,15 @@ table Tensor {
 table Attribute{
   name:string;
   doc_string:string;
-  
-  type:Attribute.Type;
-  
+
+  type:AttributeType;
+
   f:float;
   i:long;
   s:[ubyte];
   t:Tensor;
   g:Graph;
-  
+
   floats:[float];
   ints:[long];
   strings:[string];
@@ -156,11 +154,11 @@ table Graph{
   initializers:[Tensor];
 
   node_args:[ValueInfo];
-  nodes:[Graph.Node];
+  nodes:[Node];
   max_node_index:uint;
 
-  input_edges:[Graph.EdgeEnd];
-  output_edges:[Graph.EdgeEnd];
+  input_edges:[EdgeEnd];
+  output_edges:[EdgeEnd];
 
   inputs:[string];
   outputs:[string];

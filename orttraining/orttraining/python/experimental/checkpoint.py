@@ -38,8 +38,8 @@ def experimental_load_state_dict(ort_trainer, state_dict, strict=False):
     # In this case we cache a reference to desired state and delay the restore until after initialization
     # Unexpected behavior will result if the user changes the reference before initialization
     if not ort_trainer._training_session:
-        ort_trainer.state_dict_ = state_dict
-        ort_trainer.strict_ = strict
+        ort_trainer._state_dict = state_dict
+        ort_trainer._load_state_dict_strict = strict
         return
 
     # update onnx model from loaded state dict
@@ -55,7 +55,7 @@ def experimental_load_state_dict(ort_trainer, state_dict, strict=False):
     ort_trainer._update_onnx_model_initializers(new_initializers)
 
     # create new session based on updated onnx model
-    ort_trainer.state_dict_ = None
+    ort_trainer._state_dict = None
     ort_trainer._init_session()
 
     # load training state
