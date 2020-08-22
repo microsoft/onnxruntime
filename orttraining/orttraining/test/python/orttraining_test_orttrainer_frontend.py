@@ -6,7 +6,6 @@ import onnx
 import os
 import pytest
 import torch
-import unittest
 
 
 from onnxruntime import set_seed
@@ -1051,7 +1050,3 @@ def testORTTrainerLegacyAndExperimentalLRScheduler(seed, device, optimizer_confi
 
     # Compare legacy vs experimental APIs
     _test_helpers.assert_model_outputs(legacy_loss, experimental_loss)
-
-
-if __name__ == "__main__":
-    unittest.main()

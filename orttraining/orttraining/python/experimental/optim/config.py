@@ -53,7 +53,7 @@ class _OptimizerConfig(object):
                  " and additional entries for custom hyper parameter values")
             for k, _ in group.items():
                 if k != 'params':
-                    assert k in defaults or k.replace("_coef", "") in defaults, f"'params' has 'k' hyper parameter not present at 'defaults'"
+                    assert k in defaults or k.replace("_coef", "") in defaults, f"'params' has {k} hyper parameter not present at 'defaults'"
 
         self.name = name
         self.lr = float(defaults['lr'])
