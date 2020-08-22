@@ -220,6 +220,13 @@ Status KernelRegistry::TryCreateKernel(const onnxruntime::Node& node,
   return Status::OK();
 }
 
+static std::string ToString(const std::vector<std::string>& error_strs) {
+  std::ostringstream ostr;
+  std::for_each(std::begin(error_strs), std::end(error_strs),
+                [&ostr](const std::string& str) { ostr << str << "\n"; });
+  return ostr.str();
+}
+
 // It's often this function returns a failed status, but it is totally expected.
 // It just means this registry doesn't have such a kernel, please search it elsewhere.
 // if this function is called before graph partition, then node.provider is not set.
@@ -314,13 +321,6 @@ Status KernelRegistry::Register(KernelCreateInfo&& create_info) {
   // Ownership of the KernelDef is transferred to the map.
   kernel_creator_fn_map_.emplace(key, std::move(create_info));
   return Status::OK();
-}
-
-static std::string ToString(const std::vector<std::string>& error_strs) {
-  std::ostringstream ostr;
-  std::for_each(std::begin(error_strs), std::end(error_strs),
-                [&ostr](const std::string& str) { ostr << str << "\n"; });
-  return ostr.str();
 }
 
 }  // namespace onnxruntime

@@ -3,9 +3,12 @@
 
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/kernel_registry.h"
-#include "core/framework/customregistry.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/session_state.h"
+
+#if !defined(ORT_MINIMAL_BUILD)
+#include "core/framework/customregistry.h"
+#endif
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;

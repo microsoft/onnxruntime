@@ -489,27 +489,7 @@ bool IsGraphInput(const Graph& graph, const NodeArg* input) {
 
 const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const Graph& graph, const std::string& initializer_name,
                                                           bool check_outer_scope) {
-  const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
-  if (graph.GetInitializedTensor(initializer_name, initializer)) {
-    if (graph.CanOverrideInitializer()) {
-      const auto& graph_inputs = graph.GetInputsIncludingInitializers();
-      bool is_constant = std::none_of(graph_inputs.cbegin(), graph_inputs.cend(),
-                                      [&initializer_name](const NodeArg* input) {
-                                        return input->Name() == initializer_name;
-                                      });
-
-      if (!is_constant) {
-        initializer = nullptr;
-      }
-    }
-  } else if (check_outer_scope && graph.IsSubgraph()) {
-    // make sure there's not a local value with the same name. if there is it shadows any initializer in outer scope.
-    if (graph.IsOuterScopeValue(initializer_name)) {
-      initializer = GetConstantInitializer(*graph.ParentGraph(), initializer_name, check_outer_scope);
-    }
-  }
-
-  return initializer;
+  return graph.GetConstantInitializer(initializer_name, check_outer_scope);
 }
 
 bool IsInitializer(const Graph& graph, const std::string& name, bool check_outer_scope) {
