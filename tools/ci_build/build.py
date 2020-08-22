@@ -38,13 +38,6 @@ class UsageError(BaseError):
         super().__init__(message)
 
 
-class TestFailure(BaseError):
-    """Test failure."""
-
-    def __init__(self, *messages):
-        super().__init__("\n".join(messages))
-
-
 def _check_python_version():
     # According to the BUILD.md, python 3.5+ is required:
     # Python 2 is definitely not supported and it should be safer to consider

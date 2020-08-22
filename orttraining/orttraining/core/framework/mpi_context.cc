@@ -5,11 +5,12 @@
 
 namespace onnxruntime {
 namespace training {
-MPIContext::MPIContext() {
-  world_rank = 0;
-  local_rank = 0;
-  world_size = 1;
-  local_size = 1;
+MPIContext::MPIContext() :
+world_rank_(0),
+local_rank_(0),
+world_size_(1),
+local_size_(1)
+{
 #if defined(USE_NCCL)
   setup_mpi();
 #endif
@@ -65,10 +66,10 @@ void MPIContext::setup_mpi() {
 
   printf("Using cuda local_rank: %d, world_rank: %d, world_size: %d, local_size: %d\n(version: %s)\n",
          local_rank, world_rank, world_size, local_size, version);
-  this->world_rank = world_rank;
-  this->local_rank = local_rank;
-  this->world_size = world_size;
-  this->local_size = local_size;
+  this->world_rank_ = world_rank;
+  this->local_rank_ = local_rank;
+  this->world_size_ = world_size;
+  this->local_size_ = local_size;
 }
 
 void MPIContext::shutdown_mpi() {
