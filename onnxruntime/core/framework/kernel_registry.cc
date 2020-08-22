@@ -9,6 +9,7 @@
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
+#if !defined(ORT_MINIMAL_BUILD)
 namespace {
 // Traverses the node's formal parameters and calls TraverseFn with the formal
 // parameter and its associated TypeProto.
@@ -199,6 +200,8 @@ bool KernelRegistry::VerifyKernelDef(const onnxruntime::Node& node,
   return true;
 }
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 Status KernelRegistry::Register(KernelDefBuilder& kernel_builder,
                                 const KernelCreateFn& kernel_creator) {
   return Register(KernelCreateInfo(kernel_builder.Build(), kernel_creator));
@@ -266,15 +269,20 @@ Status KernelRegistry::TryFindKernel(const onnxruntime::Node& node,
 
   auto range = kernel_creator_fn_map_.equal_range(GetMapKey(node.OpType(), node.Domain(), expected_provider));
   std::vector<std::string> verify_kernel_def_error_strs;
+
   for (auto i = range.first; i != range.second; ++i) {
+#if !defined(ORT_MINIMAL_BUILD)
     std::string error_str;
     if (VerifyKernelDef(node, *i->second.kernel_def, error_str)) {
       *out = &i->second;
       return Status::OK();
     }
     verify_kernel_def_error_strs.push_back(error_str);
+#else
+// TODO: Add hash based lookup
+#endif
   }
-  *out = nullptr;
+
   if (!verify_kernel_def_error_strs.empty()) {
     std::ostringstream oss;
     oss << "Op with name (" << node.Name() << ")"
@@ -283,6 +291,8 @@ Status KernelRegistry::TryFindKernel(const onnxruntime::Node& node,
         << " Encountered following errors: (" << ToString(verify_kernel_def_error_strs) << ")";
     return Status(ONNXRUNTIME, FAIL, oss.str());
   }
+
+  *out = nullptr;
   return Status(ONNXRUNTIME, FAIL, "Kernel not found");
 }
 
