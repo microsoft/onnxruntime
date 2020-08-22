@@ -4,7 +4,6 @@
 
 import argparse
 import glob
-import logging
 import multiprocessing
 import os
 import re
@@ -12,11 +11,7 @@ import shutil
 import subprocess
 import sys
 import hashlib
-
-logging.basicConfig(
-    format="%(asctime)s %(name)s [%(levelname)s] - %(message)s",
-    level=logging.DEBUG)
-log = logging.getLogger("Build")
+from logger import log
 
 
 class BaseError(Exception):
@@ -354,6 +349,12 @@ def parse_arguments():
     parser.add_argument(
         "--build_micro_benchmarks", action='store_true',
         help="Build ONNXRuntime micro-benchmarks.")
+    parser.add_argument(
+        "--include_ops_by_model", type=str,
+        help="include ops from model(s) under designated path.")
+    parser.add_argument(
+        "--include_ops_by_file", type=str,
+        help="include ops from csv file.")
     return parser.parse_args()
 
 
@@ -1100,6 +1101,12 @@ def run_training_python_frontend_e2e_tests(cwd):
     # frontend tests are to be added here:
     log.info("Running python frontend e2e tests.")
 
+    import torch
+    ngpus = torch.cuda.device_count()
+    if ngpus > 1:
+        log.debug('RUN: mpirun -n {} {} orttraining_run_glue.py'.format(ngpus, sys.executable))
+        run_subprocess(['mpirun', '-n', str(ngpus), sys.executable, 'orttraining_run_glue.py'], cwd=cwd)
+
     # with orttraining_run_glue.py.
     # 1. we like to force to use single GPU (with CUDA_VISIBLE_DEVICES)
     #   for fine-tune tests.
@@ -1507,6 +1514,18 @@ def main():
 
     if args.skip_tests:
         args.test = False
+
+    if (args.include_ops_by_model and len(args.include_ops_by_model) > 0) or\
+       (args.include_ops_by_file and len(args.include_ops_by_file) > 0):
+
+        from exclude_unused_ops import exclude_unused_ops, get_provider_path
+
+        include_ops_by_model = args.include_ops_by_model if args.include_ops_by_model else ''
+        include_ops_by_file = args.include_ops_by_file if args.include_ops_by_file else ''
+
+        exclude_unused_ops(include_ops_by_model, include_ops_by_file, get_provider_path(use_cuda=args.use_cuda))
+
+        args.test = False  # disable tests since we don't know which ops are enabled
 
     if args.use_tensorrt:
         args.use_cuda = True

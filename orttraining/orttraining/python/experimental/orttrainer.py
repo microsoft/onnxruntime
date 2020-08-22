@@ -7,7 +7,7 @@ from inspect import signature
 import warnings
 
 import onnxruntime as ort
-from . import _utils, amp, optim, postprocess, ORTTrainerOptions
+from . import _utils, amp, checkpoint, optim, postprocess, ORTTrainerOptions
 from .model_desc_validation import _ORTTrainerModelDesc
 
 class TrainStepInfo(object):
@@ -276,8 +276,8 @@ class ORTTrainer(object):
         assert isinstance(path, str), "'path' must be a valid path string"
         dir_name = os.path.dirname(path)
         file_name = os.path.basename(path)
-        if not dir_name or not os.path.exists(dir_name) or not file_name:
-            warnings.warn("'path' is not valid. It must contain an existing folder + filename")
+        if (dir_name and not os.path.exists(dir_name)) or not file_name:
+            warnings.warn("'path' is not valid or does not exist")
             return
 
         with open(path, "wb") as f:
@@ -328,8 +328,9 @@ class ORTTrainer(object):
             outputs_desc = self._model_desc_outputs_with_all_finite
 
         # Update Learning Rate if Necessary
+        lr = self.optim_config.lr
         if self.options.lr_scheduler:
-            self.options.lr_scheduler.step(self._train_step_info)
+            lr = self.options.lr_scheduler._step(self._train_step_info)[0]
 
         # Loss Scale for mixed precision
         loss_scale = None
@@ -340,7 +341,7 @@ class ORTTrainer(object):
             inputs_desc = self._model_desc_inputs_with_lr_and_loss_scale
 
         # Get data. CombineTorchModelLossFn takes label as last input and outputs loss first
-        input = self._prepare_model_input(inputs_desc, self.optim_config.lr, loss_scale, *args, **kwargs)
+        input = self._prepare_model_input(inputs_desc, lr, loss_scale, *args, **kwargs)
 
         # Normalize input
         if not isinstance(args, (list, tuple)):
@@ -392,13 +393,6 @@ class ORTTrainer(object):
             ordered_input_list = [*ordered_input_list,
                                 list(sig_loss.parameters.keys())[1]]
 
-        # Check whether input names from model match inputs from ModelDescription
-        match = True
-        for ordered_list_key, input_name in zip(ordered_input_list, input_names):
-            if ordered_list_key != input_name:
-                match = False
-                break
-
         class CombineTorchModelLossFnWrapInput(torch.nn.Module):
             def __init__(self, model, loss_fn, input_names):
                 super().__init__()
@@ -408,7 +402,6 @@ class ORTTrainer(object):
 
             def forward(self, *inputs):
                 sig = signature(self.model.forward)
-                ordered_list_keys = list(sig.parameters.keys())
 
                 input_dict = {}
                 for key in sig.parameters.keys():
@@ -641,7 +634,7 @@ class ORTTrainer(object):
 
         # TODO: thiagofc: Checkpoint related for redesign
         if self._state_dict:
-            self.load_state_dict(self._state_dict, self._load_state_dict_strict)
+            checkpoint.load_state_dict(self, self._state_dict, self._load_state_dict_strict)
         self._state_dict = None
 
     def _prepare_model_input(self, inputs_desc, lr, loss_scale, *inputs, **kwargs):
@@ -658,13 +651,13 @@ class ORTTrainer(object):
 
         # Append learning rate
         extra_inputs = 0
-        if lr:
+        if lr is not None:
             lr = torch.tensor([lr])
             input += (lr,)
             extra_inputs += 1
 
         # Append loss scale
-        if loss_scale:
+        if loss_scale is not None:
             assert self.options.mixed_precision.enabled, "Loss scale cannot be used without mixed precision"
             loss_scale = loss_scale.clone().detach()
             input += (loss_scale, )
