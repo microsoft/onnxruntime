@@ -19,6 +19,8 @@ class KernelRegistry {
 
   Status Register(KernelCreateInfo&& create_info) ORT_MUST_USE_RESULT;
 
+#if !defined(ORT_MINIMAL_BUILD)
+
   // factory functions should always return a unique_ptr for maximum flexibility
   // for its clients unless the factory is managing the lifecycle of the pointer
   // itself.
@@ -30,13 +32,18 @@ class KernelRegistry {
                          std::unique_ptr<OpKernel>& op_kernel) const ORT_MUST_USE_RESULT;
 
   // Check if an execution provider can create kernel for a node and return the kernel if so
-  Status TryFindKernel(const onnxruntime::Node& node,
-                       onnxruntime::ProviderType exec_provider, const KernelCreateInfo** out) const;
+  Status TryFindKernel(const onnxruntime::Node& node, onnxruntime::ProviderType exec_provider,
+                       const KernelCreateInfo** out) const;
+#endif
+
+  Status TryFindKernel(const onnxruntime::Node& node, onnxruntime::ProviderType exec_provider,
+                       uint64_t kernel_def_hash,
+                       const KernelCreateInfo** out) const;
 
   static bool HasImplementationOf(const KernelRegistry& r, const onnxruntime::Node& node,
-                           onnxruntime::ProviderType exec_provider) {
+                                  onnxruntime::ProviderType exec_provider) {
     const KernelCreateInfo* info;
-    Status st = r.TryFindKernel(node, exec_provider, &info);
+    Status st = r.TryFindKernel(node, exec_provider, uint64_t(0), &info);
     return st.IsOK();
   }
 
@@ -50,6 +57,7 @@ class KernelRegistry {
 #endif
 
  private:
+#if !defined(ORT_MINIMAL_BUILD)
   // Check whether the types of inputs/outputs of the given node match the extra
   // type-constraints of the given kernel. This serves two purposes: first, to
   // select the right kernel implementation based on the types of the arguments
@@ -67,6 +75,7 @@ class KernelRegistry {
   static bool VerifyKernelDef(const onnxruntime::Node& node,
                               const KernelDef& kernel_def,
                               std::string& error_str);
+#endif
 
   static std::string GetMapKey(const std::string& op_name, const std::string& domain, const std::string& provider) {
     std::string key(op_name);

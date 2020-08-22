@@ -9,6 +9,7 @@
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
+#if !defined(ORT_MINIMAL_BUILD)
 namespace {
 // Traverses the node's formal parameters and calls TraverseFn with the formal
 // parameter and its associated TypeProto.
@@ -199,6 +200,33 @@ bool KernelRegistry::VerifyKernelDef(const onnxruntime::Node& node,
   return true;
 }
 
+Status KernelRegistry::TryCreateKernel(const onnxruntime::Node& node,
+                                       const IExecutionProvider& execution_provider,
+                                       const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
+                                       const OrtValueNameIdxMap& ort_value_name_idx_map,
+                                       const FuncManager& funcs_mgr,
+                                       const DataTransferManager& data_transfer_mgr,
+                                       /*out*/ std::unique_ptr<OpKernel>& op_kernel) const {
+  const KernelCreateInfo* kernel_create_info = nullptr;
+  ORT_RETURN_IF_ERROR(TryFindKernel(node, execution_provider.Type(), &kernel_create_info));
+  OpKernelInfo kernel_info(node,
+                           *kernel_create_info->kernel_def,
+                           execution_provider,
+                           constant_initialized_tensors,
+                           ort_value_name_idx_map,
+                           funcs_mgr,
+                           data_transfer_mgr);
+  op_kernel.reset(kernel_create_info->kernel_create_func(kernel_info));
+  return Status::OK();
+}
+
+Status KernelRegistry::TryFindKernel(const onnxruntime::Node& node,
+                                     onnxruntime::ProviderType exec_provider,
+                                     const KernelCreateInfo** out) const {
+  return TryFindKernel(node, exec_provider, uint64_t(0), out);
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 Status KernelRegistry::Register(KernelDefBuilder& kernel_builder,
                                 const KernelCreateFn& kernel_creator) {
   return Register(KernelCreateInfo(kernel_builder.Build(), kernel_creator));
@@ -226,26 +254,6 @@ Status KernelRegistry::Register(KernelCreateInfo&& create_info) {
   return Status::OK();
 }
 
-Status KernelRegistry::TryCreateKernel(const onnxruntime::Node& node,
-                                       const IExecutionProvider& execution_provider,
-                                       const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
-                                       const OrtValueNameIdxMap& ort_value_name_idx_map,
-                                       const FuncManager& funcs_mgr,
-                                       const DataTransferManager& data_transfer_mgr,
-                                       /*out*/ std::unique_ptr<OpKernel>& op_kernel) const {
-  const KernelCreateInfo* kernel_create_info = nullptr;
-  ORT_RETURN_IF_ERROR(TryFindKernel(node, execution_provider.Type(), &kernel_create_info));
-  OpKernelInfo kernel_info(node,
-                           *kernel_create_info->kernel_def,
-                           execution_provider,
-                           constant_initialized_tensors,
-                           ort_value_name_idx_map,
-                           funcs_mgr,
-                           data_transfer_mgr);
-  op_kernel.reset(kernel_create_info->kernel_create_func(kernel_info));
-  return Status::OK();
-}
-
 static std::string ToString(const std::vector<std::string>& error_strs) {
   std::ostringstream ostr;
   std::for_each(std::begin(error_strs), std::end(error_strs),
@@ -260,21 +268,36 @@ static std::string ToString(const std::vector<std::string>& error_strs) {
 // otherwise, kernel_def.provider must equal to node.provider. exec_provider is ignored.
 
 Status KernelRegistry::TryFindKernel(const onnxruntime::Node& node,
-                                     onnxruntime::ProviderType exec_provider, const KernelCreateInfo** out) const {
+                                     onnxruntime::ProviderType exec_provider,
+                                     uint64_t kernel_def_hash,
+                                     const KernelCreateInfo** out) const {
   const auto& node_provider = node.GetExecutionProviderType();
   const auto& expected_provider = (node_provider.empty() ? exec_provider : node_provider);
 
   auto range = kernel_creator_fn_map_.equal_range(GetMapKey(node.OpType(), node.Domain(), expected_provider));
   std::vector<std::string> verify_kernel_def_error_strs;
+
   for (auto i = range.first; i != range.second; ++i) {
+    // prefer hash based lookup
+    if (kernel_def_hash != 0) {
+      if (i->second.kernel_def->GetHash() == kernel_def_hash) {
+        *out = &i->second;
+        return Status::OK();
+      }
+    }
+
+#if !defined(ORT_MINIMAL_BUILD)
     std::string error_str;
     if (VerifyKernelDef(node, *i->second.kernel_def, error_str)) {
       *out = &i->second;
       return Status::OK();
     }
     verify_kernel_def_error_strs.push_back(error_str);
+#else
+    ORT_ENFORCE(kernel_def_hash != 0, "Lookup of kernel for ORT format model requires the hash of the kernel def");
+#endif
   }
-  *out = nullptr;
+
   if (!verify_kernel_def_error_strs.empty()) {
     std::ostringstream oss;
     oss << "Op with name (" << node.Name() << ")"
@@ -283,6 +306,8 @@ Status KernelRegistry::TryFindKernel(const onnxruntime::Node& node,
         << " Encountered following errors: (" << ToString(verify_kernel_def_error_strs) << ")";
     return Status(ONNXRUNTIME, FAIL, oss.str());
   }
+
+  *out = nullptr;
   return Status(ONNXRUNTIME, FAIL, "Kernel not found");
 }
 
