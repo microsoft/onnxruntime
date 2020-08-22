@@ -246,10 +246,13 @@ class SessionState {
   const DataTransferManager& GetDataTransferMgr() const noexcept { return data_transfer_mgr_; }
 
   std::vector<BufferUniquePtr>& GetMutableWeightsBuffers() noexcept { return weights_buffers_; }
+
   const NodeIndexInfo& GetNodeIndexInfo() const;
 
+#if !defined(ORT_MINIMAL_BUILD)
   void UpdateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue_idxs);
   const std::unordered_set<NodeIndex>* GetToBeExecutedNodes(const std::vector<int>& fetch_mlvalue_idxs) const;
+#endif
 
   Status FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                               KernelRegistryManager& kernel_registry_manager,
@@ -284,7 +287,9 @@ class SessionState {
   void AddSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name,
                                std::unique_ptr<SessionState> session_state);
 
+#if !defined(ORT_MINIMAL_BUILD)
   Status PopulateKernelCreateInfo(KernelRegistryManager& kernel_registry_manager);
+#endif
 
   Status FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                                   KernelRegistryManager& kernel_registry_manager,
@@ -391,7 +396,10 @@ class SessionState {
 
   std::unique_ptr<NodeIndexInfo> node_index_info_;
   std::multimap<int, std::unique_ptr<FeedsFetchesManager>> cached_feeds_fetches_managers_;
+
+#if !defined(ORT_MINIMAL_BUILD)
   std::map<std::vector<int>, std::unordered_set<NodeIndex>> to_be_executed_nodes_;
+#endif
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   SessionState* parent_ = nullptr;

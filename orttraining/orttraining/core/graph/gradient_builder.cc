@@ -781,7 +781,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGatherElementsGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetReluGradient) {
   return std::vector<NodeDef>{
-      NodeDef("ReluGrad",
+      NodeDef(OpDef{"ReluGrad", kMSDomain, 1},
               {GO(0), O(0)},
               {GI(0)})};
 }

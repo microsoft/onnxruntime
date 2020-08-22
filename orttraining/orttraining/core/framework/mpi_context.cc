@@ -1,14 +1,36 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "mpi_setup.h"
+#include "mpi_context.h"
 
 namespace onnxruntime {
 namespace training {
-MPIContext::MPIContext(int w_rank, int l_rank, int w_size, int l_size) : world_rank(w_rank), local_rank(l_rank), world_size(w_size), local_size(l_size) {}
+MPIContext::MPIContext() :
+world_rank_(0),
+local_rank_(0),
+world_size_(1),
+local_size_(1)
+{
+#if defined(USE_NCCL)
+  setup_mpi();
+#endif
+}
 
-#if defined(USE_NCCL) || defined(USE_HOROVOD)
-MPIContext setup_mpi() {
+MPIContext::~MPIContext() {
+#if defined(USE_NCCL)
+#ifndef _WIN32
+  shutdown_mpi();
+#endif
+#endif
+}
+
+const MPIContext& MPIContext::GetInstance() {
+  static MPIContext context;
+  return context;
+}
+
+#if defined(USE_NCCL)
+void MPIContext::setup_mpi() {
   // setup MPI amd horovod
   int is_mpi_initialized = 0;
   MPI_Initialized(&is_mpi_initialized);
@@ -27,11 +49,6 @@ MPIContext setup_mpi() {
 
   MPI_Allgather(&world_rank, 1, MPI_INT, ranks, 1, MPI_INT, MPI_COMM_WORLD);
 
-#ifdef USE_HOROVOD
-  using namespace horovod::common;
-  horovod_init(ranks, world_size);
-#endif
-
   //Get local rank and size
   int local_rank;
   int local_size;
@@ -49,14 +66,13 @@ MPIContext setup_mpi() {
 
   printf("Using cuda local_rank: %d, world_rank: %d, world_size: %d, local_size: %d\n(version: %s)\n",
          local_rank, world_rank, world_size, local_size, version);
-  return MPIContext(world_rank, local_rank, world_size, local_size);
+  this->world_rank_ = world_rank;
+  this->local_rank_ = local_rank;
+  this->world_size_ = world_size;
+  this->local_size_ = local_size;
 }
 
-void shutdown_mpi() {
-#ifdef USE_HOROVOD
-  horovod::common::horovod_shutdown();
-#endif
-
+void MPIContext::shutdown_mpi() {
   int is_mpi_initialized = 0;
   MPI_Initialized(&is_mpi_initialized);
   if (!is_mpi_initialized)
