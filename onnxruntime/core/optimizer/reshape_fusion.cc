@@ -45,7 +45,7 @@ Provide check for Reshape Fusion for DistilBert. The following are subgraphs tha
 match the pattern for DistilBert
 
 DistilBert reshape pattern:
-             [Add](w)
+             [Root]
              /   \ _ _ _ _ _ _ _
          Shape                  \
            |                  MatMul(w * w)
