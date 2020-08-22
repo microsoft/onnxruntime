@@ -89,7 +89,7 @@ def optimizer_parameters_mutiple_groups(model):
 
 def optimizer_parameters(model):
     '''A method to assign different hyper parameters for different model parameter groups'''
-    
+
     no_decay_keys = ["bias", "gamma", "beta", "LayerNorm"]
     no_decay_param_group = []
     for initializer in model.graph.initializer:
@@ -886,7 +886,7 @@ def testToyBERTModelLegacyExperimentalCustomOptimParameters(params, legacy_optim
             'id': device,
         },
     })
-    
+
     torch.manual_seed(seed)
     onnxruntime.set_seed(seed)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
@@ -895,13 +895,13 @@ def testToyBERTModelLegacyExperimentalCustomOptimParameters(params, legacy_optim
     for i in range(total_steps):
         sample_input = generate_random_input_from_model_desc(model_desc, i)
         experimental_losses.append(trainer.train_step(*sample_input).cpu().item())
-        
+
     # LEGACY IMPLEMENTATION
     device = torch.device(device)
-    legacy_model_desc, learning_rate_description, learning_rate = legacy_model_params(trainer.optim_config.lr) 
+    legacy_model_desc, learning_rate_description, learning_rate = legacy_model_params(trainer.optim_config.lr)
     torch.manual_seed(seed)
     onnxruntime.set_seed(seed)
-    
+
     legacy_trainer = Legacy_ORTTrainer(model, None, legacy_model_desc, "LambOptimizer",
                                        legacy_optim_map,
                                        learning_rate_description,
@@ -919,4 +919,3 @@ def testToyBERTModelLegacyExperimentalCustomOptimParameters(params, legacy_optim
 
 if __name__ == "__main__":
     unittest.main()
-

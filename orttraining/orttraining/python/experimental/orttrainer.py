@@ -533,14 +533,14 @@ class ORTTrainer(object):
                 for k, v in param_group.items():
                     # 'params' is not a hyper parameter, skip it. 'lr' per weight is not supported
                     if k == 'params' or k == 'lr':
-                        continue  
+                        continue
                     if isinstance(v, float):
                         optimizer_attributes_map[initializer.name][k] = v
                     elif isinstance(v, int):
                         optimizer_int_attributes_map[initializer.name][k] = v
                     else:
                         raise ValueError("Optimizer attributes must be either float or int.")
- 
+
             # set default values for params not found in groups
             if not_in_param_groups:
                 for k, v in self.optim_config.defaults.items():
