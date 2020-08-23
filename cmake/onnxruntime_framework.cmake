@@ -11,6 +11,8 @@ if (onnxruntime_MINIMAL_BUILD)
   file(GLOB onnxruntime_framework_src_exclude 
     "${ONNXRUNTIME_ROOT}/core/framework/provider_bridge_ort.cc"
     "${ONNXRUNTIME_ROOT}/core/framework/graph_partitioner.*"
+    "${ONNXRUNTIME_INCLUDE_DIR}/core/framework/customregistry.h"
+    "${ONNXRUNTIME_ROOT}/core/framework/customregistry.cc"
   )
 
   list(REMOVE_ITEM onnxruntime_framework_srcs ${onnxruntime_framework_src_exclude})

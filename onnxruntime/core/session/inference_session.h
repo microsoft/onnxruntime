@@ -335,6 +335,7 @@ class InferenceSession {
    * Get all the providers' options this session was initialized with.
    */
   const ProviderOptionsMap& GetAllProviderOptions() const;
+
   /**
     * Start profiling on this inference session. This simply turns on profiling events to be
     * recorded. A corresponding EndProfiling has to follow to write profiling data to a file.
@@ -424,6 +425,9 @@ class InferenceSession {
   // The file path of where the model was loaded. e.g. /tmp/test_squeezenet/model.onnx
   std::basic_string<ORTCHAR_T> model_location_;
 
+  // The list of execution providers.
+  ExecutionProviders execution_providers_;
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
 
@@ -467,6 +471,9 @@ class InferenceSession {
   template <typename T>
   void StartProfiling(const std::basic_string<T>& file_prefix);
 
+  // Updates all providers with the allocators from the env based on OrtMemoryInfo
+  void UpdateProvidersWithSharedAllocators();
+
 #if !defined(ORT_MINIMAL_BUILD)
   virtual void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
                                          TransformerLevel graph_optimization_level,
@@ -498,9 +505,6 @@ class InferenceSession {
 
   // Profiler for this session.
   profiling::Profiler session_profiler_;
-
-  // The list of execution providers.
-  ExecutionProviders execution_providers_;
 
   // Immutable state for each op in the model. Shared by all executors.
   // It has a dependency on execution_providers_.
@@ -588,6 +592,7 @@ class InferenceSession {
 
   // Flag indicating if ModelProto has been parsed in an applicable ctor
   bool is_model_proto_parsed_ = false;
+  const Environment& environment_;
 };
 
 struct SessionIOBinding {

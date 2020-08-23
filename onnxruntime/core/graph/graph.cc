@@ -21,12 +21,12 @@
 #include "core/graph/graph_viewer.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "core/graph/model.h"
-#include "core/graph/schema_registry.h"
 #include "core/graph/op.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/function.h"
 #include "core/graph/function_impl.h"
+#include "core/graph/schema_registry.h"
 #include "onnx/checker.h"
 using namespace ONNX_NAMESPACE::checker;
 #endif
@@ -1580,7 +1580,7 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
 
     // only return data if it's for a constant initializer. checks for outer scope initializers
     // if this is a subgraph and the name isn't found locally.
-    const TensorProto* initializer = graph_utils::GetConstantInitializer(graph_, def->Name(), true);
+    const TensorProto* initializer = graph_.GetConstantInitializer(def->Name(), true);
     return initializer;
   }
 
@@ -2390,6 +2390,31 @@ void Graph::CleanAllInitializedTensors() noexcept {
   for (int i = 0; i < num_cleared; i++) {
     delete graph_proto_->mutable_initializer()->ReleaseCleared();
   }
+}
+
+const ONNX_NAMESPACE::TensorProto* Graph::GetConstantInitializer(const std::string& initializer_name,
+                                                                 bool check_outer_scope) const {
+  const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
+  if (GetInitializedTensor(initializer_name, initializer)) {
+    if (CanOverrideInitializer()) {
+      const auto& graph_inputs = GetInputsIncludingInitializers();
+      bool is_constant = std::none_of(graph_inputs.cbegin(), graph_inputs.cend(),
+                                      [&initializer_name](const NodeArg* input) {
+                                        return input->Name() == initializer_name;
+                                      });
+
+      if (!is_constant) {
+        initializer = nullptr;
+      }
+    }
+  } else if (check_outer_scope && IsSubgraph()) {
+    // make sure there's not a local value with the same name. if there is it shadows any initializer in outer scope.
+    if (IsOuterScopeValue(initializer_name)) {
+      initializer = parent_graph_->GetConstantInitializer(initializer_name, check_outer_scope);
+    }
+  }
+
+  return initializer;
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
