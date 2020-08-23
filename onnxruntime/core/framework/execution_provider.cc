@@ -29,6 +29,7 @@ std::vector<std::unique_ptr<ComputeCapability>>
 IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                   const std::vector<const KernelRegistry*>& kernel_registries) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
+#if !defined(ORT_MINIMAL_BUILD)
   for (auto& node : graph.Nodes()) {
     for (auto registry : kernel_registries) {
       if (KernelRegistry::HasImplementationOf(*registry, node, Type())) {
@@ -39,6 +40,9 @@ IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       }
     }
   }
+#else
+  ORT_NOT_IMPLEMENTED("IExecutionProvider::GetCapability is not supported in this build.");
+#endif
 
   return result;
 }
