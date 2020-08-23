@@ -66,8 +66,8 @@ class MemPatternPlanner {
     allocs_.emplace_back(ml_value_idx, MemoryBlock(best_offset, size));
     blocks_.insert(best_fit_it, (static_cast<int>(allocs_.size()) - 1));
     size_t buffer_size_tmp = buffer_size_;
-    printf("allocate ml_value %d, a size of %lu memory from %lu to %lu, the buffer_size_ is %lu\n",
-    ml_value_idx, size, best_offset, best_offset+size, buffer_size_tmp);
+    LOGS_DEFAULT(INFO) << "allocate ml_value " << ml_value_idx << ", a size of "
+                       << size << " memory from " << best_offset << " to " << best_offset + size << ", the buffer_size_ is " << buffer_size_tmp;
   }
 
   void TraceFree(int ml_value_index) {
@@ -77,7 +77,7 @@ class MemPatternPlanner {
       if (allocs_[*it].index_ == ml_value_index) {
         auto size_tmp = allocs_[*it].block_.size_;
         auto offset_tmp = allocs_[*it].block_.offset_;
-        printf("free ml_value %d, a size of %lu memory from %lu to %lu\n", ml_value_index, size_tmp, offset_tmp, offset_tmp+size_tmp);
+        LOGS_DEFAULT(INFO) << "free ml_value " << ml_value_index << ", a size of " << size_tmp << " memory from " << offset_tmp << " to " << offset_tmp + size_tmp;
         blocks_.erase(it);
         break;
       }
@@ -89,7 +89,6 @@ class MemPatternPlanner {
 
     MemoryPattern pattern;
     pattern.peak_size_ = buffer_size_;
-    std::cout << "In peak pattern: peak_size = " << pattern.peak_size_ << "\n";
     for (auto& alloc : allocs_) {
       pattern.patterns_[alloc.index_] = alloc.block_;
     }
