@@ -17,7 +17,7 @@ static const std::string kMinSubgraphSize = "ORT_TENSORRT_MIN_SUBGRAPH_SIZE";
 static const std::string kMaxWorkspaceSize = "ORT_TENSORRT_MAX_WORKSPACE_SIZE";
 static const std::string kFP16Enable = "ORT_TENSORRT_FP16_ENABLE";
 static const std::string kINT8Enable = "ORT_TENSORRT_INT8_ENABLE";
-static const std::string kINT8CalibrationEnable = "ORT_TENSORRT_INT8_CALIBRATION_ENABLE";
+//static const std::string kINT8CalibrationEnable = "ORT_TENSORRT_INT8_CALIBRATION_ENABLE";
 static const std::string kDumpSubgraphs = "ORT_TENSORRT_DUMP_SUBGRAPHS";
 static const std::string kEngineCacheEnable = "ORT_TENSORRT_ENGINE_CACHE_ENABLE";
 static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
@@ -78,7 +78,7 @@ struct TensorrtFuncState {
   OrtMutex* tensorrt_mu_ptr = nullptr;
   bool* fp16_enable_ptr = nullptr;
   bool* int8_enable_ptr = nullptr;
-  bool* int8_calibration_enable_ptr = nullptr; 
+  bool* int8_calibration_phase_ptr = nullptr; 
   size_t* max_workspace_size_ptr = nullptr;
   std::string trt_node_name_with_precision;
   bool engine_cache_enable;
@@ -112,7 +112,7 @@ class TensorrtExecutionProvider : public Provider_IExecutionProvider {
   int min_subgraph_size_ = 1;
   bool fp16_enable_ = false;
   bool int8_enable_ = false;
-  bool int8_calibration_enable_ = false;
+  bool int8_calibration_phase_ = true;
   bool dump_subgraphs_ = false;
   bool engine_cache_enable_ = false;
   std::string engine_cache_path_;
@@ -181,9 +181,11 @@ public:
         cudaMemcpy(_deviceInput, _stream.getBatch(), _inputCount * sizeof(float), cudaMemcpyHostToDevice);
         bindings[0] = _deviceInput;
         */
-        std::cout << "MyInt8EntropyCalibrator2:getBatch:nbBindings: " << nbBindings << std::endl;
-		std::cout << "MyInt8EntropyCalibrator2:getBatch:names: " << names[0] << ", _inputBlobName:" << _inputBlobName << std::endl;
-		std::cout << "_currentBatch: " << _currentBatch << ", _maxBatches: " << _maxBatches << std::endl;
+        ORT_UNUSED_PARAMETER(names);
+        ORT_UNUSED_PARAMETER(nbBindings);
+        //-//std::cout << "MyInt8EntropyCalibrator2:getBatch:nbBindings: " << nbBindings << std::endl;
+	//-//std::cout << "MyInt8EntropyCalibrator2:getBatch:names: " << names[0] << ", _inputBlobName:" << _inputBlobName << std::endl;
+	//-//	std::cout << "_currentBatch: " << _currentBatch << ", _maxBatches: " << _maxBatches << std::endl;
         if (_currentBatch == _maxBatches)
             return false;
         //assert(!strcmp(names[0], _inputBlobName));//??
@@ -193,27 +195,29 @@ public:
     }
 
     const void* readCalibrationCache(size_t& length) {
-	std::cout << "readCalibrationCache: _calibrationTableName: " << _calibrationTableName << std::endl;
+	//-//std::cout << "readCalibrationCache: _calibrationTableName: " << _calibrationTableName << std::endl;
         _calibrationCache.clear();
         std::ifstream input(_calibrationTableName, std::ios::binary);
         input >> std::noskipws;
-	std::cout << "_readCache: " << _readCache << ", input.good(): " << input.good() << std::endl;
+	//-//std::cout << "_readCache: " << _readCache << ", input.good(): " << input.good() << std::endl;
         if (_readCache && input.good())
             std::copy(std::istream_iterator<char>(input), std::istream_iterator<char>(),
                       std::back_inserter(_calibrationCache));
 
         length = _calibrationCache.size();
-		
+/*//-//		
 		std::cout << "length: " << length << ", &_calibrationCache[0]: " << &_calibrationCache[0] << std::endl;
 		for (int i = 0; i < static_cast<int>(length); ++i) {
-			std::cout << "i: " << _calibrationCache[i] << std::endl;
+			//std::cout << "i: " << _calibrationCache[i] << std::endl;
+			std::cout << _calibrationCache[i] << ",";
 		}
-		
+		std::cout << std::endl;
+*/
         return length ? &_calibrationCache[0] : nullptr;
     }
 
     void writeCalibrationCache(const void* cache, size_t length) {
-	std::cout << "writeCalibrationCache: _calibrationTableName: " << _calibrationTableName << ", cache: " << cache << std::endl;
+	//-//std::cout << "writeCalibrationCache: _calibrationTableName: " << _calibrationTableName << ", cache: " << cache << std::endl;
         std::ofstream output(_calibrationTableName, std::ios::binary);
         output.write(reinterpret_cast<const char*>(cache), length);
     }
