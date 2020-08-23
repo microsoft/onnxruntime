@@ -17,7 +17,7 @@ python3 benchmark.py -r benchmark -i random -t 100
 - **-t, --test_times**: (*default: 1*) Number of inference run when in 'benchmark' running mode.
 - **--fp16**: (*default: True*) Enable TensorRT/CUDA FP16 and include the performance of this floating point optimization.
 ### Results
-After running validation and benchmark. The metrics are written into five different csv files.
+After running validation and benchmark. The metrics are written into five different csv files in 'result' directory.
 - **benchmark_fail_xxxx.csv**: Lists all the models that fail to be inferenced by TensorRT/CUDA.
 - **benchmark_success_xxxx.csv**: Lists all the models that can be successfully inferenced by TensorRT/CUDA, as well as other related metrics.
 - **benchmark_latency_xxxx.csv**: Lists all the models with inference latecy of TensorRT/CUDA and TensorRT Float32/Float16 performance gain compared with CUDA.

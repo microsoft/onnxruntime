@@ -594,6 +594,7 @@ def run_onnxruntime(args, models=MODELS):
     else:
         provider_list = ["CUDAExecutionProvider", "TensorrtExecutionProvider"]
 
+    validation_exemption_provider_list = ["TensorrtExecutionProvider_fp16"]
 
     if args.model_zoo == "cvs":
         models.update(CVS_MODELS)
@@ -686,9 +687,16 @@ def run_onnxruntime(args, models=MODELS):
             # benchmark or validation
             #######################################
             if args.running_mode == 'benchmark':
+                logger.info("===========================")
+                logger.info("======== benchmark ========")
+                logger.info("===========================")
 
+                options = onnxruntime.SessionOptions()
+                options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+                model.set_session_options(options)
+
+                # create onnxruntime inference session
                 try:
-                    # create onnxruntime inference session
                     if args.model_zoo ==  "onnx":
                         model.create_session()
                     elif args.model_zoo == "cvs":
@@ -735,6 +743,9 @@ def run_onnxruntime(args, models=MODELS):
 
 
             elif args.running_mode == 'validate':
+                logger.info("==========================")
+                logger.info("======== validate ========")
+                logger.info("==========================")
 
                 # enable profiling to generate profiling file for analysis
                 options = onnxruntime.SessionOptions()
@@ -742,8 +753,8 @@ def run_onnxruntime(args, models=MODELS):
                 options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
                 model.set_session_options(options)
 
+                # create onnxruntime inference session
                 try:
-                    # create onnxruntime inference session
                     if args.model_zoo ==  "onnx":
                         model.create_session()
                     elif args.model_zoo == "cvs":
@@ -770,29 +781,36 @@ def run_onnxruntime(args, models=MODELS):
                         logger.info(output_meta)
 
                 # run inference and validate the result
-                try:
+                #
+                # currently skip TensorRT float16 validation intentionally 
+                if ep not in validation_exemption_provider_list:
+                    try:
+                        model.set_inputs(inputs)
+                        model.inference()
+
+                        # lower accuracy exepectation if using FP16
+                        if 'fp16' in ep:
+                            decimal = 0
+                        else:
+                            decimal = model.get_decimal()
+
+                        status = validate(ref_outputs, model.get_outputs(), decimal)
+                        if not status[0]:
+                            update_fail_model(model_ep_fail_map, fail_results, args, name, ep, 'result accuracy issue', status[1])
+                            continue
+                    except Exception as e:
+                        logger.error(e)
+                        update_fail_model(model_ep_fail_map, fail_results, args, name, ep, 'runtime error', e)
+                        continue
+
+                    # Run inference again. the reason is that some ep like tensorrt
+                    # it takes much longer time to generate graph on first run and
+                    # we need to skip the perf result of that expensive run.
+                    model.inference()
+                else:
                     model.set_inputs(inputs)
                     model.inference()
-
-                    # lower accuracy exepectation if using FP16
-                    if ep == 'CUDAExecutionProvider_fp16' or ep == 'TensorrtExecutionProvider_fp16':
-                        decimal = 0
-                    else:
-                        decimal = model.get_decimal()
-
-                    status = validate(ref_outputs, model.get_outputs(), decimal)
-                    if not status[0]:
-                        update_fail_model(model_ep_fail_map, fail_results, args, name, ep, 'result accuracy issue', status[1])
-                        continue
-                except Exception as e:
-                    logger.error(e)
-                    update_fail_model(model_ep_fail_map, fail_results, args, name, ep, 'runtime error', e)
-                    continue
-
-                # Run inference again. the reason is that some ep like tensorrt
-                # it takes much longer time to generate graph on first run and
-                # we need to skip the perf result of that expensive run.
-                model.inference()
+                    model.inference()
 
                 sess.end_profiling()
                 time.sleep(1) # avoid to generate same profile file name
@@ -1027,7 +1045,7 @@ def main():
     logger.info("Fail models: {}".format(len(failing_models)))
     logger.info("Models FAIL/SUCCESS: {}/{}".format(len(failing_models), len(MODELS) - len(failing_models)))
 
-    path = "perf_result"
+    path = "result"
     if not os.path.exists(path):
         os.mkdir(path)
 
