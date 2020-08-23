@@ -96,8 +96,8 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
     auto& node = *graph.GetNode(node_index);
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
-    if ((!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", {9}) &&
-         !graph_utils::IsSupportedOptypeVersionAndDomain(node, "TransposeScaleMatMul", {1}, kMSDomain)) ||
+    if ((!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", {9, 13}) &&
+         !graph_utils::IsSupportedOptypeVersionAndDomain(node, "TransposeScaleMatMul", {1, 13}, kMSDomain)) ||
         !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders())) {
       continue;
     }
@@ -149,15 +149,13 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
     matmul_node.SetExecutionProviderType(node.GetExecutionProviderType());
 
     graph_utils::FinalizeNodeFusion(graph, matmul_node, node);
+
+    modified = true;
   }
 
   // Have to remove node in reversed order for now to walk around the issue in RemoveNode
   for (onnxruntime::NodeIndex removed_node : removed_nodes) {
     graph.RemoveNode(removed_node);
-  }
-
-  if (!removed_nodes.empty()) {
-    modified = true;
   }
 
   return Status::OK();

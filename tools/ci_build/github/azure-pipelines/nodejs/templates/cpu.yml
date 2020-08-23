@@ -9,7 +9,7 @@ jobs:
     AgentPool : 'Win-CPU-2019'
     ArtifactName: 'drop-nodejs-win32'
     JobName: 'Windows_CI'
-    BuildCommand:  '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_nodejs --enable_onnx_tests --enable_wcos --cmake_generator "Visual Studio 16 2019"'
+    BuildCommand:  '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_nodejs --enable_onnx_tests --enable_wcos --use_telemetry --cmake_generator "Visual Studio 16 2019"'
     BuildArch: 'x64'
     EnvSetupScript: 'setup_env.bat'
     sln_platform: 'x64'
@@ -38,16 +38,26 @@ jobs:
   steps:    
     - template: ../../templates/set-version-number-variables-step.yml
     - template: ../../templates/linux-set-variables-and-download.yml
+    - task: Docker@2
+      displayName: login
+      inputs:
+        containerRegistry: onnxruntimeregistry
+        command: login
+        addPipelineData: false
     - task: CmdLine@2
       inputs:
         script: |
-          docker build --pull -t onnxruntime-centos7 --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=3.6 -f Dockerfile.centos .
-        workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
-    - task: CmdLine@2
-      inputs:
-        script: |
-          docker run --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro -e NIGHTLY_BUILD onnxruntime-centos7 /bin/bash -c "/usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_nodejs --use_openmp --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --enable_onnx_tests && cd /onnxruntime_src/nodejs && npm pack"
+          mkdir -p $HOME/.onnx && docker run --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro \
+          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecpubuild:chn /bin/bash -c "/opt/python/cp37-cp37m/bin/python3 \
+          /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --enable_lto --build_nodejs \
+          --skip_submodule_sync  --parallel --build_shared_lib --use_openmp && cd /onnxruntime_src/nodejs && npm pack"
         workingDirectory: $(Build.SourcesDirectory)
+    - task: Docker@2
+      displayName: logout
+      inputs:
+        containerRegistry: onnxruntimeregistry
+        command: logout
+        addPipelineData: false
     - script: |
        set -e -x
        cp $(Build.SourcesDirectory)/nodejs/onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)

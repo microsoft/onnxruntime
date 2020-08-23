@@ -80,17 +80,17 @@ if [[ $SYS_LONG_BIT = "64" && "$GLIBC_VERSION" -gt "9" ]]; then
   tar --strip 1 -xf /tmp/azcopy/azcopy.tar.gz -C /tmp/azcopy
   cp /tmp/azcopy/azcopy /usr/bin
   echo "Installing cmake"
-  GetFile https://github.com/Kitware/CMake/releases/download/v3.13.5/cmake-3.13.5-Linux-x86_64.tar.gz /tmp/src/cmake-3.13.5-Linux-x86_64.tar.gz
-  tar -zxf /tmp/src/cmake-3.13.5-Linux-x86_64.tar.gz --strip=1 -C /usr
+  GetFile https://github.com/Kitware/CMake/releases/download/v3.16.1/cmake-3.16.1-Linux-x86_64.tar.gz /tmp/src/cmake-3.16.1-Linux-x86_64.tar.gz
+  tar -zxf /tmp/src/cmake-3.16.1-Linux-x86_64.tar.gz --strip=1 -C /usr
   echo "Installing Node.js"
   GetFile https://nodejs.org/dist/v12.16.3/node-v12.16.3-linux-x64.tar.xz /tmp/src/node-v12.16.3-linux-x64.tar.xz
   tar -xf /tmp/src/node-v12.16.3-linux-x64.tar.xz --strip=1 -C /usr
 else
   echo "Installing cmake"
-  GetFile https://github.com/Kitware/CMake/releases/download/v3.13.5/cmake-3.13.5.tar.gz /tmp/src/cmake-3.13.5.tar.gz
-  tar -xf /tmp/src/cmake-3.13.5.tar.gz -C /tmp/src
+  GetFile https://github.com/Kitware/CMake/releases/download/v3.16.1/cmake-3.16.1.tar.gz /tmp/src/cmake-3.16.1.tar.gz
+  tar -xf /tmp/src/cmake-3.16.1.tar.gz -C /tmp/src
   pushd .
-  cd /tmp/src/cmake-3.13.5
+  cd /tmp/src/cmake-3.16.1
   ./bootstrap --prefix=/usr --parallel=$(getconf _NPROCESSORS_ONLN) --system-bzip2 --system-curl --system-zlib --system-expat
   make -j$(getconf _NPROCESSORS_ONLN)
   make install
@@ -110,10 +110,21 @@ if [ $DEVICE_TYPE = "Normal" ]; then
 elif [ $DEVICE_TYPE = "gpu" ]; then
     ${PYTHON_EXE} -m pip install sympy==1.1.1
     if [[ $BUILD_EXTR_PAR = *--enable_training* ]]; then
-      ${PYTHON_EXE} -m pip install --upgrade --pre torch==1.6.0.dev20200610 torchvision==0.7.0.dev20200610 -f https://download.pytorch.org/whl/nightly/cu101/torch_nightly.html
+      ${PYTHON_EXE} -m pip install --upgrade --pre torch==1.6.0.dev20200610 torchvision==0.7.0.dev20200610 torchtext==0.6.0.dev20200610 -f https://download.pytorch.org/whl/nightly/cu101/torch_nightly.html
       ${PYTHON_EXE} -m pip install  transformers==v2.10.0
       # transformers requires sklearn
       ${PYTHON_EXE} -m pip install sklearn
+
+      if [[ $BUILD_EXTR_PAR = *--enable_training_python_frontend_e2e_tests* ]]; then
+        echo "install openmpi"
+        curl -fsSL https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.0.tar.gz -O
+        tar zxf openmpi-4.0.0.tar.gz
+        cd openmpi-4.0.0
+        ./configure --enable-orterun-prefix-by-default
+        make all
+        make install
+        ldconfig
+      fi
     fi
 fi
 

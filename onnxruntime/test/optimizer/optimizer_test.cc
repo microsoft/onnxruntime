@@ -26,7 +26,7 @@ namespace test {
 static const std::string MODEL_FOLDER = "testdata/transform/";
 
 TEST(OptimizerTest, Basic) {
-  Model model("OptimizerBasic", false, DefaultLoggingManager().DefaultLogger());
+  Model model("OptimizerBasic", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   const int tensor_dim = 10;
@@ -66,7 +66,7 @@ TEST(OptimizerTest, Basic) {
 
   std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
       onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
-  OptimizerExecutionFrame::Info info(nodes, initialized_tensor_set, std::move(cpu_execution_provider));
+  OptimizerExecutionFrame::Info info(nodes, initialized_tensor_set, *cpu_execution_provider.get());
   std::vector<int> fetch_mlvalue_idxs{info.GetMLValueIndex("out")};
   OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs);
   const logging::Logger& logger = DefaultLoggingManager().DefaultLogger();

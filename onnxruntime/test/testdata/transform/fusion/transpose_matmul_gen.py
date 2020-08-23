@@ -12,6 +12,7 @@ msdomain.version = 1
 msdomain.domain = "com.microsoft"
 opsets = [onnxdomain, msdomain]
 
+
 def save(model_path, nodes, inputs, outputs, initializers):
     graph = helper.make_graph(
         nodes,
@@ -88,3 +89,40 @@ def gen_invalid_default_perm(model_path):
 
 gen_invalid_default_perm(
     "transpose_matmul_4d_fusion_invalid_default_perm.onnx")
+
+
+def gen_with_preserved_transpose(model_path):
+    nodes = [
+        helper.make_node(
+            "Transpose",
+            ["input_0"],
+            ["transposed_input_0"]),
+        helper.make_node(
+            "MatMul",
+            ["transposed_input_0", "input_1"],
+            ["output_0"]),
+        helper.make_node(
+            "Identity",
+            ["transposed_input_0"],
+            ["output_1"])
+    ]
+
+    inputs = [
+        helper.make_tensor_value_info(
+            "input_0", TensorProto.FLOAT, ['K', 'M']),
+        helper.make_tensor_value_info(
+            "input_1", TensorProto.FLOAT, ['K', 'N'])
+    ]
+
+    outputs = [
+        helper.make_tensor_value_info(
+            "output_0", TensorProto.FLOAT, ['M', 'N']),
+        helper.make_tensor_value_info(
+            "output_1", TensorProto.FLOAT, ['M', 'K'])
+    ]
+
+    save(model_path, nodes, inputs, outputs, [])
+
+
+gen_with_preserved_transpose(
+    "transpose_matmul_2d_fusion_with_preserved_transpose.onnx")
