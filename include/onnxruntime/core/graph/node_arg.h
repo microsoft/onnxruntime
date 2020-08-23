@@ -59,6 +59,7 @@ class NodeArg {
   @returns true if NodeArg is a normal tensor with a non-empty shape or a scalar with an empty shape. Otherwise, returns false. */
   bool HasTensorOrScalarShape() const;
 
+#if !defined(ORT_MINIMAL_BUILD)
   /** Sets the shape.
   @remarks Shape can only be set if the TypeProto was provided to the ctor, or #SetType has been called,
   as the shape information is stored as part of TypeProto. */
@@ -85,6 +86,8 @@ class NodeArg {
   /** Gets this NodeArg as a ValueInfoProto. */
   const NodeArgInfo& ToProto() const noexcept { return node_arg_info_; }
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
   /** Gets a flag indicating whether this NodeArg exists or not.
   Optional inputs are allowed in ONNX and an empty #Name represents a non-existent input argument. */
   bool Exists() const noexcept;
@@ -93,8 +96,10 @@ class NodeArg {
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(NodeArg);
   friend class Graph;
 
+#if !defined(ORT_MINIMAL_BUILD)
   void SetType(ONNX_NAMESPACE::DataType p_type);
   void SetType(const ONNX_NAMESPACE::TypeProto& type_proto);
+#endif
 
   // Node arg PType.
   ONNX_NAMESPACE::DataType type_;

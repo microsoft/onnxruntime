@@ -110,10 +110,21 @@ if [ $DEVICE_TYPE = "Normal" ]; then
 elif [ $DEVICE_TYPE = "gpu" ]; then
     ${PYTHON_EXE} -m pip install sympy==1.1.1
     if [[ $BUILD_EXTR_PAR = *--enable_training* ]]; then
-      ${PYTHON_EXE} -m pip install --upgrade --pre torch==1.6.0.dev20200610 torchvision==0.7.0.dev20200610 -f https://download.pytorch.org/whl/nightly/cu101/torch_nightly.html
+      ${PYTHON_EXE} -m pip install --upgrade --pre torch==1.6.0.dev20200610 torchvision==0.7.0.dev20200610 torchtext==0.6.0.dev20200610 -f https://download.pytorch.org/whl/nightly/cu101/torch_nightly.html
       ${PYTHON_EXE} -m pip install  transformers==v2.10.0
       # transformers requires sklearn
       ${PYTHON_EXE} -m pip install sklearn
+
+      if [[ $BUILD_EXTR_PAR = *--enable_training_python_frontend_e2e_tests* ]]; then
+        echo "install openmpi"
+        curl -fsSL https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.0.tar.gz -O
+        tar zxf openmpi-4.0.0.tar.gz
+        cd openmpi-4.0.0
+        ./configure --enable-orterun-prefix-by-default
+        make all
+        make install
+        ldconfig
+      fi
     fi
 fi
 

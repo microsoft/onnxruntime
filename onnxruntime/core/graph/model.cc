@@ -20,7 +20,10 @@
 #include "gsl/gsl"
 
 #include "core/platform/env.h"
+
+#if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/schema_registry.h"
+#endif
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime;
@@ -29,6 +32,9 @@ using namespace onnxruntime::common;
 static constexpr int DEFAULT_PROTOBUF_BLOCK_SIZE = 4 * 1024 * 1024;
 
 namespace onnxruntime {
+
+#if !defined(ORT_MINIMAL_BUILD)
+
 Model::Model(const std::string& graph_name,
              bool is_onnx_domain_only,
              const ModelMetaData& model_metadata,
@@ -209,6 +215,8 @@ void Model::SetDocString(const std::string& doc_string) {
   model_proto_.set_doc_string(doc_string);
 }
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 const ModelMetaData& Model::MetaData() const noexcept {
   return model_metadata_;
 }
@@ -220,6 +228,8 @@ Graph& Model::MainGraph() noexcept {
 const Graph& Model::MainGraph() const noexcept {
   return *graph_;
 }
+
+#if !defined(ORT_MINIMAL_BUILD)
 
 void Model::AddFunction(const ONNX_NAMESPACE::FunctionProto& func_proto) {
   auto func_ptr = model_proto_.add_functions();
@@ -513,4 +523,7 @@ Status Model::Save(Model& model, int p_fd) {
   }
   return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf serialization failed.");
 }
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 }  // namespace onnxruntime

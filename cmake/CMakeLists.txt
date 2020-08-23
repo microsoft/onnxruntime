@@ -108,6 +108,9 @@ option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 #It's default OFF because it's experimental now.
 option(onnxruntime_PREFER_SYSTEM_LIB "Experimental: Build with the preinstalled libraries in your system" OFF)
 
+option(onnxruntime_MINIMAL_BUILD "Exclude as much as possible from the build. Support ORT format models. No support for ONNX format models." OFF)
+option(onnxruntime_REDUCED_OPS_BUILD "Reduced set of kernels are registered in build via modification of the kernel registration source files." OFF)
+
 # training options
 option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
 option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
@@ -201,6 +204,14 @@ if(onnxruntime_ENABLE_LTO)
     else()
       set (CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
     endif()
+endif()
+
+# ORT build with as much excluded as possible. Supports ORT flatbuffers models only.
+# Will expose option in build.py when all pieces are available
+if(onnxruntime_MINIMAL_BUILD)
+  add_compile_definitions(ORT_MINIMAL_BUILD)
+  set(onnxruntime_REDUCED_OPS_BUILD ON)  # TODO Defaulting to ON. TBD if we should always do that.
+  set(onnxruntime_DISABLE_RTTI ON)
 endif()
 
 if(onnxruntime_DISABLE_RTTI)
@@ -787,15 +798,28 @@ endif()
 
 if(onnxruntime_USE_OPENVINO)
 
-  if (NOT onnxruntime_USE_FULL_PROTOBUF)
-    message(FATAL_ERROR "Please set onnxruntime_USE_FULL_PROTOBUF=ON for OpenVINO execution provider.")
+  add_definitions(-DUSE_OPENVINO=1)
+
+  # Check OpenVINO version for support
+  if ($ENV{INTEL_OPENVINO_DIR} MATCHES "2020.2")
+    set(OPENVINO_VERSION "2020.2")
+    add_definitions(-DOPENVINO_2020_2=1)
+  elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "2020.3")
+    set(OPENVINO_VERSION "2020.3")
+    add_definitions(-DOPENVINO_2020_3=1)
+  elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "2020.4")
+    set(OPENVINO_VERSION "2020.4")
+    add_definitions(-DOPENVINO_2020_4=1)
+  else()
+    message(FATAL_ERROR "Unsupported OpenVINO version: ${INTEL_OPENVINO_DIR}")
   endif()
 
-  add_definitions(-DUSE_OPENVINO=1)
   if (NOT WIN32)
-    include(openvino)
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES ovep_ngraph)
-    list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_ngraph)
+    if(OPENVINO_VERSION STREQUAL "2020.2")
+      include(openvino)
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES ovep_ngraph)
+      list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_ngraph)
+    endif()
   endif()
 
   if(onnxruntime_USE_OPENVINO_MYRIAD)
@@ -894,7 +918,7 @@ if (onnxruntime_USE_CUDA)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${ONNXRUNTIME_CUDA_LIBRARIES})
 
   if(CMAKE_LIBRARY_ARCHITECTURE STREQUAL "aarch64-linux-gnu")
-    string (APPEND CMAKE_CUDA_FLAGS "-gencode=arch=compute_53,code=sm_53 -gencode=arch=compute_62,code=sm_62") #nano, TX1, TX2
+    string (APPEND CMAKE_CUDA_FLAGS "-gencode=arch=compute_53,code=sm_53 -gencode=arch=compute_62,code=sm_62 ") #nano, TX1, TX2
     string (APPEND CMAKE_CUDA_FLAGS "-gencode=arch=compute_72,code=sm_72") # Jetson N
   else()
     # the following compute capabilities are deprecated in CUDA 11 Toolkit

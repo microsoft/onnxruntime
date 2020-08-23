@@ -662,6 +662,10 @@ TEST_P(ModelTest, Run) {
         ORT_TSTR("split_zero_size_splits"),
         ORT_TSTR("convtranspose_3d")};
     static const ORTCHAR_T* openvino_disabled_tests[] = {ORT_TSTR("tf_mobilenet_v1_1.0_224"),
+                                                         ORT_TSTR("tinyyolov3"),
+                                                         ORT_TSTR("faster_rcnn"),
+                                                         ORT_TSTR("mask_rcnn"),
+                                                         ORT_TSTR("coreml_FNS-Candy_ImageNet"),
                                                          ORT_TSTR("tf_mobilenet_v2_1.0_224"),
                                                          ORT_TSTR("tf_mobilenet_v2_1.4_224"),
                                                          ORT_TSTR("operator_permute2"),
