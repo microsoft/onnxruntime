@@ -153,11 +153,11 @@ class TensorrtExecutionProvider : public Provider_IExecutionProvider {
 //! \brief Implements Entropy calibrator 2.
 //!  CalibrationAlgoType is kENTROPY_CALIBRATION_2.
 //!
-class MyInt8EntropyCalibrator2 : public nvinfer1::IInt8EntropyCalibrator {
+class TensorrtInt8EntropyCalibrator2 : public nvinfer1::IInt8EntropyCalibrator2 {
  public:
-  MyInt8EntropyCalibrator2(int batchSize, int maxBatches, void* input_bindings,
+  TensorrtInt8EntropyCalibrator2(int batchSize, int maxBatches, void* input_bindings,
                            const std::string networkName, const char* inputBlobName, bool readCache = true)
-      : _batchSize(batchSize), _maxBatches(maxBatches), _currentBatch(0), input_bindings_(input_bindings), _networkName(networkName), _calibrationTableName("CalibrationTable" + networkName), _inputBlobName(inputBlobName), _readCache(readCache) {
+      : _batchSize(batchSize), _maxBatches(maxBatches), _currentBatch(0), input_bindings_(input_bindings), _networkName(networkName), _calibrationTableName("INT8_CalibrationTable_" + networkName), _inputBlobName(inputBlobName), _readCache(readCache) {
     //Dims d = _stream.getInputDims();
     //_inputCount = _stream.getBatchSize() * d.d[1] * d.d[2] * d.d[3];
     //cudaMalloc(&_deviceInput, _inputCount * sizeof(float));
@@ -176,8 +176,8 @@ class MyInt8EntropyCalibrator2 : public nvinfer1::IInt8EntropyCalibrator {
         */
     ORT_UNUSED_PARAMETER(names);
     ORT_UNUSED_PARAMETER(nbBindings);
-    //-//std::cout << "MyInt8EntropyCalibrator2:getBatch:nbBindings: " << nbBindings << std::endl;
-    //-//std::cout << "MyInt8EntropyCalibrator2:getBatch:names: " << names[0] << ", _inputBlobName:" << _inputBlobName << std::endl;
+    //-//std::cout << "TensorrtInt8EntropyCalibrator2:getBatch:nbBindings: " << nbBindings << std::endl;
+    //-//std::cout << "TensorrtInt8EntropyCalibrator2:getBatch:names: " << names[0] << ", _inputBlobName:" << _inputBlobName << std::endl;//MyInt8EntropyCalibrator2
     //-//       std::cout << "_currentBatch: " << _currentBatch << ", _maxBatches: " << _maxBatches << std::endl;
     if (_currentBatch == _maxBatches)
       return false;

@@ -1138,7 +1138,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           //BatchStream calibrationStream(1, 1, dims);
           //calibrator.reset(new Int8EntropyCalibrator2<BatchStream>(calibrationStream, 0, networkName.c_str(), inputTensorNames[0].c_str()));
           //-//std::cout << "input_tensor_names[0]: " << input_tensor_names[0] << std::endl;
-          calibrator.reset(new MyInt8EntropyCalibrator2(1, 1, input_bindings[0], networkName.c_str(), input_tensor_names[0].c_str()));
+          calibrator.reset(new TensorrtInt8EntropyCalibrator2(1, 1, input_bindings[0], networkName.c_str(), input_tensor_names[0].c_str()));
 
           trt_config->setInt8Calibrator(calibrator.get());
           //trt_int8_calibration = true;
@@ -1256,8 +1256,8 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
             //BatchStream calibrationStream(1, 1, dims);
             //calibrator.reset(new Int8EntropyCalibrator2<BatchStream>(calibrationStream, 0, networkName.c_str(), inputTensorNames[0].c_str()));
             //-//std::cout << "input_tensor_names[0]: " << input_tensor_names[0] << std::endl;
-            calibrator.reset(new MyInt8EntropyCalibrator2(1, 1, input_bindings[0], trt_node_name_with_precision_shape.c_str(), input_tensor_names[0].c_str()));
-            //MyInt8EntropyCalibrator2(/*ImageStream& stream,*/ int batchSize, int maxBatches, void* input_bindings[], const string networkName, const char* inputBlobName, bool readCache = true)
+            calibrator.reset(new TensorrtInt8EntropyCalibrator2(1, 1, input_bindings[0], trt_node_name_with_precision_shape.c_str(), input_tensor_names[0].c_str()));
+            //TensorrtInt8EntropyCalibrator2(/*ImageStream& stream,*/ int batchSize, int maxBatches, void* input_bindings[], const string networkName, const char* inputBlobName, bool readCache = true)
 
             trt_config->setInt8Calibrator(calibrator.get());
             //trt_int8_calibration = true;
