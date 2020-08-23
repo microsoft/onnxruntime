@@ -38,9 +38,7 @@ common::Status OrtValuePatternPlanner::TraceFree(int ort_value_index) {
 common::Status OrtValuePatternPlanner::GeneratePatterns(MemoryPatternGroup* out) {
   if (!out) return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
 
-  int i =0;
   for (auto& it : planner_map_) {
-    std::cout << i++ << ": " << it.first.ToString() << "\n";
     out->locations.push_back(it.first);
     out->patterns.push_back(it.second->GenerateMemPattern());
   }
