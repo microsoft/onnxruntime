@@ -12,6 +12,14 @@ using namespace onnxruntime::common;
 
 namespace onnxruntime {
 
+ConstantFolding::ConstantFolding(const IExecutionProvider& execution_provider,
+                                 const std::unordered_set<std::string>& compatible_execution_providers,
+                                 const std::unordered_set<std::string>& excluded_initializers) noexcept
+    : GraphTransformer("ConstantFolding", compatible_execution_providers),
+      excluded_initializers_(excluded_initializers),
+      execution_provider_(execution_provider) {
+}
+
 // We need to handle a Shape node separately as the input doesn't need to be a constant initializer for
 // Shape to be able to be constant folded.
 static bool ConstantFoldShapeNode(Graph& graph, Node& node) {
@@ -96,11 +104,8 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       }
 
       // Create execution frame for executing constant nodes.
-      std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
-          onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
-
       // Create execution frame for executing constant nodes.
-      OptimizerExecutionFrame::Info info({node}, constant_inputs, std::move(cpu_execution_provider));
+      OptimizerExecutionFrame::Info info({node}, constant_inputs, execution_provider_);
 
       std::vector<int> fetch_mlvalue_idxs;
       for (const auto* node_out : node->OutputDefs()) {
