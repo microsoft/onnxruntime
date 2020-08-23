@@ -32,6 +32,8 @@ class KernelRegistryManager {
   // Register kernels from providers
   Status RegisterKernels(const ExecutionProviders& execution_providers) ORT_MUST_USE_RESULT;
 
+#if !defined(ORT_MINIMAL_BUILD)
+
   // The registry passed in this function has highest priority than anything already in this KernelRegistryManager,
   // and anything registered from RegisterKernels
   // For example, if you do:
@@ -45,10 +47,6 @@ class KernelRegistryManager {
   // Don't call this function before graph partition is done
   Status SearchKernelRegistry(const onnxruntime::Node& node,
                               /*out*/ const KernelCreateInfo** kernel_create_info) const;
-
-  std::unique_ptr<OpKernel> CreateKernel(const onnxruntime::Node& node, const IExecutionProvider& execution_provider,
-                                         const SessionState& session_state,
-                                         const KernelCreateInfo& kernel_create_info) const ORT_MUST_USE_RESULT;
 
   /**
    * Whether this node can be run on this provider
@@ -70,6 +68,16 @@ class KernelRegistryManager {
     if (iter != provider_type_to_registry_.end()) result.push_back(iter->second.get());
     return result;
   }
+#endif
+
+  Status SearchKernelRegistry(const onnxruntime::Node& node,
+                              uint64_t kernel_def_hash,
+                              /*out*/ const KernelCreateInfo** kernel_create_info) const;
+
+  std::unique_ptr<OpKernel> CreateKernel(const onnxruntime::Node& node,
+                                         const IExecutionProvider& execution_provider,
+                                         const SessionState& session_state,
+                                         const KernelCreateInfo& kernel_create_info) const ORT_MUST_USE_RESULT;
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(KernelRegistryManager);
 
