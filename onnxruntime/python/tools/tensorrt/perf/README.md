@@ -1,5 +1,5 @@
 # TensorRT Performance Test Script
-This script fetches models from ONNX Model Zoo and runs Onnxruntime inference using TensorRT and CUDA as execution provider to get TensorRT peformance gain compared with CUDA, as well as metrics such as percentage of model operators that run on TensorRT.
+This script fetches models from ONNX Model Zoo and runs ONNXRuntime inference using TensorRT and CUDA as execution provider to get TensorRT peformance gain compared with CUDA, as well as other metrics such as percentage of model operators and execution time that run on TensorRT.
 
 ## Usage
 You can use following command to run benchmark and validate prediction results:
@@ -21,8 +21,8 @@ After running validation and benchmark. The metrics are written into five differ
 - **benchmark_fail_xxxx.csv**: Lists all the models that fail to be inferenced by TensorRT/CUDA.
 - **benchmark_success_xxxx.csv**: Lists all the models that can be successfully inferenced by TensorRT/CUDA, as well as other related metrics.
 - **benchmark_latency_xxxx.csv**: Lists all the models with inference latecy of TensorRT/CUDA and TensorRT Float32/Float16 performance gain compared with CUDA.
-- **benchmark_ratio_xxxx.csv**: List how much and percentage of model operators are run by TensorRT and what percentage of execution time is running on TensorRT.
-- **benchmark_system_info_xxxx.csv**: includes CUDA version, TensorRT version, CPU information and Onnxruntime version.
+- **benchmark_ratio_xxxx.csv**: List how much and percentage of model operators that are run by TensorRT and what percentage of execution time is running on TensorRT.
+- **benchmark_system_info_xxxx.csv**: includes CUDA version, TensorRT version and CPU information.
 
 Thoese metrics will be shown on the standard output as well.
 
