@@ -832,13 +832,13 @@ if (onnxruntime_USE_HIP)
 
     # NCCL is not support in Windows build
     if (WIN32)
-      list(REMOVE_ITEM onnxruntime_cuda_training_ops_cc_srcs
+      list(REMOVE_ITEM onnxruntime_hip_training_ops_cc_srcs
       "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/collective/nccl_common.cc"
       "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/collective/nccl_kernels.cc"
       "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/collective/megatron.cc"
       )
     elseif (NOT onnxruntime_USE_NCCL)
-      list(REMOVE_ITEM onnxruntime_cuda_training_ops_cc_srcs
+      list(REMOVE_ITEM onnxruntime_hip_training_ops_cc_srcs
       "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/collective/nccl_common.cc"
       "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/collective/nccl_kernels.cc"
       "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/collective/megatron.cc"
