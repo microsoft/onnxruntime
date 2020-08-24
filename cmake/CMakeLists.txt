@@ -359,7 +359,7 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "iOSCross")
     endif()
 endif()
 
-#Dependencies
+#Dependencies begin
 if (onnxruntime_BUILD_UNIT_TESTS)
   if(onnxruntime_PREFER_SYSTEM_LIB)
     find_package(GTest CONFIG)
@@ -652,14 +652,53 @@ if (APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Android")
   string(APPEND CMAKE_CXX_FLAGS " -Wno-deprecated")
   string(APPEND CMAKE_C_FLAGS " -Wno-deprecated")
 endif()
-# ONNX
-add_subdirectory(onnx)
 
-#set_target_properties(gen_onnx_proto PROPERTIES FOLDER "External/ONNX")
+# ONNX
+if(NOT onnxruntime_USE_FULL_PROTOBUF)
+  set(ONNX_USE_LITE_PROTO ON CACHE BOOL "" FORCE)
+else()
+  set(ONNX_USE_LITE_PROTO OFF CACHE BOOL "" FORCE)
+endif()
+add_subdirectory(external/onnx)
+target_compile_definitions(onnx PUBLIC $<TARGET_PROPERTY:onnx_proto,INTERFACE_COMPILE_DEFINITIONS> PRIVATE "__ONNX_DISABLE_STATIC_REGISTRATION")
+if (NOT onnxruntime_USE_FULL_PROTOBUF)
+  target_compile_definitions(onnx PUBLIC "__ONNX_NO_DOC_STRINGS")	
+endif()
+set_target_properties(onnx PROPERTIES FOLDER "External/ONNX")	
+set_target_properties(onnx_proto PROPERTIES FOLDER "External/ONNX")
+
+if (onnxruntime_USE_MKLML)
+  add_definitions(-DUSE_MKLML=1 -DUSE_MKLML_FOR_BLAS=1)
+  if (WIN32 OR APPLE)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml)
+  else()
+    if(onnxruntime_USE_OPENMP)
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml_gnu)
+    else()
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml_intel)
+    endif()
+  endif()
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_mklml)
+  include_directories(${MKLML_INCLUDE_DIR})
+  link_directories(${MKLML_LIB_DIR})
+endif()
+
+if (onnxruntime_USE_NGRAPH)
+  if (NOT onnxruntime_USE_FULL_PROTOBUF)
+    message(FATAL_ERROR "Please set onnxruntime_USE_FULL_PROTOBUF=ON for nGraph execution provider.")
+  endif()
+  add_definitions(-DUSE_NGRAPH=1)
+  include(ngraph)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ngraph)
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_ngraph)
+endif()
+
 # fix a warning in onnx code we can't do anything about
 if (MSVC)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DEIGEN_HAS_C99_MATH") # required to be set explicitly to enable Eigen-Unsupported SpecialFunctions
+   string(APPEND CMAKE_CXX_FLAGS " -DEIGEN_HAS_C99_MATH") # required to be set explicitly to enable Eigen-Unsupported SpecialFunctions
 endif()
+
+#Dependencies end. In the next we'll enable "treat warning as error"
 
 if (onnxruntime_RUN_ONNX_TESTS)
   add_definitions(-DORT_RUN_EXTERNAL_ONNX_TESTS)
@@ -776,34 +815,6 @@ include_directories(
   ${REPO_ROOT}/include/onnxruntime/core/session
 )
 
-if (onnxruntime_USE_MKLML)
-  add_definitions(-DUSE_MKLML=1 -DUSE_MKLML_FOR_BLAS=1)
-  if (WIN32 OR APPLE)
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml)
-  else()
-    if(onnxruntime_USE_OPENMP)
-      list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml_gnu)
-    else()
-      list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml_intel)
-    endif()
-  endif()
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_mklml)
-  include_directories(${MKLML_INCLUDE_DIR})
-  link_directories(${MKLML_LIB_DIR})
-endif()
-
-if (onnxruntime_USE_NGRAPH)
-  #if (onnxruntime_USE_OPENMP)
-  #  message(FATAL_ERROR "Please set onnxruntime_USE_OPENMP=OFF for nGraph execution provider.")
-  #endif()
-  if (NOT onnxruntime_USE_FULL_PROTOBUF)
-    message(FATAL_ERROR "Please set onnxruntime_USE_FULL_PROTOBUF=ON for nGraph execution provider.")
-  endif()
-  add_definitions(-DUSE_NGRAPH=1)
-  include(ngraph)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ngraph)
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_ngraph)
-endif()
 
 if(onnxruntime_USE_OPENVINO)
 
