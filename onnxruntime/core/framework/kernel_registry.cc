@@ -292,7 +292,7 @@ Status KernelRegistry::TryFindKernel(const onnxruntime::Node& node,
 
   return Status(ONNXRUNTIME, FAIL, "Kernel not found");
 #else
-  ORT_THROW("Kernel hash must be provided in minimal build.")
+  ORT_THROW("Kernel hash must be provided in minimal build.");
 #endif
 }
 
