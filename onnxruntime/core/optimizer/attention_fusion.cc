@@ -306,7 +306,7 @@ static bool FuseSubGraphQKImpl(Node& layer_norm, Graph& graph, AttentionFusionHe
                                          int64_t hidden_size,  int64_t num_heads, int64_t head_size, std::map<std::string, NodeArg*>& mask_index_map, const logging::Logger& logger) {
   // path to q
   std::vector<graph_utils::EdgeEndToMatch> q_path{
-      {0, 0, "Div", {7}, kOnnxDomain},
+      {0, 0, "Div", {7, 13}, kOnnxDomain},
       {0, 0, "MatMul", {1, 9}, kOnnxDomain},
       {0, 0, "Transpose", {1}, kOnnxDomain},
       {0, 0, "Reshape", {5}, kOnnxDomain},
@@ -462,16 +462,16 @@ static bool FuseSubGraphQKDistilBertImpl(Node& layer_norm, Graph& graph, Attenti
                                          int64_t hidden_size, int64_t num_heads, int64_t head_size, std::map<std::string, NodeArg*>& mask_index_map, const logging::Logger& logger) {
   // path to q
   std::vector<graph_utils::EdgeEndToMatch> q_path{
-      {0, 2, "MatMul", {1, 9}, kOnnxDomain},
-      {0, 0, "Div", {7}, kOnnxDomain},
-      {0, 0, "Transpose", {1}, kOnnxDomain},
-      {0, 0, "Reshape", {5}, kOnnxDomain},
-      {0, 0, "Add", {7}, kOnnxDomain},
-      {0, 0, "MatMul", {1, 9}, kOnnxDomain},
+      {0, 2, "MatMul", {1, 9, 13}, kOnnxDomain},
+      {0, 0, "Div", {7, 13}, kOnnxDomain},
+      {0, 0, "Transpose", {1, 13}, kOnnxDomain},
+      {0, 0, "Reshape", {5, 13}, kOnnxDomain},
+      {0, 0, "Add", {7, 13}, kOnnxDomain},
+      {0, 0, "MatMul", {1, 9, 13}, kOnnxDomain},
       {0, 0, "LayerNormalization", {1}, kOnnxDomain}};
 
   std::vector<const Node::EdgeEnd*> edges;
-  if (!graph_utils::FindPath(*(mask_nodes.Where), true, q_path, edges, logger)) {
+  if (!graph_utils::FindPath(*(mask_nodes.where), true, q_path, edges, logger)) {
     DEBUG_LOG("Failed to find path for q");
     return false;
   }
@@ -499,14 +499,14 @@ static bool FuseSubGraphQKDistilBertImpl(Node& layer_norm, Graph& graph, Attenti
   }
 
   std::vector<graph_utils::EdgeEndToMatch> k_path{
-      {0, 2, "MatMul", {1, 9}, kOnnxDomain},
-      {0, 1, "Transpose", {1}, kOnnxDomain},
-      {0, 0, "Reshape", {5}, kOnnxDomain},
-      {0, 0, "Add", {7}, kOnnxDomain},
-      {0, 0, "MatMul", {1, 9}, kOnnxDomain},
+      {0, 2, "MatMul", {1, 9, 13}, kOnnxDomain},
+      {0, 1, "Transpose", {1, 13}, kOnnxDomain},
+      {0, 0, "Reshape", {5, 13}, kOnnxDomain},
+      {0, 0, "Add", {7, 13}, kOnnxDomain},
+      {0, 0, "MatMul", {1, 9, 13}, kOnnxDomain},
       {0, 0, "LayerNormalization", {1}, kOnnxDomain}};
 
-  if (!graph_utils::FindPath(*(mask_nodes.Where), true, k_path, edges, logger)) {
+  if (!graph_utils::FindPath(*(mask_nodes.where), true, k_path, edges, logger)) {
     DEBUG_LOG("Failed to find path for k");
     return false;
   }
@@ -552,7 +552,7 @@ static bool FuseSubGraphQKDistilBertImpl(Node& layer_norm, Graph& graph, Attenti
 
   // Now everything is ready, we will start fusing subgraph.
   NodeArg* mask_input = nullptr;
-  mask_input = graph.GetNode(mask_nodes.Equal->Index())->MutableInputDefs()[0];
+  mask_input = graph.GetNode(mask_nodes.equal->Index())->MutableInputDefs()[0];
 
   NodeArg* mask_index = GetOrCreateMaskIndex(graph, mask_input, mask_index_map, layer_norm.GetExecutionProviderType(), logger);
   if (nullptr == mask_index) {
@@ -602,7 +602,7 @@ static bool FuseSubGraphQKDistilBertImpl(Node& layer_norm, Graph& graph, Attenti
   };
 
   const Node& reshape_1 = parent_path_nodes[0];
-  const Node& reshape_2 = *(mask_nodes.Reshape);
+  const Node& reshape_2 = *(mask_nodes.reshape);
 
   const Node* p_concat_1 = graph_utils::GetInputNode(reshape_1, 1);
   const Node* p_concat_2 = graph_utils::GetInputNode(reshape_2, 1);
@@ -689,15 +689,15 @@ After Fusion:
 */
 bool AttentionFusion::FuseSubGraph(Node& layer_norm, const Node& add_after_layer_norm, Graph& graph, int64_t hidden_size, std::map<std::string, NodeArg*>& mask_index_map, const logging::Logger& logger) {
   std::vector<graph_utils::EdgeEndToMatch> parent_path{
-      {0, 0, "Add", {7}, kOnnxDomain},
-      {0, 0, "MatMul", {1, 9}, kOnnxDomain},
-      {0, 0, "Reshape", {5}, kOnnxDomain},
-      {0, 0, "Transpose", {1}, kOnnxDomain},
-      {0, 0, "MatMul", {1, 9}, kOnnxDomain},
-      {0, 1, "Transpose", {1}, kOnnxDomain},
-      {0, 0, "Reshape", {5}, kOnnxDomain},
-      {0, 0, "Add", {7}, kOnnxDomain},
-      {0, 0, "MatMul", {1, 9}, kOnnxDomain},
+      {0, 0, "Add", {7, 13}, kOnnxDomain},
+      {0, 0, "MatMul", {1, 9, 13}, kOnnxDomain},
+      {0, 0, "Reshape", {5, 13}, kOnnxDomain},
+      {0, 0, "Transpose", {1, 13}, kOnnxDomain},
+      {0, 0, "MatMul", {1, 9, 13}, kOnnxDomain},
+      {0, 1, "Transpose", {1, 13}, kOnnxDomain},
+      {0, 0, "Reshape", {5, 13}, kOnnxDomain},
+      {0, 0, "Add", {7, 13}, kOnnxDomain},
+      {0, 0, "MatMul", {1, 9, 13}, kOnnxDomain},
       {0, 0, "LayerNormalization", {1}, kOnnxDomain}};
 
   std::vector<const Node::EdgeEnd*> edges;

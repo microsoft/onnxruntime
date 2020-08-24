@@ -446,11 +446,11 @@ struct AttentionMaskNodes {
 
 struct AttentionMaskNodesDistilBert {
   const Node* softmax;
-  const Node* Where;
+  const Node* where;
   const Node* cast;
-  const Node* Expand;
-  const Node* Reshape;
-  const Node* Equal;
+  const Node* expand;
+  const Node* reshape;
+  const Node* equal;
 };
 
 void SetMaskNodesToRemove(const Graph& graph, AttentionMaskNodes& mask_nodes, std::vector<NodeIndex>& nodes_to_remove) {
@@ -475,10 +475,10 @@ void SetMaskNodesToRemove(const Graph& graph, AttentionMaskNodes& mask_nodes, st
 
 void SetMaskNodesToRemove(const Graph&, AttentionMaskNodesDistilBert& mask_nodes, std::vector<NodeIndex>& nodes_to_remove) {
   nodes_to_remove.push_back(mask_nodes.softmax->Index());
-  nodes_to_remove.push_back(mask_nodes.Where->Index());
-  nodes_to_remove.push_back(mask_nodes.Expand->Index());
-  nodes_to_remove.push_back(mask_nodes.Reshape->Index());
-  nodes_to_remove.push_back(mask_nodes.Equal->Index());
+  nodes_to_remove.push_back(mask_nodes.where->Index());
+  nodes_to_remove.push_back(mask_nodes.expand->Index());
+  nodes_to_remove.push_back(mask_nodes.reshape->Index());
+  nodes_to_remove.push_back(mask_nodes.equal->Index());
 }
 
 /**  Match Input Mask subgraph:
@@ -616,9 +616,9 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, Attentio
   std::vector<graph_utils::EdgeEndToMatch> mask_path{
       {0, 0, "Softmax", {1, 11, 13}, kOnnxDomain},
       {0, 0, "Where", {9}, kOnnxDomain},
-      {0, 0, "Expand", {8}, kOnnxDomain},
-      {0, 0, "Reshape", {5}, kOnnxDomain},
-      {0, 0, "Equal", {1, 11}, kOnnxDomain}};
+      {0, 0, "Expand", {8, 13}, kOnnxDomain},
+      {0, 0, "Reshape", {1, 5, 13}, kOnnxDomain},
+      {0, 0, "Equal", {1, 7, 11, 13}, kOnnxDomain}};
 
   std::vector<const Node::EdgeEnd*> edges;
   if (!graph_utils::FindPath(qkv_matmul, true, mask_path, edges, logger)) {
@@ -838,6 +838,8 @@ bool CheckNodesInPathV(const Graph& graph, const Node& reshape, const Node& tran
   head_size = v_reshape_shape[3];
 
   // Check reshape for attention output has shape input (0, 0, -1) or (0, 0, N*H)
+  // In DistilBert, the reshape after qkv paths can not be fused during reshape fusion, so we do not have the correspondig
+  // initializer. We need to get the shape information from the input of concat.
   std::vector<int64_t> reshape_shape;
   if (!optimizer_utils::AppendTensorFromInitializer(graph, *(reshape.InputDefs()[1]), reshape_shape)) {
     const Node* p_concat = graph_utils::GetInputNode(reshape, 1);
