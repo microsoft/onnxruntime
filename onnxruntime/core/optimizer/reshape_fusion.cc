@@ -23,7 +23,7 @@ Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, c
     Node& reshape = *p_reshape;
     ORT_RETURN_IF_ERROR(Recurse(reshape, modified, graph_level, logger));
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(reshape, "Reshape", {5}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(reshape, "Reshape", {5, 13}) ||
         !graph_utils::IsSupportedProvider(reshape, GetCompatibleExecutionProviders())) {
       continue;
     }
@@ -39,40 +39,94 @@ Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, c
   return Status::OK();
 }
 
-static bool DistilBertCheck(Graph& graph, const Node& concat, const Node& layernorm_add) {
-  if (!optimizer_utils::CheckOutputEdges(graph, concat, 1))
-    return false;
 
+/**
+Provide check for Reshape Fusion for DistilBert. The following are subgraphs that
+match the pattern for DistilBert
+
+DistilBert reshape pattern:
+             [Root]
+             /   \ _ _ _ _ _ _ _
+         Shape                  \
+           |                  MatMul(w * w)
+    Gather(indices=0)             |
+            \                     |
+        Unsqueeze               Add(w)
+              \                  /
+             Concat     _ _ _ _ /
+                \      /
+                Reshape
+
+                                  - -> Shape
+                                  |
+Check the subgraph that matches [root] -> MatMul(w * w) -> Add(w) -> Reshape.
+*/
+static bool Match_Linear_Subgraph_1(Graph& graph, const Node& concat, const Node& root, const logging::Logger& logger) {
+  if (!optimizer_utils::CheckOutputEdges(graph, concat, 1)) {
+    return false;
+  }
   auto reshape_itr = concat.OutputNodesBegin();
-  if ((*reshape_itr).OpType().compare("Reshape") != 0)
+  if ((*reshape_itr).OpType().compare("Reshape") != 0) {
     return false;
-
+  }
   const Node& reshape = *reshape_itr;
-  const Node* add = graph_utils::GetInputNode(reshape, 0);
 
-  if (add == nullptr || (*add).OpType() != "Add")
-    return false;
-
-  const NodeArg& add_input_b = *((*add).InputDefs()[1]);
-  if (!graph_utils::IsInitializer(graph, add_input_b.Name(), true)) {
-    return false;
-  }
-
-  auto shape = add_input_b.Shape();
-  if (shape == nullptr || shape->dim_size() != 1)
-    return false;
-
-  auto dim = shape->dim(0);
-  if (!utils::HasDimValue(dim))
-    return false;
-  int hidden_size = dim.dim_value();
-
-  const NodeArg& layernorm_add_input_b = *(layernorm_add.InputDefs()[1]);
-  if (!graph_utils::IsInitializer(graph, layernorm_add_input_b.Name(), true)) {
+  std::vector<graph_utils::EdgeEndToMatch> linear_path{
+    {0, 0, "Add", {7}, kOnnxDomain},
+    {0, 0, "MatMul", {1, 9}, kOnnxDomain}};
+  std::vector<const Node::EdgeEnd*> edges;
+  if (!graph_utils::FindPath(reshape, true, linear_path, edges, logger)) {
     return false;
   }
 
-  return optimizer_utils::ValidateShape(layernorm_add_input_b, {hidden_size});
+  const Node& linear_path_add = edges[0]->GetNode();
+  const Node& linear_path_matmul = edges[1]->GetNode();
+
+  const Node* p_node_before_matmul = graph_utils::GetInputNode(linear_path_matmul, 0);
+  if (p_node_before_matmul != nullptr && p_node_before_matmul->Index() != root.Index()) {
+    return false;
+  }
+
+  if (linear_path_add.InputDefs().size() < 2) {
+    return false;
+  }
+  const NodeArg& linear_path_add_b = *(linear_path_add.InputDefs()[1]);
+  if (!graph_utils::IsInitializer(graph, linear_path_add_b.Name(), true)) {
+    return false;
+  }
+
+  if (!optimizer_utils::IsShapeKnownOnAllDims(linear_path_add_b, 1)) {
+    return false;
+  }
+  int64_t hidden_size = linear_path_add_b.Shape()->dim(0).dim_value();
+
+  if (!optimizer_utils::ValidateShape(*(linear_path_matmul.InputDefs()[1]), {hidden_size, hidden_size})) {
+    return false;
+  }
+
+  return true;
+}
+
+static bool Match_Shape(Graph& graph, const Node& concat, const Node& shape, const NodeArg& root_input, const logging::Logger& logger) {
+  const NodeArg& shape_input = *(shape.InputDefs()[0]);
+  if (shape_input.Name() == root_input.Name()) {
+    return true;
+  }
+
+  const ONNX_NAMESPACE::TensorShapeProto* shape_input_shape = shape_input.Shape();
+  const ONNX_NAMESPACE::TensorShapeProto* root_input_shape = root_input.Shape();
+
+  if (shape_input_shape != nullptr && root_input_shape != nullptr)
+    return optimizer_utils::CompareShape(*shape_input_shape, *root_input_shape);
+
+  const Node* p_node_before_shape = graph_utils::GetInputNode(shape, 0);
+  if (p_node_before_shape == nullptr) {
+    return false;
+  }
+  if (Match_Linear_Subgraph_1(graph, concat, *p_node_before_shape, logger)) {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -84,26 +138,14 @@ bool ReshapeFusion::Match_One_Element_Output_Subgraph_1(Graph& graph, const Node
                                                         int index, std::vector<int64_t> shape_value, bool checkOneElementOnly,
                                                         const logging::Logger& logger) {
   std::vector<graph_utils::EdgeEndToMatch> parent_path{
-      {0, index, "Unsqueeze", {1, 11}, kOnnxDomain},
-      {0, 0, "Gather", {1, 11}, kOnnxDomain},
-      {0, 0, "Shape", {1}, kOnnxDomain}};
+      {0, index, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Gather", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Shape", {1, 13}, kOnnxDomain}};
   std::vector<const Node::EdgeEnd*> edges;
   if (graph_utils::FindPath(concat, true, parent_path, edges, logger)) {
     const Node& unsqueeze = edges[0]->GetNode();
     const Node& gather = edges[1]->GetNode();
     const Node& shape = edges[2]->GetNode();
-
-    const NodeArg& shape_input = *(shape.InputDefs()[0]);
-    const Node* p_node_before_shape = graph_utils::GetInputNode(shape, 0);
-    bool is_distilbert_reshape = false;
-    if (nullptr != p_node_before_shape && (*p_node_before_shape).OpType() == "Add") {
-      if (!DistilBertCheck(graph, concat, *p_node_before_shape))
-        return false;
-      is_distilbert_reshape = true;
-    }
-    if (shape_input.Name() != root_input.Name() && !is_distilbert_reshape) {
-      return false;
-    }
 
     std::vector<int64_t> axes;
     if (!(graph_utils::GetRepeatedNodeAttributeValues(unsqueeze, "axes", axes) && axes.size() == 1 && axes[0] == 0)) {
@@ -115,6 +157,10 @@ bool ReshapeFusion::Match_One_Element_Output_Subgraph_1(Graph& graph, const Node
     }
 
     if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(gather.InputDefs()[1]), int64_t(shape_value.size()), false)) {
+      return false;
+    }
+
+    if (!Match_Shape(graph, concat, shape, root_input, logger)) {
       return false;
     }
     return true;
@@ -130,9 +176,9 @@ bool ReshapeFusion::Match_One_Element_Output_Subgraph_1(Graph& graph, const Node
 bool ReshapeFusion::Match_One_Element_Output_Subgraph_2(Graph& graph, const NodeArg& root_input, const Node& cur_node,
                                                         int index, const logging::Logger& logger) {
   std::vector<graph_utils::EdgeEndToMatch> parent_path{
-      {0, index, "Squeeze", {1, 11}, kOnnxDomain},
-      {0, 0, "Slice", {1, 11}, kOnnxDomain},
-      {0, 0, "Shape", {1}, kOnnxDomain}};
+      {0, index, "Squeeze", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Slice", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Shape", {1, 13}, kOnnxDomain}};
   std::vector<const Node::EdgeEnd*> edges;
   if (graph_utils::FindPath(cur_node, true, parent_path, edges, logger)) {
     const Node& slice = edges[1]->GetNode();
@@ -200,15 +246,15 @@ bool ReshapeFusion::Is_One_Element_Output_Subgraph(Graph& graph, const NodeArg& 
   }
 
   std::vector<graph_utils::EdgeEndToMatch> div_path{
-      {0, index, "Unsqueeze", {1, 11}, kOnnxDomain},
-      {0, 0, "Div", {7}, kOnnxDomain}};
+      {0, index, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Div", {7, 13}, kOnnxDomain}};
 
   std::vector<graph_utils::EdgeEndToMatch> mul_path{
-      {0, index, "Unsqueeze", {1, 11}, kOnnxDomain},
-      {0, 0, "Mul", {7}, kOnnxDomain}};
+      {0, index, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Mul", {7, 13}, kOnnxDomain}};
 
   std::vector<graph_utils::EdgeEndToMatch> unsqueeze_path{
-      {0, index, "Unsqueeze", {1, 11}, kOnnxDomain}};
+      {0, index, "Unsqueeze", {1, 11, 13}, kOnnxDomain}};
 
   std::vector<const Node::EdgeEnd*> edges;
   if (graph_utils::FindPath(concat, true, div_path, edges, logger) ||
@@ -285,7 +331,7 @@ bool ReshapeFusion::Fuse_Subgraph(Node& reshape, Graph& graph, const logging::Lo
   }
   const Node& concat = *p_concat;
 
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(concat, "Concat", {1, 4, 11})) {
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(concat, "Concat", {1, 4, 11, 13})) {
     return false;
   }
 
