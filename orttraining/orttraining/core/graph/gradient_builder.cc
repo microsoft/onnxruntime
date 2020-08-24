@@ -223,12 +223,12 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
           }
 
           std::vector<int64_t> A_shape_2d{-1, K};
-          NodeDef A_shape_2d_node = ConstantValueNode(A_shape_2d, Name("A_shape_2d"));
+          NodeDef A_shape_2d_node = ConstantVectorNode(A_shape_2d, Name("A_shape_2d"));
           ArgDef A_shape_2d_arg = A_shape_2d_node.output_args[0];
           result.push_back(A_shape_2d_node);
 
           std::vector<int64_t> dY_shape_2d{-1, N};
-          NodeDef dY_shape_2d_node = ConstantValueNode(dY_shape_2d, Name("dY_shape_2d"));
+          NodeDef dY_shape_2d_node = ConstantVectorNode(dY_shape_2d, Name("dY_shape_2d"));
           ArgDef dY_shape_2d_arg = dY_shape_2d_node.output_args[0];
           result.push_back(dY_shape_2d_node);
 
@@ -323,10 +323,10 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
     if (IsGradientRequiredForSrcNodeInput(1)) {
       if (B_has_shape && B_shape.size() == 2) {
         // for case: A[M1, M2, ... , K], B[K, N], Y[M1, M2, ..., N]
-        NodeDef zero_int64_const_node = ConstantValueNode(int64_t{0}, Name("zero_int64"));
-        NodeDef one_const_node = ConstantValueNode(int64_t{1}, Name("one"));
-        NodeDef neg_one_const_node = ConstantValueNode(int64_t{-1}, Name("neg_one"));
-        NodeDef zero_float_const_node = ConstantValueNode(float{0.0f}, Name("zero_float"));
+        NodeDef zero_int64_const_node = ConstantScalarNode(int64_t{0}, {1}, Name("zero_int64"));
+        NodeDef one_const_node = ConstantScalarNode(int64_t{1}, {1}, Name("one"));
+        NodeDef neg_one_const_node = ConstantScalarNode(int64_t{-1}, {1}, Name("neg_one"));
+        NodeDef zero_float_const_node = ConstantScalarNode(float{0.0f}, {1}, Name("zero_float"));
 
         ArgDef ZERO_I = zero_int64_const_node.output_args[0];
         ArgDef ONE = one_const_node.output_args[0];
@@ -477,7 +477,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
         HandleBroadcasting(dY, C, IA("dC_reduced"), C_axes, result);
 
         if (has_beta && beta != 1.0f) {
-          NodeDef scale_node = ConstantValueNode(beta, Name("Scale"));
+          NodeDef scale_node = ConstantScalarNode(beta, {1}, Name("Scale"));
           ArgDef SCALE = scale_node.output_args[0];
           result.push_back(scale_node);
           result.push_back(
@@ -490,7 +490,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
         }
       } else {
         if (has_beta && beta != 1.0f) {
-          NodeDef scale_node = ConstantValueNode(beta, Name("Scale"));
+          NodeDef scale_node = ConstantScalarNode(beta, {1}, Name("Scale"));
           ArgDef SCALE = scale_node.output_args[0];
           result.push_back(scale_node);
           result.push_back(
@@ -515,7 +515,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
       HandleBroadcastingDynamic(dY, C, c_shape, IA("dC_reduced"), c_axes, result);
 
       if (has_beta && beta != 1.0f) {
-        NodeDef scale_node = ConstantValueNode(beta, Name("Scale"));
+        NodeDef scale_node = ConstantScalarNode(beta, {1}, Name("Scale"));
         ArgDef SCALE = scale_node.output_args[0];
         result.push_back(scale_node);
         result.push_back(
@@ -1208,7 +1208,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGlobalAveragePoolGradient) {
     }
   }
 
-  NodeDef scale_node = ConstantValueNode(1.0f / static_cast<float>(scale), Name("Scale"));
+  NodeDef scale_node = ConstantScalarNode(1.0f / static_cast<float>(scale), {1}, Name("Scale"));
   ArgDef SCALE = scale_node.output_args[0];
   return std::vector<NodeDef>{
       scale_node,
