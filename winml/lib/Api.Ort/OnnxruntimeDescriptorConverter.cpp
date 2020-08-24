@@ -408,20 +408,31 @@ CreateTensorFeatureDescriptor(
   THROW_IF_NOT_OK_MSG(engine_factory->UseOrtApi()->GetDimensions(tensor_info, shape.data(), shape.size()),
                       engine_factory->UseOrtApi());
 
+  const char** symbolic_dims = new const char*[num_dims];
+  engine_factory->UseOrtApi()->GetSymbolicDimensions(tensor_info, symbolic_dims, num_dims);
+
+  std::vector<winrt::hstring> symbolic_dims_vec;
+  for (size_t i = 0; i < num_dims; i++) {
+    winrt::hstring dim_name(std::wstring_convert<std::codecvt_utf8<wchar_t>>().from_bytes(symbolic_dims[i]));
+    symbolic_dims_vec.push_back(dim_name);
+  }
+
   ONNXTensorElementDataType tensor_element_data_type;
   THROW_IF_NOT_OK_MSG(engine_factory->UseOrtApi()->GetTensorElementType(tensor_info, &tensor_element_data_type),
                       engine_factory->UseOrtApi());
 
   auto kind = _winml::TensorKindFromONNXTensorElementDataType(tensor_element_data_type);
-
   auto descriptor = winrt::make<winmlp::TensorFeatureDescriptor>(
       feature_descriptor->name_,
       feature_descriptor->description_,  // description
       kind,
       shape,
+      symbolic_dims_vec,
+      symbolic_dims_vec,
       feature_descriptor->name_length_ > 0,  // is_required
       has_unsupported_image_metadata);
 
+  delete[] symbolic_dims;
   return descriptor.as<winml::ILearningModelFeatureDescriptor>();
 }
 
@@ -435,7 +446,7 @@ CreateImageFeatureDescriptor(
   const OrtTensorTypeAndShapeInfo* tensor_info;
   THROW_IF_NOT_OK_MSG(engine_factory->UseOrtApi()->CastTypeInfoToTensorInfo(type_info, &tensor_info),
                       engine_factory->UseOrtApi());
-
+  
   size_t num_dims;
   THROW_IF_NOT_OK_MSG(engine_factory->UseOrtApi()->GetDimensionsCount(tensor_info, &num_dims),
                       engine_factory->UseOrtApi());
@@ -443,6 +454,15 @@ CreateImageFeatureDescriptor(
   auto shape = std::vector<int64_t>(num_dims);
   THROW_IF_NOT_OK_MSG(engine_factory->UseOrtApi()->GetDimensions(tensor_info, shape.data(), shape.size()),
                       engine_factory->UseOrtApi());
+
+  const char** symbolic_dims = new const char*[num_dims];
+  engine_factory->UseOrtApi()->GetSymbolicDimensions(tensor_info, symbolic_dims, num_dims);
+
+  std::vector<winrt::hstring> symbolic_dims_vec;
+  for (size_t i = 0; i < num_dims; i++) {
+    winrt::hstring dim_name(std::wstring_convert<std::codecvt_utf8<wchar_t>>().from_bytes(symbolic_dims[i]));
+    symbolic_dims_vec.push_back(dim_name);
+  }
 
   ONNXTensorElementDataType tensor_element_data_type;
   THROW_IF_NOT_OK_MSG(engine_factory->UseOrtApi()->GetTensorElementType(tensor_info, &tensor_element_data_type),
@@ -474,6 +494,8 @@ CreateImageFeatureDescriptor(
       feature_descriptor->description_,
       kind,
       shape,
+      symbolic_dims_vec,
+      symbolic_dims_vec,
       feature_descriptor->name_length_ > 0,  // is_required
       pixel_format,
       alpha_mode,

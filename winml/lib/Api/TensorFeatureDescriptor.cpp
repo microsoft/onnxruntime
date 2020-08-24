@@ -13,6 +13,24 @@ TensorFeatureDescriptor::TensorFeatureDescriptor(
     const char* description,
     winml::TensorKind tensor_kind,
     const std::vector<int64_t>& shape,
+    std::vector<winrt::hstring>& dimension_names,
+    std::vector<winrt::hstring>& dimension_denotations,
+    bool is_required,
+    bool has_unsupported_image_metadata) : name_(_winml::Strings::HStringFromUTF8(name)),
+                                           description_(_winml::Strings::HStringFromUTF8(description)),
+                                           tensor_kind_(tensor_kind),
+                                           shape_(shape),
+                                           dimension_names_(dimension_names),
+                                           dimension_denotations_(dimension_denotations),
+                                           is_required_(is_required),
+                                           has_unsupported_image_metadata_(has_unsupported_image_metadata) {
+}
+
+TensorFeatureDescriptor::TensorFeatureDescriptor(
+    const char* name,
+    const char* description,
+    winml::TensorKind tensor_kind,
+    const std::vector<int64_t>& shape,
     bool is_required,
     bool has_unsupported_image_metadata) : name_(_winml::Strings::HStringFromUTF8(name)),
                                            description_(_winml::Strings::HStringFromUTF8(description)),
@@ -34,6 +52,26 @@ TensorFeatureDescriptor::Shape() try {
              std::vector<int64_t>(
                  std::begin(shape_),
                  std::end(shape_)))
+      .GetView();
+}
+WINML_CATCH_ALL
+
+wfc::IVectorView<winrt::hstring>
+TensorFeatureDescriptor::DimensionNames() try {
+  return winrt::single_threaded_vector<winrt::hstring>(
+             std::vector<winrt::hstring>(
+                 std::begin(dimension_names_),
+                 std::end(dimension_names_)))
+      .GetView();
+}
+WINML_CATCH_ALL
+
+wfc::IVectorView<winrt::hstring>
+TensorFeatureDescriptor::DimensionDenotations() try {
+  return winrt::single_threaded_vector<winrt::hstring>(
+             std::vector<winrt::hstring>(
+                 std::begin(dimension_denotations_),
+                 std::end(dimension_denotations_)))
       .GetView();
 }
 WINML_CATCH_ALL

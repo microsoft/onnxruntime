@@ -13,6 +13,8 @@ ImageFeatureDescriptor::ImageFeatureDescriptor(
     const char* description,
     winml::TensorKind tensor_kind,
     const std::vector<int64_t>& shape,
+    const std::vector<winrt::hstring>& dimension_names,
+    const std::vector<winrt::hstring>& dimension_denotations,
     bool is_required,
     wgi::BitmapPixelFormat pixel_format,
     wgi::BitmapAlphaMode alpha_mode,
@@ -23,6 +25,8 @@ ImageFeatureDescriptor::ImageFeatureDescriptor(
                                               description_(_winml::Strings::HStringFromUTF8(description)),
                                               tensor_kind_(tensor_kind),
                                               shape_(shape),
+                                              dimension_names_(dimension_names),
+                                              dimension_denotations_(dimension_denotations),
                                               is_required_(is_required),
                                               pixel_format_(pixel_format),
                                               alpha_mode_(alpha_mode),
@@ -90,6 +94,24 @@ ImageFeatureDescriptor::Shape() {
              std::vector<int64_t>(
                  std::begin(shape_),
                  std::end(shape_)))
+      .GetView();
+}
+
+wfc::IVectorView<winrt::hstring>
+ImageFeatureDescriptor::DimensionNames() {
+  return winrt::single_threaded_vector<winrt::hstring>(
+             std::vector<winrt::hstring>(
+                 std::begin(dimension_names_),
+                 std::end(dimension_names_)))
+      .GetView();
+}
+
+wfc::IVectorView<winrt::hstring>
+ImageFeatureDescriptor::DimensionDenotations() {
+  return winrt::single_threaded_vector<winrt::hstring>(
+             std::vector<winrt::hstring>(
+                 std::begin(dimension_denotations_),
+                 std::end(dimension_denotations_)))
       .GetView();
 }
 

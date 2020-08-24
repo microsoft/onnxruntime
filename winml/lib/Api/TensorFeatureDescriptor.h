@@ -15,6 +15,15 @@ struct TensorFeatureDescriptor : TensorFeatureDescriptorT<
       const char* description,
       winml::TensorKind tensor_kind,
       const std::vector<int64_t>& shape,
+      std::vector<winrt::hstring>& dimension_names,
+      std::vector<winrt::hstring>& dimension_denotations,
+      bool is_required,
+      bool has_unsuppored_image_metadata);
+  TensorFeatureDescriptor(
+      const char* name,
+      const char* description,
+      winml::TensorKind tensor_kind,
+      const std::vector<int64_t>& shape,
       bool is_required,
       bool has_unsuppored_image_metadata);
 
@@ -24,6 +33,12 @@ struct TensorFeatureDescriptor : TensorFeatureDescriptorT<
 
   wfc::IVectorView<int64_t>
   Shape();
+
+  wfc::IVectorView<winrt::hstring>
+  DimensionNames();
+
+  wfc::IVectorView<winrt::hstring>
+  DimensionDenotations();
 
   // IFeatureDescriptor
   winrt::hstring
@@ -56,6 +71,10 @@ struct TensorFeatureDescriptor : TensorFeatureDescriptorT<
   winrt::hstring description_;
   winml::TensorKind tensor_kind_;
   std::vector<int64_t> shape_;
+  // index in vector corresponds to dimension index
+  // dimensions without name/denotation with contain nullptr at that index
+  std::vector<winrt::hstring> dimension_names_;
+  std::vector<winrt::hstring> dimension_denotations_;
   bool is_required_;
   bool has_unsupported_image_metadata_;
 };

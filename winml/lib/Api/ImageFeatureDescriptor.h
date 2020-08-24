@@ -27,6 +27,8 @@ struct ImageFeatureDescriptor : ImageFeatureDescriptorT<
       const char* description,
       winml::TensorKind tensor_kind,
       const std::vector<int64_t>& shape,
+      const std::vector<winrt::hstring>& dimension_names,
+      const std::vector<winrt::hstring>& dimension_denotations,
       bool is_required,
       wgi::BitmapPixelFormat pixelformat,
       wgi::BitmapAlphaMode alphamode,
@@ -65,6 +67,12 @@ struct ImageFeatureDescriptor : ImageFeatureDescriptorT<
   wfc::IVectorView<int64_t>
   Shape();
 
+  wfc::IVectorView<winrt::hstring>
+  DimensionNames();
+
+  wfc::IVectorView<winrt::hstring>
+  DimensionDenotations();
+
   ImageNominalPixelRange
   GetNominalPixelRange();
 
@@ -86,6 +94,10 @@ struct ImageFeatureDescriptor : ImageFeatureDescriptorT<
   winrt::hstring description_;
   winml::TensorKind tensor_kind_;
   std::vector<int64_t> shape_;
+  // index in vector corresponds to dimension index
+  // dimensions without name/denotation with contain nullptr at that index
+  std::vector<winrt::hstring> dimension_names_;
+  std::vector<winrt::hstring> dimension_denotations_;
   bool is_required_;
   wgi::BitmapPixelFormat pixel_format_;
   wgi::BitmapAlphaMode alpha_mode_;

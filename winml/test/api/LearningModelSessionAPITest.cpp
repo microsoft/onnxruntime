@@ -317,7 +317,7 @@ static void NamedDimensionOverride()
   WINML_EXPECT_NO_THROW(APITest::LoadModel(L"fns-candy.onnx", model));
 
   LearningModelDevice device(nullptr);
-  WINML_EXPECT_NO_THROW(device = LearningModelDevice(LearningModelDeviceKind::Cpu));
+  WINML_EXPECT_NO_THROW(device = LearningModelDevice(LearningModelDeviceKind::DirectX));
 
   // the model input shape. the batch size, n, is overriden to 5
   int64_t n = 5, c = 3, h = 720, w = 720;

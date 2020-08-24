@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "pch.h"
+#include <evntrace.h>
 
 #include "LearningModelSession.h"
 
@@ -120,11 +121,27 @@ void LearningModelSession::Initialize() {
     uint32_t numIntraOpThreads = session_options_.as<WINMLP::LearningModelSessionOptions>()->GetIntraOpNumThreads();
     WINML_THROW_IF_FAILED(engine_builder->SetIntraOpNumThreadsOverride(numIntraOpThreads)
     );
-    
+     
     // Make onnxruntime apply named dimension overrides, if any
     com_ptr<winmlp::LearningModelSessionOptions> session_options_impl = session_options_.as<winmlp::LearningModelSessionOptions>();
     if (session_options_impl && session_options_impl->NamedDimensionOverrides().Size() > 0) {
       WINML_THROW_IF_FAILED(engine_builder->SetNamedDimensionOverrides(session_options_impl->NamedDimensionOverrides()));
+    }
+
+    // Check to see if only a subset of named dimension overrides are specified and issue a performance warning if so.
+    for (wfc::IIterator<winml::ILearningModelFeatureDescriptor> feature_iter = model_.InputFeatures().First(); feature_iter.HasCurrent(); feature_iter.MoveNext()) {
+      auto named_dims = feature_iter.Current().as<winmlp::TensorFeatureDescriptor>()->DimensionNames();
+      for (uint32_t i = 0; named_dims.Size(); i++) {
+        if (named_dims.GetAt(i) != L"" && !session_options_impl->NamedDimensionOverrides().HasKey(named_dims.GetAt(i))) {
+          TraceLoggingWrite(winml_trace_logging_provider,
+                            "WinMLNamedDimensionOverrideValidation",
+                            TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
+                            TraceLoggingLevel(WINEVENT_LEVEL_WARNING),
+                            TraceLoggingOpcode(EVENT_TRACE_TYPE_INFO),
+                            TraceLoggingString("Not all named dimensions have been overriden."       
+                                "Performance improvements may not be achieved unless all free dimensions are overriden to concrete values."));
+        }
+      }
     }
   } else {
     // Onnxruntime will use half the number of concurrent threads supported on the system
