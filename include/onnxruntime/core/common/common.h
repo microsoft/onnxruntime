@@ -101,7 +101,21 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 
 #ifdef ORT_NO_EXCEPTIONS
 
-#define ORT_TRY
+// clang-format off
+#define ORT_TRY { if (true)
+#define ORT_CATCH(x) else if (false)
+#define ORT_RETHROW
+#define ORT_CATCH_END }
+// clang-format on
+
+// In order to ignore the catch statement when a specific exception (not ... ) is caught and referred
+// in the body of the catch statements, it is necessary to wrap the body of the catch statement into
+// a lambda function. otherwise the exception referred will be undefined and cause build break
+#define ORT_HANDLE_EXCEPTION(func)
+
+// TODO, consider changing the output of the error message from std::cerr to logging when the
+// exceptions are disabled, since using std::cerr might increase binary size, and std::cerr output
+// might not be easily accesible on some systems such as mobile
 
 // Throw an exception with optional message.
 // NOTE: The arguments get streamed into a string via ostringstream::operator<<
@@ -144,17 +158,24 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
     }                                                                                          \
   } while (false)
 
-#define ORT_THROW_EX(ex)           \
-  do {                             \
-    std::cerr << #ex << std::endl; \
-    abort();                       \
+#define ORT_THROW_EX(ex, ...)                                                       \
+  do {                                                                              \
+    std::cerr << #ex << ::onnxruntime::MakeString(__VA_ARGS__) << ")" << std::endl; \
+    abort();                                                                        \
   } while (false)
 
 #define ORT_THROW_BAD_ALLOC ORT_THROW_EX(std::bad_alloc)
 
 #else
 
-#define ORT_TRY try
+// clang-format off
+#define ORT_TRY { try
+#define ORT_CATCH(x) catch(x)
+#define ORT_RETHROW throw;
+#define ORT_CATCH_END }
+// clang-format on
+
+#define ORT_HANDLE_EXCEPTION(func) func()
 
 // Throw an exception with optional message.
 // NOTE: The arguments get streamed into a string via ostringstream::operator<<

@@ -127,17 +127,18 @@ Status InferenceSessionUtils::ParseOrtConfigJsonInModelProto(const ONNX_NAMESPAC
         // set the flag indicating that the model has the ORT config json.
         is_ort_config_json_available_ = true;
       }
-#ifndef ORT_NO_EXCEPTIONS
-      catch (const std::exception& e) {
-        std::ostringstream message_stream;
-        message_stream << "Json stored in the `ort_config` key cannot be parsed. Error message: " << e.what();
+      ORT_CATCH(const std::exception& e) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          std::ostringstream message_stream;
+          message_stream << "Json stored in the `ort_config` key cannot be parsed. Error message: " << e.what();
 
-        std::string message = message_stream.str();
+          std::string message = message_stream.str();
 
-        LOGS(logger_, ERROR) << message;
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, message);
+          LOGS(logger_, ERROR) << message;
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, message);
+        });
       }
-#endif
+      ORT_CATCH_END
 
       break;
     }

@@ -39,17 +39,18 @@ void ORT_CALLBACK RunTestCase(ORT_CALLBACK_INSTANCE pci, void* context, ORT_WORK
                         return OnTestCaseFinished(pci, task, result);
                       });
   }
-#ifndef ORT_NO_EXCEPTIONS
-  catch (std::exception& ex) {
-    LOGF_DEFAULT(ERROR, "Test %s failed:%s", info.GetTestCaseName().c_str(), ex.what());
+  ORT_CATCH(std::exception & ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      LOGF_DEFAULT(ERROR, "Test %s failed:%s", info.GetTestCaseName().c_str(), ex.what());
 
-    ret = std::make_shared<TestCaseResult>(info.GetDataCount(), EXECUTE_RESULT::WITH_EXCEPTION, info.GetNodeName());
-    auto status = OnTestCaseFinished(pci, task, ret);
-    if (!status.IsOK()) {
-      ORT_THROW("OnTestCaseFinished failed: ", status.ErrorMessage());
-    }
+      ret = std::make_shared<TestCaseResult>(info.GetDataCount(), EXECUTE_RESULT::WITH_EXCEPTION, info.GetNodeName());
+      auto status = OnTestCaseFinished(pci, task, ret);
+      if (!status.IsOK()) {
+        ORT_THROW("OnTestCaseFinished failed: ", status.ErrorMessage());
+      }
+    });
   }
-#endif
+  ORT_CATCH_END
 }
 
 void PTestRunner::Start(ORT_CALLBACK_INSTANCE pci, size_t concurrent_runs) noexcept {
@@ -72,14 +73,15 @@ void PTestRunner::Start(ORT_CALLBACK_INSTANCE pci, size_t concurrent_runs) noexc
       atleast_one_run_scheduled = true;
     }
   }
-#ifndef ORT_NO_EXCEPTIONS
-  catch (const std::exception& ex) {
-    LOGF_DEFAULT(ERROR, "Cannot schedule tasks for test %s. Failing with error :%s\n", c_.GetTestCaseName().c_str(), ex.what());
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      LOGF_DEFAULT(ERROR, "Cannot schedule tasks for test %s. Failing with error :%s\n", c_.GetTestCaseName().c_str(), ex.what());
+    });
   }
-  catch (...) {
+  ORT_CATCH(...) {
     LOGF_DEFAULT(ERROR, "Cannot schedule tasks for test %s.\n", c_.GetTestCaseName().c_str());
   }
-#endif
+  ORT_CATCH_END
 
   // If no task was scheduled then call Finish to perform cleanup
   // Otherwise the last task to complete will call Finish
@@ -102,22 +104,24 @@ bool PTestRunner::ScheduleNew() {
 }
 
 void PTestRunner::OnTaskFinished(size_t, EXECUTE_RESULT, ORT_CALLBACK_INSTANCE pci) noexcept {
-  ORT_TRY {
-    ScheduleNew();
-    if (++finished == c_.GetDataCount()) {
-      //For each test case, only one DataTask can reach here
-      Finish(pci);
-    }
-  }
-#ifndef ORT_NO_EXCEPTIONS
-  catch (std::exception& ex) {
+    ORT_TRY{
+        ScheduleNew();
+if (++finished == c_.GetDataCount()) {
+  //For each test case, only one DataTask can reach here
+  Finish(pci);
+}
+}
+ORT_CATCH(std::exception& ex) {
+  ORT_HANDLE_EXCEPTION([&]() {
     LOGF_DEFAULT(ERROR, "%s:unrecoverable error:%s,exit...\n", c_.GetTestCaseName().c_str(), ex.what());
     abort();
-  } catch (...) {
-    LOGF_DEFAULT(ERROR, "%s:unrecoverable error,exit...\n", c_.GetTestCaseName().c_str());
-    abort();
-  }
-#endif
+  });
+}
+ORT_CATCH(...) {
+  LOGF_DEFAULT(ERROR, "%s:unrecoverable error,exit...\n", c_.GetTestCaseName().c_str());
+  abort();
+}
+ORT_CATCH_END
 }
 
 PTestRunner::PTestRunner(OrtSession* session1,
@@ -173,12 +177,11 @@ static Status ParallelRunTests(TestEnv& env, int p_models, size_t current_runs, 
         return st;
       }
     }
-#ifndef ORT_NO_EXCEPTIONS
-    catch (std::exception&) {
+    ORT_CATCH(std::exception&) {
       delete t;
-      throw;
+      ORT_RETHROW;
     }
-#endif
+    ORT_CATCH_END;
   }
   bool ret = env.finished->Wait();
   if (!ret) {
@@ -214,15 +217,16 @@ Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_c
 
         ORT_RETURN_IF_ERROR(WaitAndCloseEvent(ev));
       }
-#ifndef ORT_NO_EXCEPTIONS
-      catch (std::exception& ex) {
-        LOGF_DEFAULT(ERROR, "Test %s failed:%s", env.tests[i]->GetTestCaseName().c_str(), ex.what());
-        std::string node_name = env.tests[i]->GetNodeName();
-        results.push_back(
-            std::make_shared<TestCaseResult>(env.tests[i]->GetDataCount(), EXECUTE_RESULT::WITH_EXCEPTION, node_name));
-        OrtCloseEvent(ev);
+      ORT_CATCH(std::exception & ex) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          LOGF_DEFAULT(ERROR, "Test %s failed:%s", env.tests[i]->GetTestCaseName().c_str(), ex.what());
+          std::string node_name = env.tests[i]->GetNodeName();
+          results.push_back(
+              std::make_shared<TestCaseResult>(env.tests[i]->GetDataCount(), EXECUTE_RESULT::WITH_EXCEPTION, node_name));
+          OrtCloseEvent(ev);
+        });
       }
-#endif
+      ORT_CATCH_END;
     }
   }
   for (size_t i = 0; i != env.tests.size(); ++i) {
@@ -347,12 +351,13 @@ void DataRunner::RunTask(size_t task_id, ORT_CALLBACK_INSTANCE pci) {
   ORT_TRY {
     res = RunTaskImpl(task_id);
   }
-#ifndef ORT_NO_EXCEPTIONS
-  catch (const std::exception& ex) {
-    res = EXECUTE_RESULT::WITH_EXCEPTION;
-    LOGS_DEFAULT(ERROR) << c_.GetTestCaseName() << ":" << ex.what();
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      res = EXECUTE_RESULT::WITH_EXCEPTION;
+      LOGS_DEFAULT(ERROR) << c_.GetTestCaseName() << ":" << ex.what();
+    });
   }
-#endif
+  ORT_CATCH_END
 
   result->SetResult(task_id, res);
   OnTaskFinished(task_id, res, pci);
@@ -510,11 +515,10 @@ void SeqTestRunner::Start(ORT_CALLBACK_INSTANCE pci, size_t) noexcept {
       }
     }
   }
-#ifndef ORT_NO_EXCEPTIONS
-  catch (...) {
+  ORT_CATCH(...) {
     LOGS_DEFAULT(ERROR) << "SeqTestRunner::Start - Encountred exception with running tests";
   }
-#endif
+  ORT_CATCH_END
 
   Finish(pci);
 }
@@ -551,13 +555,14 @@ void RunSingleTestCase(const ITestCase& info, Ort::Env& env, const Ort::SessionO
     // at this point we know everything has started without any exceptions so simply return.
     return;
   }
-#ifndef ORT_NO_EXCEPTIONS
-  catch (const Ort::Exception& ex) {
-    LOGF_DEFAULT(ERROR, "Test %s failed:%s", info.GetTestCaseName().c_str(), ex.what());
-    std::string node_name;
-    ret = std::make_shared<TestCaseResult>(data_count, EXECUTE_RESULT::NOT_SUPPORT, "");
+  ORT_CATCH(const Ort::Exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      LOGF_DEFAULT(ERROR, "Test %s failed:%s", info.GetTestCaseName().c_str(), ex.what());
+      std::string node_name;
+      ret = std::make_shared<TestCaseResult>(data_count, EXECUTE_RESULT::NOT_SUPPORT, "");
+    });
   }
-#endif
+  ORT_CATCH_END
 
   // we will land here in case of session creation failures.
   // in all other cases DataRunner::Finish will call this.

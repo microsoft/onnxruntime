@@ -303,11 +303,12 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       ORT_TRY {
         compute_status = p_op_kernel->Compute(&op_kernel_context);
       }
-#ifndef ORT_NO_EXCEPTIONS
-      catch (const std::exception& ex) {
-        compute_status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());
+      ORT_CATCH(const std::exception& ex) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          compute_status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());
+        });
       }
-#endif
+      ORT_CATCH_END
 
       if (!compute_status.IsOK()) {
         std::ostringstream ss;

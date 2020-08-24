@@ -280,11 +280,12 @@ Status Model::Load(const ModelProto& model_proto,
   ORT_TRY {
     model.reset(new Model(model_proto, model_path, local_registries, logger));
   }
-#ifndef ORT_NO_EXCEPTIONS
-  catch (const std::exception& ex) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&ex]() {
+      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
+    });
   }
-#endif
+  ORT_CATCH_END
 
   Graph::ResolveOptions options;
   options.no_proto_sync_required = true;
@@ -315,11 +316,12 @@ Status Model::Load(ModelProto&& model_proto,
   ORT_TRY {
     model.reset(new Model(std::move(model_proto), model_path, local_registries, logger));
   }
-#ifndef ORT_NO_EXCEPTIONS
-  catch (const std::exception& ex) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&ex]() {
+      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
+    });
   }
-#endif
+  ORT_CATCH_END
 
   Graph::ResolveOptions options;
   options.no_proto_sync_required = true;
@@ -348,13 +350,14 @@ static Status LoadModelHelper(const T& file_path, Loader loader) {
   ORT_TRY {
     status = loader(fd);
   }
-#ifndef ORT_NO_EXCEPTIONS
-  catch (const std::exception& ex) {
-    GSL_SUPPRESS(es .84)
-    ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
-    return Status(ONNXRUNTIME, FAIL, ex.what());
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      GSL_SUPPRESS(es .84)
+      ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
+      return Status(ONNXRUNTIME, FAIL, ex.what());
+    });
   }
-#endif
+  ORT_CATCH_END
 
   if (!status.IsOK()) {
     GSL_SUPPRESS(es .84)
@@ -392,13 +395,14 @@ static Status SaveModel(Model& model, const T& file_path) {
   ORT_TRY {
     status = Model::Save(model, fd);
   }
-#ifndef ORT_NO_EXCEPTIONS
-  catch (const std::exception& ex) {
-    GSL_SUPPRESS(es .84)
-    ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
-    return Status(ONNXRUNTIME, FAIL, ex.what());
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      GSL_SUPPRESS(es .84)
+      ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
+      return Status(ONNXRUNTIME, FAIL, ex.what());
+    });
   }
-#endif
+  ORT_CATCH_END
 
   if (!status.IsOK()) {
     GSL_SUPPRESS(es .84)

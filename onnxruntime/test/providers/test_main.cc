@@ -51,12 +51,13 @@ int main(int argc, char** argv) {
     ort_env.reset(new Ort::Env(&tpo, ORT_LOGGING_LEVEL_WARNING, "Default"));
     status = RUN_ALL_TESTS();
   }
-#ifndef ORT_NO_EXCEPTIONS
-  catch (const std::exception& ex) {
-    std::cerr << ex.what();
-    status = -1;
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      std::cerr << ex.what();
+      status = -1;
+    });
   }
-#endif
+  ORT_CATCH_END
 
   //TODO: Fix the C API issue
   ort_env.reset();  //If we don't do this, it will crash

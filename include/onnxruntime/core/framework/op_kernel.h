@@ -106,11 +106,10 @@ class OpKernelContext {
     ORT_TRY {
       return p_ml_value ? &(p_ml_value->Get<T>()) : nullptr;
     }
-#ifndef ORT_NO_EXCEPTIONS
-    catch (const std::exception& /*e*/) {
+    ORT_CATCH(const std::exception& /*e*/) {
       throw OnnxRuntimeException(ORT_WHERE_WITH_STACK, "Missing Input: " + kernel_->Node().InputDefs()[index]->Name());
     }
-#endif
+    ORT_CATCH_END
   }
 
   // Fetch a required input, enforcing that it is present.

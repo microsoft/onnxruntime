@@ -42,7 +42,7 @@ struct Exception : std::exception {
 };
 
 #ifdef ORT_NO_EXCEPTIONS
-#define ORT_CXX_THROW(string, code)           \
+#define ORT_CXX_API_THROW(string, code)       \
   do {                                        \
     std::cerr << Ort::Exception(string, code) \
                      .what()                  \
@@ -50,7 +50,7 @@ struct Exception : std::exception {
     abort();                                  \
   } while (false)
 #else
-#define ORT_CXX_THROW(string, code) \
+#define ORT_CXX_API_THROW(string, code) \
   throw Ort::Exception(string, code)
 #endif
 

@@ -311,11 +311,12 @@ ORT_API_STATUS_IMPL(OrtInitializeBufferForTensor, _In_opt_ void* input, size_t i
       new (ptr + i) std::string();
     }
   }
-#ifndef ORT_NO_EXCEPTIONS
-  catch (const std::exception& ex) {
-    return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&ex]() {
+      return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+    });
   }
-#endif
+  ORT_CATCH_END
 
   return nullptr;
 }

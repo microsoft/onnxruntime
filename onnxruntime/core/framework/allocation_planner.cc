@@ -510,15 +510,17 @@ class PlannerImpl {
               auto wt_index = Index(def_name);
               locations[wt_index].emplace_back(GetLocationForNodeInput(index, node));
             }
-#ifndef ORT_NO_EXCEPTIONS
-            catch (std::exception& ex) {
-              return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
+            ORT_CATCH(std::exception & ex) {
+              ORT_HANDLE_EXCEPTION([&ex]() {
+                return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
+              });
             }
-#endif
+            ORT_CATCH_END
+
             return Status::OK();
           });
 
-      ORT_RETURN_IF_ERROR( status );
+      ORT_RETURN_IF_ERROR(status);
     }
     for (size_t i = 0; i != locations.size(); ++i) {
       const std::vector<OrtMemoryInfo>& loc = locations[i];

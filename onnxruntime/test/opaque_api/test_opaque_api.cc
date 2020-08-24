@@ -259,12 +259,13 @@ TEST(OpaqueApiTest, RunModelWithOpaqueInputOutput) {
     actual_result_string[str_len] = 0;
     ASSERT_EQ(expected_output.compare(actual_result_string.get()), 0);
   }
-#ifndef ORT_NO_EXCEPTIONS
-  catch (const std::exception& ex) {
-    std::cerr << "Exception: " << ex.what() << std::endl;
-    ASSERT_TRUE(false);
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&ex]() {
+      std::cerr << "Exception: " << ex.what() << std::endl;
+      ASSERT_TRUE(false);
+    });
   }
-#endif
+  ORT_CATCH_END
 }
 }  // namespace test
 }  // namespace onnxruntime

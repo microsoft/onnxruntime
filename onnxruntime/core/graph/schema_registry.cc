@@ -54,11 +54,12 @@ common::Status OnnxRuntimeOpSchemaRegistry::RegisterOpSchemaInternal(ONNX_NAMESP
   ORT_TRY {
     op_schema.Finalize();
   }
-#ifndef ORT_NO_EXCEPTIONS
-  catch (const std::exception& e) {
-    return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Schema error: " + std::string(e.what()));
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&e]() {
+      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Schema error: " + std::string(e.what()));
+    });
   }
-#endif
+  ORT_CATCH_END
 
   auto& op_name = op_schema.Name();
   auto& op_domain = op_schema.domain();

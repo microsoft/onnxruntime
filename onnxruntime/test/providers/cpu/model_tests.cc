@@ -829,10 +829,9 @@ TEST_P(ModelTest, Run) {
           return true;
         });
       }
-#ifndef ORT_NO_EXCEPTIONS
-      catch (std::exception&) {
+      ORT_CATCH(std::exception&) {
       }  // ignore non-exist dir
-#endif
+      ORT_CATCH_END
     }
   }
   return v;

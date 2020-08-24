@@ -16,11 +16,13 @@ ExLibLoader::~ExLibLoader() {
       }
     }
   }
-#ifndef ORT_NO_EXCEPTIONS
-  catch (std::exception& ex) {  // make sure exceptions don't leave the destructor
-    LOGS_DEFAULT(WARNING) << "Caught exception while destructing CustomOpsLoader with message: " << ex.what();
+  ORT_CATCH(std::exception & ex) {
+    // make sure exceptions don't leave the destructor
+    ORT_HANDLE_EXCEPTION([&ex]() {
+      LOGS_DEFAULT(WARNING) << "Caught exception while destructing CustomOpsLoader with message: " << ex.what();
+    });
   }
-#endif
+  ORT_CATCH_END
 }
 
 void* ExLibLoader::GetExLibHandle(const std::string& dso_file_path) const {
@@ -41,11 +43,14 @@ common::Status ExLibLoader::LoadExternalLib(const std::string& dso_file_path,
     *handle = lib_handle;
     return Status::OK();
   }
-#ifndef ORT_NO_EXCEPTIONS
-  catch (const std::exception& ex) {
-    return Status(common::ONNXRUNTIME, common::FAIL, "Caught exception while loading custom ops with message: " + std::string(ex.what()));
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&ex]() {
+      return Status(common::ONNXRUNTIME, common::FAIL, "Caught exception while loading custom ops with message: " + std::string(ex.what()));
+    });
   }
-#endif
+  ORT_CATCH_END
+
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ExLibLoader::LoadExternalLib failed");
 }
 
 }  // namespace onnxruntime

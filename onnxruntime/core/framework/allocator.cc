@@ -24,13 +24,14 @@ bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, siz
       *out = (alloc_size * nmemb + alignment_mask) & ~static_cast<size_t>(alignment_mask);
     }
   }
-#ifndef ORT_NO_EXCEPTIONS
-  catch (const OnnxRuntimeException& ex) {
+  ORT_CATCH(const OnnxRuntimeException& ex) {
     // overflow in calculating the size thrown by SafeInt.
-    LOGS_DEFAULT(ERROR) << ex.what();
-    ok = false;
+    ORT_HANDLE_EXCEPTION([&]() {
+      LOGS_DEFAULT(ERROR) << ex.what();
+      ok = false;
+    });
   }
-#endif
+  ORT_CATCH_END
 
   return ok;
 }

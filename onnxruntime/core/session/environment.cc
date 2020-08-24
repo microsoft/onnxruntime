@@ -161,14 +161,15 @@ Internal copy node
     const Env& env = Env::Default();
     env.GetTelemetryProvider().LogProcessInfo();
   }
-#ifndef ORT_NO_EXCEPTIONS
-  catch (std::exception& ex) {
-    status = Status{ONNXRUNTIME, common::RUNTIME_EXCEPTION, std::string{"Exception caught: "} + ex.what()};
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = Status(ONNXRUNTIME, common::RUNTIME_EXCEPTION, std::string{"Exception caught: "} + ex.what());
+    });
   }
-  catch (...) {
+  ORT_CATCH(...) {
     status = Status{ONNXRUNTIME, common::RUNTIME_EXCEPTION};
   }
-#endif
+  ORT_CATCH_END
 
   return status;
 }

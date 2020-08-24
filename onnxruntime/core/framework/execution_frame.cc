@@ -280,12 +280,13 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
                                                     << location.ToString() << " returned nullptr";
               }
             }
-#ifndef ORT_NO_EXCEPTIONS
-            catch (const OnnxRuntimeException& ex) {
-              LOGS(session_state_.Logger(), INFO) << "Allocation of memory pattern buffer for "
-                                                  << location.ToString() << " failed. Error:" << ex.what();
+            ORT_CATCH(const OnnxRuntimeException& ex) {
+              ORT_HANDLE_EXCEPTION([&]() {
+                LOGS(session_state_.Logger(), INFO) << "Allocation of memory pattern buffer for "
+                                                    << location.ToString() << " failed. Error:" << ex.what();
+              });
             }
-#endif
+            ORT_CATCH_END
 
             if (buffer != nullptr) {
               buffers_[location] = BufferUniquePtr(buffer, alloc);

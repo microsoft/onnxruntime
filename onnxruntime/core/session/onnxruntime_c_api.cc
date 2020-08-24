@@ -460,11 +460,15 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSession, _In_ const OrtEnv* env, _In_ const O
     return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Pending");
 #endif
   }
-#ifndef ORT_NO_EXCEPTIONS
-  catch (const std::exception& e) {
-    return OrtApis::CreateStatus(ORT_FAIL, e.what());
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&e]() {
+      return OrtApis::CreateStatus(ORT_FAIL, e.what());
+    });
   }
-#endif
+  ORT_CATCH_END
+
+  return OrtApis::CreateStatus(ORT_FAIL, "CreateSession failed");
+
   API_IMPL_END
 }
 
@@ -478,11 +482,12 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArray, _In_ const OrtEnv* env, _In
         options == nullptr ? onnxruntime::SessionOptions() : options->value,
         env->GetEnvironment(), model_data, static_cast<int>(model_data_length));
   }
-#ifndef ORT_NO_EXCEPTIONS
-  catch (const std::exception& e) {
-    return OrtApis::CreateStatus(ORT_FAIL, e.what());
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&e]() {
+      return OrtApis::CreateStatus(ORT_FAIL, e.what());
+    });
   }
-#endif
+  ORT_CATCH_END
 
   return LoadAndInitializeSession(env, options, sess, out);
 #else

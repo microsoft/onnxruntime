@@ -64,11 +64,12 @@ class PerformanceRunner {
     ORT_TRY {
       duration_seconds = session_->Run();
     }
-#ifndef ORT_NO_EXCEPTIONS
-    catch (const std::exception& ex) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "PerformanceRunner::RunOneIteration caught exception: ", ex.what());
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&ex]() {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "PerformanceRunner::RunOneIteration caught exception: ", ex.what());
+      });
     }
-#endif
+    ORT_CATCH_END
 
     if (!isWarmup) {
       std::lock_guard<OrtMutex> guard(results_mutex_);

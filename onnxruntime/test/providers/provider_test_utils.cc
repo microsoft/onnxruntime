@@ -687,11 +687,12 @@ void OpTester::Run(
         ORT_TRY {
           status = graph.Resolve(options);
         }
-#ifndef ORT_NO_EXCEPTIONS
-        catch (const std::exception& ex) {
-          status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
+        ORT_CATCH(const std::exception& ex) {
+          ORT_HANDLE_EXCEPTION([&]() {
+            status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
+          });
         }
-#endif
+        ORT_CATCH_END
       } else {
         status = graph.Resolve(options);
       }
@@ -855,13 +856,14 @@ void OpTester::Run(
           << "No registered execution providers were able to run the model.";
     }
   }
-#ifndef ORT_NO_EXCEPTIONS
-  catch (const std::exception& ex) {
-    std::cerr << ex.what() << "\nProvider:" << cur_provider << "\n";
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      std::cerr << ex.what() << "\nProvider:" << cur_provider << "\n";
+    });
     // rethrow as some tests for error handling expect this
-    throw;
+    ORT_RETHROW;
   }
-#endif
+  ORT_CATCH_END;
 }
 
 void OpTester::AddReferenceOutputs(const std::string& model_path) {

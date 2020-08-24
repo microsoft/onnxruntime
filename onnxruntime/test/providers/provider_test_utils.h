@@ -563,12 +563,13 @@ class OpTester {
       data.push_back(Data(std::move(node_arg), std::move(value), optional<float>(), optional<float>(), sort_output));
       if (is_initializer) initializer_index_.push_back(data.size() - 1);
     }
-#ifndef ORT_NO_EXCEPTIONS
-    catch (const std::exception& ex) {
-      std::cerr << "AddData for '" << name << "' threw: " << ex.what();
-      throw;
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        std::cerr << "AddData for '" << name << "' threw: " << ex.what();
+      });
+      ORT_RETHROW;
     }
-#endif
+    ORT_CATCH_END
   }
 
  private:
@@ -628,13 +629,13 @@ void ExpectThrow(OpTester& test, const std::string& error_msg) {
     // should throw and not reach this
     EXPECT_TRUE(false) << "Expected Run() to throw";
   }
-#ifndef ORT_NO_EXCEPTIONS
-  catch (TException ex) {
-    EXPECT_THAT(ex.what(), testing::HasSubstr(error_msg));
+  ORT_CATCH(TException ex) {
+    ORT_UNUSED_PARAMETER(error_msg);
+    ORT_HANDLE_EXCEPTION([&]() {
+      EXPECT_THAT(ex.what(), testing::HasSubstr(error_msg));
+    });
   }
-#else
-  ORT_UNUSED_PARAMETER(error_msg);
-#endif
+  ORT_CATCH_END
 }
 
 void DebugTrap();

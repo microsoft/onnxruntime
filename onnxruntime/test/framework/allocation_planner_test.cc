@@ -463,11 +463,12 @@ TEST_F(PlannerTest, PlanOutputTest) {
     // Currently, we don't check details of the output, as it may change over time.
     EXPECT_GT(output_size, 0u);
   }
-#ifndef ORT_NO_EXCEPTIONS
-  catch (const std::exception& ex) {
-    EXPECT_TRUE(false) << "Exception in producing output: " << ex.what();
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&ex]() {
+      EXPECT_TRUE(false) << "Exception in producing output: " << ex.what();
+    });
   }
-#endif
+  ORT_CATCH_END
 }
 
 }  // namespace test

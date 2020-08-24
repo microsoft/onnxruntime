@@ -93,12 +93,11 @@ class WindowsThread : public EnvThread {
     ORT_TRY {
       ret = p->start_address(p->index, p->param);
     }
-#ifndef ORT_NO_EXCEPTIONS
-    catch (std::exception&) {
+    ORT_CATCH(std::exception&) {
       p->param->Cancel();
       ret = 1;
     }
-#endif
+    ORT_CATCH_END
 
     return ret;
   }

@@ -190,11 +190,15 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
     VLOGS(logger, 1) << "Computing kernel: " << node.Name();
 
     // Execute the kernel.
-    try {
+    ORT_TRY {
       status = p_op_kernel->Compute(&op_kernel_context);
-    } catch (const std::exception& ex) {
-      status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());
     }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());
+      });
+    }
+    ORT_CATCH_END
 
     if (!status.IsOK()) {
       std::ostringstream ss;
@@ -295,14 +299,19 @@ void ParallelExecutor::EnqueueNode(size_t p_node_index, const SessionState& sess
     };
 
     Status status;
-    try {
+    ORT_TRY {
       status = ParallelExecutor::RunNodeAsync(p_node_index, std::cref(session_state), std::cref(logger));
-    } catch (const std::exception& ex) {
-      status = create_exception_message(&ex);
-    } catch (...) {
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        status = create_exception_message(&ex);
+      });
+    }
+    ORT_CATCH(...) {
       // catch node processing failure exceptions here to prevent app crash.
       status = create_exception_message(nullptr);
     }
+    ORT_CATCH_END
 
     FinishNodeRun(status);
   });

@@ -165,20 +165,21 @@ TEST(BFCArenaTest, TestCustomMemoryLimit) {
       a.Alloc(sizeof(float) * (1 << 20));
       FAIL() << "Allocation should have thrown";
     }
-#ifndef ORT_NO_EXCEPTIONS
-    catch (const OnnxRuntimeException& ex) {
+    ORT_CATCH(const OnnxRuntimeException& ex) {
+      ORT_HANDLE_EXCEPTION([&ex]() {
 #ifdef GTEST_USES_POSIX_RE
-      EXPECT_THAT(ex.what(),
-                  testing::ContainsRegex("Available memory of [0-9]+ is smaller than requested bytes of [0-9]+"));
+        EXPECT_THAT(ex.what(),
+                    testing::ContainsRegex("Available memory of [0-9]+ is smaller than requested bytes of [0-9]+"));
 #else
-      EXPECT_THAT(ex.what(),
-                  testing::ContainsRegex("Available memory of \\d+ is smaller than requested bytes of \\d+"));
+        EXPECT_THAT(ex.what(),
+                    testing::ContainsRegex("Available memory of \\d+ is smaller than requested bytes of \\d+"));
 #endif  // #ifdef GTEST_USES_POSIX_RE
+      });
     }
-    catch (...) {
+    ORT_CATCH(...) {
       FAIL() << "Allocation should have thrown OnnxRuntimeException";
     }
-#endif  // #ifndef ORT_NO_EXCEPTIONS
+    ORT_CATCH_END
 
     a.Free(first_ptr);
   }
@@ -198,14 +199,15 @@ TEST(BFCArenaTest, TestCustomMemoryLimit) {
       b.Alloc(available - (3 * 1024 * 1024));
       FAIL() << "Allocation should have thrown";
     }
-#ifndef ORT_NO_EXCEPTIONS
-    catch (const OnnxRuntimeException& ex) {
-      EXPECT_THAT(ex.what(), testing::HasSubstr("Failed to allocate memory for requested buffer of size"));
+    ORT_CATCH(const OnnxRuntimeException& ex) {
+      ORT_HANDLE_EXCEPTION([&ex]() {
+        EXPECT_THAT(ex.what(), testing::HasSubstr("Failed to allocate memory for requested buffer of size"));
+      });
     }
-    catch (...) {
+    ORT_CATCH(...) {
       FAIL() << "Allocation should have thrown OnnxRuntimeException";
     }
-#endif
+    ORT_CATCH_END
 
     b.Free(first_ptr);
   }

@@ -29,12 +29,13 @@ int real_main(int argc, char* argv[]) {
                                         : ORT_LOGGING_LEVEL_WARNING;
     env = Ort::Env(logging_level, "Default");
   }
-#ifndef ORT_NO_EXCEPTIONS
-  catch (const Ort::Exception& e) {
-    fprintf(stderr, "Error creating environment: %s \n", e.what());
-    return -1;
+  ORT_CATCH(const Ort::Exception& e) {
+    ORT_HANDLE_EXCEPTION([&e]() {
+      fprintf(stderr, "Error creating environment: %s \n", e.what());
+      return -1;
+    });
   }
-#endif
+  ORT_CATCH_END
 
   if (test_config.machine_config.provider_type_name == onnxruntime::kOpenVINOExecutionProvider) {
     if (test_config.run_config.concurrent_session_runs != 1) {
@@ -68,12 +69,13 @@ int main(int argc, char* argv[]) {
   ORT_TRY {
     retval = real_main(argc, argv);
   }
-#ifndef ORT_NO_EXCEPTIONS
-  catch (std::exception& ex) {
-    fprintf(stderr, "%s\n", ex.what());
-    retval = -1;
+  ORT_CATCH(std::exception & ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      fprintf(stderr, "%s\n", ex.what());
+      retval = -1;
+    });
   }
-#endif
+  ORT_CATCH_END
 
   ::google::protobuf::ShutdownProtobufLibrary();
 
