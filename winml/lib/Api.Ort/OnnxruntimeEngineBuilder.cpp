@@ -49,6 +49,7 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_winml::IEngine** out) {
   }
 
   RETURN_HR_IF_NOT_OK_MSG(ort_api->SetIntraOpNumThreads(session_options.get(), intra_op_num_threads_override_), ort_api);
+  RETURN_HR_IF_NOT_OK_MSG(ort_api->SetSessionProgrammingProjection(session_options.get(), OrtProgrammingProjection::ORT_PROJECTION_CPLUSPLUS), ort_api);
 
   OrtSession* ort_session = nullptr;
   onnxruntime_session_builder->CreateSession(session_options.get(), &ort_session);

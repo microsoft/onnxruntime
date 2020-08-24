@@ -150,7 +150,7 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                                           const std::string& model_graph_name,
                                           const std::unordered_map<std::string, std::string>& model_metadata,
                                           const std::string& loaded_from, const std::vector<std::string>& execution_provider_ids,
-                                          bool use_fp16) const {
+                                          bool use_fp16, uint32_t projection) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
@@ -202,6 +202,7 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                     TraceLoggingUInt8(0, "schemaVersion"),
                     TraceLoggingUInt32(session_id, "sessionId"),
                     TraceLoggingInt64(ir_version, "irVersion"),
+                    TraceLoggingUInt32(projection, "OrtProgrammingProjection"),
                     TraceLoggingString(model_producer_name.c_str(), "modelProducerName"),
                     TraceLoggingString(model_producer_version.c_str(), "modelProducerVersion"),
                     TraceLoggingString(model_domain.c_str(), "modelDomain"),

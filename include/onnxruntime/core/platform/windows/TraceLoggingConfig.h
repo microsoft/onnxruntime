@@ -25,7 +25,7 @@ Environment:
 // in this file configures the provider as a normal (non-telemetry) provider.
 #ifndef TraceLoggingOptionMicrosoftTelemetry
 #define TraceLoggingOptionMicrosoftTelemetry() \
-    TraceLoggingOptionGroup(0000000000, 00000, 00000, 0000, 0000, 0000, 0000, 0000, 000, 0000, 0000)
+    TraceLoggingOptionGroup(0x4f50731a, 0x89cf, 0x4782, 0xb3, 0xe0, 0xdc, 0xe8, 0xc9, 0x4, 0x76, 0xba)
     // Empty definition for TraceLoggingOptionMicrosoftTelemetry
 #endif
 
