@@ -173,6 +173,18 @@ class GradientBuilderBase {
                    {ONNX_NAMESPACE::MakeAttribute("value", t_proto)});
   }
 
+  static NodeDef ConstantValueNode(int64_t value, const std::string& arg_name) {
+    ONNX_NAMESPACE::TensorProto t_proto;
+    t_proto.add_dims(1);
+    t_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+    t_proto.add_int64_data(value);
+
+    return NodeDef("Constant",
+                   {},
+                   {ArgDef(arg_name, nullptr)},
+                   {ONNX_NAMESPACE::MakeAttribute("value", t_proto)});
+  }
+
   static NodeDef ConstantValueNode(float value, const std::string& arg_name) {
     ONNX_NAMESPACE::TensorProto t_proto;
     t_proto.add_dims(1);
@@ -232,7 +244,7 @@ class GradientBuilderBase {
 
   // contains set of input arg names of node_ which requires gradient
   std::unordered_set<std::string> gradient_outputs_;
-  
+
   const logging::Logger& logger_;
 };
 
