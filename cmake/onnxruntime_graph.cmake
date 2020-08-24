@@ -11,10 +11,13 @@ file(GLOB_RECURSE onnxruntime_graph_src CONFIGURE_DEPENDS
 set(onnxruntime_graph_src_exclude_patterns)
 
 if (onnxruntime_MINIMAL_BUILD)
-  # remove schema registration of contrib ops
+  # remove schema registration support
   list(APPEND onnxruntime_graph_src_exclude_patterns
+    "${ONNXRUNTIME_INCLUDE_DIR}/core/graph/schema_registry.h"
+    "${ONNXRUNTIME_ROOT}/core/graph/schema_registry.cc"
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/*defs.h"
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/*defs.cc"
+
   )
 
   # no Function support initially

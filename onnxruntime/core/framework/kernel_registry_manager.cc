@@ -3,9 +3,12 @@
 
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/kernel_registry.h"
-#include "core/framework/customregistry.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/session_state.h"
+
+#if !defined(ORT_MINIMAL_BUILD)
+#include "core/framework/customregistry.h"
+#endif
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
@@ -42,6 +45,7 @@ Status KernelRegistryManager::RegisterKernels(const ExecutionProviders& executio
   return Status::OK();
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 void KernelRegistryManager::RegisterKernelRegistry(std::shared_ptr<KernelRegistry> kernel_registry) {
   if (nullptr == kernel_registry) {
     return;
@@ -57,6 +61,12 @@ bool KernelRegistryManager::HasImplementationOf(const KernelRegistryManager& r, 
 }
 
 Status KernelRegistryManager::SearchKernelRegistry(const onnxruntime::Node& node,
+                                                   /*out*/ const KernelCreateInfo** kernel_create_info) const {
+  return SearchKernelRegistry(node, uint64_t(0), kernel_create_info);
+}
+#endif
+
+Status KernelRegistryManager::SearchKernelRegistry(const onnxruntime::Node& node, uint64_t kernel_def_hash,
                                                    /*out*/ const KernelCreateInfo** kernel_create_info) const {
   Status status;
 
@@ -74,10 +84,12 @@ Status KernelRegistryManager::SearchKernelRegistry(const onnxruntime::Node& node
     return Status(ONNXRUNTIME, FAIL, create_error_message("The node is not placed on any Execution Provider. "));
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
   for (auto& registry : custom_kernel_registries_) {
-    status = registry->TryFindKernel(node, std::string(), kernel_create_info);
+    status = registry->TryFindKernel(node, std::string(), kernel_def_hash, kernel_create_info);
     if (status.IsOK()) return status;
   }
+#endif
 
   KernelRegistry* p = nullptr;
   auto iter = provider_type_to_registry_.find(ptype);
@@ -86,8 +98,10 @@ Status KernelRegistryManager::SearchKernelRegistry(const onnxruntime::Node& node
   }
 
   if (p != nullptr) {
-    status = p->TryFindKernel(node, std::string(), kernel_create_info);
-    if (status.IsOK()) return status;
+    status = p->TryFindKernel(node, std::string(), kernel_def_hash, kernel_create_info);
+    if (status.IsOK()) {
+      return status;
+    }
   }
 
   return Status(ONNXRUNTIME, NOT_IMPLEMENTED, create_error_message("Failed to find kernel for "));

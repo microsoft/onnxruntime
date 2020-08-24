@@ -20,7 +20,10 @@
 #include "gsl/gsl"
 
 #include "core/platform/env.h"
+
+#if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/schema_registry.h"
+#endif
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime;

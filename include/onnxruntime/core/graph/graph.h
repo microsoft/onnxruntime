@@ -578,6 +578,13 @@ class Graph {
   /** Returns true if an initializer value can be overridden by a graph input with the same name. */
   bool CanOverrideInitializer() const noexcept { return ir_version_ >= 4; }
 
+  /** returns the initializer's TensorProto if 'name' is an initializer, is constant and 
+  cannot be overridden at runtime. If the initializer is not found or is not constant, a nullptr is returned.
+  @param check_outer_scope If true and the graph is a subgraph, 
+         check ancestor graph/s for 'name' if not found in 'graph'.
+  */
+  const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const std::string& name, bool check_outer_scope) const;
+
   /** Gets the Graph inputs excluding initializers.
   These are the required inputs to the Graph as the initializers can be optionally overridden via graph inputs.
   @remarks Contains no nullptr values. */
