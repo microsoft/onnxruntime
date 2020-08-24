@@ -613,8 +613,24 @@ void TensorToVideoFrameConverter::ConvertCPUTensorToSoftwareBitmap(
   ImageTensorChannelType targetChannelType = _winmli::GetChannelTypeFromSoftwareBitmap(softwareBitmap);
 
   if (tensorDesc.dataType == kImageTensorDataTypeFloat32) {
-    WINML_THROW_IF_FAILED(CpuDetensorizer::Detensorize<float>(tensorDesc.channelType, targetChannelType, static_cast<float*>(pCPUTensor), bufferWidth, height, width, pData));
+    WINML_THROW_IF_FAILED(CpuDetensorizer::Detensorize<float>(
+      tensorDesc.channelType,
+      targetChannelType, 
+      tensorDesc.pixelRange, 
+      static_cast<float*>(pCPUTensor),
+      bufferWidth, 
+      height,
+      width,
+      pData));
   } else if (tensorDesc.dataType == kImageTensorDataTypeFloat16) {
-    WINML_THROW_IF_FAILED(CpuDetensorizer::Detensorize<DirectX::PackedVector::HALF>(tensorDesc.channelType, targetChannelType, static_cast<DirectX::PackedVector::HALF*>(pCPUTensor), bufferWidth, height, width, pData));
+    WINML_THROW_IF_FAILED(CpuDetensorizer::Detensorize<DirectX::PackedVector::HALF>(
+      tensorDesc.channelType,
+      targetChannelType,
+      tensorDesc.pixelRange,
+      static_cast<DirectX::PackedVector::HALF*>(pCPUTensor),
+      bufferWidth,
+      height,
+      width,
+      pData));
   }
 }
