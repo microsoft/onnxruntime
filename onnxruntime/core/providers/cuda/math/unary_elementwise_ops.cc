@@ -37,7 +37,7 @@ Status UnaryElementwise::Prepare(OpKernelContext* context, UnaryElementwisePrepa
   template <>                                                                                              \
   Status x<T>::ComputeInternal(OpKernelContext* context) const {                                           \
     UnaryElementwisePreparation p;                                                                         \
-    UnaryElementwise::Prepare(context, &p);                                                                \
+    ORT_RETURN_IF_ERROR(UnaryElementwise::Prepare(context, &p));                                           \
     Impl_##x(                                                                                              \
         reinterpret_cast<const typename ToCudaType<T>::MappedType*>(p.input_tensor->template Data<T>()),   \
         reinterpret_cast<typename ToCudaType<T>::MappedType*>(p.output_tensor->template MutableData<T>()), \

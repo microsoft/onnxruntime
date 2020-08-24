@@ -403,9 +403,14 @@ ORT_STATUS_PTR LoadAndInitializeSession(_In_ const OrtEnv* /*env*/, _In_ const O
   Status status;
   if (options) {
     if (!options->custom_op_domains_.empty()) {
+#if !defined(ORT_MINIMAL_BUILD)
       status = sess->AddCustomOpDomains(options->custom_op_domains_);
-      if (!status.IsOK())
+      if (!status.IsOK()) {
         return ToOrtStatus(status);
+      }
+#else
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Custom operator domains are not supported in this build.");
+#endif
     }
   }
 
@@ -418,11 +423,16 @@ ORT_STATUS_PTR LoadAndInitializeSession(_In_ const OrtEnv* /*env*/, _In_ const O
     }
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
   status = sess->Load();
   if (!status.IsOK())
     return ToOrtStatus(status);
 
   status = sess->Initialize();
+#else
+  // TODO: Add path to load from ORT format model
+#endif
+
   if (!status.IsOK())
     return ToOrtStatus(status);
 
@@ -436,19 +446,30 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSession, _In_ const OrtEnv* env, _In_ const O
   API_IMPL_BEGIN
   std::unique_ptr<onnxruntime::InferenceSession> sess;
   try {
+#if !defined(ORT_MINIMAL_BUILD)
     sess = onnxruntime::make_unique<onnxruntime::InferenceSession>(
         options == nullptr ? onnxruntime::SessionOptions() : options->value,
         env->GetEnvironment(), model_path);
+
+    return LoadAndInitializeSession(env, options, sess, out);
+#else
+    ORT_UNUSED_PARAMETER(env);
+    ORT_UNUSED_PARAMETER(model_path);
+    ORT_UNUSED_PARAMETER(options);
+    ORT_UNUSED_PARAMETER(out);
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Pending");
+#endif
+
   } catch (const std::exception& e) {
     return OrtApis::CreateStatus(ORT_FAIL, e.what());
   }
-  return LoadAndInitializeSession(env, options, sess, out);
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArray, _In_ const OrtEnv* env, _In_ const void* model_data, size_t model_data_length,
-                    _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out) {
+ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArray, _In_ const OrtEnv* env, _In_ const void* model_data,
+                    size_t model_data_length, _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out) {
   API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
   std::unique_ptr<onnxruntime::InferenceSession> sess;
   try {
     sess = onnxruntime::make_unique<onnxruntime::InferenceSession>(
@@ -458,6 +479,14 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArray, _In_ const OrtEnv* env, _In
     return OrtApis::CreateStatus(ORT_FAIL, e.what());
   }
   return LoadAndInitializeSession(env, options, sess, out);
+#else
+  ORT_UNUSED_PARAMETER(env);
+  ORT_UNUSED_PARAMETER(model_data);
+  ORT_UNUSED_PARAMETER(model_data_length);
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(out);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Pending");
+#endif
   API_IMPL_END
 }
 
@@ -638,7 +667,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetBoundOutputNames, _In_ const OrtIoBinding* bindi
 }
 
 ORT_API_STATUS_IMPL(OrtApis::GetBoundOutputValues, _In_ const OrtIoBinding* binding_ptr, _In_ OrtAllocator* allocator,
-                   _Out_writes_all_(output_count) OrtValue*** output, _Out_ size_t* output_count) {
+                    _Out_writes_all_(output_count) OrtValue*** output, _Out_ size_t* output_count) {
   API_IMPL_BEGIN
   const auto& outputs = binding_ptr->binding_->GetOutputs();
   if (outputs.empty()) {
@@ -650,15 +679,15 @@ ORT_API_STATUS_IMPL(OrtApis::GetBoundOutputValues, _In_ const OrtIoBinding* bind
   // Used to destroy and de-allocate on exception
   size_t created = 0;
   IAllocatorUniquePtr<OrtValue*> ortvalues_alloc(reinterpret_cast<OrtValue**>(allocator->Alloc(allocator, outputs.size() * sizeof(OrtValue*))),
-                                                [&created, allocator](OrtValue** buffer) { 
-                                                 if (buffer) {
-                                                    while (created > 0) {
-                                                     auto p = buffer + --created;
-                                                      delete (*p);
-                                                    }
-                                                    allocator->Free(allocator, buffer);
-                                                  }
-                                                });
+                                                 [&created, allocator](OrtValue** buffer) {
+                                                   if (buffer) {
+                                                     while (created > 0) {
+                                                       auto p = buffer + --created;
+                                                       delete (*p);
+                                                     }
+                                                     allocator->Free(allocator, buffer);
+                                                   }
+                                                 });
 
   if (!ortvalues_alloc) {
     return OrtApis::CreateStatus(ORT_FAIL, "Output buffer allocation failed");
@@ -678,7 +707,6 @@ ORT_API_STATUS_IMPL(OrtApis::GetBoundOutputValues, _In_ const OrtIoBinding* bind
   return nullptr;
   API_IMPL_END
 }
-
 
 ORT_API(void, OrtApis::ClearBoundInputs, _Inout_ OrtIoBinding* binding_ptr) {
   binding_ptr->binding_->ClearInputs();
@@ -799,7 +827,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetStringTensorElement, _In_ const OrtValue* value,
 
   size_t ret = input[index].size();
   if (s_len < ret) {
-    return OrtApis::CreateStatus(ORT_FAIL,"buffer size is too small for string");
+    return OrtApis::CreateStatus(ORT_FAIL, "buffer size is too small for string");
   }
 
   memcpy(s, input[index].data(), input[index].size());
@@ -1602,10 +1630,13 @@ ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char*** out_ptr,
       if (out[i]) {
 #ifdef _MSC_VER
         strncpy_s(out[i], MAX_LEN, providers_available[i], MAX_LEN);
+        out[i][MAX_LEN] = '\0';
+#elif defined(__APPLE__)
+        strlcpy(out[i], providers_available[i], MAX_LEN);
 #else
         strncpy(out[i], providers_available[i], MAX_LEN);
-#endif
         out[i][MAX_LEN] = '\0';
+#endif
       }
     }
   }
@@ -1631,7 +1662,7 @@ ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char** ptr,
 }
 
 ORT_API_STATUS_IMPL(OrtApis::TensorAt, _Inout_ OrtValue* value, size_t* location_values, size_t location_values_count,
-                   _Outptr_ void** out) {
+                    _Outptr_ void** out) {
   TENSOR_READWRITE_API_BEGIN
   //TODO: test if it's a string tensor
   if (location_values_count != tensor->Shape().NumDimensions())
@@ -1646,11 +1677,11 @@ ORT_API_STATUS_IMPL(OrtApis::TensorAt, _Inout_ OrtValue* value, size_t* location
   size_t offset = 0;
   for (size_t i = 1; i <= tensor->Shape().NumDimensions(); i++) {
     size_t sum = 1;
-    for (size_t j = i+1; j <= tensor->Shape().NumDimensions(); j++) sum *= (size_t)tensor->Shape()[j-1];
-    offset += location[i-1] * sum;
+    for (size_t j = i + 1; j <= tensor->Shape().NumDimensions(); j++) sum *= (size_t)tensor->Shape()[j - 1];
+    offset += location[i - 1] * sum;
   }
-  auto data = ((char *)tensor->MutableDataRaw()) + (tensor->DataType()->Size() * offset);
-  *out = (void *)data;
+  auto data = ((char*)tensor->MutableDataRaw()) + (tensor->DataType()->Size() * offset);
+  *out = (void*)data;
   return nullptr;
   API_IMPL_END
 }
@@ -1701,7 +1732,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
 	In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_4 = {
+static constexpr OrtApi ort_api_1_to_5 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -1848,15 +1879,16 @@ static constexpr OrtApi ort_api_1_to_4 = {
     &OrtApis::AddFreeDimensionOverrideByName,
     // End of Version 3 - DO NOT MODIFY ABOVE (see above text for more information)
 
-    // Version 4 - In development
-
     &OrtApis::GetAvailableProviders,
     &OrtApis::ReleaseAvailableProviders,
+    // End of Version 4 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    // Version 5 - In development, feel free to add/remove/rearrange here
+
     &OrtApis::GetStringTensorElementLength,
     &OrtApis::GetStringTensorElement,
     &OrtApis::FillStringTensorElement,
-    &OrtApis::EnablePrePacking,
-    &OrtApis::DisablePrePacking,
+    &OrtApis::AddSessionConfigEntry,
 
     // IoBinding and above are propagated in the same order to C# API
     // Do not move
@@ -1872,8 +1904,8 @@ static constexpr OrtApi ort_api_1_to_4 = {
     &OrtApis::GetBoundOutputValues,
     &OrtApis::ClearBoundInputs,
     &OrtApis::ClearBoundOutputs,
-
     &OrtApis::TensorAt,
+    &OrtApis::CreateAndRegisterAllocator,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
@@ -1881,8 +1913,8 @@ static constexpr OrtApi ort_api_1_to_4 = {
 static_assert(offsetof(OrtApi, ReleaseCustomOpDomain) / sizeof(void*) == 101, "Size of version 1 API cannot change");
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
-  if (version >= 1 && version <= 4)
-    return &ort_api_1_to_4;
+  if (version >= 1 && version <= 5)
+    return &ort_api_1_to_5;
 
   return nullptr;  // Unsupported version
 }

@@ -43,10 +43,10 @@ optional<float> GetScalarConstantInitializer(const Graph& graph, const NodeArg& 
     return {};
   }
 
-  float scalar;
+  float scalar=0.f;
   utils::MLTypeCallDispatcherRet<
       Status, ExtractScalarAsFloatDispatchTarget,
-      uint32_t, uint64_t, int32_t, int64_t, MLFloat16, float, double>
+      uint32_t, uint64_t, int32_t, int64_t, MLFloat16, float, double, BFloat16>
       dispatcher{initializer->data_type()};
   ORT_THROW_IF_ERROR(dispatcher.Invoke(*initializer, scalar));
 
@@ -62,7 +62,7 @@ optional<std::pair<float, int>> GetScaleFromNode(
         return excluded_initializer_names.find(node_arg.Name()) != excluded_initializer_names.end();
       };
 
-  if (graph_utils::IsSupportedOptypeVersionAndDomain(scale_node, "Div", {7})) {
+  if (graph_utils::IsSupportedOptypeVersionAndDomain(scale_node, "Div", {7, 13})) {
     // (x / scale_reciprocal)
     const auto div_inputs = scale_node.InputDefs();
     ORT_ENFORCE(div_inputs.size() == 2);
@@ -79,7 +79,7 @@ optional<std::pair<float, int>> GetScaleFromNode(
     return {std::make_pair(1.0f / divisor.value(), scale_reciprocal_arg_index)};
   }
 
-  if (graph_utils::IsSupportedOptypeVersionAndDomain(scale_node, "Mul", {7})) {
+  if (graph_utils::IsSupportedOptypeVersionAndDomain(scale_node, "Mul", {7, 13})) {
     // (x * scale) or (scale * x)
     const auto mul_inputs = scale_node.InputDefs();
     ORT_ENFORCE(mul_inputs.size() == 2);
@@ -170,7 +170,7 @@ std::vector<ScaleMergeInfo> GetOutputNodeMerges(
 Status ProcessNode(
     Graph& graph, Node& node, bool& modified,
     const std::unordered_set<std::string>& excluded_initializer_names) {
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", {9}) &&
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", {9, 13}) &&
       !graph_utils::IsSupportedOptypeVersionAndDomain(node, "TransposeScaleMatMul", {1}, kMSDomain)) {
     return Status::OK();
   }

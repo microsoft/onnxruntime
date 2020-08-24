@@ -160,7 +160,7 @@ except ImportError as error:
 
 # Additional binaries
 if platform.system() == 'Linux':
-  libs = ['onnxruntime_pybind11_state.so', 'libdnnl.so.1', 'libmklml_intel.so', 'libiomp5.so', 'mimalloc.so']
+  libs = ['onnxruntime_pybind11_state.so', 'libdnnl.so.1', 'libmklml_intel.so', 'libmklml_gnu.so', 'libiomp5.so', 'mimalloc.so']
   # DNNL & TensorRT EPs are built as shared libs
   libs.extend(['libonnxruntime_providers_shared.so'])
   libs.extend(['libonnxruntime_providers_dnnl.so'])
@@ -186,7 +186,7 @@ elif platform.system() == "Darwin":
 else:
   libs = ['onnxruntime_pybind11_state.pyd', 'dnnl.dll', 'mklml.dll', 'libiomp5md.dll']
   # DNNL & TensorRT EPs are built as shared libs
-  libs.extend(['libonnxruntime_providers_shared.dll'])
+  libs.extend(['onnxruntime_providers_shared.dll'])
   libs.extend(['onnxruntime_providers_dnnl.dll'])
   libs.extend(['onnxruntime_providers_tensorrt.dll'])
   # nGraph Libs
@@ -236,6 +236,13 @@ packages = [
     'onnxruntime.tools',
     'onnxruntime.quantization',
 ]
+
+# TODO: thiagofc: Temporary 'experimental' namespace for new PyTorch front-end
+if '--enable_training' in sys.argv:
+    packages.extend(['onnxruntime.experimental',
+                     'onnxruntime.experimental.amp',
+                     'onnxruntime.experimental.optim'])
+    sys.argv.remove('--enable_training')
 
 package_data = {}
 data_files = []

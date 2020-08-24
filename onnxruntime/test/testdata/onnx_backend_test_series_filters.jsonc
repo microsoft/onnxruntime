@@ -21,6 +21,8 @@
         "^test_nesterov_momentum",
         "^test_pow_types_float32_uint32",
         "^test_pow_types_float32_uint64",
+        "^test_sequence_insert_at_back_cpu", // numpy_helper currently not supporting loading segments.
+        "^test_sequence_insert_at_front_cpu", // numpy_helper currently not supporting loading segments.
         "^test_gradient_of_add_and_mul",
         "^test_gradient_of_add",
         "^test_batchnorm_example_training_mode",
@@ -63,8 +65,8 @@
         "^test_pow_types_int32_float32_*",
         "^test_pow_types_int_*",
         "^test_pow_types_int64_float32_*",
-        "^test_dropout_default_mask_*", // 11 : EP_FAIL : Non-zero status code returned while running NGRAPHCustomOp_100 node. Name:'NGRAPHExecutionProvider_NGRAPHCustomOp_100_0' Status Message: [NGRAPHCustomOp] - NGRAPHExecutionProvider_NGRAPHCustomOp_100_0 - Exception while importing model to nGraph: deque::_M_range_check: __n (which is 0)>= this->size() 
-        "^test_dropout_default_mask_ratio_*" // 11 : EP_FAIL : Non-zero status code returned while running NGRAPHCustomOp_100 node. Name:'NGRAPHExecutionProvider_NGRAPHCustomOp_100_0' Status Message: [NGRAPHCustomOp] - NGRAPHExecutionProvider_NGRAPHCustomOp_100_0 - Exception while importing model to nGraph: deque::_M_range_check: __n (which is 0)>= this->size() 
+        "^test_dropout_default_mask_*", // 11 : EP_FAIL : Non-zero status code returned while running NGRAPHCustomOp_100 node. Name:'NGRAPHExecutionProvider_NGRAPHCustomOp_100_0' Status Message: [NGRAPHCustomOp] - NGRAPHExecutionProvider_NGRAPHCustomOp_100_0 - Exception while importing model to nGraph: deque::_M_range_check: __n (which is 0)>= this->size()
+        "^test_dropout_default_mask_ratio_*" // 11 : EP_FAIL : Non-zero status code returned while running NGRAPHCustomOp_100 node. Name:'NGRAPHExecutionProvider_NGRAPHCustomOp_100_0' Status Message: [NGRAPHCustomOp] - NGRAPHExecutionProvider_NGRAPHCustomOp_100_0 - Exception while importing model to nGraph: deque::_M_range_check: __n (which is 0)>= this->size()
     ],
     "current_failing_tests_DNNL": [
         "^test_range_float_type_positive_delta_expanded",
@@ -81,39 +83,47 @@
         "^test_negative_log_likelihood.*",
         "^test_softmax_cross_entropy.*"
     ],
+    "current_failing_tests_OPENVINO_MYRIAD": [
+         "^test_range",
+         "^test_dynamicquantizelinear",
+         "^test_operator_index"
+    ],
     "current_failing_tests_OPENVINO_GPU": [
         "^test_div",
         // temporarily exclude vgg19 test which comsumes too much memory, run out of memory on Upsquared device.
         // single test pass for vgg19, need furture investigation
         "^test_vgg19",
         "^test_negative_log_likelihood.*", // Does not support 5-D or above tensors for SUB op.
-        "^test_softmax_cross_entropy.*" // Does not support 5-D or above tensors for SUB op.
-    ],
-    "current_failing_tests_OPENVINO_GPU_FP32": [
+        "^test_softmax_cross_entropy.*", // Does not support 5-D or above tensors for SUB op.
         "^test_operator_permute2",
         "^test_operator_repeat",
         "^test_operator_repeat_dim_overflow",
-        "^test_add_bcast",
-        "^test_batchnorm_epsilon",
-        "^test_div_bcast",
-        "^test_mul_bcast",
-        "^test_pow_bcast_array",
-        "^test_sub_bcast",
-        "^test_batchnorm_example",
-        "^test_clip_default_inbounds",
+        "^test_add_bcast.*",
+        "^test_batchnorm_epsilon.*",
+        "^test_div_bcast.*",
+        "^test_mul_bcast.*",
+        "^test_pow_bcast_array.*",
+        "^test_sub_bcast.*",
+        "^test_batchnorm_example.*",
+        "^test_clip_default_inbounds.*",
+        "^test_pow_types_int32_int32.*",
+        "^test_pow_types_int64_int64.*",
         "^test_resize_upsample_sizes_nearest_ceil_half_pixel",
         "^test_resize_upsample_sizes_nearest_floor_align_corners",
         "^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric",
         "^test_unique_not_sorted_without_axis",
         "^test_negative_log_likelihood.*", // Does not support 5-D or above tensors for SUB op.
-        "^test_softmax_cross_entropy.*" // Does not support 5-D or above tensors for SUB op.
+        "^test_softmax_cross_entropy.*", // Does not support 5-D or above tensors for SUB op.
+        "^test_gather_negative_indices.*"
     ],
     "current_failing_tests_OPENVINO_CPU_FP32": [
         "^test_operator_permute2",
         "^test_operator_repeat",
         "^test_operator_repeat_dim_overflow",
         "^test_negative_log_likelihood.*", // Does not support 5-D or above tensors for SUB op.
-        "^test_softmax_cross_entropy.*" // Does not support 5-D or above tensors for SUB op.
+        "^test_softmax_cross_entropy.*", // Does not support 5-D or above tensors for SUB op.
+        "^test_mvn.*",
+        "^test_gather_negative_indices.*"
     ],
     // ORT first supported opset 7, so models with nodes that require versions prior to opset 7 are not supported
     "tests_with_pre_opset7_dependencies": [
