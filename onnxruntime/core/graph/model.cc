@@ -87,17 +87,17 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path, const IOnnx
              const logging::Logger& logger)
     : model_path_(Path::Parse(model_path)) {
   if (!utils::HasGraph(model_proto)) {
-    throw std::invalid_argument("ModelProto does not have a graph.");
+    ORT_THROW("ModelProto does not have a graph.");
   }
 
   if (model_proto.opset_import_size() == 0) {
-    throw std::invalid_argument(
+    ORT_THROW(
         "Missing opset in the model. All ModelProtos MUST have at least one entry that"
         " specifies which version of the ONNX OperatorSet is being imported.");
   }
 
   if (!model_proto.has_ir_version() || model_proto.ir_version() > ONNX_NAMESPACE::Version::IR_VERSION) {
-    throw std::invalid_argument("Unknown model file format version.");
+    ORT_THROW("Unknown model file format version.");
   }
 
   model_proto_ = std::move(model_proto);

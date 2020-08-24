@@ -71,13 +71,16 @@ void* DefaultAlloc(size_t size) {
   size_t alignment = MlasGetPreferredBufferAlignment();
 #if _MSC_VER
   p = _aligned_malloc(size, alignment);
-  if (p == nullptr) throw std::bad_alloc();
+  if (p == nullptr)
+    ORT_THROW_BAD_ALLOC;
 #elif defined(_LIBCPP_SGX_CONFIG)
   p = memalign(alignment, size);
-  if (p == nullptr) throw std::bad_alloc();
+  if (p == nullptr)
+    ORT_THROW_BAD_ALLOC;
 #else
   int ret = posix_memalign(&p, alignment, size);
-  if (ret != 0) throw std::bad_alloc();
+  if (ret != 0)
+    ORT_THROW_BAD_ALLOC;
 #endif
   return p;
 }

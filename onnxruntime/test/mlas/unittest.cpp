@@ -96,7 +96,7 @@ public:
 #endif
 
             if (_BaseBuffer == nullptr) {
-                throw std::bad_alloc();
+                ORT_THROW_BAD_ALLOC;
             }
 
             //
@@ -106,11 +106,11 @@ public:
 
 #if defined(_WIN32)
             if (VirtualAlloc(_BaseBuffer, BytesToAllocate, MEM_COMMIT, PAGE_READWRITE) == nullptr) {
-                throw std::bad_alloc();
+                ORT_THROW_BAD_ALLOC;
             }
 #else
             if (mprotect(_BaseBuffer, BytesToAllocate, PROT_READ | PROT_WRITE) != 0) {
-                throw std::bad_alloc();
+                ORT_THROW_BAD_ALLOC;
             }
 #endif
 

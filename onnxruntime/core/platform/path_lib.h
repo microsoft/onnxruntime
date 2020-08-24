@@ -192,7 +192,7 @@ void LoopDir(const std::wstring& dir_name, T func) {
   if (hFind.get() == INVALID_HANDLE_VALUE) {
     DWORD dw = GetLastError();
     std::string s = FormatErrorCode(dw);
-    throw std::runtime_error(s);
+    ORT_THROW(s);
   }
   do {
     if (!func(ffd.cFileName, DTToFileType(ffd.dwFileAttributes))) return;
@@ -201,7 +201,7 @@ void LoopDir(const std::wstring& dir_name, T func) {
   if (dwError != ERROR_NO_MORE_FILES) {
     DWORD dw = GetLastError();
     std::string s = FormatErrorCode(dw);
-    throw std::runtime_error(s);
+    ORT_THROW(s);
   }
 }
 
@@ -260,7 +260,7 @@ void LoopDir(const std::string& dir_name, T func) {
     std::ostringstream oss;
     oss << "couldn't open '" << dir_name << "':" << msg;
     std::string s = oss.str();
-    throw std::runtime_error(s);
+    ORT_THROW(s);
   }
   ORT_TRY {
     struct dirent* dp;

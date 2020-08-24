@@ -139,6 +139,14 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
     }                                                                                          \
   } while (false)
 
+#define ORT_THROW_EX(ex)           \
+  do {                             \
+    std::cerr << #ex << std::endl; \
+    abort();                       \
+  } while (false)
+
+#define ORT_THROW_BAD_ALLOC ORT_THROW_EX(std::bad_alloc);
+
 #else
 
 #define ORT_TRY try
@@ -160,6 +168,8 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
   if (!(condition))                                                           \
   throw ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK, #condition, \
                                             ::onnxruntime::MakeString(__VA_ARGS__))
+
+#define ORT_THROW_BAD_ALLOC throw std::bad_alloc();
 
 #endif
 
