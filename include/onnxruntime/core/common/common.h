@@ -124,6 +124,12 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
     abort();                                                                                    \
   } while (false)
 
+#define ORT_LOGIC_ERROR(what_arg)       \
+  do {                                  \
+    std::cerr << what_arg << std::endl; \
+    abort();                            \
+  } while (false)
+
 // Check condition.
 // NOTE: The arguments get streamed into a string via ostringstream::operator<<
 // DO NOT use a printf format string, as that will not work as you expect.
@@ -159,6 +165,9 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 // Just in order to mark things as not implemented. Do not use in final code.
 #define ORT_NOT_IMPLEMENTED(...) \
   throw ::onnxruntime::NotImplementedException(::onnxruntime::MakeString(__VA_ARGS__))
+
+#define ORT_LOGIC_ERROR(what_arg) \
+  throw std::logic_error(::onnxruntime::MakeString(what_arg))
 
 // Check condition.
 // NOTE: The arguments get streamed into a string via ostringstream::operator<<

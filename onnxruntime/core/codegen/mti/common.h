@@ -5,6 +5,7 @@
 
 #include <stdexcept>
 #include <string>
+#include "onnxruntime/core/common/common.h"
 
 #define MTI_ASSERT(condition)                                           \
   if (!(condition)) {                                                   \
