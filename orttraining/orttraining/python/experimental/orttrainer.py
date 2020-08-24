@@ -350,9 +350,19 @@ class ORTTrainer(object):
         # DEBUG START ---
         print("MADE IT HERE")
         _inference_sess = ort.InferenceSession(self._onnx_model.SerializeToString())
-        _inference_outs = _inference_sess.run(None, input)
+        inf_inputs = {}
+        for i, input_elem in enumerate(input):
+            if i >= len(_inference_sess.get_inputs()):
+                continue
+            else:
+                inf_inputs[_inference_sess.get_inputs()[i].name] = input_elem.cpu().numpy()
+        _inference_outs = _inference_sess.run(None, inf_inputs)
         print(_inference_outs)
-
+        print(self.torch_sample_outputs)
+        import _test_helpers
+        for torch_item, ort_item in zip(self.torch_sample_outputs, _inference_outs):
+            from numpy.testing import assert_allclose
+            assert_allclose(torch_item, ort_item, atol=1e-3)
         # DEBUG END ---
 
         # Run a train step and return
