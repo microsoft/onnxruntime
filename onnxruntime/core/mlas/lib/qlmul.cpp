@@ -248,8 +248,8 @@ MlasQLinearMulKernel(
     __m128i vb_lo_i16x8, vb_hi_i16x8;
 
     if (IsScalarB) {
-        vb_hi_i16x8 = vb_lo_i16x8 = MlasExtendToS16Debias<DataType, true>(
-            _mm_set1_epi16((int16_t)*InputB), ZeroVector, VectorZeroPointB);
+        vb_lo_i16x8 = _mm_sub_epi16(_mm_set1_epi16((int16_t)*InputB), VectorZeroPointB);
+        vb_hi_i16x8 = vb_lo_i16x8;
     }
 
     while (N > 0) {
