@@ -10,7 +10,7 @@ from PIL import Image
 import onnx
 import onnxruntime
 from onnx import helper, TensorProto, numpy_helper
-from onnxruntime.quantization import quantize, QuantizationMode, calibrate, CalibrationDataReader
+from onnxruntime.quantization import quantize_static, calibrate, CalibrationDataReader
 
 class ResNet50DataReader(CalibrationDataReader):
     def __init__(self,calibration_image_folder,augmented_model_path='augmented_model.onnx'): 
@@ -66,10 +66,7 @@ def main():
     dr = ResNet50DataReader(calibration_dataset_path)
     #call calibrate to generate quantization dictionary containing the zero point and scale values
     quantization_params_dict = calibrate(model_path,dr)
-    calibrated_quantized_model = quantize(model_path,
-                                          quantization_mode=QuantizationMode.QLinearOps,
-                                          force_fusions=True,
-                                          quantization_params=quantization_params_dict)
+    calibrated_quantized_model = quantize_static(model_path, quantization_params=quantization_params_dict)
     output_model_path = './calibrated_quantized_model.onnx'
     onnx.save(calibrated_quantized_model, output_model_path)
     print('Calibrated and quantized model saved.')

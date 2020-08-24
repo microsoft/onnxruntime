@@ -1,5 +1,6 @@
 import onnx
 from onnx import onnx_pb as onnx_proto
+from enum import Enum
 
 from pathlib import Path
 
@@ -43,6 +44,11 @@ quantization_modes = [
 class QuantizedValueType():
     Input = 0
     Initializer = 1
+
+
+class QuantType(Enum):
+    QInt8 = 1
+    QUInt8 = 2
 
 
 class QuantizedInitializer:

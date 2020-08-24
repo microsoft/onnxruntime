@@ -17,8 +17,11 @@ from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
 
 from .quant_utils import QuantizationMode,QuantizedValueType,QuantizedInitializer,QuantizedValue,quantization_modes
 from .quant_utils import _find_by_name,_get_elem_index,_get_mul_node,_generate_identified_filename,_attribute_to_kwarg
+from .quant_utils import QuantType
 
 from .registry import CreateOpQuantizer, CreateDefaultOpQuantizer
+
+from .onnx_model import ONNXModel
 
 __producer__ = "onnx.quantize"
 __version__ = "0.1.0"
@@ -127,132 +130,6 @@ def check_opset_version(org_model, force_fusions):
     return fuse_dynamic_quant
 
 
-
-class ONNXModel:
-    def __init__(self, model):
-        self.model = model
-        self.node_name_counter = {}
-
-    def nodes(self):
-        return self.model.graph.node
-
-    def initializer(self):
-        return self.model.graph.initializer
-
-    def graph(self):
-        return self.model.graph
-
-    def ir_version(self):
-        return self.model.ir_version
-
-    def opset_import(self):
-        return self.model.opset_import
-    
-    def remove_node(self, node):
-        if node in self.model.graph.node:
-            self.model.graph.node.remove(node)
-
-    def remove_nodes(self, nodes_to_remove):
-        for node in nodes_to_remove:
-            self.remove_node(node)
-
-    def add_node(self, node):
-        self.model.graph.node.extend([node])
-
-    def add_nodes(self, nodes_to_add):
-        self.model.graph.node.extend(nodes_to_add)
-
-    def add_initializer(self, tensor):
-        if _find_by_name(tensor.name, self.model.graph.initializer) is None:
-            self.model.graph.initializer.extend([tensor])
-
-    def get_initializer(self, name):
-        for tensor in self.model.graph.initializer:
-            if tensor.name == name:
-                return tensor
-        return None   
-
-    def remove_initializer(self,tensor):
-        if tensor in self.model.graph.initializer:
-            self.model.graph.initializer.remove(tensor)
-        
-    def remove_initializers(self,init_to_remove):
-        for initializer in init_to_remove:
-            self.remove_initializer(initializer)
-
-    def input_name_to_nodes(self):
-        input_name_to_nodes = {}
-        for node in self.model.graph.node:
-            for input_name in node.input:
-                if input_name not in input_name_to_nodes:
-                    input_name_to_nodes[input_name] = [node]
-                else:
-                    input_name_to_nodes[input_name].append(node)
-        return input_name_to_nodes
-
-    def output_name_to_node(self):
-        output_name_to_node = {}
-        for node in self.model.graph.node:
-            for output_name in node.output:
-                output_name_to_node[output_name] = node      
-        return output_name_to_node
-
-    def get_children(self, node, input_name_to_nodes=None):
-        if input_name_to_nodes is None:
-            input_name_to_nodes = self.input_name_to_nodes()
-
-        children = []
-        for output in node.output:
-            if output in input_name_to_nodes:
-                for node in input_name_to_nodes[output]:
-                    children.append(node)
-        return children
-        
-    def get_parents(self, node, output_name_to_node=None):
-        if output_name_to_node is None:
-            output_name_to_node = self.output_name_to_node()
-
-        parents = []
-        for input in node.input:
-            if input in output_name_to_node:
-                parents.append(output_name_to_node[input])
-        return parents
-    
-    def get_parent(self, node, idx, output_name_to_node=None):
-        if output_name_to_node is None:
-            output_name_to_node = self.output_name_to_node()
-
-        if len(node.input) <= idx:
-            return None
-
-        input = node.input[idx]
-        if input not in output_name_to_node:
-            return None
-
-        return output_name_to_node[input]
-    
-    def find_node_by_name(self,node_name,new_nodes_list,graph):
-        '''
-        Find out if a node exists in a graph or a node is in the 
-        new set of nodes created during quantization. Return the node found.
-        '''
-        graph_nodes_list = list(graph.node)  #deep copy
-        graph_nodes_list.extend(new_nodes_list)
-        node = _find_by_name(node_name, graph_nodes_list)
-        return node
-
-    def find_nodes_by_initializer(self,graph,initializer):
-        '''
-        Find all nodes with given initializer as an input.
-        '''
-        nodes = []
-        for node in graph.node:
-            for node_input in node.input:
-                if node_input == initializer.name:
-                    nodes.append(node)
-        return nodes
-
-
 class ONNXQuantizer:
     def __init__(self, model:ONNXModel, value_infos, per_channel, mode, static, fuse_dynamic_quant, weight_qType, input_qType,
                  quantization_params, nodes_to_quantize, nodes_to_exclude):
@@ -260,7 +137,7 @@ class ONNXQuantizer:
         self.value_infos = value_infos
         self.per_channel = per_channel  
         self.mode = mode  
-        self.static = static  
+        self.static = static
         self.fuse_dynamic_quant = fuse_dynamic_quant
         self.input_qType = input_qType  
         self.weight_qType = weight_qType 
@@ -268,6 +145,10 @@ class ONNXQuantizer:
         self.nodes_to_quantize = nodes_to_quantize  
         self.nodes_to_exclude = nodes_to_exclude  
         self.new_nodes = []
+
+        # self.model = ONNXModel(model_input)
+        # self.value_infos = value_infos
+        # self.fuse_dynamic_quant = fuse_dynamic_quant
 
         if not self.mode in quantization_modes:
             raise ValueError('unsupported quantization mode {}'.format(self.mode))
@@ -1110,6 +991,10 @@ def quantize(model_path,
         List of nodes names to exclude. The nodes in this list will be excluded from quantization
         when it is not None.
     '''
+    
+    print("Warning: onnxruntime.quantization.quantize is deprecated.\n\
+           Please use quantize_static for static quantization, quantize_dynamic for dynamic quantization, and quantize_qat for quantization-aware training quantization.")
+
     if nbits == 8:
         input_qType = onnx_proto.TensorProto.INT8 if symmetric_activation else onnx_proto.TensorProto.UINT8
         weight_qType = onnx_proto.TensorProto.INT8 if symmetric_weight else onnx_proto.TensorProto.UINT8
@@ -1137,3 +1022,237 @@ def quantize(model_path,
         return quantizer.model.model
     else:
         raise ValueError('Only 8 bit quantization is currently supported')
+
+
+def quantize_static(model_path,
+                    per_channel=False,
+                    activation_type=QuantType.QUInt8,
+                    weight_type=QuantType.QUInt8,
+                    quantization_params=None,
+                    nodes_to_quantize=None,
+                    nodes_to_exclude=None):
+    '''
+        Given an onnx model, create a quantized onnx model and save it into a file
+    :param model_input: file path of model to quantize
+    :param model_output: file path of quantized model
+    :param per_channel: quantize weights per channel
+    :param nbits: number of bits to represent quantized data. Currently only supporting 8-bit types
+    :param activation_type: quantization data type of activation
+    :param weight_type: quantization data type of weight
+    :param quantization_params:
+        Dictionary to specify the zero point and scale values for inputs to conv and matmul nodes.
+        It is required.
+        The quantization_params should be specified in the following format:
+            {
+                "input_name": [zero_point, scale]
+            }.
+        zero_point should be of type np.uint8 and scale should be of type np.float32.
+        example:
+            {
+                'resnet_model/Relu_1:0': [np.uint8(0), np.float32(0.019539741799235344)],
+                'resnet_model/Relu_2:0': [np.uint8(0), np.float32(0.011359662748873234)]
+            }
+    :return: ModelProto with quantization
+    :param nodes_to_quantize:
+        List of nodes names to quantize. When this list is not None only the nodes in this list
+        are quantized.
+        example:
+        [
+            'Conv__224',
+            'Conv__252'
+        ]
+    :param nodes_to_exclude:
+        List of nodes names to exclude. The nodes in this list will be excluded from quantization
+        when it is not None.
+    '''
+
+    input_qType = onnx_proto.TensorProto.INT8 if activation_type == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
+    weight_qType = onnx_proto.TensorProto.INT8 if weight_type == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
+    mode = QuantizationMode.QLinearOps
+
+    #optimize the original model
+    optimized_model = optimize_model(Path(model_path))
+    copy_model = onnx_proto.ModelProto()
+    copy_model.CopyFrom(optimized_model)
+
+    #check opset version of the original model
+    #fuse_dynamic_quant = check_opset_version(onnx.load(model_path), force_fusions)
+    fuse_dynamic_quant = True
+
+    #apply shape inference to the ModelProto and get value informations
+    inferred_model = shape_inference.infer_shapes(copy_model)
+    value_infos = {vi.name: vi for vi in inferred_model.graph.value_info}
+
+    #create ONNXModel and ONNXQuantizer
+    onnx_model = ONNXModel(inferred_model)
+    quantizer = ONNXQuantizer(onnx_model,
+                              value_infos,
+                              per_channel,
+                              mode,
+                              True, # static
+                              fuse_dynamic_quant,
+                              weight_qType,
+                              input_qType,
+                              quantization_params,
+                              nodes_to_quantize,
+                              nodes_to_exclude)
+
+    quantizer.quantize_model()
+    quantizer.model.producer_name = __producer__
+    quantizer.model.producer_version = __version__
+    return quantizer.model.model
+
+def quantize_dynamic(model_path,
+                    per_channel=False,
+                    activation_type=QuantType.QUInt8,
+                    weight_type=QuantType.QUInt8,
+                    nodes_to_quantize=None,
+                    nodes_to_exclude=None):
+    '''
+        Given an onnx model, create a quantized onnx model and save it into a file
+    :param model_input: file path of model to quantize
+    :param model_output: file path of quantized model
+    :param per_channel: quantize weights per channel
+    :param nbits: number of bits to represent quantized data. Currently only supporting 8-bit types
+    :param activation_type: quantization data type of activation
+    :param weight_type: quantization data type of weight
+    :param quantization_params:
+        Dictionary to specify the zero point and scale values for inputs to conv and matmul nodes.
+        It is required.
+        The quantization_params should be specified in the following format:
+            {
+                "input_name": [zero_point, scale]
+            }.
+        zero_point should be of type np.uint8 and scale should be of type np.float32.
+        example:
+            {
+                'resnet_model/Relu_1:0': [np.uint8(0), np.float32(0.019539741799235344)],
+                'resnet_model/Relu_2:0': [np.uint8(0), np.float32(0.011359662748873234)]
+            }
+    :return: ModelProto with quantization
+    :param nodes_to_quantize:
+        List of nodes names to quantize. When this list is not None only the nodes in this list
+        are quantized.
+        example:
+        [
+            'Conv__224',
+            'Conv__252'
+        ]
+    :param nodes_to_exclude:
+        List of nodes names to exclude. The nodes in this list will be excluded from quantization
+        when it is not None.
+    '''
+
+    input_qType = onnx_proto.TensorProto.INT8 if activation_type == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
+    weight_qType = onnx_proto.TensorProto.INT8 if weight_type == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
+    mode = QuantizationMode.IntegerOps
+
+    #optimize the original model
+    optimized_model = optimize_model(Path(model_path))
+    copy_model = onnx_proto.ModelProto()
+    copy_model.CopyFrom(optimized_model)
+
+    #check opset version of the original model
+    #fuse_dynamic_quant = check_opset_version(onnx.load(model_path), force_fusions)
+    fuse_dynamic_quant = True
+
+    #apply shape inference to the ModelProto and get value informations
+    inferred_model = shape_inference.infer_shapes(copy_model)
+    value_infos = {vi.name: vi for vi in inferred_model.graph.value_info}
+
+    #create ONNXModel and ONNXQuantizer
+    onnx_model = ONNXModel(inferred_model)
+    quantizer = ONNXQuantizer(onnx_model,
+                              value_infos,
+                              per_channel,
+                              mode,
+                              False, #static
+                              fuse_dynamic_quant,
+                              weight_qType,
+                              input_qType,
+                              None,
+                              nodes_to_quantize,
+                              nodes_to_exclude)
+
+    quantizer.quantize_model()
+    quantizer.model.producer_name = __producer__
+    quantizer.model.producer_version = __version__
+    return quantizer.model.model
+
+
+def quantize_qat(model_input,
+                 per_channel=False,
+                 activation_type=QuantType.QUInt8,
+                 weight_type=QuantType.QUInt8,
+                 nodes_to_quantize=None,
+                 nodes_to_exclude=None):
+    '''
+        Given an onnx model, create a quantized onnx model and save it into a file
+    :param model_input: file path of model to quantize
+    :param model_output: file path of quantized model
+    :param per_channel: quantize weights per channel
+    :param nbits: number of bits to represent quantized data. Currently only supporting 8-bit types
+    :param activation_type: quantization data type of activation
+    :param weight_type: quantization data type of weight
+    :param quantization_params:
+        Dictionary to specify the zero point and scale values for inputs to conv and matmul nodes.
+        It is required.
+        The quantization_params should be specified in the following format:
+            {
+                "input_name": [zero_point, scale]
+            }.
+        zero_point should be of type np.uint8 and scale should be of type np.float32.
+        example:
+            {
+                'resnet_model/Relu_1:0': [np.uint8(0), np.float32(0.019539741799235344)],
+                'resnet_model/Relu_2:0': [np.uint8(0), np.float32(0.011359662748873234)]
+            }
+    :return: ModelProto with quantization
+    :param nodes_to_quantize:
+        List of nodes names to quantize. When this list is not None only the nodes in this list
+        are quantized.
+        example:
+        [
+            'Conv__224',
+            'Conv__252'
+        ]
+    :param nodes_to_exclude:
+        List of nodes names to exclude. The nodes in this list will be excluded from quantization
+        when it is not None.
+    '''
+
+    input_qType = onnx_proto.TensorProto.INT8 if activation_type == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
+    weight_qType = onnx_proto.TensorProto.INT8 if weight_type == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
+    mode = QuantizationMode.IntegerOps
+
+    #optimize the original model
+    optimized_model = optimize_model(Path(model_path))
+    copy_model = onnx_proto.ModelProto()
+    copy_model.CopyFrom(optimized_model)
+
+    #check opset version of the original model
+    #fuse_dynamic_quant = check_opset_version(onnx.load(model_path), force_fusions)
+    fuse_dynamic_quant = True
+
+    #apply shape inference to the ModelProto and get value informations
+    inferred_model = shape_inference.infer_shapes(copy_model)
+    value_infos = {vi.name: vi for vi in inferred_model.graph.value_info}
+
+    #create ONNXModel and ONNXQuantizer
+    onnx_model = ONNXModel(inferred_model)
+    quantizer = ONNXQuantizer(onnx_model,
+                              value_infos,
+                              per_channel,
+                              mode,
+                              False, #static
+                              fuse_dynamic_quant,
+                              weight_qType,
+                              input_qType,
+                              None,
+                              nodes_to_quantize,
+                              nodes_to_exclude)
+
+    quantizer.quantize_model()
+    quantizer.model.producer_name = __producer__
+    quantizer.model.producer_version = __version__
+    return quantizer.model.model
