@@ -212,6 +212,15 @@ if(onnxruntime_MINIMAL_BUILD)
   add_compile_definitions(ORT_MINIMAL_BUILD)
   set(onnxruntime_REDUCED_OPS_BUILD ON)  # TODO Defaulting to ON. TBD if we should always do that.
   set(onnxruntime_DISABLE_RTTI ON)
+
+  if (MSVC)
+    # add MSVC specific flags to reduce build size here
+  else()
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ffunction-sections -fdata-sections")
+    # TODO: May need to use -dead_strip instead of --gc-sections for iOS(XCode)
+    add_link_options(-Wl,--gc-sections)
+  endif()
+
 endif()
 
 if(onnxruntime_DISABLE_RTTI)
