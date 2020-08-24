@@ -6,19 +6,16 @@
 FROM ubuntu:18.04
 
 ARG DEVICE=CPU_FP32
-ARG ONNXRUNTIME_REPO=https://github.com/microsoft/onnxruntime
+ARG ONNXRUNTIME_REPO=https://github.com/microsoft/onnxruntime.git
 ARG ONNXRUNTIME_BRANCH=master
 
 WORKDIR /code
 ARG MY_ROOT=/code
+
 ENV PATH /opt/miniconda/bin:/code/cmake-3.14.3-Linux-x86_64/bin:$PATH
-
-
-ENV pattern="COMPONENTS=DEFAULTS"
-ENV replacement="COMPONENTS=intel-openvino-ie-sdk-ubuntu-bionic__x86_64;intel-openvino-ie-rt-cpu-ubuntu-bionic__x86_64;intel-openvino-ie-rt-gpu-ubuntu-bionic__x86_64;intel-openvino-ie-rt-vpu-ubuntu-bionic__x86_64;intel-openvino-ie-rt-hddl-ubuntu-bionic__x86_64;intel-openvino-model-optimizer__x86_64;intel-openvino-opencv-lib-ubuntu-bionic__x86_64"
-COPY l_openvino_*.tgz .
 ENV LD_LIBRARY_PATH=/opt/miniconda/lib:/usr/lib:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
-ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2020.3.194
+
+ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2020.4.287
 ENV InferenceEngine_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/share
 ENV IE_PLUGINS_PATH=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64
 ENV LD_LIBRARY_PATH=/opt/intel/opencl:${INTEL_OPENVINO_DIR}/inference_engine/external/gna/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/mkltiny_lnx/lib:$INTEL_OPENVINO_DIR/deployment_tools/ngraph/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/omp/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/lib:${IE_PLUGINS_PATH}:${LD_LIBRARY_PATH}
@@ -29,28 +26,46 @@ ENV LD_LIBRARY_PATH=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/exte
 ENV LANG en_US.UTF-8
 
 RUN apt update && \
-    apt -y install git sudo wget locales \
-    zip x11-apps lsb-core cpio libboost-python-dev libpng-dev zlib1g-dev libnuma1 ocl-icd-libopencl1 clinfo libboost-filesystem1.65-dev libboost-thread1.65-dev protobuf-compiler libprotoc-dev libusb-1.0-0-dev autoconf automake libtool libudev-dev libjson-c-dev && \
+    apt -y install apt-transport-https ca-certificates python3 python3-pip zip x11-apps lsb-core wget cpio sudo libboost-python-dev libpng-dev zlib1g-dev git libnuma1 ocl-icd-libopencl1 clinfo libboost-filesystem1.65-dev libboost-thread1.65-dev protobuf-compiler libprotoc-dev autoconf automake libtool libjson-c-dev && \
+    rm -rf /var/lib/apt/lists/*  && \
+# Install OpenVINO
     cd ${MY_ROOT} && \
-    git clone --recursive -b $ONNXRUNTIME_BRANCH $ONNXRUNTIME_REPO onnxruntime && \
-    cp onnxruntime/docs/Privacy.md /code/Privacy.md && \
-    cp onnxruntime/dockerfiles/LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt && \
-    cp onnxruntime/ThirdPartyNotices.txt /code/ThirdPartyNotices.txt && \
+    wget https://apt.repos.intel.com/openvino/2020/GPG-PUB-KEY-INTEL-OPENVINO-2020 && \
+    apt-key add GPG-PUB-KEY-INTEL-OPENVINO-2020 && rm GPG-PUB-KEY-INTEL-OPENVINO-2020 && \
+    cd /etc/apt/sources.list.d && \
+    echo "deb https://apt.repos.intel.com/openvino/2020 all main">intel-openvino-2020.list && \ 
+    apt update && \
+    apt -y install intel-openvino-dev-ubuntu18-2020.4.287 && \
+    cd ${INTEL_OPENVINO_DIR}/install_dependencies && ./install_openvino_dependencies.sh && \
+    cd ${INTEL_OPENVINO_DIR} && rm -rf documentation && cd deployment_tools/ && rm -rf model_optimizer open_model_zoo demo && cd inference_engine && rm -rf samples && \
+# Install GPU runtime and drivers
+    cd ${MY_ROOT} && \
+    mkdir /tmp/opencl && \
+    cd /tmp/opencl && \
+    apt update && \
+    apt install -y --no-install-recommends ocl-icd-libopencl1 && \
+    rm -rf /var/lib/apt/lists/* && \
+    wget "https://github.com/intel/compute-runtime/releases/download/19.41.14441/intel-gmmlib_19.3.2_amd64.deb" && \
+    wget "https://github.com/intel/compute-runtime/releases/download/19.41.14441/intel-igc-core_1.0.2597_amd64.deb" && \
+    wget "https://github.com/intel/compute-runtime/releases/download/19.41.14441/intel-igc-opencl_1.0.2597_amd64.deb" && \
+    wget "https://github.com/intel/compute-runtime/releases/download/19.41.14441/intel-opencl_19.41.14441_amd64.deb" && \
+    wget "https://github.com/intel/compute-runtime/releases/download/19.41.14441/intel-ocloc_19.41.14441_amd64.deb" && \
+    dpkg -i /tmp/opencl/*.deb && \
+    ldconfig && \
+    rm -rf /tmp/opencl && \
+# Install CMake
+    cd ${MY_ROOT} && \
+    locale-gen en_US.UTF-8 && update-locale LANG=en_US.UTF-8  && \
+    pip3 install cython numpy && \
+    mkdir -p /opt/cmake/bin && \
+    cd ${MY_ROOT} && \
+    wget https://github.com/Kitware/CMake/releases/download/v3.13.2/cmake-3.13.2-Linux-x86_64.tar.gz && \
+    tar -xf cmake-3.13.2-Linux-x86_64.tar.gz --strip 1 -C /opt/cmake && rm -rf ${MY_ROOT}/cmake-3.13.2-Linux-x86_64.tar.gz && \
+# Download and build ONNX Runtime
+    cd ${MY_ROOT} && \
+    git clone --recursive -b ${ONNXRUNTIME_BRANCH} ${ONNXRUNTIME_REPO} && \
     /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh && \
     cd onnxruntime/cmake/external/onnx && python3 setup.py install && \
-    pip install azure-iothub-device-client azure-iothub-service-client azure-iot-provisioning-device-client && \
-    cd ${MY_ROOT} && \
-    tar -xzf l_openvino_toolkit*.tgz && \
-    rm -rf l_openvino_toolkit*.tgz && \
-    cd l_openvino_toolkit* && \
-    sed -i "s/$pattern/$replacement/" silent.cfg && \
-    sed -i 's/decline/accept/g' silent.cfg && \
-    ./install.sh -s silent.cfg && \
-    cd - && \
-    rm -rf l_openvino_toolkit* && \
-    cd /opt/intel/openvino/install_dependencies && ./install_openvino_dependencies.sh && ./install_NEO_OCL_driver.sh && ./install_NCS_udev_rules.sh && dpkg -i *.deb && \
-    cd ${MY_ROOT} && \
-    locale-gen en_US.UTF-8 && update-locale LANG=en_US.UTF-8 && \
-    cd ${MY_ROOT} && \
-    cd onnxruntime && ./build.sh --use_openmp --config Release --update --build --parallel --use_openvino $DEVICE --build_wheel --use_full_protobuf && \
-    pip install build/Linux/Release/dist/*-linux_x86_64.whl && rm -rf /code/onnxruntime /code/cmake-3.14.3-Linux-x86_64
+    cd ${MY_ROOT}/onnxruntime && ./build.sh --config Release --update --build --parallel --use_openvino ${DEVICE} --build_wheel && \
+    pip install build/Linux/Release/dist/*-linux_x86_64.whl && \
+    cd ${MY_ROOT}/ && rm -rf cmake-3.14.3-Linux-x86_64 onnxruntime

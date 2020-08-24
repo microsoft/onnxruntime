@@ -195,6 +195,24 @@ bool ValidateShape(const NodeArg& node_arg, const std::initializer_list<int64_t>
   return true;
 }
 
+bool CompareShape(const ONNX_NAMESPACE::TensorShapeProto& node_arg_shape, const ONNX_NAMESPACE::TensorShapeProto& node_arg_other_shape) {
+  if (node_arg_shape.dim_size() != node_arg_other_shape.dim_size())
+    return false;
+
+  if (node_arg_shape.dim_size() < 1)
+    return false;
+
+  for (int i = 0; i < node_arg_shape.dim_size(); ++i) {
+    const ONNX_NAMESPACE::TensorShapeProto_Dimension& dim = node_arg_shape.dim(i);
+    const ONNX_NAMESPACE::TensorShapeProto_Dimension& dim_other = node_arg_other_shape.dim(i);
+    if (!utils::HasDimValue(dim) || !utils::HasDimValue(dim_other))
+      return false;
+    if (dim.dim_value() != dim_other.dim_value())
+      return false;
+  }
+  return true;
+}
+
 bool IsShapeKnownOnAllDims(const NodeArg& node_arg, int expected_dim_size) {
   auto shape = node_arg.Shape();
   if (shape == nullptr || shape->dim_size() != expected_dim_size) {
