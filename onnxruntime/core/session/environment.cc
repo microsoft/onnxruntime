@@ -5,9 +5,13 @@
 #include "core/framework/allocatormgr.h"
 #include "core/graph/constants.h"
 #include "core/graph/op.h"
+#if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/operator_sets.h"
 #include "onnx/defs/operator_sets_ml.h"
+#if defined(ENABLE_TRAINING)
 #include "onnx/defs/operator_sets_training.h"
+#endif
+#endif
 #ifndef DISABLE_CONTRIB_OPS
 #include "core/graph/contrib_ops/contrib_defs.h"
 #endif
@@ -20,6 +24,7 @@
 
 #include "core/platform/env.h"
 #include "core/util/thread_utils.h"
+#include "core/session/allocator_impl.h"
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
 #include "core/platform/tracing.h"
@@ -48,6 +53,19 @@ Status Environment::Create(std::unique_ptr<logging::LoggingManager> logging_mana
   return status;
 }
 
+Status Environment::RegisterAllocator(AllocatorPtr allocator) {
+  const auto& mem_info = allocator->Info();
+  // We don't expect millions of allocators getting registered. Hence linear search should be fine.
+  auto ite = std::find_if(std::begin(shared_allocators_),
+                          std::end(shared_allocators_),
+                          [&mem_info](const AllocatorPtr& alloc_ptr) { return alloc_ptr->Info() == mem_info; });
+  if (ite != shared_allocators_.end()) {
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Allocator with this OrtMemoryInfo is already registered.");
+  }
+  shared_allocators_.insert(ite, allocator);
+  return Status::OK();
+}
+
 Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_manager,
                                const OrtThreadingOptions* tp_options,
                                bool create_global_thread_pools) {
@@ -71,6 +89,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
   }
 
   try {
+#if !defined(ORT_MINIMAL_BUILD)
     // Register Microsoft domain with min/max op_set version as 1/1.
     std::call_once(schemaRegistrationOnceFlag, []() {
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSDomain, 1, 1);
@@ -118,7 +137,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
         .Output(0, "Y", "output", "T")
         .TypeConstraint(
             "T",
-            OpSchema::all_tensor_types(),
+            OpSchema::all_tensor_types_with_bfloat(),
             "Constrain to any tensor type. If the dtype attribute is not provided this must be a valid output type.")
         .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput)
         .SetDoc(R"DOC(
@@ -130,13 +149,14 @@ Internal copy node
         .Output(0, "Y", "output", "T")
         .TypeConstraint(
             "T",
-            OpSchema::all_tensor_types(),
+            OpSchema::all_tensor_types_with_bfloat(),
             "Constrain to any tensor type. If the dtype attribute is not provided this must be a valid output type.")
         .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput)
         .SetDoc(R"DOC(
 Internal copy node
 )DOC");
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
     // fire off startup telemetry (this call is idempotent)
     const Env& env = Env::Default();
     env.GetTelemetryProvider().LogProcessInfo();

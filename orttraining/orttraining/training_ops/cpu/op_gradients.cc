@@ -29,9 +29,11 @@ Status SinGrad<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_OPERATOR_KERNEL_EX(
     ReluGrad,
-    9,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     ReluGrad<float>);
 
@@ -101,12 +103,12 @@ Status SoftmaxGrad<T>::Compute(OpKernelContext* context) const {
 }
 
 ONNX_OPERATOR_KERNEL_EX(
-  LogSoftmaxGrad,
-  kMSDomain,
-  1,
-  kCpuExecutionProvider,
-  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-  LogSoftmaxGrad<float>);
+    LogSoftmaxGrad,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    LogSoftmaxGrad<float>);
 
 template <typename T>
 Status LogSoftmaxGrad<T>::Compute(OpKernelContext* context) const {
@@ -133,14 +135,14 @@ Status LogSoftmaxGrad<T>::Compute(OpKernelContext* context) const {
 
   std::vector<float> eY(nd);
   float* eYdata = eY.data();
-  
+
   // dX_ai = d(log Y_ai) - [sum_j d(log Y_aj)] exp(log Y_ai)
   gsl::copy(gsl::make_span(dYdata, nd), gsl::make_span(dXdata, nd));
   math::Exp<float, CPUMathUtil>(nd, Ydata, eYdata, nullptr);
   for (size_t i = 0; i < N; ++i) {
     float sdY;
-    math::Sum<float, CPUMathUtil>(d, dYdata + i*d, &sdY, nullptr, nullptr);
-    math::Axpy<float, CPUMathUtil>(d, -sdY, eYdata + i*d, dXdata + i*d, nullptr);
+    math::Sum<float, CPUMathUtil>(d, dYdata + i * d, &sdY, nullptr, nullptr);
+    math::Axpy<float, CPUMathUtil>(d, -sdY, eYdata + i * d, dXdata + i * d, nullptr);
   }
 
   return Status::OK();

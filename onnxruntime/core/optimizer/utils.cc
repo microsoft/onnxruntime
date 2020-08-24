@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "core/common/make_unique.h"
+#include "core/graph/constants.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/graph_utils.h"
 #include "core/framework/tensorprotoutils.h"
@@ -9,6 +10,10 @@
 #include "core/optimizer/utils.h"
 #include "float.h"
 //#include <deque>
+
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
 
 using namespace onnxruntime;
 
@@ -246,6 +251,25 @@ bool CheckOutputEdges(const Graph& graph, const Node& node, size_t expected_outp
   }
 
   return node.GetOutputEdgesCount() == expected_output_edges;
+}
+
+// Allow certain domains/ops. We don't know anything about unknown domains/ops (e.g. custom ops),
+// so we have to assume that they are not deterministic, to be on the safe side.
+// We could also allow other known domains (kMSDomain, kMSNchwcDomain, kMSFeaturizersDomain),
+// as long as we verify which of their operations are non-deterministic and add them in the map below.
+static const std::unordered_map<std::string, std::unordered_set<std::string>> kNonDeterministicOps =
+{
+  {kOnnxDomain, {"RandomUniform", "RandomNormal", "RandomUniformLike", "RandomNormalLike", "Multinomial"}},
+};
+
+bool IsOperationDeterministic(const std::string& domain, const std::string& op) {
+  auto itDomain = kNonDeterministicOps.find(domain);
+  if (itDomain == kNonDeterministicOps.end()) {
+    // Unknown domain. Assume the op is not deterministic.
+    return false;
+  }
+
+  return itDomain->second.count(op) == 0;
 }
 
 }  // namespace optimizer_utils

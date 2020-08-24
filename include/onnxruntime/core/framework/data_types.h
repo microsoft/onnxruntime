@@ -139,6 +139,10 @@ struct BFloat16 {
     }
     return result;
   }
+
+  operator float() const {
+    return ToFloat();
+  }
 };
 
 inline void BFloat16ToFloat(const BFloat16* blf, float* flt, size_t size) {
