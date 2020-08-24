@@ -771,6 +771,7 @@ def testORTTrainerDynamicShape(dynamic_axes):
     for i in range(total_steps):
         data, targets = batcher_fn(train_data, i)
         if dynamic_axes:
+        # Forcing batches with different sizes to exercise dynamic shapes
             # Enforce different batch size between steps, to test dynamic axes feature.
             data = data[:-(i+1)]
             targets = targets[:-(i+1)*data.size(1)]
