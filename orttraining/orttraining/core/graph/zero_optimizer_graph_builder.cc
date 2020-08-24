@@ -87,6 +87,7 @@ static Status AddNcclReduceForGradients(
 
     auto node_name = nodearg_name_generator("NcclReduce");
     ArgDef reduce_output(node_name + "Fake_Reduce_Out");
+    printf("lb = %d, ub = %d\n", int(lb), int(ub));
 
     for (int64_t j = lb; j <= ub; ++j) {
       reduce_inputs.push_back(gradient_argdefs[j]);
