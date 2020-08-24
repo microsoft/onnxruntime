@@ -316,6 +316,7 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
 
     model.eval()
     with torch.no_grad():
+        import copy
         # Deepcopy inputs, since input values may change after model run.
         sample_inputs_copy = copy.deepcopy(sample_inputs)
         # Deepcopy model, in case model is stateful and changes after model run.
@@ -341,6 +342,7 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
         other_export_options['training'] = torch.onnx.TrainingMode.TRAINING
 
     # Deepcopy inputs, since input values may change after model run.
+    import copy
     sample_inputs_copy = copy.deepcopy(sample_inputs)
 
     # Enable contrib ops export from PyTorch
