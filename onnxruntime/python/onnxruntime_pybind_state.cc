@@ -9,16 +9,17 @@
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
 #include <numpy/arrayobject.h>
 
-#include "core/framework/data_transfer_utils.h"
-#include "core/framework/data_types_internal.h"
-#include "core/framework/tensorprotoutils.h"
-#include "core/graph/graph_viewer.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
-#include "core/framework/TensorSeq.h"
+#include "core/framework/bfc_arena.h"
+#include "core/framework/data_transfer_utils.h"
+#include "core/framework/data_types_internal.h"
+#include "core/framework/kernel_registry.h"
 #include "core/framework/random_seed.h"
 #include "core/framework/session_options.h"
-#include "core/framework/bfc_arena.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/framework/TensorSeq.h"
+#include "core/graph/graph_viewer.h"
 #include "core/session/IOBinding.h"
 
 #if USE_CUDA

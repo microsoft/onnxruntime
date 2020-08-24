@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "string_normalizer.h"
-#include "onnx/defs/schema.h"
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
 

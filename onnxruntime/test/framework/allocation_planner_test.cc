@@ -5,14 +5,17 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <sstream>
-#include "core/framework/session_state.h"
-#include "core/graph/model.h"
 #include "gtest/gtest.h"
+
+#include "core/framework/session_state.h"
+#include "core/framework/kernel_registry.h"
 #include "core/framework/op_kernel.h"
 #include "test/framework/model_builder_utils.h"
 #include "core/framework/allocation_planner.h"
-#include "core/util/thread_utils.h"
+#include "core/graph/model.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+#include "core/util/thread_utils.h"
+
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 

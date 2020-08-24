@@ -12,43 +12,46 @@
 #include <thread>
 
 #include "core/common/logging/logging.h"
-#include "core/platform/threadpool.h"
-#include "core/graph/graph_viewer.h"
-#include "core/graph/graph_utils.h"
-#include "core/graph/model.h"
 #include "core/framework/allocatormgr.h"
-#include "core/framework/customregistry.h"
-#include "core/session/environment.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/graph_partitioner.h"
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/kernel_registry.h"
-#include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/mldata_type_utils.h"
-#include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/tensor_type_and_shape.h"
+#include "core/framework/op_kernel_context_internal.h"
+#include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/utils.h"
+#include "core/graph/graph_viewer.h"
+#include "core/graph/graph_utils.h"
+#include "core/graph/model.h"
 #include "core/optimizer/transformer_memcpy.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/insert_cast_transformer.h"
+#include "core/optimizer/rule_based_graph_transformer.h"
+#include "core/optimizer/graph_transformer_utils.h"
+#include "core/platform/Barrier.h"
+#include "core/platform/ort_mutex.h"
+#include "core/platform/threadpool.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #ifdef USE_DML  // TODO: This is necessary for the workaround in TransformGraph
 #include "core/providers/dml/DmlExecutionProvider/src/GraphTransformer.h"
 #endif
+#include "core/session/environment.h"
 #include "core/session/IOBinding.h"
-#include "core/session/custom_ops.h"
-#include "core/util/protobuf_parsing_utils.h"
-#include "core/optimizer/rule_based_graph_transformer.h"
-#include "core/optimizer/graph_transformer_utils.h"
-#include "core/util/thread_utils.h"
 #include "core/session/inference_session_utils.h"
-#include "core/platform/ort_mutex.h"
-#include "core/platform/Barrier.h"
+#include "core/util/protobuf_parsing_utils.h"
+#include "core/util/thread_utils.h"
+
+#if !defined(ORT_MINIMAL_BUILD)
+#include "core/framework/customregistry.h"
+#include "core/session/custom_ops.h"
+#endif
 
 using namespace ONNX_NAMESPACE;
 
@@ -95,6 +98,7 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
                                      const ONNX_NAMESPACE::ModelProto& model_proto,
                                      bool is_model_proto_parsed,
                                      /*out*/ SessionOptions& finalized_session_options) {
+#if !defined(ORT_MINIMAL_BUILD)
   const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
 
   // By now the environment should have initialized. (It is enforced prior to this.)
@@ -151,6 +155,11 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
     // use user provided session options instance
     finalized_session_options = user_provided_session_options;
   }
+#else
+  ORT_UNUSED_PARAMETER(model_proto);
+  ORT_UNUSED_PARAMETER(is_model_proto_parsed);
+  finalized_session_options = user_provided_session_options;
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   return Status::OK();
 }
@@ -165,8 +174,11 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   // after the invocation of FinalizeSessionOptions.
   InitLogger(logging_manager_);  // this sets session_logger_ so that it can be used for logging after this point.
 
+#if !defined(ORT_MINIMAL_BUILD)
   // Update the number of steps for the graph transformer manager using the "finalized" session options
   ORT_ENFORCE(graph_transformation_mgr_.SetSteps(session_options_.max_num_graph_transformation_steps).IsOK());
+#endif
+
   use_per_session_threads_ = session_options.use_per_session_threads;
 
   if (use_per_session_threads_) {
@@ -219,19 +231,25 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 }
 
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env)
-    : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
+    :
+#if !defined(ORT_MINIMAL_BUILD)
+      graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
+      insert_cast_transformer_("CastFloat16Transformer"),
+#endif
       logging_manager_(session_env.GetLoggingManager()),
-      insert_cast_transformer_("CastFloat16Transformer") {
+      environment_(session_env) {
   // Initialize assets of this session instance
   ConstructorCommon(session_options, session_env);
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env,
                                    const std::string& model_uri)
     : model_location_(ToWideString(model_uri)),
       graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
+      insert_cast_transformer_("CastFloat16Transformer"),
       logging_manager_(session_env.GetLoggingManager()),
-      insert_cast_transformer_("CastFloat16Transformer") {
+      environment_(session_env) {
   auto status = Model::Load(model_location_, model_proto_);
   ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session. Error message: ",
               status.ErrorMessage());
@@ -245,8 +263,9 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
                                    const Environment& session_env,
                                    const std::wstring& model_uri)
     : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
+      insert_cast_transformer_("CastFloat16Transformer"),
       logging_manager_(session_env.GetLoggingManager()),
-      insert_cast_transformer_("CastFloat16Transformer") {
+      environment_(session_env) {
   model_location_ = ToWideString(model_uri);
   auto status = Model::Load(model_location_, model_proto_);
   ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session. Error message: ",
@@ -260,8 +279,9 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env,
                                    std::istream& model_istream)
     : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
+      insert_cast_transformer_("CastFloat16Transformer"),
       logging_manager_(session_env.GetLoggingManager()),
-      insert_cast_transformer_("CastFloat16Transformer") {
+      environment_(session_env) {
   Status st = Model::Load(model_istream, &model_proto_);
   ORT_ENFORCE(st.IsOK(), "Could not parse model successfully while constructing the inference session");
   is_model_proto_parsed_ = true;
@@ -272,14 +292,17 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env,
                                    const void* model_data, int model_data_len)
     : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
+      insert_cast_transformer_("CastFloat16Transformer"),
       logging_manager_(session_env.GetLoggingManager()),
-      insert_cast_transformer_("CastFloat16Transformer") {
+      environment_(session_env) {
   const bool result = model_proto_.ParseFromArray(model_data, model_data_len);
   ORT_ENFORCE(result, "Could not parse model successfully while constructing the inference session");
   is_model_proto_parsed_ = true;
   // Finalize session options and initialize assets of this session instance
   ConstructorCommon(session_options, session_env);
 }
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 InferenceSession::~InferenceSession() {
   if (session_options_.enable_profiling) {
@@ -348,6 +371,8 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
   p_exec_provider->SetLogger(session_logger_);
   return execution_providers_.Add(provider_type, std::move(p_exec_provider));
 }
+
+#if !defined(ORT_MINIMAL_BUILD)
 
 common::Status InferenceSession::RegisterGraphTransformer(
     std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer, TransformerLevel level) {
@@ -665,10 +690,8 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
       oss << "Could not find an implementation for the node ";
       if (!node.Name().empty())
         oss << node.Name() << ":";
-      oss << node.OpType();
-      if (node.Op()) {
-        oss << "(" << node.Op()->since_version() << ")";
-      }
+      oss << node.OpType() << "(" << node.SinceVersion() << ")";
+
       return Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED, oss.str());
     } else {
       if (is_verbose_mode) {  // TODO: should we disable this if the number of nodes are above a certain threshold?
@@ -707,6 +730,8 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
 
   return common::Status::OK();
 }
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 bool InferenceSession::IsInitialized() const {
   std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
@@ -795,6 +820,24 @@ common::Status InferenceSession::Initialize() {
     // re-acquire mutex
     std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
 
+    // At this time we know all the providers that will be part of this session.
+    // Read shared allocators from the environment and update them in the respective providers.
+    //
+    // The reason for updating the providers is so that when the session state is created the allocators
+    // are setup appropariately keyed by OrtMemoryInfo with delegates going to the respective providers.
+    // Secondly, the GetAllocator() method inside IExecutionProvider is still used in various places, hence
+    // it doesn't make sense to just update the allocator map inside session state with these shared allocators; doing
+    // so would cause inconsistency between the allocator map inside session sate and that inside the providers.
+    // TODO: we could refactor the allocators to not require the call to GetAllocator but that change is much bigger
+    // since we've to take into account the per-thread cuda allocators.
+    // TODO (contd.) We could also possibly absorb the per-thread logic in a new allocator decorator that derives
+    // from IAllocator to keep things clean.
+    std::string use_env_allocators = GetSessionConfigOrDefault(session_options_,
+                                                               ORT_SESSION_OPTIONS_CONFIG_USE_ENV_ALLOCATORS, "0");
+    if (use_env_allocators == "1") {
+      UpdateProvidersWithSharedAllocators();
+    }
+
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
     TraceLoggingWriteStart(session_activity, "OrtInferenceSessionActivity");
     session_activity_started_ = true;
@@ -832,6 +875,8 @@ common::Status InferenceSession::Initialize() {
     // Register 2nd registries into KernelRegistryManager.
     ORT_RETURN_IF_ERROR_SESSIONID_(kernel_registry_manager_.RegisterKernels(execution_providers_));
 
+#if !defined(ORT_MINIMAL_BUILD)
+    // add predefined transformers
     AddPredefinedTransformers(graph_transformation_mgr_, session_options_.graph_optimization_level,
                               transformers_to_enable_);
 
@@ -843,6 +888,7 @@ common::Status InferenceSession::Initialize() {
 
     // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
     ORT_RETURN_IF_ERROR_SESSIONID_(graph.Resolve());
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
     // need to keep the initializers if we're going to save the optimized model
     bool keep_initializers = !session_options_.optimized_model_filepath.empty();
@@ -851,6 +897,7 @@ common::Status InferenceSession::Initialize() {
                                                                         session_options_,
                                                                         !keep_initializers));
 
+#if !defined(ORT_MINIMAL_BUILD)
     if (!session_options_.optimized_model_filepath.empty()) {
       // Serialize optimized ONNX model.
       ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(*model_, session_options_.optimized_model_filepath));
@@ -862,6 +909,7 @@ common::Status InferenceSession::Initialize() {
                                            " the model was optimized for.";
       }
     }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
     session_state_->ResolveMemoryPatternFlag();
     is_inited_ = true;
@@ -903,6 +951,19 @@ common::Status InferenceSession::Initialize() {
   }
 
   return status;
+}
+
+// This method should be called from within Initialize() only and before the creation of the session state.
+// This ensures all providers have been registered in the session and the session state is consistent with the providers.
+void InferenceSession::UpdateProvidersWithSharedAllocators() {
+  using namespace std;
+  const auto& provider_ids = execution_providers_.GetIds();
+  for (const auto& one_shared_alloc : environment_.GetRegisteredSharedAllocators()) {
+    for (const auto& id : provider_ids) {
+      auto* provider_ptr = execution_providers_.Get(id);
+      provider_ptr->ReplaceAllocator(one_shared_alloc);
+    }
+  }
 }
 
 int InferenceSession::GetCurrentNumRuns() const {
@@ -1140,9 +1201,12 @@ Status InferenceSession::Run(const RunOptions& run_options,
       ORT_CHECK_AND_SET_RETVAL(start_func());
     }
 
+#if !defined(ORT_MINIMAL_BUILD)
     if (run_options.only_execute_path_to_fetches) {
       session_state_->UpdateToBeExecutedNodes(feeds_fetches_manager.GetFeedsFetchesInfo().fetches_mlvalue_idxs);
     }
+#endif
+
     // execute the graph
     ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
                                                  session_options_.execution_mode, run_options.terminate, run_logger,
@@ -1331,12 +1395,14 @@ AllocatorPtr InferenceSession::GetAllocator(const OrtMemoryInfo& mem_info) const
   return session_state_->GetAllocator(mem_info);
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 // assumes model has already been loaded before
 common::Status InferenceSession::DoPostLoadProcessing(onnxruntime::Model& model) {
   // TODO add other post load processing here
   common::Status status = SaveModelMetadata(model);
   return status;
 }
+#endif
 
 common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& model) {
   VLOGS(*session_logger_, 1) << "Saving model metadata";
@@ -1454,6 +1520,8 @@ void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
   }
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+
 // Registers all the predefined transformers with transformer manager
 void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
                                                  TransformerLevel graph_optimization_level,
@@ -1461,7 +1529,9 @@ void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transf
   auto add_transformers = [&](TransformerLevel level) {
     // Generate and register transformers for level
     auto transformers_to_register =
-        optimizer_utils::GenerateTransformers(level, session_options_.free_dimension_overrides, custom_list);
+        optimizer_utils::GenerateTransformers(level, session_options_.free_dimension_overrides,
+                                              *execution_providers_.Get(onnxruntime::kCpuExecutionProvider),
+                                              custom_list);
     for (auto& entry : transformers_to_register) {
       transformer_manager.Register(std::move(entry), level);
     }
@@ -1478,6 +1548,8 @@ void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transf
     }
   }
 }
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 common::Status InferenceSession::WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms) {
   if (timeout_in_ms > 0) {

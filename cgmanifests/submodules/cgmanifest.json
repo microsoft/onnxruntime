@@ -85,6 +85,16 @@
       "component": {
         "type": "git",
         "git": {
+          "commitHash": "db2aa9b4eca0edc94aea9e2059c21ce8786fc762",
+          "repositoryUrl": "https://github.com/google/flatbuffers.git"
+        },
+        "comments": "git submodule at cmake/external/flatbuffers"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
           "commitHash": "42c53187a56c12dc5518cc25e778e5e3e7dbaf72",
           "repositoryUrl": "https://github.com/google/gemmlowp.git"
         },
@@ -335,7 +345,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "a82c6a7010e2e332d8f74ad5b0c726fd47c85376",
+          "commitHash": "c443abd2acad2411103593600319ff81a676afbc",
           "repositoryUrl": "https://github.com/onnx/onnx"
         },
         "comments": "git submodule at cmake/external/onnx"
@@ -529,16 +539,6 @@
           "repositoryUrl": "https://github.com/microsoft/wil"
         },
         "comments": "git submodule at cmake/external/wil"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "f3003e08d02ca4810924a53ca463a8b3150926d8",
-          "repositoryUrl": "https://github.com/google/flatbuffers.git"
-        },
-        "comments": "git submodule at flatbuffers"
       }
     },
     {
