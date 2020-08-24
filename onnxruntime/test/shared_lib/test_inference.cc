@@ -15,7 +15,6 @@
 #include <gtest/gtest.h>
 #include "test_allocator.h"
 #include "test_fixture.h"
-#include "onnx_protobuf.h"
 
 struct Input {
   const char* name = nullptr;
