@@ -50,6 +50,11 @@ bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, s
 */
 bool ValidateShape(const NodeArg& node_arg, const std::initializer_list<int64_t>& expected_dim_values);
 
+/** Compare Shape of node input or output.
+@remarks exactly compare two TensorShapeProtos. Return true if they are same
+*/
+bool CompareShape(const ONNX_NAMESPACE::TensorShapeProto& node_arg_shape, const ONNX_NAMESPACE::TensorShapeProto& node_arg_other_shape);
+
 /** Check check whether each dimension is known for shape of node_arg
 @returns false when shape is nullptr, or total dimension is not same as expected_dim_size length,
          or any dim is unknown (without dim value).
@@ -77,6 +82,8 @@ bool IsSupportedDataType(const Node& node, const std::vector<std::string>& suppo
 @returns false when the node has graph output, or number of output edges are not expected.
 */
 bool CheckOutputEdges(const Graph& graph, const Node& node, size_t expected_output_edges);
+
+bool IsOperationDeterministic(const std::string& domain, const std::string& op);
 
 }  // namespace optimizer_utils
 }  // namespace onnxruntime

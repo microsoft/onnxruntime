@@ -847,7 +847,7 @@ void NchwcTransformerImpl::TransformResize(Node& node) {
   }
 
   NodeArg* scales_arg;
-  if (node.Op()->SinceVersion() >= 11) {
+  if (node.SinceVersion() >= 11) {
     // Bail out if Resize has the optional "sizes" tensor.
     if (input_defs.size() == 3) {
       scales_arg = input_defs[2];
@@ -937,23 +937,23 @@ void NchwcTransformerImpl::Transform(Node& node) {
     // node may already have all inputs converted to NCHWc format and is not
     // needed for correct operation. This avoids doing extra string checks for
     // nodes unrelated to this transformer.
-    if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7}) ||
-        graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sum", {6, 8})) {
+    if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7, 13}) ||
+        graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sum", {6, 8, 13})) {
       TransformBinary(node, true);
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Mul", {7})) {
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Mul", {7, 13})) {
       TransformBinary(node, false);
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Concat", {4, 11})) {
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Concat", {4, 11, 13})) {
       TransformConcat(node);
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6}) ||
-               graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sigmoid", {6}) ||
-               graph_utils::IsSupportedOptypeVersionAndDomain(node, "Tanh", {6})) {
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6, 13}) ||
+               graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sigmoid", {6, 13}) ||
+               graph_utils::IsSupportedOptypeVersionAndDomain(node, "Tanh", {6, 13})) {
       TransformActivation(node);
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "BatchNormalization", {7, 9})) {
       TransformBatchNormalization(node);
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Transpose", {1})) {
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Transpose", {1, 13})) {
       TransformTranspose(node);
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Upsample", {9}) ||
-               graph_utils::IsSupportedOptypeVersionAndDomain(node, "Resize", {10, 11})) {
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Upsample", {9, 13}) ||
+               graph_utils::IsSupportedOptypeVersionAndDomain(node, "Resize", {10, 11, 13})) {
       TransformResize(node);
     }
   }

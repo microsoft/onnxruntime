@@ -337,6 +337,16 @@
             },
             "comments": "middleware between IB verbs and OpenMPI used by onnxruntime training image"
          }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "63d1e08e64e7e09408eb63cd8dd7c65ad766f277",
+               "repositoryUrl": "https://github.com/nodejs/node"
+            },
+            "comments": "For Nodejs binding"
+         }
       }
    ],
    "Version": 1

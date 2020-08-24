@@ -22,7 +22,11 @@ AllocatorPtr CreateAllocator(const DeviceAllocatorRegistrationInfo& info,
         onnxruntime::make_unique<MiMallocArena>(std::move(device_allocator), info.max_mem));
 #else
     return std::shared_ptr<IArenaAllocator>(
-        onnxruntime::make_unique<BFCArena>(std::move(device_allocator), info.max_mem, info.arena_extend_strategy));
+        onnxruntime::make_unique<BFCArena>(std::move(device_allocator),
+                                           info.max_mem,
+                                           info.arena_extend_strategy,
+                                           info.initial_chunk_size_bytes,
+                                           info.max_dead_bytes_per_chunk));
 #endif
   }
 
