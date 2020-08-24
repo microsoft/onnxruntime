@@ -363,14 +363,6 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     if (sli_attr != attributes.end() && sli_attr->second.i() != 0) {
       return true;
     }
-  } else if (optype == "AveragePool") {
-    // ceil_mode attribute is not supported in MIGraphX
-    const auto& attributes = node->GetAttributes();
-    const auto ceil_attr = attributes.find("ceil_mode");
-    // default value of ceil_mode (0) is supported.
-    if (ceil_attr != attributes.end() && ceil_attr->second.i() != 0) {
-      return true;
-    }
   } else if (optype == "Clip") {
     auto args = node->InputDefs();
     if (args.size() >= 3) {
@@ -447,12 +439,6 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
 
     // ceil_mode and dilations attrs are not supported in MIGraphX
     const auto& attributes = node->GetAttributes();
-    const auto ceil_attr = attributes.find("ceil_mode");
-    // default value of ceil_mode (0) is supported.
-    if (ceil_attr != attributes.end() and ceil_attr->second.i() != 0) {
-      return true;
-    }
-
     auto dila_attr = attributes.find("dilations");
     if (dila_attr != attributes.end()) {
       auto dilas = dila_attr->second.ints();
@@ -684,7 +670,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
   static std::set<std::string> mgx_supported_ops = {"Abs", "Acos", "Acosh", "Add", "ArgMax", "ArgMin", 
       "Asin", "Asinh", "Atan", "Atanh", "AveragePool", "BatchNormalization", "Cast", "Ceil", "Clip", 
       "Concat", "Constant", "ConstantFill", "ConstantOfShape", "Conv", "ConvTranspose", "Cos", "Cosh", 
-      "Div", "Dropout", "Elu", "Erf", "Exp", "Expand", "Flatten", "Floor", "GRU", "Gather", 
+      "Div", "Dropout", "Elu", "Equal", "Erf", "Exp", "Expand", "Flatten", "Floor", "GRU", "Gather", 
       "GatherElements", "Gemm", "GlobalAveragePool", "GlobalMaxPool", "Identity", "ImageScaler", 
       "InstanceNormalization", "LRN", "LSTM", "LeakyRelu", "Log", "LogSoftmax", "MatMul", "Max", 
       "MaxPool", "Min", "Mul", "Neg", "OneHot", "Pad", "Pow", "PRelu",
