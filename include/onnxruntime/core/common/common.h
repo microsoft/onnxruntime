@@ -40,7 +40,6 @@
 #include <mimalloc.h>
 #endif
 
-#define ORT_NO_EXCEPTIONS
 #ifdef ORT_NO_EXCEPTIONS
 #include <iostream>
 #endif
@@ -145,7 +144,7 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
     abort();                       \
   } while (false)
 
-#define ORT_THROW_BAD_ALLOC ORT_THROW_EX(std::bad_alloc);
+#define ORT_THROW_BAD_ALLOC ORT_THROW_EX(std::bad_alloc)
 
 #else
 
@@ -169,7 +168,7 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
   throw ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK, #condition, \
                                             ::onnxruntime::MakeString(__VA_ARGS__))
 
-#define ORT_THROW_BAD_ALLOC throw std::bad_alloc();
+#define ORT_THROW_BAD_ALLOC throw std::bad_alloc()
 
 #endif
 
