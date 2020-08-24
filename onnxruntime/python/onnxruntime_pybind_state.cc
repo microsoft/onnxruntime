@@ -374,15 +374,12 @@ void UpdateCudaProviderOptions(InferenceSession* sess, onnxruntime::CudaProvider
   it = options_map.find("device_id");
   if (it != options_map.end()) {
     OrtDevice::DeviceId device_id;
-    ORT_TRY {
+    try {
       int id = std::stoi(it->second);
       device_id = static_cast<int8_t>(id);
-    }
-#ifndef ORT_NO_EXCEPTIONS
-    catch (...) {
+    } catch (...) {
       throw std::runtime_error("Please provide device id with integer.");
     }
-#endif
 
     if (!IsCudaDeviceIdValid(sess, device_id)) {
       throw std::runtime_error("Please provide available device id.");
@@ -403,18 +400,15 @@ void UpdateCudaProviderOptions(InferenceSession* sess, onnxruntime::CudaProvider
     }
 
     size_t size;
-    ORT_TRY {
+    try {
 #if (defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__))
       size = std::stoull(it->second, nullptr, 0);
 #else
       size = std::stoul(it->second, nullptr, 0);
 #endif
-    }
-#ifndef ORT_NO_EXCEPTIONS
-    catch (...) {
+    } catch (...) {
       throw std::runtime_error("Please provide cuda memory limitation size with positive integer and within range.");
     }
-#endif
 
     options.cuda_mem_limit = size;
     LOGS(*(sess->GetLogger()), INFO) << "cuda memory limitation is set to " << size;

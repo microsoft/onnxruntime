@@ -625,16 +625,12 @@ void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, const
     }
     // We assume the object is iterable.
     // iterator should not be NULL due to previous test.
-    ORT_TRY {
+    try {
       CreateGenericIterableMLValue(iterator, alloc, name_input, p_mlvalue);
-    }
-#ifndef ORT_NO_EXCEPTIONS
-    catch (const std::runtime_error&) {
+    } catch (const std::runtime_error&) {
       Py_DECREF(iterator);
       throw;
     }
-#endif
-
     Py_DECREF(iterator);
   }
 }
