@@ -1,5 +1,5 @@
 # TensorRT Performance Test Script
-This script fetches models from ONNX Model Zoo and runs ONNXRuntime inference using TensorRT and CUDA as execution provider to get TensorRT peformance gain compared with CUDA, as well as other metrics such as percentage of model operators and execution time that run on TensorRT.
+This script fetches models from ONNX Model Zoo and runs ONNX Runtime inference using TensorRT and CUDA as execution provider to get TensorRT performance gain compared with CUDA, as well as other metrics such as percentage of model operators and execution time that run on TensorRT.
 
 ## Usage
 You can use following command to run benchmark and validate prediction results:
