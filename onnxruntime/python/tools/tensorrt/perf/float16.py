@@ -83,7 +83,6 @@ def convert_float_to_float16(model):
                      'FeatureVectorizer', 'Imputer', 'LabelEncoder', 'LinearClassifier', 'LinearRegressor',
                      'Normalizer', 'OneHotEncoder', 'SVMClassifier', 'SVMRegressor', 'Scaler', 'TreeEnsembleClassifier',
                      'TreeEnsembleRegressor', 'ZipMap', 'NonMaxSuppression', 'TopK', 'RoiAlign', 'Resize',
-                     # 'Range', 'CumSum']
                      'Range', 'CumSum', 'Upsample']
     input_of_op_black_list = []
     output_of_op_black_list = []

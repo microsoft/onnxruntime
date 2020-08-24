@@ -181,6 +181,7 @@ def inference_ort(args, model, ep, ort_inputs, result_template, repeat_times, ba
     result.update(get_latency_result(runtimes, batch_size))
     return result
 
+# not use for this script yet
 def inference_ort_with_io_binding(model, ort_inputs, result_template, repeat_times, batch_size, device='cuda'):
     runtimes = []
 
@@ -253,7 +254,8 @@ def get_cuda_version():
 
     return stdout
 
-def get_cuda_version_old():
+# not use for this script temporarily
+def tmp_get_cuda_version():
     p = subprocess.Popen(["cat", "/usr/local/cuda/version.txt"], stdout=subprocess.PIPE) # (stdout, stderr)
     stdout, sterr = p.communicate()
     stdout = stdout.decode("ascii").strip()
@@ -283,7 +285,8 @@ def get_trt_version():
 
     return stdout
 
-def get_trt_version_old():
+# not use for this script temporarily
+def tmp_get_trt_version():
     p1 = subprocess.Popen(["dpkg", "-l"], stdout=subprocess.PIPE)
     p2 = subprocess.Popen(["grep", "TensorRT runtime libraries"], stdin=p1.stdout, stdout=subprocess.PIPE)
     stdout, sterr = p2.communicate()
@@ -590,11 +593,11 @@ def run_onnxruntime(args, models=MODELS):
             model_ep_fail_map = read_model_ep_fail_map_from_file('.model_ep_fail_map.json')
 
     if args.fp16:
-        provider_list = ["CUDAExecutionProvider", "TensorrtExecutionProvider", "CUDAExecutionProvider_fp16", "TensorrtExecutionProvider_fp16"]
+        ep_list = ["CUDAExecutionProvider", "TensorrtExecutionProvider", "CUDAExecutionProvider_fp16", "TensorrtExecutionProvider_fp16"]
     else:
-        provider_list = ["CUDAExecutionProvider", "TensorrtExecutionProvider"]
+        ep_list = ["CUDAExecutionProvider", "TensorrtExecutionProvider"]
 
-    validation_exemption_provider_list = ["TensorrtExecutionProvider_fp16"]
+    validation_exemption = ["TensorrtExecutionProvider_fp16"]
 
     if args.model_zoo == "cvs":
         models.update(CVS_MODELS)
@@ -631,7 +634,7 @@ def run_onnxruntime(args, models=MODELS):
         #######################
         # iterate ep
         #######################
-        for ep in provider_list:
+        for ep in ep_list:
 
             if skip_ep(name, ep, model_ep_fail_map):
                 continue
@@ -725,7 +728,6 @@ def run_onnxruntime(args, models=MODELS):
                     "engine": "onnxruntime",
                     "version": onnxruntime.__version__,
                     "device": ep,
-                    "optimizer": False,
                     "fp16": fp16,
                     "io_binding": False,
                     "model_name": model_name,
@@ -783,7 +785,7 @@ def run_onnxruntime(args, models=MODELS):
                 # run inference and validate the result
                 #
                 # currently skip TensorRT float16 validation intentionally 
-                if ep not in validation_exemption_provider_list:
+                if ep not in validation_exemption:
                     try:
                         model.set_inputs(inputs)
                         model.inference()
@@ -907,7 +909,7 @@ def add_improvement_information(latency_comparison_map):
 def output_details(results, csv_filename):
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = [
-            "engine", "version", "device", "fp16", "optimizer", "io_binding", "model_name", "inputs", "batch_size",
+            "engine", "version", "device", "fp16", "io_binding", "model_name", "inputs", "batch_size",
             "sequence_length", "datetime", "test_times", "QPS", "average_latency_ms", "latency_variance",
             "latency_90_percentile", "latency_95_percentile", "latency_99_percentile"
         ]
