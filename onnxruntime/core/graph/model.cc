@@ -71,7 +71,7 @@ Model::Model(const std::string& graph_name,
   // need to call private ctor so can't use make_shared
   GSL_SUPPRESS(r .11)
   graph_.reset(new Graph(*this, model_proto_.mutable_graph(), *p_domain_to_version, IrVersion(), schema_registry,
-                         logger, {}));
+                         logger));
 }
 
 Model::Model(const ModelProto& model_proto, const PathString& model_path,
@@ -146,8 +146,7 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path, const IOnnx
 
   // create instance. need to call private ctor so can't use make_unique
   GSL_SUPPRESS(r .11)
-  graph_.reset(new Graph(*this, model_proto_.mutable_graph(), domain_to_version, IrVersion(), schema_registry, logger,
-                         {}));
+  graph_.reset(new Graph(*this, model_proto_.mutable_graph(), domain_to_version, IrVersion(), schema_registry, logger));
 }
 
 Version Model::IrVersion() const {
