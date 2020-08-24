@@ -163,7 +163,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(onnxruntime::make_unique<MatmulTransposeFusion>(l1_execution_providers));
       // only enable bias dropout fusing for gpu
       transformers.emplace_back(onnxruntime::make_unique<BiasDropoutFusion>(std::unordered_set<std::string>{kCudaExecutionProvider}));
-      transformers.emplace_back(onnxruntime::make_unique<MatMulScaleFusion>(l1_execution_providers, weights_to_train));
+      //transformers.emplace_back(onnxruntime::make_unique<MatMulScaleFusion>(l1_execution_providers, weights_to_train));
 
       rule_transformer = optimizer_utils::GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable, l1_execution_providers);
     } break;

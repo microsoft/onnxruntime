@@ -148,7 +148,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
 
       transformers.emplace_back(onnxruntime::make_unique<FastGeluFusion>(cpu_cuda_execution_providers));
 
-      transformers.emplace_back(onnxruntime::make_unique<MatMulScaleFusion>(cpu_cuda_execution_providers));
+      //transformers.emplace_back(onnxruntime::make_unique<MatMulScaleFusion>(cpu_cuda_execution_providers));
 #endif
     } break;
 
