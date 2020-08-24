@@ -142,6 +142,85 @@ MlasQLinearMulKernel(
 
 #elif defined(MLAS_SSE2_INTRINSICS)
 
+template <class DataType, bool lo>
+MLAS_FORCEINLINE
+static
+__m128i
+MlasExtendToS16Debias(
+    __m128i Int8Vector,
+    __m128i ZeroVector,
+    __m128i VectorBias
+    );
+
+template <>
+MLAS_FORCEINLINE
+__m128i
+MlasExtendToS16Debias<uint8_t, /* bool lo = */ true>(
+    __m128i Int8Vector,
+    __m128i ZeroVector,
+    __m128i VectorBias
+    )
+{
+    return _mm_sub_epi16(_mm_unpacklo_epi8(Int8Vector, ZeroVector), VectorBias);
+}
+
+template <>
+MLAS_FORCEINLINE
+__m128i
+MlasExtendToS16Debias<uint8_t, /* bool lo = */ false>(
+    __m128i Int8Vector,
+    __m128i ZeroVector,
+    __m128i VectorBias
+    )
+{
+    return _mm_sub_epi16(_mm_unpackhi_epi8(Int8Vector, ZeroVector), VectorBias);
+}
+
+template <>
+MLAS_FORCEINLINE
+__m128i
+MlasExtendToS16Debias<int8_t, /* bool lo = */ true>(
+    __m128i Int8Vector,
+    __m128i ZeroVector,
+    __m128i VectorBias
+    )
+{
+    MLAS_UNREFERENCED_PARAMETER(ZeroVector);
+    return _mm_sub_epi16(_mm_srai_epi16(_mm_unpacklo_epi8(Int8Vector, Int8Vector), 8), VectorBias);
+}
+
+template <>
+MLAS_FORCEINLINE
+__m128i
+MlasExtendToS16Debias<int8_t, /* bool lo = */ false>(
+    __m128i Int8Vector,
+    __m128i ZeroVector,
+    __m128i VectorBias
+    )
+{
+    MLAS_UNREFERENCED_PARAMETER(ZeroVector);
+    return _mm_sub_epi16(_mm_srai_epi16(_mm_unpackhi_epi8(Int8Vector, Int8Vector), 8), VectorBias);
+}
+
+MLAS_FORCEINLINE
+static
+__m128i
+MlasQLinearMulVectorS16(
+    __m128i va_i16x8,
+    __m128i vb_i16x8,
+    __m128 VectorScaleRatio,
+    __m128 VectorZeroPointC
+    )
+{
+    const auto ab_lo = _mm_mullo_epi16(va_i16x8, vb_i16x8);
+    const auto ab_hi = _mm_mulhi_epi16(va_i16x8, vb_i16x8);
+    auto r_lo = _mm_unpacklo_epi16(ab_lo, ab_hi);
+    auto r_hi = _mm_unpackhi_epi16(ab_lo, ab_hi);
+    r_lo = _mm_cvtps_epi32(_mm_add_ps(_mm_mul_ps(_mm_cvtepi32_ps(r_lo), VectorScaleRatio), VectorZeroPointC));
+    r_hi = _mm_cvtps_epi32(_mm_add_ps(_mm_mul_ps(_mm_cvtepi32_ps(r_hi), VectorScaleRatio), VectorZeroPointC));
+    return _mm_packs_epi32(r_lo, r_hi);
+}
+
 template<typename DataType, bool IsScalarB>
 static
 void
@@ -160,86 +239,53 @@ MlasQLinearMulKernel(
 {
     const auto VectorZeroPointA = _mm_set1_epi16((int16_t)ZeroPointA);
     const auto VectorZeroPointB = _mm_set1_epi16((int16_t)ZeroPointB);
-    const auto VectorZeroPointC = MlasBroadcastInt32x4(ZeroPointC);
+    const auto VectorZeroPointC = MlasBroadcastFloat32x4((float)ZeroPointC);
     const auto VectorScaleRatio = MlasBroadcastFloat32x4(ScaleA * ScaleB / ScaleC);
+    const auto ZeroVector = _mm_setzero_si128();
 
-    MLAS_INT32X4 vb_lo_i16x8, vb_hi_i16x8;
+    uint8_t TailDataA[16] = { 0 };
+    uint8_t TailDataB[16] = { 0 };
+    __m128i vb_lo_i16x8, vb_hi_i16x8;
+
     if (IsScalarB) {
-        vb_lo_i16x8 = _mm_sub_epi16(_mm_set1_epi16((int16_t)*InputB), VectorZeroPointB);
-        vb_hi_i16x8 = vb_lo_i16x8;
+        vb_hi_i16x8 = vb_lo_i16x8 = MlasExtendToS16Debias<DataType, true>(
+            _mm_set1_epi16((int16_t)*InputB), ZeroVector, VectorZeroPointB);
     }
 
-    while (N >= 16) {
+    while (N > 0) {
+        if (N < 16) {
+            MlasCopyTailBytes(TailDataA, (const uint8_t*)InputA, N);
+            InputA = (const DataType*)TailDataA;
+            if (!IsScalarB) {
+                MlasCopyTailBytes(TailDataB, (const uint8_t*)InputB, N);
+                InputB = (const DataType*)TailDataB;
+            }
+        }
+
         const auto va_i8x16 = _mm_loadu_si128((const MLAS_INT32X4*)InputA);
         InputA += 16;
-        const auto va_lo_i16x8 = _mm_sub_epi16(MlasShiftRightInt16<DataType>(_mm_unpacklo_epi8(va_i8x16, va_i8x16), 8), VectorZeroPointA);
-        const auto va_hi_i16x8 = _mm_sub_epi16(MlasShiftRightInt16<DataType>(_mm_unpackhi_epi8(va_i8x16, va_i8x16), 8), VectorZeroPointA);
+        const auto va_lo_i16x8 = MlasExtendToS16Debias<DataType, true>(va_i8x16, ZeroVector, VectorZeroPointA);
+        const auto va_hi_i16x8 = MlasExtendToS16Debias<DataType, false>(va_i8x16, ZeroVector, VectorZeroPointA);
 
         if (!IsScalarB) {
             const auto vb_i8x16 = _mm_loadu_si128((const MLAS_INT32X4*)InputB);
             InputB += 16;
-            vb_lo_i16x8 = _mm_sub_epi16(MlasShiftRightInt16<DataType>(_mm_unpacklo_epi8(vb_i8x16, vb_i8x16), 8), VectorZeroPointB);
-            vb_hi_i16x8 = _mm_sub_epi16(MlasShiftRightInt16<DataType>(_mm_unpackhi_epi8(vb_i8x16, vb_i8x16), 8), VectorZeroPointB);
+            vb_lo_i16x8 = MlasExtendToS16Debias<DataType, true>(vb_i8x16, ZeroVector, VectorZeroPointB);
+            vb_hi_i16x8 = MlasExtendToS16Debias<DataType, false>(vb_i8x16, ZeroVector, VectorZeroPointB);
         }
 
-        auto ab_lo_lo = _mm_mullo_epi16(va_lo_i16x8, vb_lo_i16x8);
-        auto ab_lo_hi = _mm_mulhi_epi16(va_lo_i16x8, vb_lo_i16x8);
-        auto r_lo_lo = _mm_add_epi32(_mm_cvtps_epi32(_mm_mul_ps(_mm_cvtepi32_ps(_mm_unpacklo_epi16(ab_lo_lo, ab_lo_hi)), VectorScaleRatio)), VectorZeroPointC);
-        auto r_lo_hi = _mm_add_epi32(_mm_cvtps_epi32(_mm_mul_ps(_mm_cvtepi32_ps(_mm_unpackhi_epi16(ab_lo_lo, ab_lo_hi)), VectorScaleRatio)), VectorZeroPointC);
-        const auto vc_lo_i16x8 = _mm_packs_epi32(r_lo_lo, r_lo_hi);
-
-        auto ab_hi_lo = _mm_mullo_epi16(va_hi_i16x8, vb_hi_i16x8);
-        auto ab_hi_hi = _mm_mulhi_epi16(va_hi_i16x8, vb_hi_i16x8);
-        auto r_hi_lo = _mm_add_epi32(_mm_cvtps_epi32(_mm_mul_ps(_mm_cvtepi32_ps(_mm_unpacklo_epi16(ab_hi_lo, ab_hi_hi)), VectorScaleRatio)), VectorZeroPointC);
-        auto r_hi_hi = _mm_add_epi32(_mm_cvtps_epi32(_mm_mul_ps(_mm_cvtepi32_ps(_mm_unpackhi_epi16(ab_hi_lo, ab_hi_hi)), VectorScaleRatio)), VectorZeroPointC);
-        const auto vc_hi_i16x8 = _mm_packs_epi32(r_hi_lo, r_hi_hi);
-
-        auto vc = MlasPackS16_128<DataType>(vc_lo_i16x8, vc_hi_i16x8);
-        _mm_storeu_si128((MLAS_INT32X4*)OutputC, vc);
-        OutputC += 16;
-        N -= 16;
-    }
-
-    if (N > 0) {
-        uint8_t TailData[16] = { 0 };
-
-        MlasCopyTailBytes(TailData, (const uint8_t*)InputA, N);
-        const auto va_i8x16 = _mm_loadu_si128((const MLAS_INT32X4*)TailData);
-        const auto va_lo_i16x8 = _mm_sub_epi16(MlasShiftRightInt16<DataType>(_mm_unpacklo_epi8(va_i8x16, va_i8x16), 8), VectorZeroPointA);
-        const auto va_hi_i16x8 = _mm_sub_epi16(MlasShiftRightInt16<DataType>(_mm_unpackhi_epi8(va_i8x16, va_i8x16), 8), VectorZeroPointA);
-
-        if (!IsScalarB) {
-            MlasCopyTailBytes(TailData, (const uint8_t*)InputB, N);
-            const auto vb_i8x16 = _mm_loadu_si128((const MLAS_INT32X4*)TailData);
-            vb_lo_i16x8 = _mm_sub_epi16(MlasShiftRightInt16<DataType>(_mm_unpacklo_epi8(vb_i8x16, vb_i8x16), 8), VectorZeroPointB);
-            vb_hi_i16x8 = _mm_sub_epi16(MlasShiftRightInt16<DataType>(_mm_unpackhi_epi8(vb_i8x16, vb_i8x16), 8), VectorZeroPointB);
-        }
-
-        auto ab_lo_lo = _mm_mullo_epi16(va_lo_i16x8, vb_lo_i16x8);
-        auto ab_lo_hi = _mm_mulhi_epi16(va_lo_i16x8, vb_lo_i16x8);
-        auto r_lo_lo = _mm_add_epi32(_mm_cvtps_epi32(_mm_mul_ps(_mm_cvtepi32_ps(_mm_unpacklo_epi16(ab_lo_lo, ab_lo_hi)), VectorScaleRatio)), VectorZeroPointC);
-        auto r_lo_hi = _mm_add_epi32(_mm_cvtps_epi32(_mm_mul_ps(_mm_cvtepi32_ps(_mm_unpackhi_epi16(ab_lo_lo, ab_lo_hi)), VectorScaleRatio)), VectorZeroPointC);
-        const auto vc_lo_i16x8 = _mm_packs_epi32(r_lo_lo, r_lo_hi);
-
-        auto ab_hi_lo = _mm_mullo_epi16(va_hi_i16x8, vb_hi_i16x8);
-        auto ab_hi_hi = _mm_mulhi_epi16(va_hi_i16x8, vb_hi_i16x8);
-        auto r_hi_lo = _mm_add_epi32(_mm_cvtps_epi32(_mm_mul_ps(_mm_cvtepi32_ps(_mm_unpacklo_epi16(ab_hi_lo, ab_hi_hi)), VectorScaleRatio)), VectorZeroPointC);
-        auto r_hi_hi = _mm_add_epi32(_mm_cvtps_epi32(_mm_mul_ps(_mm_cvtepi32_ps(_mm_unpackhi_epi16(ab_hi_lo, ab_hi_hi)), VectorScaleRatio)), VectorZeroPointC);
-        const auto vc_hi_i16x8 = _mm_packs_epi32(r_hi_lo, r_hi_hi);
-
+        const auto vc_lo_i16x8 = MlasQLinearMulVectorS16(va_lo_i16x8, vb_lo_i16x8, VectorScaleRatio, VectorZeroPointC);
+        const auto vc_hi_i16x8 = MlasQLinearMulVectorS16(va_hi_i16x8, vb_hi_i16x8, VectorScaleRatio, VectorZeroPointC);
         auto vc = MlasPackS16_128<DataType>(vc_lo_i16x8, vc_hi_i16x8);
 
-        while (N >= 4) {
-            *(int*)OutputC = _mm_cvtsi128_si32(vc);
-            N -= 4;
-            OutputC += 4;
-            vc = _mm_shuffle_epi32(vc, _MM_SHUFFLE(0, 3, 2, 1));
-        }
-
-        uint32_t PackedValueC = (uint32_t)_mm_cvtsi128_si32(vc);
-        for (size_t i = 0; i < N; ++i) {
-            *((uint8_t*)OutputC + i) = (uint8_t)PackedValueC;
-            PackedValueC >>= 8;
+        if (N >= 16) {
+            _mm_storeu_si128((__m128i*)OutputC, vc);
+            OutputC += 16;
+            N -= 16;
+        } else {
+            _mm_storeu_si128((__m128i*)TailDataA, vc);
+            MlasCopyTailBytes((uint8_t*)OutputC, TailDataA, N);
+            N = 0;
         }
     }
 }
