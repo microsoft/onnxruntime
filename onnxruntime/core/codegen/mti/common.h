@@ -5,13 +5,12 @@
 
 #include <stdexcept>
 #include <string>
-#include "onnxruntime/core/common/common.h"
 
-#define MTI_ASSERT(condition)                                           \
-  if (!(condition)) {                                                   \
-    std::string error_msg = "Not satsified: " #condition                \
-                            ": line " +                                 \
-                            std::to_string(__LINE__) +                  \
-                            " in file " + std::string(__FILE__) + "\n"; \
-    ORT_THROW(error_msg);                                               \
+#define MTI_ASSERT(condition)                                              \
+  if (!(condition)) {                                                      \
+    std::string error_msg = "Not satsified: " #condition                   \
+                            ": line " + std::to_string(__LINE__) +         \
+                            " in file " + std::string(__FILE__) + "\n";    \
+    throw std::runtime_error(error_msg);                                   \
   }
+

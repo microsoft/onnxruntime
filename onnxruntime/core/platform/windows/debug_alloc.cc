@@ -118,7 +118,7 @@ void* DebugHeapAlloc(size_t size, unsigned framesToSkip) {
   g_cumulativeAllocationBytes += size;
   void* p = HeapAlloc(g_heap, 0, size + sizeof(MemoryBlock));
   if (!p)
-    ORT_THROW_BAD_ALLOC;
+    throw std::bad_alloc();
 
   g_allocationCount++;
   new (p) MemoryBlock(framesToSkip + 1);
@@ -134,7 +134,7 @@ void* DebugHeapReAlloc(void* p, size_t size) {
   p = static_cast<BYTE*>(p) - sizeof(MemoryBlock);  // Adjust incoming pointer
   p = HeapReAlloc(g_heap, 0, p, size + sizeof(MemoryBlock));
   if (!p)
-    ORT_THROW_BAD_ALLOC;
+    throw std::bad_alloc();
 
   new (p) MemoryBlock;                                 // Redo the callstack
   return static_cast<BYTE*>(p) + sizeof(MemoryBlock);  // Adjust outgoing pointer

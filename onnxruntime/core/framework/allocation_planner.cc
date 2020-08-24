@@ -502,7 +502,7 @@ class PlannerImpl {
     auto& weights = graph_viewer_.GetAllInitializedTensors();
     std::vector<std::vector<OrtMemoryInfo>> locations(plan_.allocation_plan.size());
     for (auto& node : graph_viewer_.Nodes()) {
-      ORT_RETURN_IF_ERROR(onnxruntime::Node::ForEachWithIndex(
+      auto status = onnxruntime::Node::ForEachWithIndex(
           node.InputDefs(), [this, &locations, &node, &weights](const onnxruntime::NodeArg& def, size_t index) {
             ORT_TRY {
               auto& def_name = def.Name();
@@ -516,7 +516,9 @@ class PlannerImpl {
             }
 #endif
             return Status::OK();
-          }));
+          });
+
+      ORT_RETURN_IF_ERROR( status );
     }
     for (size_t i = 0; i != locations.size(); ++i) {
       const std::vector<OrtMemoryInfo>& loc = locations[i];
