@@ -646,11 +646,27 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, Attentio
     return false;
   }
 
+  //check where has X=-Infinity
+  if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(where.InputDefs()[1]), std::numeric_limits<float>::min(), true)) {
+    DEBUG_LOG("where const not matched.");
+    std::cout << "where const not matched" << std::endl;
+    return false;
+  }
+  //expand has another input Shape <-- qk_MatMul
+
+  //equal has input B=0
+  if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(equal.InputDefs()[1]), 0.0f, true)) {
+    DEBUG_LOG("equal const not matched.");
+    std::cout << "equal const not matched" << std::endl;
+    return false;
+  }
+  //reshape node's shape input
+
   result.softmax = &softmax;
-  result.Where = &where;
-  result.Expand = &expend;
-  result.Reshape = &reshape;
-  result.Equal = &equal;
+  result.where = &where;
+  result.expand = &expend;
+  result.reshape = &reshape;
+  result.equal = &equal;
 
   DEBUG_LOG("Pass MatchInputMaskSubgraphDistilBert");
   return true;

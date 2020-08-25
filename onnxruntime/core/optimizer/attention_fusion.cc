@@ -281,7 +281,7 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
           reshape_count++;
         }
       }
-      if (add_count == 1 && matmul_count == 3) { // BERT or DistilBert
+      if (add_count == 1 && matmul_count == 3 && (shape_count == 0 || shape_count == 2)) { // BERT or DistilBert
         if (AttentionFusion::FuseSubGraph(node, *add_node, graph, hidden_size, mask_index_map, logger)) {
           fused_count++;
           modified = true;
@@ -303,7 +303,7 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 }
 
 static bool FuseSubGraphQKImpl(Node& layer_norm, Graph& graph, AttentionFusionHelper::AttentionMaskNodes& mask_nodes, const std::vector<std::reference_wrapper<const Node>>& parent_path_nodes,
-                                         int64_t hidden_size,  int64_t num_heads, int64_t head_size, std::map<std::string, NodeArg*>& mask_index_map, const logging::Logger& logger) {
+                               int64_t hidden_size,  int64_t num_heads, int64_t head_size, std::map<std::string, NodeArg*>& mask_index_map, const logging::Logger& logger) {
   // path to q
   std::vector<graph_utils::EdgeEndToMatch> q_path{
       {0, 0, "Div", {7, 13}, kOnnxDomain},

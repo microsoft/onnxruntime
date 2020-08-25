@@ -260,7 +260,7 @@ def GenerateModel2(model_name):
         helper.make_tensor('add_k_weight', TensorProto.FLOAT, [8], add_k_weight),
         helper.make_tensor('add_v_weight', TensorProto.FLOAT, [8], add_v_weight),
         helper.make_tensor('add_qkv_weight', TensorProto.FLOAT, [8], add_qkv_weight),
-        helper.make_tensor('equal_weight', TensorProto.FLOAT, [], 0),
+        helper.make_tensor('equal_weight', TensorProto.FLOAT, [], [0.0]),
         helper.make_tensor('where_weight', TensorProto.FLOAT, [], [sys.float_info.min]),
         helper.make_tensor('reshape_weight_1', TensorProto.INT64, [4], [0, -1, 2, 4]),
         helper.make_tensor('reshape_weight_2', TensorProto.INT64, [4], [0, 1, 1, -1]),
