@@ -7,6 +7,11 @@
 #include "winrt_headers.h"
 #pragma warning(push)
 #pragma warning(disable : 4100)
+
+#ifndef ONNX_API
+#define ONNX_API
+#endif
+
 #include "onnx/onnx-ml.pb.h"
 #pragma warning(pop)
 namespace ProtobufHelpers

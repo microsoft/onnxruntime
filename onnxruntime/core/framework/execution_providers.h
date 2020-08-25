@@ -56,6 +56,15 @@ class ExecutionProviders {
     return exec_providers_[it->second].get();
   }
 
+  IExecutionProvider* Get(onnxruntime::ProviderType provider_id) {
+    auto it = provider_idx_map_.find(provider_id);
+    if (it == provider_idx_map_.end()) {
+      return nullptr;
+    }
+
+    return exec_providers_[it->second].get();
+  }
+
   bool Empty() const { return exec_providers_.empty(); }
 
   size_t NumProviders() const { return exec_providers_.size(); }

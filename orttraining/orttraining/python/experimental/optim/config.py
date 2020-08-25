@@ -53,7 +53,7 @@ class _OptimizerConfig(object):
                  " and additional entries for custom hyper parameter values")
             for k, _ in group.items():
                 if k != 'params':
-                    assert k in defaults, f"'params' has 'k' hyper parameter not present at 'defaults'"
+                    assert k in defaults or k.replace("_coef", "") in defaults, f"'params' has {k} hyper parameter not present at 'defaults'"
 
         self.name = name
         self.lr = float(defaults['lr'])
@@ -74,6 +74,9 @@ class _OptimizerConfig(object):
         for name, value in self.defaults.items():
             if name not in param_group:
                 param_group.setdefault(name, value)
+
+        if "lambda_coef" in param_group:
+            param_group["lambda"] = param_group.pop("lambda_coef")
 
         self.params.append(param_group)
 
@@ -160,7 +163,7 @@ class AdamConfig(_OptimizerConfig):
         defaults = {'lr': lr,
                     'alpha': alpha,
                     'beta': beta,
-                    'lambda_coef': lambda_coef,
+                    'lambda': lambda_coef,
                     'epsilon': epsilon,
                     'do_bias_correction': do_bias_correction,
                     'weight_decay_mode': weight_decay_mode}
@@ -223,7 +226,7 @@ class LambConfig(_OptimizerConfig):
         defaults = {'lr': lr,
                     'alpha': alpha,
                     'beta': beta,
-                    'lambda_coef': lambda_coef,
+                    'lambda': lambda_coef,
                     'ratio_min': ratio_min,
                     'ratio_max': ratio_max,
                     'epsilon': epsilon,

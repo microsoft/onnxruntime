@@ -150,6 +150,41 @@ TEST(CApiTest, CreateGetVectorOfMapsStringFloat) {  // support zipmap output typ
   }
 }
 
+TEST(CApiTest, TypeInfoMap) {
+  // Creation
+  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  const int64_t NUM_KV_PAIRS = 4;
+  std::vector<int64_t> keys{0, 1, 2, 3};
+  std::vector<int64_t> dims = {NUM_KV_PAIRS};
+  std::vector<float> values{3.0f, 1.0f, 2.f, 0.f};
+  // create key tensor
+  Ort::Value keys_tensor = Ort::Value::CreateTensor(info, keys.data(), keys.size() * sizeof(int64_t),
+                                                    dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
+  // create value tensor
+  Ort::Value values_tensor = Ort::Value::CreateTensor(info, values.data(), values.size() * sizeof(float),
+                                                      dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+
+  Ort::Value map_ort = Ort::Value::CreateMap(keys_tensor, values_tensor);
+  Ort::TypeInfo type_info = map_ort.GetTypeInfo();
+  Ort::MapTypeInfo map_type_info = type_info.GetMapTypeInfo();
+
+  //Check key type
+  ASSERT_EQ(map_type_info.GetMapKeyType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
+
+  Ort::TypeInfo map_value_type_info = map_type_info.GetMapValueType();
+
+  //Check value type and shape
+  ASSERT_EQ(map_value_type_info.GetONNXType(), ONNX_TYPE_TENSOR);
+  // No shape present, as map values allow different shapes for each element
+  // ASSERT_EQ(map_value_type_info.GetTensorTypeAndShapeInfo().GetShape(), dims);
+  ASSERT_EQ(map_value_type_info.GetTensorTypeAndShapeInfo().GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+
+  map_value_type_info.release();
+  map_type_info.release();
+}
+
 TEST(CApiTest, CreateGetSeqTensors) {
   // Creation
   auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
@@ -214,4 +249,32 @@ TEST(CApiTest, CreateGetSeqStringTensors) {
     }
   }
   ASSERT_EQ(string_set, std::set<std::string>(std::begin(string_input_data), std::end(string_input_data)));
+}
+
+TEST(CApiTest, TypeInfoSequence) {
+  // Creation
+  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  std::vector<Ort::Value> in;
+  std::vector<int64_t> vals{3, 1, 2, 0};
+  std::vector<int64_t> dims{1, 4};
+  const int N = 2;
+  for (int i = 0; i < N; ++i) {
+    // create tensor
+    Ort::Value tensor = Ort::Value::CreateTensor(info, vals.data(), vals.size() * sizeof(int64_t),
+                                                 dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
+    in.push_back(std::move(tensor));
+  }
+
+  Ort::Value seq_ort = Ort::Value::CreateSequence(in);
+  Ort::TypeInfo type_info = seq_ort.GetTypeInfo();
+  Ort::SequenceTypeInfo seq_type_info = type_info.GetSequenceTypeInfo();
+
+  ASSERT_EQ(seq_type_info.GetSequenceElementType().GetONNXType(), ONNX_TYPE_TENSOR);
+  // No shape present, as sequence allows different shapes for each element
+  // ASSERT_EQ(seq_type_info.GetSequenceElementType().GetTensorTypeAndShapeInfo().GetShape(), dims);
+  ASSERT_EQ(seq_type_info.GetSequenceElementType().GetTensorTypeAndShapeInfo().GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
+
+  seq_type_info.release();
 }
