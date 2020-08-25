@@ -3,3 +3,9 @@ steps:
   displayName: "print secret num bytes (template)"
   env:
     THE_SECRET: $(THE_SECRET)
+
+- ${{ if ne(variables.THE_SECRET, '') }}:
+  - script: echo "I KNOW A SECRET!"
+
+- ${{ if eq(variables.THE_SECRET, '') }}:
+  - script: echo "I DON'T KNOW THE SECRET..."
