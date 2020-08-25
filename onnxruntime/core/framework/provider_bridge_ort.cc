@@ -12,20 +12,9 @@
 #include "core/framework/kernel_registry.h"
 #include "core/graph/model.h"
 #include "core/platform/env.h"
-#include "core/providers/dnnl/dnnl_provider_factory.h"
 #include "core/session/inference_session.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_apis.h"
-
-#ifdef USE_TENSORRT
-#include "core/providers/tensorrt/tensorrt_provider_factory.h"
-#include "core/session/abi_session_options_impl.h"
-#include "core/session/ort_apis.h"
-#include "core/platform/env.h"
-#include "core/graph/model.h"
-#include "core/framework/data_transfer_manager.h"
-#include "core/framework/compute_capability.h"
-#include "core/framework/execution_provider.h"
 #define PROVIDER_BRIDGE_ORT
 #include "core/providers/shared_library/provider_interfaces.h"
 #include "onnx/common/stl_backports.h"
