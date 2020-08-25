@@ -16,13 +16,12 @@ ExLibLoader::~ExLibLoader() {
       }
     }
   }
-  ORT_CATCH(std::exception & ex) {
+  ORT_CATCH(const std::exception& ex) {
     // make sure exceptions don't leave the destructor
     ORT_HANDLE_EXCEPTION([&ex]() {
       LOGS_DEFAULT(WARNING) << "Caught exception while destructing CustomOpsLoader with message: " << ex.what();
     });
   }
-  ORT_CATCH_END
 }
 
 void* ExLibLoader::GetExLibHandle(const std::string& dso_file_path) const {
@@ -51,8 +50,6 @@ common::Status ExLibLoader::LoadExternalLib(const std::string& dso_file_path,
   }
 
   return status;
-
-  ORT_CATCH_END
 }
 
 }  // namespace onnxruntime

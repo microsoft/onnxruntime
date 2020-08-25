@@ -267,15 +267,13 @@ Status Model::Load(const ModelProto& model_proto,
       status = Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
     });
   }
-  ORT_CATCH_END
-
   ORT_RETURN_IF_ERROR(status);
 
   Graph::ResolveOptions options;
   options.no_proto_sync_required = true;
   ORT_RETURN_IF_ERROR(model->MainGraph().Resolve(options));
 
-  return Status::OK();
+  return status;
 }
 
 Status Model::Load(ModelProto&& model_proto,
@@ -306,15 +304,13 @@ Status Model::Load(ModelProto&& model_proto,
       status = Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
     });
   }
-  ORT_CATCH_END
-
   ORT_RETURN_IF_ERROR(status);
 
   Graph::ResolveOptions options;
   options.no_proto_sync_required = true;
   ORT_RETURN_IF_ERROR(model->MainGraph().Resolve(options));
 
-  return Status::OK();
+  return status;
 }
 
 template <typename T, typename Loader>
@@ -335,19 +331,14 @@ static Status LoadModelHelper(const T& file_path, Loader loader) {
     }
   }
 
-  auto sub_status = Status::OK();
   ORT_TRY {
     status = loader(fd);
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
-      GSL_SUPPRESS(es .84)
-      ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
-      sub_status = Status(ONNXRUNTIME, FAIL, ex.what());
+      status = Status(ONNXRUNTIME, FAIL, ex.what());
     });
   }
-  ORT_CATCH_END
-  ORT_RETURN_IF_ERROR(sub_status);
 
   if (!status.IsOK()) {
     GSL_SUPPRESS(es .84)
@@ -383,20 +374,14 @@ static Status SaveModel(Model& model, const T& file_path) {
   Status status = Env::Default().FileOpenWr(file_path, fd);
   ORT_RETURN_IF_ERROR(status);
 
-  auto sub_status = Status::OK();
   ORT_TRY {
     status = Model::Save(model, fd);
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
-      GSL_SUPPRESS(es .84)
-      ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
-      sub_status = Status(ONNXRUNTIME, FAIL, ex.what());
+      status = Status(ONNXRUNTIME, FAIL, ex.what());
     });
   }
-  ORT_CATCH_END
-  ORT_RETURN_IF_ERROR(sub_status);
-
   if (!status.IsOK()) {
     GSL_SUPPRESS(es .84)
     ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));

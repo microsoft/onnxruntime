@@ -317,7 +317,6 @@ ORT_API_STATUS_IMPL(OrtInitializeBufferForTensor, _In_opt_ void* input, size_t i
       status = OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
     });
   }
-  ORT_CATCH_END
 
   return status;
 }

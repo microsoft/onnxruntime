@@ -308,7 +308,6 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
           compute_status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());
         });
       }
-      ORT_CATCH_END
 
       if (!compute_status.IsOK()) {
         std::ostringstream ss;

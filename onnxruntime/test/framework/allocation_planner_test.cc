@@ -468,7 +468,6 @@ TEST_F(PlannerTest, PlanOutputTest) {
       EXPECT_TRUE(false) << "Exception in producing output: " << ex.what();
     });
   }
-  ORT_CATCH_END
 }
 
 }  // namespace test

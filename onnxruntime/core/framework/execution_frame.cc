@@ -286,7 +286,6 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
                                                     << location.ToString() << " failed. Error:" << ex.what();
               });
             }
-            ORT_CATCH_END
 
             if (buffer != nullptr) {
               buffers_[location] = BufferUniquePtr(buffer, alloc);

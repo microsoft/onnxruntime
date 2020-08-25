@@ -70,7 +70,6 @@ class PerformanceRunner {
         status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "PerformanceRunner::RunOneIteration caught exception: ", ex.what());
       });
     }
-    ORT_CATCH_END
     ORT_RETURN_IF_ERROR(status);
 
     if (!isWarmup) {

@@ -265,7 +265,6 @@ TEST(OpaqueApiTest, RunModelWithOpaqueInputOutput) {
       ASSERT_TRUE(false);
     });
   }
-  ORT_CATCH_END
 }
 }  // namespace test
 }  // namespace onnxruntime

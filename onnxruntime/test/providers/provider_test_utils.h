@@ -569,7 +569,6 @@ class OpTester {
       });
       ORT_RETHROW;
     }
-    ORT_CATCH_END
   }
 
  private:
@@ -635,7 +634,6 @@ void ExpectThrow(OpTester& test, const std::string& error_msg) {
       EXPECT_THAT(ex.what(), testing::HasSubstr(error_msg));
     });
   }
-  ORT_CATCH_END
 }
 
 void DebugTrap();

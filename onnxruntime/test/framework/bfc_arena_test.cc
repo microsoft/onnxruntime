@@ -183,8 +183,6 @@ TEST(BFCArenaTest, TestCustomMemoryLimit) {
     ORT_CATCH(...) {
       FAIL() << "Allocation should have thrown OnnxRuntimeException";
     }
-    ORT_CATCH_END
-
     a.Free(first_ptr);
   }
 
@@ -211,8 +209,6 @@ TEST(BFCArenaTest, TestCustomMemoryLimit) {
     ORT_CATCH(...) {
       FAIL() << "Allocation should have thrown OnnxRuntimeException";
     }
-    ORT_CATCH_END
-
     b.Free(first_ptr);
   }
 }

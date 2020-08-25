@@ -57,7 +57,6 @@ int main(int argc, char** argv) {
       status = -1;
     });
   }
-  ORT_CATCH_END
 
   //TODO: Fix the C API issue
   ort_env.reset();  //If we don't do this, it will crash

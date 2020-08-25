@@ -166,11 +166,9 @@ class PosixThread : public EnvThread {
       // Ignore the returned value for now
       p->start_address(p->index, p->param);
     }
-    ORT_CATCH(std::exception&) {
+    ORT_CATCH(const std::exception&) {
       p->param->Cancel();
     }
-    ORT_CATCH_END
-
     return nullptr;
   }
   pthread_t hThread;

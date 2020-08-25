@@ -90,7 +90,6 @@ class Locale {
                   name, ":", e.what(), ":Please, install necessary language-pack-XX and configure locales");
       });
     }
-    ORT_CATCH_END;
   }
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Locale);

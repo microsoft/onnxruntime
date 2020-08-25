@@ -829,9 +829,8 @@ TEST_P(ModelTest, Run) {
           return true;
         });
       }
-      ORT_CATCH(std::exception&) {
+      ORT_CATCH(const std::exception&) {
       }  // ignore non-exist dir
-      ORT_CATCH_END
     }
   }
   return v;

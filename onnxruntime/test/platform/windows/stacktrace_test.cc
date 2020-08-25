@@ -45,7 +45,6 @@ TEST(StacktraceTests, BasicTests) {
         EXPECT_THAT(msg, HasSubstr("BasicTests"));
     });
   }
-  ORT_CATCH_END
 }
 #endif
 }  // namespace test

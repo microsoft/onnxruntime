@@ -63,7 +63,6 @@ int main(int argc, char** argv) {
       status = -1;
     });
   }
-  ORT_CATCH_END
 
 #ifndef USE_ONNXRUNTIME_DLL
   //make memory leak checker happy

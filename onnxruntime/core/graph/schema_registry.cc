@@ -60,7 +60,6 @@ common::Status OnnxRuntimeOpSchemaRegistry::RegisterOpSchemaInternal(ONNX_NAMESP
       status = common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Schema error: " + std::string(e.what()));
     });
   }
-  ORT_CATCH_END
   ORT_RETURN_IF_ERROR(status);
 
   auto& op_name = op_schema.Name();

@@ -31,8 +31,6 @@ bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, siz
       ok = false;
     });
   }
-  ORT_CATCH_END
-
   return ok;
 }
 

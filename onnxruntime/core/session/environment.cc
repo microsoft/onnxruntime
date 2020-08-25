@@ -169,8 +169,6 @@ Internal copy node
   ORT_CATCH(...) {
     status = Status{ONNXRUNTIME, common::RUNTIME_EXCEPTION};
   }
-  ORT_CATCH_END
-
   return status;
 }
 

@@ -101,8 +101,6 @@ Status BFCArena::Extend(size_t rounded_bytes) {
         }
       });
     }
-    ORT_CATCH_END
-
     return new_mem;
   };
 

@@ -511,13 +511,11 @@ class PlannerImpl {
               auto wt_index = Index(def_name);
               locations[wt_index].emplace_back(GetLocationForNodeInput(index, node));
             }
-            ORT_CATCH(std::exception & ex) {
+            ORT_CATCH(const std::exception& ex) {
               ORT_HANDLE_EXCEPTION([&]() {
                 sub_status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
               });
             }
-            ORT_CATCH_END
-
             return sub_status;
           });
 

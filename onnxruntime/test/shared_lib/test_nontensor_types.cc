@@ -66,7 +66,6 @@ TEST(CApiTest, CreateGetVectorOfMapsInt64Float) {  // support zipmap output type
       failed = e.GetOrtErrorCode() == ORT_RUNTIME_EXCEPTION;
     });
   }
-  ORT_CATCH_END
 
   ASSERT_EQ(failed, true);
 

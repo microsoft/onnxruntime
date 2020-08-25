@@ -79,7 +79,6 @@ static bool CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t a
     // overflow in calculating the size thrown by SafeInt.
     ok = false;
   }
-  ORT_CATCH_END
 
   return ok;
 }
@@ -315,12 +314,11 @@ OrtStatus* OrtInitializeBufferForTensor(void* input, size_t input_len,
       new (ptr + i) std::string();
     }
   }
-  ORT_CATCH(std::exception & ex) {
+  ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
       status = Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
     });
   }
-  ORT_CATCH_END
 
   return status;
 }

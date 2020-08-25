@@ -198,7 +198,6 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
         status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());
       });
     }
-    ORT_CATCH_END
 
     if (!status.IsOK()) {
       std::ostringstream ss;
@@ -311,7 +310,6 @@ void ParallelExecutor::EnqueueNode(size_t p_node_index, const SessionState& sess
       // catch node processing failure exceptions here to prevent app crash.
       status = create_exception_message(nullptr);
     }
-    ORT_CATCH_END
 
     FinishNodeRun(status);
   });

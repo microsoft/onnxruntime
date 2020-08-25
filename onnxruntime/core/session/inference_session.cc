@@ -309,7 +309,7 @@ InferenceSession::~InferenceSession() {
     ORT_TRY {
       EndProfiling();
     }
-    ORT_CATCH(std::exception & e) {
+    ORT_CATCH(const std::exception& e) {
       // TODO: Currently we have no way to transport this error to the API user
       // Maybe this should be refactored, so that profiling must be explicitly
       // started and stopped via C-API functions.
@@ -322,7 +322,6 @@ InferenceSession::~InferenceSession() {
     ORT_CATCH(...) {
       LOGS(*session_logger_, ERROR) << "Unknown error during EndProfiling()";
     }
-    ORT_CATCH_END
   }
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
@@ -458,7 +457,6 @@ common::Status InferenceSession::Load(std::function<common::Status(std::shared_p
     LOGS(*session_logger_, ERROR) << "Unknown exception in Load()";
     status = Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Load()");
   }
-  ORT_CATCH_END
 
   if (session_profiler_.IsEnabled()) {
     session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, event_name, tp);
@@ -940,7 +938,6 @@ common::Status InferenceSession::Initialize() {
     status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "Encountered unknown exception in Initialize()");
     LOGS(*session_logger_, ERROR) << status.ErrorMessage();
   }
-  ORT_CATCH_END
 
   if (session_profiler_.IsEnabled()) {
     session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "session_initialization", tp);
@@ -1225,7 +1222,6 @@ Status InferenceSession::Run(const RunOptions& run_options,
   ORT_CATCH(...) {
     retval = Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Run()");
   }
-  ORT_CATCH_END
 
   // info all execution providers InferenceSession:Run ended
   for (auto* xp : exec_providers_to_stop) {

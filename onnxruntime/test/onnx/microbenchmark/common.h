@@ -12,11 +12,11 @@ inline void* aligned_alloc(size_t size, size_t align) {
 #if _MSC_VER
   ptr = _aligned_malloc(size, align);
   if (ptr == nullptr)
-    ORT_THROW_BAD_ALLOC;
+    ORT_THROW_EX(std::bad_alloc);
 #else
   int ret = posix_memalign(&ptr, align, size);
   if (ret != 0)
-    ORT_THROW_BAD_ALLOC;
+    ORT_THROW_EX(std::bad_alloc);
 #endif
   return ptr;
 }

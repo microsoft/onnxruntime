@@ -104,7 +104,8 @@ struct Base {
 
   Base() = default;
   Base(T* p) : p_{p} {
-    if (!p) throw Ort::Exception("Allocation failure", ORT_FAIL);
+    if (!p)
+      ORT_CXX_API_THROW("Allocation failure", ORT_FAIL);
   }
   ~Base() { OrtRelease(p_); }
 
@@ -139,7 +140,8 @@ struct Base<const T> {
 
   Base() = default;
   Base(const T* p) : p_{p} {
-    if (!p) throw Ort::Exception("Invalid instance ptr", ORT_INVALID_ARGUMENT);
+    if (!p)
+      ORT_CXX_API_THROW("Invalid instance ptr", ORT_INVALID_ARGUMENT);
   }
   ~Base() = default;
 

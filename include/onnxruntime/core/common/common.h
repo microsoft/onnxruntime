@@ -40,6 +40,7 @@
 #include <mimalloc.h>
 #endif
 
+#define ORT_NO_EXCEPTIONS
 #ifdef ORT_NO_EXCEPTIONS
 #include <iostream>
 #endif
@@ -101,12 +102,9 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 
 #ifdef ORT_NO_EXCEPTIONS
 
-// clang-format off
-#define ORT_TRY { if (true)
+#define ORT_TRY if (true)
 #define ORT_CATCH(x) else if (false)
 #define ORT_RETHROW
-#define ORT_CATCH_END }
-// clang-format on
 
 // In order to ignore the catch statement when a specific exception (not ... ) is caught and referred
 // in the body of the catch statements, it is necessary to wrap the body of the catch statement into
@@ -164,16 +162,11 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
     abort();                                                                        \
   } while (false)
 
-#define ORT_THROW_BAD_ALLOC ORT_THROW_EX(std::bad_alloc)
-
 #else
 
-// clang-format off
-#define ORT_TRY { try
-#define ORT_CATCH(x) catch(x)
+#define ORT_TRY try
+#define ORT_CATCH(x) catch (x)
 #define ORT_RETHROW throw;
-#define ORT_CATCH_END }
-// clang-format on
 
 #define ORT_HANDLE_EXCEPTION(func) func()
 
@@ -198,7 +191,8 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
   throw ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK, #condition, \
                                             ::onnxruntime::MakeString(__VA_ARGS__))
 
-#define ORT_THROW_BAD_ALLOC throw std::bad_alloc()
+#define ORT_THROW_EX(ex, ...) \
+  throw ex(##__VA_ARGS__)
 
 #endif
 

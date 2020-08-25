@@ -19,7 +19,6 @@ GTEST_API_ int main(int argc, char** argv) {
       status = -1;
     });
   }
-  ORT_CATCH_END
 
   return status;
 }

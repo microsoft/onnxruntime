@@ -269,14 +269,13 @@ void LoopDataFile(int test_data_pb_fd, bool is_input, const TestModelInfo& model
         ORT_NOT_IMPLEMENTED(oss2.str());
       });
     }
-    ORT_CATCH(std::exception & ex) {
+    ORT_CATCH(const std::exception& ex) {
       ORT_HANDLE_EXCEPTION([&]() {
         std::ostringstream oss2;
         oss2 << "load the " << item_id << "-th item failed," << ex.what();
         ORT_THROW(oss2.str());
       });
     }
-    ORT_CATCH_END
   }
   if (!clean_eof) {
     ORT_THROW("parse input file failed, has extra unparsed data");
@@ -459,14 +458,13 @@ void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
     ORT_TRY {
       LoopDataFile(test_data_pb_fd, is_input, *model_info_, name_data_map, b, oss);
     }
-    ORT_CATCH(std::exception & ex) {
+    ORT_CATCH(const std::exception& ex) {
       ORT_HANDLE_EXCEPTION([&]() {
         std::ostringstream oss2;
         oss2 << "parse data file \"" << ToMBString(test_data_pb) << "\" failed:" << ex.what();
         ORT_THROW(oss.str());
       });
     }
-    ORT_CATCH_END
 
     {
       std::lock_guard<OrtMutex> l(m_);

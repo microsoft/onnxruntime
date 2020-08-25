@@ -72,9 +72,6 @@ static Status MergeShapeInfo(const std::string& output_name,
     // if this model was not created with the latest onnx version, allow the shape inferencing failure (strict == false).
     // we do this to have strict testing of the latest inferencing to detect bugs, but lenient shape inferencing for
     // older models in case later changes to the ONNX shape inferencing or ORT break them.
-    ORT_UNUSED_PARAMETER(logger);
-    ORT_UNUSED_PARAMETER(strict);
-    ORT_UNUSED_PARAMETER(output_name);
     if (!strict) {
       // mergeInShapeInfo does nothing unless source.shape() is not null, and there would be no conflict if
       // target.shape() was empty. 'assert' just in case that ever changes.
@@ -85,12 +82,14 @@ static Status MergeShapeInfo(const std::string& output_name,
 
       ONNX_NAMESPACE::UnionShapeInfo(source.shape(), target);
     } else {
+      ORT_UNUSED_PARAMETER(logger);
+      ORT_UNUSED_PARAMETER(strict);
+      ORT_UNUSED_PARAMETER(output_name);
       ORT_HANDLE_EXCEPTION([&]() {
         status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output:", output_name, " ", ex.what());
       });
     }
   }
-  ORT_CATCH_END
 
   return status;
 }
@@ -1811,8 +1810,6 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
         status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node (", node.Name(), ") Op (", node.OpType(), ") ", ex.what());
       });
     }
-    ORT_CATCH_END
-
     ORT_RETURN_IF_ERROR(status);
   }
 
@@ -2024,8 +2021,6 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
             status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "This is an invalid model. Error in Node:", node_name, " : ", ex.what());
           });
         }
-        ORT_CATCH_END
-
         ORT_RETURN_IF_ERROR(status);
       }
 

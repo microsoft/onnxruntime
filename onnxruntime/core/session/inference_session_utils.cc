@@ -139,7 +139,6 @@ Status InferenceSessionUtils::ParseOrtConfigJsonInModelProto(const ONNX_NAMESPAC
           status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, message);
         });
       }
-      ORT_CATCH_END
       ORT_RETURN_IF_ERROR(status);
 
       break;

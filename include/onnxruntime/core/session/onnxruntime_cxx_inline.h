@@ -14,7 +14,7 @@ inline void ThrowOnError(const OrtApi& ort, OrtStatus* status) {
     std::string error_message = ort.GetErrorMessage(status);
     OrtErrorCode error_code = ort.GetErrorCode(status);
     ort.ReleaseStatus(status);
-    throw Ort::Exception(std::move(error_message), error_code);
+    ORT_CXX_API_THROW(std::move(error_message), error_code);
   }
 }
 

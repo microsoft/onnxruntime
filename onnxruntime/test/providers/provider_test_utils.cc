@@ -692,7 +692,6 @@ void OpTester::Run(
             status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
           });
         }
-        ORT_CATCH_END
       } else {
         status = graph.Resolve(options);
       }
@@ -863,7 +862,6 @@ void OpTester::Run(
     // rethrow as some tests for error handling expect this
     ORT_RETHROW;
   }
-  ORT_CATCH_END;
 }
 
 void OpTester::AddReferenceOutputs(const std::string& model_path) {

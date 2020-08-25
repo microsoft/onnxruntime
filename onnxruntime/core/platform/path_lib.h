@@ -270,12 +270,10 @@ void LoopDir(const std::string& dir_name, T func) {
       }
     }
   }
-  ORT_CATCH(std::exception & ex) {
+  ORT_CATCH(const std::exception& ex) {
     closedir(dir);
     ORT_RETHROW;
   }
-  ORT_CATCH_END
-
   closedir(dir);
 }
 #endif

@@ -466,7 +466,6 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSession, _In_ const OrtEnv* env, _In_ const O
       status = OrtApis::CreateStatus(ORT_FAIL, e.what());
     });
   }
-  ORT_CATCH_END
   return status;
   API_IMPL_END
 }
@@ -487,7 +486,6 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArray, _In_ const OrtEnv* env, _In
       status = OrtApis::CreateStatus(ORT_FAIL, e.what());
     });
   }
-  ORT_CATCH_END
   if (nullptr != status)
     return status;
 
