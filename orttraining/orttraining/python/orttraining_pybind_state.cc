@@ -24,7 +24,7 @@ struct TrainingParameters {
   std::string loss_output_name;
   std::unordered_set<std::string> weights_to_train;
   std::unordered_set<std::string> weights_not_to_train;
-  onnxruntime::training::TrainingSession::ImmutableWeights immutable_weights;
+  TrainingSession::ImmutableWeights immutable_weights;
 
   // optimizer
   std::string training_optimizer_name;
@@ -119,7 +119,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     // eventually we will have one all reduce kernel and let opt to have
     // an allreduce_post_accumulation option and remove the use_nccl option.
     opt.use_nccl = parameters.allreduce_post_accumulation;
-    opt.deepspeed_zero = onnxruntime::training::ZeROConfig(parameters.deepspeed_zero_stage);
+    opt.deepspeed_zero = ZeROConfig(parameters.deepspeed_zero_stage);
     // TODO: The norm clipping value is 1.0f which is the default used in most frameworks.
     // Need to have another option to support more values in the future.
     opt.enable_grad_norm_clip = parameters.enable_grad_norm_clip;
@@ -204,14 +204,22 @@ void addObjectMethodsForTraining(py::module& m) {
         return py::none();
       });
 
-  py::class_<onnxruntime::training::TrainingSession> training_session(m, "TrainingSession");
+  struct PyTrainingSession {
+    std::unique_ptr<TrainingSession> sess_;
+  };
+
+  py::class_<PyTrainingSession> training_session(m, "TrainingSession");
   training_session.def(py::init([](const PySessionOptions& so) {
                     Environment& env = GetEnv();
-                    return onnxruntime::make_unique<onnxruntime::training::TrainingSession>(so, env);
+                    auto training_sess = onnxruntime::make_unique<PyTrainingSession>();
+                    training_sess->sess_ = onnxruntime::make_unique<TrainingSession>(so, env);
+                    return training_sess;
                   }))
       .def(py::init([]() {
         Environment& env = GetEnv();
-        return onnxruntime::make_unique<onnxruntime::training::TrainingSession>(GetDefaultCPUSessionOptions(), env);
+        auto training_sess = onnxruntime::make_unique<PyTrainingSession>();
+        training_sess->sess_ = onnxruntime::make_unique<TrainingSession>(GetDefaultCPUSessionOptions(), env);
+        return training_sess;
       }))
       .def("finalize", [](py::object) {
 #if defined(USE_NCCL)
@@ -223,37 +231,37 @@ void addObjectMethodsForTraining(py::module& m) {
 #endif
 #endif
       })
-      .def("load_model", [](onnxruntime::training::TrainingSession* sess, const std::string& path, TrainingParameters& parameters) {
-        OrtPybindThrowIfError(sess->Load(path));
+      .def("load_model", [](PyTrainingSession* sess, const std::string& path, TrainingParameters& parameters) {
+        OrtPybindThrowIfError(sess->sess_->Load(path));
 
 #if defined(USE_NCCL)
-        CopyMPIContextToTrainingParameters(parameters, sess->GetLogger());
+        CopyMPIContextToTrainingParameters(parameters, sess->sess_->GetLogger());
 #endif
-        const auto config_result = ConfigureSessionForTraining(sess, parameters);
+        const auto config_result = ConfigureSessionForTraining(sess->sess_.get(), parameters);
 
         std::vector<std::string> provider_types = {};
-        InitializeSession(sess, provider_types);
+        InitializeSession(sess->sess_.get(), provider_types);
 
         return config_result;
       })
-      .def("read_bytes", [](onnxruntime::training::TrainingSession* sess, const py::bytes& serialized_model, TrainingParameters& parameters) {
+      .def("read_bytes", [](PyTrainingSession* sess, const py::bytes& serialized_model, TrainingParameters& parameters) {
         std::istringstream buffer(serialized_model);
-        OrtPybindThrowIfError(sess->Load(buffer));
+        OrtPybindThrowIfError(sess->sess_->Load(buffer));
 
 #if defined(USE_NCCL)
-        CopyMPIContextToTrainingParameters(parameters, sess->GetLogger());
+        CopyMPIContextToTrainingParameters(parameters, sess->sess_->GetLogger());
 #endif
-        const auto config_result = ConfigureSessionForTraining(sess, parameters);
+        const auto config_result = ConfigureSessionForTraining(sess->sess_.get(), parameters);
 
         std::vector<std::string> provider_types = {};
-        InitializeSession(sess, provider_types);
+        InitializeSession(sess->sess_.get(), provider_types);
 
         return config_result;
       })
-      .def("get_state", [](onnxruntime::training::TrainingSession* sess) {
+      .def("get_state", [](PyTrainingSession* sess) {
         NameMLValMap state_tensors;
-        ORT_THROW_IF_ERROR(sess->GetStateTensors(state_tensors));
-        auto& data_transfer_manager = sess->GetDataTransferManager();
+        ORT_THROW_IF_ERROR(sess->sess_->GetStateTensors(state_tensors));
+        auto& data_transfer_manager = sess->sess_->GetDataTransferManager();
         //convert to numpy array
         std::map<std::string, py::object> rmap;
         for (auto& kv : state_tensors) {
@@ -268,7 +276,7 @@ void addObjectMethodsForTraining(py::module& m) {
         }
         return rmap;
       })
-      .def("load_state", [](onnxruntime::training::TrainingSession* sess, std::unordered_map<std::string, py::object>& state, bool strict) {
+      .def("load_state", [](TrainingSession* sess, std::unordered_map<std::string, py::object>& state, bool strict) {
         NameMLValMap state_tensors;
         for (auto initializer : state) {
           OrtValue ml_value;
@@ -294,7 +302,7 @@ void addObjectMethodsForTraining(py::module& m) {
         }
         ORT_THROW_IF_ERROR(sess->SetStateTensors(state_tensors, strict));
       })
-      .def("is_output_fp32_node", [](onnxruntime::training::TrainingSession* sess, const std::string& output_name) {
+      .def("is_output_fp32_node", [](TrainingSession* sess, const std::string& output_name) {
         return sess->IsGraphOutputFp32Node(output_name);
       });
 }
