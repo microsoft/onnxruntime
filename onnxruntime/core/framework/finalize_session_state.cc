@@ -83,7 +83,8 @@ Status FinalizeSessionState(SessionState& session_state,
                                session_state.GetMutableWeightsBuffers()));
 
 #ifdef ENABLE_TRAINING
-  if (session_state.GetEnableMemoryPattern()) {
+  bool is_verbose_mode = logger.GetSeverity() == logging::Severity::kVERBOSE;
+  if (is_verbose_mode && session_state.GetEnableMemoryPattern()) {
     // calculate activation memory usage
     MemoryPatternGroup activation_memory_pattern_output;
     std::unordered_map<std::string, int64_t> symbolic_map;
@@ -95,6 +96,8 @@ Status FinalizeSessionState(SessionState& session_state,
                            << "Activation Peak: Allocated memory for activations, size: "
                            << activation_memory_pattern_output.patterns[i].PeakSize();
       }
+    } else {
+      LOGS(logger, INFO) << "Fail to get activation peak memory.";
     }
   }
 #endif
@@ -210,8 +213,7 @@ common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PA
   //2. allocate weight buffer on different locations
   // planned_initializers_memory_size_in_byte is not actual physical size.
   // It's the virtual size computed by planner.
-  std::unordered_map<std::string, size_t>
-      planned_initializers_memory_sizes_in_byte;
+  std::unordered_map<std::string, size_t> planned_initializers_memory_sizes_in_byte;
   ORT_RETURN_IF_ERROR(
       planner.FinalizePlan(planned_initializers_memory_sizes_in_byte));
 
