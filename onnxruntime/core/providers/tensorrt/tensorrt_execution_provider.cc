@@ -70,24 +70,6 @@ struct ShutdownProtobuf {
 
 namespace onnxruntime {
 
-#if 1
-namespace cuda {
-template <>
-void Impl_Cast(
-    const int64_t* input_data, int32_t* output_data,
-    size_t count) {
-  return g_host->cuda__Impl_Cast(input_data, output_data, count);
-}
-
-template <>
-void Impl_Cast(
-    const int32_t* input_data, int64_t* output_data,
-    size_t count) {
-  return g_host->cuda__Impl_Cast(input_data, output_data, count);
-}
-}  // namespace cuda
-#endif
-
 class Memcpy final : public Provider_OpKernel {
  public:
   Memcpy(const Provider_OpKernelInfo&) {}

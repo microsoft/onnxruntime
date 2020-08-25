@@ -1,15 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-aweiojf
-aiojwe
-fijawi
-oefjai
-owjefiwi
-
-
-
-
 #include <cuda_runtime.h>
 #include "unary_elementwise_ops_impl.h"
 //#include "core/providers/cuda/cu_inc/common.cuh"

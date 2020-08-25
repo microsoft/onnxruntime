@@ -9,9 +9,6 @@
 #include "core/providers/dnnl/dnnl_provider_factory.h"
 #include "core/session/inference_session.h"
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
-#if 1
-#include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
-#endif
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_apis.h"
 #include "core/platform/env.h"
@@ -264,14 +261,6 @@ struct ProviderHostImpl : ProviderHost {
       Provider_IExecutionProvider* outer, const std::string& type) override {
     return onnxruntime::make_unique<Provider_IExecutionProvider_Router_Impl>(outer, type);
   };
-
-  void cuda__Impl_Cast(const int64_t* input_data, int32_t* output_data, size_t count) override {
-    return cuda::Impl_Cast(input_data, output_data, count);
-  }
-
-  void cuda__Impl_Cast(const int32_t* input_data, int64_t* output_data, size_t count) override {
-    return cuda::Impl_Cast(input_data, output_data, count);
-  }
 
   std::string GetEnvironmentVar(const std::string& var_name) override {
     return Env::Default().GetEnvironmentVar(var_name);
