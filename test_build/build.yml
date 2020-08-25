@@ -1,4 +1,6 @@
 steps:
+- checkout: none
+
 - script: |-
     echo "$(THE_SECRET)" | wc -c
   displayName: "print secret num bytes (outside)"
