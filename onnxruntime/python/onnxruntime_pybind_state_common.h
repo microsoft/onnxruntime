@@ -27,21 +27,25 @@ struct CustomOpLibrary {
   void* library_handle_ = nullptr;
 };
 
-struct CustomOpLibraries {
-  CustomOpLibraries() = default;
+// Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
+struct PyInferenceSession {
+  // Hold CustomOpLibrary resources so as to tie it to the life cycle of the InferenceSession needing it.
+  // NOTE: Declare this above InferenceSession so that this is destructed AFTER the InferenceSession instance -
+  // this is so that the custom ops held by the InferenceSession get destroyed prior to the library getting unloaded
+  // (if ref count of the shared_ptr reaches 0)
+  std::vector<std::shared_ptr<CustomOpLibrary>> custom_op_libraries_;
 
-  void AddLibrary(std::unique_ptr<CustomOpLibrary> custom_op_library);
-
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CustomOpLibraries);
-
- private:
-  std::vector<std::unique_ptr<CustomOpLibrary>> custom_op_libraries_;
-  std::mutex mutex_;
+  std::unique_ptr<InferenceSession> sess_;
 };
 
+// Thin wrapper over internal C++ SessionOptions to accommodate custom op library management for the Python user
 struct PySessionOptions : public SessionOptions {
-  // Have the life cycle of the OrtCustomOpDomain pointers managed by a smart pointer
-  std::vector<std::shared_ptr<OrtCustomOpDomain>> custom_op_domains_;
+  // Hold CustomOpLibrary resources so as to tie it to the life cycle of the InferenceSession needing it.
+  std::vector<std::shared_ptr<CustomOpLibrary>> custom_op_libraries_;
+
+  // Hold raw `OrtCustomOpDomain` pointers - it is upto the shared library to release the OrtCustomOpDomains
+  // that was created when the library is unloaded
+  std::vector<OrtCustomOpDomain*> custom_op_domains_;
 };
 
 inline const PySessionOptions& GetDefaultCPUSessionOptions() {
@@ -75,9 +79,7 @@ class SessionObjectInitializer {
   }
 };
 
-Environment& get_env();
-
-CustomOpLibraries& get_custom_op_libraries();
+Environment& GetEnv();
 
 void InitializeSession(InferenceSession* sess, const std::vector<std::string>& provider_types);
 

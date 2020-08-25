@@ -674,10 +674,6 @@ class TestInferenceSession(unittest.TestCase):
         so1 = onnxrt.SessionOptions()
         so1.register_custom_ops_library(shared_library)
 
-        # Create an alias of SessionOptions instance
-        # We will use this alias to construct another InferenceSession
-        so2 = so1
-
         # Model loading successfully indicates that the custom op node could be resolved successfully
         sess1 = onnxrt.InferenceSession(custom_op_model, so1)
         #Run with input data
@@ -690,8 +686,18 @@ class TestInferenceSession(unittest.TestCase):
         output_expected = np.ones((3,5)).astype(np.float32)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
+        # Create an alias of SessionOptions instance
+        # We will use this alias to construct another InferenceSession
+        so2 = so1
+
         # Model loading successfully indicates that the custom op node could be resolved successfully
         sess2 = onnxrt.InferenceSession(custom_op_model, so2)
+
+        # Create another SessionOptions instance with the same shared library referenced
+        so3 = onnxrt.SessionOptions()
+        so3.register_custom_ops_library(shared_library)
+        sess3 = onnxrt.InferenceSession(custom_op_model, so3)
+
 
 if __name__ == '__main__':
     unittest.main()

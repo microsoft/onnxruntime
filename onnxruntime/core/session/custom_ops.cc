@@ -103,10 +103,11 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
     if (domain->domain_[0]) {
       // Add it to the DomainToVersion ONNX map if it doesn't already exist
       // For example, two sessions using the same session_options should not add the same custom op domain to the version map twice
-      const auto& domain_to_version_map = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().Map();
+      auto& domain_to_version_range_instance = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
+      const auto& domain_to_version_map = domain_to_version_range_instance.Map();
 
       if (domain_to_version_map.find(domain->domain_) == domain_to_version_map.end()) {
-        ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(domain->domain_, 1, 1000);
+        domain_to_version_range_instance.AddDomainToVersion(domain->domain_, 1, 1000);
       }
     }
 
