@@ -17,7 +17,7 @@ namespace onnxruntime {
 static const GPUDataTransfer* GetGPUDataTransfer(const Provider_SessionState* session_state) {
   OrtDevice gpu_device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0);
   OrtDevice cpu_device;
-  return static_cast<const GPUDataTransfer*>(session_state->GetDataTransferManager().GetDataTransfer(gpu_device, cpu_device));
+  return static_cast<const GPUDataTransfer*>(session_state->GetDataTransferManager().GetProviderDataTransfer(gpu_device, cpu_device));
 }
 
 void CUDAAllocator::CheckDevice(bool throw_when_fail) const {

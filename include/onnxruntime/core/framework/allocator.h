@@ -49,9 +49,6 @@ class IAllocator {
   */
   virtual FencePtr CreateFence(const SessionState* /*unused*/) { return nullptr; }
 
-  // If this is really a Provider_IAllocator, this returns true. Used to convert back & forth with providers efficiently
-  virtual bool IsProviderAllocator() const { return false; }
-
   static bool CalcMemSizeForArray(size_t nmemb, size_t size, size_t* out) noexcept {
     return CalcMemSizeForArrayWithAlignment(nmemb, size, 0, out);
   }

@@ -11,11 +11,8 @@
 
 #include "tensorrt_execution_provider.h"
 #include "core/framework/allocator.h"
-//#include "core/providers/cuda/cuda_allocator.h"
-//#include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "unary_elementwise_ops_impl.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
-//#include "cuda_runtime_api.h"
 #include "gpu_data_transfer.h"
 #include "gsl/gsl"
 #include <experimental/filesystem>
@@ -50,7 +47,7 @@ std::string GetEnginePath(const ::std::string& root, const std::string& name) {
   }
 }
 
-std::string GetVecHash(const ::std::vector<int> & vec) {
+std::string GetVecHash(const ::std::vector<int>& vec) {
   std::size_t ret = 0;
   for (auto& i : vec) {
     ret ^= std::hash<uint32_t>()(i);
@@ -72,47 +69,6 @@ struct ShutdownProtobuf {
 } g_protobuf;
 
 namespace onnxruntime {
-
-#if 0
-namespace cuda {
-
-template <typename InT, typename OutT>
-struct OP_Cast {
-  __device__ __inline__ OutT operator()(const InT& a) const {
-    const bool any_float16 = std::is_same<half, InT>::value || std::is_same<half, OutT>::value;
-    typedef typename std::conditional<any_float16, half, OutT>::type T;
-    typedef typename ViaTypeMap<T>::ViaT ViaT;
-    return (OutT)((ViaT)a);
-  }
-};
-
-template <typename InT, typename OutT, typename FuncT>
-void UnaryElementWiseImpl(
-    const InT* input_data,
-    OutT* output_data,
-    const FuncT& func,
-    size_t count) {
-  if (count == 0)  // special case where there's a dim value of 0 in the shape
-    return;
-
-  input_data;
-  output_data;
-  func;
-}
-
-template <typename InT, typename OutT>
-void Impl_Cast(
-    const InT* input_data,
-    OutT* output_data,
-    size_t count) {
-  UnaryElementWiseImpl(input_data,
-                       output_data,
-                       OP_Cast<InT, OutT>(),
-                       count);
-}
-
-}  // namespace cuda
-#endif
 
 #if 1
 namespace cuda {
@@ -1098,7 +1054,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           auto runtime_ = trt_state->runtime;
           trt_state->engine->reset();
           *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
-                                            runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
+              runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
           if (trt_state->engine->get() == nullptr) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
           }

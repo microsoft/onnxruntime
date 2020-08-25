@@ -133,7 +133,7 @@ struct Provider_IAllocator {
 
   virtual FencePtr CreateFence(const Provider_SessionState* /*session_state*/) { return nullptr; }
 
-  virtual bool IsInternalAllocator() const { return false; }
+  virtual bool IsProviderInterface() const { return true; }
 
   template <typename T>
   static Provider_IAllocatorUniquePtr<T> MakeUniquePtr(std::shared_ptr<Provider_IAllocator> allocator, size_t count_or_bytes) {
@@ -292,15 +292,6 @@ struct ProviderHost {
   virtual std::unique_ptr<Provider_OrtMemoryInfo> OrtMemoryInfo_Create(const char* name_, OrtAllocatorType type_, Provider_OrtDevice* device_, int id_, OrtMemType mem_type_) = 0;
   virtual std::unique_ptr<Provider_IDeviceAllocator> CreateCPUAllocator(std::unique_ptr<Provider_OrtMemoryInfo> memory_info) = 0;
 
-#if 0
-  virtual std::unique_ptr<Provider_IDeviceAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) = 0;
-  virtual std::unique_ptr<Provider_IDeviceAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) = 0;
-  virtual std::unique_ptr<Provider_IDataTransfer> CreateGPUDataTransfer() = 0;
-
-  virtual bool CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
-  virtual bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
-#endif
-
   virtual void cuda__Impl_Cast(const int64_t* input_data, int32_t* output_data, size_t count) = 0;
   virtual void cuda__Impl_Cast(const int32_t* input_data, int64_t* output_data, size_t count) = 0;
 
@@ -402,7 +393,7 @@ struct ProviderHost {
 
   // Provider_DataTransferManager
   virtual Status Provider_DataTransferManager__CopyTensor(const Provider_DataTransferManager* p, const Provider_Tensor& src, Provider_Tensor& dst, int exec_queue_id) = 0;
-  virtual const Provider_IDataTransfer* Provider_DataTransferManager__GetDataTransfer(const Provider_DataTransferManager* p, const OrtDevice& src_device, const OrtDevice& dst_device) = 0;
+  virtual const Provider_IDataTransfer* Provider_DataTransferManager__GetProviderDataTransfer(const Provider_DataTransferManager* p, const OrtDevice& src_device, const OrtDevice& dst_device) = 0;
 
   // Provider_IndexedSubGraph_MetaDef
   virtual std::unique_ptr<Provider_IndexedSubGraph_MetaDef> Provider_IndexedSubGraph_MetaDef__construct() = 0;
@@ -704,7 +695,7 @@ struct Provider_ComputeCapability {
 
 struct Provider_DataTransferManager {
   Status CopyTensor(const Provider_Tensor& src, Provider_Tensor& dst, int exec_queue_id) const { return g_host->Provider_DataTransferManager__CopyTensor(this, src, dst, exec_queue_id); }
-  const Provider_IDataTransfer* GetDataTransfer(const OrtDevice& src_device, const OrtDevice& dst_device) const { return g_host->Provider_DataTransferManager__GetDataTransfer(this, src_device, dst_device); }
+  const Provider_IDataTransfer* GetProviderDataTransfer(const OrtDevice& src_device, const OrtDevice& dst_device) const { return g_host->Provider_DataTransferManager__GetProviderDataTransfer(this, src_device, dst_device); }
 
   PROVIDER_DISALLOW_ALL(Provider_DataTransferManager)
 };
