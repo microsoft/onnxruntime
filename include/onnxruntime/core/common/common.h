@@ -40,7 +40,6 @@
 #include <mimalloc.h>
 #endif
 
-#define ORT_NO_EXCEPTIONS
 #ifdef ORT_NO_EXCEPTIONS
 #include <iostream>
 #endif
