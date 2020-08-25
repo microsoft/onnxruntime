@@ -43,6 +43,7 @@ struct TrainingParameters {
   int gradient_accumulation_steps = 1;
   int data_parallel_size = 1;
   int horizontal_parallel_size = 1;
+  int pipeline_parallel_size = 1;
   int deepspeed_zero_stage = 0;
   bool enable_grad_norm_clip = true;
   bool set_gradients_as_graph_outputs = false;
@@ -53,6 +54,8 @@ struct TrainingParameters {
   bool gelu_recompute = false;
   bool transformer_layer_recompute = false;
   int number_recompute_layers = 0;
+  std::string output_model_path;
+  bool use_external_data_format = false;
 };
 
 struct TrainingConfigurationResult {
@@ -77,6 +80,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   }
 
   training::TrainingSession::TrainingConfiguration config{};
+
   config.weight_names_to_train = parameters.weights_to_train;
   config.weight_names_to_not_train = parameters.weights_not_to_train;
   config.immutable_weights = parameters.immutable_weights;
@@ -98,6 +102,11 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   }
 
   config.loss_name = parameters.loss_output_name;
+
+  if (!parameters.output_model_path.empty()) {
+    config.model_with_loss_function_path = parameters.output_model_path + ORT_TSTR("_with_cost.onnx");
+    config.model_with_training_graph_path = parameters.output_model_path + ORT_TSTR("_bw.onnx");
+  }
 
   if (!parameters.training_optimizer_name.empty()) {
     training::TrainingSession::TrainingConfiguration::OptimizerConfiguration opt{};
@@ -202,6 +211,11 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("gelu_recompute", &TrainingParameters::gelu_recompute)
       .def_readwrite("transformer_layer_recompute", &TrainingParameters::transformer_layer_recompute)
       .def_readwrite("number_recompute_layers", &TrainingParameters::number_recompute_layers);
+      .def_readwrite("data_parallel_size", &TrainingParameters::data_parallel_size)
+      .def_readwrite("horizontal_parallel_size", &TrainingParameters::horizontal_parallel_size)
+      .def_readwrite("pipeline_parallel_size", &TrainingParameters::pipeline_parallel_size)
+      .def_readwrite("output_model_path", &TrainingParameters::output_model_path)
+      .def_readwrite("use_external_data_format", &TrainingParameters::use_external_data_format);
 
 #if defined(USE_NCCL)
   m.def("get_mpi_context_local_rank", []() -> int { return MPIContext::GetInstance().GetLocalRank(); });
