@@ -81,7 +81,7 @@ class ORTMultipleChoiceTest(unittest.TestCase):
         self.train_batch_size = 2
         self.eval_batch_size = 2
         self.learning_rate = 2e-5
-        self.num_train_epochs = 3.0
+        self.num_train_epochs = 1.0
         self.local_rank = -1
         self.overwrite_output_dir = True
         self.gradient_accumulation_steps = 8
@@ -91,16 +91,16 @@ class ORTMultipleChoiceTest(unittest.TestCase):
         self.logging_steps = 10
 
     def test_bert_with_swag(self):
-        expected_acc = 0.7883135059482156
-        expected_loss = 0.6474186203172139
+        expected_acc = 0.7752174347695692
+        expected_loss = 0.5848011111033019
 
         results = self.run_multiple_choice(model_name="bert-base-cased", task_name="swag", fp16=False)
         assert_allclose(results['acc'], expected_acc)
         assert_allclose(results['loss'], expected_loss)
 
     def test_bert_fp16_with_swag(self):
-        expected_acc = 0.7876137158852344
-        expected_loss = 0.6469138865876788
+        expected_acc = 0.7765170448865341
+        expected_loss = 0.5851960482903881
 
         results = self.run_multiple_choice(model_name="bert-base-cased", task_name="swag", fp16=True)
         assert_allclose(results['acc'], expected_acc)
@@ -214,6 +214,7 @@ class ORTMultipleChoiceTest(unittest.TestCase):
         trainer = ORTTransformerTrainer(
             model=model,
             model_desc=model_desc,
+            new_model_desc=None,
             args=training_args,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,

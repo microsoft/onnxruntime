@@ -63,6 +63,13 @@ TEST(CudaKernelTest, FastGeluGrad_basic) {
   }
 }
 
+TEST(CudaKernelTest, ReluGrad_basic) {
+  std::vector<std::vector<int64_t>> test_dims{{4}, {16, 2}, {8, 2, 128, 128}};
+  for (const auto& test_dim : test_dims) {
+    TestActivations(test_dim, "ReluGrad", true /* grad_op */);
+  }
+}
+
 static void TestActivationsWithBroadcastBias(
     const std::vector<int64_t>& tensor_dim,
     const std::string& operator_name,
