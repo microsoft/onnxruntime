@@ -27,8 +27,8 @@ MLAS_FORCEINLINE
 static
 int16x8_t
 MlasExtendToS16Debias(
-    SUI::i8x8_t Int8Vector,
-    SUI::i8x8_t VectorBias
+    typename SUI::i8x16_t Int8Vector,
+    typename SUI::i8x8_t VectorBias
     )
 {
     auto HalfVector = IsLow ? SUI::vget_low_i8(Int8Vector) : SUI::vget_high_i8(Int8Vector);
@@ -42,17 +42,16 @@ MlasQLinearMulVectorS16(
     int16x8_t va_s16x8,
     int16x8_t vb_s16x8,
     float32x4_t VectorScaleRatio,
-    float32x4_t VectorZeroPointC
+    int16x8_t VectorZeroPointC
     )
 {
         int32x4_t vacc0_lo = vmull_s16(vget_low_s16(va_s16x8), vget_low_s16(vb_s16x8));
         int32x4_t vacc0_hi = vmull_s16(vget_high_s16(va_s16x8), vget_high_s16(vb_s16x8));
-        vacc0_lo = vcvtq_s32_f32(vqaddq_f32(vmulq_f32(VectorScaleRatio, vcvtq_f32_s32(vacc0_lo)), VectorZeroPointC));
-        vacc0_hi = vcvtq_s32_f32(vqaddq_f32(vmulq_f32(VectorScaleRatio, vcvtq_f32_s32(vacc0_hi)), VectorZeroPointC));
+        vacc0_lo = vcvtq_s32_f32(vmulq_f32(VectorScaleRatio, vcvtq_f32_s32(vacc0_lo)));
+        vacc0_hi = vcvtq_s32_f32(vmulq_f32(VectorScaleRatio, vcvtq_f32_s32(vacc0_hi)));
         // Pack and saturate.
-        return vcombine_s16(vqmovn_s32(vacc0_lo), vqmovn_s32(vacc0_hi));
+        return vqaddq_s16(vcombine_s16(vqmovn_s32(vacc0_lo), vqmovn_s32(vacc0_hi)), VectorZeroPointC);
 }
-
 
 template<typename DataType, bool IsScalarB>
 static
@@ -75,7 +74,7 @@ MlasQLinearMulKernel(
     const float32x4_t VectorScaleRatio = vmovq_n_f32(ScaleA * ScaleB / ScaleC);
     const typename SUI::i8x8_t VectorZeroPointA = SUI::vmov_n_i8((DataType)ZeroPointA);
     const typename SUI::i8x8_t VectorZeroPointB = SUI::vmov_n_i8((DataType)ZeroPointB);
-    const float32x4_t VectorZeroPointC = vmovq_n_f32((float)ZeroPointC);
+    const int16x8_t VectorZeroPointC = vmovq_n_s16((int16_t)ZeroPointC);
 
     typename SUI::T TailDataA[16] = { 0 };
     typename SUI::T TailDataB[16] = { 0 };
@@ -118,7 +117,7 @@ MlasQLinearMulKernel(
             OutputC += 16;
         } else {
             SUI::vst1q_i8(TailDataA, vc);
-            MlasCopyTailBytes(OutputC, TailDataA, N);
+            MlasCopyTailBytes((uint8_t*)OutputC, (const uint8_t*)TailDataA, N);
             N = 0;
         }
     }
