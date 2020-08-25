@@ -50,6 +50,10 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
+    <None Include="$(NativeBuildOutputDir)\libmklml_gnu.so" Condition="Exists('$(NativeBuildOutputDir)\libmklml_gnu.so')">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
     <None Include="$(OnnxRuntimeCSharpRoot)\testdata\*">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <Visible>false</Visible>

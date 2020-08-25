@@ -24,7 +24,7 @@ def parse_arguments():
                         help="Flag indicating if the build is a release build. Accepted values: true/false.")
     parser.add_argument("--execution_provider", required=False, default='None', type=str,
                         choices=['dnnl', 'openvino', 'tensorrt', 'None'],
-                        help="Flag indicating if the build is a release build. Accepted values: true/false.")
+                        help="The selected execution provider for this build.")
 
     return parser.parse_args()
 
@@ -190,8 +190,9 @@ def generate_files(list, args):
         runtimes_target = '" target="runtimes\\win-'
     else:
         nuget_dependencies = {'mklml': 'libmklml_intel.so',
+                              'mklml_1': 'libmklml_gnu.so',
                               'openmp': 'libiomp5.so',
-                              'dnnl': 'dnnl.1.so',
+                              'dnnl': 'libdnnl.so.1',
                               'tvm': 'libtvm.so.0.5.1',
                               'providers_shared_lib': 'libonnxruntime_providers_shared.so',
                               'dnnl_ep_shared_lib': 'libonnxruntime_providers_dnnl.so',
@@ -329,6 +330,10 @@ def generate_files(list, args):
         # Process mklml dependency
         if os.path.exists(os.path.join(args.native_build_path, nuget_dependencies['mklml'])):
             files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, nuget_dependencies['mklml']) +
+                              runtimes_target + args.target_architecture + '\\native" />')
+
+        if is_linux() and os.path.exists(os.path.join(args.native_build_path, nuget_dependencies['mklml_1'])):
+            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, nuget_dependencies['mklml_1']) +
                               runtimes_target + args.target_architecture + '\\native" />')
 
         # Process libiomp5md dependency
