@@ -21,6 +21,9 @@
 #include "core/common/logging/logging.h"
 #include "core/common/cpuid_info.h"
 
+#include "core/providers/dnnl/dnnl_provider_factory.h"
+#include "core/providers/tensorrt/tensorrt_provider_factory.h"
+
 // The filename extension for a shared library is different per platform
 #ifdef _WIN32
 #define LIBRARY_PREFIX
