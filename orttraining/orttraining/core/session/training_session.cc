@@ -508,7 +508,7 @@ static Status AddGradientAccumulationNodes(Graph& graph,
 Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,
                                                         const TrainingConfiguration::GraphTransformerConfiguration& config,
                                                         bool is_master_node) {
-  GraphTransformerManager graph_transformation_mgr{5};
+  GraphTransformerManager graph_transformation_mgr{1};
   // TODO: ideally we can just reuse the CPU EP registered with the session, but in the training session case
   // the EPs are registered after ConfigureForTraining and before Initialize is called. Hence we don't have access
   // to the registered CPU EP at this stage. Hence creating the EP here again. This is still much better than
@@ -522,8 +522,8 @@ Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set
   Graph& graph = model_->MainGraph();
   for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     if (is_master_node) {
-      Model::Save(*model_, "./before_apply_opt_" + std::to_string(i) + ".onnx");
-      std::cout << "saved ./before_apply_opt_" << std::to_string(i) << ".onnx" << std::endl;
+      // Model::Save(*model_, "./before_apply_opt_" + std::to_string(i) + ".onnx");
+      // std::cout << "saved ./before_apply_opt_" << std::to_string(i) << ".onnx" << std::endl;
     }
     ORT_RETURN_IF_ERROR(graph_transformation_mgr.ApplyTransformers(
         graph, static_cast<TransformerLevel>(i), *session_logger_));
