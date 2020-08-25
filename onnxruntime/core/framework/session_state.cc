@@ -376,8 +376,8 @@ Status SessionState::GenerateActivationMemoryPatterns(MemoryPatternGroup* output
     auto* node = graph_viewer_->GetNode(node_plan.node_index);
     //allocate output
     for (int i = 0, end = static_cast<int>(node->OutputDefs().size()); i < end; ++i) {
-      int ml_value_idx;
-      ORT_RETURN_IF_ERROR(ort_value_name_idx_map_.GetIdx(node->OutputDefs()[i]->Name(), ml_value_idx));
+      int ml_value_idx = NodeIndexInfo::kInvalidEntry;
+      ort_value_name_idx_map_.GetIdx(node->OutputDefs()[i]->Name(), ml_value_idx);
       if (ml_value_idx == NodeIndexInfo::kInvalidEntry)
         continue;
       const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
@@ -742,7 +742,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                             << activation_memory_pattern_output.patterns[i].PeakSize();
       }
     } else {
-      LOGS(logger_, INFO) << "Fail to get activation peak memory.";
+      LOGS(logger_, INFO) << "Fail to get activation peak memory: " << ret.ErrorMessage();
     }
   }
 #endif
