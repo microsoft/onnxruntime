@@ -1606,7 +1606,8 @@ def main():
                 ]
             if args.enable_wcos:
                 cmake_extra_args.append(
-                    '-DCMAKE_USER_MAKE_RULES_OVERRIDE=wcos_rules_override.cmake')
+                    '-DCMAKE_TOOLCHAIN_FILE=' + os.path.join(
+                        source_dir, 'cmake', 'wcos_toolchain.cmake'))
         elif args.cmake_generator is not None and not (is_macOS() and args.use_xcode):
             cmake_extra_args += ['-G', args.cmake_generator]
         elif is_macOS() and args.use_xcode:

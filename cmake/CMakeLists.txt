@@ -1120,9 +1120,14 @@ else()
 endif()
 
 if (WIN32)
-  if (WINDOWS_STORE)
+  if (WINDOWS_STORE_CONTAINER)
+    # Setting WINAPI_FAMILY, WINVER and _WIN32_WINNT restrict the APIs exposed in Windows headers to those available
+    # in store or desktop, and that support at least the version of Windows specified
     add_compile_definitions(WINAPI_FAMILY=2)
     add_compile_definitions(WINVER=0x0A00 _WIN32_WINNT=0x0A00)  # Support Windows 10
+    # /ZW adds /FUplatform.winmd and /FUwindows.winmd. windows.winmd, in turn, overrides the include path for
+    # the cppwinrt headers, which we set to use the WinML built ones.
+    # Instead, we use /ZW:nostdlib and force include platform.winml only.
     add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:SHELL:/ZW:nostdlib /FUplatform.winmd>")
     get_filename_component(msvc_path "${CMAKE_C_COMPILER}/../../../.." ABSOLUTE)
     link_directories("${msvc_path}/lib/${onnxruntime_target_platform}/store")
@@ -1130,7 +1135,10 @@ if (WIN32)
   else()
     add_compile_definitions(WINAPI_FAMILY=3)
     add_compile_definitions(WINVER=0x0601)  # Support Windows 7 and newer
-    # FIXME add _WIN32_WINNT=0x0601
+    # FIXME adding _WIN32_WINNT=0x0601 is desirable. However, it hides some symbols that are used in WRL headers and
+    # breaks the build of WinML. If we call any of the exposed APIs not available in Windows 7, we'd get a build that
+    # doesn't work downlevel
+    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/FI${CMAKE_CURRENT_SOURCE_DIR}/set_winapi_family_desktop.h>")
   endif()
 endif()
 
