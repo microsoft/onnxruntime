@@ -204,7 +204,7 @@ void addObjectMethodsForTraining(py::module& m) {
         return py::none();
       });
 
-  py::class_<onnxruntime::training::TrainingSession, InferenceSession> training_session(m, "TrainingSession");
+  py::class_<onnxruntime::training::TrainingSession, PyInferenceSession> training_session(m, "TrainingSession");
   training_session.def(py::init([](const PySessionOptions& so) {
                     Environment& env = GetEnv();
                     return onnxruntime::make_unique<onnxruntime::training::TrainingSession>(so, env);
