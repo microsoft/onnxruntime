@@ -14,18 +14,36 @@ void GetPipelineSendOutput(const Graph& graph, std::string& loss_name);
 Status TransformGraphForPipeline(
     Graph& graph,
     const std::unordered_set<std::string>& initializer_names_to_preserve,
-    std::string& forward_waited_event_name,
-    std::string& forward_recorded_event_name,
-    std::string& backward_waited_event_name,
-    std::string& backward_recorded_event_name,
-    std::string& forward_wait_output_name,
-    std::string& forward_record_output_name,
-    std::string& backward_waited_output_name,
-    std::string& backward_record_output_name,
-    std::string& forward_waited_event_after_recv_name,
-    std::string& forward_recorded_event_before_send_name,
-    std::string& backward_waited_event_after_recv_name,
-    std::string& backward_recorded_event_before_send_name);
+    const std::string& loss_name,
+    std::string& forward_recv_waited_event_name,
+    std::string& forward_recv_wait_output_name,
+    std::string& forward_recv_recorded_event_name,
+    std::string& forward_recv_record_output_name,
+    // Forward Send
+    std::string& forward_send_waited_event_name,
+    std::string& forward_send_wait_output_name,
+    std::string& forward_send_recorded_event_name,
+    std::string& forward_send_record_output_name,
+    // Backward Recv
+    std::string& backward_recv_waited_event_name,
+    std::string& backward_recv_wait_output_name,
+    std::string& backward_recv_recorded_event_name,
+    std::string& backward_recv_record_output_name,
+    // Backward Send
+    std::string& backward_send_waited_event_name,
+    std::string& backward_send_wait_output_name,
+    std::string& backward_send_recorded_event_name,
+    std::string& backward_send_record_output_name,
+    // Forward Compute
+    std::string& forward_compute_waited_event_name,
+    std::string& forward_compute_wait_output_name,
+    std::string& forward_compute_recorded_event_name,
+    std::string& forward_compute_record_output_name,
+    // Backward Compute
+    std::string& backward_compute_waited_event_name,
+    std::string& backward_compute_wait_output_name,
+    std::string& backward_compute_recorded_event_name,
+    std::string& backward_compute_record_output_name);
 
 Status ApplyPipelinePartitionToMainGraph(
     Graph& graph,

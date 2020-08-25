@@ -71,6 +71,7 @@ TrainingRunner::TrainingRunner(Parameters params, const Environment& env, Sessio
                 "DeepSpeed ZeRO partitioning is only supported with NCCL distributed training.");
   ORT_ENFORCE(params.num_train_steps % params.gradient_accumulation_steps == 0,
               "Number of training steps must be a multiple of number of gradient accumulation step.");
+  std::cout << pipeline_schedule_ << std::endl;
 }
 
 Status TrainingRunner::Initialize() {
@@ -197,95 +198,77 @@ Status TrainingRunner::Initialize() {
   VectorString fetch_names;
   if (params_.pipeline_parallel_size > 1) {
     fetch_names = config_result.pipeline_config_result.value().fetch_names;
-    // Exposes forward waited event tensor ID name to TrainingRunner.
-    // It's an input of a graph.
-    // Wait->Recv->Wait->FW->Record->Send->Record
-    //  ^
-    //  |
-    // this event's operator.
-    pipeline_context_.forward_waited_event_name = config_result.pipeline_config_result.value().forward_waited_event_name;
 
-    // Exposes forward waited event tensor ID name to TrainingRunner.
-    // It's an input of a graph.
-    // Wait->Recv->Wait->FW->Record->Send->Record
-    //              ^
-    //              |
-    //             this event's operator.
-    pipeline_context_.forward_waited_event_after_recv_name = config_result.pipeline_config_result.value().forward_waited_event_after_recv_name;
-
-    // Exposes forward recorded event tensor ID name to TrainingRunner.
-    // It's an input of a graph.
-    // Wait->Recv->Wait->FW->Record->Send->Record
-    //                         ^
-    //                         |
-    //                        this event's operator.
-    pipeline_context_.forward_recorded_event_before_send_name = config_result.pipeline_config_result.value().forward_recorded_event_before_send_name;
-
-    // Exposes forward recorded event tensor ID name to TrainingRunner.
-    // It's an input of a graph.
-    // Wait->Recv->Wait->FW->Record->Send->Record
-    //                                       ^
-    //                                       |
-    //                                      this event's operator.
-    pipeline_context_.forward_recorded_event_name = config_result.pipeline_config_result.value().forward_recorded_event_name;
-
-    // Exposes backward waited event tensor ID name to TrainingRunner.
-    // It's an input of a graph.
-    // Wait->Recv->Wait->BW->Record->Send->Record
-    //  ^
-    //  |
-    // this event's operator.
-    pipeline_context_.backward_waited_event_name = config_result.pipeline_config_result.value().backward_waited_event_name;
-
-    // Exposes backward waited event tensor ID name to TrainingRunner.
-    // It's an input of a graph.
-    // Wait->Recv->Wait->BW->Record->Send->Record
-    //              ^
-    //              |
-    //             this event's operator.
-    pipeline_context_.backward_waited_event_after_recv_name = config_result.pipeline_config_result.value().backward_waited_event_after_recv_name;
-
-    // Exposes backward recorded event tensor ID name to TrainingRunner.
-    // It's an input of a graph.
-    // Wait->Recv->Wait->BW->Record->Send->Record
-    //                         ^
-    //                         |
-    //                        this event's operator.
-    pipeline_context_.backward_recorded_event_before_send_name = config_result.pipeline_config_result.value().backward_recorded_event_before_send_name;
-
-    // Exposes backward recorded event tensor ID name to TrainingRunner.
-    // It's an input of a graph.
-    // Wait->Recv->Wait->BW->Record->Send->Record
-    //                                       ^
-    //                                       |
-    //                                      this event's operator.
-    pipeline_context_.backward_recorded_event_name = config_result.pipeline_config_result.value().backward_recorded_event_name;
-
-    pipeline_context_.forward_wait_output_name = config_result.pipeline_config_result.value().forward_wait_output_name;
-    pipeline_context_.forward_record_output_name = config_result.pipeline_config_result.value().forward_record_output_name;
-    pipeline_context_.backward_wait_output_name = config_result.pipeline_config_result.value().backward_wait_output_name;
-    pipeline_context_.backward_record_output_name = config_result.pipeline_config_result.value().backward_record_output_name;
-
-    if (!pipeline_context_.forward_wait_output_name.empty()) {
-      fetch_names.push_back(pipeline_context_.forward_wait_output_name);
+    pipeline_context_.forward_recv_waited_event_name = config_result.pipeline_config_result.value().forward_recv_waited_event_name;
+    pipeline_context_.forward_recv_wait_output_name = config_result.pipeline_config_result.value().forward_recv_wait_output_name;
+    if (!pipeline_context_.forward_recv_wait_output_name.empty()) {
+      fetch_names.push_back(pipeline_context_.forward_recv_wait_output_name);
+    }
+    pipeline_context_.forward_recv_recorded_event_name = config_result.pipeline_config_result.value().forward_recv_recorded_event_name;
+    pipeline_context_.forward_recv_record_output_name = config_result.pipeline_config_result.value().forward_recv_record_output_name;
+    if (!pipeline_context_.forward_recv_record_output_name.empty()) {
+      fetch_names.push_back(pipeline_context_.forward_recv_record_output_name);
     }
 
-    if (!pipeline_context_.forward_record_output_name.empty()) {
-      fetch_names.push_back(pipeline_context_.forward_record_output_name);
+    pipeline_context_.forward_send_waited_event_name = config_result.pipeline_config_result.value().forward_send_waited_event_name;
+    pipeline_context_.forward_send_wait_output_name = config_result.pipeline_config_result.value().forward_send_wait_output_name;
+    if (!pipeline_context_.forward_send_wait_output_name.empty()) {
+      fetch_names.push_back(pipeline_context_.forward_send_wait_output_name);
+    }
+    pipeline_context_.forward_send_recorded_event_name = config_result.pipeline_config_result.value().forward_send_recorded_event_name;
+    pipeline_context_.forward_send_record_output_name = config_result.pipeline_config_result.value().forward_send_record_output_name;
+    if (!pipeline_context_.forward_send_record_output_name.empty()) {
+      fetch_names.push_back(pipeline_context_.forward_send_record_output_name);
     }
 
-    if (!pipeline_context_.backward_wait_output_name.empty()) {
-      fetch_names.push_back(pipeline_context_.backward_wait_output_name);
+    pipeline_context_.backward_recv_waited_event_name = config_result.pipeline_config_result.value().backward_recv_waited_event_name;
+    pipeline_context_.backward_recv_wait_output_name = config_result.pipeline_config_result.value().backward_recv_wait_output_name;
+    if (!pipeline_context_.backward_recv_wait_output_name.empty()) {
+      fetch_names.push_back(pipeline_context_.backward_recv_wait_output_name);
+    }
+    pipeline_context_.backward_recv_recorded_event_name = config_result.pipeline_config_result.value().backward_recv_recorded_event_name;
+    pipeline_context_.backward_recv_record_output_name = config_result.pipeline_config_result.value().backward_recv_record_output_name;
+    if (!pipeline_context_.backward_recv_record_output_name.empty()) {
+      fetch_names.push_back(pipeline_context_.backward_recv_record_output_name);
     }
 
-    if (!pipeline_context_.backward_record_output_name.empty()) {
-      fetch_names.push_back(pipeline_context_.backward_record_output_name);
+    pipeline_context_.backward_send_waited_event_name = config_result.pipeline_config_result.value().backward_send_waited_event_name;
+    pipeline_context_.backward_send_wait_output_name = config_result.pipeline_config_result.value().backward_send_wait_output_name;
+    if (!pipeline_context_.backward_send_wait_output_name.empty()) {
+      fetch_names.push_back(pipeline_context_.backward_send_wait_output_name);
+    }
+    pipeline_context_.backward_send_recorded_event_name = config_result.pipeline_config_result.value().backward_send_recorded_event_name;
+    pipeline_context_.backward_send_record_output_name = config_result.pipeline_config_result.value().backward_send_record_output_name;
+    if (!pipeline_context_.backward_send_record_output_name.empty()) {
+      fetch_names.push_back(pipeline_context_.backward_send_record_output_name);
+    }
+
+    pipeline_context_.forward_compute_waited_event_name = config_result.pipeline_config_result.value().forward_compute_waited_event_name;
+    pipeline_context_.forward_compute_wait_output_name = config_result.pipeline_config_result.value().forward_compute_wait_output_name;
+    if (!pipeline_context_.forward_compute_wait_output_name.empty()) {
+      fetch_names.push_back(pipeline_context_.forward_compute_wait_output_name);
+    }
+    pipeline_context_.forward_compute_recorded_event_name = config_result.pipeline_config_result.value().forward_compute_recorded_event_name;
+    pipeline_context_.forward_compute_record_output_name = config_result.pipeline_config_result.value().forward_compute_record_output_name;
+    if (!pipeline_context_.forward_compute_record_output_name.empty()) {
+      fetch_names.push_back(pipeline_context_.forward_compute_record_output_name);
+    }
+
+    pipeline_context_.backward_compute_waited_event_name = config_result.pipeline_config_result.value().backward_compute_waited_event_name;
+    pipeline_context_.backward_compute_wait_output_name = config_result.pipeline_config_result.value().backward_compute_wait_output_name;
+    if (!pipeline_context_.backward_compute_wait_output_name.empty()) {
+      fetch_names.push_back(pipeline_context_.backward_compute_wait_output_name);
+    }
+    pipeline_context_.backward_compute_recorded_event_name = config_result.pipeline_config_result.value().backward_compute_recorded_event_name;
+    pipeline_context_.backward_compute_record_output_name = config_result.pipeline_config_result.value().backward_compute_record_output_name;
+    if (!pipeline_context_.backward_compute_wait_output_name.empty()) {
+      fetch_names.push_back(pipeline_context_.backward_compute_record_output_name);
     }
 
     // Names of allowed inputs after pipeline partition.
     pipeline_context_.feed_names = config_result.pipeline_config_result.value().feed_names;
     // Names of allowed outputs after pipeline partition.
-    pipeline_context_.fetch_names = config_result.pipeline_config_result.value().fetch_names;
+    pipeline_context_.fetch_names = fetch_names;
 
     // Configure dimension of this pipeline.
     pipeline_context_.pipeline_stage_id = config_result.pipeline_config_result.value().pipeline_stage_id;
@@ -407,142 +390,67 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     }
   }
 
-  // Create feed of the first waited event in forward pass.
-  if (!pipeline_context_.forward_waited_event_name.empty()) {
-    ORT_RETURN_IF(params_.pipeline_parallel_size <= 1, "Internal event name should be empty if there is no pipeline.");
-    feed_names.push_back(pipeline_context_.forward_waited_event_name);
+  const auto batch_id = static_cast<int>(step_) % pipeline_context_.num_pipeline_batches;
+  const auto stage_id = pipeline_context_.pipeline_stage_id;
+
+  // Define a helper function to append scalar inputs to feeds for event operators.
+  auto append_event_to_feeds = [&](const std::string event_name, const int64_t event_value) -> void {
+    if (event_name.empty()) {
+      return;
+    }
+    feed_names.push_back(event_name);
     OrtValue event_id;
-    const int64_t id =
-        (mode == EvaluateStep) ? -1
-                               : pipeline_schedule_.GetForwardWaitedEventBeforeRecv(
-                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches,
-                                     pipeline_context_.pipeline_stage_id);
     TrainingUtil::CreateCpuMLScalar(
-        id,
+        event_value,
         &event_id,
         input_allocator_);
     feeds.push_back(event_id);
+  };
+
+  // Add event IDs to feeds.
+  if (params_.pipeline_parallel_size > 1) {
+    int64_t id = -1;
+
+    // Forward Recv
+    id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetForwardRecvWaitedEvent(batch_id, stage_id);
+    append_event_to_feeds(pipeline_context_.forward_recv_waited_event_name, id);
+    id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetForwardRecvRecordedEvent(batch_id, stage_id);
+    append_event_to_feeds(pipeline_context_.forward_recv_recorded_event_name, id);
+
+    // Forward Send
+    id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetForwardSendWaitedEvent(batch_id, stage_id);
+    append_event_to_feeds(pipeline_context_.forward_send_waited_event_name, id);
+    id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetForwardSendRecordedEvent(batch_id, stage_id);
+    append_event_to_feeds(pipeline_context_.forward_send_recorded_event_name, id);
+
+    // Backward Recv
+    id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetBackwardRecvWaitedEvent(batch_id, stage_id);
+    append_event_to_feeds(pipeline_context_.backward_recv_waited_event_name, id);
+    id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetBackwardRecvRecordedEvent(batch_id, stage_id);
+    append_event_to_feeds(pipeline_context_.backward_recv_recorded_event_name, id);
+
+    // Backward Send
+    id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetBackwardSendWaitedEvent(batch_id, stage_id);
+    append_event_to_feeds(pipeline_context_.backward_send_waited_event_name, id);
+    id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetBackwardSendRecordedEvent(batch_id, stage_id);
+    append_event_to_feeds(pipeline_context_.backward_send_recorded_event_name, id);
+
+    // Forward Compute
+    id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetForwardComputeWaitedEvent(batch_id, stage_id);
+    append_event_to_feeds(pipeline_context_.forward_compute_waited_event_name, id);
+    id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetForwardComputeRecordedEvent(batch_id, stage_id);
+    append_event_to_feeds(pipeline_context_.forward_compute_recorded_event_name, id);
+
+    // Backward Compute
+    id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetBackwardComputeWaitedEvent(batch_id, stage_id);
+    append_event_to_feeds(pipeline_context_.backward_compute_waited_event_name, id);
+    id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetBackwardComputeRecordedEvent(batch_id, stage_id);
+    append_event_to_feeds(pipeline_context_.backward_compute_recorded_event_name, id);
   }
 
-  // Create feed of the second waited event in forward pass.
-  if (!pipeline_context_.forward_waited_event_after_recv_name.empty()) {
-    ORT_RETURN_IF(params_.pipeline_parallel_size <= 1, "Internal event name should be empty if there is no pipeline.");
-    feed_names.push_back(pipeline_context_.forward_waited_event_after_recv_name);
-    OrtValue event_id;
-    const int64_t id =
-        (mode == EvaluateStep) ? -1
-                               : pipeline_schedule_.GetForwardWaitedEventAfterRecv(
-                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches,
-                                     pipeline_context_.pipeline_stage_id);
-    TrainingUtil::CreateCpuMLScalar(
-        id,
-        &event_id,
-        input_allocator_);
-    feeds.push_back(event_id);
+  for (auto name : feed_names) {
+    ORT_ENFORCE(!name.empty(), "feed name cannot be empty string.");
   }
-
-  // Create feed of first recorded event in forward pass.
-  if (!pipeline_context_.forward_recorded_event_before_send_name.empty()) {
-    ORT_RETURN_IF(params_.pipeline_parallel_size <= 1, "Internal event name should be empty if there is no pipeline.");
-    feed_names.push_back(pipeline_context_.forward_recorded_event_before_send_name);
-    OrtValue event_id;
-    const int64_t id =
-        (mode == EvaluateStep) ? -1
-                               : pipeline_schedule_.GetForwardRecordedEventBeforeSend(
-                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches,
-                                     pipeline_context_.pipeline_stage_id);
-    TrainingUtil::CreateCpuMLScalar(
-        id,
-        &event_id,
-        input_allocator_);
-    feeds.push_back(event_id);
-  }
-
-  // Create feed of second recorded event in forward pass.
-  if (!pipeline_context_.forward_recorded_event_name.empty()) {
-    ORT_RETURN_IF(params_.pipeline_parallel_size <= 1, "Internal event name should be empty if there is no pipeline.");
-    feed_names.push_back(pipeline_context_.forward_recorded_event_name);
-    OrtValue event_id;
-    const int64_t id =
-        (mode == EvaluateStep) ? -1
-                               : pipeline_schedule_.GetForwardRecordedEventAfterSend(
-                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches,
-                                     pipeline_context_.pipeline_stage_id);
-    TrainingUtil::CreateCpuMLScalar(
-        id,
-        &event_id,
-        input_allocator_);
-    feeds.push_back(event_id);
-  }
-
-  // Create feed of first waited event in backward pass.
-  if (!pipeline_context_.backward_waited_event_name.empty()) {
-    ORT_RETURN_IF(params_.pipeline_parallel_size <= 1, "Internal event name should be empty if there is no pipeline.");
-    feed_names.push_back(pipeline_context_.backward_waited_event_name);
-    OrtValue event_id;
-    const int64_t id =
-        (mode == EvaluateStep) ? -1
-                               : pipeline_schedule_.GetBackwardWaitedEventBeforeRecv(
-                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches,
-                                     pipeline_context_.pipeline_stage_id);
-    TrainingUtil::CreateCpuMLScalar(
-        id,
-        &event_id,
-        input_allocator_);
-    feeds.push_back(event_id);
-  }
-
-  // Create feed of second waited event in backward pass.
-  if (!pipeline_context_.backward_waited_event_after_recv_name.empty()) {
-    ORT_RETURN_IF(params_.pipeline_parallel_size <= 1, "Internal event name should be empty if there is no pipeline.");
-    feed_names.push_back(pipeline_context_.backward_waited_event_after_recv_name);
-    OrtValue event_id;
-    const int64_t id =
-        (mode == EvaluateStep) ? -1
-                               : pipeline_schedule_.GetBackwardWaitedEventAfterRecv(
-                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches,
-                                     pipeline_context_.pipeline_stage_id);
-    TrainingUtil::CreateCpuMLScalar(
-        id,
-        &event_id,
-        input_allocator_);
-    feeds.push_back(event_id);
-  }
-
-  // Create feed of first recorded event in backward pass.
-  if (!pipeline_context_.backward_recorded_event_before_send_name.empty()) {
-    ORT_RETURN_IF(params_.pipeline_parallel_size <= 1, "Internal event name should be empty if there is no pipeline.");
-    feed_names.push_back(pipeline_context_.backward_recorded_event_before_send_name);
-    OrtValue event_id;
-    int64_t id =
-        (mode == EvaluateStep) ? -1
-                               : pipeline_schedule_.GetBackwardRecordedEventBeforeSend(
-                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches,
-                                     pipeline_context_.pipeline_stage_id);
-    TrainingUtil::CreateCpuMLScalar(
-        id,
-        &event_id,
-        input_allocator_);
-    feeds.push_back(event_id);
-  }
-
-  // Create feed of second recorded event in backward pass.
-  if (!pipeline_context_.backward_recorded_event_name.empty()) {
-    ORT_RETURN_IF(params_.pipeline_parallel_size <= 1, "Internal event name should be empty if there is no pipeline.");
-    feed_names.push_back(pipeline_context_.backward_recorded_event_name);
-    OrtValue event_id;
-    int64_t id =
-        (mode == EvaluateStep) ? -1
-                               : pipeline_schedule_.GetBackwardRecordedEventAfterSend(
-                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches,
-                                     pipeline_context_.pipeline_stage_id);
-    TrainingUtil::CreateCpuMLScalar(
-        id,
-        &event_id,
-        input_allocator_);
-    feeds.push_back(event_id);
-  }
-
   return Status::OK();
 }
 
@@ -597,18 +505,48 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const SessionMode mode,
 
     // Always execute event operators to avoid deadlock if pipeline is used.
     // TODO: create a list of must-to-fetch tensors and pass it to all graph transformer.
-    if (params_.pipeline_parallel_size) {
-      if (!pipeline_context_.forward_wait_output_name.empty()) {
-        fetch_names.push_back(pipeline_context_.forward_wait_output_name);
+    if (params_.pipeline_parallel_size > 1) {
+      // Forward Recv
+      if (!pipeline_context_.forward_recv_wait_output_name.empty()) {
+        fetch_names.push_back(pipeline_context_.forward_recv_wait_output_name);
       }
-      if (!pipeline_context_.forward_record_output_name.empty()) {
-        fetch_names.push_back(pipeline_context_.forward_record_output_name);
+      if (!pipeline_context_.forward_recv_record_output_name.empty()) {
+        fetch_names.push_back(pipeline_context_.forward_recv_record_output_name);
       }
-      if (!pipeline_context_.backward_wait_output_name.empty()) {
-        fetch_names.push_back(pipeline_context_.backward_wait_output_name);
+      // Forward Send
+      if (!pipeline_context_.forward_send_wait_output_name.empty()) {
+        fetch_names.push_back(pipeline_context_.forward_send_wait_output_name);
       }
-      if (!pipeline_context_.backward_record_output_name.empty()) {
-        fetch_names.push_back(pipeline_context_.backward_record_output_name);
+      if (!pipeline_context_.forward_send_record_output_name.empty()) {
+        fetch_names.push_back(pipeline_context_.forward_send_record_output_name);
+      }
+      // Backward Recv
+      if (!pipeline_context_.backward_recv_wait_output_name.empty()) {
+        fetch_names.push_back(pipeline_context_.backward_recv_wait_output_name);
+      }
+      if (!pipeline_context_.backward_recv_recorded_event_name.empty()) {
+        fetch_names.push_back(pipeline_context_.backward_recv_recorded_event_name);
+      }
+      // Backward Send
+      if (!pipeline_context_.backward_send_wait_output_name.empty()) {
+        fetch_names.push_back(pipeline_context_.backward_send_wait_output_name);
+      }
+      if (!pipeline_context_.backward_send_record_output_name.empty()) {
+        fetch_names.push_back(pipeline_context_.backward_send_record_output_name);
+      }
+      // Forward Compute
+      if (!pipeline_context_.forward_compute_wait_output_name.empty()) {
+        fetch_names.push_back(pipeline_context_.forward_compute_wait_output_name);
+      }
+      if (!pipeline_context_.forward_compute_record_output_name.empty()) {
+        fetch_names.push_back(pipeline_context_.forward_compute_record_output_name);
+      }
+      // Backward Compute
+      if (!pipeline_context_.backward_compute_wait_output_name.empty()) {
+        fetch_names.push_back(pipeline_context_.backward_compute_wait_output_name);
+      }
+      if (!pipeline_context_.backward_compute_record_output_name.empty()) {
+        fetch_names.push_back(pipeline_context_.backward_compute_record_output_name);
       }
     }
   } else if (mode == EvaluateStep) {
@@ -639,6 +577,9 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const SessionMode mode,
     fetch_names = allowed_fetch_names;
   }
 
+  for (auto name : fetch_names) {
+    ORT_ENFORCE(!name.empty(), "fetch name cannot be empty string.");
+  }
   return Status::OK();
 }
 
@@ -685,6 +626,7 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
 #else
       ORT_UNUSED_PARAMETER(step);
 #endif
+      std::cout << "[pipeline] Start batch " << step << std::endl;
       RunOptions run_options;
       auto status = session_.Run(
           run_options,
@@ -692,6 +634,7 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
           pipeline_worker_pool_.worker_states[worker_id].feeds,
           pipeline_worker_pool_.worker_states[worker_id].fetch_names,
           &(pipeline_worker_pool_.worker_states[worker_id].fetches));
+      std::cout << "[pipeline] End batch " << step << ", " << status << std::endl;
 
       ORT_THROW_IF_ERROR(status);
     } catch (std::exception&) {
@@ -745,6 +688,8 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
     CheckWorkerException(status.execution_exception);
   }
 
+  onnxruntime::contrib::OrtEventPool::GetInstance().ResetAllEvents();
+
   // Add one after process one batch.
   ++step_;
   // Add one after update the model once.
@@ -786,6 +731,7 @@ void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
       RunOptions run_options;
       run_options.only_execute_path_to_fetches = true;
       run_options.training_mode = true;
+      std::cout << "[pipeline] Start batch " << step << std::endl;
       auto status = session_.Run(
           run_options,
           pipeline_worker_pool_.worker_states[worker_id].feed_names,
@@ -793,6 +739,7 @@ void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
           pipeline_worker_pool_.worker_states[worker_id].fetch_names,
           &(pipeline_worker_pool_.worker_states[worker_id].fetches));
       ORT_THROW_IF_ERROR(status);
+      std::cout << "[pipeline] End batch " << step << std::endl;
     } catch (std::exception&) {
       pipeline_worker_pool_.worker_states[worker_id].execution_exception = std::current_exception();
     }

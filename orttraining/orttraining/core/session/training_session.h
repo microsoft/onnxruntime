@@ -164,7 +164,7 @@ class TrainingSession : public InferenceSession {
       // Otherwise, use true to trigger ORT's pipeline partition.
       bool do_partition;
       // Tensors to fetch as specified by the user.
-      // Each pipeline stage should pick up some strings from this field..
+      // Each pipeline stage should pick up some strings from this field.
       std::vector<std::string> fetch_names;
       // cut_list contains the list of CutInfo to make the graph partitions.
       // cut_list[i] contains the CutInfo to make the partition between stage i and stage i+1
@@ -214,19 +214,36 @@ class TrainingSession : public InferenceSession {
       int pipeline_stage_id;
       // The names of pipeline events in model's input list.
       // The are defined in order of being called.
-      std::string forward_waited_event_name;
-      std::string forward_waited_event_after_recv_name;
-      std::string forward_recorded_event_before_send_name;
-      std::string forward_recorded_event_name;
-      std::string backward_waited_event_name;
-      std::string backward_waited_event_after_recv_name;
-      std::string backward_recorded_event_before_send_name;
-      std::string backward_recorded_event_name;
-
-      std::string forward_wait_output_name;
-      std::string forward_record_output_name;
-      std::string backward_wait_output_name;
-      std::string backward_record_output_name;
+      // Forward Recv
+      std::string forward_recv_waited_event_name;
+      std::string forward_recv_wait_output_name;
+      std::string forward_recv_recorded_event_name;
+      std::string forward_recv_record_output_name;
+      // Forward Send
+      std::string forward_send_waited_event_name;
+      std::string forward_send_wait_output_name;
+      std::string forward_send_recorded_event_name;
+      std::string forward_send_record_output_name;
+      // Backward Recv
+      std::string backward_recv_waited_event_name;
+      std::string backward_recv_wait_output_name;
+      std::string backward_recv_recorded_event_name;
+      std::string backward_recv_record_output_name;
+      // Backward Send
+      std::string backward_send_waited_event_name;
+      std::string backward_send_wait_output_name;
+      std::string backward_send_recorded_event_name;
+      std::string backward_send_record_output_name;
+      // Forward Compute
+      std::string forward_compute_waited_event_name;
+      std::string forward_compute_wait_output_name;
+      std::string forward_compute_recorded_event_name;
+      std::string forward_compute_record_output_name;
+      // Backward Compute
+      std::string backward_compute_waited_event_name;
+      std::string backward_compute_wait_output_name;
+      std::string backward_compute_recorded_event_name;
+      std::string backward_compute_record_output_name;
 
       // Tensors to feed at this pipeline stage.
       std::vector<std::string> feed_names;
@@ -383,18 +400,37 @@ class TrainingSession : public InferenceSession {
   //     identify backward nodes.
   //  4. No event operator is inserted by other graph transform.
   common::Status InsertPipelineOps(const std::unordered_set<std::string>& initializer_names_to_preserve,
-                                   std::string& forward_waited_event_name,
-                                   std::string& forward_recorded_event_name,
-                                   std::string& backward_waited_event_name,
-                                   std::string& backward_recorded_event_name,
-                                   std::string& forward_wait_output_name,
-                                   std::string& forward_record_output_name,
-                                   std::string& backward_wait_output_name,
-                                   std::string& backward_record_output_name,
-                                   std::string& forward_waited_event_after_recv_name,
-                                   std::string& forward_recorded_event_before_send_name,
-                                   std::string& backward_waited_event_after_recv_name,
-                                   std::string& backward_recorded_event_before_send_name);
+                                   const std::string& loss_name,
+                                   // Forward Recv
+                                   std::string& forward_recv_waited_event_name,
+                                   std::string& forward_recv_wait_output_name,
+                                   std::string& forward_recv_recorded_event_name,
+                                   std::string& forward_recv_record_output_name,
+                                   // Forward Send
+                                   std::string& forward_send_waited_event_name,
+                                   std::string& forward_send_wait_output_name,
+                                   std::string& forward_send_recorded_event_name,
+                                   std::string& forward_send_record_output_name,
+                                   // Backward Recv
+                                   std::string& backward_recv_waited_event_name,
+                                   std::string& backward_recv_wait_output_name,
+                                   std::string& backward_recv_recorded_event_name,
+                                   std::string& backward_recv_record_output_name,
+                                   // Backward Send
+                                   std::string& backward_send_waited_event_name,
+                                   std::string& backward_send_wait_output_name,
+                                   std::string& backward_send_recorded_event_name,
+                                   std::string& backward_send_record_output_name,
+                                   // Forward Compute
+                                   std::string& forward_compute_waited_event_name,
+                                   std::string& forward_compute_wait_output_name,
+                                   std::string& forward_compute_recorded_event_name,
+                                   std::string& forward_compute_record_output_name,
+                                   // Backward Compute
+                                   std::string& backward_compute_waited_event_name,
+                                   std::string& backward_compute_wait_output_name,
+                                   std::string& backward_compute_recorded_event_name,
+                                   std::string& backward_compute_record_output_name);
 
   common::Status ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,
                                                  const TrainingConfiguration::GraphTransformerConfiguration& config);

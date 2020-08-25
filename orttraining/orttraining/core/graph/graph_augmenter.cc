@@ -19,12 +19,16 @@ Status AddToExistingNodeArgs(
   std::unordered_set<const NodeArg*> nodeargs_set(existing_nodeargs.begin(), existing_nodeargs.end());
   nodeargs = existing_nodeargs;
   for (const auto& new_nodearg_name : new_nodearg_names) {
+    if (new_nodearg_name.empty()) {
+      continue;
+    }
     const auto* new_nodearg = graph.GetNodeArg(new_nodearg_name);
     ORT_RETURN_IF_NOT(
         new_nodearg,
         addition_context, " - failed to find NodeArg by name: ", new_nodearg_name);
 
     if (nodeargs_set.find(new_nodearg) != nodeargs_set.end()) {
+      std::cout << "[graph_augmenter.cc] duplicates: " << new_nodearg->Name() << std::endl;
       ORT_RETURN_IF(
           is_duplicate_an_error,
           addition_context, " - error - attempted to add a duplicate NodeArg: ", new_nodearg_name);

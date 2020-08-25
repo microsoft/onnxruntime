@@ -239,19 +239,36 @@ struct PipelineContext {
   // Name of scheduling event in graph's input list.
   // If an event name is an empty string, it means no event
   // should be waited or recorded.
-  std::string forward_waited_event_name;
-  std::string forward_waited_event_after_recv_name;
-  std::string forward_recorded_event_before_send_name;
-  std::string forward_recorded_event_name;
-  std::string backward_waited_event_name;
-  std::string backward_waited_event_after_recv_name;
-  std::string backward_recorded_event_before_send_name;
-  std::string backward_recorded_event_name;
-
-  std::string forward_wait_output_name;
-  std::string forward_record_output_name;
-  std::string backward_wait_output_name;
-  std::string backward_record_output_name;
+  // Forward Recv
+  std::string forward_recv_waited_event_name;
+  std::string forward_recv_wait_output_name;
+  std::string forward_recv_recorded_event_name;
+  std::string forward_recv_record_output_name;
+  // Forward Send
+  std::string forward_send_waited_event_name;
+  std::string forward_send_wait_output_name;
+  std::string forward_send_recorded_event_name;
+  std::string forward_send_record_output_name;
+  // Backward Recv
+  std::string backward_recv_waited_event_name;
+  std::string backward_recv_wait_output_name;
+  std::string backward_recv_recorded_event_name;
+  std::string backward_recv_record_output_name;
+  // Backward Send
+  std::string backward_send_waited_event_name;
+  std::string backward_send_wait_output_name;
+  std::string backward_send_recorded_event_name;
+  std::string backward_send_record_output_name;
+  // Forward Compute
+  std::string forward_compute_waited_event_name;
+  std::string forward_compute_wait_output_name;
+  std::string forward_compute_recorded_event_name;
+  std::string forward_compute_record_output_name;
+  // Backward Compute
+  std::string backward_compute_waited_event_name;
+  std::string backward_compute_wait_output_name;
+  std::string backward_compute_recorded_event_name;
+  std::string backward_compute_record_output_name;
 
   // Allowed feed names.
   // It stands for inputs of a graph partition at this stage.

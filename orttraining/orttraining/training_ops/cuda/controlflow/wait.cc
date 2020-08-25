@@ -9,6 +9,7 @@
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"
 #include "orttraining/training_ops/cpu/controlflow/wait.h"
 #include "core/profile/profile.h"
+#include "core/profile/context.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -30,12 +31,15 @@ Status WaitEvent::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* event_id_tensor = ctx->Input<Tensor>(0);
   const int64_t event_id = *(event_id_tensor->template Data<int64_t>());
 
+  auto& profile_context = profile::Context::GetInstance();
+  const auto tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
   profile::NvtxRangeCreator range(
     "Wait-" + std::to_string(event_id), profile::Color::Blue);
   range.Begin();
 #endif
 
   // Reuse CPU helper to wait event because event tensor is a CPU tensor.
+  std::cout << "[pipeline] batch " << tag << ", " << Node().Name() << ", wait " << event_id << std::endl;
   onnxruntime::contrib::wait_event_in_tensor(*ctx->Input<Tensor>(0));
 
   for (int i_out = 0; i_out < ctx->OutputCount(); ++i_out) {

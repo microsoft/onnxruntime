@@ -6,6 +6,7 @@
 #include "orttraining/training_ops/cuda/communication/send.h"
 #include "orttraining/training_ops/cuda/communication/common.h"
 #include "core/profile/profile.h"
+#include "core/profile/context.h"
 #include "core/providers/cuda/cuda_common.h"
 #include <limits>
 #include <mpi.h>
@@ -153,6 +154,11 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
   // the time for sending a scalar.
   preRange.Begin();
 #endif
+
+  auto& profile_context = profile::Context::GetInstance();
+  const auto tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
+
+  std::cout << "[pipeline] batch " << tag << ", " << Node().Name() << ", send to " << dst << std::endl;
 
   const int num_tensors = static_cast<int>(element_types_.size());
   std::vector<size_t> tensor_sizes_in_bytes;

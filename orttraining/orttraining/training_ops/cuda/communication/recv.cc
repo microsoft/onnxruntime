@@ -6,6 +6,7 @@
 #include "orttraining/training_ops/cuda/communication/recv.h"
 #include "orttraining/training_ops/cuda/communication/common.h"
 #include "core/profile/profile.h"
+#include "core/profile/context.h"
 #include "core/providers/cuda/cuda_common.h"
 #include <mpi.h>
 
@@ -141,6 +142,11 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
   // Begin of preparation for receiving data.
   preRange.Begin();
 #endif
+
+  auto& profile_context = profile::Context::GetInstance();
+  const auto tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
+
+  std::cout << "[pipeline] batch " << tag << ", " << Node().Name() << ", recv from " << src << std::endl;
 
   // Start communication
   int world_rank;

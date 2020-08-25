@@ -370,17 +370,12 @@ void ReplaceNodeArgs(std::vector<Node*>& nodes,
   ReplaceNodeArgs(nodes, node_args, new_node_args);
 }
 
-std::string AddEventBeforeNode(
+Node& PrependEventNode(
     Graph& graph,
     Node* node,
     const std::string& event_op_type,
     const std::string& event_op_name,
     const std::string& event_id_name) {
-  if (!node) {
-    // No event operator is be inserted, so we don't have its input event name.
-    return "";
-  }
-
   // Inputs of "node" should be detached.
   // "node" should consume outputs of the added event operator.
   std::vector<NodeArg*> node_args = node->MutableInputDefs();
@@ -398,28 +393,21 @@ std::string AddEventBeforeNode(
   auto event_node_arg = &CreateTypedNodeArg(graph, ONNX_NAMESPACE::TensorProto_DataType_INT64, event_id_name);
 
   // Create node which produces new_node_args from event ID and node_args.
-  CreateBottleneckNode(graph,
+  return CreateBottleneckNode(graph,
                        event_op_type,
                        event_op_name,
                        "",
                        event_node_arg,
                        node_args,
                        new_node_args);
-
-  return event_node_arg->Name();
 }
 
-std::string AddEventAfterNode(
+Node& AppendEventNode(
     Graph& graph,
     Node* node,
     const std::string& event_op_type,
     const std::string& event_op_name,
     const std::string& event_id_name) {
-  if (!node) {
-    // No event operator is be inserted, so we don't have its input event name.
-    return "";
-  }
-
   // Outputs of "node" should be detached from its consumers.
   // Consumers of "node" should consume outputs of the added event operator.
   std::vector<NodeArg*> node_args = node->MutableOutputDefs();
@@ -440,83 +428,13 @@ std::string AddEventAfterNode(
   auto event_node_arg = &CreateTypedNodeArg(graph, ONNX_NAMESPACE::TensorProto_DataType_INT64, event_id_name);
 
   // Create node which produces new_node_args from event ID and node_args.
-  CreateBottleneckNode(graph,
+  return CreateBottleneckNode(graph,
                        event_op_type,
                        event_op_name,
                        "",
                        event_node_arg,
                        node_args,
                        new_node_args);
-
-  return event_node_arg->Name();
-}
-
-Status AddForwardWaitAfterRecv(
-    Graph& graph,
-    Node* comm_node,
-    std::vector<std::string>& new_input_names,
-    std::string& event_name) {
-  event_name = AddEventAfterNode(
-      graph, comm_node,
-      "WaitEvent", "forward_wait_after_recv",
-      "forward_wait_after_recv_event_id");
-  if (event_name.empty()) {
-    return Status::OK();
-  } else {
-    new_input_names.push_back(event_name);
-    return Status::OK();
-  }
-}
-
-Status AddForwardRecordBeforeSend(
-    Graph& graph,
-    Node* comm_node,
-    std::vector<std::string>& new_input_names,
-    std::string& event_name) {
-  event_name = AddEventBeforeNode(
-      graph, comm_node,
-      "RecordEvent", "forward_record_before_send",
-      "forward_record_before_send_event_id");
-  if (event_name.empty()) {
-    return Status::OK();
-  } else {
-    new_input_names.push_back(event_name);
-    return Status::OK();
-  }
-}
-
-Status AddBackwardWaitAfterRecv(
-    Graph& graph,
-    Node* comm_node,
-    std::vector<std::string>& new_input_names,
-    std::string& event_name) {
-  event_name = AddEventAfterNode(
-      graph, comm_node,
-      "WaitEvent", "backward_wait_after_recv",
-      "backward_wait_after_recv_event_id");
-  if (event_name.empty()) {
-    return Status::OK();
-  } else {
-    new_input_names.push_back(event_name);
-    return Status::OK();
-  }
-}
-
-Status AddBackwardRecordBeforeSend(
-    Graph& graph,
-    Node* comm_node,
-    std::vector<std::string>& new_input_names,
-    std::string& event_name) {
-  event_name = AddEventBeforeNode(
-      graph, comm_node,
-      "RecordEvent", "backward_record_before_send",
-      "backward_record_before_send_event_id");
-  if (event_name.empty()) {
-    return Status::OK();
-  } else {
-    new_input_names.push_back(event_name);
-    return Status::OK();
-  }
 }
 
 Status SetInputsOutputsAndResolve(Graph& graph,
@@ -556,6 +474,96 @@ Status SetInputsOutputsAndResolve(Graph& graph,
   options.initializer_names_to_preserve = &weights_to_train;
 
   return graph.Resolve(options);
+}
+
+void FindPipelineLandmarks(
+    Graph& graph,
+    const std::string& loss_name,
+    Node** forward_recv,
+    Node** forward_send,
+    Node** backward_recv,
+    Node** backward_send,
+    Node** first_node,
+    Node** last_node,
+    Node** loss_node) {
+  GraphViewer graph_viewer(graph);
+  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+
+  for (auto idx : node_topology_list) {
+    auto node = graph.GetNode(idx);
+    if (node->OpType() == "Send") {
+      if (IsBackward(*node)) {
+        *backward_send = node;
+      } else {
+        *forward_send = node;
+      }
+    } else if (node->OpType() == "Recv") {
+      if (IsBackward(*node)) {
+        *backward_recv = node;
+      } else {
+        *forward_recv = node;
+      }
+    }
+
+    for (auto node_arg : node->OutputDefs()) {
+      if (node_arg->Name() == loss_name) {
+        *loss_node = node;
+      }
+    }
+  }
+
+  *first_node = graph.GetNode(node_topology_list.front());
+  *last_node = graph.GetNode(node_topology_list.back());
+}
+
+Node& Prepend(
+    Graph& graph,
+    Node* node,
+    const std::string& new_node_type,
+    const std::string& node_name_seed,
+    const std::string& event_name_seed,
+    std::vector<std::string>& new_input_names,
+    std::vector<std::string>& new_output_names,
+    std::string& new_event_name,
+    std::string& new_output_name) {
+  Node& new_node = PrependEventNode(graph, node,
+      new_node_type, node_name_seed, event_name_seed);
+
+  auto input_defs = new_node.InputDefs();
+  auto output_defs = new_node.OutputDefs();
+
+  new_event_name = input_defs[0]->Name();
+  new_output_name = output_defs[0]->Name();
+  
+  new_input_names.push_back(new_event_name);
+  new_output_names.push_back(new_output_name);
+
+  return new_node;
+}
+
+Node& Append(
+    Graph& graph,
+    Node* node,
+    const std::string& new_node_type,
+    const std::string& node_name_seed,
+    const std::string& event_name_seed,
+    std::vector<std::string>& new_input_names,
+    std::vector<std::string>& new_output_names,
+    std::string& new_event_name,
+    std::string& new_output_name) {
+  Node& new_node = AppendEventNode(graph, node,
+      new_node_type, node_name_seed, event_name_seed);
+
+  auto input_defs = new_node.InputDefs();
+  auto output_defs = new_node.OutputDefs();
+
+  new_event_name = input_defs[0]->Name();
+  new_output_name = output_defs[0]->Name();
+  
+  new_input_names.push_back(new_event_name);
+  new_output_names.push_back(new_output_name);
+
+  return new_node;
 }
 
 // This function inserts WaitEvent's and RecordEvent's to the input graph for
@@ -607,86 +615,55 @@ Status SetInputsOutputsAndResolve(Graph& graph,
 Status TransformGraphForPipeline(
     Graph& graph,
     const std::unordered_set<std::string>& weights_to_train,
-    std::string& forward_waited_event_name,
-    std::string& forward_recorded_event_name,
-    std::string& backward_waited_event_name,
-    std::string& backward_recorded_event_name,
-    std::string& forward_wait_output_name,
-    std::string& forward_record_output_name,
-    std::string& backward_wait_output_name,
-    std::string& backward_record_output_name,
-    std::string& forward_waited_event_after_recv_name,
-    std::string& forward_recorded_event_before_send_name,
-    std::string& backward_waited_event_after_recv_name,
-    std::string& backward_recorded_event_before_send_name) {
-  // Declare nodes according to their topological order.
-  Node* forward_wait{nullptr};
-  Node* forward_send{nullptr};
+    const std::string& loss_name,
+    // Forward Recv
+    std::string& forward_recv_waited_event_name,
+    std::string& forward_recv_wait_output_name,
+    std::string& forward_recv_recorded_event_name,
+    std::string& forward_recv_record_output_name,
+    // Forward Send
+    std::string& forward_send_waited_event_name,
+    std::string& forward_send_wait_output_name,
+    std::string& forward_send_recorded_event_name,
+    std::string& forward_send_record_output_name,
+    // Backward Recv
+    std::string& backward_recv_waited_event_name,
+    std::string& backward_recv_wait_output_name,
+    std::string& backward_recv_recorded_event_name,
+    std::string& backward_recv_record_output_name,
+    // Backward Send
+    std::string& backward_send_waited_event_name,
+    std::string& backward_send_wait_output_name,
+    std::string& backward_send_recorded_event_name,
+    std::string& backward_send_record_output_name,
+    // Forward Compute
+    std::string& forward_compute_waited_event_name,
+    std::string& forward_compute_wait_output_name,
+    std::string& forward_compute_recorded_event_name,
+    std::string& forward_compute_record_output_name,
+    // Backward Compute
+    std::string& backward_compute_waited_event_name,
+    std::string& backward_compute_wait_output_name,
+    std::string& backward_compute_recorded_event_name,
+    std::string& backward_compute_record_output_name) {
+  // Begin node of forward pass.
   Node* forward_recv{nullptr};
+  // End node of forward pass.
+  Node* forward_send{nullptr};
+  // Begin node of backward pass.
   Node* backward_recv{nullptr};
+  // End node of backward pass.
   Node* backward_send{nullptr};
-  Node* backward_record{nullptr};
-  for (auto& node : graph.Nodes()) {
-    if (node.OpType() == "Send") {
-      if (IsBackward(node)) {
-        backward_send = &node;
-      } else {
-        forward_send = &node;
-      }
-    } else if (node.OpType() == "Recv") {
-      if (IsBackward(node)) {
-        backward_recv = &node;
-      } else {
-        forward_recv = &node;
-      }
-    }
-  }
 
-  // Names to added into this graph's input list.
-  // Their values may be provides as "feeds" when calling session.Run(...).
-  std::vector<std::string> new_input_names;
-  // Names to added into this graph's output list.
-  // Their values may be returned as "fetches" when calling session.Run(...).
-  std::vector<std::string> new_output_names;
+  Node* first_node{nullptr};
+  Node* last_node{nullptr};
+  Node* loss_node{nullptr};
 
-  backward_record = AddBackwardRecord(
-      graph,
-      backward_send,
-      new_input_names,
-      new_output_names,
-      backward_recorded_event_name,
-      backward_record_output_name);
-  forward_wait = AddForwardWait(
-      graph,
-      forward_recv,
-      new_input_names,
-      forward_waited_event_name,
-      forward_wait_output_name);
-  ORT_RETURN_IF_ERROR(AddOrSkipForwardRecordBackwardWait(
-      graph,
-      forward_send,
-      backward_recv,
-      new_input_names,
-      forward_recorded_event_name,
-      backward_waited_event_name,
-      forward_record_output_name,
-      backward_wait_output_name));
+  // Find begin/end for Send, Recv, and computation in forward and backward.
+  // If there is no Recv in forward/backward, the first forward/backward node is used.
+  // If there is no Send in forward/backward, the last forward/backward node is used.
+  FindPipelineLandmarks(graph, loss_name, &forward_recv, &forward_send, &backward_recv, &backward_send, &first_node, &last_node, &loss_node);
 
-  // Different stages have different patterns of Send & Recv.
-  // For different patterns, we add different WaitEvent and Record.
-  //
-  // After applying all transformations above, the current patterns
-  // are listed below.
-  //
-  // 1. First stage:
-  //  Wait -----------------> FW -> --------> Send -> Record ->
-  //  Wait -> Recv ---------> BW -> ----------------> Record
-  // 2. Middle stage:
-  //  Wait -> Recv -> Wait -> FW -> Record -> Send -> Record ->
-  //  Wait -> Recv -> Wait -> BW -> Record -> Send -> Record
-  // 3. Last stage:
-  //  Wait -> Recv ---------> FW ----------------------------->
-  //  ----------------------> BW -----------> Send -> Record
   const bool is_first_stage = !forward_recv && forward_send && backward_recv && !backward_send;
   const bool is_middle_stage = forward_recv && forward_send && backward_recv && backward_send;
   const bool is_last_stage = forward_recv && !forward_send && !backward_recv && backward_send;
@@ -700,93 +677,220 @@ Status TransformGraphForPipeline(
                     "Is middle stage? ", is_middle_stage, ". ",
                     "Is last stage? ", is_last_stage, ".");
 
-  // Now, we add Wait's in parentheses shown below.
-  // 1. First stage:
-  //  Wait ---------> (Wait) -> FW -> Record -> Send -> Record ->
-  //  Wait -> Recv -> Wait -> BW -> Record ---------> Record
-  // 2. Middle stage:
-  //  Wait -> Recv -> (Wait) -> FW -> Record -> Send -> Record ->
-  //  Wait -> Recv -> Wait -> BW -> Record -> Send -> Record
-  // 3. Last stage:
-  //  Wait -> Recv -> (Wait) -> FW ----------------------------->
-  //  ----------------------> BW -> Record -> Send -> Record
-  if (is_first_stage) {
-    // If first stage, insert after forward WaitEvent.
-    ORT_RETURN_IF_ERROR(AddForwardWaitAfterRecv(
-        graph,
-        forward_wait,
-        new_input_names,
-        forward_waited_event_after_recv_name));
-  } else if (is_middle_stage || is_last_stage) {
-    // If middle stage or last stage, insert after forward Recv.
-    ORT_RETURN_IF_ERROR(AddForwardWaitAfterRecv(
-        graph,
-        forward_recv,
-        new_input_names,
-        forward_waited_event_after_recv_name));
+  // For first and middle stages.
+  Node* forward_send_wait{nullptr};
+  Node* forward_send_record{nullptr};
+  // For middle and last stages.
+  Node* forward_recv_wait{nullptr};
+  Node* forward_recv_record{nullptr};
+  // For middle and last stages.
+  Node* backward_send_wait{nullptr};
+  Node* backward_send_record{nullptr};
+  // For first and middle stages.
+  Node* backward_recv_wait{nullptr};
+  Node* backward_recv_record{nullptr};
+  // For all stages.
+  Node* forward_compute_wait{nullptr};
+  Node* forward_compute_record{nullptr};
+  // For all stages.
+  Node* backward_compute_wait{nullptr};
+  Node* backward_compute_record{nullptr};
+
+  // Names to added into this graph's input list.
+  // Their values may be provides as "feeds" when calling session.Run(...).
+  std::vector<std::string> new_input_names;
+  // Names to added into this graph's output list.
+  // Their values may be returned as "fetches" when calling session.Run(...).
+  std::vector<std::string> new_output_names;
+
+  // Forward Recv
+  if (is_middle_stage || is_last_stage) {
+    // Insert Wait before Forward-Recv and all nodes.
+    forward_recv_wait = &Prepend(
+      graph, forward_recv,
+      "WaitEvent", "wait_forward_recv", "forward_recv_event_1",
+      new_input_names, new_output_names,
+      forward_recv_waited_event_name, forward_recv_wait_output_name);
+    ORT_ENFORCE(forward_recv_wait);
+    graph.Resolve();
+
+    // Insert Record after Forward-Recv.
+    forward_recv_record = &Append(
+      graph, forward_recv,
+      "RecordEvent", "record_forward_recv", "forward_recv_event_2",
+      new_input_names, new_output_names,
+      forward_recv_recorded_event_name, forward_recv_record_output_name);
+    ORT_ENFORCE(forward_recv_record);
+    graph.Resolve();
   }
 
-  // Now, we add Record's in parentheses shown below.
-  // 1. First stage:
-  //  Wait ---------> Wait -> FW -> (Record) -> Send -> Record ->
-  //  Wait -> Recv -> Wait -> BW -> Record ---------> Record
-  // 2. Middle stage:
-  //  Wait -> Recv -> Wait -> FW -> (Record) -> Send -> Record ->
-  //  Wait -> Recv -> Wait -> BW -> Record -> Send -> Record
-  // 3. Last stage (no change):
-  //  Wait -> Recv -> Wait -> FW ----------------------------->
-  //  ----------------------> BW -> Record -> Send -> Record
+  // Forward Send
   if (is_first_stage || is_middle_stage) {
-    ORT_RETURN_IF_ERROR(AddForwardRecordBeforeSend(
-        graph,
-        forward_send,
-        new_input_names,
-        forward_recorded_event_before_send_name));
+    // Insert Wait before Forward-Send.
+    forward_send_wait = &Prepend(
+      graph, forward_send,
+      "WaitEvent", "wait_forward_send", "forward_send_event_1",
+      new_input_names, new_output_names,
+      forward_send_waited_event_name, forward_send_wait_output_name);
+    ORT_ENFORCE(forward_send_wait);
+    graph.Resolve();
+
+    // Insert Record after Forward-Send.
+    forward_send_record = &Append(
+      graph, forward_send,
+      "RecordEvent", "record_forward_send", "forward_send_event_2",
+      new_input_names, new_output_names,
+      forward_send_recorded_event_name, forward_send_record_output_name);
+    ORT_ENFORCE(forward_send_record);
+    graph.Resolve();
   }
 
-  // Now, we add Wait's in parentheses shown below.
-  // 1. First stage:
-  //  Wait ---------> Wait -> FW -> Record -> Send -> Record ->
-  //  Wait -> Recv -> (Wait) -> BW -> Record ---------> Record
-  // 2. Middle stage:
-  //  Wait -> Recv -> Wait -> FW -> Record -> Send -> Record ->
-  //  Wait -> Recv -> (Wait) -> BW -> Record -> Send -> Record
-  // 3. Last stage (no change):
-  //  Wait -> Recv -> Wait -> FW ----------------------------->
-  //  ----------------------> BW -> Record -> Send -> Record
+  // Backward Recv
   if (is_first_stage || is_middle_stage) {
-    ORT_RETURN_IF_ERROR(AddBackwardWaitAfterRecv(
-        graph,
-        backward_recv,
-        new_input_names,
-        backward_waited_event_after_recv_name));
+    // Insert Wait before Backward-Recv.
+    backward_recv_wait = &Prepend(
+      graph, backward_recv,
+      "WaitEvent", "wait_backward_recv", "backward_recv_event_1",
+      new_input_names, new_output_names,
+      backward_recv_waited_event_name, backward_recv_wait_output_name);
+    ORT_ENFORCE(backward_recv_wait);
+    graph.Resolve();
+
+    // Insert Record after Forward-Recv.
+    backward_recv_record = &Append(
+      graph, backward_recv,
+      "RecordEvent", "record_backward_recv", "backward_recv_event_2",
+      new_input_names, new_output_names,
+      backward_recv_recorded_event_name, backward_recv_record_output_name);
+    ORT_ENFORCE(backward_recv_record);
+    graph.Resolve();
   }
 
-  // Now, we add Record's in parentheses shown below.
-  // 1. First stage is:
-  //  Wait ---------> Wait -> FW -> Record -> Send -> Record ->
-  //  Wait -> Recv -> Wait -> BW -> (Record) ---------> Record
-  // 2. Middle stage is:
-  //  Wait -> Recv -> Wait -> FW -> Record -> Send -> Record ->
-  //  Wait -> Recv -> Wait -> BW -> (Record) -> Send -> Record
-  // 3. Final pattern of last stage is:
-  //  Wait -> Recv -> Wait -> FW ----------------------------->
-  //  ----------------------> BW -> (Record) -> Send -> Record
+  // Backward Send
+  if (is_middle_stage || is_last_stage) {
+    // Insert Wait before Backward-Send.
+    backward_send_wait = &Prepend(
+      graph, backward_send,
+      "WaitEvent", "wait_backward_send", "backward_send_event_1",
+      new_input_names, new_output_names,
+      backward_send_waited_event_name, backward_send_wait_output_name);
+    ORT_ENFORCE(backward_send_wait);
+    graph.Resolve();
+
+    // Insert Record after Backward-Send and all nodes.
+    backward_send_record = &Append(
+      graph, backward_send,
+      "RecordEvent", "record_backward_send", "backward_send_event_2",
+      new_input_names, new_output_names,
+      backward_send_recorded_event_name, backward_send_record_output_name);
+    ORT_ENFORCE(backward_send_record);
+    graph.Resolve();
+  }
+
+  // Forward-Compute Wait.
   if (is_first_stage) {
-    ORT_RETURN_IF_ERROR(AddBackwardRecordBeforeSend(
-        graph,
-        backward_record,
-        new_input_names,
-        backward_recorded_event_before_send_name));
-  } else if (is_middle_stage || is_last_stage) {
-    ORT_RETURN_IF_ERROR(AddBackwardRecordBeforeSend(
-        graph,
-        backward_send,
-        new_input_names,
-        backward_recorded_event_before_send_name));
+    // Insert one Wait before all nodes.
+    forward_compute_wait = &Prepend(
+      graph, first_node,
+      "WaitEvent", "wait_forward_compute", "forward_compute_event_1",
+      new_input_names, new_output_names,
+      forward_compute_waited_event_name, forward_compute_wait_output_name);
+    ORT_ENFORCE(forward_compute_wait);
+    graph.Resolve();
+  } else {
+    // Insert one Wait after Forward-Recv Record.
+    forward_compute_wait = &Append(
+      graph, forward_recv_record,
+      "WaitEvent", "wait_forward_compute", "forward_compute_event_1",
+      new_input_names, new_output_names,
+      forward_compute_waited_event_name, forward_compute_wait_output_name);
+    ORT_ENFORCE(forward_compute_wait);
+    graph.Resolve();
   }
 
+  // Forward-Compute Record
+  if (is_last_stage) {
+    // Insert one Record after loss or two SoftmaxCrossEntropy's.
+    forward_compute_record = &Append(
+      graph, loss_node,
+      "RecordEvent", "record_forward_compute", "forward_compute_event_2",
+      new_input_names, new_output_names,
+      forward_compute_recorded_event_name, forward_compute_record_output_name);
+    ORT_ENFORCE(forward_compute_record);
+    graph.Resolve();
+  } else {
+    // Insert one Record before Forward-Send Wait.
+    forward_compute_record = &Prepend(
+      graph, forward_send_wait,
+      "RecordEvent", "record_forward_compute", "forward_compute_event_2",
+      new_input_names, new_output_names,
+      forward_compute_recorded_event_name, forward_compute_record_output_name);
+    ORT_ENFORCE(forward_compute_record);
+    graph.Resolve();
+  }
+
+  // Backward-Compute Wait.
+  if (is_last_stage) {
+    // Insert one Wait after Forward-Compute Record.
+    backward_compute_wait = &Append(
+      graph, forward_compute_record,
+      "WaitEvent", "wait_backward_compute", "backward_compute_event_1",
+      new_input_names, new_output_names,
+      backward_compute_waited_event_name, backward_compute_wait_output_name);
+    ORT_ENFORCE(backward_compute_wait);
+    graph.Resolve();
+  } else {
+    // Insert one Wait after Backward-Recv Record
+    backward_compute_wait = &Append(
+      graph, backward_recv_record,
+      "WaitEvent", "wait_backward_compute", "backward_compute_event_1",
+      new_input_names, new_output_names,
+      backward_compute_waited_event_name, backward_compute_wait_output_name);
+    ORT_ENFORCE(backward_compute_wait);
+    graph.Resolve();
+  }
+  
+  // Backward-Compute Record.
+  if (is_first_stage) {
+    // Insert one Record after all nodes.
+    backward_compute_record = &Append(
+      graph, last_node,
+      "RecordEvent", "record_backward_compute", "backward_compute_event_2",
+      new_input_names, new_output_names,
+      backward_compute_recorded_event_name, backward_compute_record_output_name);
+    ORT_ENFORCE(backward_compute_record);
+    graph.Resolve();
+  } else {
+    // Insert one Record before Backward-Send Wait.
+    backward_compute_record = &Prepend(
+      graph, backward_send_wait,
+      "RecordEvent", "record_backward_compute", "backward_compute_event_2",
+      new_input_names, new_output_names,
+      backward_compute_recorded_event_name, backward_compute_record_output_name);
+    ORT_ENFORCE(backward_compute_record);
+    graph.Resolve();
+  }
+
+  for (auto new_input_name: new_input_names) {
+    std::cout << "[pipeline_transformer.cc] new input: " << new_input_name << std::endl;
+  }
+   for (auto new_output_name: new_output_names) {
+    std::cout << "[pipeline_transformer.cc] new output: " << new_output_name << std::endl;
+  }
   ORT_RETURN_IF_ERROR(SetInputsOutputsAndResolve(graph, weights_to_train, new_input_names, new_output_names));
+
+  GraphViewer graph_viewer(graph);
+  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+  for (auto idx : node_topology_list) {
+    auto node = graph.GetNode(idx);
+    std::cout << "[Pipeline list] " << node->OpType() << ", " << node->Name() << ", " << std::endl;
+    for (auto& node_arg: node->InputDefs()) {
+      std::cout << "[Pipeline list]   input " << node_arg->Name() << std::endl;
+    }
+    for (auto& node_arg: node->OutputDefs()) {
+      std::cout << "[Pipeline list]   output " << node_arg->Name() << std::endl;
+    }
+  }
   return Status::OK();
 }
 
