@@ -28,7 +28,6 @@ Status AddToExistingNodeArgs(
         addition_context, " - failed to find NodeArg by name: ", new_nodearg_name);
 
     if (nodeargs_set.find(new_nodearg) != nodeargs_set.end()) {
-      std::cout << "[graph_augmenter.cc] duplicates: " << new_nodearg->Name() << std::endl;
       ORT_RETURN_IF(
           is_duplicate_an_error,
           addition_context, " - error - attempted to add a duplicate NodeArg: ", new_nodearg_name);
