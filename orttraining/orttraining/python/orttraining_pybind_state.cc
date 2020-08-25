@@ -206,11 +206,11 @@ void addObjectMethodsForTraining(py::module& m) {
 
   py::class_<onnxruntime::training::TrainingSession, InferenceSession> training_session(m, "TrainingSession");
   training_session.def(py::init([](const PySessionOptions& so) {
-                    Environment& env = get_env();
+                    Environment& env = GetEnv();
                     return onnxruntime::make_unique<onnxruntime::training::TrainingSession>(so, env);
                   }))
       .def(py::init([]() {
-        Environment& env = get_env();
+        Environment& env = GetEnv();
         return onnxruntime::make_unique<onnxruntime::training::TrainingSession>(GetDefaultCPUSessionOptions(), env);
       }))
       .def("finalize", [](py::object) {
