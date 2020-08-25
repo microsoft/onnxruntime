@@ -4,8 +4,11 @@ steps:
   env:
     THE_SECRET: $(THE_SECRET)
 
-- ${{ if ne(variables.THE_SECRET, '') }}:
-  - script: echo "I KNOW A SECRET!"
-
-- ${{ if eq(variables.THE_SECRET, '') }}:
-  - script: echo "I DON'T KNOW THE SECRET..."
+- powershell: |
+    if ($env:THE_SECRET) {
+      echo "I KNOW A SECRET!"
+    } else {
+      echo "I DON'T KNOW THE SECRET..."
+    }
+  env:
+    THE_SECRET: $(THE_SECRET)
