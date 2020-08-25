@@ -46,6 +46,8 @@ class OpSchema {};
 #endif
 
 #include "onnx/onnx_pb.h"
+#include "onnx/onnx-operators_pb.h"
+
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
 #else
