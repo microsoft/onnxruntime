@@ -278,8 +278,9 @@ def generate_files(list, args):
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.pdb') +
                           '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
     else:
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'libonnxruntime.so') +
-                          '" target="runtimes\\linux-' + args.target_architecture + '\\native" />')
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'nuget-staging/usr/local/lib',
+                          'libonnxruntime.so') + '" target="runtimes\\linux-' + args.target_architecture +
+                          '\\native" />')
 
     if includes_directml:
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.dll') +

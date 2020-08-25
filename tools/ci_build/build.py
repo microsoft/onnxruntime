@@ -1439,6 +1439,11 @@ def build_nuget_package(configs, use_cuda, use_openvino, use_tensorrt, use_dnnl,
 
     # build csharp bindings and create nuget package for each config
     for config in configs:
+        if is_linux():
+            native_build_dir = os.path.join(os.getcwd(), 'build//Linux//', config)
+            cmd_args = ["make", "install", "DESTDIR=.//nuget-staging"]
+            run_subprocess(cmd_args, cwd=native_build_dir)
+
         configuration = "/p:Configuration=\"" + config + "\""
 
         cmd_args = ["dotnet", "msbuild", "OnnxRuntime.CSharp.sln", configuration, package_name, is_linux_build]
