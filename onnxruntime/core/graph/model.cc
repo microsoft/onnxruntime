@@ -111,6 +111,31 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path, const IOnnx
     }
   }
 
+  bool allow_official_onnx_release_only = true;
+  // By now the environment should have initialized.
+  const Env& env_instance = Env::Default();
+
+  // Get the value of env variable kAllowReleasedONNXOpsetOnly
+  const std::string allow_official_onnx_release_only_str =
+      env_instance.GetEnvironmentVar(model_load_utils::kAllowReleasedONNXOpsetOnly);
+
+  if (!allow_official_onnx_release_only_str.empty()) {
+    // Check if the env var contains an unsupported value
+    if (allow_official_onnx_release_only_str.length() > 1 ||
+        (allow_official_onnx_release_only_str[0] != '0' && allow_official_onnx_release_only_str[0] != '1')) {
+      ORT_THROW("The only supported values for the environment variable ",
+                model_load_utils::kAllowReleasedONNXOpsetOnly,
+                " are '0' and '1'. The environment variable contained the value: ",
+                allow_official_onnx_release_only_str);
+    }
+
+    if (allow_official_onnx_release_only_str[0] == '0') {
+      allow_official_onnx_release_only = false;
+    }
+  }
+
+  auto& onnx_released_versions =
+      ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().LastReleaseVersionMap();
   std::unordered_map<std::string, int> domain_to_version;
   for (auto& opSet : model_proto_.opset_import()) {
     const auto& domain = opSet.domain();
@@ -127,6 +152,39 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path, const IOnnx
                             << " model may run depending upon legacy support "
                                "of some older opset version operators.";
     }
+
+    auto it = onnx_released_versions.find(domain);
+    if (it != onnx_released_versions.end() && version > it->second) {
+      auto current_domain = domain.empty() ? kOnnxDomainAlias : domain;
+      if (allow_official_onnx_release_only) {
+        ORT_THROW(
+            "ONNX Runtime only *guarantees* support for models stamped "
+            "with official released onnx opset versions. "
+            "Opset ",
+            version,
+            " is under development and support for this is limited. "
+            "The operator schemas and or other functionality may change before next ONNX release "
+            "and in this case ONNX Runtime will not guarantee backward compatibility. "
+            "Current official support for domain ",
+            current_domain, " is till opset ",
+            it->second, ".");
+      } else {
+        LOGS(logger, WARNING) << "ONNX Runtime only *guarantees* support for models stamped "
+                                 "with official released onnx opset versions. "
+                                 "Opset "
+                              << version
+                              << " is under development and support for this is limited. "
+                                 "The operator schemas and or other functionality "
+                                 "could possibly change before next ONNX release and "
+                                 "in this case ONNX Runtime will not guarantee backward compatibility. "
+                                 "Current official support for domain "
+                              << current_domain
+                              << " is till opset "
+                              << it->second
+                              << ".";
+      }
+    }
+
     // We need to overwrite the domain here with ("") or else the loop below will try to find ("")
     // in the map and if not found (when domain == kOnnxDomainAlias), adds an entry for ("", 11).
     // This effectively ignores the opset version specified by the model for the onnx domain.

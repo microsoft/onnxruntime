@@ -674,6 +674,19 @@ void OpTester::Run(
 #ifndef NDEBUG
     run_called_ = true;
 #endif
+
+    static bool allow_released_onnx_opset_only = SupportReleasedONNXOpsetsOnly();
+    if (allow_released_onnx_opset_only) {
+      int latest_released_opset = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().LastReleaseVersionMap().at(domain_);
+      if (opset_version_ > latest_released_opset) {
+        LOGS_DEFAULT(WARNING) << "Encountered model with opset version greater than released onnx opset version. "
+                           << "Skipping this test. To run this test set environment variable ALLOW_RELEASED_ONNX_OPSET_ONLY to \"0\". "
+                           << "Opset version of current model is " << opset_version_
+                           << ", the latest released onnx opset version is " << latest_released_opset << ".";
+        GTEST_SKIP();
+      }
+    }
+
     fetches_.clear();
     bool cache_enabled = cached_model_ != nullptr;
     auto p_model = !cache_enabled ? BuildGraph() : cached_model_;

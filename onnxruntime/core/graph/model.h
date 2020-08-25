@@ -13,6 +13,13 @@
 #include "gsl/gsl"
 
 namespace onnxruntime {
+
+namespace model_load_utils {
+
+static constexpr const char* kAllowReleasedONNXOpsetOnly = "ALLOW_RELEASED_ONNX_OPSET_ONLY";
+
+}  //namespace model_load_utils
+
 typedef std::unordered_map<std::string, std::string> ModelMetaData;
 using IOnnxRuntimeOpSchemaRegistryList = std::list<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>>;
 
