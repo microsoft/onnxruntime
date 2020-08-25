@@ -447,10 +447,10 @@ struct AttentionMaskNodes {
 struct AttentionMaskNodesDistilBert {
   const Node* softmax;
   const Node* where;
-  const Node* cast;
   const Node* expand;
   const Node* reshape;
   const Node* equal;
+  const Node* shape;
 };
 
 void SetMaskNodesToRemove(const Graph& graph, AttentionMaskNodes& mask_nodes, std::vector<NodeIndex>& nodes_to_remove) {
@@ -479,6 +479,7 @@ void SetMaskNodesToRemove(const Graph&, AttentionMaskNodesDistilBert& mask_nodes
   nodes_to_remove.push_back(mask_nodes.expand->Index());
   nodes_to_remove.push_back(mask_nodes.reshape->Index());
   nodes_to_remove.push_back(mask_nodes.equal->Index());
+  nodes_to_remove.push_back(mask_nodes.shape->Index());
 }
 
 /**  Match Input Mask subgraph:
@@ -628,13 +629,13 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, Attentio
 
   const Node& softmax = edges[0]->GetNode();
   const Node& where = edges[1]->GetNode();
-  const Node& expend = edges[2]->GetNode();
+  const Node& expand = edges[2]->GetNode();
   const Node& reshape = edges[3]->GetNode();
   const Node& equal = edges[4]->GetNode();
 
   if (!optimizer_utils::CheckOutputEdges(graph, softmax, 1) ||
       !optimizer_utils::CheckOutputEdges(graph, where, 1) ||
-      !optimizer_utils::CheckOutputEdges(graph, expend, 1) ||
+      !optimizer_utils::CheckOutputEdges(graph, expand, 1) ||
       !optimizer_utils::CheckOutputEdges(graph, reshape, 1) ||
       !optimizer_utils::CheckOutputEdges(graph, equal, 1)) {
     DEBUG_LOG("Output edge count not expected for mask nodes");
@@ -649,24 +650,74 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, Attentio
   //check where has X=-Infinity
   if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(where.InputDefs()[1]), std::numeric_limits<float>::min(), true)) {
     DEBUG_LOG("where const not matched.");
-    std::cout << "where const not matched" << std::endl;
     return false;
   }
+
   //expand has another input Shape <-- qk_MatMul
+  std::vector<graph_utils::EdgeEndToMatch> shape_path{
+    {0, 1, "Shape", {1, 13}, kOnnxDomain},
+    {0, 0, "MatMul", {1, 9, 13}, kOnnxDomain}};
+  if (!graph_utils::FindPath(expand, true, shape_path, edges, logger)) {
+    DEBUG_LOG("Failed to find shape path");
+    return false;
+  }
+  const Node& shape = edges[0]->GetNode();
+  const Node& qk_matmul = edges[1]->GetNode();
+  const Node* p_qk_matmul = graph_utils::GetInputNode(where, 2);
+  if (p_qk_matmul != nullptr && p_qk_matmul->Index() != qk_matmul.Index()) {
+    return false;
+  }
 
   //equal has input B=0
   if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(equal.InputDefs()[1]), 0.0f, true)) {
     DEBUG_LOG("equal const not matched.");
-    std::cout << "equal const not matched" << std::endl;
     return false;
   }
+
   //reshape node's shape input
+  std::vector<graph_utils::EdgeEndToMatch> reshape_shape_path_1{
+    {0, 1, "Concat", {4, 11, 13}, kOnnxDomain},
+    {0, 0, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
+    {0, 0, "Gather", {1, 11, 13}, kOnnxDomain},
+    {0, 0, "Shape", {1, 13}, kOnnxDomain}};
+  if (!graph_utils::FindPath(reshape, true, reshape_shape_path_1, edges, logger)) {
+    DEBUG_LOG("Failed to find reshape shape path 1");
+    return false;
+  }
+  const Node& concat = edges[0]->GetNode();
+  const Node& shape_1 = edges[3]->GetNode();
+  std::vector<graph_utils::EdgeEndToMatch> reshape_shape_path_2{
+    {0, 3, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
+    {0, 0, "Gather", {1, 11, 13}, kOnnxDomain},
+    {0, 0, "Shape", {1, 13}, kOnnxDomain}};
+  if (!graph_utils::FindPath(concat, true, reshape_shape_path_2, edges, logger)) {
+    DEBUG_LOG("Failed to find reshape shape path 2");
+    return false;
+  }
+  const Node& shape_2 = edges[2]->GetNode();
+  // check same root
+  if (graph_utils::GetInputNode(shape_1, 0)->Index() != graph_utils::GetInputNode(shape_2, 0)->Index()) {
+    return false;
+  }
+  //check concat input shape information
+  if (concat.InputDefs().size() != 4) {
+    return false;
+  }
+  std::vector<int64_t> shape_value;
+  if (!optimizer_utils::AppendTensorFromInitializer(graph, *(concat.InputDefs()[1]), shape_value, true) && shape_value[0] != 1) {
+      return false;
+  }
+  shape_value.clear();
+  if (!optimizer_utils::AppendTensorFromInitializer(graph, *(concat.InputDefs()[2]), shape_value, true) && shape_value[0] != 1) {
+      return false;
+  }
 
   result.softmax = &softmax;
   result.where = &where;
-  result.expand = &expend;
+  result.expand = &expand;
   result.reshape = &reshape;
   result.equal = &equal;
+  result.shape = &shape;
 
   DEBUG_LOG("Pass MatchInputMaskSubgraphDistilBert");
   return true;
