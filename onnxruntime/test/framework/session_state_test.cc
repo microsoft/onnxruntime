@@ -5,6 +5,7 @@
 
 #include "core/framework/execution_providers.h"
 #include "core/framework/graph_partitioner.h"
+#include "core/framework/kernel_registry.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/graph/graph_utils.h"
@@ -259,7 +260,7 @@ TEST_P(SessionStatePrepackingTest, PrePackingTest) {
   SessionOptions sess_options;
   bool use_prepacking = GetParam();
   sess_options.session_configurations[ORT_SESSION_OPTIONS_CONFIG_DISABLEPREPACKING] = use_prepacking ? "0" : "1";
-  ASSERT_STATUS_OK(session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(), 
+  ASSERT_STATUS_OK(session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
                                                       kernel_registry_manager,
                                                       sess_options));
 
