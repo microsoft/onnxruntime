@@ -44,7 +44,9 @@ static SessionOptions SESSION_OPTION = {
     {},                                //inter_op_param
     overrides,                         //free_dimension_overrides
     true,                              //use_per_session_threads
-    true                               //thread_pool_allow_spinning
+    true,                              //thread_pool_allow_spinning
+    false,                             //use_deterministic_compute
+    {},                                //session_configurations
 };
 
 TrainingRunner::TrainingRunner(Parameters params, const Environment& env)
@@ -77,8 +79,8 @@ Status TrainingRunner::Initialize() {
   if (params_.pipeline_parallel_size > 1 && !params_.pipeline_stage_paths.empty()) {
     // Pipeline partition happens outside ORT. We just load the result of partitioning forward graph.
     // Backward graph will be generated using ORT's graph transformers.
-    ORT_ENFORCE(static_cast<size_t>(params_.mpi_context.world_size) == params_.pipeline_stage_paths.size());
-    ORT_RETURN_IF_ERROR(session_.Load(params_.pipeline_stage_paths[params_.mpi_context.world_rank]));
+    ORT_ENFORCE(static_cast<size_t>(MPIContext::GetInstance().GetWorldSize()) == params_.pipeline_stage_paths.size());
+    ORT_RETURN_IF_ERROR(session_.Load(params_.pipeline_stage_paths[MPIContext::GetInstance().GetWorldRank()]));
   } else {
     ORT_RETURN_IF_ERROR(session_.Load(params_.model_path));
   }
@@ -96,10 +98,10 @@ Status TrainingRunner::Initialize() {
 
   config.gradient_accumulation_steps = params_.gradient_accumulation_steps;
 
-  config.distributed_config.world_rank = params_.mpi_context.world_rank;
-  config.distributed_config.world_size = params_.mpi_context.world_size;
-  config.distributed_config.local_size = params_.mpi_context.local_size;
-  config.distributed_config.local_rank = params_.mpi_context.local_rank;
+  config.distributed_config.world_rank = MPIContext::GetInstance().GetWorldRank();
+  config.distributed_config.world_size = MPIContext::GetInstance().GetWorldSize();
+  config.distributed_config.local_size = MPIContext::GetInstance().GetLocalSize();
+  config.distributed_config.local_rank = MPIContext::GetInstance().GetLocalRank();
   config.distributed_config.data_parallel_size = params_.data_parallel_size;
   config.distributed_config.horizontal_parallel_size = params_.horizontal_parallel_size;
   config.distributed_config.pipeline_parallel_size = params_.pipeline_parallel_size;
@@ -107,12 +109,13 @@ Status TrainingRunner::Initialize() {
   if (params_.use_mixed_precision) {
     TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mp{};
     mp.use_fp16_initializers = params_.use_fp16_initializer;
-
+    if (params_.use_bfloat16)
+      mp.fp16_type = ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
     config.mixed_precision_config = mp;
   }
 
   // always configure the loss function
-  if (params_.pipeline_parallel_size == 1 || params_.mpi_context.world_rank == params_.mpi_context.world_size - 1) {
+  if (params_.pipeline_parallel_size == 1 || MPIContext::GetInstance().GetWorldRank() == MPIContext::GetInstance().GetWorldSize() - 1) {
     TrainingSession::TrainingConfiguration::LossFunctionConfiguration lf{};
     lf.loss_function_info = params_.loss_func_info;
 
@@ -334,7 +337,7 @@ Status TrainingRunner::Initialize() {
 
 Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_data_loader,
                            const MapStringToString& mapped_dimensions) {
-  if (params_.mpi_context.world_rank == 0 && !params_.model_actual_running_graph_path.empty()) {
+  if (MPIContext::GetInstance().GetWorldRank() == 0 && !params_.model_actual_running_graph_path.empty()) {
     session_.Save(params_.model_actual_running_graph_path, TrainingSession::SaveOption::NO_RELOAD);
   }
 
@@ -573,11 +576,13 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const SessionMode mode,
       fetch_names = params_.fetch_names;
 
       if (params_.use_mixed_precision) {
-        auto it = opt_graph_outputs_.find(OptimizerOutputKey::GradientAllIsFinite);
-        ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Gradient norm's IsFinite output is missing in the optimizer output");
-        fetch_names.push_back(it->second);
+        if (!params_.use_bfloat16) {
+          auto it = opt_graph_outputs_.find(OptimizerOutputKey::GradientAllIsFinite);
+          ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Gradient norm's IsFinite output is missing in the optimizer output");
+          fetch_names.push_back(it->second);
+        }
         if (params_.use_adasum) {
-          it = opt_graph_outputs_.find(OptimizerOutputKey::DeltaAllIsFinite);
+          auto it = opt_graph_outputs_.find(OptimizerOutputKey::DeltaAllIsFinite);
           ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Adasum delta's IsFinite output is missing in the optimizer output");
           fetch_names.push_back(it->second);
         }
@@ -703,7 +708,7 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
   // We must join here because main thread needs to access thread-produced
   // fetches and those fetches must be ready.
   pipeline_worker_pool_.JoinAll();
-  for(auto& status : pipeline_worker_pool_.worker_states){
+  for (auto& status : pipeline_worker_pool_.worker_states) {
     CheckWorkerException(status.execution_exception);
   }
 
@@ -738,7 +743,7 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
   // Wait all workers to finish this around of pipeline parallism.
   // The last batch in a pipeline collects gradient and update the model.
   pipeline_worker_pool_.JoinAll();
-  for(auto& status : pipeline_worker_pool_.worker_states){
+  for (auto& status : pipeline_worker_pool_.worker_states) {
     CheckWorkerException(status.execution_exception);
   }
 
@@ -805,7 +810,7 @@ void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
 Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader,
                                     const MapStringToString& mapped_dimensions) {
   const bool enable_checkpoint_saving =
-      params_.mpi_context.world_rank == 0 &&
+      MPIContext::GetInstance().GetWorldRank() == 0 &&
       checkpoint_registry_ && params_.checkpoint_period > 0;
 
   std::unique_ptr<perftest::utils::ICPUUsage> cpu_usage_calculator;

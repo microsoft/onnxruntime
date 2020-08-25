@@ -15,6 +15,11 @@ parameters:
   type: boolean
   default: true
 
+- name: enable_linux_gpu_training
+  displayName: 'Whether Linux GPU package is built.'
+  type: boolean
+  default: false
+
 - name: enable_linux_gpu_py35
   displayName: >
     Whether Linux GPU package is built for Python 3.5.
@@ -81,39 +86,43 @@ stages:
 
       - template: set-py-packaging-variables-step.yml
 
+      - task: Docker@2
+        displayName: login
+        inputs:
+          containerRegistry: onnxruntimeregistry
+          command: login
+          addPipelineData: false
       - task: CmdLine@2
         inputs:
           script: |
-            docker build --pull \
-              -t ${{ parameters.docker_image_prefix }}-manylinux-$(python.version) \
-              --build-arg BUILD_USER=onnxruntimedev \
-              --build-arg BUILD_UID=$(id -u) \
-              --build-arg PYTHON_VERSION=$(python.version) \
-              -f Dockerfile.manylinux2010_cpu .
-          workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
-      - task: CmdLine@2
-        inputs:
-          script: |
+            mkdir -p $HOME/.onnx
             docker run --rm \
               --volume /data/onnx:/data/onnx:ro \
               --volume $(Build.SourcesDirectory):/onnxruntime_src \
               --volume $(Build.BinariesDirectory):/build \
               --volume /data/models:/build/models:ro \
+              --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
-              ${{ parameters.docker_image_prefix }}-manylinux-$(python.version) \
+              onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecpubuild:chn \
                 $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-                  --build_dir /build \
+                  --build_dir /build --cmake_generator Ninja \
                   --config Release \
                   --skip_submodule_sync \
                   --parallel \
+                  --enable_lto \
                   --build_wheel \
                   --use_openmp \
                   --enable_onnx_tests \
                   ${{ parameters.build_py_parameters }} \
                   --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.manylinux.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so
           workingDirectory: $(Build.SourcesDirectory)
-
+      - task: Docker@2
+        displayName: logout
+        inputs:
+          containerRegistry: onnxruntimeregistry
+          command: logout
+          addPipelineData: false
       - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
         inputs:
@@ -140,9 +149,85 @@ stages:
       pool: Linux-GPU-CUDA10
       strategy:
         matrix:
-          ${{ if eq(parameters.enable_linux_gpu_py35, true) }}:
-            Python35:
-              python.version: '3.5'
+          Python35:
+            python.version: '3.5'
+          Python36:
+            python.version: '3.6'
+          Python37:
+            python.version: '3.7'
+          Python38:
+            python.version: '3.8'
+      steps:
+      - checkout: self
+        clean: true
+        submodules: recursive
+
+      - template: set-py-packaging-variables-step.yml
+
+      - task: Docker@2
+        displayName: login
+        inputs:
+          containerRegistry: onnxruntimeregistry
+          command: login
+          addPipelineData: false
+      - task: CmdLine@2
+        inputs:
+          script: |
+            mkdir -p $HOME/.onnx
+            docker run --gpus all --rm \
+              --volume /data/onnx:/data/onnx:ro \
+              --volume $(Build.SourcesDirectory):/onnxruntime_src \
+              --volume $(Build.BinariesDirectory):/build \
+              --volume /data/models:/build/models:ro \
+              --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+              -e NIGHTLY_BUILD \
+              -e BUILD_BUILDNUMBER \
+              onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecpubuild:chp \
+                $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+                  --build_dir /build --cmake_generator Ninja \
+                  --config Release \
+                  --skip_submodule_sync \
+                  --parallel \
+                  --build_wheel \
+                  --use_openmp \
+                  --enable_onnx_tests --use_cuda --cuda_version=10.1 --cuda_home=/usr/local/cuda-10.1 --cudnn_home=/usr/local/cuda-10.1 \
+                  ${{ parameters.build_py_parameters }} \
+                  --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.manylinux.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so
+          workingDirectory: $(Build.SourcesDirectory)
+
+      - task: Docker@2
+        displayName: logout
+        inputs:
+          containerRegistry: onnxruntimeregistry
+          command: logout
+          addPipelineData: false
+
+      - task: CopyFiles@2
+        displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
+        inputs:
+          SourceFolder: '$(Build.BinariesDirectory)'
+          Contents: 'Release/dist/*.whl'
+          TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish Artifact: ONNXRuntime python wheel'
+        inputs:
+          ArtifactName: onnxruntime_gpu
+
+      - template: component-governance-component-detection-steps.yml
+        parameters:
+          condition: 'succeeded'
+
+      - template: clean-agent-build-directory-step.yml
+
+  - ${{ if eq(parameters.enable_linux_gpu_training, true) }}:
+    - job: Linux_py_GPU_Wheels
+      timeoutInMinutes: 120
+      workspace:
+        clean: all
+      pool: Linux-GPU-CUDA10
+      strategy:
+        matrix:
           Python36:
             python.version: '3.6'
           Python37:
@@ -170,11 +255,13 @@ stages:
       - task: CmdLine@2
         inputs:
           script: |
+            mkdir -p $HOME/.onnx
             docker run --rm --gpus all \
               --volume /data/onnx:/data/onnx:ro \
               --volume $(Build.SourcesDirectory):/onnxruntime_src \
               --volume $(Build.BinariesDirectory):/build \
               --volume /data/models:/build/models:ro \
+              --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e NVIDIA_VISIBLE_DEVICES=all \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
@@ -558,6 +645,7 @@ stages:
             aria2c -q https://github.com/protocolbuffers/protobuf/releases/download/v3.11.1/protoc-3.11.1-linux-x86_64.zip
             unzip protoc-3.11.1-linux-x86_64.zip
             sudo cp /mnt/toolchains/manylinux2014_aarch64/usr/include/stdlib.h /mnt/toolchains/gcc-linaro-7.5.0-2019.12-x86_64_aarch64-linux-gnu/aarch64-linux-gnu/libc/usr/include/
+            #The PYTHON_EXECUTABLE cmake variable is only used for generating ONNX's protobuf definition file.(Invoking the onnx/gen_proto.py file in ONNX's source folder)
             cmake \
               -Donnxruntime_GCC_STATIC_CPP_RUNTIME=ON \
               -DCMAKE_BUILD_TYPE=Release \
@@ -565,7 +653,7 @@ stages:
               -DCMAKE_TOOLCHAIN_FILE=tool-chain.cmake \
               -Donnxruntime_ENABLE_PYTHON=ON \
               -DPYTHON_LIBRARY=dl \
-              -DPYTHON_EXECUTABLE=/mnt/toolchains/manylinux2014_aarch64/'$(python.manylinux.dir)'/bin/python3  \
+              -DPYTHON_EXECUTABLE=/usr/bin/python3  \
               -Donnxruntime_BUILD_SHARED_LIB=OFF \
               -Donnxruntime_RUN_ONNX_TESTS=OFF \
               -Donnxruntime_DEV_MODE=ON \

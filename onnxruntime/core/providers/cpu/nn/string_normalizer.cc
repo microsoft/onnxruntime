@@ -2,14 +2,13 @@
 // Licensed under the MIT License.
 
 #include "string_normalizer.h"
-#include "onnx/defs/schema.h"
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
 
 #ifdef _MSC_VER
 #include <codecvt>
 #include <locale.h>
-#elif defined (__APPLE__) or defined (__ANDROID__)
+#elif defined(__APPLE__) or defined(__ANDROID__)
 #include <codecvt>
 #else
 #include <limits>
@@ -77,7 +76,7 @@ using Utf8Converter = std::wstring_convert<std::codecvt_utf8<wchar_t>>;
 
 const std::string default_locale("en-US");
 
-#else // MS_VER
+#else  // MS_VER
 
 class Locale {
  public:
@@ -112,7 +111,6 @@ using Utf8Converter = std::wstring_convert<std::codecvt_utf8<wchar_t>>;
 // All others (Linux)
 class Utf8Converter {
  public:
-
   Utf8Converter(const std::string&, const std::wstring&) {}
 
   std::wstring from_bytes(const std::string& s) const {
@@ -182,11 +180,11 @@ class Utf8Converter {
   }
 };
 
-#endif // __APPLE__
+#endif  // __APPLE__
 
-const std::string default_locale("en_US.UTF-8"); // All non-MS
+const std::string default_locale("en_US.UTF-8");  // All non-MS
 
-#endif // MS_VER
+#endif  // MS_VER
 
 template <class ForwardIter>
 Status CopyCaseAction(ForwardIter first, ForwardIter end, OpKernelContext* ctx,

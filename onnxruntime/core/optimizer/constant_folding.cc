@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/optimizer/constant_folding.h"
+#include "core/optimizer/utils.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/optimizer_execution_frame.h"
 #include "core/framework/op_kernel.h"
@@ -10,6 +11,14 @@
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
+
+ConstantFolding::ConstantFolding(const IExecutionProvider& execution_provider,
+                                 const std::unordered_set<std::string>& compatible_execution_providers,
+                                 const std::unordered_set<std::string>& excluded_initializers) noexcept
+    : GraphTransformer("ConstantFolding", compatible_execution_providers),
+      excluded_initializers_(excluded_initializers),
+      execution_provider_(execution_provider) {
+}
 
 // We need to handle a Shape node separately as the input doesn't need to be a constant initializer for
 // Shape to be able to be constant folded.
@@ -86,7 +95,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
       // Check if constant folding can be applied on this node.
       if (!graph_utils::IsSupportedProvider(*node, GetCompatibleExecutionProviders()) ||
-          excluded_op_types_.find(node->OpType()) != excluded_op_types_.end() ||
+          !optimizer_utils::IsOperationDeterministic(node->Domain(), node->OpType()) ||
           // constant folding does not support executing a node that includes subgraphs (control flow operators,
           // such as If/Loop/Scan, fall into this category). individual nodes in the subgraph will be processed
           // by the Recurse call above
@@ -95,11 +104,8 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       }
 
       // Create execution frame for executing constant nodes.
-      std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
-          onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
-
       // Create execution frame for executing constant nodes.
-      OptimizerExecutionFrame::Info info({node}, constant_inputs, std::move(cpu_execution_provider));
+      OptimizerExecutionFrame::Info info({node}, constant_inputs, execution_provider_);
 
       std::vector<int> fetch_mlvalue_idxs;
       for (const auto* node_out : node->OutputDefs()) {

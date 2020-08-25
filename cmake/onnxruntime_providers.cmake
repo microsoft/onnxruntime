@@ -35,10 +35,6 @@ file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/*.cc"
 )
 
-if(onnxruntime_USE_DNNL)
-  set(PROVIDERS_DNNL onnxruntime_providers_dnnl)
-  list(APPEND ONNXRUNTIME_PROVIDER_NAMES dnnl)
-endif()
 if(onnxruntime_USE_NGRAPH)
   set(PROVIDERS_NGRAPH onnxruntime_providers_ngraph)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES ngraph)
@@ -314,6 +310,8 @@ if (onnxruntime_USE_TENSORRT OR onnxruntime_USE_DNNL)
 endif()
 
 if (onnxruntime_USE_DNNL)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES dnnl)
+
   file(GLOB_RECURSE onnxruntime_providers_dnnl_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/dnnl/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/dnnl/*.cc"
@@ -323,8 +321,9 @@ if (onnxruntime_USE_DNNL)
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_dnnl_cc_srcs})
   add_library(onnxruntime_providers_dnnl SHARED ${onnxruntime_providers_dnnl_cc_srcs})
+  target_link_directories(onnxruntime_providers_dnnl PRIVATE ${DNNL_LIB_DIR})
   onnxruntime_add_include_to_target(onnxruntime_providers_dnnl onnxruntime_common onnx) # onnx needed for stl_backports.h
-  add_dependencies(onnxruntime_providers_dnnl onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  add_dependencies(onnxruntime_providers_dnnl onnxruntime_providers_shared project_dnnl ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_include_directories(onnxruntime_providers_dnnl PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${DNNL_INCLUDE_DIR})
   target_link_libraries(onnxruntime_providers_dnnl PRIVATE dnnl onnxruntime_providers_shared)
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/dnnl  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
@@ -517,18 +516,48 @@ if (onnxruntime_USE_OPENVINO)
   )
 
   if (onnxruntime_USE_OPENVINO_BINARY)
-    set(OPENVINO_INCLUDE_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/include)
-    set(OPENVINO_TBB_INCLUDE_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/include)
-    set(OPENVINO_MKL_TINY_INCLUDE_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/mkltiny_lnx/include)
-    set(OPENVINO_TBB_LIB_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/lib)
-    set(OPENVINO_MKL_TINY_LIB_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/mkltiny_lnx/lib)
+
+    # Header paths
+    list(APPEND OPENVINO_INCLUDE_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/include)
+    list(APPEND OPENVINO_INCLUDE_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/include)
+    list(APPEND OPENVINO_INCLUDE_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/mkltiny_lnx/include)
+
+    # Library paths
+    list(APPEND OPENVINO_LIB_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/lib)
+    list(APPEND OPENVINO_LIB_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/mkltiny_lnx/lib)
+
+    # Lib names
+    if (WIN32)
+      list(APPEND OPENVINO_LIB_LIST inference_engine.lib inference_engine_legacy.lib tbb.lib ${PYTHON_LIBRARIES})
+    else()
+      list(APPEND OPENVINO_LIB_LIST -linference_engine -linference_engine_legacy -ltbb ${PYTHON_LIBRARIES})
+    endif()
+
+    if ((OPENVINO_VERSION VERSION_GREATER_EQUAL "2020.3") OR (WIN32))
+      # Link to nGraph from OpenVINO installation 
+      list(APPEND OPENVINO_INCLUDE_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/ngraph/include)
+      list(APPEND OPENVINO_LIB_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/ngraph/lib)
+      if (WIN32)
+        list(APPEND OPENVINO_LIB_LIST ngraph.lib)
+      else()
+        list(APPEND OPENVINO_LIB_LIST -lngraph)
+      endif()
+      if (OPENVINO_VERSION VERSION_GREATER_EQUAL "2020.4")
+        if (WIN32)
+          list(APPEND OPENVINO_LIB_LIST onnx_importer.lib)
+        else()
+          list(APPEND OPENVINO_LIB_LIST -lonnx_importer)
+        endif()
+      endif()
+    else ()
+      # Link to locally built nGraph
+      list(APPEND OPENVINO_INCLUDE_DIR_LIST ${ngraph_INCLUDE_DIRS})
+    endif()
 
     if(WIN32)
-      set(OPENVINO_NGRAPH_INCLUDE_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/ngraph/include)
-      set(OPENVINO_LIB_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64/Release)
-      set(OPENVINO_NGRAPH_LIB_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/ngraph/lib)
+      list(APPEND OPENVINO_LIB_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64/Release)
     else()
-      set(OPENVINO_LIB_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64)
+      list(APPEND OPENVINO_LIB_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64)
     endif()
 
   endif()
@@ -539,17 +568,13 @@ if (onnxruntime_USE_OPENVINO)
   set_target_properties(onnxruntime_providers_openvino PROPERTIES FOLDER "ONNXRuntime")
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/openvino  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_openvino PROPERTIES LINKER_LANGUAGE CXX)
-  link_directories(onnxruntime_providers_openvino ${OPENVINO_LIB_DIR} ${OPENVINO_TBB_LIB_DIR} ${OPENVINO_MKL_TINY_LIB_DIR})
+  link_directories(onnxruntime_providers_openvino ${OPENVINO_LIB_DIR_LIST})
+  add_dependencies(onnxruntime_providers_openvino onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  target_include_directories(onnxruntime_providers_openvino SYSTEM PUBLIC ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${OPENVINO_INCLUDE_DIR_LIST} ${PYTHON_INCLUDE_DIRS})
+  target_link_libraries(onnxruntime_providers_openvino ${OPENVINO_LIB_LIST})
 
   if(MSVC)
-    add_dependencies(onnxruntime_providers_openvino onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
     target_compile_options(onnxruntime_providers_openvino PUBLIC /wd4275 /wd4100 /wd4005 /wd4244)
-    target_include_directories(onnxruntime_providers_openvino SYSTEM PUBLIC ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${OPENVINO_INCLUDE_DIR} ${OPENVINO_NGRAPH_INCLUDE_DIR} ${OPENVINO_TBB_INCLUDE_DIR} ${PYTHON_INCLUDE_DIRS})
-    target_link_libraries(onnxruntime_providers_openvino ${OPENVINO_LIB_DIR}/inference_engine.lib ${OPENVINO_NGRAPH_LIB_DIR}/ngraph.lib ${OPENVINO_LIB_DIR}/inference_engine_legacy.lib ${OPENVINO_TBB_LIB_DIR}/tbb.lib ${PYTHON_LIBRARIES})
-  else()
-    add_dependencies(onnxruntime_providers_openvino project_ngraph onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
-    target_include_directories(onnxruntime_providers_openvino SYSTEM PUBLIC ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${OPENVINO_INCLUDE_DIR} ${ngraph_INCLUDE_DIRS} ${OPENVINO_TBB_INCLUDE_DIR} ${PYTHON_INCLUDE_DIRS})
-    target_link_libraries(onnxruntime_providers_openvino -linference_engine -linference_engine_legacy -ltbb ${PYTHON_LIBRARIES})
   endif()
 
 endif()

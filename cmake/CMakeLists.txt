@@ -5,6 +5,8 @@
 # Minimum CMake required
 cmake_minimum_required(VERSION 3.13)
 cmake_policy(SET CMP0069 NEW)
+set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
+
 if (${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.15")
   cmake_policy(SET CMP0092 NEW)
 endif()
@@ -106,6 +108,9 @@ option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 #It's default OFF because it's experimental now.
 option(onnxruntime_PREFER_SYSTEM_LIB "Experimental: Build with the preinstalled libraries in your system" OFF)
 
+option(onnxruntime_MINIMAL_BUILD "Exclude as much as possible from the build. Support ORT format models. No support for ONNX format models." OFF)
+option(onnxruntime_REDUCED_OPS_BUILD "Reduced set of kernels are registered in build via modification of the kernel registration source files." OFF)
+
 # training options
 option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
 option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
@@ -178,7 +183,7 @@ if(onnxruntime_USE_OPENMP)
     include_directories(${OpenMP_CXX_INCLUDE_DIR})
     # MKLML and NGraph depend on their own OpenMP library that may be different with the compiler's.
     # Disable the options to build mklml/NGraph and OpenMP together.
-    if(onnxruntime_USE_MKLML)
+    if((WIN32 OR APPLE) AND onnxruntime_USE_MKLML)
       message(FATAL_ERROR "Please use only one of onnxruntime_USE_MKLML, onnxruntime_USE_OPENMP")
     endif()
     if(onnxruntime_USE_NGRAPH)
@@ -199,6 +204,23 @@ if(onnxruntime_ENABLE_LTO)
     else()
       set (CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
     endif()
+endif()
+
+# ORT build with as much excluded as possible. Supports ORT flatbuffers models only.
+# Will expose option in build.py when all pieces are available
+if(onnxruntime_MINIMAL_BUILD)
+  add_compile_definitions(ORT_MINIMAL_BUILD)
+  set(onnxruntime_REDUCED_OPS_BUILD ON)  # TODO Defaulting to ON. TBD if we should always do that.
+  set(onnxruntime_DISABLE_RTTI ON)
+
+  if (MSVC)
+    # add MSVC specific flags to reduce build size here
+  else()
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ffunction-sections -fdata-sections")
+    # TODO: May need to use -dead_strip instead of --gc-sections for iOS(XCode)
+    add_link_options(-Wl,--gc-sections)
+  endif()
+
 endif()
 
 if(onnxruntime_DISABLE_RTTI)
@@ -337,7 +359,7 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "iOSCross")
     endif()
 endif()
 
-#Dependencies
+#Dependencies begin
 if (onnxruntime_BUILD_UNIT_TESTS)
   if(onnxruntime_PREFER_SYSTEM_LIB)
     find_package(GTest CONFIG)
@@ -630,14 +652,53 @@ if (APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Android")
   string(APPEND CMAKE_CXX_FLAGS " -Wno-deprecated")
   string(APPEND CMAKE_C_FLAGS " -Wno-deprecated")
 endif()
-# ONNX
-add_subdirectory(onnx)
 
-#set_target_properties(gen_onnx_proto PROPERTIES FOLDER "External/ONNX")
+# ONNX
+if(NOT onnxruntime_USE_FULL_PROTOBUF)
+  set(ONNX_USE_LITE_PROTO ON CACHE BOOL "" FORCE)
+else()
+  set(ONNX_USE_LITE_PROTO OFF CACHE BOOL "" FORCE)
+endif()
+add_subdirectory(external/onnx)
+target_compile_definitions(onnx PUBLIC $<TARGET_PROPERTY:onnx_proto,INTERFACE_COMPILE_DEFINITIONS> PRIVATE "__ONNX_DISABLE_STATIC_REGISTRATION")
+if (NOT onnxruntime_USE_FULL_PROTOBUF)
+  target_compile_definitions(onnx PUBLIC "__ONNX_NO_DOC_STRINGS")	
+endif()
+set_target_properties(onnx PROPERTIES FOLDER "External/ONNX")	
+set_target_properties(onnx_proto PROPERTIES FOLDER "External/ONNX")
+
+if (onnxruntime_USE_MKLML)
+  add_definitions(-DUSE_MKLML=1 -DUSE_MKLML_FOR_BLAS=1)
+  if (WIN32 OR APPLE)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml)
+  else()
+    if(onnxruntime_USE_OPENMP)
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml_gnu)
+    else()
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml_intel)
+    endif()
+  endif()
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_mklml)
+  include_directories(${MKLML_INCLUDE_DIR})
+  link_directories(${MKLML_LIB_DIR})
+endif()
+
+if (onnxruntime_USE_NGRAPH)
+  if (NOT onnxruntime_USE_FULL_PROTOBUF)
+    message(FATAL_ERROR "Please set onnxruntime_USE_FULL_PROTOBUF=ON for nGraph execution provider.")
+  endif()
+  add_definitions(-DUSE_NGRAPH=1)
+  include(ngraph)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ngraph)
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_ngraph)
+endif()
+
 # fix a warning in onnx code we can't do anything about
 if (MSVC)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DEIGEN_HAS_C99_MATH") # required to be set explicitly to enable Eigen-Unsupported SpecialFunctions
+   string(APPEND CMAKE_CXX_FLAGS " -DEIGEN_HAS_C99_MATH") # required to be set explicitly to enable Eigen-Unsupported SpecialFunctions
 endif()
+
+#Dependencies end. In the next we'll enable "treat warning as error"
 
 if (onnxruntime_RUN_ONNX_TESTS)
   add_definitions(-DORT_RUN_EXTERNAL_ONNX_TESTS)
@@ -754,48 +815,31 @@ include_directories(
   ${REPO_ROOT}/include/onnxruntime/core/session
 )
 
-if (onnxruntime_USE_MKLML)
-  add_definitions(-DUSE_MKLML=1 -DUSE_MKLML_FOR_BLAS=1)
-  if (WIN32 OR APPLE)
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml)
-  else()
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml_intel)
-  endif()
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_mklml)
-  include_directories(${MKLML_INCLUDE_DIR})
-  link_directories(${MKLML_LIB_DIR})
-endif()
-
-if (onnxruntime_USE_DNNL)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES dnnl)
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_dnnl)
-  link_directories(${DNNL_LIB_DIR})
-endif()
-
-if (onnxruntime_USE_NGRAPH)
-  #if (onnxruntime_USE_OPENMP)
-  #  message(FATAL_ERROR "Please set onnxruntime_USE_OPENMP=OFF for nGraph execution provider.")
-  #endif()
-  if (NOT onnxruntime_USE_FULL_PROTOBUF)
-    message(FATAL_ERROR "Please set onnxruntime_USE_FULL_PROTOBUF=ON for nGraph execution provider.")
-  endif()
-  add_definitions(-DUSE_NGRAPH=1)
-  include(ngraph)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ngraph)
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_ngraph)
-endif()
 
 if(onnxruntime_USE_OPENVINO)
 
-  if (NOT onnxruntime_USE_FULL_PROTOBUF)
-    message(FATAL_ERROR "Please set onnxruntime_USE_FULL_PROTOBUF=ON for OpenVINO execution provider.")
+  add_definitions(-DUSE_OPENVINO=1)
+
+  # Check OpenVINO version for support
+  if ($ENV{INTEL_OPENVINO_DIR} MATCHES "2020.2")
+    set(OPENVINO_VERSION "2020.2")
+    add_definitions(-DOPENVINO_2020_2=1)
+  elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "2020.3")
+    set(OPENVINO_VERSION "2020.3")
+    add_definitions(-DOPENVINO_2020_3=1)
+  elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "2020.4")
+    set(OPENVINO_VERSION "2020.4")
+    add_definitions(-DOPENVINO_2020_4=1)
+  else()
+    message(FATAL_ERROR "Unsupported OpenVINO version: ${INTEL_OPENVINO_DIR}")
   endif()
 
-  add_definitions(-DUSE_OPENVINO=1)
   if (NOT WIN32)
-    include(openvino)
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES ovep_ngraph)
-    list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_ngraph)
+    if(OPENVINO_VERSION STREQUAL "2020.2")
+      include(openvino)
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES ovep_ngraph)
+      list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_ngraph)
+    endif()
   endif()
 
   if(onnxruntime_USE_OPENVINO_MYRIAD)
@@ -894,7 +938,7 @@ if (onnxruntime_USE_CUDA)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${ONNXRUNTIME_CUDA_LIBRARIES})
 
   if(CMAKE_LIBRARY_ARCHITECTURE STREQUAL "aarch64-linux-gnu")
-    string (APPEND CMAKE_CUDA_FLAGS "-gencode=arch=compute_53,code=sm_53 -gencode=arch=compute_62,code=sm_62") #nano, TX1, TX2
+    string (APPEND CMAKE_CUDA_FLAGS "-gencode=arch=compute_53,code=sm_53 -gencode=arch=compute_62,code=sm_62 ") #nano, TX1, TX2
     string (APPEND CMAKE_CUDA_FLAGS "-gencode=arch=compute_72,code=sm_72") # Jetson N
   else()
     # the following compute capabilities are deprecated in CUDA 11 Toolkit
@@ -941,7 +985,7 @@ if (onnxruntime_USE_TVM)
     # wd4456: declaration of X hides previous local declaration
     set(DISABLED_WARNINGS_FOR_TVM "/wd4100" "/wd4244" "/wd4251" "/wd4267" "/wd4275" "/wd4389" "/wd4456")
   else()
-    set(DISABLED_WARNINGS_FOR_TVM "-Wno-error=ignored-qualifiers")
+    set(DISABLED_WARNINGS_FOR_TVM "-Wno-error=ignored-qualifiers" "-Wno-unused-parameter" "-Wno-ignored-qualifiers")
     if(HAS_UNUSED_PARAMETER)
       list(APPEND DISABLED_WARNINGS_FOR_TVM "-Wno-error=unused-parameter")
     endif()
@@ -1166,14 +1210,8 @@ endif()
 # built; hence the ordering
 if (onnxruntime_BUILD_UNIT_TESTS)
   if (onnxruntime_ENABLE_PYTHON)
-    if(UNIX)
-      set(CMAKE_SKIP_BUILD_RPATH ON)
-    endif()
     include(onnxruntime_python.cmake)
   endif()
-  # we need to make sure this is turned off since it
-  # turned ON by the previous step when building a shared lib
-  set(CMAKE_SKIP_BUILD_RPATH OFF)
   include(onnxruntime_unittests.cmake)
 endif()
 

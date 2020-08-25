@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+#
+# Register pytorch symbolic for export using ONNX Runtime contrib ops
+
 from torch.onnx import register_custom_op_symbolic
 
 
@@ -17,6 +22,14 @@ def register_custom_op():
     def gelu(g, self):
         return g.op("com.microsoft::Gelu", self)
 
+    def triu(g, self, diagonal):
+        return g.op("com.microsoft::Trilu", self, diagonal, upper_i=1)
+
+    def tril(g, self, diagonal):
+        return g.op("com.microsoft::Trilu", self, diagonal, upper_i=0)
+
     # Op Registration
     register_custom_op_symbolic('::inverse', inverse, _onnx_opset_version)
     register_custom_op_symbolic('::gelu', gelu, _onnx_opset_version)
+    register_custom_op_symbolic('::triu', triu, _onnx_opset_version)
+    register_custom_op_symbolic('::tril', tril, _onnx_opset_version)
