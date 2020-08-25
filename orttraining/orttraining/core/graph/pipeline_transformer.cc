@@ -871,26 +871,7 @@ Status TransformGraphForPipeline(
     graph.Resolve();
   }
 
-  for (auto new_input_name: new_input_names) {
-    std::cout << "[pipeline_transformer.cc] new input: " << new_input_name << std::endl;
-  }
-   for (auto new_output_name: new_output_names) {
-    std::cout << "[pipeline_transformer.cc] new output: " << new_output_name << std::endl;
-  }
   ORT_RETURN_IF_ERROR(SetInputsOutputsAndResolve(graph, weights_to_train, new_input_names, new_output_names));
-
-  GraphViewer graph_viewer(graph);
-  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-  for (auto idx : node_topology_list) {
-    auto node = graph.GetNode(idx);
-    std::cout << "[Pipeline list] " << node->OpType() << ", " << node->Name() << ", " << std::endl;
-    for (auto& node_arg: node->InputDefs()) {
-      std::cout << "[Pipeline list]   input " << node_arg->Name() << std::endl;
-    }
-    for (auto& node_arg: node->OutputDefs()) {
-      std::cout << "[Pipeline list]   output " << node_arg->Name() << std::endl;
-    }
-  }
   return Status::OK();
 }
 

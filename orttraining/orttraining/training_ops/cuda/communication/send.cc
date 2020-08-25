@@ -9,6 +9,7 @@
 #include "core/profile/context.h"
 #include "core/providers/cuda/cuda_common.h"
 #include <limits>
+#include <string>
 #include <mpi.h>
 
 #include "orttraining/core/framework/mpi_setup.h"
@@ -86,8 +87,12 @@ void Send::SendData(
     std::vector<size_t> tensor_offsets_in_bytes,
     std::vector<size_t> tensor_sizes_in_bytes) const {
 #ifdef ENABLE_NVTX_PROFILE
+  auto& profile_context = profile::Context::GetInstance();
+  const auto tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
+
   profile::NvtxRangeCreator memcpyRange(
-      "SendMemcpy-" + std::to_string(dst), profile::Color::Red);
+      "Batch-" + tag +
+      " SendMemcpy-" + std::to_string(dst), profile::Color::Red);
   // Begin of major communication tasks.
   // The previous MPI_Send's are not included because we don't want to
   // count waiting time before setting up the actual communication.
@@ -109,7 +114,8 @@ void Send::SendData(
 
 #ifdef ENABLE_NVTX_PROFILE
   profile::NvtxRangeCreator sendRange(
-      "Send-" + std::to_string(dst), profile::Color::Red);
+      "Batch-" + tag +
+      " Send-" + std::to_string(dst), profile::Color::Red);
   // Begin of major communication tasks.
   // The previous MPI_Send's are not included because we don't want to
   // count waiting time before setting up the actual communication.
@@ -148,17 +154,16 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
   ORT_ENFORCE(world_rank != dst, "Sending data to rank ", dst, " on the rank ", world_rank, ".");
 
 #ifdef ENABLE_NVTX_PROFILE
+  auto& profile_context = profile::Context::GetInstance();
+  const auto tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
+
   profile::NvtxRangeCreator preRange(
-      "PreSend-" + std::to_string(dst), profile::Color::Red);
+      "Batch-" + tag +
+      " PreSend-" + std::to_string(dst), profile::Color::Red);
   // Begin of preparation for sending data. This time range includes
   // the time for sending a scalar.
   preRange.Begin();
 #endif
-
-  auto& profile_context = profile::Context::GetInstance();
-  const auto tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
-
-  std::cout << "[pipeline] batch " << tag << ", " << Node().Name() << ", send to " << dst << std::endl;
 
   const int num_tensors = static_cast<int>(element_types_.size());
   std::vector<size_t> tensor_sizes_in_bytes;
@@ -213,7 +218,8 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
 
 #ifdef ENABLE_NVTX_PROFILE
   profile::NvtxRangeCreator postRange(
-      "PostSend-" + std::to_string(dst), profile::Color::Red);
+      "Batch-" + tag +
+      " PostSend-" + std::to_string(dst), profile::Color::Red);
   // Begin of post communication tasks.
   postRange.Begin();
 #endif

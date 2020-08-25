@@ -71,7 +71,6 @@ TrainingRunner::TrainingRunner(Parameters params, const Environment& env, Sessio
                 "DeepSpeed ZeRO partitioning is only supported with NCCL distributed training.");
   ORT_ENFORCE(params.num_train_steps % params.gradient_accumulation_steps == 0,
               "Number of training steps must be a multiple of number of gradient accumulation step.");
-  std::cout << pipeline_schedule_ << std::endl;
 }
 
 Status TrainingRunner::Initialize() {
@@ -626,7 +625,6 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
 #else
       ORT_UNUSED_PARAMETER(step);
 #endif
-      std::cout << "[pipeline] Start batch " << step << std::endl;
       RunOptions run_options;
       auto status = session_.Run(
           run_options,
@@ -634,7 +632,6 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
           pipeline_worker_pool_.worker_states[worker_id].feeds,
           pipeline_worker_pool_.worker_states[worker_id].fetch_names,
           &(pipeline_worker_pool_.worker_states[worker_id].fetches));
-      std::cout << "[pipeline] End batch " << step << ", " << status << std::endl;
 
       ORT_THROW_IF_ERROR(status);
     } catch (std::exception&) {
@@ -731,7 +728,6 @@ void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
       RunOptions run_options;
       run_options.only_execute_path_to_fetches = true;
       run_options.training_mode = true;
-      std::cout << "[pipeline] Start batch " << step << std::endl;
       auto status = session_.Run(
           run_options,
           pipeline_worker_pool_.worker_states[worker_id].feed_names,
@@ -739,7 +735,6 @@ void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
           pipeline_worker_pool_.worker_states[worker_id].fetch_names,
           &(pipeline_worker_pool_.worker_states[worker_id].fetches));
       ORT_THROW_IF_ERROR(status);
-      std::cout << "[pipeline] End batch " << step << std::endl;
     } catch (std::exception&) {
       pipeline_worker_pool_.worker_states[worker_id].execution_exception = std::current_exception();
     }

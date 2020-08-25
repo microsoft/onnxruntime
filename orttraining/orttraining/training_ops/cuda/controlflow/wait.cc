@@ -34,12 +34,11 @@ Status WaitEvent::ComputeInternal(OpKernelContext* ctx) const {
   auto& profile_context = profile::Context::GetInstance();
   const auto tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
   profile::NvtxRangeCreator range(
-    "Wait-" + std::to_string(event_id), profile::Color::Blue);
+    "Batch-" + tag + " Wait-" + std::to_string(event_id), profile::Color::Blue);
   range.Begin();
 #endif
 
   // Reuse CPU helper to wait event because event tensor is a CPU tensor.
-  std::cout << "[pipeline] batch " << tag << ", " << Node().Name() << ", wait " << event_id << std::endl;
   onnxruntime::contrib::wait_event_in_tensor(*ctx->Input<Tensor>(0));
 
   for (int i_out = 0; i_out < ctx->OutputCount(); ++i_out) {
