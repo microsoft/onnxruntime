@@ -727,6 +727,26 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   std::unique_ptr<ITensorAllocator> tensor_allocator_(
       ITensorAllocator::Create(enable_mem_pattern_, *p_seq_exec_plan_, *this, weights_buffers_));
 
+#ifdef ENABLE_TRAINING
+  bool is_verbose_mode = logger_.GetSeverity() == logging::Severity::kVERBOSE;
+  if (is_verbose_mode && GetEnableMemoryPattern()) {
+    // calculate activation memory usage
+    MemoryPatternGroup activation_memory_pattern_output;
+    std::unordered_map<std::string, int64_t> symbolic_map;
+    std::unordered_map<int, TensorShape> resolved_shapes;
+    auto ret = GenerateActivationMemoryPatterns(&activation_memory_pattern_output, symbolic_map, resolved_shapes);
+    if (ret.IsOK()) {
+      for (size_t i = 0; i < activation_memory_pattern_output.locations.size(); i++) {
+        LOGS(logger_, INFO) << activation_memory_pattern_output.locations[i].ToString()
+                            << "Activation Peak: Allocated memory for activations, size: "
+                            << activation_memory_pattern_output.patterns[i].PeakSize();
+      }
+    } else {
+      LOGS(logger_, INFO) << "Fail to get activation peak memory.";
+    }
+  }
+#endif
+
   // move initializers from TensorProto instances in Graph to OrtValue instances in SessionState
   ORT_RETURN_IF_ERROR(
       session_state_utils::SaveInitializedTensors(
