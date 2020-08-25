@@ -1,13 +1,13 @@
+import copy
+from functools import partial
 import inspect
+import math
+from numpy.testing import assert_allclose
 import onnx
 import os
-import math
 import pytest
-import copy
 import torch
 import torch.nn.functional as F
-
-from numpy.testing import assert_allclose
 
 import onnxruntime
 from onnxruntime.capi.ort_trainer import IODescription as Legacy_IODescription,\
@@ -18,7 +18,7 @@ from onnxruntime.experimental import _utils, amp, checkpoint, optim, orttrainer,
                                       model_desc_validation as md_val,\
                                       orttrainer_options as orttrainer_options
 
-import _test_helpers
+import _test_commons, _test_helpers
 
 
 ###############################################################################
@@ -43,7 +43,7 @@ def generate_random_input_from_model_desc(desc, seed=1, device = "cuda:0"):
                 size.append(s)
             else:
                 size.append(dims[s] if s in dims else 1)
-        sample_input.append(torch.randint(0, num_classes[index], tuple(size), dtype=torch.int64).to(device))
+        sample_input.append(torch.randint(0, num_classes[index], tuple(size), dtype=dtype).to(device))
     return sample_input
 
 # EXPERIMENTAL HELPER FUNCTIONS
@@ -70,6 +70,22 @@ def bert_model_description(dynamic_shape=True):
     return model_desc
 
 
+def optimizer_parameters_mutiple_groups(model):
+    '''A method to assign different hyper parameters for different model parameter groups'''
+
+    no_decay_keys = ["bias", "gamma", "beta", "LayerNorm"]
+    no_decay_param_group = []
+    decay_param_group = []
+    for initializer in model.graph.initializer:
+        if any(key in initializer.name for key in no_decay_keys):
+            no_decay_param_group.append(initializer.name)
+        else:
+            decay_param_group.append(initializer.name)
+    params = [{'params': no_decay_param_group, "alpha": 0.9, "beta": 0.999, "lambda_coef": 0.0, "epsilon": 1e-6},
+              {'params': decay_param_group, "alpha": 0.9, "beta": 0.999, "lambda_coef": 0.01, "epsilon": 1e-6}]
+    return params
+
+
 def optimizer_parameters(model):
     '''A method to assign different hyper parameters for different model parameter groups'''
 
@@ -78,12 +94,13 @@ def optimizer_parameters(model):
     for initializer in model.graph.initializer:
         if any(key in initializer.name for key in no_decay_keys):
             no_decay_param_group.append(initializer.name)
-    params = [{'params': no_decay_param_group, "alpha": 0.9, "beta": 0.999, "lambda_coef": 0.0, "epsilon": 1e-6}]
+    params = [{'params': no_decay_param_group, "alpha": 0.9, "beta": 0.999, "lambda_coef": 0.0, "epsilon": 1e-6, "do_bias_correction":False}]
+
     return params
 
 
 def load_bert_onnx_model():
-    bert_onnx_model_path = os.path.join('..', '..', '..', 'onnxruntime', 'test', 'testdata', "bert_toy_postprocessed.onnx")
+    bert_onnx_model_path = os.path.join('testdata', "bert_toy_postprocessed.onnx")
     model = onnx.load(bert_onnx_model_path)
     return model
 
@@ -121,14 +138,6 @@ def legacy_model_params(lr, device = torch.device("cuda", 0)):
     learning_rate = torch.tensor([lr]).to(device)
     return (legacy_model_desc, learning_rate_description, learning_rate)
 
-    no_decay_keys = ["bias", "gamma", "beta", "LayerNorm"]
-    no_decay = any(no_decay_key in name for no_decay_key in no_decay_keys)
-    if no_decay:
-        return {"alpha": 0.9, "beta": 0.999, "lambda": 0.0, "epsilon": 1e-6}
-    else:
-        return {"alpha": 0.9, "beta": 0.999, "lambda": 0.01, "epsilon": 1e-6}
-
-
 def legacy_ort_trainer_learning_rate_description():
     return Legacy_IODescription('Learning_Rate', [1, ], torch.float32)
 
@@ -146,91 +155,22 @@ def legacy_bert_model_description():
                              next_sentence_labels_desc], [loss_desc])
 
 
-def legacy_constant_lr_scheduler_1(global_step):
-    return legacy_constant_lr_scheduler(global_step, 1.0)
-
-
-def legacy_constant_lr_scheduler_5(global_step):
-    return legacy_constant_lr_scheduler(global_step, 0.5)
-
-
-def legacy_constant_lr_scheduler(global_step, initial_lr):
-    warmup = 0.5
-    total_steps = 10
-    lr = initial_lr
-    for i in range(global_step+1):
-        x = (i+1) / (total_steps+1)
-        if x < warmup:
-            warmup_val = x/warmup
-        else:
-            warmup_val =1
-        lr *= warmup_val
-    return lr
-
-
-def legacy_cosine_lr_scheduler(global_step):
-    initial_lr = 1.0
-    warmup = 0.5
-    total_steps = 10
-    lr = initial_lr
-    for i in range(global_step+1):
-        x = (i+1) / (total_steps+1)
-        if x < warmup:
-            warmup_val = x/warmup
-        else:
-            warmup_val = 0.5 * (1.0 + math.cos(math.pi * x))
-        lr *= warmup_val
-    return lr
-
-
-def legacy_linear_lr_scheduler(global_step):
-    initial_lr = 1.0
-    warmup = 0.5
-    total_steps = 10
-    lr = initial_lr
-    for i in range(global_step+1):
-        x = (i+1) / (total_steps+1)
-        if x < warmup:
-            warmup_val = x/warmup
-        else:
-            warmup_val = max((x - 1.0) / (warmup - 1.0), 0.0)
-        lr *= warmup_val
-    return lr
-
-
-def legacy_poly_lr_scheduler(global_step):
-    initial_lr = 1.0
-    warmup = 0.5
-    total_steps = 10
-    degree = 0.5
-    lr = initial_lr
-    for i in range(global_step+1):
-        x = (i+1) / (total_steps+1)
-        if x < warmup:
-            warmup_val = x/warmup
-        else:
-            warmup_val = (1.0 - x) ** degree
-        lr *= warmup_val
-    return lr
-
-
 def legacy_optim_params_a(name):
-    return {"alpha": 0.9, "beta": 0.999, "lambda": 0.01, "epsilon": 1e-6}
+    return {"alpha": 0.9, "beta": 0.999, "lambda": 0.01, "epsilon": 1e-6, "do_bias_correction": False}
 
 
 def legacy_optim_params_b(name):
     params = ['bert.embeddings.LayerNorm.bias', 'bert.embeddings.LayerNorm.weight']
     if name in params:
-        return {"alpha": 0.9, "beta": 0.999, "lambda": 0.0, "epsilon": 1e-6}
-    return {"alpha": 0.9, "beta": 0.999, "lambda": 0.01, "epsilon": 1e-6}
+        return {"alpha": 0.9, "beta": 0.999, "lambda": 0.0, "epsilon": 1e-6, "do_bias_correction": False}
+    return {"alpha": 0.9, "beta": 0.999, "lambda": 0.01, "epsilon": 1e-6, "do_bias_correction": False}
 
 
 def legacy_optim_params_c(name):
     params_group = optimizer_parameters(load_bert_onnx_model())
     if name in params_group[0]['params']:
-        return {"alpha": 0.9, "beta": 0.999, "lambda": 0.0, "epsilon": 1e-6}
-    return {"alpha": 0.9, "beta": 0.999, "lambda": 0.01, "epsilon": 1e-6}
-
+        return {"alpha": 0.9, "beta": 0.999, "lambda": 0.0, "epsilon": 1e-6, "do_bias_correction": False}
+    return {"alpha": 0.9, "beta": 0.999, "lambda": 0.01, "epsilon": 1e-6, "do_bias_correction": False}
 
 ###############################################################################
 # Testing starts here #########################################################
@@ -289,43 +229,60 @@ def testToyBERTDeterministicCheck(expected_losses):
         experimental_losses.append(trainer.train_step(*sample_input).cpu().item())
 
     # Check output
-    _test_helpers.assert_model_outputs(experimental_losses, expected_losses)
+    _test_helpers.assert_model_outputs(experimental_losses, expected_losses, rtol=1e-6)
 
 
 @pytest.mark.parametrize("initial_lr, lr_scheduler, expected_learning_rates, expected_losses", [
-    (1.0, optim.lr_scheduler.ConstantWarmupLRScheduler, [0.18181818181818182, 0.06611570247933884, 0.03606311044327573, 0.026227716686018716, 0.02384337880547156,\
-            0.02384337880547156, 0.02384337880547156, 0.02384337880547156, 0.02384337880547156, 0.02384337880547156],
-            [10.988012313842773, 11.637386322021484, 11.099013328552246, 11.055734634399414, 11.145816802978516,\
-            10.974218368530273, 10.971613883972168, 11.203381538391113, 11.131250381469727, 11.017223358154297]),
-    (0.5, optim.lr_scheduler.ConstantWarmupLRScheduler, [0.09090909090909091, 0.03305785123966942, 0.018031555221637866, 0.013113858343009358, 0.01192168940273578,\
-            0.01192168940273578, 0.01192168940273578, 0.01192168940273578, 0.01192168940273578, 0.01192168940273578],
-            [10.988012313842773, 11.310077667236328, 11.025278091430664, 10.988797187805176, 11.125761032104492,\
-            10.958372116088867, 10.980047225952148, 11.175304412841797, 11.147686958312988, 11.10694694519043]),
-    (1.0, optim.lr_scheduler.CosineWarmupLRScheduler, [0.18181818181818182, 0.06611570247933884, 0.03606311044327573, 0.026227716686018716, 0.02384337880547156,\
-            0.010225056103441101, 0.0029887071446425494, 0.0005157600951772063, 4.093754650801759e-05, 8.291291382790071e-07],
-            [10.988012313842773, 11.637386322021484, 11.099013328552246, 11.05573558807373, 11.145816802978516,\
-            10.974218368530273, 10.964020729064941, 11.190014839172363, 11.16644287109375, 11.150431632995605]),
-    (1.0, optim.lr_scheduler.LinearWarmupLRScheduler, [0.18181818181818182, 0.06611570247933884, 0.03606311044327573, 0.026227716686018716, 0.02384337880547156,\
-            0.021675798914065056, 0.015764217392047315, 0.008598664032025808, 0.0031267869207366565, 0.0005685067128612105],
-            [10.988012313842773, 11.637386322021484, 11.099013328552246, 11.05573558807373, 11.145816802978516,\
-            10.974218368530273, 10.970070838928223, 11.198983192443848, 11.134098052978516, 11.067017555236816]),
-    (1.0, optim.lr_scheduler.PolyWarmupLRScheduler, [0.18181818181818182, 0.06611570247933884, 0.03606311044327573, 0.026227716686018716, 0.02384337880547156,\
-            0.01607520271130791, 0.009693711967693117, 0.005062375970537139, 0.0021586043667598935, 0.0006508437050332076],
-            [10.988012313842773, 11.637386322021484, 11.099013328552246, 11.055734634399414, 11.145816802978516,\
-            10.974217414855957, 10.96664810180664, 11.193868637084961, 11.14560604095459, 11.097070693969727])
+    (1.0, optim.lr_scheduler.ConstantWarmupLRScheduler,\
+        [0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+        [10.988012313842773, 10.99213981628418, 120.79301452636719, 36.11647033691406, 95.83200073242188,\
+         221.2766571044922, 208.40316772460938, 279.5332946777344, 402.46380615234375, 325.79254150390625]),
+    (0.5, optim.lr_scheduler.ConstantWarmupLRScheduler,\
+        [0.0, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5],
+        [10.988012313842773, 10.99213981628418, 52.69743347167969, 19.741533279418945, 83.88340759277344,\
+         126.39848327636719, 91.53898620605469, 63.62016296386719, 102.21206665039062, 180.1424560546875]),
+    (1.0, optim.lr_scheduler.CosineWarmupLRScheduler,\
+        [0.0, 0.9931806517013612, 0.9397368756032445, 0.8386407858128706, 0.7008477123264848, 0.5412896727361662,\
+         0.37725725642960045, 0.22652592093878665, 0.10542974530180327, 0.02709137914968268],
+        [10.988012313842773, 10.99213981628418, 120.6441650390625, 32.152557373046875, 89.63705444335938,\
+         138.8782196044922, 117.57748413085938, 148.01927185058594, 229.60403442382812, 110.2930908203125]),
+    (1.0, optim.lr_scheduler.LinearWarmupLRScheduler,\
+        [0.0, 0.9473684210526315, 0.8421052631578947, 0.7368421052631579, 0.631578947368421, 0.5263157894736842,\
+         0.42105263157894735, 0.3157894736842105, 0.21052631578947367, 0.10526315789473684],
+        [10.988012313842773, 10.99213981628418, 112.89633178710938, 31.114538192749023, 80.94029235839844,\
+         131.34490966796875, 111.4329605102539, 133.74252319335938, 219.37344360351562, 109.67041015625]),
+    (1.0, optim.lr_scheduler.PolyWarmupLRScheduler,\
+        [0.0, 0.9473684263157895, 0.8421052789473684, 0.7368421315789474, 0.6315789842105263, 0.5263158368421054,
+         0.42105268947368424, 0.31578954210526317, 0.21052639473684212, 0.10526324736842106],
+        [10.988012313842773, 10.99213981628418, 112.89633178710938, 31.114538192749023, 80.9402847290039,\
+         131.3447265625, 111.43253326416016, 133.7415008544922, 219.37147521972656, 109.66986083984375])
 ])
 def testToyBERTModelLRScheduler(initial_lr, lr_scheduler, expected_learning_rates, expected_losses):
     # Common setup
     device = 'cuda'
     total_steps = 10
     seed = 1
+    warmup = 0.05
+    cycles = 0.5
+    power = 1.
+    lr_end = 1e-7
     torch.manual_seed(seed)
     onnxruntime.set_seed(seed)
+
+    # Setup LR Schedulers
+    if lr_scheduler == optim.lr_scheduler.ConstantWarmupLRScheduler or lr_scheduler == optim.lr_scheduler.LinearWarmupLRScheduler:
+        lr_scheduler = lr_scheduler(total_steps=total_steps, warmup=warmup)
+    elif lr_scheduler == optim.lr_scheduler.CosineWarmupLRScheduler:
+        lr_scheduler = lr_scheduler(total_steps=total_steps, warmup=warmup, cycles=cycles)
+    elif lr_scheduler == optim.lr_scheduler.PolyWarmupLRScheduler:
+        lr_scheduler = lr_scheduler(total_steps=total_steps, warmup=warmup, power=power, lr_end=lr_end)
+    else:
+        raise RuntimeError("Invalid lr_scheduler")
 
     # Modeling
     model_desc = bert_model_description()
     model = load_bert_onnx_model()
-    optim_config = optim.LambConfig(lr=initial_lr)
+    optim_config = optim.AdamConfig(lr=initial_lr)
     opts =  orttrainer.ORTTrainerOptions({
         'debug' : {
             'deterministic_compute': True
@@ -333,7 +290,7 @@ def testToyBERTModelLRScheduler(initial_lr, lr_scheduler, expected_learning_rate
         'device': {
             'id': device,
         },
-        'lr_scheduler' : lr_scheduler(total_steps=total_steps, warmup=0.5)
+        'lr_scheduler' : lr_scheduler
     })
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
 
@@ -346,17 +303,17 @@ def testToyBERTModelLRScheduler(initial_lr, lr_scheduler, expected_learning_rate
         learning_rates.append(trainer.options.lr_scheduler.get_last_lr()[0])
 
     # Check output
-    _test_helpers.assert_model_outputs(learning_rates, expected_learning_rates)
+    _test_helpers.assert_model_outputs(learning_rates, expected_learning_rates, rtol=1e-6)
     _test_helpers.assert_model_outputs(losses, expected_losses, rtol=1e-6)
 
 
 # Dynamic Loss Scaler implemented implicitly
 @pytest.mark.parametrize("loss_scaler, expected_losses", [
-    (None, [10.98803424835205, 10.99240493774414, 11.090575218200684, 11.042827606201172, 10.988829612731934,
-        11.105679512023926, 10.981969833374023, 11.08173656463623, 10.997121810913086, 11.10731315612793]),
-    (amp.DynamicLossScaler(), [10.98803424835205, 10.99240493774414, 11.090575218200684, 11.042827606201172,
-        10.988829612731934, 11.105679512023926, 10.981969833374023, 11.081737518310547, 10.99714183807373, 11.107304573059082]),
-    (CustomLossScaler(), [10.98803424835205, 10.99240493774414, 11.090554237365723, 11.042823791503906, 10.98877239227295,
+    (None, [10.98803424835205, 10.99240493774414, 11.090575218200684, 11.042827606201172, 10.988829612731934,\
+        11.105679512023926, 10.981968879699707, 11.081787109375, 10.997162818908691, 11.107288360595703]),
+    (amp.DynamicLossScaler(), [10.98803424835205, 10.99240493774414, 11.090575218200684, 11.042827606201172,\
+        10.988829612731934, 11.105679512023926, 10.981969833374023, 11.081744194030762, 10.997139930725098, 11.107272148132324]),
+    (CustomLossScaler(), [10.98803424835205, 10.99240493774414, 11.090554237365723, 11.042823791503906, 10.98877239227295,\
         11.105667114257812, 10.981982231140137, 11.081765174865723, 10.997125625610352, 11.107298851013184])
 ])
 def testToyBERTModelMixedPrecisionLossScaler(loss_scaler, expected_losses):
@@ -593,6 +550,100 @@ def testToyBertCheckpointFrozenWeights():
     loaded_state_dict = checkpoint.experimental_state_dict(trainer2)
     assert state_dict.keys() == loaded_state_dict.keys()
 
+@pytest.mark.parametrize("model_params", [
+    (['bert.embeddings.LayerNorm.bias']),
+    (['bert.embeddings.LayerNorm.bias',
+      'bert.embeddings.LayerNorm.weight',
+      'bert.encoder.layer.0.attention.output.LayerNorm.bias']),
+])
+def testORTTrainerFrozenWeights(model_params):
+    device = 'cuda'
+    total_steps = 10
+    seed = 1
+
+    # EXPERIMENTAL API
+    model_desc = bert_model_description()
+    model = load_bert_onnx_model()
+
+    optim_config = optim.LambConfig()
+    # Setup ORTTrainer WITHOUT frozen weights
+    opts_dict = {
+        'debug' : {
+            'deterministic_compute': True
+        },
+        'device': {
+            'id': device,
+        },
+    }
+    opts =  orttrainer.ORTTrainerOptions(opts_dict)
+
+    torch.manual_seed(seed)
+    onnxruntime.set_seed(seed)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
+
+    for i in range(total_steps):
+        sample_input = generate_random_input_from_model_desc(model_desc, i)
+        trainer.train_step(*sample_input)
+
+    # All model_params must be in the session state
+    assert trainer._onnx_model is not None
+    session_state = trainer._training_session.get_state()
+    assert all([param in session_state for param in model_params])
+
+    # Setup ORTTrainer WITH frozen weights
+    opts_dict.update({'utils' : {'frozen_weights' : model_params}})
+    opts =  orttrainer.ORTTrainerOptions(opts_dict)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
+
+    for i in range(total_steps):
+        sample_input = generate_random_input_from_model_desc(model_desc, i)
+        trainer.train_step(*sample_input)
+
+    # All model_params CANNOT be in the session state
+    assert trainer._onnx_model is not None
+    session_state = trainer._training_session.get_state()
+    assert not any([param in session_state for param in model_params])
+
+def testToyBERTSaveAsONNX():
+    device = 'cuda'
+    onnx_file_name = '_____temp_toy_bert_onnx_model.onnx'
+    if os.path.exists(onnx_file_name):
+        os.remove(onnx_file_name)
+    assert not os.path.exists(onnx_file_name)
+
+    # Load trainer
+    model_desc = bert_model_description()
+    model = load_bert_onnx_model()
+
+    optim_config = optim.LambConfig()
+    opts =  orttrainer.ORTTrainerOptions({
+        'debug' : {
+            'deterministic_compute': True
+        },
+        'device': {
+            'id': device,
+        },
+    })
+
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
+
+    trainer.save_as_onnx(onnx_file_name)
+    assert os.path.exists(onnx_file_name)
+
+    with open(onnx_file_name, "rb") as f:
+        bin_str = f.read()
+        reload_onnx_model = onnx.load_model_from_string(bin_str)
+    os.remove(onnx_file_name)
+
+    # Create a new trainer from persisted ONNX model and compare with original ONNX model
+    trainer_from_onnx = orttrainer.ORTTrainer(reload_onnx_model, model_desc, optim_config, options=opts)
+    assert trainer_from_onnx._onnx_model is not None
+    assert (id(trainer_from_onnx._onnx_model) != id(trainer._onnx_model))
+    for initializer, loaded_initializer in zip(trainer._onnx_model.graph.initializer, trainer_from_onnx._onnx_model.graph.initializer):
+        assert initializer.name == loaded_initializer.name
+    assert (onnx.helper.printable_graph(trainer_from_onnx._onnx_model.graph) == onnx.helper.printable_graph(trainer._onnx_model.graph))
+    _test_helpers.assert_onnx_weights(trainer, trainer_from_onnx)
+
 
 ###############################################################################
 # Temporary tests comparing Legacy vs Experimental ORTTrainer APIs ############
@@ -646,11 +697,11 @@ def testToyBERTModelLegacyExperimentalBasicTraining():
 
 
 @pytest.mark.parametrize("initial_lr, lr_scheduler, legacy_lr_scheduler", [
-    (1.0, optim.lr_scheduler.ConstantWarmupLRScheduler, legacy_constant_lr_scheduler_1),
-    (0.5, optim.lr_scheduler.ConstantWarmupLRScheduler, legacy_constant_lr_scheduler_5),
-    (1.0, optim.lr_scheduler.CosineWarmupLRScheduler, legacy_cosine_lr_scheduler),
-    (1.0, optim.lr_scheduler.LinearWarmupLRScheduler, legacy_linear_lr_scheduler),
-    (1.0, optim.lr_scheduler.PolyWarmupLRScheduler, legacy_poly_lr_scheduler),
+    (1.0, optim.lr_scheduler.ConstantWarmupLRScheduler, _test_commons.legacy_constant_lr_scheduler),
+    (0.5, optim.lr_scheduler.ConstantWarmupLRScheduler, _test_commons.legacy_constant_lr_scheduler),
+    (1.0, optim.lr_scheduler.CosineWarmupLRScheduler, _test_commons.legacy_cosine_lr_scheduler),
+    (1.0, optim.lr_scheduler.LinearWarmupLRScheduler, _test_commons.legacy_linear_lr_scheduler),
+    (1.0, optim.lr_scheduler.PolyWarmupLRScheduler, _test_commons.legacy_poly_lr_scheduler),
 ])
 def testToyBERTModelLegacyExperimentalLRScheduler(initial_lr, lr_scheduler, legacy_lr_scheduler):
     ############################################################################
@@ -661,13 +712,36 @@ def testToyBERTModelLegacyExperimentalLRScheduler(initial_lr, lr_scheduler, lega
     total_steps = 10
     device = 'cuda'
     seed = 1
+    warmup = 0.05
+    cycles = 0.5
+    power = 1.
+    lr_end = 1e-7
+
+    # Setup both Experimental and Legacy LR Schedulers before the experimental loop
+    if legacy_lr_scheduler == _test_commons.legacy_constant_lr_scheduler or legacy_lr_scheduler == _test_commons.legacy_linear_lr_scheduler:
+        legacy_lr_scheduler = partial(legacy_lr_scheduler, initial_lr=initial_lr, total_steps=total_steps, warmup=warmup)
+    elif legacy_lr_scheduler == _test_commons.legacy_cosine_lr_scheduler:
+        legacy_lr_scheduler = partial(legacy_lr_scheduler, initial_lr=initial_lr, total_steps=total_steps, warmup=warmup, cycles=cycles)
+    elif legacy_lr_scheduler == _test_commons.legacy_poly_lr_scheduler:
+        legacy_lr_scheduler = partial(legacy_lr_scheduler, initial_lr=initial_lr, total_steps=total_steps, warmup=warmup, power=power, lr_end=lr_end)
+    else:
+        raise RuntimeError("Invalid legacy_lr_scheduler")
+    if lr_scheduler == optim.lr_scheduler.ConstantWarmupLRScheduler or lr_scheduler == optim.lr_scheduler.LinearWarmupLRScheduler:
+        lr_scheduler = lr_scheduler(total_steps=total_steps, warmup=warmup)
+    elif lr_scheduler == optim.lr_scheduler.CosineWarmupLRScheduler:
+        lr_scheduler = lr_scheduler(total_steps=total_steps, warmup=warmup, cycles=cycles)
+    elif lr_scheduler == optim.lr_scheduler.PolyWarmupLRScheduler:
+        lr_scheduler = lr_scheduler(total_steps=total_steps, warmup=warmup, power=power, lr_end=lr_end)
+    else:
+        raise RuntimeError("Invalid lr_scheduler")
+
 
     # EXPERIMENTAL API
     model_desc = bert_model_description()
     model = load_bert_onnx_model()
     torch.manual_seed(seed)
     onnxruntime.set_seed(seed)
-    optim_config = optim.LambConfig(lr=initial_lr)
+    optim_config = optim.AdamConfig(lr=initial_lr)
     opts =  orttrainer.ORTTrainerOptions({
         'debug' : {
             'deterministic_compute': True
@@ -675,21 +749,22 @@ def testToyBERTModelLegacyExperimentalLRScheduler(initial_lr, lr_scheduler, lega
         'device': {
             'id': device,
         },
-        'lr_scheduler' : lr_scheduler(total_steps=total_steps, warmup=0.5)
+        'lr_scheduler' : lr_scheduler
     })
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
     experimental_losses = []
     for i in range(total_steps):
         sample_input = generate_random_input_from_model_desc(model_desc, i)
         experimental_losses.append(trainer.train_step(*sample_input).cpu().item())
-        assert trainer.options.lr_scheduler.get_last_lr()[0] == legacy_lr_scheduler(i)
+        assert_allclose(trainer.options.lr_scheduler.get_last_lr()[0], legacy_lr_scheduler(i))
 
     # LEGACY IMPLEMENTATION
     torch.manual_seed(seed)
     onnxruntime.set_seed(seed)
     device = torch.device(device)
+
     legacy_model_desc, learning_rate_description, learning_rate = legacy_model_params(initial_lr)
-    legacy_trainer = Legacy_ORTTrainer(model, None, legacy_model_desc, "LambOptimizer",
+    legacy_trainer = Legacy_ORTTrainer(model, None, legacy_model_desc, "AdamOptimizer",
                        None,
                        learning_rate_description,
                        device,
@@ -816,3 +891,61 @@ def testToyBERTModelGradientAccumulationLegacyExperimental(gradient_accumulation
 
     # Check results
     _test_helpers.assert_model_outputs(experimental_losses, legacy_losses, rtol=1e-6)
+
+@pytest.mark.parametrize("params, legacy_optim_map", [
+    # Change the hyper parameters for all parameters
+    ([], legacy_optim_params_a),
+    # Change the hyperparameters for a subset of hardcoded parameters
+    ([{'params':['bert.embeddings.LayerNorm.bias', 'bert.embeddings.LayerNorm.weight'], "alpha": 0.9,
+        "beta": 0.999, "lambda_coef": 0.0, "epsilon": 1e-6, "do_bias_correction":False}], legacy_optim_params_b),
+    # Change the hyperparameters for a generated set of paramers
+    (optimizer_parameters(load_bert_onnx_model()), legacy_optim_params_c)
+])
+def testToyBERTModelLegacyExperimentalCustomOptimParameters(params, legacy_optim_map):
+    # Common setup
+    total_steps = 10
+    device = "cuda"
+    seed = 1
+
+    # EXPERIMENTAL API
+    model_desc = bert_model_description()
+    model = load_bert_onnx_model()
+
+    optim_config = optim.LambConfig(params, alpha= 0.9, beta= 0.999, lambda_coef= 0.01, epsilon= 1e-6, do_bias_correction=False)
+    opts =  orttrainer.ORTTrainerOptions({
+        'debug' : {
+            'deterministic_compute': True
+        },
+        'device': {
+            'id': device,
+        },
+    })
+
+    torch.manual_seed(seed)
+    onnxruntime.set_seed(seed)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
+
+    experimental_losses = []
+    for i in range(total_steps):
+        sample_input = generate_random_input_from_model_desc(model_desc, i)
+        experimental_losses.append(trainer.train_step(*sample_input).cpu().item())
+
+    # LEGACY IMPLEMENTATION
+    device = torch.device(device)
+    legacy_model_desc, learning_rate_description, learning_rate = legacy_model_params(trainer.optim_config.lr)
+    torch.manual_seed(seed)
+    onnxruntime.set_seed(seed)
+
+    legacy_trainer = Legacy_ORTTrainer(model, None, legacy_model_desc, "LambOptimizer",
+                                       legacy_optim_map,
+                                       learning_rate_description,
+                                       device,
+                                       _use_deterministic_compute=True)
+    legacy_losses = []
+    for i in range(total_steps):
+        sample_input = generate_random_input_from_model_desc(model_desc, i)
+        legacy_sample_input = [*sample_input, learning_rate]
+        legacy_losses.append(legacy_trainer.train_step(legacy_sample_input).cpu().item())
+
+     # Check results
+    _test_helpers.assert_model_outputs(experimental_losses, legacy_losses)
