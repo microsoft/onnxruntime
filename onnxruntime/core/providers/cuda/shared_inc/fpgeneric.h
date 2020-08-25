@@ -29,7 +29,11 @@ inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle,
                                        float* C, int ldc,
                                        const cudaDeviceProp& prop) {
 #ifdef ENABLE_TRAINING
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
   onnxruntime::cuda::CublasMathModeSetter math_mode_setter(prop, handle, CUBLAS_TF32_TENSOR_OP_MATH);
+#else
+  ORT_UNUSED_PARAMETER(prop);
+#endif
 #else
   ORT_UNUSED_PARAMETER(prop);
 #endif
@@ -119,7 +123,11 @@ inline cublasStatus_t cublasGemmBatchedHelper(cublasHandle_t handle,
                                               int batch_count,
                                               const cudaDeviceProp& prop) {
 #ifdef ENABLE_TRAINING
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
   onnxruntime::cuda::CublasMathModeSetter math_mode_setter(prop, handle, CUBLAS_TF32_TENSOR_OP_MATH);
+#else
+  ORT_UNUSED_PARAMETER(prop);
+#endif
 #else
   ORT_UNUSED_PARAMETER(prop);
 #endif
@@ -217,7 +225,11 @@ inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
                                                      int batch_count,
                                                      const cudaDeviceProp& prop) {
 #ifdef ENABLE_TRAINING
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
   onnxruntime::cuda::CublasMathModeSetter math_mode_setter(prop, handle, CUBLAS_TF32_TENSOR_OP_MATH);
+#else
+  ORT_UNUSED_PARAMETER(prop);
+#endif
 #else
   ORT_UNUSED_PARAMETER(prop);
 #endif
