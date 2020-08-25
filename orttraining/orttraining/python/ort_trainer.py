@@ -365,7 +365,7 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs,
 
     if use_external_data_format:
         exported_model_dir = os.path.join(str(os.environ['T5_MODEL_PATH']), "t5/models/" + str(os.environ['T5_MODEL_NAME']))
-        lock_file = os.path.join(str(os.environ['T5_MODEL_PATH']), "t5.exported_model.lock")
+        lock_file = os.path.join(str(os.environ['T5_MODEL_PATH']), str(os.environ['T5_MODEL_NAME']) + ".exported_model.lock")
         exported_model_file_name = os.path.join(exported_model_dir, str(os.environ['T5_MODEL_NAME']) + ".onnx")
 
         lock = FileLock(lock_file)
@@ -522,7 +522,7 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     file_name_or_serialized_string = None
     if ort_parameters.use_external_data_format:
         exported_model_dir = os.path.join(str(os.environ['T5_MODEL_PATH']), "t5/models_to_train/" + str(os.environ['T5_MODEL_NAME']))
-        lock_file = os.path.join(str(os.environ['T5_MODEL_PATH']), "t5.model_to_train.lock")
+        lock_file = os.path.join(str(os.environ['T5_MODEL_PATH']), str(os.environ['T5_MODEL_NAME']) + ".model_to_train.lock")
         exported_model_file_name = os.path.join(exported_model_dir, str(os.environ['T5_MODEL_NAME']) + ".onnx")
         lock = FileLock(lock_file)
         lock.acquire()
@@ -540,6 +540,7 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
 
     sessionOptions = ort.SessionOptions()
     sessionOptions.use_deterministic_compute = use_deterministic_compute
+    sessionOptions.log_severity_level = 0
     session = ort.TrainingSession(file_name_or_serialized_string, ort_parameters, sessionOptions)
     train_io_binding = session.io_binding()
     eval_io_binding = session.io_binding()
