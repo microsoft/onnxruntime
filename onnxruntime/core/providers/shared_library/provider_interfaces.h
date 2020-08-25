@@ -108,17 +108,6 @@ struct Provider_IExecutionProviderFactory {
 class DataTypeImpl;
 using MLDataType = const DataTypeImpl*;
 
-struct Provider_OrtDevice {
-  virtual ~Provider_OrtDevice() {}
-};
-
-struct Provider_OrtMemoryInfo {
-  static std::unique_ptr<Provider_OrtMemoryInfo> Create(const char* name_, OrtAllocatorType type_, Provider_OrtDevice* device_ = nullptr, int id_ = 0, OrtMemType mem_type_ = OrtMemTypeDefault);
-  virtual ~Provider_OrtMemoryInfo() {}
-
-  void operator=(const Provider_OrtMemoryInfo&) = delete;
-};
-
 template <typename T>
 using Provider_IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
 
@@ -289,8 +278,7 @@ struct ProviderHost {
 
   virtual logging::Logger* LoggingManager_GetDefaultLogger() = 0;
 
-  virtual std::unique_ptr<Provider_OrtMemoryInfo> OrtMemoryInfo_Create(const char* name_, OrtAllocatorType type_, Provider_OrtDevice* device_, int id_, OrtMemType mem_type_) = 0;
-  virtual std::unique_ptr<Provider_IDeviceAllocator> CreateCPUAllocator(std::unique_ptr<Provider_OrtMemoryInfo> memory_info) = 0;
+  virtual std::unique_ptr<Provider_IDeviceAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info) = 0;
 
   virtual std::unique_ptr<Provider_IExecutionProvider_Router> Create_IExecutionProvider_Router(Provider_IExecutionProvider* outer, const std::string& type) = 0;
 

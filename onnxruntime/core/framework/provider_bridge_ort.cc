@@ -44,16 +44,6 @@ namespace onnxruntime {
 
 ProviderHost* g_host{};
 
-struct Provider_OrtDevice_Impl : Provider_OrtDevice {
-  OrtDevice v_;
-};
-
-struct Provider_OrtMemoryInfo_Impl : Provider_OrtMemoryInfo {
-  Provider_OrtMemoryInfo_Impl(const char* name_, OrtAllocatorType type_, OrtDevice device_, int id_, OrtMemType mem_type_) : info_{onnxruntime::make_unique<OrtMemoryInfo>(name_, type_, device_, id_, mem_type_)} {}
-
-  std::unique_ptr<OrtMemoryInfo> info_;
-};
-
 struct Provider_IAllocator_Impl : Provider_IAllocator {
   Provider_IAllocator_Impl(AllocatorPtr p) : p_{p} {}
 
@@ -232,10 +222,6 @@ struct ProviderHostImpl : ProviderHost {
     DataTypeImpl_GetTensorType_float = &DataTypeImpl::GetTensorType<float>;
   }
 
-  std::unique_ptr<Provider_OrtMemoryInfo> OrtMemoryInfo_Create(const char* name_, OrtAllocatorType type_, Provider_OrtDevice* device_, int id_, OrtMemType mem_type_) override {
-    return onnxruntime::make_unique<Provider_OrtMemoryInfo_Impl>(name_, type_, device_ ? static_cast<Provider_OrtDevice_Impl*>(device_)->v_ : OrtDevice(), id_, mem_type_);
-  }
-
   Provider_AllocatorPtr CreateAllocator(const Provider_DeviceAllocatorRegistrationInfo& info,
                                         OrtDevice::DeviceId device_id = 0,
                                         bool use_arena = true) override {
@@ -254,9 +240,9 @@ struct ProviderHostImpl : ProviderHost {
   }
 
   std::unique_ptr<Provider_IDeviceAllocator> CreateCPUAllocator(
-      std::unique_ptr<Provider_OrtMemoryInfo> memory_info) override {
+      const OrtMemoryInfo& memory_info) override {
     return onnxruntime::make_unique<Provider_IDeviceAllocator_Impl>(
-        onnxruntime::make_unique<CPUAllocator>(*static_cast<Provider_OrtMemoryInfo_Impl*>(memory_info.get())->info_));
+        onnxruntime::make_unique<CPUAllocator>(memory_info));
   };
 
   std::unique_ptr<Provider_IExecutionProvider_Router> Create_IExecutionProvider_Router(

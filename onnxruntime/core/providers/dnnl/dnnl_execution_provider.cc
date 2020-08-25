@@ -31,17 +31,15 @@ DNNLExecutionProvider::DNNLExecutionProvider(const DNNLExecutionProviderInfo& in
   Provider_DeviceAllocatorRegistrationInfo default_memory_info(
       {OrtMemTypeDefault,
        [](int) {
-         return onnxruntime::Provider_CreateCPUAllocator(
-             onnxruntime::Provider_OrtMemoryInfo::Create(DNNL, OrtAllocatorType::OrtDeviceAllocator));
+         return onnxruntime::Provider_CreateCPUAllocator(OrtMemoryInfo(DNNL, OrtAllocatorType::OrtDeviceAllocator));
        },
        std::numeric_limits<size_t>::max()});
 
   Provider_DeviceAllocatorRegistrationInfo cpu_memory_info(
       {OrtMemTypeCPUOutput,
        [](int) {
-         return onnxruntime::Provider_CreateCPUAllocator(
-             onnxruntime::Provider_OrtMemoryInfo::Create(DNNL_CPU, OrtAllocatorType::OrtDeviceAllocator, nullptr, 0,
-                                                         OrtMemTypeCPUOutput));
+         return onnxruntime::Provider_CreateCPUAllocator(OrtMemoryInfo(DNNL_CPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0,
+                                                                       OrtMemTypeCPUOutput));
        },
        std::numeric_limits<size_t>::max()});
 
