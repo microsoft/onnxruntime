@@ -231,10 +231,11 @@ TEST(CseTests, MergeConstants) {
   GraphTransformerManager graph_transformation_mgr(1);
   // In current implementation, equal constants are not merged. So CSE must precede constant folding, otherwise we end up
   // with multiple copies of the same constant.
+  std::unique_ptr<CPUExecutionProvider> e = onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   ASSERT_TRUE(
       graph_transformation_mgr.Register(onnxruntime::make_unique<CommonSubexpressionElimination>(), TransformerLevel::Level1).IsOK());
   ASSERT_TRUE(
-      graph_transformation_mgr.Register(onnxruntime::make_unique<ConstantFolding>(), TransformerLevel::Level1).IsOK());
+      graph_transformation_mgr.Register(onnxruntime::make_unique<ConstantFolding>(*e.get()), TransformerLevel::Level1).IsOK());
   ASSERT_TRUE(
       graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger()).IsOK());
 

@@ -578,6 +578,13 @@ class Graph {
   /** Returns true if an initializer value can be overridden by a graph input with the same name. */
   bool CanOverrideInitializer() const noexcept { return ir_version_ >= 4; }
 
+  /** returns the initializer's TensorProto if 'name' is an initializer, is constant and 
+  cannot be overridden at runtime. If the initializer is not found or is not constant, a nullptr is returned.
+  @param check_outer_scope If true and the graph is a subgraph, 
+         check ancestor graph/s for 'name' if not found in 'graph'.
+  */
+  const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const std::string& name, bool check_outer_scope) const;
+
   /** Gets the Graph inputs excluding initializers.
   These are the required inputs to the Graph as the initializers can be optionally overridden via graph inputs.
   @remarks Contains no nullptr values. */
@@ -997,8 +1004,7 @@ class Graph {
         const std::unordered_map<std::string, int>& domain_to_version,
         Version ir_version,
         IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
-        const logging::Logger& logger,
-        const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions);
+        const logging::Logger& logger);
 
   // internal use by the Graph class only
   Graph(const Model& owning_model,
@@ -1008,8 +1014,7 @@ class Graph {
         IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
         Graph* parent_graph,
         const Node* parent_node,
-        const logging::Logger& logger,
-        const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions);
+        const logging::Logger& logger);
 
   void InitializeStateFromModelFileGraphProto();
 
@@ -1125,8 +1130,6 @@ class Graph {
 
   std::vector<NodeArg*> CreateNodeArgs(const google::protobuf::RepeatedPtrField<std::string>& names,
                                        const ArgNameToTypeMap& name_to_type_map);
-
-  void AddFunction(const ONNX_NAMESPACE::FunctionProto* func_proto);
 
   void ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const;
 
@@ -1245,7 +1248,6 @@ class Graph {
   // node arg to its consumer nodes
   std::unordered_map<std::string, std::unordered_set<NodeIndex>> node_arg_to_consumer_nodes_;
 
-  std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> model_functions_;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   const std::unordered_map<std::string, int> domain_to_version_;

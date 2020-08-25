@@ -12,7 +12,7 @@ import torch
 from torch import nn
 from torch.utils.data.dataloader import DataLoader
 from torch.utils.data.dataset import Dataset
-# from torch.utils.data.distributed import DistributedSampler
+from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data.sampler import RandomSampler, SequentialSampler
 from tqdm import tqdm, trange
 
@@ -101,6 +101,7 @@ class ORTTransformerTrainer:
         self,
         model: PreTrainedModel,
         model_desc: ModelDescription,
+        new_model_desc: dict,
         args: TrainingArguments,
         train_dataset: Dataset,
         eval_dataset: Dataset,
@@ -112,6 +113,7 @@ class ORTTransformerTrainer:
 
         self.model = model
         self.model_desc = model_desc
+        self.new_model_desc = new_model_desc
         self.args = args
         self.data_collator = DefaultDataCollator()
         self.train_dataset = train_dataset
@@ -171,15 +173,6 @@ class ORTTransformerTrainer:
             num_train_epochs = self.args.num_train_epochs
 
         if self.use_new_api:
-            model_desc = {
-                'inputs': [
-                    ('input_ids', ['batch', 'max_seq_len_in_batch'],),
-                    ('attention_mask', ['batch', 'max_seq_len_in_batch'],),
-                    ('token_type_ids', ['batch', 'max_seq_len_in_batch'],),
-                    ('labels', ['batch', ],)],
-                'outputs': [('loss', [], True),
-                            ('logits', ['batch', 2])]}
-
             lr_scheduler = orttrainer.optim.LinearWarmupLRScheduler(t_total, self.args.warmup_steps/float(t_total))
 
             loss_scaler = amp.DynamicLossScaler() if self.args.fp16 else None
@@ -205,7 +198,7 @@ class ORTTransformerTrainer:
                 ]
 
             optim_config = optim.AdamConfig(params=params, lr=2e-5, do_bias_correction=True)
-            self.model = orttrainer.ORTTrainer(self.model, model_desc, optim_config, options=options)
+            self.model = orttrainer.ORTTrainer(self.model, self.new_model_desc, optim_config, options=options)
         else:
             def map_optimizer_attributes(name):
                 no_decay = "bias" in name or "LayerNorm.weight" in name
@@ -222,7 +215,6 @@ class ORTTransformerTrainer:
                 learning_rate_description=IODescription('Learning_Rate', [1,], torch.float32),
                 device=self.args.device,
                 gradient_accumulation_steps=self.args.gradient_accumulation_steps,
-                world_rank=0, world_size=1,     # only support single GPU cases
                 use_mixed_precision=self.args.fp16,
                 allreduce_post_accumulation=True,
                 get_lr_this_step=get_lr_this_step,

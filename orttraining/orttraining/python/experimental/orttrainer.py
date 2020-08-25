@@ -7,7 +7,7 @@ from inspect import signature
 import warnings
 
 import onnxruntime as ort
-from . import _utils, amp, optim, postprocess, ORTTrainerOptions
+from . import _utils, amp, checkpoint, optim, postprocess, ORTTrainerOptions
 from .model_desc_validation import _ORTTrainerModelDesc
 
 class TrainStepInfo(object):
@@ -276,8 +276,8 @@ class ORTTrainer(object):
         assert isinstance(path, str), "'path' must be a valid path string"
         dir_name = os.path.dirname(path)
         file_name = os.path.basename(path)
-        if not dir_name or not os.path.exists(dir_name) or not file_name:
-            warnings.warn("'path' is not valid. It must contain an existing folder + filename")
+        if (dir_name and not os.path.exists(dir_name)) or not file_name:
+            warnings.warn("'path' is not valid or does not exist")
             return
 
         with open(path, "wb") as f:
@@ -393,13 +393,6 @@ class ORTTrainer(object):
             ordered_input_list = [*ordered_input_list,
                                 list(sig_loss.parameters.keys())[1]]
 
-        # Check whether input names from model match inputs from ModelDescription
-        match = True
-        for ordered_list_key, input_name in zip(ordered_input_list, input_names):
-            if ordered_list_key != input_name:
-                match = False
-                break
-
         class CombineTorchModelLossFnWrapInput(torch.nn.Module):
             def __init__(self, model, loss_fn, input_names):
                 super().__init__()
@@ -409,7 +402,6 @@ class ORTTrainer(object):
 
             def forward(self, *inputs):
                 sig = signature(self.model.forward)
-                ordered_list_keys = list(sig.parameters.keys())
 
                 input_dict = {}
                 for key in sig.parameters.keys():
@@ -461,7 +453,11 @@ class ORTTrainer(object):
         # Do an inference to grab output types
         model.eval()
         with torch.no_grad():
-            sample_outputs = model(*sample_inputs)
+            # Deepcopy inputs, since input values may change after model run.
+            sample_inputs_copy = copy.deepcopy(sample_inputs)
+            # Deepcopy model, in case model is stateful and changes after model run.
+            model_copy = copy.deepcopy(model)
+            sample_outputs = model_copy(*sample_inputs_copy)
         model.train()
         if isinstance(sample_outputs, torch.Tensor):
             sample_outputs = [sample_outputs]
@@ -478,7 +474,14 @@ class ORTTrainer(object):
 
         # Export the model to ONNX
         f = io.BytesIO()
-        torch.onnx._export(model, tuple(sample_inputs), f,
+        # Deepcopy inputs, since input values may change after model run.
+        sample_inputs_copy = copy.deepcopy(sample_inputs)
+
+        # Enable contrib ops export from PyTorch
+        from onnxruntime.experimental import register_custom_ops_pytorch_exporter
+        register_custom_ops_pytorch_exporter.register_custom_op()
+
+        torch.onnx._export(model, tuple(sample_inputs_copy), f,
                            input_names=[input.name for input in self.model_desc.inputs],
                            output_names=[output.name for output in self.model_desc.outputs],
                            opset_version=self.options._internal_use.onnx_opset_version,
@@ -533,12 +536,27 @@ class ORTTrainer(object):
             trainable_params.add(initializer.name)
             optimizer_attributes_map[initializer.name] = {}
             optimizer_int_attributes_map[initializer.name] = {}
+            not_in_param_groups = True
             for param_group in self.optim_config.params:
                 if initializer.name not in param_group['params']:
                     continue  # keep looking for a matching param_group
+                not_in_param_groups = False
                 for k, v in param_group.items():
-                    if k == 'params':
-                        continue  # 'params' is not a hyper parameter, skip it
+                    # 'params' is not a hyper parameter, skip it. 'lr' per weight is not supported
+                    if k == 'params' or k == 'lr':
+                        continue
+                    if isinstance(v, float):
+                        optimizer_attributes_map[initializer.name][k] = v
+                    elif isinstance(v, int):
+                        optimizer_int_attributes_map[initializer.name][k] = v
+                    else:
+                        raise ValueError("Optimizer attributes must be either float or int.")
+
+            # set default values for params not found in groups
+            if not_in_param_groups:
+                for k, v in self.optim_config.defaults.items():
+                    if k == 'lr':
+                        continue
                     if isinstance(v, float):
                         optimizer_attributes_map[initializer.name][k] = v
                     elif isinstance(v, int):
@@ -642,7 +660,7 @@ class ORTTrainer(object):
 
         # TODO: thiagofc: Checkpoint related for redesign
         if self._state_dict:
-            self.load_state_dict(self._state_dict, self._load_state_dict_strict)
+            checkpoint.load_state_dict(self, self._state_dict, self._load_state_dict_strict)
         self._state_dict = None
 
     def _prepare_model_input(self, inputs_desc, lr, loss_scale, *inputs, **kwargs):
