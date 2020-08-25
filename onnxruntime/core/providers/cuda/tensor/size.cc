@@ -13,7 +13,8 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCudaExecutionProvider,
     KernelDefBuilder()
-        .OutputMemoryType<OrtMemTypeCPUOutput>(0)
+        // properly force CPU/GPU synch inside the kernel
+        .OutputMemoryType<OrtMemTypeCPUInput>(0)
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
     Size);
