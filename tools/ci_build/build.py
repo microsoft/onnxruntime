@@ -350,6 +350,9 @@ def parse_arguments():
         "--build_micro_benchmarks", action='store_true',
         help="Build ONNXRuntime micro-benchmarks.")
     parser.add_argument(
+        "--reduce_ops", action='store_true',
+        help="Exclude unused ops.")
+    parser.add_argument(
         "--include_ops_by_model", type=str,
         help="include ops from model(s) under designated path.")
     parser.add_argument(
@@ -645,7 +648,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_USE_HOROVOD=" + (
             "ON" if args.use_horovod else "OFF"),
         "-Donnxruntime_BUILD_BENCHMARKS=" + (
-            "ON" if args.build_micro_benchmarks else "OFF")
+            "ON" if args.build_micro_benchmarks else "OFF"),
+        "-Donnxruntime_REDUCED_OPS_BUILD=" + (
+            "ON" if args.reduce_ops else "OFF")
     ]
 
     if mpi_home and os.path.exists(mpi_home):
@@ -1185,6 +1190,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
         if len(dll_path_list) > 0:
             dll_path = os.pathsep.join(dll_path_list)
 
+        print('ctest_path', ctest_path)
+
         if ctest_path is None:
             # Get the "Google Test Adapter" for vstest.
             if not os.path.exists(os.path.join(cwd,
@@ -1210,7 +1217,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             ctest_cmd = [ctest_path, "--build-config", config, "--verbose"]
             run_subprocess(ctest_cmd, cwd=cwd, dll_path=dll_path)
 
-        if args.enable_pybind:
+        if args.enable_pybind and not args.reduce_ops:
             # Disable python tests for TensorRT because many tests are
             # not supported yet.
             if args.use_tensorrt:
@@ -1513,17 +1520,12 @@ def main():
     if args.skip_tests:
         args.test = False
 
-    if (args.include_ops_by_model and len(args.include_ops_by_model) > 0) or\
-       (args.include_ops_by_file and len(args.include_ops_by_file) > 0):
+    if args.reduce_ops:
 
         from exclude_unused_ops import exclude_unused_ops, get_provider_path
-
         include_ops_by_model = args.include_ops_by_model if args.include_ops_by_model else ''
         include_ops_by_file = args.include_ops_by_file if args.include_ops_by_file else ''
-
         exclude_unused_ops(include_ops_by_model, include_ops_by_file, get_provider_path(use_cuda=args.use_cuda))
-
-        args.test = False  # disable tests since we don't know which ops are enabled
 
     if args.use_tensorrt:
         args.use_cuda = True
