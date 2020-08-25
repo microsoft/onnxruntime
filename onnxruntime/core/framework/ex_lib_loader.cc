@@ -32,6 +32,7 @@ void* ExLibLoader::GetExLibHandle(const std::string& dso_file_path) const {
 
 common::Status ExLibLoader::LoadExternalLib(const std::string& dso_file_path,
                                             void** handle) {
+  auto status = Status::OK();
   ORT_TRY {
     if (dso_name_data_map_.count(dso_file_path)) {
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "A dso with name " + dso_file_path + " has already been loaded.");
@@ -44,13 +45,14 @@ common::Status ExLibLoader::LoadExternalLib(const std::string& dso_file_path,
     return Status::OK();
   }
   ORT_CATCH(const std::exception& ex) {
-    ORT_HANDLE_EXCEPTION([&ex]() {
-      return Status(common::ONNXRUNTIME, common::FAIL, "Caught exception while loading custom ops with message: " + std::string(ex.what()));
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = Status(common::ONNXRUNTIME, common::FAIL, "Caught exception while loading custom ops with message: " + std::string(ex.what()));
     });
   }
-  ORT_CATCH_END
 
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ExLibLoader::LoadExternalLib failed");
+  return status;
+
+  ORT_CATCH_END
 }
 
 }  // namespace onnxruntime

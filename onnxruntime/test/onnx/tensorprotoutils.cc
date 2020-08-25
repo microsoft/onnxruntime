@@ -306,6 +306,7 @@ struct UnInitializeParam {
 
 OrtStatus* OrtInitializeBufferForTensor(void* input, size_t input_len,
                                         ONNXTensorElementDataType type) {
+  OrtStatus* status = nullptr;
   ORT_TRY {
     if (type != ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING || input == nullptr) return nullptr;
     size_t tensor_size = input_len / sizeof(std::string);
@@ -315,13 +316,13 @@ OrtStatus* OrtInitializeBufferForTensor(void* input, size_t input_len,
     }
   }
   ORT_CATCH(std::exception & ex) {
-    ORT_HANDLE_EXCEPTION([&ex]() {
-      return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
     });
   }
   ORT_CATCH_END
 
-  return nullptr;
+  return status;
 }
 
 ORT_API(void, OrtUninitializeBuffer, _In_opt_ void* input, size_t input_len, enum ONNXTensorElementDataType type);

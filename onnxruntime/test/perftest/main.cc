@@ -23,19 +23,25 @@ int real_main(int argc, char* argv[]) {
     return -1;
   }
   Ort::Env env{nullptr};
-  ORT_TRY {
-    OrtLoggingLevel logging_level = test_config.run_config.f_verbose
-                                        ? ORT_LOGGING_LEVEL_VERBOSE
-                                        : ORT_LOGGING_LEVEL_WARNING;
-    env = Ort::Env(logging_level, "Default");
-  }
-  ORT_CATCH(const Ort::Exception& e) {
-    ORT_HANDLE_EXCEPTION([&e]() {
-      fprintf(stderr, "Error creating environment: %s \n", e.what());
+  {
+    bool failed = false;
+    ORT_TRY {
+      OrtLoggingLevel logging_level = test_config.run_config.f_verbose
+                                          ? ORT_LOGGING_LEVEL_VERBOSE
+                                          : ORT_LOGGING_LEVEL_WARNING;
+      env = Ort::Env(logging_level, "Default");
+    }
+    ORT_CATCH(const Ort::Exception& e) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        fprintf(stderr, "Error creating environment: %s \n", e.what());
+        failed = true;
+      });
+    }
+    ORT_CATCH_END
+
+    if (failed)
       return -1;
-    });
   }
-  ORT_CATCH_END
 
   if (test_config.machine_config.provider_type_name == onnxruntime::kOpenVINOExecutionProvider) {
     if (test_config.run_config.concurrent_session_runs != 1) {

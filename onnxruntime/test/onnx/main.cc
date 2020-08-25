@@ -257,16 +257,22 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     getchar();
   }
 
-  ORT_TRY {
-    env = Ort::Env{logging_level, "Default"};
-  }
-  ORT_CATCH(std::exception & ex) {
-    ORT_HANDLE_EXCEPTION([&ex]() {
-      fprintf(stderr, "Error creating environment: %s \n", ex.what());
+  {
+    bool failed = false;
+    ORT_TRY {
+      env = Ort::Env{logging_level, "Default"};
+    }
+    ORT_CATCH(std::exception & ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        fprintf(stderr, "Error creating environment: %s \n", ex.what());
+        failed = true;
+      });
+    }
+    ORT_CATCH_END
+
+    if (failed)
       return -1;
-    });
   }
-  ORT_CATCH_END
 
   std::vector<std::basic_string<PATH_CHAR_TYPE>> data_dirs;
   TestResultStat stat;

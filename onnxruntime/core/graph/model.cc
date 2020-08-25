@@ -277,15 +277,19 @@ Status Model::Load(const ModelProto& model_proto,
 
   // need to call private ctor so can't use make_shared
   GSL_SUPPRESS(r .11)
+
+  auto status = Status::OK();
   ORT_TRY {
     model.reset(new Model(model_proto, model_path, local_registries, logger));
   }
   ORT_CATCH(const std::exception& ex) {
-    ORT_HANDLE_EXCEPTION([&ex]() {
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
     });
   }
   ORT_CATCH_END
+
+  ORT_RETURN_IF_ERROR(status);
 
   Graph::ResolveOptions options;
   options.no_proto_sync_required = true;
@@ -313,15 +317,18 @@ Status Model::Load(ModelProto&& model_proto,
 
   // need to call private ctor so can't use make_shared
   GSL_SUPPRESS(r .11)
+  auto status = Status::OK();
   ORT_TRY {
     model.reset(new Model(std::move(model_proto), model_path, local_registries, logger));
   }
   ORT_CATCH(const std::exception& ex) {
-    ORT_HANDLE_EXCEPTION([&ex]() {
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
     });
   }
   ORT_CATCH_END
+
+  ORT_RETURN_IF_ERROR(status);
 
   Graph::ResolveOptions options;
   options.no_proto_sync_required = true;
@@ -347,6 +354,8 @@ static Status LoadModelHelper(const T& file_path, Loader loader) {
       }
     }
   }
+
+  auto sub_status = Status::OK();
   ORT_TRY {
     status = loader(fd);
   }
@@ -354,10 +363,11 @@ static Status LoadModelHelper(const T& file_path, Loader loader) {
     ORT_HANDLE_EXCEPTION([&]() {
       GSL_SUPPRESS(es .84)
       ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
-      return Status(ONNXRUNTIME, FAIL, ex.what());
+      sub_status = Status(ONNXRUNTIME, FAIL, ex.what());
     });
   }
   ORT_CATCH_END
+  ORT_RETURN_IF_ERROR(sub_status);
 
   if (!status.IsOK()) {
     GSL_SUPPRESS(es .84)
@@ -392,6 +402,8 @@ static Status SaveModel(Model& model, const T& file_path) {
   int fd;
   Status status = Env::Default().FileOpenWr(file_path, fd);
   ORT_RETURN_IF_ERROR(status);
+
+  auto sub_status = Status::OK();
   ORT_TRY {
     status = Model::Save(model, fd);
   }
@@ -399,10 +411,11 @@ static Status SaveModel(Model& model, const T& file_path) {
     ORT_HANDLE_EXCEPTION([&]() {
       GSL_SUPPRESS(es .84)
       ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
-      return Status(ONNXRUNTIME, FAIL, ex.what());
+      sub_status = Status(ONNXRUNTIME, FAIL, ex.what());
     });
   }
   ORT_CATCH_END
+  ORT_RETURN_IF_ERROR(sub_status);
 
   if (!status.IsOK()) {
     GSL_SUPPRESS(es .84)

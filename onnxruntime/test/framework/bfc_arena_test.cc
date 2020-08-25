@@ -152,6 +152,16 @@ TEST(BFCArenaTest, AllocatedVsRequested) {
   a.Free(t1);
 }
 
+void TestCustomMemoryLimit_ProcessException(const OnnxRuntimeException& ex) {
+#ifdef GTEST_USES_POSIX_RE
+  EXPECT_THAT(ex.what(),
+              testing::ContainsRegex("Available memory of [0-9]+ is smaller than requested bytes of [0-9]+"));
+#else
+  EXPECT_THAT(ex.what(),
+              testing::ContainsRegex("Available memory of \\d+ is smaller than requested bytes of \\d+"));
+#endif  // #ifdef GTEST_USES_POSIX_RE
+}
+
 TEST(BFCArenaTest, TestCustomMemoryLimit) {
   {
     // Configure a 1MiB byte limit
@@ -167,13 +177,7 @@ TEST(BFCArenaTest, TestCustomMemoryLimit) {
     }
     ORT_CATCH(const OnnxRuntimeException& ex) {
       ORT_HANDLE_EXCEPTION([&ex]() {
-#ifdef GTEST_USES_POSIX_RE
-        EXPECT_THAT(ex.what(),
-                    testing::ContainsRegex("Available memory of [0-9]+ is smaller than requested bytes of [0-9]+"));
-#else
-        EXPECT_THAT(ex.what(),
-                    testing::ContainsRegex("Available memory of \\d+ is smaller than requested bytes of \\d+"));
-#endif  // #ifdef GTEST_USES_POSIX_RE
+        TestCustomMemoryLimit_ProcessException(ex);
       });
     }
     ORT_CATCH(...) {

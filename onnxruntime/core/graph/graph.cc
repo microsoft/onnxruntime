@@ -64,6 +64,7 @@ static bool UsingLatestOnnxOpset(const DomainToVersionMap& opset_versions) {
 static Status MergeShapeInfo(const std::string& output_name,
                              const TypeProto_Tensor& source, TypeProto_Tensor& target,
                              bool strict, const logging::Logger& logger) {
+  auto status = Status::OK();
   ORT_TRY {
     ONNX_NAMESPACE::mergeInShapeInfo(source, target);
   }
@@ -85,13 +86,13 @@ static Status MergeShapeInfo(const std::string& output_name,
       ONNX_NAMESPACE::UnionShapeInfo(source.shape(), target);
     } else {
       ORT_HANDLE_EXCEPTION([&]() {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output:", output_name, " ", ex.what());
+        status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output:", output_name, " ", ex.what());
       });
     }
   }
   ORT_CATCH_END
 
-  return Status::OK();
+  return status;
 }
 
 static bool GraphLoadedFromModelFile(const GraphProto* graph_proto) {
@@ -1804,15 +1805,20 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
   SubgraphInferencingFunc func(Graph::InferAndVerifySubgraphTypes);
   InferenceContextImpl context(node, func, *this, options);
 
-  ORT_TRY {
-    context.RunInferencing();
+  {
+    auto status = Status::OK();
+    ORT_TRY {
+      context.RunInferencing();
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node (", node.Name(), ") Op (", node.OpType(), ") ", ex.what());
+      });
+    }
+    ORT_CATCH_END
+
+    ORT_RETURN_IF_ERROR(status);
   }
-  ORT_CATCH(const std::exception& ex) {
-    ORT_HANDLE_EXCEPTION([&]() {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node (", node.Name(), ") Op (", node.OpType(), ") ", ex.what());
-    });
-  }
-  ORT_CATCH_END
 
   const auto& onnx_inferred_types(context.InferredOutputTypes());
 
@@ -2021,15 +2027,20 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
     }
 
     if (!node.Op()) {
-      ORT_TRY {
-        checker::check_node(node_proto, ctx, lsc);
+      {
+        auto status = Status::OK();
+        ORT_TRY {
+          checker::check_node(node_proto, ctx, lsc);
+        }
+        ORT_CATCH(const std::exception& ex) {
+          ORT_HANDLE_EXCEPTION([&]() {
+            status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "This is an invalid model. Error in Node:", node_name, " : ", ex.what());
+          });
+        }
+        ORT_CATCH_END
+
+        ORT_RETURN_IF_ERROR(status);
       }
-      ORT_CATCH(const std::exception& ex) {
-        ORT_HANDLE_EXCEPTION([&]() {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "This is an invalid model. Error in Node:", node_name, " : ", ex.what());
-        });
-      }
-      ORT_CATCH_END
 
       auto maxInclusiveVersion = DomainToVersionMap().find(domain)->second;
       node.op_ = schema_registry_->GetSchema(node.OpType(), maxInclusiveVersion, node.Domain());

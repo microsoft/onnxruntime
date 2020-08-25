@@ -119,6 +119,7 @@ Status InferenceSessionUtils::ParseOrtConfigJsonInModelProto(const ONNX_NAMESPAC
       LOGS(logger_, INFO)
           << "Found session/run/environment configuration in the model file to be used while running the model";
 
+      auto status = Status::OK();
       ORT_TRY {
         const auto& val = metadata_field.value();
         LOGS(logger_, INFO) << "ORT config json from the model: " << val;
@@ -135,10 +136,11 @@ Status InferenceSessionUtils::ParseOrtConfigJsonInModelProto(const ONNX_NAMESPAC
           std::string message = message_stream.str();
 
           LOGS(logger_, ERROR) << message;
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, message);
+          status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, message);
         });
       }
       ORT_CATCH_END
+      ORT_RETURN_IF_ERROR(status);
 
       break;
     }
