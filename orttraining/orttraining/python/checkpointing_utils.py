@@ -10,12 +10,20 @@ def list_checkpoint_files(checkpoint_dir, checkpoint_prefix, extension='.ort.pt'
     assert len(ckpt_file_names) > 0, "No checkpoint files found with prefix \"{}\" in directory {}.".format(checkpoint_prefix, checkpoint_dir)
     return ckpt_file_names
 
-def get_checkpoint_name(prefix, is_partitioned, world_rank=None, world_size=None):
+def get_checkpoint_name(prefix, zero_enabled, world_rank=0, world_size=1, horizontal_parallel_size=1, pipeline_parallel_size=1):
+    # data_parallel_size = world_size / horizontal_parallel_size / pipeline_parallel_size
+    # need to change to this below
+    data_parallel_size = int(world_size / horizontal_parallel_size / pipeline_parallel_size)
+    parallellism_info = 'D.{data_parallel_size}.H.{horizontal_parallel_size}.P.{pipeline_parallel_size}'
     SINGLE_CHECKPOINT_FILENAME='{prefix}.ort.pt'
-    MULTIPLE_CHECKPOINT_FILENAME='{prefix}.ZeRO.{world_rank}.{world_size}.ort.pt'
+    MULTIPLE_CHECKPOINT_FILENAME='{prefix}.rank.{world_rank}.{world_size}.' + parallellism_info + '.ort.pt'
     
+    is_partitioned = zero_enabled or (horizontal_parallel_size > 1) or (pipeline_parallel_size > 1)
     if is_partitioned:
-        filename=MULTIPLE_CHECKPOINT_FILENAME.format(prefix=prefix, world_rank=world_rank, world_size=(world_size-1))
+        filename=MULTIPLE_CHECKPOINT_FILENAME.format(prefix=prefix, world_rank=world_rank, world_size=(world_size-1),
+            data_parallel_size=data_parallel_size, 
+            horizontal_parallel_size=horizontal_parallel_size, 
+            pipeline_parallel_size=pipeline_parallel_size)
     else:
         filename=SINGLE_CHECKPOINT_FILENAME.format(prefix=prefix)
     

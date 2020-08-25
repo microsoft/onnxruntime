@@ -378,7 +378,7 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs,
 
     if use_external_data_format:
         exported_model_dir = os.path.join(str(os.environ['T5_MODEL_PATH']), "t5/models/" + str(os.environ['T5_MODEL_NAME']))
-        lock_file = os.path.join(str(os.environ['T5_MODEL_PATH']), "t5.exported_model.lock")
+        lock_file = os.path.join(str(os.environ['T5_MODEL_PATH']), str(os.environ['T5_MODEL_NAME']) + ".exported_model.lock")
         exported_model_file_name = os.path.join(exported_model_dir, str(os.environ['T5_MODEL_NAME']) + ".onnx")
 
         lock = FileLock(lock_file)
@@ -528,7 +528,7 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     file_name_or_serialized_string = None
     if ort_parameters.use_external_data_format:
         exported_model_dir = os.path.join(str(os.environ['T5_MODEL_PATH']), "t5/models_to_train/" + str(os.environ['T5_MODEL_NAME']))
-        lock_file = os.path.join(str(os.environ['T5_MODEL_PATH']), "t5.model_to_train.lock")
+        lock_file = os.path.join(str(os.environ['T5_MODEL_PATH']), str(os.environ['T5_MODEL_NAME']) + ".model_to_train.lock")
         exported_model_file_name = os.path.join(exported_model_dir, str(os.environ['T5_MODEL_NAME']) + ".onnx")
         lock = FileLock(lock_file)
         lock.acquire()
@@ -546,6 +546,10 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
 
     sessionOptions = ort.SessionOptions()
     sessionOptions.use_deterministic_compute = use_deterministic_compute
+
+    if "LOG_SEVERITY" not in os.environ:
+        os.environ["LOG_SEVERITY"] = 0 # 2, warning
+    sessionOptions.log_severity_level = int(os.environ['LOG_SEVERITY'])
     session = ort.TrainingSession(file_name_or_serialized_string, ort_parameters, sessionOptions)
     train_io_binding = session.io_binding()
     eval_io_binding = session.io_binding()
@@ -571,7 +575,8 @@ def save_checkpoint(model, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", c
 
     assert os.path.exists(checkpoint_dir), "ERROR: Checkpoint directory doesn't exist: {}".format(checkpoint_dir)
 
-    checkpoint_name = get_checkpoint_name(checkpoint_prefix, model.deepspeed_zero_stage_, model.world_rank, model.world_size)
+    checkpoint_name = get_checkpoint_name(checkpoint_prefix, model.deepspeed_zero_stage_, model.world_rank, model.world_size, 
+        model.horizontal_parallel_size, model.pipeline_parallel_size)
     checkpoint_file = os.path.join(checkpoint_dir, checkpoint_name)
 
     if os.path.exists(checkpoint_file):
@@ -580,7 +585,8 @@ def save_checkpoint(model, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", c
     torch.save(checkpoint_state_dict, checkpoint_file)
 
 def _load_single_checkpoint(model, checkpoint_dir, checkpoint_prefix, is_partitioned, strict):
-    checkpoint_name = get_checkpoint_name(checkpoint_prefix, is_partitioned, model.world_rank, model.world_size)
+    checkpoint_name = get_checkpoint_name(checkpoint_prefix, is_partitioned, model.world_rank, model.world_size, 
+        model.horizontal_parallel_size, model.pipeline_parallel_size)
     checkpoint_file = os.path.join(checkpoint_dir, checkpoint_name)
 
     if is_partitioned:
