@@ -157,7 +157,7 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
       auto exp_result = GetScratchBuffer<T>(input_count).get();
       auto log_sum_result = GetScratchBuffer<T>(output_count).get();
       BinaryElementwisePreparation prepare;
-      prepare.BinaryElementwiseBroadcastPrepareHelper(input_shape, rhs_shape, input_shape);
+      ORT_RETURN_IF_ERROR(prepare.BinaryElementwiseBroadcastPrepareHelper(input_shape, rhs_shape, input_shape));
       Impl_Sub<CudaT>(prepare.output_rank_or_simple_broadcast,
                       &prepare.lhs_padded_strides,
                       reinterpret_cast<const CudaT*>(X),
@@ -275,6 +275,7 @@ Status PrepareForReduce(const Tensor* X,
   prepare_reduce_metadata.rank = rank;
   prepare_reduce_metadata.input_count = input_shape.Size();
   prepare_reduce_metadata.stride = (rank > 0) ? input_shape[input_shape.NumDimensions() - 1] : 1;
+  prepare_reduce_metadata.contiguous_axes = false;
 
   if (rank > 8) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "cuDNN only supports up to 8-D tensors in reduction");
@@ -284,16 +285,36 @@ Status PrepareForReduce(const Tensor* X,
   std::vector<bool> reduced(rank, false);
   prepare_reduce_metadata.output_dims.reserve(input_dims.size());
   if (axes.size() > 0) {
+    int64_t reduced_axis;
+    std::vector<uint64_t> reduced_axes(axes.size());
     prepare_reduce_metadata.output_dims = input_dims;
-    for (auto reduced_axis : axes) {
+    for (size_t i = 0; i < axes.size(); i++) {
+      reduced_axis = axes[i];
       const int64_t axis = HandleNegativeAxis(reduced_axis, rank);
-      ORT_ENFORCE(axis < rank, "Reduced axis is greater than rank: ", axis);
       ORT_ENFORCE(input_dims[axis] != 0,
                   "Can't reduce on dim with value of 0 if 'keepdims' is false. "
                   "Invalid output shape would be produced. input_shape:",
                   input_shape);
       prepare_reduce_metadata.output_dims[axis] = 1;
       reduced[axis] = true;
+      reduced_axes[i] = axis;
+    }
+
+    bool contiguous_axes = true;
+    std::sort(reduced_axes.begin(), reduced_axes.end());
+    for (size_t i = 0; i < reduced_axes.size(); i++) {
+      if (reduced_axes[i] != i) {
+        contiguous_axes = false;
+        break;
+      }
+    }
+    int64_t stride = 1;
+    if (contiguous_axes) {
+      for (size_t s = rank - 1; s >= reduced_axes.size(); s--) {
+        stride *= input_dims[s];
+      }
+      prepare_reduce_metadata.stride = stride;
+      prepare_reduce_metadata.contiguous_axes = true;
     }
   } else {
     // no axes provided (i.e.) default axes  => reduce on all dims
@@ -374,15 +395,13 @@ Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& input, Pr
   const auto reduction_size = input_count / stride;
   if (!std::is_same<T, int8_t>::value && !std::is_same<T, uint8_t>::value) {
     if (fast_reduction && reduction_size <= std::numeric_limits<int>::max() && stride <= std::numeric_limits<int>::max() &&
-        is_matrix_row_reduction(cudnn_reduce_op,
-                                static_cast<int>(reduction_size),
-                                static_cast<int>(stride), rank, axes)) {
+        prepare_reduce_metadata.contiguous_axes &&
+        is_matrix_row_reduction(cudnn_reduce_op, static_cast<int>(reduction_size), static_cast<int>(stride), rank, axes)) {
       reduce_matrix_rows(
           reinterpret_cast<const CudaT*>(input.template Data<T>()),
           reinterpret_cast<CudaT*>(output.template MutableData<T>()),
           static_cast<int>(reduction_size),
           static_cast<int>(stride));
-
       return Status::OK();
     }
   }
@@ -440,8 +459,8 @@ Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& input, Pr
         // Reduce max -- Max/Min will output indices data
         CudnnReduceDescriptor reduce_max_desc;
         cudnnDataType_t cudnn_reduce_max_type = cudnn_type_X;
-        if((std::is_same<T, MLFloat16>::value)) {
-            cudnn_reduce_max_type = CUDNN_DATA_FLOAT;
+        if ((std::is_same<T, MLFloat16>::value)) {
+          cudnn_reduce_max_type = CUDNN_DATA_FLOAT;
         }
         ORT_RETURN_IF_ERROR(reduce_max_desc.Set(CUDNN_REDUCE_TENSOR_MAX, cudnn_reduce_max_type, CUDNN_REDUCE_TENSOR_NO_INDICES));
         size_t indices_bytes_max = 0;
@@ -462,7 +481,7 @@ Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& input, Pr
       auto log_sum_result_buffer = cuda_ep.GetScratchBuffer<T>(output_count);
       auto log_sum_result = log_sum_result_buffer.get();
       BinaryElementwisePreparation prepare;
-      prepare.BinaryElementwiseBroadcastPrepareHelper(input_shape, output_shape, input_shape);
+      ORT_RETURN_IF_ERROR(prepare.BinaryElementwiseBroadcastPrepareHelper(input_shape, output_shape, input_shape));
       Impl_Sub<CudaT>(prepare.output_rank_or_simple_broadcast,
                       &prepare.lhs_padded_strides,
                       reinterpret_cast<const CudaT*>(input.template Data<T>()),

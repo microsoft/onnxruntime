@@ -15,7 +15,9 @@ set(WINML_TEST_INC_DIR
   ${CMAKE_CURRENT_BINARY_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated
-  ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)
+  ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include
+  ${CMAKE_CURRENT_BINARY_DIR}/winml_api_experimental/comp_generated
+)
 
 function(set_winml_target_properties target)
   set_target_properties(${target} PROPERTIES
@@ -41,6 +43,7 @@ function(add_winml_test)
   endif()
 
   add_executable(${_UT_TARGET} ${_UT_SOURCES})
+  onnxruntime_add_include_to_target(${_UT_TARGET} onnx_proto)
   source_group(TREE ${WINML_TEST_SRC_DIR} FILES ${_UT_SOURCES})
   set_winml_target_properties(${_UT_TARGET})
   target_compile_definitions(${_UT_TARGET} PRIVATE BUILD_GOOGLE_TEST)
@@ -153,7 +156,7 @@ add_dependencies(winml_test_common
   winml_api
   winml_dll
 )
-
+onnxruntime_add_include_to_target(winml_test_common onnx_proto)
 add_library(winml_google_test_lib STATIC ${WINML_TEST_SRC_DIR}/common/googletest/main.cpp)
 set_winml_target_properties(winml_google_test_lib)
 

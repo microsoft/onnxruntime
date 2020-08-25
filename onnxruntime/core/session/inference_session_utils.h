@@ -2,10 +2,18 @@
 // Licensed under the MIT License.
 
 #pragma once
+
+// Currently everything here is unused in a minimal build.
+// Leaving the file included in case there are other InferenceSession utils needed in a minimal build, as this would
+// be the best place to add them.
+
+#if !defined(ORT_MINIMAL_BUILD)
+
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 #include "core/framework/session_options.h"
 #include "core/common/common.h"
+
 #ifdef _WIN32
 #pragma warning(push)
 #pragma warning(disable : 28020)
@@ -53,3 +61,5 @@ class InferenceSessionUtils {
 };
 
 }  // namespace onnxruntime
+
+#endif  // !defined(ORT_MINIMAL_BUILD)

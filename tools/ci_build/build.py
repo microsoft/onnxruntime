@@ -4,7 +4,6 @@
 
 import argparse
 import glob
-import logging
 import multiprocessing
 import os
 import re
@@ -12,11 +11,7 @@ import shutil
 import subprocess
 import sys
 import hashlib
-
-logging.basicConfig(
-    format="%(asctime)s %(name)s [%(levelname)s] - %(message)s",
-    level=logging.DEBUG)
-log = logging.getLogger("Build")
+from logger import log
 
 
 class BaseError(Exception):
@@ -266,11 +261,7 @@ def parse_arguments():
         help="Use pre-installed Eigen.")
     parser.add_argument("--eigen_path", help="Path to pre-installed Eigen.")
     parser.add_argument(
-        "--use_tvm", action="store_true", help="Build with TVM")
-    parser.add_argument(
         "--use_openmp", action='store_true', help="Build with OpenMP")
-    parser.add_argument(
-        "--use_llvm", action="store_true", help="Build TVM with LLVM")
     parser.add_argument(
         "--enable_msinternal", action="store_true",
         help="Enable for Microsoft internal builds only.")
@@ -358,6 +349,12 @@ def parse_arguments():
     parser.add_argument(
         "--build_micro_benchmarks", action='store_true',
         help="Build ONNXRuntime micro-benchmarks.")
+    parser.add_argument(
+        "--include_ops_by_model", type=str,
+        help="include ops from model(s) under designated path.")
+    parser.add_argument(
+        "--include_ops_by_file", type=str,
+        help="include ops from csv file.")
     return parser.parse_args()
 
 
@@ -481,6 +478,7 @@ def install_python_deps(numpy_version=""):
                         else 'numpy>=1.16.6')
     dep_packages.append('sympy>=1.1')
     dep_packages.append('packaging')
+    dep_packages.append('cerberus')
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host',
                     'files.pythonhosted.org'] + dep_packages)
 
@@ -584,31 +582,16 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_USE_DNNL=" + ("ON" if args.use_dnnl else "OFF"),
         "-Donnxruntime_USE_MKLML=" + ("ON" if args.use_mklml else "OFF"),
         "-Donnxruntime_USE_NGRAPH=" + ("ON" if args.use_ngraph else "OFF"),
-        "-Donnxruntime_USE_OPENVINO=" + ("ON" if args.use_openvino else "OFF"),
-        "-Donnxruntime_USE_OPENVINO_MYRIAD=" + (
-            "ON" if args.use_openvino == "MYRIAD_FP16" else "OFF"),
-        "-Donnxruntime_USE_OPENVINO_GPU_FP32=" + (
-            "ON" if args.use_openvino == "GPU_FP32" else "OFF"),
-        "-Donnxruntime_USE_OPENVINO_GPU_FP16=" + (
-            "ON" if args.use_openvino == "GPU_FP16" else "OFF"),
-        "-Donnxruntime_USE_OPENVINO_CPU_FP32=" + (
-            "ON" if args.use_openvino == "CPU_FP32" else "OFF"),
-        "-Donnxruntime_USE_OPENVINO_VAD_M=" + (
-            "ON" if args.use_openvino == "VAD-M_FP16" else "OFF"),
-        "-Donnxruntime_USE_OPENVINO_VAD_F=" + (
-            "ON" if args.use_openvino == "VAD-F_FP32" else "OFF"),
-        "-Donnxruntime_USE_OPENVINO_BINARY=" + (
-            "ON" if args.use_openvino else "OFF"),
         "-Donnxruntime_USE_NNAPI_BUILTIN=" + ("ON" if args.use_nnapi else "OFF"),
         "-Donnxruntime_USE_RKNPU=" + ("ON" if args.use_rknpu else "OFF"),
         "-Donnxruntime_USE_OPENMP=" + (
             "ON" if args.use_openmp and not (
-                args.use_nnapi or args.use_mklml or args.use_ngraph or
+                args.use_nnapi or (args.use_mklml and (is_macOS() or is_windows())) or args.use_ngraph or
                 args.android or (args.ios and is_macOS())
                 or args.use_rknpu)
             else "OFF"),
-        "-Donnxruntime_USE_TVM=" + ("ON" if args.use_tvm else "OFF"),
-        "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_llvm else "OFF"),
+        "-Donnxruntime_USE_TVM=" + ("ON" if args.use_nuphar else "OFF"),
+        "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_nuphar else "OFF"),
         "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + (
             "ON" if args.enable_msinternal else "OFF"),
         "-Donnxruntime_USE_VITISAI=" + ("ON" if args.use_vitisai else "OFF"),
@@ -674,7 +657,22 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     if args.winml_root_namespace_override:
         cmake_args += ["-Donnxruntime_WINML_NAMESPACE_OVERRIDE=" +
                        args.winml_root_namespace_override]
-
+    if args.use_openvino:
+        cmake_args += ["-Donnxruntime_USE_OPENVINO=ON",
+                       "-Donnxruntime_USE_OPENVINO_MYRIAD=" + (
+                           "ON" if args.use_openvino == "MYRIAD_FP16" else "OFF"),
+                       "-Donnxruntime_USE_OPENVINO_GPU_FP32=" + (
+                           "ON" if args.use_openvino == "GPU_FP32" else "OFF"),
+                       "-Donnxruntime_USE_OPENVINO_GPU_FP16=" + (
+                           "ON" if args.use_openvino == "GPU_FP16" else "OFF"),
+                       "-Donnxruntime_USE_OPENVINO_CPU_FP32=" + (
+                           "ON" if args.use_openvino == "CPU_FP32" else "OFF"),
+                       "-Donnxruntime_USE_OPENVINO_VAD_M=" + (
+                           "ON" if args.use_openvino == "VAD-M_FP16" else "OFF"),
+                       "-Donnxruntime_USE_OPENVINO_VAD_F=" + (
+                           "ON" if args.use_openvino == "VAD-F_FP32" else "OFF"),
+                       "-Donnxruntime_USE_OPENVINO_BINARY=" + (
+                           "ON" if args.use_openvino else "OFF")]
     # temp turn on only for linux gpu build
     if not is_windows():
         if args.use_cuda:
@@ -690,7 +688,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "-DProtobuf_USE_STATIC_LIBS=ON"
         ]
 
-    if args.use_llvm:
+    if args.use_nuphar and args.llvm_path is not None:
         cmake_args += ["-DLLVM_DIR=%s" % args.llvm_path]
 
     if args.use_cuda and not is_windows():
@@ -708,12 +706,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "-DANDROID_PLATFORM=android-" + str(args.android_api),
             "-DANDROID_ABI=" + str(args.android_abi)
         ]
-
-    if is_macOS():
-        if args.use_xcode:
-            cmake_args += ['-G', 'Xcode']
-        elif args.cmake_generator is not None:
-            cmake_args += ['-G', args.cmake_generator]
 
     if args.ios:
         if is_macOS():
@@ -813,8 +805,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
 
     cmake_args += ["-D{}".format(define) for define in cmake_extra_defines]
 
-    if is_windows():
-        cmake_args += cmake_extra_args
+    cmake_args += cmake_extra_args
 
     # ADO pipelines will store the pipeline build number
     # (e.g. 191101-2300.1.master) and source version in environment
@@ -858,16 +849,15 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     for config in configs:
         config_build_dir = get_config_build_dir(build_dir, config)
         os.makedirs(config_build_dir, exist_ok=True)
-
-        if args.use_tvm:
+        if args.use_nuphar:
             os.environ["PATH"] = os.path.join(
                 config_build_dir, "external", "tvm",
-                config) + os.pathsep + os.environ["PATH"]
+                config) + os.pathsep + os.path.dirname(sys.executable) + os.pathsep + os.environ["PATH"]
 
         run_subprocess(
             cmake_args + [
                 "-Donnxruntime_ENABLE_MEMLEAK_CHECKER=" +
-                ("ON" if config.lower() == 'debug' and not args.use_tvm and not
+                ("ON" if config.lower() == 'debug' and not args.use_nuphar and not
                  args.use_ngraph and not args.use_openvino and not
                  args.enable_msvc_static_runtime
                  else "OFF"), "-DCMAKE_BUILD_TYPE={}".format(config)],
@@ -906,7 +896,7 @@ def build_targets(args, cmake_path, build_dir, configs, parallel):
             elif (is_macOS() and args.use_xcode):
                 # CMake will generate correct build tool args for Xcode
                 cmd_args += ["--parallel", num_cores]
-            else:
+            elif args.cmake_generator != 'Ninja':
                 build_tool_args += ["-j" + num_cores]
 
         if build_tool_args:
@@ -1109,6 +1099,12 @@ def run_training_python_frontend_e2e_tests(cwd):
     # frontend tests are to be added here:
     log.info("Running python frontend e2e tests.")
 
+    import torch
+    ngpus = torch.cuda.device_count()
+    if ngpus > 1:
+        log.debug('RUN: mpirun -n {} {} orttraining_run_glue.py'.format(ngpus, sys.executable))
+        run_subprocess(['mpirun', '-n', str(ngpus), sys.executable, 'orttraining_run_glue.py'], cwd=cwd)
+
     # with orttraining_run_glue.py.
     # 1. we like to force to use single GPU (with CUDA_VISIBLE_DEVICES)
     #   for fine-tune tests.
@@ -1174,13 +1170,16 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     'cd /data/local/tmp && /data/local/tmp/onnx_test_runner /data/local/tmp/test')  # noqa
             continue
         dll_path_list = []
-        if args.use_tvm:
+        if args.use_nuphar:
             dll_path_list.append(os.path.join(
                 build_dir, config, "external", "tvm", config))
         if args.use_tensorrt:
             dll_path_list.append(os.path.join(args.tensorrt_home, 'lib'))
         if args.use_mklml:
             dll_path_list.append(os.path.join(build_dir, config, "mklml", "src", "project_mklml", "lib"))
+        if not is_windows():
+            # A workaround for making libonnxruntime_providers_shared.so loadable.
+            dll_path_list.append(os.path.join(build_dir, config))
 
         dll_path = None
         if len(dll_path_list) > 0:
@@ -1337,7 +1336,7 @@ def run_nodejs_tests(nodejs_binding_dir):
 def build_python_wheel(
         source_dir, build_dir, configs, use_cuda, use_ngraph, use_dnnl,
         use_tensorrt, use_openvino, use_nuphar, use_vitisai, use_acl, use_armnn,
-        wheel_name_suffix, nightly_build=False, featurizers_build=False, use_ninja=False):
+        wheel_name_suffix, enable_training, nightly_build=False, featurizers_build=False, use_ninja=False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows() and not use_ninja:
@@ -1363,6 +1362,8 @@ def build_python_wheel(
             args.append("--use_featurizers")
         if wheel_name_suffix:
             args.append('--wheel_name_suffix={}'.format(wheel_name_suffix))
+        if enable_training:
+            args.append("--enable_training")
 
         # The following arguments are mutually exclusive
         if use_tensorrt:
@@ -1407,16 +1408,14 @@ def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
     ]
 
     is_ninja = args.cmake_generator == 'Ninja'
-
+    if args.cmake_generator is not None and not (is_macOS() and args.use_xcode):
+        cmd_args += ['-G', args.cmake_generator]
     if is_windows():
         if not is_ninja:
             cmd_args += ['-T', 'host=x64']
-        cmd_args += ['-G', args.cmake_generator]
     elif is_macOS():
         if args.use_xcode:
             cmd_args += ['-G', 'Xcode']
-        elif args.cmake_generator is not None:
-            cmd_args += ['-G', args.cmake_generator]
 
     run_subprocess(cmd_args, cwd=protoc_build_dir)
     # Build step
@@ -1513,6 +1512,18 @@ def main():
 
     if args.skip_tests:
         args.test = False
+
+    if (args.include_ops_by_model and len(args.include_ops_by_model) > 0) or\
+       (args.include_ops_by_file and len(args.include_ops_by_file) > 0):
+
+        from exclude_unused_ops import exclude_unused_ops, get_provider_path
+
+        include_ops_by_model = args.include_ops_by_model if args.include_ops_by_model else ''
+        include_ops_by_file = args.include_ops_by_file if args.include_ops_by_file else ''
+
+        exclude_unused_ops(include_ops_by_model, include_ops_by_file, get_provider_path(use_cuda=args.use_cuda))
+
+        args.test = False  # disable tests since we don't know which ops are enabled
 
     if args.use_tensorrt:
         args.use_cuda = True
@@ -1614,6 +1625,10 @@ def main():
                 cmake_extra_args.append(
                     '-DCMAKE_TOOLCHAIN_FILE=' + os.path.join(
                         source_dir, 'cmake', 'wcos_toolchain.cmake'))
+        elif args.cmake_generator is not None and not (is_macOS() and args.use_xcode):
+            cmake_extra_args += ['-G', args.cmake_generator]
+        elif is_macOS() and args.use_xcode:
+            cmake_extra_args += ['-G', 'Xcode']
 
         if (args.android or args.ios) and args.path_to_protoc_exe is None:
             # Cross-compiling for Android and iOS
@@ -1675,6 +1690,7 @@ def main():
                 args.use_acl,
                 args.use_armnn,
                 args.wheel_name_suffix,
+                args.enable_training,
                 nightly_build=nightly_build,
                 featurizers_build=args.use_featurizers,
                 use_ninja=(args.cmake_generator == 'Ninja')

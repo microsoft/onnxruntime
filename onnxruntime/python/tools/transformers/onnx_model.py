@@ -628,7 +628,7 @@ class OnnxModel:
         weights_to_remove = []
         weights_to_keep = []
         for initializer in graph.initializer:
-            if initializer.name not in remaining_input_names:
+            if initializer.name not in remaining_input_names and not self.find_graph_output(initializer.name):
                 weights_to_remove.append(initializer)
             else:
                 weights_to_keep.append(initializer.name)

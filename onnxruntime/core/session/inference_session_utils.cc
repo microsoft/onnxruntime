@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(ORT_MINIMAL_BUILD)
+
 #include "core/session/inference_session_utils.h"
 
 namespace onnxruntime {
@@ -36,7 +38,7 @@ static Status SetInterOpNumThreads(SessionOptions& session_options,
   }
 
   LOGS(logger, INFO) << "Setting inter_op_num_threads to " << value;
-  session_options.inter_op_param.thread_pool_size= value;
+  session_options.inter_op_param.thread_pool_size = value;
   return Status::OK();
 }
 
@@ -220,3 +222,5 @@ Status InferenceSessionUtils::ParseRunOptionsFromModelProto(RunOptions& /*run_op
 }
 
 }  // namespace onnxruntime
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
