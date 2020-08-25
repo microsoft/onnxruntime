@@ -32,8 +32,14 @@ common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int e
 
   if (dst_device.Type() == OrtDevice::GPU) {
     if (src_device.Type() == OrtDevice::CPU && src_device.MemType() == OrtDevice::MemType::CUDA_PINNED) {
-      // copy from pinned memory to GPU, this is non-blocking
+      // copy from pinned memory to GPU
+      // this is blocking for Windows as it's not thread-safe with Async call - ReduceMeanGrad UT with RelWithDebInfo build
+      // is broken consistently 
+#ifdef _WIN32
+      CUDA_RETURN_IF_ERROR(cudaMemcpy(dst_data, src_data, bytes, cudaMemcpyHostToDevice));
+#else
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyHostToDevice, streams_[exec_queue_id]));
+#endif
     } else if (src_device.Type() == OrtDevice::GPU) {
       // copying between GPU, this is non-blocking
       // Copy only if the two addresses are different.
