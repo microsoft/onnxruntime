@@ -69,18 +69,28 @@ class ORTGlueTest(unittest.TestCase):
         self.logging_steps = 10
         self.rtol = 1e-02
 
+    def verify_old_and_new_api_are_equal(self, results_per_api):
+        new_api_results = results_per_api[True]
+        old_api_results = results_per_api[True]
+        for key in new_api_results.keys():
+            assert_allclose(new_api_results[key], old_api_results[key])
+
     def test_roberta_with_mrpc(self):
         expected_acc = 0.8848039215686274
         expected_f1 = 0.917975567190227
         expected_acc_and_f1 = 0.9013897443794272
         expected_loss = 0.35917433314755853
 
+        results_per_api = dict()
         for use_new_api in [True, False]:
             results = self.run_glue(model_name="roberta-base", task_name="MRPC", fp16=False, use_new_api=use_new_api)
             assert_allclose(results['acc'], expected_acc, rtol=self.rtol)
             assert_allclose(results['f1'], expected_f1, rtol=self.rtol)
             assert_allclose(results['acc_and_f1'], expected_acc_and_f1, rtol=self.rtol)
             assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
+            results_per_api[use_new_api] = results
+
+        self.verify_old_and_new_api_are_equal(results_per_api)
 
     def test_roberta_fp16_with_mrpc(self):
         expected_acc = 0.8946078431372549
@@ -88,12 +98,16 @@ class ORTGlueTest(unittest.TestCase):
         expected_acc_and_f1 = 0.90965068163868
         expected_loss = 0.3052181116506165
 
+        results_per_api = dict()
         for use_new_api in [True, False]:
             results = self.run_glue(model_name="roberta-base", task_name="MRPC", fp16=True, use_new_api=use_new_api)
             assert_allclose(results['acc'], expected_acc, rtol=self.rtol)
             assert_allclose(results['f1'], expected_f1, rtol=self.rtol)
             assert_allclose(results['acc_and_f1'], expected_acc_and_f1, rtol=self.rtol)
             assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
+            results_per_api[use_new_api] = results
+
+        self.verify_old_and_new_api_are_equal(results_per_api)
 
     def test_bert_with_mrpc(self):
         if self.local_rank == -1:
@@ -109,8 +123,12 @@ class ORTGlueTest(unittest.TestCase):
 
         if self.local_rank == -1:
             # not parallel case, we can run both new and old api tests
+            results_per_api = dict()
             for use_new_api in [True, False]:
                 results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=False, use_new_api=use_new_api)
+                results_per_api[use_new_api] = results
+
+            self.verify_old_and_new_api_are_equal(results_per_api)
         else:
             # with parallel training, TrainingArguments can only be created once (due to its cached _setup_devices)
             # thus we can only choose one test case to run.
@@ -128,12 +146,16 @@ class ORTGlueTest(unittest.TestCase):
         expected_acc_and_f1 = 0.8751007252215954
         expected_loss = 0.412924896998732
 
+        results_per_api = dict()
         for use_new_api in [True, False]:
             results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=True, use_new_api=use_new_api)
             assert_allclose(results['acc'], expected_acc, rtol=self.rtol)
             assert_allclose(results['f1'], expected_f1, rtol=self.rtol)
             assert_allclose(results['acc_and_f1'], expected_acc_and_f1, rtol=self.rtol)
             assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
+            results_per_api[use_new_api] = results
+
+        self.verify_old_and_new_api_are_equal(results_per_api)
 
     def model_to_desc(self, model_name, model):
         if model_name.startswith('bert') or model_name.startswith('xlnet'):
