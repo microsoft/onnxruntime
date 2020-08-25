@@ -378,7 +378,7 @@ Status SessionState::GenerateActivationMemoryPatterns(MemoryPatternGroup* output
     //allocate output
     for (int i = 0, end = static_cast<int>(node->OutputDefs().size()); i < end; ++i) {
       int ml_value_idx;
-      this->ort_value_name_idx_map_.GetIdx(node->OutputDefs()[i]->Name(), ml_value_idx);
+      ORT_RETURN_IF_ERROR(ort_value_name_idx_map_.GetIdx(node->OutputDefs()[i]->Name(), ml_value_idx));
       if (ml_value_idx == NodeIndexInfo::kInvalidEntry)
         continue;
       const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
