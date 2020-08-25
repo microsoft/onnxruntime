@@ -204,22 +204,17 @@ void addObjectMethodsForTraining(py::module& m) {
         return py::none();
       });
 
-  struct PyTrainingSession {
-    std::unique_ptr<TrainingSession> sess_;
-  };
-
-  py::class_<PyTrainingSession> training_session(m, "TrainingSession");
+  py::object InferenceSession = static_cast<py::object>(m.attr("InferenceSession"));
+  py::class_<TrainingSession> training_session(m, "TrainingSession", InferenceSession);
   training_session.def(py::init([](const PySessionOptions& so) {
                     Environment& env = GetEnv();
-                    auto training_sess = onnxruntime::make_unique<PyTrainingSession>();
-                    training_sess->sess_ = onnxruntime::make_unique<TrainingSession>(so, env);
-                    return training_sess;
+                    auto sess = onnxruntime::make_unique<TrainingSession>(so, env);
+                    return sess;
                   }))
       .def(py::init([]() {
         Environment& env = GetEnv();
-        auto training_sess = onnxruntime::make_unique<PyTrainingSession>();
-        training_sess->sess_ = onnxruntime::make_unique<TrainingSession>(GetDefaultCPUSessionOptions(), env);
-        return training_sess;
+        auto sess = onnxruntime::make_unique<TrainingSession>(GetDefaultCPUSessionOptions(), env);
+        return sess;
       }))
       .def("finalize", [](py::object) {
 #if defined(USE_NCCL)
@@ -231,37 +226,37 @@ void addObjectMethodsForTraining(py::module& m) {
 #endif
 #endif
       })
-      .def("load_model", [](PyTrainingSession* sess, const std::string& path, TrainingParameters& parameters) {
-        OrtPybindThrowIfError(sess->sess_->Load(path));
+      .def("load_model", [](TrainingSession* sess, const std::string& path, TrainingParameters& parameters) {
+        OrtPybindThrowIfError(sess->Load(path));
 
 #if defined(USE_NCCL)
-        CopyMPIContextToTrainingParameters(parameters, sess->sess_->GetLogger());
+        CopyMPIContextToTrainingParameters(parameters, sess->GetLogger());
 #endif
-        const auto config_result = ConfigureSessionForTraining(sess->sess_.get(), parameters);
+        const auto config_result = ConfigureSessionForTraining(sess, parameters);
 
         std::vector<std::string> provider_types = {};
-        InitializeSession(sess->sess_.get(), provider_types);
+        InitializeSession(sess, provider_types);
 
         return config_result;
       })
-      .def("read_bytes", [](PyTrainingSession* sess, const py::bytes& serialized_model, TrainingParameters& parameters) {
+      .def("read_bytes", [](TrainingSession* sess, const py::bytes& serialized_model, TrainingParameters& parameters) {
         std::istringstream buffer(serialized_model);
-        OrtPybindThrowIfError(sess->sess_->Load(buffer));
+        OrtPybindThrowIfError(sess->Load(buffer));
 
 #if defined(USE_NCCL)
-        CopyMPIContextToTrainingParameters(parameters, sess->sess_->GetLogger());
+        CopyMPIContextToTrainingParameters(parameters, sess->GetLogger());
 #endif
-        const auto config_result = ConfigureSessionForTraining(sess->sess_.get(), parameters);
+        const auto config_result = ConfigureSessionForTraining(sess, parameters);
 
         std::vector<std::string> provider_types = {};
-        InitializeSession(sess->sess_.get(), provider_types);
+        InitializeSession(sess, provider_types);
 
         return config_result;
       })
-      .def("get_state", [](PyTrainingSession* sess) {
+      .def("get_state", [](TrainingSession* sess) {
         NameMLValMap state_tensors;
-        ORT_THROW_IF_ERROR(sess->sess_->GetStateTensors(state_tensors));
-        auto& data_transfer_manager = sess->sess_->GetDataTransferManager();
+        ORT_THROW_IF_ERROR(sess->GetStateTensors(state_tensors));
+        auto& data_transfer_manager = sess->GetDataTransferManager();
         //convert to numpy array
         std::map<std::string, py::object> rmap;
         for (auto& kv : state_tensors) {
