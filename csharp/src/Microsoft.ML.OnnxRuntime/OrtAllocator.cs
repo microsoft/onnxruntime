@@ -203,14 +203,11 @@ namespace Microsoft.ML.OnnxRuntime
         #region IDisposable Support
         protected virtual void Dispose(bool disposing)
         {
-            if (disposing)
+            if (_owned && _pointer != IntPtr.Zero)
             {
-                if (_owned)
-                {
-                    NativeMethods.OrtReleaseMemoryInfo(_pointer);
-                }
-                _pointer = IntPtr.Zero;
+                NativeMethods.OrtReleaseMemoryInfo(_pointer);
             }
+            _pointer = IntPtr.Zero;
         }
 
         public void Dispose()
@@ -271,12 +268,9 @@ namespace Microsoft.ML.OnnxRuntime
         #region IDisposable Support
         protected virtual void Dispose(bool disposing)
         {
-            if (disposing)
+            if (Pointer != IntPtr.Zero)
             {
-                if (_allocator != null)
-                {
-                    _allocator.FreeMemory(Pointer);
-                }
+                _allocator.FreeMemory(Pointer);
                 Pointer = IntPtr.Zero;
             }
         }
@@ -391,14 +385,12 @@ namespace Microsoft.ML.OnnxRuntime
         #region IDisposable Support
         protected virtual void Dispose(bool disposing)
         {
-            if (disposing)
+            // Singleton default allocator is not owned
+            if (_owned && _pointer != IntPtr.Zero)
             {
-                if (_owned)
-                {
-                    NativeMethods.OrtReleaseAllocator(_pointer);
-                }
-                _pointer = IntPtr.Zero;
+                NativeMethods.OrtReleaseAllocator(_pointer);
             }
+            _pointer = IntPtr.Zero;
         }
 
         public void Dispose()

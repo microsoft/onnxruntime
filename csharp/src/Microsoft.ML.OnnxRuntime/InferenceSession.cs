@@ -901,8 +901,8 @@ namespace Microsoft.ML.OnnxRuntime
 
         public void Dispose()
         {
-            GC.SuppressFinalize(this);
             Dispose(true);
+            GC.SuppressFinalize(this);
         }
 
         protected virtual void Dispose(bool disposing)
@@ -925,6 +925,7 @@ namespace Microsoft.ML.OnnxRuntime
             if (_nativeHandle != IntPtr.Zero)
             {
                 NativeMethods.OrtReleaseSession(_nativeHandle);
+                _nativeHandle = IntPtr.Zero;
             }
         }
 

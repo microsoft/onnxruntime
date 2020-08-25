@@ -264,14 +264,11 @@ namespace Microsoft.ML.OnnxRuntime
 
         protected virtual void Dispose(bool disposing)
         {
-            if (disposing)
+            // dispose managed state (managed objects).
+            if (_nativeMemoryManager != null)
             {
-                // dispose managed state (managed objects).
-                if (_nativeMemoryManager != null)
-                {
-                    _nativeMemoryManager.Dispose();
-                    _nativeMemoryManager = null;
-                }
+                _nativeMemoryManager.Dispose();
+                _nativeMemoryManager = null;
             }
         }
 

@@ -340,19 +340,16 @@ namespace Microsoft.ML.OnnxRuntime
         #region Disposable Support
         protected virtual void Dispose(bool disposing)
         {
-            if (disposing)
+            // We have to surrender ownership to some legacy classes
+            // Or we never had that ownership to begin with
+            if (Handle != IntPtr.Zero)
             {
-                // We have to surrender ownership to some legacy classes
-                // Or we never had that ownership to begin with
-                if (Handle != IntPtr.Zero)
+                if (IsOwned)
                 {
-                    if (IsOwned)
-                    {
-                        NativeMethods.OrtReleaseValue(Handle);
-                    }
-                    // Prevent use after disposal
-                    Handle = IntPtr.Zero;
+                    NativeMethods.OrtReleaseValue(Handle);
                 }
+                // Prevent use after disposal
+                Handle = IntPtr.Zero;
             }
         }
         public void Dispose()

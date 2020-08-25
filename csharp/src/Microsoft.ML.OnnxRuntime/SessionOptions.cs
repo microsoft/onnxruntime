@@ -452,13 +452,13 @@ namespace Microsoft.ML.OnnxRuntime
 
         public void Dispose()
         {
-            GC.SuppressFinalize(this);
             Dispose(true);
+            GC.SuppressFinalize(this);
         }
 
         protected virtual void Dispose(bool disposing)
         {
-            if (disposing)
+            if (_nativePtr != IntPtr.Zero)
             {
                 NativeMethods.OrtReleaseSessionOptions(_nativePtr);
                 _nativePtr = IntPtr.Zero;

@@ -239,7 +239,7 @@ namespace Microsoft.ML.OnnxRuntime
         #region Disposable Support
         protected virtual void Dispose(bool disposing)
         {
-            if(disposing)
+            if(_handle != IntPtr.Zero)
             {
                 NativeMethods.OrtReleaseIoBinding(_handle);
                 _handle = IntPtr.Zero;

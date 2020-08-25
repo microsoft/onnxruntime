@@ -52,20 +52,7 @@ namespace Microsoft.ML.OnnxRuntime
             :base(IntPtr.Zero, true)
         {
             handle = IntPtr.Zero;
-            try
-            {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateEnv(LogLevel.Warning, @"CSharpOnnxRuntime", out handle));
-            }
-            catch (OnnxRuntimeException e)
-            {
-                if (handle != IntPtr.Zero)
-                {
-                    Delete(handle);
-                    handle = IntPtr.Zero;
-                }
-                throw e;
-            }
-            
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateEnv(LogLevel.Warning, @"CSharpOnnxRuntime", out handle));
         }
 
         private static void Delete(IntPtr nativePtr)
