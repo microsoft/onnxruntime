@@ -66,7 +66,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   auto data_group_size = parameters.world_size / parameters.horizontal_parallel_size;
   if (data_group_size != parameters.data_parallel_size) {
     LOGS(*(sess->GetLogger()), WARNING) << "data_parallel_size is not correct, tuned automatically to "
-              << data_group_size;
+                                        << data_group_size;
     parameters.data_parallel_size = data_group_size;
   }
 
@@ -145,23 +145,23 @@ TrainingConfigurationResult ConfigureSessionForTraining(
 
 #if defined(USE_NCCL)
 void CopyMPIContextToTrainingParameters(TrainingParameters& parameters, const logging::Logger* logger) {
-    LOGS(*logger, INFO) << "MPIContext::GetInstance().GetWorldRank(): " << MPIContext::GetInstance().GetWorldRank();
-    LOGS(*logger, INFO) << "MPIContext::GetInstance().GetLocalRank(): " << MPIContext::GetInstance().GetLocalRank();
-    LOGS(*logger, INFO) << "MPIContext::GetInstance().GetWorldSize(): " << MPIContext::GetInstance().GetWorldSize();
-    LOGS(*logger, INFO) << "MPIContext::GetInstance().GetLocalSize(): " << MPIContext::GetInstance().GetLocalSize();
+  LOGS(*logger, INFO) << "MPIContext::GetInstance().GetWorldRank(): " << MPIContext::GetInstance().GetWorldRank();
+  LOGS(*logger, INFO) << "MPIContext::GetInstance().GetLocalRank(): " << MPIContext::GetInstance().GetLocalRank();
+  LOGS(*logger, INFO) << "MPIContext::GetInstance().GetWorldSize(): " << MPIContext::GetInstance().GetWorldSize();
+  LOGS(*logger, INFO) << "MPIContext::GetInstance().GetLocalSize(): " << MPIContext::GetInstance().GetLocalSize();
 
-    parameters.local_rank = MPIContext::GetInstance().GetLocalRank();
-    parameters.local_size = MPIContext::GetInstance().GetLocalSize();
-    if (parameters.world_rank != MPIContext::GetInstance().GetWorldRank()) {
-      if (parameters.world_rank != 0)
-        LOGS(*logger, WARNING) << "TrainingParameters world_rank is not correct, tuned automatically to " << MPIContext::GetInstance().GetWorldRank();
-      parameters.world_rank = MPIContext::GetInstance().GetWorldRank();
-    }
-    if (parameters.world_size != MPIContext::GetInstance().GetWorldSize()) {
-      if (parameters.world_size != 1)
-        LOGS(*logger, WARNING) << "TrainingParameters world_size is not correct, tuned automatically to " << MPIContext::GetInstance().GetWorldSize();
-      parameters.world_size = MPIContext::GetInstance().GetWorldSize();
-    }
+  parameters.local_rank = MPIContext::GetInstance().GetLocalRank();
+  parameters.local_size = MPIContext::GetInstance().GetLocalSize();
+  if (parameters.world_rank != MPIContext::GetInstance().GetWorldRank()) {
+    if (parameters.world_rank != 0)
+      LOGS(*logger, WARNING) << "TrainingParameters world_rank is not correct, tuned automatically to " << MPIContext::GetInstance().GetWorldRank();
+    parameters.world_rank = MPIContext::GetInstance().GetWorldRank();
+  }
+  if (parameters.world_size != MPIContext::GetInstance().GetWorldSize()) {
+    if (parameters.world_size != 1)
+      LOGS(*logger, WARNING) << "TrainingParameters world_size is not correct, tuned automatically to " << MPIContext::GetInstance().GetWorldSize();
+    parameters.world_size = MPIContext::GetInstance().GetWorldSize();
+  }
 }
 #endif
 
@@ -204,7 +204,7 @@ void addObjectMethodsForTraining(py::module& m) {
         return py::none();
       });
 
-  py::class_<onnxruntime::training::TrainingSession, PyInferenceSession> training_session(m, "TrainingSession");
+  py::class_<onnxruntime::training::TrainingSession> training_session(m, "TrainingSession");
   training_session.def(py::init([](const PySessionOptions& so) {
                     Environment& env = GetEnv();
                     return onnxruntime::make_unique<onnxruntime::training::TrainingSession>(so, env);
