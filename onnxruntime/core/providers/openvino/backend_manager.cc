@@ -35,11 +35,17 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
 
   // Save the indexes of graph inputs among fused_node's inputDefs
   // (which also contains initializers).
-  std::map<std::string, int> inputdef_index_map;
+  #if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
+    std::map<std::string, int> inputdef_index_map;
+  #endif
   auto node_input_defs = fused_node->InputDefs();
   int i = 0;
   for (auto idef : node_input_defs) {
+    #if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
     inputdef_index_map.insert({idef->Name(), i});
+    #else
+    subgraph_context_.input_names.insert({idef->Name(), i});
+    #endif
     i++;
   }
 
@@ -53,6 +59,7 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
         }
       }
     }
+    #if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
     auto it = inputdef_index_map.find(input->Name());
     if (it == inputdef_index_map.end()) {
       ORT_THROW("Input not found in the input defs list");
@@ -60,6 +67,7 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
 
     int index = it->second;
     subgraph_context_.input_indexes.push_back(index);
+    #endif
   }
 
   auto graph_outputs_defs = fused_node->OutputDefs();
@@ -93,8 +101,16 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
 
 bool BackendManager::ModelHasBatchedInputs(const ONNX_NAMESPACE::ModelProto& model_proto) const {
   bool has_batched_inputs = true;
+  
+  #if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
   for (int i = 0; i < (int)subgraph_context_.input_indexes.size(); i++) {
     auto input = model_proto.graph().input(subgraph_context_.input_indexes[i]);
+  #else
+  for (auto input_info_iter = subgraph_context_.input_names.begin();
+       input_info_iter != subgraph_context_.input_names.end(); ++input_info_iter) {
+    auto input = model_proto.graph().input(input_info_iter->second);
+  #endif
+
     // Batch-process only raw image inputs (NCHW or NHWC layouts)
     auto shape = input.type().tensor_type().shape();
     if (shape.dim_size() != 4) {
@@ -254,8 +270,16 @@ void BackendManager::Compute(Ort::CustomOpApi api, OrtKernelContext* context) {
     auto key = MakeMapKeyString(tensor_shapes, subgraph_context_.device_id);
 
     if(subgraph_context_.device_id == "MYRIAD"){
+      
+      #if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
       for(size_t i = 0; i < subgraph_context_.input_indexes.size(); i++){
         if(tensor_shapes[i].size() != 4)
+      #else
+      for (auto input_info_iter = subgraph_context_.input_names.begin();
+          input_info_iter  != subgraph_context_.input_names.end(); ++input_info_iter) {
+        if(tensor_shapes[input_info_iter->second].size() != 4)
+      #endif
+
           subgraph_context_.set_vpu_config = true;
       }
     }
