@@ -330,8 +330,9 @@ void FindPipelineLandmarks(
   *last_node = graph.GetNode(node_topology_list.back());
 }
 
-// This function inserts WaitEvent's and RecordEvent's to the input graph for
-// controlling synchronization between (batch, pipeline stage)-pairs.
+// This function inserts WaitEvent's (or Wait's for short) and RecordEvent's
+// (or Record's for short) to the input graph for controlling synchronization
+// between (batch, pipeline stage)-pairs.
 //
 // The input graph is a pipeline's stage, which contains some Send's and Recv's.
 //
@@ -351,31 +352,43 @@ void FindPipelineLandmarks(
 // This function inserts some event operators and those patterns become
 //
 //  1. First stage:
-//   Wait ---------> Wait -> FW -> Record -> Send -> Record ->
-//   Wait -> Recv -> Wait -> BW -> Record ---------> Record
+//                             Wait -> FW -> Record -> Wait -> Send -> Record ->
+//   Wait -> Recv -> Record -> Wait -> BW -> Record
 //  2. Middle stage:
-//   Wait -> Recv -> Wait -> FW -> Record -> Send -> Record ->
-//   Wait -> Recv -> Wait -> BW -> Record -> Send -> Record
+//   Wait -> Recv -> Record -> Wait -> FW -> Record -> Wait -> Send -> Record ->
+//   Wait -> Recv -> Record -> Wait -> BW -> Record -> Wait -> Send -> Record
 //  3. Last stage:
-//   Wait -> Recv -> Wait -> FW ----------------------------->
-//   ----------------------> BW -> Record -> Send -> Record
+//   Wait -> Recv -> Record -> Wait -> FW -> Record                           ->
+//                          -> Wait -> BW -> Record -> Wait -> Send -> Record
+//
+// Each Recv, Send, FW, and BW, are surrounded by one Wait and one Record. Wait marks
+// the beginning of the surrounded task and Record signals the end of that task.
 //
 // To explain the meaning of those operators, we take the middle stage's pattern
 // as an example:
 //
-//   Wait-0 -> Recv -> Wait-1 -> FW -> Record-0 -> Send -> Record-1 ->
-//   Wait-2 -> Recv -> Wait-3 -> BW -> Record-2 -> Send -> Record-3
+//   Wait-0 -> Recv -> Record-1 -> Wait-2 -> FW -> Record-3 -> Wait-4 -> Send -> Record-5 ->
+//   Wait-6 -> Recv -> Record-7 -> Wait-8 -> BW -> Record-9 -> Wait-10 -> Send -> Record-11
 //
 // Their meanings are listed below.
 //
-//   Wait-0: Wait until we can start reciving forward data.
-//   Wait-1: Wait until we can start forward pass.
-//   Record-0: Tell others that forward pass is done.
-//   Record-1: Tell others that forward result has been passed to another stage.
-//   Wait-2: Wait until we can start reciving backward data.
-//   Wait-3: Wait until we can start backward bass.
-//   Record-2: Tell others that backward pass is done.
-//   Record-3: Tell others that backward result has been passed to another stage.
+//   Wait-0: Wait until we can start forward Recv.
+//   Record-1: Tell others that forward Recv is done.
+//
+//   Wait-2: Wait until we can start forward pass.
+//   Record-3: Tell others that forward computation is done.
+//
+//   Wait-4: Wait until we can start forward Send.
+//   Record-5: Tell others that forward Send is done.
+//
+//   Wait-6: Wait until we can start backward Recv.
+//   Record-7: Tell others that backward Recv is done.
+//
+//   Wait-8: Wait until we can start backward pass.
+//   Record-9: Tell others that backward computation is done.
+//
+//   Wait-10: Wait until we can start backward Send.
+//   Record-11: Tell others that backward Send is done.
 Status TransformGraphForPipeline(
     Graph& graph,
     const std::unordered_set<std::string>& weights_to_train,
