@@ -234,7 +234,7 @@ Status TrainingSession::ConfigureForTraining(
     }
   }
 
-  ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers, config.graph_transformer_config));
+  ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers, config.graph_transformer_config, IsRootNode(config)));
 
   // derive actual set of weights to train
   std::unordered_set<std::string> weight_names_to_train =
@@ -378,6 +378,9 @@ Status TrainingSession::ConfigureForTraining(
         config.model_with_training_graph_path.value(), SaveOption::NO_RELOAD));
   }
 
+  if (config.model_with_training_graph_path.has_value())
+    this->model_output_path = config.model_with_training_graph_path.value();
+
   // After pipeline partition, we need to return the inputs allowed in this partition.
   if (config.pipeline_config.has_value()) {
     const auto& allowed_inputs = model_->MainGraph().GetInputsIncludingInitializers();
@@ -503,8 +506,9 @@ static Status AddGradientAccumulationNodes(Graph& graph,
 }
 
 Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,
-                                                        const TrainingConfiguration::GraphTransformerConfiguration& config) {
-  GraphTransformerManager graph_transformation_mgr{1};
+                                                        const TrainingConfiguration::GraphTransformerConfiguration& config,
+                                                        bool is_master_node) {
+  GraphTransformerManager graph_transformation_mgr{5};
   // TODO: ideally we can just reuse the CPU EP registered with the session, but in the training session case
   // the EPs are registered after ConfigureForTraining and before Initialize is called. Hence we don't have access
   // to the registered CPU EP at this stage. Hence creating the EP here again. This is still much better than
@@ -517,6 +521,10 @@ Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set
   // apply transformers
   Graph& graph = model_->MainGraph();
   for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
+    if (is_master_node) {
+      Model::Save(*model_, "./before_apply_opt_" + std::to_string(i) + ".onnx");
+      std::cout << "saved ./before_apply_opt_" << std::to_string(i) << ".onnx" << std::endl;
+    }
     ORT_RETURN_IF_ERROR(graph_transformation_mgr.ApplyTransformers(
         graph, static_cast<TransformerLevel>(i), *session_logger_));
   }

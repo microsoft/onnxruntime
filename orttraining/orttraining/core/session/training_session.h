@@ -379,7 +379,7 @@ class TrainingSession : public InferenceSession {
                                    pipeline::PipelineTensorNames& pipeline_tensor_names);
 
   common::Status ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,
-                                                 const TrainingConfiguration::GraphTransformerConfiguration& config);
+                                                 const TrainingConfiguration::GraphTransformerConfiguration& config, bool is_master_node);
 
   /** configure initial transformers for training */
   void AddPreTrainingTransformers(const IExecutionProvider& execution_provider,  // for constant folding
@@ -468,6 +468,7 @@ class TrainingSession : public InferenceSession {
 
   GradientGraphConfiguration gradient_graph_config_;
   static const std::string training_mode_string_;
+  std::string model_output_path = "";
 };
 }  // namespace training
 }  // namespace onnxruntime
