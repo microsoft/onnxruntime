@@ -357,7 +357,11 @@ void CheckDispatch(MLDataType type, const OpTester::Data& expected_data,
 
 void Check(const OpTester::Data& expected_data, OrtValue& ort_value,
            const std::string& provider_type) {
-  CheckDispatch<VectorMapStringToFloat, VectorMapInt64ToFloat, TensorSeq>(
+  CheckDispatch<
+#if !defined(DISABLE_ML_OPS)
+      VectorMapStringToFloat, VectorMapInt64ToFloat,
+#endif
+      TensorSeq>(
       expected_data.data_.Type(), expected_data, ort_value, provider_type);
 }
 

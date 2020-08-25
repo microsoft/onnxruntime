@@ -25,6 +25,7 @@ struct RelAllocations {
   }
 };
 
+#if !defined(DISABLE_ML_OPS)
 TEST(CApiTest, CreateGetVectorOfMapsInt64Float) {  // support zipmap output type seq(map(int64, float))
   // Creation
   auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
@@ -149,6 +150,7 @@ TEST(CApiTest, CreateGetVectorOfMapsStringFloat) {  // support zipmap output typ
               std::set<float>(std::begin(values), std::end(values)));
   }
 }
+#endif  // !defined(DISABLE_ML_OPS)
 
 TEST(CApiTest, CreateGetSeqTensors) {
   // Creation
