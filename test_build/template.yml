@@ -1,0 +1,5 @@
+steps:
+- script: echo "$THE_SECRET" | wc -c
+  displayName: "print secret num bytes (template)"
+  env:
+    THE_SECRET: $(THE_SECRET)

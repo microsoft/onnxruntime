@@ -1,0 +1,8 @@
+steps:
+- script: |-
+    echo "$(THE_SECRET)" | wc -c
+  displayName: "print secret num bytes (outside)"
+  env:
+    THE_SECRET: $(THE_SECRET)
+
+- template: 'template.yml'
