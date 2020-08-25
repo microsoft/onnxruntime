@@ -198,66 +198,108 @@ Status TrainingRunner::Initialize() {
   if (params_.pipeline_parallel_size > 1) {
     fetch_names = config_result.pipeline_config_result.value().fetch_names;
 
+    // Set events for forward Recv.
+    // Set event ID and specify one output to fetch for the event operator in-between  **.**
+    // **Wait** -> Recv -> Record -> Wait -> FW -> Record -> Wait -> Send -> Record ->
+    //   Wait   -> Recv -> Record -> Wait -> BW -> Record -> Wait -> Send -> Record
     pipeline_context_.forward_recv_waited_event_name = config_result.pipeline_config_result.value().forward_recv_waited_event_name;
     pipeline_context_.forward_recv_wait_output_name = config_result.pipeline_config_result.value().forward_recv_wait_output_name;
     if (!pipeline_context_.forward_recv_wait_output_name.empty()) {
       fetch_names.push_back(pipeline_context_.forward_recv_wait_output_name);
     }
+    // Set event ID and specify one output to fetch for the event operator in-between  **.**
+    // Wait -> Recv -> **Record** -> Wait -> FW -> Record -> Wait -> Send -> Record ->
+    // Wait -> Recv ->   Record   -> Wait -> BW -> Record -> Wait -> Send -> Record
     pipeline_context_.forward_recv_recorded_event_name = config_result.pipeline_config_result.value().forward_recv_recorded_event_name;
     pipeline_context_.forward_recv_record_output_name = config_result.pipeline_config_result.value().forward_recv_record_output_name;
     if (!pipeline_context_.forward_recv_record_output_name.empty()) {
       fetch_names.push_back(pipeline_context_.forward_recv_record_output_name);
     }
 
+    // Set events for forward Send.
+    // Set event ID and specify one output to fetch for the event operator in-between  **.**
+    // Wait -> Recv -> Record -> Wait -> FW -> Record -> **Wait** -> Send -> Record ->
+    // Wait -> Recv -> Record -> Wait -> BW -> Record ->   Wait   -> Send -> Record
     pipeline_context_.forward_send_waited_event_name = config_result.pipeline_config_result.value().forward_send_waited_event_name;
     pipeline_context_.forward_send_wait_output_name = config_result.pipeline_config_result.value().forward_send_wait_output_name;
     if (!pipeline_context_.forward_send_wait_output_name.empty()) {
       fetch_names.push_back(pipeline_context_.forward_send_wait_output_name);
     }
+    // Set event ID and specify one output to fetch for the event operator in-between  **.**
+    // Wait -> Recv -> Record -> Wait -> FW -> Record -> Wait -> Send -> **Record** ->
+    // Wait -> Recv -> Record -> Wait -> BW -> Record -> Wait -> Send ->   Record
     pipeline_context_.forward_send_recorded_event_name = config_result.pipeline_config_result.value().forward_send_recorded_event_name;
     pipeline_context_.forward_send_record_output_name = config_result.pipeline_config_result.value().forward_send_record_output_name;
     if (!pipeline_context_.forward_send_record_output_name.empty()) {
       fetch_names.push_back(pipeline_context_.forward_send_record_output_name);
     }
 
+    // Set events for backward Recv.
+    // Set event ID and specify one output to fetch for the event operator in-between  **.**
+    //   Wait   -> Recv -> Record -> Wait -> FW -> Record -> Wait -> Send -> Record ->
+    // **Wait** -> Recv -> Record -> Wait -> BW -> Record -> Wait -> Send -> Record
     pipeline_context_.backward_recv_waited_event_name = config_result.pipeline_config_result.value().backward_recv_waited_event_name;
     pipeline_context_.backward_recv_wait_output_name = config_result.pipeline_config_result.value().backward_recv_wait_output_name;
     if (!pipeline_context_.backward_recv_wait_output_name.empty()) {
       fetch_names.push_back(pipeline_context_.backward_recv_wait_output_name);
     }
+    // Set event ID and specify one output to fetch for the event operator in-between  **.**
+    // Wait -> Recv ->   Record   -> Wait -> FW -> Record -> Wait -> Send -> Record ->
+    // Wait -> Recv -> **Record** -> Wait -> BW -> Record -> Wait -> Send -> Record
     pipeline_context_.backward_recv_recorded_event_name = config_result.pipeline_config_result.value().backward_recv_recorded_event_name;
     pipeline_context_.backward_recv_record_output_name = config_result.pipeline_config_result.value().backward_recv_record_output_name;
     if (!pipeline_context_.backward_recv_record_output_name.empty()) {
       fetch_names.push_back(pipeline_context_.backward_recv_record_output_name);
     }
 
+    // Set events for ba backward Send.
+    // Set event ID and specify one output to fetch for the event operator in-between  **.**
+    // Wait -> Recv -> Record -> Wait -> FW -> Record ->   Wait   -> Send -> Record ->
+    // Wait -> Recv -> Record -> Wait -> BW -> Record -> **Wait** -> Send -> Record
     pipeline_context_.backward_send_waited_event_name = config_result.pipeline_config_result.value().backward_send_waited_event_name;
     pipeline_context_.backward_send_wait_output_name = config_result.pipeline_config_result.value().backward_send_wait_output_name;
     if (!pipeline_context_.backward_send_wait_output_name.empty()) {
       fetch_names.push_back(pipeline_context_.backward_send_wait_output_name);
     }
+    // Set event ID and specify one output to fetch for the event operator in-between  **.**
+    // Wait -> Recv -> Record -> Wait -> FW -> Record -> Wait -> Send ->   Record ->
+    // Wait -> Recv -> Record -> Wait -> BW -> Record -> Wait -> Send -> **Record**
     pipeline_context_.backward_send_recorded_event_name = config_result.pipeline_config_result.value().backward_send_recorded_event_name;
     pipeline_context_.backward_send_record_output_name = config_result.pipeline_config_result.value().backward_send_record_output_name;
     if (!pipeline_context_.backward_send_record_output_name.empty()) {
       fetch_names.push_back(pipeline_context_.backward_send_record_output_name);
     }
 
+    // Set events for ba forward Compute.
+    // Set event ID and specify one output to fetch for the event operator in-between  **.**
+    // Wait -> Recv -> Record -> **Wait** -> FW -> Record -> Wait -> Send -> Record ->
+    // Wait -> Recv -> Record ->   Wait   -> BW -> Record -> Wait -> Send -> Record
     pipeline_context_.forward_compute_waited_event_name = config_result.pipeline_config_result.value().forward_compute_waited_event_name;
     pipeline_context_.forward_compute_wait_output_name = config_result.pipeline_config_result.value().forward_compute_wait_output_name;
     if (!pipeline_context_.forward_compute_wait_output_name.empty()) {
       fetch_names.push_back(pipeline_context_.forward_compute_wait_output_name);
     }
+    // Set event ID and specify one output to fetch for the event operator in-between  **.**
+    // Wait -> Recv -> Record -> Wait -> FW -> **Record** -> Wait -> Send -> Record ->
+    // Wait -> Recv -> Record -> Wait -> BW ->   Record   -> Wait -> Send -> Record
     pipeline_context_.forward_compute_recorded_event_name = config_result.pipeline_config_result.value().forward_compute_recorded_event_name;
     pipeline_context_.forward_compute_record_output_name = config_result.pipeline_config_result.value().forward_compute_record_output_name;
     if (!pipeline_context_.forward_compute_record_output_name.empty()) {
       fetch_names.push_back(pipeline_context_.forward_compute_record_output_name);
     }
 
+    // Set events for backward compute.
+    // Set event ID and specify one output to fetch for the event operator in-between  **.**
+    // Wait -> Recv -> Record ->   Wait   -> FW -> Record -> Wait -> Send -> Record ->
+    // Wait -> Recv -> Record -> **Wait** -> BW -> Record -> Wait -> Send -> Record
     pipeline_context_.backward_compute_waited_event_name = config_result.pipeline_config_result.value().backward_compute_waited_event_name;
     pipeline_context_.backward_compute_wait_output_name = config_result.pipeline_config_result.value().backward_compute_wait_output_name;
     if (!pipeline_context_.backward_compute_wait_output_name.empty()) {
       fetch_names.push_back(pipeline_context_.backward_compute_wait_output_name);
     }
+    // Set event ID and specify one output to fetch for the event operator in-between  **.**
+    // Wait -> Recv -> Record -> Wait -> FW ->   Record   -> Wait -> Send -> Record ->
+    // Wait -> Recv -> Record -> Wait -> BW -> **Record** -> Wait -> Send -> Record
     pipeline_context_.backward_compute_recorded_event_name = config_result.pipeline_config_result.value().backward_compute_recorded_event_name;
     pipeline_context_.backward_compute_record_output_name = config_result.pipeline_config_result.value().backward_compute_record_output_name;
     if (!pipeline_context_.backward_compute_wait_output_name.empty()) {

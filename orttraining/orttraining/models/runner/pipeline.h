@@ -239,32 +239,33 @@ struct PipelineContext {
   // Name of scheduling event in graph's input list.
   // If an event name is an empty string, it means no event
   // should be waited or recorded.
-  // Forward Recv
+
+  // Event ops' inputs and outputs related to forward Recv.
   std::string forward_recv_waited_event_name;
   std::string forward_recv_wait_output_name;
   std::string forward_recv_recorded_event_name;
   std::string forward_recv_record_output_name;
-  // Forward Send
+  // Event ops' inputs and outputs related to forward Send.
   std::string forward_send_waited_event_name;
   std::string forward_send_wait_output_name;
   std::string forward_send_recorded_event_name;
   std::string forward_send_record_output_name;
-  // Backward Recv
+  // Event ops' inputs and outputs related to backward Recv.
   std::string backward_recv_waited_event_name;
   std::string backward_recv_wait_output_name;
   std::string backward_recv_recorded_event_name;
   std::string backward_recv_record_output_name;
-  // Backward Send
+  // Event ops' inputs and outputs related to backward Send.
   std::string backward_send_waited_event_name;
   std::string backward_send_wait_output_name;
   std::string backward_send_recorded_event_name;
   std::string backward_send_record_output_name;
-  // Forward Compute
+  // Event ops' inputs and outputs related to forward Compute.
   std::string forward_compute_waited_event_name;
   std::string forward_compute_wait_output_name;
   std::string forward_compute_recorded_event_name;
   std::string forward_compute_record_output_name;
-  // Backward Compute
+  // Event ops' inputs and outputs related to backward Compute.
   std::string backward_compute_waited_event_name;
   std::string backward_compute_wait_output_name;
   std::string backward_compute_recorded_event_name;
