@@ -59,7 +59,7 @@ class PerformanceRunner {
 
   template <bool isWarmup>
   Status RunOneIteration() {
-    std::chrono::duration<double> duration_seconds;
+    std::chrono::duration<double> duration_seconds(std::chrono::seconds(0));
 
     auto status = Status::OK();
     ORT_TRY {
