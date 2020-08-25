@@ -480,6 +480,7 @@ class TrainingSession : public InferenceSession {
   GradientGraphConfiguration gradient_graph_config_;
   static const std::string training_mode_string_;
   int _world_rank = -1;
+  std::string model_output_path = "";
 };
 }  // namespace training
 }  // namespace onnxruntime

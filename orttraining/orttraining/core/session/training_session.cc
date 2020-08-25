@@ -356,11 +356,14 @@ Status TrainingSession::ConfigureForTraining(
   // Note: in the pipeline case, different ranks may resident in the same node. This could lead to a potential write
   // conflict. It is user's responsibility to make sure different rank is passed in with different
   // model_with_training_graph_path value.
-  if ((IsRootNode(config) || config.pipeline_config.has_value()) /*&& config.model_with_training_graph_path.has_value()*/) {
+  if ((IsRootNode(config) || config.pipeline_config.has_value()) && config.model_with_training_graph_path.has_value()) {
     //ORT_IGNORE_RETURN_VALUE(Save(
-    //   "full/bw_graph.onnx", SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS));
+    //"full/bw_graph.onnx", SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS));
     //config.model_with_training_graph_path.value(), SaveOption::NO_RELOAD));
   }
+
+  if (config.model_with_training_graph_path.has_value())
+    this->model_output_path = config.model_with_training_graph_path.value();
 
   // After pipeline partition, we need to return the inputs allowed in this partition.
   if (config.pipeline_config.has_value()) {
@@ -494,9 +497,8 @@ Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set
   Graph& graph = model_->MainGraph();
   for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     if (is_master_node) {
-      //Model::Save(*model_, "./before_apply_opt_" + std::to_string(i) + ".onnx");
-      std::cout << "saved "
-                << "./before_apply_opt_" << std::to_string(i) << ".onnx" << std::endl;
+      Model::Save(*model_, "./before_apply_opt_" + std::to_string(i) + ".onnx");
+      std::cout << "saved ./before_apply_opt_" << std::to_string(i) << ".onnx" << std::endl;
     }
     ORT_RETURN_IF_ERROR(graph_transformation_mgr.ApplyTransformers(graph, static_cast<TransformerLevel>(i), *session_logger_));
   }
@@ -861,6 +863,14 @@ common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io
       // Bind new feed to graph input.
       ORT_RETURN_IF_ERROR(io_binding.BindInput(new_feed.first, new_feed.second));
     }
+  }
+
+  static int a = 0;
+  if (model_output_path != "" && a == 0) {
+    a++;
+    std::string target_path = model_output_path + std::string("_pengwa.onnx");
+    Save(target_path, TrainingSession::SaveOption::NO_RELOAD);
+    std::cout << "Save model in Run() into path " << target_path << std::endl;
   }
 
   // Call Run in inferenceSession

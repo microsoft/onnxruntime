@@ -374,7 +374,7 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
     gc.collect()
     print("GC completely")
 
-    #onnx_model = onnx.load_model_from_string(f.getvalue())
+    #onnx_model = onnx.load_model_from_string(exported_model_file_name.getvalue())
     onnx_model = onnx.load(exported_model_file_name)
 
     # Remove 'model_.' prefix introduced by model wrapper for initializers.
@@ -412,7 +412,8 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
                                                use_invertible_layernorm_grad=False,
                                                data_parallel_size=1,
                                                horizontal_parallel_size=1,
-                                               pipeline_parallel_size=1):
+                                               pipeline_parallel_size=1,
+                                               output_model_path=""):
     output_name = model.graph.output[0].name
     ort_parameters = ort.TrainingParameters()
     ort_parameters.loss_output_name = output_name
@@ -428,6 +429,7 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     ort_parameters.enable_grad_norm_clip = enable_grad_norm_clip
     ort_parameters.set_gradients_as_graph_outputs = False
     ort_parameters.use_invertible_layernorm_grad = use_invertible_layernorm_grad
+    ort_parameters.output_model_path = output_model_path
 
     if ort_parameters.data_parallel_size > world_size or ort_parameters.horizontal_parallel_size > world_size:
         raise ValueError("data_parallel_size or horizontal_parallel_size large than world size")
@@ -605,7 +607,7 @@ class ORTTrainer():
                  enable_grad_norm_clip=True, frozen_weights=[], _opset_version=DEFAULT_OPSET_VERSION,
                  _enable_internal_postprocess=True, _extra_postprocess=None, _use_deterministic_compute=False,
                  use_invertible_layernorm_grad=False, data_parallel_size=1, horizontal_parallel_size=1,
-                 pipeline_parallel_size=1):
+                 pipeline_parallel_size=1, output_model_path=""):
         super(ORTTrainer, self).__init__()
         """
         Initialize ORTTrainer.
@@ -737,7 +739,7 @@ class ORTTrainer():
         # use this special string to workaround a corner case that external loss_scale is passed into train_step as kwargs.
         # see prepare_input_and_fetches for more details.
         self.loss_scale_input_name = 'default_loss_scale_input_name'
-
+        self.output_model_path = output_model_path
         self._init_session()
 
     def _init_session(self):
@@ -765,7 +767,8 @@ class ORTTrainer():
                 use_invertible_layernorm_grad=self.use_invertible_layernorm_grad,
                 data_parallel_size=self.data_parallel_size,
                 horizontal_parallel_size=self.horizontal_parallel_size,
-                pipeline_parallel_size=self.pipeline_parallel_size)
+                pipeline_parallel_size=self.pipeline_parallel_size,
+                output_model_path=self.output_model_path)
 
         self.loss_scale_input_name = self.session.loss_scale_input_name
 

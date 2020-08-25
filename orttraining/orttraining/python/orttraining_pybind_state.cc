@@ -50,6 +50,7 @@ struct TrainingParameters {
   bool enable_grad_norm_clip = true;
   bool set_gradients_as_graph_outputs = false;
   bool use_invertible_layernorm_grad = false;
+  std::string output_model_path;
 };
 
 struct TrainingConfigurationResult {
@@ -113,6 +114,11 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   }
 
   config.loss_name = parameters.loss_output_name;
+
+  if (!parameters.output_model_path.empty()) {
+    config.model_with_loss_function_path = parameters.output_model_path + ORT_TSTR("_with_cost.onnx");
+    config.model_with_training_graph_path = parameters.output_model_path + ORT_TSTR("_bw.onnx");
+  }
 
   if (!parameters.training_optimizer_name.empty()) {
     training::TrainingSession::TrainingConfiguration::OptimizerConfiguration opt{};
@@ -187,7 +193,8 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("deepspeed_zero_stage", &TrainingParameters::deepspeed_zero_stage)
       .def_readwrite("enable_grad_norm_clip", &TrainingParameters::enable_grad_norm_clip)
       .def_readwrite("set_gradients_as_graph_outputs", &TrainingParameters::set_gradients_as_graph_outputs)
-      .def_readwrite("use_invertible_layernorm_grad", &TrainingParameters::use_invertible_layernorm_grad);
+      .def_readwrite("use_invertible_layernorm_grad", &TrainingParameters::use_invertible_layernorm_grad)
+      .def_readwrite("output_model_path", &TrainingParameters::output_model_path);
 
   py::class_<TrainingConfigurationResult> config_result(m, "TrainingConfigurationResult", "pbdoc(Configuration result for training.)pbdoc");
   config_result.def(py::init())
