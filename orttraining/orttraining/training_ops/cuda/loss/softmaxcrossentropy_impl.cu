@@ -100,11 +100,11 @@ __global__ void _SparseSoftmaxCrossEntropy(
     CUDA_LONG N,
     CUDA_LONG D) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(i, N);
-  CUDA_KERNEL_ASSERT(label_data[i] >= 0 && label_data[i] < D);  
+  CUDA_KERNEL_ASSERT(label_data[i] >= 0 && label_data[i] < D);
   if (*normalize_factor_data == 0) {
-     output_data[i] = 0;
+    output_data[i] = 0;
   } else {
-     output_data[i] = -log_prob_data[i * D + label_data[i]] / (*normalize_factor_data);
+    output_data[i] = -log_prob_data[i * D + label_data[i]] / (*normalize_factor_data);
   }
 }
 
@@ -118,11 +118,11 @@ __global__ void _WeightedSparseSoftmaxCrossEntropy(
     CUDA_LONG N,
     CUDA_LONG D) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(i, N);
-  CUDA_KERNEL_ASSERT(label_data[i] >= 0 && label_data[i] < D);  
+  CUDA_KERNEL_ASSERT(label_data[i] >= 0 && label_data[i] < D);
   if (*normalize_factor_data == 0) {
-      output_data[i] = 0;
+    output_data[i] = 0;
   } else {
-      output_data[i] = -log_prob_data[i * D + label_data[i]] * weight_data[i] / (*normalize_factor_data);
+    output_data[i] = -log_prob_data[i * D + label_data[i]] * weight_data[i] / (*normalize_factor_data);
   }
 }
 
@@ -182,11 +182,11 @@ __global__ void _SparseSoftmaxCrossEntropyGrad(
     CUDA_LONG D) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(i, N * D);
   int row = i / D;
-  int d = i % D;  
+  int d = i % D;
   if (*normalize_factor == 0) {
-      output_data[i] = 0;
+    output_data[i] = 0;
   } else {
-     output_data[i] = (*dY) * (_Exp(log_prob[i]) - 1.0 * (d == label[row])) / (*normalize_factor);
+    output_data[i] = (*dY) * (_Exp(log_prob[i]) - 1.0 * (d == label[row])) / (*normalize_factor);
   }
 }
 
@@ -202,9 +202,9 @@ __global__ void _WeightedSparseSoftmaxCrossEntropyGrad(
     CUDA_LONG D) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(i, N * D);
   int row = i / D;
-  int d = i % D; 
+  int d = i % D;
   if (*normalize_factor == 0) {
-      output_data[i] = 0;
+    output_data[i] = 0;
   } else {
     output_data[i] = (*dY) * weight[row] * (_Exp(log_prob[i]) - 1.0 * (d == label[row])) / (*normalize_factor);
   }
