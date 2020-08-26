@@ -56,8 +56,8 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 Value.Dispose();
                 PinnedMemory.Dispose();
-                _disposed = true;
             }
+            _disposed = true;
         }
 
         public void Dispose()

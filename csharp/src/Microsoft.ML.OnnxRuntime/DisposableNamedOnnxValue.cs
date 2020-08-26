@@ -278,8 +278,8 @@ namespace Microsoft.ML.OnnxRuntime
                     _nativeMemoryManager.Dispose();
                     _nativeMemoryManager = null;
                 }
-                _disposed = true;
             }
+            _disposed = true;
         }
 
         public void Dispose()

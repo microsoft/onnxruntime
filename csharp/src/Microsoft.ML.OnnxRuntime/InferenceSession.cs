@@ -941,7 +941,6 @@ namespace Microsoft.ML.OnnxRuntime
                     _builtInRunOptions.Dispose();
                     _builtInRunOptions = null;
                 }
-                _disposed = true;
             }
 
             // cleanup unmanaged resources
@@ -950,6 +949,7 @@ namespace Microsoft.ML.OnnxRuntime
                 NativeMethods.OrtReleaseSession(_nativeHandle);
                 _nativeHandle = IntPtr.Zero;
             }
+            _disposed = true;
         }
 
         #endregion

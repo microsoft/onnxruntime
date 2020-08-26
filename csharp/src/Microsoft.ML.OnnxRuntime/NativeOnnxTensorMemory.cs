@@ -187,16 +187,13 @@ namespace Microsoft.ML.OnnxRuntime
                 return;
             }
 
-            if(disposing)
-            {
-                _disposed = true;
-            }
-
             if (_onnxValueHandle != IntPtr.Zero)
             {
                 NativeMethods.OrtReleaseValue(_onnxValueHandle);
                 _onnxValueHandle = IntPtr.Zero;
             }
+
+            _disposed = true;
         }
 
         protected override bool TryGetArray(out ArraySegment<T> arraySegment)
