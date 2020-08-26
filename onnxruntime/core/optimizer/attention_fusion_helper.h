@@ -657,7 +657,7 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, Attentio
   std::vector<graph_utils::EdgeEndToMatch> shape_path{
       {0, 1, "Shape", {1, 13}, kOnnxDomain},
       {0, 0, "MatMul", {1, 9, 13}, kOnnxDomain}};
-  if (!graph_utils::FindPath(expand, true, shape_path_1, edges, logger) {
+  if (!graph_utils::FindPath(expand, true, shape_path, edges, logger)) {
     DEBUG_LOG("Failed to find shape path");
     return false;
   }
