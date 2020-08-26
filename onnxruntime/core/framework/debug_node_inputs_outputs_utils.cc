@@ -17,13 +17,30 @@ namespace utils {
 namespace {
 
 bool FilterNode(const NodeDumpOptions& dump_options, const Node& node) {
-  if (dump_options.node_name_filter.empty()) {
-    return true;
-  }
-  if (node.Name().find(dump_options.node_name_filter) != std::string::npos) {
-    return true;
-  }
-  return false;
+  auto match_pattern =
+      [](const std::string& value, const std::string& delimited_patterns) {
+        // match all if empty
+        if (delimited_patterns.empty()) return true;
+
+        // search for exact match against delimited patterns
+        auto pattern_begin = delimited_patterns.begin();
+        while (true) {
+          const auto pattern_end = std::find(
+              pattern_begin, delimited_patterns.end(),
+              NodeDumpOptions::FilterOptions::kPatternDelimiter);
+
+          if (std::equal(value.begin(), value.end(), pattern_begin, pattern_end)) return true;
+
+          if (pattern_end == delimited_patterns.end()) break;
+
+          pattern_begin = pattern_end + 1;
+        }
+
+        return false;
+      };
+
+  return match_pattern(node.Name(), dump_options.filter.name_pattern) &&
+         match_pattern(node.OpType(), dump_options.filter.op_type_pattern);
 }
 
 std::ostream& operator<<(std::ostream& out, const BFloat16& value) {
@@ -179,7 +196,8 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables() {
       opts.dump_flags |= NodeDumpOptions::DumpFlags::OutputData;
     }
 
-    opts.node_name_filter = Env::Default().GetEnvironmentVar(env_vars::kNodeNameFilter);
+    opts.filter.name_pattern = Env::Default().GetEnvironmentVar(env_vars::kNameFilter);
+    opts.filter.op_type_pattern = Env::Default().GetEnvironmentVar(env_vars::kOpTypeFilter);
 
     if (get_bool_env_var(env_vars::kDumpDataToFiles)) {
       opts.data_destination = NodeDumpOptions::DataDestination::TensorProtoFiles;
@@ -190,7 +208,7 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables() {
     // check for confirmation for dumping data to files for all nodes
     if (opts.dump_flags != NodeDumpOptions::DumpFlags::ShapeOnly &&
         opts.data_destination == NodeDumpOptions::DataDestination::TensorProtoFiles &&
-        opts.node_name_filter.empty()) {
+        opts.filter.name_pattern.empty() && opts.filter.op_type_pattern.empty()) {
       ORT_ENFORCE(
           get_bool_env_var(env_vars::kDumpingDataToFilesForAllNodesIsOk),
           "The current environment variable configuration will dump node input or output data to files for every node. "

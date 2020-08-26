@@ -23,7 +23,11 @@ constexpr const char* kDumpInputData = "ORT_DEBUG_NODE_IO_DUMP_INPUT_DATA";
 // set to non-zero to dump node output data
 constexpr const char* kDumpOutputData = "ORT_DEBUG_NODE_IO_DUMP_OUTPUT_DATA";
 // specify a node name filter to limit the nodes that are dumped
-constexpr const char* kNodeNameFilter = "ORT_DEBUG_NODE_IO_NODE_NAME_FILTER";
+// see NodeDumpOptions::FilterOptions
+constexpr const char* kNameFilter = "ORT_DEBUG_NODE_IO_NAME_FILTER";
+// specify a node op type filter to limit the nodes that are dumped
+// see NodeDumpOptions::FilterOptions
+constexpr const char* kOpTypeFilter = "ORT_DEBUG_NODE_IO_OP_TYPE_FILTER";
 // set to non-zero to dump data to files instead of stdout
 constexpr const char* kDumpDataToFiles = "ORT_DEBUG_NODE_IO_DUMP_DATA_TO_FILES";
 // specify the output directory for any data files produced
@@ -43,14 +47,25 @@ struct NodeDumpOptions {
 
   // specifies the information to dump per node
   // see DumpFlags
-  // Note: When dumping every node, dumping both input and output may be redundant.
+  // Note:
+  // When dumping every node, dumping both input and output may be redundant.
   // Doing that may be more useful when dumping a subset of all nodes.
   int dump_flags{DumpFlags::ShapeOnly};
 
   // filters the nodes that are dumped
-  // currently, dumped nodes are nodes whose name contains this value
-  // if empty, dump all nodes
-  std::string node_name_filter{};
+  // Note:
+  // Pattern strings are substrings (individual patterns) delimited by ';'.
+  // For a given pattern type (e.g. Name), a pattern string matches a value if one of the following is true:
+  // - the pattern string is empty
+  // - one of the delimited substrings matches exactly
+  // For a node to be dumped, it must match each pattern type.
+  // By default (with empty pattern strings), all nodes will match and be dumped.
+  struct FilterOptions {
+    std::string name_pattern{};
+    std::string op_type_pattern{};
+
+    static constexpr char kPatternDelimiter = ';';
+  } filter{};
 
   // the destination for dumped data
   enum class DataDestination {
