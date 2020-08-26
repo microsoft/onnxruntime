@@ -74,6 +74,10 @@ struct TensorrtFuncState {
   OrtMutex* tensorrt_mu_ptr = nullptr;
   bool* fp16_enable_ptr = nullptr;
   size_t* max_workspace_size_ptr = nullptr;
+  std::string trt_node_name_with_precision;
+  bool engine_cache_enable;
+  std::string engine_cache_path;
+  nvinfer1::IRuntime* runtime = nullptr;
 };
 
 // Logical device representation.

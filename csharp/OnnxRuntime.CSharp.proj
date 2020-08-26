@@ -16,6 +16,7 @@ CMake creates a target to this project
     <NugetExe Condition= " '$(NugetExe)' == '' ">nuget</NugetExe>
     <TargetArchitecture Condition=" '$(TargetArchitecture)' == '' ">x64</TargetArchitecture>
     <IsReleaseBuild Condition=" '$(IsReleaseBuild)' == '' ">false</IsReleaseBuild>
+    <IsLinuxBuild Condition=" '$(IsLinuxBuild)' == '' ">false</IsLinuxBuild>
 
     <!--internal build related properties-->
     <OnnxRuntimeSourceDirectory Condition="'$(OnnxRuntimeSourceDirectory)'==''">..</OnnxRuntimeSourceDirectory>
@@ -111,7 +112,7 @@ CMake creates a target to this project
              Properties="NoBuild=true;Platform=AnyCPU;PackageVersion=$(PackageVersion);OrtPackageId=$(OrtPackageId)"/>
     
     <Message Importance="High" Text="Generating nuspec for the native Nuget package ..." />
-    <Exec ContinueOnError="False" Command="python ..\tools\nuget\generate_nuspec_for_native_nuget.py --package_version $(PackageVersion) --package_name $(OrtPackageId) --target_architecture $(TargetArchitecture) --build_config $(Configuration) --native_build_path $(NativeBuildOutputDirAbs) --packages_path $(OnnxRuntimePackagesDirectoryAbs) --ort_build_path $(OnnxRuntimeBuildDirectoryAbs) --sources_path $(OnnxRuntimeSourceDirectoryAbs) --commit_id $(GitCommitHash) --is_release_build $(IsReleaseBuild)" ConsoleToMSBuild="true">
+    <Exec ContinueOnError="False" Command="python ..\tools\nuget\generate_nuspec_for_native_nuget.py --package_version $(PackageVersion) --package_name $(OrtPackageId) --target_architecture $(TargetArchitecture) --build_config $(Configuration) --native_build_path $(NativeBuildOutputDirAbs) --packages_path $(OnnxRuntimePackagesDirectoryAbs) --ort_build_path $(OnnxRuntimeBuildDirectoryAbs) --sources_path $(OnnxRuntimeSourceDirectoryAbs) --commit_id $(GitCommitHash) --is_release_build $(IsReleaseBuild) --is_linux_build $(IsLinuxBuild)" ConsoleToMSBuild="true">
         <Output TaskParameter="ConsoleOutput" PropertyName="GenerateNuspecOutput" />
     </Exec>
 

@@ -5,7 +5,7 @@ from ._utils import static_vars
 
 
 LEARNING_RATE_IO_DESCRIPTION_NAME = "__learning_rate"
-IS_FINITE_IO_DESCRIPTION_NAME = "__is_finite"
+ALL_FINITE_IO_DESCRIPTION_NAME = "__all_finite"
 LOSS_SCALE_INPUT_IO_DESCRIPTION_NAME = "__loss_scale_input_name"
 GRADIENT_ACCUMULATION_IO_DESCRIPTION_NAME = "__gradient_accumulation_name"
 
@@ -40,8 +40,7 @@ class _ORTTrainerModelDesc(object):
         # Normalize outputs to a list of namedtuple(name, shape, is_loss)
         self._OutputDescription = namedtuple('OutputDescription', ['name', 'shape', 'is_loss'])
         self._OutputDescriptionTyped = namedtuple('OutputDescriptionTyped',
-                                                  ['name', 'shape', 'is_loss', 'dtype', 'dtype_amp'],
-                                                  defaults=[None])
+                                                  ['name', 'shape', 'is_loss', 'dtype', 'dtype_amp'])
         for idx, output in enumerate(self._validated['outputs']):
             # import pdb; pdb.set_trace()
             if len(output) == 2:
@@ -49,7 +48,7 @@ class _ORTTrainerModelDesc(object):
             else:
                 self._validated['outputs'][idx] = self._OutputDescription(*output)
 
-        # Hard-code learning rate, is_finite descriptors
+        # Hard-code learning rate, all_finite descriptors
         self.learning_rate = self._InputDescriptionTyped(LEARNING_RATE_IO_DESCRIPTION_NAME, [1], torch.float32)
 
         # Convert dict in object
@@ -94,11 +93,11 @@ class _ORTTrainerModelDesc(object):
             pretty_msg += f'(name={self.learning_rate.name}, shape={self.learning_rate.shape}, dtype={self.learning_rate.dtype})'
 
         # Mixed precision
-        if getattr(self, IS_FINITE_IO_DESCRIPTION_NAME, None) or getattr(self, LOSS_SCALE_INPUT_IO_DESCRIPTION_NAME, None):
+        if getattr(self, ALL_FINITE_IO_DESCRIPTION_NAME, None) or getattr(self, LOSS_SCALE_INPUT_IO_DESCRIPTION_NAME, None):
             pretty_msg += '\nMixed Precision:'
-            if getattr(self, IS_FINITE_IO_DESCRIPTION_NAME, None):
+            if getattr(self, ALL_FINITE_IO_DESCRIPTION_NAME, None):
                 pretty_msg += '\n\tis gradients finite: '
-                pretty_msg += f'(name={self.is_finite.name}, shape={self.is_finite.shape}, dtype={self.is_finite.dtype})'
+                pretty_msg += f'(name={self.all_finite.name}, shape={self.all_finite.shape}, dtype={self.all_finite.dtype})'
             if getattr(self, LOSS_SCALE_INPUT_IO_DESCRIPTION_NAME, None):
                 pretty_msg += '\n\tloss scale input name: '
                 pretty_msg += f'(name={self.loss_scale_input.name}, shape={self.loss_scale_input.shape}, dtype={self.loss_scale_input.dtype})'
@@ -156,12 +155,12 @@ class _ORTTrainerModelDesc(object):
         self._add_output_description(self, name, [1], False, torch.bool, None, GRADIENT_ACCUMULATION_IO_DESCRIPTION_NAME)
 
     @property
-    def is_finite(self):
-        return getattr(self, IS_FINITE_IO_DESCRIPTION_NAME, None)
+    def all_finite(self):
+        return getattr(self, ALL_FINITE_IO_DESCRIPTION_NAME, None)
 
-    @is_finite.setter
-    def is_finite(self, name):
-        self._add_output_description(self, name, [1], False, torch.bool, None, IS_FINITE_IO_DESCRIPTION_NAME)
+    @all_finite.setter
+    def all_finite(self, name):
+        self._add_output_description(self, name, [1], False, torch.bool, None, ALL_FINITE_IO_DESCRIPTION_NAME)
 
     @property
     def loss_scale_input(self):
@@ -239,7 +238,7 @@ class _ORTTrainerModelDesc(object):
 
         assert dtype is None or isinstance(dtype, torch.dtype), "'dtype' must be either None or a torch.dtype type"
         if dtype:
-            new_output_desc = self._OutputDescriptionTyped(name, shape, is_loss, dtype)
+            new_output_desc = self._OutputDescriptionTyped(name, shape, is_loss, dtype, None)
         else:
             new_output_desc = self._OutputDescription(name, shape, is_loss)
 

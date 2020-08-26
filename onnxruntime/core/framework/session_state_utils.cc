@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/graph/onnx_protobuf.h"
-#include "core/framework/finalize_session_state.h"
+#include "core/framework/session_state_utils.h"
 
 #include <functional>
 #include <limits>
@@ -26,87 +26,7 @@
 #include "core/framework/tensor_allocator.h"
 
 namespace onnxruntime {
-
-// T should have signature of '(int idx, const OrtValue& value, const OrtCallback& d) -> Status'
-template <typename T>
-static common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
-                                             const GraphViewer& graph, const OrtMemoryInfo& default_cpu_memory_info,
-                                             const OrtValueNameIdxMap& ort_value_name_idx_map,
-                                             ITensorAllocator& planner, const T& save_tensor_func,
-                                             const logging::Logger& logger,
-                                             const DataTransferManager& data_transfer_mgr);
-
-static common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer& graph,
-                                                        const KernelRegistryManager& custom_registry_manager,
-                                                        SessionState& session_state,
-                                                        const std::vector<const NodeArg*>& implicit_inputs);
-
-Status FinalizeSessionState(SessionState& session_state,
-                            const std::basic_string<PATH_CHAR_TYPE>& graph_location,
-                            KernelRegistryManager& kernel_registry_manager,
-                            _In_opt_ const Node* parent_node,
-                            const SessionOptions& session_options) {
-  session_state.CreateGraphInfo();
-
-  const GraphViewer& graph_viewer = session_state.GetGraphViewer();
-  const auto& logger = session_state.Logger();
-
-  // populate the SessionState OrtValueNameIdxMap
-  const auto& ort_value_name_idx_map = session_state.GetOrtValueNameIdxMap();
-
-  // ignore any outer scope args we don't know about. this can happen if a node contains multiple subgraphs.
-  std::vector<const NodeArg*> valid_outer_scope_node_args;
-  if (parent_node) {
-    auto outer_scope_node_args = parent_node->ImplicitInputDefs();
-    valid_outer_scope_node_args.reserve(outer_scope_node_args.size());
-
-    std::for_each(outer_scope_node_args.cbegin(), outer_scope_node_args.cend(),
-                  [&ort_value_name_idx_map, &valid_outer_scope_node_args](const NodeArg* node_arg) {
-                    int idx;
-                    if (ort_value_name_idx_map.GetIdx(node_arg->Name(), idx).IsOK()) {
-                      valid_outer_scope_node_args.push_back(node_arg);
-                    };
-                  });
-  }
-
-  std::unique_ptr<SequentialExecutionPlan> exec_plan;
-  SequentialPlannerContext context(session_options.execution_mode);
-  ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, graph_viewer, valid_outer_scope_node_args,
-                                                    session_state.GetExecutionProviders(), kernel_registry_manager,
-                                                    ort_value_name_idx_map, context, exec_plan));
-
-  const auto* exec_plan_ptr = exec_plan.get();
-  session_state.SetExecutionPlan(std::move(exec_plan));
-
-  std::unique_ptr<ITensorAllocator> tensor_allocator_(
-      ITensorAllocator::Create(session_state.GetEnableMemoryPattern(), *exec_plan_ptr, session_state,
-                               session_state.GetMutableWeightsBuffers()));
-
-  // lambda to save initialized tensors into SessionState directly
-  const Env& env = Env::Default();
-  ORT_RETURN_IF_ERROR(SaveInitializedTensors(
-      env, graph_location, graph_viewer,
-      session_state.GetExecutionProviders().GetDefaultCpuMemoryInfo(),
-      ort_value_name_idx_map, *tensor_allocator_,
-      [&session_state](int idx, const OrtValue& value, const OrtCallback& d, bool constant) -> Status {
-        return session_state.AddInitializedTensor(idx, value, &d, constant);
-      },
-      logger, session_state.GetDataTransferMgr()));
-
-  // remove weights from the graph now to save memory but in many cases it won't save memory, if the tensor was
-  // preallocated with the some other tensors in a single 'allocate' call, which is very common.
-  // TODO: make it better
-  session_state.CleanInitializedTensorsFromGraph();
-
-  ORT_RETURN_IF_ERROR(session_state.CreateKernels(kernel_registry_manager));
-  if (session_options.use_prepacking) {
-    ORT_RETURN_IF_ERROR(session_state.PrepackInitializedConstantTensors());
-  }
-
-  ORT_RETURN_IF_ERROR(SaveInputOutputNamesToNodeMapping(graph_viewer, kernel_registry_manager, session_state,
-                                                        valid_outer_scope_node_args));
-  return Status::OK();
-}
+namespace session_state_utils {
 
 static common::Status DeserializeTensorProto(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& proto_path,
                                              const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer& m,
@@ -168,12 +88,12 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   return common::Status::OK();
 }
 
-template <typename T>
-common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
-                                      const GraphViewer& graph, const OrtMemoryInfo& default_cpu_memory_info,
-                                      const OrtValueNameIdxMap& ort_value_name_idx_map, ITensorAllocator& planner,
-                                      const T& save_tensor_func, const logging::Logger& logger,
-                                      const DataTransferManager& data_transfer_mgr) {
+common::Status SaveInitializedTensors(
+    const Env& env, const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
+    const GraphViewer& graph, const OrtMemoryInfo& default_cpu_memory_info,
+    const OrtValueNameIdxMap& ort_value_name_idx_map, ITensorAllocator& planner,
+    const std::function<Status(int idx, const OrtValue& value, const OrtCallback& d, bool constant)>& save_tensor_func,
+    const logging::Logger& logger, const DataTransferManager& data_transfer_mgr) {
   LOGS(logger, INFO) << "Saving initialized tensors.";
   ORT_ENFORCE(ort_value_name_idx_map.MaxIdx() > -1, "OrtValue indexes should have been populated.");
 
@@ -246,10 +166,9 @@ static bool IsArgNameInInputsOutputs(const std::string& name,
   return it != graph_args.cend();
 }
 
-static common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer& graph,
-                                                        const KernelRegistryManager& custom_registry_manager,
-                                                        SessionState& session_state,
-                                                        const std::vector<const NodeArg*>& implicit_inputs) {
+common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer& graph,
+                                                 SessionState& session_state,
+                                                 const std::vector<const NodeArg*>& implicit_inputs) {
   auto& graph_inputs = graph.GetInputsIncludingInitializers();
   auto& graph_outputs = graph.GetOutputs();
 
@@ -257,9 +176,7 @@ static common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph
   const auto& name_to_id = session_state.GetOrtValueNameIdxMap();
 
   for (auto& node : graph.Nodes()) {
-    // note that KernelCreateInfo may not exist for custom kernel
-    const KernelCreateInfo* kci = nullptr;
-    custom_registry_manager.SearchKernelRegistry(node, &kci);
+    const KernelCreateInfo& kci = session_state.GetNodeKernelCreateInfo(node.Index());
 
     ORT_RETURN_IF_ERROR(
         onnxruntime::Node::ForEachWithIndex(
@@ -273,7 +190,7 @@ static common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph
               ORT_RETURN_IF_ERROR(name_to_id.GetIdx(arg.Name(), arg_index));
               const auto& device = exec_plan->GetLocation(arg_index).device;
 
-              SessionState::NodeInfo node_info(index, &node, kci, device);
+              SessionState::NodeInfo node_info(index, &node, &kci, device);
 
               if (IsArgNameInInputsOutputs(arg.Name(), graph_inputs)) {
                 ORT_RETURN_IF_ERROR(session_state.AddInputNameToNodeInfoMapping(arg.Name(), node_info));
@@ -304,7 +221,7 @@ static common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph
         int arg_index;
         ORT_RETURN_IF_ERROR(name_to_id.GetIdx(input_def->Name(), arg_index));
         auto& device = exec_plan->GetLocation(arg_index).device;
-        SessionState::NodeInfo node_info(std::numeric_limits<size_t>::max(), &node, kci, device);
+        SessionState::NodeInfo node_info(std::numeric_limits<size_t>::max(), &node, &kci, device);
         ORT_RETURN_IF_ERROR(session_state.AddInputNameToNodeInfoMapping(input_def->Name(), node_info));
       }
     }
@@ -321,7 +238,7 @@ static common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph
               ORT_RETURN_IF_ERROR(name_to_id.GetIdx(arg.Name(), arg_index));
               const auto& device = exec_plan->GetLocation(arg_index).device;
 
-              SessionState::NodeInfo node_info(index, &node, kci, device);
+              SessionState::NodeInfo node_info(index, &node, &kci, device);
 
               if (IsArgNameInInputsOutputs(arg.Name(), graph_outputs)) {
                 session_state.AddOutputNameToNodeInfoMapping(arg.Name(), node_info);
@@ -359,4 +276,6 @@ static common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph
 
   return Status::OK();
 }
+
+}  // namespace session_state_utils
 }  // namespace onnxruntime

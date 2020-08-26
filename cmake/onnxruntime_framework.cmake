@@ -7,6 +7,17 @@ file(GLOB_RECURSE onnxruntime_framework_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/framework/*.cc"
 )
 
+if (onnxruntime_MINIMAL_BUILD)
+  file(GLOB onnxruntime_framework_src_exclude 
+    "${ONNXRUNTIME_ROOT}/core/framework/provider_bridge_ort.cc"
+    "${ONNXRUNTIME_ROOT}/core/framework/graph_partitioner.*"
+    "${ONNXRUNTIME_INCLUDE_DIR}/core/framework/customregistry.h"
+    "${ONNXRUNTIME_ROOT}/core/framework/customregistry.cc"
+  )
+
+  list(REMOVE_ITEM onnxruntime_framework_srcs ${onnxruntime_framework_src_exclude})
+endif()
+
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_framework_srcs})
 
 add_library(onnxruntime_framework ${onnxruntime_framework_srcs})
