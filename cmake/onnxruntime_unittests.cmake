@@ -120,6 +120,9 @@ if(NOT onnxruntime_MINIMAL_BUILD)
     )
 else()
   # TODO: Add tests that can be used in a minimal build
+  set(onnxruntime_test_framework_src_patterns
+    "${TEST_SRC_DIR}/platform/*.cc"
+  )
 endif()
 
 file(GLOB onnxruntime_test_training_src
