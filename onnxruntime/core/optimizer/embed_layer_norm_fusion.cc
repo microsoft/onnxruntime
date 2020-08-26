@@ -184,7 +184,7 @@ static bool MatchInputToConcatSubgraph(
 }
 
 /** Match subgraph like the following:
- *
+ * 
  *    Shape -> ^Gather (indice=0)^ -> ^Unsqueeze^
  *      /                                  |           +-----------------------+
  *     /                                   v           |                       |
@@ -196,7 +196,7 @@ static bool MatchInputToConcatSubgraph(
  *       # Unsqueeze -> ConstantOfShape -> NonZero -> Transpose -> Squeeze -> (Cast) -> Unsqueeze #
  *       #                                      or                                                #
  *       #              (Cast (to=7)) -> Range (start=0, delta=1) -> Unsqueeze                    #
- *
+ * 
  * Note that position gather node is the node in the bottom of above sub-graph.
  * Paths in ^^ are alternative path to be matched if path input_ids -> Shape -> Expand -> Gather is not found.
  * Path in ** is an alternative path to check.
