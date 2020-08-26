@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
 
 #include "core/framework/debug_node_inputs_outputs_utils.h"

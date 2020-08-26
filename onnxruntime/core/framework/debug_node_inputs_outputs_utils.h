@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 // to create a build with these enabled run the build script with:
 //   --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1
 
@@ -13,6 +16,7 @@
 namespace onnxruntime {
 namespace utils {
 
+// environment variables that control debug node dumping behavior
 namespace debug_node_inputs_outputs_env_vars {
 // set to non-zero to dump node input data
 constexpr const char* kDumpInputData = "ORT_DEBUG_NODE_IO_DUMP_INPUT_DATA";
@@ -30,9 +34,6 @@ constexpr const char* kDumpingDataToFilesForAllNodesIsOk =
 }  // namespace debug_node_inputs_outputs_env_vars
 
 struct NodeDumpOptions {
-  // specifies the information to dump per node
-  // Note: When dumping every node, dumping both input and output may be redundant.
-  // Doing that may be more useful when dumping a subset of all nodes.
   enum DumpFlags {
     ShapeOnly = 0,
     InputData = 1 << 0,
@@ -40,8 +41,10 @@ struct NodeDumpOptions {
     AllData = InputData | OutputData,
   };
 
-  // controls node dumping behavior
+  // specifies the information to dump per node
   // see DumpFlags
+  // Note: When dumping every node, dumping both input and output may be redundant.
+  // Doing that may be more useful when dumping a subset of all nodes.
   int dump_flags{DumpFlags::ShapeOnly};
 
   // filters the nodes that are dumped
@@ -61,7 +64,7 @@ struct NodeDumpOptions {
   Path output_dir;
 };
 
-// get NodeDumpOptions instance configured from environment variable values
+// gets NodeDumpOptions instance configured from environment variable values
 const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables();
 
 // dumps inputs for a node
