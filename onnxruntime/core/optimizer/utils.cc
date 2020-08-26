@@ -136,6 +136,14 @@ bool IsAttributeWithExpectedValue(const Node& node, const std::string& attr_name
   return false;
 }
 
+bool IsAttributeWithExpectedValue(const Node& node, const std::string& attr_name, float expected_value, float eps) {
+  const auto* attr_proto = graph_utils::GetNodeAttribute(node, attr_name);
+  if ((nullptr != attr_proto) && attr_proto->has_f()) {
+    return abs(attr_proto->f() - expected_value) < eps;
+  }
+  return false;
+}
+
 bool IsAttributeWithExpectedValues(const Node& node, const std::string& attr_name, const std::vector<int64_t>& expected_values) {
   const auto* attr_proto = graph_utils::GetNodeAttribute(node, attr_name);
   if ((nullptr == attr_proto) || attr_proto->ints_size() != (int)expected_values.size()) {

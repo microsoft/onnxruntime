@@ -252,7 +252,7 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     Node& node = *p_node;
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
-    if ((node.GetOutputEdgesCount() == 4 || node.GetOutputEdgesCount() == 6) &&  // Add node.GetOutputEdgesCount() == 6 for distilbert
+    if ((node.GetOutputEdgesCount() >= 4 && node.GetOutputEdgesCount() <= 6) &&  // Add node.GetOutputEdgesCount() == 5/6 for distilbert
         graph_utils::IsSupportedOptypeVersionAndDomain(node, "LayerNormalization", {1}, kOnnxDomain) &&
         graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders())) {
       // Get hidden size from layer norm bias tensor shape.
@@ -281,7 +281,7 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
           reshape_count++;
         }
       }
-      if (add_count == 1 && matmul_count == 3 && (shape_count == 0 || shape_count == 2)) { // BERT or DistilBert
+      if (add_count == 1 && matmul_count == 3 && (shape_count >= 0 && shape_count <= 2)) { // BERT or DistilBert
         if (AttentionFusion::FuseSubGraph(node, *add_node, graph, hidden_size, mask_index_map, logger)) {
           fused_count++;
           modified = true;
@@ -304,7 +304,7 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
 static bool FuseSubGraphQKImpl(Node& layer_norm,
                                Graph& graph,
-                               const std::vector<std::reference_wrapper<const Node>>& parent_path_nodes,
+                               std::vector<std::reference_wrapper<const Node>>& parent_path_nodes,
                                NodeArg* mask_input,
                                std::map<std::string, NodeArg*>& mask_index_map,
                                std::vector<const Node::EdgeEnd*>& edges,
@@ -313,9 +313,18 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
                                int64_t num_heads,
                                int64_t head_size,
                                const logging::Logger& logger) {
-
-  const Node& qk_div = (edges[0]->GetNode().OpType() == "Div") ? edges[0]->GetNode() : edges[1]->GetNode();
-  const Node& qk_matmul = (edges[1]->GetNode().OpType() == "MatMul") ? edges[1]->GetNode() : edges[0]->GetNode();
+  std::vector<std::reference_wrapper<const Node>> pivot_nodes;
+  if (edges.size() == 2) {
+    const Node& qk_div = (edges[0]->GetNode().OpType() == "Div") ? edges[0]->GetNode() : edges[1]->GetNode();
+    const Node& qk_matmul = (edges[1]->GetNode().OpType() == "MatMul") ? edges[1]->GetNode() : edges[0]->GetNode();
+    pivot_nodes.push_back(qk_matmul);
+    pivot_nodes.push_back(qk_div);
+  } else if (edges.size() == 1) {
+    const Node& transpose_scale_matmul = edges[0]->GetNode();
+    pivot_nodes.push_back(transpose_scale_matmul);
+  } else {
+    return false;
+  }
 
   std::vector<graph_utils::EdgeEndToMatch> q_path{
       {0, 0, "Transpose", {1, 13}, kOnnxDomain},
@@ -323,7 +332,7 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
       {0, 0, "Add", {7, 13}, kOnnxDomain},
       {0, 0, "MatMul", {1, 9, 13}, kOnnxDomain},
       {0, 0, "LayerNormalization", {1}, kOnnxDomain}};
-  if (!graph_utils::FindPath(edges[1]->GetNode(), true, q_path, edges, logger)) {
+  if (!graph_utils::FindPath(edges[edges.size() - 1]->GetNode(), true, q_path, edges, logger)) {
     DEBUG_LOG("Failed to find path for q");
     return false;
   }
@@ -338,9 +347,16 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
     return false;
   }
 
-  if (!AttentionFusionHelper::CheckNodesInPathQ(graph, qk_div, q_reshape, q_transpose, num_heads, head_size, logger)) {
-    DEBUG_LOG("CheckNodesInPathQ returns false");
-    return false;
+  if (pivot_nodes.size() == 2) {
+    if (!AttentionFusionHelper::CheckNodesInPathQ(graph, pivot_nodes[1].get(), q_reshape, q_transpose, num_heads, head_size, logger)) {
+      DEBUG_LOG("CheckNodesInPathQ returns false");
+      return false;
+    }
+  } else {
+    if (!AttentionFusionHelper::CheckNodesInPathQ(graph, q_reshape, q_transpose, num_heads, head_size, logger)) {
+      DEBUG_LOG("CheckNodesInPathQ returns false");
+      return false;
+    }
   }
 
   if (!(ValidateAddBiasInitializer(graph, q_add, hidden_size) &&
@@ -356,7 +372,7 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
       {0, 0, "MatMul", {1, 9, 13}, kOnnxDomain},
       {0, 0, "LayerNormalization", {1}, kOnnxDomain}};
 
-  if (!graph_utils::FindPath(qk_matmul, true, k_path, edges, logger)) {
+  if (!graph_utils::FindPath(pivot_nodes[0].get(), true, k_path, edges, logger)) {
     DEBUG_LOG("Failed to find path for k");
     return false;
   }
@@ -428,16 +444,16 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
   attention_node.SetExecutionProviderType(layer_norm.GetExecutionProviderType());
 
   // Remove nodes that are not used anymore.
+  parent_path_nodes.insert(parent_path_nodes.end(), pivot_nodes.begin(), pivot_nodes.end());
+
+  std::transform(parent_path_nodes.begin(),
+                 parent_path_nodes.end(),
+                 std::back_inserter(nodes_to_remove),
+                 [](std::reference_wrapper<const Node> node_ref_wrapper) -> NodeIndex {
+                   return node_ref_wrapper.get().Index();
+                 });
+
   std::vector<NodeIndex> nodes_to_remove_temp{
-    parent_path_nodes[0].get().Index(), //reshape
-    parent_path_nodes[1].get().Index(),
-    parent_path_nodes[2].get().Index(),
-    parent_path_nodes[3].get().Index(),
-    parent_path_nodes[4].get().Index(),
-    parent_path_nodes[5].get().Index(),
-    parent_path_nodes[6].get().Index(),
-    qk_matmul.Index(),
-    qk_div.Index(),
     q_transpose.Index(),
     q_reshape.Index(),
     q_add.Index(),
@@ -457,7 +473,7 @@ static bool FuseSubGraphQK(Node& layer_norm,
                            Graph& graph,
                            AttentionFusionHelper::AttentionMaskNodes& mask_nodes,
                            NodeArg* mask_input,
-                           const std::vector<std::reference_wrapper<const Node>>& parent_path_nodes,
+                           std::vector<std::reference_wrapper<const Node>>& parent_path_nodes,
                            int64_t hidden_size,
                            int64_t num_heads,
                            int64_t head_size,
@@ -492,11 +508,61 @@ static bool FuseSubGraphQK(Node& layer_norm,
   return true;
 }
 
+/** DistilBert's attention is a bit different here
+@remark add_after_layer_norm is the Add node in the bottom of sub-graph.
+ Abbreviatios: B is batch_size, S is sequence_length, W is hidden_size
+               N is number of attention heads, H is head size, and W=N*H
+               B and S could be symbolic.
+    Graph before Fusion (q_, k_, v_, qk_, qkv_ and mask_ prefix is added before Operator type):
+                  [Input](BxSxW)
+                        |
+                LayerNormalization ---------------------------------------------
+            /       |        |     \     [Weights](WxW)                         |
+           /        |        |      \    /                                    Shape
+          |   q_MatMul    k_MatMul  v_MatMul  [Bias](W)                     /       \
+          |         |        |        |   /                                /         \
+          |     q_Add     k_Add     v_Add     [Shape=0,-1,N,H]    Gather(indices:0)   Gather(indices:1)
+          |         |        |        |      /                          |               |
+          | q_Reshape   k_Reshape   v_Reshape                           |               |
+          |         |        |        |                             Unsqueeze        Unsqueeze
+          |q_Transpose  k_Transpose v_Transpose                         |   \          /
+          |  (0,2,1,3)  (0,2,3,1)    (perm=0,2,1,3)                     |    \        /
+          |         \       /         |                                 |     \      /
+          |   TransposeScaleMatmul    |                                 |      Concat [_, 1, 1, _]
+          |           |       |       |                                 |         |
+          |           |     Shape     |                                 |         |     Equal (B = 0)
+          |           |       |       |                                 |         |     /
+          |           |    Expand-----|-----------------------------------------Reshape
+          |            \   /          |                                 |
+          |         Where             /                                 |
+          |             |           /                                   |
+          |          Softmax       /                                    |
+          |             \         /                                     |
+          |              \       /                                      |
+          |            qkv_MatMul                                       |
+          |                   |                                         |
+          |                Transpose (perm=0,2,1,3)                     |
+          |                   |                                         |
+          |                Reshape-----------------------------------Concat [Shape=_,-1,W]
+          |                   |
+          |                 MatMul----[Weights](WxW)
+          |                   |
+          |                  Add----[Bias](W)
+          +-------------------|---+
+                              |   |
+                               Add
+
+Two changes compared with first version attention fusion for distilbert:
+1:TransposeScaleMatmul[alpha = 0.125, transA = 0, transB = 0] is initially Div[B = 8] -> MatMul. It gets fused before ORT 1.5.0 release
+2:There were two Shape nodes after LayerNormalization, gets fused into one before ORT 1.5.0 release
+
+However, the first version of attention fusion for distilbert is still supported for now.
+*/
 static bool FuseSubGraphQKDistilBert(Node& layer_norm,
                                      Graph& graph,
                                      AttentionFusionHelper::AttentionMaskNodesDistilBert& mask_nodes,
                                      NodeArg* mask_input,
-                                     const std::vector<std::reference_wrapper<const Node>>& parent_path_nodes,
+                                     std::vector<std::reference_wrapper<const Node>>& parent_path_nodes,
                                      int64_t hidden_size,
                                      int64_t num_heads,
                                      int64_t head_size,
