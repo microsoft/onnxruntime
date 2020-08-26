@@ -76,7 +76,7 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const SubGraphCo
     ng_function->validate_nodes_and_infer_types();
   }
 
-#if defined(OPENVINO_2020_4)
+#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1)
   std::map<std::string, std::string> result_to_output;
   for(auto& result : ng_function->get_results()){
     result_to_output[result->get_friendly_name()] = result->input_value(0).get_node_shared_ptr()->get_friendly_name();
@@ -151,7 +151,7 @@ void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
   auto outputInfo = network->getOutputsInfo();
   for (auto iter = outputInfo.begin(); iter != outputInfo.end(); ++iter) {
     auto output_name = iter->first;
-#if defined(OPENVINO_2020_4)
+#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1)
     auto it = const_outputs_map.find(output_name);
     //Output is constant and don't need to set precision
     if(it != const_outputs_map.end())
@@ -197,7 +197,7 @@ GetOutputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_
       delete output_shape;
     }
   }
-#if defined(OPENVINO_2020_4)
+#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1)
   for(auto item : const_output_map){
     auto it = output_names.find(item.first);
     if(it == output_names.end()) {
@@ -244,7 +244,7 @@ int GetFirstAvailableDevice(GlobalContext& global_context){
   return i;
 }
 
-#if defined(OPENVINO_2020_4)
+#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1)
 void FillOutputsWithConstantData(Ort::CustomOpApi& ort, std::shared_ptr<ngraph::Node> node, OrtValue* out_tensor){
 
 
@@ -276,7 +276,7 @@ void FillOutputsWithConstantData(Ort::CustomOpApi& ort, std::shared_ptr<ngraph::
 }
 #endif
 
-#if defined(OPENVINO_2020_4)
+#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1)
 template<typename T>
 void FillOutputHelper(Ort::CustomOpApi& ort, OrtValue* out_tensor, std::shared_ptr<ngraph::Node> node){
 
