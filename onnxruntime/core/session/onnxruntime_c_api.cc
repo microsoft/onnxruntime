@@ -377,9 +377,10 @@ ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions
 }
 
 namespace {
-ORT_STATUS_PTR LoadAndInitializeSession(_In_ const OrtEnv* /*env*/, _In_ const OrtSessionOptions* options,
-                                        _In_ std::unique_ptr<::onnxruntime::InferenceSession>& sess,
-                                        _Outptr_ OrtSession** out) {
+#if !defined(ORT_MINIMAL_BUILD)
+static ORT_STATUS_PTR LoadAndInitializeSession(_In_ const OrtEnv* /*env*/, _In_ const OrtSessionOptions* options,
+                                               _In_ std::unique_ptr<::onnxruntime::InferenceSession>& sess,
+                                               _Outptr_ OrtSession** out) {
   // we need to disable mem pattern if DML is one of the providers since DML doesn't have the concept of
   // byte addressable memory
   std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
@@ -403,14 +404,10 @@ ORT_STATUS_PTR LoadAndInitializeSession(_In_ const OrtEnv* /*env*/, _In_ const O
   Status status;
   if (options) {
     if (!options->custom_op_domains_.empty()) {
-#if !defined(ORT_MINIMAL_BUILD)
       status = sess->AddCustomOpDomains(options->custom_op_domains_);
       if (!status.IsOK()) {
         return ToOrtStatus(status);
       }
-#else
-      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Custom operator domains are not supported in this build.");
-#endif
     }
   }
 
@@ -423,15 +420,11 @@ ORT_STATUS_PTR LoadAndInitializeSession(_In_ const OrtEnv* /*env*/, _In_ const O
     }
   }
 
-#if !defined(ORT_MINIMAL_BUILD)
   status = sess->Load();
   if (!status.IsOK())
     return ToOrtStatus(status);
 
   status = sess->Initialize();
-#else
-  // TODO: Add path to load from ORT format model
-#endif
 
   if (!status.IsOK())
     return ToOrtStatus(status);
@@ -439,6 +432,8 @@ ORT_STATUS_PTR LoadAndInitializeSession(_In_ const OrtEnv* /*env*/, _In_ const O
   *out = reinterpret_cast<OrtSession*>(sess.release());
   return nullptr;
 }
+#endif
+
 }  // namespace
 
 ORT_API_STATUS_IMPL(OrtApis::CreateSession, _In_ const OrtEnv* env, _In_ const ORTCHAR_T* model_path,

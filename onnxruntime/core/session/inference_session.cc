@@ -27,7 +27,6 @@
 #include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/utils.h"
 #include "core/graph/graph_viewer.h"
-#include "core/graph/graph_utils.h"
 #include "core/graph/model.h"
 #include "core/optimizer/transformer_memcpy.h"
 #include "core/optimizer/graph_transformer.h"

@@ -29,11 +29,11 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime;
 using namespace onnxruntime::common;
 
-static constexpr int DEFAULT_PROTOBUF_BLOCK_SIZE = 4 * 1024 * 1024;
-
 namespace onnxruntime {
 
 #if !defined(ORT_MINIMAL_BUILD)
+
+static constexpr int DEFAULT_PROTOBUF_BLOCK_SIZE = 4 * 1024 * 1024;
 
 Model::Model(const std::string& graph_name,
              bool is_onnx_domain_only,
