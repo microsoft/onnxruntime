@@ -24,7 +24,7 @@ struct EnumTraits<DML_TENSOR_TYPE>
 template <>
 struct EnumTraits<DML_OPERATOR_TYPE>
 {
-    static constexpr auto ValueCount = 124;
+    static constexpr auto ValueCount = 141;
     static constexpr size_t ActivationFunctionCount = 20;
 };
 
@@ -892,6 +892,12 @@ struct OperatorDescTraits<DML_ROI_ALIGN_OPERATOR_DESC>
 };
 
 template <>
+struct OperatorDescTraits<DML_GATHER_ND1_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_GATHER_ND1;
+};
+
+template <>
 struct OperatorDescTraits<DML_ACTIVATION_ELU_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ACTIVATION_ELU;
@@ -1732,6 +1738,12 @@ struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ROI_ALIGN>
 };
 
 template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_GATHER_ND1>
+{
+    using DescType = DML_GATHER_ND1_OPERATOR_DESC;
+};
+
+template <>
 struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ACTIVATION_ELU>
 {
     using DescType = DML_ACTIVATION_ELU_OPERATOR_DESC;
@@ -2102,6 +2114,8 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
         return std::invoke(std::forward<Visitor>(visitor), DML_ADAM_OPTIMIZER_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ROI_ALIGN:
         return std::invoke(std::forward<Visitor>(visitor), DML_ROI_ALIGN_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_GATHER_ND1:
+        return std::invoke(std::forward<Visitor>(visitor), DML_GATHER_ND1_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ACTIVATION_ELU:
         return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_ELU_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ACTIVATION_CELU:
@@ -2273,6 +2287,7 @@ inline gsl::czstring ToString(DML_OPERATOR_TYPE value)
     case DML_OPERATOR_SLICE_GRAD: return "DML_OPERATOR_SLICE_GRAD";
     case DML_OPERATOR_ADAM_OPTIMIZER: return "DML_OPERATOR_ADAM_OPTIMIZER";
     case DML_OPERATOR_ROI_ALIGN: return "DML_OPERATOR_ROI_ALIGN";
+    case DML_OPERATOR_GATHER_ND1: return "DML_OPERATOR_GATHER_ND1";
     default:
         assert(false);
         return "<unknown>";

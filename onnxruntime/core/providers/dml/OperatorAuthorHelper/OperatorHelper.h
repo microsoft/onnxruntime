@@ -977,9 +977,13 @@ class GatherNdHelper {
   // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
   template <typename Info_t, typename Shape_t>
   GatherNdHelper(const Info_t& info, const Shape_t& shape) {
+    m_batchCount = info.GetOptionalAttribute<int32_t>(AttrName::BatchDimensions, 0);
   }
 
   std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+
+protected:
+  int32_t m_batchCount;
 };
 
 class PoolingHelperBase {
