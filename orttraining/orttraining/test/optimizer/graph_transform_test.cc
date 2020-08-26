@@ -138,7 +138,8 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionRank0) {
   ASSERT_TRUE(ret.IsOK());
   Graph& graph = p_model->MainGraph();
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(0, 2), TransformerLevel::Level1);
+  std::unordered_map<std::string, std::string> updated_weight_names;
+  graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(0, 2, updated_weight_names), TransformerLevel::Level1);
   ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
   ASSERT_TRUE(ret.IsOK());
 
@@ -206,7 +207,8 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionRank1) {
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(1, 2), TransformerLevel::Level1);
+  std::unordered_map<std::string, std::string> updated_weight_names;
+  graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(1, 2, updated_weight_names), TransformerLevel::Level1);
   ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
   ASSERT_TRUE(ret.IsOK());
 
@@ -273,7 +275,8 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank0) {
   ASSERT_TRUE(ret.IsOK());
   Graph& graph = p_model->MainGraph();
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(0, 2), TransformerLevel::Level1);
+  std::unordered_map<std::string, std::string> updated_weight_names;
+  graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(0, 2, updated_weight_names), TransformerLevel::Level1);
   ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
   ASSERT_TRUE(ret.IsOK());
 
@@ -338,7 +341,8 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank1) {
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(1, 2), TransformerLevel::Level1);
+  std::unordered_map<std::string, std::string> updated_weight_names;
+  graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(1, 2, updated_weight_names), TransformerLevel::Level1);
   ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
   ASSERT_TRUE(ret.IsOK());
 
@@ -407,7 +411,8 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionCorrectnessTest) {
     ASSERT_TRUE(ret.IsOK());
     Graph& graph = p_models[i]->MainGraph();
     onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-    graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(i, total_rank), TransformerLevel::Level1);
+    std::unordered_map<std::string, std::string> updated_weight_names;
+    graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(i, total_rank, updated_weight_names), TransformerLevel::Level1);
     ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
     ASSERT_TRUE(ret.IsOK());
     graphs.push_back(&graph);
@@ -512,7 +517,8 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionCorrectnessTest) 
     ASSERT_TRUE(ret.IsOK());
     Graph& graph = p_models[i]->MainGraph();
     onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-    graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(i, total_rank), TransformerLevel::Level1);
+    std::unordered_map<std::string, std::string> updated_weight_names;
+    graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(i, total_rank, updated_weight_names), TransformerLevel::Level1);
     ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
     ASSERT_TRUE(ret.IsOK());
     graphs.push_back(&graph);

@@ -238,6 +238,9 @@ class TrainingSession : public InferenceSession {
     // The pipeline configuration output.
     // This is only set if an pipeline is enabled.
     optional<PipelineConfigurationResult> pipeline_config_result;
+
+    // Mapped initilized names after weight partitioning for example MegatronTransformer
+    std::unordered_map<std::string, std::string> updated_weight_names{};
   };
 
   /**
@@ -397,13 +400,16 @@ class TrainingSession : public InferenceSession {
                                    std::string& backward_recorded_event_before_send_name);
 
   common::Status ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,
-                                                 const TrainingConfiguration::GraphTransformerConfiguration& config, bool is_master_node);
+                                                 const TrainingConfiguration::GraphTransformerConfiguration& config,
+                                                 TrainingConfigurationResult& config_result_out,
+                                                 bool is_master_node);
 
   /** configure initial transformers for training */
   void AddPreTrainingTransformers(const IExecutionProvider& execution_provider,  // for constant folding
                                   GraphTransformerManager& transformer_manager,
                                   const std::unordered_set<std::string>& weights_to_train,
                                   const TrainingConfiguration::GraphTransformerConfiguration& config,
+                                  TrainingConfigurationResult& config_result_out,
                                   TransformerLevel graph_optimization_level = TransformerLevel::MaxLevel,
                                   const std::vector<std::string>& custom_list = {});
 
