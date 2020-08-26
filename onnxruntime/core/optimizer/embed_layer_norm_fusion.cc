@@ -77,6 +77,19 @@ static void AddNodes(std::vector<NodeIndex>& node_indices,
   }
 }
 
+static bool IsNeighborNodeExpectedTypes(Node::NodeConstIterator start, const Node::NodeConstIterator end, const std::vector<std::string>& expected_types) {
+  if (expected_types.size() == 0) {
+    return false;
+  }
+  for (const std::string& expected_type : expected_types) {
+    if (start == end || (*start).OpType().compare(expected_type) != 0) {
+      return false;
+    }
+    ++start;
+  }
+  return start == end;
+}
+
 /** Match subgraph like the following:
             (input_ids)
           /             \
@@ -844,7 +857,7 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     }
     Node& layer_norm_add_node = *graph.GetNode(edges[0]->GetNode().Index());
 
-    if (optimizer_utils::IsNeighborNodeExpectedTypes(layer_norm_add_node.InputEdgesBegin(), layer_norm_add_node.InputNodesEnd(), {"Gather", "Gather"})) {
+    if (IsNeighborNodeExpectedTypes(layer_norm_add_node.InputEdgesBegin(), layer_norm_add_node.InputNodesEnd(), {"Gather", "Gather"})) {
       //DistilBert
       if (FuseSubGraphDistilBert(graph, layer_norm_add_node, layer_norm_node, reduce_sum_node, logger)) {
         modified = true;
