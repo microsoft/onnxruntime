@@ -645,6 +645,7 @@ stages:
             aria2c -q https://github.com/protocolbuffers/protobuf/releases/download/v3.11.1/protoc-3.11.1-linux-x86_64.zip
             unzip protoc-3.11.1-linux-x86_64.zip
             sudo cp /mnt/toolchains/manylinux2014_aarch64/usr/include/stdlib.h /mnt/toolchains/gcc-linaro-7.5.0-2019.12-x86_64_aarch64-linux-gnu/aarch64-linux-gnu/libc/usr/include/
+            #The PYTHON_EXECUTABLE cmake variable is only used for generating ONNX's protobuf definition file.(Invoking the onnx/gen_proto.py file in ONNX's source folder)
             cmake \
               -Donnxruntime_GCC_STATIC_CPP_RUNTIME=ON \
               -DCMAKE_BUILD_TYPE=Release \
@@ -652,7 +653,7 @@ stages:
               -DCMAKE_TOOLCHAIN_FILE=tool-chain.cmake \
               -Donnxruntime_ENABLE_PYTHON=ON \
               -DPYTHON_LIBRARY=dl \
-              -DPYTHON_EXECUTABLE=/mnt/toolchains/manylinux2014_aarch64/'$(python.manylinux.dir)'/bin/python3  \
+              -DPYTHON_EXECUTABLE=/usr/bin/python3  \
               -Donnxruntime_BUILD_SHARED_LIB=OFF \
               -Donnxruntime_RUN_ONNX_TESTS=OFF \
               -Donnxruntime_DEV_MODE=ON \

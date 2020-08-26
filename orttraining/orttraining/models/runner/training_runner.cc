@@ -79,8 +79,8 @@ Status TrainingRunner::Initialize() {
   if (params_.pipeline_parallel_size > 1 && !params_.pipeline_stage_paths.empty()) {
     // Pipeline partition happens outside ORT. We just load the result of partitioning forward graph.
     // Backward graph will be generated using ORT's graph transformers.
-    ORT_ENFORCE(static_cast<size_t>(params_.mpi_context.world_size) == params_.pipeline_stage_paths.size());
-    ORT_RETURN_IF_ERROR(session_.Load(params_.pipeline_stage_paths[params_.mpi_context.world_rank]));
+    ORT_ENFORCE(static_cast<size_t>(MPIContext::GetInstance().GetWorldSize()) == params_.pipeline_stage_paths.size());
+    ORT_RETURN_IF_ERROR(session_.Load(params_.pipeline_stage_paths[MPIContext::GetInstance().GetWorldRank()]));
   } else {
     ORT_RETURN_IF_ERROR(session_.Load(params_.model_path));
   }
@@ -98,10 +98,10 @@ Status TrainingRunner::Initialize() {
 
   config.gradient_accumulation_steps = params_.gradient_accumulation_steps;
 
-  config.distributed_config.world_rank = params_.mpi_context.world_rank;
-  config.distributed_config.world_size = params_.mpi_context.world_size;
-  config.distributed_config.local_size = params_.mpi_context.local_size;
-  config.distributed_config.local_rank = params_.mpi_context.local_rank;
+  config.distributed_config.world_rank = MPIContext::GetInstance().GetWorldRank();
+  config.distributed_config.world_size = MPIContext::GetInstance().GetWorldSize();
+  config.distributed_config.local_size = MPIContext::GetInstance().GetLocalSize();
+  config.distributed_config.local_rank = MPIContext::GetInstance().GetLocalRank();
   config.distributed_config.data_parallel_size = params_.data_parallel_size;
   config.distributed_config.horizontal_parallel_size = params_.horizontal_parallel_size;
   config.distributed_config.pipeline_parallel_size = params_.pipeline_parallel_size;
@@ -115,7 +115,7 @@ Status TrainingRunner::Initialize() {
   }
 
   // always configure the loss function
-  if (params_.pipeline_parallel_size == 1 || params_.mpi_context.world_rank == params_.mpi_context.world_size - 1) {
+  if (params_.pipeline_parallel_size == 1 || MPIContext::GetInstance().GetWorldRank() == MPIContext::GetInstance().GetWorldSize() - 1) {
     TrainingSession::TrainingConfiguration::LossFunctionConfiguration lf{};
     lf.loss_function_info = params_.loss_func_info;
 
@@ -337,7 +337,7 @@ Status TrainingRunner::Initialize() {
 
 Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_data_loader,
                            const MapStringToString& mapped_dimensions) {
-  if (params_.mpi_context.world_rank == 0 && !params_.model_actual_running_graph_path.empty()) {
+  if (MPIContext::GetInstance().GetWorldRank() == 0 && !params_.model_actual_running_graph_path.empty()) {
     session_.Save(params_.model_actual_running_graph_path, TrainingSession::SaveOption::NO_RELOAD);
   }
 
@@ -810,7 +810,7 @@ void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
 Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader,
                                     const MapStringToString& mapped_dimensions) {
   const bool enable_checkpoint_saving =
-      params_.mpi_context.world_rank == 0 &&
+      MPIContext::GetInstance().GetWorldRank() == 0 &&
       checkpoint_registry_ && params_.checkpoint_period > 0;
 
   std::unique_ptr<perftest::utils::ICPUUsage> cpu_usage_calculator;

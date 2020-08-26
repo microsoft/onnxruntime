@@ -71,6 +71,10 @@ float GeluApproximationGrad(float dy, float x) {
   float result = dy * 0.5f * (tanh_value + (sech_sqr_value * (kAlpha * x + kBeta * x_cube)) + 1.0f);
   return result;
 }
+
+float ReluGrad(float dy, float x) {
+  return x > 0 ? dy : 0;
+}
 }  // namespace
 
 TEST(GeluGradTest, Basic) {
@@ -135,6 +139,22 @@ TEST(BiasFastGeluGradDxTest, Basic) {
         const auto dy = params[0], x = params[1], b = params[2];
 
         return GeluApproximationGrad(dy, x + b);
+      },
+      {}, 1, kMSDomain);
+}
+
+TEST(ReluGradTest, Basic) {
+  const std::vector<float> x_vals = {-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f, -1000.0f};
+  const std::vector<float> dY(7, 1.0f);
+
+  TestElementwiseGradientOp(
+      "ReluGrad",
+      {{"dY", dY}, {"X", x_vals}},
+      [](const std::vector<float>& params) {
+        ORT_ENFORCE(params.size() == 2);
+        const auto dy = params[0], x = params[1];
+
+        return ReluGrad(dy, x);
       },
       {}, 1, kMSDomain);
 }
