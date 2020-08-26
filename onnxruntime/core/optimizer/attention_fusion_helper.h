@@ -654,29 +654,18 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, Attentio
   }
 
   //expand has another input Shape <-- qk_MatMul or Shape <-- TransposeScaleMatMul(recent added)
-  std::vector<graph_utils::EdgeEndToMatch> shape_path_1{
+  std::vector<graph_utils::EdgeEndToMatch> shape_path{
       {0, 1, "Shape", {1, 13}, kOnnxDomain},
       {0, 0, "MatMul", {1, 9, 13}, kOnnxDomain}};
-  std::vector<graph_utils::EdgeEndToMatch> shape_path_2{
-      {0, 1, "Shape", {1, 13}, kOnnxDomain},
-      {0, 0, "TransposeScaleMatMul", {1}, kOnnxDomain}};
-  if (!graph_utils::FindPath(expand, true, shape_path_1, edges, logger) &&
-      !graph_utils::FindPath(expand, true, shape_path_2, edges, logger)) {
+  if (!graph_utils::FindPath(expand, true, shape_path_1, edges, logger) {
     DEBUG_LOG("Failed to find shape path");
     return false;
   }
   const Node& shape = edges[0]->GetNode();
-  const Node& qk_root = edges[1]->GetNode();
-  const Node* p_qk_root = graph_utils::GetInputNode(where, 2);
-  if (p_qk_root != nullptr && p_qk_root->Index() != qk_root.Index()) {
+  const Node& qk_matmul = edges[1]->GetNode();
+  const Node* p_qk_matmul = graph_utils::GetInputNode(where, 2);
+  if (p_qk_matmul != nullptr && p_qk_matmul->Index() != qk_matmul.Index()) {
     return false;
-  }
-  if (qk_root.OpType() == "TransposeScaleMatMul") {
-    if (!optimizer_utils::IsAttributeWithExpectedValue(qk_root, "alpha", 0.125f) ||
-        !optimizer_utils::IsAttributeWithExpectedValue(qk_root, "transA", static_cast<int64_t>(0)) ||
-        !optimizer_utils::IsAttributeWithExpectedValue(qk_root, "transB", static_cast<int64_t>(0))) {
-      return false;
-    }
   }
 
   //equal has input B=0
@@ -948,7 +937,7 @@ bool CheckNodesInPathV(const Graph& graph, const Node& reshape, const Node& tran
   return true;
 }
 
-bool CheckNodesInPathQ(const Graph& graph, const Node& q_reshape, const Node& q_transpose, int64_t num_heads, int64_t head_size, const logging::Logger& logger) {
+bool CheckNodesInPathQ(const Graph& graph, const Node& qk_div, const Node& q_reshape, const Node& q_transpose, int64_t num_heads, int64_t head_size, const logging::Logger& logger) {
   DEBUG_LOG("Start CheckNodesInPathQ");
   std::vector<int64_t> q_reshape_shape;
   if (!optimizer_utils::AppendTensorFromInitializer(graph, *(q_reshape.InputDefs()[1]), q_reshape_shape) ||
@@ -961,28 +950,17 @@ bool CheckNodesInPathQ(const Graph& graph, const Node& q_reshape, const Node& q_
     return false;
   }
 
-  std::vector<int64_t> perm;
-  if (!(graph_utils::GetRepeatedNodeAttributeValues(q_transpose, "perm", perm) && perm.size() == 4 && perm[0] == 0 && perm[1] == 2 && perm[2] == 1 && perm[3] == 3)) {
-    DEBUG_LOG("q_transpose perm attribute not matched");
-    return false;
-  }
-  DEBUG_LOG("Pass CheckNodesInPathQ");
-  return true;
-}
-
-bool CheckNodesInPathQ(const Graph& graph, const Node& qk_div, const Node& q_reshape, const Node& q_transpose, int64_t num_heads, int64_t head_size, const logging::Logger& logger) {
-  DEBUG_LOG("Start CheckNodesInPathQ");
-
-  if (!CheckNodesInPathQ(graph, q_reshape, q_transpose, num_heads, head_size, logger)) {
-    return false;
-  }
-
   float expected_value = std::sqrt(static_cast<float>(head_size));
   if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(qk_div.InputDefs()[1]), expected_value, false)) {
     DEBUG_LOG("qk_div const not matched.");
     return false;
   }
 
+  std::vector<int64_t> perm;
+  if (!(graph_utils::GetRepeatedNodeAttributeValues(q_transpose, "perm", perm) && perm.size() == 4 && perm[0] == 0 && perm[1] == 2 && perm[2] == 1 && perm[3] == 3)) {
+    DEBUG_LOG("q_transpose perm attribute not matched");
+    return false;
+  }
   DEBUG_LOG("Pass CheckNodesInPathQ");
   return true;
 }

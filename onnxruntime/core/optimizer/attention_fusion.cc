@@ -319,9 +319,6 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
     const Node& qk_matmul = (edges[1]->GetNode().OpType() == "MatMul") ? edges[1]->GetNode() : edges[0]->GetNode();
     pivot_nodes.push_back(qk_matmul);
     pivot_nodes.push_back(qk_div);
-  } else if (edges.size() == 1) {
-    const Node& transpose_scale_matmul = edges[0]->GetNode();
-    pivot_nodes.push_back(transpose_scale_matmul);
   } else {
     return false;
   }
@@ -347,16 +344,9 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
     return false;
   }
 
-  if (pivot_nodes.size() == 2) {
-    if (!AttentionFusionHelper::CheckNodesInPathQ(graph, pivot_nodes[1].get(), q_reshape, q_transpose, num_heads, head_size, logger)) {
-      DEBUG_LOG("CheckNodesInPathQ returns false");
-      return false;
-    }
-  } else {
-    if (!AttentionFusionHelper::CheckNodesInPathQ(graph, q_reshape, q_transpose, num_heads, head_size, logger)) {
-      DEBUG_LOG("CheckNodesInPathQ returns false");
-      return false;
-    }
+  if (!AttentionFusionHelper::CheckNodesInPathQ(graph, pivot_nodes[1].get(), q_reshape, q_transpose, num_heads, head_size, logger)) {
+    DEBUG_LOG("CheckNodesInPathQ returns false");
+    return false;
   }
 
   if (!(ValidateAddBiasInitializer(graph, q_add, hidden_size) &&
@@ -526,9 +516,12 @@ static bool FuseSubGraphQK(Node& layer_norm,
           |         |        |        |                             Unsqueeze        Unsqueeze
           |q_Transpose  k_Transpose v_Transpose                         |   \          /
           |  (0,2,1,3)  (0,2,3,1)    (perm=0,2,1,3)                     |    \        /
-          |         \       /         |                                 |     \      /
-          |   TransposeScaleMatmul    |                                 |      Concat [_, 1, 1, _]
-          |           |       |       |                                 |         |
+          |         |       |         |                                 |     \      /
+          |        q_Div   /                                            |      Concat [_, 1, 1, _]
+          |           |  /            |                                 |         |
+          |        qk_MatMul          |                                 |         |
+          |           |    \          |                                 |         |
+          |           |      \        |                                 |         |
           |           |     Shape     |                                 |         |     Equal (B = 0)
           |           |       |       |                                 |         |     /
           |           |    Expand-----|-----------------------------------------Reshape
