@@ -47,8 +47,9 @@ MlasQLinearMulVectorS16(
 {
         int32x4_t vacc0_lo = vmull_s16(vget_low_s16(va_s16x8), vget_low_s16(vb_s16x8));
         int32x4_t vacc0_hi = vmull_s16(vget_high_s16(va_s16x8), vget_high_s16(vb_s16x8));
-        vacc0_lo = vcvtq_s32_f32(vaddq_f32(VectorZeroPointC, vmulq_f32(VectorScaleRatio, vcvtq_f32_s32(vacc0_lo))));
-        vacc0_hi = vcvtq_s32_f32(vaddq_f32(VectorZeroPointC, vmulq_f32(VectorScaleRatio, vcvtq_f32_s32(vacc0_hi))));
+        // using rounding to nearst, ties to even
+        vacc0_lo = vcvtnq_s32_f32(vaddq_f32(VectorZeroPointC, vmulq_f32(VectorScaleRatio, vcvtq_f32_s32(vacc0_lo))));
+        vacc0_hi = vcvtnq_s32_f32(vaddq_f32(VectorZeroPointC, vmulq_f32(VectorScaleRatio, vcvtq_f32_s32(vacc0_hi))));
         // Pack and saturate.
         return vcombine_s16(vqmovn_s32(vacc0_lo), vqmovn_s32(vacc0_hi));
 }
@@ -74,8 +75,7 @@ MlasQLinearMulKernel(
     const float32x4_t VectorScaleRatio = vmovq_n_f32(ScaleA * ScaleB / ScaleC);
     const typename SUI::i8x8_t VectorZeroPointA = SUI::vmov_n_i8((DataType)ZeroPointA);
     const typename SUI::i8x8_t VectorZeroPointB = SUI::vmov_n_i8((DataType)ZeroPointB);
-    // Neon using fixed rounding mode, this is the best way to make it act as nearstintf()(without considering half point value)
-    const float32x4_t VectorZeroPointC = vaddq_f32(vmovq_n_f32((float)ZeroPointC), vmovq_n_f32((float)0.5));
+    const float32x4_t VectorZeroPointC = vmovq_n_f32((float)ZeroPointC);
 
     typename SUI::T TailDataA[16] = { 0 };
     typename SUI::T TailDataB[16] = { 0 };
