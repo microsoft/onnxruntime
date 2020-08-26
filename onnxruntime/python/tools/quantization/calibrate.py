@@ -31,8 +31,7 @@ class ONNXCalibrater:
                  calibrate_op_types,
                  black_nodes,
                  white_nodes,
-                 augmented_model_path,
-                 input_name_to_nodes):
+                 augmented_model_path):
         '''
         :param model_path: ONNX model to calibrate
         :param data_reader: user implemented object to read in and preprocess calibration dataset
@@ -49,7 +48,7 @@ class ONNXCalibrater:
         self.black_nodes = black_nodes
         self.white_nodes = white_nodes
         self.augmented_model_path = augmented_model_path
-        self.input_name_to_nodes = input_name_to_nodes
+        self.input_name_to_nodes = {}
      
     def augment_graph(self):
         '''
@@ -247,13 +246,14 @@ class ONNXCalibrater:
         self._get_input_name_to_nodes(model)
 
         for node in model.graph.node:
-            next_nodes = self._get_next_nodes(model,node)
-            for next_node in next_nodes:
-                node_output_name = next_node.output[0]
-                if node_output_name in quantization_thresholds:
-                    node_thresholds = quantization_thresholds[node_output_name]
-                    node_params = self.calculate_scale_zeropoint(node, next_node, node_thresholds[0], node_thresholds[1])
-                    quantization_params[node_output_name] = node_params
+            for node_output_name in node.output:
+                if node_output_name in self.input_name_to_nodes:
+                    next_nodes = self.input_name_to_nodes[node_output_name]
+                    for next_node in next_nodes:
+                        if node_output_name in quantization_thresholds:
+                            node_thresholds = quantization_thresholds[node_output_name]
+                            node_params = self.calculate_scale_zeropoint(node, next_node, node_thresholds[0], node_thresholds[1])
+                            quantization_params[node_output_name] = node_params
 
         return quantization_params
 
@@ -274,11 +274,8 @@ def calibrate(model_path,
     :param white_nodes: operator names that force to be quantized, default = ''
     :param augmented_model_path: save augmented_model to this path
     '''
-
-    input_name_to_nodes = {}
-
     #1. initialize a calibrater
-    calibrater = ONNXCalibrater(model_path, data_reader, op_types, black_nodes, white_nodes, augmented_model_path, input_name_to_nodes)
+    calibrater = ONNXCalibrater(model_path, data_reader, op_types, black_nodes, white_nodes, augmented_model_path)
     #2. augment
     augmented_model = calibrater.augment_graph()
     onnx.save(augmented_model, augmented_model_path)

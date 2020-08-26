@@ -11,13 +11,13 @@ from .operators.maxpool import QMaxPool
 
 CommonOpsRegistry ={
     "Gather":GatherQuant,
-    "Attention":AttentionQuant,
     "EmbedLayerNormalization":EmbedLayerNormalizationQuant
 }
 
 IntegerOpsRegistry = {
     "Conv":ConInteger,
-    "MatMul":MatMulInteger
+    "MatMul":MatMulInteger,
+    "Attention":AttentionQuant,
 }
 IntegerOpsRegistry.update(CommonOpsRegistry)
 

@@ -264,7 +264,7 @@ class ONNXQuantizer:
        
         for node in self.model.nodes():
             # if a list of ops to be quantized is provided then only quantize those ops
-            if self.nodes_to_quantize is not None and node.name not in self.nodes_to_quantize:
+            if self.nodes_to_quantize is not None and len(self.nodes_to_quantize) != 0 and node.name not in self.nodes_to_quantize:
                 op_quantizer = CreateDefaultOpQuantizer(self, node)
             elif self.nodes_to_exclude is not None and node.name in self.nodes_to_exclude:
                 op_quantizer = CreateDefaultOpQuantizer(self, node)

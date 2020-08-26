@@ -23,6 +23,7 @@ from .registry import CreateOpQuantizer, CreateDefaultOpQuantizer
 
 from .onnx_model import ONNXModel
 from .onnx_quantizer import ONNXQuantizer
+from .calibrate import CalibrationDataReader, calibrate
 
 
 def optimize_model(model_path:Path):
@@ -136,18 +137,18 @@ def quantize(model_path,
 
 
 def quantize_static(model_path,
+                    calibration_data_reader:CalibrationDataReader,
+                    op_types=[],
                     per_channel=False,
                     activation_type=QuantType.QUInt8,
                     weight_type=QuantType.QUInt8,
-                    quantization_params=None,
-                    nodes_to_quantize=None,
-                    nodes_to_exclude=None):
+                    nodes_to_quantize=[],
+                    nodes_to_exclude=[]):
     '''
-        Given an onnx model, create a quantized onnx model and save it into a file
+        Given an onnx model and calibration data reader, create a quantized onnx model and save it into a file
     :param model_input: file path of model to quantize
     :param model_output: file path of quantized model
     :param per_channel: quantize weights per channel
-    :param nbits: number of bits to represent quantized data. Currently only supporting 8-bit types
     :param activation_type: quantization data type of activation
     :param weight_type: quantization data type of weight
     :param quantization_params:
@@ -177,22 +178,29 @@ def quantize_static(model_path,
         when it is not None.
     '''
 
+    if activation_type != QuantType.QUInt8 or weight_type != QuantType.QUInt8:
+        raise ValueError("Static quantization only support uint8 now.")
+
     input_qType = onnx_proto.TensorProto.INT8 if activation_type == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
     weight_qType = onnx_proto.TensorProto.INT8 if weight_type == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
     mode = QuantizationMode.QLinearOps
-
-    #optimize the original model
-    optimized_model = optimize_model(Path(model_path))
-    copy_model = onnx_proto.ModelProto()
-    copy_model.CopyFrom(optimized_model)
 
     #check opset version of the original model
     #fuse_dynamic_quant = check_opset_version(onnx.load(model_path), force_fusions)
     fuse_dynamic_quant = True
 
     #apply shape inference to the ModelProto and get value informations
-    inferred_model = shape_inference.infer_shapes(copy_model)
+    inferred_model = shape_inference.infer_shapes(onnx.load(model_path))
     value_infos = {vi.name: vi for vi in inferred_model.graph.value_info}
+
+    if len(op_types) == 0 or not op_types:
+        op_types = ['Conv','MatMul']
+
+    quantization_params_dict = calibrate(model_path,
+                                        calibration_data_reader,
+                                        op_types,
+                                        nodes_to_quantize,
+                                        nodes_to_exclude)
 
     #create ONNXModel and ONNXQuantizer
     onnx_model = ONNXModel(inferred_model)
@@ -204,7 +212,7 @@ def quantize_static(model_path,
                               fuse_dynamic_quant,
                               weight_qType,
                               input_qType,
-                              quantization_params,
+                              quantization_params_dict,
                               nodes_to_quantize,
                               nodes_to_exclude)
 
