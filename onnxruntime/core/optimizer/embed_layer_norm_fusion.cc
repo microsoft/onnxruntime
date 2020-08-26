@@ -78,9 +78,6 @@ static void AddNodes(std::vector<NodeIndex>& node_indices,
 }
 
 static bool IsNeighborNodeExpectedTypes(Node::NodeConstIterator start, const Node::NodeConstIterator end, const std::vector<std::string>& expected_types) {
-  if (expected_types.size() == 0) {
-    return false;
-  }
   for (const std::string& expected_type : expected_types) {
     if (start == end || (*start).OpType().compare(expected_type) != 0) {
       return false;
@@ -706,6 +703,7 @@ static bool FuseSubGraph(Graph& graph,
   return true;
 }
 
+// DistilBert's pattern does not have segment embedding
 static bool FuseSubGraphDistilBert(Graph& graph,
                                    Node& layer_norm_add_node,
                                    Node& layer_norm_node,
