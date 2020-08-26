@@ -1,3 +1,5 @@
+trigger: none
+
 jobs:
 - job: 'build'
   pool: 'Win-GPU-2019'
