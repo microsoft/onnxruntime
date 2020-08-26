@@ -303,14 +303,12 @@ Status SetInputsOutputsAndResolve(Graph& graph,
 
 void FindPipelineLandmarks(
     Graph& graph,
-    const std::string& loss_name,
     Node** forward_recv,
     Node** forward_send,
     Node** backward_recv,
     Node** backward_send,
     Node** first_node,
-    Node** last_node,
-    Node** loss_node) {
+    Node** last_node) {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -327,12 +325,6 @@ void FindPipelineLandmarks(
         *backward_recv = node;
       } else {
         *forward_recv = node;
-      }
-    }
-
-    for (auto node_arg : node->OutputDefs()) {
-      if (node_arg->Name() == loss_name) {
-        *loss_node = node;
       }
     }
   }
@@ -403,7 +395,6 @@ void FindPipelineLandmarks(
 Status TransformGraphForPipeline(
     Graph& graph,
     const std::unordered_set<std::string>& weights_to_train,
-    const std::string& loss_name,
     pipeline::PipelineTensorNames& pipeline_tensor_names) {
   // Begin node of forward pass.
   Node* forward_recv{nullptr};
@@ -418,13 +409,11 @@ Status TransformGraphForPipeline(
   Node* first_node{nullptr};
   // Last node in graph topology.
   Node* last_node{nullptr};
-  // Loss node in graph topology. It splits forward and backward passes.
-  Node* loss_node{nullptr};
 
   // Find begin/end for Send, Recv, and computation in forward and backward.
   // If there is no Recv in forward/backward, the first forward/backward node is used.
   // If there is no Send in forward/backward, the last forward/backward node is used.
-  FindPipelineLandmarks(graph, loss_name, &forward_recv, &forward_send, &backward_recv, &backward_send, &first_node, &last_node, &loss_node);
+  FindPipelineLandmarks(graph, &forward_recv, &forward_send, &backward_recv, &backward_send, &first_node, &last_node);
 
   const bool is_first_stage = !forward_recv && forward_send && backward_recv && !backward_send;
   const bool is_middle_stage = forward_recv && forward_send && backward_recv && backward_send;
@@ -581,17 +570,7 @@ Status TransformGraphForPipeline(
   }
 
   // Forward-Compute Record
-  if (is_last_stage) {
-    // Insert one Record after loss or two SoftmaxCrossEntropy's.
-    forward_compute_record = &AppendEventNode(
-        graph, loss_node,
-        "RecordEvent", "record_forward_compute", "forward_compute_event_2",
-        new_input_names, new_output_names,
-        pipeline_tensor_names.forward_compute_recorded_event_name,
-        pipeline_tensor_names.forward_compute_record_output_name);
-    ORT_ENFORCE(forward_compute_record);
-    ResolveForTraining(graph, weights_to_train);
-  } else {
+  if (is_first_stage || is_middle_stage) {
     // Insert one Record before Forward-Send Wait.
     forward_compute_record = &PrependEventNode(
         graph, forward_send_wait,
@@ -604,17 +583,7 @@ Status TransformGraphForPipeline(
   }
 
   // Backward-Compute Wait.
-  if (is_last_stage) {
-    // Insert one Wait after Forward-Compute Record.
-    backward_compute_wait = &AppendEventNode(
-        graph, forward_compute_record,
-        "WaitEvent", "wait_backward_compute", "backward_compute_event_1",
-        new_input_names, new_output_names,
-        pipeline_tensor_names.backward_compute_waited_event_name,
-        pipeline_tensor_names.backward_compute_wait_output_name);
-    ORT_ENFORCE(backward_compute_wait);
-    ResolveForTraining(graph, weights_to_train);
-  } else {
+  if (is_first_stage || is_middle_stage) {
     // Insert one Wait after Backward-Recv Record
     backward_compute_wait = &AppendEventNode(
         graph, backward_recv_record,
@@ -1117,7 +1086,7 @@ common::Status GenerateSubgraph(Graph& graph, Node* start_node) {
   // If the following line is uncommented, middle and last pipeline stages may
   // have unresolved symbolic shapes. The reason is that some symbolic shapes
   // are defined for the original inputs, if original inputs are removed, we
-  // loss the hit to resolve symbolic shapes. For example, if an original
+  // lose the hint to resolve symbolic shapes. For example, if an original
   // input's shape is [batch, sequence, 1024], that input should be provided as
   // a feed to all pipeline stages. Otherwise, we don't know the actual values
   // of "batch" and "sequence".

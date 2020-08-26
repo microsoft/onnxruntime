@@ -14,7 +14,6 @@ void GetPipelineSendOutput(const Graph& graph, std::string& loss_name);
 Status TransformGraphForPipeline(
     Graph& graph,
     const std::unordered_set<std::string>& initializer_names_to_preserve,
-    const std::string& loss_name,
     pipeline::PipelineTensorNames& pipeline_tensor_names);
 
 Status ApplyPipelinePartitionToMainGraph(

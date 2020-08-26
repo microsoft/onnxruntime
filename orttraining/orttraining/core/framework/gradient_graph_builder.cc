@@ -223,21 +223,7 @@ Status GradientGraphBuilder::Build() {
     }
   }
 
-  ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(*graph_, gradient_graph_defs));
-
-  std::unordered_map<std::string, int> node_index_to_node_name_map;
-  for (auto& node : graph_->Nodes()) {
-    node_index_to_node_name_map[node.Name()] = node.Index();
-  }
-  // Make sure the topological positions of backward nodes are after loss.
-  auto loss_node = graph_->GetProducerNode(loss_node_arg_name_);
-  for (auto& backward_node_def : gradient_graph_defs.NodeDefs()) {
-    const auto backward_node_name = backward_node_def.name;
-    const auto backward_node_index = node_index_to_node_name_map.at(backward_node_name);
-    ORT_ENFORCE(graph_->AddControlEdge(loss_node->Index(), backward_node_index));
-  }
-
-  return graph_->Resolve();
+  return GraphAugmenter::AugmentGraph(*graph_, gradient_graph_defs);
 }
 
 }  // namespace training

@@ -252,7 +252,6 @@ Status TrainingSession::ConfigureForTraining(
   if (config.pipeline_config.has_value()) {
     TrainingConfigurationResult::PipelineConfigurationResult pipeline_result{};
     ORT_RETURN_IF_ERROR(InsertPipelineOps(weight_names_to_train,
-                                          loss_name,
                                           pipeline_result.pipeline_tensor_names));
     // Records which which tensors can be fed into the graph.
     // It may be different than the original graph because of extra event tensors.
@@ -579,14 +578,10 @@ Status TrainingSession::AddTensorboard(const std::string& summary_name,
 
 Status TrainingSession::InsertPipelineOps(
     const std::unordered_set<std::string>& initializer_names_to_preserve,
-    const std::string& loss_name,
     pipeline::PipelineTensorNames& pipeline_tensor_names) {
   ORT_RETURN_IF_ERROR(TransformGraphForPipeline(
       model_->MainGraph(),
       initializer_names_to_preserve,
-      // Split point of forward and backward.
-      // Loss is the last node in forward.
-      loss_name,
       pipeline_tensor_names));
   return DoPostLoadProcessing(*model_);
 }

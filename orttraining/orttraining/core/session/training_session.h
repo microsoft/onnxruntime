@@ -358,8 +358,8 @@ class TrainingSession : public InferenceSession {
   //
   // After this function, the resulted computation is
   //
-  //  WaitEvent --> Recv --> WaitEvent --> Forward --> RecordEvent --> Send --> RecordEvent -->
-  //  WaitEvent --> Recv --> WaitEvent --> Backward --> RecordEvent --> Send --> RecordEvent
+  //  WaitEvent --> Recv --> RecordEvent --> WaitEvent --> Forward --> RecordEvent --> WaitEvent --> Send --> RecordEvent -->
+  //  WaitEvent --> Recv --> RecordEvent --> WaitEvent --> Backward --> RecordEvent --> WaitEvent --> Send --> RecordEvent
   //
   // As you can see, some event operators are inserted. For each event operator, its dependent
   // event tensor name is written to an input references, for example, "forward_waited_event_name".
@@ -371,7 +371,6 @@ class TrainingSession : public InferenceSession {
   //     identify backward nodes.
   //  4. No event operator is inserted by other graph transform.
   common::Status InsertPipelineOps(const std::unordered_set<std::string>& initializer_names_to_preserve,
-                                   const std::string& loss_name,
                                    pipeline::PipelineTensorNames& pipeline_tensor_names);
 
   common::Status ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,
