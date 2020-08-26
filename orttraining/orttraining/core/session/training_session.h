@@ -11,6 +11,7 @@
 #include "orttraining/core/graph/optimizer_graph_output_key.h"
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/graph/gradient_config.h"
+#include "orttraining/models/runner/pipeline.h"
 
 namespace onnxruntime {
 namespace training {
@@ -213,38 +214,8 @@ class TrainingSession : public InferenceSession {
       // Index of obtained pipeline stage. The first stage is indexed by 0.
       int pipeline_stage_id;
       // The names of pipeline events in model's input list.
-      // The are defined in order of being called.
-      // Forward Recv
-      std::string forward_recv_waited_event_name;
-      std::string forward_recv_wait_output_name;
-      std::string forward_recv_recorded_event_name;
-      std::string forward_recv_record_output_name;
-      // Forward Send
-      std::string forward_send_waited_event_name;
-      std::string forward_send_wait_output_name;
-      std::string forward_send_recorded_event_name;
-      std::string forward_send_record_output_name;
-      // Backward Recv
-      std::string backward_recv_waited_event_name;
-      std::string backward_recv_wait_output_name;
-      std::string backward_recv_recorded_event_name;
-      std::string backward_recv_record_output_name;
-      // Backward Send
-      std::string backward_send_waited_event_name;
-      std::string backward_send_wait_output_name;
-      std::string backward_send_recorded_event_name;
-      std::string backward_send_record_output_name;
-      // Forward Compute
-      std::string forward_compute_waited_event_name;
-      std::string forward_compute_wait_output_name;
-      std::string forward_compute_recorded_event_name;
-      std::string forward_compute_record_output_name;
-      // Backward Compute
-      std::string backward_compute_waited_event_name;
-      std::string backward_compute_wait_output_name;
-      std::string backward_compute_recorded_event_name;
-      std::string backward_compute_record_output_name;
-
+      // This field also includes the first output name of each event operator.
+      pipeline::PipelineTensorNames pipeline_tensor_names;
       // Tensors to feed at this pipeline stage.
       std::vector<std::string> feed_names;
       // Tensors to fetch at this pipeline stage.
@@ -401,36 +372,7 @@ class TrainingSession : public InferenceSession {
   //  4. No event operator is inserted by other graph transform.
   common::Status InsertPipelineOps(const std::unordered_set<std::string>& initializer_names_to_preserve,
                                    const std::string& loss_name,
-                                   // Forward Recv
-                                   std::string& forward_recv_waited_event_name,
-                                   std::string& forward_recv_wait_output_name,
-                                   std::string& forward_recv_recorded_event_name,
-                                   std::string& forward_recv_record_output_name,
-                                   // Forward Send
-                                   std::string& forward_send_waited_event_name,
-                                   std::string& forward_send_wait_output_name,
-                                   std::string& forward_send_recorded_event_name,
-                                   std::string& forward_send_record_output_name,
-                                   // Backward Recv
-                                   std::string& backward_recv_waited_event_name,
-                                   std::string& backward_recv_wait_output_name,
-                                   std::string& backward_recv_recorded_event_name,
-                                   std::string& backward_recv_record_output_name,
-                                   // Backward Send
-                                   std::string& backward_send_waited_event_name,
-                                   std::string& backward_send_wait_output_name,
-                                   std::string& backward_send_recorded_event_name,
-                                   std::string& backward_send_record_output_name,
-                                   // Forward Compute
-                                   std::string& forward_compute_waited_event_name,
-                                   std::string& forward_compute_wait_output_name,
-                                   std::string& forward_compute_recorded_event_name,
-                                   std::string& forward_compute_record_output_name,
-                                   // Backward Compute
-                                   std::string& backward_compute_waited_event_name,
-                                   std::string& backward_compute_wait_output_name,
-                                   std::string& backward_compute_recorded_event_name,
-                                   std::string& backward_compute_record_output_name);
+                                   pipeline::PipelineTensorNames& pipeline_tensor_names);
 
   common::Status ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,
                                                  const TrainingConfiguration::GraphTransformerConfiguration& config);

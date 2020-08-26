@@ -253,36 +253,7 @@ Status TrainingSession::ConfigureForTraining(
     TrainingConfigurationResult::PipelineConfigurationResult pipeline_result{};
     ORT_RETURN_IF_ERROR(InsertPipelineOps(weight_names_to_train,
                                           loss_name,
-                                          // Forward Recv
-                                          pipeline_result.forward_recv_waited_event_name,
-                                          pipeline_result.forward_recv_wait_output_name,
-                                          pipeline_result.forward_recv_recorded_event_name,
-                                          pipeline_result.forward_recv_record_output_name,
-                                          // Forward Send
-                                          pipeline_result.forward_send_waited_event_name,
-                                          pipeline_result.forward_send_wait_output_name,
-                                          pipeline_result.forward_send_recorded_event_name,
-                                          pipeline_result.forward_send_record_output_name,
-                                          // Backward Recv
-                                          pipeline_result.backward_recv_waited_event_name,
-                                          pipeline_result.backward_recv_wait_output_name,
-                                          pipeline_result.backward_recv_recorded_event_name,
-                                          pipeline_result.backward_recv_record_output_name,
-                                          // Backward Send
-                                          pipeline_result.backward_send_waited_event_name,
-                                          pipeline_result.backward_send_wait_output_name,
-                                          pipeline_result.backward_send_recorded_event_name,
-                                          pipeline_result.backward_send_record_output_name,
-                                          // Forward Compute
-                                          pipeline_result.forward_compute_waited_event_name,
-                                          pipeline_result.forward_compute_wait_output_name,
-                                          pipeline_result.forward_compute_recorded_event_name,
-                                          pipeline_result.forward_compute_record_output_name,
-                                          // Backward Compute
-                                          pipeline_result.backward_compute_waited_event_name,
-                                          pipeline_result.backward_compute_wait_output_name,
-                                          pipeline_result.backward_compute_recorded_event_name,
-                                          pipeline_result.backward_compute_record_output_name));
+                                          pipeline_result.pipeline_tensor_names));
     // Records which which tensors can be fed into the graph.
     // It may be different than the original graph because of extra event tensors.
     for (auto& node_arg : model_->MainGraph().GetInputsIncludingInitializers()) {
@@ -609,72 +580,14 @@ Status TrainingSession::AddTensorboard(const std::string& summary_name,
 Status TrainingSession::InsertPipelineOps(
     const std::unordered_set<std::string>& initializer_names_to_preserve,
     const std::string& loss_name,
-    // Forward Recv
-    std::string& forward_recv_waited_event_name,
-    std::string& forward_recv_wait_output_name,
-    std::string& forward_recv_recorded_event_name,
-    std::string& forward_recv_record_output_name,
-    // Forward Send
-    std::string& forward_send_waited_event_name,
-    std::string& forward_send_wait_output_name,
-    std::string& forward_send_recorded_event_name,
-    std::string& forward_send_record_output_name,
-    // Backward Recv
-    std::string& backward_recv_waited_event_name,
-    std::string& backward_recv_wait_output_name,
-    std::string& backward_recv_recorded_event_name,
-    std::string& backward_recv_record_output_name,
-    // Backward Send
-    std::string& backward_send_waited_event_name,
-    std::string& backward_send_wait_output_name,
-    std::string& backward_send_recorded_event_name,
-    std::string& backward_send_record_output_name,
-    // Forward Compute
-    std::string& forward_compute_waited_event_name,
-    std::string& forward_compute_wait_output_name,
-    std::string& forward_compute_recorded_event_name,
-    std::string& forward_compute_record_output_name,
-    // Backward Compute
-    std::string& backward_compute_waited_event_name,
-    std::string& backward_compute_wait_output_name,
-    std::string& backward_compute_recorded_event_name,
-    std::string& backward_compute_record_output_name) {
+    pipeline::PipelineTensorNames& pipeline_tensor_names) {
   ORT_RETURN_IF_ERROR(TransformGraphForPipeline(
       model_->MainGraph(),
       initializer_names_to_preserve,
       // Split point of forward and backward.
       // Loss is the last node in forward.
       loss_name,
-      // Forward Recv
-      forward_recv_waited_event_name,
-      forward_recv_wait_output_name,
-      forward_recv_recorded_event_name,
-      forward_recv_record_output_name,
-      // Forward Send
-      forward_send_waited_event_name,
-      forward_send_wait_output_name,
-      forward_send_recorded_event_name,
-      forward_send_record_output_name,
-      // Backward Recv
-      backward_recv_waited_event_name,
-      backward_recv_wait_output_name,
-      backward_recv_recorded_event_name,
-      backward_recv_record_output_name,
-      // Backward Send
-      backward_send_waited_event_name,
-      backward_send_wait_output_name,
-      backward_send_recorded_event_name,
-      backward_send_record_output_name,
-      // Forward Compute
-      forward_compute_waited_event_name,
-      forward_compute_wait_output_name,
-      forward_compute_recorded_event_name,
-      forward_compute_record_output_name,
-      // Backward Compute
-      backward_compute_waited_event_name,
-      backward_compute_wait_output_name,
-      backward_compute_recorded_event_name,
-      backward_compute_record_output_name));
+      pipeline_tensor_names));
   return DoPostLoadProcessing(*model_);
 }
 

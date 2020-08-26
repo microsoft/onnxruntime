@@ -198,120 +198,25 @@ Status TrainingRunner::Initialize() {
   if (params_.pipeline_parallel_size > 1) {
     fetch_names = config_result.pipeline_config_result.value().fetch_names;
 
-    // Set events for forward Recv.
-    // Set event ID and specify one output to fetch for the event operator in-between  **.**
-    // **Wait** -> Recv -> Record -> Wait -> FW -> Record -> Wait -> Send -> Record ->
-    //   Wait   -> Recv -> Record -> Wait -> BW -> Record -> Wait -> Send -> Record
-    pipeline_context_.forward_recv_waited_event_name = config_result.pipeline_config_result.value().forward_recv_waited_event_name;
-    pipeline_context_.forward_recv_wait_output_name = config_result.pipeline_config_result.value().forward_recv_wait_output_name;
-    if (!pipeline_context_.forward_recv_wait_output_name.empty()) {
-      fetch_names.push_back(pipeline_context_.forward_recv_wait_output_name);
-    }
-    // Set event ID and specify one output to fetch for the event operator in-between  **.**
-    // Wait -> Recv -> **Record** -> Wait -> FW -> Record -> Wait -> Send -> Record ->
-    // Wait -> Recv ->   Record   -> Wait -> BW -> Record -> Wait -> Send -> Record
-    pipeline_context_.forward_recv_recorded_event_name = config_result.pipeline_config_result.value().forward_recv_recorded_event_name;
-    pipeline_context_.forward_recv_record_output_name = config_result.pipeline_config_result.value().forward_recv_record_output_name;
-    if (!pipeline_context_.forward_recv_record_output_name.empty()) {
-      fetch_names.push_back(pipeline_context_.forward_recv_record_output_name);
-    }
+    // Set tensor names for event IDs and outputs of event ops.
+    pipeline_context_.pipeline_tensor_names = config_result.pipeline_config_result.value().pipeline_tensor_names;
 
-    // Set events for forward Send.
-    // Set event ID and specify one output to fetch for the event operator in-between  **.**
-    // Wait -> Recv -> Record -> Wait -> FW -> Record -> **Wait** -> Send -> Record ->
-    // Wait -> Recv -> Record -> Wait -> BW -> Record ->   Wait   -> Send -> Record
-    pipeline_context_.forward_send_waited_event_name = config_result.pipeline_config_result.value().forward_send_waited_event_name;
-    pipeline_context_.forward_send_wait_output_name = config_result.pipeline_config_result.value().forward_send_wait_output_name;
-    if (!pipeline_context_.forward_send_wait_output_name.empty()) {
-      fetch_names.push_back(pipeline_context_.forward_send_wait_output_name);
-    }
-    // Set event ID and specify one output to fetch for the event operator in-between  **.**
-    // Wait -> Recv -> Record -> Wait -> FW -> Record -> Wait -> Send -> **Record** ->
-    // Wait -> Recv -> Record -> Wait -> BW -> Record -> Wait -> Send ->   Record
-    pipeline_context_.forward_send_recorded_event_name = config_result.pipeline_config_result.value().forward_send_recorded_event_name;
-    pipeline_context_.forward_send_record_output_name = config_result.pipeline_config_result.value().forward_send_record_output_name;
-    if (!pipeline_context_.forward_send_record_output_name.empty()) {
-      fetch_names.push_back(pipeline_context_.forward_send_record_output_name);
-    }
+    // Create a local function to append non-empty name to fetch_names list.
+    auto append_non_empty_name = [&] (const std::string& name) {
+      if (!name.empty()) {
+        fetch_names.push_back(name);
+      }
+    };
 
-    // Set events for backward Recv.
-    // Set event ID and specify one output to fetch for the event operator in-between  **.**
-    //   Wait   -> Recv -> Record -> Wait -> FW -> Record -> Wait -> Send -> Record ->
-    // **Wait** -> Recv -> Record -> Wait -> BW -> Record -> Wait -> Send -> Record
-    pipeline_context_.backward_recv_waited_event_name = config_result.pipeline_config_result.value().backward_recv_waited_event_name;
-    pipeline_context_.backward_recv_wait_output_name = config_result.pipeline_config_result.value().backward_recv_wait_output_name;
-    if (!pipeline_context_.backward_recv_wait_output_name.empty()) {
-      fetch_names.push_back(pipeline_context_.backward_recv_wait_output_name);
-    }
-    // Set event ID and specify one output to fetch for the event operator in-between  **.**
-    // Wait -> Recv ->   Record   -> Wait -> FW -> Record -> Wait -> Send -> Record ->
-    // Wait -> Recv -> **Record** -> Wait -> BW -> Record -> Wait -> Send -> Record
-    pipeline_context_.backward_recv_recorded_event_name = config_result.pipeline_config_result.value().backward_recv_recorded_event_name;
-    pipeline_context_.backward_recv_record_output_name = config_result.pipeline_config_result.value().backward_recv_record_output_name;
-    if (!pipeline_context_.backward_recv_record_output_name.empty()) {
-      fetch_names.push_back(pipeline_context_.backward_recv_record_output_name);
-    }
-
-    // Set events for ba backward Send.
-    // Set event ID and specify one output to fetch for the event operator in-between  **.**
-    // Wait -> Recv -> Record -> Wait -> FW -> Record ->   Wait   -> Send -> Record ->
-    // Wait -> Recv -> Record -> Wait -> BW -> Record -> **Wait** -> Send -> Record
-    pipeline_context_.backward_send_waited_event_name = config_result.pipeline_config_result.value().backward_send_waited_event_name;
-    pipeline_context_.backward_send_wait_output_name = config_result.pipeline_config_result.value().backward_send_wait_output_name;
-    if (!pipeline_context_.backward_send_wait_output_name.empty()) {
-      fetch_names.push_back(pipeline_context_.backward_send_wait_output_name);
-    }
-    // Set event ID and specify one output to fetch for the event operator in-between  **.**
-    // Wait -> Recv -> Record -> Wait -> FW -> Record -> Wait -> Send ->   Record ->
-    // Wait -> Recv -> Record -> Wait -> BW -> Record -> Wait -> Send -> **Record**
-    pipeline_context_.backward_send_recorded_event_name = config_result.pipeline_config_result.value().backward_send_recorded_event_name;
-    pipeline_context_.backward_send_record_output_name = config_result.pipeline_config_result.value().backward_send_record_output_name;
-    if (!pipeline_context_.backward_send_record_output_name.empty()) {
-      fetch_names.push_back(pipeline_context_.backward_send_record_output_name);
-    }
-
-    // Set events for ba forward Compute.
-    // Set event ID and specify one output to fetch for the event operator in-between  **.**
-    // Wait -> Recv -> Record -> **Wait** -> FW -> Record -> Wait -> Send -> Record ->
-    // Wait -> Recv -> Record ->   Wait   -> BW -> Record -> Wait -> Send -> Record
-    pipeline_context_.forward_compute_waited_event_name = config_result.pipeline_config_result.value().forward_compute_waited_event_name;
-    pipeline_context_.forward_compute_wait_output_name = config_result.pipeline_config_result.value().forward_compute_wait_output_name;
-    if (!pipeline_context_.forward_compute_wait_output_name.empty()) {
-      fetch_names.push_back(pipeline_context_.forward_compute_wait_output_name);
-    }
-    // Set event ID and specify one output to fetch for the event operator in-between  **.**
-    // Wait -> Recv -> Record -> Wait -> FW -> **Record** -> Wait -> Send -> Record ->
-    // Wait -> Recv -> Record -> Wait -> BW ->   Record   -> Wait -> Send -> Record
-    pipeline_context_.forward_compute_recorded_event_name = config_result.pipeline_config_result.value().forward_compute_recorded_event_name;
-    pipeline_context_.forward_compute_record_output_name = config_result.pipeline_config_result.value().forward_compute_record_output_name;
-    if (!pipeline_context_.forward_compute_record_output_name.empty()) {
-      fetch_names.push_back(pipeline_context_.forward_compute_record_output_name);
-    }
-
-    // Set events for backward compute.
-    // Set event ID and specify one output to fetch for the event operator in-between  **.**
-    // Wait -> Recv -> Record ->   Wait   -> FW -> Record -> Wait -> Send -> Record ->
-    // Wait -> Recv -> Record -> **Wait** -> BW -> Record -> Wait -> Send -> Record
-    pipeline_context_.backward_compute_waited_event_name = config_result.pipeline_config_result.value().backward_compute_waited_event_name;
-    pipeline_context_.backward_compute_wait_output_name = config_result.pipeline_config_result.value().backward_compute_wait_output_name;
-    if (!pipeline_context_.backward_compute_wait_output_name.empty()) {
-      fetch_names.push_back(pipeline_context_.backward_compute_wait_output_name);
-    }
-    // Set event ID and specify one output to fetch for the event operator in-between  **.**
-    // Wait -> Recv -> Record -> Wait -> FW ->   Record   -> Wait -> Send -> Record ->
-    // Wait -> Recv -> Record -> Wait -> BW -> **Record** -> Wait -> Send -> Record
-    pipeline_context_.backward_compute_recorded_event_name = config_result.pipeline_config_result.value().backward_compute_recorded_event_name;
-    pipeline_context_.backward_compute_record_output_name = config_result.pipeline_config_result.value().backward_compute_record_output_name;
-    if (!pipeline_context_.backward_compute_wait_output_name.empty()) {
-      fetch_names.push_back(pipeline_context_.backward_compute_record_output_name);
-    }
+    // Append first output of each event operator.
+    pipeline_context_.pipeline_tensor_names.ForEachOutputName(append_non_empty_name);
 
     // Names of allowed inputs after pipeline partition.
     pipeline_context_.feed_names = config_result.pipeline_config_result.value().feed_names;
     // Names of allowed outputs after pipeline partition.
+    // Configure dimension of this pipeline.
     pipeline_context_.fetch_names = fetch_names;
 
-    // Configure dimension of this pipeline.
     pipeline_context_.pipeline_stage_id = config_result.pipeline_config_result.value().pipeline_stage_id;
     pipeline_context_.num_pipeline_batches = params_.gradient_accumulation_steps;
   } else {
@@ -454,39 +359,39 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
 
     // Forward Recv
     id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetForwardRecvWaitedEvent(batch_id, stage_id);
-    append_event_to_feeds(pipeline_context_.forward_recv_waited_event_name, id);
+    append_event_to_feeds(pipeline_context_.pipeline_tensor_names.forward_recv_waited_event_name, id);
     id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetForwardRecvRecordedEvent(batch_id, stage_id);
-    append_event_to_feeds(pipeline_context_.forward_recv_recorded_event_name, id);
+    append_event_to_feeds(pipeline_context_.pipeline_tensor_names.forward_recv_recorded_event_name, id);
 
     // Forward Send
     id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetForwardSendWaitedEvent(batch_id, stage_id);
-    append_event_to_feeds(pipeline_context_.forward_send_waited_event_name, id);
+    append_event_to_feeds(pipeline_context_.pipeline_tensor_names.forward_send_waited_event_name, id);
     id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetForwardSendRecordedEvent(batch_id, stage_id);
-    append_event_to_feeds(pipeline_context_.forward_send_recorded_event_name, id);
+    append_event_to_feeds(pipeline_context_.pipeline_tensor_names.forward_send_recorded_event_name, id);
 
     // Backward Recv
     id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetBackwardRecvWaitedEvent(batch_id, stage_id);
-    append_event_to_feeds(pipeline_context_.backward_recv_waited_event_name, id);
+    append_event_to_feeds(pipeline_context_.pipeline_tensor_names.backward_recv_waited_event_name, id);
     id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetBackwardRecvRecordedEvent(batch_id, stage_id);
-    append_event_to_feeds(pipeline_context_.backward_recv_recorded_event_name, id);
+    append_event_to_feeds(pipeline_context_.pipeline_tensor_names.backward_recv_recorded_event_name, id);
 
     // Backward Send
     id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetBackwardSendWaitedEvent(batch_id, stage_id);
-    append_event_to_feeds(pipeline_context_.backward_send_waited_event_name, id);
+    append_event_to_feeds(pipeline_context_.pipeline_tensor_names.backward_send_waited_event_name, id);
     id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetBackwardSendRecordedEvent(batch_id, stage_id);
-    append_event_to_feeds(pipeline_context_.backward_send_recorded_event_name, id);
+    append_event_to_feeds(pipeline_context_.pipeline_tensor_names.backward_send_recorded_event_name, id);
 
     // Forward Compute
     id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetForwardComputeWaitedEvent(batch_id, stage_id);
-    append_event_to_feeds(pipeline_context_.forward_compute_waited_event_name, id);
+    append_event_to_feeds(pipeline_context_.pipeline_tensor_names.forward_compute_waited_event_name, id);
     id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetForwardComputeRecordedEvent(batch_id, stage_id);
-    append_event_to_feeds(pipeline_context_.forward_compute_recorded_event_name, id);
+    append_event_to_feeds(pipeline_context_.pipeline_tensor_names.forward_compute_recorded_event_name, id);
 
     // Backward Compute
     id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetBackwardComputeWaitedEvent(batch_id, stage_id);
-    append_event_to_feeds(pipeline_context_.backward_compute_waited_event_name, id);
+    append_event_to_feeds(pipeline_context_.pipeline_tensor_names.backward_compute_waited_event_name, id);
     id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetBackwardComputeRecordedEvent(batch_id, stage_id);
-    append_event_to_feeds(pipeline_context_.backward_compute_recorded_event_name, id);
+    append_event_to_feeds(pipeline_context_.pipeline_tensor_names.backward_compute_recorded_event_name, id);
   }
 
   for (auto name : feed_names) {
@@ -547,48 +452,16 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const SessionMode mode,
     // Always execute event operators to avoid deadlock if pipeline is used.
     // TODO: create a list of must-to-fetch tensors and pass it to all graph transformer.
     if (params_.pipeline_parallel_size > 1) {
-      // Forward Recv
-      if (!pipeline_context_.forward_recv_wait_output_name.empty()) {
-        fetch_names.push_back(pipeline_context_.forward_recv_wait_output_name);
-      }
-      if (!pipeline_context_.forward_recv_record_output_name.empty()) {
-        fetch_names.push_back(pipeline_context_.forward_recv_record_output_name);
-      }
-      // Forward Send
-      if (!pipeline_context_.forward_send_wait_output_name.empty()) {
-        fetch_names.push_back(pipeline_context_.forward_send_wait_output_name);
-      }
-      if (!pipeline_context_.forward_send_record_output_name.empty()) {
-        fetch_names.push_back(pipeline_context_.forward_send_record_output_name);
-      }
-      // Backward Recv
-      if (!pipeline_context_.backward_recv_wait_output_name.empty()) {
-        fetch_names.push_back(pipeline_context_.backward_recv_wait_output_name);
-      }
-      if (!pipeline_context_.backward_recv_recorded_event_name.empty()) {
-        fetch_names.push_back(pipeline_context_.backward_recv_recorded_event_name);
-      }
-      // Backward Send
-      if (!pipeline_context_.backward_send_wait_output_name.empty()) {
-        fetch_names.push_back(pipeline_context_.backward_send_wait_output_name);
-      }
-      if (!pipeline_context_.backward_send_record_output_name.empty()) {
-        fetch_names.push_back(pipeline_context_.backward_send_record_output_name);
-      }
-      // Forward Compute
-      if (!pipeline_context_.forward_compute_wait_output_name.empty()) {
-        fetch_names.push_back(pipeline_context_.forward_compute_wait_output_name);
-      }
-      if (!pipeline_context_.forward_compute_record_output_name.empty()) {
-        fetch_names.push_back(pipeline_context_.forward_compute_record_output_name);
-      }
-      // Backward Compute
-      if (!pipeline_context_.backward_compute_wait_output_name.empty()) {
-        fetch_names.push_back(pipeline_context_.backward_compute_wait_output_name);
-      }
-      if (!pipeline_context_.backward_compute_record_output_name.empty()) {
-        fetch_names.push_back(pipeline_context_.backward_compute_record_output_name);
-      }
+      // Create a local function to append non-empty name to fetch_names list.
+      auto append_non_empty_name = [&] (const std::string& name) {
+        if (!name.empty()) {
+          fetch_names.push_back(name);
+        }
+      };
+
+      // Append first output of each event operator to fetch_names list to make sure all event ops will
+      // be computed.
+      pipeline_context_.pipeline_tensor_names.ForEachOutputName(append_non_empty_name);
     }
   } else if (mode == EvaluateStep) {
     // Set up tensor to be fetched when doing model evaluation.

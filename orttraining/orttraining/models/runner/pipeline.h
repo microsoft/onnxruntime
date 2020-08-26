@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#pragma once
+
+#include <functional>
 #include <iostream>
 #include <vector>
 #include <cstdint>
@@ -211,19 +214,8 @@ struct PipelineWorkerPool {
   std::vector<PipelineWorkerState> worker_states;
 };
 
-struct PipelineContext {
-  // Id of stage handled by this process. Currently, it matches the MPI's rank.
-  int pipeline_stage_id;
-  // The number of batches per pipeline run. Its value is
-  // num_gradient_accumulation_steps.
-  // Only the last step among num_gradient_accumulation_steps steps may call
-  // optimizer to update the model.
-  int num_pipeline_batches;
-
-  // Name of scheduling event in graph's input list.
-  // If an event name is an empty string, it means no event
-  // should be waited or recorded.
-
+// Structure to store special tensors' names for pipeline parallel.
+struct PipelineTensorNames {
   // Event ops' inputs and outputs related to forward Recv.
   std::string forward_recv_waited_event_name;
   std::string forward_recv_wait_output_name;
@@ -255,6 +247,49 @@ struct PipelineContext {
   std::string backward_compute_recorded_event_name;
   std::string backward_compute_record_output_name;
 
+  void ForEachEventName(std::function<void(std::string)> fun) {
+    fun(forward_recv_waited_event_name);
+    fun(forward_recv_recorded_event_name);
+    fun(forward_send_waited_event_name);
+    fun(forward_send_recorded_event_name);
+    fun(backward_recv_waited_event_name);
+    fun(backward_recv_recorded_event_name);
+    fun(backward_send_waited_event_name);
+    fun(backward_send_recorded_event_name);
+    fun(forward_compute_waited_event_name);
+    fun(forward_compute_recorded_event_name);
+    fun(backward_compute_waited_event_name);
+    fun(backward_compute_recorded_event_name);
+  }
+
+  void ForEachOutputName(std::function<void(std::string)> fun) {
+    fun(forward_recv_wait_output_name);
+    fun(forward_recv_record_output_name);
+    fun(forward_send_wait_output_name);
+    fun(forward_send_record_output_name);
+    fun(backward_recv_wait_output_name);
+    fun(backward_recv_record_output_name);
+    fun(backward_send_wait_output_name);
+    fun(backward_send_record_output_name);
+    fun(forward_compute_wait_output_name);
+    fun(forward_compute_record_output_name);
+    fun(backward_compute_wait_output_name);
+    fun(backward_compute_record_output_name);
+  }
+};
+
+struct PipelineContext {
+  // Id of stage handled by this process. Currently, it matches the MPI's rank.
+  int pipeline_stage_id;
+  // The number of batches per pipeline run. Its value is
+  // num_gradient_accumulation_steps.
+  // Only the last step among num_gradient_accumulation_steps steps may call
+  // optimizer to update the model.
+  int num_pipeline_batches;
+  // Names of scheduling event in graph's input list and
+  // names of event ops' outputs. If an event name is an
+  // empty string, it means no event should be waited or recorded.
+  PipelineTensorNames pipeline_tensor_names;
   // Allowed feed names.
   // It stands for inputs of a graph partition at this stage.
   std::vector<std::string> feed_names;
