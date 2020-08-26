@@ -578,6 +578,7 @@ void CreateGenericIterableMLValue(PyObject* iterator, AllocatorPtr alloc, const 
 #if !defined(DISABLE_ML_OPS)
     CreateMapMLValue_AgnosticVectorMap(iterator, item, alloc, name_input, p_mlvalue);
 #else
+    ORT_UNUSED_PARAMETER(alloc);
     ORT_UNUSED_PARAMETER(p_mlvalue);
     throw std::runtime_error("Map type is not supported in this build.");
 #endif
