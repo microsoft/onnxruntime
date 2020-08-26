@@ -575,65 +575,6 @@ std::vector<int> PipelineScheduler::TryGetComputeEvent(
   return std::vector<int>();
 }
 
-int PipelineScheduler::GetComputeEventOrDefault(
-    const bool is_before,
-    const int batch_id,
-    const int stage_id,
-    const PipelineTask::Pass pass,
-    const PipelineTask::Type type) const {
-  bool is_found = false;
-  auto events = TryGetComputeEvent(batch_id, stage_id, pass, type, is_found);
-  if (!is_found) {
-    return -1;
-  }
-
-  if (is_before) {
-    return events.front();
-  } else {
-    return events.back();
-  }
-}
-
-int PipelineScheduler::GetForwardWaitedEventBeforeRecv(const int batch_id, const int stage_id) const {
-  auto event = GetComputeEventOrDefault(true, batch_id, stage_id, PipelineTask::Pass::Forward, PipelineTask::Type::Recv);
-  return event;
-}
-
-int PipelineScheduler::GetForwardWaitedEventAfterRecv(const int batch_id, const int stage_id) const {
-  auto event = GetComputeEventOrDefault(false, batch_id, stage_id, PipelineTask::Pass::Forward, PipelineTask::Type::Recv);
-  return event;
-}
-
-int PipelineScheduler::GetForwardRecordedEventBeforeSend(const int batch_id, const int stage_id) const {
-  auto event = GetComputeEventOrDefault(true, batch_id, stage_id, PipelineTask::Pass::Forward, PipelineTask::Type::Send);
-  return event;
-}
-
-int PipelineScheduler::GetForwardRecordedEventAfterSend(const int batch_id, const int stage_id) const {
-  auto event = GetComputeEventOrDefault(false, batch_id, stage_id, PipelineTask::Pass::Forward, PipelineTask::Type::Send);
-  return event;
-}
-
-int PipelineScheduler::GetBackwardWaitedEventBeforeRecv(const int batch_id, const int stage_id) const {
-  auto event = GetComputeEventOrDefault(true, batch_id, stage_id, PipelineTask::Pass::Backward, PipelineTask::Type::Recv);
-  return event;
-}
-
-int PipelineScheduler::GetBackwardWaitedEventAfterRecv(const int batch_id, const int stage_id) const {
-  auto event = GetComputeEventOrDefault(false, batch_id, stage_id, PipelineTask::Pass::Backward, PipelineTask::Type::Recv);
-  return event;
-}
-
-int PipelineScheduler::GetBackwardRecordedEventBeforeSend(const int batch_id, const int stage_id) const {
-  auto event = GetComputeEventOrDefault(true, batch_id, stage_id, PipelineTask::Pass::Backward, PipelineTask::Type::Send);
-  return event;
-}
-
-int PipelineScheduler::GetBackwardRecordedEventAfterSend(const int batch_id, const int stage_id) const {
-  auto event = GetComputeEventOrDefault(false, batch_id, stage_id, PipelineTask::Pass::Backward, PipelineTask::Type::Send);
-  return event;
-}
-
 void PipelineWorkerPool::Join(size_t worker_id) {
   auto& worker = workers[worker_id];
   if (!worker.joinable())

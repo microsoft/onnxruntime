@@ -125,12 +125,6 @@ class PipelineSlot {
  private:
   // Actions which can be executed in parallel in this time slot.
   std::vector<PipelineTask> tasks_;
-
-  // For MPI PipeDream schedule, it's used to support Wait -> Recv -> Wait -> Compute -> Record -> Send -> Record.
-  // Since Send, Recv, and Compute are stored in the same slot, each slot contains two waited events and two recorded events.
-  //
-  // For NCCL PipDream schedule, it's used to support Wait -> Recv -> Record -> Wait -> Compute -> Record -> Wait -> Send -> Record.
-
   // Events waited by this slot.
   std::vector<int> waited_events_;
   // Events recorded by this slot.
@@ -156,16 +150,6 @@ class PipelineScheduler {
   int GetForwardRecvRecordedEvent(const int batch_id, const int stage_id) const;
   int GetBackwardRecvWaitedEvent(const int batch_id, const int stage_id) const;
   int GetBackwardRecvRecordedEvent(const int batch_id, const int stage_id) const;
-  // APIs to get MPI event event for
-  // Wait -> Recv -> Wait -> Compute -> Record -> Send -> Record.
-  int GetForwardWaitedEventBeforeRecv(const int batch_id, const int stage_id) const;
-  int GetForwardWaitedEventAfterRecv(const int batch_id, const int stage_id) const;
-  int GetForwardRecordedEventBeforeSend(const int batch_id, const int stage_id) const;
-  int GetForwardRecordedEventAfterSend(const int batch_id, const int stage_id) const;
-  int GetBackwardWaitedEventBeforeRecv(const int batch_id, const int stage_id) const;
-  int GetBackwardWaitedEventAfterRecv(const int batch_id, const int stage_id) const;
-  int GetBackwardRecordedEventBeforeSend(const int batch_id, const int stage_id) const;
-  int GetBackwardRecordedEventAfterSend(const int batch_id, const int stage_id) const;
   // Visualization of this object.
   friend std::ostream& operator<<(std::ostream& stream, PipelineScheduler const& schedule);
 
