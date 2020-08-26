@@ -20,6 +20,7 @@ namespace Microsoft.ML.OnnxRuntime
 
     internal class NativeOnnxTensorMemory<T> : MemoryManager<T>, NativeMemoryHandler
     {
+        private bool _disposed;
         private IntPtr _onnxValueHandle;      // pointer to onnxvalue object in native
         private IntPtr _dataBufferPointer;    // pointer to mutable tensor data in native memory
         private string[] _dataBufferAsString; // string tensor values copied into managed memory
@@ -33,6 +34,7 @@ namespace Microsoft.ML.OnnxRuntime
             Type type = null;
             int width = 0;
             _onnxValueHandle = onnxValueHandle;
+            _disposed = false;
             IntPtr typeAndShape = IntPtr.Zero;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorTypeAndShape(onnxValueHandle, out typeAndShape));
             try
@@ -117,7 +119,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         public IntPtr Handle { get { return _onnxValueHandle; } }
 
-        public bool IsDisposed { get { return _onnxValueHandle == IntPtr.Zero; } }
+        public bool IsDisposed => _disposed;
 
         public int[] Dimensions => _dimensions;
 
@@ -166,17 +168,30 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        // MemoryHandle returned above should unpinned when done.
+        // MemoryHandle returned above by Pin() should be disposed.
+        // Unpin() is purely to satisfy the interface.
+        // TODO: This class needs work. It is not clear what happens
+        // if the MemoryHandle remains alive and this class gets Disposed.
         public override void Unpin() { }
 
         public void Dispose()
         {
-            GC.SuppressFinalize(this);
             Dispose(true);
+            GC.SuppressFinalize(this);
         }
 
         protected override void Dispose(bool disposing)
         {
+            if(_disposed)
+            {
+                return;
+            }
+
+            if(disposing)
+            {
+                _disposed = true;
+            }
+
             if (_onnxValueHandle != IntPtr.Zero)
             {
                 NativeMethods.OrtReleaseValue(_onnxValueHandle);

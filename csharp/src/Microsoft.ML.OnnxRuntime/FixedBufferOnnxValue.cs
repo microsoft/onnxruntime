@@ -9,6 +9,7 @@ namespace Microsoft.ML.OnnxRuntime
     /// </summary>
     public class FixedBufferOnnxValue : IDisposable
     {
+        private bool _disposed = false;
         internal MemoryHandle PinnedMemory { get; private set; }
         internal OrtValue Value { get; private set; }
         internal OnnxValueType OnnxValueType { get; private set; }
@@ -46,10 +47,16 @@ namespace Microsoft.ML.OnnxRuntime
 
         protected virtual void Dispose(bool disposing)
         {
+            if(_disposed)
+            {
+                return;
+            }
+
             if (disposing)
             {
                 Value.Dispose();
                 PinnedMemory.Dispose();
+                _disposed = true;
             }
         }
 

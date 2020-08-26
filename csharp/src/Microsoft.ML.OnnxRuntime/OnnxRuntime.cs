@@ -51,18 +51,13 @@ namespace Microsoft.ML.OnnxRuntime
         private OnnxRuntime()  //Problem: it is not possible to pass any option for a Singleton
             :base(IntPtr.Zero, true)
         {
-            handle = IntPtr.Zero;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateEnv(LogLevel.Warning, @"CSharpOnnxRuntime", out handle));
-        }
-
-        private static void Delete(IntPtr nativePtr)
-        {
-            NativeMethods.OrtReleaseEnv(nativePtr);
         }
 
         protected override bool ReleaseHandle()
         {
-            Delete(handle);
+            NativeMethods.OrtReleaseEnv(handle);
+            handle = IntPtr.Zero;
             return true;
         }
     }
