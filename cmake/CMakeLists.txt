@@ -1120,7 +1120,7 @@ else()
 endif()
 
 if (WIN32)
-  if (WINDOWS_STORE_CONTAINER)
+  if (onnxruntime_BUILD_FOR_WINDOWS_STORE)
     # Setting WINAPI_FAMILY, WINVER and _WIN32_WINNT restrict the APIs exposed in Windows headers to those available
     # in store or desktop, and that support at least the version of Windows specified
     add_compile_definitions(WINAPI_FAMILY=2)
@@ -1133,11 +1133,10 @@ if (WIN32)
     link_directories("${msvc_path}/lib/${onnxruntime_target_platform}/store")
     add_link_options(/APPCONTAINER)
   else()
-    add_compile_definitions(WINAPI_FAMILY=3)
     add_compile_definitions(WINVER=0x0601)  # Support Windows 7 and newer
-    # FIXME adding _WIN32_WINNT=0x0601 is desirable. However, it hides some symbols that are used in WRL headers and
-    # breaks the build of WinML. If we call any of the exposed APIs not available in Windows 7, we'd get a build that
-    # doesn't work downlevel
+    # add_compile_definitions(WINAPI_FAMILY=3)
+    # FIXME adding _WIN32_WINNT=0x0601 and WINAPI_FAMILY is desirable. However, it hides some symbols that are used in WRL
+    # headers and breaks the build of WinML.
     add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/FI${CMAKE_CURRENT_SOURCE_DIR}/set_winapi_family_desktop.h>")
   endif()
 endif()
