@@ -1089,8 +1089,6 @@ ORT_API_STATUS_IMPL(OrtApis::AllocatorGetInfo, _In_ const OrtAllocator* ptr, _Ou
   API_IMPL_END
 }
 
-static const int NUM_MAP_INDICES = 2;
-
 template <typename T>
 ORT_STATUS_PTR OrtGetNumSequenceElements(const OrtValue* p_ml_value, size_t* out) {
   auto& data = p_ml_value->Get<T>();
@@ -1104,6 +1102,10 @@ ORT_STATUS_PTR OrtGetNumSequenceElements<TensorSeq>(const OrtValue* p_ml_value, 
   *out = data.Size();
   return nullptr;
 }
+
+#if !defined(DISABLE_ML_OPS)
+static const int NUM_MAP_INDICES = 2;
+#endif
 
 static ORT_STATUS_PTR OrtGetValueCountImpl(const OrtValue* value, size_t* out) {
   ONNXType value_type;
