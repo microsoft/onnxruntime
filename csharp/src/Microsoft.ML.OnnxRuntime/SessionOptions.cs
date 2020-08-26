@@ -32,6 +32,19 @@ namespace Microsoft.ML.OnnxRuntime
     }
 
     /// <summary>
+    /// Language projection property for telemetry event for tracking the source usage of ONNXRUNTIME
+    /// </summary>
+    public enum OrtProgrammingProjection
+    {
+        ORT_PROJECTION_CROSSPLAT_C = 0,
+        ORT_PROJECTION_CPLUSPLUS,
+        ORT_PROJECTION_CROSSPLAT_CSHARP,
+        ORT_PROJECTION_CROSSPLAT_PYTHON,
+        ORT_PROJECTION_CROSSPLAT_JAVA,
+        ORT_PROJECTION_WINRT,
+    }
+
+    /// <summary>
     /// Holds the options for creating an InferenceSession
     /// </summary>
     public class SessionOptions : IDisposable
@@ -47,6 +60,7 @@ namespace Microsoft.ML.OnnxRuntime
         public SessionOptions()
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionOptions(out _nativePtr));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionProgrammingProjection(_nativePtr, OrtProgrammingProjection.ORT_PROJECTION_CROSSPLAT_CSHARP));
         }
 
         /// <summary>
