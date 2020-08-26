@@ -58,7 +58,12 @@ bool IsInitializerWithExpectedValue(const Graph& graph, const NodeArg& input_arg
   const auto data_type = tensor_proto->data_type();
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     const float* val = init_const.data<float>();
-    if (std::isnan(val[0]) || std::isinf(val[0])) return false;
+    if (std::isnan(val[0]) || std::isinf(val[0])) {
+      if (std::isinf(val[0]) && std::isinf(expected_value) && (std::signbit(val[0]) == std::signbit(expected_value))) {
+        return true;
+      }
+      return false;
+    }
 
     float diff = std::abs(val[0] - expected_value);
     if (diff > (atol + rtol * std::abs(expected_value))) {

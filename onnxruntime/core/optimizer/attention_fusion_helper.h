@@ -648,7 +648,7 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, Attentio
   }
 
   //check where has X=-Infinity
-  if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(where.InputDefs()[1]), std::numeric_limits<float>::min(), true)) {
+  if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(where.InputDefs()[1]), -INFINITY, true)) {
     DEBUG_LOG("where const not matched.");
     return false;
   }
