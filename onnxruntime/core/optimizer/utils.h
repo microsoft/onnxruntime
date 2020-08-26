@@ -90,7 +90,5 @@ bool CheckOutputEdges(const Graph& graph, const Node& node, size_t expected_outp
 
 bool IsOperationDeterministic(const std::string& domain, const std::string& op);
 
-bool IsNeighborNodeExpectedTypes(Node::NodeConstIterator start, const Node::NodeConstIterator end, const std::vector<std::string>& expected_types);
-
 }  // namespace optimizer_utils
 }  // namespace onnxruntime

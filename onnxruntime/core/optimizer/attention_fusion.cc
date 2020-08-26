@@ -544,9 +544,8 @@ static bool FuseSubGraphQK(Node& layer_norm,
                               |   |
                                Add
 
-Two changes compared with first version attention fusion for distilbert:
-1:TransposeScaleMatmul[alpha = 0.125, transA = 0, transB = 0] is initially Div[B = 8] -> MatMul. It gets fused before ORT 1.5.0 release
-2:There were two Shape nodes after LayerNormalization, gets fused into one before ORT 1.5.0 release
+A change compared with first version attention fusion for distilbert:
+There were two Shape nodes after LayerNormalization, gets fused into one before ORT 1.5.0 release
 
 However, the first version of attention fusion for distilbert is still supported for now.
 */
@@ -584,6 +583,8 @@ static bool FuseSubGraphQKDistilBert(Node& layer_norm,
   if (p_concat_1 != nullptr && p_concat_2 != nullptr) {
     graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *p_concat_1);
     graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *p_concat_2);
+  } else {
+    return false;
   }
 
   AttentionFusionHelper::SetMaskNodesToRemove(graph, mask_nodes, nodes_to_remove);
@@ -721,7 +722,7 @@ bool AttentionFusion::FuseSubGraph(Node& layer_norm, const Node& add_after_layer
   if (AttentionFusionHelper::MatchInputMaskSubgraph(graph, qkv_matmul, mask_nodes, logger, false)) {
     NodeArg* mask_input = graph.GetNode(mask_nodes.unsqueeze_1->Index())->MutableInputDefs()[0];
     return FuseSubGraphQK(layer_norm, graph, mask_nodes, mask_input, parent_path_nodes, hidden_size, num_heads, head_size, mask_index_map, logger);
-  } else if (AttentionFusionHelper::MatchInputMaskSubgraph(graph, qkv_matmul, mask_nodes_distilbert, logger)) {
+  } else if (AttentionFusionHelper::MatchInputMaskSubgraph(graph, layer_norm, qkv_matmul, mask_nodes_distilbert, logger)) {
     NodeArg* mask_input = graph.GetNode(mask_nodes_distilbert.equal->Index())->MutableInputDefs()[0];
     return FuseSubGraphQKDistilBert(layer_norm, graph, mask_nodes_distilbert, mask_input, parent_path_nodes, hidden_size, num_heads, head_size, mask_index_map, logger);
   } else {

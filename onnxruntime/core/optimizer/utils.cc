@@ -302,18 +302,5 @@ bool IsOperationDeterministic(const std::string& domain, const std::string& op) 
   return itDomain->second.count(op) == 0;
 }
 
-bool IsNeighborNodeExpectedTypes(Node::NodeConstIterator start, const Node::NodeConstIterator end, const std::vector<std::string>& expected_types) {
-  if (expected_types.size() == 0) {
-    return false;
-  }
-  for (const std::string& expected_type : expected_types) {
-    if (start == end || (*start).OpType().compare(expected_type) != 0) {
-      return false;
-    }
-    ++start;
-  }
-  return start == end;
-}
-
 }  // namespace optimizer_utils
 }  // namespace onnxruntime

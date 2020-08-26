@@ -611,7 +611,8 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, Attentio
   return true;
 }
 
-bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, AttentionMaskNodesDistilBert& result, const logging::Logger& logger) {
+bool MatchInputMaskSubgraph(const Graph& graph, const Node& layer_norm, const Node& qkv_matmul,
+                            AttentionMaskNodesDistilBert& result, const logging::Logger& logger) {
   DEBUG_LOG("Start MatchInputMaskSubgraphDistilBert");
 
   std::vector<graph_utils::EdgeEndToMatch> mask_path{
@@ -653,7 +654,7 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, Attentio
     return false;
   }
 
-  //expand has another input Shape <-- qk_MatMul or Shape <-- TransposeScaleMatMul(recent added)
+  //expand has another input Shape <-- qk_MatMul
   std::vector<graph_utils::EdgeEndToMatch> shape_path{
       {0, 1, "Shape", {1, 13}, kOnnxDomain},
       {0, 0, "MatMul", {1, 9, 13}, kOnnxDomain}};
@@ -685,6 +686,7 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, Attentio
     return false;
   }
   const Node& concat = edges[0]->GetNode();
+  const Node& gather_1 = edges[2]->GetNode();
   const Node& shape_1 = edges[3]->GetNode();
   std::vector<graph_utils::EdgeEndToMatch> reshape_shape_path_2{
       {0, 3, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
@@ -694,21 +696,47 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, Attentio
     DEBUG_LOG("Failed to find reshape shape path 2");
     return false;
   }
+  const Node& gather_2 = edges[1]->GetNode();
   const Node& shape_2 = edges[2]->GetNode();
-  // check same root
-  if (graph_utils::GetInputNode(shape_1, 0)->Index() != graph_utils::GetInputNode(shape_2, 0)->Index()) {
+  //check gather has the right indices
+  if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(gather_1.InputDefs()[1]), static_cast<int64_t>(0), true) ||
+      !optimizer_utils::IsInitializerWithExpectedValue(graph, *(gather_2.InputDefs()[1]), static_cast<int64_t>(1), true)) {
+    DEBUG_LOG("gather indices not matched.");
     return false;
   }
+
+  // check same root
+  if (shape_1.InputDefs().size() != 1 || shape_2.InputDefs().size() != 1) {
+    return false;
+  }
+  const NodeArg& shape_1_arg_0 = *(shape_1.InputDefs()[0]);
+  const NodeArg& shape_2_arg_0 = *(shape_2.InputDefs()[0]);
+  if (shape_1_arg_0.Name() != shape_2_arg_0.Name()) {
+    return false;
+  }
+  // check the the NodeArg is same as the root input of Attention
+  if (layer_norm.OutputDefs().size() < 1) {
+    return false;
+  }
+  const NodeArg& root_input = *(layer_norm.OutputDefs()[0]);
+  if (shape_1_arg_0.Name() != root_input.Name()) {
+    return false;
+  }
+
   //check concat input shape information
   if (concat.InputDefs().size() != 4) {
     return false;
   }
   std::vector<int64_t> shape_value;
-  if (!optimizer_utils::AppendTensorFromInitializer(graph, *(concat.InputDefs()[1]), shape_value, true) && shape_value[0] != 1) {
+  if (!optimizer_utils::AppendTensorFromInitializer(graph, *(concat.InputDefs()[1]), shape_value, true) ||
+                                                    shape_value.size() != 1 ||
+                                                    shape_value[0] != 1) {
     return false;
   }
   shape_value.clear();
-  if (!optimizer_utils::AppendTensorFromInitializer(graph, *(concat.InputDefs()[2]), shape_value, true) && shape_value[0] != 1) {
+  if (!optimizer_utils::AppendTensorFromInitializer(graph, *(concat.InputDefs()[2]), shape_value, true) ||
+                                                    shape_value.size() != 1 ||
+                                                    shape_value[0] != 1) {
     return false;
   }
 
