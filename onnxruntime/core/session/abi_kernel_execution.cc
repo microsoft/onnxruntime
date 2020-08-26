@@ -27,11 +27,19 @@ using namespace onnxruntime;
  */
 ORT_API_STATUS_IMPL(OrtApis::CreateKernelSession,
                     _In_ const OrtSessionOptions* options,
-                    _Outptr_ OrtKernelSession **session_) {
+                    _Outptr_ OrtKernelSession **session_,
+                    int opset_version) {
   API_IMPL_BEGIN
     ORT_ENFORCE(session_, "OrtKernelSession pointer must not be null");
-    std::unique_ptr<Model> model = onnxruntime::make_unique<Model>("KernelExecutionModel", true,
-                                                           logging::LoggingManager::DefaultLogger());
+    std::unordered_map<std::string, int> domain_to_version{{"", opset_version}};
+    std::unique_ptr<Model> model = onnxruntime::make_unique<Model>("KernelExecutionModel",
+                                       /*is_onnx_domain_only=*/true,
+                                       /*model_metadata=*/ModelMetaData(),
+                                       /*model_path=*/PathString(),
+                                       /*local_registries=*/IOnnxRuntimeOpSchemaRegistryList(),
+                                       /*domain_to_version=*/domain_to_version,
+                                       /*model_functions=*/std::initializer_list<ONNX_NAMESPACE::FunctionProto>{},
+                                       /*logger=*/logging::LoggingManager::DefaultLogger());
 
     KernelSessionImpl *session = new KernelSessionImpl(std::move(model));
 

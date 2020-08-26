@@ -989,7 +989,7 @@ struct OrtApi {
 
   // Create a session that can be used to execute single kernels
   // we don't actually read anything from OrtSessionOptions except for the provider factories.
-  ORT_API2_STATUS(CreateKernelSession, _In_ const OrtSessionOptions* options, OrtKernelSession** session);
+  ORT_API2_STATUS(CreateKernelSession, _In_ const OrtSessionOptions* options, OrtKernelSession** session, int opset_version);
 
   // Create an ExecutableKernelContext. This holds the information needed to build a kernel, such as
   // parameters, attributes, name and op type.

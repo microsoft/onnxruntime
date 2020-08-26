@@ -230,7 +230,7 @@ ORT_API_STATUS_IMPL(DisablePrePacking, _Inout_ OrtSessionOptions* options);
 
 ORT_API_STATUS_IMPL(TensorAt, _Inout_ OrtValue* value, size_t* location_values, size_t location_values_count, _Outptr_ void** out);
 
-ORT_API_STATUS_IMPL(CreateKernelSession, _In_ const OrtSessionOptions* options, OrtKernelSession** session);
+ORT_API_STATUS_IMPL(CreateKernelSession, _In_ const OrtSessionOptions* options, OrtKernelSession** session, int opset_version);
 
 ORT_API_STATUS_IMPL(CreateExecutableKernelContext,
                     _In_ const char* name,
