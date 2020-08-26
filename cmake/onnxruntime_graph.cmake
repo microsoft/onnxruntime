@@ -7,29 +7,53 @@ file(GLOB_RECURSE onnxruntime_graph_src CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/graph/*.cc"
   )
 
+# create empty list for any excludes
+set(onnxruntime_graph_src_exclude_patterns)
+
+if (onnxruntime_MINIMAL_BUILD)
+  # remove schema registration support
+  list(APPEND onnxruntime_graph_src_exclude_patterns
+    "${ONNXRUNTIME_INCLUDE_DIR}/core/graph/schema_registry.h"
+    "${ONNXRUNTIME_ROOT}/core/graph/schema_registry.cc"
+    "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/*defs.h"
+    "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/*defs.cc"
+
+  )
+
+  # no Function support initially
+  list(APPEND onnxruntime_graph_src_exclude_patterns
+    "${ONNXRUNTIME_ROOT}/core/graph/function*"
+  )
+
+  # no optimizer support initially
+  list(APPEND onnxruntime_graph_src_exclude_patterns
+    "${ONNXRUNTIME_ROOT}/core/graph/graph_utils.*"
+  )
+endif()
+
 if (onnxruntime_DISABLE_CONTRIB_OPS)
-  list(REMOVE_ITEM onnxruntime_graph_src
+  list(APPEND onnxruntime_graph_src_exclude_patterns
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/*.h"
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/*.cc"
     )
 endif()
 
 if(NOT onnxruntime_USE_FEATURIZERS)
-  file(GLOB_RECURSE featurizers_to_remove_graph_src
+  list(APPEND onnxruntime_graph_src_exclude_patterns
     "${ONNXRUNTIME_ROOT}/core/graph/featurizers_ops/*.h"
     "${ONNXRUNTIME_ROOT}/core/graph/featurizers_ops/*.cc"
-    )
-  foreach(I in ${featurizers_to_remove_graph_src})
-    list(REMOVE_ITEM onnxruntime_graph_src ${I})
-  endforeach()
+  )
 endif()
 
 if(NOT onnxruntime_USE_DML)
-  list(REMOVE_ITEM onnxruntime_graph_src
+  list(APPEND onnxruntime_graph_src_exclude_patterns
     "${ONNXRUNTIME_ROOT}/core/graph/dml_ops/*.h"
     "${ONNXRUNTIME_ROOT}/core/graph/dml_ops/*.cc"
     )
 endif()
+
+file(GLOB onnxruntime_graph_src_exclude ${onnxruntime_graph_src_exclude_patterns})
+list(REMOVE_ITEM onnxruntime_graph_src ${onnxruntime_graph_src_exclude})
 
 file(GLOB_RECURSE onnxruntime_ir_defs_src CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/defs/*.cc"
