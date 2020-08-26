@@ -15,6 +15,7 @@ namespace AttrName
     static constexpr const char* Axis = "axis";
     static constexpr const char* AxisW = "axis_w";
     static constexpr const char* BatchAxis = "batch_axis";
+    static constexpr const char* BatchDimensions = "batch_dims";
     static constexpr const char* Beta = "beta";
     static constexpr const char* Bias = "bias";
     static constexpr const char* BlockSize = "blocksize";

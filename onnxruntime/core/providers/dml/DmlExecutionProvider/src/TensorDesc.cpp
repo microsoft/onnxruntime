@@ -325,3 +325,35 @@ void TensorDesc::ForceUnsignedDataType()
         ML_INVALID_ARGUMENT("Can't coerce unknown or non-integral data type");
     }
 }
+
+void TensorDesc::SetDimensionCount(uint32_t newDimensionCount, TensorAxis alignment)
+{
+    ML_CHECK_VALID_ARGUMENT(newDimensionCount <= MaximumDimensionCount);
+    ML_CHECK_VALID_ARGUMENT(alignment == TensorAxis::RightAligned || alignment == TensorAxis::LeftAligned);
+
+    const uint32_t oldDimensionCount = m_bufferTensorDesc.DimensionCount;
+    const int32_t difference = static_cast<int32_t>(newDimensionCount - oldDimensionCount);
+    if (difference == 0)
+    {
+        return;
+    }
+
+    int32_t fillOffset = oldDimensionCount;
+    int32_t fillCount = std::max(0, difference);
+
+    // alignment == TensorAxis::LeftAligned is the easy case.
+    // Right alignment needs more work, shifting values over.
+    if (alignment == TensorAxis::RightAligned)
+    {
+        fillOffset = 0; // Fill leading dimensions with 1's starting at the front.
+        uint32_t moveCount = std::min(newDimensionCount, oldDimensionCount);
+        memmove(&m_sizes[fillCount], &m_sizes[oldDimensionCount - moveCount], sizeof(m_sizes[0]) * moveCount);
+        memmove(&m_strides[fillCount], &m_strides[oldDimensionCount - moveCount], sizeof(m_strides[0]) * moveCount);
+    }
+    if (fillCount > 0)
+    {
+        std::fill(&m_sizes[fillOffset], &m_sizes[fillOffset] + fillCount, 1u);
+        std::fill(&m_strides[fillOffset], &m_strides[fillOffset] + fillCount, 0u);
+    }
+    m_bufferTensorDesc.DimensionCount = newDimensionCount;
+}

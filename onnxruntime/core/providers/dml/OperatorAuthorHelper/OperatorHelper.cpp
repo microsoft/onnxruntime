@@ -737,21 +737,27 @@ namespace OperatorHelper
     {
         std::vector<DimensionType> inputDimensions = shapeInfo.GetInputTensorShape(0);
         std::vector<DimensionType> indicesDimensions = shapeInfo.GetInputTensorShape(1);
+        int32_t batchCount = m_batchCount;
 
         // Determine the number of output dimensions.
         ML_CHECK_VALID_ARGUMENT(inputDimensions.size() >= 1);
         ML_CHECK_VALID_ARGUMENT(indicesDimensions.size() >= 1);
+        ML_CHECK_VALID_ARGUMENT(inputDimensions.size() > batchCount);
+        ML_CHECK_VALID_ARGUMENT(indicesDimensions.size() > batchCount);
         const uint32_t numberOfCoordinatesPerIndex = indicesDimensions.back();
-        ML_CHECK_VALID_ARGUMENT(inputDimensions.size() >= numberOfCoordinatesPerIndex);
-        const uint32_t numberOfOutputDimensionsFromInput = static_cast<uint32_t>(inputDimensions.size()) - numberOfCoordinatesPerIndex;
-        const uint32_t numberOfOutputDimensionsFromIndices = static_cast<uint32_t>(indicesDimensions.size()) - 1; // Strip off last dimension.
-        uint32_t outputDimensionCount = gsl::narrow_cast<uint32_t>(numberOfOutputDimensionsFromIndices + numberOfOutputDimensionsFromInput);
+        ML_CHECK_VALID_ARGUMENT(inputDimensions.size() >= batchCount + numberOfCoordinatesPerIndex);
+        const uint32_t numberOfOutputDimensionsFromInput = static_cast<uint32_t>(inputDimensions.size()) - batchCount - numberOfCoordinatesPerIndex;
+        const uint32_t numberOfOutputDimensionsFromIndices = static_cast<uint32_t>(indicesDimensions.size()) - batchCount - 1; // Strip off last dimension.
+        uint32_t outputDimensionCount = gsl::narrow_cast<uint32_t>(batchCount + numberOfOutputDimensionsFromIndices + numberOfOutputDimensionsFromInput);
         ML_CHECK_VALID_ARGUMENT(outputDimensionCount > 0);
 
-        // Form the full expected size by concatenating the prefix part of the indices tensor shape
-        // with the suffix of the input tensor shape.
+        // Form the full expected size by concatenating fragments:
+        // 1 - batch count
+        // 2 - prefix part of the indices tensor shape
+        // 3 - suffix of the input tensor shape.
         std::vector<DimensionType> outputDimensions;
-        outputDimensions.assign(indicesDimensions.begin(), indicesDimensions.end() - 1);
+        outputDimensions.assign(inputDimensions.begin(), inputDimensions.begin() + batchCount);
+        outputDimensions.insert(outputDimensions.end(), indicesDimensions.begin() + batchCount, indicesDimensions.end() - 1);
         outputDimensions.insert(outputDimensions.end(), inputDimensions.end() - numberOfOutputDimensionsFromInput, inputDimensions.end());
 
         return { EdgeShapes(std::move(outputDimensions)) };

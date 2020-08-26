@@ -251,6 +251,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_LessOrEqual = 12;
         static const int sc_sinceVer_Celu = 12;
         static const int sc_sinceVer_Clip = 12;
+        static const int sc_sinceVer_GatherND = 12;
         static const int sc_sinceVer_Min = 12;
         static const int sc_sinceVer_Max = 12;
         static const int sc_sinceVer_Pow = 12;

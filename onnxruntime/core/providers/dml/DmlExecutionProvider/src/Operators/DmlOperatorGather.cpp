@@ -89,6 +89,18 @@ public:
         DmlOperator::Initialize(kernelCreationContext);
         DmlOperator::Remap64bitDmlDataTypesTo32bitIfNeeded();
 
+        uint32_t maxDimensionCount = std::max({
+            m_inputTensorDescs[0].GetDimensionCount(),
+            m_inputTensorDescs[1].GetDimensionCount(),
+            m_outputTensorDescs[0].GetDimensionCount()
+        });
+
+        // DML expects all tensors to have the same dimension count.
+        // Update the tensor descriptions with new sizes.
+        m_inputTensorDescs[0].SetDimensionCount(maxDimensionCount, TensorAxis::RightAligned);
+        m_inputTensorDescs[1].SetDimensionCount(maxDimensionCount, TensorAxis::RightAligned);
+        m_outputTensorDescs[0].SetDimensionCount(maxDimensionCount, TensorAxis::RightAligned);
+
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
         assert(inputDescs.size() == 2);
@@ -97,17 +109,18 @@ public:
         auto outputTensorShapeDescription = kernelCreationContext.GetTensorShapeDescription();
         std::vector<DimensionType> dataDimensions = outputTensorShapeDescription.GetInputTensorShape(0);
         std::vector<DimensionType> indicesDimensions = outputTensorShapeDescription.GetInputTensorShape(1);
-        ML_CHECK_VALID_ARGUMENT(dataDimensions.size() <= OperatorHelper::NchwDimensionCount);
-        ML_CHECK_VALID_ARGUMENT(indicesDimensions.size() <= OperatorHelper::NchwDimensionCount);
+        ML_CHECK_VALID_ARGUMENT(dataDimensions.size() > m_batchCount);
+        ML_CHECK_VALID_ARGUMENT(indicesDimensions.size() > m_batchCount);
 
-        DML_GATHER_ND_OPERATOR_DESC operatorDesc = {};
+        DML_GATHER_ND1_OPERATOR_DESC operatorDesc = {};
         operatorDesc.InputTensor = &inputDescs[0];
         operatorDesc.IndicesTensor = &inputDescs[1];
         operatorDesc.OutputTensor = outputDescs.data();
         operatorDesc.InputDimensionCount = static_cast<uint32_t>(dataDimensions.size());
         operatorDesc.IndicesDimensionCount = static_cast<uint32_t>(indicesDimensions.size());
+        operatorDesc.BatchDimensionCount = m_batchCount;
 
-        DML_OPERATOR_DESC opDesc = { DML_OPERATOR_GATHER_ND, &operatorDesc };
+        DML_OPERATOR_DESC opDesc = { DML_OPERATOR_GATHER_ND1, &operatorDesc };
         SetDmlOperatorDesc(opDesc, kernelCreationContext);
     }
 };
