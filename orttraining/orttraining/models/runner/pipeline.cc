@@ -540,41 +540,6 @@ int PipelineScheduler::GetBackwardRecvRecordedEvent(const int batch_id, const in
   return GetEventOrDefault(false, batch_id, stage_id, PipelineTask::Pass::Backward, PipelineTask::Type::Recv);
 }
 
-std::vector<int> PipelineScheduler::TryGetComputeEvent(
-    const int batch_id,
-    const int stage_id,
-    const PipelineTask::Pass pass,
-    const PipelineTask::Type type,
-    bool& is_found) const {
-  is_found = false;
-
-  // Go through slots of stage stage_id to find the requested action.
-  for (int t = 0; static_cast<size_t>(t) < compute_table_.size(); ++t) {
-    const auto slot = compute_table_[t][stage_id];
-    for (int a = 0; static_cast<size_t>(a) < slot.NumActions(); ++a) {
-      auto task = slot[a];
-      if (task.batch != batch_id) {
-        continue;
-      }
-      if (task.pass != pass) {
-        continue;
-      }
-      if (task.type != PipelineTask::Type::Compute) {
-        // Slots presenting in the table must be either Compute or Empty because it's a compute-only schedule.
-        continue;
-      }
-
-      // Slot of the asked action is found, so we return its event.
-      is_found = true;
-      // Return two Waits' events or two Record's events for
-      // Wait -> Recv -> Wait -> Compute -> Record -> Send -> Record
-      return type == PipelineTask::Type::Recv ? slot.GetWaitedEvent() : slot.GetRecordedEvent();
-    }
-  }
-
-  return std::vector<int>();
-}
-
 void PipelineWorkerPool::Join(size_t worker_id) {
   auto& worker = workers[worker_id];
   if (!worker.joinable())

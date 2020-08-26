@@ -137,22 +137,32 @@ class PipelineSlot {
 class PipelineScheduler {
  public:
   PipelineScheduler(const int num_batches, const int num_stages);
+  // Number of time steps.
   size_t GetScheduleSize() const { return compute_commute_table_.size(); }
+  // Number of stages.
   size_t GetStageSize() const { return num_stages_; }
-  // APIs to get NCCL event for
-  // Wait -> Recv -> Record -> Wait -> Compute -> Record -> Wait -> Send -> Record.
-  int GetForwardComputeWaitedEvent(const int batch_id, const int stage_id) const;
-  int GetForwardComputeRecordedEvent(const int batch_id, const int stage_id) const;
-  int GetBackwardComputeWaitedEvent(const int batch_id, const int stage_id) const;
-  int GetBackwardComputeRecordedEvent(const int batch_id, const int stage_id) const;
-  int GetForwardSendWaitedEvent(const int batch_id, const int stage_id) const;
-  int GetForwardSendRecordedEvent(const int batch_id, const int stage_id) const;
-  int GetBackwardSendWaitedEvent(const int batch_id, const int stage_id) const;
-  int GetBackwardSendRecordedEvent(const int batch_id, const int stage_id) const;
+  // APIs to get events for the following pattern.
+  //   Wait -> Recv -> Record -> Wait -> Compute -> Record -> Wait -> Send -> Record.
+  // If no event exists, -1 may be returned.
+  //
+  // Forward Recv.
   int GetForwardRecvWaitedEvent(const int batch_id, const int stage_id) const;
   int GetForwardRecvRecordedEvent(const int batch_id, const int stage_id) const;
+  // Forward Compute.
+  int GetForwardComputeWaitedEvent(const int batch_id, const int stage_id) const;
+  int GetForwardComputeRecordedEvent(const int batch_id, const int stage_id) const;
+  // Forward Send.
+  int GetForwardSendWaitedEvent(const int batch_id, const int stage_id) const;
+  int GetForwardSendRecordedEvent(const int batch_id, const int stage_id) const;
+  // Backward Recv.
   int GetBackwardRecvWaitedEvent(const int batch_id, const int stage_id) const;
   int GetBackwardRecvRecordedEvent(const int batch_id, const int stage_id) const;
+  // Backward Compute.
+  int GetBackwardComputeWaitedEvent(const int batch_id, const int stage_id) const;
+  int GetBackwardComputeRecordedEvent(const int batch_id, const int stage_id) const;
+  // Backward Send.
+  int GetBackwardSendWaitedEvent(const int batch_id, const int stage_id) const;
+  int GetBackwardSendRecordedEvent(const int batch_id, const int stage_id) const;
   // Visualization of this object.
   friend std::ostream& operator<<(std::ostream& stream, PipelineScheduler const& schedule);
 
@@ -176,9 +186,6 @@ class PipelineScheduler {
   std::vector<int> TryGetEvent(const bool is_waited_event, const int batch_id, const int stage_id, const PipelineTask::Pass pass, const PipelineTask::Type type, bool& is_found) const;
   // Wrapper over TryGetEvent. It returns -1 when the specified action is not found.
   int GetEventOrDefault(const bool is_waited_event, const int batch_id, const int stage_id, const PipelineTask::Pass pass, const PipelineTask::Type type) const;
-
-  std::vector<int> TryGetComputeEvent(const int batch_id, const int stage_id, const PipelineTask::Pass pass, const PipelineTask::Type type, bool& is_found) const;
-  int GetComputeEventOrDefault(const bool is_waited_event, const int batch_id, const int stage_id, const PipelineTask::Pass pass, const PipelineTask::Type type) const;
 
   // Compute-only pipeline schedule as a 2-D table. table_[i][j] is the computation happening in
   // the i-th time slot at the j-th stage. For example, PipeDream schedule may have

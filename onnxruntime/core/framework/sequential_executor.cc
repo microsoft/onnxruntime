@@ -174,10 +174,10 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   auto& profile_context = profile::Context::GetInstance();
   const auto tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
   profile::NvtxRangeCreator forward_range(
-      "Batch-" + tag + "Forward",
+      "Batch-" + tag + " Forward",
       profile::Color::White);
   profile::NvtxRangeCreator backward_range(
-      "Batch-" + tag + "Backward",
+      "Batch-" + tag + " Backward",
       profile::Color::Black);
 #endif
 
