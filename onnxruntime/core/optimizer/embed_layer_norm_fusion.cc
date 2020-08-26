@@ -850,7 +850,7 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       if (FuseSubGraphDistilBert(graph, layer_norm_add_node, layer_norm_node, reduce_sum_node, logger)) {
         modified = true;
       }
-    } else if (optimizer_utils::IsNeighborNodeExpectedTypes(layer_norm_add_node.InputEdgesBegin(), layer_norm_add_node.InputNodesEnd(), {"Add", "Gather"})){
+    } else {
       if (FuseSubGraph(graph, layer_norm_add_node, layer_norm_node, reduce_sum_node, modified, logger)) {
         modified = true;
       }
