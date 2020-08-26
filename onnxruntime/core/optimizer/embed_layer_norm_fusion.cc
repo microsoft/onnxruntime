@@ -470,7 +470,6 @@ static void CreateEmbedLayernormNode(Graph& graph,
                                      NodeArg* mask,
                                      Node& layer_norm_node,
                                      Node& reduce_sum_node) {
-
   // Cast input_ids, segment_ids, and mask to int32 if needed.
   input_ids = CastToInt32(graph, input_ids, layer_norm_node.GetExecutionProviderType());
   if (segment_ids != nullptr && segment_embedding != nullptr) {
@@ -485,14 +484,14 @@ static void CreateEmbedLayernormNode(Graph& graph,
   }
 
   const std::vector<NodeArg*> embed_layer_norm_input_defs{
-    input_ids,
-    segment_ids,
-    word_embedding,
-    position_embedding,
-    segment_embedding,
-    layer_norm_node.MutableInputDefs()[1],
-    layer_norm_node.MutableInputDefs()[2],
-    mask};
+      input_ids,
+      segment_ids,
+      word_embedding,
+      position_embedding,
+      segment_embedding,
+      layer_norm_node.MutableInputDefs()[1],
+      layer_norm_node.MutableInputDefs()[2],
+      mask};
 
   Node& embed_layer_norm_node = graph.AddNode(graph.GenerateNodeName("EmbedLayerNormalization"),
                                               "EmbedLayerNormalization",
@@ -521,7 +520,7 @@ static bool FuseSubGraph(Graph& graph,
                          Node& reduce_sum_node,
                          bool& modified,
                          const logging::Logger& logger) {
-// Trace back to find the Gather for segment embedding.
+  // Trace back to find the Gather for segment embedding.
   std::vector<graph_utils::EdgeEndToMatch> segment_embedding_path{
       {0, 1, "Gather", {1, 11, 13}, kOnnxDomain}};
   std::vector<const Node::EdgeEnd*> edges;

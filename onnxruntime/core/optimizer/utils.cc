@@ -288,8 +288,8 @@ bool CheckOutputEdges(const Graph& graph, const Node& node, size_t expected_outp
 // We could also allow other known domains (kMSDomain, kMSNchwcDomain, kMSFeaturizersDomain),
 // as long as we verify which of their operations are non-deterministic and add them in the map below.
 static const std::unordered_map<std::string, std::unordered_set<std::string>> kNonDeterministicOps =
-{
-  {kOnnxDomain, {"RandomUniform", "RandomNormal", "RandomUniformLike", "RandomNormalLike", "Multinomial"}},
+    {
+        {kOnnxDomain, {"RandomUniform", "RandomNormal", "RandomUniformLike", "RandomNormalLike", "Multinomial"}},
 };
 
 bool IsOperationDeterministic(const std::string& domain, const std::string& op) {

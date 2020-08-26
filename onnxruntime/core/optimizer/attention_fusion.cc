@@ -196,7 +196,7 @@ static NodeArg* ProcessMask(Graph& graph, NodeArg* mask_input, ProviderType prov
 
   NodeArg* reduce_sum_input = mask_input;
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64 ||
-    data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+      data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     NodeArg& cast_int32 = AttentionFusionHelper::CastMaskToInt32(graph, mask_input, provider_type);
     reduce_sum_input = &cast_int32;
   }
@@ -281,7 +281,7 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
           reshape_count++;
         }
       }
-      if (add_count == 1 && matmul_count == 3 && (shape_count >= 0 && shape_count <= 2)) { // BERT or DistilBert
+      if (add_count == 1 && matmul_count == 3 && (shape_count >= 0 && shape_count <= 2)) {  // BERT or DistilBert
         if (AttentionFusion::FuseSubGraph(node, *add_node, graph, hidden_size, mask_index_map, logger)) {
           fused_count++;
           modified = true;
@@ -454,15 +454,14 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
                  });
 
   std::vector<NodeIndex> nodes_to_remove_temp{
-    q_transpose.Index(),
-    q_reshape.Index(),
-    q_add.Index(),
-    q_matmul.Index(),
-    k_transpose.Index(),
-    k_reshape.Index(),
-    k_add.Index(),
-    k_matmul.Index()
-  };
+      q_transpose.Index(),
+      q_reshape.Index(),
+      q_add.Index(),
+      q_matmul.Index(),
+      k_transpose.Index(),
+      k_reshape.Index(),
+      k_add.Index(),
+      k_matmul.Index()};
 
   nodes_to_remove.insert(nodes_to_remove.end(), nodes_to_remove_temp.begin(), nodes_to_remove_temp.end());
 

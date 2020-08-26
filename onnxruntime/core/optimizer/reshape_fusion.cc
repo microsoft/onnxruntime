@@ -39,7 +39,6 @@ Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, c
   return Status::OK();
 }
 
-
 /**
 Provide check for Reshape Fusion for DistilBert. The following are subgraphs that
 match the pattern for DistilBert
@@ -72,8 +71,8 @@ static bool Match_Linear_Subgraph_1(Graph& graph, const Node& concat, const Node
   const Node& reshape = *reshape_itr;
 
   std::vector<graph_utils::EdgeEndToMatch> linear_path{
-    {0, 0, "Add", {7}, kOnnxDomain},
-    {0, 0, "MatMul", {1, 9}, kOnnxDomain}};
+      {0, 0, "Add", {7}, kOnnxDomain},
+      {0, 0, "MatMul", {1, 9}, kOnnxDomain}};
   std::vector<const Node::EdgeEnd*> edges;
   if (!graph_utils::FindPath(reshape, true, linear_path, edges, logger)) {
     return false;
