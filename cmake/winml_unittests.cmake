@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 
 set(WINML_TEST_SRC_DIR ${REPO_ROOT}/winml/test)
+set(MOCK_PACKAGE_DIR ${PACKAGES_DIR}/Mock10.5.10.16168.1010)
 set(WINML_TEST_INC_DIR
   ${REPO_ROOT}/winml/api
   ${REPO_ROOT}/winml/test/common
@@ -12,12 +13,17 @@ set(WINML_TEST_INC_DIR
   ${REPO_ROOT}/cmake/external/protobuf/src
   ${REPO_ROOT}/cmake/external/wil/include
   ${REPO_ROOT}/cmake/external/SafeInt
-  ${CMAKE_CURRENT_BINARY_DIR}
+  ${MOCK_PACKAGE_DIR}/build/native/include
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated
   ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api_experimental/comp_generated
 )
+if (onnxruntime_target_platform STREQUAL "x86")
+  set(mock_lib_path ${MOCK_PACKAGE_DIR}/build/native/lib/win32/mock10.lib)
+else()
+  set(mock_lib_path ${MOCK_PACKAGE_DIR}/build/native/lib/${onnxruntime_target_platform}/mock10.lib)
+endif()
 
 function(set_winml_target_properties target)
   set_target_properties(${target} PROPERTIES
@@ -52,7 +58,13 @@ function(add_winml_test)
   if (_UT_DEPENDS)
     add_dependencies(${_UT_TARGET} ${_UT_DEPENDS})
   endif()
-  target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest winml_google_test_lib ${onnxruntime_EXTERNAL_LIBRARIES} winml_lib_common onnxruntime windowsapp.lib)
+  if (onnxruntime_target_platform STREQUAL "x86")
+    set(mock_lib_path "win32")
+  else()
+    set(mock_package_platform_name onnxruntime_target_platform)
+  endif()
+
+  target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest ${mock_lib_path} winml_google_test_lib ${onnxruntime_EXTERNAL_LIBRARIES} winml_lib_common onnxruntime windowsapp.lib)
 
   add_test(NAME ${_UT_TARGET}
     COMMAND ${_UT_TARGET}

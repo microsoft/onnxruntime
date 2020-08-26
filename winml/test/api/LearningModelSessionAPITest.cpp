@@ -12,10 +12,13 @@
 #include <D3d11_4.h>
 #include <dxgi1_6.h>
 #include "Psapi.h"
+#include "Mock.h"
+#include "onnxruntime_c_api.h"
 
 using namespace winrt;
 using namespace winml;
 using namespace wfc;
+using namespace Mock10;
 
 using wf::IPropertyValue;
 
@@ -343,6 +346,15 @@ static void NamedDimensionOverride()
   binding.Bind(descriptor.Name(), featureValue);
 
   WINML_EXPECT_NO_THROW(session.Evaluate(binding, L""));
+}
+
+static void MockFreeDimensionOverride() 
+{
+  auto FreeDimensionOverrideMock = Mock::Method(&OrtApi::AddFreeDimensionOverrideByName, [](OrtSessionOptions*, const char*, int64_t) {
+    return OrtStatusPtr();
+  });
+  LearningModelSessionOptions options;
+  options.OverrideNamedDimension(L"MockApiCall", 1);
 }
 
 static void CloseSession()
