@@ -1555,8 +1555,21 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   }
 
 #ifdef ENABLE_TRAINING
+  const std::vector<NodeIndex>& ordered_nodes = graph.GetNodesInTopologicalOrder();
+  std::vector<int> node_id_to_order_map(graph.MaxNodeIndex());
+  for (int id = 0; id < ordered_nodes.size(); ++id) {
+    const NodeIndex& node_id = ordered_nodes[id];
+    node_id_to_order_map[node_id] = id;
+  }
+
+  // If return false, n1 will be output first; If return true, n2 will be output first
+  auto comp = [&](const NodeIndex n1, const NodeIndex n2) {
+    return node_id_to_order_map[n1] > node_id_to_order_map[n2];
+  };
+
+  std::priority_queue<NodeIndex, std::vector<NodeIndex>, decltype(comp)> candidates(comp);
   std::unordered_set<NodeIndex> visited;
-  std::queue<NodeIndex> candidates;
+
   // first, find all the direct consumer of small cpu tensors.
   for (auto* def : small_cpu_output_args) {
     auto consumers = graph.GetConsumerNodes(def->Name());
@@ -1576,7 +1589,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   // force the node to CPU to avoid memory cpu.
   // and add its output to the small cpu tensors.
   while (!candidates.empty()) {
-    auto cur = candidates.front();
+    NodeIndex cur = candidates.top();
     candidates.pop();
     if (visited.count(cur) != 0)
       continue;
