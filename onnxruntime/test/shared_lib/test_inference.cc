@@ -148,6 +148,8 @@ static constexpr PATH_TYPE PYOP_MULTI_MODEL_URI = TSTR("testdata/pyop_2.onnx");
 static constexpr PATH_TYPE PYOP_KWARG_MODEL_URI = TSTR("testdata/pyop_3.onnx");
 #endif
 
+
+
 class CApiTestWithProvider : public testing::Test, public ::testing::WithParamInterface<int> {
 };
 
@@ -437,6 +439,20 @@ TEST(CApiTest, create_session_without_session_option) {
   constexpr PATH_TYPE model_uri = TSTR("../models/opset8/test_squeezenet/model.onnx");
   Ort::Session ret(*ort_env, model_uri, Ort::SessionOptions{nullptr});
   ASSERT_NE(nullptr, ret);
+}
+#endif
+
+#ifdef REDUCED_OPS_BUILD
+TEST(ReducedOpsBuildTest, test_model_with_reduced_ops_build) {
+  constexpr PATH_TYPE model_uri = TSTR("testdata/test_reduced_ops_build_model");
+  std::vector<Input> inputs(1);
+  Input& input = inputs[0];
+  input.name = "X";
+  input.dims = {3};
+  input.values = {-1.0f, 2.0f, -3.0f};
+  std::vector<int64_t> expected_dims_y = {1};
+  std::vector<float> expected_values_y = {0.75};
+  TestInference<PATH_TYPE, float>(*ort_env, model_uri, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
 }
 #endif
 

@@ -137,11 +137,12 @@ if(WIN32)
     "${TEST_SRC_DIR}/platform/windows/logging/*.cc" )
 endif()
 
-if(onnxruntime_USE_CUDA AND NOT onnxruntime_REDUCED_OPS_BUILD)
-  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/framework/cuda/*)
-endif()
-
 if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
+
+  if(onnxruntime_USE_CUDA)
+    list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/framework/cuda/*)
+  endif()
+
   set(onnxruntime_test_providers_src_patterns
     "${TEST_SRC_DIR}/providers/*.h"
     "${TEST_SRC_DIR}/providers/*.cc"
