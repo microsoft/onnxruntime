@@ -275,8 +275,9 @@ def generate_files(list, args):
                           '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.dll') +
                           '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.pdb') +
-                          '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
+        if os.path.exists(os.path.join(args.native_build_path, 'onnxruntime.pdb')):
+            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.pdb') +
+                              '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
     else:
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'nuget-staging/usr/local/lib',
                           'libonnxruntime.so') + '" target="runtimes\\linux-' + args.target_architecture +

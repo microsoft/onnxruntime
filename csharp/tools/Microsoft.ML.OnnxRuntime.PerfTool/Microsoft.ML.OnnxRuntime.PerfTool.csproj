@@ -31,7 +31,7 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
-    <None Include="$(NativeBuildOutputDir)\onnxruntime.pdb" Condition="'$(IsLinuxBuild)'=='false'">
+    <None Include="$(NativeBuildOutputDir)\onnxruntime.pdb" Condition="'$(IsLinuxBuild)'=='false'And Exists('$(NativeBuildOutputDir)\onnxruntime.pdb')">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
