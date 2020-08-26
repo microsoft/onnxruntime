@@ -293,6 +293,18 @@ namespace Microsoft.ML.OnnxRuntime
             OrtGetSymbolicDimensions = (DOrtGetSymbolicDimensions)Marshal.GetDelegateForFunctionPointer(api_.GetSymbolicDimensions, typeof(DOrtGetSymbolicDimensions));
             OrtGetTensorShapeElementCount = (DOrtGetTensorShapeElementCount)Marshal.GetDelegateForFunctionPointer(api_.GetTensorShapeElementCount, typeof(DOrtGetTensorShapeElementCount));
             OrtReleaseValue = (DOrtReleaseValue)Marshal.GetDelegateForFunctionPointer(api_.ReleaseValue, typeof(DOrtReleaseValue));
+
+
+            OrtSessionGetModelMetadata = (DOrtSessionGetModelMetadata)Marshal.GetDelegateForFunctionPointer(api_.SessionGetModelMetadata, typeof(DOrtSessionGetModelMetadata));
+            OrtModelMetadataGetProducerName = (DOrtModelMetadataGetProducerName)Marshal.GetDelegateForFunctionPointer(api_.ModelMetadataGetProducerName, typeof(DOrtModelMetadataGetProducerName));
+            OrtModelMetadataGetGraphName = (DOrtModelMetadataGetGraphName)Marshal.GetDelegateForFunctionPointer(api_.ModelMetadataGetGraphName, typeof(DOrtModelMetadataGetGraphName));
+            OrtModelMetadataGetDomain = (DOrtModelMetadataGetDomain)Marshal.GetDelegateForFunctionPointer(api_.ModelMetadataGetDomain, typeof(DOrtModelMetadataGetDomain));
+            OrtModelMetadataGetDescription = (DOrtModelMetadataGetDescription)Marshal.GetDelegateForFunctionPointer(api_.ModelMetadataGetDescription, typeof(DOrtModelMetadataGetDescription));
+            OrtModelMetadataGetVersion = (DOrtModelMetadataGetVersion)Marshal.GetDelegateForFunctionPointer(api_.ModelMetadataGetVersion, typeof(DOrtModelMetadataGetVersion));
+            OrtModelMetadataGetCustomMetadataMapKeys = (DOrtModelMetadataGetCustomMetadataMapKeys)Marshal.GetDelegateForFunctionPointer(api_.ModelMetadataGetCustomMetadataMapKeys, typeof(DOrtModelMetadataGetCustomMetadataMapKeys));
+            OrtModelMetadataLookupCustomMetadataMap = (DOrtModelMetadataLookupCustomMetadataMap)Marshal.GetDelegateForFunctionPointer(api_.ModelMetadataLookupCustomMetadataMap, typeof(DOrtModelMetadataLookupCustomMetadataMap));
+            OrtReleaseModelMetadata = (DOrtReleaseModelMetadata)Marshal.GetDelegateForFunctionPointer(api_.ReleaseModelMetadata, typeof(DOrtReleaseModelMetadata));
+
         }
 
         [DllImport(nativeLib, CharSet = charSet)]
@@ -762,6 +774,99 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtClearBoundOutputs OrtClearBoundOutputs;
 
         #endregion IoBinding API
+
+        #region ModelMetadata API
+
+        /// <summary>
+        /// Gets the ModelMetadata associated with an InferenceSession
+        /// </summary>
+        /// <param name="session">instance of OrtSession</param>
+        /// <param name="modelMetadata">(output) instance of OrtModelMetadata</param>
+        public delegate IntPtr /* (OrtStatus*) */ DOrtSessionGetModelMetadata(IntPtr /* (const OrtSession*) */ session, out IntPtr /* (OrtModelMetadata**) */ modelMetadata);
+        public static DOrtSessionGetModelMetadata OrtSessionGetModelMetadata;
+
+        /// <summary>
+        /// Gets the producer name associated with a ModelMetadata instance
+        /// </summary>
+        /// <param name="modelMetadata">instance of OrtModelMetadata</param>
+        /// <param name="allocator">instance of OrtAllocator</param>
+        /// <param name="value">(output) producer name from the ModelMetadata instance</param>
+        public delegate IntPtr /* (OrtStatus*) */ DOrtModelMetadataGetProducerName(IntPtr /* (const OrtModelMetadata*) */ modelMetadata, 
+                                                                              IntPtr /* (OrtAllocator*) */ allocator, out IntPtr /* (char**) */ value);
+        public static DOrtModelMetadataGetProducerName OrtModelMetadataGetProducerName;
+
+        /// <summary>
+        /// Gets the graph name associated with a ModelMetadata instance
+        /// </summary>
+        /// <param name="modelMetadata">instance of OrtModelMetadata</param>
+        /// <param name="allocator">instance of OrtAllocator</param>
+        /// <param name="value">(output) graph name from the ModelMetadata instance</param>
+        public delegate IntPtr /* (OrtStatus*) */ DOrtModelMetadataGetGraphName(IntPtr /* (const OrtModelMetadata*) */ modelMetadata,
+                                                                              IntPtr /* (OrtAllocator*) */ allocator, out IntPtr /* (char**) */ value);
+        public static DOrtModelMetadataGetGraphName OrtModelMetadataGetGraphName;
+
+        /// <summary>
+        /// Gets the domain associated with a ModelMetadata instance
+        /// </summary>
+        /// <param name="modelMetadata">instance of OrtModelMetadata</param>
+        /// <param name="allocator">instance of OrtAllocator</param>
+        /// <param name="value">(output) domain from the ModelMetadata instance</param>
+        public delegate IntPtr /* (OrtStatus*) */ DOrtModelMetadataGetDomain(IntPtr /* (const OrtModelMetadata*) */ modelMetadata,
+                                                                              IntPtr /* (OrtAllocator*) */ allocator, out IntPtr /* (char**) */ value);
+        public static DOrtModelMetadataGetDomain OrtModelMetadataGetDomain;
+
+        /// <summary>
+        /// Gets the description associated with a ModelMetadata instance
+        /// </summary>
+        /// <param name="modelMetadata">instance of OrtModelMetadata</param>
+        /// <param name="allocator">instance of OrtAllocator</param>
+        /// <param name="value">(output) description from the ModelMetadata instance</param>
+        public delegate IntPtr /* (OrtStatus*) */ DOrtModelMetadataGetDescription(IntPtr /* (const OrtModelMetadata*) */ modelMetadata,
+                                                                              IntPtr /* (OrtAllocator*) */ allocator, out IntPtr /* (char**) */ value);
+        public static DOrtModelMetadataGetDescription OrtModelMetadataGetDescription;
+
+        /// <summary>
+        /// Gets the version associated with a ModelMetadata instance
+        /// </summary>
+        /// <param name="modelMetadata">instance of OrtModelMetadata</param>
+        /// <param name="value">(output) version from the ModelMetadata instance</param>
+        public delegate IntPtr /* (OrtStatus*) */ DOrtModelMetadataGetVersion(IntPtr /* (const OrtModelMetadata*) */ modelMetadata,
+                                                                              out long /* (int64_t*) */ value);
+        public static DOrtModelMetadataGetVersion OrtModelMetadataGetVersion;
+
+        /// <summary>
+        /// Gets all the keys in the custom metadata map in the ModelMetadata instance
+        /// </summary>
+        /// <param name="modelMetadata">instance of OrtModelMetadata</param>
+        /// <param name="allocator">instance of OrtAllocator</param>
+        /// <param name="keys">(output) all keys in the custom metadata map</param>
+        /// <param name="numKeys">(output) number of keys in the custom metadata map</param>
+
+        public delegate IntPtr /* (OrtStatus*) */ DOrtModelMetadataGetCustomMetadataMapKeys(IntPtr /* (const OrtModelMetadata*) */ modelMetadata,
+            IntPtr /* (OrtAllocator*) */ allocator, out IntPtr /* (char***) */ keys, out long /* (int64_t*) */ numKeys);
+        public static DOrtModelMetadataGetCustomMetadataMapKeys OrtModelMetadataGetCustomMetadataMapKeys;
+
+        /// <summary>
+        /// Gets the value associated with the given key in custom metadata map in the ModelMetadata instance
+        /// </summary>
+        /// <param name="modelMetadata">instance of OrtModelMetadata</param>
+        /// <param name="allocator">instance of OrtAllocator</param>
+        /// <param name="key">key in the custom metadata map</param>
+        /// <param name="value">(output) value for the key in the custom metadata map</param>
+
+        public delegate IntPtr /* (OrtStatus*) */ DOrtModelMetadataLookupCustomMetadataMap(IntPtr /* (const OrtModelMetadata*) */ modelMetadata,
+            IntPtr /* (OrtAllocator*) */ allocator, IntPtr /* (const char*) */ key, out IntPtr /* (char**) */ value);
+        public static DOrtModelMetadataLookupCustomMetadataMap OrtModelMetadataLookupCustomMetadataMap;
+
+
+        /// <summary>
+        /// Frees ModelMetadata instance
+        /// </summary>
+        /// <param name="modelMetadata">instance of OrtModelMetadata</param>
+        public delegate void DOrtReleaseModelMetadata(IntPtr /*(OrtModelMetadata*)*/ modelMetadata);
+        public static DOrtReleaseModelMetadata OrtReleaseModelMetadata;
+
+        #endregion ModelMetadata API
 
         #region Tensor/OnnxValue API
 
