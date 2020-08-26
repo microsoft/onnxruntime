@@ -144,7 +144,9 @@ NodeArg& MegatronTransformer::PartitionWeightByColumn(Graph& graph, const NodeAr
   auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
   const float* a_weight = initializer->data<float>();
 
-  initializer_partition.set_name(input_arg.Name());
+  std::string new_initializer_name = input_arg.Name() + "_column_rank_" + std::to_string(horizontal_parallel_rank_);
+  updated_weight_names_.insert({input_arg.Name(), new_initializer_name});
+  initializer_partition.set_name(new_initializer_name);
   initializer_partition.set_data_type(data_type);
 
   int64_t column_partition = column_count / horizontal_parallel_size_;
@@ -211,7 +213,9 @@ NodeArg& MegatronTransformer::PartitionWeightByRow(Graph& graph, const NodeArg& 
   auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
   const float* a_weight = initializer->data<float>();
 
-  initializer_partition.set_name(input_arg.Name());
+  std::string new_initializer_name = input_arg.Name() + "_row_rank_" + std::to_string(horizontal_parallel_rank_);
+  updated_weight_names_.insert({input_arg.Name(), new_initializer_name});
+  initializer_partition.set_name(new_initializer_name);
   initializer_partition.set_data_type(data_type);
 
   int64_t row_partition = row_count / horizontal_parallel_size_;
@@ -421,18 +425,18 @@ Status MegatronTransformer::TransformT5MLP(Graph& graph, bool& modified, int gra
 
     auto dense_wi_weight_arg = second_op->MutableInputDefs()[0];
     NodeArg& dense_wi_weight_partition_arg = PartitionWeightByRow(graph, *dense_wi_weight_arg);
-    ORT_ENFORCE(dense_wi_weight_arg == &dense_wi_weight_partition_arg);
+    //ORT_ENFORCE(dense_wi_weight_arg == &dense_wi_weight_partition_arg);
 
     //LOGS_DEFAULT(WARNING) << " T5MLP " << node.Name() << " Partion 1 ";
     auto dense_wo_weight_arg = transpose_op->MutableInputDefs()[0];
     NodeArg& dense_wo_weight_partition_arg = PartitionWeightByColumn(graph, *dense_wo_weight_arg);
-    ORT_ENFORCE(dense_wo_weight_arg == &dense_wo_weight_partition_arg);
+    //ORT_ENFORCE(dense_wo_weight_arg == &dense_wo_weight_partition_arg);
 
     //LOGS_DEFAULT(WARNING) << " T5MLP " << node.Name() << " Partion 2 " << transpose_op->MutableInputDefs()[0]->Name();
     //LOGS_DEFAULT(WARNING) << dense_wo_weight_partition_arg.Name() << "dd" << second_op->MutableInputDefs()[0]->Name()
     //                      << "," << dense_wi_weight_partition_arg.Name();
-    //graph_utils::ReplaceNodeInput(*second_op, 0, dense_wi_weight_partition_arg);
-    //graph_utils::ReplaceNodeInput(*transpose_op, 0, dense_wo_weight_partition_arg);
+    graph_utils::ReplaceNodeInput(*second_op, 0, dense_wi_weight_partition_arg);
+    graph_utils::ReplaceNodeInput(*transpose_op, 0, dense_wo_weight_partition_arg);
 
     self_attention_dropout_nodes.insert(&dropout_node);
     self_attention_dropout_nodes.insert(&dropout2_node);
@@ -844,14 +848,16 @@ Status MegatronTransformer::TransformT5SelfAttention(Graph& graph, bool& modifie
       auto qkv_weight_arg = trans_ptr->MutableInputDefs()[0];
       //LOGS_DEFAULT(WARNING) << " T5 Attention Weight Transpose Loop " << qkv_weight_arg->Name();
       NodeArg& qkv_weight_partition_arg = PartitionWeightByRow(graph, *qkv_weight_arg);
+      graph_utils::ReplaceNodeInput(*trans_ptr, 0, qkv_weight_partition_arg);
       //LOGS_DEFAULT(WARNING) << " T5 Attention Weight Transpose Loop " << qkv_weight_partition_arg.Name();
-      ORT_ENFORCE(qkv_weight_arg == &qkv_weight_partition_arg);
+      //ORT_ENFORCE(qkv_weight_arg == &qkv_weight_partition_arg);
     }
     //LOGS_DEFAULT(WARNING) << " T5 Attention Transpose Check 444444" << node.Name();
     Node* last_transpose = const_cast<Node*>(graph.GetProducerNode(matmul_node.MutableInputDefs()[1]->Name()));
     auto dense_weight_arg = last_transpose->MutableInputDefs()[0];
     NodeArg& dense_weight_partition_arg = PartitionWeightByColumn(graph, *dense_weight_arg);
-    ORT_ENFORCE(dense_weight_arg == &dense_weight_partition_arg);
+    graph_utils::ReplaceNodeInput(*last_transpose, 0, dense_weight_partition_arg);
+    //ORT_ENFORCE(dense_weight_arg == &dense_weight_partition_arg);
     //LOGS_DEFAULT(WARNING) << " T5 Attention Transpose Check 55555" << node.Name();
 
     auto rab_weight_arg = rab_gather_ptr->MutableInputDefs()[0];
@@ -859,7 +865,8 @@ Status MegatronTransformer::TransformT5SelfAttention(Graph& graph, bool& modifie
     if (std::find(relative_attention_bias_names.begin(), relative_attention_bias_names.end(), rab_weight_arg->Name()) == relative_attention_bias_names.end()) {
       // LOGS_DEFAULT(WARNING) << " T5 Attention Partitoned Relative Attention " << rab_weight_arg->Name();
       NodeArg& rab_weight_partition_arg = PartitionWeightByColumn(graph, *rab_weight_arg);
-      ORT_ENFORCE(rab_weight_arg == &rab_weight_partition_arg);
+      graph_utils::ReplaceNodeInput(*rab_gather_ptr, 0, rab_weight_partition_arg);
+      //ORT_ENFORCE(rab_weight_arg == &rab_weight_partition_arg);
       relative_attention_bias_names.push_back(rab_weight_arg->Name());
     } else {
       LOGS_DEFAULT(WARNING) << " Skip T5 Attention Partitoned Relative Attention because already partitioned " << rab_weight_arg->Name();
