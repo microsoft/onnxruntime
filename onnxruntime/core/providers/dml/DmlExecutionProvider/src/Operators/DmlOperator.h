@@ -31,10 +31,16 @@ namespace Dml
 
         void Initialize(
             const MLOperatorKernelCreationContext& kernelInfo,
+            uint32_t minDimensionCount
+            );
+
+        void Initialize(
+            const MLOperatorKernelCreationContext& kernelInfo,
             const std::optional<const std::vector<std::optional<uint32_t>>>& kernelInputIndices = std::nullopt,
             const std::optional<const std::vector<std::optional<uint32_t>>>& kernelOutputIndices = std::nullopt,
             const std::optional<gsl::span<const uint32_t>> inputShape = std::nullopt,
-            const std::optional<gsl::span<const uint32_t>> outputShape = std::nullopt
+            const std::optional<gsl::span<const uint32_t>> outputShape = std::nullopt,
+            uint32_t minDimensionCount = NchwDimensionCount
             );
 
         bool AllowHalfPrecisionComputation() const;

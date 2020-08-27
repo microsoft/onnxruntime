@@ -16,7 +16,14 @@ public:
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() == 2, "Gather expects 2 inputs.");
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() == 1, "Gather expects 1 output.");
 
-        DmlOperator::Initialize(kernelCreationContext);
+        auto tensorShapeDescription = kernelCreationContext.GetTensorShapeDescription();
+        std::vector<DimensionType> dataDimensions = tensorShapeDescription.GetInputTensorShape(0);
+        std::vector<DimensionType> indicesDimensions = tensorShapeDescription.GetInputTensorShape(1);
+        std::vector<DimensionType> outputDimensions = tensorShapeDescription.GetOutputTensorShape(0);
+
+        size_t dimensionCountMax = std::max({dataDimensions.size(), indicesDimensions.size(), outputDimensions.size()});
+        DmlOperator::Initialize(kernelCreationContext, gsl::narrow_cast<uint32_t>(dimensionCountMax));
+
         DmlOperator::Remap64bitDmlDataTypesTo32bitIfNeeded();
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
@@ -24,9 +31,6 @@ public:
         assert(inputDescs.size() == 2);
         assert(outputDescs.size() == 1);
 
-        auto outputTensorShapeDescription = kernelCreationContext.GetTensorShapeDescription();
-        std::vector<DimensionType> dataDimensions = outputTensorShapeDescription.GetInputTensorShape(0);
-        std::vector<DimensionType> indicesDimensions = outputTensorShapeDescription.GetInputTensorShape(1);
         uint32_t dmlAxis = GetDmlAdjustedAxis(m_axis, kernelCreationContext, m_inputTensorDescs.front().GetDimensionCount());
 
         DML_GATHER_OPERATOR_DESC operatorDesc = {};
@@ -50,7 +54,14 @@ public:
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() == 2, "GatherElements expects 2 inputs.");
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() == 1, "GatherElements expects 1 output.");
 
-        DmlOperator::Initialize(kernelCreationContext);
+        auto tensorShapeDescription = kernelCreationContext.GetTensorShapeDescription();
+        std::vector<DimensionType> dataDimensions = tensorShapeDescription.GetInputTensorShape(0);
+        std::vector<DimensionType> indicesDimensions = tensorShapeDescription.GetInputTensorShape(1);
+        std::vector<DimensionType> outputDimensions = tensorShapeDescription.GetOutputTensorShape(0);
+
+        size_t dimensionCountMax = std::max({dataDimensions.size(), indicesDimensions.size(), outputDimensions.size()});
+        DmlOperator::Initialize(kernelCreationContext, gsl::narrow_cast<uint32_t>(dimensionCountMax));
+
         DmlOperator::Remap64bitDmlDataTypesTo32bitIfNeeded();
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
@@ -59,10 +70,6 @@ public:
         assert(outputDescs.size() == 1);
 
         int32_t signedOnnxAxis = kernelCreationContext.GetOptionalAttribute<int>(AttrName::Axis, 0);
-        auto outputTensorShapeDescription = kernelCreationContext.GetTensorShapeDescription();
-        std::vector<DimensionType> dataDimensions = outputTensorShapeDescription.GetInputTensorShape(0);
-        std::vector<DimensionType> indicesDimensions = outputTensorShapeDescription.GetInputTensorShape(1);
-        ML_CHECK_VALID_ARGUMENT(dataDimensions.size() <= OperatorHelper::NchwDimensionCount);
         uint32_t dmlAxis = GetDmlAdjustedAxis(signedOnnxAxis, kernelCreationContext, m_inputTensorDescs.front().GetDimensionCount());
 
         DML_GATHER_ELEMENTS_OPERATOR_DESC operatorDesc = {};
@@ -86,31 +93,20 @@ public:
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() == 2, "GatherND expects 2 inputs.");
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() == 1, "GatherND expects 1 output.");
 
-        DmlOperator::Initialize(kernelCreationContext);
+        auto tensorShapeDescription = kernelCreationContext.GetTensorShapeDescription();
+        std::vector<DimensionType> dataDimensions = tensorShapeDescription.GetInputTensorShape(0);
+        std::vector<DimensionType> indicesDimensions = tensorShapeDescription.GetInputTensorShape(1);
+        std::vector<DimensionType> outputDimensions = tensorShapeDescription.GetOutputTensorShape(0);
+
+        size_t dimensionCountMax = std::max({dataDimensions.size(), indicesDimensions.size(), outputDimensions.size()});
+        DmlOperator::Initialize(kernelCreationContext, gsl::narrow_cast<uint32_t>(dimensionCountMax));
+
         DmlOperator::Remap64bitDmlDataTypesTo32bitIfNeeded();
-
-        uint32_t maxDimensionCount = std::max({
-            m_inputTensorDescs[0].GetDimensionCount(),
-            m_inputTensorDescs[1].GetDimensionCount(),
-            m_outputTensorDescs[0].GetDimensionCount()
-        });
-
-        // DML expects all tensors to have the same dimension count.
-        // Update the tensor descriptions with new sizes.
-        m_inputTensorDescs[0].SetDimensionCount(maxDimensionCount, TensorAxis::RightAligned);
-        m_inputTensorDescs[1].SetDimensionCount(maxDimensionCount, TensorAxis::RightAligned);
-        m_outputTensorDescs[0].SetDimensionCount(maxDimensionCount, TensorAxis::RightAligned);
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
         assert(inputDescs.size() == 2);
         assert(outputDescs.size() == 1);
-
-        auto outputTensorShapeDescription = kernelCreationContext.GetTensorShapeDescription();
-        std::vector<DimensionType> dataDimensions = outputTensorShapeDescription.GetInputTensorShape(0);
-        std::vector<DimensionType> indicesDimensions = outputTensorShapeDescription.GetInputTensorShape(1);
-        ML_CHECK_VALID_ARGUMENT(dataDimensions.size() > m_batchCount);
-        ML_CHECK_VALID_ARGUMENT(indicesDimensions.size() > m_batchCount);
 
         DML_GATHER_ND1_OPERATOR_DESC operatorDesc = {};
         operatorDesc.InputTensor = &inputDescs[0];

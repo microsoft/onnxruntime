@@ -23,7 +23,6 @@ public:
         ML_CHECK_VALID_ARGUMENT(dataDimensions == outputDimensions);
         ML_CHECK_VALID_ARGUMENT(indicesDimensions == updatesDimensions);
         ML_CHECK_VALID_ARGUMENT(dataDimensions.size() == indicesDimensions.size());
-        ML_CHECK_VALID_ARGUMENT(dataDimensions.size() <= OperatorHelper::NchwDimensionCount);
 
         // When the indices tensor is empty, Scatter is basically Identity. But since DML doesn't support empty or null
         // tensors, we have to special-case it outside of DML.
@@ -89,12 +88,9 @@ public:
         std::vector<DimensionType> updatesDimensions = tensorShapeDescription.GetInputTensorShape(2);
         std::vector<DimensionType> outputDimensions = tensorShapeDescription.GetOutputTensorShape(0);
         ML_CHECK_VALID_ARGUMENT(dataDimensions == outputDimensions);
-        ML_CHECK_VALID_ARGUMENT(dataDimensions.size() <= OperatorHelper::NchwDimensionCount);
-        ML_CHECK_VALID_ARGUMENT(indicesDimensions.size() <= OperatorHelper::NchwDimensionCount);
-        ML_CHECK_VALID_ARGUMENT(updatesDimensions.size() <= OperatorHelper::NchwDimensionCount);
-        ML_CHECK_VALID_ARGUMENT(outputDimensions.size() <= OperatorHelper::NchwDimensionCount);
 
-        DmlOperator::Initialize(kernelCreationContext);
+        size_t dimensionCountMax = std::max({dataDimensions.size(), updatesDimensions.size(), indicesDimensions.size(), outputDimensions.size()});
+        DmlOperator::Initialize(kernelCreationContext, gsl::narrow_cast<uint32_t>(dimensionCountMax));
         DmlOperator::Remap64bitDmlDataTypesTo32bitIfNeeded();
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
