@@ -284,8 +284,9 @@ Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_
     LOGS_DEFAULT(WARNING) << "training data loader not provided, nothing to do";
     return Status::OK();
   }
-
-  ORT_RETURN_IF_ERROR(TrainingLoop(*training_data_loader, test_data_loader, mapped_dimensions));
+  auto status = TrainingLoop(*training_data_loader, test_data_loader, mapped_dimensions);
+  std::cout << status.ErrorMessage() << std::endl;
+  ORT_RETURN_IF_ERROR(status);
 
   // after successful Run(), update counters
   ++round_;
@@ -686,19 +687,24 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
       MPIContext::GetInstance().GetWorldRank() == 0 &&
       checkpoint_registry_ && params_.checkpoint_period > 0;
 
+  std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 1" << std::endl;
   std::unique_ptr<perftest::utils::ICPUUsage> cpu_usage_calculator;
   if (!params_.perf_output_dir.empty()) {
     cpu_usage_calculator = perftest::utils::CreateICPUUsage();
   }
 
+  std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 2" << std::endl;
   if (test_data_loader) {
     ORT_RETURN_IF_ERROR(test_data_loader->InitializeDataSetIndex(0));
   }
+  std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 3" << std::endl;
   ORT_RETURN_IF_ERROR(training_data_loader.InitializeDataSetIndex(training_data_set_index_));
 
+  std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 4" << std::endl;
   const size_t num_shards_to_visit = training_data_loader.NumShards();
   const auto lr_scheduler = LearningRateScheduler::Create(params_.lr_params, params_.num_train_steps);
 
+  std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 5" << std::endl;
   double total_time{0};
   size_t epoch = 0;  // Note: epoch is not set properly when loaded from a checkpoint, but it's only for display.
   size_t gradient_accumulation_step_count = 0;
@@ -713,10 +719,14 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
   auto end_to_end_start = std::chrono::high_resolution_clock::now();
   bool end_to_end_measurement_started = false;
 
+  std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 6" << std::endl;
   auto all_steps_time_start = std::chrono::high_resolution_clock::now();
   while (step_ < params_.num_train_steps) {
+    std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 7" << std::endl;
     for (size_t shard_it = 0; shard_it < num_shards_to_visit; ++shard_it) {
+      std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 8" << std::endl;
       auto training_data = training_data_loader.CurrentDataSet();
+      std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 9" << std::endl;
       training_data_set_index_ = training_data_loader.CurrentDataSetIndex();
       if (training_data == nullptr) {
         printf("Skipping shard at index %d, which failed to load.\n",
@@ -726,14 +736,17 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
       }
 
       // Shuffle the data for each epoch
+      std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 10" << std::endl;
       if (params_.shuffle_data) {
         printf("Randomly shuffle training data.\n");
         training_data->RandomShuffle();
       }
 
       // loop through the data
+      std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 11" << std::endl;
       size_t batch_num_cur_shard = training_data->TotalBatch(params_.batch_size);
       for (size_t batch = 0; batch < batch_num_cur_shard && step_ < params_.num_train_steps; ++batch) {
+        std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 12" << std::endl;
         const bool is_weight_update_step = (step_ + 1) % params_.gradient_accumulation_steps == 0;
 
         const bool stablized_perf_measurement_started = step_ >= stabilized_perf_start_step;
@@ -749,7 +762,9 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
 
         auto start = std::chrono::high_resolution_clock::now();
 
+        std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 13" << std::endl;
         if (is_weight_update_step) {
+          std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 14" << std::endl;
           ORT_RETURN_IF_ERROR(PrepareFeedNamesAndFeeds(ModelUpdateStep,
                                                        training_data_loader,
                                                        *training_data,
@@ -757,12 +772,15 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
                                                        batch,
                                                        feed_names,
                                                        feeds));
+          std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 15" << std::endl;
           ORT_RETURN_IF_ERROR(
               PrepareFetchNamesAndFetches(ModelUpdateStep,
                                           fetch_names,
                                           fetches));
+          std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 16" << std::endl;
           RunWithUpdate(feed_names, fetch_names, feeds, fetches);
         } else {
+          std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 14" << std::endl;
           ORT_RETURN_IF_ERROR(PrepareFeedNamesAndFeeds(GradientAccumulateStep,
                                                        training_data_loader,
                                                        *training_data,
@@ -770,13 +788,16 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
                                                        batch,
                                                        feed_names,
                                                        feeds));
+          std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 15" << std::endl;
           ORT_RETURN_IF_ERROR(
               PrepareFetchNamesAndFetches(GradientAccumulateStep,
                                           fetch_names,
                                           fetches));
+          std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 16" << std::endl;
           RunWithoutUpdate(feed_names, fetch_names, feeds,
                            gradient_accumulation_step_count);
         }
+        std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 17" << std::endl;
 
         // at this point, step_ already be increased by 1.
         auto end = std::chrono::high_resolution_clock::now();
