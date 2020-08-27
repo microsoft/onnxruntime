@@ -14,38 +14,12 @@
 #include "inc/D3DDeviceCache.h"
 
 #include "LearningModelDevice.h"
+#include "EventTimer.h"
 
 using namespace Microsoft::WRL;
 using namespace Windows::Graphics::DirectX::Direct3D11;
 
 using namespace _winml;
-
-class EventTimer
-{public:
-  EventTimer(long long durationInMicroSeconds)
-    : _durationInMicroSeconds(durationInMicroSeconds)
-  {
-  }
-  
-  bool Start()
-  {
-    auto now = std::chrono::high_resolution_clock::now();
-    if (!_started || 
-         std::chrono::duration_cast<std::chrono::microseconds>(now - _startTime).count() > _durationInMicroSeconds)
-    {
-      _started = true;
-      _startTime = std::chrono::high_resolution_clock::now();
-      return true;
-    }
-
-    return false;
-  }
-
-private:
-  bool _started = false;
-  long long _durationInMicroSeconds;
-  std::chrono::steady_clock::time_point _startTime;
-};
 
 class DX12TextureToGPUTensorTelemetryEvent {
  public:
