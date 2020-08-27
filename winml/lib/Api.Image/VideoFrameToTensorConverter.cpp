@@ -20,6 +20,33 @@ using namespace Windows::Graphics::DirectX::Direct3D11;
 
 using namespace _winml;
 
+class EventTimer
+{public:
+  EventTimer(long long durationInMicroSeconds)
+    : _durationInMicroSeconds(durationInMicroSeconds)
+  {
+  }
+  
+  bool Start()
+  {
+    auto now = std::chrono::high_resolution_clock::now();
+    if (!_started || 
+         std::chrono::duration_cast<std::chrono::microseconds>(now - _startTime).count() > _durationInMicroSeconds)
+    {
+      _started = true;
+      _startTime = std::chrono::high_resolution_clock::now();
+      return true;
+    }
+
+    return false;
+  }
+
+private:
+  bool _started = false;
+  long long _durationInMicroSeconds;
+  std::chrono::steady_clock::time_point _startTime;
+};
+
 class DX12TextureToGPUTensorTelemetryEvent {
  public:
   DX12TextureToGPUTensorTelemetryEvent(const ImageTensorDescription& tensorDesc) {
@@ -278,21 +305,10 @@ void VideoFrameToTensorConverter::ConvertDX12TextureToGPUTensor(
   ComPtr<ID3D12Device> spDx12Device = device_cache.GetD3D12Device();
 
   std::unique_ptr<DX12TextureToGPUTensorTelemetryEvent> telemetryLogger;
-  // we're inside a lock from the caller of this function, so it's ok to use these statics
-  static bool logEvent = true;
-  static std::chrono::steady_clock::time_point startTime;
-  if (!logEvent) {
-    auto now = std::chrono::high_resolution_clock::now();
-    if (std::chrono::duration_cast<std::chrono::microseconds>(now - startTime).count() > kDurationBetweenSendingEvaluationStart) {
-      logEvent = true;
-      startTime = now;
-    }
-  }
-
-  if (logEvent) {
-    startTime = std::chrono::high_resolution_clock::now();
-    telemetryLogger = std::make_unique<DX12TextureToGPUTensorTelemetryEvent>(tensorDesc);
-    logEvent = false;
+  // we're inside a lock from the caller of this function, so it's ok to use this static
+  static EventTimer eventTimer(kDurationBetweenSendingEvaluationStart);
+  if (eventTimer.Start()) {
+    telemetrylogger = std::make_unique<DX12TextureToGPUTensorTelemetryEvent>(tensorDesc);
   }
 
   // Validate input description
@@ -458,21 +474,10 @@ void VideoFrameToTensorConverter::ConvertSoftwareBitmapToGPUTensor(
   assert(videoFrame.SoftwareBitmap() != nullptr);
 
   std::unique_ptr<SoftwareBitmapToGPUTensorTelemetryEvent> telemetryLogger;
-  // we're inside a lock from the caller of this function, so it's ok to use these statics
-  static bool logEvent = true;
-  static std::chrono::steady_clock::time_point startTime;
-  if (!logEvent) {
-    auto now = std::chrono::high_resolution_clock::now();
-    if (std::chrono::duration_cast<std::chrono::microseconds>(now - startTime).count() > kDurationBetweenSendingEvaluationStart) {
-      logEvent = true;
-      startTime = now;
-    }
-  }
-
-  if (logEvent) {
-    startTime = std::chrono::high_resolution_clock::now();
-    telemetryLogger = std::make_unique<SoftwareBitmapToGPUTensorTelemetryEvent>(tensorDesc);
-    logEvent = false;
+  // we're inside a lock from the caller of this function, so it's ok to use this static
+  static EventTimer eventTimer(kDurationBetweenSendingEvaluationStart);
+  if (eventTimer.Start()) {
+    telemetrylogger = std::make_unique<SoftwareBitmapToGPUTensorTelemetryEvent>(tensorDesc);
   }
 
   wgi::SoftwareBitmap convertedSoftwareBitmap = nullptr;
@@ -584,24 +589,10 @@ void VideoFrameToTensorConverter::ConvertSoftwareBitmapToCPUTensor(
 
   std::unique_ptr<ConvertVideoFrameWithSoftwareBitmapToCPUTensorTelemetryEvent> telemetrylogger;
 
-  // we're inside a lock from the caller of this function, so it's ok to use these statics
-  static bool logEvent = true;
-  static std::chrono::steady_clock::time_point startTime;
-  if (!logEvent)
-  {
-    auto now = std::chrono::high_resolution_clock::now();
-    if (std::chrono::duration_cast<std::chrono::microseconds>(now - startTime).count() > kDurationBetweenSendingEvaluationStart)
-    {
-      logEvent = true;
-      startTime = now;
-    }
-  }
-  
-  if (logEvent)
-  {
-    startTime = std::chrono::high_resolution_clock::now();
+  // we're inside a lock from the caller of this function, so it's ok to use this static
+  static EventTimer eventTimer(kDurationBetweenSendingEvaluationStart);
+  if (eventTimer.Start()) {
     telemetrylogger = std::make_unique<ConvertVideoFrameWithSoftwareBitmapToCPUTensorTelemetryEvent>(tensorDesc);
-    logEvent = false;
   }
 
   auto height = softwareBitmap.PixelHeight();
