@@ -181,6 +181,14 @@ class BertModelTest(unittest.TestCase):
                                 for split_batch in option_split_batch:
                                     print("gradient_accumulation_steps:", gradient_accumulation_steps)
                                     print("split_batch:", split_batch)
+
+                                    seed = 42
+                                    random.seed(seed)
+                                    np.random.seed(seed)
+                                    torch.manual_seed(seed)
+                                    torch.cuda.manual_seed_all(seed)
+                                    onnxruntime.set_seed(seed)
+
                                     loss_ort, prediction_scores_ort, seq_relationship_score_ort =\
                                         run_test(
                                             model, model_desc, self.device, args, gradient_accumulation_steps, fp16,
@@ -192,6 +200,27 @@ class BertModelTest(unittest.TestCase):
                                     print(loss_ort)
                                     print(prediction_scores_ort)
                                     print(seq_relationship_score_ort)
+
+                                    seed = 42
+                                    random.seed(seed)
+                                    np.random.seed(seed)
+                                    torch.manual_seed(seed)
+                                    torch.cuda.manual_seed_all(seed)
+                                    onnxruntime.set_seed(seed)
+                                    if use_internal_get_lr_this_step and use_internal_loss_scaler:
+                                        new_api_loss_ort, new_api_prediction_scores_ort, new_api_seq_relationship_score_ort =\
+                                            run_test(
+                                                model, model_desc, self.device, args, gradient_accumulation_steps, fp16,
+                                                allreduce_post_accumulation,
+                                                get_lr_this_step, use_internal_get_lr_this_step,
+                                                loss_scaler, use_internal_loss_scaler,
+                                                split_batch,
+                                                use_new_api=True)
+                                    
+                                        print(new_api_loss_ort)
+                                        print(new_api_prediction_scores_ort)
+                                        print(new_api_seq_relationship_score_ort)
+
 
     def setUp(self):
         self.model_tester = BertModelTest.BertModelTester(self)
