@@ -245,7 +245,7 @@ void CustomOpLibrary::UnloadLibrary() {
   const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
 
   if (!status.IsOK()) {
-    LOGS(default_logger, WARNING) << "Unable to unload the shared library: " << library_path_;
+    LOGS(default_logger, WARNING) << "Unable to unload the custom op shared library: " << library_path_;
   }
 }
 
@@ -1137,7 +1137,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           "Rpbdoc(Get a single session configuration value using the given configuration key.)pbdoc")
       .def(
           "register_custom_ops_library",
-          [&env](PySessionOptions* options, const std::string& library_path)
+          [](PySessionOptions* options, const std::string& library_path)
               -> void {
             OrtSessionOptions s;
 
