@@ -612,7 +612,7 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, Attentio
 }
 
 bool MatchInputMaskSubgraph(const Graph& graph, const Node& layer_norm, const Node& qkv_matmul,
-                            AttentionMaskNodesDistilBert& result, const logging::Logger& logger) {
+                            AttentionMaskNodesDistilBert& result, NodeIndex& record_node_idx, const logging::Logger& logger) {
   DEBUG_LOG("Start MatchInputMaskSubgraphDistilBert");
 
   std::vector<graph_utils::EdgeEndToMatch> mask_path{
@@ -686,8 +686,15 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& layer_norm, const No
     return false;
   }
   const Node& concat = edges[0]->GetNode();
+  const Node& unsqueeze_1 = edges[1]->GetNode();
   const Node& gather_1 = edges[2]->GetNode();
   const Node& shape_1 = edges[3]->GetNode();
+
+  // check that the recorded unsqueeze in CheckNodesInPathV() is the same node as unsqueeze_1
+  if (unsqueeze_1.Index() != record_node_idx) {
+    return false;
+  }
+
   std::vector<graph_utils::EdgeEndToMatch> reshape_shape_path_2{
       {0, 3, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
       {0, 0, "Gather", {1, 11, 13}, kOnnxDomain},
@@ -873,6 +880,45 @@ bool MatchPastSubgraph(Graph& graph, const Node& k_concat, const Node& v_concat,
   return true;
 }
 
+bool CheckDistilBertReshapeShape(const Graph& graph, const Node& reshape, int64_t hidden_size, NodeIndex& record_node_idx, const logging::Logger& logger) {
+  const Node* p_concat = graph_utils::GetInputNode(reshape, 1);
+  if (p_concat == nullptr || (*p_concat).OpType() != "Concat") {
+    return false;
+  }
+  if ((*p_concat).InputDefs().size() != 3) {
+    return false;
+  }
+
+  // lazy check: record unqueeze first and then check in the mask path
+  std::vector<graph_utils::EdgeEndToMatch> shape_path{
+    {0, 1, "Concat", {4, 11, 13}, kOnnxDomain},
+    {0, 0, "Unsqueeze", {1, 11, 13}, kOnnxDomain}};
+  std::vector<const Node::EdgeEnd*> edges;
+  if (!graph_utils::FindPath(reshape, true, shape_path, edges, logger)) {
+    DEBUG_LOG("Failed to find shape path");
+    return false;
+  }
+  record_node_idx = edges[1]->GetNode().Index();
+
+  std::vector<int64_t> shape;
+  const NodeArg& concat_input_arg_1 = *((*p_concat).InputDefs()[1]);
+  if (!optimizer_utils::AppendTensorFromInitializer(graph, concat_input_arg_1, shape) ||
+      shape.size() != 1 ||
+      shape[0] != -1) {
+    return false;
+  }
+
+  shape.clear();
+  const NodeArg& concat_input_arg_2 = *((*p_concat).InputDefs()[2]);
+  if (!optimizer_utils::AppendTensorFromInitializer(graph, concat_input_arg_2, shape) ||
+      shape.size() != 1 ||
+      shape[0] != hidden_size) {
+    return false;
+  }
+
+  return true;
+}
+
 /** Check the following nodes (optional Concat is excluded) for path v:
                                      v_Reshape  (shape=0,0,H,-1)
                                       |
@@ -886,9 +932,8 @@ bool MatchPastSubgraph(Graph& graph, const Node& k_concat, const Node& v_concat,
                               |
                            Reshape---[shape=0,0,-1]
 */
-
 bool CheckNodesInPathV(const Graph& graph, const Node& reshape, const Node& transpose, const Node& qkv_matmul, const Node& v_transpose, const Node& v_reshape,
-                       int64_t& num_heads, int64_t& head_size, int64_t hidden_size, const logging::Logger& logger) {
+                       int64_t& num_heads, int64_t& head_size, int64_t hidden_size, NodeIndex& record_node_idx, const logging::Logger& logger) {
   DEBUG_LOG("Start CheckNodesInPathV");
   // Internal nodes of attention subgraph only allow edges within the subgraph, and no graph output is allowed.
   // No constraints for reshape node since it is the last node of Attention.
@@ -937,31 +982,31 @@ bool CheckNodesInPathV(const Graph& graph, const Node& reshape, const Node& tran
   // initializer. We need to get the shape information from the input of concat.
   std::vector<int64_t> reshape_shape;
   if (!optimizer_utils::AppendTensorFromInitializer(graph, *(reshape.InputDefs()[1]), reshape_shape)) {
-    const Node* p_concat = graph_utils::GetInputNode(reshape, 1);
-    if (p_concat == nullptr || (*p_concat).OpType() != "Concat")
-      return false;
-    if ((*p_concat).InputDefs().size() != 3)
-      return false;
-    for (size_t input_arg_id = 0; input_arg_id < (*p_concat).InputDefs().size(); ++input_arg_id) {
-      const NodeArg& concat_input_arg_i = *((*p_concat).InputDefs()[input_arg_id]);
-      std::vector<int64_t> shape;
-      if (!optimizer_utils::AppendTensorFromInitializer(graph, concat_input_arg_i, shape)) {
-        reshape_shape.push_back(0);
-        continue;
-      }
-      reshape_shape.insert(reshape_shape.end(), shape.begin(), shape.end());
+    if (CheckDistilBertReshapeShape(graph, reshape, hidden_size, record_node_idx, logger)) {
+      DEBUG_LOG("Pass CheckNodesInPathV");
+      return true;
     }
+    return false;
   }
 
   if (reshape_shape.size() != 3 ||
       reshape_shape[0] != 0 ||
-      (reshape_shape[1] != 0 && reshape_shape[1] != -1) ||  //reshape_shape[1] != -1 added for supporting distilbert
+      (reshape_shape[1] != 0) ||
       (reshape_shape[2] != num_heads * head_size && reshape_shape[2] != -1)) {
     DEBUG_LOG("reshape initializer value is not expected");
     return false;
   }
 
   DEBUG_LOG("Pass CheckNodesInPathV");
+  return true;
+}
+
+bool CheckNodesInPathV(const Graph& graph, const Node& reshape, const Node& transpose, const Node& qkv_matmul, const Node& v_transpose, const Node& v_reshape,
+                       int64_t& num_heads, int64_t& head_size, int64_t hidden_size, const logging::Logger& logger) {
+  NodeIndex dummy_idx(0);
+  if (!CheckNodesInPathV(graph, reshape, transpose, qkv_matmul, v_transpose, v_reshape, num_heads, head_size, hidden_size, dummy_idx, logger)) {
+    return false;
+  }
   return true;
 }
 

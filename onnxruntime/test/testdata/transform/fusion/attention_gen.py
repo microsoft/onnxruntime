@@ -219,8 +219,7 @@ def GenerateModel2(model_name):
         helper.make_node("Unsqueeze", ["gather0_out"], ["unsqueeze_x_0_out"], "unsqueeze_x_0", axes=[0]),
         helper.make_node("Unsqueeze", ["gather1_out"], ["unsqueeze_x_1_out"], "unsqueeze_x_1", axes=[0]),
         helper.make_node("Concat", ["unsqueeze_x_0_out", "dim_1", "dim_1", "unsqueeze_x_1_out"], ["concat3_out"], "concat3", axis=0),
-        helper.make_node("Unsqueeze", ["gather0_out"], ["unsqueeze_x_2_out"], "unsqueeze_x_2", axes=[0]),
-        helper.make_node("Concat", ["unsqueeze_x_2_out", "dim_-1", "dim_8"], ["concat4_out"], "concat4", axis=0),
+        helper.make_node("Concat", ["unsqueeze_x_0_out", "dim_-1", "dim_8"], ["concat4_out"], "concat4", axis=0),
 
         # mask nodes
         helper.make_node("Constant", [], ["mask_input"], "constant",

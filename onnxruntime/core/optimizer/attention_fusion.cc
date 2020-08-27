@@ -265,10 +265,10 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
       // Check that LayerNormalization has 4 children: 1 Add, 3 MatMul
       const Node* add_node = nullptr;
-      int add_count = 0;
-      int matmul_count = 0;
-      int shape_count = 0;
-      int reshape_count = 0;
+      unsigned int add_count = 0;
+      unsigned int matmul_count = 0;
+      unsigned int shape_count = 0;
+      unsigned int reshape_count = 0;
       for (auto it = node.OutputNodesBegin(); it != node.OutputNodesEnd(); ++it) {
         if ((*it).OpType().compare("Add") == 0) {
           add_count++;
@@ -281,7 +281,7 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
           reshape_count++;
         }
       }
-      if (add_count == 1 && matmul_count == 3 && (shape_count >= 0 && shape_count <= 2)) {  // BERT or DistilBert
+      if (add_count == 1 && matmul_count == 3 && shape_count == node.GetOutputEdgesCount() - 4) {  // BERT or DistilBert
         if (AttentionFusion::FuseSubGraph(node, *add_node, graph, hidden_size, mask_index_map, logger)) {
           fused_count++;
           modified = true;
@@ -519,9 +519,9 @@ static bool FuseSubGraphQK(Node& layer_norm,
           |         |       |         |                                 |     \      /
           |        q_Div   /                                            |      Concat [_, 1, 1, _]
           |           |  /            |                                 |         |
-          |        qk_MatMul          |                                 |         |
-          |           |    \          |                                 |         |
-          |           |      \        |                                 |         |
+          |        qk_MatMul          |                                 |         |         --------- AttentionMask
+          |           |    \          |                                 |         |        /
+          |           |      \        |                                 |         |       /
           |           |     Shape     |                                 |         |     Equal (B = 0)
           |           |       |       |                                 |         |     /
           |           |    Expand-----|-----------------------------------------Reshape
@@ -697,7 +697,8 @@ bool AttentionFusion::FuseSubGraph(Node& layer_norm, const Node& add_after_layer
 
   int64_t num_heads = 0;  // will be updated in CheckNodesInPathV
   int64_t head_size = 0;  // will be updated in CheckNodesInPathV
-  if (!AttentionFusionHelper::CheckNodesInPathV(graph, reshape, transpose, qkv_matmul, v_transpose, v_reshape, num_heads, head_size, hidden_size, logger)) {
+  NodeIndex record_node_idx = 0; // will be updated in CheckNodesInPathV if it's distilbert model
+  if (!AttentionFusionHelper::CheckNodesInPathV(graph, reshape, transpose, qkv_matmul, v_transpose, v_reshape, num_heads, head_size, hidden_size, record_node_idx, logger)) {
     DEBUG_LOG("CheckNodesInPathV return false");
     return false;
   }
@@ -722,7 +723,7 @@ bool AttentionFusion::FuseSubGraph(Node& layer_norm, const Node& add_after_layer
   if (AttentionFusionHelper::MatchInputMaskSubgraph(graph, qkv_matmul, mask_nodes, logger, false)) {
     NodeArg* mask_input = graph.GetNode(mask_nodes.unsqueeze_1->Index())->MutableInputDefs()[0];
     return FuseSubGraphQK(layer_norm, graph, mask_nodes, mask_input, parent_path_nodes, hidden_size, num_heads, head_size, mask_index_map, logger);
-  } else if (AttentionFusionHelper::MatchInputMaskSubgraph(graph, layer_norm, qkv_matmul, mask_nodes_distilbert, logger)) {
+  } else if (AttentionFusionHelper::MatchInputMaskSubgraph(graph, layer_norm, qkv_matmul, mask_nodes_distilbert, record_node_idx, logger)) {
     NodeArg* mask_input = graph.GetNode(mask_nodes_distilbert.equal->Index())->MutableInputDefs()[0];
     return FuseSubGraphQKDistilBert(layer_norm, graph, mask_nodes_distilbert, mask_input, parent_path_nodes, hidden_size, num_heads, head_size, mask_index_map, logger);
   } else {
