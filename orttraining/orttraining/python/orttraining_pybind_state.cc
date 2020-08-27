@@ -220,13 +220,11 @@ void addObjectMethodsForTraining(py::module& m) {
   training_session
       .def(py::init([](const PySessionOptions& so) {
         Environment& env = GetEnv();
-        auto sess = onnxruntime::make_unique<PyTrainingSession>(env, so);
-        return sess;
+        return onnxruntime::make_unique<PyTrainingSession>(env, so);
       }))
       .def(py::init([]() {
         Environment& env = GetEnv();
-        auto sess = onnxruntime::make_unique<PyTrainingSession>(env, GetDefaultCPUSessionOptions());
-        return sess;
+        return onnxruntime::make_unique<PyTrainingSession>(env, GetDefaultCPUSessionOptions());
       }))
       .def("finalize", [](py::object) {
 #if defined(USE_NCCL)
