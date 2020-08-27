@@ -234,7 +234,7 @@ void dispatch_bias_softmax_softward_via_dnn_library(
 
   // binary elementise kernel requires input pitches
   TArray<int64_t> lhs_padded_strides(X_shape.NumDimensions());
-  for (int i = -1, lhs_pitch = 1; i >= -X_shape.NumDimensions(); i--) {
+  for (int i = -1, lhs_pitch = 1; i >= -(int)X_shape.NumDimensions(); i--) {
     size_t positive_i = X_shape.NumDimensions() + i;
     lhs_padded_strides[positive_i] = lhs_pitch;
     lhs_pitch *= X_shape[positive_i];
@@ -242,7 +242,7 @@ void dispatch_bias_softmax_softward_via_dnn_library(
 
   // set pitches for bias so it broadcasts along relevant dimensions
   TArray<int64_t> rhs_padded_strides(X_shape.NumDimensions());
-  for (int i = -1, rhs_pitch = 1; i >= -X_shape.NumDimensions(); i--) {
+  for (int i = -1, rhs_pitch = 1; i >= -(int)X_shape.NumDimensions(); i--) {
     size_t positive_ix = X_shape.NumDimensions() + i;
     size_t positive_ib = B_shape.NumDimensions() + i;
     if (broadcast_axis <= positive_ix && positive_ix < softmax_axis) {

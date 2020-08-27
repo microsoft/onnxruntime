@@ -46,8 +46,6 @@ Status BiasSoftmaxFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
-  printf("Running BiasSoftmaxFusion ..\n");
-
   for (auto node_index : node_topology_list) {
     auto* node_ptr = graph.GetNode(node_index);
     if (nullptr == node_ptr)
