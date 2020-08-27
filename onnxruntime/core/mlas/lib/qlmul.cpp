@@ -20,7 +20,7 @@ Abstract:
 
 #include "qladd.h"
 
-#if defined(MLAS_NEON_INTRINSICS)
+#if defined(MLAS_NEON64_INTRINSICS)
 
 template <typename SUI, bool IsLow>
 MLAS_FORCEINLINE
@@ -45,34 +45,15 @@ MlasQLinearMulVectorS16(
     float32x4_t VectorZeroPointC
     )
 {
-        int32x4_t vacc0_lo = vmull_s16(vget_low_s16(va_s16x8), vget_low_s16(vb_s16x8));
-        int32x4_t vacc0_hi = vmull_s16(vget_high_s16(va_s16x8), vget_high_s16(vb_s16x8));
-        auto vacc0_lo_f32 = vaddq_f32(VectorZeroPointC, vmulq_f32(VectorScaleRatio, vcvtq_f32_s32(vacc0_lo)));
-        auto vacc0_hi_f32 = vaddq_f32(VectorZeroPointC, vmulq_f32(VectorScaleRatio, vcvtq_f32_s32(vacc0_hi)));
-
-#ifdef MLAS_NEON64_INTRINSICS
-
-        // using rounding to nearst, ties to even
-        vacc0_lo = vcvtnq_s32_f32(vacc0_lo_f32);
-        vacc0_hi = vcvtnq_s32_f32(vacc0_hi_f32);
-
-#else //MLAS_NEON32_INTRINSICS
-
-        // ARM32 neon cvct using round to zero. Here try to Round to nearest, ties to infinite.
-        const int32x4_t VectorSignBit = vmovq_n_s32(0x80000000);
-        const int32x4_t VectorPoint5 = vreinterpretq_s32_f32(vmovq_n_f32(0.5f));
-
-        auto VectorSign_lo = vandq_s32(VectorSignBit, vreinterpretq_s32_f32(vacc0_lo_f32));
-        auto PositiveNegetivePoint5_lo = vreinterpretq_f32_s32(vorrq_s32(VectorSign_lo, VectorPoint5));
-        vacc0_lo = vcvtq_s32_f32(vaddq_f32(vacc0_lo_f32, PositiveNegetivePoint5_lo));
-
-        auto VectorSign_hi = vandq_s32(VectorSignBit, vreinterpretq_s32_f32(vacc0_hi_f32));
-        auto PositiveNegetivePoint5_hi = vreinterpretq_f32_s32(vorrq_s32(VectorSign_hi, VectorPoint5));
-        vacc0_hi = vcvtq_s32_f32(vaddq_f32(vacc0_hi_f32, PositiveNegetivePoint5_hi));
-
-#endif
-        // Pack and saturate.
-        return vcombine_s16(vqmovn_s32(vacc0_lo), vqmovn_s32(vacc0_hi));
+    int32x4_t vacc0_lo = vmull_s16(vget_low_s16(va_s16x8), vget_low_s16(vb_s16x8));
+    int32x4_t vacc0_hi = vmull_s16(vget_high_s16(va_s16x8), vget_high_s16(vb_s16x8));
+    auto vacc0_lo_f32 = vaddq_f32(VectorZeroPointC, vmulq_f32(VectorScaleRatio, vcvtq_f32_s32(vacc0_lo)));
+    auto vacc0_hi_f32 = vaddq_f32(VectorZeroPointC, vmulq_f32(VectorScaleRatio, vcvtq_f32_s32(vacc0_hi)));
+    // using rounding to nearst, ties to even
+    vacc0_lo = vcvtnq_s32_f32(vacc0_lo_f32);
+    vacc0_hi = vcvtnq_s32_f32(vacc0_hi_f32);
+    // Pack and saturate.
+    return vcombine_s16(vqmovn_s32(vacc0_lo), vqmovn_s32(vacc0_hi));
 }
 
 template<typename DataType, bool IsScalarB>
