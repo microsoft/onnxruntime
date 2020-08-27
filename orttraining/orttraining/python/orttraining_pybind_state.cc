@@ -207,13 +207,9 @@ void addObjectMethodsForTraining(py::module& m) {
   // Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
   struct PyTrainingSession : public PyInferenceSession {
     explicit PyTrainingSession(Environment& env, const PySessionOptions& so) {
-      training_sess_ = onnxruntime::make_unique<onnxruntime::training::TrainingSession>(so, env);
+      // `sess_` is inherited from PyinferenceSession
+      sess_ = onnxruntime::make_unique<onnxruntime::training::TrainingSession>(so, env);
     }
-
-    InferenceSession* GetSessionHandle() const override { return training_sess_.get(); }
-
-   private:
-    std::unique_ptr<TrainingSession> training_sess_;
   };
 
   py::class_<PyTrainingSession, PyInferenceSession> training_session(m, "TrainingSession");

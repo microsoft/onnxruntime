@@ -1139,6 +1139,9 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           "register_custom_ops_library",
           [](PySessionOptions* options, const std::string& library_path)
               -> void {
+            // We need to pass in an `OrtSessionOptions` instance because the exported method in the shared library expects that
+            // Once we have access to the `OrtCustomOpDomains` within the passed in `OrtSessionOptions` instance, we place it
+            // into the container we are maintaining for that very purpose and the `ortSessionoptions` instance can go out of scope.
             OrtSessionOptions s;
 
             options->custom_op_libraries_.emplace_back(std::make_shared<CustomOpLibrary>(library_path.c_str(), s));
