@@ -48,6 +48,32 @@ class GPUTensorToDX12TextureTelemetryEvent {
   }
 };
 
+class ConvertGPUTensorToSoftwareBitmapTelemetryEvent {
+ public:
+  ConvertGPUTensorToSoftwareBitmapTelemetryEvent(const ImageTensorDescription& tensorDesc) {
+    TraceLoggingWrite(
+        winml_trace_logging_provider,
+        "GPUTensorToDX12Texture",
+        TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
+        TraceLoggingOpcode(EVENT_TRACE_TYPE_START),
+        TraceLoggingHexInt32(tensorDesc.channelType, "Type"),
+        TraceLoggingInt64(tensorDesc.sizes[2], "Height"),
+        TraceLoggingInt64(tensorDesc.sizes[3], "Width"),
+        TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+        TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
+  }
+  ~ConvertGPUTensorToSoftwareBitmapTelemetryEvent() {
+    TraceLoggingWrite(
+        winml_trace_logging_provider,
+        "GPUTensorToDX12Texture",
+        TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
+        TraceLoggingOpcode(EVENT_TRACE_TYPE_STOP),
+        TraceLoggingHexInt32(S_OK, "HRESULT"),
+        TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+        TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
+  }
+};
+
 class ConvertCPUTensorToVideoFrameWithSoftwareBitmapTelemetryEvent {
  public:
   ConvertCPUTensorToVideoFrameWithSoftwareBitmapTelemetryEvent(const ImageTensorDescription& tensorDesc) {
@@ -506,11 +532,11 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToSoftwareBitmap(
   assert(pInputTensor != nullptr);
   assert(softwareBitmap != nullptr);
 
-  std::unique_ptr<GPUTensorToDX12TextureTelemetryEvent> telemetryLogger;
+  std::unique_ptr<ConvertGPUTensorToSoftwareBitmapTelemetryEvent> telemetryLogger;
   // we're inside a lock from the caller of this function, so it's ok to use this static
   static EventTimer eventTimer;
   if (eventTimer.Start()) {
-    telemetryLogger = std::make_unique<GPUTensorToDX12TextureTelemetryEvent>(tensorDesc);
+    telemetryLogger = std::make_unique<ConvertGPUTensorToSoftwareBitmapTelemetryEvent>(tensorDesc);
   }
 
   uint32_t tensorElementSize = tensorDesc.dataType == kImageTensorDataTypeFloat32 ? 4 : 2;
