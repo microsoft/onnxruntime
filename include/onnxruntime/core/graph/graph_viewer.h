@@ -124,20 +124,15 @@ class GraphViewer {
 
   /** Get the Node containing this Graph if IsSubgraph is true. Returns nullptr otherwise. */
   const Node* ParentNode() const noexcept { return graph_->ParentNode(); }
+
+  /** Get the consumer nodes of a node arg */
   std::vector<const Node*> GetConsumerNodes(const std::string& node_arg_name) const {
     return graph_->GetConsumerNodes(node_arg_name);
   }
-  /** Wrapper method to internal graph*/
-  // According to design, we dont' want to expose the internal const graph pointer
-  // to avoid some user just const cast to modify the graph
+
+  /** Get the producer node of a node arg */
   const Node* GetProducerNode(const std::string& node_arg_name) const {
-	  return graph_->GetProducerNode(node_arg_name);
-  }
-  void ReverseDFSFrom(const std::vector<const Node*>& from,
-	  const std::function<void(const Node*)>& enter,
-	  const std::function<void(const Node*)>& leave,
-	  const std::function<bool(const Node*, const Node*)>& comp = {}) const {
-	  return graph_->ReverseDFSFrom(from, enter, leave, comp);
+    return graph_->GetProducerNode(node_arg_name);
   }
 
  private:

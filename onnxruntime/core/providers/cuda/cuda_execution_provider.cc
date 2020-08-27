@@ -19,8 +19,6 @@
 #include "orttraining/training_ops/cuda/cuda_training_kernels.h"
 #endif
 
-#include <queue>
-
 using namespace onnxruntime::common;
 
 namespace {
@@ -31,6 +29,7 @@ struct KernelRegistryAndStatus {
 }  // namespace
 
 namespace onnxruntime {
+
 namespace cuda {
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -1426,9 +1425,6 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                      const std::vector<const KernelRegistry*>& kernel_registries) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
   std::unordered_set<const NodeArg*> defs_outside_cuda;
-  // tensors that are output of cuda kernel, usually it is just a small cpu tensor like shape
-  std::unordered_set<const NodeArg*> small_cpu_output_args;
-  std::unordered_set<NodeIndex> cuda_nodes;
 
   for (auto& node_index : graph.GetNodesInTopologicalOrder()) {
     const auto* p_node = graph.GetNode(node_index);
@@ -1527,22 +1523,15 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       ORT_THROW_IF_ERROR(node.ForEachWithIndex(
           node.OutputDefs(),
           [&](const NodeArg& def, size_t out_index) {
-            if (cuda_kernel_def->kernel_def->OutputMemoryType(out_index) != OrtMemTypeDefault) {
+            if (cuda_kernel_def->kernel_def->OutputMemoryType(out_index) != OrtMemTypeDefault)
               defs_outside_cuda.insert(&def);
-              small_cpu_output_args.insert(&def);
-            }
             return Status::OK();
           }));
-      cuda_nodes.insert(node.Index());
+      std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
+      sub_graph->nodes.push_back(node.Index());
+      result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
     }
   }
-
-  for (auto index : cuda_nodes) {
-    std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
-    sub_graph->nodes.push_back(index);
-    result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
-  }
-
   return result;
 }
 
