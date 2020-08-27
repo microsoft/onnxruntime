@@ -648,9 +648,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_USE_HOROVOD=" + (
             "ON" if args.use_horovod else "OFF"),
         "-Donnxruntime_BUILD_BENCHMARKS=" + (
-            "ON" if args.build_micro_benchmarks else "OFF"),
-        "-Donnxruntime_REDUCED_OPS_BUILD=" + (
-            "ON" if args.reduce_ops else "OFF")
+            "ON" if args.build_micro_benchmarks else "OFF")
     ]
 
     if mpi_home and os.path.exists(mpi_home):
@@ -1215,7 +1213,10 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             ctest_cmd = [ctest_path, "--build-config", config, "--verbose"]
             run_subprocess(ctest_cmd, cwd=cwd, dll_path=dll_path)
 
-        if args.enable_pybind and not args.reduce_ops:
+        if args.enable_pybind and not\
+           args.include_ops_by_model and not\
+           args.include_ops_by_file:
+
             # Disable python tests for TensorRT because many tests are
             # not supported yet.
             if args.use_tensorrt:
@@ -1518,7 +1519,7 @@ def main():
     if args.skip_tests:
         args.test = False
 
-    if args.reduce_ops:
+    if args.include_ops_by_model or args.include_ops_by_file:
 
         from exclude_unused_ops import exclude_unused_ops, get_provider_path
         include_ops_by_model = args.include_ops_by_model if args.include_ops_by_model else ''
