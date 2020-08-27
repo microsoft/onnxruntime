@@ -74,6 +74,7 @@ TrainingRunner::TrainingRunner(Parameters params, const Environment& env, Sessio
 }
 
 Status TrainingRunner::Initialize() {
+  std::cout << "[training_runner.cc] Call TrainingRunner::Initialize" << std::endl;
   if (params_.pipeline_parallel_size > 1 && !params_.pipeline_stage_paths.empty()) {
     // Pipeline partition happens outside ORT. We just load the result of partitioning forward graph.
     // Backward graph will be generated using ORT's graph transformers.
@@ -112,6 +113,7 @@ Status TrainingRunner::Initialize() {
     config.mixed_precision_config = mp;
   }
 
+  std::cout << "[training_runner.cc] always configure the loss function." << std::endl;
   // always configure the loss function
   if (params_.pipeline_parallel_size == 1 || params_.mpi_context.world_rank == params_.mpi_context.world_size - 1) {
     TrainingSession::TrainingConfiguration::LossFunctionConfiguration lf{};
@@ -193,6 +195,7 @@ Status TrainingRunner::Initialize() {
 
   opt_graph_outputs_ = config_result.opt_config_result.value().output_key_to_graph_output_name;
 
+  std::cout << "[training_runner.cc] Retrieve pipeline information from configuration result." << std::endl;
   // Retrieve pipeline information from configuration result.
   VectorString fetch_names;
   if (params_.pipeline_parallel_size > 1) {
@@ -209,7 +212,9 @@ Status TrainingRunner::Initialize() {
     };
 
     // Append first output of each event operator.
+    std::cout << "[training_runner.cc] Call ForEachOutputName" << std::endl;
     pipeline_context_.pipeline_tensor_names.ForEachOutputName(append_non_empty_name);
+    std::cout << "[training_runner.cc] Call ForEachOutputName" << std::endl;
 
     // Names of allowed inputs after pipeline partition.
     pipeline_context_.feed_names = config_result.pipeline_config_result.value().feed_names;
@@ -246,6 +251,7 @@ Status TrainingRunner::Initialize() {
   ORT_RETURN_IF_ERROR(session_.Initialize());
 
   // Checkpointing initialization
+  std::cout << "[training_runner.cc] Checkpointing initialization" << std::endl;
   // session_.Initialize() must be called prior to LoadCheckpoint()
   if (!params_.checkpoints_dir.empty()) {
     checkpoint_registry_ = onnxruntime::make_unique<CheckpointRegistry>(
@@ -259,11 +265,13 @@ Status TrainingRunner::Initialize() {
     }
   }
 
+  std::cout << "[training_runner.cc] Call TrainingRunner::Initialize" << std::endl;
   return Status::OK();
 }
 
 Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_data_loader,
                            const MapStringToString& mapped_dimensions) {
+  std::cout << "[training_runner.cc] Call TrainingRunner::Run" << std::endl;
   if (params_.mpi_context.world_rank == 0 && !params_.model_actual_running_graph_path.empty()) {
     session_.Save(params_.model_actual_running_graph_path, TrainingSession::SaveOption::NO_RELOAD);
   }
@@ -280,6 +288,7 @@ Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_
   ++round_;
   step_ = 0;
 
+  std::cout << "[training_runner.cc] Call TrainingRunner::Run" << std::endl;
   return Status::OK();
 }
 
@@ -461,7 +470,9 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const SessionMode mode,
 
       // Append first output of each event operator to fetch_names list to make sure all event ops will
       // be computed.
+      std::cout << "[training_runner.cc] Call ForEachOutputName" << std::endl;
       pipeline_context_.pipeline_tensor_names.ForEachOutputName(append_non_empty_name);
+      std::cout << "[training_runner.cc] Call ForEachOutputName" << std::endl;
     }
   } else if (mode == EvaluateStep) {
     // Set up tensor to be fetched when doing model evaluation.
@@ -487,6 +498,7 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const SessionMode mode,
 
   // We need to fetch at least one variable.
   // If there is nothing to fetch, we fetch all model outputs.
+  std::cout << "[training_runner.cc] Check fetch names" << std::endl;
   if (fetch_names.empty()) {
     fetch_names = allowed_fetch_names;
   }
@@ -600,7 +612,9 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
     CheckWorkerException(status.execution_exception);
   }
 
+  std::cout << "[training_runner.cc] Call ResetAllEvents" << std::endl;
   onnxruntime::contrib::OrtEventPool::GetInstance().ResetAllEvents();
+  std::cout << "[training_runner.cc] Call ResetAllEvents" << std::endl;
 
   // Add one after process one batch.
   ++step_;
@@ -664,6 +678,7 @@ void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
 
 Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader,
                                     const MapStringToString& mapped_dimensions) {
+  std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop" << std::endl;
   const bool enable_checkpoint_saving =
       params_.mpi_context.world_rank == 0 &&
       checkpoint_registry_ && params_.checkpoint_period > 0;
@@ -866,6 +881,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
             << "Average Step Time: " << all_steps_duration_seconds.count() / (step_ - step_start) << " Second\n"
             << "Average Step Throughput: " << params_.batch_size * (step_ - step_start) / (all_steps_duration_seconds.count()) << " Examples / Second\n";
 
+  std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop" << std::endl;
   return Status::OK();
 }
 
@@ -951,6 +967,7 @@ Status TrainingRunner::SavePerfMetrics(const size_t number_of_batches, const siz
 }
 
 Status TrainingRunner::EndTraining(IDataLoader* data_loader) {
+  std::cout << "[training_runner.cc] Call TrainingRunner::EndTraining" << std::endl;
   if (params_.use_profiler) {
     // Write profiler data to disk.
     // We do this first in case there are any problems saving the trained model.
@@ -987,6 +1004,7 @@ Status TrainingRunner::EndTraining(IDataLoader* data_loader) {
   ORT_RETURN_IF_ERROR(session_.Save(
       trained_model_with_loss_func_path, TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC));
 
+  std::cout << "[training_runner.cc] Call TrainingRunner::EndTraining" << std::endl;
   return Status::OK();
 }
 
