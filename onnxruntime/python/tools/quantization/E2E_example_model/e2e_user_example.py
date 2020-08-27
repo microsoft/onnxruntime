@@ -61,12 +61,11 @@ def preprocess_func(images_folder, height, width, size_limit=0):
 
 
 def main():
-    model_path = r'C:\Users\roli\project\onnxruntime\onnxruntime\python\tools\quantization\E2E_example_model\resnet50_v1.onnx'
-    calibration_dataset_path = r'C:\Users\roli\project\onnxruntime\onnxruntime\python\tools\quantization\E2E_example_model\test_images'
+    input_model_path = './resnet50_v1.onnx'
+    output_model_path = './calibrated_quantized_model.onnx'
+    calibration_dataset_path = './test_images'
     dr = ResNet50DataReader(calibration_dataset_path)
-    calibrated_quantized_model = quantize_static(model_path, dr)
-    output_model_path = r'C:\Users\roli\project\onnxruntime\onnxruntime\python\tools\quantization\E2E_example_model\calibrated_quantized_model.onnx'
-    onnx.save(calibrated_quantized_model, output_model_path)
+    quantize_static(input_model_path, output_model_path, dr)
     print('Calibrated and quantized model saved.')
 
 if __name__ == '__main__':

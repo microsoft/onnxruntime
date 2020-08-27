@@ -110,8 +110,7 @@ def _get_qrange_for_qType(qType):
 
 class ONNXQuantizer:
     def __init__(self,
-                 model:ONNXModel,
-                 value_infos,
+                 model,
                  per_channel,
                  mode,
                  static,
@@ -121,22 +120,19 @@ class ONNXQuantizer:
                  quantization_params,
                  nodes_to_quantize,
                  nodes_to_exclude):
-        self.model = model    
-        self.value_infos = value_infos
-        self.per_channel = per_channel  
-        self.mode = mode  
-        self.static = static
+        onnx_model = shape_inference.infer_shapes(model)
+        self.model = ONNXModel(onnx_model)
+        self.value_infos = {vi.name: vi for vi in onnx_model.graph.value_info}
+        self.per_channel = per_channel  # weight-pack per channel
+        self.mode = mode  # QuantizationMode.Value
+        self.static = static  # use static quantization for inputs.
         self.fuse_dynamic_quant = fuse_dynamic_quant
-        self.input_qType = input_qType  
-        self.weight_qType = weight_qType 
+        self.input_qType = input_qType  # quantize input type
+        self.weight_qType = weight_qType  # quantize data type
         self.quantization_params = quantization_params
-        self.nodes_to_quantize = nodes_to_quantize  
-        self.nodes_to_exclude = nodes_to_exclude  
+        self.nodes_to_quantize = nodes_to_quantize  # specific nodes to quantize
+        self.nodes_to_exclude = nodes_to_exclude  # specific nodes to exclude
         self.new_nodes = []
-
-        # self.model = ONNXModel(model_input)
-        # self.value_infos = value_infos
-        # self.fuse_dynamic_quant = fuse_dynamic_quant
 
         if not self.mode in quantization_modes:
             raise ValueError('unsupported quantization mode {}'.format(self.mode))
