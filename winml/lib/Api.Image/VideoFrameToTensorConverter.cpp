@@ -46,6 +46,32 @@ class DX12TextureToGPUTensorTelemetryEvent {
   }
 };
 
+class SoftwareBitmapToGPUTensorTelemetryEvent {
+ public:
+  SoftwareBitmapToGPUTensorTelemetryEvent(const ImageTensorDescription& tensorDesc) {
+    TraceLoggingWrite(
+        winml_trace_logging_provider,
+        "SoftwareBitmapToGPUTensor",
+        TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
+        TraceLoggingOpcode(EVENT_TRACE_TYPE_START),
+        TraceLoggingHexInt32(tensorDesc.channelType, "Type"),
+        TraceLoggingInt64(tensorDesc.sizes[2], "Height"),
+        TraceLoggingInt64(tensorDesc.sizes[3], "Width"),
+        TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+        TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
+  }
+  ~SoftwareBitmapToGPUTensorTelemetryEvent() {
+    TraceLoggingWrite(
+        winml_trace_logging_provider,
+        "SoftwareBitmapToGPUTensor",
+        TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
+        TraceLoggingOpcode(EVENT_TRACE_TYPE_STOP),
+        TraceLoggingHexInt32(S_OK, "HRESULT"),
+        TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+        TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
+  }
+};
+
 class ConvertVideoFrameWithSoftwareBitmapToCPUTensorTelemetryEvent {
  public:
   ConvertVideoFrameWithSoftwareBitmapToCPUTensorTelemetryEvent(const ImageTensorDescription& tensorDesc) {
@@ -251,7 +277,23 @@ void VideoFrameToTensorConverter::ConvertDX12TextureToGPUTensor(
   D3D12_RESOURCE_DESC outputDesc = pOutputResource->GetDesc();
   ComPtr<ID3D12Device> spDx12Device = device_cache.GetD3D12Device();
 
-  DX12TextureToGPUTensorTelemetryEvent telemetrylogger(tensorDesc);
+  std::unique_ptr<DX12TextureToGPUTensorTelemetryEvent> telemetryLogger;
+  // we're inside a lock from the caller of this function, so it's ok to use these statics
+  static bool logEvent = true;
+  static std::chrono::steady_clock::time_point startTime;
+  if (!logEvent) {
+    auto now = std::chrono::high_resolution_clock::now();
+    if (std::chrono::duration_cast<std::chrono::microseconds>(now - startTime).count() > kDurationBetweenSendingEvaluationStart) {
+      logEvent = true;
+      startTime = now;
+    }
+  }
+
+  if (logEvent) {
+    startTime = std::chrono::high_resolution_clock::now();
+    telemetryLogger = std::make_unique<DX12TextureToGPUTensorTelemetryEvent>(tensorDesc);
+    logEvent = false;
+  }
 
   // Validate input description
   WINML_THROW_HR_IF_FALSE_MSG(
@@ -415,7 +457,23 @@ void VideoFrameToTensorConverter::ConvertSoftwareBitmapToGPUTensor(
   assert(pOutputResource != nullptr);
   assert(videoFrame.SoftwareBitmap() != nullptr);
 
-  DX12TextureToGPUTensorTelemetryEvent telemetrylogger(tensorDesc);
+  std::unique_ptr<SoftwareBitmapToGPUTensorTelemetryEvent> telemetryLogger;
+  // we're inside a lock from the caller of this function, so it's ok to use these statics
+  static bool logEvent = true;
+  static std::chrono::steady_clock::time_point startTime;
+  if (!logEvent) {
+    auto now = std::chrono::high_resolution_clock::now();
+    if (std::chrono::duration_cast<std::chrono::microseconds>(now - startTime).count() > kDurationBetweenSendingEvaluationStart) {
+      logEvent = true;
+      startTime = now;
+    }
+  }
+
+  if (logEvent) {
+    startTime = std::chrono::high_resolution_clock::now();
+    telemetryLogger = std::make_unique<SoftwareBitmapToGPUTensorTelemetryEvent>(tensorDesc);
+    logEvent = false;
+  }
 
   wgi::SoftwareBitmap convertedSoftwareBitmap = nullptr;
   wgi::BitmapBounds scaledBounds = inputBounds;
@@ -524,7 +582,27 @@ void VideoFrameToTensorConverter::ConvertSoftwareBitmapToCPUTensor(
     _Inout_ void* pCPUTensor) {
   assert(softwareBitmap != nullptr);
 
-  ConvertVideoFrameWithSoftwareBitmapToCPUTensorTelemetryEvent telemetrylogger(tensorDesc);
+  std::unique_ptr<ConvertVideoFrameWithSoftwareBitmapToCPUTensorTelemetryEvent> telemetrylogger;
+
+  // we're inside a lock from the caller of this function, so it's ok to use these statics
+  static bool logEvent = true;
+  static std::chrono::steady_clock::time_point startTime;
+  if (!logEvent)
+  {
+    auto now = std::chrono::high_resolution_clock::now();
+    if (std::chrono::duration_cast<std::chrono::microseconds>(now - startTime).count() > kDurationBetweenSendingEvaluationStart)
+    {
+      logEvent = true;
+      startTime = now;
+    }
+  }
+  
+  if (logEvent)
+  {
+    startTime = std::chrono::high_resolution_clock::now();
+    telemetrylogger = std::make_unique<ConvertVideoFrameWithSoftwareBitmapToCPUTensorTelemetryEvent>(tensorDesc);
+    logEvent = false;
+  }
 
   auto height = softwareBitmap.PixelHeight();
   auto width = softwareBitmap.PixelWidth();
