@@ -27,6 +27,16 @@ struct CustomOpLibrary {
   void* library_handle_ = nullptr;
 };
 
+// Thin wrapper over internal C++ SessionOptions to accommodate custom op library management for the Python user
+struct PySessionOptions : public SessionOptions {
+  // Hold CustomOpLibrary resources so as to tie it to the life cycle of the InferenceSession needing it.
+  std::vector<std::shared_ptr<CustomOpLibrary>> custom_op_libraries_;
+
+  // Hold raw `OrtCustomOpDomain` pointers - it is upto the shared library to release the OrtCustomOpDomains
+  // that was created when the library is unloaded
+  std::vector<OrtCustomOpDomain*> custom_op_domains_;
+};
+
 // Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
 struct PyInferenceSession {
   // Hold CustomOpLibrary resources so as to tie it to the life cycle of the InferenceSession needing it.
@@ -36,16 +46,8 @@ struct PyInferenceSession {
   std::vector<std::shared_ptr<CustomOpLibrary>> custom_op_libraries_;
 
   std::unique_ptr<InferenceSession> sess_;
-};
 
-// Thin wrapper over internal C++ SessionOptions to accommodate custom op library management for the Python user
-struct PySessionOptions : public SessionOptions {
-  // Hold CustomOpLibrary resources so as to tie it to the life cycle of the InferenceSession needing it.
-  std::vector<std::shared_ptr<CustomOpLibrary>> custom_op_libraries_;
-
-  // Hold raw `OrtCustomOpDomain` pointers - it is upto the shared library to release the OrtCustomOpDomains
-  // that was created when the library is unloaded
-  std::vector<OrtCustomOpDomain*> custom_op_domains_;
+  virtual InferenceSession* GetSessionHandle() const { return sess_.get(); }
 };
 
 inline const PySessionOptions& GetDefaultCPUSessionOptions() {

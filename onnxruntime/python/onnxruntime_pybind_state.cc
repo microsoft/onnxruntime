@@ -638,7 +638,7 @@ void RegisterCustomOpDomainsAndLibraries(PyInferenceSession* sess, const PySessi
     for (size_t i = 0; i < so.custom_op_domains_.size(); ++i) {
       custom_op_domains.emplace_back(so.custom_op_domains_[i]);
     }
-    OrtPybindThrowIfError(sess->sess_->AddCustomOpDomains(custom_op_domains));
+    OrtPybindThrowIfError(sess->GetSessionHandle()->AddCustomOpDomains(custom_op_domains));
 
     // Register all custom op libraries that will be needed for the session
     sess->custom_op_libraries_.reserve(so.custom_op_libraries_.size());
@@ -926,7 +926,7 @@ void addObjectMethods(py::module& m, Environment& env) {
   py::class_<SessionIOBinding> binding(m, "SessionIOBinding");
   binding
       .def(py::init([](PyInferenceSession* sess) {
-        auto sess_io_binding = onnxruntime::make_unique<SessionIOBinding>(sess->sess_.get());
+        auto sess_io_binding = onnxruntime::make_unique<SessionIOBinding>(sess->GetSessionHandle());
         return sess_io_binding;
       }))
       .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, py::object arr_on_cpu) -> void {
@@ -1262,21 +1262,21 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       }))
       .def(
           "load_model", [](PyInferenceSession* sess, std::vector<std::string>& provider_types) {
-            OrtPybindThrowIfError(sess->sess_->Load());
-            InitializeSession(sess->sess_.get(), provider_types);
+            OrtPybindThrowIfError(sess->GetSessionHandle()->Load());
+            InitializeSession(sess->GetSessionHandle(), provider_types);
           },
           R"pbdoc(Load a model saved in ONNX format.)pbdoc")
       .def(
           "load_model", [](PyInferenceSession* sess, std::vector<std::string>& provider_types, ProviderOptionsVector& provider_options) {
-            OrtPybindThrowIfError(sess->sess_->Load());
-            InitializeSession(sess->sess_.get(), provider_types, provider_options);
+            OrtPybindThrowIfError(sess->GetSessionHandle()->Load());
+            InitializeSession(sess->GetSessionHandle(), provider_types, provider_options);
           },
           R"pbdoc(Load a model saved in ONNX format.)pbdoc")
       .def("run", [](PyInferenceSession* sess, std::vector<std::string> output_names, std::map<std::string, py::object> pyfeeds, RunOptions* run_options = nullptr) -> std::vector<py::object> {
         NameMLValMap feeds;
         for (auto _ : pyfeeds) {
           OrtValue ml_value;
-          auto px = sess->sess_->GetModelInputs();
+          auto px = sess->GetSessionHandle()->GetModelInputs();
           if (!px.first.IsOK() || !px.second) {
             throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
           }
@@ -1304,9 +1304,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           // release GIL to allow multiple python threads to invoke Run() in parallel.
           py::gil_scoped_release release;
           if (run_options != nullptr) {
-            OrtPybindThrowIfError(sess->sess_->Run(*run_options, feeds, output_names, &fetches));
+            OrtPybindThrowIfError(sess->GetSessionHandle()->Run(*run_options, feeds, output_names, &fetches));
           } else {
-            OrtPybindThrowIfError(sess->sess_->Run(feeds, output_names, &fetches));
+            OrtPybindThrowIfError(sess->GetSessionHandle()->Run(feeds, output_names, &fetches));
           }
         }
 
@@ -1322,44 +1322,44 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         return rfetch;
       })
       .def("end_profiling", [](PyInferenceSession* sess) -> std::string {
-        return sess->sess_->EndProfiling();
+        return sess->GetSessionHandle()->EndProfiling();
       })
       .def("get_providers", [](PyInferenceSession* sess) -> const std::vector<std::string>& {
-        return sess->sess_->GetRegisteredProviderTypes();
+        return sess->GetSessionHandle()->GetRegisteredProviderTypes();
       })
       .def("get_provider_options", [](const PyInferenceSession* sess) -> const ProviderOptionsMap& {
-        return sess->sess_->GetAllProviderOptions();
+        return sess->GetSessionHandle()->GetAllProviderOptions();
       })
       .def_property_readonly("session_options", [](PyInferenceSession* sess) -> const PySessionOptions& {
-        const auto& session_options = sess->sess_->GetSessionOptions();
+        const auto& session_options = sess->GetSessionHandle()->GetSessionOptions();
         return static_cast<const PySessionOptions&>(session_options);
       })
       .def_property_readonly("inputs_meta", [](const PyInferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
-        auto res = sess->sess_->GetModelInputs();
+        auto res = sess->GetSessionHandle()->GetModelInputs();
         OrtPybindThrowIfError(res.first);
         return *(res.second);
       })
       .def_property_readonly("outputs_meta", [](const PyInferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
-        auto res = sess->sess_->GetModelOutputs();
+        auto res = sess->GetSessionHandle()->GetModelOutputs();
         OrtPybindThrowIfError(res.first);
         return *(res.second);
       })
       .def_property_readonly("overridable_initializers", [](const PyInferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
-        auto res = sess->sess_->GetOverridableInitializers();
+        auto res = sess->GetSessionHandle()->GetOverridableInitializers();
         OrtPybindThrowIfError(res.first);
         return *(res.second);
       })
       .def_property_readonly("model_meta", [](const PyInferenceSession* sess) -> const onnxruntime::ModelMetadata& {
-        auto res = sess->sess_->GetModelMetadata();
+        auto res = sess->GetSessionHandle()->GetModelMetadata();
         OrtPybindThrowIfError(res.first);
         return *(res.second);
       })
       .def("run_with_iobinding", [](PyInferenceSession* sess, SessionIOBinding& io_binding, RunOptions* run_options = nullptr) -> void {
         Status status;
         if (!run_options)
-          status = sess->sess_->Run(*io_binding.Get());
+          status = sess->GetSessionHandle()->Run(*io_binding.Get());
         else
-          status = sess->sess_->Run(*run_options, *io_binding.Get());
+          status = sess->GetSessionHandle()->Run(*run_options, *io_binding.Get());
         if (!status.IsOK())
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
       });
