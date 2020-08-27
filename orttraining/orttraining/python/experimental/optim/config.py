@@ -53,7 +53,7 @@ class _OptimizerConfig(object):
                  " and additional entries for custom hyper parameter values")
             for k, _ in group.items():
                 if k != 'params':
-                    assert k in defaults, f"'params' has 'k' hyper parameter not present at 'defaults'"
+                    assert k in defaults or k.replace("_coef", "") in defaults, f"'params' has {k} hyper parameter not present at 'defaults'"
 
         self.name = name
         self.lr = float(defaults['lr'])
@@ -74,6 +74,9 @@ class _OptimizerConfig(object):
         for name, value in self.defaults.items():
             if name not in param_group:
                 param_group.setdefault(name, value)
+
+        if "lambda_coef" in param_group:
+            param_group["lambda"] = param_group.pop("lambda_coef")
 
         self.params.append(param_group)
 
@@ -160,7 +163,7 @@ class AdamConfig(_OptimizerConfig):
         defaults = {'lr': lr,
                     'alpha': alpha,
                     'beta': beta,
-                    'lambda_coef': lambda_coef,
+                    'lambda': lambda_coef,
                     'epsilon': epsilon,
                     'do_bias_correction': do_bias_correction,
                     'weight_decay_mode': weight_decay_mode}
@@ -192,7 +195,7 @@ class LambConfig(_OptimizerConfig):
         ratio_min (float, default is -inf): Lower bound on confidence ratio.
         ratio_max (float, default is inf): Upper bound on confidence ratio.
         epsilon (float, default is 1e-6): Small scalar to avoid dividing by zero.
-        do_bias_correction (bool, default is True): Compute unbiased 1st and 2nd momentums.
+        do_bias_correction (bool, default is False): Compute unbiased 1st and 2nd momentums.
 
     NOTE: To prevent model parameters to be trained, refer to :py:attr:`.ORTTrainerOptions.utils.frozen_weights`.
 
@@ -208,7 +211,7 @@ class LambConfig(_OptimizerConfig):
     """
 
     def __init__(self, params=[], lr=0.001, alpha=0.9, beta=0.999, lambda_coef=0.0,
-                 ratio_min=float('-inf'), ratio_max=float('inf'), epsilon=1e-6, do_bias_correction=True):
+                 ratio_min=float('-inf'), ratio_max=float('inf'), epsilon=1e-6, do_bias_correction=False):
         assert lr >= 0, "'lr' must be a positive number"
         assert alpha >= 0, "'alpha' must be a positive number"
         assert beta >= 0, "'beta' must be a positive number"
@@ -223,7 +226,7 @@ class LambConfig(_OptimizerConfig):
         defaults = {'lr': lr,
                     'alpha': alpha,
                     'beta': beta,
-                    'lambda_coef': lambda_coef,
+                    'lambda': lambda_coef,
                     'ratio_min': ratio_min,
                     'ratio_max': ratio_max,
                     'epsilon': epsilon,

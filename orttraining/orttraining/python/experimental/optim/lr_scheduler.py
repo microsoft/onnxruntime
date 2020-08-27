@@ -19,6 +19,15 @@ class _LRScheduler(object):
     def __init__(self):
         self._last_lr = []
 
+    def _step(self, train_step_info):
+        r"""Internal method called to compute learning rate"""
+
+        # Store last lr for future inquiry
+        new_lr = self.get_lr(train_step_info)
+        self._last_lr = new_lr
+
+        return new_lr
+
     def get_lr(self, train_step_info):
         r"""Returns a list of learning rate
 
@@ -37,26 +46,18 @@ class _LRScheduler(object):
         r""" Return last computed learning rate by LR Scheduler"""
         return self._last_lr
 
-    def step(self, train_step_info):
-        r"""Public method called to update learning rate
-
-        NOTE: This class is used internally.
-        """
-
-        # Store last lr for future inquiry
-        new_lr = self.get_lr(train_step_info)
-        self._last_lr = new_lr
-
-        # Update ORTTrainer's optimizer config instance
-        train_step_info.optimizer_config.lr = new_lr[0]
-
 
 class ConstantWarmupLRScheduler(_LRScheduler):
-    r"""Constant warmup strategy for learning rate update
+    r"""Constant warmup strategy for learning rate update based on HuggingFace's Transformers implementation
+
+    Creates a schedule with constant learning rate preceded by a warmup period during which the learning rate
+    increases linearly between 0 and the initial lr set in the optimizer.
 
     Learning rate update strategy:
-        lr = base_lr * (step / total_steps) / warmup, when step / total_steps < warmup
-        lr = base_lr, when step / total_steps >= warmup
+        When current_step < warmup
+            lr = base_lr * (current_step / max(1, num_warmup_steps))
+        Otherwise,
+            lr = base_lr
 
     Args:
         total_steps (int): total training steps for learning.
@@ -90,28 +91,35 @@ class ConstantWarmupLRScheduler(_LRScheduler):
 
         self.total_steps = total_steps
         self.warmup = warmup
+        self._num_warmup_steps = warmup * total_steps
 
     def _warmup_constant(self, train_step_info):
-        # Adds 1 to train_step_info.optimization_step and self.total_steps to prevent zero'ing lr
-        x = (train_step_info.optimization_step + 1) / (self.total_steps + 1)
-        if x < self.warmup:
-            return x/self.warmup
+        if train_step_info.optimization_step < self._num_warmup_steps:
+            return float(train_step_info.optimization_step) / float(max(1, self._num_warmup_steps))
         return 1.0
 
     def get_lr(self, train_step_info):
-        warmup = self._warmup_constant(train_step_info)
-        return [train_step_info.optimizer_config.lr * warmup]
+        return [train_step_info.optimizer_config.lr * self._warmup_constant(train_step_info)]
 
 
 class CosineWarmupLRScheduler(_LRScheduler):
-    r"""Cosine warmup strategy for learning rate update
+    r"""Cosine warmup strategy for learning rate update based on HuggingFace's Transformers implementation
+
+    Creates a schedule with learning rate that decreases following the values of the cosine function between the
+    initial lr set in the :py:class`.optim._OptimizerConfig` to 0, after a warmup period during which it increases
+    linearly between 0 and the initial lr set in the :py:class`.optim._OptimizerConfig`.
 
     Learning rate update strategy:
-        lr = base_lr * (step / total_steps) / warmup, when step / total_steps < warmup
-        lr = base_lr * 0.5 * (1.0 + cosine(pi * (step / total_steps))), when step / total_steps >= warmup
+        When current_step < warmup
+            lr = base_lr * (current_step / max(1, num_warmup_steps)), when
+        Otherwise
+            lr = base_lr * max(0, 0.5 * (1.0 + math.cos(math.pi * cycles * 2.0 * progress))), where
+                progress = current_step - num_warmup_steps / max(1, total_steps - num_warmup_steps)
 
     Args:
         total_steps (int): total training steps for learning.
+        cycles (float, default is 0.5): number of waves in the cosine schedule.
+            The default decreases from max value to 0, following a half-cosine
         warmup (float, default is 0.002): portion of total steps for warmup. Range is (0, 1]
 
     Example:
@@ -131,35 +139,44 @@ class CosineWarmupLRScheduler(_LRScheduler):
                 outputs = ort_trainer.train_step(**inputs)
     """
 
-    def __init__(self, total_steps, warmup=0.002):
+    def __init__(self, total_steps, cycles=0.5, warmup=0.002):
         super().__init__()
         assert isinstance(total_steps, int) and total_steps > 0,\
             "total_steps must be a strict positive number"
+        assert isinstance(cycles, float) and cycles > 0,\
+            "cycles must be a positive float"
         assert isinstance(warmup, float) and warmup >= 0 and warmup < 1,\
             "warmup must be a float between (0, 1]"
         assert total_steps > warmup,\
             "total_steps must be greater than warmup"
 
         self.total_steps = total_steps
+        self.cycles = cycles
         self.warmup = warmup
+        self._num_warmup_steps = warmup * total_steps
 
     def _warmup_cosine(self, train_step_info):
-        # Adds 1 to train_step_info.optimization_step and self.total_steps to prevent zero'ing lr
-        x = (train_step_info.optimization_step + 1) / (self.total_steps + 1)
-        if x < self.warmup:
-            return x/self.warmup
-        return 0.5 * (1.0 + math.cos(math.pi * x))
+        if train_step_info.optimization_step < self._num_warmup_steps:
+            return float(train_step_info.optimization_step) / float(max(1, self._num_warmup_steps))
+        progress = float(train_step_info.optimization_step - self._num_warmup_steps) / float(max(1, self.total_steps - self._num_warmup_steps))
+        return max(0.0, 0.5 * (1.0 + math.cos(math.pi * float(self.cycles) * 2.0 * progress)))
 
     def get_lr(self, train_step_info):
         return [train_step_info.optimizer_config.lr * self._warmup_cosine(train_step_info)]
 
 
 class LinearWarmupLRScheduler(_LRScheduler):
-    r"""Linear warmup strategy for learning rate update
+    r"""Linear warmup strategy for learning rate update based on HuggingFace's Transformers implementation
+
+    Creates a schedule with a learning rate that decreases linearly from the initial lr
+    set in the :py:class`.optim._OptimizerConfig` to 0, after a warmup period during which
+    it increases linearly from 0 to the initial lr set in the :py:class`.optim._OptimizerConfig`.
 
     Learning rate update strategy:
-        lr = base_lr * (step / total_steps) / warmup, when step / total_steps < warmup
-        lr = base_lr * max(((step / total_steps) - 1.) / (warmup - 1.), 0.), when step / total_steps >= warmup
+        When current_step < warmup
+            lr = base_lr * (current_step / max(1, num_warmup_steps))
+        Otherwise
+            lr = base_lr * (max(0, total_steps - current_step) / max(1, total_steps - num_warmup_steps)))
 
     Args:
         total_steps (int): total training steps for learning.
@@ -193,29 +210,36 @@ class LinearWarmupLRScheduler(_LRScheduler):
 
         self.total_steps = total_steps
         self.warmup = warmup
+        self._num_warmup_steps = warmup * total_steps
 
     def _warmup_linear(self, train_step_info):
-        # Adds 1 to train_step_info.optimization_step and self.total_steps to prevent zero'ing lr
-        x = (train_step_info.optimization_step + 1) / (self.total_steps + 1)
-        if x < self.warmup:
-            return x / self.warmup
-        return max((x - 1.) / (self.warmup - 1.), 0.)
+        if train_step_info.optimization_step < self._num_warmup_steps:
+            return float(train_step_info.optimization_step) / float(max(1, self._num_warmup_steps))
+        return max(0.0, float(self.total_steps - train_step_info.optimization_step) / float(max(1, self.total_steps - self._num_warmup_steps)))
 
     def get_lr(self, train_step_info):
         return [train_step_info.optimizer_config.lr * self._warmup_linear(train_step_info)]
 
 
 class PolyWarmupLRScheduler(_LRScheduler):
-    r"""Polynomial warmup strategy for learning rate update
+    r"""Polynomial warmup strategy for learning rate update based on HuggingFace's Transformers implementation
+
+    Creates a schedule with a learning rate that decreases as a polynomial decay
+    from the initial lr set in the :py:class`.optim._OptimizerConfig` to  lr_end,
+    after a warmup period during which it increases linearly from 0 to the
+    initial lr set in the :py:class`.optim._OptimizerConfig`
 
     Learning rate update strategy:
-        lr = base_lr * (step / total_steps) / warmup, when step / total_steps < warmup
-        lr = base_lr * (1 − step / total_steps ) ^ degree, when step / total_steps >= warmup
+        When current_step < warmup
+            lr = base_lr * (current_step / max(1, num_warmup_steps))
+        Otherwise
 
     Args:
         total_steps (int): total training steps for learning.
+        lr_end (float, default 1e-7): final learning rate value.
+            Applies to the default lr and parameter groups in :py:class:`.optim._OptimizerConfig`
+        power (float, default is 1.0): polynomial factor
         warmup (float, default is 0.002): portion of total steps for warmup. Range is (0, 1]
-        degree (float, default is 0.5): polynomial power
 
     Example:
         .. code-block:: python
@@ -234,27 +258,41 @@ class PolyWarmupLRScheduler(_LRScheduler):
                 outputs = ort_trainer.train_step(**inputs)
     """
 
-    def __init__(self, total_steps, warmup=0.002, degree=0.5):
+    def __init__(self, total_steps, lr_end=1e-7, power=1.0, warmup=0.002):
         super().__init__()
         assert isinstance(total_steps, int) and total_steps > 0,\
             "total_steps must be a strict positive number"
+        assert isinstance(lr_end, float) and lr_end >= 0,\
+            "lr_end must be a positive float"
         assert isinstance(warmup, float) and warmup >= 0 and warmup < 1,\
             "warmup must be a float between (0, 1]"
+        assert isinstance(power, float) and power >= 0,\
+            "power must be a positive float"
         assert total_steps > warmup,\
             "total_steps must be greater than warmup"
-        assert isinstance(degree, float) and warmup >= 0,\
-            "degree must be a positive float"
 
         self.total_steps = total_steps
+        self.lr_end = lr_end
+        self.power = power
         self.warmup = warmup
-        self.degree = degree
+        self._num_warmup_steps = warmup * total_steps
 
     def _warmup_poly(self, train_step_info):
-        # Adds 1 to train_step_info.optimization_step and self.total_steps to prevent zero'ing lr
-        x = (train_step_info.optimization_step + 1) / (self.total_steps + 1)
-        if x < self.warmup:
-            return x/self.warmup
-        return (1.0 - x)**self.degree
+
+        assert train_step_info.optimizer_config.lr > self.lr_end,\
+            f"lr_end ({lr_end}) must be be smaller than initial lr ({train_step_info.optimizer_config.lr})"
+
+        if train_step_info.optimization_step < self._num_warmup_steps:
+            return float(train_step_info.optimization_step) / float(max(1, self._num_warmup_steps))
+        elif train_step_info.optimization_step > self.total_steps:
+            return self.lr_end / train_step_info.optimizer_config.lr
+        else:
+            lr_range = train_step_info.optimizer_config.lr - self.lr_end
+            decay_steps = self.total_steps - self._num_warmup_steps
+            pct_remaining = 1 - (train_step_info.optimization_step - self._num_warmup_steps) / decay_steps
+            decay = lr_range * pct_remaining ** self.power + self.lr_end
+            return decay / train_step_info.optimizer_config.lr
+
 
     def get_lr(self, train_step_info):
         return [train_step_info.optimizer_config.lr * self._warmup_poly(train_step_info)]

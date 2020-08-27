@@ -377,7 +377,8 @@ class TrainingSession : public InferenceSession {
                                                  const TrainingConfiguration::GraphTransformerConfiguration& config);
 
   /** configure initial transformers for training */
-  void AddPreTrainingTransformers(GraphTransformerManager& transformer_manager,
+  void AddPreTrainingTransformers(const IExecutionProvider& execution_provider,  // for constant folding
+                                  GraphTransformerManager& transformer_manager,
                                   const std::unordered_set<std::string>& weights_to_train,
                                   const TrainingConfiguration::GraphTransformerConfiguration& config,
                                   TransformerLevel graph_optimization_level = TransformerLevel::MaxLevel,

@@ -139,9 +139,10 @@ TEST_F(GraphTransformationTests, ConstantFolding) {
   Graph& graph = model->MainGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 2);
-
+  std::unique_ptr<CPUExecutionProvider> e =
+      onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<ConstantFolding>(), TransformerLevel::Level1);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<ConstantFolding>(*e.get()), TransformerLevel::Level1);
 
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
@@ -156,9 +157,10 @@ TEST_F(GraphTransformationTests, ConstantFoldingNodesOnDifferentEP) {
   Graph& graph = model->MainGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 2);
-
+  std::unique_ptr<CPUExecutionProvider> e =
+      onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<ConstantFolding>(), TransformerLevel::Level1);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<ConstantFolding>(*e.get()), TransformerLevel::Level1);
 
   // assign all nodes to CUDA. the constant folding should override this to perform the constant folding on cpu
   for (auto& node : graph.Nodes()) {
@@ -236,9 +238,10 @@ TEST_F(GraphTransformationTests, ConstantFoldingSubgraph) {
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Add"] == 2);  // one in each subgraph
-
+  std::unique_ptr<CPUExecutionProvider> e =
+      onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<ConstantFolding>(), TransformerLevel::Level1);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<ConstantFolding>(*e.get()), TransformerLevel::Level1);
 
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
@@ -261,7 +264,9 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithShapeToInitializer) {
   std::unordered_set<std::string> excluded_initializers;
   excluded_initializers.insert("matmul_weight");
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<ConstantFolding>(compatible_eps, excluded_initializers), TransformerLevel::Level1);
+  std::unique_ptr<CPUExecutionProvider> e =
+      onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  graph_transformation_mgr.Register(onnxruntime::make_unique<ConstantFolding>(*e.get(), compatible_eps, excluded_initializers), TransformerLevel::Level1);
 
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_).IsOK());
 
@@ -283,7 +288,9 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithScalarShapeToInitializer) {
 
   std::unordered_set<std::string> compatible_eps;
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<ConstantFolding>(compatible_eps), TransformerLevel::Level1);
+  std::unique_ptr<CPUExecutionProvider> e =
+      onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  graph_transformation_mgr.Register(onnxruntime::make_unique<ConstantFolding>(*e.get(), compatible_eps), TransformerLevel::Level1);
 
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_).IsOK());
 
@@ -1551,6 +1558,42 @@ TEST_F(GraphTransformationTests, ReshapeFusionConcatSubgraphWithMul) {
   }
 }
 
+TEST_F(GraphTransformationTests, ReshapeFusionDistilBertTest) {
+  auto model_uri = MODEL_FOLDER "fusion/reshape_fusion_distillbert.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<ReshapeFusion>(), TransformerLevel::Level1);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Shape"] == 0);
+  ASSERT_TRUE(op_to_count["Gather"] == 0);
+  ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
+  ASSERT_TRUE(op_to_count["Concat"] == 0);
+  ASSERT_TRUE(op_to_count["Reshape"] == 1);
+
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() == "Reshape") {
+      const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
+      ASSERT_TRUE(tensor_proto != nullptr);
+
+      auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
+      EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
+      EXPECT_EQ(initializer->size(), 4);
+
+      const int64_t* val = initializer->data<int64_t>();
+      EXPECT_EQ(val[0], 0);
+      EXPECT_EQ(val[1], -1);
+      EXPECT_EQ(val[2], 2);
+      EXPECT_EQ(val[3], 4);
+    }
+  }
+}
+
 TEST_F(GraphTransformationTests, ExpandElimination) {
   auto model_uri = MODEL_FOLDER "expand_elimination.onnx";
   std::shared_ptr<Model> model;
@@ -2566,6 +2609,28 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat6) {
   EXPECT_EQ(op_to_count["Cast"], 3);
   EXPECT_EQ(op_to_count["Attention"], 1);
   EXPECT_EQ(op_to_count["EmbedLayerNormalization"], 1);
+}
+
+//DistilBert
+TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat7) {
+  auto model_uri = MODEL_FOLDER "fusion/embed_layer_norm_format7.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<EmbedLayerNormFusion>(), TransformerLevel::Level2);
+  auto ret1 = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
+  ASSERT_TRUE(ret1.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["EmbedLayerNormalization"], 1);
+  EXPECT_EQ(op_to_count["Attention"], 1);
+  EXPECT_EQ(op_to_count["Cast"], 2);
+  EXPECT_EQ(op_to_count["Shape"], 0);
+  EXPECT_EQ(op_to_count["Gather"], 0);
+  EXPECT_EQ(op_to_count["Unsqueeze"], 0);
+  EXPECT_EQ(op_to_count["ReduceSum"], 0);
 }
 
 TEST_F(GraphTransformationTests, EmbedLayerNormFusionMultiple) {

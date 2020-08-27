@@ -7,6 +7,7 @@
 #include "core/graph/model.h"
 #include "core/session/IOBinding.h"
 #include "core/providers/cpu/controlflow/utils.h"
+#include "core/providers/cpu/cpu_execution_provider.h"
 #include "orttraining/core/graph/loss_function_builder.h"
 #include "orttraining/core/graph/optimizer_builder.h"
 #include "orttraining/core/framework/checkpointing.h"
@@ -486,7 +487,14 @@ static Status AddGradientAccumulationNodes(Graph& graph,
 Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,
                                                         const TrainingConfiguration::GraphTransformerConfiguration& config) {
   GraphTransformerManager graph_transformation_mgr{1};
-  AddPreTrainingTransformers(graph_transformation_mgr, weights_to_train, config);
+  // TODO: ideally we can just reuse the CPU EP registered with the session, but in the training session case
+  // the EPs are registered after ConfigureForTraining and before Initialize is called. Hence we don't have access
+  // to the registered CPU EP at this stage. Hence creating the EP here again. This is still much better than
+  // creating an EP instance for every single node in ConstantFolding.
+  // Create execution frame for executing constant nodes.
+  std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
+      onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  AddPreTrainingTransformers(*cpu_execution_provider, graph_transformation_mgr, weights_to_train, config);
 
   // apply transformers
   Graph& graph = model_->MainGraph();
@@ -498,15 +506,17 @@ Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set
 }
 
 // Registers all the pre transformers with transformer manager
-void TrainingSession::AddPreTrainingTransformers(GraphTransformerManager& transformer_manager,
+void TrainingSession::AddPreTrainingTransformers(const IExecutionProvider& execution_provider,
+                                                 GraphTransformerManager& transformer_manager,
                                                  const std::unordered_set<std::string>& weights_to_train,
                                                  const TrainingConfiguration::GraphTransformerConfiguration& config,
                                                  TransformerLevel graph_optimization_level,
                                                  const std::vector<std::string>& custom_list) {
   auto add_transformers = [&](TransformerLevel level) {
     // Generate and register transformers for level
+
     auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(
-        level, weights_to_train, config, custom_list);
+        level, weights_to_train, config, execution_provider, custom_list);
     for (auto& entry : transformers_to_register) {
       transformer_manager.Register(std::move(entry), level);
     }

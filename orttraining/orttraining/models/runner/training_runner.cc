@@ -44,7 +44,9 @@ static SessionOptions SESSION_OPTION = {
     {},                                //inter_op_param
     overrides,                         //free_dimension_overrides
     true,                              //use_per_session_threads
-    true                               //thread_pool_allow_spinning
+    true,                              //thread_pool_allow_spinning
+    false,                             //use_deterministic_compute
+    {},                                //session_configurations
 };
 
 TrainingRunner::TrainingRunner(Parameters params, const Environment& env)
@@ -78,8 +80,8 @@ Status TrainingRunner::Initialize() {
   if (params_.pipeline_parallel_size > 1 && !params_.pipeline_stage_paths.empty()) {
     // Pipeline partition happens outside ORT. We just load the result of partitioning forward graph.
     // Backward graph will be generated using ORT's graph transformers.
-    ORT_ENFORCE(static_cast<size_t>(params_.mpi_context.world_size) == params_.pipeline_stage_paths.size());
-    ORT_RETURN_IF_ERROR(session_.Load(params_.pipeline_stage_paths[params_.mpi_context.world_rank]));
+    ORT_ENFORCE(static_cast<size_t>(MPIContext::GetInstance().GetWorldSize()) == params_.pipeline_stage_paths.size());
+    ORT_RETURN_IF_ERROR(session_.Load(params_.pipeline_stage_paths[MPIContext::GetInstance().GetWorldRank()]));
   } else {
     ORT_RETURN_IF_ERROR(session_.Load(params_.model_path));
   }
@@ -97,10 +99,10 @@ Status TrainingRunner::Initialize() {
 
   config.gradient_accumulation_steps = params_.gradient_accumulation_steps;
 
-  config.distributed_config.world_rank = params_.mpi_context.world_rank;
-  config.distributed_config.world_size = params_.mpi_context.world_size;
-  config.distributed_config.local_size = params_.mpi_context.local_size;
-  config.distributed_config.local_rank = params_.mpi_context.local_rank;
+  config.distributed_config.world_rank = MPIContext::GetInstance().GetWorldRank();
+  config.distributed_config.world_size = MPIContext::GetInstance().GetWorldSize();
+  config.distributed_config.local_size = MPIContext::GetInstance().GetLocalSize();
+  config.distributed_config.local_rank = MPIContext::GetInstance().GetLocalRank();
   config.distributed_config.data_parallel_size = params_.data_parallel_size;
   config.distributed_config.horizontal_parallel_size = params_.horizontal_parallel_size;
   config.distributed_config.pipeline_parallel_size = params_.pipeline_parallel_size;
@@ -115,7 +117,7 @@ Status TrainingRunner::Initialize() {
 
   std::cout << "[training_runner.cc] always configure the loss function." << std::endl;
   // always configure the loss function
-  if (params_.pipeline_parallel_size == 1 || params_.mpi_context.world_rank == params_.mpi_context.world_size - 1) {
+  if (params_.pipeline_parallel_size == 1 || MPIContext::GetInstance().GetWorldRank() == MPIContext::GetInstance().GetWorldSize() - 1) {
     TrainingSession::TrainingConfiguration::LossFunctionConfiguration lf{};
     lf.loss_function_info = params_.loss_func_info;
 
@@ -271,8 +273,10 @@ Status TrainingRunner::Initialize() {
 
 Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_data_loader,
                            const MapStringToString& mapped_dimensions) {
-  std::cout << "[training_runner.cc] Call TrainingRunner::Run" << std::endl;
   if (params_.mpi_context.world_rank == 0 && !params_.model_actual_running_graph_path.empty()) {
+  std::cout << "[training_runner.cc] Call TrainingRunner::Run" << std::endl;
+  if (MPIContext::GetInstance().GetWorldRank() == 0 && !params_.model_actual_running_graph_path.empty()) {
+
     session_.Save(params_.model_actual_running_graph_path, TrainingSession::SaveOption::NO_RELOAD);
   }
 
@@ -573,7 +577,7 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
   // We must join here because main thread needs to access thread-produced
   // fetches and those fetches must be ready.
   pipeline_worker_pool_.JoinAll();
-  for(auto& status : pipeline_worker_pool_.worker_states){
+  for (auto& status : pipeline_worker_pool_.worker_states) {
     CheckWorkerException(status.execution_exception);
   }
 
@@ -608,7 +612,7 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
   // Wait all workers to finish this around of pipeline parallism.
   // The last batch in a pipeline collects gradient and update the model.
   pipeline_worker_pool_.JoinAll();
-  for(auto& status : pipeline_worker_pool_.worker_states){
+  for (auto& status : pipeline_worker_pool_.worker_states) {
     CheckWorkerException(status.execution_exception);
   }
 
@@ -680,7 +684,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
                                     const MapStringToString& mapped_dimensions) {
   std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop" << std::endl;
   const bool enable_checkpoint_saving =
-      params_.mpi_context.world_rank == 0 &&
+      MPIContext::GetInstance().GetWorldRank() == 0 &&
       checkpoint_registry_ && params_.checkpoint_period > 0;
 
   std::unique_ptr<perftest::utils::ICPUUsage> cpu_usage_calculator;
