@@ -251,17 +251,6 @@ public:
     }
 };
 
-// A specific type of operation for registration.
-template <uint32_t OpsetVersion>
-struct DmlOperatorResizeTemplate : public DmlOperatorResize
-{
-public:
-    DmlOperatorResizeTemplate(const MLOperatorKernelCreationContext& kernelInfo)
-    :   DmlOperatorResize(kernelInfo, OpsetVersion)
-    {
-    }
-};
-
 void CALLBACK QueryResize(IMLOperatorSupportQueryContextPrivate* context, bool* isSupported)
 {
     *isSupported = false;

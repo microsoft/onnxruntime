@@ -143,6 +143,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(Mean);
 DML_OP_EXTERN_CREATION_FUNCTION(Max);
 DML_OP_EXTERN_CREATION_FUNCTION(Min);
 DML_OP_EXTERN_CREATION_FUNCTION(ReduceSum);
+DML_OP_EXTERN_CREATION_FUNCTION(Einsum12);
 DML_OP_EXTERN_CREATION_FUNCTION(ReduceMean);
 DML_OP_EXTERN_CREATION_FUNCTION(ReduceProd);
 DML_OP_EXTERN_CREATION_FUNCTION(ReduceLogSum);
@@ -244,6 +245,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(ConvInteger);
 DML_OP_EXTERN_QUERY_FUNCTION(MaxPool);
 DML_OP_EXTERN_QUERY_FUNCTION(Slice);
 DML_OP_EXTERN_QUERY_FUNCTION(Resize);
+DML_OP_EXTERN_QUERY_FUNCTION(EinSum);
 
 constexpr static std::array<const char*, 1> typeNameListDefault = {"T"};
 constexpr static std::array<const char*, 2> typeNameListTwo = { "T1", "T2" };
@@ -460,6 +462,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(      9,  Where,                              typeNameListWhere,              supportedTypeListWhere,             DmlGraphSupport::Supported)},
     {REG_INFO(      7,  ReduceSum,                          typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
     {REG_INFO(     11,  ReduceSum,                          typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
+    {REG_INFO_VER( 12,  Einsum,                             typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported,      requiredConstantCpuInputs(), std::nullopt, QueryEinSum )},
     {REG_INFO(      7,  ReduceMean,                         typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
     {REG_INFO(     11,  ReduceMean,                         typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
     {REG_INFO(      7,  ReduceProd,                         typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
@@ -600,7 +603,7 @@ void RegisterDmlOperators(IMLOperatorRegistry* registry)
         MLOperatorKernelDescription desc = {};
         desc.domain = information.domain;
         desc.name = information.operatorName;
-        desc.executionType = MLOperatorExecutionType::D3D12; 
+        desc.executionType = MLOperatorExecutionType::D3D12;
 
         // The graph must be configured with operators from only the legacy DML API, or only the new DML API
         bool kernelSupportsGraph = !bool(information.dmlGraphSupport & DmlGraphSupport::NotSupported);

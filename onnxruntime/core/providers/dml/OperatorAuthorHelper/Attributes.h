@@ -33,6 +33,7 @@ namespace AttrName
     static constexpr const char* Dtype = "dtype";
     static constexpr const char* Ends = "ends";
     static constexpr const char* Epsilon = "epsilon";
+    static constexpr const char* Equation = "equation";
     static constexpr const char* ExcludeOutside = "exclude_outside";
     static constexpr const char* Exclusive = "exclusive";
     static constexpr const char* Exponent = "exponent";

@@ -269,7 +269,7 @@ gsl::span<const uint32_t> TensorDesc::GetStrides() const
     {
         return {};
     }
-    return { m_strides, m_strides + m_bufferTensorDesc.DimensionCount }; 
+    return { m_strides, m_strides + m_bufferTensorDesc.DimensionCount };
 }
 
 DML_TENSOR_DESC TensorDesc::GetDmlDesc()
