@@ -5,6 +5,7 @@
 
 #include <winmeta.h>  // winmeta needed for TraceLoggingKeyword
 #include <TraceLoggingProvider.h>
+#include <TraceloggingConfig.h>
 #include <evntrace.h>
 #include <MemoryBuffer.h>
 
@@ -31,7 +32,9 @@ class GPUTensorToDX12TextureTelemetryEvent {
         TraceLoggingOpcode(EVENT_TRACE_TYPE_START),
         TraceLoggingHexInt32(tensorDesc.channelType, "Type"),
         TraceLoggingInt64(tensorDesc.sizes[2], "Height"),
-        TraceLoggingInt64(tensorDesc.sizes[3], "Width"));
+        TraceLoggingInt64(tensorDesc.sizes[3], "Width"),
+        TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+        TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
   }
   ~GPUTensorToDX12TextureTelemetryEvent() {
     TraceLoggingWrite(
@@ -39,7 +42,9 @@ class GPUTensorToDX12TextureTelemetryEvent {
         "GPUTensorToDX12Texture",
         TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
         TraceLoggingOpcode(EVENT_TRACE_TYPE_STOP),
-        TraceLoggingHexInt32(S_OK, "HRESULT"));
+        TraceLoggingHexInt32(S_OK, "HRESULT"),
+        TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+        TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
   }
 };
 
@@ -53,7 +58,9 @@ class ConvertCPUTensorToVideoFrameWithSoftwareBitmapTelemetryEvent {
         TraceLoggingOpcode(EVENT_TRACE_TYPE_START),
         TraceLoggingHexInt32(tensorDesc.channelType, "Type"),
         TraceLoggingInt64(tensorDesc.sizes[2], "Height"),
-        TraceLoggingInt64(tensorDesc.sizes[3], "Width"));
+        TraceLoggingInt64(tensorDesc.sizes[3], "Width"),
+        TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+        TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
   }
   ~ConvertCPUTensorToVideoFrameWithSoftwareBitmapTelemetryEvent() {
     TraceLoggingWrite(
@@ -61,7 +68,9 @@ class ConvertCPUTensorToVideoFrameWithSoftwareBitmapTelemetryEvent {
         "ConvertCPUTensorToVideoFrameWithSoftwareBitmap",
         TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
         TraceLoggingOpcode(EVENT_TRACE_TYPE_STOP),
-        TraceLoggingHexInt32(S_OK, "HRESULT"));
+        TraceLoggingHexInt32(S_OK, "HRESULT"),
+        TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+        TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
   }
 };
 
