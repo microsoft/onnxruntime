@@ -308,7 +308,7 @@ void VideoFrameToTensorConverter::ConvertDX12TextureToGPUTensor(
   // we're inside a lock from the caller of this function, so it's ok to use this static
   static EventTimer eventTimer(kDurationBetweenSendingEvaluationStart);
   if (eventTimer.Start()) {
-    telemetrylogger = std::make_unique<DX12TextureToGPUTensorTelemetryEvent>(tensorDesc);
+    telemetryLogger = std::make_unique<DX12TextureToGPUTensorTelemetryEvent>(tensorDesc);
   }
 
   // Validate input description
@@ -477,7 +477,7 @@ void VideoFrameToTensorConverter::ConvertSoftwareBitmapToGPUTensor(
   // we're inside a lock from the caller of this function, so it's ok to use this static
   static EventTimer eventTimer(kDurationBetweenSendingEvaluationStart);
   if (eventTimer.Start()) {
-    telemetrylogger = std::make_unique<SoftwareBitmapToGPUTensorTelemetryEvent>(tensorDesc);
+    telemetryLogger = std::make_unique<SoftwareBitmapToGPUTensorTelemetryEvent>(tensorDesc);
   }
 
   wgi::SoftwareBitmap convertedSoftwareBitmap = nullptr;
@@ -587,12 +587,12 @@ void VideoFrameToTensorConverter::ConvertSoftwareBitmapToCPUTensor(
     _Inout_ void* pCPUTensor) {
   assert(softwareBitmap != nullptr);
 
-  std::unique_ptr<ConvertVideoFrameWithSoftwareBitmapToCPUTensorTelemetryEvent> telemetrylogger;
+  std::unique_ptr<ConvertVideoFrameWithSoftwareBitmapToCPUTensorTelemetryEvent> telemetryLogger;
 
   // we're inside a lock from the caller of this function, so it's ok to use this static
   static EventTimer eventTimer(kDurationBetweenSendingEvaluationStart);
   if (eventTimer.Start()) {
-    telemetrylogger = std::make_unique<ConvertVideoFrameWithSoftwareBitmapToCPUTensorTelemetryEvent>(tensorDesc);
+    telemetryLogger = std::make_unique<ConvertVideoFrameWithSoftwareBitmapToCPUTensorTelemetryEvent>(tensorDesc);
   }
 
   auto height = softwareBitmap.PixelHeight();
