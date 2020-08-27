@@ -6,10 +6,9 @@
 #include "core/framework/allocator.h"
 #include "core/framework/session_options.h"
 #include "core/session/environment.h"
+#include "core/session/inference_session.h"
 
 namespace onnxruntime {
-class InferenceSession;
-
 namespace python {
 
 using namespace onnxruntime;
@@ -45,7 +44,7 @@ struct PyInferenceSession {
   // (if ref count of the shared_ptr reaches 0)
   std::vector<std::shared_ptr<CustomOpLibrary>> custom_op_libraries_;
 
-  std::unique_ptr<InferenceSession> sess_;
+  std::unique_ptr<onnxruntime::InferenceSession> sess_;
 
   virtual ~PyInferenceSession() {}
   virtual InferenceSession* GetSessionHandle() const { return sess_.get(); }
