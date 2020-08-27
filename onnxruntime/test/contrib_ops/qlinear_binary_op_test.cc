@@ -396,7 +396,7 @@ TEST(QLinearBinaryOpTest, MulU8VectorVectorBroadcast) {
   std::vector<float> B = {
     4.00f,  0.25f,  0.00f, -0.25f,  0.50f, -0.25f, -0.00f,  0.25f,
    -1.50f, -2.25f,  2.50f,  3.75f, -3.75f, -4.00f,  5.00f,  5.50f,
-   -0.50f, -1.25f,  0.75f,  1.25f,  2.25f
+   -0.50f, -1.25f,  0.75f,  0.00f,  2.25f
   };
   float B_scale = 8.0f / 256.0f;
   uint8_t B_zero_point = 128;
@@ -470,7 +470,7 @@ TEST(QLinearBinaryOpTest, MulS8VectorVectorFull) {
   const std::vector<float>& B(B4Add);
   float B_scale = 8.0f / 256.0f;
   int8_t B_zero_point = 0;
-  float C_scale = 32.0f / 256.0f;
+  float C_scale = 64.0f / 256.0f;
   int8_t C_zero_point = -16;
 
   RunQLinearMathTestFromFloat("QLinearMul", mul_function,
