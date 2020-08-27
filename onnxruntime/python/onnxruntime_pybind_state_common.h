@@ -47,6 +47,7 @@ struct PyInferenceSession {
 
   std::unique_ptr<InferenceSession> sess_;
 
+  virtual ~PyInferenceSession() {}
   virtual InferenceSession* GetSessionHandle() const { return sess_.get(); }
 };
 
