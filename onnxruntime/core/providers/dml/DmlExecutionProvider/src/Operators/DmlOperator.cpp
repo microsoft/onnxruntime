@@ -135,10 +135,19 @@ namespace Dml
 
     void DmlOperator::Initialize(
         const MLOperatorKernelCreationContext& kernelInfo,
+        uint32_t minDimensionCount
+        )
+    {
+        Initialize(kernelInfo, std::nullopt, std::nullopt, std::nullopt, std::nullopt, minDimensionCount);
+    }
+
+    void DmlOperator::Initialize(
+        const MLOperatorKernelCreationContext& kernelInfo,
         const std::optional<const std::vector<std::optional<uint32_t>>>& kernelInputIndices,
         const std::optional<const std::vector<std::optional<uint32_t>>>& kernelOutputIndices,
         const std::optional<gsl::span<const uint32_t>> inputShape,
-        const std::optional<gsl::span<const uint32_t>> outputShape
+        const std::optional<gsl::span<const uint32_t>> outputShape,
+        uint32_t minDimensionCount
         )
     {
         if (kernelInputIndices)
@@ -179,7 +188,7 @@ namespace Dml
                     TensorAxis::W,
                     TensorAxis::RightAligned,
                     inputShape,
-                    NchwDimensionCount));
+                    minDimensionCount));
             }
         }
 
@@ -200,7 +209,8 @@ namespace Dml
                     TensorAxis::DoNotCoerce,
                     TensorAxis::W,
                     TensorAxis::RightAligned,
-                    outputShape));
+                    outputShape,
+                    minDimensionCount));
             }
         }
     }
