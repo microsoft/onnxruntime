@@ -273,7 +273,6 @@ Status TrainingRunner::Initialize() {
 
 Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_data_loader,
                            const MapStringToString& mapped_dimensions) {
-  if (params_.mpi_context.world_rank == 0 && !params_.model_actual_running_graph_path.empty()) {
   std::cout << "[training_runner.cc] Call TrainingRunner::Run" << std::endl;
   if (MPIContext::GetInstance().GetWorldRank() == 0 && !params_.model_actual_running_graph_path.empty()) {
 
