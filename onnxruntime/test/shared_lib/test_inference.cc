@@ -773,19 +773,24 @@ TEST(CApiTest, model_metadata) {
 
     int64_t num_keys_in_custom_metadata_map;
     char** custom_metadata_map_keys = model_metadata.GetCustomMetadataMapKeys(allocator.get(), num_keys_in_custom_metadata_map);
-    ASSERT_TRUE(num_keys_in_custom_metadata_map == 1);
-    ASSERT_TRUE(strcmp(custom_metadata_map_keys[0], "ort_config") == 0);
+    ASSERT_TRUE(num_keys_in_custom_metadata_map == 2);
+
     allocator.get()->Free(custom_metadata_map_keys[0]);
+    allocator.get()->Free(custom_metadata_map_keys[1]);
     allocator.get()->Free(custom_metadata_map_keys);
 
-    char* lookup_value = model_metadata.LookupCustomMetadataMap("ort_config", allocator.get());
-    ASSERT_TRUE(strcmp(lookup_value,
+    char* lookup_value_1 = model_metadata.LookupCustomMetadataMap("ort_config", allocator.get());
+    ASSERT_TRUE(strcmp(lookup_value_1,
                        "{\"session_options\": {\"inter_op_num_threads\": 5, \"intra_op_num_threads\": 2, \"graph_optimization_level\": 99, \"enable_profiling\": 1}}") == 0);
-    allocator.get()->Free(lookup_value);
+    allocator.get()->Free(lookup_value_1);
+
+    char* lookup_value_2 = model_metadata.LookupCustomMetadataMap("dummy_key", allocator.get());
+    ASSERT_TRUE(strcmp(lookup_value_2, "dummy_value") == 0);
+    allocator.get()->Free(lookup_value_2);
 
     // key doesn't exist in custom metadata map
-    lookup_value = model_metadata.LookupCustomMetadataMap("key_doesnt_exist", allocator.get());
-    ASSERT_TRUE(lookup_value == nullptr);
+    char* lookup_value_3 = model_metadata.LookupCustomMetadataMap("key_doesnt_exist", allocator.get());
+    ASSERT_TRUE(lookup_value_3 == nullptr);
   }
 
   // The following section tests a model with some missing metadata info

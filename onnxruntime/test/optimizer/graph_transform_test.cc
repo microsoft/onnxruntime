@@ -2611,6 +2611,28 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat6) {
   EXPECT_EQ(op_to_count["EmbedLayerNormalization"], 1);
 }
 
+//DistilBert
+TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat7) {
+  auto model_uri = MODEL_FOLDER "fusion/embed_layer_norm_format7.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<EmbedLayerNormFusion>(), TransformerLevel::Level2);
+  auto ret1 = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
+  ASSERT_TRUE(ret1.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["EmbedLayerNormalization"], 1);
+  EXPECT_EQ(op_to_count["Attention"], 1);
+  EXPECT_EQ(op_to_count["Cast"], 2);
+  EXPECT_EQ(op_to_count["Shape"], 0);
+  EXPECT_EQ(op_to_count["Gather"], 0);
+  EXPECT_EQ(op_to_count["Unsqueeze"], 0);
+  EXPECT_EQ(op_to_count["ReduceSum"], 0);
+}
+
 TEST_F(GraphTransformationTests, EmbedLayerNormFusionMultiple) {
   auto model_uri = MODEL_FOLDER "fusion/embed_layer_norm_multiple.onnx";
   std::shared_ptr<Model> p_model;

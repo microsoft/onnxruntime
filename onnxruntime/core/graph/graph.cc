@@ -17,7 +17,6 @@
 #include "core/framework/tensor_shape.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
-#include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "core/graph/model.h"
@@ -1940,7 +1939,7 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
       if (nullptr == p_existing_shape) {
         // use the inferred shape if this is a constant initializer (cannot be overridden).
         // if not it has a matching graph input, and we prefer the shape info (or lack of info) from the graph input
-        if (graph_utils::IsConstantInitializer(*this, name, false)) {
+        if (GetConstantInitializer(name, false) != nullptr) {
           node_arg->SetShape(inferred_shape);
         }
       } else {
