@@ -1554,80 +1554,80 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     }
   }
 
-#ifdef ENABLE_TRAINING
-  const std::vector<NodeIndex>& ordered_nodes = graph.GetNodesInTopologicalOrder();
-  std::vector<int> node_id_to_order_map(graph.MaxNodeIndex());
-  for (int id = 0; id < ordered_nodes.size(); ++id) {
-    const NodeIndex& node_id = ordered_nodes[id];
-    node_id_to_order_map[node_id] = id;
-  }
+// #ifdef ENABLE_TRAINING
+//   const std::vector<NodeIndex>& ordered_nodes = graph.GetNodesInTopologicalOrder();
+//   std::vector<int> node_id_to_order_map(graph.MaxNodeIndex());
+//   for (int id = 0; id < ordered_nodes.size(); ++id) {
+//     const NodeIndex& node_id = ordered_nodes[id];
+//     node_id_to_order_map[node_id] = id;
+//   }
 
-  // If return false, n1 will be output first; If return true, n2 will be output first
-  auto comp = [&](const NodeIndex n1, const NodeIndex n2) {
-    return node_id_to_order_map[n1] > node_id_to_order_map[n2];
-  };
+//   // If return false, n1 will be output first; If return true, n2 will be output first
+//   auto comp = [&](const NodeIndex n1, const NodeIndex n2) {
+//     return node_id_to_order_map[n1] > node_id_to_order_map[n2];
+//   };
 
-  std::priority_queue<NodeIndex, std::vector<NodeIndex>, decltype(comp)> candidates(comp);
-  std::unordered_set<NodeIndex> visited;
+//   std::priority_queue<NodeIndex, std::vector<NodeIndex>, decltype(comp)> candidates(comp);
+//   std::unordered_set<NodeIndex> visited;
 
-  // first, find all the direct consumer of small cpu tensors.
-  for (auto* def : small_cpu_output_args) {
-    auto consumers = graph.GetConsumerNodes(def->Name());
-    for (auto* node : consumers) {
-      candidates.push(node->Index());
+//   // first, find all the direct consumer of small cpu tensors.
+//   for (auto* def : small_cpu_output_args) {
+//     auto consumers = graph.GetConsumerNodes(def->Name());
+//     for (auto* node : consumers) {
+//       candidates.push(node->Index());
 
-      std::cout << "Canditiate for CPU nodes: " << node->Name() << "\n";
-    }
-  }
+//       std::cout << "Canditiate for CPU nodes: " << node->Name() << "\n";
+//     }
+//   }
 
-  // The algo below is trying to identity a subgraph that only depends on small cpu tensors.
-  // Usually it is a subgraph that doing shape calculation based on a GPU tensor,
-  // Then reshape it back.
-  // The detail:
-  // for each candidate, if one of its input is a small cpu tensor
-  // and the cuda kernel doesn't mark it as cpu input
-  // force the node to CPU to avoid memory cpu.
-  // and add its output to the small cpu tensors.
-  while (!candidates.empty()) {
-    NodeIndex cur = candidates.top();
-    candidates.pop();
-    if (visited.count(cur) != 0)
-      continue;
-    visited.insert(cur);
-    auto cuda_it = cuda_nodes.find(cur);
-    if (cuda_it == cuda_nodes.end())
-      continue;
-    auto* node = graph.GetNode(cur);
+//   // The algo below is trying to identity a subgraph that only depends on small cpu tensors.
+//   // Usually it is a subgraph that doing shape calculation based on a GPU tensor,
+//   // Then reshape it back.
+//   // The detail:
+//   // for each candidate, if one of its input is a small cpu tensor
+//   // and the cuda kernel doesn't mark it as cpu input
+//   // force the node to CPU to avoid memory cpu.
+//   // and add its output to the small cpu tensors.
+//   while (!candidates.empty()) {
+//     NodeIndex cur = candidates.top();
+//     candidates.pop();
+//     if (visited.count(cur) != 0)
+//       continue;
+//     visited.insert(cur);
+//     auto cuda_it = cuda_nodes.find(cur);
+//     if (cuda_it == cuda_nodes.end())
+//       continue;
+//     auto* node = graph.GetNode(cur);
 
-    const KernelCreateInfo* cuda_kernel_def;
-    Status st = GetKernelRegistry()->TryFindKernel(*node, Type(), &cuda_kernel_def);
+//     const KernelCreateInfo* cuda_kernel_def;
+//     Status st = GetKernelRegistry()->TryFindKernel(*node, Type(), &cuda_kernel_def);
 
-    bool cause_unworthy_copy = false;
-    for (auto i = 0; i < node->InputDefs().size(); ++i) {
-      auto* input = node->InputDefs()[i];
-      if ((small_cpu_output_args.find(input) != small_cpu_output_args.end() && !cuda_kernel_def->kernel_def->IsInputOnCpu(i)) ||
-          IsSmallInitializer(graph, input)) {
-        cause_unworthy_copy = true;
-      } else {
-        cause_unworthy_copy = false;
-        break;
-      }
-    }
+//     bool cause_unworthy_copy = false;
+//     for (auto i = 0; i < node->InputDefs().size(); ++i) {
+//       auto* input = node->InputDefs()[i];
+//       if ((small_cpu_output_args.find(input) != small_cpu_output_args.end() && !cuda_kernel_def->kernel_def->IsInputOnCpu(i)) ||
+//           IsSmallInitializer(graph, input)) {
+//         cause_unworthy_copy = true;
+//       } else {
+//         cause_unworthy_copy = false;
+//         break;
+//       }
+//     }
 
-    if (cause_unworthy_copy) {
-      cuda_nodes.erase(cuda_it);
+//     if (cause_unworthy_copy) {
+//       cuda_nodes.erase(cuda_it);
 
-      auto* cpu_node = graph.GetNode(*cuda_it);
-      std::cout << "Warning: " << cpu_node->Name() << " is placed on CPU.\n";
-      for (auto* output : node->OutputDefs()) {
-        small_cpu_output_args.insert(output);
-      }
-      for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
-        candidates.push((*it).Index());
-      }
-    }
-  }
-#endif
+//       auto* cpu_node = graph.GetNode(*cuda_it);
+//       std::cout << "Warning: " << cpu_node->Name() << " is placed on CPU.\n";
+//       for (auto* output : node->OutputDefs()) {
+//         small_cpu_output_args.insert(output);
+//       }
+//       for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
+//         candidates.push((*it).Index());
+//       }
+//     }
+//   }
+// #endif
 
   for (auto index : cuda_nodes) {
     std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();

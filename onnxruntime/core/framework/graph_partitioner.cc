@@ -10,6 +10,7 @@
 #include "core/framework/execution_providers.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/func_kernel.h"
+#include <queue>
 
 // uncomment this line to count non-CUDA ops in ONNX domain
 //#define COUNT_NON_CUDA_OPS
@@ -105,6 +106,108 @@ static Node* PlaceNode(Graph& graph, std::unique_ptr<IndexedSubGraph> capability
   return nullptr;
 }
 
+std::unordered_set<NodeIndex> GraphPartitioner::GetCpuSubGraph(const onnxruntime::GraphViewer& graph,
+                                                               const std::unique_ptr<IExecutionProvider>& provider,
+                                                               const std::vector<std::unique_ptr<ComputeCapability>>& capabilities) const {
+  const std::vector<NodeIndex>& ordered_nodes = graph.GetNodesInTopologicalOrder();
+  std::vector<size_t> node_id_to_order_map(graph.MaxNodeIndex());
+  for (size_t id = 0; id < ordered_nodes.size(); ++id) {
+    const NodeIndex& node_id = ordered_nodes[id];
+    node_id_to_order_map[node_id] = id;
+  }
+
+  // If return false, n1 will be output first; If return true, n2 will be output first
+  auto comp = [&](const NodeIndex n1, const NodeIndex n2) {
+    return node_id_to_order_map[n1] > node_id_to_order_map[n2];
+  };
+
+  std::priority_queue<NodeIndex, std::vector<NodeIndex>, decltype(comp)> candidates(comp);
+  std::unordered_set<NodeIndex> visited;
+
+  std::unordered_set<const NodeArg*> cpu_output_args;
+  std::unordered_set<NodeIndex> provider_nodes;
+
+  for (auto& capability : capabilities) {
+    const IndexedSubGraph* indexed_sub_graph = capability->sub_graph.get();
+    if (indexed_sub_graph->GetMetaDef() != nullptr) {
+      continue;
+    }
+    // The <provider> can run a single node in the <graph> if not using meta-defs.
+    ORT_ENFORCE(1 == indexed_sub_graph->nodes.size());
+
+    const NodeIndex node_id = indexed_sub_graph->nodes[0];
+    provider_nodes.insert(node_id);
+    const Node* node = graph.GetNode(node_id);
+
+    const KernelCreateInfo* kernel_info;
+    Status st = provider->GetKernelRegistry()->TryFindKernel(*node, provider->Type(), &kernel_info);
+    ORT_ENFORCE(st.IsOK());
+
+    // first, find all the direct consumer of cpu tensors.
+    ORT_THROW_IF_ERROR(node->ForEachWithIndex(
+        node->OutputDefs(),
+        [&](const NodeArg& node_arg, size_t out_index) {
+          if (kernel_info->kernel_def->IsOutputOnCpu(out_index)) {
+            cpu_output_args.insert(&node_arg);
+            auto consumer_nodes = graph.GetConsumerNodes(node_arg.Name());
+            for (auto& consumer_node : consumer_nodes) {
+              candidates.push(consumer_node->Index());
+              std::cout << "Canditiate for CPU nodes: " << consumer_node->Name() << "\n";
+            }
+          }
+          return Status::OK();
+        }));
+  }
+
+  std::unordered_set<NodeIndex> cpu_nodes;
+  // The algo below is trying to identity a subgraph that only depends on cpu tensors.
+  // Usually it is a subgraph that doing shape calculation based on a GPU tensor, then reshape it back.
+  // The detail:
+  // for each candidate, if one of its input is a cpu tensor and the cuda kernel doesn't mark it as cpu input,
+  // force the node to CPU to avoid memory cpu and add its output to the small cpu tensors.
+  while (!candidates.empty()) {
+    NodeIndex cur = candidates.top();
+    candidates.pop();
+    if (visited.count(cur) != 0)
+      continue;
+    visited.insert(cur);
+
+    if (provider_nodes.find(cur) == provider_nodes.end())
+      continue;
+    auto* node = graph.GetNode(cur);
+
+    const KernelCreateInfo* kernel_info;
+    Status st = provider->GetKernelRegistry()->TryFindKernel(*node, provider->Type(), &kernel_info);
+
+    bool cause_unworthy_copy = false;
+    for (size_t i = 0; i < node->InputDefs().size(); ++i) {
+      auto* input = node->InputDefs()[i];
+      if ((cpu_output_args.find(input) != cpu_output_args.end() && !kernel_info->kernel_def->IsInputOnCpu(i))) {
+        //  || IsSmallInitializer(graph, input)) {
+        cause_unworthy_copy = true;
+      } else {
+        cause_unworthy_copy = false;
+        break;
+      }
+    }
+
+    if (cause_unworthy_copy) {
+      cpu_nodes.insert(cur);
+      auto* cpu_node = graph.GetNode(cur);
+
+      std::cout << "Warning: " << cpu_node->Name() << " is placed on CPU.\n";
+      for (auto* output : node->OutputDefs()) {
+        cpu_output_args.insert(output);
+      }
+      for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
+        candidates.push((*it).Index());
+      }
+    }
+  }
+
+  return cpu_nodes;
+}
+
 Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& func_mgr) const {
   // It is a greedy partitioning algorithm per provider preferences user provided when calling ONNX RUNTIME right now.
   // 1. Execution providers' capabilities are checked one by one.
@@ -153,6 +256,9 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
     std::vector<Node*> nodes_need_compile;
     std::vector<std::unique_ptr<ComputeCapability>> capabilities =
         provider->GetCapability(graph_viewer, kernel_registry_mgr_.GetKernelRegistriesByProviderType(provider->Type()));
+
+    auto cpu_nodes = GetCpuSubGraph(graph_viewer, provider, capabilities);
+
     for (auto& capability : capabilities) {
       Node* n = PlaceNode(graph, std::move(capability->sub_graph), kernel_registry_mgr_, provider->Type(), count);
       if (n != nullptr) {
@@ -197,9 +303,9 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
       if (nullptr == node_func) {
         continue;
       }
-      nodes_need_inline.push_back(&node);      
+      nodes_need_inline.push_back(&node);
     }
-  }  
+  }
 
   for (auto* node : nodes_need_inline) {
     // If the node has a functionbody with no kernel and cannot be inlined

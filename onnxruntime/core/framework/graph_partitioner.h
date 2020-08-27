@@ -25,6 +25,10 @@ class GraphPartitioner {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphPartitioner);
 
+  std::unordered_set<NodeIndex> GetCpuSubGraph(const onnxruntime::GraphViewer& graph,
+                                               const std::unique_ptr<IExecutionProvider>& provider,
+                                               const std::vector<std::unique_ptr<ComputeCapability>>& capabilities) const;
+
   KernelRegistryManager& kernel_registry_mgr_;
   const ExecutionProviders& providers_;
 };
