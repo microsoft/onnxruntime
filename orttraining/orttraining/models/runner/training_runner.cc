@@ -304,6 +304,7 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
                                                 const size_t batch_index,
                                                 std::vector<std::string>& feed_names,
                                                 std::vector<MLValue>& feeds) {
+  std::cout << "[training_runner.cc] TrainingRunner::PrepareFeedNamesAndFeeds" << std::endl;
   // Initialize outputs of this function.
   feed_names = std::vector<std::string>();
   feeds = std::vector<MLValue>();
@@ -312,12 +313,15 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
   auto allowed_feed_end = pipeline_context_.feed_names.end();
 
   // Pick up feeds from data loader
+  std::cout << "[training_runner.cc] TrainingRunner::PrepareFeedNamesAndFeeds 1" << std::endl;
   {
     std::vector<std::string> data_feed_names = training_data_loader.DataSetTensorNames();
     std::vector<MLValue> data_feeds = training_data.GetKthBatch(params_.batch_size, batch_index, input_allocator_);
     for (size_t i = 0; i < data_feed_names.size(); ++i) {
       const auto name = data_feed_names[i];
+      std::cout << "[training_runner.cc] TrainingRunner::PrepareFeedNamesAndFeeds 2. tried feed name " << name << std::endl;
       if (params_.pipeline_parallel_size == 1 || std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
+        std::cout << "[training_runner.cc] TrainingRunner::PrepareFeedNamesAndFeeds 2. added feed name " << name << std::endl;
         feed_names.push_back(name);
         feeds.push_back(data_feeds[i]);
       }
@@ -325,9 +329,12 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
   }
 
   // Pick up feed from loss scaling.
+  std::cout << "[training_runner.cc] TrainingRunner::PrepareFeedNamesAndFeeds 3" << std::endl;
   if (loss_scaler_) {
     const auto name = loss_scaler_->GetLossScaleInputName();
+    std::cout << "[training_runner.cc] TrainingRunner::PrepareFeedNamesAndFeeds 4. loss name " << name << std::endl;
     if (params_.pipeline_parallel_size == 1 || std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
+      std::cout << "[training_runner.cc] TrainingRunner::PrepareFeedNamesAndFeeds 4. added loss name " << name << std::endl;
       feed_names.push_back(name);
       const float loss_scale = (mode == EvaluateStep) ? 1.0f : loss_scaler_->GetLossScale();
       OrtValue loss_scale_val;
@@ -337,9 +344,12 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
   }
 
   // Pick up feed from learning rate schedule.
+  std::cout << "[training_runner.cc] TrainingRunner::PrepareFeedNamesAndFeeds 5" << std::endl;
   {
     const auto name = params_.lr_params.feed_name;
+    std::cout << "[training_runner.cc] TrainingRunner::PrepareFeedNamesAndFeeds 5. LR name " << name << std::endl;
     if (params_.pipeline_parallel_size == 1 || std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
+      std::cout << "[training_runner.cc] TrainingRunner::PrepareFeedNamesAndFeeds 5. added LR name " << name << std::endl;
       feed_names.push_back(name);
       // learning rate is 0 if there is no learning-rate scheduler. Otherwise, learning rate is obtained from the scheduler.
       const float learning_rate = lr_scheduler ? lr_scheduler->GetLearningRate(step_ + 1) : 0.0f;
@@ -353,10 +363,13 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
   const auto stage_id = pipeline_context_.pipeline_stage_id;
 
   // Define a helper function to append scalar inputs to feeds for event operators.
+  std::cout << "[training_runner.cc] TrainingRunner::PrepareFeedNamesAndFeeds 6" << std::endl;
   auto append_event_to_feeds = [&](const std::string event_name, const int64_t event_value) -> void {
+    std::cout << "[training_runner.cc] TrainingRunner::PrepareFeedNamesAndFeeds 6. event name " << event_name << std::endl;
     if (event_name.empty()) {
       return;
     }
+    std::cout << "[training_runner.cc] TrainingRunner::PrepareFeedNamesAndFeeds 6. added event name " << event_name << std::endl;
     feed_names.push_back(event_name);
     OrtValue event_id;
     TrainingUtil::CreateCpuMLScalar(
@@ -407,6 +420,7 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     append_event_to_feeds(pipeline_context_.pipeline_tensor_names.backward_compute_recorded_event_name, id);
   }
 
+  std::cout << "[training_runner.cc] TrainingRunner::PrepareFeedNamesAndFeeds 7" << std::endl;
   for (auto name : feed_names) {
     ORT_ENFORCE(!name.empty(), "feed name cannot be empty string.");
   }
