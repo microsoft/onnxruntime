@@ -116,7 +116,7 @@ def quantize(model,
         copy_model.CopyFrom(model)
         fuse_dynamic_quant = check_opset_version(copy_model, force_fusions)
 
-        if len(op_types_to_quantize) == 0 or not op_types_to_quantize:
+        if not op_types_to_quantize or len(op_types_to_quantize) == 0:
             op_types_to_quantize = list(QLinearOpsRegistry.keys()) if static else list(IntegerOpsRegistry.keys())
 
         quantizer = ONNXQuantizer(copy_model, per_channel, mode, static, fuse_dynamic_quant, weight_qType, input_qType,
@@ -171,7 +171,7 @@ def quantize_static(model_input,
     #fuse_dynamic_quant = check_opset_version(onnx.load(model_path), force_fusions)
     fuse_dynamic_quant = True
 
-    if len(op_types_to_quantize) == 0 or not op_types_to_quantize:
+    if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(QLinearOpsRegistry.keys())
 
     quantization_params_dict = calibrate(model_input, calibration_data_reader, op_types_to_quantize, nodes_to_quantize,
@@ -235,7 +235,7 @@ def quantize_dynamic(model_input: Path,
     #fuse_dynamic_quant = check_opset_version(onnx.load(model_path), force_fusions)
     fuse_dynamic_quant = True
 
-    if len(op_types_to_quantize) == 0 or not op_types_to_quantize:
+    if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(IntegerOpsRegistry.keys())
 
     quantizer = ONNXQuantizer(
@@ -294,7 +294,7 @@ def quantize_qat(model_input: Path,
     #fuse_dynamic_quant = check_opset_version(onnx.load(model_path), force_fusions)
     fuse_dynamic_quant = True
 
-    if len(op_types_to_quantize) == 0 or not op_types_to_quantize:
+    if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(IntegerOpsRegistry.keys())
 
     quantizer = ONNXQuantizer(

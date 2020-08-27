@@ -211,6 +211,7 @@ class ONNXQuantizer:
                     raise ValueError("Remove fake-quantized node pair Error: No successive nodes found for {}.".format(
                         next_node.name))
 
+                # TODO: convert it to the specified input_type
                 scale_tensor_name = curr_node.input[1]
                 zp_tensor_name = curr_node.input[2]
                 initializer_scale = _find_by_name(scale_tensor_name, self.model.initializer())
