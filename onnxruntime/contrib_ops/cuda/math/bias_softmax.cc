@@ -22,7 +22,6 @@ namespace cuda {
 template <typename T>
 Status BiasSoftmax<T>::ComputeInternal(OpKernelContext* ctx) const {
 
-  // printf("Running BiasSoftmax kernel\n");
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   auto X_data = reinterpret_cast<const CudaT*>(ctx->Input<Tensor>(0)->template Data<T>());
@@ -37,20 +36,15 @@ Status BiasSoftmax<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   const int64_t broadcast_axis = HandleNegativeAxis(broadcast_axis_, X_shape.NumDimensions());
   int broadcast_size = N/(int)X_shape.SizeToDimension(broadcast_axis);
-  // printf("Found softmax_axis = %ld, broadcast_axis = %ld\n", softmax_axis, broadcast_axis);
-  // printf("Found N = %d, D = %d, broadcast_size = %d\n", N, D, broadcast_size);
 
   if (D <= 1024 && D*sizeof(T) <= 4096) {
 
     // expect thread blocks can fill SM at high occupancy without overflowing registers
-    // printf("Calling dispatch_bias_softmax_forward<%s, %s, %s>\n", 
-    // typeid(CudaT).name(), typeid(CudaT).name(), typeid(AccType<T>).name());
     dispatch_bias_softmax_forward<CudaT, CudaT, AccType<T>>(Y_data, X_data, B_data, D, N, D, broadcast_size);
   }
   else {
 
     // need to fallback to add kernel + CUDA DNN library softmax call :/
-    printf("Calling cudnnSoftmaxForward\n");
     dispatch_bias_softmax_softward_via_dnn_library<CudaT>(
       CudnnHandle(), D, N, broadcast_axis, softmax_axis, X_shape, X_data, B_shape, B_data, Y_data);
   }
