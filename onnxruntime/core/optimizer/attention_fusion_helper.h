@@ -665,7 +665,10 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& layer_norm, const No
   const Node& shape = edges[0]->GetNode();
   const Node& qk_matmul = edges[1]->GetNode();
   const Node* p_qk_matmul = graph_utils::GetInputNode(where, 2);
-  if (p_qk_matmul != nullptr && p_qk_matmul->Index() != qk_matmul.Index()) {
+  if (p_qk_matmul == nullptr) {
+    return false;
+  }
+  if (p_qk_matmul->Index() != qk_matmul.Index()) {
     return false;
   }
 
