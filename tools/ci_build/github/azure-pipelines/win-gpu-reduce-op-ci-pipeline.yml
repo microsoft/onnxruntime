@@ -22,8 +22,8 @@ jobs:
   steps:
   - task: UsePythonVersion@0
     inputs: 
-      versionSpec: '3.7' 
-      addToPath: true 
+      versionSpec: '3.7'
+      addToPath: true
       architecture: $(buildArch)
 
   - task: BatchScript@1
@@ -35,8 +35,8 @@ jobs:
 
   - script: |
      python -m pip install -q pyopenssl setuptools wheel numpy flake8
-     workingDirectory: '$(Build.BinariesDirectory)'
-     displayName: 'Install python modules'
+    workingDirectory: '$(Build.BinariesDirectory)'
+    displayName: 'Install python modules'
 
   - powershell: |
      $Env:USE_MSVC_STATIC_RUNTIME=1
@@ -44,7 +44,6 @@ jobs:
      $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
      python setup.py bdist_wheel
      Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
-
     workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
     displayName: 'Install ONNX'
 
