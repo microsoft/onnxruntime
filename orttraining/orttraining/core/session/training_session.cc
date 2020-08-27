@@ -520,11 +520,11 @@ static Status AddGradientAccumulationNodes(Graph& graph,
   return GraphAugmenter::AugmentGraph(graph, graph_defs);
 }
 
-Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,
+Status TrainingSession::ApplyTransformationsToMainGraph(std::unordered_set<std::string>& weights_to_train,
                                                         const TrainingConfiguration::GraphTransformerConfiguration& config,
                                                         TrainingConfigurationResult& config_result_out,
                                                         bool is_master_node) {
-  GraphTransformerManager graph_transformation_mgr{1};
+  GraphTransformerManager graph_transformation_mgr{2};
   // TODO: ideally we can just reuse the CPU EP registered with the session, but in the training session case
   // the EPs are registered after ConfigureForTraining and before Initialize is called. Hence we don't have access
   // to the registered CPU EP at this stage. Hence creating the EP here again. This is still much better than
@@ -552,7 +552,7 @@ Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set
 // Registers all the pre transformers with transformer manager
 void TrainingSession::AddPreTrainingTransformers(const IExecutionProvider& execution_provider,
                                                  GraphTransformerManager& transformer_manager,
-                                                 const std::unordered_set<std::string>& weights_to_train,
+                                                 std::unordered_set<std::string>& weights_to_train,
                                                  const TrainingConfiguration::GraphTransformerConfiguration& config,
                                                  TrainingConfigurationResult& config_result_out,
                                                  TransformerLevel graph_optimization_level,

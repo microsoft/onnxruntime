@@ -399,7 +399,7 @@ class TrainingSession : public InferenceSession {
                                    std::string& backward_waited_event_after_recv_name,
                                    std::string& backward_recorded_event_before_send_name);
 
-  common::Status ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,
+  common::Status ApplyTransformationsToMainGraph(std::unordered_set<std::string>& weights_to_train,
                                                  const TrainingConfiguration::GraphTransformerConfiguration& config,
                                                  TrainingConfigurationResult& config_result_out,
                                                  bool is_master_node);
@@ -407,7 +407,7 @@ class TrainingSession : public InferenceSession {
   /** configure initial transformers for training */
   void AddPreTrainingTransformers(const IExecutionProvider& execution_provider,  // for constant folding
                                   GraphTransformerManager& transformer_manager,
-                                  const std::unordered_set<std::string>& weights_to_train,
+                                  std::unordered_set<std::string>& weights_to_train,
                                   const TrainingConfiguration::GraphTransformerConfiguration& config,
                                   TrainingConfigurationResult& config_result_out,
                                   TransformerLevel graph_optimization_level = TransformerLevel::MaxLevel,

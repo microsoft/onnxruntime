@@ -601,7 +601,6 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer, std::string device, /
   return unsupported_nodes_idx;
 }
 
-
 std::vector<std::unique_ptr<ComputeCapability>>
 GetCapability_2020_2(const onnxruntime::GraphViewer& graph_viewer, const std::string device_id) {
   std::vector<std::unique_ptr<ComputeCapability>> result;
@@ -717,8 +716,7 @@ GetCapability_2020_2(const onnxruntime::GraphViewer& graph_viewer, const std::st
   return result;
 }
 
-} // namespace openvino_ep
+}  // namespace openvino_ep
 }  // namespace onnxruntime
 
-
-#endif //(defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
+#endif  //(defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)

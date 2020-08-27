@@ -139,7 +139,8 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionRank0) {
   Graph& graph = p_model->MainGraph();
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   std::unordered_map<std::string, std::string> updated_weight_names;
-  graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(0, 2, updated_weight_names), TransformerLevel::Level1);
+  std::unordered_set<std::string> weights_to_train;
+  graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(0, 2, updated_weight_names, weights_to_train), TransformerLevel::Level1);
   ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
   ASSERT_TRUE(ret.IsOK());
 
@@ -208,7 +209,8 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionRank1) {
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   std::unordered_map<std::string, std::string> updated_weight_names;
-  graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(1, 2, updated_weight_names), TransformerLevel::Level1);
+  std::unordered_set<std::string> weights_to_train;
+  graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(1, 2, updated_weight_names, weights_to_train), TransformerLevel::Level1);
   ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
   ASSERT_TRUE(ret.IsOK());
 
@@ -276,7 +278,8 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank0) {
   Graph& graph = p_model->MainGraph();
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   std::unordered_map<std::string, std::string> updated_weight_names;
-  graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(0, 2, updated_weight_names), TransformerLevel::Level1);
+  std::unordered_set<std::string> weights_to_train;
+  graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(0, 2, updated_weight_names, weights_to_train), TransformerLevel::Level1);
   ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
   ASSERT_TRUE(ret.IsOK());
 
@@ -342,7 +345,8 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank1) {
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   std::unordered_map<std::string, std::string> updated_weight_names;
-  graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(1, 2, updated_weight_names), TransformerLevel::Level1);
+  std::unordered_set<std::string> weights_to_train;
+  graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(1, 2, updated_weight_names, weights_to_train), TransformerLevel::Level1);
   ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
   ASSERT_TRUE(ret.IsOK());
 
@@ -412,7 +416,8 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionCorrectnessTest) {
     Graph& graph = p_models[i]->MainGraph();
     onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
     std::unordered_map<std::string, std::string> updated_weight_names;
-    graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(i, total_rank, updated_weight_names), TransformerLevel::Level1);
+    std::unordered_set<std::string> weights_to_train;
+    graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(i, total_rank, updated_weight_names, weights_to_train), TransformerLevel::Level1);
     ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
     ASSERT_TRUE(ret.IsOK());
     graphs.push_back(&graph);
@@ -518,7 +523,8 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionCorrectnessTest) 
     Graph& graph = p_models[i]->MainGraph();
     onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
     std::unordered_map<std::string, std::string> updated_weight_names;
-    graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(i, total_rank, updated_weight_names), TransformerLevel::Level1);
+    std::unordered_set<std::string> weights_to_train;
+    graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(i, total_rank, updated_weight_names, weights_to_train), TransformerLevel::Level1);
     ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
     ASSERT_TRUE(ret.IsOK());
     graphs.push_back(&graph);

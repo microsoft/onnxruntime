@@ -146,6 +146,10 @@ NodeArg& MegatronTransformer::PartitionWeightByColumn(Graph& graph, const NodeAr
 
   std::string new_initializer_name = input_arg.Name() + "_column_rank_" + std::to_string(horizontal_parallel_rank_);
   updated_weight_names_.insert({input_arg.Name(), new_initializer_name});
+  if (weights_to_train_.find(input_arg.Name()) != weights_to_train_.end()) {
+    weights_to_train_.erase(input_arg.Name());
+    weights_to_train_.insert(new_initializer_name);
+  }
   initializer_partition.set_name(new_initializer_name);
   initializer_partition.set_data_type(data_type);
 
@@ -215,6 +219,10 @@ NodeArg& MegatronTransformer::PartitionWeightByRow(Graph& graph, const NodeArg& 
 
   std::string new_initializer_name = input_arg.Name() + "_row_rank_" + std::to_string(horizontal_parallel_rank_);
   updated_weight_names_.insert({input_arg.Name(), new_initializer_name});
+  if (weights_to_train_.find(input_arg.Name()) != weights_to_train_.end()) {
+    weights_to_train_.erase(input_arg.Name());
+    weights_to_train_.insert(new_initializer_name);
+  }
   initializer_partition.set_name(new_initializer_name);
   initializer_partition.set_data_type(data_type);
 
@@ -794,26 +802,34 @@ Status MegatronTransformer::TransformT5SelfAttention(Graph& graph, bool& modifie
     weight_transpose_node_ptrs.push_back(q_weight_transpose);
 
     Node* v_transpose_ptr = const_cast<Node*>(graph.GetProducerNode(matmul_node_ptr1->MutableInputDefs()[1]->Name()));
+    ORT_ENFORCE(v_transpose_ptr != nullptr);
     ORT_ENFORCE(v_transpose_ptr->OpType().compare("Transpose") == 0);
     sub_graph_node_ptrs.push_back(v_transpose_ptr);
     Node* v_reshape = const_cast<Node*>(graph.GetProducerNode(v_transpose_ptr->MutableInputDefs()[0]->Name()));
+    ORT_ENFORCE(v_reshape != nullptr);
     reshape_node_ptrs.push_back(v_reshape);
     sub_graph_node_ptrs.push_back(v_reshape);
     Node* v_matmul = const_cast<Node*>(graph.GetProducerNode(v_reshape->MutableInputDefs()[0]->Name()));
     sub_graph_node_ptrs.push_back(v_matmul);
+    ORT_ENFORCE(v_matmul != nullptr);
     Node* v_weight_transpose = const_cast<Node*>(graph.GetProducerNode(v_matmul->MutableInputDefs()[1]->Name()));
+    ORT_ENFORCE(v_weight_transpose != nullptr);
     sub_graph_node_ptrs.push_back(v_weight_transpose);
     weight_transpose_node_ptrs.push_back(v_weight_transpose);
 
     // slice relative attention  bias
     Node* add_input_ptr = const_cast<Node*>(graph.GetProducerNode(add_node_ptr->MutableInputDefs()[1]->Name()));
+    ORT_ENFORCE(add_input_ptr != nullptr);
     sub_graph_node_ptrs.push_back(add_input_ptr);
     Node* unsqueeze_ptr = const_cast<Node*>(graph.GetProducerNode(add_input_ptr->MutableInputDefs()[0]->Name()));
     sub_graph_node_ptrs.push_back(unsqueeze_ptr);
+    ORT_ENFORCE(unsqueeze_ptr != nullptr);
     Node* rab_tranpose_ptr = const_cast<Node*>(graph.GetProducerNode(unsqueeze_ptr->MutableInputDefs()[0]->Name()));
     sub_graph_node_ptrs.push_back(rab_tranpose_ptr);
+    ORT_ENFORCE(rab_tranpose_ptr != nullptr);
     Node* rab_gather_ptr = const_cast<Node*>(graph.GetProducerNode(rab_tranpose_ptr->MutableInputDefs()[0]->Name()));
     sub_graph_node_ptrs.push_back(rab_gather_ptr);
+    ORT_ENFORCE(rab_gather_ptr != nullptr);
 
     //LOGS_DEFAULT(WARNING) << " T5 Attention 99999999" << node.Name() << weight_transpose_node_ptrs.size();
     // Sub-graph structure and transpose attribute checking.
@@ -867,7 +883,7 @@ Status MegatronTransformer::TransformT5SelfAttention(Graph& graph, bool& modifie
       NodeArg& rab_weight_partition_arg = PartitionWeightByColumn(graph, *rab_weight_arg);
       graph_utils::ReplaceNodeInput(*rab_gather_ptr, 0, rab_weight_partition_arg);
       //ORT_ENFORCE(rab_weight_arg == &rab_weight_partition_arg);
-      relative_attention_bias_names.push_back(rab_weight_arg->Name());
+      relative_attention_bias_names.push_back(rab_weight_partition_arg.Name());
     } else {
       LOGS_DEFAULT(WARNING) << " Skip T5 Attention Partitoned Relative Attention because already partitioned " << rab_weight_arg->Name();
     }
