@@ -1,3 +1,6 @@
+parameters:
+  # Controls whether unreleased onnx opsets are allowed. Default is set to 1 in the code
+  AllowReleasedOpsetOnly: '0' 
 jobs:
 - job: 'build'
   pool: 'Win-GPU-2019'
@@ -15,7 +18,8 @@ jobs:
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
     EnvSetupScript: setup_env_cuda.bat
     buildArch: x64
-    setVcvars: true    
+    setVcvars: true
+    ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
   timeoutInMinutes: 120
   workspace:
     clean: all
