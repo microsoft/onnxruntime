@@ -1,13 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <core/common/make_unique.h>
-#include "core/session/onnxruntime_cxx_api.h"
 #include <functional>
-#include <set>
-#include "test_allocator.h"
-#include <gtest/gtest.h>
 #include <iostream>
+#include <set>
+
+#include "core/common/make_unique.h"
+#include "core/session/onnxruntime_cxx_api.h"
+#include "test_allocator.h"
+
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 
 template <typename T>
 struct RelAllocations {
@@ -25,6 +28,7 @@ struct RelAllocations {
   }
 };
 
+#if !defined(DISABLE_ML_OPS)
 TEST(CApiTest, CreateGetVectorOfMapsInt64Float) {  // support zipmap output type seq(map(int64, float))
   // Creation
   auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
@@ -149,6 +153,7 @@ TEST(CApiTest, CreateGetVectorOfMapsStringFloat) {  // support zipmap output typ
               std::set<float>(std::begin(values), std::end(values)));
   }
 }
+#endif  // !defined(DISABLE_ML_OPS)
 
 TEST(CApiTest, TypeInfoMap) {
   // Creation
@@ -166,6 +171,7 @@ TEST(CApiTest, TypeInfoMap) {
   Ort::Value values_tensor = Ort::Value::CreateTensor(info, values.data(), values.size() * sizeof(float),
                                                       dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
 
+#if !defined(DISABLE_ML_OPS)
   Ort::Value map_ort = Ort::Value::CreateMap(keys_tensor, values_tensor);
   Ort::TypeInfo type_info = map_ort.GetTypeInfo();
   Ort::MapTypeInfo map_type_info = type_info.GetMapTypeInfo();
@@ -183,6 +189,16 @@ TEST(CApiTest, TypeInfoMap) {
 
   map_value_type_info.release();
   map_type_info.release();
+#else
+  // until https://github.com/google/googletest/pull/2904/ makes it into a release,
+  // check an exception is thrown with the expected message the ugly way
+  try {
+    Ort::Value map_ort = Ort::Value::CreateMap(keys_tensor, values_tensor);
+    ASSERT_TRUE(false) << "CreateMap should have throw in this build";
+  } catch (const Ort::Exception& ex) {
+    ASSERT_THAT(ex.what(), testing::HasSubstr("Map type is not supported in this build"));
+  }
+#endif
 }
 
 TEST(CApiTest, CreateGetSeqTensors) {
@@ -223,7 +239,8 @@ TEST(CApiTest, CreateGetSeqStringTensors) {
   for (int i = 0; i < N; ++i) {
     // create tensor
     std::vector<int64_t> shape{2};
-    auto value = Ort::Value::CreateTensor(Ort::AllocatorWithDefaultOptions(), shape.data(), shape.size(), ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+    auto value = Ort::Value::CreateTensor(Ort::AllocatorWithDefaultOptions(), shape.data(), shape.size(),
+                                          ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
 
     Ort::ThrowOnError(Ort::GetApi().FillStringTensor(value, string_input_data, 2));
     in.push_back(std::move(value));
@@ -274,7 +291,8 @@ TEST(CApiTest, TypeInfoSequence) {
   ASSERT_EQ(seq_type_info.GetSequenceElementType().GetONNXType(), ONNX_TYPE_TENSOR);
   // No shape present, as sequence allows different shapes for each element
   // ASSERT_EQ(seq_type_info.GetSequenceElementType().GetTensorTypeAndShapeInfo().GetShape(), dims);
-  ASSERT_EQ(seq_type_info.GetSequenceElementType().GetTensorTypeAndShapeInfo().GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
+  ASSERT_EQ(seq_type_info.GetSequenceElementType().GetTensorTypeAndShapeInfo().GetElementType(),
+            ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
 
   seq_type_info.release();
 }
