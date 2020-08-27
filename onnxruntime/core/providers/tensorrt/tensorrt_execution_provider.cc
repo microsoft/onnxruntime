@@ -737,7 +737,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         // Execution tensor
         for (int j = 0, end = nb_dims; j < end; ++j) {
           if (dims.d[j] == -1) {
-            input_shape_ranges[input_name][j] = std::make_pair(INT_MAX, INT_MIN);
+            //input_shape_ranges[input_name][j] = std::make_pair(INT_MAX, INT_MIN);//slx
+            input_shape_ranges[input_name][j] = std::make_pair(1, INT_MIN);
             has_dynamic_shape = true;
           }
         }
