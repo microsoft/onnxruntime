@@ -168,6 +168,7 @@ class ORTTrainer(object):
                 self._onnx_model = postprocess.run_postprocess(self._onnx_model)
             if self.options._internal_use.extra_postprocess:
                 self._onnx_model = self.options._internal_use.extra_postprocess(self._onnx_model)
+                assert isinstance(self._onnx_model, onnx.ModelProto), "'extra_postprocess' must return a ONNX model"
 
             # When input model is already ONNX (and not exported from Pytorch within ORTTrainer),
             # append 'dtype' from ONNX into model description's
@@ -337,7 +338,7 @@ class ORTTrainer(object):
         if self.options.mixed_precision.enabled:
             loss_scaler = self.options.mixed_precision.loss_scaler
             assert loss_scaler, "Loss scaler is required when mixed precision is enabled"
-            loss_scale = torch.tensor([loss_scaler.loss_scale])
+            loss_scale = loss_scaler.loss_scale
             inputs_desc = self._model_desc_inputs_with_lr_and_loss_scale
 
         # Get data. CombineTorchModelLossFn takes label as last input and outputs loss first
@@ -685,8 +686,8 @@ class ORTTrainer(object):
         # Append loss scale
         if loss_scale is not None:
             assert self.options.mixed_precision.enabled, "Loss scale cannot be used without mixed precision"
-            loss_scale = loss_scale.clone().detach()
-            input += (loss_scale, )
+            loss_scale = torch.tensor([loss_scale])
+            input += (loss_scale,)
             extra_inputs += 1
 
         assert len(self.model_desc.inputs) + extra_inputs == len(input)
