@@ -228,7 +228,9 @@ void addObjectMethodsForTraining(py::module& m) {
         OrtPybindThrowIfError(sess->Load(path));
 
 #if defined(USE_NCCL)
-        CopyMPIContextToTrainingParameters(parameters, sess->GetLogger());
+        bool use_nccl = parameters.allreduce_post_accumulation;
+        if (!use_nccl && parameters.world_size > 1)
+          CopyMPIContextToTrainingParameters(parameters, sess->GetLogger());
 #endif
         const auto config_result = ConfigureSessionForTraining(sess, parameters);
 
@@ -242,7 +244,9 @@ void addObjectMethodsForTraining(py::module& m) {
         OrtPybindThrowIfError(sess->Load(buffer));
 
 #if defined(USE_NCCL)
-        CopyMPIContextToTrainingParameters(parameters, sess->GetLogger());
+        bool use_nccl = parameters.allreduce_post_accumulation;
+        if (!use_nccl && parameters.world_size > 1)
+          CopyMPIContextToTrainingParameters(parameters, sess->GetLogger());
 #endif
         const auto config_result = ConfigureSessionForTraining(sess, parameters);
 

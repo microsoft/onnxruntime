@@ -187,7 +187,13 @@ class ORTTransformerTrainer:
                                                     'debug': {'deterministic_compute': True, },
                                                     'utils': {
                                                         'grad_norm_clip': False},
-                                                    'distributed': {'allreduce_post_accumulation': True},
+                                                    'distributed': {
+                                                        # we are running single node multi gpu test. thus world_rank = local_rank
+                                                        # and world_size = self.args.n_gpu
+                                                        'world_rank': 0 if self.args.local_rank == -1 else self.args.local_rank,
+                                                        'world_size': self.args.n_gpu,
+                                                        'local_rank': 0 if self.args.local_rank == -1 else self.args.local_rank,
+                                                        'allreduce_post_accumulation': True},
                                                     'lr_scheduler': lr_scheduler
                                                     })
 
