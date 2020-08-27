@@ -60,6 +60,8 @@ struct Provider_IDeviceAllocator_Impl : Provider_IDeviceAllocator {
   void* Alloc(size_t size) override { return p_->Alloc(size); }
   void Free(void* p) override { return p_->Free(p); }
 
+  FencePtr CreateFence(const Provider_SessionState* session_state) override { return p_->CreateFence(reinterpret_cast<const SessionState*>(session_state)); }
+
   bool IsProviderInterface() const override { return false; }
 
   std::unique_ptr<IDeviceAllocator> p_;
@@ -67,12 +69,14 @@ struct Provider_IDeviceAllocator_Impl : Provider_IDeviceAllocator {
 
 // This is really a Provider_IDeviceAllocator, but we wrap it with this class to make it into a IDeviceAllocator
 struct ProviderAllocator : IDeviceAllocator {
-  ProviderAllocator(std::unique_ptr<Provider_IDeviceAllocator> p) : IDeviceAllocator{p->memory_info_}, p_{std::move(p)} {}
+  ProviderAllocator(std::shared_ptr<Provider_IDeviceAllocator> p) : IDeviceAllocator{p->memory_info_}, p_{std::move(p)} {}
 
   void* Alloc(size_t size) override { return p_->Alloc(size); }
   void Free(void* p) override { return p_->Free(p); }
 
-  std::unique_ptr<Provider_IDeviceAllocator> p_;
+  FencePtr CreateFence(const SessionState* session_state) override { return p_->CreateFence(reinterpret_cast<const Provider_SessionState*>(session_state)); }
+
+  std::shared_ptr<Provider_IDeviceAllocator> p_;
 };
 
 struct IDataTransfer_Wrapper : IDataTransfer {
@@ -227,15 +231,18 @@ struct ProviderHostImpl : ProviderHost {
                                         bool use_arena = true) override {
     DeviceAllocatorRegistrationInfo info_real{
         info.mem_type, [&info](int value) -> std::unique_ptr<IDeviceAllocator> {
+          auto allocator = info.factory(value);
           // If the allocator is a provider interface, we need to wrap it with ProviderAllocator to turn it into an IDeviceAllocator
-          // Otherwise it's really a Provider_IDeviceAllocator_Impl, so we can just unwrap it to get back to the internal type
-          if (info.factory(value)->IsProviderInterface())
-            return onnxruntime::make_unique<ProviderAllocator>(info.factory(value));
+          // Otherwise it's really a Provider_IDeviceAllocator_Impl, so we can just unwrap it to get back to the IDeviceAllocator inside
+          if (allocator->IsProviderInterface())
+            return onnxruntime::make_unique<ProviderAllocator>(std::move(allocator));
           else
-            return std::move(static_cast<Provider_IDeviceAllocator_Impl*>(&*info.factory(value))->p_);
+            return std::move(static_cast<Provider_IDeviceAllocator_Impl*>(&*allocator)->p_);
         },
         info.max_mem};
 
+    // info_real will always return a unique_ptr to an IAllocator, which might be a native IAllocator or a provider interface wrapped by ProviderAllocator.
+    // Either way we wrap it in a Provider_IAllocator_Impl to be unwrapped by Provider_InsertAllocator
     return std::make_shared<Provider_IAllocator_Impl>(onnxruntime::CreateAllocator(info_real, device_id, use_arena));
   }
 
