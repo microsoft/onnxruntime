@@ -38,16 +38,41 @@ struct PySessionOptions : public SessionOptions {
 
 // Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
 struct PyInferenceSession {
+  // Default ctor is present only to be invoked by the PyTrainingSession class
+  explicit PyInferenceSession() {}
+
+  explicit PyInferenceSession(Environment& env, const PySessionOptions& so, const std::string& arg, bool is_arg_file_name) {
+    if (is_arg_file_name) {
+      // Given arg is the file path. Invoke the corresponding ctor().
+      sess_ = onnxruntime::make_unique<InferenceSession>(so, env, arg);
+    } else {
+      // Given arg is the model content as bytes. Invoke the corresponding ctor().
+      std::istringstream buffer(arg);
+      sess_ = onnxruntime::make_unique<InferenceSession>(so, env, buffer);
+    }
+  }
+
+  void AddCustomOpLibraries(const std::vector<std::shared_ptr<CustomOpLibrary>>& custom_op_libraries) {
+    if (custom_op_libraries.size() > 0) {
+      custom_op_libraries_.reserve(custom_op_libraries_.size() + custom_op_libraries.size());
+      for (size_t i = 0; i < custom_op_libraries.size(); ++i) {
+        custom_op_libraries_.push_back(custom_op_libraries[i]);
+      }
+    }
+  }
+
+  virtual InferenceSession* GetSessionHandle() const { return sess_.get(); }
+
+  virtual ~PyInferenceSession() {}
+
+ private:
   // Hold CustomOpLibrary resources so as to tie it to the life cycle of the InferenceSession needing it.
-  // NOTE: Declare this above InferenceSession so that this is destructed AFTER the InferenceSession instance -
-  // this is so that the custom ops held by the InferenceSession get destroyed prior to the library getting unloaded
+  // NOTE: Declare this above `sess_` so that this is destructed AFTER the InferenceSession instance -
+  // this is so that the custom ops held by the InferenceSession gets destroyed prior to the library getting unloaded
   // (if ref count of the shared_ptr reaches 0)
   std::vector<std::shared_ptr<CustomOpLibrary>> custom_op_libraries_;
 
-  std::unique_ptr<onnxruntime::InferenceSession> sess_;
-
-  virtual ~PyInferenceSession() {}
-  virtual InferenceSession* GetSessionHandle() const { return sess_.get(); }
+  std::unique_ptr<InferenceSession> sess_;
 };
 
 inline const PySessionOptions& GetDefaultCPUSessionOptions() {

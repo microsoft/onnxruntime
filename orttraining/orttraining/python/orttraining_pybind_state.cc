@@ -206,23 +206,26 @@ void addObjectMethodsForTraining(py::module& m) {
 
   // Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
   struct PyTrainingSession : public PyInferenceSession {
-    std::unique_ptr<TrainingSession> training_sess_;
+    explicit PyTrainingSession(Environment& env, const PySessionOptions& so) {
+      training_sess_ = onnxruntime::make_unique<onnxruntime::training::TrainingSession>(so, env);
+    }
 
     InferenceSession* GetSessionHandle() const override { return training_sess_.get(); }
+
+   private:
+    std::unique_ptr<TrainingSession> training_sess_;
   };
 
   py::class_<PyTrainingSession, PyInferenceSession> training_session(m, "TrainingSession");
   training_session
       .def(py::init([](const PySessionOptions& so) {
         Environment& env = GetEnv();
-        auto sess = onnxruntime::make_unique<PyTrainingSession>();
-        sess->training_sess_ = onnxruntime::make_unique<onnxruntime::training::TrainingSession>(so, env);
+        auto sess = onnxruntime::make_unique<PyTrainingSession>(env, so);
         return sess;
       }))
       .def(py::init([]() {
         Environment& env = GetEnv();
-        auto sess = onnxruntime::make_unique<PyTrainingSession>();
-        sess->training_sess_ = onnxruntime::make_unique<onnxruntime::training::TrainingSession>(GetDefaultCPUSessionOptions(), env);
+        auto sess = onnxruntime::make_unique<PyTrainingSession>(env, GetDefaultCPUSessionOptions());
         return sess;
       }))
       .def("finalize", [](py::object) {

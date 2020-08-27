@@ -641,10 +641,7 @@ void RegisterCustomOpDomainsAndLibraries(PyInferenceSession* sess, const PySessi
     OrtPybindThrowIfError(sess->GetSessionHandle()->AddCustomOpDomains(custom_op_domains));
 
     // Register all custom op libraries that will be needed for the session
-    sess->custom_op_libraries_.reserve(so.custom_op_libraries_.size());
-    for (size_t i = 0; i < so.custom_op_libraries_.size(); ++i) {
-      sess->custom_op_libraries_.push_back(so.custom_op_libraries_[i]);
-    }
+    sess->AddCustomOpLibraries(so.custom_op_libraries_);
   }
 }
 
@@ -1245,18 +1242,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       // without any conversion. So this init method can be used for model file path (string)
       // and model content (bytes)
       .def(py::init([&env](const PySessionOptions& so, const std::string& arg, bool is_arg_file_name) {
-        auto sess = onnxruntime::make_unique<PyInferenceSession>();
-
-        // Given arg is the file path. Invoke the corresponding ctor().
-        if (is_arg_file_name) {
-          sess->sess_ = onnxruntime::make_unique<InferenceSession>(so, env, arg);
-          RegisterCustomOpDomainsAndLibraries(sess.get(), so);
-          return sess;
-        }
-
-        // Given arg is the model content as bytes. Invoke the corresponding ctor().
-        std::istringstream buffer(arg);
-        sess->sess_ = onnxruntime::make_unique<InferenceSession>(so, env, buffer);
+        auto sess = onnxruntime::make_unique<PyInferenceSession>(env, so, arg, is_arg_file_name);
         RegisterCustomOpDomainsAndLibraries(sess.get(), so);
         return sess;
       }))
