@@ -249,21 +249,18 @@ class ONNXQuantizer:
 
         return self.model.model
 
-
     def should_quantize(self, node):
-        if(node.op_type not in self.op_types_to_quantize):
+        if (node.op_type not in self.op_types_to_quantize):
             return False
 
         if self.nodes_to_quantize is not None and len(
-                    self.nodes_to_quantize) != 0 and node.name not in self.nodes_to_quantize:
+                self.nodes_to_quantize) != 0 and node.name not in self.nodes_to_quantize:
             return False
 
         if self.nodes_to_exclude is not None and node.name in self.nodes_to_exclude:
             return False
-        
+
         return True
-
-
 
     def quantize_model(self):
 

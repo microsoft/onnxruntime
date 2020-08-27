@@ -106,8 +106,7 @@ def quantize(model,
     :return: ModelProto with quantization
     '''
     print("Warning: onnxruntime.quantization.quantize is deprecated.\n\
-         Please use quantize_static for static quantization, quantize_dynamic for dynamic quantization."
-          )
+         Please use quantize_static for static quantization, quantize_dynamic for dynamic quantization.")
     if nbits == 8:
         input_qType = onnx_proto.TensorProto.INT8 if symmetric_activation else onnx_proto.TensorProto.UINT8
         weight_qType = onnx_proto.TensorProto.INT8 if symmetric_weight else onnx_proto.TensorProto.UINT8
