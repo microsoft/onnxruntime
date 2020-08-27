@@ -14,6 +14,7 @@
 
 #include "inc/ImageConversionHelpers.h"
 #include "LearningModelDevice.h"
+#include "EventTimer.h"
 
 using namespace Microsoft::WRL;
 using namespace Windows::Graphics::DirectX::Direct3D11;
@@ -345,7 +346,13 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToDX12Texture(
   CD3DX12_RECT scissorRect(0, 0, (LONG)outputDesc.Width, outputDesc.Height);
   ComPtr<ID3D12Device> spDx12Device = device_cache.GetD3D12Device();
 
-  GPUTensorToDX12TextureTelemetryEvent telemetrylogger(tensorDesc);
+
+  std::unique_ptr<GPUTensorToDX12TextureTelemetryEvent> telemetryLogger;
+  // we're inside a lock from the caller of this function, so it's ok to use this static
+  static EventTimer eventTimer;
+  if (eventTimer.Start()) {
+    telemetryLogger = std::make_unique<GPUTensorToDX12TextureTelemetryEvent>(tensorDesc);
+  }
 
   WINML_THROW_HR_IF_FALSE_MSG(
       E_INVALIDARG,
@@ -490,7 +497,12 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToSoftwareBitmap(
   assert(pInputTensor != nullptr);
   assert(softwareBitmap != nullptr);
 
-  GPUTensorToDX12TextureTelemetryEvent telemetrylogger(tensorDesc);
+  std::unique_ptr<GPUTensorToDX12TextureTelemetryEvent> telemetryLogger;
+  // we're inside a lock from the caller of this function, so it's ok to use this static
+  static EventTimer eventTimer;
+  if (eventTimer.Start()) {
+    telemetryLogger = std::make_unique<GPUTensorToDX12TextureTelemetryEvent>(tensorDesc);
+  }
 
   uint32_t tensorElementSize = tensorDesc.dataType == kImageTensorDataTypeFloat32 ? 4 : 2;
   uint32_t singleVideoFramebufferSize = static_cast<uint32_t>(tensorDesc.sizes[1] * tensorDesc.sizes[2] * tensorDesc.sizes[3] * tensorElementSize);
@@ -569,7 +581,13 @@ void TensorToVideoFrameConverter::ConvertCPUTensorToSoftwareBitmap(
     _In_ void* pCPUTensor,
     _In_ const ImageTensorDescription& tensorDesc,
     _Inout_ wgi::SoftwareBitmap& softwareBitmap) {
-  ConvertCPUTensorToVideoFrameWithSoftwareBitmapTelemetryEvent telemetrylogger(tensorDesc);
+
+  std::unique_ptr<ConvertCPUTensorToVideoFrameWithSoftwareBitmapTelemetryEvent> telemetryLogger;
+  // we're inside a lock from the caller of this function, so it's ok to use this static
+  static EventTimer eventTimer;
+  if (eventTimer.Start()) {
+    telemetryLogger = std::make_unique<ConvertCPUTensorToVideoFrameWithSoftwareBitmapTelemetryEvent>(tensorDesc);
+  }
 
   auto height = softwareBitmap.PixelHeight();
   auto width = softwareBitmap.PixelWidth();

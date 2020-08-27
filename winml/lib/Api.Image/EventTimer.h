@@ -3,8 +3,7 @@
 class EventTimer
 {
 public:
-  EventTimer(long long durationInMicroSeconds)
-    : _durationInMicroSeconds(durationInMicroSeconds)
+  EventTimer()
   {
   }
   
@@ -12,7 +11,7 @@ public:
   {
     auto now = std::chrono::high_resolution_clock::now();
     if (!_started || 
-         std::chrono::duration_cast<std::chrono::microseconds>(now - _startTime).count() > _durationInMicroSeconds)
+         std::chrono::duration_cast<std::chrono::microseconds>(now - _startTime).count() > _kDurationBetweenSendingEvents)
     {
       _started = true;
       _startTime = std::chrono::high_resolution_clock::now();
@@ -24,7 +23,7 @@ public:
 
 private:
   bool _started = false;
-  long long _durationInMicroSeconds;
   std::chrono::steady_clock::time_point _startTime;
+  constexpr static long long _kDurationBetweenSendingEvents = 1000 * 50;  // duration in (us). send a EvaluationStop Event every 50 ms;
 };
 

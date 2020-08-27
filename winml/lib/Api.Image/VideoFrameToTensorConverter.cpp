@@ -280,7 +280,7 @@ void VideoFrameToTensorConverter::ConvertDX12TextureToGPUTensor(
 
   std::unique_ptr<DX12TextureToGPUTensorTelemetryEvent> telemetryLogger;
   // we're inside a lock from the caller of this function, so it's ok to use this static
-  static EventTimer eventTimer(kDurationBetweenSendingEvaluationStart);
+  static EventTimer eventTimer;
   if (eventTimer.Start()) {
     telemetryLogger = std::make_unique<DX12TextureToGPUTensorTelemetryEvent>(tensorDesc);
   }
@@ -449,7 +449,7 @@ void VideoFrameToTensorConverter::ConvertSoftwareBitmapToGPUTensor(
 
   std::unique_ptr<SoftwareBitmapToGPUTensorTelemetryEvent> telemetryLogger;
   // we're inside a lock from the caller of this function, so it's ok to use this static
-  static EventTimer eventTimer(kDurationBetweenSendingEvaluationStart);
+  static EventTimer eventTimer;
   if (eventTimer.Start()) {
     telemetryLogger = std::make_unique<SoftwareBitmapToGPUTensorTelemetryEvent>(tensorDesc);
   }
@@ -564,7 +564,7 @@ void VideoFrameToTensorConverter::ConvertSoftwareBitmapToCPUTensor(
   std::unique_ptr<ConvertVideoFrameWithSoftwareBitmapToCPUTensorTelemetryEvent> telemetryLogger;
 
   // we're inside a lock from the caller of this function, so it's ok to use this static
-  static EventTimer eventTimer(kDurationBetweenSendingEvaluationStart);
+  static EventTimer eventTimer;
   if (eventTimer.Start()) {
     telemetryLogger = std::make_unique<ConvertVideoFrameWithSoftwareBitmapToCPUTensorTelemetryEvent>(tensorDesc);
   }

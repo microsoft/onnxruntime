@@ -90,7 +90,5 @@ class VideoFrameToTensorConverter : IVideoFrameToTensorConverter, public ImageCo
       _In_ const ImageTensorDescription& tensor_description,
       _In_ const wgi::BitmapBounds& input_bounds,
       _Inout_ void* CPU_tensor);
-
-    constexpr static long long kDurationBetweenSendingEvaluationStart = 1000 * 50;  // duration in (us). send a EvaluationStop Event every 50 ms;
 };
 }  // namespace _winml
