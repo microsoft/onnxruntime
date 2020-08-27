@@ -34,4 +34,10 @@ Status AddSessionConfigEntryImpl(SessionOptions& options, const char* config_key
   options.session_configurations[std::move(key)] = std::move(val);
   return Status::OK();
 }
+
+Status SetSessionProgrammingProjectionImpl(SessionOptions& options, _In_ OrtProgrammingProjection projection) {
+  options.programming_projection = projection;
+  return Status::OK();
+}
+
 }  // namespace onnxruntime

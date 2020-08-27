@@ -18,6 +18,7 @@ using namespace onnxruntime::logging;
 
 inline const SessionOptions& GetDefaultCPUSessionOptions() {
   static SessionOptions so;
+  SetSessionProgrammingProjectionImpl(so, OrtProgrammingProjection::ORT_PROJECTION_CROSSPLAT_PYTHON);
   return so;
 }
 

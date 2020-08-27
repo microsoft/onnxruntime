@@ -104,4 +104,8 @@ const std::string GetSessionConfigOrDefault(const SessionOptions& options,
 
 // Add a config pair (config_key, config_value) to the given SessionOptions
 Status AddSessionConfigEntryImpl(SessionOptions& options, _In_z_ const char* config_key, _In_z_ const char* config_value);
+
+// Set the language projection property to the given SessionOptions
+Status SetSessionProgrammingProjectionImpl(SessionOptions& options, _In_ OrtProgrammingProjection projection);
+
 }  // namespace onnxruntime
