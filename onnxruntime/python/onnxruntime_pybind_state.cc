@@ -228,6 +228,8 @@ CustomOpLibrary::CustomOpLibrary(const char* library_path, OrtSessionOptions& or
       // Throw
       throw std::runtime_error(error_string);
     }
+
+    library_path_ = std::string(library_path);
   }
 }
 
@@ -240,8 +242,10 @@ CustomOpLibrary::~CustomOpLibrary() {
 void CustomOpLibrary::UnloadLibrary() {
   auto status = platform_env.UnloadDynamicLibrary(library_handle_);
 
+  const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
+
   if (!status.IsOK()) {
-    throw std::runtime_error("Unable to unload a custom op shared library");
+    LOGS(default_logger, WARNING) << "Unable to unload the shared library: " << library_path_;
   }
 }
 
@@ -1133,7 +1137,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           "Rpbdoc(Get a single session configuration value using the given configuration key.)pbdoc")
       .def(
           "register_custom_ops_library",
-          [](PySessionOptions* options, const std::string& library_path)
+          [&env](PySessionOptions* options, const std::string& library_path)
               -> void {
             OrtSessionOptions s;
 

@@ -23,6 +23,8 @@ struct CustomOpLibrary {
 
  private:
   void UnloadLibrary();
+
+  std::string library_path_;
   void* library_handle_ = nullptr;
 };
 
