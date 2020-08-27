@@ -15,13 +15,14 @@ from onnx import onnx_pb as onnx_proto
 from onnx import shape_inference
 from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
 
-from .quant_utils import QuantizationMode,QuantizedValueType,QuantizedInitializer,QuantizedValue,quantization_modes
-from .quant_utils import _find_by_name,_get_elem_index,_get_mul_node,_generate_identified_filename,_attribute_to_kwarg
+from .quant_utils import QuantizationMode, QuantizedValueType, QuantizedInitializer, QuantizedValue, quantization_modes
+from .quant_utils import _find_by_name, _get_elem_index, _get_mul_node, _generate_identified_filename, _attribute_to_kwarg
 from .quant_utils import QuantType, onnx_domain
 
 from .registry import CreateOpQuantizer, CreateDefaultOpQuantizer
 
 from .onnx_model import ONNXModel
+
 
 def quantize_data(data, quantize_range, qType):
     '''
@@ -58,9 +59,11 @@ def quantize_data(data, quantize_range, qType):
 
     return rmin, rmax, zero_point, scale, quantized_data
 
+
 onnx_op_set_version = 11
 
-def check_opset_version(org_model, force_fusions):         
+
+def check_opset_version(org_model, force_fusions):
     '''
         Check opset version of original model and set opset version and fuse_dynamic_quant accordingly.
         If opset version < 10, set quantized model opset version to 10.
@@ -108,18 +111,10 @@ def _get_qrange_for_qType(qType):
     else:
         raise ValueError('unsupported quantization data type')
 
+
 class ONNXQuantizer:
-    def __init__(self,
-                 model,
-                 per_channel,
-                 mode,
-                 static,
-                 fuse_dynamic_quant,
-                 weight_qType,
-                 input_qType,
-                 quantization_params,
-                 nodes_to_quantize,
-                 nodes_to_exclude):
+    def __init__(self, model, per_channel, mode, static, fuse_dynamic_quant, weight_qType, input_qType,
+                 quantization_params, nodes_to_quantize, nodes_to_exclude):
         onnx_model = shape_inference.infer_shapes(model)
         self.model = ONNXModel(onnx_model)
         self.value_infos = {vi.name: vi for vi in onnx_model.graph.value_info}
@@ -154,7 +149,7 @@ class ONNXQuantizer:
     def replace_gemm_with_matmul(self):
         nodes_to_remove = []
         nodes_to_add = []
-       
+
         for node in self.model.nodes():
             if node.op_type == 'Gemm':
                 alpha = 1.0
@@ -171,24 +166,20 @@ class ONNXQuantizer:
                     elif attr.name == 'transB':
                         transB = onnx.helper.get_attribute_value(attr)
                 if alpha == 1.0 and beta == 1.0 and transA == 0 and transB == 0:
-                    matmul_node = onnx.helper.make_node(
-                        'MatMul',
-                        [node.input[0], node.input[1]],                                                      
-                        [node.output[0]+'_MatMul'],
-                        name=node.output[0]+'_MatMul')
+                    matmul_node = onnx.helper.make_node('MatMul', [node.input[0], node.input[1]],
+                                                        [node.output[0] + '_MatMul'],
+                                                        name=node.output[0] + '_MatMul')
 
-                    add_node = onnx.helper.make_node(
-                        'Add',
-                        inputs=[node.output[0]+'_MatMul', node.input[2]],
-                        outputs=node.output,
-                        name=node.output[0]+'_Add')
-                    
+                    add_node = onnx.helper.make_node('Add',
+                                                     inputs=[node.output[0] + '_MatMul', node.input[2]],
+                                                     outputs=node.output,
+                                                     name=node.output[0] + '_Add')
+
                     nodes_to_add.extend([matmul_node, add_node])
                     nodes_to_remove.extend([node])
 
         self.model.add_nodes(nodes_to_add)
         self.model.remove_nodes(nodes_to_remove)
-     
 
     def remove_fake_quantized_nodes(self):
         '''
@@ -197,47 +188,52 @@ class ONNXQuantizer:
         '''
         nodes_to_remove = []
         initializers_to_remove = []
-  
+
         for curr_node in self.model.nodes():
             if curr_node.op_type == 'QuantizeLinear':
-                next_node,prev_node,succ_node = None,None,None
+                next_node, prev_node, succ_node = None, None, None
                 for child_node in self.model.get_children(curr_node):
                     if child_node.op_type == 'DequantizeLinear':
-                            next_node = child_node
+                        next_node = child_node
                 if next_node is None:
-                    raise ValueError("Remove fake-quantized node pair Error: DequantizeLinear node is not found for {}."
-                                    .format(curr_node.name))
+                    raise ValueError(
+                        "Remove fake-quantized node pair Error: DequantizeLinear node is not found for {}.".format(
+                            curr_node.name))
 
-                prev_node = self.model.get_parent(curr_node,0)
+                prev_node = self.model.get_parent(curr_node, 0)
                 if prev_node is None:
-                    raise ValueError("Remove fake-quantized node pair Error: Parent node is not found for {}." 
-                                    .format(curr_node.name))
-                
+                    raise ValueError("Remove fake-quantized node pair Error: Parent node is not found for {}.".format(
+                        curr_node.name))
+
                 succ_nodes = self.model.get_children(next_node)
                 if len(succ_nodes) == 0:
-                    raise ValueError("Remove fake-quantized node pair Error: No successive nodes found for {}." 
-                                    .format(next_node.name))
+                    raise ValueError("Remove fake-quantized node pair Error: No successive nodes found for {}.".format(
+                        next_node.name))
 
                 scale_tensor_name = curr_node.input[1]
                 zp_tensor_name = curr_node.input[2]
-                initializer_scale = _find_by_name(scale_tensor_name,self.model.initializer())
-                initializer_zp = _find_by_name(zp_tensor_name,self.model.initializer())
-                zp_and_scale = [onnx.numpy_helper.to_array(initializer_zp),onnx.numpy_helper.to_array(initializer_scale)]
+                initializer_scale = _find_by_name(scale_tensor_name, self.model.initializer())
+                initializer_zp = _find_by_name(zp_tensor_name, self.model.initializer())
+                zp_and_scale = [
+                    onnx.numpy_helper.to_array(initializer_zp),
+                    onnx.numpy_helper.to_array(initializer_scale)
+                ]
 
                 #connect the previous and successive node input and output
                 for succ_node in succ_nodes:
-                    succ_idx = _get_elem_index(next_node.output[0],succ_node.input)
+                    succ_idx = _get_elem_index(next_node.output[0], succ_node.input)
                     if succ_idx != -1:
                         succ_node.input[succ_idx] = curr_node.input[0]
                     else:
-                        raise ValueError("Remove fake-quantized node pair Error: Connection failed. No matched successive node input found for {}."
-                                        .format(next_node.name))
+                        raise ValueError(
+                            "Remove fake-quantized node pair Error: Connection failed. No matched successive node input found for {}."
+                            .format(next_node.name))
 
                 param_name = curr_node.input[0]
                 if self.quantization_params is None:
                     self.quantization_params = {}
                 self.quantization_params[param_name] = zp_and_scale
-                
+
                 #remove fake-quantized nodes
                 nodes_to_remove.extend([curr_node])
                 nodes_to_remove.extend([next_node])
@@ -251,16 +247,16 @@ class ONNXQuantizer:
 
         return self.model.model
 
-
     def quantize_model(self):
 
         self.replace_gemm_with_matmul()
-    
+
         self.remove_fake_quantized_nodes()
-       
+
         for node in self.model.nodes():
             # if a list of ops to be quantized is provided then only quantize those ops
-            if self.nodes_to_quantize is not None and len(self.nodes_to_quantize) != 0 and node.name not in self.nodes_to_quantize:
+            if self.nodes_to_quantize is not None and len(
+                    self.nodes_to_quantize) != 0 and node.name not in self.nodes_to_quantize:
                 op_quantizer = CreateDefaultOpQuantizer(self, node)
             elif self.nodes_to_exclude is not None and node.name in self.nodes_to_exclude:
                 op_quantizer = CreateDefaultOpQuantizer(self, node)
@@ -364,7 +360,6 @@ class ONNXQuantizer:
         self.model.initializer().extend([packed_weight_initializer, scale_initializer, zero_initializer])
 
         self._quantized_weights.append(weight)
-
 
     def _get_quantized_weight(self, initializer, qType):
         '''
@@ -494,7 +489,8 @@ class ONNXQuantizer:
                                              [abs_max_name + ":0"], abs_max_name)
         nodes_list.append(abs_max_node)
         #   and divide by (quantize_range/2.0) which will be equal to max(...)*2.0/quantize_range
-        initializer_div = onnx.helper.make_tensor(self.fixed_qrange_int8_name,onnx_proto.TensorProto.FLOAT,[],[_get_qrange_for_qType(qType) / 2.0])
+        initializer_div = onnx.helper.make_tensor(self.fixed_qrange_int8_name, onnx_proto.TensorProto.FLOAT, [],
+                                                  [_get_qrange_for_qType(qType) / 2.0])
         self.model.add_initializer(initializer_div)
         scale_div_name = input_name + "scale_Div"
         scale_div_node = onnx.helper.make_node("Div", [abs_max_node.output[0], self.fixed_qrange_int8_name],
@@ -502,7 +498,7 @@ class ONNXQuantizer:
         nodes_list.append(scale_div_node)
 
         # Zero point
-        initializer_zp = onnx.helper.make_tensor(self.fixed_zero_zp_name, qType,[],[0])
+        initializer_zp = onnx.helper.make_tensor(self.fixed_zero_zp_name, qType, [], [0])
         self.model.add_initializer(initializer_zp)
 
         return input_scale_name, self.fixed_zero_zp_name, [], []
@@ -532,9 +528,10 @@ class ONNXQuantizer:
         nodes_list.append(reduce_max_node)
 
         # Add tensors for quantize range and zero value.
-        initializer_qrange = onnx.helper.make_tensor(self.fixed_qrange_uint8_name,onnx_proto.TensorProto.FLOAT,[],[_get_qrange_for_qType(qType)])
+        initializer_qrange = onnx.helper.make_tensor(self.fixed_qrange_uint8_name, onnx_proto.TensorProto.FLOAT, [],
+                                                     [_get_qrange_for_qType(qType)])
         self.model.add_initializer(initializer_qrange)
-        initializer_qvalue = onnx.helper.make_tensor(self.fixed_zero_name,onnx_proto.TensorProto.FLOAT,[],[0.0])
+        initializer_qvalue = onnx.helper.make_tensor(self.fixed_zero_name, onnx_proto.TensorProto.FLOAT, [], [0.0])
         self.model.add_initializer(initializer_qvalue)
 
         # Compute Scale
@@ -556,7 +553,7 @@ class ONNXQuantizer:
                                             [zp_sub_name + ":0"], zp_sub_name)
         nodes_list.append(zp_sub_node)
         #   Divide by scale
-        zp_div_name = input_name + "_zero_point_Div"                                                                 
+        zp_div_name = input_name + "_zero_point_Div"
         zp_div_node = onnx.helper.make_node("Div", [zp_sub_node.output[0], input_scale_name], [zp_div_name + ":0"],
                                             zp_div_name)
         nodes_list.append(zp_div_node)
@@ -585,7 +582,7 @@ class ONNXQuantizer:
         if params is None or len(params) != 2:
             raise ValueError("Quantization parameters should contain zero point and scale. "
                              "Specified values for output {}: {}".format(param_name, params))
-      
+
         zero_point_values = [params[0].item()]
         zero_point_shape = []
         zero_point_name = param_name + "_zero_point"
@@ -596,9 +593,9 @@ class ONNXQuantizer:
         scale_name = param_name + "_scale"
 
         # Add initializers
-        init_zp = onnx.helper.make_tensor(zero_point_name,zero_point_type,zero_point_shape,zero_point_values)   
+        init_zp = onnx.helper.make_tensor(zero_point_name, zero_point_type, zero_point_shape, zero_point_values)
         self.model.add_initializer(init_zp)
-        init_scale = onnx.helper.make_tensor(scale_name,onnx_proto.TensorProto.FLOAT,scale_shape,scale_values)
+        init_scale = onnx.helper.make_tensor(scale_name, onnx_proto.TensorProto.FLOAT, scale_shape, scale_values)
         self.model.add_initializer(init_scale)
 
         return True, scale_name, zero_point_name, scale_shape, zero_point_shape
@@ -668,7 +665,7 @@ class ONNXQuantizer:
         reshape_input = [quantized_bias_name]
 
         # Add tensors for the shape to be reshaped to
-        init_shape = onnx.helper.make_tensor("reshape_shape",onnx_proto.TensorProto.INT64,[4],[1, -1, 1, 1])
+        init_shape = onnx.helper.make_tensor("reshape_shape", onnx_proto.TensorProto.INT64, [4], [1, -1, 1, 1])
         self.model.add_initializer(init_shape)
 
         reshape_input.append('reshape_shape')
@@ -794,7 +791,7 @@ class ONNXQuantizer:
             quantized_bias_entry = QuantizedInitializer(bias_name,
                                                         bias_initializer, [0], [0], [0], [bias_scale],
                                                         bias_data,
-                                                        quantized_data,                                                                     
+                                                        quantized_data,
                                                         qType=onnx_proto.TensorProto.INT32)
             self._quantized_weights.append(quantized_bias_entry)
 
@@ -859,7 +856,8 @@ class ONNXQuantizer:
                 scale_names.append(weight.name + "_scale")
             else:
                 # Add QuantizeLinear node.
-                qlinear_node = self.model.find_node_by_name(node_input + "_QuantizeLinear",self.new_nodes,self.model.graph())
+                qlinear_node = self.model.find_node_by_name(node_input + "_QuantizeLinear", self.new_nodes,
+                                                            self.model.graph())
                 if qlinear_node is None:
                     quantize_input_nodes = self._get_quantize_input_nodes(node, input_index, self.input_qType)
                     nodes.extend(quantize_input_nodes)
@@ -889,7 +887,7 @@ class ONNXQuantizer:
             quantized_value = self.quantized_value_map[value_name]
             # Add DequantizeLinear Node for this input
             dqlinear_name = value_name + "_DequantizeLinear"
-            dqlinear_node = self.model.find_node_by_name(dqlinear_name,self.new_nodes,self.model.graph())
+            dqlinear_node = self.model.find_node_by_name(dqlinear_name, self.new_nodes, self.model.graph())
             if dqlinear_node is None:
                 dqlinear_inputs = [quantized_value.q_name, quantized_value.scale_name, quantized_value.zp_name]
                 dequantize_node = onnx.helper.make_node("DequantizeLinear", dqlinear_inputs, [value_name],
@@ -906,7 +904,7 @@ class ONNXQuantizer:
             parameter new_nodes_list: List of new nodes created before processing current node
             return: List of new nodes created
         '''
-  
+
         for output in self.model.graph().output:
             dequantize_node = self._dequantize_value(output.name)
             if dequantize_node is not None:

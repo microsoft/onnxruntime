@@ -9,31 +9,30 @@ from .operators.activation import QLinearActivation
 from .operators.binary_op import QLinearBinaryOp
 from .operators.maxpool import QMaxPool
 
-CommonOpsRegistry ={
-    "Gather":GatherQuant,
-    "EmbedLayerNormalization":EmbedLayerNormalizationQuant
-}
+CommonOpsRegistry = {"Gather": GatherQuant, "EmbedLayerNormalization": EmbedLayerNormalizationQuant}
 
 IntegerOpsRegistry = {
-    "Conv":ConInteger,
-    "MatMul":MatMulInteger,
-    "Attention":AttentionQuant,
+    "Conv": ConInteger,
+    "MatMul": MatMulInteger,
+    "Attention": AttentionQuant,
 }
 IntegerOpsRegistry.update(CommonOpsRegistry)
 
 QLinearOpsRegistry = {
-    "Conv":QLinearCov,
-    "MatMul":QLinearMatMul,
-    "Add":QLinearBinaryOp,
-    "Mul":QLinearBinaryOp,
-    "Relu":QLinearActivation,
-    "Clip":QLinearActivation,
-    "MaxPool":QMaxPool,
+    "Conv": QLinearCov,
+    "MatMul": QLinearMatMul,
+    "Add": QLinearBinaryOp,
+    "Mul": QLinearBinaryOp,
+    "Relu": QLinearActivation,
+    "Clip": QLinearActivation,
+    "MaxPool": QMaxPool,
 }
 QLinearOpsRegistry.update(CommonOpsRegistry)
 
+
 def CreateDefaultOpQuantizer(onnx_quantizer, node):
     return QuantOperatorBase(onnx_quantizer, node)
+
 
 def CreateOpQuantizer(onnx_quantizer, node):
     registry = IntegerOpsRegistry if onnx_quantizer.mode == QuantizationMode.IntegerOps else QLinearOpsRegistry

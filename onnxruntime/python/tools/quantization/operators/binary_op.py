@@ -3,6 +3,7 @@ from .base_operator import QuantOperatorBase
 from ..quant_utils import _find_by_name, _attribute_to_kwarg, ms_domain, QuantizedValue, QuantizedValueType
 from onnx import onnx_pb as onnx_proto
 
+
 class QLinearBinaryOp(QuantOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)

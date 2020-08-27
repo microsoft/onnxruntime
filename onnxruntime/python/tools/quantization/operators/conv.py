@@ -3,6 +3,7 @@ from .base_operator import QuantOperatorBase
 from ..quant_utils import _find_by_name, _get_mul_node, QuantizedValue, QuantizedValueType, _attribute_to_kwarg
 from onnx import onnx_pb as onnx_proto
 
+
 class ConInteger(QuantOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
@@ -22,7 +23,7 @@ class ConInteger(QuantOperatorBase):
             bias_present = True
 
         conv_integer_output = node.output[0] + "_quantized"
-        conv_integer_name = node.name + "_quant" if node.name !="" else ""
+        conv_integer_name = node.name + "_quant" if node.name != "" else ""
 
         kwargs = {}
         for attribute in node.attribute:
@@ -33,7 +34,8 @@ class ConInteger(QuantOperatorBase):
 
         # Add bias add nodes
         if bias_present:
-            conv_integer_output = self.quantizer.get_bias_add_nodes(nodes, node, conv_integer_output, quantized_bias_name)
+            conv_integer_output = self.quantizer.get_bias_add_nodes(nodes, node, conv_integer_output,
+                                                                    quantized_bias_name)
 
         # Add cast operation to cast convInteger output to float.
         cast_op_output = conv_integer_output + "_cast_output"
@@ -63,10 +65,11 @@ class ConInteger(QuantOperatorBase):
 
         self.new_nodes += nodes
 
+
 class QLinearCov(QuantOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
-    
+
     def quantize(self):
         node = self.node
         assert (node.op_type == "Conv")

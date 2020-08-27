@@ -15,8 +15,8 @@ from onnx import onnx_pb as onnx_proto
 from onnx import shape_inference
 from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
 
-from .quant_utils import QuantizationMode,QuantizedValueType,QuantizedInitializer,QuantizedValue,quantization_modes
-from .quant_utils import _find_by_name,_get_elem_index,_get_mul_node,_generate_identified_filename,_attribute_to_kwarg
+from .quant_utils import QuantizationMode, QuantizedValueType, QuantizedInitializer, QuantizedValue, quantization_modes
+from .quant_utils import _find_by_name, _get_elem_index, _get_mul_node, _generate_identified_filename, _attribute_to_kwarg
 from .quant_utils import QuantType, __producer__, __version__
 
 from .registry import CreateOpQuantizer, CreateDefaultOpQuantizer
@@ -26,19 +26,19 @@ from .onnx_quantizer import ONNXQuantizer, check_opset_version
 from .calibrate import CalibrationDataReader, calibrate
 
 
-def optimize_model(model_path:Path):
-        '''
+def optimize_model(model_path: Path):
+    '''
             Generate model that applies graph optimization (constant folding,etc.)
             parameter model_path: path to the original onnx model
             return: optimized onnx model
         '''
-        opt_model_path = _generate_identified_filename(model_path,"-opt")
-        sess_option = SessionOptions()
-        sess_option.optimized_model_filepath = opt_model_path.as_posix()
-        sess_option.graph_optimization_level = GraphOptimizationLevel.ORT_ENABLE_BASIC
-        session = InferenceSession(model_path.as_posix(),sess_option)
-        optimized_model = onnx.load(opt_model_path.as_posix())
-        return optimized_model
+    opt_model_path = _generate_identified_filename(model_path, "-opt")
+    sess_option = SessionOptions()
+    sess_option.optimized_model_filepath = opt_model_path.as_posix()
+    sess_option.graph_optimization_level = GraphOptimizationLevel.ORT_ENABLE_BASIC
+    session = InferenceSession(model_path.as_posix(), sess_option)
+    optimized_model = onnx.load(opt_model_path.as_posix())
+    return optimized_model
 
 
 def quantize(model,
@@ -104,7 +104,8 @@ def quantize(model,
         when it is not None.
     '''
     print("Warning: onnxruntime.quantization.quantize is deprecated.\n\
-         Please use quantize_static for static quantization, quantize_dynamic for dynamic quantization, and quantize_qat for quantization-aware training quantization.")
+         Please use quantize_static for static quantization, quantize_dynamic for dynamic quantization, and quantize_qat for quantization-aware training quantization."
+          )
     if nbits == 8:
         input_qType = onnx_proto.TensorProto.INT8 if symmetric_activation else onnx_proto.TensorProto.UINT8
         weight_qType = onnx_proto.TensorProto.INT8 if symmetric_weight else onnx_proto.TensorProto.UINT8
@@ -112,16 +113,8 @@ def quantize(model,
         copy_model = onnx_proto.ModelProto()
         copy_model.CopyFrom(model)
         fuse_dynamic_quant = check_opset_version(copy_model, force_fusions)
-        quantizer = ONNXQuantizer(copy_model,
-                                  per_channel,
-                                  mode,
-                                  static,
-                                  fuse_dynamic_quant,
-                                  weight_qType,
-                                  input_qType,
-                                  quantization_params,
-                                  nodes_to_quantize,
-                                  nodes_to_exclude)
+        quantizer = ONNXQuantizer(copy_model, per_channel, mode, static, fuse_dynamic_quant, weight_qType, input_qType,
+                                  quantization_params, nodes_to_quantize, nodes_to_exclude)
 
         quantizer.quantize_model()
         quantizer.model.producer_name = __producer__
@@ -133,7 +126,7 @@ def quantize(model,
 
 def quantize_static(model_input,
                     model_output,
-                    calibration_data_reader:CalibrationDataReader,
+                    calibration_data_reader: CalibrationDataReader,
                     op_types=[],
                     per_channel=False,
                     activation_type=QuantType.QUInt8,
@@ -186,32 +179,31 @@ def quantize_static(model_input,
     fuse_dynamic_quant = True
 
     if len(op_types) == 0 or not op_types:
-        op_types = ['Conv','MatMul']
+        op_types = ['Conv', 'MatMul']
 
-    quantization_params_dict = calibrate(model_input,
-                                        calibration_data_reader,
-                                        op_types,
-                                        nodes_to_quantize,
-                                        nodes_to_exclude)
+    quantization_params_dict = calibrate(model_input, calibration_data_reader, op_types, nodes_to_quantize,
+                                         nodes_to_exclude)
 
-    quantizer = ONNXQuantizer(onnx.load(model_input),
-                              per_channel,
-                              mode,
-                              True, # static
-                              fuse_dynamic_quant,
-                              weight_qType,
-                              input_qType,
-                              quantization_params_dict,
-                              nodes_to_quantize,
-                              nodes_to_exclude)
+    quantizer = ONNXQuantizer(
+        onnx.load(model_input),
+        per_channel,
+        mode,
+        True,  # static
+        fuse_dynamic_quant,
+        weight_qType,
+        input_qType,
+        quantization_params_dict,
+        nodes_to_quantize,
+        nodes_to_exclude)
 
     quantizer.quantize_model()
     quantizer.model.producer_name = __producer__
     quantizer.model.producer_version = __version__
     onnx.save_model(quantizer.model.model, model_output)
 
-def quantize_dynamic(model_input:Path,
-                     model_output:Path,
+
+def quantize_dynamic(model_input: Path,
+                     model_output: Path,
                      per_channel=False,
                      activation_type=QuantType.QUInt8,
                      weight_type=QuantType.QUInt8,
@@ -263,16 +255,17 @@ def quantize_dynamic(model_input:Path,
     #fuse_dynamic_quant = check_opset_version(onnx.load(model_path), force_fusions)
     fuse_dynamic_quant = True
 
-    quantizer = ONNXQuantizer(optimized_model,
-                              per_channel,
-                              mode,
-                              False, #static
-                              fuse_dynamic_quant,
-                              weight_qType,
-                              input_qType,
-                              None,
-                              nodes_to_quantize,
-                              nodes_to_exclude)
+    quantizer = ONNXQuantizer(
+        optimized_model,
+        per_channel,
+        mode,
+        False,  #static
+        fuse_dynamic_quant,
+        weight_qType,
+        input_qType,
+        None,
+        nodes_to_quantize,
+        nodes_to_exclude)
 
     quantizer.quantize_model()
     quantizer.model.producer_name = __producer__

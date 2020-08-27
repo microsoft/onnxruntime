@@ -2,7 +2,7 @@ class QuantOperatorBase:
     def __init__(self, onnx_quantizer, onnx_node):
         self.quantizer = onnx_quantizer
         self.node = onnx_node
-    
+
     def quantize(self):
         '''
         Given a node which does not support quantization(Conv, Matmul, Gather), this method

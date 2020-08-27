@@ -1,15 +1,16 @@
 import onnx
-from  .base_operator import QuantOperatorBase
+from .base_operator import QuantOperatorBase
 from ..quant_utils import _find_by_name, _get_mul_node, QuantizedValue, QuantizedValueType
 from onnx import onnx_pb as onnx_proto
-
 '''
     Used when quantize mode is QuantizationMode.IntegerOps.
 '''
+
+
 class MatMulInteger(QuantOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
-    
+
     def quantize(self):
         node = self.node
         assert (node.op_type == "MatMul")
@@ -32,7 +33,8 @@ class MatMulInteger(QuantOperatorBase):
 
         # Add mul operation to multiply scales of two inputs.
         assert (len(scale_names) == 2)
-        scales_mul_op = matmul_integer_name + "_scales_mul" if matmul_integer_name != "" else scale_names[0] + "_" + scale_names[1] + "_mul"
+        scales_mul_op = matmul_integer_name + "_scales_mul" if matmul_integer_name != "" else scale_names[
+            0] + "_" + scale_names[1] + "_mul"
 
         scales_mul_node = _find_by_name(scales_mul_op, self.quantizer.new_nodes)
         if scales_mul_node is None:
@@ -49,13 +51,16 @@ class MatMulInteger(QuantOperatorBase):
         nodes.append(_get_mul_node([cast_op_output, scales_mul_op_output], node.output[0], output_scale_mul_op))
         self.quantizer.new_nodes += nodes
 
+
 '''
     Used when quantize mode is QuantizationMode.QLinearOps
 '''
+
+
 class QLinearMatMul(QuantOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
-    
+
     def quantize(self):
         node = self.node
         assert (node.op_type == "MatMul")
@@ -71,7 +76,7 @@ class QLinearMatMul(QuantOperatorBase):
                 node.output[0], node.name))
 
         qlinear_matmul_output = node.output[0] + "_quantized"
-        qlinear_matmul_name = node.name + "_quant" if node.name!="" else ""
+        qlinear_matmul_name = node.name + "_quant" if node.name != "" else ""
 
         qlinear_matmul_inputs = []
         # Input 0

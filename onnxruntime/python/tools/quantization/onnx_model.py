@@ -1,6 +1,7 @@
 import onnx
 from .quant_utils import _find_by_name
 
+
 class ONNXModel:
     def __init__(self, model):
         self.model = model
@@ -20,7 +21,7 @@ class ONNXModel:
 
     def opset_import(self):
         return self.model.opset_import
-    
+
     def remove_node(self, node):
         if node in self.model.graph.node:
             self.model.graph.node.remove(node)
@@ -43,13 +44,13 @@ class ONNXModel:
         for tensor in self.model.graph.initializer:
             if tensor.name == name:
                 return tensor
-        return None   
+        return None
 
-    def remove_initializer(self,tensor):
+    def remove_initializer(self, tensor):
         if tensor in self.model.graph.initializer:
             self.model.graph.initializer.remove(tensor)
-        
-    def remove_initializers(self,init_to_remove):
+
+    def remove_initializers(self, init_to_remove):
         for initializer in init_to_remove:
             self.remove_initializer(initializer)
 
@@ -67,7 +68,7 @@ class ONNXModel:
         output_name_to_node = {}
         for node in self.model.graph.node:
             for output_name in node.output:
-                output_name_to_node[output_name] = node      
+                output_name_to_node[output_name] = node
         return output_name_to_node
 
     def get_children(self, node, input_name_to_nodes=None):
@@ -80,7 +81,7 @@ class ONNXModel:
                 for node in input_name_to_nodes[output]:
                     children.append(node)
         return children
-        
+
     def get_parents(self, node, output_name_to_node=None):
         if output_name_to_node is None:
             output_name_to_node = self.output_name_to_node()
@@ -90,7 +91,7 @@ class ONNXModel:
             if input in output_name_to_node:
                 parents.append(output_name_to_node[input])
         return parents
-    
+
     def get_parent(self, node, idx, output_name_to_node=None):
         if output_name_to_node is None:
             output_name_to_node = self.output_name_to_node()
@@ -103,8 +104,8 @@ class ONNXModel:
             return None
 
         return output_name_to_node[input]
-    
-    def find_node_by_name(self,node_name,new_nodes_list,graph):
+
+    def find_node_by_name(self, node_name, new_nodes_list, graph):
         '''
         Find out if a node exists in a graph or a node is in the 
         new set of nodes created during quantization. Return the node found.
@@ -114,7 +115,7 @@ class ONNXModel:
         node = _find_by_name(node_name, graph_nodes_list)
         return node
 
-    def find_nodes_by_initializer(self,graph,initializer):
+    def find_nodes_by_initializer(self, graph, initializer):
         '''
         Find all nodes with given initializer as an input.
         '''

@@ -2,10 +2,11 @@ import onnx
 from .base_operator import QuantOperatorBase
 from ..quant_utils import _find_by_name, _attribute_to_kwarg, ms_domain, QuantizedValue, QuantizedValueType
 from onnx import onnx_pb as onnx_proto
-
 '''
     Quantize Gather
 '''
+
+
 class GatherQuant(QuantOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
@@ -13,7 +14,7 @@ class GatherQuant(QuantOperatorBase):
     def quantize(self):
         node = self.node
         assert (node.op_type == "Gather")
-        if(not self.quantizer._is_valid_quantize_weight(node.input[0])):
+        if (not self.quantizer._is_valid_quantize_weight(node.input[0])):
             self.quantizer.new_nodes += [node]
             return
 

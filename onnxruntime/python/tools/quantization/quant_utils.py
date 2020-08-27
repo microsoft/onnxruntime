@@ -9,7 +9,6 @@ __version__ = "0.1.0"
 onnx_domain = "ai.onnx"
 ms_domain = "com.microsoft"
 
-
 type_to_name = {
     1: "FLOAT",
     2: "UINT8",
@@ -32,9 +31,11 @@ type_to_name = {
 # IntegerOps: Use IntegerOps in quantized model. Only ConvInteger and MatMulInteger ops are supported now.
 # QLinearOps: Use QLinearOps in quantized model. Only QLinearConv and QLinearMatMul ops are supported now.
 
+
 class QuantizationMode():
     IntegerOps = 0
     QLinearOps = 1
+
 
 quantization_modes = [
     getattr(QuantizationMode, attr) for attr in dir(QuantizationMode)
@@ -102,6 +103,7 @@ class QuantizedValue:
         self.axis = axis
         self.qType = qType
 
+
 def _attribute_to_kwarg(attribute):
     '''
     Convert attribute to kwarg format for use with onnx.helper.make_node.
@@ -139,8 +141,6 @@ def _attribute_to_kwarg(attribute):
     return {attribute.name: value}
 
 
-
-
 def _find_by_name(item_name, item_list):
     '''
     Helper function to find item by name in a list.
@@ -157,7 +157,7 @@ def _get_elem_index(elem_name, elem_list):
     Helper function to return index of an item in a node list
     '''
     elem_idx = -1
-    for i in range(0,len(elem_list)):
+    for i in range(0, len(elem_list)):
         if elem_list[i] == elem_name:
             elem_idx = i
     return elem_idx
