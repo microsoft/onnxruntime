@@ -361,8 +361,8 @@ void FindPipelineLandmarks(
 //   Wait -> Recv -> Record -> Wait -> FW -> Record -> Wait -> Send -> Record ->
 //   Wait -> Recv -> Record -> Wait -> BW -> Record -> Wait -> Send -> Record
 //  3. Last stage:
-//   Wait -> Recv -> Record -> Wait -> FW -> Record                           ->
-//                          -> Wait -> BW -> Record -> Wait -> Send -> Record
+//   Wait -> Recv -> Record -> Wait -> FW ->
+//                                     BW -> Record -> Wait -> Send -> Record
 //
 // Each Recv, Send, FW, and BW, are surrounded by one Wait and one Record. Wait marks
 // the beginning of the surrounded task and Record signals the end of that task.
@@ -442,9 +442,11 @@ Status TransformGraphForPipeline(
   Node* backward_recv_record{nullptr};
   // For all stages.
   Node* forward_compute_wait{nullptr};
+  // For first and middle stages.
   Node* forward_compute_record{nullptr};
-  // For all stages.
+  // For first and middle stages.
   Node* backward_compute_wait{nullptr};
+  // For all stages.
   Node* backward_compute_record{nullptr};
 
   // Names to added into this graph's input list.
