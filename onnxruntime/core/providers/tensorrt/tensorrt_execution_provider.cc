@@ -2,26 +2,25 @@
 // Licensed under the MIT License.
 
 #include <fstream>
+#include <limits>
 #include <list>
+#include <map>
+#include <memory>
 #include <unordered_set>
+#include <unordered_map>
+#include <utility>
 #include "core/providers/shared_library/provider_api.h"
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/common/safeint.h"
 
 #include "tensorrt_execution_provider.h"
-#include "core/framework/allocator.h"
 #include "unary_elementwise_ops_impl.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "gpu_data_transfer.h"
 #include "gsl/gsl"
 #include <experimental/filesystem>
 #include "cuda_allocator.h"
-#include <unordered_map>
-#include <utility>
-#include <limits>
-#include <map>
-#include <memory>
 
 #define CUDA_RETURN_IF_ERROR(expr)               \
   ORT_RETURN_IF_ERROR(CUDA_CALL(expr)            \
@@ -69,6 +68,9 @@ struct ShutdownProtobuf {
 } g_protobuf;
 
 namespace onnxruntime {
+
+constexpr const char* TRT = "Tensorrt";
+constexpr const char* TRT_PINNED = "TensorrtPinned";
 
 class Memcpy final : public Provider_OpKernel {
  public:
