@@ -19,6 +19,7 @@ namespace Dml
     size_t ComputeByteSizeFromDimensions(gsl::span<const DimensionType> dimensions, MLOperatorTensorDataType tensorDataType);
     size_t ComputeByteSizeFromTensor(IMLOperatorTensor& tensor);
     uint32_t GetSupportedDeviceDataTypeMask(IDMLDevice* dmlDevice);
+    void GetDescendingPackedStrides(gsl::span<const uint32_t> sizes, /*out*/ gsl::span<uint32_t> strides);
 
     bool IsSigned(DML_TENSOR_DATA_TYPE dataType);
 

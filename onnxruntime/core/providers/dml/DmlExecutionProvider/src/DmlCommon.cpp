@@ -132,4 +132,16 @@ uint32_t GetSupportedDeviceDataTypeMask(IDMLDevice* dmlDevice)
     return deviceTypeMask;
 }
 
+void GetDescendingPackedStrides(gsl::span<const uint32_t> sizes, /*out*/ gsl::span<uint32_t> strides)
+{
+    assert(sizes.size() == strides.size());
+
+    uint32_t stride = 1;
+    for (size_t i = strides.size(); i-- > 0; )
+    {
+        strides[i] = stride;
+        stride *= sizes[i];
+    }
+}
+
 } // namespace Dml

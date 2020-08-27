@@ -858,7 +858,264 @@ namespace OperatorHelper
             std::iota(m_axes.begin(), m_axes.end(), 0);
         }
     }
-    
+
+    void EinSumHelper::Initialize()
+    {
+        ParseEquationComponents();
+        m_recognizedOperatorType = DetermineRecognizedOperatorType();
+    }
+
+    void EinSumHelper::ParseEquationComponents()
+    {
+        // Parse an equation like 'ij,jk->ik' into components {ij, jk, ik} mapping letters to
+        // numeric indices {(0,1}, {1,2}, {0,2}}. The last component is the output.
+
+        std::map<char, uint32_t> labelMap;
+        std::set<char> repeatedLabels;
+
+        uint32_t currentLabelIndex = 0;
+        Component currentComponent = {};
+        bool foundOutput = false;
+        bool reachedEnd = false;
+
+        // Read first to last character in equation, looking for letters, commas, and one arrow.
+        for (char* token = m_equation.data(); !reachedEnd; ++token)
+        {
+            char ch = *token;
+
+            // Only ASCII letters are valid subscript symbols in numpy.einsum().
+            if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z'))
+            {
+                // Check whether label already has an index.
+                const auto [i, inserted] = labelMap.insert({ch, currentLabelIndex});
+                if (inserted)
+                {
+                    ML_CHECK_VALID_ARGUMENT(!foundOutput, "Found label in equation output not matching any label from inputs.")
+                    ++currentLabelIndex; // New label found.
+                }
+                else if (!foundOutput)
+                {
+                    // If label in input already found earlier, then keep track of this later
+                    // to generate the default output in case one is not specified.
+                    repeatedLabels.insert(ch);
+                }
+                m_labelIndices.push_back(i->second);
+            }
+            else if (ch == ' ')
+            {
+                // Ignore spaces.
+            }
+            else
+            {
+                currentComponent.labelIndexEnd = static_cast<uint32_t>(m_labelIndices.size());
+                m_components.push_back(currentComponent);
+                currentComponent.labelIndexBegin = currentComponent.labelIndexEnd;
+
+                switch (ch)
+                {
+                case ',':
+                    // Note it's valid for 2 commas be adjacent, which indicates a scalar and generates
+                    // an empty component.
+                    break;
+
+                case '-': // Start of "->" (must be atomic, no space between them).
+                    ++token; // Skip '-'.
+                    ML_CHECK_VALID_ARGUMENT(*token == '>', "Expected '->' for output.")
+                    ML_CHECK_VALID_ARGUMENT(foundOutput == false, "Only one output arrow '->' is valid.")
+                    foundOutput = true;
+                    break;
+
+                case '.':
+                    // Ellipsis is unsupported. Leave recognized operator as None, deferring to another EP.
+                    m_components.clear();
+                    return;
+
+                case '\0':
+                    reachedEnd = true;
+                    break; // End of string.
+
+                default:
+                    ML_INVALID_ARGUMENT("Unsupported character in equation string. Must be a-z, A-Z, ',', or '->'.");
+                }
+            }
+        }
+
+        if (!foundOutput)
+        {
+            // If no explicit output was given, generate an implicit output by ordering all the
+            // labels in alphabetic order (by ASCII value consistent with numpy, so Z < a).
+            // Exclude any labels that occurred more than once, as these cancel out.
+
+            for (auto i : labelMap)
+            {
+                if (repeatedLabels.count(i.first) == 0)
+                {
+                    m_labelIndices.push_back(i.second);
+                }
+            }
+
+            // Push the final component, which is the output.
+            currentComponent.labelIndexEnd = static_cast<uint32_t>(m_labelIndices.size());
+            m_components.push_back(currentComponent);
+        }
+    }
+
+    EinSumHelper::RecognizedOperatorType EinSumHelper::DetermineRecognizedOperatorType()
+    {
+        if (m_components.empty())
+        {
+            return RecognizedOperatorType::None; // Parsing may have found unsupported components - treating as unknown.
+        }
+
+        // std::ranges::equal is not supported yet.
+        auto equals = [](gsl::span<const uint32_t> a, gsl::span<const uint32_t> b)
+        {
+            return std::equal(a.begin(), a.end(), b.begin(), b.end());
+        };
+
+        std::array<uint32_t, 3> componentRanks;
+        if (m_components.size() > componentRanks.size())
+        {
+            // No recognized operator takes more than 2 inputs and 1 output.
+            // EinSum itself is generic and can handle any variable number of inputs,
+            // but DML's operators expect fixed counts.
+            return RecognizedOperatorType::None;
+        }
+        else if (m_components.size() == 2)
+        {
+            auto& inputLabels = m_components[0].GetLabels(m_labelIndices);
+            auto& outputLabels = m_components[1].GetLabels(m_labelIndices);
+            if (inputLabels.size() == outputLabels.size())
+            {
+                // Check identity.
+                if (equals(inputLabels, outputLabels))
+                {
+                    // Handles: "->", "i->i", "ij->ij", "ijk->ijk", "ijkl->ijkl" ...
+                    return RecognizedOperatorType::Identity;
+                }
+                else // Transpose since a permutation exists.
+                {
+                    // Handles: "ij->ji", "ijk->kji", "ijkl->lkji", "ijkl->ijkl" ...
+                    return RecognizedOperatorType::Transpose;
+                }
+            }
+            else if (outputLabels.empty()) // Scalar output, with all inputs reduced.
+            {
+                // Handles: "i->", "ij->", "ijk->", "ijkl->" ...
+                return RecognizedOperatorType::ReduceSum;
+            }
+        }
+        else if (m_components.size() == 3)
+        {
+            // If all components have the same size and label order, then apply elementwise multiplication.
+            auto& inputALabels = m_components[0].GetLabels(m_labelIndices);
+            auto& inputBLabels = m_components[1].GetLabels(m_labelIndices);
+            auto& outputLabels = m_components[2].GetLabels(m_labelIndices);
+            if (equals(inputALabels, outputLabels) && equals(inputBLabels, outputLabels))
+            {
+                // Handles: "i,i->i", "ij,ij->ij", "ijk,ijk->ijk", "ijkl,ijkl->ijkl" ...
+                return RecognizedOperatorType::Multiply;
+            }
+        }
+
+        // Otherwise check for special cases of dedicated operators...
+
+        struct RecognizedOperatorInfo
+        {
+            RecognizedOperatorType recognizedOperatorType;
+            std::initializer_list<const uint32_t> componentRanks;
+            std::initializer_list<const uint32_t> labelIndices;
+        };
+
+        const RecognizedOperatorInfo recognizedOperators[] = {
+            {RecognizedOperatorType::MatMul,           {2,2,2},{0,1, 1,2, 0,2}}, // ij,jk->ik
+            {RecognizedOperatorType::MatMul,           {3,3,3},{0,1,2, 0,2,3, 0,1,3}}, // bij,bjk->bik
+            {RecognizedOperatorType::MatMul,           {4,4,4},{0,1,2,3, 0,1,3,4, 0,1,2,4}}, // abij,abjk->abik
+            {RecognizedOperatorType::MatMulTransposeA, {2,2,2},{0,1, 0,2, 1,2}}, // ji,jk->ik
+            {RecognizedOperatorType::MatMulTransposeA, {3,3,3},{0,1,2, 0,1,3, 0,2,3}}, // bji,bjk->bik
+            {RecognizedOperatorType::MatMulTransposeA, {4,4,4},{0,1,2,3, 0,1,2,4, 0,1,3,4}}, // abji,abjk->abik
+            {RecognizedOperatorType::MatMulTransposeB, {2,2,2},{0,1, 2,1, 0,2}}, // ij,kj->ik
+            {RecognizedOperatorType::MatMulTransposeB, {3,3,3},{0,1,2, 0,3,2, 0,1,3}}, // bij,bkj->bik
+            {RecognizedOperatorType::MatMulTransposeB, {4,4,4},{0,1,2,3, 0,1,4,3, 0,1,2,4}}, // abij,abkj->abik
+            {RecognizedOperatorType::MatMulTransposeB, {1,1,0},{0,0,}}, // i,i-> (1D inner_prod)
+            {RecognizedOperatorType::ReduceSum,        {2,1  },{0,1, 0}}, // ij->i
+            {RecognizedOperatorType::ReduceSum,        {2,1  },{0,1, 1}}, // ij->j
+        };
+
+        // For each recognized operator, compare the labels-per-component and label indices.
+        for (auto& recognizedOperator : recognizedOperators)
+        {
+            if (equals(m_labelIndices, recognizedOperator.labelIndices)
+            &&  m_components.size() == recognizedOperator.componentRanks.size())
+            {
+                for (size_t i = 0; i < m_components.size(); ++i)
+                {
+                    componentRanks[i] = m_components[i].GetDimensionCount();
+                }
+
+                if (equals(gsl::make_span(componentRanks.data(), m_components.size()), recognizedOperator.componentRanks))
+                {
+                    return recognizedOperator.recognizedOperatorType;
+                }
+            }
+        }
+
+        return RecognizedOperatorType::None;
+    }
+
+    std::vector<EdgeShapes> EinSumHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    {
+        assert(!m_components.empty()); // Should have already parsed components.
+
+        uint32_t inputCount  = shapeInfo.GetInputCount();
+        uint32_t outputCount = shapeInfo.GetOutputCount();
+        ML_CHECK_VALID_ARGUMENT(inputCount + 1 == m_components.size(), "Mismatch between input tensor count and string equation component count.");
+        ML_CHECK_VALID_ARGUMENT(outputCount == 1, "EinSum expects exactly 1 output tensor.");
+
+        std::vector<uint32_t> labelSizes(m_labelIndices.size(), INT_MIN);
+
+        // Read every input tensor, comparing labels to ensure consistent sizes from the equation parsed earlier.
+        for (uint32_t i = 0; i < inputCount; ++i)
+        {
+            auto inputShape = shapeInfo.GetInputTensorShape(i);
+            auto& component = m_components[i];
+            auto labelIndices = component.GetLabels(m_labelIndices);
+            uint32_t dimensionCount = component.GetDimensionCount();
+
+            ML_CHECK_VALID_ARGUMENT(inputShape.size() == dimensionCount, "Mismatch between input tensor shape and string equation label count.");
+
+            for (uint32_t i = 0; i < dimensionCount; ++i)
+            {
+                // If this is the first time seeing this label, then record the size.
+                // Otherwise any following occurrences of the label must match sizes.
+                // e.g. Given "ij,ji", both i's and both j's must match dimension sizes.
+                uint32_t dimensionSize = inputShape[i];
+                uint32_t labelIndex = labelIndices[i];
+                assert(labelIndex < labelSizes.size());
+
+                if (labelSizes[labelIndex] == INT_MIN)
+                {
+                    labelSizes[labelIndex] = dimensionSize;
+                }
+                else
+                {
+                    ML_CHECK_VALID_ARGUMENT(labelSizes[labelIndex] == dimensionSize, "All labels must have the same dimension sizes.");
+                }
+            }
+        }
+
+        // Generate output dimensions from corresponding input tensor labels.
+        // e.g. Given ij,jk->ij with [2,3] and [3,5], the output is [2,5].
+        std::vector<uint32_t> outputDimensions;
+        auto outputLabelIndices = m_components.back().GetLabels(m_labelIndices);
+        for (auto labelIndex : outputLabelIndices)
+        {
+            outputDimensions.push_back(labelSizes[labelIndex]);
+        }
+
+        return { std::move(EdgeShapes(outputDimensions)) };
+    }
+
     std::vector<EdgeShapes> MatMulHelperBase::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
         ML_CHECK_VALID_ARGUMENT(shapeInfo.GetInputCount() >= 2);

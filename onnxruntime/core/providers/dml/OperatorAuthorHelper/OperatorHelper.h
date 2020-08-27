@@ -771,6 +771,70 @@ class ReduceHelper : public ReduceHelperBase {
   ReduceHelper(const Info_t& info, const Shape_t& shape) : ReduceHelperBase(info, shape, true) {}
 };
 
+class EinSumHelper
+{
+public:
+    void Initialize();
+
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+    template <typename Info_t, typename Shape_t>
+    EinSumHelper(const Info_t& info, const Shape_t& shape, uint32_t opsetVersion)
+    {
+        m_equation = info.GetAttribute(AttrName::Equation);
+        Initialize();
+    }
+
+    EinSumHelper(const MLOperatorAttributes& info)
+    {
+        m_equation = info.GetAttribute(AttrName::Equation);
+        Initialize();
+    }
+
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+
+    enum class RecognizedOperatorType
+    {
+        None,
+        Identity,
+        Multiply,
+        MatMul,
+        MatMulTransposeA,
+        MatMulTransposeB,
+        ReduceSum,
+        Transpose,
+        Total,
+    };
+
+    RecognizedOperatorType GetRecognizedOperatorType() const noexcept { return m_recognizedOperatorType; }
+
+protected:
+    void ParseEquationComponents();
+    RecognizedOperatorType DetermineRecognizedOperatorType();
+
+protected:
+    struct Component
+    {
+        uint32_t labelIndexBegin;
+        uint32_t labelIndexEnd;
+       
+        uint32_t GetDimensionCount() const noexcept
+        {
+            return labelIndexEnd - labelIndexBegin;
+        }
+        gsl::span<const uint32_t> GetLabels(gsl::span<const uint32_t> labels) const
+        {
+            return labels.subspan(labelIndexBegin, labelIndexEnd - labelIndexBegin);
+        };
+    };
+
+    std::string m_equation;
+    std::vector<uint32_t> m_labelIndices; // Concatenation of all labels as rebased indices ("ij,ai" -> 0,1,2,0).
+    std::vector<Component> m_components; // All components in order, including inputs and output.
+    std::vector<uint32_t> m_outputDimensions;
+    RecognizedOperatorType m_recognizedOperatorType = RecognizedOperatorType::None;
+};
+
 class MatMulHelperBase {
  public:
   // Info_t is used to obtain attributes which will be used for calculating the output shape later.
@@ -1465,6 +1529,7 @@ using ShapeInferenceHelper_ReduceL1 = ReduceHelper;
 using ShapeInferenceHelper_ReduceL2 = ReduceHelper;
 using ShapeInferenceHelper_ReduceMax = ReduceHelper;
 using ShapeInferenceHelper_ReduceMin = ReduceHelper;
+using ShapeInferenceHelper_Einsum12 = VersionedOpsetHelper<EinSumHelper, 12>;
 using ShapeInferenceHelper_ArgMax = ArgMinArgMaxHelper;
 using ShapeInferenceHelper_ArgMin = ArgMinArgMaxHelper;
 using ShapeInferenceHelper_Gemm = GemmHelper;
