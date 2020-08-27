@@ -206,20 +206,6 @@ struct SequenceTensorType {
 template <typename ElemType>
 const SequenceTensorTypeProto<ElemType> SequenceTensorType<ElemType>::s_sequence_tensor_type_proto;
 
-inline bool SupportReleasedONNXOpsetsOnly() {
-  // Get the value of env variable
-  const std::string allow_official_onnx_release_only_str =
-      Env::Default().GetEnvironmentVar(model_load_utils::kAllowReleasedONNXOpsetOnly);
-
-  if (!allow_official_onnx_release_only_str.empty()) {
-    if (allow_official_onnx_release_only_str.length() == 1 && allow_official_onnx_release_only_str[0] == '0') {
-      return false;
-    }
-  }
-
-  return true;
-}
-
 // To use OpTester:
 //  1. Create one with the op name
 //  2. Call AddAttribute with any attributes
