@@ -49,7 +49,7 @@ namespace transformer_utils {
 
 std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
     TransformerLevel level,
-    const std::unordered_set<std::string>& weights_to_train,
+    std::unordered_set<std::string>& weights_to_train,
     const TrainingSession::TrainingConfiguration::GraphTransformerConfiguration& config,
     const IExecutionProvider& execution_provider,
     std::unordered_map<std::string, std::string>& updated_weight_names,
@@ -94,14 +94,13 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
         transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(compatible_eps));
       }
 
-      transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(execution_provider, compatible_eps, weights_to_train));
-      transformers.emplace_back(onnxruntime::make_unique<ReshapeFusion>(compatible_eps));
+      transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(execution_provider, weights_to_train, compatible_eps));
       auto horizontal_parallel_size = training::DistributedRunContext::GroupSize(training::WorkerGroupType::HorizontalParallel);
       if (horizontal_parallel_size > 1) {
         LOGS_DEFAULT(WARNING) << horizontal_parallel_size << "-way horizontal model parallel is enabled";
         transformers.emplace_back(onnxruntime::make_unique<MegatronTransformer>(
             training::DistributedRunContext::RankInGroup(training::WorkerGroupType::HorizontalParallel),
-            horizontal_parallel_size, updated_weight_names, compatible_eps));
+            horizontal_parallel_size, updated_weight_names, weights_to_train, compatible_eps));
       }
       transformers.emplace_back(onnxruntime::make_unique<ComputationReductionTransformer>(compatible_eps));
     } break;

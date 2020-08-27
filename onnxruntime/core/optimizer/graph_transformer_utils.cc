@@ -115,9 +115,9 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
   switch (level) {
     case TransformerLevel::Level1: {
       std::unordered_set<std::string> l1_execution_providers = {};
-
+      std::unordered_set<std::string> excluded_initializers = {};
       transformers.emplace_back(onnxruntime::make_unique<CommonSubexpressionElimination>(l1_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(execution_provider, l1_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(execution_provider, excluded_initializers, l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<MatMulAddFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<ReshapeFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));

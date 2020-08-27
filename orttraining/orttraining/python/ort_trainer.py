@@ -534,7 +534,10 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
 
     sessionOptions = ort.SessionOptions()
     sessionOptions.use_deterministic_compute = use_deterministic_compute
-    sessionOptions.log_severity_level = 0
+
+    if "LOG_SEVERITY" not in os.environ:
+        os.environ["LOG_SEVERITY"] = 0 # 2, warning
+    sessionOptions.log_severity_level = int(os.environ['LOG_SEVERITY'])
     session = ort.TrainingSession(file_name_or_serialized_string, ort_parameters, sessionOptions)
     train_io_binding = session.io_binding()
     eval_io_binding = session.io_binding()
