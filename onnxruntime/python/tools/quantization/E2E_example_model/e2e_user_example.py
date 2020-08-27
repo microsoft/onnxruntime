@@ -66,7 +66,7 @@ def main():
     output_model_path = './calibrated_quantized_model.onnx'
     calibration_dataset_path = './test_images'
     dr = ResNet50DataReader(calibration_dataset_path)
-    quantize_static(input_model_path, output_model_path, dr, op_types_to_quantize=['Conv'])
+    quantize_static(input_model_path, output_model_path, dr)
     print('Calibrated and quantized model saved.')
 
 
