@@ -17,7 +17,7 @@ from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
 
 from .quant_utils import QuantizationMode, QuantizedValueType, QuantizedInitializer, QuantizedValue, quantization_modes
 from .quant_utils import _find_by_name, _get_elem_index, _get_mul_node, _generate_identified_filename, _attribute_to_kwarg
-from .quant_utils import QuantType, onnx_domain
+from .quant_utils import QuantType, onnx_domain, __producer__, __version__
 
 from .registry import CreateOpQuantizer, CreateDefaultOpQuantizer
 
@@ -114,7 +114,7 @@ def _get_qrange_for_qType(qType):
 
 class ONNXQuantizer:
     def __init__(self, model, per_channel, mode, static, fuse_dynamic_quant, weight_qType, input_qType,
-                 quantization_params, nodes_to_quantize, nodes_to_exclude):
+                 quantization_params, nodes_to_quantize, nodes_to_exclude, op_types_to_quantize):
         onnx_model = shape_inference.infer_shapes(model)
         self.model = ONNXModel(onnx_model)
         self.value_infos = {vi.name: vi for vi in onnx_model.graph.value_info}
@@ -127,6 +127,7 @@ class ONNXQuantizer:
         self.quantization_params = quantization_params
         self.nodes_to_quantize = nodes_to_quantize  # specific nodes to quantize
         self.nodes_to_exclude = nodes_to_exclude  # specific nodes to exclude
+        self.op_types_to_quantize = op_types_to_quantize
         self.new_nodes = []
 
         if not self.mode in quantization_modes:
@@ -247,6 +248,22 @@ class ONNXQuantizer:
 
         return self.model.model
 
+
+    def should_quantize(self, node):
+        if(node.op_type not in self.op_types_to_quantize):
+            return False
+
+        if self.nodes_to_quantize is not None and len(
+                    self.nodes_to_quantize) != 0 and node.name not in self.nodes_to_quantize:
+            return False
+
+        if self.nodes_to_exclude is not None and node.name in self.nodes_to_exclude:
+            return False
+        
+        return True
+
+
+
     def quantize_model(self):
 
         self.replace_gemm_with_matmul()
@@ -254,14 +271,11 @@ class ONNXQuantizer:
         self.remove_fake_quantized_nodes()
 
         for node in self.model.nodes():
-            # if a list of ops to be quantized is provided then only quantize those ops
-            if self.nodes_to_quantize is not None and len(
-                    self.nodes_to_quantize) != 0 and node.name not in self.nodes_to_quantize:
-                op_quantizer = CreateDefaultOpQuantizer(self, node)
-            elif self.nodes_to_exclude is not None and node.name in self.nodes_to_exclude:
-                op_quantizer = CreateDefaultOpQuantizer(self, node)
-            else:
+            if self.should_quantize(node):
                 op_quantizer = CreateOpQuantizer(self, node)
+            else:
+                op_quantizer = CreateDefaultOpQuantizer(self, node)
+
             op_quantizer.quantize()
 
         self._dequantize_outputs()
@@ -280,6 +294,8 @@ class ONNXQuantizer:
         if opset_info is not None:
             self.model.opset_import().remove(opset_info)
         self.model.opset_import().extend([onnx.helper.make_opsetid(onnx_domain, onnx_op_set_version)])
+        self.model.model.producer_name = __producer__
+        self.model.model.producer_version = __version__
 
         return self.model.model
 

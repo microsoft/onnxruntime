@@ -17,9 +17,9 @@ from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
 
 from .quant_utils import QuantizationMode, QuantizedValueType, QuantizedInitializer, QuantizedValue, quantization_modes
 from .quant_utils import _find_by_name, _get_elem_index, _get_mul_node, _generate_identified_filename, _attribute_to_kwarg
-from .quant_utils import QuantType, __producer__, __version__
+from .quant_utils import QuantType
 
-from .registry import CreateOpQuantizer, CreateDefaultOpQuantizer
+from .registry import CreateOpQuantizer, CreateDefaultOpQuantizer, QLinearOpsRegistry, IntegerOpsRegistry
 
 from .onnx_model import ONNXModel
 from .onnx_quantizer import ONNXQuantizer, check_opset_version
@@ -28,15 +28,15 @@ from .calibrate import CalibrationDataReader, calibrate
 
 def optimize_model(model_path: Path):
     '''
-            Generate model that applies graph optimization (constant folding,etc.)
-            parameter model_path: path to the original onnx model
-            return: optimized onnx model
-        '''
+        Generate model that applies graph optimization (constant folding,etc.)
+        parameter model_path: path to the original onnx model
+        return: optimized onnx model
+    '''
     opt_model_path = _generate_identified_filename(model_path, "-opt")
     sess_option = SessionOptions()
     sess_option.optimized_model_filepath = opt_model_path.as_posix()
     sess_option.graph_optimization_level = GraphOptimizationLevel.ORT_ENABLE_BASIC
-    session = InferenceSession(model_path.as_posix(), sess_option)
+    _ = InferenceSession(model_path.as_posix(), sess_option)
     optimized_model = onnx.load(opt_model_path.as_posix())
     return optimized_model
 
@@ -51,7 +51,8 @@ def quantize(model,
              symmetric_weight=False,
              quantization_params=None,
              nodes_to_quantize=None,
-             nodes_to_exclude=None):
+             nodes_to_exclude=None,
+             op_types_to_quantize=[]):
     '''
         Given an onnx model, create a quantized onnx model and save it into a file
     :param model: ModelProto to quantize
@@ -90,7 +91,6 @@ def quantize(model,
                 'resnet_model/Relu_1:0': [np.uint8(0), np.float32(0.019539741799235344)],
                 'resnet_model/Relu_2:0': [np.uint8(0), np.float32(0.011359662748873234)]
             }
-    :return: ModelProto with quantization
     :param nodes_to_quantize:
         List of nodes names to quantize. When this list is not None only the nodes in this list
         are quantized.
@@ -102,9 +102,11 @@ def quantize(model,
     :param nodes_to_exclude:
         List of nodes names to exclude. The nodes in this list will be excluded from quantization
         when it is not None.
+    :param op_types_to_quantize: specify the types of operators to quantize, like ['Conv'] to quantize Conv only. It quantizes all supported operators by default.
+    :return: ModelProto with quantization
     '''
     print("Warning: onnxruntime.quantization.quantize is deprecated.\n\
-         Please use quantize_static for static quantization, quantize_dynamic for dynamic quantization, and quantize_qat for quantization-aware training quantization."
+         Please use quantize_static for static quantization, quantize_dynamic for dynamic quantization."
           )
     if nbits == 8:
         input_qType = onnx_proto.TensorProto.INT8 if symmetric_activation else onnx_proto.TensorProto.UINT8
@@ -113,12 +115,14 @@ def quantize(model,
         copy_model = onnx_proto.ModelProto()
         copy_model.CopyFrom(model)
         fuse_dynamic_quant = check_opset_version(copy_model, force_fusions)
+
+        if len(op_types_to_quantize) == 0 or not op_types_to_quantize:
+            op_types_to_quantize = list(QLinearOpsRegistry.keys()) if static else list(IntegerOpsRegistry.keys())
+
         quantizer = ONNXQuantizer(copy_model, per_channel, mode, static, fuse_dynamic_quant, weight_qType, input_qType,
-                                  quantization_params, nodes_to_quantize, nodes_to_exclude)
+                                  quantization_params, nodes_to_quantize, nodes_to_exclude, op_types_to_quantize)
 
         quantizer.quantize_model()
-        quantizer.model.producer_name = __producer__
-        quantizer.model.producer_version = __version__
         return quantizer.model.model
     else:
         raise ValueError('Only 8 bit quantization is currently supported')
@@ -127,7 +131,7 @@ def quantize(model,
 def quantize_static(model_input,
                     model_output,
                     calibration_data_reader: CalibrationDataReader,
-                    op_types=[],
+                    op_types_to_quantize=[],
                     per_channel=False,
                     activation_type=QuantType.QUInt8,
                     weight_type=QuantType.QUInt8,
@@ -137,23 +141,12 @@ def quantize_static(model_input,
         Given an onnx model and calibration data reader, create a quantized onnx model and save it into a file
     :param model_input: file path of model to quantize
     :param model_output: file path of quantized model
+    :param calibration_data_reader: a calibration data reader. It enumerates calibration data and generates inputs for the original model.
+    :param op_types_to_quantize: specify the types of operators to quantize, like ['Conv'] to quantize Conv only. It quantizes all supported operators by default.
+    :param op_types: operators to quantize
     :param per_channel: quantize weights per channel
     :param activation_type: quantization data type of activation
     :param weight_type: quantization data type of weight
-    :param quantization_params:
-        Dictionary to specify the zero point and scale values for inputs to conv and matmul nodes.
-        It is required.
-        The quantization_params should be specified in the following format:
-            {
-                "input_name": [zero_point, scale]
-            }.
-        zero_point should be of type np.uint8 and scale should be of type np.float32.
-        example:
-            {
-                'resnet_model/Relu_1:0': [np.uint8(0), np.float32(0.019539741799235344)],
-                'resnet_model/Relu_2:0': [np.uint8(0), np.float32(0.011359662748873234)]
-            }
-    :return: ModelProto with quantization
     :param nodes_to_quantize:
         List of nodes names to quantize. When this list is not None only the nodes in this list
         are quantized.
@@ -178,10 +171,10 @@ def quantize_static(model_input,
     #fuse_dynamic_quant = check_opset_version(onnx.load(model_path), force_fusions)
     fuse_dynamic_quant = True
 
-    if len(op_types) == 0 or not op_types:
-        op_types = ['Conv', 'MatMul']
+    if len(op_types_to_quantize) == 0 or not op_types_to_quantize:
+        op_types_to_quantize = list(QLinearOpsRegistry.keys())
 
-    quantization_params_dict = calibrate(model_input, calibration_data_reader, op_types, nodes_to_quantize,
+    quantization_params_dict = calibrate(model_input, calibration_data_reader, op_types_to_quantize, nodes_to_quantize,
                                          nodes_to_exclude)
 
     quantizer = ONNXQuantizer(
@@ -194,43 +187,30 @@ def quantize_static(model_input,
         input_qType,
         quantization_params_dict,
         nodes_to_quantize,
-        nodes_to_exclude)
+        nodes_to_exclude,
+        op_types_to_quantize)
 
     quantizer.quantize_model()
-    quantizer.model.producer_name = __producer__
-    quantizer.model.producer_version = __version__
     onnx.save_model(quantizer.model.model, model_output)
 
 
 def quantize_dynamic(model_input: Path,
                      model_output: Path,
+                     op_types_to_quantize=[],
                      per_channel=False,
                      activation_type=QuantType.QUInt8,
                      weight_type=QuantType.QUInt8,
-                     nodes_to_quantize=None,
-                     nodes_to_exclude=None):
+                     nodes_to_quantize=[],
+                     nodes_to_exclude=[]):
     '''
         Given an onnx model, create a quantized onnx model and save it into a file
     :param model_input: file path of model to quantize
     :param model_output: file path of quantized model
+    :param op_types_to_quantize: specify the types of operators to quantize, like ['Conv'] to quantize Conv only. It quantizes all supported operators by default.
     :param per_channel: quantize weights per channel
     :param nbits: number of bits to represent quantized data. Currently only supporting 8-bit types
     :param activation_type: quantization data type of activation
     :param weight_type: quantization data type of weight
-    :param quantization_params:
-        Dictionary to specify the zero point and scale values for inputs to conv and matmul nodes.
-        It is required.
-        The quantization_params should be specified in the following format:
-            {
-                "input_name": [zero_point, scale]
-            }.
-        zero_point should be of type np.uint8 and scale should be of type np.float32.
-        example:
-            {
-                'resnet_model/Relu_1:0': [np.uint8(0), np.float32(0.019539741799235344)],
-                'resnet_model/Relu_2:0': [np.uint8(0), np.float32(0.011359662748873234)]
-            }
-    :return: ModelProto with quantization
     :param nodes_to_quantize:
         List of nodes names to quantize. When this list is not None only the nodes in this list
         are quantized.
@@ -255,6 +235,9 @@ def quantize_dynamic(model_input: Path,
     #fuse_dynamic_quant = check_opset_version(onnx.load(model_path), force_fusions)
     fuse_dynamic_quant = True
 
+    if len(op_types_to_quantize) == 0 or not op_types_to_quantize:
+        op_types_to_quantize = list(IntegerOpsRegistry.keys())
+
     quantizer = ONNXQuantizer(
         optimized_model,
         per_channel,
@@ -265,9 +248,67 @@ def quantize_dynamic(model_input: Path,
         input_qType,
         None,
         nodes_to_quantize,
-        nodes_to_exclude)
+        nodes_to_exclude,
+        op_types_to_quantize)
 
     quantizer.quantize_model()
-    quantizer.model.producer_name = __producer__
-    quantizer.model.producer_version = __version__
+    onnx.save_model(quantizer.model.model, model_output)
+
+
+def quantize_qat(model_input: Path,
+                 model_output: Path,
+                 op_types_to_quantize=[],
+                 per_channel=False,
+                 activation_type=QuantType.QUInt8,
+                 weight_type=QuantType.QUInt8,
+                 nodes_to_quantize=[],
+                 nodes_to_exclude=[]):
+    '''
+        Given a quantize-aware traning onnx model, create a quantized onnx model and save it into a file
+    :param model_input: file path of model to quantize
+    :param model_output: file path of quantized model
+    :param op_types_to_quantize: specify the types of operators to quantize, like ['Conv'] to quantize Conv only. It quantizes all supported operators by default.
+    :param per_channel: quantize weights per channel
+    :param activation_type: quantization data type of activation
+    :param nodes_to_quantize:
+        List of nodes names to quantize. When this list is not None only the nodes in this list
+        are quantized.
+        example:
+        [
+            'Conv__224',
+            'Conv__252'
+        ]
+    :param nodes_to_exclude:
+        List of nodes names to exclude. The nodes in this list will be excluded from quantization
+        when it is not None.
+    '''
+
+    input_qType = onnx_proto.TensorProto.INT8 if activation_type == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
+    weight_qType = onnx_proto.TensorProto.INT8 if weight_type == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
+    mode = QuantizationMode.IntegerOps
+
+    #optimize the original model
+    optimized_model = optimize_model(Path(model_input))
+
+    #check opset version of the original model
+    #fuse_dynamic_quant = check_opset_version(onnx.load(model_path), force_fusions)
+    fuse_dynamic_quant = True
+
+    if len(op_types_to_quantize) == 0 or not op_types_to_quantize:
+        op_types_to_quantize = list(IntegerOpsRegistry.keys())
+
+    quantizer = ONNXQuantizer(
+        optimized_model,
+        per_channel,
+        mode,
+        False,  #static
+        fuse_dynamic_quant,
+        weight_qType,
+        input_qType,
+        None,
+        nodes_to_quantize,
+        nodes_to_exclude,
+        op_types_to_quantize)
+
+    quantizer.quantize_model()
     onnx.save_model(quantizer.model.model, model_output)
