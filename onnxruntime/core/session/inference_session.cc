@@ -890,9 +890,9 @@ common::Status InferenceSession::Initialize() {
                                                                         !keep_initializers));
 
 #if !defined(ORT_MINIMAL_BUILD)
-    if (!session_options_.optimized_model_filepath.empty()) {
+    // if (!session_options_.optimized_model_filepath.empty()) {
       // Serialize optimized ONNX model.
-      ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(*model_, session_options_.optimized_model_filepath));
+      ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(*model_, "optimized_training_graph.onnx"));
       if (session_options_.graph_optimization_level >= TransformerLevel::Level3) {
         LOGS(*session_logger_, WARNING) << "Serializing Optimized ONNX model with Graph Optimization"
                                            " level greater than ORT_ENABLE_EXTENDED. The generated"
@@ -900,7 +900,7 @@ common::Status InferenceSession::Initialize() {
                                            " optimizations, and should only be used in the same environment"
                                            " the model was optimized for.";
       }
-    }
+    // }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
     session_state_->ResolveMemoryPatternFlag();
