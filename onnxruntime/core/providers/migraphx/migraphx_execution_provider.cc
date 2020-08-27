@@ -198,54 +198,174 @@ static bool get_migraphx_type(ONNXTensorElementDataType type,
   return true;
 }
 
-static bool can_eval_concat(const Node* concat, const InitializedTensorSet& initializers, const logging::Logger& logger) {
-  if (concat == nullptr) return true;
-  const auto concat_args = concat->InputDefs();
+// static bool can_eval_shape_general(const Node* node, const InitializedTensorSet& initializers, const logging::Logger& logger)
+// {
+//   if (node == nullptr)
+//   {
+//     return false;
+//   }
 
-  // scenario 1
-  if (concat_args.size() == 1) {
-    std::vector<graph_utils::EdgeEndToMatch> parent_path_1{
-        {0, 0, "Unsqueeze", {1, 11}, kOnnxDomain},
-        {0, 0, "Mul", {1, 6, 7}, kOnnxDomain},
-        {0, 0, "Gather", {1, 11}, kOnnxDomain},
-        {0, 0, "Shape", {1}, kOnnxDomain}};
-    std::vector<const Node::EdgeEnd*> edges;
-    bool b_found = graph_utils::FindPath(*concat, true, parent_path_1, edges, logger);
+//   auto inputs = node->InputDefs();
+//   for (std::size_t i = 0; i < inputs.size(); ++i)
+//   {
+//     // check input is an initialize
+//     auto in = inputs[i];
+//     if (initializers.find(in->Name()) != initializers.end())
+//     {
+//       continue;
+//     }
+
+//     // get the corresponding input node
+//     auto input_node = graph_utils::GetInputNode(*node, i);
+//     // if (input_node == nullptr)
+//     // {
+//     //   continue;
+//     // }
+
+//     // shape node, it is OK
+//     if (input_node != nullptr and input_node->OpType() == "Shape")
+//     {
+//       continue;
+//     }
+
+//     if (can_eval_shape_general(input_node, initializers, logger))
+//     {
+//       continue;
+//     }
+
+//     return false;
+//   }
+
+//   return true;
+// }
+
+// scenario 1: Unsqueeze->Gather->Shape
+static bool can_eval_shape_1(const Node* concat, int index, const InitializedTensorSet& initializers, const logging::Logger& logger)
+{
+  std::vector<graph_utils::EdgeEndToMatch> parent_path{
+      {0, index, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Gather", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Shape", {1, 13}, kOnnxDomain}};
+  std::vector<const Node::EdgeEnd*> edges;
+  bool b_found = graph_utils::FindPath(*concat, true, parent_path, edges, logger);
+  if (b_found) {
+    const Node& gather = edges[1]->GetNode();
+    const auto* arg_index = gather.InputDefs()[1];
+    if (initializers.find(arg_index->Name()) != initializers.end()) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+
+// scenario 2: Unsqueeze->(Sub/Mul/Div)->Gather->Shape
+static bool can_eval_shape_2(const Node* concat, int index, const InitializedTensorSet& initializers, const logging::Logger& logger)
+{
+  std::vector<std::string> op_names{"Sub", "Mul", "Div"};
+  for (const auto& name : op_names)
+  {
+    std::vector<graph_utils::EdgeEndToMatch> parent_path1{
+        {0, index, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
+        {0, 0, name, {1, 6, 7, 13}, kOnnxDomain},
+        {0, 0, "Gather", {1, 11, 13}, kOnnxDomain},
+        {0, 0, "Shape", {1, 13}, kOnnxDomain}};
+    std::vector<const Node::EdgeEnd*> edges1;
+    bool b_found = graph_utils::FindPath(*concat, true, parent_path1, edges1, logger);
     if (b_found) {
-      const Node& mul = edges[1]->GetNode();
-      const auto* arg_1 = mul.InputDefs()[1];
+      const Node& nd = edges1[1]->GetNode();
+      const auto* arg_1 = nd.InputDefs()[1];
       bool const_flag = (initializers.find(arg_1->Name()) != initializers.end());
       if (const_flag) {
-        const Node& gather = edges[2]->GetNode();
+        const Node& gather = edges1[2]->GetNode();
         const auto* arg_index = gather.InputDefs()[1];
         if (initializers.find(arg_index->Name()) != initializers.end()) {
           return true;
         }
       }
     }
+
+    std::vector<graph_utils::EdgeEndToMatch> parent_path2{
+        {0, index, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
+        {0, 0, name, {1, 6, 7, 13}, kOnnxDomain},
+        {0, 1, "Gather", {1, 11, 13}, kOnnxDomain},
+        {0, 0, "Shape", {1, 13}, kOnnxDomain}};
+    std::vector<const Node::EdgeEnd*> edges2;
+    b_found = graph_utils::FindPath(*concat, true, parent_path2, edges2, logger);
+    if (b_found) {
+      const Node& gather = edges2[2]->GetNode();
+      const auto* arg_index = gather.InputDefs()[1];
+      if (initializers.find(arg_index->Name()) != initializers.end()) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+static bool can_eval_shape_3(const Node* node, const InitializedTensorSet& initializers, const logging::Logger& logger)
+{
+  std::vector<graph_utils::EdgeEndToMatch> parent_path{
+      {0, 0, "Div", {1, 6, 7, 13}, kOnnxDomain},
+      {0, 0, "Sub", {1, 6, 7, 13}, kOnnxDomain},
+      {0, 0, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Gather", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Shape", {1, 13}, kOnnxDomain}};
+  std::vector<const Node::EdgeEnd*> edges;
+  bool b_found = graph_utils::FindPath(*node, true, parent_path, edges, logger);
+  if (b_found) {
+    std::vector<const Node*> nodes;
+    nodes.push_back(&edges[0]->GetNode());
+    nodes.push_back(&edges[1]->GetNode());
+    nodes.push_back(&edges[3]->GetNode());
+    for (const auto& node : nodes)
+    {
+      const auto* arg_index = node->InputDefs()[1];
+      if (initializers.find(arg_index->Name()) == initializers.end()) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  return false;
+}
+
+static bool can_eval_concat(const Node* concat, const InitializedTensorSet& initializers, const logging::Logger& logger) {
+  if (concat == nullptr) return true;
+  const auto concat_args = concat->InputDefs();
+
+  // scenario 1
+  if (concat_args.size() == 1) {
+    if (can_eval_shape_2(concat, 0, initializers, logger))
+    {
+      return true;
+    }
   } else if (concat_args.size() >= 2) {
     int arg_size = static_cast<int>(concat_args.size());
     for (int i = 0; i < arg_size; ++i) {
       auto arg = concat_args[i];
       // is not an initializer
-      if (initializers.find(arg->Name()) == initializers.end()) {
-        // then check whether can do constant folding for it
-        std::vector<graph_utils::EdgeEndToMatch> parent_path{
-            {0, i, "Unsqueeze", {1, 11}, kOnnxDomain},
-            {0, 0, "Gather", {1, 11}, kOnnxDomain},
-            {0, 0, "Shape", {1}, kOnnxDomain}};
-        std::vector<const Node::EdgeEnd*> edges;
-        bool b_found = graph_utils::FindPath(*concat, true, parent_path, edges, logger);
-        if (!b_found) {
-          return false;
-        }
-
-        const Node& gather = edges[1]->GetNode();
-        const auto* arg_index = gather.InputDefs()[1];
-        if (initializers.find(arg_index->Name()) == initializers.end()) {
-          return false;
-        }
+      if (initializers.find(arg->Name()) != initializers.end()) {
+        continue;
       }
+
+      // scenario 1: then check whether can do constant folding for it
+      if (can_eval_shape_1(concat, i, initializers, logger))
+      {
+        continue;
+      }
+
+      // scenario 2: 
+      if (can_eval_shape_2(concat, i, initializers, logger))
+      {
+        continue;
+      }
+
+      return false;
     }
 
     return true;
@@ -390,6 +510,12 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
         return false;
       }
     }
+
+    if (can_eval_shape_3(node, initializers, logger))
+    {
+      return false;
+    }
+
     return true;
   } else if (optype == "ConvInteger") {
     if (node->InputDefs()[0]->Shape()->dim_size() != 4) {
@@ -532,7 +658,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
         return false;
       }
 
-      const Node* shape_node = graph_utils::GetInputNode(*node, 0);
+      const Node* shape_node = graph_utils::GetInputNode(*node, 1);
       if (shape_node and shape_node->OpType() == "Concat") {
         if (can_eval_concat(shape_node, initializers, logger)) {
           return false;
@@ -545,26 +671,24 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     // value of the "starts" attribute is higher than a corresponding
     // value in the "ends"
     const auto& args = node->InputDefs();
-    if (args.size() == 5) {
-      return true;
+    int arg_size = args.size();
+    for (int arg_index = arg_size - 1; arg_index > 0; --arg_index)
+    {
+      bool is_const = (initializers.find(args[arg_index]->Name()) != initializers.end());
+      if (!is_const)
+      {
+        if (!can_eval_shape_1(node, arg_index, initializers, logger))
+        {
+          if (!can_eval_shape_2(node, arg_index, initializers, logger))
+          {
+            std::cout << "arg_index = " << arg_index << std::endl;
+            return true;
+          }
+        }
+      }
     }
 
     const auto& attributes = node->GetAttributes();
-    if (args.size() >= 4) {
-      if (initializers.find(args[3]->Name()) == initializers.end())
-        return true;
-    }
-
-    if (args.size() >= 3) {
-      if (initializers.find(args[2]->Name()) == initializers.end())
-        return true;
-    }
-
-    if (args.size() >= 2) {
-      if (initializers.find(args[1]->Name()) == initializers.end())
-        return true;
-    }
-
     if (attributes.count("starts") > 0 and attributes.count("ends") > 0) {
       const auto& starts = attributes.find("starts")->second.ints();
       const auto& ends = attributes.find("ends")->second.ints();
@@ -673,7 +797,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
       "Div", "Dropout", "Elu", "Equal", "Erf", "Exp", "Expand", "Flatten", "Floor", "GRU", "Gather", 
       "GatherElements", "Gemm", "GlobalAveragePool", "GlobalMaxPool", "Identity", "ImageScaler", 
       "InstanceNormalization", "LRN", "LSTM", "LeakyRelu", "Log", "LogSoftmax", "MatMul", "Max", 
-      "MaxPool", "Min", "Mul", "Neg", "OneHot", "Pad", "Pow", "PRelu",
+      "MaxPool", "Min", "Mul", "Neg", "NonZero", "OneHot", "Pad", "Pow", "PRelu",
       "RNN", "Range", "Reciprocal", "ReduceL1", "ReduceL2", "ReduceLogSum", "ReduceLogSumExp", "ReduceMax", 
       "ReduceMean", "ReduceMin", "ReduceProd", "ReduceSum", "ReduceSumSquare", "Relu", "Reshape", 
       "Round", "Shape", "Sigmoid", "Sign", "Sin", "Sinh", "Slice", "Softmax", "Split", "Sqrt", "Squeeze", 
