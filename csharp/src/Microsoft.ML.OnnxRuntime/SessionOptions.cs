@@ -60,7 +60,7 @@ namespace Microsoft.ML.OnnxRuntime
             :base(IntPtr.Zero, true)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionOptions(out handle));
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionProgrammingProjection(_nativePtr, OrtProgrammingProjection.ORT_PROJECTION_CROSSPLAT_CSHARP));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionProgrammingProjection(handle, OrtProgrammingProjection.ORT_PROJECTION_CROSSPLAT_CSHARP));
         }
 
         /// <summary>
