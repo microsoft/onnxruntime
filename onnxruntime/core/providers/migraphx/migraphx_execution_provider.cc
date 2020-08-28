@@ -793,7 +793,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                           const logging::Logger& logger) {
   static std::set<std::string> mgx_supported_ops = {"Abs", "Acos", "Acosh", "Add", "ArgMax", "ArgMin", 
       "Asin", "Asinh", "Atan", "Atanh", "AveragePool", "BatchNormalization", "Cast", "Ceil", "Clip", 
-      "Concat", "Constant", "ConstantFill", "ConstantOfShape", "Conv", "ConvTranspose", "Cos", "Cosh", 
+      "Concat", "Constant", "ConstantFill", "ConstantOfShape", "Conv", "Cos", "Cosh", 
       "Div", "Dropout", "Elu", "Equal", "Erf", "Exp", "Expand", "Flatten", "Floor", "GRU", "Gather", 
       "GatherElements", "Gemm", "GlobalAveragePool", "GlobalMaxPool", "Identity", "ImageScaler", 
       "InstanceNormalization", "LRN", "LSTM", "LeakyRelu", "Log", "LogSoftmax", "MatMul", "Max", 
