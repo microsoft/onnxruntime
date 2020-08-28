@@ -36,7 +36,7 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
   const int64_t indices_size = indices_shape.Size();
 
   // Handle negative axis if any
-  const int64_t axis = static_cast<int64_t>(HandleNegativeAxis(axis_, input_rank));
+  const int64_t axis = HandleNegativeAxis(axis_, input_rank);
 
   // Validate input shapes and ranks (invoke the static method in the CPU GatherElements kernel that hosts the shared checks)
   auto status = onnxruntime::GatherElements::ValidateInputShapes(input_shape, indices_shape, axis);
@@ -56,7 +56,7 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
   TArray<fast_divmod> fdm_indices_strides(indices_rank);
   TensorPitches indices_strides(indices_dims);
   for (auto i = 0; i < indices_rank; i++) {
-    fdm_indices_strides[i] = fast_divmod(static_cast<int>(indices_strides[i]));
+    fdm_indices_strides[i] = fast_divmod(gsl::narrow_cast<int>(indices_strides[i]));
   }
 
   const size_t element_size = input_tensor->DataType()->Size();
