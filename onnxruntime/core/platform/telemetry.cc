@@ -49,6 +49,7 @@ void Telemetry::LogSessionCreation(uint32_t session_id, int64_t ir_version, cons
   ORT_UNUSED_PARAMETER(loadedFrom);
   ORT_UNUSED_PARAMETER(execution_provider_ids);
   ORT_UNUSED_PARAMETER(use_fp16);
+  ORT_UNUSED_PARAMETER(projection);
 }
 
 void Telemetry::LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file,
