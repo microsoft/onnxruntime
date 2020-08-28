@@ -70,22 +70,6 @@ def bert_model_description(dynamic_shape=True):
     return model_desc
 
 
-def optimizer_parameters_mutiple_groups(model):
-    '''A method to assign different hyper parameters for different model parameter groups'''
-
-    no_decay_keys = ["bias", "gamma", "beta", "LayerNorm"]
-    no_decay_param_group = []
-    decay_param_group = []
-    for initializer in model.graph.initializer:
-        if any(key in initializer.name for key in no_decay_keys):
-            no_decay_param_group.append(initializer.name)
-        else:
-            decay_param_group.append(initializer.name)
-    params = [{'params': no_decay_param_group, "alpha": 0.9, "beta": 0.999, "lambda_coef": 0.0, "epsilon": 1e-6},
-              {'params': decay_param_group, "alpha": 0.9, "beta": 0.999, "lambda_coef": 0.01, "epsilon": 1e-6}]
-    return params
-
-
 def optimizer_parameters(model):
     '''A method to assign different hyper parameters for different model parameter groups'''
 
@@ -181,7 +165,7 @@ def legacy_optim_params_c(name):
     (True),
     (False)
 ])
-def testToyBERTModelSimpleTrainStep(dynamic_shape):
+def testToyBERTModelBasicTraining(dynamic_shape):
     model_desc = bert_model_description(dynamic_shape)
     model = load_bert_onnx_model()
 
@@ -307,7 +291,6 @@ def testToyBERTModelLRScheduler(initial_lr, lr_scheduler, expected_learning_rate
     _test_helpers.assert_model_outputs(losses, expected_losses, rtol=1e-6)
 
 
-# Dynamic Loss Scaler implemented implicitly
 @pytest.mark.parametrize("loss_scaler, expected_losses", [
     (None, [10.98803424835205, 10.99240493774414, 11.090575218200684, 11.042827606201172, 10.988829612731934,\
         11.105679512023926, 10.981968879699707, 11.081787109375, 10.997162818908691, 11.107288360595703]),
