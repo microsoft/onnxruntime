@@ -111,6 +111,8 @@ static bool IsNeighborNodeExpectedTypes(Node::NodeConstIterator start, const Nod
 
  The Expand and Gather on the bottom will not be added to subgraph_node_indices.
  It is because they are matched as part of other subgraph.
+
+ Two Shape node may merge into one
 */
 
 static bool MatchInputToConcatSubgraph(
