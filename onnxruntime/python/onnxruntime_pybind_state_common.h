@@ -43,9 +43,9 @@ struct PySessionOptions : public SessionOptions {
 // Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
 struct PyInferenceSession {
   // Default ctor is present only to be invoked by the PyTrainingSession class
-  explicit PyInferenceSession() {}
+  PyInferenceSession() {}
 
-  explicit PyInferenceSession(Environment& env, const PySessionOptions& so, const std::string& arg, bool is_arg_file_name) {
+  PyInferenceSession(Environment& env, const PySessionOptions& so, const std::string& arg, bool is_arg_file_name) {
     if (is_arg_file_name) {
       // Given arg is the file path. Invoke the corresponding ctor().
       sess_ = onnxruntime::make_unique<InferenceSession>(so, env, arg);
@@ -57,7 +57,7 @@ struct PyInferenceSession {
   }
 
   void AddCustomOpLibraries(const std::vector<std::shared_ptr<CustomOpLibrary>>& custom_op_libraries) {
-    if (custom_op_libraries.size() > 0) {
+    if (!custom_op_libraries.empty()) {
       custom_op_libraries_.reserve(custom_op_libraries_.size() + custom_op_libraries.size());
       for (size_t i = 0; i < custom_op_libraries.size(); ++i) {
         custom_op_libraries_.push_back(custom_op_libraries[i]);
