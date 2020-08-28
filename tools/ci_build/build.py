@@ -1525,7 +1525,7 @@ def main():
         include_ops_by_model = args.include_ops_by_model if args.include_ops_by_model else ''
         include_ops_by_file = args.include_ops_by_file if args.include_ops_by_file else ''
         exclude_unused_ops(include_ops_by_model, include_ops_by_file, get_provider_path(use_cuda=args.use_cuda))
-        cmake_extra_defines.append('-onnxruntime_REDUCED_OPS_BUILD=ON')
+        cmake_extra_defines.append('onnxruntime_REDUCED_OPS_BUILD=ON')
 
     if args.use_tensorrt:
         args.use_cuda = True
