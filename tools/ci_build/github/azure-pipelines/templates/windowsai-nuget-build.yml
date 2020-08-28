@@ -60,20 +60,52 @@ steps:
     - script: |
        @echo ##vso[task.setvariable variable=ProtocDirectory]$(Build.BinariesDirectory)\host_protoc\Release
 
-  - task: VSBuild@1
-    displayName: 'Build'
-    inputs:
-      solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
-      ${{ if ne(parameters.BuildArch, 'x86') }}:
-        platform: ${{ parameters.BuildArch }}
-      ${{ if eq(parameters.BuildArch, 'x86') }}:
-        platform: 'Win32'
-      configuration: RelWithDebInfo
-      msbuildArchitecture: ${{ parameters.BuildArch }}
-      maximumCpuCount: true
-      logProjectEvents: true
-      workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
-      createLogFile: true
+  - ${{ if eq(parameters.BuildForStore, 'false') }}:
+    - task: VSBuild@1
+      displayName: 'Build'
+      inputs:
+        solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
+        ${{ if ne(parameters.BuildArch, 'x86') }}:
+          platform: ${{ parameters.BuildArch }}
+        ${{ if eq(parameters.BuildArch, 'x86') }}:
+          platform: 'Win32'
+        configuration: RelWithDebInfo
+        msbuildArchitecture: ${{ parameters.BuildArch }}
+        maximumCpuCount: true
+        logProjectEvents: true
+        workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+        createLogFile: true
+
+  - ${{ if eq(parameters.BuildForStore, 'true') }}:
+      - task: VSBuild@1
+        displayName: 'Build'
+        inputs:
+          solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.vcxproj'
+          ${{ if ne(parameters.BuildArch, 'x86') }}:
+            platform: ${{ parameters.BuildArch }}
+          ${{ if eq(parameters.BuildArch, 'x86') }}:
+            platform: 'Win32'
+          configuration: RelWithDebInfo
+          msbuildArchitecture: ${{ parameters.BuildArch }}
+          maximumCpuCount: true
+          logProjectEvents: true
+          workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+          createLogFile: true
+
+      - task: VSBuild@1
+        displayName: 'Build'
+        inputs:
+          solution: '$(Build.BinariesDirectory)\RelWithDebInfo\winml_dll.vcxproj'
+          ${{ if ne(parameters.BuildArch, 'x86') }}:
+            platform: ${{ parameters.BuildArch }}
+          ${{ if eq(parameters.BuildArch, 'x86') }}:
+            platform: 'Win32'
+          configuration: RelWithDebInfo
+          msbuildArchitecture: ${{ parameters.BuildArch }}
+          maximumCpuCount: true
+          logProjectEvents: true
+          workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+          createLogFile: true
 
   - ${{ if eq(parameters.BuildArch, 'x64') }}:
     - script: |
