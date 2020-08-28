@@ -174,5 +174,36 @@ TEST(TransformerTest, MultinomialWithFloat16Input) {
   EXPECT_TRUE(status.IsOK()) << status;
 }
 
+// This test is to test insert_cast_transform the same graph twice
+// insert_cast_transform needs to detect existing Cast Node
+// Prevent inserting the same Cast node twice
+TEST(TransformerTest, InsertCastNodeTwice) {
+  auto model_uri = MODEL_FOLDER ORT_TSTR("insert_cast_twice.onnx");
+  std::shared_ptr<Model> model;
+  auto status = Model::Load(model_uri, model, nullptr, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(status.IsOK()) << status;
+
+  Graph& graph = model->MainGraph();
+  InsertCastTransformer transformer("Test");
+  
+  // First insert
+  bool modified = false;
+  status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(status.IsOK()) << status;
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_TRUE(modified) << "Transformer should have added some Cast nodes";
+  EXPECT_TRUE(op_to_count["Cast"] == 5) << "Insert 3 more Cast nodes.";
+  
+  // Second insert
+  modified = false;
+  status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(status.IsOK()) << status;
+  op_to_count = CountOpsInGraph(graph);
+  // Same graph without modification; The number of Cast node remains
+  EXPECT_TRUE(!modified) << "Transformer should not modify the modfied graph again";
+  EXPECT_TRUE(op_to_count["Cast"] == 5) << "Remain the same number of Cast node";
+
+}
+
 }  // namespace test
 }  // namespace onnxruntime

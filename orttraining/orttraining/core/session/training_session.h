@@ -11,6 +11,7 @@
 #include "orttraining/core/graph/optimizer_graph_output_key.h"
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/graph/gradient_config.h"
+#include "orttraining/models/runner/pipeline.h"
 
 namespace onnxruntime {
 namespace training {
@@ -164,7 +165,7 @@ class TrainingSession : public InferenceSession {
       // Otherwise, use true to trigger ORT's pipeline partition.
       bool do_partition;
       // Tensors to fetch as specified by the user.
-      // Each pipeline stage should pick up some strings from this field..
+      // Each pipeline stage should pick up some strings from this field.
       std::vector<std::string> fetch_names;
       // cut_list contains the list of CutInfo to make the graph partitions.
       // cut_list[i] contains the CutInfo to make the partition between stage i and stage i+1
@@ -213,21 +214,8 @@ class TrainingSession : public InferenceSession {
       // Index of obtained pipeline stage. The first stage is indexed by 0.
       int pipeline_stage_id;
       // The names of pipeline events in model's input list.
-      // The are defined in order of being called.
-      std::string forward_waited_event_name;
-      std::string forward_waited_event_after_recv_name;
-      std::string forward_recorded_event_before_send_name;
-      std::string forward_recorded_event_name;
-      std::string backward_waited_event_name;
-      std::string backward_waited_event_after_recv_name;
-      std::string backward_recorded_event_before_send_name;
-      std::string backward_recorded_event_name;
-
-      std::string forward_wait_output_name;
-      std::string forward_record_output_name;
-      std::string backward_wait_output_name;
-      std::string backward_record_output_name;
-
+      // This field also includes the first output name of each event operator.
+      pipeline::PipelineTensorNames pipeline_tensor_names;
       // Tensors to feed at this pipeline stage.
       std::vector<std::string> feed_names;
       // Tensors to fetch at this pipeline stage.
@@ -370,8 +358,8 @@ class TrainingSession : public InferenceSession {
   //
   // After this function, the resulted computation is
   //
-  //  WaitEvent --> Recv --> WaitEvent --> Forward --> RecordEvent --> Send --> RecordEvent -->
-  //  WaitEvent --> Recv --> WaitEvent --> Backward --> RecordEvent --> Send --> RecordEvent
+  //  WaitEvent --> Recv --> RecordEvent --> WaitEvent --> Forward --> RecordEvent --> WaitEvent --> Send --> RecordEvent -->
+  //  WaitEvent --> Recv --> RecordEvent --> WaitEvent --> Backward --> RecordEvent --> WaitEvent --> Send --> RecordEvent
   //
   // As you can see, some event operators are inserted. For each event operator, its dependent
   // event tensor name is written to an input references, for example, "forward_waited_event_name".
@@ -383,18 +371,7 @@ class TrainingSession : public InferenceSession {
   //     identify backward nodes.
   //  4. No event operator is inserted by other graph transform.
   common::Status InsertPipelineOps(const std::unordered_set<std::string>& initializer_names_to_preserve,
-                                   std::string& forward_waited_event_name,
-                                   std::string& forward_recorded_event_name,
-                                   std::string& backward_waited_event_name,
-                                   std::string& backward_recorded_event_name,
-                                   std::string& forward_wait_output_name,
-                                   std::string& forward_record_output_name,
-                                   std::string& backward_wait_output_name,
-                                   std::string& backward_record_output_name,
-                                   std::string& forward_waited_event_after_recv_name,
-                                   std::string& forward_recorded_event_before_send_name,
-                                   std::string& backward_waited_event_after_recv_name,
-                                   std::string& backward_recorded_event_before_send_name);
+                                   pipeline::PipelineTensorNames& pipeline_tensor_names);
 
   common::Status ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,
                                                  const TrainingConfiguration::GraphTransformerConfiguration& config);

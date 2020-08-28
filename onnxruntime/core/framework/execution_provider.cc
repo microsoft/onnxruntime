@@ -40,11 +40,13 @@ IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       }
     }
   }
-#else
-  ORT_NOT_IMPLEMENTED("IExecutionProvider::GetCapability is not supported in this build.");
-#endif
 
   return result;
+#else
+  ORT_UNUSED_PARAMETER(graph);
+  ORT_UNUSED_PARAMETER(kernel_registries);
+  ORT_NOT_IMPLEMENTED("IExecutionProvider::GetCapability is not supported in this build.");
+#endif
 }
 
 common::Status IExecutionProvider::Sync() const { return Status::OK(); };

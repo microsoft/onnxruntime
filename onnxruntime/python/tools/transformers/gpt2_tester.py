@@ -14,7 +14,7 @@ import time
 import timeit
 import math
 import statistics
-from gpt2_helper import Gpt2Helper
+from gpt2_helper import Gpt2Helper, Gpt2Inputs
 from benchmark_helper import Precision
 
 logger = logging.getLogger(__name__)
@@ -133,6 +133,9 @@ class Gpt2Tester:
         self.position_ids = position_ids
         self.attention_mask = attention_mask
 
+        self.has_position_ids = position_ids is not None
+        self.has_attention_mask = attention_mask is not None
+
         # Emtpy past state for first inference
         self.past = []
         past_shape = [2, self.batch_size, num_attention_heads, 0, hidden_size // num_attention_heads]
@@ -146,8 +149,8 @@ class Gpt2Tester:
         self.top_k = top_k
         self.top_k_required_order = top_k_required_order
 
-    def get_input_tuple(self):
-        return self.input_ids, self.position_ids, self.attention_mask, self.past
+    def get_inputs(self) -> Gpt2Inputs:
+        return Gpt2Inputs(self.input_ids, self.position_ids, self.attention_mask, self.past)
 
     def update(self, output, step, device):
         """
@@ -160,10 +163,16 @@ class Gpt2Tester:
         self.top_k_tokens = Gpt2Tester.predict_next_token(self.logits, self.top_k, self.top_k_required_order)
 
         self.input_ids = self.top_1_tokens.clone().detach().reshape([self.batch_size, 1]).to(device)
-        self.position_ids = torch.tensor([self.input_length + step - 1]).unsqueeze(0).repeat(self.batch_size,
-                                                                                             1).to(device)
-        self.attention_mask = torch.cat(
-            [self.attention_mask, torch.ones([self.batch_size, 1]).type_as(self.attention_mask)], 1).to(device)
+
+        if self.has_position_ids:
+            self.position_ids = torch.tensor([self.input_length + step - 1]).unsqueeze(0).repeat(self.batch_size,
+                                                                                                 1).to(device)
+
+        if self.has_attention_mask:
+            self.attention_mask = torch.cat(
+                [self.attention_mask,
+                 torch.ones([self.batch_size, 1]).type_as(self.attention_mask)], 1).to(device)
+
         self.past = []
 
         if isinstance(output[1], tuple):  # past in torch output is tuple
@@ -188,11 +197,13 @@ class Gpt2Tester:
         if not torch.all(self.input_ids == baseline.input_ids):
             print('Input_ids is different', self.input_ids, baseline.input_ids)
 
-        if not torch.all(self.position_ids == baseline.position_ids):
-            print('position_ids is different', self.position_ids, baseline.position_ids)
+        if self.has_position_ids:
+            if not torch.all(self.position_ids == baseline.position_ids):
+                print('position_ids is different', self.position_ids, baseline.position_ids)
 
-        if not torch.all(self.attention_mask == baseline.attention_mask):
-            print('attention_mask is different', self.attention_mask, baseline.attention_mask)
+        if self.has_attention_mask:
+            if not torch.all(self.attention_mask == baseline.attention_mask):
+                print('attention_mask is different', self.attention_mask, baseline.attention_mask)
 
         assert len(self.past) == len(baseline.past)
 
@@ -301,8 +312,8 @@ class Gpt2Tester:
             if i % 10 == 0:
                 print(f"{i}")
             input_ids = inputs["input_ids"]
-            position_ids = inputs["position_ids"]
-            attention_mask = inputs["attention_mask"]
+            position_ids = inputs["position_ids"] if "position_ids" in inputs else None
+            attention_mask = inputs["attention_mask"] if "attention_mask" in inputs else None
 
             onnx_runner = Gpt2Tester(input_ids, position_ids, attention_mask, n_head, n_embd, n_layer, device,
                                      is_float16, top_k, not top_k_no_order)
@@ -322,12 +333,13 @@ class Gpt2Tester:
                     past_seq_len = list(onnx_runner.past[0].size())[3]
 
                     start_time = timeit.default_timer()
-                    pytorch_output = Gpt2Helper.pytorch_inference(model, torch_runner.get_input_tuple())
+                    pytorch_output = Gpt2Helper.pytorch_inference(model, torch_runner.get_inputs())
                     torch_metric.add_latency(past_seq_len, timeit.default_timer() - start_time)
                     torch_runner.update(pytorch_output, step, device)
 
-                    input_tuple = onnx_runner.get_input_tuple()
-                    onnx_output, avg_latency_ms = Gpt2Helper.onnxruntime_inference(session, input_tuple, total_runs=1)
+                    onnx_output, avg_latency_ms = Gpt2Helper.onnxruntime_inference(session,
+                                                                                   onnx_runner.get_inputs(),
+                                                                                   total_runs=1)
                     onnx_metric.add_latency(past_seq_len, avg_latency_ms / 1000.0)
                     onnx_runner.update(onnx_output, step, device)
 
@@ -338,10 +350,9 @@ class Gpt2Tester:
                                                                  model_class=model_class)
                     Gpt2Helper.auto_increase_buffer_size(output_buffers, output_shapes)
 
-                    input_tuple = onnx_io_runner.get_input_tuple()
                     onnx_io_output, avg_latency_ms = Gpt2Helper.onnxruntime_inference_with_binded_io(
                         session,
-                        input_tuple,
+                        onnx_io_runner.get_inputs(),
                         output_buffers,
                         output_shapes,
                         total_runs=1,
