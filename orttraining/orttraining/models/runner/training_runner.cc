@@ -276,9 +276,8 @@ Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_
     LOGS_DEFAULT(WARNING) << "training data loader not provided, nothing to do";
     return Status::OK();
   }
-  auto status = TrainingLoop(*training_data_loader, test_data_loader, mapped_dimensions);
-  std::cout << status.ErrorMessage() << std::endl;
-  ORT_RETURN_IF_ERROR(status);
+
+  ORT_RETURN_IF_ERROR(TrainingLoop(*training_data_loader, test_data_loader, mapped_dimensions));
 
   // after successful Run(), update counters
   ++round_;
