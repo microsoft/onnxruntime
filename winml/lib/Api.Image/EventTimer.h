@@ -24,6 +24,6 @@ public:
 private:
   bool _started = false;
   std::chrono::steady_clock::time_point _startTime;
-  constexpr static long long _kDurationBetweenSendingEvents = 1000 * 50;  // duration in (us). send a EvaluationStop Event every 50 ms;
+  constexpr static long long _kDurationBetweenSendingEvents = 1000 * 50;  // duration in (us). send an Event every 50 ms;
 };
 
