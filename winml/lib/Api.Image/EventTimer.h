@@ -3,10 +3,6 @@
 class EventTimer
 {
 public:
-  EventTimer()
-  {
-  }
-  
   bool Start()
   {
     auto now = std::chrono::high_resolution_clock::now();

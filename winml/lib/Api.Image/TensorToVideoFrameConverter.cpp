@@ -381,12 +381,11 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToDX12Texture(
   CD3DX12_RECT scissorRect(0, 0, (LONG)outputDesc.Width, outputDesc.Height);
   ComPtr<ID3D12Device> spDx12Device = device_cache.GetD3D12Device();
 
-
-  std::unique_ptr<GPUTensorToDX12TextureTelemetryEvent> telemetryLogger;
   // we're inside a lock from the caller of this function, so it's ok to use this static
   static EventTimer eventTimer;
+  std::optional<GPUTensorToDX12TextureTelemetryEvent> telemetryLogger;
   if (eventTimer.Start()) {
-    telemetryLogger = std::make_unique<GPUTensorToDX12TextureTelemetryEvent>(tensorDesc);
+    telemetryLogger.emplace(tensorDesc);
   }
 
   WINML_THROW_HR_IF_FALSE_MSG(
@@ -532,11 +531,11 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToSoftwareBitmap(
   assert(pInputTensor != nullptr);
   assert(softwareBitmap != nullptr);
 
-  std::unique_ptr<ConvertGPUTensorToSoftwareBitmapTelemetryEvent> telemetryLogger;
   // we're inside a lock from the caller of this function, so it's ok to use this static
   static EventTimer eventTimer;
+  std::optional<ConvertGPUTensorToSoftwareBitmapTelemetryEvent> telemetryLogger;
   if (eventTimer.Start()) {
-    telemetryLogger = std::make_unique<ConvertGPUTensorToSoftwareBitmapTelemetryEvent>(tensorDesc);
+    telemetryLogger.emplace(tensorDesc);
   }
 
   uint32_t tensorElementSize = tensorDesc.dataType == kImageTensorDataTypeFloat32 ? 4 : 2;
@@ -617,11 +616,11 @@ void TensorToVideoFrameConverter::ConvertCPUTensorToSoftwareBitmap(
     _In_ const ImageTensorDescription& tensorDesc,
     _Inout_ wgi::SoftwareBitmap& softwareBitmap) {
 
-  std::unique_ptr<ConvertCPUTensorToVideoFrameWithSoftwareBitmapTelemetryEvent> telemetryLogger;
   // we're inside a lock from the caller of this function, so it's ok to use this static
   static EventTimer eventTimer;
+  std::optional<ConvertCPUTensorToVideoFrameWithSoftwareBitmapTelemetryEvent> telemetryLogger;
   if (eventTimer.Start()) {
-    telemetryLogger = std::make_unique<ConvertCPUTensorToVideoFrameWithSoftwareBitmapTelemetryEvent>(tensorDesc);
+    telemetryLogger.emplace(tensorDesc);
   }
 
   auto height = softwareBitmap.PixelHeight();

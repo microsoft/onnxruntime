@@ -278,11 +278,11 @@ void VideoFrameToTensorConverter::ConvertDX12TextureToGPUTensor(
   D3D12_RESOURCE_DESC outputDesc = pOutputResource->GetDesc();
   ComPtr<ID3D12Device> spDx12Device = device_cache.GetD3D12Device();
 
-  std::unique_ptr<DX12TextureToGPUTensorTelemetryEvent> telemetryLogger;
   // we're inside a lock from the caller of this function, so it's ok to use this static
   static EventTimer eventTimer;
+  std::optional<DX12TextureToGPUTensorTelemetryEvent> telemetryLogger;
   if (eventTimer.Start()) {
-    telemetryLogger = std::make_unique<DX12TextureToGPUTensorTelemetryEvent>(tensorDesc);
+    telemetryLogger.emplace(tensorDesc);
   }
 
   // Validate input description
@@ -447,11 +447,11 @@ void VideoFrameToTensorConverter::ConvertSoftwareBitmapToGPUTensor(
   assert(pOutputResource != nullptr);
   assert(videoFrame.SoftwareBitmap() != nullptr);
 
-  std::unique_ptr<SoftwareBitmapToGPUTensorTelemetryEvent> telemetryLogger;
   // we're inside a lock from the caller of this function, so it's ok to use this static
   static EventTimer eventTimer;
+  std::optional<SoftwareBitmapToGPUTensorTelemetryEvent> telemetryLogger;
   if (eventTimer.Start()) {
-    telemetryLogger = std::make_unique<SoftwareBitmapToGPUTensorTelemetryEvent>(tensorDesc);
+    telemetryLogger.emplace(tensorDesc);
   }
 
   wgi::SoftwareBitmap convertedSoftwareBitmap = nullptr;
@@ -561,12 +561,11 @@ void VideoFrameToTensorConverter::ConvertSoftwareBitmapToCPUTensor(
     _Inout_ void* pCPUTensor) {
   assert(softwareBitmap != nullptr);
 
-  std::unique_ptr<ConvertVideoFrameWithSoftwareBitmapToCPUTensorTelemetryEvent> telemetryLogger;
-
   // we're inside a lock from the caller of this function, so it's ok to use this static
   static EventTimer eventTimer;
+  std::optional<ConvertVideoFrameWithSoftwareBitmapToCPUTensorTelemetryEvent> telemetryLogger;
   if (eventTimer.Start()) {
-    telemetryLogger = std::make_unique<ConvertVideoFrameWithSoftwareBitmapToCPUTensorTelemetryEvent>(tensorDesc);
+    telemetryLogger.emplace(tensorDesc);
   }
 
   auto height = softwareBitmap.PixelHeight();
