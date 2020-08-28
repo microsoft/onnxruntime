@@ -232,7 +232,7 @@ typedef enum OrtProgrammingProjection {
   ORT_PROJECTION_CROSSPLAT_CSHARP,
   ORT_PROJECTION_CROSSPLAT_PYTHON,
   ORT_PROJECTION_CROSSPLAT_JAVA,
-  ORT_PROJECTION_WINRT,
+  ORT_PROJECTION_WINML,
 } OrtProgrammingProjection;
 
 struct OrtKernelInfo;
