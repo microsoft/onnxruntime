@@ -167,22 +167,6 @@ class ONNXCalibrater:
                 else:
                     self.input_name_to_nodes[input_name].append(node)
 
-    def _get_next_nodes(self, model, curr_node):
-        '''
-            Helper function to get child nodes for a given node
-        '''
-
-        if not self.input_name_to_nodes:
-            self._get_input_name_to_nodes(model)
-
-        children = []
-        for output in curr_node.output:
-            if output in self.input_name_to_nodes:
-                for child_node in self.input_name_to_nodes[output]:
-                    children.append(child_node)
-
-        return children
-
     def calculate_scale_zeropoint(self, node, next_node, rmin, rmax):
 
         zp_and_scale = []

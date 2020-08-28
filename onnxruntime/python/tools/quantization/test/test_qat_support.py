@@ -81,11 +81,10 @@ def generate_qat_model(model_names):
     graph.initializer.add().CopyFrom(input_weight_1)
     graph.initializer.add().CopyFrom(input_bias_1)
 
-    model_1 = onnx.ModelProto()
+    model_1 = onnx.helper.make_model(graph)
     model_1.ir_version = onnx.IR_VERSION
     opset = model_1.opset_import.add()
     opset.version = 11
-    model_1 = onnx.helper.make_model(graph)
     onnx.save(model_1, model_names[0])
 
     test_models.extend([model_1])
@@ -156,11 +155,10 @@ def generate_qat_model(model_names):
     graph.initializer.add().CopyFrom(conv_weight_1)
     graph.initializer.add().CopyFrom(conv_bias_1)
 
-    model_2 = onnx.ModelProto()
+    model_2 = onnx.helper.make_model(graph)
     model_2.ir_version = onnx.IR_VERSION
     opset = model_2.opset_import.add()
     opset.version = 11
-    model_2 = onnx.helper.make_model(graph)
     onnx.save(model_2, model_names[1])
 
     test_models.extend([model_2])
@@ -320,17 +318,8 @@ class TestQAT(unittest.TestCase):
         qat_support_models_expected = generate_qat_support_model(qat_support_model_names, test_initializers)
 
         for i in range(len(test_models)):
-            ###TEST_i###
-            copy_model = onnx_proto.ModelProto()
-            copy_model.CopyFrom(test_models[i])
-
-            inferred_model = shape_inference.infer_shapes(copy_model)
-            value_infos = {vi.name: vi for vi in inferred_model.graph.value_info}
-
-            #create ONNXModel and ONNXQuantizer
-            onnx_model = ONNXModel(inferred_model)
-            quantizer = ONNXQuantizer(onnx_model, value_infos, False, QuantizationMode.IntegerOps, False, True,
-                                      TensorProto.INT8, TensorProto.INT8, None, None, None)
+            quantizer = ONNXQuantizer(test_models[i], False, QuantizationMode.IntegerOps, False, True,
+                                      TensorProto.INT8, TensorProto.INT8, None, None, None, ['Conv','MatMul', 'MaxPool'])
             #test remove editting to the graph
             qat_support_model_actual = quantizer.remove_fake_quantized_nodes()
 
