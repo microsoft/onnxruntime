@@ -1,11 +1,11 @@
-trigger: none
-
 jobs:
 - job: 'build'
   pool: 'Win-GPU-2019'
   strategy:
-    maxParallel: 1
+    maxParallel: 2
     matrix:
+      debug:
+        BuildConfig: 'Debug'
       release:
         BuildConfig: 'RelWithDebInfo'
   variables:
