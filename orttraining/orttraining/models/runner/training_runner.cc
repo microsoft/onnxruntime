@@ -76,7 +76,6 @@ TrainingRunner::TrainingRunner(Parameters params, const Environment& env, Sessio
 }
 
 Status TrainingRunner::Initialize() {
-  std::cout << "[training_runner.cc] Call TrainingRunner::Initialize" << std::endl;
   if (params_.pipeline_parallel_size > 1 && !params_.pipeline_stage_paths.empty()) {
     // Pipeline partition happens outside ORT. We just load the result of partitioning forward graph.
     // Backward graph will be generated using ORT's graph transformers.
@@ -115,7 +114,6 @@ Status TrainingRunner::Initialize() {
     config.mixed_precision_config = mp;
   }
 
-  std::cout << "[training_runner.cc] always configure the loss function." << std::endl;
   // always configure the loss function
   if (params_.pipeline_parallel_size == 1 || MPIContext::GetInstance().GetWorldRank() == MPIContext::GetInstance().GetWorldSize() - 1) {
     TrainingSession::TrainingConfiguration::LossFunctionConfiguration lf{};
@@ -197,7 +195,6 @@ Status TrainingRunner::Initialize() {
 
   opt_graph_outputs_ = config_result.opt_config_result.value().output_key_to_graph_output_name;
 
-  std::cout << "[training_runner.cc] Retrieve pipeline information from configuration result." << std::endl;
   // Retrieve pipeline information from configuration result.
   VectorString fetch_names;
   if (params_.pipeline_parallel_size > 1) {
@@ -214,9 +211,7 @@ Status TrainingRunner::Initialize() {
     };
 
     // Append first output of each event operator.
-    std::cout << "[training_runner.cc] Call ForEachOutputName" << std::endl;
     pipeline_context_.pipeline_tensor_names.ForEachOutputName(append_non_empty_name);
-    std::cout << "[training_runner.cc] Call ForEachOutputName" << std::endl;
 
     // Names of allowed inputs after pipeline partition.
     pipeline_context_.feed_names = config_result.pipeline_config_result.value().feed_names;
@@ -253,7 +248,6 @@ Status TrainingRunner::Initialize() {
   ORT_RETURN_IF_ERROR(session_.Initialize());
 
   // Checkpointing initialization
-  std::cout << "[training_runner.cc] Checkpointing initialization" << std::endl;
   // session_.Initialize() must be called prior to LoadCheckpoint()
   if (!params_.checkpoints_dir.empty()) {
     checkpoint_registry_ = onnxruntime::make_unique<CheckpointRegistry>(
@@ -267,13 +261,11 @@ Status TrainingRunner::Initialize() {
     }
   }
 
-  std::cout << "[training_runner.cc] Call TrainingRunner::Initialize" << std::endl;
   return Status::OK();
 }
 
 Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_data_loader,
                            const MapStringToString& mapped_dimensions) {
-  std::cout << "[training_runner.cc] Call TrainingRunner::Run" << std::endl;
   if (MPIContext::GetInstance().GetWorldRank() == 0 && !params_.model_actual_running_graph_path.empty()) {
 
     session_.Save(params_.model_actual_running_graph_path, TrainingSession::SaveOption::NO_RELOAD);
@@ -292,7 +284,6 @@ Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_
   ++round_;
   step_ = 0;
 
-  std::cout << "[training_runner.cc] Call TrainingRunner::Run" << std::endl;
   return Status::OK();
 }
 
@@ -304,7 +295,6 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
                                                 const size_t batch_index,
                                                 std::vector<std::string>& feed_names,
                                                 std::vector<MLValue>& feeds) {
-  std::cout << "[training_runner.cc] TrainingRunner::PrepareFeedNamesAndFeeds" << std::endl;
   // Initialize outputs of this function.
   feed_names = std::vector<std::string>();
   feeds = std::vector<MLValue>();
@@ -313,15 +303,12 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
   auto allowed_feed_end = pipeline_context_.feed_names.end();
 
   // Pick up feeds from data loader
-  std::cout << "[training_runner.cc] TrainingRunner::PrepareFeedNamesAndFeeds 1" << std::endl;
   {
     std::vector<std::string> data_feed_names = training_data_loader.DataSetTensorNames();
     std::vector<MLValue> data_feeds = training_data.GetKthBatch(params_.batch_size, batch_index, input_allocator_);
     for (size_t i = 0; i < data_feed_names.size(); ++i) {
       const auto name = data_feed_names[i];
-      std::cout << "[training_runner.cc] TrainingRunner::PrepareFeedNamesAndFeeds 2. tried feed name " << name << std::endl;
       if (params_.pipeline_parallel_size == 1 || std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
-        std::cout << "[training_runner.cc] TrainingRunner::PrepareFeedNamesAndFeeds 2. added feed name " << name << std::endl;
         feed_names.push_back(name);
         feeds.push_back(data_feeds[i]);
       }
@@ -329,12 +316,9 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
   }
 
   // Pick up feed from loss scaling.
-  std::cout << "[training_runner.cc] TrainingRunner::PrepareFeedNamesAndFeeds 3" << std::endl;
   if (loss_scaler_) {
     const auto name = loss_scaler_->GetLossScaleInputName();
-    std::cout << "[training_runner.cc] TrainingRunner::PrepareFeedNamesAndFeeds 4. loss name " << name << std::endl;
     if (params_.pipeline_parallel_size == 1 || std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
-      std::cout << "[training_runner.cc] TrainingRunner::PrepareFeedNamesAndFeeds 4. added loss name " << name << std::endl;
       feed_names.push_back(name);
       const float loss_scale = (mode == EvaluateStep) ? 1.0f : loss_scaler_->GetLossScale();
       OrtValue loss_scale_val;
@@ -344,12 +328,9 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
   }
 
   // Pick up feed from learning rate schedule.
-  std::cout << "[training_runner.cc] TrainingRunner::PrepareFeedNamesAndFeeds 5" << std::endl;
   {
     const auto name = params_.lr_params.feed_name;
-    std::cout << "[training_runner.cc] TrainingRunner::PrepareFeedNamesAndFeeds 5. LR name " << name << std::endl;
     if (params_.pipeline_parallel_size == 1 || std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
-      std::cout << "[training_runner.cc] TrainingRunner::PrepareFeedNamesAndFeeds 5. added LR name " << name << std::endl;
       feed_names.push_back(name);
       // learning rate is 0 if there is no learning-rate scheduler. Otherwise, learning rate is obtained from the scheduler.
       const float learning_rate = lr_scheduler ? lr_scheduler->GetLearningRate(step_ + 1) : 0.0f;
@@ -359,17 +340,11 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     }
   }
 
-  std::cout << "[training_runner.cc] TrainingRunner::PrepareFeedNamesAndFeeds 5-1." << std::endl;
-  std::cout << "[training_runner.cc] TrainingRunner::PrepareFeedNamesAndFeeds 5-1." << std::endl;
-
   // Define a helper function to append scalar inputs to feeds for event operators.
-  std::cout << "[training_runner.cc] TrainingRunner::PrepareFeedNamesAndFeeds 6" << std::endl;
   auto append_event_to_feeds = [&](const std::string event_name, const int64_t event_value) -> void {
-    std::cout << "[training_runner.cc] TrainingRunner::PrepareFeedNamesAndFeeds 6. event name " << event_name << std::endl;
     if (event_name.empty()) {
       return;
     }
-    std::cout << "[training_runner.cc] TrainingRunner::PrepareFeedNamesAndFeeds 6. added event name " << event_name << std::endl;
     feed_names.push_back(event_name);
     OrtValue event_id;
     TrainingUtil::CreateCpuMLScalar(
@@ -423,7 +398,6 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     append_event_to_feeds(pipeline_context_.pipeline_tensor_names.backward_compute_recorded_event_name, id);
   }
 
-  std::cout << "[training_runner.cc] TrainingRunner::PrepareFeedNamesAndFeeds 7" << std::endl;
   for (auto name : feed_names) {
     ORT_ENFORCE(!name.empty(), "feed name cannot be empty string.");
   }
@@ -491,9 +465,7 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const SessionMode mode,
 
       // Append first output of each event operator to fetch_names list to make sure all event ops will
       // be computed.
-      std::cout << "[training_runner.cc] Call ForEachOutputName" << std::endl;
       pipeline_context_.pipeline_tensor_names.ForEachOutputName(append_non_empty_name);
-      std::cout << "[training_runner.cc] Call ForEachOutputName" << std::endl;
     }
   } else if (mode == EvaluateStep) {
     // Set up tensor to be fetched when doing model evaluation.
@@ -519,7 +491,6 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const SessionMode mode,
 
   // We need to fetch at least one variable.
   // If there is nothing to fetch, we fetch all model outputs.
-  std::cout << "[training_runner.cc] Check fetch names" << std::endl;
   if (fetch_names.empty()) {
     fetch_names = allowed_fetch_names;
   }
@@ -633,9 +604,8 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
     CheckWorkerException(status.execution_exception);
   }
 
-  std::cout << "[training_runner.cc] Call ResetAllEvents" << std::endl;
+  // TODO: move this to an operator in graph.
   onnxruntime::contrib::OrtEventPool::GetInstance().ResetAllEvents();
-  std::cout << "[training_runner.cc] Call ResetAllEvents" << std::endl;
 
   // Add one after process one batch.
   ++step_;
@@ -699,29 +669,23 @@ void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
 
 Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader,
                                     const MapStringToString& mapped_dimensions) {
-  std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop" << std::endl;
   const bool enable_checkpoint_saving =
       MPIContext::GetInstance().GetWorldRank() == 0 &&
       checkpoint_registry_ && params_.checkpoint_period > 0;
 
-  std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 1" << std::endl;
   std::unique_ptr<perftest::utils::ICPUUsage> cpu_usage_calculator;
   if (!params_.perf_output_dir.empty()) {
     cpu_usage_calculator = perftest::utils::CreateICPUUsage();
   }
 
-  std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 2" << std::endl;
   if (test_data_loader) {
     ORT_RETURN_IF_ERROR(test_data_loader->InitializeDataSetIndex(0));
   }
-  std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 3" << std::endl;
   ORT_RETURN_IF_ERROR(training_data_loader.InitializeDataSetIndex(training_data_set_index_));
 
-  std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 4" << std::endl;
   const size_t num_shards_to_visit = training_data_loader.NumShards();
   const auto lr_scheduler = LearningRateScheduler::Create(params_.lr_params, params_.num_train_steps);
 
-  std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 5" << std::endl;
   double total_time{0};
   size_t epoch = 0;  // Note: epoch is not set properly when loaded from a checkpoint, but it's only for display.
   size_t gradient_accumulation_step_count = 0;
@@ -736,14 +700,10 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
   auto end_to_end_start = std::chrono::high_resolution_clock::now();
   bool end_to_end_measurement_started = false;
 
-  std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 6" << std::endl;
   auto all_steps_time_start = std::chrono::high_resolution_clock::now();
   while (step_ < params_.num_train_steps) {
-    std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 7" << std::endl;
     for (size_t shard_it = 0; shard_it < num_shards_to_visit; ++shard_it) {
-      std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 8" << std::endl;
       auto training_data = training_data_loader.CurrentDataSet();
-      std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 9" << std::endl;
       training_data_set_index_ = training_data_loader.CurrentDataSetIndex();
       if (training_data == nullptr) {
         printf("Skipping shard at index %d, which failed to load.\n",
@@ -753,17 +713,14 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
       }
 
       // Shuffle the data for each epoch
-      std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 10" << std::endl;
       if (params_.shuffle_data) {
         printf("Randomly shuffle training data.\n");
         training_data->RandomShuffle();
       }
 
       // loop through the data
-      std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 11" << std::endl;
       size_t batch_num_cur_shard = training_data->TotalBatch(params_.batch_size);
       for (size_t batch = 0; batch < batch_num_cur_shard && step_ < params_.num_train_steps; ++batch) {
-        std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 12" << std::endl;
         const bool is_weight_update_step = (step_ + 1) % params_.gradient_accumulation_steps == 0;
 
         const bool stablized_perf_measurement_started = step_ >= stabilized_perf_start_step;
@@ -779,9 +736,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
 
         auto start = std::chrono::high_resolution_clock::now();
 
-        std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 13" << std::endl;
         if (is_weight_update_step) {
-          std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 14" << std::endl;
           ORT_RETURN_IF_ERROR(PrepareFeedNamesAndFeeds(ModelUpdateStep,
                                                        training_data_loader,
                                                        *training_data,
@@ -789,15 +744,12 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
                                                        batch,
                                                        feed_names,
                                                        feeds));
-          std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 15" << std::endl;
           ORT_RETURN_IF_ERROR(
               PrepareFetchNamesAndFetches(ModelUpdateStep,
                                           fetch_names,
                                           fetches));
-          std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 16" << std::endl;
           RunWithUpdate(feed_names, fetch_names, feeds, fetches);
         } else {
-          std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 14" << std::endl;
           ORT_RETURN_IF_ERROR(PrepareFeedNamesAndFeeds(GradientAccumulateStep,
                                                        training_data_loader,
                                                        *training_data,
@@ -805,16 +757,13 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
                                                        batch,
                                                        feed_names,
                                                        feeds));
-          std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 15" << std::endl;
           ORT_RETURN_IF_ERROR(
               PrepareFetchNamesAndFetches(GradientAccumulateStep,
                                           fetch_names,
                                           fetches));
-          std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 16" << std::endl;
           RunWithoutUpdate(feed_names, fetch_names, feeds,
                            gradient_accumulation_step_count);
         }
-        std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop 17" << std::endl;
 
         // at this point, step_ already be increased by 1.
         auto end = std::chrono::high_resolution_clock::now();
@@ -922,7 +871,6 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
             << "Average Step Time: " << all_steps_duration_seconds.count() / (step_ - step_start) << " Second\n"
             << "Average Step Throughput: " << params_.batch_size * (step_ - step_start) / (all_steps_duration_seconds.count()) << " Examples / Second\n";
 
-  std::cout << "[training_runner.cc] Call TrainingRunner::TrainingLoop" << std::endl;
   return Status::OK();
 }
 
@@ -1008,7 +956,6 @@ Status TrainingRunner::SavePerfMetrics(const size_t number_of_batches, const siz
 }
 
 Status TrainingRunner::EndTraining(IDataLoader* data_loader) {
-  std::cout << "[training_runner.cc] Call TrainingRunner::EndTraining" << std::endl;
   if (params_.use_profiler) {
     // Write profiler data to disk.
     // We do this first in case there are any problems saving the trained model.
@@ -1045,7 +992,6 @@ Status TrainingRunner::EndTraining(IDataLoader* data_loader) {
   ORT_RETURN_IF_ERROR(session_.Save(
       trained_model_with_loss_func_path, TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC));
 
-  std::cout << "[training_runner.cc] Call TrainingRunner::EndTraining" << std::endl;
   return Status::OK();
 }
 
