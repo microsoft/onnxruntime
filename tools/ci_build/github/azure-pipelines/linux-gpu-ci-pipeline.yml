@@ -35,9 +35,8 @@ jobs:
               --build_shared_lib \
               --parallel \
               --build_wheel \
-              --use_openmp \
               --enable_onnx_tests --use_cuda --cuda_version=10.1 --cuda_home=/usr/local/cuda-10.1 --cudnn_home=/usr/local/cuda-10.1 \
-              --use_mklml --enable_pybind --build_java --build_nodejs \
+              --enable_pybind --build_java --build_nodejs \
               --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp37-cp37m/include/python3.7m PYTHON_LIBRARY=/usr/lib64/librt.so
       workingDirectory: $(Build.SourcesDirectory)
   - task: Docker@2

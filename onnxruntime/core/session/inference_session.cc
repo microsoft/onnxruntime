@@ -27,7 +27,6 @@
 #include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/utils.h"
 #include "core/graph/graph_viewer.h"
-#include "core/graph/graph_utils.h"
 #include "core/graph/model.h"
 #include "core/optimizer/transformer_memcpy.h"
 #include "core/optimizer/graph_transformer.h"
@@ -409,8 +408,7 @@ common::Status InferenceSession::RegisterCustomRegistry(std::shared_ptr<CustomRe
 
   // Insert session-level customized kernel registry.
   kernel_registry_manager_.RegisterKernelRegistry(custom_registry->GetKernelRegistry());
-  //    if (custom_schema_registries_.empty())
-  //      custom_schema_registries_.push_back();
+
   custom_schema_registries_.push_back(custom_registry->GetOpschemaRegistry());
   return Status::OK();
 }

@@ -24,8 +24,8 @@ struct EnumTraits<DML_TENSOR_TYPE>
 template <>
 struct EnumTraits<DML_OPERATOR_TYPE>
 {
-    static constexpr auto ValueCount = 120;
-    static constexpr size_t ActivationFunctionCount = 19;
+    static constexpr auto ValueCount = 141;
+    static constexpr size_t ActivationFunctionCount = 20;
 };
 
 template <>
@@ -62,7 +62,7 @@ struct EnumTraits<DML_CONVOLUTION_DIRECTION>
 template <>
 struct EnumTraits<DML_PADDING_MODE>
 {
-    static constexpr auto ValueCount = 3;
+    static constexpr auto ValueCount = 4;
 };
 
 template <>
@@ -86,7 +86,7 @@ struct EnumTraits<DML_FEATURE>
 template <>
 struct EnumTraits<DML_FEATURE_LEVEL>
 {
-    static constexpr auto ValueCount = 2;
+    static constexpr auto ValueCount = 4;
 };
 
 template <>
@@ -111,6 +111,12 @@ template <>
 struct EnumTraits<DML_ROUNDING_MODE>
 {
     static constexpr auto ValueCount = 3;
+};
+
+template <>
+struct EnumTraits<DML_RANDOM_GENERATOR_TYPE>
+{
+    static constexpr auto ValueCount = 1;
 };
 
 template <typename T>
@@ -274,6 +280,18 @@ struct OperatorDescTraits<DML_ELEMENT_WISE_LOGICAL_LESS_THAN_OPERATOR_DESC>
 };
 
 template <>
+struct OperatorDescTraits<DML_ELEMENT_WISE_LOGICAL_GREATER_THAN_OR_EQUAL_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ELEMENT_WISE_LOGICAL_GREATER_THAN_OR_EQUAL;
+};
+
+template <>
+struct OperatorDescTraits<DML_ELEMENT_WISE_LOGICAL_LESS_THAN_OR_EQUAL_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ELEMENT_WISE_LOGICAL_LESS_THAN_OR_EQUAL;
+};
+
+template <>
 struct OperatorDescTraits<DML_ELEMENT_WISE_LOGICAL_NOT_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ELEMENT_WISE_LOGICAL_NOT;
@@ -391,6 +409,18 @@ template <>
 struct OperatorDescTraits<DML_REDUCE_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_REDUCE;
+};
+
+template <>
+struct OperatorDescTraits<DML_ARGMIN_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ARGMIN;
+};
+
+template <>
+struct OperatorDescTraits<DML_ARGMAX_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ARGMAX;
 };
 
 template <>
@@ -748,6 +778,12 @@ struct OperatorDescTraits<DML_MEAN_VARIANCE_NORMALIZATION1_OPERATOR_DESC>
 };
 
 template <>
+struct OperatorDescTraits<DML_RESAMPLE1_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_RESAMPLE1;
+};
+
+template <>
 struct OperatorDescTraits<DML_MATRIX_MULTIPLY_INTEGER_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_MATRIX_MULTIPLY_INTEGER;
@@ -772,9 +808,105 @@ struct OperatorDescTraits<DML_QUANTIZED_LINEAR_CONVOLUTION_OPERATOR_DESC>
 };
 
 template <>
+struct OperatorDescTraits<DML_ELEMENT_WISE_BIT_AND_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ELEMENT_WISE_BIT_AND;
+};
+
+template <>
+struct OperatorDescTraits<DML_ELEMENT_WISE_BIT_OR_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ELEMENT_WISE_BIT_OR;
+};
+
+template <>
+struct OperatorDescTraits<DML_ELEMENT_WISE_BIT_XOR_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ELEMENT_WISE_BIT_XOR;
+};
+
+template <>
+struct OperatorDescTraits<DML_ELEMENT_WISE_BIT_NOT_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ELEMENT_WISE_BIT_NOT;
+};
+
+template <>
+struct OperatorDescTraits<DML_ELEMENT_WISE_BIT_COUNT_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ELEMENT_WISE_BIT_COUNT;
+};
+
+template <>
+struct OperatorDescTraits<DML_ACTIVATION_RELU_GRAD_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ACTIVATION_RELU_GRAD;
+};
+
+template <>
+struct OperatorDescTraits<DML_AVERAGE_POOLING_GRAD_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_AVERAGE_POOLING_GRAD;
+};
+
+template <>
+struct OperatorDescTraits<DML_MAX_POOLING_GRAD_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_MAX_POOLING_GRAD;
+};
+
+template <>
+struct OperatorDescTraits<DML_RANDOM_GENERATOR_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_RANDOM_GENERATOR;
+};
+
+template <>
+struct OperatorDescTraits<DML_NONZERO_COORDINATES_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_NONZERO_COORDINATES;
+};
+
+template <>
+struct OperatorDescTraits<DML_RESAMPLE_GRAD_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_RESAMPLE_GRAD;
+};
+
+template <>
+struct OperatorDescTraits<DML_SLICE_GRAD_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_SLICE_GRAD;
+};
+
+template <>
+struct OperatorDescTraits<DML_ADAM_OPTIMIZER_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ADAM_OPTIMIZER;
+};
+
+template <>
+struct OperatorDescTraits<DML_ROI_ALIGN_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ROI_ALIGN;
+};
+
+template <>
+struct OperatorDescTraits<DML_GATHER_ND1_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_GATHER_ND1;
+};
+
+template <>
 struct OperatorDescTraits<DML_ACTIVATION_ELU_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ACTIVATION_ELU;
+};
+
+template <>
+struct OperatorDescTraits<DML_ACTIVATION_CELU_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ACTIVATION_CELU;
 };
 
 template <>
@@ -994,6 +1126,18 @@ struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ELEMENT_WISE_LOGICAL_L
 };
 
 template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ELEMENT_WISE_LOGICAL_GREATER_THAN_OR_EQUAL>
+{
+    using DescType = DML_ELEMENT_WISE_LOGICAL_GREATER_THAN_OR_EQUAL_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ELEMENT_WISE_LOGICAL_LESS_THAN_OR_EQUAL>
+{
+    using DescType = DML_ELEMENT_WISE_LOGICAL_LESS_THAN_OR_EQUAL_OPERATOR_DESC;
+};
+
+template <>
 struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ELEMENT_WISE_LOGICAL_NOT>
 {
     using DescType = DML_ELEMENT_WISE_LOGICAL_NOT_OPERATOR_DESC;
@@ -1111,6 +1255,18 @@ template <>
 struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_REDUCE>
 {
     using DescType = DML_REDUCE_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ARGMIN>
+{
+    using DescType = DML_ARGMIN_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ARGMAX>
+{
+    using DescType = DML_ARGMAX_OPERATOR_DESC;
 };
 
 template <>
@@ -1468,6 +1624,12 @@ struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_MEAN_VARIANCE_NORMALIZ
 };
 
 template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_RESAMPLE1>
+{
+    using DescType = DML_RESAMPLE1_OPERATOR_DESC;
+};
+
+template <>
 struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_MATRIX_MULTIPLY_INTEGER>
 {
     using DescType = DML_MATRIX_MULTIPLY_INTEGER_OPERATOR_DESC;
@@ -1492,9 +1654,105 @@ struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_QUANTIZED_LINEAR_CONVO
 };
 
 template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ELEMENT_WISE_BIT_AND>
+{
+    using DescType = DML_ELEMENT_WISE_BIT_AND_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ELEMENT_WISE_BIT_OR>
+{
+    using DescType = DML_ELEMENT_WISE_BIT_OR_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ELEMENT_WISE_BIT_XOR>
+{
+    using DescType = DML_ELEMENT_WISE_BIT_XOR_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ELEMENT_WISE_BIT_NOT>
+{
+    using DescType = DML_ELEMENT_WISE_BIT_NOT_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ELEMENT_WISE_BIT_COUNT>
+{
+    using DescType = DML_ELEMENT_WISE_BIT_COUNT_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ACTIVATION_RELU_GRAD>
+{
+    using DescType = DML_ACTIVATION_RELU_GRAD_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_AVERAGE_POOLING_GRAD>
+{
+    using DescType = DML_AVERAGE_POOLING_GRAD_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_MAX_POOLING_GRAD>
+{
+    using DescType = DML_MAX_POOLING_GRAD_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_RANDOM_GENERATOR>
+{
+    using DescType = DML_RANDOM_GENERATOR_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_NONZERO_COORDINATES>
+{
+    using DescType = DML_NONZERO_COORDINATES_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_RESAMPLE_GRAD>
+{
+    using DescType = DML_RESAMPLE_GRAD_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_SLICE_GRAD>
+{
+    using DescType = DML_SLICE_GRAD_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ADAM_OPTIMIZER>
+{
+    using DescType = DML_ADAM_OPTIMIZER_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ROI_ALIGN>
+{
+    using DescType = DML_ROI_ALIGN_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_GATHER_ND1>
+{
+    using DescType = DML_GATHER_ND1_OPERATOR_DESC;
+};
+
+template <>
 struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ACTIVATION_ELU>
 {
     using DescType = DML_ACTIVATION_ELU_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ACTIVATION_CELU>
+{
+    using DescType = DML_ACTIVATION_CELU_OPERATOR_DESC;
 };
 
 template <>
@@ -1652,6 +1910,10 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
         return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_LOGICAL_GREATER_THAN_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ELEMENT_WISE_LOGICAL_LESS_THAN:
         return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_LOGICAL_LESS_THAN_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ELEMENT_WISE_LOGICAL_GREATER_THAN_OR_EQUAL:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_LOGICAL_GREATER_THAN_OR_EQUAL_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ELEMENT_WISE_LOGICAL_LESS_THAN_OR_EQUAL:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_LOGICAL_LESS_THAN_OR_EQUAL_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ELEMENT_WISE_LOGICAL_NOT:
         return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_LOGICAL_NOT_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ELEMENT_WISE_LOGICAL_OR:
@@ -1692,6 +1954,10 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
         return std::invoke(std::forward<Visitor>(visitor), DML_GEMM_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_REDUCE:
         return std::invoke(std::forward<Visitor>(visitor), DML_REDUCE_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ARGMIN:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ARGMIN_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ARGMAX:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ARGMAX_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_AVERAGE_POOLING:
         return std::invoke(std::forward<Visitor>(visitor), DML_AVERAGE_POOLING_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_LP_POOLING:
@@ -1820,8 +2086,40 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
         return std::invoke(std::forward<Visitor>(visitor), DML_CONVOLUTION_INTEGER_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_QUANTIZED_LINEAR_CONVOLUTION:
         return std::invoke(std::forward<Visitor>(visitor), DML_QUANTIZED_LINEAR_CONVOLUTION_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ELEMENT_WISE_BIT_AND:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_BIT_AND_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ELEMENT_WISE_BIT_OR:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_BIT_OR_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ELEMENT_WISE_BIT_XOR:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_BIT_XOR_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ELEMENT_WISE_BIT_NOT:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_BIT_NOT_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ELEMENT_WISE_BIT_COUNT:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_BIT_COUNT_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ACTIVATION_RELU_GRAD:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_RELU_GRAD_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_AVERAGE_POOLING_GRAD:
+        return std::invoke(std::forward<Visitor>(visitor), DML_AVERAGE_POOLING_GRAD_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_MAX_POOLING_GRAD:
+        return std::invoke(std::forward<Visitor>(visitor), DML_MAX_POOLING_GRAD_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_RANDOM_GENERATOR:
+        return std::invoke(std::forward<Visitor>(visitor), DML_RANDOM_GENERATOR_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_NONZERO_COORDINATES:
+        return std::invoke(std::forward<Visitor>(visitor), DML_NONZERO_COORDINATES_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_RESAMPLE_GRAD:
+        return std::invoke(std::forward<Visitor>(visitor), DML_RESAMPLE_GRAD_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_SLICE_GRAD:
+        return std::invoke(std::forward<Visitor>(visitor), DML_SLICE_GRAD_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ADAM_OPTIMIZER:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ADAM_OPTIMIZER_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ROI_ALIGN:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ROI_ALIGN_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_GATHER_ND1:
+        return std::invoke(std::forward<Visitor>(visitor), DML_GATHER_ND1_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ACTIVATION_ELU:
         return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_ELU_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ACTIVATION_CELU:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_CELU_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ACTIVATION_HARDMAX:
         return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_HARDMAX_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ACTIVATION_HARD_SIGMOID:
@@ -1887,6 +2185,8 @@ inline gsl::czstring ToString(DML_OPERATOR_TYPE value)
     case DML_OPERATOR_ELEMENT_WISE_LOGICAL_EQUALS: return "DML_OPERATOR_ELEMENT_WISE_LOGICAL_EQUALS";
     case DML_OPERATOR_ELEMENT_WISE_LOGICAL_GREATER_THAN: return "DML_OPERATOR_ELEMENT_WISE_LOGICAL_GREATER_THAN";
     case DML_OPERATOR_ELEMENT_WISE_LOGICAL_LESS_THAN: return "DML_OPERATOR_ELEMENT_WISE_LOGICAL_LESS_THAN";
+    case DML_OPERATOR_ELEMENT_WISE_LOGICAL_GREATER_THAN_OR_EQUAL: return "DML_OPERATOR_ELEMENT_WISE_LOGICAL_GREATER_THAN_OR_EQUAL";
+    case DML_OPERATOR_ELEMENT_WISE_LOGICAL_LESS_THAN_OR_EQUAL: return "DML_OPERATOR_ELEMENT_WISE_LOGICAL_LESS_THAN_OR_EQUAL";
     case DML_OPERATOR_ELEMENT_WISE_LOGICAL_NOT: return "DML_OPERATOR_ELEMENT_WISE_LOGICAL_NOT";
     case DML_OPERATOR_ELEMENT_WISE_LOGICAL_OR: return "DML_OPERATOR_ELEMENT_WISE_LOGICAL_OR";
     case DML_OPERATOR_ELEMENT_WISE_LOGICAL_XOR: return "DML_OPERATOR_ELEMENT_WISE_LOGICAL_XOR";
@@ -1907,6 +2207,8 @@ inline gsl::czstring ToString(DML_OPERATOR_TYPE value)
     case DML_OPERATOR_CONVOLUTION: return "DML_OPERATOR_CONVOLUTION";
     case DML_OPERATOR_GEMM: return "DML_OPERATOR_GEMM";
     case DML_OPERATOR_REDUCE: return "DML_OPERATOR_REDUCE";
+    case DML_OPERATOR_ARGMIN: return "DML_OPERATOR_ARGMIN";
+    case DML_OPERATOR_ARGMAX: return "DML_OPERATOR_ARGMAX";
     case DML_OPERATOR_AVERAGE_POOLING: return "DML_OPERATOR_AVERAGE_POOLING";
     case DML_OPERATOR_LP_POOLING: return "DML_OPERATOR_LP_POOLING";
     case DML_OPERATOR_MAX_POOLING: return "DML_OPERATOR_MAX_POOLING";
@@ -1971,6 +2273,21 @@ inline gsl::czstring ToString(DML_OPERATOR_TYPE value)
     case DML_OPERATOR_QUANTIZED_LINEAR_MATRIX_MULTIPLY: return "DML_OPERATOR_QUANTIZED_LINEAR_MATRIX_MULTIPLY";
     case DML_OPERATOR_CONVOLUTION_INTEGER: return "DML_OPERATOR_CONVOLUTION_INTEGER";
     case DML_OPERATOR_QUANTIZED_LINEAR_CONVOLUTION: return "DML_OPERATOR_QUANTIZED_LINEAR_CONVOLUTION";
+    case DML_OPERATOR_ELEMENT_WISE_BIT_AND: return "DML_OPERATOR_ELEMENT_WISE_BIT_AND";
+    case DML_OPERATOR_ELEMENT_WISE_BIT_OR: return "DML_OPERATOR_ELEMENT_WISE_BIT_OR";
+    case DML_OPERATOR_ELEMENT_WISE_BIT_XOR: return "DML_OPERATOR_ELEMENT_WISE_BIT_XOR";
+    case DML_OPERATOR_ELEMENT_WISE_BIT_NOT: return "DML_OPERATOR_ELEMENT_WISE_BIT_NOT";
+    case DML_OPERATOR_ELEMENT_WISE_BIT_COUNT: return "DML_OPERATOR_ELEMENT_WISE_BIT_COUNT";
+    case DML_OPERATOR_ACTIVATION_RELU_GRAD: return "DML_OPERATOR_ACTIVATION_RELU_GRAD";
+    case DML_OPERATOR_AVERAGE_POOLING_GRAD: return "DML_OPERATOR_AVERAGE_POOLING_GRAD";
+    case DML_OPERATOR_MAX_POOLING_GRAD: return "DML_OPERATOR_MAX_POOLING_GRAD";
+    case DML_OPERATOR_RANDOM_GENERATOR: return "DML_OPERATOR_RANDOM_GENERATOR";
+    case DML_OPERATOR_NONZERO_COORDINATES: return "DML_OPERATOR_NONZERO_COORDINATES";
+    case DML_OPERATOR_RESAMPLE_GRAD: return "DML_OPERATOR_RESAMPLE_GRAD";
+    case DML_OPERATOR_SLICE_GRAD: return "DML_OPERATOR_SLICE_GRAD";
+    case DML_OPERATOR_ADAM_OPTIMIZER: return "DML_OPERATOR_ADAM_OPTIMIZER";
+    case DML_OPERATOR_ROI_ALIGN: return "DML_OPERATOR_ROI_ALIGN";
+    case DML_OPERATOR_GATHER_ND1: return "DML_OPERATOR_GATHER_ND1";
     default:
         assert(false);
         return "<unknown>";
