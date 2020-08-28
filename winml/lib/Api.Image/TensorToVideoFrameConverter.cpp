@@ -53,7 +53,7 @@ class ConvertGPUTensorToSoftwareBitmapTelemetryEvent {
   ConvertGPUTensorToSoftwareBitmapTelemetryEvent(const ImageTensorDescription& tensorDesc) {
     TraceLoggingWrite(
         winml_trace_logging_provider,
-        "GPUTensorToDX12Texture",
+        "ConvertGPUTensorToSoftwareBitmap",
         TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
         TraceLoggingOpcode(EVENT_TRACE_TYPE_START),
         TraceLoggingHexInt32(tensorDesc.channelType, "Type"),
@@ -65,7 +65,7 @@ class ConvertGPUTensorToSoftwareBitmapTelemetryEvent {
   ~ConvertGPUTensorToSoftwareBitmapTelemetryEvent() {
     TraceLoggingWrite(
         winml_trace_logging_provider,
-        "GPUTensorToDX12Texture",
+        "ConvertGPUTensorToSoftwareBitmap",
         TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
         TraceLoggingOpcode(EVENT_TRACE_TYPE_STOP),
         TraceLoggingHexInt32(S_OK, "HRESULT"),
