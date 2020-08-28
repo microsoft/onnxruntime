@@ -179,11 +179,19 @@ steps:
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
       displayName: 'Create NuGet Package'
 
-  - task: PublishPipelineArtifact@0
-    displayName: 'Publish Pipeline Artifact: Microsoft.AI.MachineLearning ${{ parameters.BuildArch }}'
-    inputs:
-      artifactName: 'Microsoft.AI.MachineLearning.${{ parameters.BuildArch }}'
-      targetPath: '$(Build.ArtifactStagingDirectory)'
+  - ${{ if eq(parameters.BuildForStore, 'false') }}:
+    - task: PublishPipelineArtifact@0
+      displayName: 'Publish Pipeline Artifact: Microsoft.AI.MachineLearning ${{ parameters.BuildArch }}'
+      inputs:
+        artifactName: 'Microsoft.AI.MachineLearning.${{ parameters.BuildArch }}'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+
+  - ${{ if eq(parameters.BuildForStore, 'true') }}:
+      - task: PublishPipelineArtifact@0
+        displayName: 'Publish Pipeline Artifact: Microsoft.AI.MachineLearning ${{ parameters.BuildArch }}'
+        inputs:
+          artifactName: 'Microsoft.AI.MachineLearning.${{ parameters.BuildArch }}.Store'
+          targetPath: '$(Build.ArtifactStagingDirectory)'
 
   - task: PublishSymbols@2
     displayName: 'Publish Build Symbols'
