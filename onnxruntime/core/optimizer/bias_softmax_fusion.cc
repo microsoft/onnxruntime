@@ -121,12 +121,12 @@ Status BiasSoftmaxFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     auto& softmax_attr = softmax_node.GetAttributes();
     if (softmax_attr.find("axis") != softmax_attr.end()) {
       auto& axis_attr = softmax_attr.at("axis");
-      axis = utils::HasInt(axis_attr)? axis_attr.i() : 1;
+      axis = utils::HasInt(axis_attr)? (int)axis_attr.i() : 1;
     }
 
     int N1 = input1->Shape()->dim_size();
     int N2 = input2->Shape()->dim_size();
-    int k = HandleNegativeAxis(axis, std::max({N1, N2}));
+    int k = (int)HandleNegativeAxis(axis, std::max({N1, N2}));
     int singlebatch_rank = std::max({N1-k, N2-k});
 
     if (singlebatch_rank > N1 || singlebatch_rank > N2) {
