@@ -134,8 +134,13 @@ static bool MatchInputToConcatSubgraph(
     DEBUG_LOG("Failed to find path 1 of position shape.");
     return false;
   }
+  const size_t shape_index = edges.size() - 1;
   for (size_t i = 0; i < edges.size(); i++) {
     if (!optimizer_utils::CheckOutputEdges(graph, edges[i]->GetNode(), 1)) {
+      // Shape may have 4 outputs due to shape integration
+      if (i == shape_index && optimizer_utils::CheckOutputEdges(graph, edges[i]->GetNode(), 4)) {
+        continue;
+      }
       DEBUG_LOG("Output edge count not expected for nodes in path 1 of position shape.");
       return false;
     }
@@ -161,9 +166,11 @@ static bool MatchInputToConcatSubgraph(
     return false;
   }
 
+  // Shape may have 4 outputs due to shape integration
   if (!optimizer_utils::CheckOutputEdges(graph, edges[0]->GetNode(), 1) ||
       !optimizer_utils::CheckOutputEdges(graph, edges[1]->GetNode(), 2) ||
-      !optimizer_utils::CheckOutputEdges(graph, edges[2]->GetNode(), 1)) {
+      (!optimizer_utils::CheckOutputEdges(graph, edges[2]->GetNode(), 1) &&
+       !optimizer_utils::CheckOutputEdges(graph, edges[2]->GetNode(), 4))) {
     DEBUG_LOG("Output edge count not expected for nodes in path 2 of position shape.");
     return false;
   }
@@ -268,10 +275,15 @@ static bool MatchPositionEmbeddingSubgraphsFromGather(
     return false;
   }
   const size_t gather_index = pg_edges.size() - 2;
+  const size_t shape_index = pg_edges.size() - 1;
   // All nodes in Path 1 must have only 1 output edge, except the gather node allowed 1 or 2 output edges
+  // And shape node allowed 4 output edges due to shape integration
   for (size_t i = 0; i < pg_edges.size(); i++) {
     if (!optimizer_utils::CheckOutputEdges(graph, pg_edges[i]->GetNode(), 1)) {
       if (i == gather_index && optimizer_utils::CheckOutputEdges(graph, pg_edges[i]->GetNode(), 2)) {
+        continue;
+      }
+      if (i == shape_index && optimizer_utils::CheckOutputEdges(graph, pg_edges[i]->GetNode(), 4)) {
         continue;
       }
       DEBUG_LOG("Output edge count not expected for nodes in path1.");
