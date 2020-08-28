@@ -6,7 +6,9 @@
 #include "orttraining/training_ops/cuda/communication/recv.h"
 #include "orttraining/training_ops/cuda/communication/common.h"
 #include "core/profile/profile.h"
+#include "core/profile/context.h"
 #include "core/providers/cuda/cuda_common.h"
+#include <string>
 #include <mpi.h>
 
 #include "orttraining/core/framework/mpi_context.h"
@@ -59,8 +61,12 @@ void Recv::ReceiveData(
     const size_t aggregated_aligned_tensor_bytes,
     IAllocatorUniquePtr<char>& buffer) const {
 #ifdef ENABLE_NVTX_PROFILE
+  auto& profile_context = profile::Context::GetInstance();
+  const auto tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
+
   profile::NvtxRangeCreator recvRange(
-      "Recv-" + std::to_string(src), profile::Color::Green);
+      "Batch-" + tag +
+      " Recv-" + std::to_string(src), profile::Color::Green);
   // Begin of major communication tasks.
   // The first MPI_Recv is not included because we don't want to
   // count waiting time before setting up the actual communication.
@@ -83,7 +89,8 @@ void Recv::ReceiveData(
 
 #ifdef ENABLE_NVTX_PROFILE
   profile::NvtxRangeCreator memcpyRange(
-      "RecvMemcpy-" + std::to_string(src), profile::Color::Green);
+      "Batch-" + tag +
+      " RecvMemcpy-" + std::to_string(src), profile::Color::Green);
   // Begin of host-to-device memory copy.
   memcpyRange.Begin();
 #endif
@@ -136,8 +143,12 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
   const int src = static_cast<int>(*remote_rank);
 
 #ifdef ENABLE_NVTX_PROFILE
+  auto& profile_context = profile::Context::GetInstance();
+  const auto tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
+
   profile::NvtxRangeCreator preRange(
-      "PreRecv-" + std::to_string(src), profile::Color::Green);
+      "Batch-" + tag +
+      " PreRecv-" + std::to_string(src), profile::Color::Green);
   // Begin of preparation for receiving data.
   preRange.Begin();
 #endif
@@ -235,7 +246,8 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
 
 #ifdef ENABLE_NVTX_PROFILE
   profile::NvtxRangeCreator postRange(
-      "PostRecv-" + std::to_string(src), profile::Color::Green);
+      "Batch-" + tag +
+      " PostRecv-" + std::to_string(src), profile::Color::Green);
   postRange.Begin();
 #endif
 

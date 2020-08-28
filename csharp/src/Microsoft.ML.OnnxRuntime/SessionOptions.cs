@@ -47,9 +47,8 @@ namespace Microsoft.ML.OnnxRuntime
     /// <summary>
     /// Holds the options for creating an InferenceSession
     /// </summary>
-    public class SessionOptions : IDisposable
+    public class SessionOptions : SafeHandle
     {
-        private IntPtr _nativePtr;
         private static string[] cudaDelayLoadedLibs = { "cublas64_10.dll", "cudnn64_7.dll", "curand64_10.dll" };
 
         #region Constructor and Factory methods
@@ -58,8 +57,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// Constructs an empty SessionOptions
         /// </summary>
         public SessionOptions()
+            :base(IntPtr.Zero, true)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionOptions(out _nativePtr));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionOptions(out handle));
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionProgrammingProjection(_nativePtr, OrtProgrammingProjection.ORT_PROJECTION_CROSSPLAT_CSHARP));
         }
 
@@ -83,8 +83,8 @@ namespace Microsoft.ML.OnnxRuntime
         {
             CheckCudaExecutionProviderDLLs();
             SessionOptions options = new SessionOptions();
-            NativeMethods.OrtSessionOptionsAppendExecutionProvider_CUDA(options._nativePtr, deviceId);
-            NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(options._nativePtr, 1);
+            NativeMethods.OrtSessionOptionsAppendExecutionProvider_CUDA(options.Handle, deviceId);
+            NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(options.Handle, 1);
             return options;
         }
 
@@ -97,7 +97,7 @@ namespace Microsoft.ML.OnnxRuntime
         public static SessionOptions MakeSessionOptionWithNupharProvider(String settings = "")
         {
             SessionOptions options = new SessionOptions();
-            NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nuphar(options._nativePtr, 1, settings);
+            NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nuphar(options.Handle, 1, settings);
             return options;
         }
 
@@ -106,7 +106,7 @@ namespace Microsoft.ML.OnnxRuntime
         #region ExecutionProviderAppends
         public void AppendExecutionProvider_CPU(int useArena)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(_nativePtr, useArena));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(handle, useArena));
         }
 
         /// <summary>
@@ -114,7 +114,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public void AppendExecutionProvider_Dnnl(int useArena)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Dnnl(_nativePtr, useArena));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Dnnl(handle, useArena));
         }
 
         /// <summary>
@@ -122,7 +122,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public void AppendExecutionProvider_CUDA(int deviceId)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CUDA(_nativePtr, deviceId));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CUDA(handle, deviceId));
         }
 
         /// <summary>
@@ -130,7 +130,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public void AppendExecutionProvider_NGraph(string nGraphBackendType)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_NGraph(_nativePtr, nGraphBackendType));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_NGraph(handle, nGraphBackendType));
         }
 
         /// <summary>
@@ -138,7 +138,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public void AppendExecutionProvider_OpenVINO(string deviceId = "")
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_OpenVINO(_nativePtr, deviceId));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_OpenVINO(handle, deviceId));
         }
 
         /// <summary>
@@ -146,7 +146,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public void AppendExecutionProvider_Tensorrt(int deviceId)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Tensorrt(_nativePtr, deviceId));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Tensorrt(handle, deviceId));
         }
 
         /// <summary>
@@ -154,7 +154,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public void AppendExecutionProvider_MIGraphX(int deviceId)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_MIGraphX(_nativePtr, deviceId));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_MIGraphX(handle, deviceId));
         }
 
         /// <summary>
@@ -162,7 +162,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public void AppendExecutionProvider_Nnapi()
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nnapi(_nativePtr));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nnapi(handle));
         }
 
         /// <summary>
@@ -170,7 +170,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public void AppendExecutionProvider_Nuphar(string settings = "")
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nuphar(_nativePtr, 1, settings));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nuphar(handle, 1, settings));
         }
         #endregion //ExecutionProviderAppends
 
@@ -178,7 +178,7 @@ namespace Microsoft.ML.OnnxRuntime
         public void RegisterCustomOpLibrary(string libraryPath)
         {
             IntPtr libraryHandle = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(_nativePtr, libraryPath, out libraryHandle));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, libraryPath, out libraryHandle));
         }
 
         #endregion
@@ -187,11 +187,13 @@ namespace Microsoft.ML.OnnxRuntime
         {
             get
             {
-                return _nativePtr;
+                return handle;
             }
         }
-
         #region Public Properties
+
+        public override bool IsInvalid { get { return handle == IntPtr.Zero; } }
+
         /// <summary>
         /// Enables the use of the memory allocation patterns in the first Run() call for subsequent runs. Default = true.
         /// </summary>
@@ -205,18 +207,17 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 if (!_enableMemoryPattern && value)
                 {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtEnableMemPattern(_nativePtr));
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtEnableMemPattern(handle));
                     _enableMemoryPattern = true;
                 }
                 else if (_enableMemoryPattern && !value)
                 {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtDisableMemPattern(_nativePtr));
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtDisableMemPattern(handle));
                     _enableMemoryPattern = false;
                 }
             }
         }
         private bool _enableMemoryPattern = true;
-
 
         /// <summary>
         /// Path prefix to use for output of profiling data
@@ -241,12 +242,12 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 if (!_enableProfiling && value)
                 {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtEnableProfiling(_nativePtr, NativeMethods.GetPlatformSerializedString(ProfileOutputPathPrefix)));
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtEnableProfiling(handle, NativeMethods.GetPlatformSerializedString(ProfileOutputPathPrefix)));
                     _enableProfiling = true;
                 }
                 else if (_enableProfiling && !value)
                 {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtDisableProfiling(_nativePtr));
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtDisableProfiling(handle));
                     _enableProfiling = false;
                 }
             }
@@ -266,7 +267,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 if (value != _optimizedModelFilePath)
                 {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtSetOptimizedModelFilePath(_nativePtr, NativeMethods.GetPlatformSerializedString(value)));
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtSetOptimizedModelFilePath(handle, NativeMethods.GetPlatformSerializedString(value)));
                     _optimizedModelFilePath = value;
                 }
             }
@@ -288,12 +289,12 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 if (!_enableCpuMemArena && value)
                 {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtEnableCpuMemArena(_nativePtr));
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtEnableCpuMemArena(handle));
                     _enableCpuMemArena = true;
                 }
                 else if (_enableCpuMemArena && !value)
                 {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtDisableCpuMemArena(_nativePtr));
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtDisableCpuMemArena(handle));
                     _enableCpuMemArena = false;
                 }
             }
@@ -314,7 +315,7 @@ namespace Microsoft.ML.OnnxRuntime
 
             set
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionLogId(_nativePtr, value));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionLogId(handle, value));
                 _logId = value;
             }
         }
@@ -331,7 +332,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
             set
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionLogSeverityLevel(_nativePtr, value));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionLogSeverityLevel(handle, value));
                 _logSeverityLevel = value;
             }
         }
@@ -349,7 +350,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
             set
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionLogVerbosityLevel(_nativePtr, value));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionLogVerbosityLevel(handle, value));
                 _logVerbosityLevel = value;
             }
         }
@@ -368,7 +369,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
             set
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetIntraOpNumThreads(_nativePtr, value));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetIntraOpNumThreads(handle, value));
                 _intraOpNumThreads = value;
             }
         }
@@ -387,7 +388,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
             set
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetInterOpNumThreads(_nativePtr, value));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetInterOpNumThreads(handle, value));
                 _interOpNumThreads = value;
             }
         }
@@ -404,7 +405,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
             set
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionGraphOptimizationLevel(_nativePtr, value));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionGraphOptimizationLevel(handle, value));
                 _graphOptimizationLevel = value;
             }
         }
@@ -422,7 +423,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
             set
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionExecutionMode(_nativePtr, value));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionExecutionMode(handle, value));
                 _executionMode = value;
             }
         }
@@ -462,21 +463,13 @@ namespace Microsoft.ML.OnnxRuntime
 
 
         #endregion
-        #region IDisposable
+        #region SafeHandle
 
-        public void Dispose()
+        protected override bool ReleaseHandle()
         {
-            GC.SuppressFinalize(this);
-            Dispose(true);
-        }
-
-        protected virtual void Dispose(bool disposing)
-        {
-            if (disposing)
-            {
-                NativeMethods.OrtReleaseSessionOptions(_nativePtr);
-                _nativePtr = IntPtr.Zero;
-            }
+            NativeMethods.OrtReleaseSessionOptions(handle);
+            handle = IntPtr.Zero;
+            return true;
         }
 
         #endregion

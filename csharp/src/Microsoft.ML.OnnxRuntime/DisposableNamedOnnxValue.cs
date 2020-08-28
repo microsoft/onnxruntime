@@ -55,6 +55,7 @@ namespace Microsoft.ML.OnnxRuntime
         private NativeMemoryHandler _nativeMemoryManager;
         private TensorElementType _elementType;
         private OnnxValueType _onnxValueType;
+        private bool _disposed = false;
 
         private DisposableNamedOnnxValue(string name, Object value, OnnxValueType onnxValueType, TensorElementType elementType, NativeMemoryHandler nativeMemoryManager)
             : base(name, value)
@@ -264,15 +265,21 @@ namespace Microsoft.ML.OnnxRuntime
 
         protected virtual void Dispose(bool disposing)
         {
+            if(_disposed)
+            {
+                return;
+            }
+
+            // dispose managed state (managed objects).
             if (disposing)
             {
-                // dispose managed state (managed objects).
                 if (_nativeMemoryManager != null)
                 {
                     _nativeMemoryManager.Dispose();
                     _nativeMemoryManager = null;
                 }
             }
+            _disposed = true;
         }
 
         public void Dispose()
