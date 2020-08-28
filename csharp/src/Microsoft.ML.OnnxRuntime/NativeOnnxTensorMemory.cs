@@ -21,7 +21,6 @@ namespace Microsoft.ML.OnnxRuntime
     internal class NativeOnnxTensorMemory<T> : MemoryManager<T>, NativeMemoryHandler
     {
         private bool _disposed;
-        private int _referenceCount;
         private IntPtr _onnxValueHandle;      // pointer to onnxvalue object in native
         private IntPtr _dataBufferPointer;    // pointer to mutable tensor data in native memory
         private string[] _dataBufferAsString; // string tensor values copied into managed memory
@@ -35,6 +34,7 @@ namespace Microsoft.ML.OnnxRuntime
             Type type = null;
             int width = 0;
             _onnxValueHandle = onnxValueHandle;
+            _disposed = false;
             IntPtr typeAndShape = IntPtr.Zero;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorTypeAndShape(onnxValueHandle, out typeAndShape));
             try
@@ -119,15 +119,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         public IntPtr Handle { get { return _onnxValueHandle; } }
 
-        public void Dispose()
-        {
-            GC.SuppressFinalize(this);
-            Dispose(true);
-        }
-
         public bool IsDisposed => _disposed;
-
-        protected bool IsRetained => _referenceCount > 0;
 
         public int[] Dimensions => _dimensions;
 
@@ -172,52 +164,34 @@ namespace Microsoft.ML.OnnxRuntime
                 {
                     throw new ArgumentOutOfRangeException(nameof(elementIndex));
                 }
-                Retain();
-
                 return new MemoryHandle((void*)((int)_dataBufferPointer + elementIndex * _elementWidth)); //could not use Unsafe.Add
             }
         }
 
-        public override void Unpin()
+        // MemoryHandle returned above by Pin() should be disposed.
+        // Unpin() is purely to satisfy the interface.
+        // TODO: This class needs work. It is not clear what happens
+        // if the MemoryHandle remains alive and this class gets Disposed.
+        public override void Unpin() { }
+
+        public void Dispose()
         {
-            Release();
-        }
-
-        private bool Release()
-        {
-            int newRefCount = Interlocked.Decrement(ref _referenceCount);
-
-            if (newRefCount < 0)
-            {
-                throw new InvalidOperationException("Unmatched Release/Retain");
-            }
-
-            return newRefCount != 0;
-        }
-
-        private void Retain()
-        {
-            if (IsDisposed)
-            {
-                throw new ObjectDisposedException(nameof(NativeOnnxTensorMemory<T>));
-            }
-
-            Interlocked.Increment(ref _referenceCount);
+            Dispose(true);
+            GC.SuppressFinalize(this);
         }
 
         protected override void Dispose(bool disposing)
         {
-            if (_disposed)
+            if(_disposed)
             {
                 return;
             }
 
-            if (disposing)
+            if (_onnxValueHandle != IntPtr.Zero)
             {
-                // do managed objects cleanup
+                NativeMethods.OrtReleaseValue(_onnxValueHandle);
+                _onnxValueHandle = IntPtr.Zero;
             }
-
-            NativeMethods.OrtReleaseValue(_onnxValueHandle);
 
             _disposed = true;
         }
