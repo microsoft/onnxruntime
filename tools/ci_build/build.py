@@ -1511,10 +1511,10 @@ def run_csharp_tests(use_cuda, use_openvino, use_tensorrt, use_dnnl):
 
 
 def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
-    if (args.arm or args.arm64) and (not is_windows() and not args.ios):
+    if (args.arm or args.arm64 or args.enable_windows_store) and (not is_windows() and not args.ios):
         raise BuildError(
             'Currently only support building protoc for Windows host while '
-            'cross-compiling for ARM/ARM64 arch and linux cross-compiling iOS')
+            'cross-compiling for ARM/ARM64/Store and linux cross-compiling iOS')
 
     log.info(
         "Building protoc for host to be used in cross-compiled build process")
@@ -1752,7 +1752,7 @@ def main():
         elif is_macOS() and args.use_xcode:
             cmake_extra_args += ['-G', 'Xcode']
 
-        if (args.android or args.ios) and args.path_to_protoc_exe is None:
+        if (args.android or args.ios or args.enable_windows_store) and args.path_to_protoc_exe is None:
             # Cross-compiling for Android and iOS
             path_to_protoc_exe = build_protoc_for_host(
                 cmake_path, source_dir, build_dir, args)
