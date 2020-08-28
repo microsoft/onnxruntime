@@ -242,9 +242,8 @@ CustomOpLibrary::~CustomOpLibrary() {
 void CustomOpLibrary::UnloadLibrary() {
   auto status = platform_env.UnloadDynamicLibrary(library_handle_);
 
-  const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
-
   if (!status.IsOK()) {
+    const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
     LOGS(default_logger, WARNING) << "Unable to unload the custom op shared library: " << library_path_;
   }
 }
