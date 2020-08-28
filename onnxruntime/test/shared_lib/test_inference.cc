@@ -454,6 +454,26 @@ TEST(ReducedOpsBuildTest, test_model_with_reduced_ops_build) {
   std::vector<float> expected_values_y = {0.75};
   TestInference<PATH_TYPE, float>(*ort_env, model_uri, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
 }
+
+TEST(ReducedOpsBuildTest, test_excluded_ops) {
+  constexpr PATH_TYPE model_uri = TSTR("testdata/test_excluded_ops");
+  std::vector<Input> inputs(2);
+  for (auto& input: inputs) {
+    input.dims = {3};
+    input.values = {-1.0f, 2.0f, -3.0f};
+  }
+  inputs[0].name = "X";
+  inputs[1].name = "Y";
+  std::vector<int64_t> expected_dims_z = {3};
+  std::vector<float> expected_values_z = {0.1f, 0.1f, 0.1f};
+  bool failed = false;
+  try {
+  TestInference<PATH_TYPE, float>(*ort_env, model_uri, inputs, "Z", expected_dims_z, expected_values_z, 0, nullptr, nullptr);
+  } catch (const Ort::Exception& e) {
+    failed = e.GetOrtErrorCode() == ORT_NOT_IMPLEMENTED;
+  }
+  ASSERT_EQ(failed, true);
+}
 #endif
 
 TEST(CApiTest, get_allocator_cpu) {
