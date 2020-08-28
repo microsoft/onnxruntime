@@ -14,6 +14,7 @@
 #include "Psapi.h"
 #include "Mock.h"
 #include "onnxruntime_c_api.h"
+#include "core/session/ort_apis.h"
 
 using namespace winrt;
 using namespace winml;
@@ -348,9 +349,11 @@ static void NamedDimensionOverride()
   WINML_EXPECT_NO_THROW(session.Evaluate(binding, L""));
 }
 
+
 static void MockFreeDimensionOverride() 
 {
-  auto FreeDimensionOverrideMock = Mock::Method(&OrtApi::AddFreeDimensionOverrideByName, [](OrtSessionOptions*, const char*, int64_t) {
+    // This should work...causes strange compiler errors in mock headers
+  auto FreeDimensionOverrideMock = Mock::Function(&OrtApis::AddFreeDimensionOverrideByName, [](OrtSessionOptions*, const char*, int64_t) {
     return OrtStatusPtr();
   });
   LearningModelSessionOptions options;
