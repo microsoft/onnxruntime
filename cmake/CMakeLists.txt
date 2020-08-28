@@ -1136,7 +1136,7 @@ if (WIN32)
     add_compile_definitions(WINVER=0x0601)  # Support Windows 7 and newer
     # add_compile_definitions(WINAPI_FAMILY=3)
     # FIXME adding _WIN32_WINNT=0x0601 and WINAPI_FAMILY is desirable. However, it hides some symbols that are used in WRL
-    # headers and breaks the build of WinML.
+    # headers and breaks the build of WinML. We should have separate WINVER/_WIN32_WINNT definitions for WinML
     add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/FI${CMAKE_CURRENT_SOURCE_DIR}/set_winapi_family_desktop.h>")
   endif()
 endif()
