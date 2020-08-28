@@ -598,7 +598,7 @@ TEST(ReductionOpTest, ReduceMax_int32) {
 #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_MYRIAD)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          //TensorRT: axis must be 0
 #endif
 }
 
@@ -616,11 +616,11 @@ TEST(ReductionOpTest, ReduceMax_int64) {
                           9, 10,
                           11, 12});
   test.AddOutput<int64_t>("reduced", {3, 1, 1}, {4, 8, 12});
-  #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_MYRIAD)
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
-  #else
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
-  # endif
+#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_MYRIAD)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
+#else
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          //TensorRT: axis must be 0
+#endif
 }
 
 TEST(ReductionOpTest, ReduceMax_int8) {
@@ -637,11 +637,11 @@ TEST(ReductionOpTest, ReduceMax_int8) {
                          9, 10,
                          11, 12});
   test.AddOutput<int8_t>("reduced", {3, 1, 1}, {4, 8, 12});
-  #if defined(OPENVINO_CONFIG_MYRIAD)
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
-  #else
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
-  #endif
+#if defined(OPENVINO_CONFIG_MYRIAD)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
+#else
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          //TensorRT: axis must be 0
+#endif
 }
 
 TEST(ReductionOpTest, ReduceMax_uint8) {
@@ -658,11 +658,11 @@ TEST(ReductionOpTest, ReduceMax_uint8) {
                           9, 10,
                           11, 12});
   test.AddOutput<uint8_t>("reduced", {3, 1, 1}, {4, 8, 12});
-  #if defined(OPENVINO_CONFIG_MYRIAD)
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
-  #else
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
-  #endif
+#if defined(OPENVINO_CONFIG_MYRIAD)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
+#else
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          //TensorRT: axis must be 0
+#endif
 }
 
 #if !(defined USE_TENSORRT) && !(defined USE_TVM)
@@ -1152,7 +1152,6 @@ void test_apex_reduce_sum(
   } else {
     test.Run();
   }
-
 }
 
 TEST(ReductionOpTest, ReduceSum_apex_matrix_large) {
@@ -1204,13 +1203,13 @@ TEST(ReductionOpTest, ReduceSum_batch_by_seq_by_30528) {
 #endif
 
 TEST(ReductionOpTest, ReduceSum_bert_selected_batch_size) {
-  #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
-    test_apex_reduce_sum(85 * 128, 768, true);
-    test_apex_reduce_sum(86 * 128, 768, true);
-  #else 
-    test_apex_reduce_sum(85 * 128, 768);
-    test_apex_reduce_sum(86 * 128, 768);
-  #endif  
+#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
+  test_apex_reduce_sum(85 * 128, 768, true);
+  test_apex_reduce_sum(86 * 128, 768, true);
+#else
+  test_apex_reduce_sum(85 * 128, 768);
+  test_apex_reduce_sum(86 * 128, 768);
+#endif
 }
 
 TEST(ReductionOpTest, ReduceSum_apex_more) {
@@ -1608,6 +1607,26 @@ TEST(ReductionOpTest, ArgMax) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
 }
 
+TEST(ReductionOpTest, ArgMax_Double_Type) {
+  OpTester test("ArgMax", 11);
+  test.AddAttribute("axis", static_cast<int64_t>(1));
+  test.AddAttribute("keepdims", static_cast<int64_t>(1));
+  test.AddInput<double>("data", {3, 2, 2},
+                        {1.0, 2.0,
+                         3.0, 4.0,
+
+                         5.0, 6.0,
+                         7.0, 8.0,
+
+                         9.0, 10.0,
+                         11.0, 12.0});
+  test.AddOutput<int64_t>("reduced", {3, 1, 2},
+                          {1, 1,
+                           1, 1,
+                           1, 1});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
+}
+
 TEST(ReductionOpTest, ArgMax_do_not_keepdims) {
   OpTester test("ArgMax");
   test.AddAttribute("axis", (int64_t)1);
@@ -1636,7 +1655,7 @@ TEST(ReductionOpTest, ArgMax_do_not_keepdims_2) {
                        {1.0f, 2.0f, 3.0f});
   test.AddOutput<int64_t>("reduced", {},
                           {2});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); // TensorRT: node1: at least 2 dimensions are required for input
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: node1: at least 2 dimensions are required for input
 }
 
 TEST(ReductionOpTest, ArgMax_int32) {
@@ -1796,7 +1815,7 @@ TEST(ReductionOpTest, ArgMin_do_not_keepdims_2) {
   test.AddInput<float>("data", {3},
                        {1.0f, 2.0f, 3.0f});
   test.AddOutput<int64_t>("reduced", {}, {0});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); // TensorRT: node1: at least 2 dimensions are required for input
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: node1: at least 2 dimensions are required for input
 }
 
 TEST(ReductionOpTest, ArgMin_do_not_keepdims_2_select_last) {

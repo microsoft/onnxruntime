@@ -275,6 +275,7 @@ void WindowsTelemetry::LogExecutionProviderEvent(LUID* adapterLuid) const {
 
   TraceLoggingWrite(telemetry_provider_handle,
                     "ExecutionProviderEvent",
+                    TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
                     TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance),
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                     // Telemetry info
