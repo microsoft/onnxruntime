@@ -136,8 +136,8 @@ void WinMLTelemetryHelper::SetNamedDimensionOverride(
       TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
       //Telemetry info
       TraceLoggingUInt8(WINML_TLM_NAMED_DIMENSION_OVERRIDE_VERSION, "schemaVersion"),
-      // num threads info
-      TraceLoggingWideString(name.c_str(), "dimension name"),
-      TraceLoggingInt32(value, "override value"),
+      // named dimension override info
+      TraceLoggingWideString(name.c_str(), "dimensionName"),
+      TraceLoggingInt32(value, "overrideValue"),
       TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
 }

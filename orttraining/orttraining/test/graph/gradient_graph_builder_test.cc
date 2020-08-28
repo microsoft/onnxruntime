@@ -1022,25 +1022,35 @@ class PipelineBatchPlanner {
 
 void RetrieveEventOperators(
   Graph& graph,
-  Node** forward_wait_before_recv,
-  Node** forward_wait_after_recv,
-  Node** forward_record_before_send,
-  Node** forward_record_after_send,
-  Node** backward_wait_before_recv,
-  Node** backward_wait_after_recv,
-  Node** backward_record_before_send,
-  Node** backward_record_after_send) {
+  const int stage_index,
+  const int num_stages,
+  Node** forward_recv_wait,
+  Node** forward_recv_record,
+  Node** forward_compute_wait,
+  Node** forward_compute_record,
+  Node** forward_send_wait,
+  Node** forward_send_record,
+  Node** backward_recv_wait,
+  Node** backward_recv_record,
+  Node** backward_compute_wait,
+  Node** backward_compute_record,
+  Node** backward_send_wait,
+  Node** backward_send_record) {
   // Initialize retrieved nodes.
   // Non-existing nodes may hold NULL forever.
   // Existing nodes may get valid pointers below.
-  *forward_wait_before_recv = nullptr;
-  *forward_wait_after_recv = nullptr;
-  *forward_record_before_send = nullptr;
-  *forward_record_after_send = nullptr;
-  *backward_wait_before_recv = nullptr;
-  *backward_wait_after_recv = nullptr;
-  *backward_record_before_send = nullptr;
-  *backward_record_after_send = nullptr;
+  *forward_recv_wait = nullptr;
+  *forward_recv_record = nullptr;
+  *forward_compute_wait = nullptr;
+  *forward_compute_record = nullptr;
+  *forward_send_wait = nullptr;
+  *forward_send_record = nullptr;
+  *backward_recv_wait = nullptr;
+  *backward_recv_record = nullptr;
+  *backward_compute_wait = nullptr;
+  *backward_compute_record = nullptr;
+  *backward_send_wait = nullptr;
+  *backward_send_record = nullptr;
 
   // Declare container for WaitEvent's in topological order.
   std::vector<Node*> waits;
@@ -1058,32 +1068,60 @@ void RetrieveEventOperators(
     }
   }
 
-  if (waits.size() == size_t(4)) {
-    // Each of first stage and middle stages has 4 WaitEvent's.
-    *forward_wait_before_recv = waits[0];
-    *forward_wait_after_recv = waits[1];
-    *backward_wait_before_recv = waits[2];
-    *backward_wait_after_recv = waits[3];
-  } else if (waits.size() == size_t(2)) {
-    // Last stage has 2 WaitEvent's.
-    *forward_wait_before_recv = waits[0];
-    *forward_wait_after_recv = waits[1];
-  } else {
-    ORT_THROW("Wrong number of WaitEvent operators: ", waits.size(), "Expected value is either 2 or 4.");
-  }
+  // For different stages, assign nodes based on different rules. 
+  if (stage_index != 0 && stage_index != num_stages - 1) {
+    // Wait/Record patterns at middle stages:
+    //   Wait -> Recv -> Record -> Wait -> FW -> Record -> Wait -> Send -> Record ->
+    //   Wait -> Recv -> Record -> Wait -> BW -> Record -> Wait -> Send -> Record
 
-  if (records.size() == size_t(4)) {
-    // Each of first stage and middle stages has 4 RecordEvent's.
-    *forward_record_before_send = records[0];
-    *forward_record_after_send = records[1];
-    *backward_record_before_send = records[2];
-    *backward_record_after_send = records[3];
-  } else if (waits.size() == size_t(2)) {
-    // Last stage has 2 RecordEvent's.
-    *backward_record_before_send = records[0];
-    *backward_record_after_send = records[1];
+    ORT_ENFORCE(waits.size() == 6, " size is ", waits.size(), " at stage ", stage_index);
+    *forward_recv_wait = waits[0];
+    *forward_compute_wait = waits[1];
+    *forward_send_wait = waits[2];
+    *backward_recv_wait = waits[3];
+    *backward_compute_wait = waits[4];
+    *backward_send_wait = waits[5];
+
+    ORT_ENFORCE(records.size() == 6, " size is ", waits.size(), " at stage ", stage_index);
+    *forward_recv_record = records[0];
+    *forward_compute_record = records[1];
+    *forward_send_record = records[2];
+    *backward_recv_record = records[3];
+    *backward_compute_record = records[4];
+    *backward_send_record = records[5];
+  } else if (stage_index == 0) {
+    // Wait/Record patterns at the 1st stages:
+    //                             Wait -> FW -> Record -> Wait -> Send -> Record ->
+    //   Wait -> Recv -> Record -> Wait -> BW -> Record
+
+    ORT_ENFORCE(waits.size() == 4, " size is ", waits.size(), " at stage ", stage_index);
+    *forward_compute_wait = waits[0];
+    *forward_send_wait = waits[1];
+    *backward_recv_wait = waits[2];
+    *backward_compute_wait = waits[3];
+
+    ORT_ENFORCE(records.size() == 4, " size is ", waits.size(), " at stage ", stage_index);
+    *forward_compute_record = records[0];
+    *forward_send_record = records[1];
+    *backward_recv_record = records[2];
+    *backward_compute_record = records[3];
+  } else if (stage_index == num_stages - 1) {
+    // Wait/Record patterns at the last stages:
+    //   Wait -> Recv -> Record -> Wait -> FW ->
+    //                                     BW -> Record -> Wait -> Send -> Record
+
+    ORT_ENFORCE(waits.size() == 3, " size is ", waits.size(), " at stage ", stage_index);
+    *forward_recv_wait = waits[0];
+    *forward_compute_wait = waits[1];
+    *backward_send_wait = waits[2];
+
+    ORT_ENFORCE(records.size() == 3, " size is ", waits.size(), " at stage ", stage_index);
+    *forward_recv_record = records[0];
+    *backward_compute_record = records[1];
+    *backward_send_record = records[2];
   } else {
-    ORT_THROW("Wrong number of RecordEvent operators: ", waits.size(), ". Expected value is either 2 or 4.");
+    ORT_THROW("Wrong number of WaitEvent operators: ",
+        waits.size(), " allowed value range is [0, ", num_stages - 1, ").");
   }
 }
 
@@ -1372,60 +1410,92 @@ TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
 
     // Declare forward event nodes.
     // The nodes are declared according to their topological order.
-    Node* forward_wait_before_recv{nullptr};
-    Node* forward_wait_after_recv{nullptr};
-    Node* forward_record_before_send{nullptr};
-    Node* forward_record_after_send{nullptr};
+    Node* forward_recv_wait{nullptr};
+    Node* forward_recv_record{nullptr};
+    Node* forward_compute_wait{nullptr};
+    Node* forward_compute_record{nullptr};
+    Node* forward_send_wait{nullptr};
+    Node* forward_send_record{nullptr};
 
     // Declare backward event nodes.
     // The nodes are declared according to their topological order.
-    Node* backward_wait_before_recv{nullptr};
-    Node* backward_wait_after_recv{nullptr};
-    Node* backward_record_before_send{nullptr};
-    Node* backward_record_after_send{nullptr};
+    Node* backward_recv_wait{nullptr};
+    Node* backward_recv_record{nullptr};
+    Node* backward_compute_wait{nullptr};
+    Node* backward_compute_record{nullptr};
+    Node* backward_send_wait{nullptr};
+    Node* backward_send_record{nullptr};
 
     // Find event nodes.
     RetrieveEventOperators(
       graph,
-      &forward_wait_before_recv,
-      &forward_wait_after_recv,
-      &forward_record_before_send,
-      &forward_record_after_send,
-      &backward_wait_before_recv,
-      &backward_wait_after_recv,
-      &backward_record_before_send,
-      &backward_record_after_send);
+      stageIdx,
+      3,
+      &forward_recv_wait,
+      &forward_recv_record,
+      &forward_compute_wait,
+      &forward_compute_record,
+      &forward_send_wait,
+      &forward_send_record,
+      &backward_recv_wait,
+      &backward_recv_record,
+      &backward_compute_wait,
+      &backward_compute_record,
+      &backward_send_wait,
+      &backward_send_record);
 
     // Check event nodes.
     if (stageIdx == 2) {
-      ASSERT_TRUE(forward_wait_before_recv);
-      ASSERT_TRUE(forward_wait_after_recv);
+      // Last stage's event pattern:
+      //   Wait -> Recv -> Record -> Wait -> FW ->
+      //                                     BW -> Record -> Wait -> Send -> Record
+      ASSERT_TRUE(forward_recv_wait);
+      ASSERT_TRUE(forward_recv_record);
+      ASSERT_TRUE(forward_compute_wait);
+      ASSERT_TRUE(!forward_compute_record);
+      ASSERT_TRUE(!forward_send_wait);
+      ASSERT_TRUE(!forward_send_record);
 
-      // Last pipeline stage can perform backward right after its forward.
-      // It won't have event operators to divide forward from backward.
-      ASSERT_TRUE(!forward_record_before_send);
-      ASSERT_TRUE(!forward_record_after_send);
-      ASSERT_TRUE(!backward_wait_before_recv);
-      ASSERT_TRUE(!backward_wait_after_recv);
+      ASSERT_TRUE(!backward_recv_wait);
+      ASSERT_TRUE(!backward_recv_record);
+      ASSERT_TRUE(!backward_compute_wait);
+      ASSERT_TRUE(backward_compute_record);
+      ASSERT_TRUE(backward_send_wait);
+      ASSERT_TRUE(backward_send_record);
+    } else if (stageIdx == 1) {
+      // Middle stage's event pattern:
+      //   Wait -> Recv -> Record -> Wait -> FW -> Record -> Wait -> Send -> Record ->
+      //   Wait -> Recv -> Record -> Wait -> BW -> Record -> Wait -> Send -> Record
+      ASSERT_TRUE(forward_recv_wait);
+      ASSERT_TRUE(forward_recv_record);
+      ASSERT_TRUE(forward_compute_wait);
+      ASSERT_TRUE(forward_compute_record);
+      ASSERT_TRUE(forward_send_wait);
+      ASSERT_TRUE(forward_send_record);
 
-      ASSERT_TRUE(backward_record_before_send);
-      ASSERT_TRUE(backward_record_after_send);
+      ASSERT_TRUE(backward_recv_wait);
+      ASSERT_TRUE(backward_recv_record);
+      ASSERT_TRUE(backward_compute_wait);
+      ASSERT_TRUE(backward_compute_record);
+      ASSERT_TRUE(backward_send_wait);
+      ASSERT_TRUE(backward_send_record);
     } else {
-      // Beginning of forward.
-      ASSERT_TRUE(forward_wait_before_recv);
-      ASSERT_TRUE(forward_wait_after_recv);
+      // First stage's event pattern:
+      //                             Wait -> FW -> Record -> Wait -> Send -> Record ->
+      //   Wait -> Recv -> Record -> Wait -> BW -> Record
+      ASSERT_TRUE(!forward_recv_wait);
+      ASSERT_TRUE(!forward_recv_record);
+      ASSERT_TRUE(forward_compute_wait);
+      ASSERT_TRUE(forward_compute_record);
+      ASSERT_TRUE(forward_send_wait);
+      ASSERT_TRUE(forward_send_record);
 
-      // End of forward.
-      ASSERT_TRUE(forward_record_before_send);
-      ASSERT_TRUE(forward_record_after_send);
-
-      // Beginning of backward.
-      ASSERT_TRUE(backward_wait_before_recv);
-      ASSERT_TRUE(backward_wait_after_recv);
-
-      // End of backward.
-      ASSERT_TRUE(backward_record_before_send);
-      ASSERT_TRUE(backward_record_after_send);
+      ASSERT_TRUE(backward_recv_wait);
+      ASSERT_TRUE(backward_recv_record);
+      ASSERT_TRUE(backward_compute_wait);
+      ASSERT_TRUE(backward_compute_record);
+      ASSERT_TRUE(!backward_send_wait);
+      ASSERT_TRUE(!backward_send_record);
     }
 
     Node* forward_send{nullptr};

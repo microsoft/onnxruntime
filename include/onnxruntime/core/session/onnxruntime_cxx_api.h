@@ -74,6 +74,8 @@ ORT_DEFINE_RELEASE(RunOptions);
 ORT_DEFINE_RELEASE(Session);
 ORT_DEFINE_RELEASE(SessionOptions);
 ORT_DEFINE_RELEASE(TensorTypeAndShapeInfo);
+ORT_DEFINE_RELEASE(SequenceTypeInfo);
+ORT_DEFINE_RELEASE(MapTypeInfo);
 ORT_DEFINE_RELEASE(TypeInfo);
 ORT_DEFINE_RELEASE(Value);
 ORT_DEFINE_RELEASE(ModelMetadata);
@@ -285,11 +287,30 @@ struct TensorTypeAndShapeInfo : Base<OrtTensorTypeAndShapeInfo> {
   std::vector<int64_t> GetShape() const;
 };
 
+struct SequenceTypeInfo : Base<OrtSequenceTypeInfo> {
+  explicit SequenceTypeInfo(std::nullptr_t) {}
+  explicit SequenceTypeInfo(OrtSequenceTypeInfo* p) : Base<OrtSequenceTypeInfo>{p} {}
+
+  TypeInfo GetSequenceElementType() const;
+};
+
+struct MapTypeInfo : Base<OrtMapTypeInfo> {
+  explicit MapTypeInfo(std::nullptr_t) {}
+  explicit MapTypeInfo(OrtMapTypeInfo* p) : Base<OrtMapTypeInfo>{p} {}
+
+  ONNXTensorElementDataType GetMapKeyType() const;
+  TypeInfo GetMapValueType() const;
+};
+
 struct TypeInfo : Base<OrtTypeInfo> {
   explicit TypeInfo(std::nullptr_t) {}
   explicit TypeInfo(OrtTypeInfo* p) : Base<OrtTypeInfo>{p} {}
 
   Unowned<TensorTypeAndShapeInfo> GetTensorTypeAndShapeInfo() const;
+  Unowned<SequenceTypeInfo> GetSequenceTypeInfo() const;
+  Unowned<MapTypeInfo> GetMapTypeInfo() const;
+
+
   ONNXType GetONNXType() const;
 };
 

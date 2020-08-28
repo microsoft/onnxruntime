@@ -33,6 +33,12 @@ import torch
 
 logger = logging.getLogger(__name__)
 
+def verify_old_and_new_api_are_equal(results_per_api):
+    new_api_results = results_per_api[True]
+    old_api_results = results_per_api[False]
+    for key in new_api_results.keys():
+        assert_allclose(new_api_results[key], old_api_results[key])
+
 @dataclass
 class ModelArguments:
     """
@@ -75,12 +81,16 @@ class ORTGlueTest(unittest.TestCase):
         expected_acc_and_f1 = 0.9013897443794272
         expected_loss = 0.35917433314755853
 
+        results_per_api = dict()
         for use_new_api in [True, False]:
             results = self.run_glue(model_name="roberta-base", task_name="MRPC", fp16=False, use_new_api=use_new_api)
             assert_allclose(results['acc'], expected_acc, rtol=self.rtol)
             assert_allclose(results['f1'], expected_f1, rtol=self.rtol)
             assert_allclose(results['acc_and_f1'], expected_acc_and_f1, rtol=self.rtol)
             assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
+            results_per_api[use_new_api] = results
+
+        verify_old_and_new_api_are_equal(results_per_api)
 
     def test_roberta_fp16_with_mrpc(self):
         expected_acc = 0.8946078431372549
@@ -88,12 +98,16 @@ class ORTGlueTest(unittest.TestCase):
         expected_acc_and_f1 = 0.90965068163868
         expected_loss = 0.3052181116506165
 
+        results_per_api = dict()
         for use_new_api in [True, False]:
             results = self.run_glue(model_name="roberta-base", task_name="MRPC", fp16=True, use_new_api=use_new_api)
             assert_allclose(results['acc'], expected_acc, rtol=self.rtol)
             assert_allclose(results['f1'], expected_f1, rtol=self.rtol)
             assert_allclose(results['acc_and_f1'], expected_acc_and_f1, rtol=self.rtol)
             assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
+            results_per_api[use_new_api] = results
+
+        verify_old_and_new_api_are_equal(results_per_api)
 
     def test_bert_with_mrpc(self):
         if self.local_rank == -1:
@@ -109,8 +123,12 @@ class ORTGlueTest(unittest.TestCase):
 
         if self.local_rank == -1:
             # not parallel case, we can run both new and old api tests
+            results_per_api = dict()
             for use_new_api in [True, False]:
                 results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=False, use_new_api=use_new_api)
+                results_per_api[use_new_api] = results
+
+            verify_old_and_new_api_are_equal(results_per_api)
         else:
             # with parallel training, TrainingArguments can only be created once (due to its cached _setup_devices)
             # thus we can only choose one test case to run.
@@ -128,12 +146,16 @@ class ORTGlueTest(unittest.TestCase):
         expected_acc_and_f1 = 0.8751007252215954
         expected_loss = 0.412924896998732
 
+        results_per_api = dict()
         for use_new_api in [True, False]:
             results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=True, use_new_api=use_new_api)
             assert_allclose(results['acc'], expected_acc, rtol=self.rtol)
             assert_allclose(results['f1'], expected_f1, rtol=self.rtol)
             assert_allclose(results['acc_and_f1'], expected_acc_and_f1, rtol=self.rtol)
             assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
+            results_per_api[use_new_api] = results
+
+        verify_old_and_new_api_are_equal(results_per_api)
 
     def model_to_desc(self, model_name, model):
         if model_name.startswith('bert') or model_name.startswith('xlnet'):
@@ -146,12 +168,12 @@ class ORTGlueTest(unittest.TestCase):
                 'outputs': [('loss', [], True),
                             ('logits', ['batch', 2])]}
             model_desc = ModelDescription([
-                IODescription('input_ids', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=model.config.vocab_size),
-                IODescription('attention_mask', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=2),
-                IODescription('token_type_ids', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=2),
-                IODescription('labels', ['batch',], torch.int64, num_classes=2)], [
-                IODescription('loss', [], torch.float32),
-                IODescription('logits', ['batch', 2], torch.float32)])
+                IODescription('input_ids', ['batch', 'max_seq_len_in_batch']),
+                IODescription('attention_mask', ['batch', 'max_seq_len_in_batch']),
+                IODescription('token_type_ids', ['batch', 'max_seq_len_in_batch']),
+                IODescription('labels', ['batch',])], [
+                IODescription('loss', []),
+                IODescription('logits', ['batch', 2])])
         elif model_name.startswith('roberta'):
             new_model_desc = {
                 'inputs': [
@@ -161,11 +183,11 @@ class ORTGlueTest(unittest.TestCase):
                 'outputs': [('loss', [], True),
                             ('logits', ['batch', 2])]}
             model_desc = ModelDescription([
-                IODescription('input_ids', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=model.config.vocab_size),
-                IODescription('attention_mask', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=2),
-                IODescription('labels', ['batch',], torch.int64, num_classes=2)], [
-                IODescription('loss', [], torch.float32),
-                IODescription('logits', ['batch', 2], torch.float32)])
+                IODescription('input_ids', ['batch', 'max_seq_len_in_batch']),
+                IODescription('attention_mask', ['batch', 'max_seq_len_in_batch']),
+                IODescription('labels', ['batch',])], [
+                IODescription('loss', []),
+                IODescription('logits', ['batch', 2])])
         else:
             raise RuntimeError("unsupported base model name {}.".format(model_name))
 
