@@ -149,6 +149,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     VLOGS(logger, 1) << to_be_executed_nodes->size() << " nodes to be executed\n";
   }
 #else
+  ORT_UNUSED_PARAMETER(only_execute_path_to_fetches_);
   const bool only_execute_path_to_fetches = false;
 #endif
 
@@ -179,10 +180,10 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   auto& profile_context = profile::Context::GetInstance();
   const auto tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
   profile::NvtxRangeCreator forward_range(
-      "forward-" + tag,
+      "Batch-" + tag + " Forward",
       profile::Color::White);
   profile::NvtxRangeCreator backward_range(
-      "backward-" + tag,
+      "Batch-" + tag + " Backward",
       profile::Color::Black);
 #endif
 

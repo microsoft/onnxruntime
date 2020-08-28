@@ -10,6 +10,7 @@
 #include "orttraining/core/graph/gradient_config.h"
 #include "orttraining/core/graph/recompute_graph_utils.h"
 #include "onnx/defs/attr_proto_util.h"
+#include "onnx/defs/tensor_proto_util.h"
 
 namespace onnxruntime {
 namespace training {
@@ -159,12 +160,24 @@ class GradientBuilderBase {
     return node_->OpType();
   }
 
-  static NodeDef ConstantValueNode(const std::vector<int64_t>& values, const std::string& arg_name) {
-    ONNX_NAMESPACE::TensorProto t_proto;
+  template <typename T>
+  static NodeDef ConstantVectorNode(const std::vector<T>& values, const std::string& arg_name) {
+    auto t_proto = ONNX_NAMESPACE::ToTensor<T>(values);
     t_proto.add_dims(values.size());
-    t_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-    for (auto value : values) {
-      t_proto.add_int64_data(value);
+
+    return NodeDef("Constant",
+                   {},
+                   {ArgDef(arg_name, nullptr)},
+                   {ONNX_NAMESPACE::MakeAttribute("value", t_proto)});
+  }
+
+  template <typename T>
+  static NodeDef ConstantScalarNode(T value, std::vector<int64_t> shape, const std::string& arg_name) {
+    ORT_ENFORCE(shape.size() == 0 || (shape.size() == 1 && shape[0] == 1));
+
+    auto t_proto = ONNX_NAMESPACE::ToTensor<T>(value);
+    for (auto dim : shape) {
+      t_proto.add_dims(dim);
     }
 
     return NodeDef("Constant",
@@ -173,24 +186,12 @@ class GradientBuilderBase {
                    {ONNX_NAMESPACE::MakeAttribute("value", t_proto)});
   }
 
-  static NodeDef ConstantValueNode(float value, const std::string& arg_name) {
-    ONNX_NAMESPACE::TensorProto t_proto;
-    t_proto.add_dims(1);
-    t_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-    t_proto.add_float_data(value);
-
-    return NodeDef("Constant",
-                   {},
-                   {ArgDef(arg_name, nullptr)},
-                   {ONNX_NAMESPACE::MakeAttribute("value", t_proto)});
-  }
-
   static NodeDef ZeroConstantNode() {
-    return ConstantValueNode(0.0f, "ZeroConstant");
+    return ConstantScalarNode(0.0f, {1}, "ZeroConstant");
   }
 
   static NodeDef OneConstantNode() {
-    return ConstantValueNode(1.0f, "OneConstant");
+    return ConstantScalarNode(1.0f, {1}, "OneConstant");
   }
 
   void HandleBroadcasting(const ArgDef& input_grad,
@@ -232,7 +233,7 @@ class GradientBuilderBase {
 
   // contains set of input arg names of node_ which requires gradient
   std::unordered_set<std::string> gradient_outputs_;
-  
+
   const logging::Logger& logger_;
 };
 

@@ -453,7 +453,11 @@ class ORTTrainer(object):
         # Do an inference to grab output types
         model.eval()
         with torch.no_grad():
-            sample_outputs = model(*sample_inputs)
+            # Deepcopy inputs, since input values may change after model run.
+            sample_inputs_copy = copy.deepcopy(sample_inputs)
+            # Deepcopy model, in case model is stateful and changes after model run.
+            model_copy = copy.deepcopy(model)
+            sample_outputs = model_copy(*sample_inputs_copy)
         model.train()
         if isinstance(sample_outputs, torch.Tensor):
             sample_outputs = [sample_outputs]
@@ -470,7 +474,14 @@ class ORTTrainer(object):
 
         # Export the model to ONNX
         f = io.BytesIO()
-        torch.onnx._export(model, tuple(sample_inputs), f,
+        # Deepcopy inputs, since input values may change after model run.
+        sample_inputs_copy = copy.deepcopy(sample_inputs)
+
+        # Enable contrib ops export from PyTorch
+        from onnxruntime.experimental import register_custom_ops_pytorch_exporter
+        register_custom_ops_pytorch_exporter.register_custom_op()
+
+        torch.onnx._export(model, tuple(sample_inputs_copy), f,
                            input_names=[input.name for input in self.model_desc.inputs],
                            output_names=[output.name for output in self.model_desc.outputs],
                            opset_version=self.options._internal_use.onnx_opset_version,

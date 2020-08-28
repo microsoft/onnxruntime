@@ -139,10 +139,8 @@ class Model {
   Graph& MainGraph() noexcept;
   const Graph& MainGraph() const noexcept;
 
-#if !defined(ORT_MINIMAL_BUILD)
-  // Add function proto to Model
-  void AddFunction(const ONNX_NAMESPACE::FunctionProto& func_proto);
 
+#if !defined(ORT_MINIMAL_BUILD)
   // Get model's serialization proto data.
   ONNX_NAMESPACE::ModelProto ToProto();
 

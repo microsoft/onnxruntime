@@ -9,6 +9,7 @@
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"
 #include "orttraining/training_ops/cpu/controlflow/record.h"
 #include "core/profile/profile.h"
+#include "core/profile/context.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -30,8 +31,10 @@ Status RecordEvent::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* event_id_tensor = ctx->Input<Tensor>(0);
   const int64_t event_id = *(event_id_tensor->template Data<int64_t>());
 
+  auto& profile_context = profile::Context::GetInstance();
+  const auto tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
   profile::NvtxRangeCreator range(
-    "Record-" + std::to_string(event_id), profile::Color::Magenta);
+    "Batch-" + tag + " Record-" + std::to_string(event_id), profile::Color::Magenta);
   range.Begin();
 #endif
 
