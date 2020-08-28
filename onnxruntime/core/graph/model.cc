@@ -60,7 +60,7 @@ Model::Model(const std::string& graph_name,
   }
 
   auto allow_released_opsets_only =
-      model_load_utils::ISAllowReleasedONNXOpsetsOnlySet();
+      model_load_utils::IsAllowReleasedONNXOpsetsOnlySet();
   auto* p_domain_to_version = &domain_to_version;
   DomainToVersionMap domain_to_version_static;
   domain_to_version_static = allow_released_opsets_only
@@ -120,7 +120,7 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path, const IOnnx
   }
 
   bool allow_official_onnx_release_only =
-      model_load_utils::ISAllowReleasedONNXOpsetsOnlySet();
+      model_load_utils::IsAllowReleasedONNXOpsetsOnlySet();
   const auto onnx_released_versions =
       schema_registry->GetLastReleasedOpsetVersions(false);
 
@@ -154,7 +154,9 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path, const IOnnx
     }
   }
 
-  auto domain_map = schema_registry->GetLatestOpsetVersions(false);
+  auto domain_map = allow_official_onnx_release_only
+                        ? schema_registry->GetLatestOpsetVersions(false)
+                        : schema_registry->GetLastReleasedOpsetVersions(false);
   for (const auto& domain : domain_map) {
     if (domain_to_version.find(domain.first) == domain_to_version.end()) {
       domain_to_version[domain.first] = domain.second;

@@ -150,7 +150,7 @@ class SchemaRegistryManager : public onnxruntime::IOnnxRuntimeOpSchemaCollection
                            int* earliest_opset_where_unchanged) const override;
 
  private:
-  void GetDomainToVersioMapForRegistries(DomainToVersionMap& domain_version_map, bool is_onnx_only) const;
+  void GetDomainToVersionMapForRegistries(DomainToVersionMap& domain_version_map, bool is_onnx_only) const;
 
   std::deque<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>> registries;
 };

@@ -16,7 +16,7 @@ namespace model_load_utils {
 
 static constexpr const char* kAllowReleasedONNXOpsetOnly = "ALLOW_RELEASED_ONNX_OPSET_ONLY";
 
-inline bool ISAllowReleasedONNXOpsetsOnlySet() {
+inline bool IsAllowReleasedONNXOpsetsOnlySet() {
   // Get the value of env variable kAllowReleasedONNXOpsetOnly
   const std::string allow_official_onnx_release_only_str =
       Env::Default().GetEnvironmentVar(model_load_utils::kAllowReleasedONNXOpsetOnly);
@@ -31,9 +31,7 @@ inline bool ISAllowReleasedONNXOpsetsOnlySet() {
                 allow_official_onnx_release_only_str);
     }
 
-    if (allow_official_onnx_release_only_str[0] == '0') {
-      return false;
-    }
+    return allow_official_onnx_release_only_str[0] == '1';
   }
 
   return true;

@@ -156,7 +156,7 @@ void SchemaRegistryManager::RegisterRegistry(std::shared_ptr<IOnnxRuntimeOpSchem
   registries.push_front(registry);
 }
 
-void SchemaRegistryManager::GetDomainToVersioMapForRegistries(DomainToVersionMap& domain_version_map, bool is_onnx_only) const {
+void SchemaRegistryManager::GetDomainToVersionMapForRegistries(DomainToVersionMap& domain_version_map, bool is_onnx_only) const {
   // Build the map using each of the registries
   for (auto& registry : registries) {
     DomainToVersionMap latest_opset_versions_in_reg = registry->GetLatestOpsetVersions(is_onnx_only);
@@ -178,7 +178,7 @@ void SchemaRegistryManager::GetDomainToVersioMapForRegistries(DomainToVersionMap
 
 DomainToVersionMap SchemaRegistryManager::GetLastReleasedOpsetVersions(bool is_onnx_only) const {
   DomainToVersionMap domain_version_map;
-  GetDomainToVersioMapForRegistries(domain_version_map, is_onnx_only);
+  GetDomainToVersionMapForRegistries(domain_version_map, is_onnx_only);
 
   // check the ONNX schema registry
   auto& onnx_domain_version_map =
@@ -201,7 +201,7 @@ DomainToVersionMap SchemaRegistryManager::GetLastReleasedOpsetVersions(bool is_o
 
 DomainToVersionMap SchemaRegistryManager::GetLatestOpsetVersions(bool is_onnx_only) const {
   DomainToVersionMap domain_version_map;
-  GetDomainToVersioMapForRegistries(domain_version_map, is_onnx_only);
+  GetDomainToVersionMapForRegistries(domain_version_map, is_onnx_only);
 
   // check the ONNX schema registry
   auto& onnx_domain_version_map =

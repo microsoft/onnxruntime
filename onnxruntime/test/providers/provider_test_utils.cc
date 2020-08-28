@@ -681,7 +681,7 @@ void OpTester::Run(
 #endif
 
     static bool allow_released_onnx_opset_only =
-        model_load_utils::ISAllowReleasedONNXOpsetsOnlySet();
+        model_load_utils::IsAllowReleasedONNXOpsetsOnlySet();
     if (allow_released_onnx_opset_only) {
       auto& onnx_released_versions =
           ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().LastReleaseVersionMap();

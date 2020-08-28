@@ -50,7 +50,7 @@ static bool UsingLatestOnnxOpset(const DomainToVersionMap& opset_versions) {
   auto onnx_opset = opset_versions.find(kOnnxDomain);
 
   if (onnx_opset != opset_versions.cend()) {
-    static int latest_onnx_version = model_load_utils::ISAllowReleasedONNXOpsetsOnlySet()
+    static int latest_onnx_version = model_load_utils::IsAllowReleasedONNXOpsetsOnlySet()
                                          ? ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().LastReleaseVersionMap().at(ONNX_NAMESPACE::ONNX_DOMAIN)
                                          : ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().Map().at(ONNX_NAMESPACE::ONNX_DOMAIN).second;
     if (onnx_opset->second == latest_onnx_version) {
