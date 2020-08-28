@@ -59,35 +59,23 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
     fdm_indices_strides[i] = fast_divmod(static_cast<int>(indices_strides[i]));
   }
 
-  size_t element_size = input_tensor->DataType()->Size();
+  const size_t element_size = input_tensor->DataType()->Size();
+  const size_t index_element_size = indices_tensor->DataType()->Size();
 
-  if (indices_tensor->IsDataType<int32_t>()) {
-    const int32_t* indices_data = indices_tensor->template Data<int32_t>();
-    GatherElementsImpl<int32_t>(
+  if (indices_tensor->IsDataType<int32_t>() ||
+      indices_tensor->IsDataType<int64_t>()) {
+    GatherElementsImpl(
         input_rank,
         input_tensor->DataRaw(),
         input_dims[axis],
         gpu_input_strides,
-        indices_data,
+        indices_tensor->DataRaw(),
         indices_size,
         fdm_indices_strides,
         axis,
         output_tensor->MutableDataRaw(),
-        element_size);
-    return Status::OK();
-  } else if (indices_tensor->IsDataType<int64_t>()) {
-    const int64_t* indices_data = indices_tensor->template Data<int64_t>();
-    GatherElementsImpl<int64_t>(
-        input_rank,
-        input_tensor->DataRaw(),
-        input_dims[axis],
-        gpu_input_strides,
-        indices_data,
-        indices_size,
-        fdm_indices_strides,
-        axis,
-        output_tensor->MutableDataRaw(),
-        element_size);
+        element_size,
+        index_element_size);
     return Status::OK();
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "GatherElements op: Type of 'indices' must be int32 or int64");
