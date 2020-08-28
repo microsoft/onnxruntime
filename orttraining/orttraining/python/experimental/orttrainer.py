@@ -283,6 +283,23 @@ class ORTTrainer(object):
         with open(path, "wb") as f:
             f.write(self._onnx_model.SerializeToString())
 
+    def _debug_model_export(self, input):
+        _inference_sess = ort.InferenceSession(self._onnx_model.SerializeToString())
+        inf_inputs = {}
+        for i, input_elem in enumerate(input):
+            if i >= len(_inference_sess.get_inputs()):
+                continue
+            else:
+                inf_inputs[_inference_sess.get_inputs()[i].name] = input_elem.cpu().numpy()
+        _inference_outs = _inference_sess.run(None, inf_inputs)
+        import _test_helpers
+        for torch_item, ort_item in zip(self.torch_sample_outputs, _inference_outs):
+            from numpy.testing import assert_allclose
+            import numpy as np
+            print(np.absolute(torch_item - ort_item).max())
+            #assert_allclose(torch_item, ort_item, rtol=1e-3)
+
+
     def train_step(self, *args, **kwargs):
         r"""Train step method
 
@@ -348,23 +365,10 @@ class ORTTrainer(object):
             args = (args,)
 
         # DEBUG START ---
-        print("MADE IT HERE")
-        _inference_sess = ort.InferenceSession(self._onnx_model.SerializeToString())
-        inf_inputs = {}
-        for i, input_elem in enumerate(input):
-            if i >= len(_inference_sess.get_inputs()):
-                continue
-            else:
-                inf_inputs[_inference_sess.get_inputs()[i].name] = input_elem.cpu().numpy()
-        _inference_outs = _inference_sess.run(None, inf_inputs)
-        print(_inference_outs)
-        print(self.torch_sample_outputs)
-        import _test_helpers
-        for torch_item, ort_item in zip(self.torch_sample_outputs, _inference_outs):
-            from numpy.testing import assert_allclose
-            assert_allclose(torch_item, ort_item, atol=1e-3)
+        if self.options.debug.check_model_export:
+            self._debug_model_export(input)
         # DEBUG END ---
-
+        
         # Run a train step and return
         session_run_results = self._training_session_run_helper(True, input, inputs_desc,
                                                                 outputs_desc, run_options)
@@ -476,6 +480,7 @@ class ORTTrainer(object):
             # Deepcopy model, in case model is stateful and changes after model run.
             model_copy = copy.deepcopy(model)
             sample_outputs = model_copy(*sample_inputs_copy)
+            self.torch_sample_outputs = sample_outputs
         model.train()
         if isinstance(sample_outputs, torch.Tensor):
             sample_outputs = [sample_outputs]

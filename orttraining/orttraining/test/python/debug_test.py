@@ -66,7 +66,8 @@ def testORTDeterministicCompute(seed, device):
     optim_config = optim.LambConfig()
     opts = orttrainer.ORTTrainerOptions({
         'debug' : {
-            'deterministic_compute': True
+            'deterministic_compute': True,
+            'check_model_export': True,
         },
         'device' : {
             'id' : device,

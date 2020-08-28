@@ -144,6 +144,10 @@ class ORTTrainerOptions(object):
                             'type' : 'boolean',
                             'default' : False
                         },
+                        'check_model_export' : {
+                            'type' : 'boolean',
+                            'default' : False
+                        },
                     }
                 },
                 '_internal_use' : {
@@ -440,6 +444,10 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
         'required': False,
         'schema': {
             'deterministic_compute': {
+                'type': 'boolean',
+                'default': False
+            },
+            'check_model_export': {
                 'type': 'boolean',
                 'default': False
             },
