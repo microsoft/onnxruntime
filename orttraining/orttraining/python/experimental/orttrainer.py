@@ -144,6 +144,8 @@ class ORTTrainer(object):
                 "'loss_fn' must be either 'None' or 'torch.nn.Module'"
             self._torch_model = model
             self.loss_fn = loss_fn
+            # TODO: Subject to change after checkpoint redesign
+            self._torch_state_dict_keys = list(model.state_dict().keys())
         elif isinstance(model, onnx.ModelProto):
             assert loss_fn is None, "'loss_fn' must not be specified when 'model' is an ONNX model"
             self._onnx_model = model
@@ -196,9 +198,8 @@ class ORTTrainer(object):
                 ort.set_cuda_mem_limit(self.options.device.mem_limit)
             ort.set_cuda_device_id(_utils.get_device_index(self.options.device.id))
 
-        # TODO: thiagofc: Checkpoint related for redesign
-        self._original_model_state_keys = list(model.state_dict().keys()) if hasattr(model, 'state_dict') else []
-        self._state_dict = None
+        # TODO: Subject to change after checkpoint redesign
+        self._state_dict = {}
 
         self._train_step_info = TrainStepInfo(self.optim_config)
         self._training_session = None
@@ -659,10 +660,11 @@ class ORTTrainer(object):
             self._model_desc_outputs_with_gradient_accumulation = [
                 *self.model_desc.outputs, self.model_desc.gradient_accumulation]
 
-        # TODO: thiagofc: Checkpoint related for redesign
+        # TODO: Subject to change after checkpoint redesign
         if self._state_dict:
-            checkpoint.load_state_dict(self, self._state_dict, self._load_state_dict_strict)
-        self._state_dict = None
+            checkpoint.experimental_load_state_dict(self, self._state_dict, self._load_state_dict_strict)
+            self._state_dict_debug = self._state_dict
+        self._state_dict = {}
 
     def _prepare_model_input(self, inputs_desc, lr, loss_scale, *inputs, **kwargs):
         # Normalize input to tuple of samples

@@ -471,13 +471,17 @@ def testToyBertCheckpointLoadZero():
     assert_allclose(expected_eval_loss, actual_eval_loss, rtol=rtol)
 
 
-def testToyBertStateDictWrapModelLossFn():
+@pytest.mark.parametrize("loss_scaler, optimizer_config, gradient_accumulation_steps", [
+    (None, optim.AdamConfig(), 1),
+    (None, optim.LambConfig(), 1),
+    (None, optim.SGDConfig(), 1),
+    (amp.DynamicLossScaler(), optim.AdamConfig(), 1),
+    (amp.DynamicLossScaler(), optim.LambConfig(), 5),
+    #(amp.DynamicLossScaler(), optim.SGDConfig(), 1), # SGD doesnt support fp16
+])
+def testToyBertStateDictWrapModelLossFn(loss_scaler, optimizer_config, gradient_accumulation_steps):
     # Common setup
     seed = 1
-    torch.manual_seed(seed)
-    onnxruntime.set_seed(seed)
-
-    # Modeling
     class LinearModel(torch.nn.Module):
         def __init__(self):
             super().__init__()
@@ -487,28 +491,58 @@ def testToyBertStateDictWrapModelLossFn():
                 return self.linear(x) + y
             else:
                 return self.linear(x) + torch.ones(2, 4)
-    pt_model = LinearModel()
     model_desc = {'inputs' : [('x', [2, 2]),
                               ('label', [2, ])],
                   'outputs' : [('loss', [], True),
                                ('output', [2, 4])]}
-    optim_config = optim.SGDConfig(lr=0.02)
+
+    # Dummy data
+    data1 = torch.randn(2, 2)
+    label1 = torch.tensor([0, 1], dtype=torch.int64)
+    data2 = torch.randn(2, 2)
+    label2 = torch.tensor([0, 1], dtype=torch.int64)
+
+    # Setup training based on test parameters
+    opts =  {'debug' : {'deterministic_compute': True},
+             'batch' : { 'gradient_accumulation_steps' : gradient_accumulation_steps}}
+    if loss_scaler:
+        opts['mixed_precision'] = { 'enabled': True, 'loss_scaler': loss_scaler}
+    opts =  orttrainer.ORTTrainerOptions(opts)
+
+    # Training session 1
+    torch.manual_seed(seed)
+    onnxruntime.set_seed(seed)
+    pt_model = LinearModel()
     def loss_fn(x, label):
         return F.nll_loss(F.log_softmax(x, dim=1), label)
-    trainer = orttrainer.ORTTrainer(pt_model, model_desc, optim_config, loss_fn=loss_fn)
+    trainer = orttrainer.ORTTrainer(pt_model, model_desc, optimizer_config, loss_fn=loss_fn, options=opts)
 
-    # Compare resulting state_dict keys before train
+    # Check state_dict keys before train. Must be empty
     state_dict = checkpoint.experimental_state_dict(trainer)
     assert state_dict == {}
 
-    # Executing train_step() once
-    data = torch.randn(2, 2)
-    label = torch.tensor([0, 1], dtype=torch.int64)
-    trainer.train_step(x=data, label=label)
-
-    # Compare resulting state_dict keys after train
+    # Train once and check initial state
+    trainer.train_step(x=data1, label=label1)
     state_dict = checkpoint.experimental_state_dict(trainer)
-    assert state_dict.keys() == {'linear.bias', 'linear.weight'}
+    assert all([weight in state_dict.keys() for weight in ['linear.bias', 'linear.weight']])
+
+    # Initialize training session 2 from state of Training 1
+    torch.manual_seed(seed)
+    onnxruntime.set_seed(seed)
+    trainer2 = orttrainer.ORTTrainer(pt_model, model_desc, optimizer_config, loss_fn=loss_fn, options=opts)
+    checkpoint.experimental_load_state_dict(trainer2, state_dict)
+
+    # Verify state was loaded properly
+    for k,v in state_dict.items():
+        assert_allclose(v, trainer2._state_dict[k])
+
+    # Perform a second step in both training session 1 and 2 and verify they match
+    trainer.train_step(x=data2, label=label2)
+    state_dict = checkpoint.experimental_state_dict(trainer)
+    trainer2.train_step(x=data2, label=label2)
+    state_dict2 = checkpoint.experimental_state_dict(trainer2)
+    for k,v in state_dict.items():
+        assert_allclose(v, state_dict2[k])
 
 
 def testToyBertCheckpointFrozenWeights():
@@ -648,7 +682,6 @@ def testToyBERTSaveAsONNX():
 ###############################################################################
 # Temporary tests comparing Legacy vs Experimental ORTTrainer APIs ############
 ###############################################################################
-
 @pytest.mark.parametrize("optimizer_config", [
     (optim.AdamConfig),
     (optim.LambConfig),
@@ -701,7 +734,7 @@ def testToyBERTModelLegacyExperimentalBasicTraining(optimizer_config):
                        None,
                        learning_rate_description,
                        device,
-                       _use_deterministic_compute=True,)
+                       _use_deterministic_compute=True)
     legacy_losses = []
     for i in range(train_steps):
         sample_input = generate_random_input_from_model_desc(model_desc, i)
