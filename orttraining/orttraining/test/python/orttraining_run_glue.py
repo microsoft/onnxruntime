@@ -67,6 +67,7 @@ class ORTGlueTest(unittest.TestCase):
         self.learning_rate = 2e-5
         self.num_train_epochs = 3.0
         self.local_rank = -1
+        self.world_size = 0
         self.overwrite_output_dir = True
         self.gradient_accumulation_steps = 1
         self.data_dir = "/bert_data/hf_data/glue_data/"
@@ -221,7 +222,7 @@ class ORTGlueTest(unittest.TestCase):
             bool(training_args.local_rank != -1),
             training_args.fp16,
         )
-        logger.info("Training/evaluation parameters %s", training_args)
+        logger.warning("Training/evaluation parameters %s", training_args)
 
         set_seed(training_args.seed)
         onnxruntime.set_seed(training_args.seed)
@@ -279,7 +280,8 @@ class ORTGlueTest(unittest.TestCase):
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
             compute_metrics=compute_metrics,
-            use_new_api=use_new_api
+            use_new_api=use_new_api,
+            world_size=self.world_size,
         )
 
         # Training
@@ -303,19 +305,14 @@ class ORTGlueTest(unittest.TestCase):
         return results
 
 if __name__ == "__main__":
-    if get_mpi_context_world_size() > 1:
-        # mpi launch
-
-        print("mpirun launch")
-        # TrainingArguments._setup_devices will call torch.distributed.init_process_group(backend="nccl")
-        # pytorch expects following environment settings (which would be set if launched with torch.distributed.launch).
-
-        local_rank = get_mpi_context_local_rank()
-        print("get_mpi_context_local_rank(): ", local_rank)
-        os.environ['RANK'] = str(local_rank)
-        os.environ['WORLD_SIZE'] = str(get_mpi_context_world_size())
-        os.environ['MASTER_ADDR'] = '127.0.0.1'
-        os.environ['MASTER_PORT'] = '29500'
+    import sys
+    print ("sys.argv:", sys.argv)
+    logger.warning("sys.argv: %s", sys.argv)
+    if len(sys.argv) >= 2 and sys.argv[1].startswith('--local_rank='):
+        # torch.parallel.launch
+        local_rank = int(sys.argv[1][len('--local_rank='):])
+        world_size = os.environ['WORLD_SIZE']
+        print("torch.parallel.launch, local_rank/world_size: ", local_rank, '/', world_size)
 
         from onnxruntime.capi._pybind_state import set_cuda_device_id
         set_cuda_device_id(local_rank)
@@ -323,6 +320,43 @@ if __name__ == "__main__":
         test = ORTGlueTest()
         test.setUp()
         test.local_rank = local_rank
+        test.world_size = world_size
         test.test_bert_with_mrpc()
     else:
-        unittest.main()
+        # try:
+        #     import mpi4py
+        #     has_mpi4py = True
+        # except ImportError:
+        #     has_mpi4py = False
+        #     pass
+        # local_rank, world_size = -1, 0
+        # if has_mpi4py:
+        #     from mpi4py import MPI
+        #     comm = MPI.COMM_WORLD
+        #     local_rank = comm.Get_rank()
+        #     world_size = comm.Get_size()
+        local_rank = get_mpi_context_local_rank()
+        world_size = get_mpi_context_world_size()
+        print("mpirun launch, local_rank / world_size: ", local_rank, '/', world_size)
+        logger.warning("mpirun launch, local_rank / world_size: %s : % s", local_rank, world_size)
+        if world_size > 0:
+            # mpi launch
+
+            # TrainingArguments._setup_devices will call torch.distributed.init_process_group(backend="nccl")
+            # pytorch expects following environment settings (which would be set if launched with torch.distributed.launch).
+
+            os.environ['RANK'] = str(local_rank)
+            os.environ['WORLD_SIZE'] = str(world_size)
+            os.environ['MASTER_ADDR'] = '127.0.0.1'
+            os.environ['MASTER_PORT'] = '29500'
+
+            from onnxruntime.capi._pybind_state import set_cuda_device_id
+            set_cuda_device_id(local_rank)
+
+            test = ORTGlueTest()
+            test.setUp()
+            test.local_rank = local_rank
+            test.world_size = world_size
+            test.test_bert_with_mrpc()
+        else:
+            unittest.main()

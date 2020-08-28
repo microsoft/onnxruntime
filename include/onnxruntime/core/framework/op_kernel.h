@@ -90,6 +90,12 @@ class OpKernelContext {
 
   virtual ~OpKernelContext() = default;
 
+  const std::string& NodeName() const;
+
+  const std::string& NodeInputName(int index) const;
+
+  const std::string& NodeOutputName(int index) const;
+
   /**
   Return the number of inputs for a variadic argument.
   @param arg_num The operator argument number.

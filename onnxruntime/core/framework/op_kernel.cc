@@ -20,6 +20,21 @@ OpKernelContext::OpKernelContext(_Inout_ IExecutionFrame* frame, _In_ const OpKe
   node_output_start_index_ = node_implicit_input_start_index_ + ImplicitInputCount();
 }
 
+const std::string& OpKernelContext::NodeName() const
+{
+  return kernel_->Node().Name();
+}
+
+const std::string& OpKernelContext::NodeInputName(int index) const
+{
+  return kernel_->Node().InputDefs()[index]->Name();
+}
+
+const std::string& OpKernelContext::NodeOutputName(int index) const
+{
+  return kernel_->Node().OutputDefs()[index]->Name();
+}
+
 Tensor* OpKernelContext::Output(int index, const TensorShape& shape) {
   auto p_ml_value = OutputMLValue(index, shape);
   return p_ml_value ? p_ml_value->GetMutable<Tensor>() : nullptr;

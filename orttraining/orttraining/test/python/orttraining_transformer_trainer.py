@@ -106,6 +106,7 @@ class ORTTransformerTrainer:
         train_dataset: Dataset,
         eval_dataset: Dataset,
         compute_metrics: Callable[[EvalPrediction], Dict],
+        world_size: Optional[int] = 1,
         use_new_api : Optional[bool] = False,
     ):
         """
@@ -115,6 +116,7 @@ class ORTTransformerTrainer:
         self.model_desc = model_desc
         self.new_model_desc = new_model_desc
         self.args = args
+        self.world_size = world_size
         self.data_collator = DefaultDataCollator()
         self.train_dataset = train_dataset
         self.eval_dataset = eval_dataset
@@ -177,6 +179,8 @@ class ORTTransformerTrainer:
 
             loss_scaler = amp.DynamicLossScaler() if self.args.fp16 else None
             device = self.args.device.type
+
+            print('asasdas asd  world_size: ', self.args.local_rank, '/', self.world_size)
             device = f'{device}:{self.args.device.index}' if self.args.device.index else f'{device}:0'
             options = orttrainer.ORTTrainerOptions({'batch' : {
                                                         'gradient_accumulation_steps' : self.args.gradient_accumulation_steps},
@@ -191,7 +195,7 @@ class ORTTransformerTrainer:
                                                         # we are running single node multi gpu test. thus world_rank = local_rank
                                                         # and world_size = self.args.n_gpu
                                                         'world_rank': 0 if self.args.local_rank == -1 else self.args.local_rank,
-                                                        'world_size': self.args.n_gpu,
+                                                        'world_size': int(self.world_size),
                                                         'local_rank': 0 if self.args.local_rank == -1 else self.args.local_rank,
                                                         'allreduce_post_accumulation': True},
                                                     'lr_scheduler': lr_scheduler
@@ -265,7 +269,8 @@ class ORTTransformerTrainer:
                     continue
 
                 tr_loss += self._training_step(self.model, inputs)
-
+                # print('tr_loss = ', tr_loss)
+                # return
                 if (step + 1) % self.args.gradient_accumulation_steps == 0 or (
                     len(epoch_iterator) <= self.args.gradient_accumulation_steps
                     and (step + 1) == len(epoch_iterator)
