@@ -90,6 +90,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       }
 
       transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(execution_provider, compatible_eps, weights_to_train));
+      transformers.emplace_back(onnxruntime::make_unique<ReshapeFusion>(compatible_eps));
       auto horizontal_parallel_size = training::DistributedRunContext::GroupSize(training::WorkerGroupType::HorizontalParallel);
       if (horizontal_parallel_size > 1) {
         LOGS_DEFAULT(WARNING) << horizontal_parallel_size << "-way horizontal model parallel is enabled";
@@ -101,8 +102,6 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
     } break;
 
     case TransformerLevel::Level2: {
-      // Put ReshapeFusion as level-2 optimization after all level-1 graph rewriters are run.
-      transformers.emplace_back(onnxruntime::make_unique<ReshapeFusion>(compatible_eps));
       rule_transformer =
           onnxruntime::make_unique<RuleBasedGraphTransformer>(optimizer_utils::GenerateRuleBasedTransformerName(level),
                                                               compatible_eps);

@@ -56,7 +56,7 @@ bool CheckSliceParameters(const Graph& graph, const Node& slice, const std::vect
       |                                                                     |  |
       +----> Shape --> Gather (indices=0) --> Unsqueeze (axes=0) -----------+  |
       |                                                                        |
-      +----> Shape --> Gather (indices=1) --> Unsqueeze (axes=0) --------------+ 
+      +----> Shape --> Gather (indices=1) --> Unsqueeze (axes=0) --------------+
 */
 bool MatchGemmSubgraph(Graph& graph,
                        Node& node_after_gemm_reshape,
@@ -255,7 +255,7 @@ struct MatchUnidirMaskResult {
   std::vector<NodeIndex> node_indices;  // id of all nodes in the subgraph for removing later.
 };
 
-/**  Match Unidirectional Mask subgraph. 
+/**  Match Unidirectional Mask subgraph.
      In the below graph, ':' is followed by variable name in code. * means the input on the left side.
 
 
@@ -434,14 +434,23 @@ bool MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, MatchUnid
 
 struct AttentionMaskNodes {
   const Node* softmax;
-  bool has_input_mask; // When it is false, the following nodes will be NULL.
+  bool has_input_mask;  // When it is false, the following nodes will be NULL.
 
   const Node* add;
   const Node* mul;
   const Node* sub;
-  const Node* cast; // optional, could be NULL.
+  const Node* cast;  // optional, could be NULL.
   const Node* unsqueeze_2;
   const Node* unsqueeze_1;
+};
+
+struct AttentionMaskNodesDistilBert {
+  const Node* softmax;
+  const Node* where;
+  const Node* expand;
+  const Node* reshape;
+  const Node* equal;
+  const Node* shape;
 };
 
 void SetMaskNodesToRemove(const Graph& graph, AttentionMaskNodes& mask_nodes, std::vector<NodeIndex>& nodes_to_remove) {
@@ -464,6 +473,15 @@ void SetMaskNodesToRemove(const Graph& graph, AttentionMaskNodes& mask_nodes, st
   }
 }
 
+void SetMaskNodesToRemove(const Graph&, AttentionMaskNodesDistilBert& mask_nodes, std::vector<NodeIndex>& nodes_to_remove) {
+  nodes_to_remove.push_back(mask_nodes.softmax->Index());
+  nodes_to_remove.push_back(mask_nodes.where->Index());
+  nodes_to_remove.push_back(mask_nodes.expand->Index());
+  nodes_to_remove.push_back(mask_nodes.reshape->Index());
+  nodes_to_remove.push_back(mask_nodes.equal->Index());
+  nodes_to_remove.push_back(mask_nodes.shape->Index());
+}
+
 /**  Match Input Mask subgraph:
                                                                                                        {UnidirMask Subgraph}
                                                                                                                    |
@@ -476,7 +494,7 @@ In this case, we only match two nodes: "Softmax" and "Where". Note that "Where" 
 */
 bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, AttentionMaskNodes& result, const logging::Logger& logger, bool is_input_mask_optional) {
   DEBUG_LOG("Start MatchInputMaskSubgraph");
-  
+
   std::vector<graph_utils::EdgeEndToMatch> softmax_path{
       {0, 0, "Softmax", {1, 11, 13}, kOnnxDomain}};
 
@@ -497,9 +515,9 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, Attentio
 
   // GPT-2 might not have input mask. In that case the subgraph is like:
   // {UnidirMask Subgraph} --> Softmax --> [MatMul]
-  if (is_input_mask_optional) { 
+  if (is_input_mask_optional) {
     const Node* parent = graph_utils::GetInputNode(softmax, 0);
-    if (parent != nullptr && parent->OpType() == "Where") {   // UnidirMask Subgraph ends withs Where node
+    if (parent != nullptr && parent->OpType() == "Where") {  // UnidirMask Subgraph ends withs Where node
       return true;
     }
   }
@@ -556,7 +574,7 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, Attentio
     return false;
   }
 
-  if (!optimizer_utils::IsAttributeWithExpectedValue(softmax, "axis", 3)) {
+  if (!optimizer_utils::IsAttributeWithExpectedValue(softmax, "axis", static_cast<int64_t>(3))) {
     DEBUG_LOG("Softmax attribute axis is expected to be 3");
     return false;
   }
@@ -590,6 +608,156 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, Attentio
   result.unsqueeze_2 = p_mask_unsqueeze_2;
   result.unsqueeze_1 = p_mask_unsqueeze_1;
   DEBUG_LOG("Pass MatchInputMaskSubgraph");
+  return true;
+}
+
+bool MatchInputMaskSubgraph(const Graph& graph, const Node& layer_norm, const Node& qkv_matmul,
+                            AttentionMaskNodesDistilBert& result, NodeIndex& record_node_idx, const logging::Logger& logger) {
+  DEBUG_LOG("Start MatchInputMaskSubgraphDistilBert");
+
+  std::vector<graph_utils::EdgeEndToMatch> mask_path{
+      {0, 0, "Softmax", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Where", {9}, kOnnxDomain},
+      {0, 0, "Expand", {8, 13}, kOnnxDomain},
+      {0, 0, "Reshape", {1, 5, 13}, kOnnxDomain},
+      {0, 0, "Equal", {1, 7, 11, 13}, kOnnxDomain}};
+
+  std::vector<const Node::EdgeEnd*> edges;
+  if (!graph_utils::FindPath(qkv_matmul, true, mask_path, edges, logger)) {
+    DEBUG_LOG("Failed to find mask path");
+    return false;
+  }
+
+  const Node& softmax = edges[0]->GetNode();
+  const Node& where = edges[1]->GetNode();
+  const Node& expand = edges[2]->GetNode();
+  const Node& reshape = edges[3]->GetNode();
+  const Node& equal = edges[4]->GetNode();
+
+  if (!optimizer_utils::CheckOutputEdges(graph, softmax, 1) ||
+      !optimizer_utils::CheckOutputEdges(graph, where, 1) ||
+      !optimizer_utils::CheckOutputEdges(graph, expand, 1) ||
+      !optimizer_utils::CheckOutputEdges(graph, reshape, 1) ||
+      !optimizer_utils::CheckOutputEdges(graph, equal, 1)) {
+    DEBUG_LOG("Output edge count not expected for mask nodes");
+    return false;
+  }
+
+  if (!optimizer_utils::IsAttributeWithExpectedValue(softmax, "axis", static_cast<int64_t>(3))) {
+    DEBUG_LOG("Softmax attribute axis is expected to be 3");
+    return false;
+  }
+
+  //check where has X=-Infinity
+  if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(where.InputDefs()[1]), -INFINITY, true)) {
+    DEBUG_LOG("where const not matched.");
+    return false;
+  }
+
+  //expand has another input Shape <-- qk_MatMul
+  std::vector<graph_utils::EdgeEndToMatch> shape_path{
+      {0, 1, "Shape", {1, 13}, kOnnxDomain},
+      {0, 0, "MatMul", {1, 9, 13}, kOnnxDomain}};
+  if (!graph_utils::FindPath(expand, true, shape_path, edges, logger)) {
+    DEBUG_LOG("Failed to find shape path");
+    return false;
+  }
+  const Node& shape = edges[0]->GetNode();
+  const Node& qk_matmul = edges[1]->GetNode();
+  const Node* p_qk_matmul = graph_utils::GetInputNode(where, 2);
+  if (p_qk_matmul == nullptr) {
+    return false;
+  }
+  if (p_qk_matmul->Index() != qk_matmul.Index()) {
+    return false;
+  }
+
+  //equal has input B=0
+  if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(equal.InputDefs()[1]), 0.0f, true)) {
+    DEBUG_LOG("equal const not matched.");
+    return false;
+  }
+
+  //reshape node's shape input
+  std::vector<graph_utils::EdgeEndToMatch> reshape_shape_path_1{
+      {0, 1, "Concat", {4, 11, 13}, kOnnxDomain},
+      {0, 0, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Gather", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Shape", {1, 13}, kOnnxDomain}};
+  if (!graph_utils::FindPath(reshape, true, reshape_shape_path_1, edges, logger)) {
+    DEBUG_LOG("Failed to find reshape shape path 1");
+    return false;
+  }
+  const Node& concat = edges[0]->GetNode();
+  const Node& unsqueeze_1 = edges[1]->GetNode();
+  const Node& gather_1 = edges[2]->GetNode();
+  const Node& shape_1 = edges[3]->GetNode();
+
+  // check that the recorded unsqueeze in CheckNodesInPathV() is the same node as unsqueeze_1
+  if (unsqueeze_1.Index() != record_node_idx) {
+    return false;
+  }
+
+  std::vector<graph_utils::EdgeEndToMatch> reshape_shape_path_2{
+      {0, 3, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Gather", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Shape", {1, 13}, kOnnxDomain}};
+  if (!graph_utils::FindPath(concat, true, reshape_shape_path_2, edges, logger)) {
+    DEBUG_LOG("Failed to find reshape shape path 2");
+    return false;
+  }
+  const Node& gather_2 = edges[1]->GetNode();
+  const Node& shape_2 = edges[2]->GetNode();
+  //check gather has the right indices
+  if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(gather_1.InputDefs()[1]), static_cast<int64_t>(0), true) ||
+      !optimizer_utils::IsInitializerWithExpectedValue(graph, *(gather_2.InputDefs()[1]), static_cast<int64_t>(1), true)) {
+    DEBUG_LOG("gather indices not matched.");
+    return false;
+  }
+
+  // check same root
+  if (shape_1.InputDefs().size() != 1 || shape_2.InputDefs().size() != 1) {
+    return false;
+  }
+  const NodeArg& shape_1_arg_0 = *(shape_1.InputDefs()[0]);
+  const NodeArg& shape_2_arg_0 = *(shape_2.InputDefs()[0]);
+  if (shape_1_arg_0.Name() != shape_2_arg_0.Name()) {
+    return false;
+  }
+  // check the the NodeArg is same as the root input of Attention
+  if (layer_norm.OutputDefs().size() < 1) {
+    return false;
+  }
+  const NodeArg& root_input = *(layer_norm.OutputDefs()[0]);
+  if (shape_1_arg_0.Name() != root_input.Name()) {
+    return false;
+  }
+
+  //check concat input shape information
+  if (concat.InputDefs().size() != 4) {
+    return false;
+  }
+  std::vector<int64_t> shape_value;
+  if (!optimizer_utils::AppendTensorFromInitializer(graph, *(concat.InputDefs()[1]), shape_value, true) ||
+                                                    shape_value.size() != 1 ||
+                                                    shape_value[0] != 1) {
+    return false;
+  }
+  shape_value.clear();
+  if (!optimizer_utils::AppendTensorFromInitializer(graph, *(concat.InputDefs()[2]), shape_value, true) ||
+                                                    shape_value.size() != 1 ||
+                                                    shape_value[0] != 1) {
+    return false;
+  }
+
+  result.softmax = &softmax;
+  result.where = &where;
+  result.expand = &expand;
+  result.reshape = &reshape;
+  result.equal = &equal;
+  result.shape = &shape;
+
+  DEBUG_LOG("Pass MatchInputMaskSubgraphDistilBert");
   return true;
 }
 
@@ -715,6 +883,45 @@ bool MatchPastSubgraph(Graph& graph, const Node& k_concat, const Node& v_concat,
   return true;
 }
 
+bool CheckDistilBertReshapeShape(const Graph& graph, const Node& reshape, int64_t hidden_size, NodeIndex& record_node_idx, const logging::Logger& logger) {
+  const Node* p_concat = graph_utils::GetInputNode(reshape, 1);
+  if (p_concat == nullptr || (*p_concat).OpType() != "Concat") {
+    return false;
+  }
+  if ((*p_concat).InputDefs().size() != 3) {
+    return false;
+  }
+
+  // lazy check: record unqueeze first and then check in the mask path
+  std::vector<graph_utils::EdgeEndToMatch> shape_path{
+    {0, 1, "Concat", {4, 11, 13}, kOnnxDomain},
+    {0, 0, "Unsqueeze", {1, 11, 13}, kOnnxDomain}};
+  std::vector<const Node::EdgeEnd*> edges;
+  if (!graph_utils::FindPath(reshape, true, shape_path, edges, logger)) {
+    DEBUG_LOG("Failed to find shape path");
+    return false;
+  }
+  record_node_idx = edges[1]->GetNode().Index();
+
+  std::vector<int64_t> shape;
+  const NodeArg& concat_input_arg_1 = *((*p_concat).InputDefs()[1]);
+  if (!optimizer_utils::AppendTensorFromInitializer(graph, concat_input_arg_1, shape) ||
+      shape.size() != 1 ||
+      shape[0] != -1) {
+    return false;
+  }
+
+  shape.clear();
+  const NodeArg& concat_input_arg_2 = *((*p_concat).InputDefs()[2]);
+  if (!optimizer_utils::AppendTensorFromInitializer(graph, concat_input_arg_2, shape) ||
+      shape.size() != 1 ||
+      shape[0] != hidden_size) {
+    return false;
+  }
+
+  return true;
+}
+
 /** Check the following nodes (optional Concat is excluded) for path v:
                                      v_Reshape  (shape=0,0,H,-1)
                                       |
@@ -728,9 +935,8 @@ bool MatchPastSubgraph(Graph& graph, const Node& k_concat, const Node& v_concat,
                               |
                            Reshape---[shape=0,0,-1]
 */
-
 bool CheckNodesInPathV(const Graph& graph, const Node& reshape, const Node& transpose, const Node& qkv_matmul, const Node& v_transpose, const Node& v_reshape,
-                       int64_t& num_heads, int64_t& head_size, int64_t hidden_size, const logging::Logger& logger) {
+                       int64_t& num_heads, int64_t& head_size, int64_t hidden_size, NodeIndex& record_node_idx, const logging::Logger& logger) {
   DEBUG_LOG("Start CheckNodesInPathV");
   // Internal nodes of attention subgraph only allow edges within the subgraph, and no graph output is allowed.
   // No constraints for reshape node since it is the last node of Attention.
@@ -741,7 +947,6 @@ bool CheckNodesInPathV(const Graph& graph, const Node& reshape, const Node& tran
     DEBUG_LOG("Output edge count not expected for nodes in path v");
     return false;
   }
-
   std::vector<int64_t> perm;
   if (!(graph_utils::GetRepeatedNodeAttributeValues(transpose, "perm", perm) && perm.size() == 4 && perm[0] == 0 && perm[1] == 2 && perm[2] == 1 && perm[3] == 3)) {
     DEBUG_LOG("Failed in match Transpose attribute perm. Expected: 0, 2, 1, 3");
@@ -763,7 +968,7 @@ bool CheckNodesInPathV(const Graph& graph, const Node& reshape, const Node& tran
   if (!optimizer_utils::AppendTensorFromInitializer(graph, *(v_reshape.InputDefs()[1]), v_reshape_shape) ||
       v_reshape_shape.size() != 4 ||
       v_reshape_shape[0] != 0 ||
-      v_reshape_shape[1] != 0 ||
+      (v_reshape_shape[1] != 0 && v_reshape_shape[1] != -1) ||  //v_reshape_shape[1] != -1 added for supporting distilbert
       v_reshape_shape[2] <= 0 ||
       v_reshape_shape[2] > hidden_size ||
       (head_size < 0 && v_reshape_shape[3] != -1) ||
@@ -776,11 +981,20 @@ bool CheckNodesInPathV(const Graph& graph, const Node& reshape, const Node& tran
   head_size = v_reshape_shape[3];
 
   // Check reshape for attention output has shape input (0, 0, -1) or (0, 0, N*H)
+  // In DistilBert, the reshape after qkv paths can not be fused during reshape fusion, so we do not have the correspondig
+  // initializer. We need to get the shape information from the input of concat.
   std::vector<int64_t> reshape_shape;
-  if (!optimizer_utils::AppendTensorFromInitializer(graph, *(reshape.InputDefs()[1]), reshape_shape) ||
-      reshape_shape.size() != 3 ||
+  if (!optimizer_utils::AppendTensorFromInitializer(graph, *(reshape.InputDefs()[1]), reshape_shape)) {
+    if (CheckDistilBertReshapeShape(graph, reshape, hidden_size, record_node_idx, logger)) {
+      DEBUG_LOG("Pass CheckNodesInPathV");
+      return true;
+    }
+    return false;
+  }
+
+  if (reshape_shape.size() != 3 ||
       reshape_shape[0] != 0 ||
-      reshape_shape[1] != 0 ||
+      (reshape_shape[1] != 0) ||
       (reshape_shape[2] != num_heads * head_size && reshape_shape[2] != -1)) {
     DEBUG_LOG("reshape initializer value is not expected");
     return false;
@@ -790,13 +1004,22 @@ bool CheckNodesInPathV(const Graph& graph, const Node& reshape, const Node& tran
   return true;
 }
 
+bool CheckNodesInPathV(const Graph& graph, const Node& reshape, const Node& transpose, const Node& qkv_matmul, const Node& v_transpose, const Node& v_reshape,
+                       int64_t& num_heads, int64_t& head_size, int64_t hidden_size, const logging::Logger& logger) {
+  NodeIndex dummy_idx(0);
+  if (!CheckNodesInPathV(graph, reshape, transpose, qkv_matmul, v_transpose, v_reshape, num_heads, head_size, hidden_size, dummy_idx, logger)) {
+    return false;
+  }
+  return true;
+}
+
 bool CheckNodesInPathQ(const Graph& graph, const Node& qk_div, const Node& q_reshape, const Node& q_transpose, int64_t num_heads, int64_t head_size, const logging::Logger& logger) {
   DEBUG_LOG("Start CheckNodesInPathQ");
   std::vector<int64_t> q_reshape_shape;
   if (!optimizer_utils::AppendTensorFromInitializer(graph, *(q_reshape.InputDefs()[1]), q_reshape_shape) ||
       q_reshape_shape.size() != 4 ||
       q_reshape_shape[0] != 0 ||
-      q_reshape_shape[1] != 0 ||
+      (q_reshape_shape[1] != 0 && q_reshape_shape[1] != -1) ||  //q_reshape_shape[1] != -1 added for supporting distilbert
       q_reshape_shape[2] != num_heads ||
       q_reshape_shape[3] != head_size) {
     DEBUG_LOG("q_reshape const not matched");
@@ -830,7 +1053,7 @@ bool CheckNodesInPathK(const Graph& graph, const Node& k_reshape, const Node& k_
   if (!optimizer_utils::AppendTensorFromInitializer(graph, *(k_reshape.InputDefs()[1]), k_reshape_shape) ||
       k_reshape_shape.size() != 4 ||
       k_reshape_shape[0] != 0 ||
-      k_reshape_shape[1] != 0 ||
+      (k_reshape_shape[1] != 0 && k_reshape_shape[1] != -1) ||  //k_reshape_shape[1] != -1 added for supporting distilbert
       k_reshape_shape[2] != num_heads ||
       k_reshape_shape[3] != head_size) {
     DEBUG_LOG("k_reshape const not matched");
@@ -901,7 +1124,7 @@ NodeArg* GetOrCreateMaskInt32(
     Graph before Fusion (q_, k_, v_, qk_, qkv_ and mask_ prefix is added before Operator type):
                   Add
                /       \ [Input](BxSxW)
-              /         \ 
+              /         \
              /   LayerNormalization
             /            |
            /       {Gemm_Subgraph} <---[weights](Wx3W); [Bias](3W)
@@ -944,7 +1167,7 @@ After Fusion:
       Add
       |   \
       |  LayerNormalization [Weights] [Bias]   [Mask]?  [Past]?
-      |                 \   |        /         /         / 
+      |                 \   |        /         /         /
        \                 \  |       /         /         /
         \                 Attention <------------------
          \                |       |
@@ -1118,7 +1341,7 @@ bool FuseGptAttention(Node& layer_norm, Graph& graph, int64_t hidden_size, std::
   std::vector<NodeArg*> input_defs{layer_norm.MutableOutputDefs()[0], qkv_weights, qkv_bias};
   std::vector<NodeArg*> output_defs{graph.GetNode(reshape.Index())->MutableOutputDefs()[0]};
 
-  if (mask_nodes.has_input_mask){
+  if (mask_nodes.has_input_mask) {
     NodeArg* mask_input = graph.GetNode(mask_nodes.unsqueeze_1->Index())->MutableInputDefs()[0];
     NodeArg* mask_int32 = GetOrCreateMaskInt32(graph, mask_input, mask_int32_map, layer_norm.GetExecutionProviderType());
     input_defs.push_back(mask_int32);

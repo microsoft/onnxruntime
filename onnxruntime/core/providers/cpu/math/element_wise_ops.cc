@@ -1070,9 +1070,16 @@ Status Expand_8<T>::Compute(OpKernelContext* context) const {
 }
 
 #define REG_EXPAND_KERNEL(TYPE)                                                    \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                  \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                        \
       Expand,                                                                      \
       8,                                                                           \
+      12,                                                                          \
+      TYPE,                                                                        \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()), \
+      Expand_8<TYPE>);                                                             \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                  \
+      Expand,                                                                      \
+      13,                                                                          \
       TYPE,                                                                        \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()), \
       Expand_8<TYPE>);
