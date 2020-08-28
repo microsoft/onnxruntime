@@ -36,18 +36,23 @@ class BiasSoftmaxTester {
 
 public:
   BiasSoftmaxTester(
-      std::vector<int64_t> in_shape, 
+      std::vector<int64_t> in_shape,
+      std::vector<int64_t> bias_shape,
       int broadcast_axis, 
       int softmax_axis, 
       bool use_float16) :
     in_shape_(in_shape), 
     broadcast_axis_(broadcast_axis), 
     softmax_axis_(softmax_axis), 
-    use_float16_(use_float16) {
+    use_float16_(use_float16),
+    bias_shape_(bias_shape) {
 
-    bias_shape_ = in_shape_;
-    for (int i = broadcast_axis; i < softmax_axis; i++)
-      bias_shape_[i] = 1;
+    // auto-set bias shape if not provided
+    if (bias_shape.size() == 0) {
+      bias_shape_ = in_shape_;
+      for (int i = broadcast_axis; i < softmax_axis; i++)
+        bias_shape_[i] = 1;
+    }
 
     // softmax element count
     nelements_ = std::accumulate(
@@ -160,32 +165,39 @@ public:
 // broadcast is along dimensions [broadcast_axis, softmax_axis)
 TEST(BiasSoftmaxTest, BiasSoftmaxExtendedShapeFloat32) {
 
-  BiasSoftmaxTester test({8, 4, 4, 2, 2, 8}, 2, 4, false);
+  BiasSoftmaxTester test({8, 4, 4, 2, 2, 8}, {}, 2, 4, false);
   test.RunComparison();
 }
 
+TEST(BiasSoftmaxTest, BiasSoftmaxMismatchedShapeFloat32) {
+
+  BiasSoftmaxTester test({8, 4, 4, 2, 2, 8}, {1, 2, 8}, 0, 4, false);
+  test.RunComparison();
+}
+
+// medium softmax batch tests kernel that computes on single SM
 TEST(BiasSoftmaxTest, BiasSoftmaxMediumBatchFloat32) {
 
-  BiasSoftmaxTester test({48, 16, 128, 32}, 1, 3, false);
+  BiasSoftmaxTester test({48, 16, 128, 32}, {}, 1, 3, false);
   test.RunComparison();
 }
 
 TEST(BiasSoftmaxTest, BiasSoftmaxMediumBatchFloat16) {
   
-  BiasSoftmaxTester test({48, 16, 128, 32}, 1, 3, true);
+  BiasSoftmaxTester test({48, 16, 128, 32}, {}, 1, 3, true);
   test.RunComparison();
 }
 
-// large batch size falls back to cuda DNN library 
+// large softmax batch tests falls back to cuda DNN library 
 TEST(BiasSoftmaxTest, BiasSoftmaxLargeBatchFloat32) {
   
-  BiasSoftmaxTester test({4, 2, 4096}, 1, 2, false);
+  BiasSoftmaxTester test({4, 2, 4096}, {}, 1, 2, false);
   test.RunComparison();
 }
 
 TEST(BiasSoftmaxTest, BiasSoftmaxLargeBatchFloat16) {
   
-  BiasSoftmaxTester test({4, 2, 4096}, 1, 2, true);
+  BiasSoftmaxTester test({4, 2, 4096}, {}, 1, 2, true);
   test.RunComparison();
 }
 

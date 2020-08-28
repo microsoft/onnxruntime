@@ -46,6 +46,11 @@ Status BiasSoftmaxFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
+  // only support CUDA execution provider
+  auto& cep = GetCompatibleExecutionProviders();
+  if (cep.size() > 0 && cep.find(kCudaExecutionProvider) == cep.end())
+    return Status::OK();
+
   for (auto node_index : node_topology_list) {
     auto* node_ptr = graph.GetNode(node_index);
     if (nullptr == node_ptr)
@@ -60,11 +65,10 @@ Status BiasSoftmaxFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
 
     // check node is add and has single output
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7}) ||
-        !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) ||
+        !graph_utils::IsSupportedProvider(node, {kCudaExecutionProvider}) ||
         !optimizer_utils::CheckOutputEdges(graph, node, 1)) {
       continue;
     }
-
 
     // check shape information is not available for both add inputs
     auto& add_node = node;

@@ -80,10 +80,10 @@ __global__ void bias_softmax_warp_forward(
 
   // find maximum value within batch for numerical stability
   acc_t max_value[WARP_BATCH];
-#pragma unroll
+  #pragma unroll
   for (int i = 0; i < WARP_BATCH; ++i) {
     max_value[i] = elements[i][0];
-#pragma unroll
+    #pragma unroll
     for (int it = 1; it < WARP_ITERATIONS; ++it) {
       max_value[i] = (max_value[i] > elements[i][it]) ? max_value[i] : elements[i][it];
     }
@@ -92,9 +92,9 @@ __global__ void bias_softmax_warp_forward(
 
   // normalization factor Z = Sum[ exp(element_i), for element_i in batch ]
   acc_t sum[WARP_BATCH]{acc_t(0.0)};
-#pragma unroll
+  #pragma unroll
   for (int i = 0; i < WARP_BATCH; ++i) {
-#pragma unroll
+    #pragma unroll
     for (int it = 0; it < WARP_ITERATIONS; ++it) {
       elements[i][it] = std::exp((acc_t)(elements[i][it] - max_value[i]));
       sum[i] += elements[i][it];
@@ -102,12 +102,12 @@ __global__ void bias_softmax_warp_forward(
   }
   warp_reduce<acc_t, WARP_BATCH, WARP_SIZE, Add>(sum);
 
-// write back normalized value = exp(element_i)/Z to global memory
-#pragma unroll
+  // write back normalized value = exp(element_i)/Z to global memory
+  #pragma unroll
   for (int i = 0; i < WARP_BATCH; ++i) {
     if (i >= local_batches)
       break;
-#pragma unroll
+    #pragma unroll
     for (int it = 0; it < WARP_ITERATIONS; ++it) {
       int element_index = local_idx + it * WARP_SIZE;
       if (element_index < element_count) {
