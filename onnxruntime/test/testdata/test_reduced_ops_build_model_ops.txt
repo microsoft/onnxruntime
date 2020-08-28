@@ -1,5 +1,5 @@
 ai.onnx.ml;1;Normalizer
-ai.onnx;1;Conv
-com.microsoft.nchwc;1;Conv
+ai.onnx;1;Conv,MaxPool
+com.microsoft.nchwc;1;Conv,MaxPool,GlobalAveragePool,ReorderOutput
 ai.onnx;8;MaxPool
 ai.onnx;11;ReduceProd,ReduceSums,ReduceMean,Greater,If
