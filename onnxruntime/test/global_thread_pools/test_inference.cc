@@ -13,7 +13,6 @@
 #include <atomic>
 #include <gtest/gtest.h>
 #include "test_allocator.h"
-#include "../shared_lib/onnx_protobuf.h"
 #include "../shared_lib/test_fixture.h"
 #include <stdlib.h>
 

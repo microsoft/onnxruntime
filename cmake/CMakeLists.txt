@@ -212,6 +212,15 @@ if(onnxruntime_MINIMAL_BUILD)
   add_compile_definitions(ORT_MINIMAL_BUILD)
   set(onnxruntime_REDUCED_OPS_BUILD ON)  # TODO Defaulting to ON. TBD if we should always do that.
   set(onnxruntime_DISABLE_RTTI ON)
+
+  if (MSVC)
+    # add MSVC specific flags to reduce build size here
+  else()
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ffunction-sections -fdata-sections")
+    # TODO: May need to use -dead_strip instead of --gc-sections for iOS(XCode)
+    add_link_options(-Wl,--gc-sections)
+  endif()
+
 endif()
 
 if(onnxruntime_DISABLE_RTTI)
@@ -350,7 +359,7 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "iOSCross")
     endif()
 endif()
 
-#Dependencies
+#Dependencies begin
 if (onnxruntime_BUILD_UNIT_TESTS)
   if(onnxruntime_PREFER_SYSTEM_LIB)
     find_package(GTest CONFIG)
@@ -643,14 +652,53 @@ if (APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Android")
   string(APPEND CMAKE_CXX_FLAGS " -Wno-deprecated")
   string(APPEND CMAKE_C_FLAGS " -Wno-deprecated")
 endif()
-# ONNX
-add_subdirectory(onnx)
 
-#set_target_properties(gen_onnx_proto PROPERTIES FOLDER "External/ONNX")
+# ONNX
+if(NOT onnxruntime_USE_FULL_PROTOBUF)
+  set(ONNX_USE_LITE_PROTO ON CACHE BOOL "" FORCE)
+else()
+  set(ONNX_USE_LITE_PROTO OFF CACHE BOOL "" FORCE)
+endif()
+add_subdirectory(external/onnx)
+target_compile_definitions(onnx PUBLIC $<TARGET_PROPERTY:onnx_proto,INTERFACE_COMPILE_DEFINITIONS> PRIVATE "__ONNX_DISABLE_STATIC_REGISTRATION")
+if (NOT onnxruntime_USE_FULL_PROTOBUF)
+  target_compile_definitions(onnx PUBLIC "__ONNX_NO_DOC_STRINGS")	
+endif()
+set_target_properties(onnx PROPERTIES FOLDER "External/ONNX")	
+set_target_properties(onnx_proto PROPERTIES FOLDER "External/ONNX")
+
+if (onnxruntime_USE_MKLML)
+  add_definitions(-DUSE_MKLML=1 -DUSE_MKLML_FOR_BLAS=1)
+  if (WIN32 OR APPLE)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml)
+  else()
+    if(onnxruntime_USE_OPENMP)
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml_gnu)
+    else()
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml_intel)
+    endif()
+  endif()
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_mklml)
+  include_directories(${MKLML_INCLUDE_DIR})
+  link_directories(${MKLML_LIB_DIR})
+endif()
+
+if (onnxruntime_USE_NGRAPH)
+  if (NOT onnxruntime_USE_FULL_PROTOBUF)
+    message(FATAL_ERROR "Please set onnxruntime_USE_FULL_PROTOBUF=ON for nGraph execution provider.")
+  endif()
+  add_definitions(-DUSE_NGRAPH=1)
+  include(ngraph)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ngraph)
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_ngraph)
+endif()
+
 # fix a warning in onnx code we can't do anything about
 if (MSVC)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DEIGEN_HAS_C99_MATH") # required to be set explicitly to enable Eigen-Unsupported SpecialFunctions
+   string(APPEND CMAKE_CXX_FLAGS " -DEIGEN_HAS_C99_MATH") # required to be set explicitly to enable Eigen-Unsupported SpecialFunctions
 endif()
+
+#Dependencies end. In the next we'll enable "treat warning as error"
 
 if (onnxruntime_RUN_ONNX_TESTS)
   add_definitions(-DORT_RUN_EXTERNAL_ONNX_TESTS)
@@ -767,34 +815,6 @@ include_directories(
   ${REPO_ROOT}/include/onnxruntime/core/session
 )
 
-if (onnxruntime_USE_MKLML)
-  add_definitions(-DUSE_MKLML=1 -DUSE_MKLML_FOR_BLAS=1)
-  if (WIN32 OR APPLE)
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml)
-  else()
-    if(onnxruntime_USE_OPENMP)
-      list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml_gnu)
-    else()
-      list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml_intel)
-    endif()
-  endif()
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_mklml)
-  include_directories(${MKLML_INCLUDE_DIR})
-  link_directories(${MKLML_LIB_DIR})
-endif()
-
-if (onnxruntime_USE_NGRAPH)
-  #if (onnxruntime_USE_OPENMP)
-  #  message(FATAL_ERROR "Please set onnxruntime_USE_OPENMP=OFF for nGraph execution provider.")
-  #endif()
-  if (NOT onnxruntime_USE_FULL_PROTOBUF)
-    message(FATAL_ERROR "Please set onnxruntime_USE_FULL_PROTOBUF=ON for nGraph execution provider.")
-  endif()
-  add_definitions(-DUSE_NGRAPH=1)
-  include(ngraph)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ngraph)
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_ngraph)
-endif()
 
 if(onnxruntime_USE_OPENVINO)
 
@@ -918,14 +938,18 @@ if (onnxruntime_USE_CUDA)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${ONNXRUNTIME_CUDA_LIBRARIES})
 
   if(CMAKE_LIBRARY_ARCHITECTURE STREQUAL "aarch64-linux-gnu")
-    string (APPEND CMAKE_CUDA_FLAGS "-gencode=arch=compute_53,code=sm_53 -gencode=arch=compute_62,code=sm_62 ") #nano, TX1, TX2
-    string (APPEND CMAKE_CUDA_FLAGS "-gencode=arch=compute_72,code=sm_72") # Jetson N
+    # Support for Jetson/Tegra ARM devices
+    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_53,code=sm_53") # TX1, Nano
+    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_62,code=sm_62") # TX2
+    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_72,code=sm_72") # AGX Xavier, NX Xavier
   else()
-    # the following compute capabilities are deprecated in CUDA 11 Toolkit
+    # the following compute capabilities are removed in CUDA 11 Toolkit
     if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 11)
       set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_30,code=sm_30") # K series
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_50,code=sm_50") # M series
     endif()
+    # 37, 50 still work in CUDA 11 but are marked deprecated and will be removed in future CUDA version.
+    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_37,code=sm_37") # K80
+    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_50,code=sm_50") # M series
 
     set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_52,code=sm_52") # M60
     set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_60,code=sm_60") # P series

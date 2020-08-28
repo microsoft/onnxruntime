@@ -17,7 +17,6 @@
 #include "core/framework/tensor_shape.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
-#include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "core/graph/model.h"
@@ -734,21 +733,17 @@ Graph::Graph(const Model& owning_model,
              const std::unordered_map<std::string, int>& domain_to_version,
              Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
-             const logging::Logger& logger,
-             const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions)
-    : Graph(owning_model, graph_proto, domain_to_version, ir_version, schema_registry, nullptr, nullptr, logger,
-            model_functions) {}
+             const logging::Logger& logger)
+    : Graph(owning_model, graph_proto, domain_to_version, ir_version, schema_registry, nullptr, nullptr, logger) {}
 
 Graph::Graph(const Model& owning_model,
              GraphProto* graph_proto, const std::unordered_map<std::string, int>& domain_to_version, Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry, Graph* parent_graph, const Node* parent_node,
-             const logging::Logger& logger,
-             const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions)
+             const logging::Logger& logger)
     : owning_model_(owning_model),
       graph_proto_(graph_proto),
       schema_registry_(schema_registry),
       graph_resolve_needed_(true),
-      model_functions_(model_functions),
       domain_to_version_(domain_to_version),
       ir_version_(ir_version),
       using_latest_onnx_opset_(UsingLatestOnnxOpset(domain_to_version)),
@@ -865,7 +860,7 @@ Graph::Graph(Graph& parent_graph, const Node& parent_node, ONNX_NAMESPACE::Graph
             &subgraph_proto,
             parent_graph.DomainToVersionMap(), parent_graph.IrVersion(), parent_graph.schema_registry_,
             &parent_graph,
-            &parent_node, parent_graph.logger_, std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>()) {
+            &parent_node, parent_graph.logger_) {
 }
 
 void Graph::InitializeStateFromModelFileGraphProto() {
@@ -1944,7 +1939,7 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
       if (nullptr == p_existing_shape) {
         // use the inferred shape if this is a constant initializer (cannot be overridden).
         // if not it has a matching graph input, and we prefer the shape info (or lack of info) from the graph input
-        if (graph_utils::IsConstantInitializer(*this, name, false)) {
+        if (GetConstantInitializer(name, false) != nullptr) {
           node_arg->SetShape(inferred_shape);
         }
       } else {
@@ -1999,15 +1994,6 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
     node.ToProto(node_proto);
     auto& node_name = node.Name();
     auto& domain = node.Domain();
-
-    auto iter = model_functions_.find(node.OpType());
-    if (iter != model_functions_.end()) {
-      const ONNX_NAMESPACE::FunctionProto* model_function_proto = iter->second;
-      function_container_.emplace_back(onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(),
-                                                                                           *model_function_proto,
-                                                                                           logger_));
-      node.SetFunctionBody(*function_container_.back());
-    }
 
     if (!node.Op()) {
       try {
@@ -3076,10 +3062,6 @@ void Graph::SetOutputs(const std::vector<const NodeArg*>& outputs) {
   graph_outputs_manually_set_ = true;
   GraphProtoSyncNeeded(true);
   GraphResolveNeeded(true);
-}
-
-void Graph::AddFunction(const ONNX_NAMESPACE::FunctionProto* func_proto) {
-  this->model_functions_[func_proto->name()] = func_proto;
 }
 
 void Graph::SetNodeArgType(NodeArg& arg, const onnx::TypeProto& type_proto) {

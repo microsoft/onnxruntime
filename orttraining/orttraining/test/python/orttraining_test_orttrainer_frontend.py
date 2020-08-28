@@ -774,6 +774,10 @@ def testORTTrainerDynamicShape(dynamic_axes):
     total_steps = 10
     for i in range(total_steps):
         data, targets = batcher_fn(train_data, i)
+        if dynamic_axes:
+            # Forcing batches with different sizes to exercise dynamic shapes
+            data = data[:-(i+1)]
+            targets = targets[:-(i+1)*data.size(1)]
         _, _ = trainer.train_step(data, targets)
 
     assert trainer._onnx_model is not None
