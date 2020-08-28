@@ -1873,6 +1873,28 @@ TEST_F(GraphTransformationTests, AttentionFusionGPTTest) {
   EXPECT_EQ(op_to_count["Attention"], 1);
 }
 
+TEST_F(GraphTransformationTests, AttentionFusionDistilBertTest) {
+  auto model_uri = MODEL_FOLDER "fusion/attention_distilbert.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<AttentionFusion>(), TransformerLevel::Level2);
+  auto ret1 = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
+  ASSERT_TRUE(ret1.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["ReduceSum"], 1);
+  EXPECT_EQ(op_to_count["Attention"], 1);
+  EXPECT_EQ(op_to_count["Gather"], 0);
+  EXPECT_EQ(op_to_count["Unsqueeze"], 0);
+  EXPECT_EQ(op_to_count["Concat"], 0);
+  EXPECT_EQ(op_to_count["Transpose"], 0);
+  EXPECT_EQ(op_to_count["Softmax"], 0);
+  EXPECT_EQ(op_to_count["Shape"], 0);
+}
+
 TEST_F(GraphTransformationTests, GeluFusionTest) {
   auto model_uri = MODEL_FOLDER "fusion/gelu.onnx";
   std::shared_ptr<Model> p_model;
