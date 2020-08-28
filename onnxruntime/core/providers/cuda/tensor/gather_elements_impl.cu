@@ -7,10 +7,10 @@
 namespace onnxruntime {
 namespace cuda {
 
-//namespace {
-//constexpr int threads_per_block = GridDim::maxThreadsPerBlock;
-//constexpr int thread_worksize = 16;
-//}  // namespace
+namespace {
+constexpr int threads_per_block = GridDim::maxThreadsPerBlock;
+constexpr int thread_worksize = 8;
+}  // namespace
 
 __host__ __device__ inline int64_t GetIndexValue(const void* index_data, size_t index_element_size, size_t offset) {
   switch (index_element_size) {
@@ -40,24 +40,44 @@ __global__ void _GatherElementsKernel(
     const TArray<fast_divmod> indices_strides,
     const int64_t axis,
     T* output_data) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(indices_index, indices_size);
+
+  CUDA_LONG indices_index = threads_per_block * thread_worksize * blockIdx.x + threadIdx.x;
+
   int dim = 0;
   int remain = indices_index;
-  size_t data_idx = 0;
-  for (int i = 0; i < rank; ++i) {
-    indices_strides[i].divmod(remain, dim, remain);
-    if (i == axis) {
+  int64_t data_idx = 0;
+
+  #pragma unroll
+  for (int work = 0; work < thread_worksize; ++work) {
+    if (indices_index < indices_size) {
+      int i = 0;
+      for (; i < axis; ++i) {
+        indices_strides[i].divmod(remain, dim, remain);
+        data_idx += input_strides[i] * dim;
+      }
+
+      indices_strides[i].divmod(remain, dim, remain);
       dim = GetIndexValue(indices_data, index_element_size, indices_index);
       if (dim < -input_dim_along_axis || dim >= input_dim_along_axis) {
         return;  // Invalid index
       }
+
       if (dim < 0) {
         dim += input_dim_along_axis;
       }
+
+      data_idx += input_strides[i] * dim;
+
+      ++i;  // past axis
+      for (; i < rank; ++i) {
+        indices_strides[i].divmod(remain, dim, remain);
+        data_idx += input_strides[i] * dim;
+      }
+      output_data[indices_index] = input_data[data_idx];
+
+      indices_index += threads_per_block;
     }
-    data_idx += input_strides[i] * dim;
   }
-  output_data[indices_index] = input_data[data_idx];
 }
 
 void GatherElementsImpl(
@@ -73,12 +93,13 @@ void GatherElementsImpl(
     size_t element_size,
     size_t index_element_size) {
   if (indices_size > 0) {
-    int blocksPerGrid = static_cast<int>((indices_size + GridDim::maxThreadsPerBlock - 1) / GridDim::maxThreadsPerBlock);
+    dim3 block(threads_per_block);
+    dim3 blocksPerGrid((static_cast<int>(indices_size + block.x * thread_worksize - 1) / (block.x * thread_worksize)));
 
     switch (element_size) {
       case sizeof(int8_t): {
         using CudaType = typename ToCudaType<int8_t>::MappedType;
-        _GatherElementsKernel<int8_t><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+        _GatherElementsKernel<<<blocksPerGrid, block, 0>>>(
             rank, reinterpret_cast<const CudaType*>(input_data), input_dim_along_axis, input_strides,
             indices_data, indices_size, index_element_size, indices_strides,
             axis, reinterpret_cast<CudaType*>(output_data));
@@ -86,7 +107,7 @@ void GatherElementsImpl(
 
       case sizeof(int16_t): {
         using CudaType = typename ToCudaType<int16_t>::MappedType;
-        _GatherElementsKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+        _GatherElementsKernel<<<blocksPerGrid, block, 0>>>(
             rank, reinterpret_cast<const CudaType*>(input_data), input_dim_along_axis, input_strides,
             indices_data, indices_size, index_element_size, indices_strides,
             axis, reinterpret_cast<CudaType*>(output_data));
@@ -94,7 +115,7 @@ void GatherElementsImpl(
 
       case sizeof(int32_t): {
         using CudaType = typename ToCudaType<int32_t>::MappedType;
-        _GatherElementsKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+        _GatherElementsKernel<<<blocksPerGrid, block, 0>>>(
             rank, reinterpret_cast<const CudaType*>(input_data), input_dim_along_axis, input_strides,
             indices_data, indices_size, index_element_size, indices_strides,
             axis, reinterpret_cast<CudaType*>(output_data));
@@ -102,7 +123,7 @@ void GatherElementsImpl(
 
       case sizeof(int64_t): {
         using CudaType = typename ToCudaType<int64_t>::MappedType;
-        _GatherElementsKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+        _GatherElementsKernel<<<blocksPerGrid, block, 0>>>(
             rank, reinterpret_cast<const CudaType*>(input_data), input_dim_along_axis, input_strides,
             indices_data, indices_size, index_element_size, indices_strides,
             axis, reinterpret_cast<CudaType*>(output_data));
