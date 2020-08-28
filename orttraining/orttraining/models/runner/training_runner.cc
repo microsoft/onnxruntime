@@ -360,8 +360,6 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
   }
 
   std::cout << "[training_runner.cc] TrainingRunner::PrepareFeedNamesAndFeeds 5-1." << std::endl;
-  const auto batch_id = static_cast<int>(step_) % pipeline_context_.num_pipeline_batches;
-  const auto stage_id = pipeline_context_.pipeline_stage_id;
   std::cout << "[training_runner.cc] TrainingRunner::PrepareFeedNamesAndFeeds 5-1." << std::endl;
 
   // Define a helper function to append scalar inputs to feeds for event operators.
@@ -383,6 +381,9 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
 
   // Add event IDs to feeds.
   if (params_.pipeline_parallel_size > 1) {
+    const auto batch_id = static_cast<int>(step_) % pipeline_context_.num_pipeline_batches;
+    const auto stage_id = pipeline_context_.pipeline_stage_id;
+
     int64_t id = -1;
 
     // Forward Recv
