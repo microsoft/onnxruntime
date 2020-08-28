@@ -176,6 +176,9 @@ def parse_arguments():
         help="Extra definitions to pass to CMake during build system "
         "generation. These are just CMake -D options without the leading -D.")
     parser.add_argument(
+        "--target",
+        help="Build a specific target")
+    parser.add_argument(
         "--x86", action='store_true',
         help="Create x86 makefiles. Requires --update and no existing cache "
         "CMake setup. Delete CMakeCache.txt if needed")
@@ -875,13 +878,15 @@ def clean_targets(cmake_path, build_dir, configs):
         run_subprocess(cmd_args)
 
 
-def build_targets(args, cmake_path, build_dir, configs, parallel):
+def build_targets(args, cmake_path, build_dir, configs, parallel, target=None):
     for config in configs:
         log.info("Building targets for %s configuration", config)
         build_dir2 = get_config_build_dir(build_dir, config)
         cmd_args = [cmake_path,
                     "--build", build_dir2,
                     "--config", config]
+        if target:
+            cmd_args.extend(['--target', target])
 
         build_tool_args = []
         if parallel:
@@ -1642,7 +1647,7 @@ def main():
     setup_dml_build(args, cmake_path, build_dir, configs)
 
     if args.build:
-        build_targets(args, cmake_path, build_dir, configs, args.parallel)
+        build_targets(args, cmake_path, build_dir, configs, args.parallel, args.target)
 
     if args.test:
         run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs)
