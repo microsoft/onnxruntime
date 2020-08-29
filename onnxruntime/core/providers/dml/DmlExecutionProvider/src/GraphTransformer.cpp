@@ -87,7 +87,7 @@ namespace Dml
             if (!IsNodeSupportedByDml(
                 node,
                 *registry,
-                m_providerImpl->GetSuppportedDeviceDataTypeMask(),
+                m_providerImpl->GetSupportedDeviceDataTypeMask(),
                 *m_providerImpl->GetInternalRegistrationInfoMap().get(),
                 allow64BitInputThroughStrides,
                 nullptr))
