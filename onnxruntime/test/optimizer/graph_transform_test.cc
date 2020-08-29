@@ -1882,7 +1882,7 @@ TEST_F(GraphTransformationTests, AttentionFusionDistilBertTest) {
   ASSERT_TRUE(ret1.IsOK());
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  EXPECT_EQ(op_to_count["ReduceSum"], 1);
+  EXPECT_EQ(op_to_count["ReduceSum"], 0);
   EXPECT_EQ(op_to_count["Attention"], 1);
   EXPECT_EQ(op_to_count["Gather"], 0);
   EXPECT_EQ(op_to_count["Unsqueeze"], 0);
@@ -2649,7 +2649,7 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat7) {
   EXPECT_EQ(op_to_count["Shape"], 0);
   EXPECT_EQ(op_to_count["Gather"], 0);
   EXPECT_EQ(op_to_count["Unsqueeze"], 0);
-  EXPECT_EQ(op_to_count["ReduceSum"], 0);
+  EXPECT_EQ(op_to_count["ReduceSum"], 1);
 }
 
 TEST_F(GraphTransformationTests, EmbedLayerNormFusionMultiple) {
