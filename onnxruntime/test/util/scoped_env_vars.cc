@@ -6,6 +6,7 @@
 #ifndef WIN32
 #include <stdlib.h>
 #else  // WIN32
+#include <Windows.h>
 #endif
 
 namespace onnxruntime {
@@ -33,11 +34,29 @@ Status GetEnvironmentVar(const std::string& name, optional<std::string>& value) 
 }
 #else  // WIN32
 Status SetEnvironmentVar(const std::string& name, const optional<std::string>& value) {
-  ORT_NOT_IMPLEMENTED();
+  ORT_RETURN_IF_NOT(
+      SetEnvironmentVariableA(name.c_str(), value.has_value() ? value.value().c_str() : nullptr) != 0,
+      "SetEnvironmentVariableA() failed: ", GetLastError());
+  return Status::OK();
 }
 
 Status GetEnvironmentVar(const std::string& name, optional<std::string>& value) {
-  ORT_NOT_IMPLEMENTED();
+  constexpr DWORD kBufferSize = 32767;
+
+  char buffer[kBufferSize];
+
+  const auto char_count = GetEnvironmentVariableA(name.c_str(), buffer, kBufferSize);
+  if (char_count > 0) {
+    value = std::string{buffer, buffer + char_count};
+    return Status::OK();
+  }
+
+  if (GetLastError() == ERROR_ENVVAR_NOT_FOUND) {
+    value = optional<std::string>{};
+    return Status::OK();
+  }
+
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetEnvironmentVariableA() failed: ", GetLastError());
 }
 #endif
 
@@ -50,6 +69,7 @@ void SetEnvironmentVars(const EnvVarMap& env_vars) {
 EnvVarMap GetEnvironmentVars(const std::vector<std::string>& env_var_names) {
   EnvVarMap result{};
   for (const auto& env_var_name : env_var_names) {
+    // TODO update Env::GetEnvironmentVar() to distinguish between empty and undefined variables and use that instead
     optional<std::string> env_var_value{};
     ORT_THROW_IF_ERROR(GetEnvironmentVar(env_var_name, env_var_value));
     result.insert({env_var_name, env_var_value});
