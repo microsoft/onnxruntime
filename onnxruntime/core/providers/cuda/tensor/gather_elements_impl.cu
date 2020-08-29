@@ -9,7 +9,7 @@ namespace cuda {
 
 namespace {
 constexpr int threads_per_block = GridDim::maxThreadsPerBlock;
-constexpr int thread_worksize = 8;
+constexpr int thread_worksize = 16;
 }  // namespace
 
 __host__ __device__ inline int64_t GetIndexValue(const void* index_data, size_t index_element_size, size_t offset) {
@@ -92,7 +92,9 @@ void GatherElementsImpl(
     void* output_data,
     size_t element_size,
     size_t index_element_size) {
+
   if (indices_size > 0) {
+
     dim3 block(threads_per_block);
     dim3 blocksPerGrid((static_cast<int>(indices_size + block.x * thread_worksize - 1) / (block.x * thread_worksize)));
 
