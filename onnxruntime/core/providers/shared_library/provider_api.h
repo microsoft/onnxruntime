@@ -160,7 +160,7 @@ using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
 std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCPUAllocator(std::unique_ptr<Provider_OrtMemoryInfo> memory_info);
 std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCUDAAllocator(int16_t device_id, const char* name);
 std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
-Provider_AllocatorPtr CreateAllocator(const Provider_DeviceAllocatorRegistrationInfo& info, int16_t device_id = 0, bool use_arena = true);
+Provider_AllocatorPtr CreateAllocator(const Provider_AllocatorCreationInfo& info);
 
 std::unique_ptr<Provider_IDataTransfer> Provider_CreateGPUDataTransfer();
 
