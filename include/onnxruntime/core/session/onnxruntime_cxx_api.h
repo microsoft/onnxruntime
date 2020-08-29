@@ -23,6 +23,10 @@
 #include <utility>
 #include <type_traits>
 
+#ifdef ORT_NO_EXCEPTIONS
+#include <iostream>
+#endif
+
 namespace Ort {
 
 // All C++ methods that can fail will throw an exception of this type
@@ -36,6 +40,19 @@ struct Exception : std::exception {
   std::string message_;
   OrtErrorCode code_;
 };
+
+#ifdef ORT_NO_EXCEPTIONS
+#define ORT_CXX_API_THROW(string, code)       \
+  do {                                        \
+    std::cerr << Ort::Exception(string, code) \
+                     .what()                  \
+              << std::endl;                   \
+    abort();                                  \
+  } while (false)
+#else
+#define ORT_CXX_API_THROW(string, code) \
+  throw Ort::Exception(string, code)
+#endif
 
 // This is used internally by the C++ API. This class holds the global variable that points to the OrtApi, it's in a template so that we can define a global variable in a header and make
 // it transparent to the users of the API.
@@ -89,7 +106,8 @@ struct Base {
 
   Base() = default;
   Base(T* p) : p_{p} {
-    if (!p) throw Ort::Exception("Allocation failure", ORT_FAIL);
+    if (!p)
+      ORT_CXX_API_THROW("Allocation failure", ORT_FAIL);
   }
   ~Base() { OrtRelease(p_); }
 
@@ -124,7 +142,8 @@ struct Base<const T> {
 
   Base() = default;
   Base(const T* p) : p_{p} {
-    if (!p) throw Ort::Exception("Invalid instance ptr", ORT_INVALID_ARGUMENT);
+    if (!p)
+      ORT_CXX_API_THROW("Invalid instance ptr", ORT_INVALID_ARGUMENT);
   }
   ~Base() = default;
 
