@@ -78,7 +78,7 @@ class HIPExecutionProvider : public IExecutionProvider {
       const onnxruntime::GraphViewer& graph,
       const std::vector<const KernelRegistry*>& kernel_registries) const override;
 
-  int GetDeviceId() const { return device_id_; }
+  int GetDeviceId() const override { return device_id_; }
   const hipDeviceProp_t& GetDeviceProp() const { return device_prop_; };
   void UpdateProviderOptionsInfo();
 
