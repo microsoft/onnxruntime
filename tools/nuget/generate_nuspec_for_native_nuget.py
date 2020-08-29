@@ -20,6 +20,7 @@ def parse_arguments():
     parser.add_argument("--packages_path", required=True, help="Nuget packages output directory.")
     parser.add_argument("--sources_path", required=True, help="OnnxRuntime source code root.")
     parser.add_argument("--commit_id", required=True, help="The last commit id included in this package.")
+    parser.add_argument("--is_store_build", default='false', help="Build for the Microsoft Store")
     parser.add_argument("--is_release_build", required=False, default=None, type=str,
                         help="Flag indicating if the build is a release build. Accepted values: true/false.")
     parser.add_argument("--execution_provider", required=False, default='None', type=str,
@@ -168,8 +169,8 @@ def generate_files(list, args):
 
     includes_cuda = is_cuda_gpu_package or is_cpu_package  # Why does the CPU package ship the cuda provider headers?
     includes_winml = is_windowsai_package
-    includes_directml = (is_dml_package or is_windowsai_package) and (args.target_architecture == 'x64'
-                                                                      or args.target_architecture == 'x86')
+    includes_directml = (is_dml_package or is_windowsai_package) and not args.is_store_build and (
+        args.target_architecture == 'x64' or args.target_architecture == 'x86')
 
     is_windows_build = is_windows()
 
@@ -365,18 +366,27 @@ def generate_files(list, args):
     # Process props and targets files
     if is_windowsai_package:
         windowsai_src = 'Microsoft.AI.MachineLearning'
-        # Process native props
         windowsai_props = 'Microsoft.AI.MachineLearning.props'
-        windowsai_native_props = os.path.join(args.sources_path, 'csharp', 'src', windowsai_src, windowsai_props)
-        files_list.append('<file src=' + '"' + windowsai_native_props + '" target="build\\native" />')
-        # Process native targets
         windowsai_targets = 'Microsoft.AI.MachineLearning.targets'
-        windowsai_native_targets = os.path.join(args.sources_path, 'csharp', 'src', windowsai_src, windowsai_targets)
-        files_list.append('<file src=' + '"' + windowsai_native_targets + '" target="build\\native" />')
-        # Process native rules
+        windowsai_native_props = os.path.join(args.sources_path, 'csharp', 'src', windowsai_src, windowsai_props)
         windowsai_rules = 'Microsoft.AI.MachineLearning.Rules.Project.xml'
         windowsai_native_rules = os.path.join(args.sources_path, 'csharp', 'src', windowsai_src, windowsai_rules)
-        files_list.append('<file src=' + '"' + windowsai_native_rules + '" target="build\\native" />')
+        if args.is_store_build:
+            # Process uap10.0 targets
+            files_list.append('<file src=' + '"' + windowsai_native_props + '" target="build\\uap10.0" />')
+            # Process uap10.0 targets
+            windowsai_uap10_targets = os.path.join(args.sources_path,
+                                                   'csharp', 'src', windowsai_src, 'uap10.0', windowsai_targets)
+            files_list.append('<file src=' + '"' + windowsai_uap10_targets + '" target="build\\uap10.0" />')
+            # Process rules
+            files_list.append('<file src=' + '"' + windowsai_native_rules + '" target="build\\uap10.0" />')
+        else:
+            files_list.append('<file src=' + '"' + windowsai_native_props + '" target="build\\native" />')
+            # Process native targets
+            windowsai_native_targets = os.path.join(args.sources_path, 'csharp', 'src', windowsai_src, windowsai_targets)
+            files_list.append('<file src=' + '"' + windowsai_native_targets + '" target="build\\native" />')
+            # Process rules
+            files_list.append('<file src=' + '"' + windowsai_native_rules + '" target="build\\native" />')
         # Process .net standard 2.0 targets
         interop_src = 'Microsoft.AI.MachineLearning.Interop'
         interop_targets = 'Microsoft.AI.MachineLearning.targets'
