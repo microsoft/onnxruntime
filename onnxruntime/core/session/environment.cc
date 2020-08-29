@@ -88,7 +88,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
     inter_op_thread_pool_ = concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP);
   }
 
-  try {
+  ORT_TRY {
 #if !defined(ORT_MINIMAL_BUILD)
     // Register Microsoft domain with min/max op_set version as 1/1.
     std::call_once(schemaRegistrationOnceFlag, []() {
@@ -160,12 +160,15 @@ Internal copy node
     // fire off startup telemetry (this call is idempotent)
     const Env& env = Env::Default();
     env.GetTelemetryProvider().LogProcessInfo();
-  } catch (std::exception& ex) {
-    status = Status{ONNXRUNTIME, common::RUNTIME_EXCEPTION, std::string{"Exception caught: "} + ex.what()};
-  } catch (...) {
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = Status(ONNXRUNTIME, common::RUNTIME_EXCEPTION, std::string{"Exception caught: "} + ex.what());
+    });
+  }
+  ORT_CATCH(...) {
     status = Status{ONNXRUNTIME, common::RUNTIME_EXCEPTION};
   }
-
   return status;
 }
 

@@ -9,7 +9,7 @@
 GTEST_API_ int main(int argc, char** argv) {
   int status = 0;
 
-  try {
+  ORT_TRY {
     onnxruntime::test::TestEnvironment test_environment{argc, argv};
 
     // Register Microsoft domain with min/max op_set version as 1/1.
@@ -19,9 +19,12 @@ GTEST_API_ int main(int argc, char** argv) {
     onnxruntime_ir::MsOpRegistry::RegisterMsOps();
 
     status = RUN_ALL_TESTS();
-  } catch (const std::exception& ex) {
-    std::cerr << ex.what();
-    status = -1;
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&ex]() {
+      std::cerr << ex.what();
+      status = -1;
+    });
   }
 
   return status;
