@@ -146,6 +146,7 @@ static bool IsTypeSupported(const NodeArg* node_arg) {
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT32:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT64:
+    case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL:
       return true;
     default:
       return false;
@@ -188,6 +189,8 @@ static bool get_migraphx_type(ONNXTensorElementDataType type,
       break;
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT64:
       mgx_type = migraphx_shape_uint64_type;
+    case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL:
+      mgx_type = migraphx_shape_bool_type;
       break;
     default:
       LOGS_DEFAULT(WARNING) << "MiGraphx: unsupported data type " << type << ", fallback to CPU";
@@ -256,6 +259,11 @@ static bool can_eval_shape_general(const Graph& graph, const Node* node, const l
   if (node == nullptr)
   {
     return false;
+  }
+
+  if (node->OpType() == "Shape")
+  {
+    return true;
   }
 
   auto inputs = node->InputDefs();
