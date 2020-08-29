@@ -37,6 +37,8 @@ constexpr const char* kDumpingDataToFilesForAllNodesIsOk =
     "ORT_DEBUG_NODE_IO_DUMPING_DATA_TO_FILES_FOR_ALL_NODES_IS_OK";
 }  // namespace debug_node_inputs_outputs_env_vars
 
+constexpr char kFilterPatternDelimiter = ';';
+
 struct NodeDumpOptions {
   enum DumpFlags {
     ShapeOnly = 0,
@@ -63,8 +65,6 @@ struct NodeDumpOptions {
   struct FilterOptions {
     std::string name_pattern{};
     std::string op_type_pattern{};
-
-    static constexpr char kPatternDelimiter = ';';
   } filter{};
 
   // the destination for dumped data

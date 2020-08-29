@@ -26,8 +26,7 @@ bool FilterNode(const NodeDumpOptions& dump_options, const Node& node) {
         auto pattern_begin = delimited_patterns.begin();
         while (true) {
           const auto pattern_end = std::find(
-              pattern_begin, delimited_patterns.end(),
-              NodeDumpOptions::FilterOptions::kPatternDelimiter);
+              pattern_begin, delimited_patterns.end(), kFilterPatternDelimiter);
 
           if (std::equal(value.begin(), value.end(), pattern_begin, pattern_end)) return true;
 
