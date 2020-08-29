@@ -34,7 +34,7 @@ jobs:
       workingFolder: '$(Build.BinariesDirectory)'
 
   - script: |
-     python -m pip install -q pyopenssl setuptools wheel numpy flake8
+     python -m pip install -q pyopenssl setuptools wheel numpy
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
 
@@ -48,45 +48,11 @@ jobs:
     displayName: 'Install ONNX'
 
   - task: PythonScript@0
-    displayName: 'Generate cmake config'
+    displayName: 'Build and test'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --update --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --build_wheel --use_cuda --cuda_version=10.1 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.1" --cudnn_home="C:\local\cudnn-10.1-windows10-x64-v7.6.5.32\cuda" --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --include_ops_by_model="$(Build.SourcesDirectory)\onnxruntime\test\testdata" --include_ops_by_file="$(Build.SourcesDirectory)\onnxruntime\test\testdata\included_ops.txt"'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --build_wheel --use_cuda --cuda_version=10.1 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.1" --cudnn_home="C:\local\cudnn-10.1-windows10-x64-v7.6.5.32\cuda" --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --include_ops_by_model="$(Build.SourcesDirectory)\onnxruntime\test\testdata" --include_ops_by_file="$(Build.SourcesDirectory)\onnxruntime\test\testdata\included_ops.txt"'
       workingDirectory: '$(Build.BinariesDirectory)'
-
-  - task: VSBuild@1
-    displayName: 'Build'
-    inputs:
-      solution: '$(Build.BinariesDirectory)\$(BuildConfig)\onnxruntime.sln'
-      platform: 'x64'
-      configuration: $(BuildConfig)
-      msbuildArgs: $(MsbuildArguments)
-      msbuildArchitecture: $(buildArch)
-      maximumCpuCount: true
-      logProjectEvents: false
-      workingFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
-      createLogFile: true
-
-  - task: PythonScript@0
-    displayName: 'Build wheel'
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\setup.py'
-      arguments: 'bdist_wheel'
-      workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
-
-  - template: templates/set-test-data-variables-step.yml
-
-  - script: |
-     mklink  /D /J $(Build.BinariesDirectory)\$(BuildConfig)\models $(Build.BinariesDirectory)\models  
-     DIR dist\ /S /B > wheel_filename_file
-     set /p WHEEL_FILENAME=<wheel_filename_file
-     del wheel_filename_file
-     python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
-     set PATH=$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig);%PATH%
-     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --test --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --build_wheel --use_cuda --cuda_version=10.1 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.1" --cudnn_home="C:\local\cudnn-10.1-windows10-x64-v7.6.5.32\cuda" --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --include_ops_by_model="$(Build.SourcesDirectory)\onnxruntime\test\testdata" --include_ops_by_file="$(Build.SourcesDirectory)\onnxruntime\test\testdata\included_ops.txt"
-
-    workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
-    displayName: 'Run tests'
 
   - template: templates/component-governance-component-detection-steps.yml
     parameters :

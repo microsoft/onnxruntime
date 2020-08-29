@@ -444,7 +444,11 @@ TEST(CApiTest, create_session_without_session_option) {
 #ifdef REDUCED_OPS_BUILD
 TEST(ReducedOpsBuildTest, test_included_ops) {
   constexpr PATH_TYPE model_uri = TSTR("testdata/onnx_model_of_included_ops");
-  std::vector<Input> inputs = {{"X", {3}, {-1.0f, 2.0f, -3.0f}}};
+  std::vector<Input> inputs(1);
+  Input& input = inputs[0];
+  input.name = "X";
+  input.dims = {3};
+  input.values = {-1.0f, 2.0f, -3.0f};
   std::vector<int64_t> expected_dims_y = {1};
   std::vector<float> expected_values_y = {0.75};
   TestInference<PATH_TYPE, float>(*ort_env, model_uri, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
@@ -452,8 +456,15 @@ TEST(ReducedOpsBuildTest, test_included_ops) {
 
 TEST(ReducedOpsBuildTest, test_excluded_ops) {
   constexpr PATH_TYPE model_uri = TSTR("testdata/onnx_model_of_excluded_ops");
-  std::vector<Input> inputs = {{"X", {3}, {-1.0f, 2.0f, -3.0f}},
-                               {"Y", {3}, {-1.0f, 2.0f, -3.0f}}};
+  std::vector<Input> inputs(2);
+  Input& input_x = inputs[0];
+  input_x.name = "X";
+  input_x.dims = {3};
+  input_x.values = {-1.0f, 2.0f, -3.0f};
+  Input& input_y = inputs[1];
+  input_y.name = "Y";
+  input_y.dims = {3};
+  input_y.values = {-1.0f, 2.0f, -3.0f};
   std::vector<int64_t> expected_dims_z = {3};
   std::vector<float> expected_values_z = {0.1f, 0.1f, 0.1f};
   bool failed = false;
