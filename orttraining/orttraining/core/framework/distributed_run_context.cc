@@ -47,9 +47,9 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
   params_.pipeline_stage_size = pipeline_stage_size;
   groups_.resize(static_cast<size_t>(WorkerGroupType::WorkerGroupTypeCount));
 
-  // Consider distributed training forms three axis, data parallel, horizontal parallel and pipeline parallel.
-  // The three axis are pependicular to each other and like x, y, z axis in 3D space (but only the positive directions).
-  // Now the world ranks are numbers filling in this 3D space alone the three axis. It will try fill alone the
+  // Consider distributed training forms three axes, data parallel, horizontal parallel and pipeline parallel.
+  // The three axes are pependicular to each other and like x, y, z axes in 3D space (but only the positive directions).
+  // Now the world ranks are numbers filling in this 3D space alone the three axes. It will try fill alone the
   // horizontal axis first, then data parallel axis, and last pipeline parallel axis.
   //
   // Ranks that are aligned with a specific axis forms a group. For example, for a 3D cube with size
