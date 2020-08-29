@@ -60,13 +60,11 @@ inline MemoryAllocation::~MemoryAllocation() {
   }
 }
 
-inline MemoryAllocation::MemoryAllocation(MemoryAllocation&& o) :
-  allocator_(nullptr), p_(nullptr), size_(0) {
+inline MemoryAllocation::MemoryAllocation(MemoryAllocation&& o) : allocator_(nullptr), p_(nullptr), size_(0) {
   *this = std::move(o);
 }
 
 inline MemoryAllocation& MemoryAllocation::operator=(MemoryAllocation&& o) {
-
   OrtAllocator* alloc = nullptr;
   void* p = nullptr;
   size_t sz = 0;
@@ -113,7 +111,7 @@ inline const OrtMemoryInfo* AllocatorWithDefaultOptions::GetInfo() const {
   return out;
 }
 
-template<typename B>
+template <typename B>
 inline std::string BaseMemoryInfo<B>::GetAllocatorName() const {
   const char* name = nullptr;
   ThrowOnError(GetApi().MemoryInfoGetName(*this, &name));
@@ -253,7 +251,7 @@ inline std::vector<Value> Ort::IoBinding::GetOutputValuesHelper(OrtAllocator* al
       allocator->Free(allocator, buffer);
     }
   };
-  using Ptr = std::unique_ptr<OrtValue*, decltype(free_fn)> ;
+  using Ptr = std::unique_ptr<OrtValue*, decltype(free_fn)>;
 
   OrtValue** output_buffer = nullptr;
   ThrowOnError(GetApi().GetBoundOutputValues(p_, allocator, &output_buffer, &output_count));
@@ -307,6 +305,11 @@ inline Env& Env::EnableTelemetryEvents() {
 
 inline Env& Env::DisableTelemetryEvents() {
   ThrowOnError(GetApi().DisableTelemetryEvents(p_));
+  return *this;
+}
+
+inline Env& Env::CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const OrtArenaCfg* arena_cfg) {
+  ThrowOnError(GetApi().CreateAndRegisterAllocator(p_, mem_info, arena_cfg));
   return *this;
 }
 
@@ -439,12 +442,8 @@ inline SessionOptions& SessionOptions::Add(OrtCustomOpDomain* custom_op_domain) 
   return *this;
 }
 
-inline SessionOptions& SessionOptions::EnablePrePacking() {
-  ThrowOnError(GetApi().EnablePrePacking(p_));
-  return *this;
-}
-inline SessionOptions& SessionOptions::DisablePrePacking() {
-  ThrowOnError(GetApi().DisablePrePacking(p_));
+inline SessionOptions& SessionOptions::AddConfigEntry(const char* config_key, const char* config_value) {
+  ThrowOnError(GetApi().AddSessionConfigEntry(p_, config_key, config_value));
   return *this;
 }
 
@@ -621,6 +620,36 @@ inline Unowned<TensorTypeAndShapeInfo> TypeInfo::GetTensorTypeAndShapeInfo() con
   const OrtTensorTypeAndShapeInfo* out;
   ThrowOnError(GetApi().CastTypeInfoToTensorInfo(p_, &out));
   return Unowned<TensorTypeAndShapeInfo>(const_cast<OrtTensorTypeAndShapeInfo*>(out));
+}
+
+inline Unowned<SequenceTypeInfo> TypeInfo::GetSequenceTypeInfo() const {
+  const OrtSequenceTypeInfo* out;
+  ThrowOnError(GetApi().CastTypeInfoToSequenceTypeInfo(p_, &out));
+  return Unowned<SequenceTypeInfo>{const_cast<OrtSequenceTypeInfo*>(out)};
+}
+
+inline TypeInfo SequenceTypeInfo::GetSequenceElementType() const {
+  OrtTypeInfo* output;
+  ThrowOnError(GetApi().GetSequenceElementType(p_, &output));
+  return TypeInfo{output};
+}
+
+inline Unowned<MapTypeInfo> TypeInfo::GetMapTypeInfo() const {
+  const OrtMapTypeInfo* out;
+  ThrowOnError(GetApi().CastTypeInfoToMapTypeInfo(p_, &out));
+  return Unowned<MapTypeInfo>{const_cast<OrtMapTypeInfo*>(out)};
+}
+
+inline ONNXTensorElementDataType MapTypeInfo::GetMapKeyType() const {
+  ONNXTensorElementDataType out;
+  ThrowOnError(GetApi().GetMapKeyType(p_, &out));
+  return out;
+}
+
+inline TypeInfo MapTypeInfo::GetMapValueType() const {
+  OrtTypeInfo* output;
+  ThrowOnError(GetApi().GetMapValueType(p_, &output));
+  return TypeInfo{output};
 }
 
 inline ONNXType TypeInfo::GetONNXType() const {

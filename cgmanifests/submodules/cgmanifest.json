@@ -75,10 +75,20 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "54a0a9c9dd83aad42e79238ec8f0932b2a5e7881",
+          "commitHash": "d10b27fe37736d2944630ecd7557cefa95cf87c9",
           "repositoryUrl": "https://gitlab.com/libeigen/eigen.git"
         },
         "comments": "git submodule at cmake/external/eigen"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "db2aa9b4eca0edc94aea9e2059c21ce8786fc762",
+          "repositoryUrl": "https://github.com/google/flatbuffers.git"
+        },
+        "comments": "git submodule at cmake/external/flatbuffers"
       }
     },
     {
@@ -335,7 +345,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "0c070abb0c40fec649f81a73a75b0098662ec486",
+          "commitHash": "c443abd2acad2411103593600319ff81a676afbc",
           "repositoryUrl": "https://github.com/onnx/onnx"
         },
         "comments": "git submodule at cmake/external/onnx"
@@ -375,8 +385,8 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "77a8d522e582efaac3166e912e96215acbf3f129",
-          "repositoryUrl": "https://github.com/stevenlix/onnx-tensorrt.git"
+          "commitHash": "088554a5fbee9ba183c05c09c1abe986034e9208",
+          "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "git submodule at cmake/external/onnx-tensorrt"
       }

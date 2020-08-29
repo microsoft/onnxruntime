@@ -173,6 +173,18 @@ if (onnxruntime_ENABLE_TRAINING)
   file(GLOB onnxruntime_python_capi_training_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/*.py"
   )
+  file(GLOB onnxruntime_python_root_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/experimental/*.py"
+  )
+  file(GLOB onnxruntime_python_amp_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/experimental/amp/*.py"
+  )
+  file(GLOB onnxruntime_python_optim_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/experimental/optim/*.py"
+  )
+  file(GLOB onnxruntime_python_train_tools_srcs CONFIGURE_DEPENDS
+    "${REPO_ROOT}/tools/python/register_custom_ops_pytorch_exporter.py"
+  )
 else()
   file(GLOB onnxruntime_python_capi_training_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/training/*.py"
@@ -259,6 +271,27 @@ add_custom_command(
       ${REPO_ROOT}/VERSION_NUMBER
       $<TARGET_FILE_DIR:${test_data_target}>
 )
+
+if (onnxruntime_ENABLE_TRAINING)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/amp
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/optim
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_root_srcs}
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_amp_srcs}
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/amp/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_optim_srcs}
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/optim/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_train_tools_srcs}
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/
+  )
+endif()
 
 if (onnxruntime_USE_DNNL)
   add_custom_command(

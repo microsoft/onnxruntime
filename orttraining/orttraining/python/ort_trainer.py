@@ -9,7 +9,7 @@ import torch
 import torch.nn
 import torch.onnx
 import onnxruntime as ort
-import onnxruntime.capi.postprocess as postprocess
+from ..experimental import postprocess
 from distutils.version import LooseVersion
 import warnings
 
@@ -316,7 +316,12 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
 
     model.eval()
     with torch.no_grad():
-        sample_outputs = model(*sample_inputs)
+        import copy
+        # Deepcopy inputs, since input values may change after model run.
+        sample_inputs_copy = copy.deepcopy(sample_inputs)
+        # Deepcopy model, in case model is stateful and changes after model run.
+        model_copy = copy.deepcopy(model)
+        sample_outputs = model_copy(*sample_inputs_copy)
     if isinstance(sample_outputs, torch.Tensor):
         sample_outputs = [sample_outputs]
     for sample_output, output_desc in zip(sample_outputs, model_desc.outputs_):
@@ -336,7 +341,15 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
     if LooseVersion(torch.__version__) >= LooseVersion('1.6.0'):
         other_export_options['training'] = torch.onnx.TrainingMode.TRAINING
 
-    torch.onnx._export(model, tuple(sample_inputs), f,
+    # Deepcopy inputs, since input values may change after model run.
+    import copy
+    sample_inputs_copy = copy.deepcopy(sample_inputs)
+
+    # Enable contrib ops export from PyTorch
+    from onnxruntime.experimental import register_custom_ops_pytorch_exporter
+    register_custom_ops_pytorch_exporter.register_custom_op()
+
+    torch.onnx._export(model, tuple(sample_inputs_copy), f,
                        input_names=input_names,
                        output_names=output_names,
                        opset_version=opset_version,

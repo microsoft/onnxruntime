@@ -5,7 +5,7 @@ Start by reading the [Engineering Design](./docs/InferenceHighLevelDesign.md). Y
 
 ## Proposing new public APIs
 
- ONNX Runtime has a collection of [public APIs](./README.md#api-documentation).  Some of these APIs make their way back into the Windows OS.  We make compatibility committments for these APIs and follow a structured process when adding to them.  Please use the [Feature Request issue template](https://github.com/microsoft/onnxruntime/issues/new?template=feature_request.md) before starting any PRs that affect any of the public APIs.
+ ONNX Runtime has a collection of [public APIs](./README.md#api-documentation).  Some of these APIs make their way back into the Windows OS.  We make compatibility commitments for these APIs and follow a structured process when adding to them.  Please use the [Feature Request issue template](https://github.com/microsoft/onnxruntime/issues/new?template=feature_request.md) before starting any PRs that affect any of the public APIs.
 
 ## Process details
 
