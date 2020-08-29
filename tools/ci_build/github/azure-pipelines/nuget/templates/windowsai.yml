@@ -52,7 +52,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    name: 'Win-GPU-2019'
+    name: 'Win-CPU-2019'
     demands: []
   steps:
   - template: ../../templates/windowsai-nuget-build.yml
@@ -65,7 +65,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    name: 'Win-GPU-2019'
+    name: 'Win-CPU-2019'
     demands: []
   steps:
   - template: ../../templates/windowsai-nuget-build.yml
