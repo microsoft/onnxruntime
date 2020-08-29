@@ -889,7 +889,10 @@ if (onnxruntime_USE_HIP)
 
   target_link_libraries(onnxruntime_providers_hip PRIVATE  ${ONNXRUNTIME_HIP_LIBS})
   set_target_properties(onnxruntime_providers_hip PROPERTIES FOLDER "ONNXRuntime")
-  target_compile_options(onnxruntime_providers_hip PRIVATE -Wno-error=sign-compare -D__HIP_PLATFORM_HCC__=1)
+  target_compile_options(onnxruntime_providers_hip PRIVATE -Wno-sign-compare -D__HIP_PLATFORM_HCC__=1)
+  if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+    target_compile_options(onnxruntime_providers_hip PRIVATE -Wno-unused-parameter -Wno-undefined-var-template)
+  endif()
   target_include_directories(onnxruntime_providers_hip PRIVATE ${onnxruntime_HIP_HOME}/include ${onnxruntime_HIP_HOME}/include/hipcub ${onnxruntime_HIP_HOME}/include/hiprand ${onnxruntime_HIP_HOME}/include/rocrand)
   target_include_directories(onnxruntime_providers_hip PRIVATE ${ONNXRUNTIME_ROOT} ${MPI_INCLUDE_DIRS} ${SAFEINT_INCLUDE_DIR} ${ONNXRUNTIME_ROOT}/../cmake/external/eigen)
 
