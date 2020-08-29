@@ -442,32 +442,23 @@ TEST(CApiTest, create_session_without_session_option) {
 #endif
 
 #ifdef REDUCED_OPS_BUILD
-TEST(ReducedOpsBuildTest, test_model_with_reduced_ops_build) {
-  constexpr PATH_TYPE model_uri = TSTR("testdata/test_reduced_ops_build_model");
-  std::vector<Input> inputs(1);
-  Input& input = inputs[0];
-  input.name = "X";
-  input.dims = {3};
-  input.values = {-1.0f, 2.0f, -3.0f};
+TEST(ReducedOpsBuildTest, test_included_ops) {
+  constexpr PATH_TYPE model_uri = TSTR("testdata/onnx_model_of_included_ops");
+  std::vector<Input> inputs = {{"X", {3}, {-1.0f, 2.0f, -3.0f}}};
   std::vector<int64_t> expected_dims_y = {1};
   std::vector<float> expected_values_y = {0.75};
   TestInference<PATH_TYPE, float>(*ort_env, model_uri, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
 }
 
 TEST(ReducedOpsBuildTest, test_excluded_ops) {
-  constexpr PATH_TYPE model_uri = TSTR("testdata/test_excluded_ops");
-  std::vector<Input> inputs(2);
-  for (auto& input: inputs) {
-    input.dims = {3};
-    input.values = {-1.0f, 2.0f, -3.0f};
-  }
-  inputs[0].name = "X";
-  inputs[1].name = "Y";
+  constexpr PATH_TYPE model_uri = TSTR("testdata/onnx_model_of_excluded_ops");
+  std::vector<Input> inputs = {{"X", {3}, {-1.0f, 2.0f, -3.0f}},
+                               {"Y", {3}, {-1.0f, 2.0f, -3.0f}}};
   std::vector<int64_t> expected_dims_z = {3};
   std::vector<float> expected_values_z = {0.1f, 0.1f, 0.1f};
   bool failed = false;
   try {
-  TestInference<PATH_TYPE, float>(*ort_env, model_uri, inputs, "Z", expected_dims_z, expected_values_z, 0, nullptr, nullptr);
+    TestInference<PATH_TYPE, float>(*ort_env, model_uri, inputs, "Z", expected_dims_z, expected_values_z, 0, nullptr, nullptr);
   } catch (const Ort::Exception& e) {
     failed = e.GetOrtErrorCode() == ORT_NOT_IMPLEMENTED;
   }

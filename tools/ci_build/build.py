@@ -356,9 +356,6 @@ def parse_arguments():
         "--build_micro_benchmarks", action='store_true',
         help="Build ONNXRuntime micro-benchmarks.")
     parser.add_argument(
-        "--reduce_ops", action='store_true',
-        help="Exclude unused ops.")
-    parser.add_argument(
         "--include_ops_by_model", type=str,
         help="include ops from model(s) under designated path.")
     parser.add_argument(
