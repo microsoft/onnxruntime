@@ -236,7 +236,6 @@ class ORTTrainerOptions(object):
             ONNX opset version used during model exporting.
         _internal_use.enable_onnx_contrib_ops (bool, default is True)
             enable PyTorch to export nodes as contrib ops in ONNX.
-            Note: this flag is only effective at the first run of train_step/eval_step.
             This flag may be removed anytime in the future.
 
     Example:
