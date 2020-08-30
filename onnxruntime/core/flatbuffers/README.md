@@ -7,7 +7,7 @@ Please do not modify [the generated header file](ort_generated.h).
 
 To update the ORT file format
 1. Modify the [the ORT file format schema](ort.fbs)
-2. Use the FlatBuffers compiler to generate C++ [the C++ header file](ort_generated.h).
+2. Use the FlatBuffers compiler to generate [the C++ header file](ort_generated.h).
 
 For more information about FlatBuffers, please see https://github.com/google/flatbuffers
 
