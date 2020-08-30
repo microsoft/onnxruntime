@@ -368,6 +368,7 @@ target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/cmake/external/g
 target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/cmake/external/onnx)
 target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/cmake/external/protobuf/src)
 target_include_directories(winml_lib_image PRIVATE ${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows)
+target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/cmake/external/flatbuffers/include)
 
 # Properties
 set_target_properties(winml_lib_image
@@ -699,6 +700,7 @@ target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/protobu
 target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/gsl/include)
 target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/eigen)
 target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/SafeInt)
+target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/flatbuffers/include)
 
 # Properties
 set_target_properties(winml_dll
