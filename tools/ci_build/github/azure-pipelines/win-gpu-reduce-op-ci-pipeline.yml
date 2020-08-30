@@ -2,10 +2,12 @@ jobs:
 - job: 'build'
   pool: 'Win-GPU-2019'
   strategy:
-    maxParallel: 1
+    maxParallel: 2
     matrix:
       release:
         BuildConfig: 'RelWithDebInfo'
+      minsizerel:
+        BuildConfig: 'MinSizeRel'
   variables:
     OrtPackageId: 'Microsoft.ML.OnnxRuntime'
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
