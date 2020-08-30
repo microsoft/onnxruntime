@@ -443,7 +443,9 @@ TEST(CApiTest, create_session_without_session_option) {
 
 #ifdef REDUCED_OPS_BUILD
 TEST(ReducedOpsBuildTest, test_included_ops) {
-  constexpr PATH_TYPE model_uri = TSTR("testdata/onnx_model_of_included_ops");
+  // In reduce-ops build, test a model containing
+  // ops specified in reduced_ops_via_config.config
+  constexpr PATH_TYPE model_uri = TSTR("testdata/reduced_ops_via_config.onnx_model_with_included_ops");
   std::vector<Input> inputs = {{"X", {3}, {-1.0f, 2.0f, -3.0f}}};
   std::vector<int64_t> expected_dims_y = {1};
   std::vector<float> expected_values_y = {0.75};
@@ -451,7 +453,9 @@ TEST(ReducedOpsBuildTest, test_included_ops) {
 }
 
 TEST(ReducedOpsBuildTest, test_excluded_ops) {
-  constexpr PATH_TYPE model_uri = TSTR("testdata/onnx_model_of_excluded_ops");
+  // In reduce-ops build, test a model containing
+  // ops not referred by reduced_ops_via_config.config
+  constexpr PATH_TYPE model_uri = TSTR("testdata/reduced_ops_via_config.onnx_model_with_excluded_ops");
   std::vector<Input> inputs = {{"X", {3}, {-1.0f, 2.0f, -3.0f}},
                                {"Y", {3}, {-1.0f, 2.0f, -3.0f}}};
   std::vector<int64_t> expected_dims_z = {3};
