@@ -15,7 +15,7 @@ namespace onnxruntime {
 bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) noexcept {
   bool ok = true;
 
-  try {
+  ORT_TRY {
     SafeInt<size_t> alloc_size(size);
     if (alignment == 0) {
       *out = alloc_size * nmemb;
@@ -23,12 +23,14 @@ bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, siz
       size_t alignment_mask = alignment - 1;
       *out = (alloc_size * nmemb + alignment_mask) & ~static_cast<size_t>(alignment_mask);
     }
-  } catch (const OnnxRuntimeException& ex) {
-    // overflow in calculating the size thrown by SafeInt.
-    LOGS_DEFAULT(ERROR) << ex.what();
-    ok = false;
   }
-
+  ORT_CATCH(const OnnxRuntimeException& ex) {
+    // overflow in calculating the size thrown by SafeInt.
+    ORT_HANDLE_EXCEPTION([&]() {
+      LOGS_DEFAULT(ERROR) << ex.what();
+      ok = false;
+    });
+  }
   return ok;
 }
 

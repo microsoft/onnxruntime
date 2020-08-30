@@ -69,8 +69,8 @@ namespace Microsoft.ML.OnnxRuntime
         {
             CheckCudaExecutionProviderDLLs();
             SessionOptions options = new SessionOptions();
-            NativeMethods.OrtSessionOptionsAppendExecutionProvider_CUDA(options.Handle, deviceId);
-            NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(options.Handle, 1);
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CUDA(options.Handle, deviceId));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(options.Handle, 1));
             return options;
         }
 
@@ -83,7 +83,7 @@ namespace Microsoft.ML.OnnxRuntime
         public static SessionOptions MakeSessionOptionWithNupharProvider(String settings = "")
         {
             SessionOptions options = new SessionOptions();
-            NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nuphar(options.Handle, 1, settings);
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nuphar(options.Handle, 1, settings));
             return options;
         }
 
@@ -109,6 +109,14 @@ namespace Microsoft.ML.OnnxRuntime
         public void AppendExecutionProvider_CUDA(int deviceId)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CUDA(handle, deviceId));
+        }
+
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        public void AppendExecutionProvider_Dml(int deviceId)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Dml(handle, deviceId));
         }
 
         /// <summary>
