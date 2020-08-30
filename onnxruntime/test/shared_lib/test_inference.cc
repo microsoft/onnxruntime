@@ -442,6 +442,7 @@ TEST(CApiTest, create_session_without_session_option) {
 #endif
 
 #ifdef REDUCED_OPS_BUILD
+/*
 TEST(ReducedOpsBuildTest, test_included_ops) {
   constexpr PATH_TYPE model_uri = TSTR("testdata/onnx_model_of_included_ops");
   std::vector<Input> inputs(1);
@@ -474,7 +475,7 @@ TEST(ReducedOpsBuildTest, test_excluded_ops) {
     failed = e.GetOrtErrorCode() == ORT_NOT_IMPLEMENTED;
   }
   ASSERT_EQ(failed, true);
-}
+}*/
 #endif
 
 TEST(CApiTest, get_allocator_cpu) {
