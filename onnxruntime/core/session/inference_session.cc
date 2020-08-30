@@ -842,6 +842,14 @@ Status InferenceSession::LoadOrtModel(std::function<Status(gsl::span<const uint8
   const auto* fbs_session = fbs::GetInferenceSession(bytes.data());
   ORT_RETURN_IF_NOT(nullptr != fbs_session, "Serialized ORT model is missing InferenceSession");
 
+  // Check version mismatch, for now we will only proceed when runtime version matches the model's ort version
+  const auto* fbs_ort_version = fbs_session->ort_version();
+  if (fbs_ort_version) {
+    ORT_RETURN_IF_NOT(0 == strcmp(fbs_ort_version->c_str(), ORT_VERSION),
+                      "ORT_VERSION missmatch, model ORT version: ", fbs_ort_version->c_str(), ", ORT version: ", ORT_VERSION);
+  } else
+    ORT_THROW("ort_version is missing");
+
   const auto* fbs_model = fbs_session->model();
   ORT_RETURN_IF_NOT(nullptr != fbs_model, "Serialized ORT model is missing Model instance");
 

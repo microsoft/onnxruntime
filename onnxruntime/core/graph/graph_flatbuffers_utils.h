@@ -7,6 +7,7 @@
 namespace onnxruntime {
 namespace experimental {
 namespace utils {
+
 onnxruntime::common::Status SaveValueInfoOrtFormat(
     flatbuffers::FlatBufferBuilder& builder, const ONNX_NAMESPACE::ValueInfoProto& value_info_proto,
     flatbuffers::Offset<fbs::ValueInfo>& fbs_value_info) ORT_MUST_USE_RESULT;
@@ -22,6 +23,11 @@ onnxruntime::common::Status SaveInitializerOrtFormat(
 onnxruntime::common::Status SaveAttributeOrtFormat(
     flatbuffers::FlatBufferBuilder& builder, const ONNX_NAMESPACE::AttributeProto& attr_proto,
     flatbuffers::Offset<fbs::Attribute>& fbs_attr, const onnxruntime::Graph* graph) ORT_MUST_USE_RESULT;
+
+inline void LoadStringFromOrtFormat(std::string& dst, const flatbuffers::String* fbs_string) {
+  if (fbs_string)
+    dst = fbs_string->c_str();
+}
 
 onnxruntime::common::Status LoadInitializerOrtFormat(
     const fbs::Tensor& fbs_tensor, ONNX_NAMESPACE::TensorProto& initializer) ORT_MUST_USE_RESULT;

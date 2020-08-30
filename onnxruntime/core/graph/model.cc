@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/framework/tensorprotoutils.h"
+#include "core/graph/graph_flatbuffers_utils.h"
 #include "core/graph/model.h"
 #include <memory>
 #include "core/common/logging/logging.h"
@@ -563,49 +564,41 @@ common::Status Model::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 Model::Model() : model_path_{} {
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
-
-#define SET_MODEL_STR_DATA(SRC, DEST1, DEST2) \
-  if (SRC) {                                  \
-    model->DEST1(SRC->str());                 \
-  }
-
-#else
-
-#define SET_MODEL_STR_DATA(SRC, DEST1, DEST2) \
-  if (SRC) {                                  \
-    model->DEST2 = SRC->str();                \
-  }
-
-#endif
-
 common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
                                         const logging::Logger& logger,
                                         std::unique_ptr<Model>& model) {
   model.reset(new Model());
 
 #if !defined(ORT_MINIMAL_BUILD)
+  experimental::utils::LoadStringFromOrtFormat(*model->model_proto_.mutable_producer_name(), fbs_model.producer_name());
+  experimental::utils::LoadStringFromOrtFormat(*model->model_proto_.mutable_producer_version(), fbs_model.producer_version());
+  experimental::utils::LoadStringFromOrtFormat(*model->model_proto_.mutable_domain(), fbs_model.domain());
+  experimental::utils::LoadStringFromOrtFormat(*model->model_proto_.mutable_doc_string(), fbs_model.doc_string());
   model->model_proto_.set_model_version(fbs_model.model_version());
   model->model_proto_.set_ir_version(fbs_model.ir_version());
 #else
+  experimental::utils::LoadStringFromOrtFormat(producer_name_, fbs_model.producer_name());
+  experimental::utils::LoadStringFromOrtFormat(producer_version_, fbs_model.producer_version());
+  experimental::utils::LoadStringFromOrtFormat(domain_, fbs_model.domain());
+  experimental::utils::LoadStringFromOrtFormat(doc_string_, fbs_model.doc_string());
   model->model_version_ = fbs_model.model_version();
   model->ir_version_ = fbs_model.ir_version();
 #endif
-
-  // TODO: Can we always serialize a string so the 'if (SRC)' check isn't needed?
-  // Also prefer avoiding the macro and just having a section for full vs. minimal build given we have that
-  // already for model and ir versions.
-  SET_MODEL_STR_DATA(fbs_model.producer_name(), model_proto_.set_producer_name, producer_name_);
-  SET_MODEL_STR_DATA(fbs_model.producer_version(), model_proto_.set_producer_version, producer_version_);
-  SET_MODEL_STR_DATA(fbs_model.domain(), model_proto_.set_domain, domain_);
-  SET_MODEL_STR_DATA(fbs_model.doc_string(), model_proto_.set_doc_string, doc_string_);
 
   std::unordered_map<std::string, int> domain_to_version;
   auto fbs_op_set_ids = fbs_model.opset_import();
   if (fbs_op_set_ids) {
     for (const auto* entry : *fbs_op_set_ids) {
-      std::string domain_ = entry->domain() ? entry->domain()->str() : "";
-      domain_to_version.emplace(domain_, gsl::narrow_cast<int>(entry->version()));
+      const auto* fbs_domain = entry->domain();
+      ORT_RETURN_IF(nullptr == fbs_domain, "Invalid serialized model. Empty domain in opset import.");
+
+      std::string domain = fbs_domain->str();
+
+      if (domain == kOnnxDomainAlias) {
+        domain_to_version[kOnnxDomain] = gsl::narrow_cast<int>(entry->version());
+      } else {
+        domain_to_version[domain] = gsl::narrow_cast<int>(entry->version());
+      }
     }
   }
 

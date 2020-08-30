@@ -79,8 +79,7 @@ endif()
 
 add_library(onnxruntime_graph ${onnxruntime_graph_lib_src})
 add_dependencies(onnxruntime_graph onnx_proto flatbuffers)
-onnxruntime_add_include_to_target(onnxruntime_graph onnxruntime_common onnx_proto protobuf::libprotobuf flatbuffers)
-onnxruntime_add_include_to_target(onnxruntime_graph onnx)
+onnxruntime_add_include_to_target(onnxruntime_graph onnxruntime_common onnx onnx_proto protobuf::libprotobuf flatbuffers)
 
 if (onnxruntime_ENABLE_TRAINING)
   #TODO: the graph library should focus on ONNX IR, it shouldn't depend on math libraries like MKLML/OpenBlas

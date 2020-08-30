@@ -374,7 +374,7 @@ class Node {
                          flatbuffers::Offset<onnxruntime::experimental::fbs::Node>& fbs_node) const;
 
   flatbuffers::Offset<onnxruntime::experimental::fbs::NodeEdge>
-  SaveEdgesOrtFormat(flatbuffers::FlatBufferBuilder& builder) const;
+  SaveEdgesToOrtFormat(flatbuffers::FlatBufferBuilder& builder) const;
 
 #endif
 
