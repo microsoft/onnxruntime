@@ -86,17 +86,17 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path, const IOnnx
              const logging::Logger& logger)
     : model_path_(Path::Parse(model_path)) {
   if (!utils::HasGraph(model_proto)) {
-    throw std::invalid_argument("ModelProto does not have a graph.");
+    ORT_THROW("ModelProto does not have a graph.");
   }
 
   if (model_proto.opset_import_size() == 0) {
-    throw std::invalid_argument(
+    ORT_THROW(
         "Missing opset in the model. All ModelProtos MUST have at least one entry that"
         " specifies which version of the ONNX OperatorSet is being imported.");
   }
 
   if (!model_proto.has_ir_version() || model_proto.ir_version() > ONNX_NAMESPACE::Version::IR_VERSION) {
-    throw std::invalid_argument("Unknown model file format version.");
+    ORT_THROW("Unknown model file format version.");
   }
 
   model_proto_ = std::move(model_proto);
@@ -257,17 +257,23 @@ Status Model::Load(const ModelProto& model_proto,
 
   // need to call private ctor so can't use make_shared
   GSL_SUPPRESS(r .11)
-  try {
+
+  auto status = Status::OK();
+  ORT_TRY {
     model.reset(new Model(model_proto, model_path, local_registries, logger));
-  } catch (const std::exception& ex) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
   }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
+    });
+  }
+  ORT_RETURN_IF_ERROR(status);
 
   Graph::ResolveOptions options;
   options.no_proto_sync_required = true;
   ORT_RETURN_IF_ERROR(model->MainGraph().Resolve(options));
 
-  return Status::OK();
+  return status;
 }
 
 Status Model::Load(ModelProto&& model_proto,
@@ -289,17 +295,22 @@ Status Model::Load(ModelProto&& model_proto,
 
   // need to call private ctor so can't use make_shared
   GSL_SUPPRESS(r .11)
-  try {
+  auto status = Status::OK();
+  ORT_TRY {
     model.reset(new Model(std::move(model_proto), model_path, local_registries, logger));
-  } catch (const std::exception& ex) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
   }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
+    });
+  }
+  ORT_RETURN_IF_ERROR(status);
 
   Graph::ResolveOptions options;
   options.no_proto_sync_required = true;
   ORT_RETURN_IF_ERROR(model->MainGraph().Resolve(options));
 
-  return Status::OK();
+  return status;
 }
 
 template <typename T, typename Loader>
@@ -319,13 +330,16 @@ static Status LoadModelHelper(const T& file_path, Loader loader) {
       }
     }
   }
-  try {
+
+  ORT_TRY {
     status = loader(fd);
-  } catch (const std::exception& ex) {
-    GSL_SUPPRESS(es .84)
-    ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
-    return Status(ONNXRUNTIME, FAIL, ex.what());
   }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = Status(ONNXRUNTIME, FAIL, ex.what());
+    });
+  }
+
   if (!status.IsOK()) {
     GSL_SUPPRESS(es .84)
     ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
@@ -359,12 +373,14 @@ static Status SaveModel(Model& model, const T& file_path) {
   int fd;
   Status status = Env::Default().FileOpenWr(file_path, fd);
   ORT_RETURN_IF_ERROR(status);
-  try {
+
+  ORT_TRY {
     status = Model::Save(model, fd);
-  } catch (const std::exception& ex) {
-    GSL_SUPPRESS(es .84)
-    ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
-    return Status(ONNXRUNTIME, FAIL, ex.what());
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = Status(ONNXRUNTIME, FAIL, ex.what());
+    });
   }
   if (!status.IsOK()) {
     GSL_SUPPRESS(es .84)

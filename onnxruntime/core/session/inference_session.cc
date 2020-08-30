@@ -305,19 +305,24 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
 
 InferenceSession::~InferenceSession() {
   if (session_options_.enable_profiling) {
-    try {
+    ORT_TRY {
       EndProfiling();
-    } catch (std::exception& e) {
+    }
+    ORT_CATCH(const std::exception& e) {
       // TODO: Currently we have no way to transport this error to the API user
       // Maybe this should be refactored, so that profiling must be explicitly
       // started and stopped via C-API functions.
       // And not like now a session option and therefore profiling must be started
       // and stopped implicitly.
-      LOGS(*session_logger_, ERROR) << "Error during EndProfiling(): " << e.what();
-    } catch (...) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        LOGS(*session_logger_, ERROR) << "Error during EndProfiling(): " << e.what();
+      });
+    }
+    ORT_CATCH(...) {
       LOGS(*session_logger_, ERROR) << "Unknown error during EndProfiling()";
     }
   }
+
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   if (session_activity_started_)
     TraceLoggingWriteStop(session_activity, "OrtInferenceSessionActivity");
@@ -420,7 +425,7 @@ common::Status InferenceSession::Load(std::function<common::Status(std::shared_p
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.StartTime();
   }
-  try {
+  ORT_TRY {
     std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
     if (is_model_loaded_) {  // already loaded
       LOGS(*session_logger_, ERROR) << "This session already contains a loaded model.";
@@ -440,10 +445,13 @@ common::Status InferenceSession::Load(std::function<common::Status(std::shared_p
     is_model_loaded_ = true;
 
     telemetry_.event_name_ = event_name;
-
-  } catch (const std::exception& ex) {
-    status = Status(common::ONNXRUNTIME, common::FAIL, "Exception during loading: " + std::string(ex.what()));
-  } catch (...) {
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = Status(common::ONNXRUNTIME, common::FAIL, "Exception during loading: " + std::string(ex.what()));
+    });
+  }
+  ORT_CATCH(...) {
     LOGS(*session_logger_, ERROR) << "Unknown exception in Load()";
     status = Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Load()");
   }
@@ -775,7 +783,7 @@ common::Status InferenceSession::Initialize() {
     tp = session_profiler_.StartTime();
   }
 
-  try {
+  ORT_TRY {
     LOGS(*session_logger_, INFO) << "Initializing session.";
     const Env& env = Env::Default();
     env.GetTelemetryProvider().LogSessionCreationStart();
@@ -911,13 +919,20 @@ common::Status InferenceSession::Initialize() {
         model_->MainGraph().DomainToVersionMap(), model_->MainGraph().Name(), model_->MetaData(),
         telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs);
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
-  } catch (const NotImplementedException& ex) {
-    status = ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Exception during initialization: ", ex.what());
-    LOGS(*session_logger_, ERROR) << status.ErrorMessage();
-  } catch (const std::exception& ex) {
-    status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "Exception during initialization: ", ex.what());
-    LOGS(*session_logger_, ERROR) << status.ErrorMessage();
-  } catch (...) {
+  }
+  ORT_CATCH(const NotImplementedException& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Exception during initialization: ", ex.what());
+      LOGS(*session_logger_, ERROR) << status.ErrorMessage();
+    });
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "Exception during initialization: ", ex.what());
+      LOGS(*session_logger_, ERROR) << status.ErrorMessage();
+    });
+  }
+  ORT_CATCH(...) {
     status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "Encountered unknown exception in Initialize()");
     LOGS(*session_logger_, ERROR) << status.ErrorMessage();
   }
@@ -1127,7 +1142,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
   std::vector<IExecutionProvider*> exec_providers_to_stop;
   exec_providers_to_stop.reserve(execution_providers_.NumProviders());
 
-  try {
+  ORT_TRY {
     if (!is_inited_) {
       LOGS(*session_logger_, ERROR) << "Session was not initialized";
       return Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
@@ -1196,9 +1211,13 @@ Status InferenceSession::Run(const RunOptions& run_options,
     ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
                                                  session_options_.execution_mode, run_options.terminate, run_logger,
                                                  run_options.only_execute_path_to_fetches));
-  } catch (const std::exception& e) {
-    retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
-  } catch (...) {
+  }
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
+    });
+  }
+  ORT_CATCH(...) {
     retval = Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Run()");
   }
 
