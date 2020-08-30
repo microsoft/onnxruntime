@@ -453,7 +453,7 @@ TEST(ReducedOpsBuildTest, test_included_ops) {
   std::vector<float> expected_values_y = {0.75};
   TestInference<PATH_TYPE, float>(*ort_env, model_uri, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
 }
-/*
+
 TEST(ReducedOpsBuildTest, test_excluded_ops) {
   constexpr PATH_TYPE model_uri = TSTR("testdata/onnx_model_of_excluded_ops");
   std::vector<Input> inputs(2);
@@ -474,7 +474,7 @@ TEST(ReducedOpsBuildTest, test_excluded_ops) {
     failed = e.GetOrtErrorCode() == ORT_NOT_IMPLEMENTED;
   }
   ASSERT_EQ(failed, true);
-}*/
+}
 #endif
 
 TEST(CApiTest, get_allocator_cpu) {
