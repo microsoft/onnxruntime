@@ -68,7 +68,7 @@ NcclContext::NcclContext() {
   MPI_Initialized(&is_mpi_initialized);
   if (!is_mpi_initialized) {
     int mpi_threads_provided = 0;
-    MPI_Init_thread(nullptr, nullptr, MPI_THREAD_FUNNELED, &mpi_threads_provided);
+    MPI_Init_thread(nullptr, nullptr, MPI_THREAD_MULTIPLE, &mpi_threads_provided);
   }
 
   // Get the group under MPI_COMM_WORLD
