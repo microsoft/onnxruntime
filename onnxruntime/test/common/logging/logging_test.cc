@@ -149,13 +149,13 @@ TEST_F(LoggingTestsFixture, TestLoggingManagerCtor) {
   // throw if sink is null
   EXPECT_THROW((LoggingManager{std::unique_ptr<ISink>{nullptr}, Severity::kINFO, false,
                                InstanceType::Temporal}),
-               std::logic_error);
+               ::onnxruntime::OnnxRuntimeException);
 
   // can't have two logging managers with InstanceType of Default.
   // this should clash with LoggingTestsFixture::default_logging_manager_
   EXPECT_THROW((LoggingManager{std::unique_ptr<ISink>{new MockSink{}}, Severity::kINFO, false,
                                InstanceType::Default}),
-               std::logic_error);
+               ::onnxruntime::OnnxRuntimeException);
 }
 
 /// <summary>
