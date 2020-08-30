@@ -38,6 +38,7 @@
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+#include "core/flatbuffers/ort_generated.h"
 #ifdef USE_DML  // TODO: This is necessary for the workaround in TransformGraph
 #include "core/providers/dml/DmlExecutionProvider/src/GraphTransformer.h"
 #endif
@@ -53,6 +54,7 @@
 #endif
 
 using namespace ONNX_NAMESPACE;
+using namespace onnxruntime::experimental;
 
 namespace onnxruntime {
 namespace {
@@ -418,6 +420,40 @@ common::Status InferenceSession::RegisterCustomRegistry(std::shared_ptr<CustomRe
   return Status::OK();
 }
 
+common::Status InferenceSession::SaveToOrtFormat(const std::basic_string<ORTCHAR_T>& filepath) const {
+  ORT_RETURN_IF_NOT(FLATBUFFERS_LITTLEENDIAN, "ort format only supports little-edian machines");
+
+  // TODO, figure out a optimal buffer size than default 1024
+  flatbuffers::FlatBufferBuilder builder(1024);
+  auto ort_version = builder.CreateString(ORT_VERSION);
+  flatbuffers::Offset<fbs::Model> model;
+  ORT_RETURN_IF_ERROR(
+      model_->SaveToOrtFormat(builder, model));
+
+  flatbuffers::Offset<fbs::SessionState> session_state;
+  ORT_RETURN_IF_ERROR(
+      session_state_->SaveToOrtFormat(builder, session_state));
+
+  fbs::InferenceSessionBuilder sb(builder);
+  sb.add_ort_version(ort_version);
+  sb.add_model(model);
+  sb.add_session_state(session_state);
+  auto session = sb.Finish();
+  builder.Finish(session);
+
+  // TODO: Do we need to catch any std::exceptions from creating/writing to disk and convert to Status codes?
+  {
+    std::ofstream file(filepath, std::ios::binary);
+
+    uint8_t* buf = builder.GetBufferPointer();
+    int size = builder.GetSize();
+    file.write(reinterpret_cast<const char*>(buf), size);
+    file.close();
+  }
+
+  return Status::OK();
+}
+
 common::Status InferenceSession::Load(std::function<common::Status(std::shared_ptr<Model>&)> loader,
                                       const std::string& event_name) {
   Status status = Status::OK();
@@ -730,6 +766,99 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
 }
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
+
+template <typename T>
+static Status LoadOrtModelBytes(const std::basic_string<T>& model_uri,
+                                std::basic_string<ORTCHAR_T>& model_location,
+                                size_t& num_bytes, std::unique_ptr<uint8_t[]>& bytes) {
+  model_location = ToWideString(model_uri);
+  ORT_RETURN_IF_ERROR(Env::Default().GetFileLength(model_location.c_str(), num_bytes));
+
+  bytes.reset(new uint8_t[num_bytes]);
+
+  std::ifstream bytes_stream(model_uri, std::ifstream::in | std::ifstream::binary);
+  bytes_stream.read(reinterpret_cast<char*>(bytes.get()), num_bytes);
+
+  if (!bytes_stream) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Load model from ", ToMBString(model_uri), " failed. Only ",
+                           bytes_stream.gcount(), "/", num_bytes, " bytes were able to be read.");
+  }
+
+  return Status::OK();
+}
+
+Status InferenceSession::LoadOrtModel(const std::string& model_uri) {
+  return LoadOrtModel(
+      [&](gsl::span<const uint8_t>& bytes) {
+        ORT_RETURN_IF_ERROR(LoadOrtModelBytes(model_uri, model_location_,
+                                              ort_format_model_num_bytes_, ort_format_model_bytes_));
+
+        bytes = gsl::make_span<const uint8_t>(ort_format_model_bytes_.get(), ort_format_model_num_bytes_);
+        return Status::OK();
+      });
+}
+
+#ifdef WIN32
+Status InferenceSession::LoadOrtModel(const std::wstring& model_uri) {
+  return LoadOrtModel(
+      [&](gsl::span<const uint8_t>& bytes) {
+        ORT_RETURN_IF_ERROR(LoadOrtModelBytes(model_uri, model_location_,
+                                              ort_format_model_num_bytes_, ort_format_model_bytes_));
+
+        bytes = gsl::make_span<const uint8_t>(ort_format_model_bytes_.get(), ort_format_model_num_bytes_);
+        return Status::OK();
+      });
+}
+#endif
+
+Status InferenceSession::LoadOrtModel(const void* model_data, int model_data_len) {
+  return LoadOrtModel([&](gsl::span<const uint8_t>& bytes) {
+    bytes = gsl::make_span<const uint8_t>(static_cast<const uint8_t*>(model_data), model_data_len);
+    return Status::OK();
+  });
+}
+
+Status InferenceSession::LoadOrtModel(std::function<Status(gsl::span<const uint8_t>&)> get_serialized_bytes) {
+  static_assert(FLATBUFFERS_LITTLEENDIAN, "ORT format only supports little-endian machines");
+
+  std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+
+  if (is_model_loaded_) {  // already loaded
+    Status status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session already contains a loaded model.");
+    LOGS(*session_logger_, ERROR) << status.ErrorMessage();
+    return status;
+  }
+
+  if (is_inited_) {
+    Status status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session has already been initialized.");
+    LOGS(*session_logger_, ERROR) << status.ErrorMessage();
+    return status;
+  }
+
+  gsl::span<const uint8_t> bytes;
+  ORT_RETURN_IF_ERROR(get_serialized_bytes(bytes));
+
+  const auto* fbs_session = fbs::GetInferenceSession(bytes.data());
+  ORT_RETURN_IF_NOT(nullptr != fbs_session, "Serialized ORT model is missing InferenceSession");
+
+  const auto* fbs_model = fbs_session->model();
+  ORT_RETURN_IF_NOT(nullptr != fbs_model, "Serialized ORT model is missing Model instance");
+
+  // need to go from unique_ptr to shared_ptr when moving into model_
+  std::unique_ptr<Model> tmp_model;
+  ORT_RETURN_IF_ERROR(Model::LoadFromOrtFormat(*fbs_model, *session_logger_, tmp_model));
+  ORT_RETURN_IF_ERROR(SaveModelMetadata(*tmp_model));
+  model_ = std::move(tmp_model);
+
+  // Initialize takes the session_mutex_ as well so we need to have released it prior to calling this
+  const auto* fbs_sess_state = fbs_session->session_state();
+  ORT_RETURN_IF_NOT(nullptr != fbs_sess_state, "Serialized ORT model is missing SessionState");
+
+  is_model_loaded_ = true;
+
+  return Status::OK();
+}
 
 bool InferenceSession::IsInitialized() const {
   std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);

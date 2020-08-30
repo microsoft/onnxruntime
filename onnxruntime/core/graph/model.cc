@@ -28,6 +28,7 @@
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime;
 using namespace onnxruntime::common;
+using namespace onnxruntime::experimental;
 
 namespace onnxruntime {
 
@@ -520,6 +521,100 @@ Status Model::Save(Model& model, int p_fd) {
   return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf serialization failed.");
 }
 
+common::Status Model::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
+                                      flatbuffers::Offset<fbs::Model>& fbs_model) const {
+  auto producer_name = builder.CreateString(model_proto_.producer_name());
+  auto producer_version = builder.CreateString(model_proto_.producer_version());
+  auto domain = builder.CreateString(model_proto_.domain());
+  auto doc_string = builder.CreateString(model_proto_.doc_string());
+
+  std::vector<flatbuffers::Offset<fbs::OperatorSetId>> op_set_ids_vec;
+  op_set_ids_vec.reserve(model_proto_.opset_import().size());
+  for (const auto& entry : model_proto_.opset_import()) {
+    auto op_set_domain = builder.CreateSharedString(entry.domain());
+    fbs::OperatorSetIdBuilder ob(builder);
+    ob.add_domain(op_set_domain);
+    ob.add_version(entry.version());
+    op_set_ids_vec.push_back(ob.Finish());
+  }
+  auto op_set_ids = builder.CreateVector(op_set_ids_vec);
+
+  flatbuffers::Offset<fbs::Graph> fbs_graph;
+  ORT_RETURN_IF_ERROR(graph_->SaveToOrtFormat(builder, fbs_graph));
+
+  fbs::ModelBuilder mb(builder);
+  mb.add_ir_version(model_proto_.ir_version());
+  mb.add_opset_import(op_set_ids);
+  mb.add_producer_name(producer_name);
+  mb.add_producer_version(producer_version);
+  mb.add_domain(domain);
+  mb.add_model_version(model_proto_.model_version());
+  mb.add_doc_string(doc_string);
+  mb.add_graph(fbs_graph);
+
+  // add graph
+  fbs_model = mb.Finish();
+
+  return Status::OK();
+}
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
+
+Model::Model() : model_path_{} {
+}
+
+#if !defined(ORT_MINIMAL_BUILD)
+
+#define SET_MODEL_STR_DATA(SRC, DEST1, DEST2) \
+  if (SRC) {                                  \
+    model->DEST1(SRC->str());                 \
+  }
+
+#else
+
+#define SET_MODEL_STR_DATA(SRC, DEST1, DEST2) \
+  if (SRC) {                                  \
+    model->DEST2 = SRC->str();                \
+  }
+
+#endif
+
+common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
+                                        const logging::Logger& logger,
+                                        std::unique_ptr<Model>& model) {
+  model.reset(new Model());
+
+#if !defined(ORT_MINIMAL_BUILD)
+  model->model_proto_.set_model_version(fbs_model.model_version());
+  model->model_proto_.set_ir_version(fbs_model.ir_version());
+#else
+  model->model_version_ = fbs_model.model_version();
+  model->ir_version_ = fbs_model.ir_version();
+#endif
+
+  // TODO: Can we always serialize a string so the 'if (SRC)' check isn't needed?
+  // Also prefer avoiding the macro and just having a section for full vs. minimal build given we have that
+  // already for model and ir versions.
+  SET_MODEL_STR_DATA(fbs_model.producer_name(), model_proto_.set_producer_name, producer_name_);
+  SET_MODEL_STR_DATA(fbs_model.producer_version(), model_proto_.set_producer_version, producer_version_);
+  SET_MODEL_STR_DATA(fbs_model.domain(), model_proto_.set_domain, domain_);
+  SET_MODEL_STR_DATA(fbs_model.doc_string(), model_proto_.set_doc_string, doc_string_);
+
+  std::unordered_map<std::string, int> domain_to_version;
+  auto fbs_op_set_ids = fbs_model.opset_import();
+  if (fbs_op_set_ids) {
+    for (const auto* entry : *fbs_op_set_ids) {
+      std::string domain_ = entry->domain() ? entry->domain()->str() : "";
+      domain_to_version.emplace(domain_, gsl::narrow_cast<int>(entry->version()));
+    }
+  }
+
+  auto fbs_graph = fbs_model.graph();
+  ORT_RETURN_IF_NOT(nullptr != fbs_graph, "Invalid serialized model. Graph not found.");
+
+  ORT_RETURN_IF_ERROR(Graph::LoadFromOrtFormat(*fbs_graph, *model, domain_to_version, logger, model->graph_));
+
+  return Status::OK();
+}
 
 }  // namespace onnxruntime
