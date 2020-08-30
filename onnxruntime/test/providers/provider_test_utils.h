@@ -404,7 +404,7 @@ class OpTester {
   template <typename T>
   void AddAttribute(std::string name, T value) {
     // Generate a the proper AddAttribute call for later
-    add_attribute_funcs_.emplace_back([ name = std::move(name), value = std::move(value) ](onnxruntime::Node & node) {
+    add_attribute_funcs_.emplace_back([name = std::move(name), value = std::move(value)](onnxruntime::Node& node) {
       node.AddAttribute(name, value);
     });
   }
@@ -517,7 +517,7 @@ class OpTester {
   void AddData(std::vector<Data>& data, const char* name, const std::vector<int64_t>& dims, const T* values,
                int64_t values_count, bool is_initializer = false, bool sort_output = false,
                const std::vector<std::string>* dim_params = nullptr) {
-    try {
+    ORT_TRY {
       TensorShape shape{dims};
       ORT_ENFORCE(shape.Size() == values_count, values_count, " input values doesn't match tensor size of ",
                   shape.Size());
@@ -562,9 +562,12 @@ class OpTester {
       }
       data.push_back(Data(std::move(node_arg), std::move(value), optional<float>(), optional<float>(), sort_output));
       if (is_initializer) initializer_index_.push_back(data.size() - 1);
-    } catch (const std::exception& ex) {
-      std::cerr << "AddData for '" << name << "' threw: " << ex.what();
-      throw;
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        std::cerr << "AddData for '" << name << "' threw: " << ex.what();
+      });
+      ORT_RETHROW;
     }
   }
 
@@ -620,12 +623,16 @@ class OpTester {
 
 template <typename TException>
 void ExpectThrow(OpTester& test, const std::string& error_msg) {
-  try {
+  ORT_TRY {
     test.Run();
     // should throw and not reach this
     EXPECT_TRUE(false) << "Expected Run() to throw";
-  } catch (TException ex) {
-    EXPECT_THAT(ex.what(), testing::HasSubstr(error_msg));
+  }
+  ORT_CATCH(TException ex) {
+    ORT_UNUSED_PARAMETER(error_msg);
+    ORT_HANDLE_EXCEPTION([&]() {
+      EXPECT_THAT(ex.what(), testing::HasSubstr(error_msg));
+    });
   }
 }
 

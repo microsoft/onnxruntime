@@ -288,7 +288,7 @@ def generate_files(list, args):
                           '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.pdb') +
                           '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
-        files_list.append('<file src=' + '"' + os.path.join(args.packages_path, 'DirectML.2.1.1\\LICENSE.txt') +
+        files_list.append('<file src=' + '"' + os.path.join(args.packages_path, 'DirectML.3.0.0\\LICENSE.txt') +
                           '" target="DirectML_LICENSE.txt" />')
 
     if includes_winml:

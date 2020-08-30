@@ -440,7 +440,8 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSession, _In_ const OrtEnv* env, _In_ const O
                     _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out) {
   API_IMPL_BEGIN
   std::unique_ptr<onnxruntime::InferenceSession> sess;
-  try {
+  OrtStatus* status = nullptr;
+  ORT_TRY {
 #if !defined(ORT_MINIMAL_BUILD)
     sess = onnxruntime::make_unique<onnxruntime::InferenceSession>(
         options == nullptr ? onnxruntime::SessionOptions() : options->value,
@@ -454,10 +455,13 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSession, _In_ const OrtEnv* env, _In_ const O
     ORT_UNUSED_PARAMETER(out);
     return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Pending");
 #endif
-
-  } catch (const std::exception& e) {
-    return OrtApis::CreateStatus(ORT_FAIL, e.what());
   }
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = OrtApis::CreateStatus(ORT_FAIL, e.what());
+    });
+  }
+  return status;
   API_IMPL_END
 }
 
@@ -466,13 +470,20 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArray, _In_ const OrtEnv* env, _In
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD)
   std::unique_ptr<onnxruntime::InferenceSession> sess;
-  try {
+  OrtStatus* status = nullptr;
+  ORT_TRY {
     sess = onnxruntime::make_unique<onnxruntime::InferenceSession>(
         options == nullptr ? onnxruntime::SessionOptions() : options->value,
         env->GetEnvironment(), model_data, static_cast<int>(model_data_length));
-  } catch (const std::exception& e) {
-    return OrtApis::CreateStatus(ORT_FAIL, e.what());
   }
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = OrtApis::CreateStatus(ORT_FAIL, e.what());
+    });
+  }
+  if (nullptr != status)
+    return status;
+
   return LoadAndInitializeSession(env, options, sess, out);
 #else
   ORT_UNUSED_PARAMETER(env);
