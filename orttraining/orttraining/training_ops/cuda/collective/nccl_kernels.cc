@@ -66,7 +66,7 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
       total_count += input_tensor->Shape().Size();
     }
     const int64_t alignment = size * 32;
-    const int64_t padded_count = total_count + alignment - (total_count % alignment);
+    const int64_t padded_count = (total_count % alignment) ? (total_count + alignment - (total_count % alignment)) : total_count;
     const int64_t padded_size = padded_count * element_size;
     auto fusion_buffer = GetScratchBuffer<void>(padded_size);
     void* fusion_data = fusion_buffer.get();
@@ -131,7 +131,7 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
     const int64_t partition_lb_ = rank == 0 ? 0 : partition_[rank - 1] + 1;
     ORT_ENFORCE(max_group_size_ > 0);
     const int64_t alignment = 32;
-    const int64_t padded_max_group_size = max_group_size_ + alignment - (max_group_size_ % alignment);
+    const int64_t padded_max_group_size = (max_group_size_ % alignment) ? (max_group_size_ + alignment - (max_group_size_ % alignment)) : max_group_size_;
     const int64_t padded_size = padded_max_group_size * size * element_size;
     auto fusion_buffer = GetScratchBuffer<void>(padded_size);
     void* fusion_data = fusion_buffer.get();
@@ -229,10 +229,7 @@ Status NcclReduce::ComputeInternal(OpKernelContext* context) const {
   cudaStream_t stream = nullptr;  //Default stream
   ncclComm_t comm = nccl_->Comm(group_type_);
   ncclDataType_t dtype = GetNcclDataType(onnx_type);
-  if (rank == root_rank_)
-    NCCL_RETURN_IF_ERROR(ncclReduce(fusion_data, fusion_data, total_count, dtype, ncclSum, root_rank_, comm, stream));
-  else
-    NCCL_RETURN_IF_ERROR(ncclReduce(fusion_data, NULL, total_count, dtype, ncclSum, root_rank_, comm, stream));
+  NCCL_RETURN_IF_ERROR(ncclReduce(fusion_data, fusion_data, total_count, dtype, ncclSum, root_rank_, comm, stream));
 
   //Copy this rank's Reduce result to outputs
   offset = 0;

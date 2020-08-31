@@ -27,7 +27,7 @@ static bool IsNcclAvailable() {
 #endif
 }
 
-static int NumberOfWorkers(std::vector<int64_t>& size_arr, int64_t max_len, std::vector<int64_t>& partitions) {
+static int NumberOfWorkers(const std::vector<int64_t>& size_arr, int64_t max_len, std::vector<int64_t>& partitions) {
   int64_t total = 0;
   int num_workers = 1;
   int64_t idx = 0;
@@ -41,13 +41,14 @@ static int NumberOfWorkers(std::vector<int64_t>& size_arr, int64_t max_len, std:
     }
     idx += 1;
   }
-  //The last index
+  //The last index, enforce that the size_arr is not an empty vector
+  ORT_ENFORCE(idx > 0);
   partitions.push_back(idx - 1);
   return num_workers;
 }
 
 //Binary search to find the most even partition of gradients cross workers
-static int64_t WorkersPartition(std::vector<int64_t>& size_arr, int dp_group, int64_t max_size, int64_t total_size, std::vector<int64_t>& partitions) {
+static int64_t WorkersPartition(const std::vector<int64_t>& size_arr, int dp_group, int64_t max_size, int64_t total_size, std::vector<int64_t>& partitions) {
   int64_t lo = max_size;
   int64_t hi = total_size;
   int64_t mid = lo + (hi - lo) / 2;
@@ -78,7 +79,7 @@ static Status AddNcclReduceForGradients(
     std::vector<ArgDef>& output_readies) {
   const int data_parallel_group_rank = opt_graph_config.data_parallel_group_rank;
   ArgDef old_reduce_output;
-  for (int i = 0; i < (int)(partitions.size()); ++i) {
+  for (int i = 0; i < static_cast<int>(partitions.size()); ++i) {
     int64_t ub = partitions[i];
     int64_t lb = i == 0 ? 0 : partitions[i - 1] + 1;
     bool current_rank = (i == data_parallel_group_rank);
@@ -298,13 +299,13 @@ static Status ModifyParametersForOptimizerPartitioningByBoundary(
   std::vector<int64_t> size_arr;
   int max_size = 0;
   int64_t total_size = 0;
-  for (size_t i = 0; i < gradient_argdefs.size(); i++) {
-    ArgDef gradient_argdef = gradient_argdefs[i];
+  for (const auto& gradient_argdef : gradient_argdefs) {
     ORT_ENFORCE(gradient_argdef.type_proto != nullptr);
     const auto& gradient_shape_proto = gradient_argdef.type_proto->tensor_type().shape();
     const TensorShape& gradient_shape = utils::GetTensorShapeFromTensorShapeProto(gradient_shape_proto);
 
     total_size += int(gradient_shape.Size());
+    ORT_ENFORCE(total_size > 0);
     if (max_size < gradient_shape.Size()) max_size = gradient_shape.Size();
     size_arr.push_back(gradient_shape.Size());
   }
