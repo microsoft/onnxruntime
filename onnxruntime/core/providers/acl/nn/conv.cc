@@ -154,7 +154,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
 
     const arm_compute::DataLayout data_layout = tconv.in->info()->data_layout();
     const int idx_channel = arm_compute::get_data_layout_dimension_index(data_layout, arm_compute::DataLayoutDimension::CHANNEL);
-    bool isDepthwise = (1 == tconv.k->info()->tensor_shape()[idx_channel]);
+    bool isDepthwise = (conv_attrs_.group > 1 && conv_attrs_.group == tconv.in->info()->tensor_shape()[idx_channel]);
     tconv.isDepthwiseCPU = isDepthwise;
 
     std::vector<int64_t> aclStrides(2);
