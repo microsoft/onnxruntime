@@ -1931,6 +1931,7 @@ static constexpr OrtApi ort_api_1_to_5 = {
     &OrtApis::GetStringTensorElement,
     &OrtApis::FillStringTensorElement,
     &OrtApis::AddSessionConfigEntry,
+    &OrtApis::SetSessionProgrammingProjection,
 
     // IoBinding and above are propagated in the same order to C# API
     // Do not move
