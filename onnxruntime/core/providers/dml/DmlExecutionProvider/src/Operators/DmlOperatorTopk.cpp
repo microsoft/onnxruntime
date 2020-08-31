@@ -22,6 +22,8 @@ public:
         std::vector<std::optional<uint32_t>> inputIndices = { 0 }; // Use only the first tensor. The second tensor is CPU-based.
         std::vector<std::optional<uint32_t>> outputIndices = { 0, 1 };
         DmlOperator::Initialize(kernelCreationContext, inputIndices, outputIndices);
+        DmlOperator::Remap64bitDmlDataTypesTo32bit();
+        m_outputTensorDescs[1].ForceUnsignedDataType();
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
@@ -70,19 +72,8 @@ private:
     ComPtr<IDMLCompiledOperator> m_zeroOperator;
 };
 
-// A specific type of operation for registration.
-template <uint32_t OpsetVersion>
-class DmlOperatorTopKTemplate : public DmlOperatorTopK
-{
-public:
-    DmlOperatorTopKTemplate(const MLOperatorKernelCreationContext& kernelInfo)
-    :   DmlOperatorTopK(kernelInfo, OpsetVersion)
-    {
-    }
-};
-
-DML_OP_DEFINE_CREATION_FUNCTION(TopK7, DmlOperatorTopKTemplate<7>);
-DML_OP_DEFINE_CREATION_FUNCTION(TopK10, DmlOperatorTopKTemplate<10>);
-DML_OP_DEFINE_CREATION_FUNCTION(TopK11, DmlOperatorTopKTemplate<11>);
+DML_OP_DEFINE_CREATION_FUNCTION(TopK7,  VersionedKernel<DmlOperatorTopK, 7 >);
+DML_OP_DEFINE_CREATION_FUNCTION(TopK10, VersionedKernel<DmlOperatorTopK, 10>);
+DML_OP_DEFINE_CREATION_FUNCTION(TopK11, VersionedKernel<DmlOperatorTopK, 11>);
 
 } // namespace Dml

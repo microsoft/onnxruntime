@@ -7,14 +7,17 @@
 GTEST_API_ int main(int argc, char** argv) {
   int status = 0;
 
-  try {
+  ORT_TRY {
     const bool create_default_logger = false;
     onnxruntime::test::TestEnvironment environment{argc, argv, create_default_logger};
 
     status = RUN_ALL_TESTS();
-  } catch (const std::exception& ex) {
-    std::cerr << ex.what();
-    status = -1;
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      std::cerr << ex.what();
+      status = -1;
+    });
   }
 
   return status;

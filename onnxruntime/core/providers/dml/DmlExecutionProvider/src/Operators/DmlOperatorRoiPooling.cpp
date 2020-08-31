@@ -26,7 +26,7 @@ public:
         poolingDesc.ROITensor = &inputDescs[1];
         poolingDesc.OutputTensor = &outputDescs[0];
         poolingDesc.SpatialScale = m_spatialScale;
-        poolingDesc.PooledSize = { m_pooledSizeH, m_pooledSizeW };
+        poolingDesc.PooledSize = { m_outputSizeH, m_outputSizeW };
 
         DML_OPERATOR_DESC opDesc = { DML_OPERATOR_ROI_POOLING, &poolingDesc };
 
