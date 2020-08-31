@@ -394,6 +394,15 @@ ORT_API_STATUS_IMPL(OrtApis::ExecutableKernel_IsOutputOnCpu,
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::ExecutableKernel_IsInputOnCpu,
+                    _Inout_ OrtExecutableKernel *kernel_, int index, _Out_ int* is_input_on_cpu) {
+  API_IMPL_BEGIN
+    SingleKernelExecutionFrame* kernel = reinterpret_cast<SingleKernelExecutionFrame*>(kernel_);
+    *is_input_on_cpu = kernel->IsInputOnCpu(index);
+    return ToOrtStatus(Status::OK());
+  API_IMPL_END
+}
+
 ORT_API(void, OrtApis::ReleaseKernelSession, _Frees_ptr_opt_ OrtKernelSession* value) {
   delete reinterpret_cast<KernelSessionImpl*>(value);
 }

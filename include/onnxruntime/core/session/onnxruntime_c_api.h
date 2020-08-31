@@ -1095,8 +1095,10 @@ struct OrtApi {
   // Execute the kernel
   ORT_API2_STATUS(ExecutableKernel_Compute, _Inout_ OrtExecutableKernel* kernel);
 
-  // Check if an output will be on CPU
+  // Check if an output should be on CPU
   ORT_API2_STATUS(ExecutableKernel_IsOutputOnCpu, _Inout_ OrtExecutableKernel* kernel, int index, _Out_ int* is_output_on_cpu);
+  // Check if an input should be on CPU
+  ORT_API2_STATUS(ExecutableKernel_IsInputOnCpu, _Inout_ OrtExecutableKernel* kernel, int index, _Out_ int* is_input_on_cpu);
 
   ORT_CLASS_RELEASE(KernelSession);
   ORT_CLASS_RELEASE(ExecutableKernel);
