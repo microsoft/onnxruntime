@@ -43,13 +43,14 @@ __global__ void _GatherElementsKernel(
 
   CUDA_LONG indices_index = threads_per_block * thread_worksize * blockIdx.x + threadIdx.x;
 
-  int dim = 0;
-  int remain = indices_index;
-  int64_t data_idx = 0;
-
   #pragma unroll
   for (int work = 0; work < thread_worksize; ++work) {
     if (indices_index < indices_size) {
+
+      int dim = 0;
+      int remain = indices_index;
+      int64_t data_idx = 0;
+
       int i = 0;
       for (; i < axis && remain > 0; ++i) {
         indices_strides[i].divmod(remain, dim, remain);
