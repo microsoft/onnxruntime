@@ -18,4 +18,8 @@
 
 // Key for disable PrePacking,
 // If the config value is set to "1" then the prepacking is disabled, otherwise prepacking is enabled (default value)
-#define ORT_SESSION_OPTIONS_CONFIG_DISABLEPREPACKING "session_state.disable_prepacking"
+#define ORT_SESSION_OPTIONS_CONFIG_DISABLEPREPACKING "session.disable_prepacking"
+
+// A value of "1" means allocators registered in the env will be used. "0" means the allocators created in the session
+// will be used. Use this to override the usage of env allocators on a per session level.
+#define ORT_SESSION_OPTIONS_CONFIG_USE_ENV_ALLOCATORS "session.use_env_allocators"

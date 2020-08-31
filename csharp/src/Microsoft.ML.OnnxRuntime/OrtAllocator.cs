@@ -37,10 +37,9 @@ namespace Microsoft.ML.OnnxRuntime
     /// to pre-allocated memory. In that case, the instance of OrtMemoryInfo contains the information about the allocator
     /// used to allocate the underlying memory.
     /// </summary>
-    public class OrtMemoryInfo : IDisposable
+    public class OrtMemoryInfo : SafeHandle
     {
         private static readonly Lazy<OrtMemoryInfo> _defaultCpuAllocInfo = new Lazy<OrtMemoryInfo>(CreateCpuMemoryInfo);
-        private IntPtr _pointer;
         private readonly bool _owned; // false if we are exposing OrtMemoryInfo from an allocator which owns it
 
         private static OrtMemoryInfo CreateCpuMemoryInfo()
@@ -66,9 +65,11 @@ namespace Microsoft.ML.OnnxRuntime
         {
             get
             {
-                return _pointer;
+                return handle;
             }
         }
+
+        public override bool IsInvalid { get { return handle == IntPtr.Zero; } }
 
         /// <summary>
         /// This allocator takes an native pointer to already existing
@@ -78,8 +79,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="allocInfo"></param>
         internal OrtMemoryInfo(IntPtr allocInfo, bool owned)
+            : base(allocInfo, true)
         {
-            _pointer = allocInfo;
             _owned = owned;
         }
 
@@ -100,6 +101,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="deviceId">Device id</param>
         /// <param name="memoryType">Memory type</param>
         public OrtMemoryInfo(byte[] utf8AllocatorName, OrtAllocatorType allocatorType, int deviceId, OrtMemType memoryType)
+            : base(IntPtr.Zero, true)
         {
             using (var pinnedName = new PinnedGCHandle(GCHandle.Alloc(utf8AllocatorName, GCHandleType.Pinned)))
             {
@@ -107,7 +109,7 @@ namespace Microsoft.ML.OnnxRuntime
                                                                                 allocatorType,
                                                                                 deviceId,
                                                                                 memoryType,
-                                                                                out _pointer));
+                                                                                out handle));
             }
             _owned = true;
         }
@@ -132,7 +134,7 @@ namespace Microsoft.ML.OnnxRuntime
             get
             {
                 IntPtr utf8Name = IntPtr.Zero;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtMemoryInfoGetName(_pointer, out utf8Name));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtMemoryInfoGetName(handle, out utf8Name));
                 return NativeOnnxValueHelper.StringFromNativeUtf8(utf8Name);
             }
         }
@@ -145,7 +147,7 @@ namespace Microsoft.ML.OnnxRuntime
             get
             {
                 int id = 0;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtMemoryInfoGetId(_pointer, out id));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtMemoryInfoGetId(handle, out id));
                 return id;
             }
         }
@@ -159,7 +161,7 @@ namespace Microsoft.ML.OnnxRuntime
         public OrtMemType GetMemoryType()
         {
             OrtMemType memoryType = OrtMemType.Default;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtMemoryInfoGetMemType(_pointer, out memoryType));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtMemoryInfoGetMemType(handle, out memoryType));
             return memoryType;
         }
 
@@ -170,7 +172,7 @@ namespace Microsoft.ML.OnnxRuntime
         public OrtAllocatorType GetAllocatorType()
         {
             OrtAllocatorType allocatorType = OrtAllocatorType.ArenaAllocator;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtMemoryInfoGetType(_pointer, out allocatorType));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtMemoryInfoGetType(handle, out allocatorType));
             return allocatorType;
         }
 
@@ -191,7 +193,7 @@ namespace Microsoft.ML.OnnxRuntime
                 return true;
             }
             int result = -1;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCompareMemoryInfo(_pointer, other._pointer, out result));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCompareMemoryInfo(handle, other.Pointer, out result));
             return (result == 0);
         }
 
@@ -200,25 +202,19 @@ namespace Microsoft.ML.OnnxRuntime
             return Pointer.ToInt32();
         }
 
-        #region IDisposable Support
-        protected virtual void Dispose(bool disposing)
+        #region SafeHandle
+        protected override bool ReleaseHandle()
         {
-            if (disposing)
+            // If this instance exposes OrtMemoryInfo that belongs
+            // to the allocator then the allocator owns it
+            if (_owned)
             {
-                if (_owned)
-                {
-                    NativeMethods.OrtReleaseMemoryInfo(_pointer);
-                }
-                _pointer = IntPtr.Zero;
+                NativeMethods.OrtReleaseMemoryInfo(handle);
             }
+            handle = IntPtr.Zero;
+            return true;
         }
 
-        public void Dispose()
-        {
-            Dispose(true);
-            GC.SuppressFinalize(this);
-        }
-        // We intentionally do not provider an finalizer for the class
         #endregion
     }
 
@@ -230,8 +226,11 @@ namespace Microsoft.ML.OnnxRuntime
     /// lifespan of the allocation. Or, if you prefer, all OrtMemoryAllocation instances must be
     /// disposed of before the corresponding allocator instances are disposed of.
     /// </summary>
-    public class OrtMemoryAllocation : IDisposable
+    public class OrtMemoryAllocation : SafeHandle
     {
+        // This allocator is used to free this allocation
+        // This also prevents OrtAllocator GC/finalization in case
+        // the user forgets to Dispose() of this allocation
         private OrtAllocator _allocator;
 
         /// <summary>
@@ -245,16 +244,18 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="pointer"></param>
         /// <param name="size"></param>
         internal OrtMemoryAllocation(OrtAllocator allocator, IntPtr pointer, uint size)
+            : base(pointer, true)
         {
             _allocator = allocator;
-            Pointer = pointer;
             Size = size;
         }
 
         /// <summary>
         /// Internal accessor to call native methods
         /// </summary>
-        internal IntPtr Pointer { get; private set; }
+        internal IntPtr Pointer { get { return handle; } }
+
+        public override bool IsInvalid { get { return handle == IntPtr.Zero; } }
 
         /// <summary>
         /// Returns the size of the allocation
@@ -268,24 +269,14 @@ namespace Microsoft.ML.OnnxRuntime
                 return _allocator.Info;
             }
         }
-        #region IDisposable Support
-        protected virtual void Dispose(bool disposing)
+        #region SafeHandle
+        protected override bool ReleaseHandle()
         {
-            if (disposing)
-            {
-                if (_allocator != null)
-                {
-                    _allocator.FreeMemory(Pointer);
-                }
-                Pointer = IntPtr.Zero;
-            }
+            _allocator.FreeMemory(handle);
+            handle = IntPtr.Zero;
+            return true;
         }
 
-        public void Dispose()
-        {
-            Dispose(true);
-            GC.SuppressFinalize(this);
-        }
         #endregion
     }
 
@@ -294,10 +285,9 @@ namespace Microsoft.ML.OnnxRuntime
     /// This allocator enables you to allocate memory from the internal
     /// memory pools including device allocations. Useful for binding.
     /// </summary>
-    public class OrtAllocator : IDisposable
+    public class OrtAllocator : SafeHandle
     {
         private static readonly Lazy<OrtAllocator> _defaultInstance = new Lazy<OrtAllocator>(GetDefaultCpuAllocator);
-        private IntPtr _pointer;
         private readonly bool _owned;
 
         private static OrtAllocator GetDefaultCpuAllocator()
@@ -324,9 +314,11 @@ namespace Microsoft.ML.OnnxRuntime
         {
             get
             {
-                return _pointer;
+                return handle;
             }
         }
+
+        public override bool IsInvalid { get { return handle == IntPtr.Zero; } }
 
         /// <summary>
         /// Internal constructor wraps existing native allocators
@@ -334,9 +326,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="allocator"></param>
         /// <param name="owned"></param>
         internal OrtAllocator(IntPtr allocator, bool owned)
+            : base(allocator, true)
         {
-            this._pointer = allocator;
-            this._owned = owned;
+            _owned = owned;
         }
 
         /// <summary>
@@ -348,8 +340,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="session"></param>
         /// <param name="memInfo"></param>
         public OrtAllocator(InferenceSession session, OrtMemoryInfo memInfo)
+            : base(IntPtr.Zero, true)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateAllocator(session.Handle, memInfo.Pointer, out _pointer));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateAllocator(session.Handle, memInfo.Pointer, out handle));
             _owned = true;
         }
 
@@ -361,7 +354,7 @@ namespace Microsoft.ML.OnnxRuntime
             get
             {
                 IntPtr memoryInfo = IntPtr.Zero;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtAllocatorGetInfo(_pointer, out memoryInfo));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtAllocatorGetInfo(handle, out memoryInfo));
                 // This serves as an exposure of memory_info owned by the allocator
                 return new OrtMemoryInfo(memoryInfo, false);
             }
@@ -375,7 +368,7 @@ namespace Microsoft.ML.OnnxRuntime
         public OrtMemoryAllocation Allocate(uint size)
         {
             IntPtr allocation = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtAllocatorAlloc(_pointer, (UIntPtr)size, out allocation));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtAllocatorAlloc(handle, (UIntPtr)size, out allocation));
             return new OrtMemoryAllocation(this, allocation, size);
         }
 
@@ -385,29 +378,21 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="allocation"></param>
         internal void FreeMemory(IntPtr allocation)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtAllocatorFree(_pointer, allocation));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtAllocatorFree(handle, allocation));
         }
 
-        #region IDisposable Support
-        protected virtual void Dispose(bool disposing)
+        #region SafeHandle
+        protected override bool ReleaseHandle()
         {
-            if (disposing)
+            // Singleton default allocator is not owned
+            if (_owned)
             {
-                if (_owned)
-                {
-                    NativeMethods.OrtReleaseAllocator(_pointer);
-                }
-                _pointer = IntPtr.Zero;
+                NativeMethods.OrtReleaseAllocator(handle);
             }
+            handle = IntPtr.Zero;
+            return true;
         }
 
-        public void Dispose()
-        {
-            Dispose(true);
-            GC.SuppressFinalize(this);
-        }
-
-        // We intentionally do not provider an finalizer for the class
         #endregion
     }
 }

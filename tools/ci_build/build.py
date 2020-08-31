@@ -4,7 +4,6 @@
 
 import argparse
 import glob
-import logging
 import multiprocessing
 import os
 import re
@@ -12,11 +11,7 @@ import shutil
 import subprocess
 import sys
 import hashlib
-
-logging.basicConfig(
-    format="%(asctime)s %(name)s [%(levelname)s] - %(message)s",
-    level=logging.DEBUG)
-log = logging.getLogger("Build")
+from logger import log
 
 
 class BaseError(Exception):
@@ -154,7 +149,13 @@ def parse_arguments():
     # C-Sharp bindings
     parser.add_argument(
         "--build_csharp", action='store_true',
-        help="Build C#.Net DLL and NuGet package")
+        help="Build C#.Net DLL and NuGet package. This should be only used in CI pipelines. "
+        "For building C# bindings and packaging them into nuget package use --build_nuget arg.")
+
+    parser.add_argument(
+        "--build_nuget", action='store_true',
+        help="Build C#.Net DLL and NuGet package on the local machine. "
+        "Currently only Windows and Linux platforms are supported.")
 
     # Java bindings
     parser.add_argument(
@@ -354,6 +355,12 @@ def parse_arguments():
     parser.add_argument(
         "--build_micro_benchmarks", action='store_true',
         help="Build ONNXRuntime micro-benchmarks.")
+    parser.add_argument(
+        "--include_ops_by_model", type=str,
+        help="include ops from model(s) under designated path.")
+    parser.add_argument(
+        "--include_ops_by_file", type=str,
+        help="include ops from csv file.")
     return parser.parse_args()
 
 
@@ -372,6 +379,10 @@ def is_windows():
 
 def is_macOS():
     return sys.platform.startswith("darwin")
+
+
+def is_linux():
+    return sys.platform.startswith("linux")
 
 
 def get_linux_distro():
@@ -1092,13 +1103,17 @@ def run_training_python_frontend_tests(cwd):
     run_subprocess([
         sys.executable, 'orttraining_test_transformers.py',
         'BertModelTest.test_for_pretraining_full_precision_list_and_dict_input'], cwd=cwd)
-    run_subprocess([sys.executable, 'orttraining_test_orttrainer_frontend.py'], cwd=cwd)
-    run_subprocess([sys.executable, 'orttraining_test_orttrainer_bert_toy_onnx.py'], cwd=cwd)
 
 
 def run_training_python_frontend_e2e_tests(cwd):
     # frontend tests are to be added here:
     log.info("Running python frontend e2e tests.")
+
+    import torch
+    ngpus = torch.cuda.device_count()
+    if ngpus > 1:
+        log.debug('RUN: mpirun -n {} {} orttraining_run_glue.py'.format(ngpus, sys.executable))
+        run_subprocess(['mpirun', '-n', str(ngpus), sys.executable, 'orttraining_run_glue.py'], cwd=cwd)
 
     # with orttraining_run_glue.py.
     # 1. we like to force to use single GPU (with CUDA_VISIBLE_DEVICES)
@@ -1383,6 +1398,93 @@ def build_python_wheel(
         run_subprocess(args, cwd=cwd)
 
 
+def derive_linux_build_property():
+    if is_windows():
+        return "/p:IsLinuxBuild=\"false\""
+    else:
+        return "/p:IsLinuxBuild=\"true\""
+
+
+def build_nuget_package(configs, use_cuda, use_openvino, use_tensorrt, use_dnnl, use_mklml):
+    if not (is_windows() or is_linux()):
+        raise BuildError(
+            'Currently csharp builds and nuget package creation is only supportted '
+            'on Windows and Linux platforms.')
+
+    build_dir = os.path.join(os.getcwd(), 'csharp')
+    is_linux_build = derive_linux_build_property()
+
+    # derive package name and execution provider based on the build args
+    execution_provider = "/p:ExecutionProvider=\"None\""
+    package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime\""
+    if use_openvino:
+        execution_provider = "/p:ExecutionProvider=\"openvino\""
+        package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.OpenVino\""
+    elif use_tensorrt:
+        execution_provider = "/p:ExecutionProvider=\"tensorrt\""
+        package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.TensorRT\""
+    elif use_dnnl:
+        execution_provider = "/p:ExecutionProvider=\"dnnl\""
+        package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.DNNL\""
+    elif use_cuda:
+        package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.Gpu\""
+    elif use_mklml:
+        package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.MKLML\""
+    else:
+        pass
+
+    # dotnet restore
+    cmd_args = ["dotnet", "restore", "OnnxRuntime.CSharp.sln", "--configfile", "Nuget.CSharp.config"]
+    run_subprocess(cmd_args, cwd=build_dir)
+
+    # build csharp bindings and create nuget package for each config
+    for config in configs:
+        if is_linux():
+            native_build_dir = os.path.join(os.getcwd(), 'build//Linux//', config)
+            cmd_args = ["make", "install", "DESTDIR=.//nuget-staging"]
+            run_subprocess(cmd_args, cwd=native_build_dir)
+
+        configuration = "/p:Configuration=\"" + config + "\""
+
+        cmd_args = ["dotnet", "msbuild", "OnnxRuntime.CSharp.sln", configuration, package_name, is_linux_build]
+        run_subprocess(cmd_args, cwd=build_dir)
+
+        cmd_args = [
+            "dotnet", "msbuild", "OnnxRuntime.CSharp.proj", "/t:CreatePackage",
+            package_name, configuration, execution_provider, is_linux_build]
+        run_subprocess(cmd_args, cwd=build_dir)
+
+
+def run_csharp_tests(use_cuda, use_openvino, use_tensorrt, use_dnnl):
+    # Currently only running tests on windows.
+    if not is_windows():
+        return
+    build_dir = os.path.join(os.getcwd(), 'csharp')
+    is_linux_build = derive_linux_build_property()
+
+    # define macros based on build args
+    macros = ""
+    if use_openvino:
+        macros += "USE_OPENVINO;"
+    if use_tensorrt:
+        macros += "USE_TENSORRT;"
+    if use_dnnl:
+        macros += "USE_DNNL;"
+    if use_cuda:
+        macros += "USE_CUDA;"
+
+    define_constants = ""
+    if macros != "":
+        define_constants = "/p:DefineConstants=\"" + macros + "\""
+
+    # Skip pretrained models test. Only run unit tests as part of the build
+    # "/property:DefineConstants=\"USE_CUDA;USE_OPENVINO\"",
+    cmd_args = ["dotnet", "test", "test\\Microsoft.ML.OnnxRuntime.Tests\\Microsoft.ML.OnnxRuntime.Tests.csproj",
+                "--filter", "FullyQualifiedName!=Microsoft.ML.OnnxRuntime.Tests.InferenceTest.TestPreTrainedModels",
+                is_linux_build, define_constants, "--verbosity", "detailed"]
+    run_subprocess(cmd_args, cwd=build_dir)
+
+
 def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
     if (args.arm or args.arm64) and (not is_windows() and not args.ios):
         raise BuildError(
@@ -1508,14 +1610,30 @@ def main():
     if args.skip_tests:
         args.test = False
 
+    if (args.include_ops_by_model and len(args.include_ops_by_model) > 0) or\
+       (args.include_ops_by_file and len(args.include_ops_by_file) > 0):
+
+        from exclude_unused_ops import exclude_unused_ops, get_provider_path
+
+        include_ops_by_model = args.include_ops_by_model if args.include_ops_by_model else ''
+        include_ops_by_file = args.include_ops_by_file if args.include_ops_by_file else ''
+
+        exclude_unused_ops(include_ops_by_model, include_ops_by_file, get_provider_path(use_cuda=args.use_cuda))
+
+        args.test = False  # disable tests since we don't know which ops are enabled
+
     if args.use_tensorrt:
         args.use_cuda = True
 
     if args.build_wheel or args.gen_doc:
         args.enable_pybind = True
 
-    if args.build_csharp or args.build_java or args.build_nodejs:
+    if args.build_csharp or args.build_nuget or args.build_java or args.build_nodejs:
         args.build_shared_lib = True
+
+    if args.build_nuget and cross_compiling:
+        raise BuildError(
+                'Currently nuget package creation is not supported while cross-compiling')
 
     # Disabling unit tests for VAD-F as FPGA only supports
     # models with NCHW layout
@@ -1678,6 +1796,22 @@ def main():
                 featurizers_build=args.use_featurizers,
                 use_ninja=(args.cmake_generator == 'Ninja')
             )
+        if args.build_nuget:
+            build_nuget_package(
+                configs,
+                args.use_cuda,
+                args.use_openvino,
+                args.use_tensorrt,
+                args.use_dnnl,
+                args.use_mklml
+            )
+
+    if args.test and args.build_nuget:
+        run_csharp_tests(
+            args.use_cuda,
+            args.use_openvino,
+            args.use_tensorrt,
+            args.use_dnnl)
 
     if args.gen_doc and (args.build or args.test):
         generate_documentation(source_dir, build_dir, configs)

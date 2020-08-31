@@ -12,7 +12,7 @@
 #include "core/providers/cuda/cuda_allocator.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
-#include "orttraining/core/framework/mpi_setup.h"
+#include "orttraining/core/framework/mpi_context.h"
 #include "orttraining/models/runner/constant.h"
 #include "orttraining/models/runner/training_runner.h"
 #include "orttraining/models/runner/training_util.h"
@@ -529,22 +529,20 @@ void setup_training_params(BertParameters& params) {
   params.model_actual_running_graph_path = model_name_base + ORT_TSTR("_bw_running.onnx");
 
 #if defined(USE_NCCL) || defined(USE_HOROVOD)
-  params.mpi_context = setup_mpi();
-
   if (params.pipeline_parallel_size > 1) {
-    auto pipeline_model_name_base = model_name_base + ToPathString(std::to_string(params.mpi_context.world_rank));
+    auto pipeline_model_name_base = model_name_base + ToPathString(std::to_string(MPIContext::GetInstance().GetWorldRank()));
     params.model_with_loss_func_path = pipeline_model_name_base + ORT_TSTR("_with_cost.onnx");
     params.model_with_training_graph_path = pipeline_model_name_base + ORT_TSTR("_bw.onnx");
     params.model_actual_running_graph_path = pipeline_model_name_base + ORT_TSTR("_bw_running.onnx");
   }
-  ORT_ENFORCE(params.horizontal_parallel_size <= params.mpi_context.world_size);
-  ORT_ENFORCE(params.data_parallel_size <= params.mpi_context.world_size);
-  if (params.mpi_context.world_size % params.horizontal_parallel_size != 0) {
+  ORT_ENFORCE(params.horizontal_parallel_size <= MPIContext::GetInstance().GetWorldSize());
+  ORT_ENFORCE(params.data_parallel_size <= MPIContext::GetInstance().GetWorldSize());
+  if (MPIContext::GetInstance().GetWorldSize() % params.horizontal_parallel_size != 0) {
     LOGS_DEFAULT(ERROR) << "Cannot split horizontal parallel group because world_size is not divisible";
     return;
   }
 
-  auto data_group_size = params.mpi_context.world_size / (params.horizontal_parallel_size * params.pipeline_parallel_size);
+  auto data_group_size = MPIContext::GetInstance().GetWorldSize() / (params.horizontal_parallel_size * params.pipeline_parallel_size);
   ORT_ENFORCE(data_group_size > 0, "Insufficient processes lead to zero-way data parallelism, which should be at least one-way.");
   if (data_group_size != params.data_parallel_size) {
     LOGS_DEFAULT(WARNING) << "WARNING: data_parallel_size is not correct, tuned automatically to "
@@ -558,7 +556,7 @@ void setup_training_params(BertParameters& params) {
 #endif
 
 #ifdef USE_CUDA
-  OrtDevice::DeviceId device_id = static_cast<OrtDevice::DeviceId>(params.mpi_context.local_rank);
+  OrtDevice::DeviceId device_id = static_cast<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
   size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
   if (params.cuda_mem_limit_in_gb > 0)
     cuda_mem_limit = static_cast<size_t>(params.cuda_mem_limit_in_gb * 1024 * 1024 * 1024);
@@ -628,7 +626,7 @@ void setup_training_params(BertParameters& params) {
 
     if (params.dump_fetches) {
       std::ostringstream filename;
-      filename << "./fetch_dumps/rank_" << params.mpi_context.world_rank << "_step_" << step << ".txt";
+      filename << "./fetch_dumps/rank_" << MPIContext::GetInstance().GetWorldRank() << "_step_" << step << ".txt";
       ofstream ofs(filename.str());
       for (size_t i = 0; i < fetch_names.size(); ++i) {
         TrainingUtil::PrintTensor(fetch_names[i], fetches[i].Get<Tensor>(), ofs);
@@ -733,7 +731,7 @@ static Status RunTraining(const BertParameters& params, const Environment& env) 
   BertParameters params_for_phase;
   while (GetParametersForPhase(runner->GetRound(), params, params_for_phase)) {
     ORT_RETURN_IF_ERROR(runner->UpdateParams(params_for_phase));
-    auto rank_in_data_parallel_group = params_for_phase.mpi_context.world_rank / params_for_phase.horizontal_parallel_size;
+    auto rank_in_data_parallel_group = MPIContext::GetInstance().GetWorldRank() / params_for_phase.horizontal_parallel_size;
     auto training_data_loader = onnxruntime::make_unique<DataLoader>(params_for_phase.input_name_map,
                                                                      params_for_phase.train_data_dir,
                                                                      max_num_files_preload,
@@ -742,7 +740,7 @@ static Status RunTraining(const BertParameters& params, const Environment& env) 
 
     auto test_data_loader = std::unique_ptr<DataLoader>{};
     // Evaluation is only done in device #0
-    if (params_for_phase.mpi_context.world_rank == 0) {
+    if (MPIContext::GetInstance().GetWorldRank() == 0) {
       test_data_loader = onnxruntime::make_unique<DataLoader>(params_for_phase.input_name_map,
                                                               params_for_phase.test_data_dir,
                                                               max_num_files_preload);
@@ -759,7 +757,7 @@ static Status RunTraining(const BertParameters& params, const Environment& env) 
     ORT_RETURN_IF_ERROR(runner->ResetLossScaler());
   }
 
-  if (params_for_phase.mpi_context.world_rank == 0) {
+  if (MPIContext::GetInstance().GetWorldRank() == 0) {
     // Pass in empty dataloader to disable evaluation in EndTraining
     // to avoid a redundant synchronization caused by Tensorboard's SummaryMerge Op.
     ORT_RETURN_IF_ERROR(runner->EndTraining(nullptr));
@@ -807,9 +805,13 @@ int main(int argc, char* argv[]) {
     RETURN_IF_FAIL(RunTraining(params, *env));
   }
 
-#if defined(USE_NCCL) || defined(USE_HOROVOD)
-  shutdown_mpi();
+#if defined(USE_NCCL)
+#ifdef _WIN32
+  // https://docs.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-best-practices
+  // shutdown_mpi() is not called within MPIContext destructor because of DllMain's restriction
+  // call shutdown_mpi() here instead.
+  MPIContext::shutdown_mpi();
 #endif
-
+#endif
   return 0;
 }

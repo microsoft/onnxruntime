@@ -462,6 +462,9 @@ public:
     }
 };
 
+// Same operator signature as 11. Only difference is new type support
+using DmlOperatorElementwiseClip12 = DmlOperatorElementwiseClip11;
+
 class DmlOperatorElementwisePow : public DmlOperator
 {
 public:
@@ -700,6 +703,8 @@ DML_OP_DEFINE_CREATION_FUNCTION(Erf,              DmlOperatorElementwiseUnary<DM
 // Binary operators:
 DML_OP_DEFINE_CREATION_FUNCTION(Greater,          DmlOperatorElementwiseBinary<DML_ELEMENT_WISE_LOGICAL_GREATER_THAN_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(Less,             DmlOperatorElementwiseBinary<DML_ELEMENT_WISE_LOGICAL_LESS_THAN_OPERATOR_DESC>);
+DML_OP_DEFINE_CREATION_FUNCTION(GreaterOrEqual,   DmlOperatorElementwiseBinary<DML_ELEMENT_WISE_LOGICAL_GREATER_THAN_OR_EQUAL_OPERATOR_DESC>);
+DML_OP_DEFINE_CREATION_FUNCTION(LessOrEqual,      DmlOperatorElementwiseBinary<DML_ELEMENT_WISE_LOGICAL_LESS_THAN_OR_EQUAL_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(Equal,            DmlOperatorElementwiseBinary<DML_ELEMENT_WISE_LOGICAL_EQUALS_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(And,              DmlOperatorElementwiseBinary<DML_ELEMENT_WISE_LOGICAL_AND_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(Or,               DmlOperatorElementwiseBinary<DML_ELEMENT_WISE_LOGICAL_OR_OPERATOR_DESC>);
@@ -718,6 +723,7 @@ DML_OP_DEFINE_CREATION_FUNCTION(Mean,             DmlOperatorElementwiseMean);
 // Operators with extra attributes:
 DML_OP_DEFINE_CREATION_FUNCTION(Clip7,            DmlOperatorElementwiseClip7);
 DML_OP_DEFINE_CREATION_FUNCTION(Clip11,           DmlOperatorElementwiseClip11);
+DML_OP_DEFINE_CREATION_FUNCTION(Clip12,           DmlOperatorElementwiseClip12);
 DML_OP_DEFINE_CREATION_FUNCTION(Pow,              DmlOperatorElementwisePow);
 DML_OP_DEFINE_CREATION_FUNCTION(QuantizeLinear,   DmlOperatorElementwiseQLinear<DML_ELEMENT_WISE_QUANTIZE_LINEAR_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(DequantizeLinear, DmlOperatorElementwiseQLinear<DML_ELEMENT_WISE_DEQUANTIZE_LINEAR_OPERATOR_DESC>);

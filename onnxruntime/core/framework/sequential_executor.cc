@@ -139,13 +139,19 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   }
 
   ExecutionFrame frame{feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state};
+  const std::unordered_set<NodeIndex>* to_be_executed_nodes = nullptr;
 
-  const std::unordered_set<NodeIndex>* to_be_executed_nodes = session_state.GetToBeExecutedNodes(fetch_mlvalue_idxs);
+#if !defined(ORT_MINIMAL_BUILD)
+  to_be_executed_nodes = session_state.GetToBeExecutedNodes(fetch_mlvalue_idxs);
   const bool only_execute_path_to_fetches = only_execute_path_to_fetches_ && (to_be_executed_nodes != nullptr);
 
   if (only_execute_path_to_fetches) {
     VLOGS(logger, 1) << to_be_executed_nodes->size() << " nodes to be executed\n";
   }
+#else
+  ORT_UNUSED_PARAMETER(only_execute_path_to_fetches_);
+  const bool only_execute_path_to_fetches = false;
+#endif
 
   LOGS(logger, INFO) << "Begin execution";
   const SequentialExecutionPlan& seq_exec_plan = *session_state.GetExecutionPlan();
@@ -174,10 +180,10 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   auto& profile_context = profile::Context::GetInstance();
   const auto tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
   profile::NvtxRangeCreator forward_range(
-      "forward-" + tag,
+      "Batch-" + tag + " Forward",
       profile::Color::White);
   profile::NvtxRangeCreator backward_range(
-      "backward-" + tag,
+      "Batch-" + tag + " Backward",
       profile::Color::Black);
 #endif
 
@@ -295,10 +301,13 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 #endif
       Status compute_status;
 
-      try {
+      ORT_TRY {
         compute_status = p_op_kernel->Compute(&op_kernel_context);
-      } catch (const std::exception& ex) {
-        compute_status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());
+      }
+      ORT_CATCH(const std::exception& ex) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          compute_status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());
+        });
       }
 
       if (!compute_status.IsOK()) {
@@ -445,12 +454,12 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     session_state.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", tp);
   }
 
-  for (auto i: frame.GetStaticMemorySizeInfo()) {
+  for (auto i : frame.GetStaticMemorySizeInfo()) {
     LOGS(logger, INFO) << "[Memory] ExecutionFrame statically allocates "
                        << i.second << " bytes for " << i.first << std::endl;
   }
 
-  for (auto i: frame.GetDynamicMemorySizeInfo()) {
+  for (auto i : frame.GetDynamicMemorySizeInfo()) {
     LOGS(logger, INFO) << "[Memory] ExecutionFrame dynamically allocates "
                        << i.second << " bytes for " << i.first << std::endl;
   }

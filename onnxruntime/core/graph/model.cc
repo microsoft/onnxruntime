@@ -20,22 +20,28 @@
 #include "gsl/gsl"
 
 #include "core/platform/env.h"
+
+#if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/schema_registry.h"
+#endif
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime;
 using namespace onnxruntime::common;
 
+namespace onnxruntime {
+
+#if !defined(ORT_MINIMAL_BUILD)
+
 static constexpr int DEFAULT_PROTOBUF_BLOCK_SIZE = 4 * 1024 * 1024;
 
-namespace onnxruntime {
 Model::Model(const std::string& graph_name,
              bool is_onnx_domain_only,
              const ModelMetaData& model_metadata,
              const PathString& model_path,
              const IOnnxRuntimeOpSchemaRegistryList& local_registries,
              const std::unordered_map<std::string, int>& domain_to_version,
-             const std::vector<ONNX_NAMESPACE::FunctionProto>& model_functions,
+             const std::vector<ONNX_NAMESPACE::FunctionProto>&,
              const logging::Logger& logger)
     : model_path_(Path::Parse(model_path)) {
   model_proto_.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
@@ -65,17 +71,10 @@ Model::Model(const std::string& graph_name,
     opset_id_proto->set_version(domain.second);
   }
 
-  std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> model_functions_map;
-  for (auto& func : model_functions) {
-    auto func_ptr = model_proto_.add_functions();
-    func_ptr->CopyFrom(func);
-    model_functions_map[func_ptr->name()] = func_ptr;
-  }
-
   // need to call private ctor so can't use make_shared
   GSL_SUPPRESS(r .11)
   graph_.reset(new Graph(*this, model_proto_.mutable_graph(), *p_domain_to_version, IrVersion(), schema_registry,
-                         logger, model_functions_map));
+                         logger));
 }
 
 Model::Model(const ModelProto& model_proto, const PathString& model_path,
@@ -87,17 +86,17 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path, const IOnnx
              const logging::Logger& logger)
     : model_path_(Path::Parse(model_path)) {
   if (!utils::HasGraph(model_proto)) {
-    throw std::invalid_argument("ModelProto does not have a graph.");
+    ORT_THROW("ModelProto does not have a graph.");
   }
 
   if (model_proto.opset_import_size() == 0) {
-    throw std::invalid_argument(
+    ORT_THROW(
         "Missing opset in the model. All ModelProtos MUST have at least one entry that"
         " specifies which version of the ONNX OperatorSet is being imported.");
   }
 
   if (!model_proto.has_ir_version() || model_proto.ir_version() > ONNX_NAMESPACE::Version::IR_VERSION) {
-    throw std::invalid_argument("Unknown model file format version.");
+    ORT_THROW("Unknown model file format version.");
   }
 
   model_proto_ = std::move(model_proto);
@@ -148,15 +147,9 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path, const IOnnx
     }
   }
 
-  std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> model_functions_map;
-  for (auto& func : model_proto_.functions()) {
-    model_functions_map[func.name()] = &func;
-  }
-
   // create instance. need to call private ctor so can't use make_unique
   GSL_SUPPRESS(r .11)
-  graph_.reset(new Graph(*this, model_proto_.mutable_graph(), domain_to_version, IrVersion(), schema_registry, logger,
-                         model_functions_map));
+  graph_.reset(new Graph(*this, model_proto_.mutable_graph(), domain_to_version, IrVersion(), schema_registry, logger));
 }
 
 Version Model::IrVersion() const {
@@ -209,6 +202,8 @@ void Model::SetDocString(const std::string& doc_string) {
   model_proto_.set_doc_string(doc_string);
 }
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 const ModelMetaData& Model::MetaData() const noexcept {
   return model_metadata_;
 }
@@ -221,12 +216,7 @@ const Graph& Model::MainGraph() const noexcept {
   return *graph_;
 }
 
-void Model::AddFunction(const ONNX_NAMESPACE::FunctionProto& func_proto) {
-  auto func_ptr = model_proto_.add_functions();
-  func_ptr->CopyFrom(func_proto);
-  graph_->AddFunction(func_ptr);
-}
-
+#if !defined(ORT_MINIMAL_BUILD)
 ModelProto Model::ToProto() {
   *(model_proto_.mutable_graph()) = graph_->ToGraphProto();
   return model_proto_;
@@ -267,17 +257,23 @@ Status Model::Load(const ModelProto& model_proto,
 
   // need to call private ctor so can't use make_shared
   GSL_SUPPRESS(r .11)
-  try {
+
+  auto status = Status::OK();
+  ORT_TRY {
     model.reset(new Model(model_proto, model_path, local_registries, logger));
-  } catch (const std::exception& ex) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
   }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
+    });
+  }
+  ORT_RETURN_IF_ERROR(status);
 
   Graph::ResolveOptions options;
   options.no_proto_sync_required = true;
   ORT_RETURN_IF_ERROR(model->MainGraph().Resolve(options));
 
-  return Status::OK();
+  return status;
 }
 
 Status Model::Load(ModelProto&& model_proto,
@@ -299,17 +295,22 @@ Status Model::Load(ModelProto&& model_proto,
 
   // need to call private ctor so can't use make_shared
   GSL_SUPPRESS(r .11)
-  try {
+  auto status = Status::OK();
+  ORT_TRY {
     model.reset(new Model(std::move(model_proto), model_path, local_registries, logger));
-  } catch (const std::exception& ex) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
   }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
+    });
+  }
+  ORT_RETURN_IF_ERROR(status);
 
   Graph::ResolveOptions options;
   options.no_proto_sync_required = true;
   ORT_RETURN_IF_ERROR(model->MainGraph().Resolve(options));
 
-  return Status::OK();
+  return status;
 }
 
 template <typename T, typename Loader>
@@ -329,13 +330,16 @@ static Status LoadModelHelper(const T& file_path, Loader loader) {
       }
     }
   }
-  try {
+
+  ORT_TRY {
     status = loader(fd);
-  } catch (const std::exception& ex) {
-    GSL_SUPPRESS(es .84)
-    ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
-    return Status(ONNXRUNTIME, FAIL, ex.what());
   }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = Status(ONNXRUNTIME, FAIL, ex.what());
+    });
+  }
+
   if (!status.IsOK()) {
     GSL_SUPPRESS(es .84)
     ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
@@ -369,12 +373,14 @@ static Status SaveModel(Model& model, const T& file_path) {
   int fd;
   Status status = Env::Default().FileOpenWr(file_path, fd);
   ORT_RETURN_IF_ERROR(status);
-  try {
+
+  ORT_TRY {
     status = Model::Save(model, fd);
-  } catch (const std::exception& ex) {
-    GSL_SUPPRESS(es .84)
-    ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
-    return Status(ONNXRUNTIME, FAIL, ex.what());
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = Status(ONNXRUNTIME, FAIL, ex.what());
+    });
   }
   if (!status.IsOK()) {
     GSL_SUPPRESS(es .84)
@@ -513,4 +519,7 @@ Status Model::Save(Model& model, int p_fd) {
   }
   return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf serialization failed.");
 }
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 }  // namespace onnxruntime

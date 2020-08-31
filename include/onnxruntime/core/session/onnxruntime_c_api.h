@@ -144,6 +144,16 @@ typedef enum OrtErrorCode {
   ORT_EP_FAIL,
 } OrtErrorCode;
 
+// This configures the arena based allocator used by ORT
+// See ONNX_Runtime_Perf_Tuning.md for details on what these mean and how to choose these values
+// Use -1 to allow ORT to choose defaults for all the options below
+typedef struct OrtArenaCfg {
+  int max_mem;
+  int arena_extend_strategy;  // 0 = kNextPowerOfTwo, 1 = kSameAsRequested
+  int initial_chunk_size_bytes;
+  int max_dead_bytes_per_chunk;
+} OrtArenaCfg;
+
 #define ORT_RUNTIME_CLASS(X) \
   struct Ort##X;             \
   typedef struct Ort##X Ort##X;
@@ -578,6 +588,7 @@ struct OrtApi {
 
   // The returned pointer doesn't have to be freed.
   // Always returns the same instance on every invocation.
+  // Please note that this is a non-arena based allocator.
   ORT_API2_STATUS(GetAllocatorWithDefaultOptions, _Outptr_ OrtAllocator** out);
 
   // Override symbolic dimensions (by specific denotation strings) with actual values if known at session initialization time to enable
@@ -990,6 +1001,18 @@ struct OrtApi {
    * This is a no-copy method whose pointer is only valid until the backing OrtValue is free'd.
    */
   ORT_API2_STATUS(TensorAt, _Inout_ OrtValue* value, size_t* location_values, size_t location_values_count, _Outptr_ void** out);
+
+  /**
+   * Creates an allocator instance and registers it with the env to enable
+   * sharing between multiple sessions that use the same env instance.
+   * Lifetime of the created allocator will be valid for the duration of the environment.
+   * Returns an error if an allocator with the same OrtMemoryInfo is already registered.
+   * \param mem_info must be non-null.
+   * \param arena_cfg if nullptr defaults will be used.
+   * See docs/C_API.md for details.
+  */
+  ORT_API2_STATUS(CreateAndRegisterAllocator, _Inout_ OrtEnv* env, _In_ const OrtMemoryInfo* mem_info,
+                  _In_ const OrtArenaCfg* arena_cfg);
 };
 
 /*
