@@ -362,14 +362,8 @@ inline RunOptions& RunOptions::UnsetTerminate() {
   return *this;
 }
 
-inline SessionOptions::SessionOptions(std::nullptr_t) {
-  ThrowOnError(GetApi().CreateSessionOptions(&p_));
-  ThrowOnError(GetApi().SetSessionProgrammingProjection(p_, OrtProgrammingProjection::ORT_PROJECTION_CPLUSPLUS));
-}
-
 inline SessionOptions::SessionOptions() {
   ThrowOnError(GetApi().CreateSessionOptions(&p_));
-  ThrowOnError(GetApi().SetSessionProgrammingProjection(p_, OrtProgrammingProjection::ORT_PROJECTION_CPLUSPLUS));
 }
 
 inline SessionOptions SessionOptions::Clone() const {

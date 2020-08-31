@@ -217,7 +217,7 @@ struct RunOptions : Base<OrtRunOptions> {
 };
 
 struct SessionOptions : Base<OrtSessionOptions> {
-  explicit SessionOptions(std::nullptr_t);
+  explicit SessionOptions(std::nullptr_t) {};
   SessionOptions();
   explicit SessionOptions(OrtSessionOptions* p) : Base<OrtSessionOptions>{p} {};
 
