@@ -64,8 +64,8 @@ class WrapLRScheduler(_LRScheduler):
 
 def run_test(model, model_desc, device, args, gradient_accumulation_steps, fp16,
     allreduce_post_accumulation, get_lr_this_step, use_internal_get_lr_this_step, loss_scaler, use_internal_loss_scaler,
-    batch_args_option, use_new_api):
-    dataloader = create_ort_test_dataloader(model_desc.inputs_, args.batch_size, args.seq_len, device)
+    batch_args_option, dataset_len, epochs, use_new_api):
+    dataloader = create_ort_test_dataloader(model_desc.inputs_, args.batch_size, args.seq_len, dataset_len, device)
 
     if use_new_api:
         assert use_internal_loss_scaler, 'new api should always use internal loss scaler'
@@ -109,6 +109,7 @@ def run_test(model, model_desc, device, args, gradient_accumulation_steps, fp16,
 
         optim_config = optim.LambConfig(params=params, lr=2e-5)
         model = orttrainer.ORTTrainer(model, new_model_desc, optim_config, options=options)
+        print ("running with new frontend API")
     else:
         model = ORTTrainer(model, None, model_desc, "LambOptimizer",
             map_optimizer_attributes=map_optimizer_attributes,
@@ -123,49 +124,49 @@ def run_test(model, model_desc, device, args, gradient_accumulation_steps, fp16,
             get_lr_this_step=get_lr_this_step if use_internal_get_lr_this_step else None,
             loss_scaler=loss_scaler if use_internal_loss_scaler else None,
             _opset_version=12)
+        print ("running with old frontend API")
 
     # trainig loop
     eval_batch = None
     if not use_new_api:
         model.train()
-    for step, batch in enumerate(dataloader):
-        if eval_batch is None:
-            eval_batch = batch
+    for epoch in range(epochs):
+        for step, batch in enumerate(dataloader):
+            if eval_batch is None:
+                eval_batch = batch
 
-        if not use_internal_get_lr_this_step:
-            lr = get_lr_this_step(step)
-            learning_rate = torch.tensor([lr])
-
-        if not use_internal_loss_scaler and fp16:
-            loss_scale = torch.tensor([loss_scaler.loss_scale_])
-
-        if batch_args_option == BatchArgsOption.List:
             if not use_internal_get_lr_this_step:
-                batch = batch + [learning_rate, ]
-            if not use_internal_loss_scaler and fp16:
-                batch = batch + [loss_scale, ]
-            outputs = model.train_step(*batch)
-        elif batch_args_option == BatchArgsOption.Dict:
-            args, kwargs = split_batch(batch, model_desc.inputs_, 0)
-            if not use_internal_get_lr_this_step:
-                kwargs['Learning_Rate'] = learning_rate
-            if not use_internal_loss_scaler and fp16:
-                kwargs[model.loss_scale_input_name] = loss_scale
-            outputs = model.train_step(*args, **kwargs)
-        else:
-            args_count = int(len(model_desc.inputs_) / 2)   # approx helf args, half kwargs
-            args, kwargs = split_batch(batch, model_desc.inputs_, args_count)
-            if not use_internal_get_lr_this_step:
-                kwargs['Learning_Rate'] = learning_rate
-            if not use_internal_loss_scaler and fp16:
-                kwargs[model.loss_scale_input_name] = loss_scale
-            outputs = model.train_step(*args, **kwargs)
+                lr = get_lr_this_step(step)
+                learning_rate = torch.tensor([lr])
 
-        print(outputs[0])
+            if not use_internal_loss_scaler and fp16:
+                loss_scale = torch.tensor([loss_scaler.loss_scale_])
+
+            if batch_args_option == BatchArgsOption.List:
+                if not use_internal_get_lr_this_step:
+                    batch = batch + [learning_rate, ]
+                if not use_internal_loss_scaler and fp16:
+                    batch = batch + [loss_scale, ]
+                outputs = model.train_step(*batch)
+            elif batch_args_option == BatchArgsOption.Dict:
+                args, kwargs = split_batch(batch, model_desc.inputs_, 0)
+                if not use_internal_get_lr_this_step:
+                    kwargs['Learning_Rate'] = learning_rate
+                if not use_internal_loss_scaler and fp16:
+                    kwargs[model.loss_scale_input_name] = loss_scale
+                outputs = model.train_step(*args, **kwargs)
+            else:
+                args_count = int(len(model_desc.inputs_) / 2)   # approx helf args, half kwargs
+                args, kwargs = split_batch(batch, model_desc.inputs_, args_count)
+                if not use_internal_get_lr_this_step:
+                    kwargs['Learning_Rate'] = learning_rate
+                if not use_internal_loss_scaler and fp16:
+                    kwargs[model.loss_scale_input_name] = loss_scale
+                outputs = model.train_step(*args, **kwargs)
+
+            print(outputs[0])
 
     # eval
-    if not use_new_api:
-        model.eval()
     if batch_args_option == BatchArgsOption.List:
         outputs = model.eval_step(*batch)
     elif batch_args_option == BatchArgsOption.Dict:

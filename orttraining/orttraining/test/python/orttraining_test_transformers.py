@@ -168,7 +168,11 @@ class BertModelTest(unittest.TestCase):
             from collections import namedtuple
             MyArgs = namedtuple("MyArgs",
                 "local_rank world_size max_steps learning_rate warmup_proportion batch_size seq_len")
-            args = MyArgs(local_rank=0, world_size=1, max_steps=100, learning_rate=0.00001, warmup_proportion=0.01, batch_size=13, seq_len=7)
+
+            dataset_len = 100
+            epochs = 8
+            max_steps = epochs * dataset_len 
+            args = MyArgs(local_rank=0, world_size=1, max_steps=max_steps, learning_rate=0.00001, warmup_proportion=0.01, batch_size=13, seq_len=7)
 
             def get_lr_this_step(global_step):
                 return get_lr(args, global_step)
@@ -197,13 +201,14 @@ class BertModelTest(unittest.TestCase):
                                             get_lr_this_step, use_internal_get_lr_this_step,
                                             loss_scaler, use_internal_loss_scaler,
                                             split_batch,
+                                            dataset_len,
+                                            epochs,
                                             use_new_api=False)
 
                                     print(old_api_loss_ort)
                                     print(old_api_prediction_scores_ort)
                                     print(old_api_seq_relationship_score_ort)
 
-                                    seed = 42
                                     random.seed(seed)
                                     np.random.seed(seed)
                                     torch.manual_seed(seed)
@@ -217,6 +222,8 @@ class BertModelTest(unittest.TestCase):
                                                 get_lr_this_step, use_internal_get_lr_this_step,
                                                 loss_scaler, use_internal_loss_scaler,
                                                 split_batch,
+                                                dataset_len,
+                                                epochs,
                                                 use_new_api=True)
                                     
                                         print(new_api_loss_ort)
