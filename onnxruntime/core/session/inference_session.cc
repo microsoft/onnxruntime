@@ -423,8 +423,12 @@ common::Status InferenceSession::RegisterCustomRegistry(std::shared_ptr<CustomRe
 common::Status InferenceSession::SaveToOrtFormat(const std::basic_string<ORTCHAR_T>& filepath) const {
   ORT_RETURN_IF_NOT(FLATBUFFERS_LITTLEENDIAN, "ort format only supports little-edian machines");
 
-  // TODO, figure out a optimal buffer size than default 1024
-  flatbuffers::FlatBufferBuilder builder(1024);
+  // Get the byte size of the modelProto and round it to the next MB and use it as flatbuffers' init_size
+  constexpr size_t m_bytes = 1024 * 1024;
+  size_t fbs_buffer_size = std::max(m_bytes, model_->ToProto().ByteSizeLong());
+  fbs_buffer_size = ((fbs_buffer_size + m_bytes - 1) / m_bytes) * m_bytes;
+  flatbuffers::FlatBufferBuilder builder(fbs_buffer_size);
+
   auto ort_version = builder.CreateString(ORT_VERSION);
   flatbuffers::Offset<fbs::Model> model;
   ORT_RETURN_IF_ERROR(

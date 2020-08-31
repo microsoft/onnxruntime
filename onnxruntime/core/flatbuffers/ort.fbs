@@ -196,7 +196,9 @@ table KernelCreateInfos {
 }
 
 table SubGraphSessionState {
+  // graph_id can be used to binary search SubGraphSessionState in SessionState.sub_graph_session_states
   graph_id:string (key);
+
   session_state:SessionState;
 }
 
@@ -206,7 +208,9 @@ table SessionState {
 }
 
 table InferenceSession {
+  // This is the version of ORT which generates the model
   ort_version:string;
+
   model:Model;
   session_state:SessionState;
 }
