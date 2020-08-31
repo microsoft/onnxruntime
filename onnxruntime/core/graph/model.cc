@@ -155,8 +155,8 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path, const IOnnx
   }
 
   auto domain_map = allow_official_onnx_release_only
-                        ? schema_registry->GetLatestOpsetVersions(false)
-                        : schema_registry->GetLastReleasedOpsetVersions(false);
+                        ? schema_registry->GetLastReleasedOpsetVersions(false)
+                        : schema_registry->GetLatestOpsetVersions(false);
   for (const auto& domain : domain_map) {
     if (domain_to_version.find(domain.first) == domain_to_version.end()) {
       domain_to_version[domain.first] = domain.second;
