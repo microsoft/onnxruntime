@@ -161,7 +161,6 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr GetStringTensorElement;
         public IntPtr FillStringTensorElement;
         public IntPtr AddSessionConfigEntry;
-        public IntPtr SetSessionProgrammingProjection;
 
         public IntPtr CreateAllocator;
         public IntPtr ReleaseAllocator;
@@ -499,9 +498,6 @@ namespace Microsoft.ML.OnnxRuntime
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtAddSessionConfigEntry(IntPtr /* OrtSessionOptions* */ options, string configKey, string configValue);
         public static DOrtAddSessionConfigEntry OrtAddSessionConfigEntry;
-        
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtSetSessionProgrammingProjection(IntPtr /* OrtSessionOptions* */ options, OrtProgrammingProjection projection);
-        public static DOrtSetSessionProgrammingProjection OrtSetSessionProgrammingProjection;
 
         ///**
         //  * The order of invocation indicates the preference order as well. In other words call this method
