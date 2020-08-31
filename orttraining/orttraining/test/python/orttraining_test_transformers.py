@@ -8,6 +8,7 @@ import pytest
 import os
 import random
 import numpy as np
+from numpy.testing import assert_allclose
 from transformers import (BertConfig, BertForPreTraining, BertModel)
 
 from orttraining_test_data_loader import ids_tensor, BatchArgsOption
@@ -189,17 +190,18 @@ class BertModelTest(unittest.TestCase):
                                     torch.cuda.manual_seed_all(seed)
                                     onnxruntime.set_seed(seed)
 
-                                    loss_ort, prediction_scores_ort, seq_relationship_score_ort =\
+                                    old_api_loss_ort, old_api_prediction_scores_ort, old_api_seq_relationship_score_ort =\
                                         run_test(
                                             model, model_desc, self.device, args, gradient_accumulation_steps, fp16,
                                             allreduce_post_accumulation,
                                             get_lr_this_step, use_internal_get_lr_this_step,
                                             loss_scaler, use_internal_loss_scaler,
-                                            split_batch)
+                                            split_batch,
+                                            use_new_api=False)
 
-                                    print(loss_ort)
-                                    print(prediction_scores_ort)
-                                    print(seq_relationship_score_ort)
+                                    print(old_api_loss_ort)
+                                    print(old_api_prediction_scores_ort)
+                                    print(old_api_seq_relationship_score_ort)
 
                                     seed = 42
                                     random.seed(seed)
@@ -220,6 +222,10 @@ class BertModelTest(unittest.TestCase):
                                         print(new_api_loss_ort)
                                         print(new_api_prediction_scores_ort)
                                         print(new_api_seq_relationship_score_ort)
+                                        
+                                        assert_allclose(old_api_loss_ort, new_api_loss_ort)
+                                        assert_allclose(old_api_prediction_scores_ort, new_api_prediction_scores_ort)
+                                        assert_allclose(old_api_seq_relationship_score_ort, new_api_seq_relationship_score_ort)
 
 
     def setUp(self):

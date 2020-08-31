@@ -51,7 +51,7 @@ def map_optimizer_attributes(name):
     if no_decay:
         return {"alpha": 0.9, "beta": 0.999, "lambda": 0.0, "epsilon": 1e-6}
     else:
-        return {"alpha": 0.9, "beta": 0.999, "lambda": 0.01, "epsilon": 1e-6}
+        return {"alpha": 0.9, "beta": 0.999, "lambda": 0.0, "epsilon": 1e-6}
 
 class WrapLRScheduler(_LRScheduler):
     def __init__(self, get_lr_this_step):
@@ -64,7 +64,7 @@ class WrapLRScheduler(_LRScheduler):
 
 def run_test(model, model_desc, device, args, gradient_accumulation_steps, fp16,
     allreduce_post_accumulation, get_lr_this_step, use_internal_get_lr_this_step, loss_scaler, use_internal_loss_scaler,
-    batch_args_option, use_new_api=False):
+    batch_args_option, use_new_api):
     dataloader = create_ort_test_dataloader(model_desc.inputs_, args.batch_size, args.seq_len, device)
 
     if use_new_api:
@@ -81,7 +81,7 @@ def run_test(model, model_desc, device, args, gradient_accumulation_steps, fp16,
                                                     'loss_scaler': new_api_loss_scaler},
                                                 'debug': {'deterministic_compute': True, },
                                                 'utils': {
-                                                    'grad_norm_clip': False},
+                                                    'grad_norm_clip': True},
                                                 'distributed': {'allreduce_post_accumulation': True},
                                                 'lr_scheduler': new_api_lr_scheduler
                                                 })
@@ -89,9 +89,10 @@ def run_test(model, model_desc, device, args, gradient_accumulation_steps, fp16,
         param_optimizer = list(model.named_parameters())
         params = [{
             'params': [n for n, p in param_optimizer if "bias" in n or "LayerNorm.weight" in n],
-            "weight_decay_mode": 1, }, {
+            "alpha": 0.9, "beta": 0.999, "lambda": 0.0, "epsilon": 1e-6}, {
             'params': [n for n, p in param_optimizer if not ("bias" in n or "LayerNorm.weight" in n)],
-            "weight_decay_mode": 1, }]
+            "alpha": 0.9, "beta": 0.999, "lambda": 0.0, "epsilon": 1e-6}
+            ]
 
         vocab_size = 99
         new_model_desc = {
@@ -106,7 +107,7 @@ def run_test(model, model_desc, device, args, gradient_accumulation_steps, fp16,
                 ('prediction_scores', ['batch', 'max_seq_len_in_batch', vocab_size]),
                 ('seq_relationship_scores', ['batch', 2])]}
 
-        optim_config = optim.AdamConfig(params=params, lr=2e-5, do_bias_correction=True)
+        optim_config = optim.LambConfig(params=params, lr=2e-5)
         model = orttrainer.ORTTrainer(model, new_model_desc, optim_config, options=options)
     else:
         model = ORTTrainer(model, None, model_desc, "LambOptimizer",
