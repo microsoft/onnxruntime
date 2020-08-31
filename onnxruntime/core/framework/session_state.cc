@@ -363,18 +363,23 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
   }
   std::unordered_map<std::string, int64_t> map;
   ORT_RETURN_IF_ERROR(ResolveDimParams(*graph_viewer_, feeds, map));
+  return GenerateActivationMemoryPatterns(output, map, resolved_shapes);
+}
+
+Status SessionState::GenerateActivationMemoryPatterns(MemoryPatternGroup* output,
+                                                      std::unordered_map<std::string, int64_t>& map,
+                                                      std::unordered_map<int, TensorShape>& resolved_shapes) const {
   auto* exe_plan = GetExecutionPlan();
   ORT_ENFORCE(exe_plan);
   OrtValuePatternPlanner mem_planner(*exe_plan);
-  auto& node_index_info = GetNodeIndexInfo();
   for (auto& node_plan : exe_plan->execution_plan) {
-    int node_index = node_index_info.GetNodeOffset(node_plan.node_index);
     auto* node = graph_viewer_->GetNode(node_plan.node_index);
-    LOGS_DEFAULT(INFO) << "executing node name " << node->Name() << ", index = " << node_plan.node_index;
-    int output_start = node_index + static_cast<int>(node->InputDefs().size()) + static_cast<int>(node->ImplicitInputDefs().size());
+    //LOGS_DEFAULT(INFO) << "executing node name " << node->Name() << ", index = " << node_plan.node_index;
+    //int output_start = node_index + static_cast<int>(node->InputDefs().size()) + static_cast<int>(node->ImplicitInputDefs().size());
     //allocate output
     for (int i = 0, end = static_cast<int>(node->OutputDefs().size()); i < end; ++i) {
-      const auto ml_value_idx = node_index_info.GetMLValueIndex(output_start + i);
+      int ml_value_idx = NodeIndexInfo::kInvalidEntry;
+      ort_value_name_idx_map_.GetIdx(node->OutputDefs()[i]->Name(), ml_value_idx);
       if (ml_value_idx == NodeIndexInfo::kInvalidEntry)
         continue;
       const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
@@ -725,6 +730,26 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 
   std::unique_ptr<ITensorAllocator> tensor_allocator_(
       ITensorAllocator::Create(enable_mem_pattern_, *p_seq_exec_plan_, *this, weights_buffers_));
+
+#ifdef ENABLE_TRAINING
+  bool is_verbose_mode = logger_.GetSeverity() == logging::Severity::kWARNING;
+  if (is_verbose_mode && GetEnableMemoryPattern()) {
+    // calculate activation memory usage
+    MemoryPatternGroup activation_memory_pattern_output;
+    std::unordered_map<std::string, int64_t> symbolic_map;
+    std::unordered_map<int, TensorShape> resolved_shapes;
+    auto ret = GenerateActivationMemoryPatterns(&activation_memory_pattern_output, symbolic_map, resolved_shapes);
+    if (ret.IsOK()) {
+      for (size_t i = 0; i < activation_memory_pattern_output.locations.size(); i++) {
+        LOGS(logger_, WARNING) << activation_memory_pattern_output.locations[i].ToString()
+                               << "Activation Peak: Allocated memory for activations, size: "
+                               << activation_memory_pattern_output.patterns[i].PeakSize();
+      }
+    } else {
+      LOGS(logger_, WARNING) << "Fail to get activation peak memory: " << ret.ErrorMessage();
+    }
+  }
+#endif
 
   // move initializers from TensorProto instances in Graph to OrtValue instances in SessionState
   ORT_RETURN_IF_ERROR(

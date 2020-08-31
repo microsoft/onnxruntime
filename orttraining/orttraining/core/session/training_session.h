@@ -226,6 +226,9 @@ class TrainingSession : public InferenceSession {
     // The pipeline configuration output.
     // This is only set if an pipeline is enabled.
     optional<PipelineConfigurationResult> pipeline_config_result;
+
+    // Mapped initilized names after weight partitioning for example MegatronTransformer
+    std::unordered_map<std::string, std::string> updated_weight_names{};
   };
 
   /**
@@ -373,14 +376,17 @@ class TrainingSession : public InferenceSession {
   common::Status InsertPipelineOps(const std::unordered_set<std::string>& initializer_names_to_preserve,
                                    pipeline::PipelineTensorNames& pipeline_tensor_names);
 
-  common::Status ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,
-                                                 const TrainingConfiguration::GraphTransformerConfiguration& config);
+  common::Status ApplyTransformationsToMainGraph(std::unordered_set<std::string>& weights_to_train,
+                                                 const TrainingConfiguration::GraphTransformerConfiguration& config,
+                                                 TrainingConfigurationResult& config_result_out,
+                                                 bool is_master_node);
 
   /** configure initial transformers for training */
   void AddPreTrainingTransformers(const IExecutionProvider& execution_provider,  // for constant folding
                                   GraphTransformerManager& transformer_manager,
-                                  const std::unordered_set<std::string>& weights_to_train,
+                                  std::unordered_set<std::string>& weights_to_train,
                                   const TrainingConfiguration::GraphTransformerConfiguration& config,
+                                  TrainingConfigurationResult& config_result_out,
                                   TransformerLevel graph_optimization_level = TransformerLevel::MaxLevel,
                                   const std::vector<std::string>& custom_list = {});
 
@@ -463,6 +469,7 @@ class TrainingSession : public InferenceSession {
 
   GradientGraphConfiguration gradient_graph_config_;
   static const std::string training_mode_string_;
+  std::string model_output_path = "";
 };
 }  // namespace training
 }  // namespace onnxruntime
