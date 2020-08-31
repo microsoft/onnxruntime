@@ -31,14 +31,16 @@ def main():
 
     # run BERT training
     subprocess.run([
+        "/bert_ort/openmpi/bin/mpirun",
+        "-n", "2",
         os.path.join(args.binary_dir, "onnxruntime_training_bert"),
         "--model_name", os.path.join(
-            args.model_root, "/bert_ort/bert_models/nv/bert-large/bert-large-uncased_L_24_H_1024_A_16_V_30528_S_512_Dp_0.1_optimized_layer_norm_opset12"),
+            args.model_root, "nv/bert-base/bert-base-uncased_L_12_H_768_A_12_V_30528_S_512_Dp_0.1_optimized_layer_norm_opset12"),
         "--train_data_dir", os.path.join(
             args.training_data_root, "128/books_wiki_en_corpus/train"),
         "--test_data_dir", os.path.join(
             args.training_data_root, "128/books_wiki_en_corpus/test"),
-        "--train_batch_size", "12",
+        "--train_batch_size", "64",
         "--mode", "train",
         "--num_train_steps", "800",
         "--display_loss_steps", "5",
@@ -46,6 +48,7 @@ def main():
         "--learning_rate", "5e-4",
         "--warmup_ratio", "0.1",
         "--warmup_mode", "Linear",
+        "--gradient_accumulation_steps", "16",
         "--max_predictions_per_seq=20",
         "--use_mixed_precision",
         "--allreduce_in_fp16",
@@ -54,7 +57,6 @@ def main():
         "--convergence_test_output_file", convergence_test_output_path,
         "--seed", "42",
         "--enable_grad_norm_clip=false",
-        "--debug_break=false"
     ]).check_returncode()
 
     # verify output

@@ -251,7 +251,7 @@ class FuseExecutionProviderX : public CPUExecutionProvider {
         tvm::TVMRetValue rvalue;
         try {
           evaluate_func_.CallPacked(tvm_args, &rvalue);
-        } catch (std::exception ex) {
+        } catch (std::exception&) {
           return Status(common::ONNXRUNTIME, common::FAIL);  // TODO: Translate exception to error code
         }
         if (rvalue.type_code() != kNull) {

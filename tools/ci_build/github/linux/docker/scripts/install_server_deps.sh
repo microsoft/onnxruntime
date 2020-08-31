@@ -3,7 +3,6 @@ set -e
 
 SYS_LONG_BIT=$(getconf LONG_BIT)
 
-apt-get remove -y libprotobuf-dev libprotobuf9v5 protobuf-compiler libprotobuf-lite9v5
 apt-get update && apt-get install -y --no-install-recommends libre2-dev
 rm -rf /var/lib/apt/lists/*
 
@@ -15,12 +14,12 @@ if [ $SYS_LONG_BIT = "64" ]; then
   tar -C /usr/local -vzxf /tmp/go/go1.12.6.linux-amd64.tar.gz
 
   echo "Installing CMAKE"
-  aria2c https://github.com/Kitware/CMake/releases/download/v3.16.2/cmake-3.16.2-Linux-x86_64.tar.gz
-  tar -zxf cmake-3.16.2-Linux-x86_64.tar.gz --strip=1 -C /usr
+  aria2c https://github.com/Kitware/CMake/releases/download/v3.18.1/cmake-3.18.1-Linux-x86_64.tar.gz
+  tar -zxf cmake-3.18.1-Linux-x86_64.tar.gz --strip=1 -C /usr
 
   echo "Installing onnxruntime"
-  aria2c https://github.com/microsoft/onnxruntime/releases/download/v1.2.0/onnxruntime-linux-x64-1.2.0.tgz
-  tar -zxf onnxruntime-linux-x64-1.2.0.tgz --strip=1
+  aria2c https://github.com/microsoft/onnxruntime/releases/download/v1.4.0/onnxruntime-linux-x64-1.4.0.tgz
+  tar -zxf onnxruntime-linux-x64-1.4.0.tgz --strip=1
   cp -r include/* /usr/include 
   cp -r lib/* /usr/lib
   ldconfig /usr/lib

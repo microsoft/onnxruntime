@@ -46,9 +46,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.Equal(0, opt.IntraOpNumThreads);
                 Assert.Equal(0, opt.InterOpNumThreads);
                 Assert.Equal(GraphOptimizationLevel.ORT_ENABLE_ALL, opt.GraphOptimizationLevel);
-                Assert.True(opt.EnablePrePacking);
 
-                // try setting options 
+                // try setting options
                 opt.ExecutionMode = ExecutionMode.ORT_PARALLEL;
                 Assert.Equal(ExecutionMode.ORT_PARALLEL, opt.ExecutionMode);
 
@@ -85,15 +84,15 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 Assert.Throws<OnnxRuntimeException>(() => { opt.GraphOptimizationLevel = (GraphOptimizationLevel)10; });
 
-                opt.EnablePrePacking = false;
-                Assert.False(opt.EnablePrePacking);
-
                 opt.AppendExecutionProvider_CPU(1);
 #if USE_DNNL
                 opt.AppendExecutionProvider_Dnnl(0);
 #endif
 #if USE_CUDA
                 opt.AppendExecutionProvider_CUDA(0);
+#endif
+#if USE_DML
+                opt.AppendExecutionProvider_Dml(0);
 #endif
 #if USE_NGRAPH
                 opt.AppendExecutionProvider_NGraph("CPU");  //TODO: this API should be refined
@@ -1568,6 +1567,36 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
         [Fact]
+        private void TestModelMetadata()
+        {
+
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "model_with_valid_ort_config_json.onnx");
+
+            using (var session = new InferenceSession(modelPath))
+            {
+                var modelMetadata = session.ModelMetadata;
+
+                Assert.Equal(1, modelMetadata.Version);
+
+                Assert.Equal("Hari", modelMetadata.ProducerName);
+
+                Assert.Equal("matmul test", modelMetadata.GraphName);
+
+                Assert.Equal("", modelMetadata.Domain);
+
+                Assert.Equal("This is a test model with a valid ORT config Json", modelMetadata.Description);
+
+                Assert.Equal(2, modelMetadata.CustomMetadataMap.Keys.Count);
+                Assert.Equal("dummy_value", modelMetadata.CustomMetadataMap["dummy_key"]);
+                Assert.Equal("{\"session_options\": {\"inter_op_num_threads\": 5, \"intra_op_num_threads\": 2, \"graph_optimization_level\": 99, \"enable_profiling\": 1}}", 
+                              modelMetadata.CustomMetadataMap["ort_config"]);
+
+
+
+            }
+        }
+
+        [Fact]
         private void TestModelSerialization()
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
@@ -1803,6 +1832,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #endif
 #if USE_CUDA
             ,"OrtSessionOptionsAppendExecutionProvider_CUDA"
+#endif
+#if USE_DML
+            ,"OrtSessionOptionsAppendExecutionProvider_Dml"
 #endif
 #if USE_NGRAPH
             ,"OrtSessionOptionsAppendExecutionProvider_NGraph"
@@ -2080,7 +2112,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
 #if USE_CUDA
-            using (var option = (cudaDeviceId.HasValue) ? 
+            using (var option = (cudaDeviceId.HasValue) ?
                 SessionOptions.MakeSessionOptionWithCudaProvider(cudaDeviceId.Value) :
                 new SessionOptions())
             {

@@ -323,6 +323,7 @@ add_library(winml_lib_image STATIC
   ${winml_lib_api_image_dir}/inc/ImageConverter.h
   ${winml_lib_api_image_dir}/inc/TensorToVideoFrameConverter.h
   ${winml_lib_api_image_dir}/inc/VideoFrameToTensorConverter.h
+  ${winml_lib_api_image_dir}/inc/NominalRangeConverter.h
   ${winml_lib_api_image_dir}/CpuDetensorizer.h
   ${winml_lib_api_image_dir}/CpuTensorizer.h
   ${winml_lib_api_image_dir}/pch.h
@@ -333,6 +334,7 @@ add_library(winml_lib_image STATIC
   ${winml_lib_api_image_dir}/ImageConverter.cpp
   ${winml_lib_api_image_dir}/TensorToVideoFrameConverter.cpp
   ${winml_lib_api_image_dir}/VideoFrameToTensorConverter.cpp
+  ${winml_lib_api_image_dir}/NominalRangeConverter.cpp
 )
 
 # Compiler options
@@ -365,6 +367,7 @@ target_include_directories(winml_lib_image PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})  
 target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/cmake/external/gsl/include)
 target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/cmake/external/onnx)
 target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/cmake/external/protobuf/src)
+target_include_directories(winml_lib_image PRIVATE ${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows)
 
 # Properties
 set_target_properties(winml_lib_image

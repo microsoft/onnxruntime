@@ -5,9 +5,10 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include "onnxruntime_session_options_config_keys.h"
 
 // This value is used in structures passed to ORT so that a newer version of ORT will still work with them
-#define ORT_API_VERSION 4
+#define ORT_API_VERSION 5
 
 #ifdef __cplusplus
 extern "C" {
@@ -69,11 +70,21 @@ extern "C" {
 
 // Any pointer marked with _In_ or _Out_, cannot be NULL.
 
-#ifdef __cplusplus
 // Windows users should use unicode paths when possible to bypass the MAX_PATH limitation
 // Every pointer marked with _In_ or _Out_, cannot be NULL. Caller should ensure that.
 // for ReleaseXXX(...) functions, they can accept NULL pointer.
+
+#ifdef __cplusplus
+// For any compiler with C++11 support, MSVC 2015 and greater, or Clang version supporting noexcept.
+// Such complex condition is needed because compilers set __cplusplus value differently.
+#ifndef __has_feature
+#define __has_feature(x) 0
+#endif
+#if ((__cplusplus >= 201103L) || (_MSC_VER >= 1900) || (defined(__has_feature) && __has_feature(cxx_noexcept)))
 #define NO_EXCEPTION noexcept
+#else
+#define NO_EXCEPTION throw()
+#endif
 #else
 #define NO_EXCEPTION
 #endif
@@ -132,6 +143,16 @@ typedef enum OrtErrorCode {
   ORT_INVALID_GRAPH,
   ORT_EP_FAIL,
 } OrtErrorCode;
+
+// This configures the arena based allocator used by ORT
+// See ONNX_Runtime_Perf_Tuning.md for details on what these mean and how to choose these values
+// Use -1 to allow ORT to choose defaults for all the options below
+typedef struct OrtArenaCfg {
+  int max_mem;
+  int arena_extend_strategy;  // 0 = kNextPowerOfTwo, 1 = kSameAsRequested
+  int initial_chunk_size_bytes;
+  int max_dead_bytes_per_chunk;
+} OrtArenaCfg;
 
 #define ORT_RUNTIME_CLASS(X) \
   struct Ort##X;             \
@@ -567,6 +588,7 @@ struct OrtApi {
 
   // The returned pointer doesn't have to be freed.
   // Always returns the same instance on every invocation.
+  // Please note that this is a non-arena based allocator.
   ORT_API2_STATUS(GetAllocatorWithDefaultOptions, _Outptr_ OrtAllocator** out);
 
   // Override symbolic dimensions (by specific denotation strings) with actual values if known at session initialization time to enable
@@ -588,7 +610,7 @@ struct OrtApi {
    * std::map<int64_t, int64_t>
    * std::map<int64_t, float>
    * std::map<int64_t, double>
-   * 
+   *
    * Sequence types
    * ==============
    * std::vector<std::string>
@@ -751,8 +773,8 @@ struct OrtApi {
 
   /**
    * \param out is set to a null terminated string allocated using 'allocator'. The caller is responsible for freeing it.
-   * Profiling is turned ON automatically if enabled for the particular session by invoking EnableProfiling() 
-   * on the SessionOptions instance used to create the session.  
+   * Profiling is turned ON automatically if enabled for the particular session by invoking EnableProfiling()
+   * on the SessionOptions instance used to create the session.
    */
   ORT_API2_STATUS(SessionEndProfiling, _In_ OrtSession* sess, _Inout_ OrtAllocator* allocator, _Outptr_ char** out);
 
@@ -805,7 +827,7 @@ struct OrtApi {
 
   /**
    * \param num_keys contains the number of keys in the custom metadata map
-   * \param keys is an array of null terminated strings (array count = num_keys) allocated using 'allocator'. 
+   * \param keys is an array of null terminated strings (array count = num_keys) allocated using 'allocator'.
    * The caller is responsible for freeing each string and the pointer array.
    * 'keys' will be a nullptr if custom metadata map is empty.
    */
@@ -856,17 +878,23 @@ struct OrtApi {
   /**
      * \param value - A tensor created from OrtCreateTensor... function.
      * \param s - A null terminated UTF-8 encoded string.
-     * \param index - index of string tensor element to fill 
+     * \param index - index of string tensor element to fill
      */
   ORT_API2_STATUS(FillStringTensorElement, _Inout_ OrtValue* value, _In_ const char* s, size_t index);
 
-  // Control pre-packing of initialized constant tensors
-  ORT_API2_STATUS(EnablePrePacking, _Inout_ OrtSessionOptions* options);
-  ORT_API2_STATUS(DisablePrePacking, _Inout_ OrtSessionOptions* options);
+  /**
+     * Set a single session configuration entry as a pair of strings
+     * If a configuration with same key exists, this will overwrite the configuration with the given config_value
+     * \param config_key    A null terminated string representation of the config key
+     * \param config_value  A null terminated string representation of the config value
+     * The config_key and the format of config_value are defined in onnxruntime_session_options_config_keys.h
+     */
+  ORT_API2_STATUS(AddSessionConfigEntry, _Inout_ OrtSessionOptions* options,
+                  _In_z_ const char* config_key, _In_z_ const char* config_value);
 
   /**
    * \param sess valid OrtSession instance
-   * \para mem_info - valid OrtMemoryInfo instance
+   * \param mem_info - valid OrtMemoryInfo instance
    * \param - out a ptr to a new instance of OrtAllocator according to the spec within mem_info
    *         if successful
    * \return OrtStatus or nullptr if successful
@@ -942,7 +970,7 @@ struct OrtApi {
   /**
     * The function returns an array of pointers to individually allocated OrtValues that contain results of a model execution with RunWithBinding()
     * The array contains the same number of OrtValues and they are in the same order as they were bound with BindOutput()
-    * or BindOutputToDevice(). 
+    * or BindOutputToDevice().
     * The returned OrtValues must be individually released after they are no longer needed.
     * The array is allocated using the specified instance of the allocator and must be freed using the same allocator after
     * all the OrtValues contained therein are individually released.
@@ -968,11 +996,23 @@ struct OrtApi {
    * e.g.
    * Given a tensor with overall shape [3,224,224], an element at
    * location [2,150,128] can be accessed directly.
-   * 
+   *
    * This function only works for numeric tensors.
    * This is a no-copy method whose pointer is only valid until the backing OrtValue is free'd.
    */
   ORT_API2_STATUS(TensorAt, _Inout_ OrtValue* value, size_t* location_values, size_t location_values_count, _Outptr_ void** out);
+
+  /**
+   * Creates an allocator instance and registers it with the env to enable
+   * sharing between multiple sessions that use the same env instance.
+   * Lifetime of the created allocator will be valid for the duration of the environment.
+   * Returns an error if an allocator with the same OrtMemoryInfo is already registered.
+   * \param mem_info must be non-null.
+   * \param arena_cfg if nullptr defaults will be used.
+   * See docs/C_API.md for details.
+  */
+  ORT_API2_STATUS(CreateAndRegisterAllocator, _Inout_ OrtEnv* env, _In_ const OrtMemoryInfo* mem_info,
+                  _In_ const OrtArenaCfg* arena_cfg);
 };
 
 /*

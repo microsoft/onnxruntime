@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "core/common/make_unique.h"
+#include "core/graph/constants.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/graph_utils.h"
 #include "core/framework/tensorprotoutils.h"
@@ -9,6 +10,10 @@
 #include "core/optimizer/utils.h"
 #include "float.h"
 //#include <deque>
+
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
 
 using namespace onnxruntime;
 
@@ -53,7 +58,12 @@ bool IsInitializerWithExpectedValue(const Graph& graph, const NodeArg& input_arg
   const auto data_type = tensor_proto->data_type();
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     const float* val = init_const.data<float>();
-    if (std::isnan(val[0]) || std::isinf(val[0])) return false;
+    if (std::isnan(val[0]) || std::isinf(val[0])) {
+      if (std::isinf(val[0]) && std::isinf(expected_value) && (std::signbit(val[0]) == std::signbit(expected_value))) {
+        return true;
+      }
+      return false;
+    }
 
     float diff = std::abs(val[0] - expected_value);
     if (diff > (atol + rtol * std::abs(expected_value))) {
@@ -126,6 +136,14 @@ bool IsAttributeWithExpectedValue(const Node& node, const std::string& attr_name
   return false;
 }
 
+bool IsAttributeWithExpectedValue(const Node& node, const std::string& attr_name, float expected_value, float eps) {
+  const auto* attr_proto = graph_utils::GetNodeAttribute(node, attr_name);
+  if ((nullptr != attr_proto) && attr_proto->has_f()) {
+    return abs(attr_proto->f() - expected_value) < eps;
+  }
+  return false;
+}
+
 bool IsAttributeWithExpectedValues(const Node& node, const std::string& attr_name, const std::vector<int64_t>& expected_values) {
   const auto* attr_proto = graph_utils::GetNodeAttribute(node, attr_name);
   if ((nullptr == attr_proto) || attr_proto->ints_size() != (int)expected_values.size()) {
@@ -190,6 +208,24 @@ bool ValidateShape(const NodeArg& node_arg, const std::initializer_list<int64_t>
   return true;
 }
 
+bool CompareShape(const ONNX_NAMESPACE::TensorShapeProto& node_arg_shape, const ONNX_NAMESPACE::TensorShapeProto& node_arg_other_shape) {
+  if (node_arg_shape.dim_size() != node_arg_other_shape.dim_size())
+    return false;
+
+  if (node_arg_shape.dim_size() < 1)
+    return false;
+
+  for (int i = 0; i < node_arg_shape.dim_size(); ++i) {
+    const ONNX_NAMESPACE::TensorShapeProto_Dimension& dim = node_arg_shape.dim(i);
+    const ONNX_NAMESPACE::TensorShapeProto_Dimension& dim_other = node_arg_other_shape.dim(i);
+    if (!utils::HasDimValue(dim) || !utils::HasDimValue(dim_other))
+      return false;
+    if (dim.dim_value() != dim_other.dim_value())
+      return false;
+  }
+  return true;
+}
+
 bool IsShapeKnownOnAllDims(const NodeArg& node_arg, int expected_dim_size) {
   auto shape = node_arg.Shape();
   if (shape == nullptr || shape->dim_size() != expected_dim_size) {
@@ -239,13 +275,31 @@ bool IsSupportedDataType(const Node& node, const std::vector<std::string>& suppo
   return true;
 }
 
-
 bool CheckOutputEdges(const Graph& graph, const Node& node, size_t expected_output_edges) {
   if (!graph.GetNodeOutputsInGraphOutputs(node).empty()) {
     return false;
   }
 
   return node.GetOutputEdgesCount() == expected_output_edges;
+}
+
+// Allow certain domains/ops. We don't know anything about unknown domains/ops (e.g. custom ops),
+// so we have to assume that they are not deterministic, to be on the safe side.
+// We could also allow other known domains (kMSDomain, kMSNchwcDomain, kMSFeaturizersDomain),
+// as long as we verify which of their operations are non-deterministic and add them in the map below.
+static const std::unordered_map<std::string, std::unordered_set<std::string>> kNonDeterministicOps =
+    {
+        {kOnnxDomain, {"RandomUniform", "RandomNormal", "RandomUniformLike", "RandomNormalLike", "Multinomial"}},
+};
+
+bool IsOperationDeterministic(const std::string& domain, const std::string& op) {
+  auto itDomain = kNonDeterministicOps.find(domain);
+  if (itDomain == kNonDeterministicOps.end()) {
+    // Unknown domain. Assume the op is not deterministic.
+    return false;
+  }
+
+  return itDomain->second.count(op) == 0;
 }
 
 }  // namespace optimizer_utils
