@@ -208,29 +208,32 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
                                                                                              tconv.in->info()->data_type(),
                                                                                              1 /* depth multiplier */,
                                                                                              tconv.in->info()->data_layout());
-#endif
-#if defined(ACL_1905) || defined(ACL_1908)
+#elif defined(ACL_1905) || defined(ACL_1908)
       bool optimizable =
           arm_compute::NEDepthwiseConvolutionAssemblyDispatch::is_optimized_supported(tconv.in->info(),
                                                                                       tconv.k->info(),
                                                                                       aclPadStride,
                                                                                       1 /* depth multiplier */,
                                                                                       arm_compute::Size2D(aclDilation0, dilations[0]));
+#elif defined(ACL_2002)
+      bool optimizable = false;
 #endif
+
       if (optimizable) {
         LOGS_DEFAULT(VERBOSE) << "ACL optimized depthwise convolution";
 #if defined(ACL_1902) || defined(ACL_1905)
         auto layer = std::make_shared<arm_compute::NEDepthwiseConvolutionLayer3x3>();
-#endif
-#ifdef ACL_1908
+#elif defined(ACL_1908)
         auto layer = std::make_shared<arm_compute::NEDepthwiseConvolutionLayerOptimized>();
+#elif defined(ACL_2002)
+        auto layer = std::make_shared<arm_compute::NEDepthwiseConvolutionLayer>();
 #endif
+
 #ifdef ACL_1902
         layer->configure(tconv.in.get(), tconv.k.get(), (B != nullptr) ? tconv.b.get() : nullptr, tconv.out.get(),
                          aclPadStride, 1 /* depth multiplier */,
                          acl_activ_enabled ? arm_compute::ActivationLayerInfo(acl_activ_func, conv_attrs_.alpha) : arm_compute::ActivationLayerInfo());
-#endif
-#if defined(ACL_1905) || defined(ACL_1908)
+#elif defined(ACL_1905) || defined(ACL_1908) || defined(ACL_2002)
         layer->configure(tconv.in.get(), tconv.k.get(), (B != nullptr) ? tconv.b.get() : nullptr, tconv.out.get(),
                          aclPadStride, 1 /* depth multiplier */,
                          acl_activ_enabled ? arm_compute::ActivationLayerInfo(acl_activ_func, conv_attrs_.alpha) : arm_compute::ActivationLayerInfo(),
