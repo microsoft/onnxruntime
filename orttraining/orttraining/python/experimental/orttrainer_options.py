@@ -132,6 +132,15 @@ class ORTTrainerOptions(object):
                         'invertible_layer_norm_gradient' : {
                             'type' : 'boolean',
                             'default' : False
+                        },
+                        'max_num_pre_training_graph_transformation_steps' : {
+                            'type' : 'integer',
+                            'min' : 1,
+                            'default' : 1
+                        },
+                        'enable_gelu_approximation' : {
+                            'type' : 'boolean',
+                            'default' : False
                         }
                     }
                 },
@@ -217,6 +226,11 @@ class ORTTrainerOptions(object):
             enables gradient norm clipping for 'AdamOptimizer' and 'LambOptimizer'
         utils.invertible_layer_norm_gradient (bool, default is False):
             enables use of invertible layer norm gradients
+        utils.max_num_pre_training_graph_transformation_steps (int, default is 1):
+            the maximum number of passes of the initial graph transformers to run.
+            These transformers are run before the addition of the backward graph
+        utils.enable_gelu_approximation (bool, default is False):
+            whether to enable GELU approximation which is faster but produces different results
         debug (dict):
             debug options
         debug.deterministic_compute (bool, default is False)
@@ -429,6 +443,15 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'default': True
             },
             'invertible_layer_norm_gradient' : {
+                'type': 'boolean',
+                'default': False
+            },
+            'max_num_pre_training_graph_transformation_steps': {
+                'type': 'integer',
+                'min': 1,
+                'default': 1
+            },
+            'enable_gelu_approximation': {
                 'type': 'boolean',
                 'default': False
             }

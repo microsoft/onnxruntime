@@ -98,6 +98,8 @@ def testORTTrainerOptionsDefaultValues(test_input):
             'frozen_weights': [],
             'grad_norm_clip': True,
             'invertible_layer_norm_gradient': False,
+            'max_num_pre_training_graph_transformation_steps': 1,
+            'enable_gelu_approximation': False
         },
         'debug': {
             'deterministic_compute': False

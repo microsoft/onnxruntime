@@ -21,6 +21,9 @@ using namespace onnxruntime::logging;
 using namespace onnxruntime::training;
 
 struct TrainingParameters {
+  std::string model_with_loss_function_path;
+  std::string model_with_training_graph_path;
+
   std::string loss_output_name;
   std::unordered_set<std::string> weights_to_train;
   std::unordered_set<std::string> weights_not_to_train;
@@ -47,6 +50,10 @@ struct TrainingParameters {
   bool enable_grad_norm_clip = true;
   bool set_gradients_as_graph_outputs = false;
   bool use_invertible_layernorm_grad = false;
+
+  // graph transformer options
+  bool enable_gelu_approximation = false;
+  int max_num_pre_training_graph_transformation_steps = 1;
 };
 
 struct TrainingConfigurationResult {
@@ -71,6 +78,9 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   }
 
   training::TrainingSession::TrainingConfiguration config{};
+  config.model_with_loss_function_path = parameters.model_with_loss_function_path;
+  config.model_with_training_graph_path = parameters.model_with_training_graph_path;
+
   config.weight_names_to_train = parameters.weights_to_train;
   config.weight_names_to_not_train = parameters.weights_not_to_train;
   config.immutable_weights = parameters.immutable_weights;
@@ -130,6 +140,10 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   config.gradient_graph_config.use_invertible_layernorm_grad = parameters.use_invertible_layernorm_grad;
   config.gradient_graph_config.set_gradients_as_graph_outputs = parameters.set_gradients_as_graph_outputs;
 
+  config.graph_transformer_config.max_num_pre_training_graph_transformation_steps =
+      parameters.max_num_pre_training_graph_transformation_steps;
+  config.graph_transformer_config.enable_gelu_approximation = parameters.enable_gelu_approximation;
+
   training::TrainingSession::TrainingConfigurationResult config_result{};
 
   OrtPybindThrowIfError(sess->ConfigureForTraining(config, config_result));
@@ -168,6 +182,8 @@ void CopyMPIContextToTrainingParameters(TrainingParameters& parameters, const lo
 void addObjectMethodsForTraining(py::module& m) {
   py::class_<TrainingParameters> parameters(m, "TrainingParameters", R"pbdoc(Configuration information for training.)pbdoc");
   parameters.def(py::init())
+      .def_readwrite("model_with_loss_function_path", &TrainingParameters::model_with_loss_function_path)
+      .def_readwrite("model_with_training_graph_path", &TrainingParameters::model_with_training_graph_path)
       .def_readwrite("loss_output_name", &TrainingParameters::loss_output_name)
       .def_readwrite("immutable_weights", &TrainingParameters::immutable_weights)
       .def_readwrite("weights_not_to_train", &TrainingParameters::weights_not_to_train)
@@ -186,7 +202,10 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("deepspeed_zero_stage", &TrainingParameters::deepspeed_zero_stage)
       .def_readwrite("enable_grad_norm_clip", &TrainingParameters::enable_grad_norm_clip)
       .def_readwrite("set_gradients_as_graph_outputs", &TrainingParameters::set_gradients_as_graph_outputs)
-      .def_readwrite("use_invertible_layernorm_grad", &TrainingParameters::use_invertible_layernorm_grad);
+      .def_readwrite("use_invertible_layernorm_grad", &TrainingParameters::use_invertible_layernorm_grad)
+      .def_readwrite("max_num_pre_training_graph_transformation_steps",
+                     &TrainingParameters::max_num_pre_training_graph_transformation_steps)
+      .def_readwrite("enable_gelu_approximation", &TrainingParameters::enable_gelu_approximation);
 
 #if defined(USE_NCCL)
   m.def("get_mpi_context_local_rank", []() -> int { return MPIContext::GetInstance().GetLocalRank(); });

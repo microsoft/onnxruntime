@@ -177,6 +177,11 @@ class TrainingSession : public InferenceSession {
     optional<PipelineConfiguration> pipeline_config{};
 
     struct GraphTransformerConfiguration {
+      // The maximum number of passes of the initial graph transformers to run.
+      // These transformers are run before the addition of the backward graph.
+      // The transformers that run on the graph that includes the backward
+      // graph are controlled by SessionOptions::max_num_graph_transformation_steps.
+      unsigned int max_num_pre_training_graph_transformation_steps{1};
       // Whether to enable GELU approximation which is faster but produces different results.
       bool enable_gelu_approximation{false};
       // Enable checkpointing of attention dropout to save memory

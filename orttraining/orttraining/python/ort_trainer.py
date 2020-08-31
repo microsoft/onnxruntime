@@ -383,14 +383,16 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
     return onnx_model
 
 def create_ort_training_session_with_optimizer(model, device, training_optimizer_name, lr_params_feed_name,
-                                               map_optimizer_attributes, world_rank=-1, world_size=1,
-                                               gradient_accumulation_steps=1, bind_parameters=False,
-                                               use_mixed_precision=False, allreduce_post_accumulation=False,
-                                               deepspeed_zero_stage=0,
-                                               enable_grad_norm_clip=True,
-                                               frozen_weights=[], opset_version=DEFAULT_OPSET_VERSION,
-                                               use_deterministic_compute=False,
-                                               use_invertible_layernorm_grad=False):
+                                               map_optimizer_attributes, world_rank, world_size,
+                                               gradient_accumulation_steps, bind_parameters,
+                                               use_mixed_precision, allreduce_post_accumulation,
+                                               deepspeed_zero_stage,
+                                               enable_grad_norm_clip,
+                                               frozen_weights, opset_version,
+                                               use_deterministic_compute,
+                                               use_invertible_layernorm_grad,
+                                               max_num_pre_training_graph_transformation_steps,
+                                               enable_gelu_approximation):
     output_name = model.graph.output[0].name
     ort_parameters = ort.TrainingParameters()
     ort_parameters.loss_output_name = output_name
@@ -403,6 +405,8 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     ort_parameters.enable_grad_norm_clip = enable_grad_norm_clip
     ort_parameters.set_gradients_as_graph_outputs = False
     ort_parameters.use_invertible_layernorm_grad = use_invertible_layernorm_grad
+    ort_parameters.max_num_pre_training_graph_transformation_steps = max_num_pre_training_graph_transformation_steps
+    ort_parameters.enable_gelu_approximation = enable_gelu_approximation
 
     output_types = {}
     for output in model.graph.output:
@@ -545,7 +549,9 @@ class ORTTrainer():
                  global_step=0, get_lr_this_step=None, loss_scaler=None, deepspeed_zero_stage=0,
                  enable_grad_norm_clip=True, frozen_weights=[], _opset_version=DEFAULT_OPSET_VERSION,
                  _enable_internal_postprocess=True, _extra_postprocess=None, _use_deterministic_compute=False,
-                 use_invertible_layernorm_grad=False):
+                 use_invertible_layernorm_grad=False,
+                 max_num_pre_training_graph_transformation_steps=1,
+                 enable_gelu_approximation=False):
         super(ORTTrainer, self).__init__()
         """
         Initialize ORTTrainer.
@@ -613,6 +619,13 @@ class ORTTrainer():
                Defaults to None
             use_invertible_layernorm_grad: use invertible layernorm grad
                Defaults to False
+            max_num_pre_training_graph_transformation_steps: maximum number of
+               passes of the initial graph transformers to run. These
+               transformers are run before the addition of the backward graph.
+               Defaults to 1
+            enable_gelu_approximation: whether to enable GELU approximation
+               which is faster but produces different results.
+               Defaults to False
         """
         warnings.warn('DISCLAIMER: This is an early version of an experimental training API and it is subject to change. DO NOT create production applications with it')
         self.is_train = True
@@ -676,6 +689,9 @@ class ORTTrainer():
         self._use_deterministic_compute = _use_deterministic_compute
         self.use_invertible_layernorm_grad = use_invertible_layernorm_grad
 
+        self.max_num_pre_training_graph_transformation_steps = max_num_pre_training_graph_transformation_steps
+        self.enable_gelu_approximation = enable_gelu_approximation
+
         # use this special string to workaround a corner case that external loss_scale is passed into train_step as kwargs.
         # see prepare_input_and_fetches for more details.
         self.loss_scale_input_name = 'default_loss_scale_input_name'
@@ -698,7 +714,9 @@ class ORTTrainer():
                 enable_grad_norm_clip=self.enable_grad_norm_clip_,
                 frozen_weights=self.frozen_weights_, opset_version=self.opset_version_,
                 use_deterministic_compute=self._use_deterministic_compute,
-                use_invertible_layernorm_grad=self.use_invertible_layernorm_grad)
+                use_invertible_layernorm_grad=self.use_invertible_layernorm_grad,
+                max_num_pre_training_graph_transformation_steps=self.max_num_pre_training_graph_transformation_steps,
+                enable_gelu_approximation=self.enable_gelu_approximation)
 
         self.loss_scale_input_name = self.session.loss_scale_input_name
 
