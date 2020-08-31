@@ -323,6 +323,22 @@ ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                        
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), \
       MaxPoolV8<float>);
 
+ONNX_OPERATOR_KERNEL_EX(
+    MaxPool,
+    kOnnxDomain,
+    12,
+    kArmNNExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    MaxPoolV8<float>);
+
+ONNX_OPERATOR_KERNEL_EX(
+    AveragePool,
+    kOnnxDomain,
+    11,
+    kArmNNExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Pool<float, AveragePool>);
+
 }  // namespace armnn_ep
 }  // namespace onnxruntime
 
