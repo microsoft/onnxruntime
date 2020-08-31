@@ -51,11 +51,12 @@ __global__ void _GatherElementsKernel(
   for (int work = 0; work < thread_worksize; ++work) {
     if (indices_index < indices_size) {
       int i = 0;
-      for (; i < axis; ++i) {
+      for (; i < axis && remain > 0; ++i) {
         indices_strides[i].divmod(remain, dim, remain);
         data_idx += input_strides[i] * dim;
       }
 
+      i = axis;
       indices_strides[i].divmod(remain, dim, remain);
       dim = GetIndexValue(indices_data, index_element_size, indices_index);
       if (dim < -input_dim_along_axis || dim >= input_dim_along_axis) {
@@ -69,7 +70,7 @@ __global__ void _GatherElementsKernel(
       data_idx += input_strides[i] * dim;
 
       ++i;  // past axis
-      for (; i < rank; ++i) {
+      for (; i < rank && remain > 0; ++i) {
         indices_strides[i].divmod(remain, dim, remain);
         data_idx += input_strides[i] * dim;
       }
