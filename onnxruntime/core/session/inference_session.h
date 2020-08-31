@@ -469,8 +469,7 @@ class InferenceSession {
     */
   common::Status LoadOrtModel(const void* model_data, int model_data_len) ORT_MUST_USE_RESULT;
 
-  common::Status LoadOrtModel(
-      std::function<Status(gsl::span<const uint8_t>&)> get_serialized_bytes) ORT_MUST_USE_RESULT;
+  common::Status LoadOrtModel(std::function<Status()> load_ort_format_model_bytes) ORT_MUST_USE_RESULT;
 
   // Create a Logger for a single execution if possible. Otherwise use the default logger.
   // If a new logger is created, it will also be stored in new_run_logger,
@@ -625,8 +624,7 @@ class InferenceSession {
   // Short term we free them after Initialize.
   // Longer term we may want to directly refer to offsets in this buffer for initializers so we don't need to copy
   // those into new OrtValue instances, at which point we won't free them until the InferenceSession goes away.
-  size_t ort_format_model_num_bytes_ = 0;
-  std::unique_ptr<uint8_t[]> ort_format_model_bytes_;
+  std::vector<uint8_t> ort_format_model_bytes_;
 };
 
 struct SessionIOBinding {

@@ -776,14 +776,15 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
 template <typename T>
 static Status LoadOrtModelBytes(const std::basic_string<T>& model_uri,
                                 std::basic_string<ORTCHAR_T>& model_location,
-                                size_t& num_bytes, std::unique_ptr<uint8_t[]>& bytes) {
+                                std::vector<uint8_t>& bytes) {
+  size_t num_bytes = 0;
   model_location = ToWideString(model_uri);
   ORT_RETURN_IF_ERROR(Env::Default().GetFileLength(model_location.c_str(), num_bytes));
 
-  bytes.reset(new uint8_t[num_bytes]);
+  bytes.resize(num_bytes);
 
   std::ifstream bytes_stream(model_uri, std::ifstream::in | std::ifstream::binary);
-  bytes_stream.read(reinterpret_cast<char*>(bytes.get()), num_bytes);
+  bytes_stream.read(reinterpret_cast<char*>(bytes.data()), num_bytes);
 
   if (!bytes_stream) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
@@ -796,11 +797,8 @@ static Status LoadOrtModelBytes(const std::basic_string<T>& model_uri,
 
 Status InferenceSession::LoadOrtModel(const std::string& model_uri) {
   return LoadOrtModel(
-      [&](gsl::span<const uint8_t>& bytes) {
-        ORT_RETURN_IF_ERROR(LoadOrtModelBytes(model_uri, model_location_,
-                                              ort_format_model_num_bytes_, ort_format_model_bytes_));
-
-        bytes = gsl::make_span<const uint8_t>(ort_format_model_bytes_.get(), ort_format_model_num_bytes_);
+      [&]() {
+        ORT_RETURN_IF_ERROR(LoadOrtModelBytes(model_uri, model_location_, ort_format_model_bytes_));
         return Status::OK();
       });
 }
@@ -808,24 +806,27 @@ Status InferenceSession::LoadOrtModel(const std::string& model_uri) {
 #ifdef WIN32
 Status InferenceSession::LoadOrtModel(const std::wstring& model_uri) {
   return LoadOrtModel(
-      [&](gsl::span<const uint8_t>& bytes) {
-        ORT_RETURN_IF_ERROR(LoadOrtModelBytes(model_uri, model_location_,
-                                              ort_format_model_num_bytes_, ort_format_model_bytes_));
-
-        bytes = gsl::make_span<const uint8_t>(ort_format_model_bytes_.get(), ort_format_model_num_bytes_);
+      [&]() {
+        ORT_RETURN_IF_ERROR(LoadOrtModelBytes(model_uri, model_location_, ort_format_model_bytes_));
         return Status::OK();
       });
 }
 #endif
 
 Status InferenceSession::LoadOrtModel(const void* model_data, int model_data_len) {
-  return LoadOrtModel([&](gsl::span<const uint8_t>& bytes) {
-    bytes = gsl::make_span<const uint8_t>(static_cast<const uint8_t*>(model_data), model_data_len);
+  return LoadOrtModel([&]() {
+    // copy bytes as we need them to be available when InferenceSession::Initialize is called later.
+    //
+    // TODO: Provide Load API where we can take ownership of memory to avoid the copy,
+    // and/or a combined Load+Initialize where we don't need this temporary copy.
+    ort_format_model_bytes_.resize(model_data_len);
+    std::copy_n(reinterpret_cast<const uint8_t*>(model_data), model_data_len, ort_format_model_bytes_.data());
+
     return Status::OK();
   });
 }
 
-Status InferenceSession::LoadOrtModel(std::function<Status(gsl::span<const uint8_t>&)> get_serialized_bytes) {
+Status InferenceSession::LoadOrtModel(std::function<Status()> load_ort_format_model_bytes) {
   static_assert(FLATBUFFERS_LITTLEENDIAN, "ORT format only supports little-endian machines");
 
   std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
@@ -842,10 +843,8 @@ Status InferenceSession::LoadOrtModel(std::function<Status(gsl::span<const uint8
     return status;
   }
 
-  gsl::span<const uint8_t> bytes;
-  ORT_RETURN_IF_ERROR(get_serialized_bytes(bytes));
-
-  const auto* fbs_session = fbs::GetInferenceSession(bytes.data());
+  ORT_RETURN_IF_ERROR(load_ort_format_model_bytes());
+  const auto* fbs_session = fbs::GetInferenceSession(ort_format_model_bytes_.data());
   ORT_RETURN_IF(nullptr == fbs_session, "InferenceSession is null. Invalid ORT format model.");
 
   // Check version mismatch, for now we will only proceed when runtime version matches the model's ort version
@@ -1033,8 +1032,8 @@ common::Status InferenceSession::Initialize() {
     // need to keep the initializers if we're going to save the optimized model
     bool keep_initializers = !session_options_.optimized_model_filepath.empty();
 
-    auto* serialized_session_state = ort_format_model_bytes_ != nullptr
-                                         ? fbs::GetInferenceSession(ort_format_model_bytes_.get())->session_state()
+    auto* serialized_session_state = !ort_format_model_bytes_.empty()
+                                         ? fbs::GetInferenceSession(ort_format_model_bytes_.data())->session_state()
                                          : nullptr;
 
     ORT_RETURN_IF_ERROR_SESSIONID_(session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
@@ -1060,8 +1059,7 @@ common::Status InferenceSession::Initialize() {
     is_inited_ = true;
 
     // we don't directly use the ORT format bytes currently, so free those now
-    ort_format_model_bytes_ = nullptr;
-    ort_format_model_num_bytes_ = 0;
+    std::vector<uint8_t>().swap(ort_format_model_bytes_);
 
     // and log telemetry
     bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
