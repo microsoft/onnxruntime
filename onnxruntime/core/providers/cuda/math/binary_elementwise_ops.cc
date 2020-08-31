@@ -369,8 +369,7 @@ template <typename T, typename CudaT>
 Status CompareFunction<T, CudaT>::CompareMethod(OpKernelContext* context, ImplCompare Impl_Compare) const {
   BinaryElementwisePreparation prepare;
   ORT_RETURN_IF_ERROR(Prepare(context, &prepare));
-  size_t output_size = prepare.output_tensor->Shape().Size();
-  IAllocatorUniquePtr<T> output_buffer = GetScratchBuffer<T>(output_size);
+
   Impl_Compare(
       prepare.output_rank_or_simple_broadcast,
       &prepare.lhs_padded_strides,
@@ -380,13 +379,8 @@ Status CompareFunction<T, CudaT>::CompareMethod(OpKernelContext* context, ImplCo
       &prepare.fdm_output_strides,
       prepare.fdm_H,
       prepare.fdm_C,
-      reinterpret_cast<CudaT*>(output_buffer.get()),
-      prepare.output_tensor->Shape().Size());
-
-  Impl_Cast<CudaT, ToCudaType<bool>::MappedType>(
-      reinterpret_cast<CudaT*>(output_buffer.get()),
       reinterpret_cast<ToCudaType<bool>::MappedType*>(prepare.output_tensor->template MutableData<bool>()),
-      output_size);
+      prepare.output_tensor->Shape().Size());
 
   return Status::OK();
 }
@@ -395,14 +389,14 @@ Status CompareFunction<T, CudaT>::CompareMethod(OpKernelContext* context, ImplCo
 //for other elementwise ops
 template <typename T>
 Status Greater<T>::ComputeInternal(OpKernelContext* context) const {
-  this->CompareMethod(context, &Impl_Greater);
+  this->CompareMethod(context, &ImplT2_Greater);
 
   return Status::OK();
 }
 
 template <typename T>
 Status Equal<T>::ComputeInternal(OpKernelContext* context) const {
-  this->CompareMethod(context, &Impl_Equal);
+  this->CompareMethod(context, &ImplT2_Equal);
 
   return Status::OK();
 }
@@ -411,7 +405,7 @@ Status Equal<T>::ComputeInternal(OpKernelContext* context) const {
 //for other elementwise ops
 template <typename T>
 Status Less<T>::ComputeInternal(OpKernelContext* context) const {
-  this->CompareMethod(context, &Impl_Less);
+  this->CompareMethod(context, &ImplT2_Less);
 
   return Status::OK();
 }
