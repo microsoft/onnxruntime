@@ -213,8 +213,6 @@ Status SaveAttributeOrtFormat(flatbuffers::FlatBufferBuilder& builder,
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "GetAttributeOrtFormat - Unsupported type: ", type);
       break;
   }
-
-  return Status::OK();
 }
 
 #endif
