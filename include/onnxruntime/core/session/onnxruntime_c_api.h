@@ -226,15 +226,6 @@ typedef enum ExecutionMode {
   ORT_PARALLEL = 1,
 } ExecutionMode;
 
-typedef enum OrtProgrammingProjection {
-  ORT_PROJECTION_CROSSPLAT_C = 0, // default
-  ORT_PROJECTION_CPLUSPLUS,
-  ORT_PROJECTION_CROSSPLAT_CSHARP,
-  ORT_PROJECTION_CROSSPLAT_PYTHON,
-  ORT_PROJECTION_CROSSPLAT_JAVA,
-  ORT_PROJECTION_WINML,
-} OrtProgrammingProjection;
-
 struct OrtKernelInfo;
 typedef struct OrtKernelInfo OrtKernelInfo;
 struct OrtKernelContext;
@@ -900,10 +891,6 @@ struct OrtApi {
      */
   ORT_API2_STATUS(AddSessionConfigEntry, _Inout_ OrtSessionOptions* options,
                   _In_z_ const char* config_key, _In_z_ const char* config_value);
-
-  // Set the languate projection for collecting telemetry data before creating session
-  ORT_API2_STATUS(SetSessionProgrammingProjection, _Inout_ OrtSessionOptions* options,
-    _In_ OrtProgrammingProjection projection);
 
   /**
    * \param sess valid OrtSession instance
