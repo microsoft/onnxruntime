@@ -272,10 +272,7 @@ class SparseTensorTests : public testing::Test {
  protected:
   InferenceSession session_object;
   std::shared_ptr<CustomRegistry> registry;
-  IOnnxRuntimeOpSchemaRegistryList custom_schema_registries_;
-  std::unordered_map<std::string, int> domain_to_version;
-  Model model;
-  Graph& graph;
+  std::unique_ptr<Model> model;
 
   std::vector<OpSchema> schemas;
   std::vector<Action> register_actions;
@@ -283,12 +280,7 @@ class SparseTensorTests : public testing::Test {
 
  public:
   SparseTensorTests() : session_object(SessionOptions(), GetEnvironment()),
-                        registry(std::make_shared<CustomRegistry>()),
-                        custom_schema_registries_{registry->GetOpschemaRegistry()},
-                        domain_to_version{{onnxruntime::kMLDomain, 10}},
-                        model("SparseTensorTest", false, ModelMetaData(), PathString(), custom_schema_registries_,
-                              domain_to_version, {}, DefaultLoggingManager().DefaultLogger()),
-                        graph(model.MainGraph()) {
+                        registry(std::make_shared<CustomRegistry>()) {
     EXPECT_TRUE(session_object.RegisterCustomRegistry(registry).IsOK());
   }
 
@@ -318,10 +310,16 @@ class SparseTensorTests : public testing::Test {
       registerop(registry.get());
   }
 
+    void BuildModel() {
+    IOnnxRuntimeOpSchemaRegistryList custom_schema_registries = {registry->GetOpschemaRegistry()};
+    model.reset(new Model("SparseTensorTest", false, ModelMetaData(), PathString(), custom_schema_registries,
+                          {}, {}, DefaultLoggingManager().DefaultLogger()));
+  }
+
   void SerializeAndLoad() {
     // Serialize model and deserialize it back
     std::string serialized_model;
-    auto model_proto = model.ToProto();
+    auto model_proto = model->ToProto();
     EXPECT_TRUE(model_proto.SerializeToString(&serialized_model));
     std::stringstream sstr(serialized_model);
     EXPECT_TRUE(session_object.Load(sstr).IsOK());
@@ -330,17 +328,20 @@ class SparseTensorTests : public testing::Test {
 
   NodeArg* Sparse(std::string name) {
     types.push_back(*DataTypeImpl::GetSparseTensorType<int64_t>()->GetTypeProto());
+    Graph& graph = model->MainGraph();
     auto& arg = graph.GetOrCreateNodeArg(name, &types.back());
     return &arg;
   }
 
   NodeArg* Dense(std::string name) {
     types.push_back(*DataTypeImpl::GetTensorType<int64_t>()->GetTypeProto());
+    Graph& graph = model->MainGraph();
     auto& arg = graph.GetOrCreateNodeArg(name, &types.back());
     return &arg;
   }
 
   void Node(std::string op, const std::vector<NodeArg*> inputs, const std::vector<NodeArg*> outputs) {
+    Graph& graph = model->MainGraph();
     auto& node = graph.AddNode("", op, "", inputs, outputs, nullptr, onnxruntime::kMLDomain);
     node.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
   }
@@ -419,6 +420,7 @@ TEST_F(SparseTensorTests, Test1) {
   RegisterOps();
 
   // Build model/graph
+  BuildModel();
 
   // Node: create a sparse tensor from COO components:
   // sparse1 <- SparseFromCOO(values, indices, shape)
@@ -440,6 +442,7 @@ TEST_F(SparseTensorTests, Test1) {
   Node(SparseToValues::OpName(), {sparse2}, {output});
 
   // Check graph, serialize it and deserialize it back
+  Graph& graph = model->MainGraph();
   EXPECT_TRUE(graph.Resolve().IsOK());
   SerializeAndLoad();
 
@@ -461,6 +464,7 @@ TEST_F(SparseTensorTests, Test2) {
   RegisterOps();
 
   // Build model/graph
+  BuildModel();
 
   // Node: create a sparse tensor from COO components:
   // sparse1 <- SparseFromCOO(values, indices, shape)
@@ -482,6 +486,7 @@ TEST_F(SparseTensorTests, Test2) {
   Node(SparseToValues::OpName(), {sparse2}, {output});
 
   // Check graph, serialize it and deserialize it back
+  Graph& graph = model->MainGraph();
   EXPECT_TRUE(graph.Resolve().IsOK());
   SerializeAndLoad();
 
