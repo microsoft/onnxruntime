@@ -87,10 +87,6 @@ struct SessionOptions {
   // The configuration keys and value formats are defined in
   // /include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h
   std::unordered_map<std::string, std::string> session_configurations;
-  
-  // The default language projection is C language.
-  // The other language projections will call SetSessionProgrammingProjection to set OrtProgrammingProjection
-  OrtProgrammingProjection programming_projection = OrtProgrammingProjection::ORT_PROJECTION_CROSSPLAT_C;
 };
 
 // Check if the given SessionOptions has a config using the given config_key

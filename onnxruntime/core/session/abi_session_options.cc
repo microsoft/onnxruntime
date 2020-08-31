@@ -170,7 +170,6 @@ ORT_API_STATUS_IMPL(OrtApis::AddFreeDimensionOverride, _Inout_ OrtSessionOptions
 
 ORT_API_STATUS_IMPL(OrtApis::SetSessionProgrammingProjection, _Inout_ OrtSessionOptions* options,
   _In_ OrtProgrammingProjection projection) {
-  options->value.programming_projection = projection;
   return nullptr;
 }
 
