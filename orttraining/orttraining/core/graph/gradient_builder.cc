@@ -120,36 +120,63 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
   const bool Y_has_shape = GetShape(Y, Y_shape).IsOK();
 
   auto dB_2d_case = [&]() {
-    NodeDef zero_int64_const_node = ConstantScalarNode(int64_t{0}, {1}, Name("zero_int64"));
-    NodeDef one_const_node = ConstantScalarNode(int64_t{1}, {1}, Name("one"));
-    NodeDef neg_one_const_node = ConstantScalarNode(int64_t{-1}, {1}, Name("neg_one"));
     NodeDef zero_float_const_node = ConstantScalarNode(float{0.0f}, {1}, Name("zero_float"));
-
-    ArgDef ZERO_I = zero_int64_const_node.output_args[0];
-    ArgDef ONE = one_const_node.output_args[0];
-    ArgDef NEG_ONE = neg_one_const_node.output_args[0];
     ArgDef ZERO_F = zero_float_const_node.output_args[0];
 
-    return std::vector<NodeDef>{
-        zero_int64_const_node,
-        one_const_node,
-        neg_one_const_node,
-        zero_float_const_node,
+    if (B_shape[0].has_dim_value() && B_shape[1].has_dim_value()) {
+      // B[K, N] is a weight with known size
+      int64_t K = B_shape[0].dim_value();
+      int64_t N = B_shape[1].dim_value();
 
-        NodeDef("Shape", {B}, {IA("B_shape")}),
+      std::vector<int64_t> A_shape_2d{-1, K};
+      NodeDef A_target_shape_node = ConstantVectorNode(A_shape_2d, Name("A_target_shape"));
 
-        // reshape A to 2D [M, K]
-        NodeDef("Gather", {IA("B_shape"), ZERO_I}, {IA("K_dim")}, {MakeAttribute("axis", int64_t(0))}),
-        NodeDef("Concat", {NEG_ONE, IA("K_dim")}, {IA("A_target_shape")}, {MakeAttribute("axis", int64_t(0))}),
-        NodeDef("Reshape", {A, IA("A_target_shape")}, {IA("A_reshape_2d")}),
+      std::vector<int64_t> dY_shape_2d{-1, N};
+      NodeDef dY_target_shape_node = ConstantVectorNode(dY_shape_2d, Name("dY_target_shape"));
 
-        // reshape dY to 2D [M, N]
-        NodeDef("Gather", {IA("B_shape"), ONE}, {IA("N_dim")}, {MakeAttribute("axis", int64_t(0))}),
-        NodeDef("Concat", {NEG_ONE, IA("N_dim")}, {IA("dY_target_shape")}, {MakeAttribute("axis", int64_t(0))}),
-        NodeDef("Reshape", {GO(0), IA("dY_target_shape")}, {IA("dY_reshape_2d")}),
+      return std::vector<NodeDef>{
+          A_target_shape_node,
+          dY_target_shape_node,
+          zero_float_const_node,
 
-        // dB = A' * dY
-        NodeDef("Gemm", {IA("A_reshape_2d"), IA("dY_reshape_2d"), ZERO_F}, {GI(1)}, {MakeAttribute("transA", int64_t(1))})};
+          // reshape A to 2D [M, K]
+          NodeDef("Reshape", {A, A_target_shape_node.output_args[0]}, {IA("A_reshape_2d")}),
+
+          // reshape dY to 2D [M, N]
+          NodeDef("Reshape", {GO(0), dY_target_shape_node.output_args[0]}, {IA("dY_reshape_2d")}),
+
+          // dB = A' * dY
+          NodeDef("Gemm", {IA("A_reshape_2d"), IA("dY_reshape_2d"), ZERO_F}, {GI(1)}, {MakeAttribute("transA", int64_t(1))})};
+    } else {
+      NodeDef zero_int64_const_node = ConstantScalarNode(int64_t{0}, {1}, Name("zero_int64"));
+      NodeDef one_const_node = ConstantScalarNode(int64_t{1}, {1}, Name("one"));
+      NodeDef neg_one_const_node = ConstantScalarNode(int64_t{-1}, {1}, Name("neg_one"));
+
+      ArgDef ZERO_I = zero_int64_const_node.output_args[0];
+      ArgDef ONE = one_const_node.output_args[0];
+      ArgDef NEG_ONE = neg_one_const_node.output_args[0];
+
+      return std::vector<NodeDef>{
+          zero_int64_const_node,
+          one_const_node,
+          neg_one_const_node,
+          zero_float_const_node,
+
+          NodeDef("Shape", {B}, {IA("B_shape")}),
+
+          // reshape A to 2D [M, K]
+          NodeDef("Gather", {IA("B_shape"), ZERO_I}, {IA("K_dim")}, {MakeAttribute("axis", int64_t(0))}),
+          NodeDef("Concat", {NEG_ONE, IA("K_dim")}, {IA("A_target_shape")}, {MakeAttribute("axis", int64_t(0))}),
+          NodeDef("Reshape", {A, IA("A_target_shape")}, {IA("A_reshape_2d")}),
+
+          // reshape dY to 2D [M, N]
+          NodeDef("Gather", {IA("B_shape"), ONE}, {IA("N_dim")}, {MakeAttribute("axis", int64_t(0))}),
+          NodeDef("Concat", {NEG_ONE, IA("N_dim")}, {IA("dY_target_shape")}, {MakeAttribute("axis", int64_t(0))}),
+          NodeDef("Reshape", {GO(0), IA("dY_target_shape")}, {IA("dY_reshape_2d")}),
+
+          // dB = A' * dY
+          NodeDef("Gemm", {IA("A_reshape_2d"), IA("dY_reshape_2d"), ZERO_F}, {GI(1)}, {MakeAttribute("transA", int64_t(1))})};
+    }
   };
 
   if (A_has_shape && B_has_shape && Y_has_shape) {

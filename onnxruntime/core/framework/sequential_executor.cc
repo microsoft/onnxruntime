@@ -15,7 +15,7 @@
 #include "core/framework/op_kernel_context_internal.h"
 
 #if defined DEBUG_NODE_INPUTS_OUTPUTS
-#include "core/framework/utils.h"
+#include "core/framework/debug_node_inputs_outputs_utils.h"
 #endif
 
 #ifdef ENABLE_NVTX_PROFILE
@@ -269,8 +269,8 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
         }
       }
     }
-#if defined DEBUG_NODE_INPUTS_OUTPUTS
-    utils::DumpNodeInputs(op_kernel_context, p_op_kernel->Node());
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+    utils::DumpNodeInputs(op_kernel_context, p_op_kernel->Node(), session_state);
 #endif
 
     const std::string node_name_for_profiling = [&]() -> std::string {
@@ -400,7 +400,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}});
     }
 
-#if defined(DEBUG_NODE_INPUTS_OUTPUTS)
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
     utils::DumpNodeOutputs(op_kernel_context, p_op_kernel->Node(), session_state);
 #endif
 

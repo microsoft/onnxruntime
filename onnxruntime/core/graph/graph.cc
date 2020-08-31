@@ -21,6 +21,7 @@
 #include "core/graph/graph_viewer.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "core/graph/model.h"
+#include "core/graph/model_load_utils.h"
 #include "core/graph/op.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -51,9 +52,9 @@ static bool UsingLatestOnnxOpset(const DomainToVersionMap& opset_versions) {
   auto onnx_opset = opset_versions.find(kOnnxDomain);
 
   if (onnx_opset != opset_versions.cend()) {
-    static int latest_onnx_version =
-        ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().Map().at(ONNX_NAMESPACE::ONNX_DOMAIN).second;
-
+    static int latest_onnx_version = model_load_utils::IsAllowReleasedONNXOpsetsOnlySet()
+                                         ? ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().LastReleaseVersionMap().at(ONNX_NAMESPACE::ONNX_DOMAIN)
+                                         : ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().Map().at(ONNX_NAMESPACE::ONNX_DOMAIN).second;
     if (onnx_opset->second == latest_onnx_version) {
       is_latest_opset = true;
     }

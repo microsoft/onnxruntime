@@ -14,6 +14,7 @@
 #include "gsl/gsl"
 
 namespace onnxruntime {
+
 typedef std::unordered_map<std::string, std::string> ModelMetaData;
 using IOnnxRuntimeOpSchemaRegistryList = std::list<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>>;
 

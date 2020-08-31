@@ -6,6 +6,8 @@ parameters:
   DoNugetPack: 'false'
   NuPackScript: ''
   ArtifactName: 'drop-osx'
+  # Controls whether unreleased onnx opsets are allowed. Default is set to 1
+  AllowReleasedOpsetOnly: '1' 
 
 jobs:
 - job: ${{ parameters.JobName }}
@@ -16,6 +18,7 @@ jobs:
     vmImage: 'macOS-10.14'
   variables:
     BuildCommand: ${{ parameters.BuildCommand }}
+    ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
   steps:
     - checkout: self
       ${{ if ne(parameters.SubmoduleCheckoutMode, '') }}:
