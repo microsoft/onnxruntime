@@ -82,8 +82,8 @@ class DistributedRunContext {
     return DistributedRunContext::GetInstance().GetWorkerGroup(group_type).group_id;
   }
 
-  static std::vector<int32_t> GetPipelineRanks(){
-    return DistributedRunContext::GetInstance().GetWorkerGroup(WorkerGroupType::ModelParallel).ranks;
+  static std::vector<int32_t> GetRanks(WorkerGroupType group_type){
+    return DistributedRunContext::GetInstance().GetWorkerGroup(group_type).ranks;
   }
 
   // Get total rank of specified group.

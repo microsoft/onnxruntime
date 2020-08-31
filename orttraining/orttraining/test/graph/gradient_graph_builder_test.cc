@@ -1069,7 +1069,7 @@ void RetrieveEventOperators(
     }
   }
 
-  // For different stages, assign nodes based on different rules. 
+  // For different stages, assign nodes based on different rules.
   if (stage_index != 0 && stage_index != num_stages - 1) {
     // Wait/Record patterns at middle stages:
     //   Wait -> Recv -> Record -> Wait -> FW -> Record -> Wait -> Send -> Record ->
@@ -1181,6 +1181,36 @@ PathString GenerateFileNameWithIndex(const std::string& base_str, int index, con
   return path_utils::MakePathString(base_str, index, file_suffix);
 }
 
+// DistributedRunTestContext provides a method to override existing DistributedRunTestContext instance.
+// This is for test purpose only. Please don't use it for other scenarios.
+class DistributedRunTestContext : public DistributedRunContext
+{
+public:
+    DistributedRunTestContext(const TrainingSession::TrainingConfiguration &config)
+        : DistributedRunContext(config.distributed_config.world_rank,
+                                config.distributed_config.world_size,
+                                config.distributed_config.local_rank,
+                                config.distributed_config.local_size,
+                                config.distributed_config.data_parallel_size,
+                                config.distributed_config.horizontal_parallel_size,
+                                config.distributed_config.pipeline_parallel_size)
+    {
+    }
+
+    // Reset the static DistributedRunContext object with new value.
+    void ResetDistributedRunContext(){
+      DistributedRunContext::GetRunConfig() = params_;
+      auto& dp_group = DistributedRunContext::GetWorkerGroup(WorkerGroupType::DataParallel);
+      dp_group = groups_[WorkerGroupType::DataParallel];
+
+      auto& hp_group = DistributedRunContext::GetWorkerGroup(WorkerGroupType::HorizontalParallel);
+      hp_group = groups_[WorkerGroupType::HorizontalParallel];
+
+      auto& mp_group = DistributedRunContext::GetInstance().GetWorkerGroup(WorkerGroupType::ModelParallel);
+      mp_group = groups_[WorkerGroupType::ModelParallel];
+    }
+};
+
 void OverwritePipelineRank(const TrainingSession::TrainingConfiguration& config, const int pipeline_rank) {
   // DistributedRunContext is a static global. Create one if it hasn't been created yet.
   DistributedRunContext::CreateInstance({config.distributed_config.world_rank,
@@ -1191,8 +1221,15 @@ void OverwritePipelineRank(const TrainingSession::TrainingConfiguration& config,
                                          config.distributed_config.horizontal_parallel_size,
                                          config.distributed_config.pipeline_parallel_size});
 
+  // If DistributedRunContext has already been created prior to this test, the CreateInstance() call above won't
+  // create a new DistributedRunContext instance, as it is statically cached in the process.
+  // In this case, we create a DistributedRunTestContext object and assign its value to the static object's field.
+  DistributedRunTestContext ctx(config);
+  ctx.ResetDistributedRunContext();
+
   // Overwrite the pipeline rank in case the static DistributedRunContext has been created and is stale and not up-to-date.
-  DistributedRunContext::GetInstance().GetWorkerGroup(WorkerGroupType::ModelParallel).rank_in_group = pipeline_rank;
+  auto& mp_group = DistributedRunContext::GetInstance().GetWorkerGroup(WorkerGroupType::ModelParallel);
+  mp_group.rank_in_group = pipeline_rank;
 }
 
 TEST(GradientGraphBuilderTest, PipelineOnlinePartition_bert_tiny) {

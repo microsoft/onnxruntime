@@ -152,7 +152,7 @@ Status TrainingSession::ConfigureForTraining(
                                          config.distributed_config.horizontal_parallel_size,
                                          config.distributed_config.pipeline_parallel_size});
 
-  int32_t pipeline_stage_id = config.pipeline_config.has_value() ?
+  const int32_t pipeline_stage_id = config.pipeline_config.has_value() ?
                               DistributedRunContext::RankInGroup(WorkerGroupType::ModelParallel) :
                               -1;
 
