@@ -13,7 +13,6 @@
 
 #include "core/graph/graph_viewer.h"
 #include "core/framework/data_transfer_manager.h"
-#include "core/graph/graph_utils.h"
 #include "core/framework/graph_partitioner.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/ort_value_pattern_planner.h"

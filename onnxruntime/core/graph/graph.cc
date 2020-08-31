@@ -17,10 +17,10 @@
 #include "core/framework/tensor_shape.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
-#include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "core/graph/model.h"
+#include "core/graph/model_load_utils.h"
 #include "core/graph/op.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -50,9 +50,9 @@ static bool UsingLatestOnnxOpset(const DomainToVersionMap& opset_versions) {
   auto onnx_opset = opset_versions.find(kOnnxDomain);
 
   if (onnx_opset != opset_versions.cend()) {
-    static int latest_onnx_version =
-        ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().Map().at(ONNX_NAMESPACE::ONNX_DOMAIN).second;
-
+    static int latest_onnx_version = model_load_utils::IsAllowReleasedONNXOpsetsOnlySet()
+                                         ? ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().LastReleaseVersionMap().at(ONNX_NAMESPACE::ONNX_DOMAIN)
+                                         : ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().Map().at(ONNX_NAMESPACE::ONNX_DOMAIN).second;
     if (onnx_opset->second == latest_onnx_version) {
       is_latest_opset = true;
     }
@@ -64,9 +64,11 @@ static bool UsingLatestOnnxOpset(const DomainToVersionMap& opset_versions) {
 static Status MergeShapeInfo(const std::string& output_name,
                              const TypeProto_Tensor& source, TypeProto_Tensor& target,
                              bool strict, const logging::Logger& logger) {
-  try {
+  auto status = Status::OK();
+  ORT_TRY {
     ONNX_NAMESPACE::mergeInShapeInfo(source, target);
-  } catch (const ONNX_NAMESPACE::InferenceError& ex) {
+  }
+  ORT_CATCH(const ONNX_NAMESPACE::InferenceError& ex) {
     // if this model was not created with the latest onnx version, allow the shape inferencing failure (strict == false).
     // we do this to have strict testing of the latest inferencing to detect bugs, but lenient shape inferencing for
     // older models in case later changes to the ONNX shape inferencing or ORT break them.
@@ -80,11 +82,16 @@ static Status MergeShapeInfo(const std::string& output_name,
 
       ONNX_NAMESPACE::UnionShapeInfo(source.shape(), target);
     } else {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output:", output_name, " ", ex.what());
+      ORT_UNUSED_PARAMETER(logger);
+      ORT_UNUSED_PARAMETER(strict);
+      ORT_UNUSED_PARAMETER(output_name);
+      ORT_HANDLE_EXCEPTION([&]() {
+        status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output:", output_name, " ", ex.what());
+      });
     }
   }
 
-  return Status::OK();
+  return status;
 }
 
 static bool GraphLoadedFromModelFile(const GraphProto* graph_proto) {
@@ -734,21 +741,17 @@ Graph::Graph(const Model& owning_model,
              const std::unordered_map<std::string, int>& domain_to_version,
              Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
-             const logging::Logger& logger,
-             const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions)
-    : Graph(owning_model, graph_proto, domain_to_version, ir_version, schema_registry, nullptr, nullptr, logger,
-            model_functions) {}
+             const logging::Logger& logger)
+    : Graph(owning_model, graph_proto, domain_to_version, ir_version, schema_registry, nullptr, nullptr, logger) {}
 
 Graph::Graph(const Model& owning_model,
              GraphProto* graph_proto, const std::unordered_map<std::string, int>& domain_to_version, Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry, Graph* parent_graph, const Node* parent_node,
-             const logging::Logger& logger,
-             const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions)
+             const logging::Logger& logger)
     : owning_model_(owning_model),
       graph_proto_(graph_proto),
       schema_registry_(schema_registry),
       graph_resolve_needed_(true),
-      model_functions_(model_functions),
       domain_to_version_(domain_to_version),
       ir_version_(ir_version),
       using_latest_onnx_opset_(UsingLatestOnnxOpset(domain_to_version)),
@@ -865,7 +868,7 @@ Graph::Graph(Graph& parent_graph, const Node& parent_node, ONNX_NAMESPACE::Graph
             &subgraph_proto,
             parent_graph.DomainToVersionMap(), parent_graph.IrVersion(), parent_graph.schema_registry_,
             &parent_graph,
-            &parent_node, parent_graph.logger_, std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>()) {
+            &parent_node, parent_graph.logger_) {
 }
 
 void Graph::InitializeStateFromModelFileGraphProto() {
@@ -1797,10 +1800,17 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
   SubgraphInferencingFunc func(Graph::InferAndVerifySubgraphTypes);
   InferenceContextImpl context(node, func, *this, options);
 
-  try {
-    context.RunInferencing();
-  } catch (const std::exception& ex) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node (", node.Name(), ") Op (", node.OpType(), ") ", ex.what());
+  {
+    auto status = Status::OK();
+    ORT_TRY {
+      context.RunInferencing();
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node (", node.Name(), ") Op (", node.OpType(), ") ", ex.what());
+      });
+    }
+    ORT_RETURN_IF_ERROR(status);
   }
 
   const auto& onnx_inferred_types(context.InferredOutputTypes());
@@ -1944,7 +1954,7 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
       if (nullptr == p_existing_shape) {
         // use the inferred shape if this is a constant initializer (cannot be overridden).
         // if not it has a matching graph input, and we prefer the shape info (or lack of info) from the graph input
-        if (graph_utils::IsConstantInitializer(*this, name, false)) {
+        if (GetConstantInitializer(name, false) != nullptr) {
           node_arg->SetShape(inferred_shape);
         }
       } else {
@@ -2000,20 +2010,18 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
     auto& node_name = node.Name();
     auto& domain = node.Domain();
 
-    auto iter = model_functions_.find(node.OpType());
-    if (iter != model_functions_.end()) {
-      const ONNX_NAMESPACE::FunctionProto* model_function_proto = iter->second;
-      function_container_.emplace_back(onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(),
-                                                                                           *model_function_proto,
-                                                                                           logger_));
-      node.SetFunctionBody(*function_container_.back());
-    }
-
     if (!node.Op()) {
-      try {
-        checker::check_node(node_proto, ctx, lsc);
-      } catch (const std::exception& ex) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "This is an invalid model. Error in Node:", node_name, " : ", ex.what());
+      {
+        auto status = Status::OK();
+        ORT_TRY {
+          checker::check_node(node_proto, ctx, lsc);
+        }
+        ORT_CATCH(const std::exception& ex) {
+          ORT_HANDLE_EXCEPTION([&]() {
+            status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "This is an invalid model. Error in Node:", node_name, " : ", ex.what());
+          });
+        }
+        ORT_RETURN_IF_ERROR(status);
       }
 
       auto maxInclusiveVersion = DomainToVersionMap().find(domain)->second;
@@ -3076,10 +3084,6 @@ void Graph::SetOutputs(const std::vector<const NodeArg*>& outputs) {
   graph_outputs_manually_set_ = true;
   GraphProtoSyncNeeded(true);
   GraphResolveNeeded(true);
-}
-
-void Graph::AddFunction(const ONNX_NAMESPACE::FunctionProto* func_proto) {
-  this->model_functions_[func_proto->name()] = func_proto;
 }
 
 void Graph::SetNodeArgType(NodeArg& arg, const onnx::TypeProto& type_proto) {
