@@ -1035,7 +1035,7 @@ void addObjectMethods(py::module& m, Environment& env) {
   py::class_<PySessionOptions>
       sess(m, "SessionOptions", R"pbdoc(Configuration information for a session.)pbdoc");
   sess
-      .def(py::init([]() { return GetDefaultCPUSessionOptions(); }))
+      .def(py::init())
       .def_readwrite("enable_cpu_mem_arena", &PySessionOptions::enable_cpu_mem_arena,
                      R"pbdoc(Enables the memory arena on CPU. Arena may pre-allocate memory for future usage.
 Set this option to false if you don't want it. Default is True.)pbdoc")
