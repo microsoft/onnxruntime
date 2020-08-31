@@ -238,7 +238,11 @@ endif()
 
 # If this is only enabled in an onnxruntime_ORT_MODEL_FORMAT_ONLY build we don't need ONNX changes
 # as we (currently) only pull in data_type_utils.cc/h which doesn't throw
-if (onnxruntime_NO_EXCEPTIONS)
+if(onnxruntime_NO_EXCEPTIONS)
+  if(NOT onnxruntime_MINIMAL_BUILD)
+    message(FATAL_ERROR "onnxruntime_MINIMAL_BUILD required for onnxruntime_NO_EXCEPTIONS")
+  endif()
+
   add_compile_definitions("ORT_NO_EXCEPTIONS")
   add_compile_definitions("MLAS_NO_EXCEPTION")
 
