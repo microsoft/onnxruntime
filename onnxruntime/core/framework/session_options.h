@@ -90,7 +90,7 @@ struct SessionOptions {
 
   // The default language projection is C language.
   // The other language projections will call SetSessionProgrammingProjection to set OrtProgrammingProjection
-  OrtProgrammingProjection programming_projection = OrtProgrammingProjection::ORT_PROJECTION_CROSSPLAT_C;
+  OrtProgrammingProjection programming_projection = OrtProgrammingProjection::ORT_PROJECTION_C;
 };
 
 // Check if the given SessionOptions has a config using the given config_key

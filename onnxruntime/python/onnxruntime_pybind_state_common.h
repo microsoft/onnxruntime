@@ -81,7 +81,7 @@ struct PyInferenceSession {
 
 inline const PySessionOptions& GetDefaultCPUSessionOptions() {
   static PySessionOptions so;
-  SetSessionProgrammingProjectionImpl(so, OrtProgrammingProjection::ORT_PROJECTION_CROSSPLAT_PYTHON);
+  SetSessionProgrammingProjectionImpl(so, OrtProgrammingProjection::ORT_PROJECTION_PYTHON);
   return so;
 }
 

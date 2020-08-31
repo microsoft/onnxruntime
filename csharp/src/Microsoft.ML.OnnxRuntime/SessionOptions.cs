@@ -36,11 +36,11 @@ namespace Microsoft.ML.OnnxRuntime
     /// </summary>
     public enum OrtProgrammingProjection
     {
-        ORT_PROJECTION_CROSSPLAT_C = 0,
+        ORT_PROJECTION_C = 0,
         ORT_PROJECTION_CPLUSPLUS,
-        ORT_PROJECTION_CROSSPLAT_CSHARP,
-        ORT_PROJECTION_CROSSPLAT_PYTHON,
-        ORT_PROJECTION_CROSSPLAT_JAVA,
+        ORT_PROJECTION_CSHARP,
+        ORT_PROJECTION_PYTHON,
+        ORT_PROJECTION_JAVA,
         ORT_PROJECTION_WINML,
     }
 
@@ -60,7 +60,7 @@ namespace Microsoft.ML.OnnxRuntime
             :base(IntPtr.Zero, true)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionOptions(out handle));
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionProgrammingProjection(handle, OrtProgrammingProjection.ORT_PROJECTION_CROSSPLAT_CSHARP));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionProgrammingProjection(handle, OrtProgrammingProjection.ORT_PROJECTION_CSHARP));
         }
 
         /// <summary>

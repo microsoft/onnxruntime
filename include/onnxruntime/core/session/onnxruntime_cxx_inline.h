@@ -362,11 +362,6 @@ inline RunOptions& RunOptions::UnsetTerminate() {
   return *this;
 }
 
-inline SessionOptions::SessionOptions(std::nullptr_t) {
-  ThrowOnError(GetApi().CreateSessionOptions(&p_));
-  ThrowOnError(GetApi().SetSessionProgrammingProjection(p_, OrtProgrammingProjection::ORT_PROJECTION_CPLUSPLUS));
-}
-
 inline SessionOptions::SessionOptions() {
   ThrowOnError(GetApi().CreateSessionOptions(&p_));
   ThrowOnError(GetApi().SetSessionProgrammingProjection(p_, OrtProgrammingProjection::ORT_PROJECTION_CPLUSPLUS));
@@ -458,11 +453,22 @@ inline SessionOptions& SessionOptions::AddConfigEntry(const char* config_key, co
 }
 
 inline Session::Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options) {
-  ThrowOnError(GetApi().CreateSession(env, model_path, options, &p_));
+  if (options == nullptr) {
+    auto new_options = SessionOptions();
+    ThrowOnError(GetApi().CreateSession(env, model_path, new_options, &p_));
+  } else {
+    ThrowOnError(GetApi().CreateSession(env, model_path, options, &p_));
+  }
+  
 }
 
 inline Session::Session(Env& env, const void* model_data, size_t model_data_length, const SessionOptions& options) {
-  ThrowOnError(GetApi().CreateSessionFromArray(env, model_data, model_data_length, options, &p_));
+  if (options == nullptr) {
+    auto new_options = SessionOptions();
+    ThrowOnError(GetApi().CreateSessionFromArray(env, model_data, model_data_length, new_options, &p_));
+  } else {
+    ThrowOnError(GetApi().CreateSessionFromArray(env, model_data, model_data_length, options, &p_));
+  }
 }
 
 inline std::vector<Value> Session::Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
