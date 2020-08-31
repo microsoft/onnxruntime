@@ -168,11 +168,6 @@ ORT_API_STATUS_IMPL(OrtApis::AddFreeDimensionOverride, _Inout_ OrtSessionOptions
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SetSessionProgrammingProjection, _Inout_ OrtSessionOptions* options,
-  _In_ OrtProgrammingProjection projection) {
-  return onnxruntime::ToOrtStatus(SetSessionProgrammingProjectionImpl(options->value, projection));
-}
-
 ORT_API_STATUS_IMPL(OrtApis::AddFreeDimensionOverrideByName, _Inout_ OrtSessionOptions* options,
                     _In_ const char* dim_name, _In_ int64_t dim_value) {
   options->value.free_dimension_overrides.push_back(
