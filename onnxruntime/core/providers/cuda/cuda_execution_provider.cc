@@ -63,14 +63,14 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
   CURAND_CALL_THROW(curandCreateGenerator(&curand_generator_, CURAND_RNG_PSEUDO_DEFAULT));
 
   AllocatorCreationInfo default_memory_info(
-      {[](OrtDevice::DeviceId id) {
-         return onnxruntime::make_unique<CUDAAllocator>(id, CUDA);
-       },
-       device_id,
-       true,
-       {cuda_mem_limit,
-        arena_extend_strategy == ArenaExtendStrategy::kNextPowerOfTwo ? 0 : 1,
-        -1, -1}});
+      [](OrtDevice::DeviceId id) {
+        return onnxruntime::make_unique<CUDAAllocator>(id, CUDA);
+      },
+      device_id,
+      true,
+      {cuda_mem_limit,
+       static_cast<int>(arena_extend_strategy),
+       -1, -1});
 
   // CUDA malloc/free is expensive so always use an arena
   allocator_ = CreateAllocator(default_memory_info);
@@ -138,34 +138,34 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
   CUDA_CALL_THROW(cudaMemGetInfo(&free, &total));
 
   AllocatorCreationInfo default_memory_info(
-      {[](OrtDevice::DeviceId device_id) {
-         return onnxruntime::make_unique<CUDAAllocator>(device_id, CUDA);
-       },
-       device_id_,
-       true,
-       {cuda_mem_limit_,
-        arena_extend_strategy == ArenaExtendStrategy::kNextPowerOfTwo ? 0 : 1,
-        -1, -1}});
+      [](OrtDevice::DeviceId device_id) {
+        return onnxruntime::make_unique<CUDAAllocator>(device_id, CUDA);
+      },
+      device_id_,
+      true,
+      {cuda_mem_limit_,
+       static_cast<int>(arena_extend_strategy_),
+       -1, -1});
 
   InsertAllocator(CreateAllocator(default_memory_info));
 
   AllocatorCreationInfo pinned_memory_info(
-      {[](OrtDevice::DeviceId device_id) {
-         return onnxruntime::make_unique<CUDAPinnedAllocator>(device_id, CUDA_PINNED);
-       },
-       CPU_ALLOCATOR_DEVICE_ID});
+      [](OrtDevice::DeviceId device_id) {
+        return onnxruntime::make_unique<CUDAPinnedAllocator>(device_id, CUDA_PINNED);
+      },
+      CPU_ALLOCATOR_DEVICE_ID);
 
   InsertAllocator(CreateAllocator(pinned_memory_info));
 
   // TODO: this is actually used for the cuda kernels which explicitly ask for inputs from CPU.
   // This will be refactored/removed when allocator and execution provider are decoupled.
   AllocatorCreationInfo cpu_memory_info(
-      {[](int device_id) {
-         return onnxruntime::make_unique<CPUAllocator>(
-             OrtMemoryInfo("CUDA_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
-                           OrtMemTypeCPUInput));
-       },
-       CPU_ALLOCATOR_DEVICE_ID});
+      [](int device_id) {
+        return onnxruntime::make_unique<CPUAllocator>(
+            OrtMemoryInfo("CUDA_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
+                          OrtMemTypeCPUInput));
+      },
+      CPU_ALLOCATOR_DEVICE_ID);
 
   InsertAllocator(CreateAllocator(cpu_memory_info));
 

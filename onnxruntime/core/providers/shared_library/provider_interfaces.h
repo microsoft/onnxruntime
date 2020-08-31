@@ -152,11 +152,12 @@ struct Provider_IDeviceAllocator : Provider_IAllocator {};
 using Provider_AllocatorPtr = std::shared_ptr<Provider_IAllocator>;
 using Provider_DeviceAllocatorFactory = std::function<std::unique_ptr<Provider_IDeviceAllocator>(int)>;
 
+using DeviceId = int16_t;
 struct Provider_AllocatorCreationInfo {
   Provider_AllocatorCreationInfo(Provider_DeviceAllocatorFactory device_alloc_factory0,
-                                 OrtDevice::DeviceId device_id0 = 0,
+                                 DeviceId device_id0 = 0,
                                  bool use_arena0 = true,
-                                 OrtArenaCfg arena_cfg0 = {-1, -1, -1, -1})
+                                 OrtArenaCfg arena_cfg0 = {0, -1, -1, -1})
       : factory(device_alloc_factory0),
         device_id(device_id0),
         use_arena(use_arena0),
@@ -164,7 +165,7 @@ struct Provider_AllocatorCreationInfo {
   }
 
   Provider_DeviceAllocatorFactory factory;
-  OrtDevice::DeviceId device_id;
+  DeviceId device_id;
   bool use_arena;
   OrtArenaCfg arena_cfg;
 };

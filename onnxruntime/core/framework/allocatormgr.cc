@@ -4,6 +4,7 @@
 #include "core/framework/allocatormgr.h"
 #include "core/framework/bfc_arena.h"
 #include "core/framework/mimalloc_arena.h"
+#include "core/common/logging/logging.h"
 #include <mutex>
 #include <sstream>
 #include <unordered_map>
@@ -16,7 +17,7 @@ AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
   auto device_allocator = std::unique_ptr<IDeviceAllocator>(info.device_alloc_factory(info.device_id));
 
   if (info.use_arena) {
-    size_t max_mem = info.arena_cfg.max_mem == -1 ? BFCArena::DEFAULT_MAX_MEM : info.arena_cfg.max_mem;
+    size_t max_mem = info.arena_cfg.max_mem == 0 ? BFCArena::DEFAULT_MAX_MEM : info.arena_cfg.max_mem;
     int initial_chunk_size_bytes = info.arena_cfg.initial_chunk_size_bytes == -1
                                        ? BFCArena::DEFAULT_INITIAL_CHUNK_SIZE_BYTES
                                        : info.arena_cfg.initial_chunk_size_bytes;
@@ -25,12 +26,16 @@ AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
                                        : info.arena_cfg.max_dead_bytes_per_chunk;
     ArenaExtendStrategy arena_extend_str;
     switch (info.arena_cfg.arena_extend_strategy) {
-      case 1:
+      case static_cast<int>(ArenaExtendStrategy::kSameAsRequested):
         arena_extend_str = ArenaExtendStrategy::kSameAsRequested;
         break;
-      default:
+      case -1:  // default value supplied by user
+      case static_cast<int>(ArenaExtendStrategy::kNextPowerOfTwo):
         arena_extend_str = ArenaExtendStrategy::kNextPowerOfTwo;
         break;
+      default:
+        LOGS_DEFAULT(ERROR) << "Received invalid value of arena_extend_strategy " << info.arena_cfg.arena_extend_strategy;
+        return nullptr;
     }
 
 #ifdef USE_MIMALLOC

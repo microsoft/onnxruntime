@@ -104,10 +104,10 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
   whole_graph_shape_infer_ = std::make_shared<ShapeExprContext>();
 
   AllocatorCreationInfo memory_info(
-      {[](int /*id*/) {
-         return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo("Nuphar", OrtAllocatorType::OrtDeviceAllocator));
-       },
-       tvm_ctx_.device_id});
+      [](int /*id*/) {
+        return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo("Nuphar", OrtAllocatorType::OrtDeviceAllocator));
+      },
+      static_cast<OrtDevice::DeviceId>(tvm_ctx_.device_id));
 
   InsertAllocator(CreateAllocator(memory_info));
 

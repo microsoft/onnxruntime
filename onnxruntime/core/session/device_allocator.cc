@@ -59,16 +59,25 @@ ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterAllocator, _Inout_ OrtEnv* env, _I
   // create appropriate DeviceAllocatorRegistrationInfo and allocator based on create_arena
   if (create_arena) {
     // defaults in case arena_cfg is nullptr (not supplied by the user)
-    int max_mem = -1;
+    size_t max_mem = 0;
     int arena_extend_strategy = -1;
     int initial_chunk_size_bytes = -1;
     int max_dead_bytes_per_chunk = -1;
 
+    // override with values from the user supplied arena_cfg object
     if (arena_cfg) {
-      if (arena_cfg->max_mem != -1) max_mem = arena_cfg->max_mem;
-      if (arena_cfg->arena_extend_strategy != 1) arena_extend_strategy = arena_cfg->arena_extend_strategy;
-      if (arena_cfg->initial_chunk_size_bytes != -1) initial_chunk_size_bytes = arena_cfg->initial_chunk_size_bytes;
-      if (arena_cfg->max_dead_bytes_per_chunk != -1) max_dead_bytes_per_chunk = arena_cfg->max_dead_bytes_per_chunk;
+      max_mem = arena_cfg->max_mem;
+
+      arena_extend_strategy = arena_cfg->arena_extend_strategy;
+      // validate the value here
+      if (!(arena_extend_strategy == -1 || arena_extend_strategy == 0 || arena_extend_strategy == 1)) {
+        return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                     "Received invalid value for arena extend strategy."
+                                     " Valid values can be either 0, 1 or -1.");
+      }
+
+      initial_chunk_size_bytes = arena_cfg->initial_chunk_size_bytes;
+      max_dead_bytes_per_chunk = arena_cfg->max_dead_bytes_per_chunk;
     }
 
     OrtArenaCfg l_arena_cfg{max_mem, arena_extend_strategy, initial_chunk_size_bytes, max_dead_bytes_per_chunk};

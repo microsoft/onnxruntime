@@ -21,9 +21,9 @@ constexpr const char* OpenVINO = "OpenVINO";
 OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kOpenVINOExecutionProvider}, info_(info) {
   AllocatorCreationInfo device_info(
-      {[](int) {
+      [](int) {
         return std::make_unique<CPUAllocator>(OrtMemoryInfo(OpenVINO, OrtDeviceAllocator));
-      }});
+      });
 
   InsertAllocator(CreateAllocator(device_info));
 }

@@ -16,17 +16,17 @@ constexpr const char* NNAPI = "Nnapi";
 NnapiExecutionProvider::NnapiExecutionProvider()
     : IExecutionProvider{onnxruntime::kNnapiExecutionProvider} {
   AllocatorCreationInfo device_info(
-      {[](int) {
+      [](int) {
         return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo(NNAPI, OrtAllocatorType::OrtDeviceAllocator));
-      }});
+      });
 
   InsertAllocator(CreateAllocator(device_info));
 
   AllocatorCreationInfo cpu_memory_info(
-      {[](int) {
+      [](int) {
         return onnxruntime::make_unique<CPUAllocator>(
             OrtMemoryInfo(NNAPI, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
-      }});
+      });
 
   InsertAllocator(CreateAllocator(cpu_memory_info));
 }
