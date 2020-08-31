@@ -372,10 +372,6 @@ inline SessionOptions::SessionOptions() {
   ThrowOnError(GetApi().SetSessionProgrammingProjection(p_, OrtProgrammingProjection::ORT_PROJECTION_CPLUSPLUS));
 }
 
-inline SessionOptions::SessionOptions(OrtSessionOptions* p) : Base<OrtSessionOptions>{p} {
-  ThrowOnError(GetApi().SetSessionProgrammingProjection(p_, OrtProgrammingProjection::ORT_PROJECTION_CPLUSPLUS));
-};
-
 inline SessionOptions SessionOptions::Clone() const {
   OrtSessionOptions* out;
   ThrowOnError(GetApi().CloneSessionOptions(p_, &out));
