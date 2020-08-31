@@ -15,7 +15,7 @@
 #include "core/common/path.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
-#include "core/flatbuffers/ort_generated.h"
+#include "core/flatbuffers/ort.fbs.h"
 #include "core/graph/basic_types.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph_nodes.h"

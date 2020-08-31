@@ -13,7 +13,7 @@
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/profiler.h"
-#include "core/flatbuffers/ort_generated.h"
+#include "core/flatbuffers/ort.fbs.h"
 #include "core/framework/allocation_planner.h"
 #include "core/framework/callback.h"
 #include "core/framework/data_transfer_manager.h"

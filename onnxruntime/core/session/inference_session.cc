@@ -38,7 +38,7 @@
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
-#include "core/flatbuffers/ort_generated.h"
+#include "core/flatbuffers/ort.fbs.h"
 #ifdef USE_DML  // TODO: This is necessary for the workaround in TransformGraph
 #include "core/providers/dml/DmlExecutionProvider/src/GraphTransformer.h"
 #endif
@@ -424,7 +424,7 @@ common::Status InferenceSession::SaveToOrtFormat(const std::basic_string<ORTCHAR
   ORT_RETURN_IF_NOT(FLATBUFFERS_LITTLEENDIAN, "ort format only supports little-edian machines");
 
   // Get the byte size of the ModelProto and round it to the next MB and use it as flatbuffers' init_size
-  // TODO: Investigate whether we should set a max size, and clarify the cost of having a buffer smaller than 
+  // TODO: Investigate whether we should set a max size, and clarify the cost of having a buffer smaller than
   // what the total flatbuffers serialized size will be.
   constexpr size_t m_bytes = 1024 * 1024;
   size_t fbs_buffer_size = std::max(m_bytes, model_->ToProto().ByteSizeLong());
@@ -1034,8 +1034,8 @@ common::Status InferenceSession::Initialize() {
     bool keep_initializers = !session_options_.optimized_model_filepath.empty();
 
     auto* serialized_session_state = ort_format_model_bytes_ != nullptr
-                                        ? fbs::GetInferenceSession(ort_format_model_bytes_.get())->session_state()
-                                        : nullptr;
+                                         ? fbs::GetInferenceSession(ort_format_model_bytes_.get())->session_state()
+                                         : nullptr;
 
     ORT_RETURN_IF_ERROR_SESSIONID_(session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
                                                                         session_options_,
