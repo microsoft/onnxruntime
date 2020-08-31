@@ -172,12 +172,12 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
 
   Provider_AllocatorCreationInfo default_memory_info(
-      {OrtMemTypeDefault, [](int id) { return Provider_CreateCUDAAllocator(id, TRT); }, device_id_});
+      [](int id) { return Provider_CreateCUDAAllocator(id, TRT); }, device_id_);
   allocator_ = CreateAllocator(default_memory_info);
   Provider_InsertAllocator(allocator_);
 
   Provider_AllocatorCreationInfo pinned_allocator_info(
-      {OrtMemTypeCPUOutput, [](int) { return Provider_CreateCUDAPinnedAllocator(0, TRT_PINNED); }, device_id_});
+      [](int) { return Provider_CreateCUDAPinnedAllocator(0, TRT_PINNED); }, device_id_);
   Provider_InsertAllocator(CreateAllocator(pinned_allocator_info));
 
   // Get environment variables
