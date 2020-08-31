@@ -91,6 +91,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #if USE_CUDA
                 opt.AppendExecutionProvider_CUDA(0);
 #endif
+#if USE_DML
+                opt.AppendExecutionProvider_Dml(0);
+#endif
 #if USE_NGRAPH
                 opt.AppendExecutionProvider_NGraph("CPU");  //TODO: this API should be refined
 #endif
@@ -1829,6 +1832,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #endif
 #if USE_CUDA
             ,"OrtSessionOptionsAppendExecutionProvider_CUDA"
+#endif
+#if USE_DML
+            ,"OrtSessionOptionsAppendExecutionProvider_Dml"
 #endif
 #if USE_NGRAPH
             ,"OrtSessionOptionsAppendExecutionProvider_NGraph"

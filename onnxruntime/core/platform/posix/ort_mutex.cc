@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/common.h"
 #include "core/platform/ort_mutex.h"
 #include <assert.h>
 #include <stdexcept>
@@ -13,7 +14,7 @@ void OrtCondVar::timed_wait_impl(std::unique_lock<OrtMutex>& lk,
   using namespace std::chrono;
 #ifndef NDEBUG
   if (!lk.owns_lock())
-    throw std::runtime_error("condition_variable::timed wait: mutex not locked");
+    ORT_THROW("condition_variable::timed wait: mutex not locked");
 #endif
   nanoseconds d = tp.time_since_epoch();
   timespec abs_deadline;

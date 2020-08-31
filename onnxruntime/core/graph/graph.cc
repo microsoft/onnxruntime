@@ -63,9 +63,11 @@ static bool UsingLatestOnnxOpset(const DomainToVersionMap& opset_versions) {
 static Status MergeShapeInfo(const std::string& output_name,
                              const TypeProto_Tensor& source, TypeProto_Tensor& target,
                              bool strict, const logging::Logger& logger) {
-  try {
+  auto status = Status::OK();
+  ORT_TRY {
     ONNX_NAMESPACE::mergeInShapeInfo(source, target);
-  } catch (const ONNX_NAMESPACE::InferenceError& ex) {
+  }
+  ORT_CATCH(const ONNX_NAMESPACE::InferenceError& ex) {
     // if this model was not created with the latest onnx version, allow the shape inferencing failure (strict == false).
     // we do this to have strict testing of the latest inferencing to detect bugs, but lenient shape inferencing for
     // older models in case later changes to the ONNX shape inferencing or ORT break them.
@@ -79,11 +81,16 @@ static Status MergeShapeInfo(const std::string& output_name,
 
       ONNX_NAMESPACE::UnionShapeInfo(source.shape(), target);
     } else {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output:", output_name, " ", ex.what());
+      ORT_UNUSED_PARAMETER(logger);
+      ORT_UNUSED_PARAMETER(strict);
+      ORT_UNUSED_PARAMETER(output_name);
+      ORT_HANDLE_EXCEPTION([&]() {
+        status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output:", output_name, " ", ex.what());
+      });
     }
   }
 
-  return Status::OK();
+  return status;
 }
 
 static bool GraphLoadedFromModelFile(const GraphProto* graph_proto) {
@@ -1792,10 +1799,17 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
   SubgraphInferencingFunc func(Graph::InferAndVerifySubgraphTypes);
   InferenceContextImpl context(node, func, *this, options);
 
-  try {
-    context.RunInferencing();
-  } catch (const std::exception& ex) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node (", node.Name(), ") Op (", node.OpType(), ") ", ex.what());
+  {
+    auto status = Status::OK();
+    ORT_TRY {
+      context.RunInferencing();
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node (", node.Name(), ") Op (", node.OpType(), ") ", ex.what());
+      });
+    }
+    ORT_RETURN_IF_ERROR(status);
   }
 
   const auto& onnx_inferred_types(context.InferredOutputTypes());
@@ -1996,10 +2010,17 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
     auto& domain = node.Domain();
 
     if (!node.Op()) {
-      try {
-        checker::check_node(node_proto, ctx, lsc);
-      } catch (const std::exception& ex) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "This is an invalid model. Error in Node:", node_name, " : ", ex.what());
+      {
+        auto status = Status::OK();
+        ORT_TRY {
+          checker::check_node(node_proto, ctx, lsc);
+        }
+        ORT_CATCH(const std::exception& ex) {
+          ORT_HANDLE_EXCEPTION([&]() {
+            status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "This is an invalid model. Error in Node:", node_name, " : ", ex.what());
+          });
+        }
+        ORT_RETURN_IF_ERROR(status);
       }
 
       auto maxInclusiveVersion = DomainToVersionMap().find(domain)->second;
