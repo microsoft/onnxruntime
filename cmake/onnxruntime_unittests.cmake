@@ -59,7 +59,7 @@ function(AddTest)
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
   endif()
   if (WIN32)
-    # include dbghelp for tests that generate a stacktrace
+    # include dbghelp in case tests throw an ORT exception, as that exception includes a stacktrace, which requires dbghelp.
     target_link_libraries(${_UT_TARGET} PRIVATE debug dbghelp)
 
     if (onnxruntime_USE_CUDA)
