@@ -113,7 +113,6 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_creat
     OrtSessionOptions* opts;
     checkOrtStatus(jniEnv,api,api->CreateSessionOptions(&opts));
     checkOrtStatus(jniEnv,api,api->SetInterOpNumThreads(opts, 1));
-    checkOrtStatus(jniEnv, api, api->SetSessionProgrammingProjection(opts, ORT_PROJECTION_CROSSPLAT_JAVA));
     // Commented out due to constant OpenMP warning as this API is invalid when running with OpenMP.
     // Not sure how to detect that from within the C API though.
     //checkOrtStatus(jniEnv,api,api->SetIntraOpNumThreads(opts, 1));
