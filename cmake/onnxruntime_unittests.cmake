@@ -103,6 +103,10 @@ file(GLOB onnxruntime_test_common_src CONFIGURE_DEPENDS
   )
 
 if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
+  file(GLOB onnxruntime_test_ir_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/ir/*.cc"
+    "${TEST_SRC_DIR}/ir/*.h"
+    )
 
   file(GLOB onnxruntime_test_optimizer_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/optimizer/*.cc"
@@ -114,19 +118,10 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
     "${TEST_SRC_DIR}/framework/*.h"
     "${TEST_SRC_DIR}/platform/*.cc"
     )
-
 else()
-
-  # TODO: Add tests that can be used in a minimal build
   set(onnxruntime_test_framework_src_patterns
     "${TEST_SRC_DIR}/platform/*.cc"
-  )
-
-  file(GLOB onnxruntime_test_ir_src CONFIGURE_DEPENDS
-  "${TEST_SRC_DIR}/ir/*.cc"
-  "${TEST_SRC_DIR}/ir/*.h"
-  )
-
+    )
 endif()
 
 file(GLOB onnxruntime_test_training_src
