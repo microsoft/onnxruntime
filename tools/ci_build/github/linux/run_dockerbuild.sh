@@ -5,6 +5,8 @@ SCRIPT_DIR="$( dirname "${BASH_SOURCE[0]}" )"
 SOURCE_ROOT=$(realpath $SCRIPT_DIR/../../../../)
 CUDA_VER=cuda10.1-cudnn7.6
 YOCTO_VERSION="4.19"
+ALLOW_RELEASED_ONNX_OPSET_ONLY_ENV="ALLOW_RELEASED_ONNX_OPSET_ONLY="$ALLOW_RELEASED_ONNX_OPSET_ONLY
+echo "ALLOW_RELEASED_ONNX_OPSET_ONLY environment variable is set as "$ALLOW_RELEASED_ONNX_OPSET_ONLY_ENV
 
 while getopts c:o:d:r:p:x:a:v:y: parameter_Option
 do case "${parameter_Option}"
@@ -127,6 +129,7 @@ fi
 $DOCKER_CMD rm -f "onnxruntime-$BUILD_DEVICE" || true
 $DOCKER_CMD run $RUNTIME -h $HOSTNAME $DOCKER_RUN_PARAMETER \
     -e NIGHTLY_BUILD \
+    -e $ALLOW_RELEASED_ONNX_OPSET_ONLY_ENV \
     "onnxruntime-$IMAGE" \
     /bin/bash /onnxruntime_src/tools/ci_build/github/linux/run_build.sh \
     -d $BUILD_DEVICE -x "$BUILD_EXTR_PAR" -o $BUILD_OS -y $YOCTO_VERSION &
