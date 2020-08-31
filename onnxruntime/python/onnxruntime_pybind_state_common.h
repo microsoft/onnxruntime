@@ -67,8 +67,9 @@ struct PyInferenceSession {
   virtual ~PyInferenceSession() {}
 
  protected:
-  // Default ctor is will be invoked by the PyTrainingSession class
-  PyInferenceSession() {}
+  PyInferenceSession(std::unique_ptr<InferenceSession> sess) {
+    sess_ = std::move(sess);
+  }
 
   // Hold CustomOpLibrary resources so as to tie it to the life cycle of the InferenceSession needing it.
   // NOTE: Declare this above `sess_` so that this is destructed AFTER the InferenceSession instance -
