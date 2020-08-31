@@ -111,6 +111,7 @@ option(onnxruntime_PREFER_SYSTEM_LIB "Experimental: Build with the preinstalled 
 # ORT mininal build settings
 option(onnxruntime_MINIMAL_BUILD "Exclude as much as possible from the build. Support ORT format models. No support for ONNX format models." OFF)
 option(onnxruntime_REDUCED_OPS_BUILD "Reduced set of kernels are registered in build via modification of the kernel registration source files." OFF)
+# For now onnxruntime_NO_EXCEPTIONS will only work with onnxruntime_MINIMAL_BUILD, more changes (ONNX, non-CPU EP, ...) are required to run this standalone
 option(onnxruntime_NO_EXCEPTIONS "Disable exception handling." OFF)
 
 # training options
@@ -251,10 +252,6 @@ if (onnxruntime_NO_EXCEPTIONS)
   else()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions")
   endif()
-
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DGSL_TERMINATE_ON_CONTRACT_VIOLATION")
-else()
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DGSL_THROW_ON_CONTRACT_VIOLATION")
 endif()
 
 set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
@@ -565,6 +562,12 @@ endif()
 # we make it through via a handler so CUDA does not complain
 # The following -DGSL macros are recognized by gsl-lite along with -Dgsl macros
 # no bounds checking in release build so no perf cost
+# if we enable onnxruntime_NO_EXCEPTIONS, gsl will terminate
+if (onnxruntime_NO_EXCEPTIONS)
+  set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DGSL_TERMINATE_ON_CONTRACT_VIOLATION")
+else()
+  set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DGSL_THROW_ON_CONTRACT_VIOLATION")
+endif()
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DGSL_UNENFORCED_ON_CONTRACT_VIOLATION")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -DGSL_UNENFORCED_ON_CONTRACT_VIOLATION")
 set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} -DGSL_UNENFORCED_ON_CONTRACT_VIOLATION")
