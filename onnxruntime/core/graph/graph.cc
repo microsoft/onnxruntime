@@ -580,7 +580,7 @@ Status Node::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Node& fbs_n
       ORT_RETURN_IF(nullptr == node_arg_name, "node_arg_name cannot be null");
       auto* node_arg = check_parent_graph ? graph_->GetNodeArgIncludingParentGraphs(node_arg_name->str())
                                           : graph_->GetNodeArg(node_arg_name->str());
-      ORT_RETURN_IF(nullptr == node_arg, "LoadNodeArgsFromOrtFormat: Node [", name_, "] opt_type [", op_type_,
+      ORT_RETURN_IF(nullptr == node_arg, "LoadNodeArgsFromOrtFormat: Node [", name_, "] op_type [", op_type_,
                     "], could not find NodeArg ", node_arg_name->str());
       node_args.push_back(node_arg);
     }
@@ -2711,9 +2711,9 @@ common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   auto inputs = GetInputsOutputsOrtFormat(builder, graph_inputs_including_initializers_);
   auto outputs = GetInputsOutputsOrtFormat(builder, graph_outputs_);
 
-  // outer_scope_node_args is necessary to determine values to pass into a subgraph,
-  // For ORT_MIN_BUILD there is no Graph::Resolve to calculate the outer_scope_node_args
-  // Serialize it into the ORT file
+  // outer_scope_node_args are required to determine outer scope values to make available when executing a subgraph.
+  // For an ORT_MINIMAL_BUILD there is no Graph::Resolve() to calculate the outer_scope_node_args
+  // so we serialize that information into the ORT format file.
   std::vector<std::string> outer_scope_node_args_vec(resolve_context_.outer_scope_node_args.size());
   std::copy(resolve_context_.outer_scope_node_args.cbegin(),
             resolve_context_.outer_scope_node_args.cend(),
@@ -3440,11 +3440,14 @@ Graph::Graph(const Model& owning_model,
 }
 
 common::Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Graph& fbs_graph) {
-  // We deserialize the graph from ort format in the following order
+  // We deserialize the graph from ORT format in the following order:
   // 1. Deserialize the initializers
-  // 2. Deserialize the NodeArgs, we need NodeArgs when deserializing Nodes (Node's inputs/outputs/implicit inputs)
-  // 3. Deserialize the Nodes,
-  // 4. Deserialize the NodeEdges, this step need all the nodes to be presented in order to re-construct the EdgeEnd
+  // 2. Deserialize the NodeArgs
+  //        We need all NodeArg instances to exist when deserializing Nodes to setup the Node's
+  //        inputs/outputs/implicit inputs which are collections of NodeArg*.
+  // 3. Deserialize the Nodes
+  // 4. Deserialize the NodeEdges
+  //        We need all the Node instances to exist as the EdgeEnd has a Node* for the other end of the edge
   // 5. Deserialize the Inputs/Outputs/outer_scope_node_args
 
   // Initializers
@@ -3452,7 +3455,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Gr
   if (fbs_initializers) {
     name_to_initial_tensor_.reserve(fbs_initializers->size());
     for (const auto* fbs_tensor : *fbs_initializers) {
-      ORT_RETURN_IF(nullptr == fbs_tensor, "Initializer tensor is missing");
+      ORT_RETURN_IF(nullptr == fbs_tensor, "Initializer tensor is missing. Invalid ORT format model.");
       TensorProto* initializer = deserialized_proto_data_.add_initializer();
       ORT_RETURN_IF_ERROR(experimental::utils::LoadInitializerOrtFormat(*fbs_tensor, *initializer));
       name_to_initial_tensor_[initializer->name()] = initializer;
@@ -3464,7 +3467,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Gr
   if (fbs_node_args) {
     node_args_.reserve(fbs_node_args->size());
     for (const auto* fbs_value_info : *fbs_node_args) {
-      ORT_RETURN_IF(nullptr == fbs_value_info, "Node Arg is missing");
+      ORT_RETURN_IF(nullptr == fbs_value_info, "NodeArg is missing. Invalid ORT format model.");
       NodeArgInfo node_arg_info;
       ORT_RETURN_IF_ERROR(experimental::utils::LoadValueInfoOrtFormat(*fbs_value_info, node_arg_info));
       // NodeArg ctor is private, cannot use make_unique
@@ -3473,15 +3476,18 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Gr
   }
 
   // Nodes
-  // It is possible we have less nodes than the actual size of nodes_
-  // For example, a constant node was lifted to an initializer, it will leave one empty slot in nodes_
-  // Since we access a node using it's index, we need to have nodes_ with size max_node_index to avoid
-  // out of boundary access
+  //
+  // Since we access a node using its index, we need to have nodes_ with size max_node_index to avoid
+  // out of bounds access.
   nodes_.resize(fbs_graph.max_node_index());
   auto* fbs_nodes = fbs_graph.nodes();
+
+  // It is possible to have no nodes in the model. Most likely scenario is the subgraph of an If Node 
+  // where the subgraph returns a Constant node. The Constant node will be lifted to an initializer by ORT
+  // (prior to serializing to ORT format), leaving a valid Graph that contains no nodes.
   if (fbs_nodes != nullptr) {
     for (const auto* fbs_node : *fbs_nodes) {
-      ORT_RETURN_IF(nullptr == fbs_node, "Node is missing");
+      ORT_RETURN_IF(nullptr == fbs_node, "Node is missing. Invalid ORT format model.");
       std::unique_ptr<Node> node;
       ORT_RETURN_IF_ERROR(Node::LoadFromOrtFormat(*fbs_node, *this, logger_, node));
       nodes_[node->Index()] = std::move(node);
@@ -3493,7 +3499,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Gr
   auto* fbs_node_edges = fbs_graph.node_edges();
   if (fbs_node_edges != nullptr) {
     for (const auto* fbs_node_edge : *fbs_node_edges) {
-      ORT_RETURN_IF(nullptr == fbs_node_edge, "NodeEdge is missing");
+      ORT_RETURN_IF(nullptr == fbs_node_edge, "NodeEdge is missing. Invalid ORT format model.");
       ORT_RETURN_IF_ERROR(nodes_[fbs_node_edge->node_index()]->LoadEdgesFromOrtFormat(*fbs_node_edge, *this));
     }
   }
@@ -3504,7 +3510,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Gr
     if (fbs_node_args != nullptr) {
       node_args.reserve(fbs_node_args->size());
       for (const auto* fbs_node_arg_name : *fbs_node_args) {
-        ORT_RETURN_IF(nullptr == fbs_node_arg_name, "Node Arg Name is missing");
+        ORT_RETURN_IF(nullptr == fbs_node_arg_name, "NodeArg Name is missing. Invalid ORT format model.");
         gsl::not_null<NodeArg*> node_arg = GetNodeArg(fbs_node_arg_name->str());
         node_args.push_back(node_arg);
       }
@@ -3527,7 +3533,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Gr
   if (fbs_outer_scope_node_args != nullptr) {
     resolve_context_.outer_scope_node_args.reserve(fbs_outer_scope_node_args->size());
     for (const auto node_arg_name : *fbs_outer_scope_node_args) {
-      ORT_RETURN_IF_NOT(nullptr != node_arg_name, "node_arg_name cannot be null");
+      ORT_RETURN_IF(nullptr == node_arg_name, "node_arg_name is null. Invalid ORT format model.");
       resolve_context_.outer_scope_node_args.insert(node_arg_name->str());
     }
   }

@@ -45,7 +45,7 @@ static Status GetTensorShapeOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 static Status GetTensorTypeAndShapeOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                              const TypeProto_Tensor& tensor_type_proto,
                                              flatbuffers::Offset<fbs::TensorTypeAndShape>& fbs_tensor_type) {
-  // A 0 flatbuffers::Offset means this shape is missing (or null when serializing)
+  // A flatbuffers::Offset of 0 means this shape is missing (was null when serializing)
   flatbuffers::Offset<fbs::Shape> shape = 0;
   if (tensor_type_proto.has_shape()) {
     ORT_RETURN_IF_ERROR(GetTensorShapeOrtFormat(builder, tensor_type_proto.shape(), shape));
@@ -90,7 +90,7 @@ Status SaveValueInfoOrtFormat(flatbuffers::FlatBufferBuilder& builder,
     ORT_RETURN_IF_ERROR(
         GetTypeInfoOrtFormat(builder, value_info_proto.type(), type_info));
   } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "value_info_proto has no type");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "SaveValueInfoOrtFormat: value_info_proto has no type");
   }
 
   fbs::ValueInfoBuilder vb(builder);
@@ -145,8 +145,7 @@ Status SaveInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   attr_builder.add_doc_string(doc_string);           \
   attr_builder.add_type(TYPE);                       \
   attr_builder.add_##DATA_NAME(DATA);                \
-  fbs_attr = attr_builder.Finish();                  \
-  return Status::OK();
+  fbs_attr = attr_builder.Finish();
 
 #define GET_DATA_VEC(TYPE, NAME, SRC_DATA) \
   std::vector<TYPE> NAME(SRC_DATA.size()); \
@@ -177,7 +176,7 @@ Status SaveAttributeOrtFormat(flatbuffers::FlatBufferBuilder& builder,
       GET_FBS_ATTR(builder, type, t, fbs_tensor);
     } break;
     case fbs::AttributeType_GRAPH: {
-      ORT_RETURN_IF_NOT(nullptr != graph, "GetAttributeOrtFormat, graph is null");
+      ORT_RETURN_IF(nullptr == graph, "Graph attribute value was null. Invalid ORT format model.");
       flatbuffers::Offset<fbs::Graph> fbs_graph;
       ORT_RETURN_IF_ERROR(graph->SaveToOrtFormat(builder, fbs_graph));
       GET_FBS_ATTR(builder, type, g, fbs_graph);
@@ -210,9 +209,12 @@ Status SaveAttributeOrtFormat(flatbuffers::FlatBufferBuilder& builder,
       GET_FBS_ATTR(builder, type, tensors, tensors);
     } break;
     default:
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "GetAttributeOrtFormat - Unsupported type: ", type);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "SaveAttributeOrtFormat: Unsupported attribute type: ", type);
       break;
   }
+
+  return Status::OK();
 }
 
 #endif
@@ -228,14 +230,14 @@ Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor,
   LoadStringFromOrtFormat(*initializer.mutable_doc_string(), fbs_tensor.doc_string());
 
   auto fbs_dims = fbs_tensor.dims();
-  ORT_RETURN_IF_NOT(nullptr != fbs_dims, "fbs_dims cannot be null");
+  ORT_RETURN_IF(nullptr == fbs_dims, "Missing dimensions for initializer. Invalid ORT format model.");
   initializer.mutable_dims()->Add(fbs_dims->cbegin(), fbs_dims->cend());
 
   auto fbs_data_type = fbs_tensor.data_type();
   initializer.set_data_type(fbs_data_type);
   if (fbs_data_type == fbs::TensorDataType_STRING) {
     auto fbs_str_data = fbs_tensor.string_data();
-    ORT_RETURN_IF_NOT(nullptr != fbs_str_data, "fbs_str_data cannot be null");
+    ORT_RETURN_IF(nullptr == fbs_str_data, "Missing string data for initializer. Invalid ORT format model.");
     auto mutable_str_data = initializer.mutable_string_data();
     mutable_str_data->Reserve(fbs_str_data->size());
     for (const auto& fbs_str : *fbs_str_data) {
@@ -243,8 +245,7 @@ Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor,
     }
   } else {
     auto fbs_raw_data = fbs_tensor.raw_data();
-    if (!fbs_raw_data)
-      ORT_THROW("Raw data is missing in the initializer tensor");
+    ORT_RETURN_IF(nullptr == fbs_raw_data, "Missing raw data for initializer. Invalid ORT format model.");
 
     // fbs_raw_data is uint8_t vector, so the size is byte size
     initializer.set_raw_data(fbs_raw_data->Data(), fbs_raw_data->size());
@@ -263,10 +264,14 @@ static Status LoadTensorDimensionOrtFormat(const fbs::Dimension& fbs_dim,
       dim.set_dim_value(fbs_dim_val->dim_value());
     else if (type == fbs::DimensionValueType_PARAM) {
       auto fbs_dim_param = fbs_dim_val->dim_param();
-      ORT_RETURN_IF_NOT(nullptr != fbs_dim_param, "fbs_dim_param cannot be null");
+      ORT_RETURN_IF(nullptr == fbs_dim_param, "dim_param value with no name. Invalid ORT format model.");
       dim.set_dim_param(fbs_dim_param->str());
+    } else {
+      // unknown dimension. leave dim in VALUE_NOT_SET state as this is valid
     }
-    // else, this will be an unknown dimension, so nothing will be set in dim (leave it in unknown state)
+  } else {
+    // tensor with unknown shape.
+    // e.g. output from Reshape node where shape is determined by dynamic input at runtime
   }
   return Status::OK();
 }
@@ -281,7 +286,7 @@ static Status LoadTensorTypeAndShapeOrtFormat(const fbs::TensorTypeAndShape& fbs
       auto dims = tensor_type_proto.mutable_shape()->mutable_dim();
       dims->Reserve(fbs_dims->size());
       for (const auto fbs_dim : *fbs_dims) {
-        ORT_RETURN_IF_NOT(fbs_dim, "fbs_dim cannot be null");
+        ORT_RETURN_IF(nullptr == fbs_dim, "Null entry in dimensions. Invalid ORT format model.");
         TensorShapeProto_Dimension dim;
         ORT_RETURN_IF_ERROR(LoadTensorDimensionOrtFormat(*fbs_dim, *dims->Add()));
       }
@@ -296,10 +301,11 @@ static Status LoadTypeInfoOrtFormat(const fbs::TypeInfo& fbs_type_info,
   auto value_type = fbs_type_info.value_type();
   if (value_type == fbs::TypeInfoValue_tensor_type) {
     auto fbs_tensor_type = fbs_type_info.value_as_tensor_type();
-    ORT_RETURN_IF_NOT(nullptr != fbs_tensor_type, "fbs_tensor_type cannot be null");
+    ORT_RETURN_IF(nullptr == fbs_tensor_type, "Null tensor type info. Invalid ORT format model.");
     ORT_RETURN_IF_ERROR(LoadTensorTypeAndShapeOrtFormat(*fbs_tensor_type, *type_proto.mutable_tensor_type()));
   } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Type:", value_type, " is not supported for now");
+    // TODO: This may be required for traditional ML models.
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Type:", value_type, " is not supported currently");
   }
 
   return Status::OK();
@@ -313,7 +319,7 @@ Status LoadValueInfoOrtFormat(const fbs::ValueInfo& fbs_value_info,
   LoadStringFromOrtFormat(*value_info_proto.mutable_doc_string(), fbs_value_info.doc_string());
 
   auto fbs_type_info = fbs_value_info.type();
-  ORT_RETURN_IF_NOT(nullptr != fbs_type_info, "fbs_type_info cannot be null");
+  ORT_RETURN_IF(nullptr == fbs_type_info, "Null ValueInfo type. Invalid ORT format model.");
   ORT_RETURN_IF_ERROR(LoadTypeInfoOrtFormat(*fbs_type_info, *value_info_proto.mutable_type()));
 
   return Status::OK();
@@ -338,54 +344,53 @@ Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
     } break;
     case AttributeProto_AttributeType_STRING: {
       auto fbs_str = fbs_attr.s();
-      ORT_RETURN_IF_NOT(nullptr != fbs_str, "fbs_str cannot be null");
+      ORT_RETURN_IF(nullptr == fbs_str, "Null string attribute. Invalid ORT format model.");
       attr_proto.set_s(fbs_str->str());
     } break;
     case AttributeProto_AttributeType_TENSOR: {
       auto fbs_tensor = fbs_attr.t();
-      ORT_RETURN_IF_NOT(nullptr != fbs_tensor, "fbs_tensor cannot be null");
+      ORT_RETURN_IF(nullptr == fbs_tensor, "Null tensor attribute. Invalid ORT format model.");
       ORT_RETURN_IF_ERROR(LoadInitializerOrtFormat(*fbs_tensor, *attr_proto.mutable_t()));
     } break;
     case AttributeProto_AttributeType_GRAPH: {
-      // If the attribute type is a graph, we will leave an empty graph in attr_proto,
-      // and set the deserialized Graph to the param graph
+      // If the attribute type is a graph, we will create an empty graph in attr_proto so that the ONNX checker
+      // is happy in a full build, and deserialize the ORT Graph instance into the 'graph' param.
       auto fbs_graph = fbs_attr.g();
-      ORT_RETURN_IF_NOT(nullptr != fbs_graph, "fbs_graph cannot be null");
+      ORT_RETURN_IF(nullptr == fbs_graph, "Null graph attribute. Invalid ORT format model.");
       attr_proto.mutable_g()->set_name("Empty graph proto from deserialization of ORT format model");
       ORT_RETURN_IF_ERROR(Graph::LoadFromOrtFormat(*fbs_graph, graph, node, logger, sub_graph));
     } break;
     case AttributeProto_AttributeType_FLOATS: {
       auto fbs_floats = fbs_attr.floats();
-      ORT_RETURN_IF_NOT(nullptr != fbs_floats, "fbs_floats cannot be null");
+      ORT_RETURN_IF(nullptr == fbs_floats, "Null floats attribute. Invalid ORT format model.");
       auto floats = attr_proto.mutable_floats();
       floats->Reserve(fbs_floats->size());
       floats->Add(fbs_floats->cbegin(), fbs_floats->cend());
     } break;
     case AttributeProto_AttributeType_INTS: {
       auto fbs_ints = fbs_attr.ints();
-      ORT_RETURN_IF_NOT(nullptr != fbs_ints, "fbs_ints cannot be null");
+      ORT_RETURN_IF(nullptr == fbs_ints, "Null ints attribute. Invalid ORT format model.");
       auto* ints = attr_proto.mutable_ints();
       ints->Reserve(fbs_ints->size());
       ints->Add(fbs_ints->cbegin(), fbs_ints->cend());
     } break;
     case AttributeProto_AttributeType_STRINGS: {
       auto fbs_strings = fbs_attr.strings();
-      ORT_RETURN_IF_NOT(nullptr != fbs_strings, "fbs_strings cannot be null");
+      ORT_RETURN_IF(nullptr == fbs_strings, "Null strings attribute. Invalid ORT format model.");
       auto* strings = attr_proto.mutable_strings();
       strings->Reserve(fbs_strings->size());
       for (const auto* fbs_str : *fbs_strings) {
-        ORT_RETURN_IF_NOT(nullptr != fbs_str, "fbs_str cannot be null");
+        ORT_RETURN_IF(nullptr == fbs_str, "Null string in strings attribute. Invalid ORT format model.");
         strings->Add(fbs_str->str());
       }
     } break;
     case AttributeProto_AttributeType_TENSORS: {
       auto fbs_tensors = fbs_attr.tensors();
-      ORT_RETURN_IF_NOT(nullptr != fbs_tensors, "fbs_tensors cannot be null");
+      ORT_RETURN_IF(nullptr == fbs_tensors, "Null tensors attribute. Invalid ORT format model.");
       auto* tensors = attr_proto.mutable_tensors();
       tensors->Reserve(fbs_tensors->size());
       for (const auto* fbs_tensor : *fbs_tensors) {
-        ORT_RETURN_IF_NOT(nullptr != fbs_tensor, "fbs_str cannot be null");
-        ORT_RETURN_IF_NOT(nullptr != fbs_tensor, "fbs_tensor cannot be null");
+        ORT_RETURN_IF(nullptr == fbs_tensor, "Null tensor in tensors attribute. Invalid ORT format model.");
         ORT_RETURN_IF_ERROR(LoadInitializerOrtFormat(*fbs_tensor, *tensors->Add()));
       }
     } break;
