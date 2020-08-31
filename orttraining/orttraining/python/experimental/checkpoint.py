@@ -28,7 +28,7 @@ def experimental_state_dict(ort_trainer, include_optimizer_state=True):
         if n.name not in torch_state:
             torch_state[n.name] = torch.from_numpy(np.array(onnx.numpy_helper.to_array(n)))
 
-    # Need to remove redundant initializers and name suffices to map back to original torch state names
+    # Need to remove redundant (optimizer) initializers to map back to original torch state names
     if not include_optimizer_state and ort_trainer._torch_state_dict_keys:
         return {key: torch_state[key] for key in ort_trainer._torch_state_dict_keys if key in torch_state}
     return torch_state

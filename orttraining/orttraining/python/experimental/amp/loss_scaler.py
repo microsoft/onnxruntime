@@ -34,7 +34,7 @@ class LossScaler(object):
 
     def reset(self):
         r"""Resets loss scaler internal state"""
-        self._loss_scale = float(self._initial_loss_scale)
+        self._loss_scale = self._initial_loss_scale
 
     def update(self, train_step_info):
         r"""Updates loss based on user input and training session info
