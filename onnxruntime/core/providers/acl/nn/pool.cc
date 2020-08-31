@@ -163,13 +163,13 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
   }
 
   arm_compute::PoolingType pool_type;
-  if (PoolBase::op_name_ == "GlobalAveragePool" || PoolBase::op_name_ == "AveragePool")
+  if (PoolBase::op_name_ == "GlobalAveragePool" || PoolBase::op_name_ == "AveragePool") {
     pool_type = arm_compute::PoolingType::AVG;
     LOGS_DEFAULT(VERBOSE) << "AveragePool";
-  else if (PoolBase::op_name_ == "GlobalMaxPool" || PoolBase::op_name_ == "MaxPool")
+  } else if (PoolBase::op_name_ == "GlobalMaxPool" || PoolBase::op_name_ == "MaxPool") {
     pool_type = arm_compute::PoolingType::MAX;
     LOGS_DEFAULT(VERBOSE) << "MaxPool";
-  else {
+  } else {
     LOGS_DEFAULT(WARNING) << "Pooling operation not supported in ArmNN; defaulting to cpu implementation";
     return onnxruntime::Pool<T, PoolType>::Compute(context);
   }
