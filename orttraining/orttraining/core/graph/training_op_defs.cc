@@ -320,7 +320,6 @@ OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
   return op_schema;
 }
 
-
 bool BuildContextDependentFunctionBodyMSD(const FunctionBodyBuildContext& ctx, 
                           const OpSchema& schema, FunctionProto& functionProto) {
   std::vector<FunctionBodyHelper::NodeDef> body;

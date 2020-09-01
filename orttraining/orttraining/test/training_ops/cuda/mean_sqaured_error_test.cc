@@ -16,7 +16,6 @@ static void TestMeanSquaredError(const std::vector<int64_t>& X_dims,
                       
   
   CompareOpTester test("MeanSquaredError", 12, kOnnxDomain);
-  // try the same test with NegativeLogLikelihood
   test.AddAttribute("reduction", reduction);
 
   // create rand inputs
