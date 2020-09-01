@@ -5,6 +5,7 @@
 #include <iostream>
 #include <set>
 
+#include "core/common/common.h"
 #include "core/common/make_unique.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test_allocator.h"
@@ -61,11 +62,15 @@ TEST(CApiTest, CreateGetVectorOfMapsInt64Float) {  // support zipmap output type
 
   // test negative case
   bool failed = false;
-  try {
+  ORT_TRY {
     auto temp = seq_ort.GetValue(999, default_allocator.get());
-  } catch (const Ort::Exception& e) {
-    failed = e.GetOrtErrorCode() == ORT_RUNTIME_EXCEPTION;
   }
+  ORT_CATCH(const Ort::Exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      failed = e.GetOrtErrorCode() == ORT_RUNTIME_EXCEPTION;
+    });
+  }
+
   ASSERT_EQ(failed, true);
 
   // Fetch
