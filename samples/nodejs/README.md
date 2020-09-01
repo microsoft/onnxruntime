@@ -1,9 +1,11 @@
-# ONNX Runtime Nodejs samples
+# ONNX Runtime nodejs samples
 
 In each sample's implementation subdirectory, run
 
-`npm install`
-`node ./`
+```bash
+npm install
+node ./
+```
 
 [Basic Usage](01_basic-usage) - a demonstration of basic usage of ONNX Runtime Node.js binding.
 
