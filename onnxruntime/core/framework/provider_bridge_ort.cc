@@ -233,10 +233,10 @@ struct ProviderHostImpl : ProviderHost {
     DataTypeImpl_GetTensorType_float = &DataTypeImpl::GetTensorType<float>;
   }
 
-  Provider_AllocatorPtr CreateAllocator(const Provider_DeviceAllocatorRegistrationInfo& info,
+  Provider_AllocatorPtr CreateAllocator(const Provider_AllocatorCreationInfo& info,
                                         OrtDevice::DeviceId device_id = 0,
                                         bool use_arena = true) override {
-    DeviceAllocatorRegistrationInfo info_real{
+    AllocatorCreationInfo info_real{
         info.mem_type, [&info](int value) -> std::unique_ptr<IDeviceAllocator> {
           auto allocator = info.factory(value);
           // If the allocator is a provider interface, we need to wrap it with ProviderAllocator to turn it into an IDeviceAllocator
@@ -246,11 +246,13 @@ struct ProviderHostImpl : ProviderHost {
           else
             return std::move(static_cast<Provider_IDeviceAllocator_Impl*>(&*allocator)->p_);
         },
-        info.max_mem};
+        info.device_id,
+        info.use_arena,
+        info.arena_cfg};
 
     // info_real will always return a unique_ptr to an IAllocator, which might be a native IAllocator or a provider interface wrapped by ProviderAllocator.
     // Either way we wrap it in a Provider_IAllocator_Impl to be unwrapped by Provider_InsertAllocator
-    return std::make_shared<Provider_IAllocator_Impl>(onnxruntime::CreateAllocator(info_real, device_id, use_arena));
+    return std::make_shared<Provider_IAllocator_Impl>(onnxruntime::CreateAllocator(info_real));
   }
 
   std::unique_ptr<Provider_IDeviceAllocator> CreateCPUAllocator(

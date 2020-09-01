@@ -147,14 +147,14 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     : Provider_IExecutionProvider{onnxruntime::kTensorrtExecutionProvider}, device_id_(info.device_id) {
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
 
-  Provider_DeviceAllocatorRegistrationInfo default_memory_info(
-      {OrtMemTypeDefault, [](int id) { return onnxruntime::make_unique<CUDAAllocator>(id, TRT); }, std::numeric_limits<size_t>::max()});
-  allocator_ = CreateAllocator(default_memory_info, device_id_);
+  Provider_AllocatorCreationInfo default_memory_info(
+      [](int id) { return onnxruntime::make_unique<CUDAAllocator>(id, TRT); }, device_id_);
+  allocator_ = CreateAllocator(default_memory_info);
   Provider_InsertAllocator(allocator_);
 
-  Provider_DeviceAllocatorRegistrationInfo pinned_allocator_info(
-      {OrtMemTypeCPUOutput, [](int) { return onnxruntime::make_unique<CUDAPinnedAllocator>(0, TRT_PINNED); }, std::numeric_limits<size_t>::max()});
-  Provider_InsertAllocator(CreateAllocator(pinned_allocator_info, device_id_));
+  Provider_AllocatorCreationInfo pinned_allocator_info(
+      [](int) { return onnxruntime::make_unique<CUDAPinnedAllocator>(0, TRT_PINNED); }, device_id_);
+  Provider_InsertAllocator(CreateAllocator(pinned_allocator_info));
 
   // Get environment variables
   const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);

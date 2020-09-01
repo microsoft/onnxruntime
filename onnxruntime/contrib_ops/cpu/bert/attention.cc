@@ -39,7 +39,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   //   input       : (batch_size, sequence_length, hidden_size)
   //   weights     : (hidden_size, 3 * hidden_size)
   //   bias        : (3 * hidden_size)
-  //   mask_index  : (batch_size) if presented
+  //   mask_index  : nullptr, (batch_size), (2 * batch_size), or (batch_size, past_sequence_length + sequence_length)
   //   past        : (2, batch_size, num_heads, past_sequence_length, head_size)
 
   const auto& dims = input_shape.GetDims();

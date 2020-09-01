@@ -62,16 +62,18 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
   CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
   CURAND_CALL_THROW(curandCreateGenerator(&curand_generator_, CURAND_RNG_PSEUDO_DEFAULT));
 
-  DeviceAllocatorRegistrationInfo default_memory_info(
-      {OrtMemTypeDefault,
-       [](OrtDevice::DeviceId id) {
-         return onnxruntime::make_unique<CUDAAllocator>(id, CUDA);
-       },
-       cuda_mem_limit,
-       arena_extend_strategy});
+  AllocatorCreationInfo default_memory_info(
+      [](OrtDevice::DeviceId id) {
+        return onnxruntime::make_unique<CUDAAllocator>(id, CUDA);
+      },
+      device_id,
+      true,
+      {cuda_mem_limit,
+       static_cast<int>(arena_extend_strategy),
+       -1, -1});
 
   // CUDA malloc/free is expensive so always use an arena
-  allocator_ = CreateAllocator(default_memory_info, device_id, /*create_arena*/ true);
+  allocator_ = CreateAllocator(default_memory_info);
 }
 
 CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
@@ -135,36 +137,37 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
   size_t total = 0;
   CUDA_CALL_THROW(cudaMemGetInfo(&free, &total));
 
-  DeviceAllocatorRegistrationInfo default_memory_info(
-      {OrtMemTypeDefault,
-       [](OrtDevice::DeviceId device_id) {
-         return onnxruntime::make_unique<CUDAAllocator>(device_id, CUDA);
-       },
-       cuda_mem_limit_});
+  AllocatorCreationInfo default_memory_info(
+      [](OrtDevice::DeviceId device_id) {
+        return onnxruntime::make_unique<CUDAAllocator>(device_id, CUDA);
+      },
+      device_id_,
+      true,
+      {cuda_mem_limit_,
+       static_cast<int>(arena_extend_strategy_),
+       -1, -1});
 
-  InsertAllocator(CreateAllocator(default_memory_info, device_id_));
+  InsertAllocator(CreateAllocator(default_memory_info));
 
-  DeviceAllocatorRegistrationInfo pinned_memory_info(
-      {OrtMemTypeCPUOutput,
-       [](OrtDevice::DeviceId device_id) {
-         return onnxruntime::make_unique<CUDAPinnedAllocator>(device_id, CUDA_PINNED);
-       },
-       std::numeric_limits<size_t>::max()});
+  AllocatorCreationInfo pinned_memory_info(
+      [](OrtDevice::DeviceId device_id) {
+        return onnxruntime::make_unique<CUDAPinnedAllocator>(device_id, CUDA_PINNED);
+      },
+      CPU_ALLOCATOR_DEVICE_ID);
 
-  InsertAllocator(CreateAllocator(pinned_memory_info, CPU_ALLOCATOR_DEVICE_ID));
+  InsertAllocator(CreateAllocator(pinned_memory_info));
 
   // TODO: this is actually used for the cuda kernels which explicitly ask for inputs from CPU.
   // This will be refactored/removed when allocator and execution provider are decoupled.
-  DeviceAllocatorRegistrationInfo cpu_memory_info(
-      {OrtMemTypeCPUInput,
-       [](int device_id) {
-         return onnxruntime::make_unique<CPUAllocator>(
-             OrtMemoryInfo("CUDA_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
-                           OrtMemTypeCPUInput));
-       },
-       std::numeric_limits<size_t>::max()});
+  AllocatorCreationInfo cpu_memory_info(
+      [](int device_id) {
+        return onnxruntime::make_unique<CPUAllocator>(
+            OrtMemoryInfo("CUDA_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
+                          OrtMemTypeCPUInput));
+      },
+      CPU_ALLOCATOR_DEVICE_ID);
 
-  InsertAllocator(CreateAllocator(cpu_memory_info, CPU_ALLOCATOR_DEVICE_ID));
+  InsertAllocator(CreateAllocator(cpu_memory_info));
 
   UpdateProviderOptionsInfo();
 }
@@ -576,6 +579,7 @@ class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kO
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 5, Reshape);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, 4, Reshape_1);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, Shape);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, Size);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 12, Tile);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, Tile);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, Transpose);
@@ -811,7 +815,7 @@ KernelCreateInfo BuildKernelCreateInfo<void>() {
 
 static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
-      BuildKernelCreateInfo<void>, //default entry to avoid the list become empty after ops-reducing
+      BuildKernelCreateInfo<void>,  //default entry to avoid the list become empty after ops-reducing
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 4, 10, Concat)>,
@@ -1065,6 +1069,7 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 5, Reshape)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, 4, Reshape_1)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, Shape)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, Size)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 12, Tile)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, Tile)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, Transpose)>,

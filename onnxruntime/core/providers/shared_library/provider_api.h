@@ -153,7 +153,7 @@ template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
 
 std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCPUAllocator(const OrtMemoryInfo& memory_info);
-Provider_AllocatorPtr CreateAllocator(const Provider_DeviceAllocatorRegistrationInfo& info, int16_t device_id = 0, bool use_arena = true);
+Provider_AllocatorPtr CreateAllocator(const Provider_AllocatorCreationInfo& info);
 
 std::string GetEnvironmentVar(const std::string& var_name);
 

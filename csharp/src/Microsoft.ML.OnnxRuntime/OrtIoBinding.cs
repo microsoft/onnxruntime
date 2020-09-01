@@ -14,26 +14,27 @@ namespace Microsoft.ML.OnnxRuntime
     /// that piece of memory to an input name and shape and onnxruntime will use that as input.
     /// Other traditional inputs can also be bound that already exists as Tensors
     /// </summary>
-    public class OrtIoBinding : IDisposable
+    public class OrtIoBinding : SafeHandle
     {
-        private IntPtr _handle;
-
         /// <summary>
         /// Use InferenceSession.CreateIoBinding()
         /// </summary>
         /// <param name="session"></param>
         internal OrtIoBinding(InferenceSession session)
+            : base(IntPtr.Zero, true)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateIoBinding(session.Handle, out _handle));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateIoBinding(session.Handle, out handle));
         }
 
         internal IntPtr Handle
         {
             get
             {
-                return _handle;
+                return handle;
             }
         }
+
+        public override bool IsInvalid { get { return handle == IntPtr.Zero; } }
 
         /// <summary>
         /// Bind a piece of pre-allocated native memory as a OrtValue Tensor with a given shape
@@ -114,7 +115,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             var utf8NamePinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(name), GCHandleType.Pinned);
             using (var pinnedName = new PinnedGCHandle(utf8NamePinned))
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtBindOutputToDevice(_handle, pinnedName.Pointer, memInfo.Pointer));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtBindOutputToDevice(handle, pinnedName.Pointer, memInfo.Pointer));
         }
 
         /// <summary>
@@ -130,11 +131,11 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 if (isInput)
                 {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtBindInput(_handle, pinnedName.Pointer, ortValue));
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtBindInput(handle, pinnedName.Pointer, ortValue));
                 }
                 else
                 {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtBindOutput(_handle, pinnedName.Pointer, ortValue));
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtBindOutput(handle, pinnedName.Pointer, ortValue));
                 }
             }
         }
@@ -149,7 +150,7 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr lengths = IntPtr.Zero;
             UIntPtr count = UIntPtr.Zero;
             var allocator = OrtAllocator.DefaultInstance;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetBoundOutputNames(_handle, allocator.Pointer, out buffer, out lengths, out count));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetBoundOutputNames(handle, allocator.Pointer, out buffer, out lengths, out count));
 
             if(count.Equals(UIntPtr.Zero))
             {
@@ -193,7 +194,7 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr ortValues = IntPtr.Zero;
             UIntPtr count = UIntPtr.Zero;
             var allocator = OrtAllocator.DefaultInstance;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetBoundOutputValues(_handle, allocator.Pointer, out ortValues, out count));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetBoundOutputValues(handle, allocator.Pointer, out ortValues, out count));
 
             if(count.Equals(UIntPtr.Zero))
             {
@@ -225,7 +226,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public void ClearBoundInputs()
         {
-            NativeMethods.OrtClearBoundInputs(_handle);
+            NativeMethods.OrtClearBoundInputs(handle);
         }
 
         /// <summary>
@@ -233,25 +234,17 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public void ClearBoundOutputs()
         {
-            NativeMethods.OrtClearBoundOutputs(_handle);
+            NativeMethods.OrtClearBoundOutputs(handle);
         }
 
-        #region Disposable Support
-        protected virtual void Dispose(bool disposing)
+        #region SafeHandle
+        protected override bool ReleaseHandle()
         {
-            if(disposing)
-            {
-                NativeMethods.OrtReleaseIoBinding(_handle);
-                _handle = IntPtr.Zero;
-            }
-        }
-        public void Dispose()
-        {
-            Dispose(true);
-            GC.SuppressFinalize(this);
+            NativeMethods.OrtReleaseIoBinding(handle);
+            handle = IntPtr.Zero;
+            return true;
         }
 
-        // No need for the finalizer
         #endregion
     }
 }
