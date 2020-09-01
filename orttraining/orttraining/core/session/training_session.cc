@@ -213,6 +213,9 @@ Status TrainingSession::ConfigureForTraining(
         config.model_with_loss_function_path.value(), SaveOption::NO_RELOAD));
   }
 
+  if (IsRootNode(config)) {
+    Save("before_opt.onnx", SaveOption::NO_RELOAD);
+  }
   // We need to get trainable weights to prevent constant folding from them. This works well if trainable weights are passed from config.
   // For case we use GetTrainableModelInitializers to get trainable weights such as C++ frontend, it may get more initializers
   // than trainable weights here as it's before transformers. So the constant folding may miss some nodes we actually can fold.
@@ -269,6 +272,10 @@ Status TrainingSession::ConfigureForTraining(
   ORT_RETURN_IF_ERROR(BuildGradientGraph(
       weight_names_to_train, loss_name, config.gradient_graph_config, *session_logger_));
 
+  if (IsRootNode(config)) {
+    Save("before_mixed_precision.onnx", SaveOption::NO_RELOAD);
+  }
+
   // transform for mixed precision
   std::unordered_map<std::string, NodeArg*> fp32_weight_name_to_fp16_node_arg{};
   if (is_mixed_precision_enabled_) {
@@ -277,6 +284,9 @@ Status TrainingSession::ConfigureForTraining(
         weight_names_to_train, mixed_precision_config.use_fp16_initializers, fp32_weight_name_to_fp16_node_arg, mixed_precision_config.fp16_type));
   }
 
+  if (IsRootNode(config)) {
+    Save("after_mixed_precision.onnx", SaveOption::NO_RELOAD);
+  }
   if (config.pipeline_config.has_value()) {
     TrainingConfigurationResult::PipelineConfigurationResult pipeline_result{};
     ORT_RETURN_IF_ERROR(InsertPipelineOps(weight_names_to_train,
@@ -344,7 +354,9 @@ Status TrainingSession::ConfigureForTraining(
 
   // Set eval feed names for nodes that differ between training and inferencing.
   ORT_RETURN_IF_ERROR(SetEvalFeedNames());
-
+  if (IsRootNode(config)) {
+    Save("after_build_optimizer.onnx", SaveOption::NO_RELOAD);
+  }
   // add Tensorboard
   if (config.tensorboard_config.has_value()) {
     const auto& tensorboard_config = config.tensorboard_config.value();
