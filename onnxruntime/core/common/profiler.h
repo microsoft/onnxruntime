@@ -55,11 +55,16 @@ class Profiler {
 
   /*
    Whether data collection and output from this profiler is enabled.
-   */
+  */
   bool IsEnabled() const {
     return enabled_;
   }
-
+  /*
+   Return the stored start time of profiling
+  */
+  TimePoint GetStartTime() const {
+    return profiling_start_time_;
+  }
   /*
   Record a single event. Time is measured till the call of this function from
   the start_time.
