@@ -568,7 +568,7 @@ class InferenceSession {
   uint32_t session_id_;                             // the current session's id
 
   struct Telemetry {
-    Telemetry() : time_sent_last_(), time_sent_last_evalutation_start_() {}
+    Telemetry() : time_sent_last_() {}
     uint32_t total_runs_since_last_ = 0;           // the total number of Run() calls since the last report
     long long total_run_duration_since_last_ = 0;  // the total duration (us) of Run() calls since the last report
     std::string event_name_;                       // where the model is loaded from: ["model_loading_uri", "model_loading_proto", "model_loading_istream"]
