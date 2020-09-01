@@ -347,6 +347,16 @@
             },
             "comments": "For Nodejs binding"
          }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "f97fd8664fa824e5d081d776cf4a811dbf09bca4",
+               "repositoryUrl": "https://github.com/pypa/manylinux"
+            },
+            "comments": "For Nodejs binding"
+         }
       }
    ],
    "Version": 1
