@@ -380,10 +380,6 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       return initializers.find(x_zero_point->Name()) == initializers.end() ||
              initializers.find(w_zero_point->Name()) == initializers.end();
     }  // else -> xzp & wzp are 0 by default according to ONNX spec
-  } else if (optype == "Expand") {
-    // nGraph only supports constant shape input values
-    // const auto& shape_input = node->InputDefs()[1];
-    // return !graph_viewer.IsConstantInitializer(shape_input->Name(), true);
   } else if (optype == "ArgMax" || optype == "ArgMin") {
     //tensor type does not support select last index
     auto attributes = node->GetAttributes();
@@ -413,7 +409,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
 
     if (optype == "Equal") {
       supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_INT32 }),
-      supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_INT64, onnx_dtype::TensorProto_DataType_INT64 }),
+      supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_INT64, onnx_dtype::TensorProto_DataType_INT64 });
       supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_BOOL, onnx_dtype::TensorProto_DataType_INT64, onnx_dtype::TensorProto_DataType_INT64 }),
       supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT });
     }
@@ -428,9 +424,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       return true;
     } else
       return false;
-  }
-
-
+  } 
   //Op doesn't fall into known any of unsupported modes.
   return false;
 }
@@ -688,6 +682,23 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
         const auto& shape_arg = node->InputDefs()[1];
         if(ng_required_initializers.find(shape_arg->Name()) == ng_required_initializers.end())
         return result;
+      } else if (node->OpType() == "Expand") {
+        const auto& output = node->OutputDefs()[0];
+        if (output->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16)
+          return result;
+      } else if (node->OpType() == "RoiAlign") {
+        using onnx_dtype = ONNX_NAMESPACE::TensorProto_DataType;
+
+        onnx_dtype input_0_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+        onnx_dtype input_1_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
+        onnx_dtype input_2_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[2]->TypeAsProto()->tensor_type().elem_type();
+        onnx_dtype output_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+
+        if ((input_0_data_type != onnx_dtype::TensorProto_DataType_FLOAT16) ||
+            (input_1_data_type != onnx_dtype::TensorProto_DataType_FLOAT16) ||
+            (input_2_data_type != onnx_dtype::TensorProto_DataType_FLOAT) ||
+            (output_data_type != onnx_dtype::TensorProto_DataType_FLOAT16))
+          return result;
       }
     }
 
