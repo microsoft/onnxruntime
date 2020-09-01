@@ -1146,6 +1146,9 @@ def run_training_python_frontend_e2e_tests(cwd):
         sys.executable, 'orttraining_test_transformers.py',
         'BertModelTest.test_for_pretraining_mixed_precision_all'], cwd=cwd)
 
+    run_subprocess([sys.executable, '-m', 'pytest', '-v', 'orttraining_test_orttrainer_frontend.py'], cwd=cwd)
+    run_subprocess([sys.executable, '-m', 'pytest', '-v', 'orttraining_test_orttrainer_bert_toy_onnx.py'], cwd=cwd)
+
 
 def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
     for config in configs:
