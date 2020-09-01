@@ -244,7 +244,7 @@ def run_pytorch(use_gpu, model_names, precision, batch_sizes, sequence_lengths, 
     return results
 
 def run_tensorflow(use_gpu, model_names, precision, batch_sizes, sequence_lengths, repeat_times, cache_dir,
-                verbose):
+                   verbose):
     results = []
     if use_gpu and not tf.test.is_built_with_cuda():
         logger.error("Please install Tensorflow-gpu, and use a machine with GPU for testing gpu performance.")
