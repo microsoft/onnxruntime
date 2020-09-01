@@ -103,7 +103,7 @@ class DynamicLossScaler(LossScaler):
 
     def update(self, train_step_info):
         if not self.automatic_update:
-            return
+            return self.loss_scale
 
         if train_step_info.all_finite:
             self._stable_steps_count += 1

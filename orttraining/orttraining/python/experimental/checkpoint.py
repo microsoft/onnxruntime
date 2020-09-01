@@ -65,7 +65,7 @@ def experimental_load_state_dict(ort_trainer, state_dict, strict=False):
 
 
 def experimental_save_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", checkpoint_state_dict=None, include_optimizer_state=True):
-    if checkpoint_state_dict == None:
+    if checkpoint_state_dict is None:
         checkpoint_state_dict = {'model': experimental_state_dict(ort_trainer, include_optimizer_state)}
     else:
         checkpoint_state_dict.update({'model': experimental_state_dict(ort_trainer, include_optimizer_state)})

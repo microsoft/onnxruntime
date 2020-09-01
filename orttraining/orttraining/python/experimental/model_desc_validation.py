@@ -189,14 +189,14 @@ class _ORTTrainerModelDesc(object):
 
         assert isinstance(name, str) and len(name) > 0, "'name' is an invalid input name"
         not_found = True
-        if ignore_duplicate is False:
+        if not ignore_duplicate:
             if id(node) == id(self.inputs):
                 not_found = all([name not in i_desc.name for i_desc in node])
                 assert not_found, f"'name' {name} already exists in the inputs description"
             else:
                 not_found = attr_name not in dir(self)
                 assert not_found, f"'attr_name' {attr_name} already exists in the 'node'"
-        elif not_found is False:
+        elif not not_found:
             return
         assert isinstance(shape, list) and all([(isinstance(dim, int) or (isinstance(dim, str) and len(dim) > 0))\
             for dim in shape]), "'shape' must be a list of int or str with length at least 1"
@@ -237,16 +237,16 @@ class _ORTTrainerModelDesc(object):
         assert isinstance(is_loss, bool), "'is_loss' must be a bool"
 
         not_found = True
-        if ignore_duplicate is False:
+        if not ignore_duplicate:
             if id(node) == id(self.outputs):
                 not_found = all([name not in o_desc.name for o_desc in node])
                 assert not_found, f"'name' {name} already exists in the outputs description"
-                assert all([o_desc.is_loss is False for o_desc in node]) if is_loss else True,\
+                assert all([not o_desc.is_loss for o_desc in node]) if is_loss else True,\
                     "Only one 'is_loss' is supported at outputs description"
             else:
                 not_found = attr_name not in dir(self)
                 assert not_found, f"'attr_name' {attr_name} already exists in the 'node'"
-        elif not_found is False:
+        elif not not_found:
             return
 
         assert dtype is None or isinstance(dtype, torch.dtype), "'dtype' must be either None or a torch.dtype type"
