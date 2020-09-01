@@ -113,6 +113,8 @@ struct KernelSessionImpl {
 
   // providers for the session
   std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
+
+  DataTransferManager data_transfer_mgr_;
 };
 
 class ExecutableKernelContextImpl {

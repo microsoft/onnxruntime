@@ -46,6 +46,14 @@ ORT_API_STATUS_IMPL(OrtApis::CreateKernelSession,
     // initialize the providers
     for(auto& factory : options->provider_factories) {
       auto provider = factory->CreateProvider();
+
+      auto data_xfr = provider->GetDataTransfer();
+      if (data_xfr) {
+        auto st = session->data_transfer_mgr_.RegisterDataTransfer(std::move(data_xfr));
+        if (!st.IsOK()) {
+          return ToOrtStatus(st);
+        }
+      }
       session->provider_list.push_back(std::move(provider));
     }
 
@@ -542,7 +550,7 @@ Status ExecutableKernelContextImpl::CreateExecutionFrame(KernelSessionImpl* sess
                                      std::unordered_map<int, OrtValue>(),
                                      OrtValueNameIdxMap(),
                                      FuncManager(),
-                                     DataTransferManager(),
+                                     session->data_transfer_mgr_,
                                      op_kernel);
 
   if (!status.IsOK()) {
