@@ -14,7 +14,7 @@ inline void ThrowOnError(const OrtApi& ort, OrtStatus* status) {
     std::string error_message = ort.GetErrorMessage(status);
     OrtErrorCode error_code = ort.GetErrorCode(status);
     ort.ReleaseStatus(status);
-    throw Ort::Exception(std::move(error_message), error_code);
+    ORT_CXX_API_THROW(std::move(error_message), error_code);
   }
 }
 
@@ -620,6 +620,36 @@ inline Unowned<TensorTypeAndShapeInfo> TypeInfo::GetTensorTypeAndShapeInfo() con
   const OrtTensorTypeAndShapeInfo* out;
   ThrowOnError(GetApi().CastTypeInfoToTensorInfo(p_, &out));
   return Unowned<TensorTypeAndShapeInfo>(const_cast<OrtTensorTypeAndShapeInfo*>(out));
+}
+
+inline Unowned<SequenceTypeInfo> TypeInfo::GetSequenceTypeInfo() const {
+  const OrtSequenceTypeInfo* out;
+  ThrowOnError(GetApi().CastTypeInfoToSequenceTypeInfo(p_, &out));
+  return Unowned<SequenceTypeInfo>{const_cast<OrtSequenceTypeInfo*>(out)};
+}
+
+inline TypeInfo SequenceTypeInfo::GetSequenceElementType() const {
+  OrtTypeInfo* output;
+  ThrowOnError(GetApi().GetSequenceElementType(p_, &output));
+  return TypeInfo{output};
+}
+
+inline Unowned<MapTypeInfo> TypeInfo::GetMapTypeInfo() const {
+  const OrtMapTypeInfo* out;
+  ThrowOnError(GetApi().CastTypeInfoToMapTypeInfo(p_, &out));
+  return Unowned<MapTypeInfo>{const_cast<OrtMapTypeInfo*>(out)};
+}
+
+inline ONNXTensorElementDataType MapTypeInfo::GetMapKeyType() const {
+  ONNXTensorElementDataType out;
+  ThrowOnError(GetApi().GetMapKeyType(p_, &out));
+  return out;
+}
+
+inline TypeInfo MapTypeInfo::GetMapValueType() const {
+  OrtTypeInfo* output;
+  ThrowOnError(GetApi().GetMapValueType(p_, &output));
+  return TypeInfo{output};
 }
 
 inline ONNXType TypeInfo::GetONNXType() const {

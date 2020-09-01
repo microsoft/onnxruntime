@@ -51,11 +51,16 @@ common::Status OnnxRuntimeOpSchemaRegistry::RegisterOpSchema(ONNX_NAMESPACE::OpS
 }
 
 common::Status OnnxRuntimeOpSchemaRegistry::RegisterOpSchemaInternal(ONNX_NAMESPACE::OpSchema&& op_schema) {
-  try {
+  auto status = Status::OK();
+  ORT_TRY {
     op_schema.Finalize();
-  } catch (const std::exception& e) {
-    return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Schema error: " + std::string(e.what()));
   }
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Schema error: " + std::string(e.what()));
+    });
+  }
+  ORT_RETURN_IF_ERROR(status);
 
   auto& op_name = op_schema.Name();
   auto& op_domain = op_schema.domain();
@@ -156,9 +161,7 @@ void SchemaRegistryManager::RegisterRegistry(std::shared_ptr<IOnnxRuntimeOpSchem
   registries.push_front(registry);
 }
 
-DomainToVersionMap SchemaRegistryManager::GetLatestOpsetVersions(bool is_onnx_only) const {
-  DomainToVersionMap domain_version_map;
-
+void SchemaRegistryManager::GetDomainToVersionMapForRegistries(DomainToVersionMap& domain_version_map, bool is_onnx_only) const {
   // Build the map using each of the registries
   for (auto& registry : registries) {
     DomainToVersionMap latest_opset_versions_in_reg = registry->GetLatestOpsetVersions(is_onnx_only);
@@ -176,6 +179,34 @@ DomainToVersionMap SchemaRegistryManager::GetLatestOpsetVersions(bool is_onnx_on
       }
     }
   }
+}
+
+DomainToVersionMap SchemaRegistryManager::GetLastReleasedOpsetVersions(bool is_onnx_only) const {
+  DomainToVersionMap domain_version_map;
+  GetDomainToVersionMapForRegistries(domain_version_map, is_onnx_only);
+
+  // check the ONNX schema registry
+  auto& onnx_domain_version_map =
+      ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().LastReleaseVersionMap();
+
+  for (const auto& domain : onnx_domain_version_map) {
+    if (is_onnx_only && domain.first.compare(kOnnxDomain) != 0)
+      continue;
+    auto it = domain_version_map.find(domain.first);
+    if (it == domain_version_map.end()) {
+      GSL_SUPPRESS(es .84)
+      domain_version_map.insert(std::make_pair(domain.first, domain.second));
+    } else {
+      it->second = std::max(it->second, domain.second);
+    }
+  }
+
+  return domain_version_map;
+}
+
+DomainToVersionMap SchemaRegistryManager::GetLatestOpsetVersions(bool is_onnx_only) const {
+  DomainToVersionMap domain_version_map;
+  GetDomainToVersionMapForRegistries(domain_version_map, is_onnx_only);
 
   // check the ONNX schema registry
   auto& onnx_domain_version_map =

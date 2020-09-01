@@ -8,11 +8,13 @@
 #include <climits>
 #include <string>
 #include "core/common/path.h"
+#include "core/flatbuffers/ort.fbs.h"
 #include "core/graph/graph_viewer.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "gsl/gsl"
 
 namespace onnxruntime {
+
 typedef std::unordered_map<std::string, std::string> ModelMetaData;
 using IOnnxRuntimeOpSchemaRegistryList = std::list<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>>;
 
@@ -139,7 +141,6 @@ class Model {
   Graph& MainGraph() noexcept;
   const Graph& MainGraph() const noexcept;
 
-
 #if !defined(ORT_MINIMAL_BUILD)
   // Get model's serialization proto data.
   ONNX_NAMESPACE::ModelProto ToProto();
@@ -210,9 +211,19 @@ class Model {
                              /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                              const logging::Logger& logger);
+
+  common::Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
+                                 flatbuffers::Offset<onnxruntime::experimental::fbs::Model>& model) const;
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
+  static common::Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::Model& fbs_model,
+                                          const logging::Logger& logger,
+                                          std::unique_ptr<Model>& model);
+
  private:
+  Model();
+
   // Model data.
 #if !defined(ORT_MINIMAL_BUILD)
   ONNX_NAMESPACE::ModelProto model_proto_;

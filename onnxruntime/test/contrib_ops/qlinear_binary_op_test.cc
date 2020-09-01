@@ -49,7 +49,7 @@ void RunQLinearMathTestFromFloat(
   std::vector<int64_t> c_shape(number_dims, 1);
   for (size_t axis = 0; axis < number_dims; ++axis) {
     if (a_shape[axis] != b_shape[axis] && (a_shape[axis] != 1 && b_shape[axis] != 1)) {
-      throw std::runtime_error("Shapes can not be broadcasted");
+      ORT_THROW("Shapes can not be broadcasted");
     }
     c_shape[axis] = std::max(a_shape[axis], b_shape[axis]);
   }
@@ -59,7 +59,7 @@ void RunQLinearMathTestFromFloat(
   auto a_size = CalcStrides(a_shape, a_strides, true);
   auto b_size = CalcStrides(b_shape, b_strides, true);
   if (a_size != static_cast<int64_t>(a.size()) || b_size != static_cast<int64_t>(b.size())) {
-    throw std::runtime_error("Input size not match input shape!");
+    ORT_THROW("Input size not match input shape!");
   }
   constexpr int qmax = std::numeric_limits<T>::max();
   constexpr int qmin = std::numeric_limits<T>::min();

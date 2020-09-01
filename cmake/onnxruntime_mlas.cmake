@@ -57,6 +57,11 @@ if(MSVC)
     )
     set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "/arch:AVX2")
 
+    if (onnxruntime_MINIMAL_BUILD)
+      # exclude AVX512 in minimal build
+      set_source_files_properties(${mlas_common_srcs} PROPERTIES COMPILE_FLAGS "-DMLAS_AVX512F_UNSUPPORTED")
+    endif()
+
     set(mlas_platform_srcs
       ${mlas_platform_srcs_avx}
       ${mlas_platform_srcs_avx2}
@@ -243,7 +248,7 @@ else()
       COMPILES_AVX512F
     )
 
-    if(COMPILES_AVX512F)
+    if(COMPILES_AVX512F AND NOT onnxruntime_MINIMAL_BUILD)
       set(mlas_platform_srcs_avx512f
         ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/DgemmKernelAvx512F.S
         ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SgemmKernelAvx512F.S

@@ -531,6 +531,7 @@ void setup_training_params(BertParameters& params) {
 #if defined(USE_NCCL) || defined(USE_HOROVOD)
   if (params.pipeline_parallel_size > 1) {
     auto pipeline_model_name_base = model_name_base + ToPathString(std::to_string(MPIContext::GetInstance().GetWorldRank()));
+    params.pipeline_partitioned_model_path = pipeline_model_name_base + ORT_TSTR("_partitioned.onnx");
     params.model_with_loss_func_path = pipeline_model_name_base + ORT_TSTR("_with_cost.onnx");
     params.model_with_training_graph_path = pipeline_model_name_base + ORT_TSTR("_bw.onnx");
     params.model_actual_running_graph_path = pipeline_model_name_base + ORT_TSTR("_bw_running.onnx");
@@ -731,7 +732,7 @@ static Status RunTraining(const BertParameters& params, const Environment& env) 
   BertParameters params_for_phase;
   while (GetParametersForPhase(runner->GetRound(), params, params_for_phase)) {
     ORT_RETURN_IF_ERROR(runner->UpdateParams(params_for_phase));
-    auto rank_in_data_parallel_group = MPIContext::GetInstance().GetWorldRank() / params_for_phase.horizontal_parallel_size;
+    auto rank_in_data_parallel_group = (MPIContext::GetInstance().GetWorldRank() / params_for_phase.horizontal_parallel_size) % params_for_phase.data_parallel_size;
     auto training_data_loader = onnxruntime::make_unique<DataLoader>(params_for_phase.input_name_map,
                                                                      params_for_phase.train_data_dir,
                                                                      max_num_files_preload,
