@@ -83,6 +83,7 @@ if "OMP_NUM_THREADS" not in os.environ:
     os.environ["OMP_NUM_THREADS"] = str(cpu_count)
 
 import torch
+import tensorflow as tf
 from transformers import (AutoConfig, AutoTokenizer, AutoModel, GPT2Model)
 
 
@@ -244,7 +245,6 @@ def run_pytorch(use_gpu, model_names, precision, batch_sizes, sequence_lengths, 
 
 def run_tensorflow(use_gpu, model_names, precision, batch_sizes, sequence_lengths, repeat_times, cache_dir,
                 verbose):
-    import tensorflow as tf
     results = []
     if use_gpu and not tf.test.is_built_with_cuda():
         logger.error("Please install Tensorflow-gpu, and use a machine with GPU for testing gpu performance.")
@@ -280,9 +280,9 @@ def run_tensorflow(use_gpu, model_names, precision, batch_sizes, sequence_length
                 input_ids = tf.constant(values, shape=(batch_size, sequence_length), dtype=tf.int32)
 
                 try:
-                    model(input_ids)
+                    model(input_ids, training=False)
 
-                    runtimes = timeit.repeat(lambda: model(input_ids), repeat=repeat_times, number=1)
+                    runtimes = timeit.repeat(lambda: model(input_ids, training=False), repeat=repeat_times, number=1)
 
                     result = {
                         "engine": "tensorflow",
@@ -435,7 +435,10 @@ def main():
 
     results = []
 
-    torch.set_num_threads(cpu_count if args.thread_num <= 0 else args.thread_num)
+    thread_n = cpu_count if args.thread_num <= 0 else args.thread_num
+    torch.set_num_threads(thread_n)
+    tf.config.threading.set_inter_op_parallelism_threads(thread_n)
+
     logger.debug(torch.__config__.parallel_info())
 
     if enable_torch or enable_torchscript:
