@@ -883,7 +883,7 @@ TEST(CApiTest, TestSharedAllocatorUsingCreateAndRegisterAllocator) {
   std::unique_ptr<OrtMemoryInfo, decltype(api.ReleaseMemoryInfo)> rel_info(mem_info, api.ReleaseMemoryInfo);
   ASSERT_TRUE(api.CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &mem_info) == nullptr);
 
-  OrtArenaCfg arena_cfg{-1, -1, -1, -1};
+  OrtArenaCfg arena_cfg{0, -1, -1, -1};
   ASSERT_TRUE(api.CreateAndRegisterAllocator(env_ptr, mem_info, &arena_cfg) == nullptr);
 
   // test for duplicates
