@@ -112,8 +112,8 @@ def quantize(model,
         if not op_types_to_quantize or len(op_types_to_quantize) == 0:
             op_types_to_quantize = list(QLinearOpsRegistry.keys()) if static else list(IntegerOpsRegistry.keys())
 
-        quantizer = ONNXQuantizer(copy_model, per_channel, mode, static, weight_qType, input_qType,
-                                  quantization_params, nodes_to_quantize, nodes_to_exclude, op_types_to_quantize)
+        quantizer = ONNXQuantizer(copy_model, per_channel, mode, static, weight_qType, input_qType, quantization_params,
+                                  nodes_to_quantize, nodes_to_exclude, op_types_to_quantize)
 
         quantizer.quantize_model()
         return quantizer.model.model

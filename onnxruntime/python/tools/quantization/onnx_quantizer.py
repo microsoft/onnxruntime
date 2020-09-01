@@ -75,8 +75,8 @@ def _get_qrange_for_qType(qType):
 
 
 class ONNXQuantizer:
-    def __init__(self, model, per_channel, mode, static, weight_qType, input_qType,
-                 quantization_params, nodes_to_quantize, nodes_to_exclude, op_types_to_quantize):
+    def __init__(self, model, per_channel, mode, static, weight_qType, input_qType, quantization_params,
+                 nodes_to_quantize, nodes_to_exclude, op_types_to_quantize):
         onnx_model = shape_inference.infer_shapes(model)
         self.model = ONNXModel(onnx_model)
         self.value_infos = {vi.name: vi for vi in onnx_model.graph.value_info}
@@ -112,7 +112,9 @@ class ONNXQuantizer:
         self.quantized_value_map = {}
 
     def check_opset_version(self):
-        ai_onnx_domain = [opset for opset in self.model.model.opset_import if not opset.domain or opset.domain == "ai.onnx"]
+        ai_onnx_domain = [
+            opset for opset in self.model.model.opset_import if not opset.domain or opset.domain == "ai.onnx"
+        ]
         if 1 != len(ai_onnx_domain):
             raise ValueError('Failed to find proper ai.onnx domain')
         opset_version = ai_onnx_domain[0].version
@@ -120,7 +122,7 @@ class ONNXQuantizer:
         if opset_version < 10:
             raise ValueError("The original model opset version is {}, which does not support quantized operators.\n\
                 The opset version of quantized model will be set to 10. Use onnx model checker to verify model after quantization."
-                .format(opset_version))
+                             .format(opset_version))
 
         if opset_version == 10:
             self.fuse_dynamic_quant = False

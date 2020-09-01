@@ -318,8 +318,8 @@ class TestQAT(unittest.TestCase):
         qat_support_models_expected = generate_qat_support_model(qat_support_model_names, test_initializers)
 
         for i in range(len(test_models)):
-            quantizer = ONNXQuantizer(test_models[i], False, QuantizationMode.IntegerOps, False, True,
-                                      TensorProto.INT8, TensorProto.INT8, None, None, None, ['Conv','MatMul', 'MaxPool'])
+            quantizer = ONNXQuantizer(test_models[i], False, QuantizationMode.IntegerOps, False, True, TensorProto.INT8,
+                                      TensorProto.INT8, None, None, None, ['Conv', 'MatMul', 'MaxPool'])
             #test remove editting to the graph
             qat_support_model_actual = quantizer.remove_fake_quantized_nodes()
 
