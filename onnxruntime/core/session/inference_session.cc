@@ -38,6 +38,7 @@
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+#include "core/flatbuffers/ort.fbs.h"
 #ifdef USE_DML  // TODO: This is necessary for the workaround in TransformGraph
 #include "core/providers/dml/DmlExecutionProvider/src/GraphTransformer.h"
 #endif
@@ -53,6 +54,7 @@
 #endif
 
 using namespace ONNX_NAMESPACE;
+using namespace onnxruntime::experimental;
 
 namespace onnxruntime {
 namespace {
@@ -418,6 +420,46 @@ common::Status InferenceSession::RegisterCustomRegistry(std::shared_ptr<CustomRe
   return Status::OK();
 }
 
+common::Status InferenceSession::SaveToOrtFormat(const std::basic_string<ORTCHAR_T>& filepath) const {
+  ORT_RETURN_IF_NOT(FLATBUFFERS_LITTLEENDIAN, "ort format only supports little-edian machines");
+
+  // Get the byte size of the ModelProto and round it to the next MB and use it as flatbuffers' init_size
+  // TODO: Investigate whether we should set a max size, and clarify the cost of having a buffer smaller than
+  // what the total flatbuffers serialized size will be.
+  constexpr size_t m_bytes = 1024 * 1024;
+  size_t fbs_buffer_size = std::max(m_bytes, model_->ToProto().ByteSizeLong());
+  fbs_buffer_size = ((fbs_buffer_size + m_bytes - 1) / m_bytes) * m_bytes;
+  flatbuffers::FlatBufferBuilder builder(fbs_buffer_size);
+
+  auto ort_version = builder.CreateString(ORT_VERSION);
+  flatbuffers::Offset<fbs::Model> model;
+  ORT_RETURN_IF_ERROR(
+      model_->SaveToOrtFormat(builder, model));
+
+  flatbuffers::Offset<fbs::SessionState> session_state;
+  ORT_RETURN_IF_ERROR(
+      session_state_->SaveToOrtFormat(builder, session_state));
+
+  fbs::InferenceSessionBuilder sb(builder);
+  sb.add_ort_version(ort_version);
+  sb.add_model(model);
+  sb.add_session_state(session_state);
+  auto session = sb.Finish();
+  builder.Finish(session);
+
+  // TODO: Do we need to catch any std::exceptions from creating/writing to disk and convert to Status codes?
+  {
+    std::ofstream file(filepath, std::ios::binary);
+
+    uint8_t* buf = builder.GetBufferPointer();
+    int size = builder.GetSize();
+    file.write(reinterpret_cast<const char*>(buf), size);
+    file.close();
+  }
+
+  return Status::OK();
+}
+
 common::Status InferenceSession::Load(std::function<common::Status(std::shared_ptr<Model>&)> loader,
                                       const std::string& event_name) {
   Status status = Status::OK();
@@ -731,6 +773,105 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
+template <typename T>
+static Status LoadOrtModelBytes(const std::basic_string<T>& model_uri,
+                                std::basic_string<ORTCHAR_T>& model_location,
+                                std::vector<uint8_t>& bytes) {
+  size_t num_bytes = 0;
+  model_location = ToWideString(model_uri);
+  ORT_RETURN_IF_ERROR(Env::Default().GetFileLength(model_location.c_str(), num_bytes));
+
+  bytes.resize(num_bytes);
+
+  std::ifstream bytes_stream(model_uri, std::ifstream::in | std::ifstream::binary);
+  bytes_stream.read(reinterpret_cast<char*>(bytes.data()), num_bytes);
+
+  if (!bytes_stream) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Load model from ", ToMBString(model_uri), " failed. Only ",
+                           bytes_stream.gcount(), "/", num_bytes, " bytes were able to be read.");
+  }
+
+  return Status::OK();
+}
+
+Status InferenceSession::LoadOrtModel(const std::string& model_uri) {
+  return LoadOrtModel(
+      [&]() {
+        ORT_RETURN_IF_ERROR(LoadOrtModelBytes(model_uri, model_location_, ort_format_model_bytes_));
+        return Status::OK();
+      });
+}
+
+#ifdef WIN32
+Status InferenceSession::LoadOrtModel(const std::wstring& model_uri) {
+  return LoadOrtModel(
+      [&]() {
+        ORT_RETURN_IF_ERROR(LoadOrtModelBytes(model_uri, model_location_, ort_format_model_bytes_));
+        return Status::OK();
+      });
+}
+#endif
+
+Status InferenceSession::LoadOrtModel(const void* model_data, int model_data_len) {
+  return LoadOrtModel([&]() {
+    // copy bytes as we need them to be available when InferenceSession::Initialize is called later.
+    //
+    // TODO: Provide Load API where we can take ownership of memory to avoid the copy,
+    // and/or a combined Load+Initialize where we don't need this temporary copy.
+    ort_format_model_bytes_.resize(model_data_len);
+    std::copy_n(reinterpret_cast<const uint8_t*>(model_data), model_data_len, ort_format_model_bytes_.data());
+
+    return Status::OK();
+  });
+}
+
+Status InferenceSession::LoadOrtModel(std::function<Status()> load_ort_format_model_bytes) {
+  static_assert(FLATBUFFERS_LITTLEENDIAN, "ORT format only supports little-endian machines");
+
+  std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+
+  if (is_model_loaded_) {  // already loaded
+    Status status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session already contains a loaded model.");
+    LOGS(*session_logger_, ERROR) << status.ErrorMessage();
+    return status;
+  }
+
+  if (is_inited_) {
+    Status status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session has already been initialized.");
+    LOGS(*session_logger_, ERROR) << status.ErrorMessage();
+    return status;
+  }
+
+  ORT_RETURN_IF_ERROR(load_ort_format_model_bytes());
+  const auto* fbs_session = fbs::GetInferenceSession(ort_format_model_bytes_.data());
+  ORT_RETURN_IF(nullptr == fbs_session, "InferenceSession is null. Invalid ORT format model.");
+
+  // Check version mismatch, for now we will only proceed when runtime version matches the model's ort version
+  const auto* fbs_ort_version = fbs_session->ort_version();
+  ORT_RETURN_IF(fbs_ort_version == nullptr, "Serialized version info is null. Invalid ORT format model.");
+  ORT_RETURN_IF_NOT(fbs_ort_version->str() == ORT_VERSION,
+                    "ORT_VERSION mismatch. Saved model ORT version: ", fbs_ort_version->str(),
+                    ", Current ORT version: ", ORT_VERSION);
+
+  const auto* fbs_model = fbs_session->model();
+  ORT_RETURN_IF(nullptr == fbs_model, "Missing Model. Invalid ORT format model.");
+
+  // need to go from unique_ptr to shared_ptr when moving into model_
+  std::unique_ptr<Model> tmp_model;
+  ORT_RETURN_IF_ERROR(Model::LoadFromOrtFormat(*fbs_model, *session_logger_, tmp_model));
+  ORT_RETURN_IF_ERROR(SaveModelMetadata(*tmp_model));
+  model_ = std::move(tmp_model);
+
+  // Initialize takes the session_mutex_ as well so we need to have released it prior to calling this
+  const auto* fbs_sess_state = fbs_session->session_state();
+  ORT_RETURN_IF(nullptr == fbs_sess_state, "SessionState is null. Invalid ORT format model.");
+
+  is_model_loaded_ = true;
+
+  return Status::OK();
+}
+
 bool InferenceSession::IsInitialized() const {
   std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
   return is_inited_;
@@ -891,8 +1032,13 @@ common::Status InferenceSession::Initialize() {
     // need to keep the initializers if we're going to save the optimized model
     bool keep_initializers = !session_options_.optimized_model_filepath.empty();
 
+    auto* serialized_session_state = !ort_format_model_bytes_.empty()
+                                         ? fbs::GetInferenceSession(ort_format_model_bytes_.data())->session_state()
+                                         : nullptr;
+
     ORT_RETURN_IF_ERROR_SESSIONID_(session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
                                                                         session_options_,
+                                                                        serialized_session_state,
                                                                         !keep_initializers));
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -911,6 +1057,9 @@ common::Status InferenceSession::Initialize() {
 
     session_state_->ResolveMemoryPatternFlag();
     is_inited_ = true;
+
+    // we don't directly use the ORT format bytes currently, so free those now
+    std::vector<uint8_t>().swap(ort_format_model_bytes_);
 
     // and log telemetry
     bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
