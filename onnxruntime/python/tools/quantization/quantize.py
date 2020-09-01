@@ -22,7 +22,7 @@ from .quant_utils import QuantType
 from .registry import CreateOpQuantizer, CreateDefaultOpQuantizer, QLinearOpsRegistry, IntegerOpsRegistry
 
 from .onnx_model import ONNXModel
-from .onnx_quantizer import ONNXQuantizer, check_opset_version
+from .onnx_quantizer import ONNXQuantizer
 from .calibrate import CalibrationDataReader, calibrate
 
 
@@ -46,7 +46,6 @@ def quantize(model,
              nbits=8,
              quantization_mode=QuantizationMode.IntegerOps,
              static=False,
-             force_fusions=False,
              symmetric_activation=False,
              symmetric_weight=False,
              quantization_params=None,
@@ -68,10 +67,6 @@ def quantize(model,
               specified through quantization_params.
         False: The inputs/activations are quantized using dynamic scale and zero point values
                computed while running the model.
-    :param force_fusions:
-        True: Fuses nodes added for dynamic quantization
-        False: No fusion is applied for nodes which are added for dynamic quantization.
-        Should be only used in cases where backends want to apply special fusion routines
     :param symmetric_activation:
         True: activations are quantized into signed integers.
         False: activations are quantized into unsigned integers.
@@ -113,12 +108,11 @@ def quantize(model,
         mode = quantization_mode
         copy_model = onnx_proto.ModelProto()
         copy_model.CopyFrom(model)
-        fuse_dynamic_quant = check_opset_version(copy_model, force_fusions)
 
         if not op_types_to_quantize or len(op_types_to_quantize) == 0:
             op_types_to_quantize = list(QLinearOpsRegistry.keys()) if static else list(IntegerOpsRegistry.keys())
 
-        quantizer = ONNXQuantizer(copy_model, per_channel, mode, static, fuse_dynamic_quant, weight_qType, input_qType,
+        quantizer = ONNXQuantizer(copy_model, per_channel, mode, static, weight_qType, input_qType,
                                   quantization_params, nodes_to_quantize, nodes_to_exclude, op_types_to_quantize)
 
         quantizer.quantize_model()
@@ -166,10 +160,6 @@ def quantize_static(model_input,
     weight_qType = onnx_proto.TensorProto.INT8 if weight_type == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
     mode = QuantizationMode.QLinearOps
 
-    #check opset version of the original model
-    #fuse_dynamic_quant = check_opset_version(onnx.load(model_path), force_fusions)
-    fuse_dynamic_quant = True
-
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(QLinearOpsRegistry.keys())
 
@@ -181,7 +171,6 @@ def quantize_static(model_input,
         per_channel,
         mode,
         True,  # static
-        fuse_dynamic_quant,
         weight_qType,
         input_qType,
         quantization_params_dict,
@@ -230,10 +219,6 @@ def quantize_dynamic(model_input: Path,
     #optimize the original model
     optimized_model = optimize_model(Path(model_input))
 
-    #check opset version of the original model
-    #fuse_dynamic_quant = check_opset_version(onnx.load(model_path), force_fusions)
-    fuse_dynamic_quant = True
-
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(IntegerOpsRegistry.keys())
 
@@ -242,7 +227,6 @@ def quantize_dynamic(model_input: Path,
         per_channel,
         mode,
         False,  #static
-        fuse_dynamic_quant,
         weight_qType,
         input_qType,
         None,
@@ -289,10 +273,6 @@ def quantize_qat(model_input: Path,
     #optimize the original model
     optimized_model = optimize_model(Path(model_input))
 
-    #check opset version of the original model
-    #fuse_dynamic_quant = check_opset_version(onnx.load(model_path), force_fusions)
-    fuse_dynamic_quant = True
-
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(IntegerOpsRegistry.keys())
 
@@ -301,7 +281,6 @@ def quantize_qat(model_input: Path,
         per_channel,
         mode,
         False,  #static
-        fuse_dynamic_quant,
         weight_qType,
         input_qType,
         None,

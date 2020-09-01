@@ -60,44 +60,6 @@ def quantize_data(data, quantize_range, qType):
     return rmin, rmax, zero_point, scale, quantized_data
 
 
-onnx_op_set_version = 11
-
-
-def check_opset_version(org_model, force_fusions):
-    '''
-        Check opset version of original model and set opset version and fuse_dynamic_quant accordingly.
-        If opset version < 10, set quantized model opset version to 10.
-        If opset version == 10, do quantization without using dynamicQuantizeLinear operator.
-        If opset version == 11, do quantization using dynamicQuantizeLinear operator.
-        :return: fuse_dynamic_quant boolean value.
-    '''
-    global onnx_op_set_version
-    ai_onnx_domain = [opset for opset in org_model.opset_import if not opset.domain or opset.domain == "ai.onnx"]
-    if 1 != len(ai_onnx_domain):
-        raise ValueError('Failed to find proper ai.onnx domain')
-    opset_version = ai_onnx_domain[0].version
-
-    fuse_dynamic_quant = False
-
-    if opset_version < 11 and force_fusions == True:
-        print("Warning: The original model opset version is {}, which does not support node fusions.\n\
-            Forcing fusions can break other nodes in the model.".format(opset_version))
-        onnx_op_set_version = 11
-        fuse_dynamic_quant = True
-        return fuse_dynamic_quant
-
-    if opset_version < 10:
-        print("Warning: The original model opset version is {}, which does not support quantized operators.\n\
-            The opset version of quantized model will be set to 10. Use onnx model checker to verify model after quantization."
-              .format(opset_version))
-        onnx_op_set_version = 10
-    elif opset_version == 10:
-        onnx_op_set_version = 10
-    else:
-        fuse_dynamic_quant = True
-    return fuse_dynamic_quant
-
-
 def _get_qrange_for_qType(qType):
     '''
     Helper function to get the quantization range for a type.
@@ -113,7 +75,7 @@ def _get_qrange_for_qType(qType):
 
 
 class ONNXQuantizer:
-    def __init__(self, model, per_channel, mode, static, fuse_dynamic_quant, weight_qType, input_qType,
+    def __init__(self, model, per_channel, mode, static, weight_qType, input_qType,
                  quantization_params, nodes_to_quantize, nodes_to_exclude, op_types_to_quantize):
         onnx_model = shape_inference.infer_shapes(model)
         self.model = ONNXModel(onnx_model)
@@ -121,7 +83,7 @@ class ONNXQuantizer:
         self.per_channel = per_channel  # weight-pack per channel
         self.mode = mode  # QuantizationMode.Value
         self.static = static  # use static quantization for inputs.
-        self.fuse_dynamic_quant = fuse_dynamic_quant
+        self.fuse_dynamic_quant = False
         self.input_qType = input_qType  # quantize input type
         self.weight_qType = weight_qType  # quantize data type
         self.quantization_params = quantization_params
@@ -129,6 +91,8 @@ class ONNXQuantizer:
         self.nodes_to_exclude = nodes_to_exclude  # specific nodes to exclude
         self.op_types_to_quantize = op_types_to_quantize
         self.new_nodes = []
+
+        self.check_opset_version()
 
         if not self.mode in quantization_modes:
             raise ValueError('unsupported quantization mode {}'.format(self.mode))
@@ -146,6 +110,22 @@ class ONNXQuantizer:
         self._quantized_weights = []
         # Map of all original value names to quantized value names
         self.quantized_value_map = {}
+
+    def check_opset_version(self):
+        ai_onnx_domain = [opset for opset in self.model.model.opset_import if not opset.domain or opset.domain == "ai.onnx"]
+        if 1 != len(ai_onnx_domain):
+            raise ValueError('Failed to find proper ai.onnx domain')
+        opset_version = ai_onnx_domain[0].version
+
+        if opset_version < 10:
+            raise ValueError("The original model opset version is {}, which does not support quantized operators.\n\
+                The opset version of quantized model will be set to 10. Use onnx model checker to verify model after quantization."
+                .format(opset_version))
+
+        if opset_version == 10:
+            self.fuse_dynamic_quant = False
+        else:
+            self.fuse_dynamic_quant = True
 
     def replace_gemm_with_matmul(self):
         nodes_to_remove = []
@@ -286,12 +266,6 @@ class ONNXQuantizer:
         # Remove weights which are already quantized from graph.
         self._remove_quantized_weights()
 
-        # update opset.
-        opset_info = next(
-            (opset for opset in self.model.opset_import() if opset.domain == '' or opset.domain == onnx_domain), None)
-        if opset_info is not None:
-            self.model.opset_import().remove(opset_info)
-        self.model.opset_import().extend([onnx.helper.make_opsetid(onnx_domain, onnx_op_set_version)])
         self.model.model.producer_name = __producer__
         self.model.model.producer_version = __version__
 

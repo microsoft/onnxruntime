@@ -230,11 +230,11 @@ class ONNXCalibrater:
         for node in model.graph.node:
             for node_output_name in node.output:
                 if node_output_name in self.input_name_to_nodes:
-                    next_nodes = self.input_name_to_nodes[node_output_name]
-                    for next_node in next_nodes:
+                    children = self.input_name_to_nodes[node_output_name]
+                    for child in children:
                         if node_output_name in quantization_thresholds:
                             node_thresholds = quantization_thresholds[node_output_name]
-                            node_params = self.calculate_scale_zeropoint(node, next_node, node_thresholds[0],
+                            node_params = self.calculate_scale_zeropoint(node, child, node_thresholds[0],
                                                                          node_thresholds[1])
                             quantization_params[node_output_name] = node_params
 
