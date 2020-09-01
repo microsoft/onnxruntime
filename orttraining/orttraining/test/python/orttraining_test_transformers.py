@@ -230,9 +230,10 @@ class BertModelTest(unittest.TestCase):
                                         print(new_api_prediction_scores_ort)
                                         print(new_api_seq_relationship_score_ort)
                                         
-                                        assert_allclose(old_api_loss_ort, new_api_loss_ort)
-                                        assert_allclose(old_api_prediction_scores_ort, new_api_prediction_scores_ort)
-                                        assert_allclose(old_api_seq_relationship_score_ort, new_api_seq_relationship_score_ort)
+                                        atol = 1e-6
+                                        assert_allclose(old_api_loss_ort, new_api_loss_ort, atol=atol)
+                                        assert_allclose(old_api_prediction_scores_ort, new_api_prediction_scores_ort, atol=atol)
+                                        assert_allclose(old_api_seq_relationship_score_ort, new_api_seq_relationship_score_ort, atol=atol)
 
 
     def setUp(self):
