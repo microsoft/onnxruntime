@@ -11,3 +11,4 @@ onnxruntime/test/python/onnxruntime_test_ort_trainer_with_mixed_precision.py @th
 onnxruntime/test/python/onnxruntime_test_training_unit_tests.py @thiagocrepaldi @spandantiwari @BowenBao @liqunfu
 onnxruntime/test/python/onnxruntime_test_training_unittest_utils.py @thiagocrepaldi @spandantiwari @BowenBao @liqunfu
 samples/python/** @thiagocrepaldi @spandantiwari @BowenBao @liqunfu
+
