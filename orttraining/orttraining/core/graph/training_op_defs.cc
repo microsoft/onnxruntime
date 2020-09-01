@@ -325,9 +325,8 @@ bool BuildContextDependentFunctionBodyMSD(const FunctionBodyBuildContext& ctx,
                           const OpSchema& schema, FunctionProto& functionProto) {
   std::vector<FunctionBodyHelper::NodeDef> body;
   body.push_back(FunctionBodyHelper::Const<float>("Q_Pow", 2));
-  // body.push_back({{"X_Sub"}, "Sub", {"scores", "labels"}, {MakeAttribute("broadcast", int64_t(1))}});
-  body.push_back({{"X_Sub"}, "Sub", {"scores", "labels"}});
-
+  // TBD: Investigate how to specify op domain/version
+  body.push_back({{"X_Sub"}, "Sub", {"scores", "labels"}}); 
   if (ctx.hasInput(2)) { // Input 2 is "weights"
     body.push_back({{"X_Pow"}, "Pow", {"X_Sub", "Q_Pow"}});
     if (ctx.getAttribute("reduction")->s() == "none") {
@@ -885,7 +884,7 @@ Example 4:
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(MeanSquaredError)
       .SetDomain(kOnnxDomain) 
-      .SinceVersion(13) 
+      .SinceVersion(12) 
       .Attr("reduction",
             reduction_doc,
             AttributeProto::STRING,
