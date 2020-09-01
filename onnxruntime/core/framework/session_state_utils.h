@@ -9,6 +9,7 @@
 #include "core/framework/tensor.h"
 #include "core/framework/tensor_allocator.h"
 #include "core/framework/session_options.h"
+#include "core/framework/sequential_execution_plan.h"
 #include "core/platform/path_lib.h"
 
 namespace onnxruntime {

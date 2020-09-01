@@ -778,20 +778,23 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   SequentialPlannerContext context(session_options.execution_mode);
   ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
                                                     execution_providers_, kernel_create_info_map_,
-                                                    ort_value_name_idx_map_, context, p_seq_exec_plan_));
+                                                    ort_value_name_idx_map_, context, p_seq_exec_plan_,
+                                                    kernel_registry_manager));
 
   // Uncomment the below to dump the allocation plan to std::cout
   // LOGS(logger_, VERBOSE) << std::make_pair(p_seq_exec_plan_.get(), this);
 
   std::unique_ptr<ITensorAllocator> tensor_allocator_(
       ITensorAllocator::Create(enable_mem_pattern_, *p_seq_exec_plan_, *this, weights_buffers_));
+  
+  const auto& initializer_allocation_order = p_seq_exec_plan_->initializer_allocation_order;
 
   // move initializers from TensorProto instances in Graph to OrtValue instances in SessionState
   ORT_RETURN_IF_ERROR(
       session_state_utils::SaveInitializedTensors(
           Env::Default(), graph_location, *graph_viewer_,
           execution_providers_.GetDefaultCpuMemoryInfo(),
-          ort_value_name_idx_map_, *tensor_allocator_,
+          ort_value_name_idx_map_, initializer_allocation_order, *tensor_allocator_,
           [this](int idx, const OrtValue& value, const OrtCallback& d, bool constant) -> Status {
             return AddInitializedTensor(idx, value, &d, constant);
           },

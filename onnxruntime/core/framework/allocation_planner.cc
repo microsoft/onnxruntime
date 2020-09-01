@@ -116,7 +116,7 @@ class PlannerImpl {
               const std::vector<const NodeArg*>& outer_scope_node_args, const ExecutionProviders& providers,
               const std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map,
               const OrtValueNameIdxMap& ort_value_name_idx_map,
-              const ISequentialPlannerContext& context, SequentialExecutionPlan& plan)
+              const ISequentialPlannerContext& context, SequentialExecutionPlan& plan, KernelRegistryManager& kernel_registry_manager)
       : context_(context),
         plan_(plan),
         parent_node_(parent_node),
@@ -124,7 +124,8 @@ class PlannerImpl {
         outer_scope_node_args_(outer_scope_node_args),
         execution_providers_(providers),
         kernel_create_info_map_(kernel_create_info_map),
-        ort_value_name_idx_map_(ort_value_name_idx_map) {}
+        ort_value_name_idx_map_(ort_value_name_idx_map),
+        kernel_registry_manager_(kernel_registry_manager) {}
 
   Status CreatePlan();
 
@@ -139,6 +140,7 @@ class PlannerImpl {
 
   const std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map_;
   const OrtValueNameIdxMap& ort_value_name_idx_map_;
+  KernelRegistryManager& kernel_registry_manager_;
 
   // OrtValueInfo: Auxiliary information about an OrtValue used only during plan-generation:
   struct OrtValueInfo {
@@ -704,7 +706,7 @@ class PlannerImpl {
 
   bool AllocateInputsContiguously(const Node& node) const {
     const KernelCreateInfo* ci = nullptr;
-    Status st = kernel_registry_.SearchKernelRegistry(node, &ci);
+    Status st = kernel_registry_manager_.SearchKernelRegistry(node, &ci);
     if (!st.IsOK() || ci == nullptr || ci->kernel_def == nullptr) {
       return false;
     }
@@ -887,12 +889,13 @@ Status SequentialPlanner::CreatePlan(
     const std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map,
     const OrtValueNameIdxMap& ort_value_name_idx_map,
     const ISequentialPlannerContext& context,
-    std::unique_ptr<SequentialExecutionPlan>& plan) {
+    std::unique_ptr<SequentialExecutionPlan>& plan,
+    KernelRegistryManager& kernel_registry_manager) {
   // allocate/reset here so we know it's clean
   plan = onnxruntime::make_unique<SequentialExecutionPlan>();
 
   PlannerImpl planner(parent_node, graph_viewer, outer_scope_node_args, providers,
-                      kernel_create_info_map, ort_value_name_idx_map, context, *plan);
+                      kernel_create_info_map, ort_value_name_idx_map, context, *plan, kernel_registry_manager);
 
   return planner.CreatePlan();
 }
