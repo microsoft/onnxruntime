@@ -246,6 +246,10 @@ def run_pytorch(use_gpu, model_names, precision, batch_sizes, sequence_lengths, 
 def run_tensorflow(use_gpu, model_names, precision, batch_sizes, sequence_lengths, repeat_times, cache_dir,
                    verbose):
     results = []
+
+    if not use_gpu:
+        tf.config.set_visible_devices([], 'GPU')
+
     if use_gpu and not tf.test.is_built_with_cuda():
         logger.error("Please install Tensorflow-gpu, and use a machine with GPU for testing gpu performance.")
         return results
@@ -437,7 +441,7 @@ def main():
 
     thread_n = cpu_count if args.thread_num <= 0 else args.thread_num
     torch.set_num_threads(thread_n)
-    tf.config.threading.set_inter_op_parallelism_threads(thread_n)
+    tf.config.threading.set_intra_op_parallelism_threads(thread_n)
 
     logger.debug(torch.__config__.parallel_info())
 
