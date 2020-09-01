@@ -144,40 +144,7 @@ static NodeArg& MergeQkvWeights(Graph& graph, int64_t hidden_size,
   return graph_utils::AddInitializer(graph, initializer);
 }
 
-static NodeArg& AddMaskReduceSum(Graph& graph, NodeArg* reduce_sum_input, TypeProto& output_type, ProviderType provider_type) {
-  NodeArg& reduce_sum_output = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("MaskIndex_Int32"), &output_type);
-
-  const std::vector<NodeArg*> input_defs{reduce_sum_input};
-  const std::vector<NodeArg*> output_defs{&reduce_sum_output};
-  Node& node = graph.AddNode(
-      graph.GenerateNodeName("MaskIndex"),
-      "ReduceSum",
-      "Count number of words",
-      input_defs,
-      output_defs,
-      {},
-      kOnnxDomain);
-
-  // Add attribute: "axes" = [1]
-  ONNX_NAMESPACE::AttributeProto axes;
-  axes.set_name("axes");
-  axes.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
-  axes.add_ints(1);
-  node.AddAttribute("axes", axes);
-
-  // Add attribute: "keepdims" = 0
-  ONNX_NAMESPACE::AttributeProto keepdims;
-  keepdims.set_name("keepdims");
-  keepdims.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
-  keepdims.set_i(static_cast<int64_t>(0));
-  node.AddAttribute("keepdims", keepdims);
-
-  node.SetExecutionProviderType(provider_type);
-
-  return reduce_sum_output;
-}
-
-static NodeArg* ProcessMask(Graph& graph, NodeArg* mask_input, ProviderType provider_type, const logging::Logger& logger) {
+static NodeArg* ConvertMaskToInt32(Graph& graph, NodeArg* mask_input, ProviderType provider_type, const logging::Logger& logger) {
   // Validate mask input shape (batch_size, sequence_length) and data type.
   // Note that batch_size and sequence_length could be symbolic.
   const TensorShapeProto* mask_shape = mask_input->Shape();
@@ -194,51 +161,40 @@ static NodeArg* ProcessMask(Graph& graph, NodeArg* mask_input, ProviderType prov
     return nullptr;
   }
 
-  NodeArg* reduce_sum_input = mask_input;
-  if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64 ||
-      data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+  NodeArg* mask_int32 = mask_input;
+  if (data_type != ONNX_NAMESPACE::TensorProto_DataType_INT32) {
     NodeArg& cast_int32 = AttentionFusionHelper::CastMaskToInt32(graph, mask_input, provider_type);
-    reduce_sum_input = &cast_int32;
+    mask_int32 = &cast_int32;
   }
 
-  // Construct shape based on mask input shape. Note that batch_size could be symbolic.
-  TypeProto output_type;
-  output_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
-  auto dim = output_type.mutable_tensor_type()->mutable_shape()->add_dim();
-  *dim = mask_shape->dim(0);
-
-  NodeArg& output = AddMaskReduceSum(graph, reduce_sum_input, output_type, provider_type);
-  return &output;
+  return mask_int32;
 }
 
-static NodeArg* GetOrCreateMaskIndex(
+static NodeArg* ConvertMaskToInt32(
     Graph& graph,
     NodeArg* mask_input,
-    std::map<std::string, NodeArg*>& mask_index_map,
+    std::map<std::string, NodeArg*>& mask_int32_map,
     ProviderType provider_type,
     const logging::Logger& logger) {
-  // Lookup in map, and return the mask index if created.
-  auto search = mask_index_map.find(mask_input->Name());
-  if (search != mask_index_map.end()) {
+  // Lookup in map, and return the converted mask.
+  auto search = mask_int32_map.find(mask_input->Name());
+  if (search != mask_int32_map.end()) {
     return search->second;
   }
 
-  NodeArg* output = ProcessMask(graph, mask_input, provider_type, logger);
+  NodeArg* output = ConvertMaskToInt32(graph, mask_input, provider_type, logger);
   if (nullptr == output) {
     return nullptr;
   }
 
   // Add it to map for lookup later.
-  mask_index_map.insert(std::pair<std::string, NodeArg*>(mask_input->Name(), output));
+  mask_int32_map.insert(std::pair<std::string, NodeArg*>(mask_input->Name(), output));
   return output;
 }
 
 Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-
-  // A map from mask input arg name to mask index output.
-  std::map<std::string, NodeArg*> mask_index_map;
 
   // A map from mask input arg name to the one casted to int32
   std::map<std::string, NodeArg*> mask_int32_map;
@@ -263,7 +219,6 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       }
       int64_t hidden_size = layer_norm_bias.Shape()->dim(0).dim_value();
 
-      // Check that LayerNormalization has 4 children: 1 Add, 3 MatMul
       const Node* add_node = nullptr;
       unsigned int add_count = 0;
       unsigned int matmul_count = 0;
@@ -282,7 +237,7 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         }
       }
       if (add_count == 1 && matmul_count == 3 && shape_count == node.GetOutputEdgesCount() - 4) {  // BERT or DistilBert
-        if (AttentionFusion::FuseSubGraph(node, *add_node, graph, hidden_size, mask_index_map, logger)) {
+        if (AttentionFusion::FuseSubGraph(node, *add_node, graph, hidden_size, mask_int32_map, logger)) {
           fused_count++;
           modified = true;
         }
@@ -306,7 +261,7 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
                                Graph& graph,
                                std::vector<std::reference_wrapper<const Node>>& parent_path_nodes,
                                NodeArg* mask_input,
-                               std::map<std::string, NodeArg*>& mask_index_map,
+                               std::map<std::string, NodeArg*>& mask_int32_map,
                                std::vector<const Node::EdgeEnd*>& edges,
                                std::vector<NodeIndex>& nodes_to_remove,
                                int64_t hidden_size,
@@ -407,9 +362,9 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
   }
 
   // Now everything is ready, we will start fusing subgraph.
-  NodeArg* mask_index = GetOrCreateMaskIndex(graph, mask_input, mask_index_map, layer_norm.GetExecutionProviderType(), logger);
-  if (nullptr == mask_index) {
-    DEBUG_LOG("Failed to create mask index");
+  NodeArg* mask_int32 = ConvertMaskToInt32(graph, mask_input, mask_int32_map, layer_norm.GetExecutionProviderType(), logger);
+  if (nullptr == mask_int32) {
+    DEBUG_LOG("Failed to convert mask to int32");
     return false;
   }
 
@@ -418,7 +373,7 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
   NodeArg& qkv_bias = MergeQkvWeights(graph, hidden_size, q_bias_tensor, k_bias_tensor, v_bias_tensor, false);
   // Create Attention Node.
   const Node& reshape = parent_path_nodes[0];
-  const std::vector<NodeArg*> input_defs{layer_norm.MutableOutputDefs()[0], &qkv_weights, &qkv_bias, mask_index};
+  const std::vector<NodeArg*> input_defs{layer_norm.MutableOutputDefs()[0], &qkv_weights, &qkv_bias, mask_int32};
   const std::vector<NodeArg*> output_defs{graph.GetNode(reshape.Index())->MutableOutputDefs()[0]};
   Node& attention_node = graph.AddNode(
       graph.GenerateNodeName("Attention"),
@@ -466,7 +421,7 @@ static bool FuseSubGraphQK(Node& layer_norm,
                            int64_t hidden_size,
                            int64_t num_heads,
                            int64_t head_size,
-                           std::map<std::string, NodeArg*>& mask_index_map,
+                           std::map<std::string, NodeArg*>& mask_int32_map,
                            const logging::Logger& logger) {
   // path to q
   std::vector<graph_utils::EdgeEndToMatch> q_varience_path{
@@ -479,7 +434,7 @@ static bool FuseSubGraphQK(Node& layer_norm,
   }
 
   std::vector<NodeIndex> nodes_to_remove;
-  if (!FuseSubGraphQKImpl(layer_norm, graph, parent_path_nodes, mask_input, mask_index_map, edges, nodes_to_remove, hidden_size,
+  if (!FuseSubGraphQKImpl(layer_norm, graph, parent_path_nodes, mask_input, mask_int32_map, edges, nodes_to_remove, hidden_size,
                           num_heads, head_size, logger)) {
     return false;
   }
@@ -557,7 +512,7 @@ static bool FuseSubGraphQKDistilBert(Node& layer_norm,
                                      int64_t hidden_size,
                                      int64_t num_heads,
                                      int64_t head_size,
-                                     std::map<std::string, NodeArg*>& mask_index_map,
+                                     std::map<std::string, NodeArg*>& mask_int32_map,
                                      const logging::Logger& logger) {
   // path to q
   std::vector<graph_utils::EdgeEndToMatch> q_varience_path{
@@ -570,7 +525,7 @@ static bool FuseSubGraphQKDistilBert(Node& layer_norm,
   }
 
   std::vector<NodeIndex> nodes_to_remove;
-  if (!FuseSubGraphQKImpl(layer_norm, graph, parent_path_nodes, mask_input, mask_index_map, edges, nodes_to_remove, hidden_size,
+  if (!FuseSubGraphQKImpl(layer_norm, graph, parent_path_nodes, mask_input, mask_int32_map, edges, nodes_to_remove, hidden_size,
                           num_heads, head_size, logger)) {
     return false;
   }
@@ -656,7 +611,7 @@ After Fusion:
                  |   |
                   Add
 */
-bool AttentionFusion::FuseSubGraph(Node& layer_norm, const Node& add_after_layer_norm, Graph& graph, int64_t hidden_size, std::map<std::string, NodeArg*>& mask_index_map, const logging::Logger& logger) {
+bool AttentionFusion::FuseSubGraph(Node& layer_norm, const Node& add_after_layer_norm, Graph& graph, int64_t hidden_size, std::map<std::string, NodeArg*>& mask_int32_map, const logging::Logger& logger) {
   std::vector<graph_utils::EdgeEndToMatch> parent_path{
       {0, 0, "Add", {7, 13}, kOnnxDomain},
       {0, 0, "MatMul", {1, 9, 13}, kOnnxDomain},
@@ -695,9 +650,9 @@ bool AttentionFusion::FuseSubGraph(Node& layer_norm, const Node& add_after_layer
     return false;
   }
 
-  int64_t num_heads = 0;  // will be updated in CheckNodesInPathV
-  int64_t head_size = 0;  // will be updated in CheckNodesInPathV
-  NodeIndex record_node_idx = 0; // will be updated in CheckNodesInPathV if it's distilbert model
+  int64_t num_heads = 0;          // will be updated in CheckNodesInPathV
+  int64_t head_size = 0;          // will be updated in CheckNodesInPathV
+  NodeIndex record_node_idx = 0;  // will be updated in CheckNodesInPathV if it's distilbert model
   if (!AttentionFusionHelper::CheckNodesInPathV(graph, reshape, transpose, qkv_matmul, v_transpose, v_reshape, num_heads, head_size, hidden_size, record_node_idx, logger)) {
     DEBUG_LOG("CheckNodesInPathV return false");
     return false;
@@ -722,10 +677,10 @@ bool AttentionFusion::FuseSubGraph(Node& layer_norm, const Node& add_after_layer
 
   if (AttentionFusionHelper::MatchInputMaskSubgraph(graph, qkv_matmul, mask_nodes, logger, false)) {
     NodeArg* mask_input = graph.GetNode(mask_nodes.unsqueeze_1->Index())->MutableInputDefs()[0];
-    return FuseSubGraphQK(layer_norm, graph, mask_nodes, mask_input, parent_path_nodes, hidden_size, num_heads, head_size, mask_index_map, logger);
+    return FuseSubGraphQK(layer_norm, graph, mask_nodes, mask_input, parent_path_nodes, hidden_size, num_heads, head_size, mask_int32_map, logger);
   } else if (AttentionFusionHelper::MatchInputMaskSubgraph(graph, layer_norm, qkv_matmul, mask_nodes_distilbert, record_node_idx, logger)) {
     NodeArg* mask_input = graph.GetNode(mask_nodes_distilbert.equal->Index())->MutableInputDefs()[0];
-    return FuseSubGraphQKDistilBert(layer_norm, graph, mask_nodes_distilbert, mask_input, parent_path_nodes, hidden_size, num_heads, head_size, mask_index_map, logger);
+    return FuseSubGraphQKDistilBert(layer_norm, graph, mask_nodes_distilbert, mask_input, parent_path_nodes, hidden_size, num_heads, head_size, mask_int32_map, logger);
   } else {
     DEBUG_LOG("Failed in match input mask subgraph");
     return false;
