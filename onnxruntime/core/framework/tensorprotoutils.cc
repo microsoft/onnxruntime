@@ -809,5 +809,50 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
 template common::Status GetSizeInBytesFromTensorProto<256>(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                                            size_t* out);
 template common::Status GetSizeInBytesFromTensorProto<0>(const ONNX_NAMESPACE::TensorProto& tensor_proto, size_t* out);
+
+#define CASE_UNPACK(TYPE, ELEMENT_TYPE, DATA_SIZE)                              \
+  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##TYPE: {     \
+    size_t element_count = 0;                                                   \
+    if (initializer.has_raw_data()) {                                           \
+      tensor_byte_size = initializer.raw_data().size();                         \
+      element_count = tensor_byte_size / sizeof(ELEMENT_TYPE);                  \
+    } else {                                                                    \
+      element_count = initializer.DATA_SIZE();                                  \
+      tensor_byte_size = element_count * sizeof(ELEMENT_TYPE);                  \
+    }                                                                           \
+    unpacked_tensor.reset(new uint8_t[tensor_byte_size]);                       \
+    return onnxruntime::utils::UnpackTensor(                                    \
+        initializer,                                                            \
+        initializer.has_raw_data() ? initializer.raw_data().data() : nullptr,   \
+        initializer.has_raw_data() ? initializer.raw_data().size() : 0,         \
+        reinterpret_cast<ELEMENT_TYPE*>(unpacked_tensor.get()), element_count); \
+    break;                                                                      \
+  }
+
+Status UnpackInitializerData(const onnx::TensorProto& initializer,
+                             std::unique_ptr<uint8_t[]>& unpacked_tensor,
+                             size_t& tensor_byte_size) {
+  switch (initializer.data_type()) {
+    CASE_UNPACK(FLOAT, float, float_data_size);
+    CASE_UNPACK(DOUBLE, double, double_data_size);
+    CASE_UNPACK(BOOL, bool, int32_data_size);
+    CASE_UNPACK(INT8, int8_t, int32_data_size);
+    CASE_UNPACK(INT16, int16_t, int32_data_size);
+    CASE_UNPACK(INT32, int32_t, int32_data_size);
+    CASE_UNPACK(INT64, int64_t, int64_data_size);
+    CASE_UNPACK(UINT8, uint8_t, int32_data_size);
+    CASE_UNPACK(UINT16, uint16_t, int32_data_size);
+    CASE_UNPACK(UINT32, uint32_t, uint64_data_size);
+    CASE_UNPACK(UINT64, uint64_t, uint64_data_size);
+    CASE_UNPACK(FLOAT16, onnxruntime::MLFloat16, int32_data_size);
+    CASE_UNPACK(BFLOAT16, onnxruntime::BFloat16, int32_data_size);
+    default:
+      break;
+  }
+  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                         "Unsupported type: ", initializer.data_type());
+}
+#undef CASE_UNPACK
+
 }  // namespace utils
 }  // namespace onnxruntime
