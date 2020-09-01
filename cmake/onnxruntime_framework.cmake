@@ -8,7 +8,7 @@ file(GLOB_RECURSE onnxruntime_framework_srcs CONFIGURE_DEPENDS
 )
 
 if (onnxruntime_MINIMAL_BUILD)
-  file(GLOB onnxruntime_framework_src_exclude 
+  file(GLOB onnxruntime_framework_src_exclude
     "${ONNXRUNTIME_ROOT}/core/framework/provider_bridge_ort.cc"
     "${ONNXRUNTIME_ROOT}/core/framework/graph_partitioner.*"
     "${ONNXRUNTIME_INCLUDE_DIR}/core/framework/customregistry.h"
@@ -30,7 +30,7 @@ target_include_directories(onnxruntime_framework PRIVATE ${ONNXRUNTIME_ROOT} ${o
 else()
 target_include_directories(onnxruntime_framework PRIVATE ${ONNXRUNTIME_ROOT} PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
 endif()
-onnxruntime_add_include_to_target(onnxruntime_framework onnxruntime_common onnx onnx_proto protobuf::libprotobuf)
+onnxruntime_add_include_to_target(onnxruntime_framework onnxruntime_common onnx onnx_proto protobuf::libprotobuf flatbuffers)
 set_target_properties(onnxruntime_framework PROPERTIES FOLDER "ONNXRuntime")
 # need onnx to build to create headers that this project includes
 add_dependencies(onnxruntime_framework ${onnxruntime_EXTERNAL_DEPENDENCIES})

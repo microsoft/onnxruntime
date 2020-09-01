@@ -231,11 +231,10 @@ class InferenceSession {
     * @return OK if success.
     */
   common::Status Load() ORT_MUST_USE_RESULT;
-
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   /**
-    * Initializes a previously loaded model. Initialization includes but is not
+    * Initializes a previously loaded ONNX model. Initialization includes but is not
     * limited to graph transformations, construction of kernels, etc.
     * This method assumes that a method has been loaded previously.
     * This API is thread-safe.
@@ -366,7 +365,7 @@ class InferenceSession {
     */
   AllocatorPtr GetAllocator(const OrtMemoryInfo& mem_info) const;
 
-  /** 
+  /**
     *Get InferenceSession logger.
     */
   const logging::Logger* GetLogger() const { return session_logger_; };
@@ -436,14 +435,6 @@ class InferenceSession {
 
   common::Status SaveModelMetadata(const onnxruntime::Model& model) ORT_MUST_USE_RESULT;
 
-  // Create a Logger for a single execution if possible. Otherwise use the default logger.
-  // If a new logger is created, it will also be stored in new_run_logger,
-  // which must remain valid for the duration of the execution.
-  // If the default logger is used, new_run_logger will remain empty.
-  // The returned value should be used in the execution.
-  const logging::Logger& CreateLoggerForRun(const RunOptions& run_options,
-                                            std::unique_ptr<logging::Logger>& new_run_logger);
-
 #if !defined(ORT_MINIMAL_BUILD)
   common::Status Load(std::function<common::Status(std::shared_ptr<Model>&)> loader,
                       const std::string& event_name) ORT_MUST_USE_RESULT;
@@ -454,7 +445,40 @@ class InferenceSession {
   bool HasLocalSchema() const {
     return !custom_schema_registries_.empty();
   }
+
+  common::Status SaveToOrtFormat(const std::basic_string<ORTCHAR_T>& filepath) const;
 #endif
+
+  /**
+    * Load an ORT format model.
+    * @param model_uri absolute path of the model file.
+    * @return OK if success.
+    */
+  common::Status LoadOrtModel(const std::string& model_uri) ORT_MUST_USE_RESULT;
+#ifdef _WIN32
+  common::Status LoadOrtModel(const std::wstring& model_uri) ORT_MUST_USE_RESULT;
+#endif
+
+  /**
+    * Load an ORT format model.
+    * @param model_data Model data buffer
+    * @param model_data_len Model data buffer size
+    * @return OK if success.
+    * @remarks TODO: Provide way to load from in-memory bytes without copying. InferenceSession would need to
+    *                take ownership of the buffer passed in.
+    */
+  common::Status LoadOrtModel(const void* model_data, int model_data_len) ORT_MUST_USE_RESULT;
+
+  common::Status LoadOrtModel(std::function<Status()> load_ort_format_model_bytes) ORT_MUST_USE_RESULT;
+
+  // Create a Logger for a single execution if possible. Otherwise use the default logger.
+  // If a new logger is created, it will also be stored in new_run_logger,
+  // which must remain valid for the duration of the execution.
+  // If the default logger is used, new_run_logger will remain empty.
+  // The returned value should be used in the execution.
+  const logging::Logger& CreateLoggerForRun(const RunOptions& run_options,
+                                            std::unique_ptr<logging::Logger>& new_run_logger);
+
   void InitLogger(logging::LoggingManager* logging_manager);
 
   common::Status CheckShapes(const std::string& input_name, const TensorShape& input_shape,
@@ -593,6 +617,14 @@ class InferenceSession {
   // Flag indicating if ModelProto has been parsed in an applicable ctor
   bool is_model_proto_parsed_ = false;
   const Environment& environment_;
+
+  // Bytes from an ORT format model.
+  // We store them currently to make the Load + Initialize behave the same way as for an ONNX model
+  // as we need some of the bytes for the Load (create the Model) and some for the Initialize (create SessionState).
+  // Short term we free them after Initialize.
+  // Longer term we may want to directly refer to offsets in this buffer for initializers so we don't need to copy
+  // those into new OrtValue instances, at which point we won't free them until the InferenceSession goes away.
+  std::vector<uint8_t> ort_format_model_bytes_;
 };
 
 struct SessionIOBinding {
