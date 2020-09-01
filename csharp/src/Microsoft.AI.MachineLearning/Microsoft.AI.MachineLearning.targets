@@ -9,11 +9,11 @@
     <WindowsAIBinary>$(MSBuildThisFileDirectory)..\..\runtimes\win-$(WindowsAI-Platform)\native\Microsoft.AI.MachineLearning.dll</WindowsAIBinary>
   </PropertyGroup>
 
-  <PropertyGroup>
-    <OnnxRuntimeBinary Condition="'$(OnnxRuntimePathOverride)' != ''">$(OnnxRuntimePathOverride)</OnnxRuntimeBinary>
+  <PropertyGroup Condition="'$(DisableOnnxRuntimeDllCopy)' != 'true'">
     <OnnxRuntimeBinary Condition="'$(OnnxRuntimeBinary)' == ''">$(MSBuildThisFileDirectory)..\..\runtimes\win-$(WindowsAI-Platform)\native\onnxruntime.dll</OnnxRuntimeBinary>
+  </PropertyGroup>
 
-    <DirectMLBinary Condition="'$(DirectMLPathOverride)' != ''">$(DirectMLPathOverride)</DirectMLBinary>
+  <PropertyGroup Condition="'$(DisableDirectMLDllCopy)' != 'true'">
     <DirectMLBinary Condition="'$(DirectMLBinary)' == ''">$(MSBuildThisFileDirectory)..\..\runtimes\win-$(WindowsAI-Platform)\native\directml.dll</DirectMLBinary>
   </PropertyGroup>
 
