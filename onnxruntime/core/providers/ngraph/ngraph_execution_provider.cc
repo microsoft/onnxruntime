@@ -35,22 +35,18 @@ NGRAPHExecutionProvider::NGRAPHExecutionProvider(const NGRAPHExecutionProviderIn
     : IExecutionProvider{onnxruntime::kNGraphExecutionProvider} {
   ORT_ENFORCE(info.ng_backend_type == "CPU", "nGraph Execution Provider for onnxruntime currently is only supported for CPU backend.");
 
-  DeviceAllocatorRegistrationInfo default_memory_info{
-      OrtMemTypeDefault,
+  AllocatorCreationInfo default_memory_info{
       [](int) {
         return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo(NGRAPH, OrtAllocatorType::OrtDeviceAllocator));
-      },
-      std::numeric_limits<size_t>::max()};
+      }};
 
   InsertAllocator(CreateAllocator(default_memory_info));
 
-  DeviceAllocatorRegistrationInfo cpu_memory_info{
-      OrtMemTypeCPUOutput,
+  AllocatorCreationInfo cpu_memory_info{
       [](int) {
         return onnxruntime::make_unique<CPUAllocator>(
             OrtMemoryInfo(NGRAPH, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
-      },
-      std::numeric_limits<size_t>::max()};
+      }};
 
   InsertAllocator(CreateAllocator(cpu_memory_info));
 
