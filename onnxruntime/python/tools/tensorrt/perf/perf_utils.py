@@ -6,7 +6,7 @@ import coloredlogs
 import re
 
 debug = False
-debug_verbose = False
+debug_verbose = False 
 
 def parse_single_file(f):
 
@@ -68,12 +68,19 @@ def parse_single_file(f):
 
 
     if debug_verbose:
+        pprint._sorted = lambda x:x
+        pprint.sorted = lambda x, key=None: x
         pp = pprint.PrettyPrinter(indent=4)
         print("------First run ops map (START)------")
-        pp.pprint(provider_op_map_first_run)
+        for key, map in provider_op_map_first_run.items():
+            print(key) 
+            pp.pprint({k: v for k, v in sorted(map.items(), key=lambda item: item[1], reverse=True)})
+
         print("------First run ops map (END) ------")
         print("------Second run ops map (START)------")
-        pp.pprint(provider_op_map)
+        for key, map in provider_op_map.items():
+            print(key) 
+            pp.pprint({k: v for k, v in sorted(map.items(), key=lambda item: item[1], reverse=True)})
         print("------Second run ops map (END) ------")
 
     if model_run_flag:
@@ -159,17 +166,16 @@ def calculate_trt_latency_percentage(trt_op_map):
 
 def get_profile_metrics(path, profile_already_parsed):
     print("Parsing/Analyzing profiling files in {} ...".format(path))
-    p1 = subprocess.Popen(["find", path, "-name", "onnxruntime_profile*"], stdout=subprocess.PIPE)
+    p1 = subprocess.Popen(["find", path, "-name", "onnxruntime_profile*", "-printf", "%T+\t%p\n"], stdout=subprocess.PIPE)
     p2 = subprocess.Popen(["sort"], stdin=p1.stdout, stdout=subprocess.PIPE)
     stdout, sterr = p2.communicate()
     stdout = stdout.decode("ascii").strip()
-    profiling_file_dir = stdout.split("\n")
-    print(profiling_file_dir)
-
-    pp = pprint.PrettyPrinter(indent=4)
+    profiling_files = stdout.split("\n")
+    print(profiling_files)
 
     data = []
-    for profile in profiling_file_dir:
+    for profile in profiling_files:
+        profile = profile.split('\t')[1]
         if profile in profile_already_parsed:
             continue
         profile_already_parsed.add(profile)
