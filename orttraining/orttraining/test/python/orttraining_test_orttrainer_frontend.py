@@ -89,6 +89,10 @@ def testORTTrainerOptionsDefaultValues(test_input):
             },
             'enable_adasum': False
         },
+        'graph_transformer': {
+            'max_num_pre_training_graph_transformation_steps': 1,
+            'enable_gelu_approximation': False
+        },
         'lr_scheduler': None,
         'mixed_precision': {
             'enabled': False,
@@ -97,9 +101,7 @@ def testORTTrainerOptionsDefaultValues(test_input):
         'utils': {
             'frozen_weights': [],
             'grad_norm_clip': True,
-            'invertible_layer_norm_gradient': False,
-            'max_num_pre_training_graph_transformation_steps': 1,
-            'enable_gelu_approximation': False
+            'invertible_layer_norm_gradient': False
         },
         'debug': {
             'deterministic_compute': False
@@ -110,7 +112,6 @@ def testORTTrainerOptionsDefaultValues(test_input):
             'onnx_opset_version' : 12
         }
     }
-
     actual_values = orttrainer_options.ORTTrainerOptions(test_input)
     assert actual_values._validated_opts == expected_values
 
@@ -120,6 +121,20 @@ def testORTTrainerOptionsDefaultValues(test_input):
         "Invalid options: {'mixed_precision': [{'enabled': ['must be of boolean type']}]}")
 ])
 def testORTTrainerOptionsInvalidMixedPrecisionEnabledSchema(input, error_msg):
+    '''Test an invalid input based on schema validation error message'''
+
+    with pytest.raises(ValueError) as e:
+        orttrainer_options.ORTTrainerOptions(input)
+    assert str(e.value) == error_msg
+
+
+@pytest.mark.parametrize("input,error_msg", [
+    ({'graph_transformer': {'max_num_pre_training_graph_transformation_steps': 0}},\
+        "Invalid options: {'graph_transformer': [{'max_num_pre_training_graph_transformation_steps': ['min value is 1']}]}"),
+    ({'graph_transformer': {'enable_gelu_approximation': 1}},\
+        "Invalid options: {'graph_transformer': [{'enable_gelu_approximation': ['must be of boolean type']}]}")
+])
+def testORTTrainerOptionsInvalidGraphTransformersSchema(input, error_msg):
     '''Test an invalid input based on schema validation error message'''
 
     with pytest.raises(ValueError) as e:

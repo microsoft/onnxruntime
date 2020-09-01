@@ -95,6 +95,22 @@ class ORTTrainerOptions(object):
                         }
                     }
                 },
+                'graph_transformer': {
+                    'type': 'dict',
+                    'required': False,
+                    'default': {},
+                    'schema': {
+                        'max_num_pre_training_graph_transformation_steps': {
+                            'type': 'integer',
+                            'min': 1,
+                            'default': 1
+                        },
+                        'enable_gelu_approximation': {
+                            'type': 'boolean',
+                            'default': False
+                        }
+                    }
+                },
                 'lr_scheduler' : {
                     'type' : 'optim.lr_scheduler',
                     'nullable' : True,
@@ -130,15 +146,6 @@ class ORTTrainerOptions(object):
                             'default' : True
                         },
                         'invertible_layer_norm_gradient' : {
-                            'type' : 'boolean',
-                            'default' : False
-                        },
-                        'max_num_pre_training_graph_transformation_steps' : {
-                            'type' : 'integer',
-                            'min' : 1,
-                            'default' : 1
-                        },
-                        'enable_gelu_approximation' : {
                             'type' : 'boolean',
                             'default' : False
                         }
@@ -206,6 +213,13 @@ class ORTTrainerOptions(object):
         distributed.enable_adasum (bool, default is False):
             enable `Adasum <https://github.com/horovod/horovod/pull/1484>`_
             algorithm for AllReduce
+        graph_transformer (dict):
+            backend graph transformer options
+        graph_transformer.max_num_pre_training_graph_transformation_steps (int, default is 1):
+            the maximum number of passes of the initial graph transformers to run.
+            These transformers are run before the addition of the backward graph
+        graph_transformer.enable_gelu_approximation (bool, default is False):
+            whether to enable GELU approximation which is faster but produces different results
         lr_scheduler (optim._LRScheduler, default is None):
             specifies learning rate scheduler
         mixed_precision (dict):
@@ -226,11 +240,6 @@ class ORTTrainerOptions(object):
             enables gradient norm clipping for 'AdamOptimizer' and 'LambOptimizer'
         utils.invertible_layer_norm_gradient (bool, default is False):
             enables use of invertible layer norm gradients
-        utils.max_num_pre_training_graph_transformation_steps (int, default is 1):
-            the maximum number of passes of the initial graph transformers to run.
-            These transformers are run before the addition of the backward graph
-        utils.enable_gelu_approximation (bool, default is False):
-            whether to enable GELU approximation which is faster but produces different results
         debug (dict):
             debug options
         debug.deterministic_compute (bool, default is False)
@@ -408,6 +417,22 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
 
         }
     },
+    'graph_transformer': {
+        'type': 'dict',
+        'default_setter': lambda _: {},
+        'required': False,
+        'schema': {
+            'max_num_pre_training_graph_transformation_steps': {
+                'type': 'integer',
+                'min': 1,
+                'default': 1
+            },
+            'enable_gelu_approximation': {
+                'type': 'boolean',
+                'default': False
+            }
+        }
+    },
     'lr_scheduler': {
         'type': 'lr_scheduler',
         'nullable': True,
@@ -443,15 +468,6 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'default': True
             },
             'invertible_layer_norm_gradient' : {
-                'type': 'boolean',
-                'default': False
-            },
-            'max_num_pre_training_graph_transformation_steps': {
-                'type': 'integer',
-                'min': 1,
-                'default': 1
-            },
-            'enable_gelu_approximation': {
                 'type': 'boolean',
                 'default': False
             }

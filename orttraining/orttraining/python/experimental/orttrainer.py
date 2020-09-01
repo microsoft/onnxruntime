@@ -582,8 +582,8 @@ class ORTTrainer(object):
         ort_parameters.optimizer_attributes_map = optimizer_attributes_map
         ort_parameters.optimizer_int_attributes_map = optimizer_int_attributes_map
         ort_parameters.max_num_pre_training_graph_transformation_steps = \
-            self.options.utils.max_num_pre_training_graph_transformation_steps
-        ort_parameters.enable_gelu_approximation = self.options.utils.enable_gelu_approximation
+            self.options.graph_transformer.max_num_pre_training_graph_transformation_steps
+        ort_parameters.enable_gelu_approximation = self.options.graph_transformer.enable_gelu_approximation
 
         # SessionOptions
         session_options = ort.SessionOptions()
