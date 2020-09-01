@@ -132,6 +132,8 @@ static void propagateRecvOutputTensorElemTypes(
   }
 }
 
+
+
 // TODO: This is copied from onnx schemas. When the change is in and we update this can be removed.
 // For Brevity documentation was not copied
 OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
@@ -318,6 +320,50 @@ OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
       OpSchema::Optional);
 
   return op_schema;
+}
+
+
+bool BuildContextDependentFunctionBodyMSD(const FunctionBodyBuildContext& ctx, 
+                          const OpSchema& schema, FunctionProto& functionProto) {
+  std::vector<FunctionBodyHelper::NodeDef> body;
+  body.push_back(FunctionBodyHelper::Const<float>("Q_Pow", 2));
+  // body.push_back({{"X_Sub"}, "Sub", {"scores", "labels"}, {MakeAttribute("broadcast", int64_t(1))}});
+  body.push_back({{"X_Sub"}, "Sub", {"scores", "labels"}});
+
+  if (ctx.hasInput(2)) {
+    body.push_back({{"X_Pow"}, "Pow", {"X_Sub", "Q_Pow"}});
+    if (ctx.getAttribute("reduction")->s() == "none") {
+      body.push_back({{"output"}, "Mul", {"weights", "X_Pow"}});
+    } else {
+      body.push_back({{"X_Mul"}, "Mul", {"weights", "X_Pow"}});
+      if (ctx.getAttribute("reduction")->s() == "sum") {
+        body.push_back({{"output"}, "ReduceSum", {"X_Mul"}});
+      } else {
+        //body.push_back({{"output"}, "ReduceMean", {"X_Mul"}});
+        body.push_back({{"output"}, "ReduceMean", {"X_Mul"}, {MakeAttribute("keepdims", (int64_t)1)}});
+      }
+    }
+  } else {
+    if (ctx.getAttribute("reduction")->s() == "none") {
+      body.push_back({{"output"}, "Pow", {"X_Sub", "Q_Pow"}});
+    } else {
+      body.push_back({{"X_Pow"}, "Pow", {"X_Sub", "Q_Pow"}});
+      if (ctx.getAttribute("reduction")->s() == "sum") {
+        body.push_back({{"output"}, "ReduceSum", {"X_Pow"}});
+      } else {
+        body.push_back({{"output"}, "ReduceMean", {"X_Pow"}, {MakeAttribute("keepdims", (int64_t)1)}});
+      }
+    }
+  }
+
+  auto func_nodes = FunctionBodyHelper::BuildNodes(body);
+  for (const auto node : func_nodes) {
+    auto new_node = functionProto.add_node();
+    new_node->CopyFrom(node);
+  }
+
+  schema.BuildFunction(functionProto);
+  return true;
 }
 
 void RegisterTrainingOpSchemas() {
@@ -839,6 +885,50 @@ Example 4:
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain to float, float16 and double tensors.")
       .SetDoc(R"DOC(SoftmaxCrossEntropy)DOC");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MeanSquaredError)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(13) 
+      .Attr("reduction",
+            reduction_doc,
+            AttributeProto::STRING,
+            std::string("mean"))
+      .AllowUncheckedAttributes()
+      .Input(0, "scores", "The predicted outputs.", "T")
+      .Input(
+            1,
+            "labels",
+            "The ground truth output tensor, same dimensions as 'scores'.",
+            "T")
+      .Input(
+            2,
+            "weights",
+            "Weights acts as a coefficient for the loss, it should be "
+            "broadcastable to shape of 'scores'.",
+            "T",
+            OpSchema::Optional)
+      .Output(0, "output", 
+            "Weighted loss float Tensor. If reduction is none, this has the "
+            "shape of [batch_size]; otherwise, it is scalar.",
+            "T")
+      .TypeConstraint(
+            "T",
+            {"tensor(float16)", "tensor(float)", "tensor(double)"},
+            "Constrain input and output types to float tensors.")  
+      .SetContextDependentFunctionBodyBuilder(BuildContextDependentFunctionBodyMSD)
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+            propagateElemTypeFromInputToOutput(ctx, 0, 0);
+            std::string reduction = getAttribute(ctx, "reduction", "mean");
+            if (reduction.compare("none") == 0) {
+              if (hasInputShape(ctx, 0)) {
+                  propagateShapeFromInputToOutput(ctx, 0, 0);
+              }
+            } else {
+                ONNX_NAMESPACE::TensorShapeProto per_input_len_shape;
+                per_input_len_shape.add_dim()->set_dim_value(1);
+                updateOutputShape(ctx, 0, per_input_len_shape);
+                //updateOutputShape(ctx, 0, {});
+            }});
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxCrossEntropyGrad)
       .SetDomain(kMSDomain)
