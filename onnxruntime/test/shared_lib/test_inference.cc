@@ -147,6 +147,8 @@ static constexpr PATH_TYPE PYOP_MULTI_MODEL_URI = TSTR("testdata/pyop_2.onnx");
 static constexpr PATH_TYPE PYOP_KWARG_MODEL_URI = TSTR("testdata/pyop_3.onnx");
 #endif
 
+
+
 class CApiTestWithProvider : public testing::Test, public ::testing::WithParamInterface<int> {
 };
 
@@ -436,6 +438,35 @@ TEST(CApiTest, create_session_without_session_option) {
   constexpr PATH_TYPE model_uri = TSTR("../models/opset8/test_squeezenet/model.onnx");
   Ort::Session ret(*ort_env, model_uri, Ort::SessionOptions{nullptr});
   ASSERT_NE(nullptr, ret);
+}
+#endif
+
+#ifdef REDUCED_OPS_BUILD
+TEST(ReducedOpsBuildTest, test_included_ops) {
+  // In reduce-ops build, test a model containing
+  // ops specified in reduced_ops_via_config.config
+  constexpr PATH_TYPE model_uri = TSTR("testdata/reduced_ops_via_config.onnx_model_with_included_ops");
+  std::vector<Input> inputs = {{"X", {3}, {-1.0f, 2.0f, -3.0f}}};
+  std::vector<int64_t> expected_dims_y = {1};
+  std::vector<float> expected_values_y = {0.75};
+  TestInference<PATH_TYPE, float>(*ort_env, model_uri, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
+}
+
+TEST(ReducedOpsBuildTest, test_excluded_ops) {
+  // In reduce-ops build, test a model containing
+  // ops not referred by reduced_ops_via_config.config
+  constexpr PATH_TYPE model_uri = TSTR("testdata/reduced_ops_via_config.onnx_model_with_excluded_ops");
+  std::vector<Input> inputs = {{"X", {3}, {-1.0f, 2.0f, -3.0f}},
+                               {"Y", {3}, {-1.0f, 2.0f, -3.0f}}};
+  std::vector<int64_t> expected_dims_z = {3};
+  std::vector<float> expected_values_z = {0.1f, 0.1f, 0.1f};
+  bool failed = false;
+  try {
+    TestInference<PATH_TYPE, float>(*ort_env, model_uri, inputs, "Z", expected_dims_z, expected_values_z, 0, nullptr, nullptr);
+  } catch (const Ort::Exception& e) {
+    failed = e.GetOrtErrorCode() == ORT_NOT_IMPLEMENTED;
+  }
+  ASSERT_EQ(failed, true);
 }
 #endif
 

@@ -223,6 +223,10 @@ if(onnxruntime_MINIMAL_BUILD)
 
 endif()
 
+if (onnxruntime_REDUCED_OPS_BUILD)
+  add_compile_definitions(REDUCED_OPS_BUILD)
+endif()
+
 if(onnxruntime_DISABLE_RTTI)
   add_compile_definitions(ORT_NO_RTTI GOOGLE_PROTOBUF_NO_RTTI)
   if(MSVC)
