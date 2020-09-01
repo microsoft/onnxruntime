@@ -15,21 +15,13 @@ from quantize_helper import QuantizeHelper
 
 logger = logging.getLogger(__name__)
 
-torch_func = {"triu": torch.triu }
+# Walkaround by replacing torch.triu using self-defined op
+# Since torch.triu cannot be exported to ONNX. See https://github.com/pytorch/pytorch/issues/32968
+torch_func = {"triu" : torch.triu}
 
-# reference: https://github.com/microsoft/onnxruntime/commit/ed67af8977c5c5068b9d2d1d30bc08db706ff80a#diff-f8610a9125f273a1ab46a062ee263a63
 def triu_onnx(x, diagonal=0, out=None):
     assert out is None
     assert len(x.shape) == 2 and x.size(0) == x.size(1)
-    """
-    arange = torch.arange(x.size(1), device = x.device)
-    temp = arange.unsqueeze(-1).expand(-1, x.size(1))
-    if diagonal == 0:
-        mask = (temp > arange)
-    else: #diagonal == 1
-        mask = (temp >= arange)
-    return x.clone().masked_fill_(mask, 0)
-    """
 
     torch_triu = torch_func["triu"]
     template = torch_triu(torch.ones((1024, 1024), dtype=torch.uint8), diagonal)
@@ -37,7 +29,6 @@ def triu_onnx(x, diagonal=0, out=None):
     return torch.where(mask.bool(), x, torch.zeros_like(x))
 
 def replace_torch_functions():
-    # Walkaround for torch.triu cannot be exported to ONNX. See https://github.com/pytorch/pytorch/issues/32968
     torch.triu = triu_onnx
 
 def restore_torch_functions():
@@ -272,8 +263,6 @@ def export_onnx_model(model_name, opset_version, use_external_data_format, model
                                                 use_external_data_format)
             optimize_onnx_model_by_ort(onnx_model_path, ort_model_path, use_gpu, overwrite, model_fusion_statistics)
 
-    model_name_in_tokenizer = model_name
-    if 'DialoGPT' in model_name:
-        model_name_in_tokenizer = 'gpt2'
+    max_input_size = tokenizer.max_model_input_sizes[model_name] if model_name in tokenizer.max_model_input_sizes else 1024
 
-    return onnx_model_path, is_valid_onnx_model, config.vocab_size, tokenizer.max_model_input_sizes[model_name_in_tokenizer]
+    return onnx_model_path, is_valid_onnx_model, config.vocab_size, max_input_size

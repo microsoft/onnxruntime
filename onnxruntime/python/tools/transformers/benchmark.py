@@ -168,11 +168,8 @@ def run_pytorch(use_gpu, model_names, precision, batch_sizes, sequence_lengths, 
         model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir)
         tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
 
-        model_name_in_tokenizer = model_name
-        if 'DialoGPT' in model_name:
-            model_name_in_tokenizer = 'gpt2'
+        max_input_size = tokenizer.max_model_input_sizes[model_name] if model_name in tokenizer.max_model_input_sizes else 1024
 
-        max_input_size = tokenizer.max_model_input_sizes[model_name_in_tokenizer]
         logger.debug(f"Model {model}")
         logger.debug(f"Number of parameters {model.num_parameters()}")
 
