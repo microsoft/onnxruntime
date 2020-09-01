@@ -1133,8 +1133,8 @@ Status InferenceSession::Run(const RunOptions& run_options,
       return Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
     }
 
+    // log evaluation start to trace logging provider
     env.GetTelemetryProvider().LogEvaluationStart();
-
 
     ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
     ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches));
@@ -1219,6 +1219,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
     telemetry_.total_run_duration_since_last_ = 0;
   }
 
+  // log evaluation stop to trace logging provider
   env.GetTelemetryProvider().LogEvaluationStop();
 
   // send out profiling events (optional)
