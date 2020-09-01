@@ -127,8 +127,7 @@ void WindowsTelemetry::LogEvaluationStop() const {
     return;
 
   TraceLoggingWrite(telemetry_provider_handle,
-                    "EvaluationStop",
-                    TraceLoggingBool(true, "UTCReplace_AppSessionGuid"));
+                    "EvaluationStop");
 }
 
 void WindowsTelemetry::LogEvaluationStart() const {
@@ -136,8 +135,7 @@ void WindowsTelemetry::LogEvaluationStart() const {
     return;
 
   TraceLoggingWrite(telemetry_provider_handle,
-                    "EvaluationStart",
-                    TraceLoggingBool(true, "UTCReplace_AppSessionGuid"));
+                    "EvaluationStart");
 }
 
 void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_version, const std::string& model_producer_name,
