@@ -195,6 +195,7 @@ namespace py = pybind11;
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
 
+#if !defined(ORT_MINIMAL_BUILD)
 // Custom op section starts
 static Env& platform_env = Env::Default();
 
@@ -249,6 +250,7 @@ void CustomOpLibrary::UnloadLibrary() {
 }
 
 // Custom op section ends
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 template <typename T>
 void AddNonTensor(const OrtValue& val, std::vector<py::object>& pyobjs, const DataTransferManager* /*data_transfer_manager*/) {
@@ -605,6 +607,14 @@ void RegisterExecutionProvidersWithOptions(InferenceSession* sess, const std::ve
 #if USE_VITISAI
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_VITISAI("dpuv1", 0));
 #endif
+    } else if (type == kAclExecutionProvider) {
+#ifdef USE_ACL
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_ACL(sess->GetSessionOptions().enable_cpu_mem_arena));
+#endif
+    } else if (type == kArmNNExecutionProvider) {
+#ifdef USE_ARMNN
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_ArmNN(sess->GetSessionOptions().enable_cpu_mem_arena));
+#endif
     } else {
       // unknown provider
       throw std::runtime_error("Unknown Provider Type: " + type);
@@ -621,7 +631,7 @@ void RegisterExecutionProvidersWithOptions(InferenceSession* sess, const std::ve
  *
  */
 void GenerateProviderOptionsMap(const std::vector<std::string>& providers,
-                                ProviderOptionsVector& provider_options_vector,
+                                const ProviderOptionsVector& provider_options_vector,
                                 ProviderOptionsMap& provider_options_map) {
   if (provider_options_vector.empty() || providers.empty()) {
     return;
@@ -638,6 +648,7 @@ void GenerateProviderOptionsMap(const std::vector<std::string>& providers,
   }
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 void RegisterCustomOpDomainsAndLibraries(PyInferenceSession* sess, const PySessionOptions& so) {
   if (!so.custom_op_domains_.empty()) {
     // Register all custom op domains that will be needed for the session
@@ -652,6 +663,7 @@ void RegisterCustomOpDomainsAndLibraries(PyInferenceSession* sess, const PySessi
     sess->AddCustomOpLibraries(so.custom_op_libraries_);
   }
 }
+#endif
 
 void InitializeSession(InferenceSession* sess, const std::vector<std::string>& provider_types) {
   if (provider_types.empty()) {
@@ -663,7 +675,8 @@ void InitializeSession(InferenceSession* sess, const std::vector<std::string>& p
   OrtPybindThrowIfError(sess->Initialize());
 }
 
-void InitializeSession(InferenceSession* sess, const std::vector<std::string>& provider_types, ProviderOptionsVector& provider_options) {
+void InitializeSession(InferenceSession* sess, const std::vector<std::string>& provider_types,
+                       const ProviderOptionsVector& provider_options) {
   ProviderOptionsMap provider_options_map;
   GenerateProviderOptionsMap(provider_types, provider_options, provider_options_map);
 
@@ -1042,7 +1055,14 @@ Set this option to false if you don't want it. Default is True.)pbdoc")
       .def_readwrite("enable_profiling", &PySessionOptions::enable_profiling,
                      R"pbdoc(Enable profiling for this session. Default is false.)pbdoc")
       .def_readwrite("optimized_model_filepath", &PySessionOptions::optimized_model_filepath,
-                     R"pbdoc(File path to serialize optimized model. By default, optimized model is not serialized if optimized_model_filepath is not provided.)pbdoc")
+                     R"pbdoc(
+File path to serialize optimized model to. 
+Optimized model is not serialized unless optimized_model_filepath is set.
+Serialized model format will default to ONNX unless:
+ - add_session_config_entry is used to set 'session.save_model_format' to 'ORT', or
+ - there is no 'session.save_model_format' config entry and optimized_model_filepath ends in '.ort' (case insensitive)
+
+)pbdoc")
       .def_readwrite("enable_mem_pattern", &PySessionOptions::enable_mem_pattern,
                      R"pbdoc(Enable the memory pattern optimization. Default is true.)pbdoc")
       .def_readwrite("logid", &PySessionOptions::session_logid,
@@ -1054,9 +1074,15 @@ Set this option to false if you don't want it. Default is True.)pbdoc")
                      R"pbdoc(VLOG level if DEBUG build and session_log_verbosity_level is 0.
 Applies to session load, initialization, etc. Default is 0.)pbdoc")
       .def_property(
-          "intra_op_num_threads", [](const PySessionOptions* options) -> int { return options->intra_op_param.thread_pool_size; }, [](PySessionOptions* options, int value) -> void { options->intra_op_param.thread_pool_size = value; }, R"pbdoc(Sets the number of threads used to parallelize the execution within nodes. Default is 0 to let onnxruntime choose.)pbdoc")
+          "intra_op_num_threads",
+          [](const PySessionOptions* options) -> int { return options->intra_op_param.thread_pool_size; },
+          [](PySessionOptions* options, int value) -> void { options->intra_op_param.thread_pool_size = value; },
+          R"pbdoc(Sets the number of threads used to parallelize the execution within nodes. Default is 0 to let onnxruntime choose.)pbdoc")
       .def_property(
-          "inter_op_num_threads", [](const PySessionOptions* options) -> int { return options->inter_op_param.thread_pool_size; }, [](PySessionOptions* options, int value) -> void { options->inter_op_param.thread_pool_size = value; }, R"pbdoc(Sets the number of threads used to parallelize the execution of the graph (across nodes). Default is 0 to let onnxruntime choose.)pbdoc")
+          "inter_op_num_threads",
+          [](const PySessionOptions* options) -> int { return options->inter_op_param.thread_pool_size; },
+          [](PySessionOptions* options, int value) -> void { options->inter_op_param.thread_pool_size = value; },
+          R"pbdoc(Sets the number of threads used to parallelize the execution of the graph (across nodes). Default is 0 to let onnxruntime choose.)pbdoc")
       .def_readwrite("execution_mode", &PySessionOptions::execution_mode,
                      R"pbdoc(Sets the execution mode. Default is sequential.)pbdoc")
       .def_property(
@@ -1124,7 +1150,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
       .def(
           "add_session_config_entry",
           [](PySessionOptions* options, const char* config_key, const char* config_value) -> void {
-            const Status status = AddSessionConfigEntryImpl(*options, config_key, config_value);
+            const Status status = options->AddConfigEntry(config_key, config_value);
             if (!status.IsOK())
               throw std::runtime_error(status.ErrorMessage());
           },
@@ -1133,7 +1159,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           "get_session_config_entry",
           [](PySessionOptions* options, const char* config_key) -> std::string {
             const std::string key(config_key);
-            if (!HasSessionConfigEntry(*options, key))
+            if (!options->HasConfigEntry(key))
               throw std::runtime_error("SessionOptions does not have configuration with key: " + key);
 
             return options->session_configurations.at(key);
@@ -1143,6 +1169,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           "register_custom_ops_library",
           [](PySessionOptions* options, const std::string& library_path)
               -> void {
+#if !defined(ORT_MINIMAL_BUILD)
             // We need to pass in an `OrtSessionOptions` instance because the exported method in the shared library expects that
             // Once we have access to the `OrtCustomOpDomains` within the passed in `OrtSessionOptions` instance, we place it
             // into the container we are maintaining for that very purpose and the `ortSessionoptions` instance can go out of scope.
@@ -1155,6 +1182,11 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
             for (size_t i = 0; i < s.custom_op_domains_.size(); ++i) {
               options->custom_op_domains_.emplace_back(s.custom_op_domains_[i]);
             }
+#else
+            ORT_UNUSED_PARAMETER(options);
+            ORT_UNUSED_PARAMETER(library_path);
+            ORT_THROW("Custom Ops are not supported in this build.");
+#endif
           },
           "Rpbdoc(Specify the path to the shared library containing the custom op kernels required to run a model.)pbdoc");
 
@@ -1250,74 +1282,98 @@ including arg name, arg type (contains both type and shape).)pbdoc")
   py::class_<SessionObjectInitializer>(m, "SessionObjectInitializer");
   py::class_<PyInferenceSession>(m, "InferenceSession", R"pbdoc(This is the main class used to run a model.)pbdoc")
       // In Python3, a Python bytes object will be passed to C++ functions that accept std::string or char*
-      // without any conversion. So this init method can be used for model file path (string)
-      // and model content (bytes)
-      .def(py::init([&env](const PySessionOptions& so, const std::string& arg, bool is_arg_file_name) {
-        auto sess = onnxruntime::make_unique<PyInferenceSession>(env, so, arg, is_arg_file_name);
-        RegisterCustomOpDomainsAndLibraries(sess.get(), so);
+      // without any conversion. So this init method can be used for model file path (string) and model content (bytes)
+      .def(py::init([&env](const PySessionOptions& so, const std::string arg, bool is_arg_file_name,
+                           bool load_config_from_model = false) {
+        std::unique_ptr<PyInferenceSession> sess;
+
+        // separate creation of the session from model loading unless we have to read the config from the model.
+        // in a minimal build we only support load via Load(...) and not at session creation time
+        if (load_config_from_model) {
+#if !defined(ORT_MINIMAL_BUILD)
+          sess = onnxruntime::make_unique<PyInferenceSession>(env, so, arg, is_arg_file_name);
+
+          RegisterCustomOpDomainsAndLibraries(sess.get(), so);
+
+          OrtPybindThrowIfError(sess->GetSessionHandle()->Load());
+#else
+          ORT_THROW("Loading configuration from an ONNX model is not supported in this build.");
+#endif
+        } else {
+          sess = onnxruntime::make_unique<PyInferenceSession>(env, so);
+#if !defined(ORT_MINIMAL_BUILD)
+          RegisterCustomOpDomainsAndLibraries(sess.get(), so);
+#endif
+
+          if (is_arg_file_name) {
+            OrtPybindThrowIfError(sess->GetSessionHandle()->Load(arg));
+          } else {
+            OrtPybindThrowIfError(sess->GetSessionHandle()->Load(arg.data(), arg.size()));
+          }
+        }
+
         return sess;
       }))
       .def(
-          "load_model", [](PyInferenceSession* sess, std::vector<std::string>& provider_types) {
-            OrtPybindThrowIfError(sess->GetSessionHandle()->Load());
-            InitializeSession(sess->GetSessionHandle(), provider_types);
-          },
-          R"pbdoc(Load a model saved in ONNX format.)pbdoc")
-      .def(
-          "load_model", [](PyInferenceSession* sess, std::vector<std::string>& provider_types, ProviderOptionsVector& provider_options) {
-            OrtPybindThrowIfError(sess->GetSessionHandle()->Load());
+          "initialize_session",
+          [](PyInferenceSession* sess,
+             const std::vector<std::string>& provider_types = {},
+             const ProviderOptionsVector& provider_options = {}) {
             InitializeSession(sess->GetSessionHandle(), provider_types, provider_options);
           },
-          R"pbdoc(Load a model saved in ONNX format.)pbdoc")
-      .def("run", [](PyInferenceSession* sess, std::vector<std::string> output_names, std::map<std::string, py::object> pyfeeds, RunOptions* run_options = nullptr) -> std::vector<py::object> {
-        NameMLValMap feeds;
-        for (auto _ : pyfeeds) {
-          OrtValue ml_value;
-          auto px = sess->GetSessionHandle()->GetModelInputs();
-          if (!px.first.IsOK() || !px.second) {
-            throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
-          }
-          CreateGenericMLValue(px.second, GetAllocator(), _.first, _.second, &ml_value);
-          if (PyErr_Occurred()) {
-            PyObject *ptype, *pvalue, *ptraceback;
-            PyErr_Fetch(&ptype, &pvalue, &ptraceback);
+          R"pbdoc(Load a model saved in ONNX or ORT format.)pbdoc")
+      .def("run",
+           [](PyInferenceSession* sess, std::vector<std::string> output_names,
+              std::map<std::string, py::object> pyfeeds, RunOptions* run_options = nullptr)
+               -> std::vector<py::object> {
+             NameMLValMap feeds;
+             for (auto _ : pyfeeds) {
+               OrtValue ml_value;
+               auto px = sess->GetSessionHandle()->GetModelInputs();
+               if (!px.first.IsOK() || !px.second) {
+                 throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
+               }
+               CreateGenericMLValue(px.second, GetAllocator(), _.first, _.second, &ml_value);
+               if (PyErr_Occurred()) {
+                 PyObject *ptype, *pvalue, *ptraceback;
+                 PyErr_Fetch(&ptype, &pvalue, &ptraceback);
 
-            PyObject* pStr = PyObject_Str(ptype);
-            std::string sType = py::reinterpret_borrow<py::str>(pStr);
-            Py_XDECREF(pStr);
-            pStr = PyObject_Str(pvalue);
-            sType += ": ";
-            sType += py::reinterpret_borrow<py::str>(pStr);
-            Py_XDECREF(pStr);
-            throw std::runtime_error(sType);
-          }
-          feeds.insert(std::make_pair(_.first, ml_value));
-        }
+                 PyObject* pStr = PyObject_Str(ptype);
+                 std::string sType = py::reinterpret_borrow<py::str>(pStr);
+                 Py_XDECREF(pStr);
+                 pStr = PyObject_Str(pvalue);
+                 sType += ": ";
+                 sType += py::reinterpret_borrow<py::str>(pStr);
+                 Py_XDECREF(pStr);
+                 throw std::runtime_error(sType);
+               }
+               feeds.insert(std::make_pair(_.first, ml_value));
+             }
 
-        std::vector<OrtValue> fetches;
-        common::Status status;
+             std::vector<OrtValue> fetches;
+             common::Status status;
 
-        {
-          // release GIL to allow multiple python threads to invoke Run() in parallel.
-          py::gil_scoped_release release;
-          if (run_options != nullptr) {
-            OrtPybindThrowIfError(sess->GetSessionHandle()->Run(*run_options, feeds, output_names, &fetches));
-          } else {
-            OrtPybindThrowIfError(sess->GetSessionHandle()->Run(feeds, output_names, &fetches));
-          }
-        }
+             {
+               // release GIL to allow multiple python threads to invoke Run() in parallel.
+               py::gil_scoped_release release;
+               if (run_options != nullptr) {
+                 OrtPybindThrowIfError(sess->GetSessionHandle()->Run(*run_options, feeds, output_names, &fetches));
+               } else {
+                 OrtPybindThrowIfError(sess->GetSessionHandle()->Run(feeds, output_names, &fetches));
+               }
+             }
 
-        std::vector<py::object> rfetch;
-        rfetch.reserve(fetches.size());
-        for (auto _ : fetches) {
-          if (_.IsTensor()) {
-            AddTensorAsPyObj(_, rfetch, nullptr);
-          } else {
-            AddNonTensorAsPyObj(_, rfetch, nullptr);
-          }
-        }
-        return rfetch;
-      })
+             std::vector<py::object> rfetch;
+             rfetch.reserve(fetches.size());
+             for (auto _ : fetches) {
+               if (_.IsTensor()) {
+                 AddTensorAsPyObj(_, rfetch, nullptr);
+               } else {
+                 AddNonTensorAsPyObj(_, rfetch, nullptr);
+               }
+             }
+             return rfetch;
+           })
       .def("end_profiling", [](PyInferenceSession* sess) -> std::string {
         return sess->GetSessionHandle()->EndProfiling();
       })
