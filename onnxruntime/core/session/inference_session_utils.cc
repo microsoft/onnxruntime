@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(ORT_MINIMAL_BUILD)
+
 #include "core/session/inference_session_utils.h"
 
 namespace onnxruntime {
@@ -36,7 +38,7 @@ static Status SetInterOpNumThreads(SessionOptions& session_options,
   }
 
   LOGS(logger, INFO) << "Setting inter_op_num_threads to " << value;
-  session_options.inter_op_param.thread_pool_size= value;
+  session_options.inter_op_param.thread_pool_size = value;
   return Status::OK();
 }
 
@@ -119,22 +121,27 @@ Status InferenceSessionUtils::ParseOrtConfigJsonInModelProto(const ONNX_NAMESPAC
       LOGS(logger_, INFO)
           << "Found session/run/environment configuration in the model file to be used while running the model";
 
-      try {
+      auto status = Status::OK();
+      ORT_TRY {
         const auto& val = metadata_field.value();
         LOGS(logger_, INFO) << "ORT config json from the model: " << val;
 
         parsed_json_ = json::parse(val);
         // set the flag indicating that the model has the ORT config json.
         is_ort_config_json_available_ = true;
-      } catch (const std::exception& e) {
-        std::ostringstream message_stream;
-        message_stream << "Json stored in the `ort_config` key cannot be parsed. Error message: " << e.what();
-
-        std::string message = message_stream.str();
-
-        LOGS(logger_, ERROR) << message;
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, message);
       }
+      ORT_CATCH(const std::exception& e) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          std::ostringstream message_stream;
+          message_stream << "Json stored in the `ort_config` key cannot be parsed. Error message: " << e.what();
+
+          std::string message = message_stream.str();
+
+          LOGS(logger_, ERROR) << message;
+          status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, message);
+        });
+      }
+      ORT_RETURN_IF_ERROR(status);
 
       break;
     }
@@ -220,3 +227,5 @@ Status InferenceSessionUtils::ParseRunOptionsFromModelProto(RunOptions& /*run_op
 }
 
 }  // namespace onnxruntime
+
+#endif  // !defined(ORT_MINIMAL_BUILD)

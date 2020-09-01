@@ -22,20 +22,24 @@ namespace Microsoft.ML.OnnxRuntime
     /// <summary>
     /// Represents a disposable OrtValue
     /// </summary>
-    public class OrtValue : IDisposable
+    public class OrtValue : SafeHandle
     {
         /// <summary>
         /// Use factory methods to instantiate
         /// </summary>
         /// <param name="handle"></param>
-        /// <param name="owned">Default true, own the raw handle</param>
+        /// <param name="owned">Default true, own the raw handle
+        /// However, we use this class to expose OrtValue that is owned by DisposableNamedOnnxValue
+        /// </param>
         internal OrtValue(IntPtr handle, bool owned = true)
+            : base(handle, true)
         {
-            Handle = handle;
             IsOwned = owned;
         }
 
-        internal IntPtr Handle { get; private set; }
+        internal IntPtr Handle { get { return handle; } }
+
+        public override bool IsInvalid { get { return handle == IntPtr.Zero; } }
 
         #region NamedOnnxValue/DisposableOnnxValue accommodations
 
@@ -54,10 +58,10 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns></returns>
         internal IntPtr Disown()
         {
-            var handle = Handle;
-            Handle = IntPtr.Zero;
+            var ret = Handle;
+            handle = IntPtr.Zero;
             IsOwned = false;
-            return handle;
+            return ret;
         }
 
         internal bool IsOwned { get; private set; }
@@ -337,28 +341,18 @@ namespace Microsoft.ML.OnnxRuntime
             return ortValue;
         }
 
-        #region Disposable Support
-        protected virtual void Dispose(bool disposing)
+        #region SafeHandle
+        protected override bool ReleaseHandle()
         {
-            if (disposing)
+            // We have to surrender ownership to some legacy classes
+            // Or we never had that ownership to begin with
+            if (IsOwned)
             {
-                // We have to surrender ownership to some legacy classes
-                // Or we never had that ownership to begin with
-                if (Handle != IntPtr.Zero)
-                {
-                    if (IsOwned)
-                    {
-                        NativeMethods.OrtReleaseValue(Handle);
-                    }
-                    // Prevent use after disposal
-                    Handle = IntPtr.Zero;
-                }
+                NativeMethods.OrtReleaseValue(handle);
             }
-        }
-        public void Dispose()
-        {
-            Dispose(true);
-            GC.SuppressFinalize(this);
+            // Prevent use after disposal
+            handle = IntPtr.Zero;
+            return true;
         }
         // No need for the finalizer
         #endregion

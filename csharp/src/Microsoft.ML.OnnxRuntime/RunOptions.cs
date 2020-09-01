@@ -6,22 +6,24 @@ using System.Runtime.InteropServices;
 namespace Microsoft.ML.OnnxRuntime
 {
     /// Sets various runtime options. 
-    public class RunOptions : IDisposable
+    public class RunOptions : SafeHandle
     {
-        private IntPtr _nativePtr;
         internal IntPtr Handle
         {
             get
             {
-                return _nativePtr;
+                return handle;
             }
         }
 
 
-        public RunOptions()
+        public RunOptions() 
+            :base(IntPtr.Zero, true)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateRunOptions(out _nativePtr));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateRunOptions(out handle));
         }
+
+        public override bool IsInvalid { get { return handle == IntPtr.Zero; } }
 
         /// <summary>
         /// Log Severity Level for the session logs. Default = ORT_LOGGING_LEVEL_WARNING
@@ -34,7 +36,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
             set
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsSetRunLogSeverityLevel(_nativePtr, value));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsSetRunLogSeverityLevel(handle, value));
                 _logSeverityLevel = value;
             }
         }
@@ -52,7 +54,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
             set
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsSetRunLogVerbosityLevel(_nativePtr, value));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsSetRunLogVerbosityLevel(handle, value));
                 _logVerbosityLevel = value;
             }
         }
@@ -67,14 +69,14 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 string tag = null;
                 IntPtr tagPtr = IntPtr.Zero;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsGetRunTag(_nativePtr, out tagPtr));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsGetRunTag(handle, out tagPtr));
                 tag = Marshal.PtrToStringAnsi(tagPtr); // assume ANSI string
                 // should not release the memory of the tagPtr, because it returns the c_str() of the std::string being used inside RunOptions C++ class
                 return tag;
             }
             set
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsSetRunTag(_nativePtr, value));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsSetRunTag(handle, value));
             }
         }
 
@@ -93,12 +95,12 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 if (!_terminate && value)
                 {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsSetTerminate(_nativePtr));
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsSetTerminate(handle));
                     _terminate = true;
                 }
                 else if (_terminate && !value)
                 {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsUnsetTerminate(_nativePtr));
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsUnsetTerminate(handle));
                     _terminate = false;
                 }
             }
@@ -106,21 +108,13 @@ namespace Microsoft.ML.OnnxRuntime
         private bool _terminate = false; //value set to default value of the C++ RunOptions
 
 
-        #region IDisposable
+        #region SafeHandle
 
-        public void Dispose()
+        protected override bool ReleaseHandle()
         {
-            GC.SuppressFinalize(this);
-            Dispose(true);
-        }
-
-
-        protected virtual void Dispose(bool disposing)
-        {
-            if (disposing)
-            {
-                NativeMethods.OrtReleaseRunOptions(_nativePtr);
-            }
+             NativeMethods.OrtReleaseRunOptions(handle);
+             handle = IntPtr.Zero;
+            return true;
         }
 
         #endregion
