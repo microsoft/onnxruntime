@@ -132,8 +132,6 @@ static void propagateRecvOutputTensorElemTypes(
   }
 }
 
-
-
 // TODO: This is copied from onnx schemas. When the change is in and we update this can be removed.
 // For Brevity documentation was not copied
 OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
@@ -330,17 +328,16 @@ bool BuildContextDependentFunctionBodyMSD(const FunctionBodyBuildContext& ctx,
   // body.push_back({{"X_Sub"}, "Sub", {"scores", "labels"}, {MakeAttribute("broadcast", int64_t(1))}});
   body.push_back({{"X_Sub"}, "Sub", {"scores", "labels"}});
 
-  if (ctx.hasInput(2)) {
+  if (ctx.hasInput(2)) { // Input 2 is "weights"
     body.push_back({{"X_Pow"}, "Pow", {"X_Sub", "Q_Pow"}});
     if (ctx.getAttribute("reduction")->s() == "none") {
       body.push_back({{"output"}, "Mul", {"weights", "X_Pow"}});
     } else {
       body.push_back({{"X_Mul"}, "Mul", {"weights", "X_Pow"}});
       if (ctx.getAttribute("reduction")->s() == "sum") {
-        body.push_back({{"output"}, "ReduceSum", {"X_Mul"}});
+        body.push_back({{"output"}, "ReduceSum", {"X_Mul"}, {MakeAttribute("keepdims", (int64_t)0)}});
       } else {
-        //body.push_back({{"output"}, "ReduceMean", {"X_Mul"}});
-        body.push_back({{"output"}, "ReduceMean", {"X_Mul"}, {MakeAttribute("keepdims", (int64_t)1)}});
+        body.push_back({{"output"}, "ReduceMean", {"X_Mul"}, {MakeAttribute("keepdims", (int64_t)0)}});
       }
     }
   } else {
@@ -349,9 +346,9 @@ bool BuildContextDependentFunctionBodyMSD(const FunctionBodyBuildContext& ctx,
     } else {
       body.push_back({{"X_Pow"}, "Pow", {"X_Sub", "Q_Pow"}});
       if (ctx.getAttribute("reduction")->s() == "sum") {
-        body.push_back({{"output"}, "ReduceSum", {"X_Pow"}});
+        body.push_back({{"output"}, "ReduceSum", {"X_Pow"}, {MakeAttribute("keepdims", (int64_t)0)}});
       } else {
-        body.push_back({{"output"}, "ReduceMean", {"X_Pow"}, {MakeAttribute("keepdims", (int64_t)1)}});
+        body.push_back({{"output"}, "ReduceMean", {"X_Pow"}, {MakeAttribute("keepdims", (int64_t)0)}});
       }
     }
   }
@@ -887,7 +884,7 @@ Example 4:
       .SetDoc(R"DOC(SoftmaxCrossEntropy)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(MeanSquaredError)
-      .SetDomain(kOnnxDomain)
+      .SetDomain(kOnnxDomain) 
       .SinceVersion(13) 
       .Attr("reduction",
             reduction_doc,
@@ -924,10 +921,7 @@ Example 4:
                   propagateShapeFromInputToOutput(ctx, 0, 0);
               }
             } else {
-                ONNX_NAMESPACE::TensorShapeProto per_input_len_shape;
-                per_input_len_shape.add_dim()->set_dim_value(1);
-                updateOutputShape(ctx, 0, per_input_len_shape);
-                //updateOutputShape(ctx, 0, {});
+                updateOutputShape(ctx, 0, {});
             }});
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxCrossEntropyGrad)
