@@ -112,6 +112,7 @@ def testORTTrainerOptionsDefaultValues(test_input):
             'onnx_opset_version' : 12
         }
     }
+
     actual_values = orttrainer_options.ORTTrainerOptions(test_input)
     assert actual_values._validated_opts == expected_values
 
