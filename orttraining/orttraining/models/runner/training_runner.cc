@@ -17,6 +17,7 @@
 #endif
 #include "core/session/environment.h"
 #include "orttraining/core/framework/checkpointing.h"
+#include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/graph/optimizer_graph_builder.h"
 #include "orttraining/models/runner/training_util.h"
 #include "single_include/nlohmann/json.hpp"
@@ -114,8 +115,12 @@ Status TrainingRunner::Initialize() {
     config.mixed_precision_config = mp;
   }
 
-  // always configure the loss function
-  if (params_.pipeline_parallel_size == 1 || MPIContext::GetInstance().GetWorldRank() == MPIContext::GetInstance().GetWorldSize() - 1) {
+  // configure the loss function if no pipeline is used or it's the last stage of pipeline
+  auto pipeline_stage_id = GetPipelineStageId(MPIContext::GetInstance().GetWorldRank(),
+                                              params_.horizontal_parallel_size,
+                                              params_.data_parallel_size);
+  if (params_.pipeline_parallel_size == 1 ||
+      (pipeline_stage_id + 1) == params_.pipeline_parallel_size) {
     TrainingSession::TrainingConfiguration::LossFunctionConfiguration lf{};
     lf.loss_function_info = params_.loss_func_info;
 
@@ -163,6 +168,7 @@ Status TrainingRunner::Initialize() {
     pipe.do_partition = params_.pipeline_stage_paths.empty() ? true : false;
     pipe.fetch_names = params_.fetch_names;
     pipe.cut_list = params_.pipeline_partition_cut_list;
+    pipe.partitioned_model_path = params_.pipeline_partitioned_model_path;
     // Do not assign value to config.pipeline_config if pipeline is not used.
     config.pipeline_config = pipe;
   }

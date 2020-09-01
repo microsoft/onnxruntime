@@ -9,6 +9,7 @@
 #include "core/common/path_utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/environment.h"
+#include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/models/runner/training_runner.h"
 
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"  // TODO: move with PipelineBatchPlanner
@@ -1068,7 +1069,7 @@ void RetrieveEventOperators(
     }
   }
 
-  // For different stages, assign nodes based on different rules. 
+  // For different stages, assign nodes based on different rules.
   if (stage_index != 0 && stage_index != num_stages - 1) {
     // Wait/Record patterns at middle stages:
     //   Wait -> Recv -> Record -> Wait -> FW -> Record -> Wait -> Send -> Record ->
@@ -1180,6 +1181,57 @@ PathString GenerateFileNameWithIndex(const std::string& base_str, int index, con
   return path_utils::MakePathString(base_str, index, file_suffix);
 }
 
+// DistributedRunTestContext provides a method to override existing DistributedRunTestContext instance.
+// This is for test purpose only. Please don't use it for other scenarios.
+class DistributedRunTestContext : public DistributedRunContext
+{
+public:
+    DistributedRunTestContext(const TrainingSession::TrainingConfiguration &config)
+        : DistributedRunContext(config.distributed_config.world_rank,
+                                config.distributed_config.world_size,
+                                config.distributed_config.local_rank,
+                                config.distributed_config.local_size,
+                                config.distributed_config.data_parallel_size,
+                                config.distributed_config.horizontal_parallel_size,
+                                config.distributed_config.pipeline_parallel_size)
+    {
+    }
+
+    // Reset the static DistributedRunContext object with new value.
+    void ResetDistributedRunContext(){
+      DistributedRunContext::GetRunConfig() = params_;
+      auto& dp_group = DistributedRunContext::GetWorkerGroup(WorkerGroupType::DataParallel);
+      dp_group = groups_[WorkerGroupType::DataParallel];
+
+      auto& hp_group = DistributedRunContext::GetWorkerGroup(WorkerGroupType::HorizontalParallel);
+      hp_group = groups_[WorkerGroupType::HorizontalParallel];
+
+      auto& mp_group = DistributedRunContext::GetInstance().GetWorkerGroup(WorkerGroupType::ModelParallel);
+      mp_group = groups_[WorkerGroupType::ModelParallel];
+    }
+};
+
+void OverwritePipelineRank(const TrainingSession::TrainingConfiguration& config, const int pipeline_rank) {
+  // DistributedRunContext is a static global. Create one if it hasn't been created yet.
+  DistributedRunContext::CreateInstance({config.distributed_config.world_rank,
+                                         config.distributed_config.world_size,
+                                         config.distributed_config.local_rank,
+                                         config.distributed_config.local_size,
+                                         config.distributed_config.data_parallel_size,
+                                         config.distributed_config.horizontal_parallel_size,
+                                         config.distributed_config.pipeline_parallel_size});
+
+  // If DistributedRunContext has already been created prior to this test, the CreateInstance() call above won't
+  // create a new DistributedRunContext instance, as it is statically cached in the process.
+  // In this case, we create a DistributedRunTestContext object and assign its value to the static object's field.
+  DistributedRunTestContext ctx(config);
+  ctx.ResetDistributedRunContext();
+
+  // Overwrite the pipeline rank in case the static DistributedRunContext has been created and is stale and not up-to-date.
+  auto& mp_group = DistributedRunContext::GetInstance().GetWorkerGroup(WorkerGroupType::ModelParallel);
+  mp_group.rank_in_group = pipeline_rank;
+}
+
 TEST(GradientGraphBuilderTest, PipelineOnlinePartition_bert_tiny) {
   const auto model_path = ORT_TSTR("testdata/bert_toy_optimized.onnx");
 
@@ -1207,7 +1259,7 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_bert_tiny) {
   for (auto is_fp32 : test_with_fp32) {
     // graph is partitioned into 3 parts.
     for (int i = 0; i < static_cast<int>(total_partition_count); ++i) {
-
+      PathString partition_file = GenerateFileNameWithIndex("pipeline_partition_", i, ".onnx");
       PathString output_file = GenerateFileNameWithIndex("pipeline_partition_", i, "_back.onnx");
       auto config = MakeBasicTrainingConfig();
 
@@ -1230,7 +1282,7 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_bert_tiny) {
           "position_01",            // Slice's dat input
           "op_min_ends_expand_10",  //op_min_ends_expand_10
       };
-
+      pipe.partitioned_model_path = partition_file;
       config.pipeline_config = pipe;
       config.distributed_config.world_rank = i;
       config.distributed_config.world_size = total_partition_count;
@@ -1240,6 +1292,8 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_bert_tiny) {
       config.distributed_config.horizontal_parallel_size = 1;
       config.distributed_config.pipeline_parallel_size = total_partition_count;
       config.model_with_training_graph_path = output_file;
+
+      OverwritePipelineRank(config, i);
 
       if (!is_fp32) {
         config.mixed_precision_config = mixed_precision_config;
@@ -1314,6 +1368,8 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_MLP) {
       config.distributed_config.pipeline_parallel_size = 3;
       config.model_with_training_graph_path = output_file;
 
+      OverwritePipelineRank(config, i);
+
       if (!is_fp32) {
         config.mixed_precision_config = mixed_precision_config;
       }
@@ -1359,6 +1415,9 @@ Status RunOnlinePartition(const std::vector<TrainingSession::TrainingConfigurati
     config.distributed_config.data_parallel_size = 1;
     config.distributed_config.horizontal_parallel_size = 1;
     config.distributed_config.pipeline_parallel_size = pipeline_stage_size;
+
+    OverwritePipelineRank(config, i);
+
     config.model_with_training_graph_path = output_file;
 
     PathString backprop_model_file;

@@ -26,7 +26,8 @@ ENV LD_LIBRARY_PATH=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/exte
 ENV LANG en_US.UTF-8
 
 RUN apt update && \
-    apt -y install apt-transport-https ca-certificates python3 python3-pip zip x11-apps lsb-core wget cpio sudo libboost-python-dev libpng-dev zlib1g-dev git libnuma1 ocl-icd-libopencl1 clinfo libboost-filesystem1.65-dev libboost-thread1.65-dev protobuf-compiler libprotoc-dev autoconf automake libtool libjson-c-dev && \
+    apt -y install apt-transport-https ca-certificates python3 python3-pip zip x11-apps lsb-core wget cpio sudo libboost-python-dev libpng-dev zlib1g-dev git libnuma1 ocl-icd-libopencl1 clinfo libboost-filesystem1.65-dev libboost-thread1.65-dev protobuf-compiler libprotoc-dev autoconf automake libtool libjson-c-dev unattended-upgrades && \
+    unattended-upgrade && \
     rm -rf /var/lib/apt/lists/*  && \
 # Install OpenVINO
     cd ${MY_ROOT} && \
