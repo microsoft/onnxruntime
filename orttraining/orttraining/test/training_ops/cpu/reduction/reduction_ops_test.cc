@@ -224,7 +224,7 @@ TEST_P(ReductionOpTest, ReduceAllL2Many) {
 }
 
 // invoke with and without use_determinism flag for session
-INSTANTIATE_TEST_CASE_P(ReductionOpTestWrapper, ReductionOpTest, ::testing::Values(true, false));
+INSTANTIATE_TEST_SUITE_P(ReductionOpTestWrapper, ReductionOpTest, ::testing::Bool());
 
 #endif
 
