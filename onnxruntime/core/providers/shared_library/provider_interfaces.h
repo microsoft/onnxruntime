@@ -112,7 +112,6 @@ template <typename T>
 using Provider_IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
 
 struct Provider_IAllocator {
-  Provider_IAllocator() = default;
   Provider_IAllocator(const OrtMemoryInfo& info) : memory_info_{info} {}
   virtual ~Provider_IAllocator() {}
 

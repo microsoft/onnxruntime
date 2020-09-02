@@ -45,7 +45,7 @@ namespace onnxruntime {
 ProviderHost* g_host{};
 
 struct Provider_IAllocator_Impl : Provider_IAllocator {
-  Provider_IAllocator_Impl(AllocatorPtr p) : p_{p} {}
+  Provider_IAllocator_Impl(AllocatorPtr p) : Provider_IAllocator{p->Info()}, p_{p} {}
 
   void* Alloc(size_t size) override { return p_->Alloc(size); }
   void Free(void* p) override { return p_->Free(p); }
