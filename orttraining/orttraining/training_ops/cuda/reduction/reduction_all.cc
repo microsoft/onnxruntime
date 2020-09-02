@@ -91,7 +91,7 @@ Status ReduceAllL2<TIn, TOut>::ComputeInternal(OpKernelContext* ctx) const {
 
     // create GPU scratch space and zero target for each tensor square norm
     uint8_t* p_scratch = GetScratchBuffer<uint8_t>(scratch_size).get();
-    ORT_ENFORCE(cudaMemset(p_scratch, 0, sizeof(CudaTAcc)*total_tensor_count) == cudaSuccess);
+    ORT_ENFORCE(cudaMemset(p_scratch, 0, sizeof(CudaTAcc)*(1 + total_tensor_count)) == cudaSuccess);
 
     CudaTAcc* p_global_sqnorm = reinterpret_cast<CudaTAcc*>(p_scratch);
     CudaTAcc* p_tensor_sqnorm = p_global_sqnorm + 1;
