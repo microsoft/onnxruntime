@@ -28,7 +28,7 @@ typedef std::set<const Node*, NodeCompare> NodeSet;
 static std::unordered_map<std::string, std::unordered_set<size_t>>
     STOP_GRADIENT_EDGES = {
         {"Not", {0}},
-        {"Add", {0, 1}},
+        {"And", {0, 1}},
         {"Or", {0, 1}},
         {"Xor", {0, 1}},
         {"Equal", {0, 1}},
