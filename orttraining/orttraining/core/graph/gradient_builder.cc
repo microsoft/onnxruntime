@@ -1028,6 +1028,11 @@ IMPLEMENT_GRADIENT_BUILDER(GetDivGradient) {
   }
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetNegGradient) {
+  return std::vector<NodeDef>{
+      NodeDef("Neg", {GO(0)}, {GI(0)})};
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetReduceMeanGradient) {
   std::vector<NodeDef> result;
   auto attributes = SrcNodeAttributes();
