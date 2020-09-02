@@ -1,15 +1,16 @@
-# docker build --network=host --file Dockerfile.rocm3.5 --tag ort:rocm3.5-ort-dev .
+# docker build --network=host --file Dockerfile.rocm3.7.pytorch --tag ort:rocm3.7-pytorch .
 
-FROM rocm/tensorflow:rocm3.5-tf2.1-dev
+FROM rocm/pytorch:rocm3.7_ubuntu18.04_py3.6_pytorch
+#FROM rocm/pytorch:rocm3.7_ubuntu18.04_py3.6_pytorch_gcc
 
 RUN curl https://bazel.build/bazel-release.pub.gpg | apt-key add -
 RUN cat /dev/null > /etc/apt/sources.list.d/rocm.list
-RUN echo 'deb [arch=amd64] http://repo.radeon.com/rocm/apt/3.5/ xenial main' | tee /etc/apt/sources.list.d/rocm.list
+RUN echo 'deb [arch=amd64] http://repo.radeon.com/rocm/apt/3.7/ xenial main' | tee /etc/apt/sources.list.d/rocm.list
 
 RUN apt-get -y update
 RUN apt-get -y install apt-utils
 RUN apt-get -y install build-essential autotools-dev \
-    make git vim wget rsync jq openssh-server openssh-client sudo \
+    make git curl vim wget rsync jq openssh-server openssh-client sudo \
     iputils-ping net-tools ethtool libcap2 \
     automake autoconf libtool flex doxygen \
     perl lsb-release iproute2 pciutils graphviz \
@@ -17,11 +18,8 @@ RUN apt-get -y install build-essential autotools-dev \
     g++ gcc \
     && apt-get autoremove
 
-# ROCm library
-RUN apt-get -y install rocm-libs miopen-hip
-
-# Remove gtest and gmock
-RUN rm -rf /opt/rocm/include/gtest /opt/rocm/include/gmock
+# sh
+RUN rm /bin/sh && ln -s /bin/bash /bin/sh
 
 # Labels for the docker
 LABEL description="This docker sets up the environment to run ORT Training with AMD GPU"
@@ -36,6 +34,9 @@ ENV WORK_DIR=/work
 RUN mkdir -p $WORK_DIR
 WORKDIR $WORK_DIR
 
+RUN update-alternatives --remove-all python && \
+    update-alternatives --install /usr/bin/python python /usr/bin/python2.7 1
+
 # Infiniband setup, openmpi installed under /usr/mpi/gcc/openmpi-4.0.4rc3 doesn't support multi-thread
 ENV MOFED_VERSION=5.1-0.6.6.0
 ENV MOFED_OS=ubuntu18.04
@@ -46,25 +47,15 @@ RUN cd MLNX_OFED_LINUX-${MOFED_VERSION}-${MOFED_OS}-x86_64 && \
     cd .. && \
     rm -r MLNX_OFED_LINUX-${MOFED_VERSION}-${MOFED_OS}-x86_64
 
-# install miniconda (comes with python 3.7 default)
-ARG CONDA_VERSION=4.7.10
-ARG CONDA_URL=https://repo.anaconda.com/miniconda/Miniconda3-${CONDA_VERSION}-Linux-x86_64.sh
-RUN curl -fSsL --insecure ${CONDA_URL} -o install-conda.sh &&\
-    /bin/bash ./install-conda.sh -b -p /opt/conda &&\
-    /opt/conda/bin/conda clean -ya
-ENV PATH=/opt/conda/bin:${PATH}
+RUN update-alternatives --remove-all python && \
+    update-alternatives --install /usr/bin/python python /usr/bin/python3.6 1
 
+# python env
 ARG NUMPY_VERSION=1.18.5
 ARG ONNX_VERSION=1.7.0
-RUN conda install -y \
-        numpy=${NUMPY_VERSION} \
-        cmake \
-        ninja \
-        pyyaml \
-        cffi \
-        setuptools \
-    && pip install --no-cache-dir wheel tqdm boto3 requests six ipdb h5py html2text nltk progressbar \
+RUN pip3 install --no-cache-dir wheel tqdm boto3 requests six ipdb h5py html2text nltk progressbar pyyaml \
         git+https://github.com/NVIDIA/dllogger \
+        numpy==${NUMPY_VERSION} \
         onnx=="${ONNX_VERSION}"
 
 ENV GITHUB_DIR=$WORK_DIR/github
@@ -112,12 +103,6 @@ ENV LD_LIBRARY_PATH=$OPENMPI_DIR/lib:${LD_LIBRARY_PATH}
 # install mpi4py (be sure to link existing /opt/openmpi-xxx)
 RUN CC=mpicc MPICC=mpicc pip install mpi4py --no-binary mpi4py
 
-# RCCL
-# RUN apt-get -y purge rccl
-# RUN git clone https://github.com/ROCmSoftwarePlatform/rccl.git && cd rccl && ./install.sh -i
-ENV HSA_FORCE_FINE_GRAIN_PCIE=1
-ENV NCCL_MAX_NCHANNELS=4
-
 # ONNX Runtime
 WORKDIR $GITHUB_DIR
 ENV ORT_DIR=$GITHUB_DIR/onnxruntime
@@ -137,15 +122,6 @@ RUN git clone --recursive -b wezhan/amdgpu https://github.com/microsoft/onnxrunt
   && test -f $ORT_DIR/build/Release/onnxruntime_training_bert \
   && pip install $ORT_DIR/build/Release/dist/*.whl \
   && ldconfig
-
-# OpenBLAS
-ARG OpenBLAS_VERSION=0.3.10
-ENV OpenBLAS_DIR=$WORK_DIR/OpenBLAS-${OpenBLAS_VERSION}
-RUN git clone https://github.com/xianyi/OpenBLAS.git \
-  && cd OpenBLAS \
-  && git checkout v$OpenBLAS_VERSION \
-  && make TARGET=ZEN \
-  && make install PREFIX=$OpenBLAS_DIR
 
 # Enable ssh access without password needed
 RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/g' /etc/ssh/sshd_config
