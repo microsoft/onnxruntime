@@ -85,7 +85,7 @@ struct IDataTransfer_Wrapper : IDataTransfer {
   bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override { return p_->CanCopy(src_device, dst_device); }
   common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override { return p_->CopyTensor(*reinterpret_cast<const Provider_Tensor*>(&src), *reinterpret_cast<Provider_Tensor*>(&dst), exec_queue_id); }
 
-  bool IsProviderInterface() const { return true; }
+  bool IsProviderInterface() const override { return true; }
 
   std::unique_ptr<Provider_IDataTransfer> p_;
 };
@@ -593,7 +593,7 @@ struct ProviderHostImpl : ProviderHost {
   const float* Provider_Tensor__Data_float(const Provider_Tensor* p) override { return reinterpret_cast<const Tensor*>(p)->Data<float>(); }
 
   void* Provider_Tensor__MutableDataRaw(Provider_Tensor* p) noexcept override { return reinterpret_cast<Tensor*>(p)->MutableDataRaw(); }
-  const void* Provider_Tensor__DataRaw(const Provider_Tensor* p) const noexcept { return reinterpret_cast<const Tensor*>(p)->DataRaw(); }
+  const void* Provider_Tensor__DataRaw(const Provider_Tensor* p) const noexcept override { return reinterpret_cast<const Tensor*>(p)->DataRaw(); }
 
   const TensorShape& Provider_Tensor__Shape(const Provider_Tensor* p) override { return reinterpret_cast<const Tensor*>(p)->Shape(); }
   size_t Provider_Tensor__SizeInBytes(const Provider_Tensor* p) override { return reinterpret_cast<const Tensor*>(p)->SizeInBytes(); }
