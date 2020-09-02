@@ -876,7 +876,7 @@ def testORTTrainerLegacyAndExperimentalWeightsCheck(seed, device):
 ])
 def testORTTrainerLegacyAndExperimentalPrecisionLossScaler(seed, device):
     # Common data
-    total_steps = 5
+    total_steps = 128
 
     # Setup experimental API
     torch.manual_seed(seed)
@@ -921,7 +921,7 @@ def testORTTrainerLegacyAndExperimentalPrecisionLossScaler(seed, device):
     # Compare legacy vs experimental APIs
     assert experimental_preds_dtype == legacy_preds_dtype
     _test_helpers.assert_legacy_onnx_weights(trainer, legacy_trainer, rtol=1e-4, atol=1e-2)
-    _test_helpers.assert_model_outputs(legacy_loss, experimental_loss, rtol=1e-4)
+    _test_helpers.assert_model_outputs(legacy_loss, experimental_loss)
 
 
 @pytest.mark.parametrize("seed,device,gradient_accumulation_steps,total_steps", [
@@ -966,7 +966,7 @@ def testORTTrainerLegacyAndExperimentalGradientAccumulation(seed, device, gradie
         legacy_loss.append(leg_loss.cpu())
 
     # Compare legacy vs experimental APIs
-    _test_helpers.assert_model_outputs(legacy_loss, experimental_loss, rtol=1e-6)
+    _test_helpers.assert_model_outputs(legacy_loss, experimental_loss)
 
 
 @pytest.mark.parametrize("seed,device,optimizer_config,lr_scheduler, get_lr_this_step", [
@@ -1008,7 +1008,7 @@ def testORTTrainerLegacyAndExperimentalLRScheduler(seed, device, optimizer_confi
     options = orttrainer.ORTTrainerOptions({'device' : {'id' : device},
                                             'debug' : {'deterministic_compute' : True},
                                             'lr_scheduler' : lr_scheduler})
-    model, model_desc, my_loss, batcher_fn, train_data, val_data, _ = _load_pytorch_transformer_model(device)
+    model, model_desc, my_loss, batcher_fn, train_data, _, _ = _load_pytorch_transformer_model(device)
     optim_config = optimizer_config(lr=lr)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
     # Training loop
@@ -1054,3 +1054,92 @@ def testORTTrainerLegacyAndExperimentalLRScheduler(seed, device, optimizer_confi
 
     # Compare legacy vs experimental APIs
     _test_helpers.assert_model_outputs(legacy_loss, experimental_loss)
+
+
+def testLossScalerLegacyAndExperimentalFullCycle():
+    info = orttrainer.TrainStepInfo(optimizer_config=optim.LambConfig(lr=0.001), all_finite=True, fetches=[], optimization_step=0, step=0)
+    new_ls = amp.DynamicLossScaler()
+    old_ls = Legacy_LossScaler("ort_test_input_loss_scaler", True)
+
+    # Initial state
+    train_step_info = orttrainer.TrainStepInfo(optim.LambConfig())
+    assert_allclose(new_ls.loss_scale, old_ls.loss_scale_)
+    assert new_ls.up_scale_window == old_ls.up_scale_window_
+    assert_allclose(new_ls.min_loss_scale, old_ls.min_loss_scale_)
+    assert_allclose(new_ls.max_loss_scale, old_ls.max_loss_scale_)
+
+    # Performing 9*2000 updates to cover all branches of LossScaler.update(train_step_info.all_finite=True)
+    for cycles in range(1, 10):
+
+        # 1999 updates without overflow produces 1999 stable steps
+        for i in range(1, 2000):
+            new_loss_scale = new_ls.update(train_step_info)
+            old_ls.update_loss_scale(train_step_info.all_finite)
+            old_loss_scale = old_ls.loss_scale_
+            assert new_ls._stable_steps_count == old_ls.stable_steps_
+            # import pdb; pdb.set_trace()
+            assert_allclose(new_loss_scale, old_loss_scale)
+
+        # 2000th update without overflow doubles the loss and zero stable steps until max_loss_scale is reached
+        new_loss_scale = new_ls.update(train_step_info)
+        old_ls.update_loss_scale(train_step_info.all_finite)
+        old_loss_scale = old_ls.loss_scale_
+        assert new_ls._stable_steps_count == old_ls.stable_steps_
+        assert_allclose(new_loss_scale, old_loss_scale)
+
+    # After 8 cycles, loss scale should be float(1 << 16)*(2**8)
+    assert_allclose(new_loss_scale, old_loss_scale)
+
+    # After 9 cycles, loss scale reaches max_loss_scale and it is not doubled from that point on
+    for count in range(1, 2050):
+        new_loss_scale = new_ls.update(train_step_info)
+        old_ls.update_loss_scale(train_step_info.all_finite)
+        old_loss_scale = old_ls.loss_scale_
+        assert new_ls._stable_steps_count == old_ls.stable_steps_
+        assert_allclose(new_loss_scale, old_loss_scale)
+
+    # Setting train_step_info.all_finite = False to test down scaling
+    train_step_info.all_finite = False
+
+    # Performing 24 updates to half the loss scale each time
+    for count in range(1, 25):
+        new_loss_scale = new_ls.update(train_step_info)
+        old_ls.update_loss_scale(train_step_info.all_finite)
+        old_loss_scale = old_ls.loss_scale_
+        assert new_ls._stable_steps_count == old_ls.stable_steps_
+        assert_allclose(new_loss_scale, old_loss_scale)
+
+    # After 24 updates with gradient overflow, loss scale is 1.0
+    assert_allclose(new_loss_scale, old_loss_scale)
+
+    # After 25 updates, min_loss_scale is reached and loss scale is not halfed from that point on
+    for count in range(1, 5):
+        new_loss_scale = new_ls.update(train_step_info)
+        old_ls.update_loss_scale(train_step_info.all_finite)
+        old_loss_scale = old_ls.loss_scale_
+        assert new_ls._stable_steps_count == old_ls.stable_steps_
+        assert_allclose(new_loss_scale, old_loss_scale)
+
+
+def testLossScalerLegacyAndExperimentalRandomAllFinite():
+    new_ls = amp.DynamicLossScaler()
+    old_ls = Legacy_LossScaler("ort_test_input_loss_scaler", True)
+
+    # Initial state
+    train_step_info = orttrainer.TrainStepInfo(optim.LambConfig())
+    assert_allclose(new_ls.loss_scale, old_ls.loss_scale_)
+    assert new_ls.up_scale_window == old_ls.up_scale_window_
+    assert_allclose(new_ls.min_loss_scale, old_ls.min_loss_scale_)
+    assert_allclose(new_ls.max_loss_scale, old_ls.max_loss_scale_)
+
+    import random
+    out = []
+    for _ in range(1, 64):
+        train_step_info.all_finite = bool(random.getrandbits(1))
+        new_loss_scale = new_ls.update(train_step_info)
+        old_ls.update_loss_scale(train_step_info.all_finite)
+        old_loss_scale = old_ls.loss_scale_
+        assert new_ls._stable_steps_count == old_ls.stable_steps_
+        assert_allclose(new_loss_scale, old_loss_scale)
+        out.append(new_loss_scale)
+        assert new_loss_scale > 1e-7

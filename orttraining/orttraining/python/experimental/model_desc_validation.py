@@ -152,7 +152,7 @@ class _ORTTrainerModelDesc(object):
 
     @gradient_accumulation.setter
     def gradient_accumulation(self, name):
-        self._add_output_description(self, name, [1], False, torch.bool, None, GRADIENT_ACCUMULATION_IO_DESCRIPTION_NAME)
+        self._add_output_description(self, name, [1], False, torch.bool, None, GRADIENT_ACCUMULATION_IO_DESCRIPTION_NAME, ignore_duplicate=True)
 
     @property
     def all_finite(self):
@@ -160,7 +160,7 @@ class _ORTTrainerModelDesc(object):
 
     @all_finite.setter
     def all_finite(self, name):
-        self._add_output_description(self, name, [1], False, torch.bool, None, ALL_FINITE_IO_DESCRIPTION_NAME)
+        self._add_output_description(self, name, [1], False, torch.bool, None, ALL_FINITE_IO_DESCRIPTION_NAME, ignore_duplicate=True)
 
     @property
     def loss_scale_input(self):
@@ -168,9 +168,9 @@ class _ORTTrainerModelDesc(object):
 
     @loss_scale_input.setter
     def loss_scale_input(self, name):
-        self._add_input_description(self, name, [], torch.float32, LOSS_SCALE_INPUT_IO_DESCRIPTION_NAME)
+        self._add_input_description(self, name, [], torch.float32, LOSS_SCALE_INPUT_IO_DESCRIPTION_NAME, ignore_duplicate=True)
 
-    def _add_input_description(self, node, name, shape, dtype=None, attr_name=None):
+    def _add_input_description(self, node, name, shape, dtype=None, attr_name=None, ignore_duplicate=False):
         '''Add a new input description into the node object
 
         If 'dtype' is specified, a typed input description namedtuple(name, shape, dtype) is created.
@@ -184,15 +184,22 @@ class _ORTTrainerModelDesc(object):
             shape (list): shape of input description
             dtype (torch.dtype): input data type
             attr_name (str, default is None): friendly name to allow direct access to the output description
+            ignore_duplicate (bool, default is False): silently skips addition of duplicate inputs
         '''
 
         assert isinstance(name, str) and len(name) > 0, "'name' is an invalid input name"
+        not_found = True
+        if not ignore_duplicate:
+            if id(node) == id(self.inputs):
+                not_found = all([name not in i_desc.name for i_desc in node])
+                assert not_found, f"'name' {name} already exists in the inputs description"
+            else:
+                not_found = attr_name not in dir(self)
+                assert not_found, f"'attr_name' {attr_name} already exists in the 'node'"
+        elif not not_found:
+            return
         assert isinstance(shape, list) and all([(isinstance(dim, int) or (isinstance(dim, str) and len(dim) > 0))\
             for dim in shape]), "'shape' must be a list of int or str with length at least 1"
-        if id(node) == id(self.inputs):
-            assert all([name not in i_desc.name for i_desc in node]), f"'name' {name} already exists in the inputs description"
-        else:
-            assert attr_name not in dir(self), f"'attr_name' {attr_name} already exists in the 'node'"
         assert dtype is None or isinstance(dtype, torch.dtype), "'dtype' must be either None or a torch.dtype type"
         if dtype:
             new_input_desc = self._InputDescriptionTyped(name, shape, dtype)
@@ -205,7 +212,7 @@ class _ORTTrainerModelDesc(object):
             assert isinstance(attr_name, str) and len(attr_name) > 0, "Invalid 'attr_name'"
             setattr(node, attr_name, new_input_desc)
 
-    def _add_output_description(self, node, name, shape, is_loss, dtype=None, dtype_amp=None, attr_name=None):
+    def _add_output_description(self, node, name, shape, is_loss, dtype=None, dtype_amp=None, attr_name=None, ignore_duplicate=False):
         '''Add a new output description into the node object as a tuple
 
         When (name, shape, is_loss, dtype) is specified, a typed output description is created
@@ -221,6 +228,7 @@ class _ORTTrainerModelDesc(object):
             dtype (torch.dtype): input data type
             dtype_amp (torch.dtype, default is None): input data type for evaluation with mixed precision.
             attr_name (str, default is None): friendly name to allow direct access to the output description
+            ignore_duplicate (bool, default is False): silently skips addition of duplicate outputs
         '''
 
         assert isinstance(name, str) and len(name) > 0, "'name' is an invalid output name"
@@ -228,13 +236,18 @@ class _ORTTrainerModelDesc(object):
             for dim in shape]), "'shape' must be a list of int or str with length at least 1"
         assert isinstance(is_loss, bool), "'is_loss' must be a bool"
 
-        if id(node) == id(self.outputs):
-            assert all([name not in o_desc.name for o_desc in node]), f"'name' {name} already exists in the outputs description"
-            is_loss_count = 1 if is_loss else 0
-            assert all([o_desc.is_loss is False for o_desc in node]) if is_loss else True,\
-                "Only one 'is_loss' is supported at outputs description"
-        else:
-            assert attr_name not in dir(self), f"'attr_name' {attr_name} already exists in the 'node'"
+        not_found = True
+        if not ignore_duplicate:
+            if id(node) == id(self.outputs):
+                not_found = all([name not in o_desc.name for o_desc in node])
+                assert not_found, f"'name' {name} already exists in the outputs description"
+                assert all([not o_desc.is_loss for o_desc in node]) if is_loss else True,\
+                    "Only one 'is_loss' is supported at outputs description"
+            else:
+                not_found = attr_name not in dir(self)
+                assert not_found, f"'attr_name' {attr_name} already exists in the 'node'"
+        elif not not_found:
+            return
 
         assert dtype is None or isinstance(dtype, torch.dtype), "'dtype' must be either None or a torch.dtype type"
         if dtype:
