@@ -29,7 +29,7 @@ class TrainingSession(InferenceSession):
         self._inputs_meta = self._sess.inputs_meta
         self._outputs_meta = self._sess.outputs_meta
 
-        Session.__init__(self, self._sess)
+        Session.__init__(self)
 
     def __del__(self):
         if self._sess:
