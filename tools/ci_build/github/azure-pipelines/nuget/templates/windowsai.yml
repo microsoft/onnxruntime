@@ -261,13 +261,11 @@ jobs:
         Copy-Item ([System.IO.Path]::Combine($x64_store_runtime_path_old, 'onnxruntime.lib'))                    $x64_store_runtime_path_new
         Copy-Item ([System.IO.Path]::Combine($x64_store_runtime_path_old, 'microsoft.ai.machinelearning.dll'))   $x64_store_runtime_path_new
         Copy-Item ([System.IO.Path]::Combine($x64_store_runtime_path_old, 'microsoft.ai.machinelearning.lib'))   $x64_store_runtime_path_new
-        Copy-Item ([System.IO.Path]::Combine($x64_store_runtime_path_old, 'directml.dll'))                       $x64_store_runtime_path_new
 
         Copy-Item ([System.IO.Path]::Combine($x86_store_runtime_path_old, 'onnxruntime.dll'))                    $x86_store_runtime_path_new
         Copy-Item ([System.IO.Path]::Combine($x86_store_runtime_path_old, 'onnxruntime.lib'))                    $x86_store_runtime_path_new
         Copy-Item ([System.IO.Path]::Combine($x86_store_runtime_path_old, 'microsoft.ai.machinelearning.dll'))   $x86_store_runtime_path_new
         Copy-Item ([System.IO.Path]::Combine($x86_store_runtime_path_old, 'microsoft.ai.machinelearning.lib'))   $x86_store_runtime_path_new
-        Copy-Item ([System.IO.Path]::Combine($x86_store_runtime_path_old, 'directml.dll'))                       $x86_store_runtime_path_new
 
         Copy-Item ([System.IO.Path]::Combine($arm64_store_runtime_path_old, 'onnxruntime.dll'))                  $arm64_store_runtime_path_new
         Copy-Item ([System.IO.Path]::Combine($arm64_store_runtime_path_old, 'onnxruntime.lib'))                  $arm64_store_runtime_path_new
