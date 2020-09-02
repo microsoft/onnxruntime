@@ -28,9 +28,10 @@ MODELS = {
     "openai-gpt": (["input_ids"], 11, False, "gpt2"),  # no past state inputs
 # GPT-2
     "gpt2": (["input_ids"], 11, False, "gpt2"),  # no past state inputs & outputs
-    "gpt2-medium": (["input_ids"], 11, True, "gpt2"),
+    "gpt2-medium": (["input_ids"], 11, False, "gpt2"),
     "gpt2-large": (["input_ids"], 11, True, "gpt2"),  # Model>2GB. Need use_external_data_format=True to export it. No past state inputs for GPT models.
     "gpt2-xl": (["input_ids"], 11, True, "gpt2"),
+    "distilgpt2": (["input_ids"], 11, False, "gpt2"),  # no past state inputs & outputs
 # Transformer-XL
     #"transfo-xl-wt103": (["input_ids"], 11, False, "bert"),
 # XLNet
@@ -56,12 +57,11 @@ MODELS = {
     "roberta-large-openai-detector": (["input_ids", "attention_mask"], 11, False, "bert"),
 # DistilBERT
     "distilbert-base-uncased": (["input_ids", "attention_mask"], 11, False, "bert"),
-    "distilbert-base-uncased-distilled-squad": (["input_ids", "attention_mask"], 11, False, "bert"),  # no past state inputs & outputs
-    "distilbert-base-cased": (["input_ids", "attention_mask"], 11, False, "bert"),  # no past state inputs & outputs
-    "distilbert-base-cased-distilled-squad": (["input_ids", "attention_mask"], 11, False, "bert"),  # no past state inputs & outputs
-    "distilgpt2": (["input_ids"], 11, False, "gpt2"),  # no past state inputs & outputs
-    "distilbert-base-german-cased": (["input_ids", "attention_mask"], 11, False, "bert"),  # no past state inputs & outputs
-    "distilbert-base-multilingual-cased": (["input_ids", "attention_mask"], 11, False, "bert"),  # no past state inputs & outputs
+    "distilbert-base-uncased-distilled-squad": (["input_ids", "attention_mask"], 11, False, "bert"), 
+    "distilbert-base-cased": (["input_ids", "attention_mask"], 11, False, "bert"),
+    "distilbert-base-cased-distilled-squad": (["input_ids", "attention_mask"], 11, False, "bert"),
+    "distilbert-base-german-cased": (["input_ids", "attention_mask"], 11, False, "bert"),
+    "distilbert-base-multilingual-cased": (["input_ids", "attention_mask"], 11, False, "bert"),
 # CTRL
     "ctrl": (["input_ids"], 11, True, "bert"),
 # CamemBERT
