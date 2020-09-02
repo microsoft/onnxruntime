@@ -504,7 +504,7 @@ else()
   endif()
 endif()
 
-if(UNIX AND onnxruntime_ENABLE_LTO)
+if(UNIX AND onnxruntime_ENABLE_LTO AND NOT onnxruntime_PREFER_SYSTEM_LIB)
   #https://github.com/protocolbuffers/protobuf/issues/5923
   target_link_options(protoc PRIVATE "-Wl,--no-as-needed")
 endif()
