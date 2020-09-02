@@ -54,13 +54,13 @@ class Profiler {
   TimePoint StartTime() const;
 
   /*
-   Whether data collection and output from this profiler is enabled.
+  Whether data collection and output from this profiler is enabled.
   */
   bool IsEnabled() const {
     return enabled_;
   }
   /*
-   Return the stored start time of profiling
+  Return the stored start time of profiler
   */
   TimePoint GetStartTime() const {
     return profiling_start_time_;

@@ -356,6 +356,10 @@ class InferenceSession {
     @return the name of the profile file.
     */
   std::string EndProfiling();
+  /**
+    * Return the stored start time of profiler
+    */
+  TimePoint InferenceSession::GetProfilingStartTime();
 
   /**
     * Search registered execution providers for an allocator that has characteristics

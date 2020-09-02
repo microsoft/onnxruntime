@@ -1540,6 +1540,10 @@ std::string InferenceSession::EndProfiling() {
   return std::string();
 }
 
+TimePoint InferenceSession::GetProfilingStartTime() {
+  return session_profiler_.GetStartTime();
+}
+
 AllocatorPtr InferenceSession::GetAllocator(const OrtMemoryInfo& mem_info) const {
   return session_state_->GetAllocator(mem_info);
 }
