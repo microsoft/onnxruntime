@@ -328,9 +328,7 @@ void ThreadPool::ParallelFor(std::ptrdiff_t n, const TensorOpCost& c,
   auto d_of_p = DegreeOfParallelism(this);
   // Compute small problems directly in the caller thread.
   if ((!ShouldParallelizeLoop(n)) ||
-      Eigen::TensorCostModel<Eigen::ThreadPoolDevice>::numThreads(static_cast<double>(n),
-                                                                  cost,
-                                                                  d_of_p) == 1) {
+      CostModel::numThreads(static_cast<double>(n), cost, d_of_p) == 1) {
     f(0, n);
     return;
   }
@@ -377,6 +375,53 @@ int ThreadPool::CurrentThreadId() const {
     return -1;
   }
 }
+
+void ThreadPool::TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t total, const TensorOpCost& cost_per_unit,
+                           const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn) {
+#ifdef _OPENMP
+    if (total == 1) {
+      fn(0, total);
+      return;
+    }
+
+    Eigen::TensorOpCost cost{cost_per_unit.bytes_loaded, cost_per_unit.bytes_stored, cost_per_unit.compute_cycles};
+    auto d_of_p = DegreeOfParallelism(tp);
+    std::ptrdiff_t num_threads = CostModel::numThreads(static_cast<double>(total), cost, d_of_p);
+
+    if (total < num_threads) {
+      num_threads = total;
+    }
+
+    if (num_threads == 1) {
+      fn(0, total);
+      return;
+    }
+
+    ptrdiff_t block_size = CalculateParallelForBlock(total, cost, nullptr, d_of_p);
+    ptrdiff_t block_count = Eigen::divup(total, block_size);
+    if (block_count < num_threads) {
+      num_threads = block_count;
+    }
+
+    if (num_threads == 1) {
+      fn(0, total);
+      return;
+    }
+
+#pragma omp parallel for
+    for (std::ptrdiff_t i = 0; i < num_threads; i++) {
+      auto work = PartitionWork(i, num_threads, total);
+      fn(work.start, work.end);
+    }
+#else
+    if (tp == nullptr) {
+      fn(0, total);
+      return;
+    }
+    tp->ParallelFor(total, cost_per_unit, fn);
+#endif
+  }
+
 
 }  // namespace concurrency
 }  // namespace onnxruntime
