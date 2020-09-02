@@ -30,14 +30,15 @@ namespace onnxruntime {
 
 namespace inference_session_utils {
 
+// need this value to be accessible in all builds in order to report error for attempted usage in a minimal build
+static constexpr const char* kOrtLoadConfigFromModelEnvVar = "ORT_LOAD_CONFIG_FROM_MODEL";
+
 #if !defined(ORT_MINIMAL_BUILD)
 //
 // Code to parse json session config from onnx model file
 //
-
 static constexpr const char* kOrtConfigKey = "ort_config";
 static constexpr const char* kSessionOptionsKey = "session_options";
-static constexpr const char* kOrtLoadConfigFromModelEnvVar = "ORT_LOAD_CONFIG_FROM_MODEL";
 
 class JsonConfigParser {
  public:
