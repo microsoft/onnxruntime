@@ -34,6 +34,7 @@ def register_custom_op():
     register_custom_op_symbolic('::triu', triu, _onnx_opset_version)
     register_custom_op_symbolic('::tril', tril, _onnx_opset_version)
 
+
 def unregister_custom_op():
     """
     This function unregisters symbolic functions for
