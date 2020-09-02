@@ -19,6 +19,9 @@ void Telemetry::EnableTelemetryEvents() const {
 void Telemetry::DisableTelemetryEvents() const {
 }
 
+void Telemetry::SetLanguageProjection(uint32_t projection) const {
+}
+
 void Telemetry::LogProcessInfo() const {
 }
 

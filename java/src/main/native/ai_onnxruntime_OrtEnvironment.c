@@ -19,6 +19,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtEnvironment_createHandle(JNIEnv *
     jboolean copy;
     const char* cName = (*jniEnv)->GetStringUTFChars(jniEnv, name, &copy);
     checkOrtStatus(jniEnv,api,api->CreateEnv(convertLoggingLevel(loggingLevel), cName, &env));
+    checkOrtStatus(jniEnv, api, api->SetLanguageProjection(env, ORT_PROJECTION_JAVA));
     (*jniEnv)->ReleaseStringUTFChars(jniEnv,name,cName);
     return (jlong) env;
 }

@@ -123,6 +123,16 @@ ORT_API_STATUS_IMPL(OrtApis::DisableTelemetryEvents, _In_ const OrtEnv* ort_env)
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::SetLanguageProjection, _In_ const OrtEnv* ort_env, _In_ OrtLanguageProjection projection) {
+  API_IMPL_BEGIN
+  ORT_UNUSED_PARAMETER(ort_env);
+  // note telemetry is controlled via the platform Env object, not the OrtEnv object instance
+  const Env& env = Env::Default();
+  env.GetTelemetryProvider().SetLanguageProjection(projection);
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_STATUS_PTR CreateTensorImpl(MLDataType ml_type, const int64_t* shape, size_t shape_len,
                                 _Inout_ OrtAllocator* allocator, std::unique_ptr<Tensor>* out) {
   std::vector<int64_t> shapes(shape_len);
@@ -1932,6 +1942,7 @@ static constexpr OrtApi ort_api_1_to_5 = {
     &OrtApis::GetStringTensorElement,
     &OrtApis::FillStringTensorElement,
     &OrtApis::AddSessionConfigEntry,
+    &OrtApis::SetLanguageProjection,
 
     // IoBinding and above are propagated in the same order to C# API
     // Do not move
