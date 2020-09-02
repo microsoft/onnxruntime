@@ -62,7 +62,7 @@ describe('UnitTests - InferenceSession.create()', () => {
   it('EXPECTED FAILURE - file path does not exist', async () => {
     await assert.rejects(async () => {
       await InferenceSession.create('/this/is/an/invalid/path.onnx');
-    }, {name: 'Error', message: /Failed to read model file/});
+    }, {name: 'Error', message: /File doesn't exist/});
   });
   it('EXPECTED FAILURE - empty buffer', async () => {
     await assert.rejects(async () => {
