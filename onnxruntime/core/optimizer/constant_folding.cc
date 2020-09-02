@@ -103,21 +103,8 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         continue;
       }
 
-      // Constant folding doesn't support external initializers.
-      bool has_external_input = false;
-      for (InitializedTensorSet::const_iterator it = constant_inputs.cbegin(); it != constant_inputs.cend(); it++) {
-        if (it->second->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
-          has_external_input = true;
-          break;
-        }
-      }
-
-      if (has_external_input) {
-        continue;
-      }
-
       // Create execution frame for executing constant nodes.
-      OptimizerExecutionFrame::Info info({node}, constant_inputs, execution_provider_);
+      OptimizerExecutionFrame::Info info({node}, constant_inputs, graph.ModelPath(), execution_provider_);
 
       std::vector<int> fetch_mlvalue_idxs;
       for (const auto* node_out : node->OutputDefs()) {
