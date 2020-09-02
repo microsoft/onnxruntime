@@ -25,6 +25,7 @@ jobs:
           --volume $(Build.BinariesDirectory):/build \
           --volume /data/models:/build/models:ro \
           --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecpubuild:chn \

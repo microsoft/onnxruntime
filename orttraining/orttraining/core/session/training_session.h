@@ -65,6 +65,8 @@ class TrainingSession : public InferenceSession {
       int horizontal_parallel_size{1};
       // The number of pipeline stages.
       int pipeline_parallel_size{1};
+
+      int pipeline_stage_id{0};
     };
     // The distributed training configuration.
     DistributedConfiguration distributed_config{};
@@ -170,6 +172,9 @@ class TrainingSession : public InferenceSession {
       // cut_list contains the list of CutInfo to make the graph partitions.
       // cut_list[i] contains the CutInfo to make the partition between stage i and stage i+1
       std::vector<CutInfo> cut_list;
+
+      // The base path at which to save the intermediate partitioned input model (forward pass only).
+      optional<PathString> partitioned_model_path{};
     };
 
     // If pipeline is enabled, this field's has_value() returns true.

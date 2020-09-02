@@ -16,6 +16,7 @@
 #include "core/providers/cpu/controlflow/utils.h"
 
 using namespace ::onnxruntime::common;
+using namespace ::onnxruntime::experimental;
 
 namespace onnxruntime {
 
@@ -599,6 +600,10 @@ const NodeIndexInfo& SessionState::GetNodeIndexInfo() const {
   return *node_index_info_;
 }
 
+static std::string GetSubGraphId(const NodeIndex node_idx, const std::string& attr_name) {
+  return std::to_string(node_idx) + "_" + attr_name;
+}
+
 #if !defined(ORT_MINIMAL_BUILD)
 void SessionState::UpdateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue_idxs) {
   std::vector<int> sorted_idxs = fetch_mlvalue_idxs;
@@ -632,6 +637,53 @@ const std::unordered_set<NodeIndex>* SessionState::GetToBeExecutedNodes(
   auto it = to_be_executed_nodes_.find(sorted_idxs);
   return (it != to_be_executed_nodes_.end()) ? &it->second : nullptr;
 }
+
+static Status GetSubGraphSessionStatesOrtFormat(
+    flatbuffers::FlatBufferBuilder& builder,
+    const std::unordered_map<NodeIndex, std::unordered_map<std::string, std::unique_ptr<SessionState>>>& subgraph_session_states,
+    std::vector<flatbuffers::Offset<fbs::SubGraphSessionState>>& fbs_subgraph_session_states) {
+  fbs_subgraph_session_states.clear();
+  for (const auto& pair : subgraph_session_states) {
+    const auto node_idx = pair.first;
+    const auto& session_states = pair.second;
+    for (const auto& name_to_subgraph_session_state : session_states) {
+      const std::string& attr_name = name_to_subgraph_session_state.first;
+      SessionState& subgraph_session_state = *name_to_subgraph_session_state.second;
+      auto graph_id = builder.CreateString(GetSubGraphId(node_idx, attr_name));
+      flatbuffers::Offset<fbs::SessionState> session_state;
+      ORT_RETURN_IF_ERROR(
+          subgraph_session_state.SaveToOrtFormat(builder, session_state));
+
+      fbs_subgraph_session_states.push_back(
+          fbs::CreateSubGraphSessionState(builder, graph_id, session_state));
+    }
+  }
+  return Status::OK();
+}
+
+Status SessionState::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
+                                     flatbuffers::Offset<fbs::SessionState>& fbs_session_state) const {
+  size_t size = kernel_create_info_map_.size();
+  std::vector<uint32_t> node_indices;
+  std::vector<uint64_t> kernel_def_hashes;
+  node_indices.reserve(size);
+  kernel_def_hashes.reserve(size);
+  for (const auto& kvp : kernel_create_info_map_) {
+    node_indices.push_back(gsl::narrow<uint32_t>(kvp.first));
+    kernel_def_hashes.push_back(kvp.second->kernel_def->GetHash());
+  }
+
+  auto kernels = fbs::CreateKernelCreateInfosDirect(builder, &node_indices, &kernel_def_hashes);
+
+  // Subgraph session states
+  std::vector<flatbuffers::Offset<fbs::SubGraphSessionState>> sub_graph_session_states;
+  ORT_RETURN_IF_ERROR(
+      GetSubGraphSessionStatesOrtFormat(builder, subgraph_session_states_, sub_graph_session_states));
+
+  fbs_session_state = fbs::CreateSessionStateDirect(builder, kernels, &sub_graph_session_states);
+  return Status::OK();
+}
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 Status SessionState::CreateSubgraphSessionState() {
@@ -668,26 +720,88 @@ Status SessionState::CreateSubgraphSessionState() {
   return Status::OK();
 }
 
+Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_state,
+                                       const KernelRegistryManager& kernel_registry_manager) {
+  const auto* fbs_kcis = fbs_session_state.kernels();
+  ORT_RETURN_IF(nullptr == fbs_kcis, "Kernel create info is null. Invalid ORT format model.");
+  auto* node_indices = fbs_kcis->node_indices();
+  auto* kernel_def_hashes = fbs_kcis->kernel_def_hashes();
+  ORT_RETURN_IF(nullptr == node_indices, "Kernel create info node indices are null. Invalid ORT format model.");
+  ORT_RETURN_IF(nullptr == kernel_def_hashes, "Kernel create info hashes are null. Invalid ORT format model.");
+  ORT_RETURN_IF_NOT(node_indices->size() == kernel_def_hashes->size(),
+                    "Size mismatch for kernel create info node indexes and hashes. Invalid ORT format model.",
+                    node_indices->size(), " != ", kernel_def_hashes->size());
+
+  for (flatbuffers::uoffset_t i = 0; i < node_indices->size(); i++) {
+    auto node_idx = node_indices->Get(i);
+    auto kernal_hash = kernel_def_hashes->Get(i);
+
+    const Node* node = graph_.GetNode(node_idx);
+    ORT_RETURN_IF(node == nullptr, "Can't find node with index ", node_idx, ". Invalid ORT format model.");
+
+    const KernelCreateInfo* kci = nullptr;
+    ORT_RETURN_IF_ERROR(kernel_registry_manager.SearchKernelRegistry(*node, kernal_hash, &kci));
+    kernel_create_info_map_.emplace(node_idx, gsl::not_null<const KernelCreateInfo*>(kci));
+  }
+
+  if (!subgraph_session_states_.empty()) {
+    auto* fbs_sub_graph_session_states = fbs_session_state.sub_graph_session_states();
+    ORT_RETURN_IF(nullptr == fbs_sub_graph_session_states,
+                  "SessionState for subgraphs is null. Invalid ORT format model.");
+
+    for (const auto& pair : subgraph_session_states_) {
+      const auto node_idx = pair.first;
+      const auto& session_states = pair.second;
+      for (const auto& name_to_subgraph_session_state : session_states) {
+        const std::string& attr_name = name_to_subgraph_session_state.first;
+        SessionState& subgraph_session_state = *name_to_subgraph_session_state.second;
+
+        // Use the graphid as the key to search the for the fbs::SubGraphSessionState
+        std::string key = GetSubGraphId(node_idx, attr_name);
+        auto* fbs_sub_graph_ss = fbs_sub_graph_session_states->LookupByKey(key.c_str());
+        ORT_RETURN_IF(nullptr == fbs_sub_graph_ss,
+                      "Subgraph SessionState entry for ", key, " is missing. Invalid ORT format model.");
+
+        auto* fbs_sub_session_state = fbs_sub_graph_ss->session_state();
+        ORT_RETURN_IF(nullptr == fbs_sub_session_state,
+                      "Subgraph SessionState for ", key, " is null. Invalid ORT format model.");
+        subgraph_session_state.LoadFromOrtFormat(*fbs_sub_session_state, kernel_registry_manager);
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
 Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
                                           KernelRegistryManager& kernel_registry_manager,
                                           const SessionOptions& session_options,
+                                          const onnxruntime::experimental::fbs::SessionState* serialized_session_state,
                                           bool remove_initializers) {
   // recursively create the subgraph session state instances and populate the kernel create info in them.
   // it's simpler to handle the kernel create info recursively when deserializing,
   // so also do it recursively when calling PopulateKernelCreateInfo for consistency.
   ORT_RETURN_IF_ERROR(CreateSubgraphSessionState());
 
+  if (serialized_session_state) {
+    ORT_RETURN_IF_ERROR(LoadFromOrtFormat(*serialized_session_state, kernel_registry_manager));
+  } else {
 #if !defined(ORT_MINIMAL_BUILD)
-  ORT_RETURN_IF_ERROR(PopulateKernelCreateInfo(kernel_registry_manager));
+    ORT_RETURN_IF_ERROR(PopulateKernelCreateInfo(kernel_registry_manager));
+    return FinalizeSessionStateImpl(graph_location, kernel_registry_manager, nullptr, session_options,
+                                    remove_initializers);
+#else
+    ORT_UNUSED_PARAMETER(graph_location);
+    ORT_UNUSED_PARAMETER(kernel_registry_manager);
+    ORT_UNUSED_PARAMETER(session_options);
+    ORT_UNUSED_PARAMETER(remove_initializers);
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT,
+                  "Serialized session state must be provided from an ORT format model in this build.");
+#endif
+  }
+
   return FinalizeSessionStateImpl(graph_location, kernel_registry_manager, nullptr, session_options,
                                   remove_initializers);
-#else
-  ORT_UNUSED_PARAMETER(graph_location);
-  ORT_UNUSED_PARAMETER(kernel_registry_manager);
-  ORT_UNUSED_PARAMETER(session_options);
-  ORT_UNUSED_PARAMETER(remove_initializers);
-  return Status(ONNXRUNTIME, NOT_IMPLEMENTED, "TODO: Add deserialization of kernel create info.");
-#endif
 }
 
 Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_TYPE>& graph_location,

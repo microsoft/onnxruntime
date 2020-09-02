@@ -502,18 +502,24 @@ class PlannerImpl {
     auto& weights = graph_viewer_.GetAllInitializedTensors();
     std::vector<std::vector<OrtMemoryInfo>> locations(plan_.allocation_plan.size());
     for (auto& node : graph_viewer_.Nodes()) {
-      ORT_RETURN_IF_ERROR(onnxruntime::Node::ForEachWithIndex(
+      auto status = onnxruntime::Node::ForEachWithIndex(
           node.InputDefs(), [this, &locations, &node, &weights](const onnxruntime::NodeArg& def, size_t index) {
-            try {
+            auto sub_status = Status::OK();
+            ORT_TRY {
               auto& def_name = def.Name();
               if (!weights.count(def_name)) return Status::OK();
               auto wt_index = Index(def_name);
               locations[wt_index].emplace_back(GetLocationForNodeInput(index, node));
-            } catch (std::exception& ex) {
-              return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
             }
-            return Status::OK();
-          }));
+            ORT_CATCH(const std::exception& ex) {
+              ORT_HANDLE_EXCEPTION([&]() {
+                sub_status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
+              });
+            }
+            return sub_status;
+          });
+
+      ORT_RETURN_IF_ERROR(status);
     }
     for (size_t i = 0; i != locations.size(); ++i) {
       const std::vector<OrtMemoryInfo>& loc = locations[i];

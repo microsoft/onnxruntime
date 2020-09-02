@@ -152,13 +152,28 @@ Status TrainingSession::ConfigureForTraining(
                                          config.distributed_config.horizontal_parallel_size,
                                          config.distributed_config.pipeline_parallel_size});
 
+  const int32_t pipeline_stage_id = config.pipeline_config.has_value() ?
+                              DistributedRunContext::RankInGroup(WorkerGroupType::ModelParallel) :
+                              -1;
+
   if (config.pipeline_config.has_value() && config.pipeline_config.value().do_partition) {
     // Apply online pipeline partition to graph obj. This needs to be done first before any graph
     // transportation which may alter node_arg and invalidate cut_list info from the original graph.
+    ORT_ENFORCE(pipeline_stage_id >= 0, "invalid pipelie stage id (", pipeline_stage_id, ") before doing online partition.");
+
     ORT_RETURN_IF_ERROR(ApplyPipelinePartitionToMainGraph(model_->MainGraph(),
                                                           config.pipeline_config.value().cut_list,
-                                                          config.distributed_config.world_rank,
-                                                          config.distributed_config.world_size));
+                                                          pipeline_stage_id,
+                                                          config.distributed_config.pipeline_parallel_size));
+
+    if (config.pipeline_config.value().partitioned_model_path.has_value()) {
+      // Save the partitioned file out.
+      // To avoid writing conflict, only the ranks in first pipeline group write the partition file out.
+      if (DistributedRunContext::GroupId(WorkerGroupType::ModelParallel) == 0) {
+        ORT_IGNORE_RETURN_VALUE(Save(
+            config.pipeline_config.value().partitioned_model_path.value(), SaveOption::NO_RELOAD));
+      }
+    }
   }
 
   is_mixed_precision_enabled_ = config.mixed_precision_config.has_value();
@@ -170,7 +185,7 @@ Status TrainingSession::ConfigureForTraining(
   // enabled, we need to devise another way to check MP stages.
   bool enable_loss_scale = is_mixed_precision_enabled_ &&
                            (!config.pipeline_config.has_value() ||
-                            (config.distributed_config.world_rank + 1 == config.distributed_config.world_size));
+                            (pipeline_stage_id + 1 == config.distributed_config.pipeline_parallel_size));
   optional<std::string> loss_scale_input_name =
       enable_loss_scale ? optional<std::string>{""} : optional<std::string>{};
   if (config.pipeline_config.has_value()) {
@@ -353,9 +368,12 @@ Status TrainingSession::ConfigureForTraining(
   // If the current node is in rank0 or if the current session is running pipeline (in which case different rank would
   // store different model partition), and if model_with_training_graph_path is specified, save the model.
   // Note: in the pipeline case, different ranks may resident in the same node. This could lead to a potential write
-  // conflict. It is user's responsibility to make sure different rank is passed in with different
+  // conflict. It is user's responsibility to make sure different rank is passed in with different. Also, to avoid
+  // writing conflict, only the ranks in first pipeline group write the partition file out.
   // model_with_training_graph_path value.
-  if ((IsRootNode(config) || config.pipeline_config.has_value()) && config.model_with_training_graph_path.has_value()) {
+  if ((IsRootNode(config) || (config.pipeline_config.has_value() &&
+                              DistributedRunContext::GroupId(WorkerGroupType::ModelParallel) == 0)) &&
+      config.model_with_training_graph_path.has_value()) {
     ORT_IGNORE_RETURN_VALUE(Save(
         config.model_with_training_graph_path.value(), SaveOption::NO_RELOAD));
   }
