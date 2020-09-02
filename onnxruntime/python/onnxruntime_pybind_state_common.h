@@ -42,9 +42,6 @@ struct PySessionOptions : public SessionOptions {
 
 // Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
 struct PyInferenceSession {
-  // Default ctor is present only to be invoked by the PyTrainingSession class
-  PyInferenceSession() {}
-
   PyInferenceSession(Environment& env, const PySessionOptions& so, const std::string& arg, bool is_arg_file_name) {
     if (is_arg_file_name) {
       // Given arg is the file path. Invoke the corresponding ctor().
@@ -70,6 +67,10 @@ struct PyInferenceSession {
   virtual ~PyInferenceSession() {}
 
  protected:
+  PyInferenceSession(std::unique_ptr<InferenceSession> sess) {
+    sess_ = std::move(sess);
+  }
+
   // Hold CustomOpLibrary resources so as to tie it to the life cycle of the InferenceSession needing it.
   // NOTE: Declare this above `sess_` so that this is destructed AFTER the InferenceSession instance -
   // this is so that the custom ops held by the InferenceSession gets destroyed prior to the library getting unloaded

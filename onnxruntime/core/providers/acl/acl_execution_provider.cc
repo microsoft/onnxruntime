@@ -70,24 +70,24 @@ ACLExecutionProvider::ACLExecutionProvider(const ACLExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kAclExecutionProvider} {
   ORT_UNUSED_PARAMETER(info);
 
-  DeviceAllocatorRegistrationInfo default_memory_info{
-      OrtMemTypeDefault,
+  AllocatorCreationInfo default_memory_info{
       [](int) {
         return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo(ACL, OrtAllocatorType::OrtDeviceAllocator));
       },
-      std::numeric_limits<size_t>::max()};
+      0,
+      info.create_arena};
 
-  InsertAllocator(CreateAllocator(default_memory_info, 0, info.create_arena));
+  InsertAllocator(CreateAllocator(default_memory_info));
 
-  DeviceAllocatorRegistrationInfo cpu_memory_info{
-      OrtMemTypeCPUOutput,
+  AllocatorCreationInfo cpu_memory_info{
       [](int) {
         return onnxruntime::make_unique<CPUAllocator>(
             OrtMemoryInfo(ACL_CPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
       },
-      std::numeric_limits<size_t>::max()};
+      0,
+      info.create_arena};
 
-  InsertAllocator(CreateAllocator(cpu_memory_info, 0, info.create_arena));
+  InsertAllocator(CreateAllocator(cpu_memory_info));
 }
 
 ACLExecutionProvider::~ACLExecutionProvider() {

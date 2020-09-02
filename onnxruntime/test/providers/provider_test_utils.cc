@@ -7,6 +7,7 @@
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/session/inference_session.h"
+#include "core/graph/model_load_utils.h"
 #include "gmock/gmock.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
@@ -678,6 +679,22 @@ void OpTester::Run(
 #ifndef NDEBUG
     run_called_ = true;
 #endif
+
+    static bool allow_released_onnx_opset_only =
+        model_load_utils::IsAllowReleasedONNXOpsetsOnlySet();
+    if (allow_released_onnx_opset_only) {
+      auto& onnx_released_versions =
+          ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().LastReleaseVersionMap();
+      auto it = onnx_released_versions.find(domain_);
+      if (it != onnx_released_versions.end() && opset_version_ > it->second) {
+        LOGS_DEFAULT(WARNING) << "Encountered model with opset version greater than released onnx opset version. "
+                              << "Skipping this test. To run this test set environment variable ALLOW_RELEASED_ONNX_OPSET_ONLY to \"0\". "
+                              << "Opset version of current model is " << opset_version_
+                              << ", the latest released onnx opset version is " << it->second << ".";
+        GTEST_SKIP();
+      }
+    }
+
     fetches_.clear();
     bool cache_enabled = cached_model_ != nullptr;
     auto p_model = !cache_enabled ? BuildGraph() : cached_model_;
