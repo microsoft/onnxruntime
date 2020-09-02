@@ -76,13 +76,11 @@ NcclContext::NcclContext() {
   MPI_Comm_group(MPI_COMM_WORLD, &mpi_world_group);
 
   // Initialize Data Parallel Group NCCL Communicator
-  LOGS_DEFAULT(WARNING) << "Initialize Data Parallel Group NCCL Communicator.";
   auto ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::DataParallel,
                                     &data_group_comm_);
   ORT_ENFORCE(ret.IsOK());
 
   // Initialize Horizontal Model Parallel Group NCCL Communicator
-  LOGS_DEFAULT(WARNING) << "Initialize Horizontal Model Parallel Group NCCL Communicator.";
   ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::HorizontalParallel,
                                &horizontal_group_comm_);
   ORT_ENFORCE(ret.IsOK());

@@ -24,9 +24,6 @@ Status NcclAllReduce::ComputeInternal(OpKernelContext* context) const {
 
     ncclDataType_t dtype = GetNcclDataType(onnx_type);
     NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, comm, stream));
-  
-    PrintTensor(*input_tensor, "Sum: " + context->NodeInputName(i), true);
-    PrintTensor(*output_tensor, "Sum: " + context->NodeOutputName(i), true);
 }
 
   return Status::OK();
@@ -116,9 +113,6 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
     }
 
     offset += tensor_bytes;
-
-    PrintTensor(*input_tensor, "Sum: " + context->NodeInputName(i), true);
-    PrintTensor(*output_tensor, "Sum: " + context->NodeOutputName(i), true);
   }
 
   return Status::OK();
