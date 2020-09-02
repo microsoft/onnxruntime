@@ -1,6 +1,6 @@
-# docker build --network=host --file Dockerfile.rocm3.5 --tag ort:rocm3.5-ort-dev .
+# docker build --network=host --file Dockerfile.rocm3.5.pytorch --tag ort:rocm3.5-pytorch .
 
-FROM rocm/tensorflow:rocm3.5-tf2.1-dev
+FROM rocm/pytorch:rocm3.5_ubuntu16.04_py3.6_pytorch
 
 RUN curl https://bazel.build/bazel-release.pub.gpg | apt-key add -
 RUN cat /dev/null > /etc/apt/sources.list.d/rocm.list
@@ -23,6 +23,9 @@ RUN apt-get -y install rocm-libs miopen-hip
 # Remove gtest and gmock
 RUN rm -rf /opt/rocm/include/gtest /opt/rocm/include/gmock
 
+# sh
+RUN rm /bin/sh && ln -s /bin/bash /bin/sh
+
 # Labels for the docker
 LABEL description="This docker sets up the environment to run ORT Training with AMD GPU"
 
@@ -36,35 +39,24 @@ ENV WORK_DIR=/work
 RUN mkdir -p $WORK_DIR
 WORKDIR $WORK_DIR
 
-# Infiniband setup, openmpi installed under /usr/mpi/gcc/openmpi-4.0.4rc3 doesn't support multi-thread
-ENV MOFED_VERSION=5.1-0.6.6.0
-ENV MOFED_OS=ubuntu18.04
+# Infiniband setup
+ENV MOFED_VERSION=5.0-2.1.8.0
+ENV MOFED_OS=ubuntu16.04
 ENV MOFED_FILENAME=MLNX_OFED_LINUX-${MOFED_VERSION}-${MOFED_OS}-x86_64
 RUN curl -fSsL https://www.mellanox.com/downloads/ofed/MLNX_OFED-${MOFED_VERSION}/${MOFED_FILENAME}.tgz | tar -zxpf -
 RUN cd MLNX_OFED_LINUX-${MOFED_VERSION}-${MOFED_OS}-x86_64 && \
-    ./mlnxofedinstall --force --user-space-only --without-fw-update --hpc && \
+    ./mlnxofedinstall --force --user-space-only --without-fw-update && \
     cd .. && \
     rm -r MLNX_OFED_LINUX-${MOFED_VERSION}-${MOFED_OS}-x86_64
 
-# install miniconda (comes with python 3.7 default)
-ARG CONDA_VERSION=4.7.10
-ARG CONDA_URL=https://repo.anaconda.com/miniconda/Miniconda3-${CONDA_VERSION}-Linux-x86_64.sh
-RUN curl -fSsL --insecure ${CONDA_URL} -o install-conda.sh &&\
-    /bin/bash ./install-conda.sh -b -p /opt/conda &&\
-    /opt/conda/bin/conda clean -ya
-ENV PATH=/opt/conda/bin:${PATH}
+# python env
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.6 1
 
 ARG NUMPY_VERSION=1.18.5
 ARG ONNX_VERSION=1.7.0
-RUN conda install -y \
-        numpy=${NUMPY_VERSION} \
-        cmake \
-        ninja \
-        pyyaml \
-        cffi \
-        setuptools \
-    && pip install --no-cache-dir wheel tqdm boto3 requests six ipdb h5py html2text nltk progressbar \
+RUN pip3 install --no-cache-dir wheel tqdm boto3 requests six ipdb h5py html2text nltk progressbar pyyaml \
         git+https://github.com/NVIDIA/dllogger \
+        numpy==${NUMPY_VERSION} \
         onnx=="${ONNX_VERSION}"
 
 ENV GITHUB_DIR=$WORK_DIR/github
@@ -135,17 +127,8 @@ RUN git clone --recursive -b wezhan/amdgpu https://github.com/microsoft/onnxrunt
     --nccl_home /opt/rocm \
 	--enable_training \
   && test -f $ORT_DIR/build/Release/onnxruntime_training_bert \
-  && pip install $ORT_DIR/build/Release/dist/*.whl \
+  && pip3 install $ORT_DIR/build/Release/dist/*.whl \
   && ldconfig
-
-# OpenBLAS
-ARG OpenBLAS_VERSION=0.3.10
-ENV OpenBLAS_DIR=$WORK_DIR/OpenBLAS-${OpenBLAS_VERSION}
-RUN git clone https://github.com/xianyi/OpenBLAS.git \
-  && cd OpenBLAS \
-  && git checkout v$OpenBLAS_VERSION \
-  && make TARGET=ZEN \
-  && make install PREFIX=$OpenBLAS_DIR
 
 # Enable ssh access without password needed
 RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/g' /etc/ssh/sshd_config
