@@ -12,7 +12,7 @@ namespace onnxruntime {
 namespace functors {
 
 template<typename T>
-struct Log : public ElementWiseRangedTransform<T> {
+struct Log final : public ElementWiseRangedTransform<T> {
   Status Init(const onnxruntime::NodeAttributes) {
     return Status::OK();
   }
@@ -35,7 +35,7 @@ struct Log : public ElementWiseRangedTransform<T> {
 };
 
 template <typename T>
-struct Abs : public ElementWiseRangedTransform<T> {
+struct Abs final : public ElementWiseRangedTransform<T> {
   Status Init(const onnxruntime::NodeAttributes) {
     return Status::OK();
   }
@@ -58,7 +58,7 @@ struct Abs : public ElementWiseRangedTransform<T> {
 };
 
 template <typename T>
-struct Neg : public ElementWiseRangedTransform<T> {
+struct Neg final : public ElementWiseRangedTransform<T> {
   Status Init(const onnxruntime::NodeAttributes) {
     return Status::OK();
   }
@@ -81,7 +81,7 @@ struct Neg : public ElementWiseRangedTransform<T> {
 };
 
 template <typename T>
-struct Floor : public ElementWiseRangedTransform<T> {
+struct Floor final : public ElementWiseRangedTransform<T> {
   Status Init(const onnxruntime::NodeAttributes) {
     return Status::OK();
   }
@@ -104,7 +104,7 @@ struct Floor : public ElementWiseRangedTransform<T> {
 };
 
 template <typename T>
-struct Ceil : public ElementWiseRangedTransform<T> {
+struct Ceil final : public ElementWiseRangedTransform<T> {
   Status Init(const onnxruntime::NodeAttributes) {
     return Status::OK();
   }
@@ -127,7 +127,7 @@ struct Ceil : public ElementWiseRangedTransform<T> {
 };
 
 template <typename T>
-struct Reciprocal : public ElementWiseRangedTransform<T> {
+struct Reciprocal final : public ElementWiseRangedTransform<T> {
   Status Init(const onnxruntime::NodeAttributes) {
     return Status::OK();
   }
@@ -150,7 +150,7 @@ struct Reciprocal : public ElementWiseRangedTransform<T> {
 };
 
 template <typename T>
-struct Sqrt : public ElementWiseRangedTransform<T> {
+struct Sqrt final : public ElementWiseRangedTransform<T> {
   Status Init(const onnxruntime::NodeAttributes) {
     return Status::OK();
   }
@@ -173,7 +173,7 @@ struct Sqrt : public ElementWiseRangedTransform<T> {
 };
 
 template <typename T>
-struct Exp : public ElementWiseRangedTransform<T> {
+struct Exp final : public ElementWiseRangedTransform<T> {
   Status Init(const onnxruntime::NodeAttributes) {
     return Status::OK();
   }
@@ -766,6 +766,7 @@ void BroadcastOneSpan(concurrency::ThreadPool* tp, double unit_cost, TOutput* ou
                     const TInput* input0_ptr, int64_t input0_size, const TInput* input1_ptr, int64_t input1_size,
                              Input0Scalar input0scalar, Input1Scalar input1scalar, General general) {
   if (input0_size == 1) {
+    ORT_ENFORCE(input1_size == output_size);
     concurrency::ThreadPool::TryParallelFor(tp, output_size, 
                                 {static_cast<float>(sizeof(TInput)), static_cast<float>(sizeof(TOutput)), unit_cost},
                                [=](std::ptrdiff_t first, std::ptrdiff_t last) {
@@ -775,6 +776,7 @@ void BroadcastOneSpan(concurrency::ThreadPool* tp, double unit_cost, TOutput* ou
                                  input0scalar(output_map, *input0_ptr, input1_map);
                                });
   } else if (input1_size == 1) {
+    ORT_ENFORCE(input0_size == output_size);
     concurrency::ThreadPool::TryParallelFor(tp, output_size,
                                 {static_cast<float>(sizeof(TInput)), static_cast<float>(sizeof(TOutput)), unit_cost},
                                [=](std::ptrdiff_t first, std::ptrdiff_t last) {
@@ -803,32 +805,33 @@ Status BroadcastTwo(OpKernelContext& context, Input0Scalar input0scalar, Input1S
     TBroadcastOutput<TOutput> output(bc.GetSpanSize(), *context.Output(0, bc.GetOutputShape()));
     BroadcastLoop(bc, output, input0scalar, input1scalar, general);
   } else {
-  const Tensor* input0_tensor = context.Input<Tensor>(0);
-  const Tensor* input1_tensor = context.Input<Tensor>(1);
-  TBroadcaster<TInput, TInput> bc(*input0_tensor, *input1_tensor);
-  Tensor& output_tensor = *context.Output(0, bc.GetOutputShape());
-  auto span_size = bc.GetSpanSize();
-  int64_t output_size = output_tensor.Shape().Size();
+    const Tensor* input0_tensor = context.Input<Tensor>(0);
+    const Tensor* input1_tensor = context.Input<Tensor>(1);
+    TBroadcaster<TInput, TInput> bc(*input0_tensor, *input1_tensor);
+    Tensor& output_tensor = *context.Output(0, bc.GetOutputShape());
+    auto span_size = bc.GetSpanSize();
+    int64_t output_size = output_tensor.Shape().Size();
 
-  concurrency::ThreadPool* tp = context.GetOperatorThreadPool();
-  if (span_size != 0) {
-    if (output_size == static_cast<int64_t>(span_size)) {  // Only one big span for all data, parallel inside it
-      BroadcastOneSpan(tp, unit_cost, output_tensor.MutableData<TOutput>(), output_size,
-                       input0_tensor->Data<TInput>(), input0_tensor->Shape().Size(),
-                       input1_tensor->Data<TInput>(), input1_tensor->Shape().Size(),
-                       input0scalar, input1scalar, general);
-    } else {
-      concurrency::ThreadPool::TryParallelFor(
-          tp, output_size / span_size,
-          {static_cast<float>(sizeof(TInput)) * span_size, static_cast<float>(sizeof(TOutput)) * span_size, unit_cost * span_size},
-          [=, &bc, &output_tensor](std::ptrdiff_t first_span, std::ptrdiff_t last_span) {
-            TBroadcaster<TInput, TInput> span_bc(bc);
-            TBroadcastOutput<TOutput> span_output(span_size, output_tensor, first_span * span_size, last_span * span_size);
-            span_bc.AdvanceBy(first_span * span_size);
-            BroadcastLoop(span_bc, span_output, input0scalar, input1scalar, general);
-          });
+    concurrency::ThreadPool* tp = context.GetOperatorThreadPool();
+    if (span_size != 0) {
+      if (output_size == static_cast<int64_t>(span_size)) {  // Only one big span for all data, parallel inside it
+        ORT_ENFORCE((output_size % span_size) == 0);
+        BroadcastOneSpan(tp, unit_cost, output_tensor.MutableData<TOutput>(), output_size,
+                         input0_tensor->Data<TInput>(), input0_tensor->Shape().Size(),
+                         input1_tensor->Data<TInput>(), input1_tensor->Shape().Size(),
+                         input0scalar, input1scalar, general);
+      } else {
+        concurrency::ThreadPool::TryParallelFor(
+            tp, output_size / span_size,
+            {static_cast<float>(sizeof(TInput)) * span_size, static_cast<float>(sizeof(TOutput)) * span_size, unit_cost * span_size},
+            [=, &bc, &output_tensor](std::ptrdiff_t first_span, std::ptrdiff_t last_span) {
+              TBroadcaster<TInput, TInput> span_bc(bc);
+              TBroadcastOutput<TOutput> span_output(span_size, output_tensor, first_span * span_size, last_span * span_size);
+              span_bc.AdvanceBy(first_span * span_size);
+              BroadcastLoop(span_bc, span_output, input0scalar, input1scalar, general);
+            });
+      }
     }
-  }
   }
   return Status::OK();
 }
