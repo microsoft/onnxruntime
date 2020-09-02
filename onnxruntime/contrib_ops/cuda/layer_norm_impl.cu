@@ -42,8 +42,9 @@ __device__ void cuWelfordOnlineSum(
   U delta = curr - mu;
   U lmean = mu + delta / count;
   mu = lmean;
-  U delta2 = curr - lmean;
-  sigma2 = sigma2 + delta * delta2;
+  //U delta2 = curr - lmean;
+  //sigma2 = sigma2 + delta * delta2;
+  sigma2 = sigma2 + curr * curr;
 }
 
 template <typename U>
@@ -63,7 +64,8 @@ __device__ void cuChanOnlineSum(
     nA = nA / nX;
     nB = nB / nX;
     mu = nA * mu + nB * muB;
-    sigma2 = sigma2 + sigma2B + delta * delta * nA * nB * nX;
+    //sigma2 = sigma2 + sigma2B + delta * delta * nA * nB * nX;
+    sigma2 = sigma2 + sigma2B;
   } else {
     mu = U(0);
     sigma2 = U(0);
@@ -92,7 +94,7 @@ __device__ void cuWelfordMuSigma2(
     // one warp normalizes one n1 index,
     // synchronization is implicit
     // initialize with standard Welford algorithm
-    const int numx = blockDim.x * blockDim.y;
+    const int numx = blockDim.x * blockDim.y; 
     const int thrx = threadIdx.x + threadIdx.y * blockDim.x;
     const T* lvals = vals + i1 * n2;
     int l = 4 * thrx;
@@ -327,10 +329,15 @@ __global__ void cuApplyLayerNorm(
         U curr = static_cast<U>(lvals[i]);
         ovals[i] = gamma[i] * static_cast<T>(c_invvar * (curr - mu)) + beta[i];
       }
+    // depends on if scale/gemma is needed for T5 layer norm
+    } else if (gemma != NULL) {
+      for (int i = thrx; i < n2; i += numx) {
+        U curr = static_cast<U>(lvals[i]);
+        ovals[i] = gamma[i] * static_cast<T>(c_invvar * curr);
     } else {
       for (int i = thrx; i < n2; i += numx) {
         U curr = static_cast<U>(lvals[i]);
-        ovals[i] = static_cast<T>(c_invvar * (curr - mu));
+        ovals[i] = static_cast<T>(c_invvar * curr);
       }
     }
     if (threadIdx.x == 0 && threadIdx.y == 0) {

@@ -46,7 +46,8 @@ Status LayerNorm<T, U>::ComputeInternal(OpKernelContext* ctx) const {
 
   auto X_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
   auto scale_data = reinterpret_cast<const CudaT*>(scale->template Data<T>());
-  auto bias_data = reinterpret_cast<const CudaT*>(bias->template Data<T>());
+  // T5 layernorm doesn't use bias
+  //auto bias_data = reinterpret_cast<const CudaT*>(bias->template Data<T>());
 
   const TensorShape& x_shape = X->Shape();
   const int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
