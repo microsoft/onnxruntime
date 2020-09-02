@@ -348,15 +348,34 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
 
   const std::string& provider_type = p_exec_provider->Type();
 
-  // DML's memory is not byte addressable and hence mem pattern doesn't work.
+  // Some session option values (default or user provided) may not work with some EPs.
+  // Rather than put the onus on the user to know these, make the appropriate change while logging the change.
   if (provider_type == onnxruntime::kDmlExecutionProvider) {
+    // DML's memory is not byte addressable and hence mem pattern doesn't work.
     if (session_options_.enable_mem_pattern) {
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT,
-                    "Memory pattern must be disabled before registering DMLExecutionProvider");
+      LOGS(*session_logger_, WARNING)
+          << "Having memory pattern enabled is not supported while using the DML Execution Provider. "
+          << "So disabling it for this session since it uses the DML Execution Provider.";
+      session_options_.enable_mem_pattern = false;
     }
+
+    // Parallel execution mode does not support DML EP
     if (session_options_.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT,
-                    "Sequential execution must be enabled before registering DMLExecutionProvider");
+      LOGS(*session_logger_, WARNING)
+          << "Parallel execution mode does not support the DML Execution Provider. "
+          << "So making the execution mode sequential for this session since it uses the DML Execution Provider.";
+
+      session_options_.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+    }
+  }
+
+  if (provider_type == onnxruntime::kCudaExecutionProvider) {
+    // Parallel execution mode does not support the CUDA EP
+    if (session_options_.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
+      LOGS(*session_logger_, WARNING)
+          << "Parallel execution mode does not support the CUDA Execution Provider. "
+          << "So making the execution mode sequential for this session since it uses the CUDA Execution Provider.";
+      session_options_.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
     }
   }
 
@@ -993,14 +1012,6 @@ common::Status InferenceSession::Initialize() {
         *session_logger_,
         session_profiler_,
         session_options_.use_deterministic_compute);
-
-    if (session_options_.execution_mode == ExecutionMode::ORT_PARALLEL &&
-        execution_providers_.Get(onnxruntime::kCudaExecutionProvider)) {
-      status = common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                              "Parallel execution mode doesn't support CUDA Execution Provider currently.");
-      LOGS(*session_logger_, ERROR) << status.ErrorMessage();
-      return status;
-    }
 
     onnxruntime::Graph& graph = model_->MainGraph();
 
