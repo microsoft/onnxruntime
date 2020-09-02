@@ -29,6 +29,7 @@ from orttraining_transformer_trainer import ORTTransformerTrainer
 import torch
 
 from utils_multiple_choice import MultipleChoiceDataset, Split, SwagProcessor
+from orttraining_run_glue import verify_old_and_new_api_are_equal
 
 logger = logging.getLogger(__name__)
 
@@ -78,10 +79,10 @@ class ORTMultipleChoiceTest(unittest.TestCase):
     def setUp(self):
         # configurations not to be changed accoss tests
         self.max_seq_length = 80
-        self.train_batch_size = 2
+        self.train_batch_size = 16
         self.eval_batch_size = 2
         self.learning_rate = 2e-5
-        self.num_train_epochs = 3.0
+        self.num_train_epochs = 1.0
         self.local_rank = -1
         self.overwrite_output_dir = True
         self.gradient_accumulation_steps = 8
@@ -91,22 +92,34 @@ class ORTMultipleChoiceTest(unittest.TestCase):
         self.logging_steps = 10
 
     def test_bert_with_swag(self):
-        expected_acc = 0.7883135059482156
-        expected_loss = 0.6474186203172139
+        expected_acc = 0.7640207937618715
+        expected_loss = 0.6234657892213054
+        results_per_api = dict()
+        for use_new_api in [False, True]:
+            results = self.run_multiple_choice(model_name="bert-base-cased", task_name="swag", fp16=False, use_new_api=use_new_api)
+            # assert_allclose(results['acc'], expected_acc)
+            # assert_allclose(results['loss'], expected_loss)
+            results_per_api[use_new_api] = results
 
-        results = self.run_multiple_choice(model_name="bert-base-cased", task_name="swag", fp16=False)
-        assert_allclose(results['acc'], expected_acc)
-        assert_allclose(results['loss'], expected_loss)
+        verify_old_and_new_api_are_equal(results_per_api)
 
     def test_bert_fp16_with_swag(self):
-        expected_acc = 0.7882135359392183
-        expected_loss = 0.6469693916158167
+        # larger batch can be handled with mixed precision
+        self.train_batch_size = 32
 
-        results = self.run_multiple_choice(model_name="bert-base-cased", task_name="swag", fp16=True)
-        assert_allclose(results['acc'], expected_acc)
-        assert_allclose(results['loss'], expected_loss)
+        expected_acc = 0.7482255323402979
+        expected_loss = 0.6665529619455844
 
-    def run_multiple_choice(self, model_name, task_name, fp16):
+        results_per_api = dict()
+        for use_new_api in [False, True]:
+            results = self.run_multiple_choice(model_name="bert-base-cased", task_name="swag", fp16=True, use_new_api=use_new_api)
+            assert_allclose(results['acc'], expected_acc)
+            assert_allclose(results['loss'], expected_loss)
+            results_per_api[use_new_api] = results
+
+        verify_old_and_new_api_are_equal(results_per_api)
+
+    def run_multiple_choice(self, model_name, task_name, fp16, use_new_api):
         model_args = ModelArguments(model_name_or_path=model_name, cache_dir=self.cache_dir)
         data_args = DataTrainingArguments(task_name=task_name, data_dir=self.data_dir,
             max_seq_length=self.max_seq_length)
@@ -150,6 +163,7 @@ class ORTMultipleChoiceTest(unittest.TestCase):
             finetuning_task=data_args.task_name,
             cache_dir=model_args.cache_dir,
         )
+
         tokenizer = AutoTokenizer.from_pretrained(
             model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
             cache_dir=model_args.cache_dir,
@@ -196,28 +210,45 @@ class ORTMultipleChoiceTest(unittest.TestCase):
 
         if model_name.startswith('bert'):
             model_desc = ModelDescription([
-                IODescription('input_ids', [self.train_batch_size, num_labels, data_args.max_seq_length], torch.int64, num_classes=model.config.vocab_size),
-                IODescription('attention_mask', [self.train_batch_size, num_labels, data_args.max_seq_length], torch.int64, num_classes=2),
-                IODescription('token_type_ids', [self.train_batch_size, num_labels, data_args.max_seq_length], torch.int64, num_classes=2),
-                IODescription('labels', [self.train_batch_size, num_labels], torch.int64, num_classes=num_labels)], [
-                IODescription('loss', [], torch.float32),
-                IODescription('reshaped_logits', [self.train_batch_size, num_labels], torch.float32)])
+                IODescription('input_ids', ['batch', num_labels, 'max_seq_len_in_batch']),
+                IODescription('attention_mask', ['batch', num_labels, 'max_seq_len_in_batch']),
+                IODescription('token_type_ids', ['batch', num_labels, 'max_seq_len_in_batch']),
+                IODescription('labels', ['batch', num_labels])], [
+                IODescription('loss', []),
+                IODescription('reshaped_logits', ['batch', num_labels])])
+            new_model_desc = {
+                'inputs': [
+                    ('input_ids', ['batch', num_labels, 'max_seq_len_in_batch'],),
+                    ('attention_mask', ['batch', num_labels, 'max_seq_len_in_batch'],),
+                    ('token_type_ids', ['batch', num_labels, 'max_seq_len_in_batch'],),
+                    ('labels', ['batch', num_labels],)],
+                'outputs': [('loss', [], True),
+                            ('reshaped_logits', ['batch', num_labels])]}
         else:
             model_desc = ModelDescription([
-                IODescription('input_ids', ['batch', num_labels, 'max_seq_len_in_batch'], torch.int64, num_classes=model.config.vocab_size),
-                IODescription('attention_mask', ['batch', num_labels, 'max_seq_len_in_batch'], torch.int64, num_classes=2),
-                IODescription('labels', ['batch', num_labels], torch.int64, num_classes=num_labels)], [
-                IODescription('loss', [], torch.float32),
-                IODescription('reshaped_logits', ['batch', num_labels], torch.float32)])
+                IODescription('input_ids', ['batch', num_labels, 'max_seq_len_in_batch']),
+                IODescription('attention_mask', ['batch', num_labels, 'max_seq_len_in_batch']),
+                IODescription('labels', ['batch', num_labels])], [
+                IODescription('loss', []),
+                IODescription('reshaped_logits', ['batch', num_labels])])
+            new_model_desc = {
+                'inputs': [
+                    ('input_ids', ['batch', num_labels, 'max_seq_len_in_batch'],),
+                    ('attention_mask', ['batch', num_labels, 'max_seq_len_in_batch'],),
+                    ('labels', ['batch', num_labels],)],
+                'outputs': [('loss', [], True),
+                            ('reshaped_logits', ['batch', num_labels])]}
 
         # Initialize the ORTTrainer within ORTTransformerTrainer
         trainer = ORTTransformerTrainer(
             model=model,
             model_desc=model_desc,
+            new_model_desc=new_model_desc,
             args=training_args,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
             compute_metrics=compute_metrics,
+            use_new_api=use_new_api
         )
 
         # Training

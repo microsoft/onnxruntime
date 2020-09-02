@@ -257,11 +257,20 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     getchar();
   }
 
-  try {
-    env = Ort::Env{logging_level, "Default"};
-  } catch (std::exception& ex) {
-    fprintf(stderr, "Error creating environment: %s \n", ex.what());
-    return -1;
+  {
+    bool failed = false;
+    ORT_TRY {
+      env = Ort::Env{logging_level, "Default"};
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        fprintf(stderr, "Error creating environment: %s \n", ex.what());
+        failed = true;
+      });
+    }
+
+    if (failed)
+      return -1;
   }
 
   std::vector<std::basic_string<PATH_CHAR_TYPE>> data_dirs;
@@ -545,6 +554,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"momentum", "not a registered function/op", {}},                 // Op not registered.
       {"momentum_multiple", "not a registered function/op", {}},        // Op not registered.
       {"nesterov_momentum", "not a registered function/op", {}},        // Op not registered.
+      {"cast_FLOAT_to_BFLOAT16", "onnx generate bfloat tensor as uint16 type", {}},
+      {"cast_BFLOAT16_to_FLOAT", "onnx generate bfloat tensor as uint16 type", {}},
+      {"sequence_insert_at_back", "onnx currently not supporting loading segment", {}},
+      {"sequence_insert_at_front", "onnx currently not supporting loading segment", {}},
   };
 
 #ifdef DISABLE_ML_OPS
@@ -740,6 +753,28 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"softmax_cross_entropy_sum_expanded", "Shape mismatch"});
     broken_tests.insert({"softmax_cross_entropy_sum_log_prob", "Shape mismatch"});
     broken_tests.insert({"softmax_cross_entropy_sum_log_prob_expanded", "Shape mismatch"});
+    broken_tests.insert({"nllloss_NCd1_ignore_index", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1_ignore_index_expanded", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1_mean_weight_negative_ignore_index", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1_mean_weight_negative_ignore_index_expanded", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1_weight", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1_weight_expanded", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1_weight_ignore_index", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1_weight_ignore_index_expanded", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1d2_no_weight_reduction_mean_ignore_index", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1d2_no_weight_reduction_mean_ignore_index_expanded", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1d2_with_weight_reduction_mean", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1d2_with_weight_reduction_mean_expanded", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1d2d3d4d5_mean_weight", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1d2d3d4d5_mean_weight_expanded", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1_ii", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1_ii_expanded", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1_mean_weight_negative_ii", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1_mean_weight_negative_ii_expanded", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1_weight_ii", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1_weight_ii_expanded", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1d2_no_weight_reduction_mean_ii", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1d2_no_weight_reduction_mean_ii_expanded", "wait for investigation"});
   }
 
   if (enable_tensorrt) {
@@ -895,12 +930,16 @@ int main(int argc, char* argv[]) {
 #endif
   Ort::Env env{nullptr};
   int retval = -1;
-  try {
+  ORT_TRY {
     retval = real_main(argc, argv, env);
-  } catch (std::exception& ex) {
-    fprintf(stderr, "%s\n", ex.what());
-    retval = -1;
   }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      fprintf(stderr, "%s\n", ex.what());
+      retval = -1;
+    });
+  }
+
   ::google::protobuf::ShutdownProtobufLibrary();
   return retval;
 }

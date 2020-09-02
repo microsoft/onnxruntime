@@ -1197,7 +1197,11 @@ Return Value:
     bool AllKernelsAreSmall = true;
 
     if (Dimensions > 3) {
+#ifdef MLAS_NO_EXCEPTION
+        abort();
+#else
         throw std::runtime_error("bad dimensions");
+#endif
     }
 
     for (size_t dim = 0; dim < Dimensions; dim++) {

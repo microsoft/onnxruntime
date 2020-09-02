@@ -17,8 +17,8 @@
 #include "core/framework/sparse_tensor.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph_viewer.h"
+#include "core/graph/onnx_protobuf.h"
 #include "gsl/gsl"
-#include "onnx/defs/schema.h"
 
 namespace onnxruntime {
 class IExecutionFrame;
@@ -103,10 +103,11 @@ class OpKernelContext {
   template <typename T>
   const T* Input(int index) const {
     const OrtValue* p_ml_value = GetInputMLValue(index);
-    try {
+    ORT_TRY {
       return p_ml_value ? &(p_ml_value->Get<T>()) : nullptr;
-    } catch (const std::exception& /*e*/) {
-      throw OnnxRuntimeException(ORT_WHERE_WITH_STACK, "Missing Input: " + kernel_->Node().InputDefs()[index]->Name());
+    }
+    ORT_CATCH(const std::exception& /*e*/) {
+      ORT_THROW("Missing Input: " + kernel_->Node().InputDefs()[index]->Name());
     }
   }
 
@@ -281,6 +282,8 @@ struct KernelCreateInfo {
   KernelCreateInfo(KernelCreateInfo&& other) noexcept
       : kernel_def(std::move(other.kernel_def)),
         kernel_create_func(std::move(other.kernel_create_func)) {}
+
+  KernelCreateInfo() = default;
 };
 
 using KernelCreateMap = std::multimap<std::string, KernelCreateInfo>;

@@ -7,8 +7,8 @@
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/contrib_ops/nchwc_schema_defs.h"
 #include "core/graph/contrib_ops/range_schema_defs.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/graph/op.h"
-#include "onnx/defs/schema.h"
 #include "onnx/defs/shape_inference.h"
 #include "onnx/defs/tensor_proto_util.h"
 #include "core/mlas/inc/mlas.h"
@@ -524,7 +524,7 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
       .Input(0, "X", "input tensor", "T")
       .Input(1, "bias", "bias tensor", "T", OpSchema::Optional)
       .Output(0, "Y", "output tensor", "T")
-      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
+      .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float or half tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SkipLayerNormalization)
@@ -1803,7 +1803,7 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
       .Output(0, "Y", "Matrix multiply results", "T")
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
       .SetDoc(TransposeScaleMatMul_doc)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
@@ -2714,7 +2714,7 @@ Example 4:
       .Output(2, "inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation.", "U", OpSchema::Optional)
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types (except mean and inv_std_var) to float tensors.")
       .TypeConstraint(
           "U",
@@ -2771,7 +2771,7 @@ inputs by their magnitude, rather than gates inputs by their sign as in ReLUs.)D
       .Output(0, "Y", "The output.", "T")
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
@@ -2844,6 +2844,76 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
           }
 
           // Shape inference
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+        }
+      });
+
+  static const char* Trilu_ver1_doc = R"DOC(
+      Returns the upper or lower triangular part of a 2-D matrix, or batches of 2-D matrices. If the attribute "upper" is set to true,
+      the upper triangular matrix is retained. Lower triangular matrix is retained otherwise. Default value for upper is true.
+      Trilu takes one input tensor of shape [*, N, M], where * is zero or more batch dimensions. The upper triangular part consists
+      of the elements on and above the given diagonal (k). The lower triangular part consists of elements on and below the diagonal.
+      All other elements in the matrix are set to zero.
+      If k = 0, the triangular part on and above/below the main diagonal is retained.
+      If upper is set to true, a positive k retains the upper triangular matrix excluding k diagonals above
+      the main diagonal. A negative k value includes as many diagonals below the main diagonal.
+      If upper is set to false, a positive k retains the lower triangular matrix including k diagonals above
+      the main diagonal. A negative k value excludes as many diagonals below the main diagonal.
+      )DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Trilu)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(Trilu_ver1_doc)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .Attr("upper",
+            "Boolean. Indicates whether upper or lower part of matrix is retained. Default is true.",
+            AttributeProto::INT,
+            static_cast<int64_t>(1))
+      .Input(
+          0,
+          "X",
+          "Input tensor of rank 2 or higher.",
+          "T")
+      .Input(
+          1,
+          "k",
+          "A 0-D tensor containing a single value corresponding to the number diagonals above or the main diagonal to exclude or include."
+          "Default value is 0 if it's not specified.",
+          "tensor(int64)",
+          OpSchema::Optional)
+      .Output(
+          0,
+          "Y",
+          "Output tensor of the same type and shape as the input tensor.",
+          "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)",
+           "tensor(float)",
+           "tensor(double)",
+           "tensor(bfloat16)",
+           "tensor(uint8)",
+           "tensor(uint16)",
+           "tensor(uint32)",
+           "tensor(uint64)",
+           "tensor(int8)",
+           "tensor(int16)",
+           "tensor(int32)",
+           "tensor(int64)",
+           "tensor(bool)"},
+          "Constrain input and output types to all numeric tensors and bool tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        using namespace ONNX_NAMESPACE;
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+        if (hasInputShape(ctx, 0)) {
+          const TensorShapeProto& input_shape =
+              ctx.getInputType(0)->tensor_type().shape();
+          const int rank = static_cast<int>(input_shape.dim_size());
+          if (rank < 2) {
+            fail_shape_inference("Input rank must be >= 2.")
+          }
           propagateShapeFromInputToOutput(ctx, 0, 0);
         }
       });

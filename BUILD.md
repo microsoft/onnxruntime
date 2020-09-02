@@ -124,7 +124,8 @@ GCC 4.x and below are not supported.
 |API|Command|Additional details|
 |-----------|-----------|-----------|
 |**Python**|--build_wheel||
-|**C# and C packages**|--build_csharp||
+|**C# and C packages**|--build_nuget|Builds C# bindings and creates nuget package. Currently supported on Windows and Linux only. Implies `--build_shared_lib` <br>
+Requires [dotnet](https://dotnet.microsoft.com/download) for building csharp bindings and [nuget.exe](https://docs.microsoft.com/en-us/nuget/install-nuget-client-tools#nugetexe-cli) for creating nuget package.|
 |**WindowsML**|--use_winml<br>--use_dml<br>--build_shared_lib|WindowsML depends on DirectML and the OnnxRuntime shared library|
 |**Java**|--build_java|Creates an onnxruntime4j.jar in the build directory, implies `--build_shared_lib`<br>Compiling the Java API requires [gradle](https://gradle.org) v6.1+ to be installed in addition to the usual requirements.|
 |**Node.js**|--build_nodejs|Build Node.js binding. Implies `--build_shared_lib`|
@@ -213,16 +214,45 @@ Dockerfile instructions are available [here](./dockerfiles#tensorrt)
 
 #### NVIDIA Jetson TX1/TX2/Nano/Xavier
 
-1. Indicate CUDA compiler, or add its location to the PATH.
-Cmake can't automatically find the correct nvcc if it's not in the PATH.
-```
-export CUDACXX="/usr/local/cuda/bin/nvcc"
-```
-or:
-```
-export PATH="/usr/local/cuda/bin:${PATH}"
-```
-2. Follow instructions in [Docker README](./dockerfiles/README.md) to build the wheel file. 
+These instructions are for JetPack SDK 4.4.
+
+1. Clone the ONNX Runtime repo on the Jetson host
+
+    ```bash
+    git clone --recursive https://github.com/microsoft/onnxruntime
+    ```
+
+2. Specify the CUDA compiler, or add its location to the PATH.
+
+   Cmake can't automatically find the correct nvcc if it's not in the PATH.
+
+    ```bash
+    export CUDACXX="/usr/local/cuda/bin/nvcc"
+
+    ```
+
+    or:
+
+    ```bash
+    export PATH="/usr/local/cuda/bin:${PATH}"
+    ```
+
+3. Install the ONNX Runtime build dependencies on the Jetpack 4.4 host:
+
+    ```bash
+    sudo apt install -y --no-install-recommends \
+      build-essential software-properties-common cmake libopenblas-dev \
+      libpython3.6-dev python3-pip python3-dev
+    ```
+
+4. Build the ONNX Runtime Python wheel:
+
+    ```bash
+    ./build.sh --update --config Release --build --build_wheel \
+    --use_cuda --cuda_home /usr/local/cuda --cudnn_home /usr/lib/aarch64-linux-gnu
+    ```
+
+    Note: You may add --use_tensorrt and --tensorrt_home options if you wish to use NVIDIA TensorRT (support is experimental), as well as any other options supported by build.sh script.
 
 ---
 
@@ -269,20 +299,20 @@ See more information on the nGraph Execution Provider [here](./docs/execution_pr
 See more information on the OpenVINO Execution Provider [here](./docs/execution_providers/OpenVINO-ExecutionProvider.md).
 
 #### Prerequisites
-1. Install the Intel<sup>®</sup> Distribution of OpenVINO<sup>TM</sup> Toolkit **Release 2020.3** for the appropriate OS and target hardware :
+1. Install the Intel<sup>®</sup> Distribution of OpenVINO<sup>TM</sup> Toolkit **Release 2020.4** for the appropriate OS and target hardware :
    * [Linux - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-linux)
    * [Linux - FPGA](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-linux-fpga)
    * [Windows - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-windows).
 
-   Follow [documentation](https://docs.openvinotoolkit.org/2020.3/index.html) for detailed instructions.
+   Follow [documentation](https://docs.openvinotoolkit.org/2020.4/index.html) for detailed instructions.
 
-  *Although 2020.3 LTS is the recommended OpenVINO version, [OpenVINO 2020.2](https://docs.openvinotoolkit.org/2020.2/index.html) is also additionally supported.*
+  *2020.4 is the recommended OpenVINO version. [OpenVINO 2020.2](https://docs.openvinotoolkit.org/2020.2/index.html) is minimal OpenVINO version requirement.*
 
 2. Configure the target hardware with specific follow on instructions:
-   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvinotoolkit.org/2020.3/_docs_install_guides_installing_openvino_windows.html#Install-GPU), [Linux](https://docs.openvinotoolkit.org/2020.3/_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
-   * To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow this getting started guide: [Linux](https://docs.openvinotoolkit.org/2020.3/_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
-   * To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow this configuration guide: [Windows](https://docs.openvinotoolkit.org/2020.3/_docs_install_guides_installing_openvino_windows.html#hddl-myriad), [Linux](https://docs.openvinotoolkit.org/2020.3/_docs_install_guides_installing_openvino_linux.html#install-VPU. Follow steps 3 and 4 to complete the configuration.
-   * To configure Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA, please follow this configuration guide: [Linux](https://docs.openvinotoolkit.org/2020.3/_docs_install_guides_installing_openvino_linux_fpga.html)
+   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvinotoolkit.org/2020.4/openvino_docs_install_guides_installing_openvino_windows.html#Install-GPU), [Linux](https://docs.openvinotoolkit.org/2020.4/openvino_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
+   * To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow this getting started guide: [Linux](https://docs.openvinotoolkit.org/2020.4/openvino_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
+   * To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow this configuration guide: [Windows](https://docs.openvinotoolkit.org/2020.4/openvino_docs_install_guides_installing_openvino_windows.html#hddl-myriad), [Linux](https://docs.openvinotoolkit.org/2020.4/openvino_docs_install_guides_installing_openvino_linux.html#install-VPU). Follow steps 3 and 4 to complete the configuration.
+   * To configure Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA, please follow this configuration guide: [Linux](https://docs.openvinotoolkit.org/2020.4/openvino_docs_install_guides_installing_openvino_linux_fpga.html)
 
 3. Initialize the OpenVINO environment by running the setupvars script as shown below:
    * For Linux run:
@@ -391,14 +421,14 @@ index 7dfa97c..6d99e71 100644
 #### Build Instructions
 ##### Windows
 ```
-.\build.bat --use_tvm --use_llvm --llvm_path=\llvm\install\path\lib\cmake\llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
+.\build.bat --llvm_path=\llvm\install\path\lib\cmake\llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
 ```
 
 * These instructions build the release flavor. The Debug build of LLVM would be needed to build with the Debug flavor of ONNX Runtime.
 
 ##### Linux:
 ```
-./build.sh --use_tvm --use_llvm --llvm_path=/llvm/install/path/lib/cmake/llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
+./build.sh --llvm_path=/llvm/install/path/lib/cmake/llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
 ```
 
 Dockerfile instructions are available [here](./dockerfiles#nuphar).
@@ -555,7 +585,7 @@ The Vitis-AI execution provider is only supported on Linux.
 .\build.bat --use_openmp
 ```
 
-##### Linux
+##### Linux/Mac OS X
 ```
 ./build.sh --use_openmp
 
@@ -586,26 +616,35 @@ The Vitis-AI execution provider is only supported on Linux.
 OnnxRuntime supports build options for enabling debugging of intermediate tensor shapes and data.
 
 #### Build Instructions
-Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUT to one of the values below.
+Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUT to build with this enabled.
 
 **Linux**
 ```
-./build.sh --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=VALUE
+./build.sh --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1
 ```
 
 **Windows**
 ```
-.\build.bat --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=VALUE
+.\build.bat --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1
 ```
 
-Values:
-* **0**: Disables this functionality if previously enabled; alternatively, delete CMakeCache.txt instead of setting this to 0
-* **1**: Dump tensor input/output shapes for all nodes to stdout
-* **2**: Dump tensor input/output shapes and output data for all nodes to stdout
+#### Configuration
+The debug dump behavior can be controlled with several environment variables.
+See [onnxruntime/core/framework/debug_node_inputs_outputs_utils.h](./onnxruntime/core/framework/debug_node_inputs_outputs_utils.h) for details.
 
+##### Examples
 
+To specify that node output data should be dumped (to stdout by default), set this environment variable:
+```
+ORT_DEBUG_NODE_IO_DUMP_OUTPUT_DATA=1
+```
 
-
+To specify that node output data should be dumped to files for nodes with name "Foo" or "Bar", set these environment variables:
+```
+ORT_DEBUG_NODE_IO_DUMP_OUTPUT_DATA=1
+ORT_DEBUG_NODE_IO_NODE_NAME_FILTER="Foo;Bar"
+ORT_DEBUG_NODE_IO_DUMP_DATA_TO_FILES=1
+```
 
 ---
 
@@ -837,10 +876,10 @@ pip3 install numpy
 # Build the latest cmake
 mkdir /code
 cd /code
-wget https://cmake.org/files/v3.13/cmake-3.13.5.tar.gz;
-tar zxf cmake-3.13.5.tar.gz
+wget https://cmake.org/files/v3.13/cmake-3.16.1.tar.gz;
+tar zxf cmake-3.16.1.tar.gz
 
-cd /code/cmake-3.13.5
+cd /code/cmake-3.16.1
 ./configure --system-curl
 make
 sudo make install

@@ -18,7 +18,7 @@ void ThrowOnError(OrtStatus* status) {
     std::string ort_error_message = OrtApis::GetErrorMessage(status);
     OrtErrorCode ort_error_code = OrtApis::GetErrorCode(status);
     OrtApis::ReleaseStatus(status);
-    throw Ort::Exception(std::move(ort_error_message), ort_error_code);
+    ORT_CXX_API_THROW(std::move(ort_error_message), ort_error_code);
   }
 }
 
@@ -43,12 +43,13 @@ struct OrtDefaultAllocator : OrtAllocatorImpl {
     return cpu_memory_info;
   }
 
- private:
-  OrtDefaultAllocator(const OrtDefaultAllocator&) = delete;
-  OrtDefaultAllocator& operator=(const OrtDefaultAllocator&) = delete;
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(OrtDefaultAllocator);
 
+ private:
   OrtMemoryInfo* cpu_memory_info;
 };
+
+#ifndef ORT_NO_EXCEPTIONS
 
 #define API_IMPL_BEGIN try {
 #define API_IMPL_END                                                \
@@ -56,6 +57,13 @@ struct OrtDefaultAllocator : OrtAllocatorImpl {
   catch (std::exception & ex) {                                     \
     return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what()); \
   }
+
+#else
+
+#define API_IMPL_BEGIN {
+#define API_IMPL_END }
+
+#endif
 
 ORT_API_STATUS_IMPL(OrtApis::GetAllocatorWithDefaultOptions, _Outptr_ OrtAllocator** out) {
   API_IMPL_BEGIN

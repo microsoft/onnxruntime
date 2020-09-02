@@ -173,6 +173,18 @@ if (onnxruntime_ENABLE_TRAINING)
   file(GLOB onnxruntime_python_capi_training_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/*.py"
   )
+  file(GLOB onnxruntime_python_root_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/experimental/*.py"
+  )
+  file(GLOB onnxruntime_python_amp_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/experimental/amp/*.py"
+  )
+  file(GLOB onnxruntime_python_optim_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/experimental/optim/*.py"
+  )
+  file(GLOB onnxruntime_python_train_tools_srcs CONFIGURE_DEPENDS
+    "${REPO_ROOT}/tools/python/register_custom_ops_pytorch_exporter.py"
+  )
 else()
   file(GLOB onnxruntime_python_capi_training_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/training/*.py"
@@ -192,8 +204,9 @@ file(GLOB onnxruntime_python_tools_featurizers_src CONFIGURE_DEPENDS
 file(GLOB onnxruntime_python_quantization_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/quantization/*.py"
 )
-list(REMOVE_ITEM onnxruntime_python_quantization_src
-  "${ONNXRUNTIME_ROOT}/python/tools/quantization/test_calibrate.py")
+file(GLOB onnxruntime_python_quantization_operators_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/tools/quantization/operators/*.py"
+)
 file(GLOB onnxruntime_python_datasets_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/datasets/*.py"
 )
@@ -213,6 +226,7 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/tools
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/tools/featurizer_ops
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/quantization
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/quantization/operators
   COMMAND ${CMAKE_COMMAND} -E copy
       ${ONNXRUNTIME_ROOT}/__init__.py
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/
@@ -256,15 +270,50 @@ add_custom_command(
       ${onnxruntime_python_quantization_src}
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/quantization/
   COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_quantization_operators_src}
+      $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/quantization/operators/
+  COMMAND ${CMAKE_COMMAND} -E copy
       ${REPO_ROOT}/VERSION_NUMBER
       $<TARGET_FILE_DIR:${test_data_target}>
 )
+
+if (onnxruntime_ENABLE_TRAINING)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/amp
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/optim
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_root_srcs}
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_amp_srcs}
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/amp/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_optim_srcs}
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/optim/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_train_tools_srcs}
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/
+  )
+endif()
 
 if (onnxruntime_USE_DNNL)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
         ${DNNL_DLL_PATH} $<TARGET_FILE:onnxruntime_providers_dnnl>
+        $<TARGET_FILE:onnxruntime_providers_shared>
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
+  )
+endif()
+
+if (onnxruntime_USE_TENSORRT)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${DNNL_DLL_PATH} $<TARGET_FILE:onnxruntime_providers_tensorrt>
+        $<TARGET_FILE:onnxruntime_providers_shared>
         $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
   )
 endif()

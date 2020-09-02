@@ -15,22 +15,18 @@ constexpr const char* NNAPI = "Nnapi";
 
 NnapiExecutionProvider::NnapiExecutionProvider()
     : IExecutionProvider{onnxruntime::kNnapiExecutionProvider} {
-  DeviceAllocatorRegistrationInfo device_info(
-      {OrtMemTypeDefault,
-       [](int) {
-         return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo(NNAPI, OrtAllocatorType::OrtDeviceAllocator));
-       },
-       std::numeric_limits<size_t>::max()});
+  AllocatorCreationInfo device_info(
+      [](int) {
+        return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo(NNAPI, OrtAllocatorType::OrtDeviceAllocator));
+      });
 
   InsertAllocator(CreateAllocator(device_info));
 
-  DeviceAllocatorRegistrationInfo cpu_memory_info(
-      {OrtMemTypeCPUOutput,
-       [](int) {
-         return onnxruntime::make_unique<CPUAllocator>(
-             OrtMemoryInfo(NNAPI, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
-       },
-       std::numeric_limits<size_t>::max()});
+  AllocatorCreationInfo cpu_memory_info(
+      [](int) {
+        return onnxruntime::make_unique<CPUAllocator>(
+            OrtMemoryInfo(NNAPI, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
+      });
 
   InsertAllocator(CreateAllocator(cpu_memory_info));
 }
@@ -166,7 +162,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
     // meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
     meta_def->since_version = 1;
-    sub_graph->SetMetaDef(meta_def);
+    sub_graph->SetMetaDef(std::move(meta_def));
 
     result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
   }

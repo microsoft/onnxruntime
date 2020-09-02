@@ -51,7 +51,7 @@ class DnnlKernel {
     ORT_UNUSED_PARAMETER(attributes_prefix);
   }
 
-  Status GetIntsAttr(ONNX_NAMESPACE::Provider_AttributeProto& proto, std::vector<int64_t>& values) {
+  Status GetIntsAttr(const Provider_AttributeProto& proto, std::vector<int64_t>& values) {
     ORT_RETURN_IF_NOT(proto.type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
     values.reserve(proto.ints_size());
     for (int i = 0; i < proto.ints_size(); i++) {
@@ -60,18 +60,18 @@ class DnnlKernel {
     return Status::OK();
   }
 
-  Status GetIntAttr(ONNX_NAMESPACE::Provider_AttributeProto& proto, int64_t& value) {
+  Status GetIntAttr(const Provider_AttributeProto& proto, int64_t& value) {
     ORT_RETURN_IF_NOT(proto.type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
     value = proto.i();
     return Status::OK();
   }
 
-  Status GetFloatAttr(ONNX_NAMESPACE::Provider_AttributeProto& proto, float& value) {
+  Status GetFloatAttr(const Provider_AttributeProto& proto, float& value) {
     ORT_RETURN_IF_NOT(proto.type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT);
     value = proto.f();
     return Status::OK();
   }
-  Status GetStringAttr(ONNX_NAMESPACE::Provider_AttributeProto& proto, std::string& value) {
+  Status GetStringAttr(const Provider_AttributeProto& proto, std::string& value) {
     ORT_RETURN_IF_NOT(proto.type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
     value = proto.s();
     return Status::OK();

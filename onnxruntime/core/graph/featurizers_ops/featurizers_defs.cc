@@ -3,10 +3,8 @@
 
 #include "core/graph/constants.h"
 #include "core/graph/featurizers_ops/featurizers_defs.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/graph/op.h"
-
-#include "onnx/defs/schema.h"
-#include "onnx/defs/shape_inference.h"
 
 #define MS_FEATURIZERS_OPERATOR_SCHEMA(name) MS_FEATURIZERS_OPERATOR_SCHEMA_UNIQ_HELPER(__COUNTER__, name)
 #define MS_FEATURIZERS_OPERATOR_SCHEMA_UNIQ_HELPER(Counter, name) MS_FEATURIZERS_OPERATOR_SCHEMA_UNIQ(Counter, name)

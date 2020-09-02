@@ -19,11 +19,9 @@ namespace onnxruntime {
 
 OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
                                     const InitializedTensorSet& initialized_tensor_set,
-                                    std::unique_ptr<CPUExecutionProvider> cpu_execution_provider) {
-  ORT_ENFORCE(cpu_execution_provider, "Provided CPU execution provider is a nullptr");
-  cpu_execution_provider_ = std::move(cpu_execution_provider);
-
-  allocator_ptr_ = cpu_execution_provider_->GetAllocator(device_id_, mem_type_);
+                                    const IExecutionProvider& execution_provider)
+    : execution_provider_(execution_provider) {
+  allocator_ptr_ = execution_provider_.GetAllocator(device_id_, mem_type_);
   ORT_ENFORCE(allocator_ptr_, "Failed to get allocator for optimizer");
 
   data_transfer_mgr_.RegisterDataTransfer(onnxruntime::make_unique<CPUDataTransfer>());
@@ -67,8 +65,8 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
 
 std::unique_ptr<const OpKernel> OptimizerExecutionFrame::Info::CreateKernel(const Node* node) const {
   std::unique_ptr<OpKernel> op_kernel;
-  std::shared_ptr<KernelRegistry> kernel_registry = cpu_execution_provider_->GetKernelRegistry();
-  auto status = kernel_registry->TryCreateKernel(*node, *cpu_execution_provider_, initializers_,
+  std::shared_ptr<KernelRegistry> kernel_registry = execution_provider_.GetKernelRegistry();
+  auto status = kernel_registry->TryCreateKernel(*node, execution_provider_, initializers_,
                                                  ort_value_name_idx_map_, FuncManager(), data_transfer_mgr_,
                                                  op_kernel);
 

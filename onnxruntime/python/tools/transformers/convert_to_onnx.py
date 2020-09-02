@@ -23,7 +23,7 @@ import torch
 import numpy
 import json
 from transformers import AutoConfig
-from gpt2_helper import Gpt2Helper, MODEL_CLASSES, DEFAULT_TOLERANCE
+from gpt2_helper import Gpt2Helper, MODEL_CLASSES, DEFAULT_TOLERANCE, PRETRAINED_GPT2_MODELS
 from gpt2_tester import Gpt2Tester
 from quantize_helper import QuantizeHelper
 from benchmark_helper import create_onnxruntime_session, setup_logger, prepare_environment, Precision
@@ -38,7 +38,7 @@ def parse_arguments():
                         '--model_name_or_path',
                         required=True,
                         type=str,
-                        help='Model path, or pretrained model name in the list: ' + ', '.join(['gpt2', 'distilgpt2']))
+                        help='Model path, or pretrained model name in the list: ' + ', '.join(PRETRAINED_GPT2_MODELS))
 
     parser.add_argument('--model_class',
                         required=False,
@@ -123,22 +123,33 @@ def main():
 
     model_class = MODEL_CLASSES[args.model_class][0]
     config = AutoConfig.from_pretrained(args.model_name_or_path, cache_dir=cache_dir)
-    if hasattr(config, 'return_tuple'):
-        config.return_tuple = True
     model = model_class.from_pretrained(args.model_name_or_path, config=config, cache_dir=cache_dir)
 
     device = torch.device("cuda:0" if args.use_gpu else "cpu")
     model.eval().to(device)
 
-    onnx_model_paths = Gpt2Helper.get_onnx_paths(output_dir, args.model_name_or_path, args.model_class)
+    use_external_data_format = (config.n_layer > 24)  #TODO: find a way to check model size > 2GB
+    onnx_model_paths = Gpt2Helper.get_onnx_paths(output_dir,
+                                                 args.model_name_or_path,
+                                                 args.model_class,
+                                                 new_folder=use_external_data_format)
     raw_onnx_model = args.output if args.output.endswith('.onnx') else onnx_model_paths["raw"]
     output_path = raw_onnx_model if (
         args.output.endswith('.onnx') or
         (args.precision == Precision.FLOAT32 and not args.optimize_onnx)) else onnx_model_paths[str(args.precision)]
 
-    Gpt2Helper.export_onnx(model, device, raw_onnx_model, args.verbose)
+    logger.info(f"Exporting ONNX model to {raw_onnx_model}")
+    use_padding = MODEL_CLASSES[args.model_class][2]
+    Gpt2Helper.export_onnx(model,
+                           device,
+                           raw_onnx_model,
+                           args.verbose,
+                           use_external_data_format,
+                           has_position_ids=use_padding,
+                           has_attention_mask=use_padding)
 
     if args.optimize_onnx or args.precision != Precision.FLOAT32:
+        logger.info(f"Optimizing model to {output_path}")
         Gpt2Helper.optimize_onnx(raw_onnx_model, output_path, args.precision == Precision.FLOAT16,
                                  model.config.num_attention_heads, model.config.hidden_size)
 
@@ -148,7 +159,7 @@ def main():
         model = QuantizeHelper.quantize_torch_model(model)
         logger.info("finished quantizing model")
 
-    session = create_onnxruntime_session(output_path, args.use_gpu, enable_all_optimization=False, verbose=args.verbose)
+    session = create_onnxruntime_session(output_path, args.use_gpu, enable_all_optimization=True, verbose=args.verbose)
     if session is not None:
         Gpt2Helper.test_parity(session,
                                model,
@@ -156,20 +167,45 @@ def main():
                                args.precision == Precision.FLOAT16,
                                rtol=args.tolerance,
                                atol=args.tolerance,
-                               model_class=args.model_class)
+                               model_class=args.model_class,
+                               has_position_ids=use_padding,
+                               has_attention_mask=use_padding)
 
     if args.input_test_file:
         test_inputs = []
+        # Each line of test file is a JSON string like:
+        # {"input_ids": [[14698, 257, 1310, 13688, 319, 326]]}
         with open(args.input_test_file) as read_f:
             for i, line in enumerate(read_f):
                 line = line.rstrip()
                 data = json.loads(line)
                 input_ids = torch.from_numpy(numpy.asarray(data["input_ids"], dtype=numpy.int64)).to(device)
-                position_ids = torch.from_numpy(numpy.asarray(data["position_ids"], dtype=numpy.int64)).to(device)
-                numpy_float = numpy.float16 if args.precision == Precision.FLOAT16 else numpy.float32
-                attention_mask = torch.from_numpy(numpy.asarray(data["attention_mask"], dtype=numpy_float)).to(device)
-                inputs = {"input_ids": input_ids, "position_ids": position_ids, "attention_mask": attention_mask}
+
+                if use_padding:
+                    if "attention_mask" in data:
+                        numpy_float = numpy.float16 if args.precision == Precision.FLOAT16 else numpy.float32
+                        attention_mask = torch.from_numpy(numpy.asarray(data["attention_mask"],
+                                                                        dtype=numpy_float)).to(device)
+                    else:
+                        padding = -1
+                        attention_mask = (
+                            input_ids !=
+                            padding).type(torch.float16 if args.precision == Precision.FLOAT16 else torch.float32)
+                        input_ids.masked_fill_(input_ids == padding, 0)
+
+                    if "position_ids" in data:
+                        position_ids = torch.from_numpy(numpy.asarray(data["position_ids"],
+                                                                      dtype=numpy.int64)).to(device)
+                    else:
+                        position_ids = (attention_mask.long().cumsum(-1) - 1)
+                        position_ids.masked_fill_(position_ids < 0, 0)
+
+                    inputs = {"input_ids": input_ids, "position_ids": position_ids, "attention_mask": attention_mask}
+                else:
+                    inputs = {"input_ids": input_ids}
+
                 test_inputs.append(inputs)
+
         Gpt2Tester.test_generation(session,
                                    model,
                                    device,

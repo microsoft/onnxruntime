@@ -72,16 +72,24 @@ jobs:
   steps:    
     - template: ../../templates/set-version-number-variables-step.yml
     - template: ../../templates/linux-set-variables-and-download.yml
+    - task: Docker@2
+      displayName: login
+      inputs:
+        containerRegistry: onnxruntimeregistry
+        command: login
+        addPipelineData: false
     - task: CmdLine@2
       inputs:
         script: |
-          docker build --pull -t onnxruntime-centos6 --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=3.6 -f Dockerfile.centos6 .
-        workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
-    - task: CmdLine@2
-      inputs:
-        script: |
-          docker run --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro -e NIGHTLY_BUILD onnxruntime-centos6 /bin/bash -c "/usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --enable_onnx_tests --disable_contrib_ops --disable_ml_ops && cd /build/Release && make install DESTDIR=/build/linux-x64"
+          mkdir -p $HOME/.onnx
+          docker run --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecpubuild:chn /bin/bash -c "/opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --enable_lto --skip_submodule_sync --parallel --build_shared_lib --enable_onnx_tests  --disable_contrib_ops --disable_ml_ops && cd /build/Release && make install DESTDIR=/build/linux-x64"
         workingDirectory: $(Build.SourcesDirectory)
+    - task: Docker@2
+      displayName: logout
+      inputs:
+        containerRegistry: onnxruntimeregistry
+        command: logout
+        addPipelineData: false
     - script: |
        set -e -x
        mv $(Build.BinariesDirectory)/linux-x64/usr/local/lib64 $(Build.BinariesDirectory)/linux-x64/linux-x64

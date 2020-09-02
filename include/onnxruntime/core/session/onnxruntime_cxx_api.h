@@ -23,6 +23,10 @@
 #include <utility>
 #include <type_traits>
 
+#ifdef ORT_NO_EXCEPTIONS
+#include <iostream>
+#endif
+
 namespace Ort {
 
 // All C++ methods that can fail will throw an exception of this type
@@ -36,6 +40,19 @@ struct Exception : std::exception {
   std::string message_;
   OrtErrorCode code_;
 };
+
+#ifdef ORT_NO_EXCEPTIONS
+#define ORT_CXX_API_THROW(string, code)       \
+  do {                                        \
+    std::cerr << Ort::Exception(string, code) \
+                     .what()                  \
+              << std::endl;                   \
+    abort();                                  \
+  } while (false)
+#else
+#define ORT_CXX_API_THROW(string, code) \
+  throw Ort::Exception(string, code)
+#endif
 
 // This is used internally by the C++ API. This class holds the global variable that points to the OrtApi, it's in a template so that we can define a global variable in a header and make
 // it transparent to the users of the API.
@@ -66,6 +83,7 @@ std::vector<std::string> GetAvailableProviders();
 #define ORT_DEFINE_RELEASE(NAME) \
   inline void OrtRelease(Ort##NAME* ptr) { GetApi().Release##NAME(ptr); }
 
+ORT_DEFINE_RELEASE(Allocator);
 ORT_DEFINE_RELEASE(MemoryInfo);
 ORT_DEFINE_RELEASE(CustomOpDomain);
 ORT_DEFINE_RELEASE(Env);
@@ -73,17 +91,23 @@ ORT_DEFINE_RELEASE(RunOptions);
 ORT_DEFINE_RELEASE(Session);
 ORT_DEFINE_RELEASE(SessionOptions);
 ORT_DEFINE_RELEASE(TensorTypeAndShapeInfo);
+ORT_DEFINE_RELEASE(SequenceTypeInfo);
+ORT_DEFINE_RELEASE(MapTypeInfo);
 ORT_DEFINE_RELEASE(TypeInfo);
 ORT_DEFINE_RELEASE(Value);
 ORT_DEFINE_RELEASE(ModelMetadata);
 ORT_DEFINE_RELEASE(ThreadingOptions);
+ORT_DEFINE_RELEASE(IoBinding);
 
 // This is used internally by the C++ API. This is the common base class used by the wrapper objects.
 template <typename T>
 struct Base {
+  using contained_type = T;
+
   Base() = default;
   Base(T* p) : p_{p} {
-    if (!p) throw Ort::Exception("Allocation failure", ORT_FAIL);
+    if (!p)
+      ORT_CXX_API_THROW("Allocation failure", ORT_FAIL);
   }
   ~Base() { OrtRelease(p_); }
 
@@ -113,10 +137,35 @@ struct Base {
 };
 
 template <typename T>
+struct Base<const T> {
+  using contained_type = const T;
+
+  Base() = default;
+  Base(const T* p) : p_{p} {
+    if (!p)
+      ORT_CXX_API_THROW("Invalid instance ptr", ORT_INVALID_ARGUMENT);
+  }
+  ~Base() = default;
+
+  operator const T*() const { return p_; }
+
+ protected:
+  Base(const Base&) = delete;
+  Base& operator=(const Base&) = delete;
+  Base(Base&& v) noexcept : p_{v.p_} { v.p_ = nullptr; }
+  void operator=(Base&& v) noexcept {
+    p_ = v.p_;
+    v.p_ = nullptr;
+  }
+
+  const T* p_{};
+};
+
+template <typename T>
 struct Unowned : T {
   Unowned(decltype(T::p_) p) : T{p} {}
   Unowned(Unowned&& v) : T{v.p_} {}
-  ~Unowned() { this->p_ = nullptr; }
+  ~Unowned() { this->release(); }
 };
 
 struct AllocatorWithDefaultOptions;
@@ -135,6 +184,8 @@ struct Env : Base<OrtEnv> {
 
   Env& EnableTelemetryEvents();
   Env& DisableTelemetryEvents();
+
+  Env& CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const OrtArenaCfg* arena_cfg);
 
   static const OrtApi* s_api;
 };
@@ -196,9 +247,7 @@ struct SessionOptions : Base<OrtSessionOptions> {
 
   SessionOptions& DisablePerSessionThreads();
 
-  SessionOptions& EnablePrePacking();
-  SessionOptions& DisablePrePacking();
-
+  SessionOptions& AddConfigEntry(const char* config_key, const char* config_value);
 };
 
 struct ModelMetadata : Base<OrtModelMetadata> {
@@ -225,6 +274,8 @@ struct Session : Base<OrtSession> {
   // Run for when there is a list of prealloated outputs
   void Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
            const char* const* output_names, Value* output_values, size_t output_count);
+
+  void Run(const RunOptions& run_options, const struct IoBinding&);
 
   size_t GetInputCount() const;
   size_t GetOutputCount() const;
@@ -255,11 +306,30 @@ struct TensorTypeAndShapeInfo : Base<OrtTensorTypeAndShapeInfo> {
   std::vector<int64_t> GetShape() const;
 };
 
+struct SequenceTypeInfo : Base<OrtSequenceTypeInfo> {
+  explicit SequenceTypeInfo(std::nullptr_t) {}
+  explicit SequenceTypeInfo(OrtSequenceTypeInfo* p) : Base<OrtSequenceTypeInfo>{p} {}
+
+  TypeInfo GetSequenceElementType() const;
+};
+
+struct MapTypeInfo : Base<OrtMapTypeInfo> {
+  explicit MapTypeInfo(std::nullptr_t) {}
+  explicit MapTypeInfo(OrtMapTypeInfo* p) : Base<OrtMapTypeInfo>{p} {}
+
+  ONNXTensorElementDataType GetMapKeyType() const;
+  TypeInfo GetMapValueType() const;
+};
+
 struct TypeInfo : Base<OrtTypeInfo> {
   explicit TypeInfo(std::nullptr_t) {}
   explicit TypeInfo(OrtTypeInfo* p) : Base<OrtTypeInfo>{p} {}
 
   Unowned<TensorTypeAndShapeInfo> GetTensorTypeAndShapeInfo() const;
+  Unowned<SequenceTypeInfo> GetSequenceTypeInfo() const;
+  Unowned<MapTypeInfo> GetMapTypeInfo() const;
+
+
   ONNXType GetONNXType() const;
 };
 
@@ -279,7 +349,7 @@ struct Value : Base<OrtValue> {
   static Value CreateOpaque(const char* domain, const char* type_name, const T&);
 
   template <typename T>
-  void GetOpaqueData(const char* domain, const char* type_name, T&);
+  void GetOpaqueData(const char* domain, const char* type_name, T&) const;
 
   explicit Value(std::nullptr_t) {}
   explicit Value(OrtValue* p) : Base<OrtValue>{p} {}
@@ -296,6 +366,12 @@ struct Value : Base<OrtValue> {
   template <typename T>
   T* GetTensorMutableData();
 
+  template <typename T>
+  const T* GetTensorData() const;
+
+  template <typename T>
+  T At(const std::initializer_list<size_t>& location);
+
   TypeInfo GetTypeInfo() const;
   TensorTypeAndShapeInfo GetTensorTypeAndShapeInfo() const;
 
@@ -306,6 +382,24 @@ struct Value : Base<OrtValue> {
   void FillStringTensorElement(const char* s, size_t index);
 };
 
+// Represents native memory allocation
+struct MemoryAllocation {
+  MemoryAllocation(OrtAllocator* allocator, void* p, size_t size);
+  ~MemoryAllocation();
+  MemoryAllocation(const MemoryAllocation&) = delete;
+  MemoryAllocation& operator=(const MemoryAllocation&) = delete;
+  MemoryAllocation(MemoryAllocation&&);
+  MemoryAllocation& operator=(MemoryAllocation&&);
+
+  void* get() { return p_; }
+  size_t size() const { return size_; }
+
+ private:
+  OrtAllocator* allocator_;
+  void* p_;
+  size_t size_;
+};
+
 struct AllocatorWithDefaultOptions {
   AllocatorWithDefaultOptions();
 
@@ -313,6 +407,8 @@ struct AllocatorWithDefaultOptions {
   operator const OrtAllocator*() const { return p_; }
 
   void* Alloc(size_t size);
+  // The return value will own the allocation
+  MemoryAllocation GetAllocation(size_t size);
   void Free(void* p);
 
   const OrtMemoryInfo* GetInfo() const;
@@ -321,13 +417,61 @@ struct AllocatorWithDefaultOptions {
   OrtAllocator* p_{};
 };
 
-struct MemoryInfo : Base<OrtMemoryInfo> {
+template <typename B>
+struct BaseMemoryInfo : B {
+  BaseMemoryInfo() = default;
+  explicit BaseMemoryInfo(typename B::contained_type* p) : B(p) {}
+  ~BaseMemoryInfo() = default;
+  BaseMemoryInfo(BaseMemoryInfo&&) = default;
+  BaseMemoryInfo& operator=(BaseMemoryInfo&&) = default;
+
+  std::string GetAllocatorName() const;
+  OrtAllocatorType GetAllocatorType() const;
+  int GetDeviceId() const;
+  OrtMemType GetMemoryType() const;
+  template <typename U>
+  bool operator==(const BaseMemoryInfo<U>& o) const;
+};
+
+struct UnownedMemoryInfo : BaseMemoryInfo<Base<const OrtMemoryInfo> > {
+  explicit UnownedMemoryInfo(std::nullptr_t) {}
+  explicit UnownedMemoryInfo(const OrtMemoryInfo* p) : BaseMemoryInfo(p) {}
+};
+
+struct MemoryInfo : BaseMemoryInfo<Base<OrtMemoryInfo> > {
   static MemoryInfo CreateCpu(OrtAllocatorType type, OrtMemType mem_type1);
 
   explicit MemoryInfo(std::nullptr_t) {}
+  explicit MemoryInfo(OrtMemoryInfo* p) : BaseMemoryInfo(p) {}
   MemoryInfo(const char* name, OrtAllocatorType type, int id, OrtMemType mem_type);
+};
 
-  explicit MemoryInfo(OrtMemoryInfo* p) : Base<OrtMemoryInfo>{p} {}
+struct Allocator : public Base<OrtAllocator> {
+  Allocator(const Session& session, const MemoryInfo&);
+
+  void* Alloc(size_t size) const;
+  // The return value will own the allocation
+  MemoryAllocation GetAllocation(size_t size);
+  void Free(void* p) const;
+  UnownedMemoryInfo GetInfo() const;
+};
+
+struct IoBinding : public Base<OrtIoBinding> {
+ private:
+  std::vector<std::string> GetOutputNamesHelper(OrtAllocator*) const;
+  std::vector<Value> GetOutputValuesHelper(OrtAllocator*) const;
+
+ public:
+  explicit IoBinding(Session& session);
+  void BindInput(const char* name, const Value&);
+  void BindOutput(const char* name, const Value&);
+  void BindOutput(const char* name, const MemoryInfo&);
+  std::vector<std::string> GetOutputNames() const;
+  std::vector<std::string> GetOutputNames(Allocator&) const;
+  std::vector<Value> GetOutputValues() const;
+  std::vector<Value> GetOutputValues(Allocator&) const;
+  void ClearBoundInputs();
+  void ClearBoundOutputs();
 };
 
 //
