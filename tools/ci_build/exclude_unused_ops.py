@@ -83,6 +83,11 @@ def extract_ops_from_model(model_path, referred_ops):
         for operator in graph.node:
 
             mapped_domain = map_domain(operator.domain)
+
+            if mapped_domain not in operators or\
+               mapped_domain not in domain_opset_map:
+                continue
+
             operators[mapped_domain][domain_opset_map[mapped_domain]].add(operator.op_type)
 
             for attr in operator.attribute:
@@ -98,6 +103,9 @@ def extract_ops_from_model(model_path, referred_ops):
                 model_path = os.path.join(root, file)
                 model = onnx.load(model_path)
                 domain_opset_map = {}
+
+                if len(model.opset_import) == 0:
+                    continue
 
                 for opset in model.opset_import:
 

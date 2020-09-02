@@ -152,10 +152,22 @@ struct Provider_IDeviceAllocator : Provider_IAllocator {};
 using Provider_AllocatorPtr = std::shared_ptr<Provider_IAllocator>;
 using Provider_DeviceAllocatorFactory = std::function<std::unique_ptr<Provider_IDeviceAllocator>(int)>;
 
-struct Provider_DeviceAllocatorRegistrationInfo {
-  OrtMemType mem_type;
+using DeviceId = int16_t;
+struct Provider_AllocatorCreationInfo {
+  Provider_AllocatorCreationInfo(Provider_DeviceAllocatorFactory device_alloc_factory0,
+                                 DeviceId device_id0 = 0,
+                                 bool use_arena0 = true,
+                                 OrtArenaCfg arena_cfg0 = {0, -1, -1, -1})
+      : factory(device_alloc_factory0),
+        device_id(device_id0),
+        use_arena(use_arena0),
+        arena_cfg(arena_cfg0) {
+  }
+
   Provider_DeviceAllocatorFactory factory;
-  size_t max_mem;
+  DeviceId device_id;
+  bool use_arena;
+  OrtArenaCfg arena_cfg;
 };
 
 struct Provider_OpKernel {
@@ -261,8 +273,7 @@ struct Provider {
 // calls the virtual function (which will lead to infinite recursion in the bridge). There is no known way to get the non virtual member
 // function pointer implementation in this case.
 struct ProviderHost {
-  virtual Provider_AllocatorPtr CreateAllocator(const Provider_DeviceAllocatorRegistrationInfo& info,
-                                                int16_t device_id = 0, bool use_arena = true) = 0;
+  virtual Provider_AllocatorPtr CreateAllocator(const Provider_AllocatorCreationInfo& info) = 0;
 
   virtual logging::Logger* LoggingManager_GetDefaultLogger() = 0;
 
