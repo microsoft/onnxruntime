@@ -318,7 +318,8 @@ def generate_files(list, args):
         else:
             files_list.append('<file src=' + '"' + windowsai_native_props + '" target="build\\native" />')
             # Process native targets
-            windowsai_native_targets = os.path.join(args.sources_path, 'csharp', 'src', windowsai_src, windowsai_targets)
+            windowsai_native_targets = os.path.join(args.sources_path, 'csharp', 'src', windowsai_src,
+                                                    windowsai_targets)
             files_list.append('<file src=' + '"' + windowsai_native_targets + '" target="build\\native" />')
             # Process rules
             files_list.append('<file src=' + '"' + windowsai_native_rules + '" target="build\\native" />')
