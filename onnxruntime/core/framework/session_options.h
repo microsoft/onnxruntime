@@ -94,8 +94,10 @@ struct SessionOptions {
   // /include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h
   std::unordered_map<std::string, std::string> session_configurations;
 
-  // Check if the given SessionOptions has a config using the given config_key
-  bool HasConfigEntry(const std::string& config_key) const noexcept;
+  // Check if the given SessionOptions has a config using the given config_key.
+  // Returns true if found and copies the value into config_value.
+  // Returns false if not found and clears config_value.
+  bool TryGetConfigEntry(const std::string& config_key, std::string& config_value) const noexcept;
 
   // Get the config string of the given SessionOptions using the given config_key
   // If there is no such config, the given default string will be returned

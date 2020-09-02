@@ -500,70 +500,19 @@ void UpdateCudaProviderOptions(InferenceSession* sess, onnxruntime::CudaProvider
 }
 #endif
 
-void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::string>& provider_types) {
-  for (const std::string& type : provider_types) {
-    if (type == kCpuExecutionProvider) {
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CPU(sess->GetSessionOptions().enable_cpu_mem_arena));
-    } else if (type == kTensorrtExecutionProvider) {
-#ifdef USE_TENSORRT
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Tensorrt(0));
-#endif
-    } else if (type == kMIGraphXExecutionProvider) {
-#ifdef USE_MIGRAPHX
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_MIGraphX(0));
-#endif
-    } else if (type == kCudaExecutionProvider) {
-#ifdef USE_CUDA
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id, cuda_mem_limit, arena_extend_strategy));
-#endif
-    } else if (type == kDnnlExecutionProvider) {
-#ifdef USE_DNNL
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Dnnl(sess->GetSessionOptions().enable_cpu_mem_arena));
-#endif
-    } else if (type == kNGraphExecutionProvider) {
-#if USE_NGRAPH
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_NGraph("CPU"));
-#endif
-    } else if (type == kOpenVINOExecutionProvider) {
-#ifdef USE_OPENVINO
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device.c_str()));
-      openvino_device.clear();
-#endif
-    } else if (type == kNupharExecutionProvider) {
-#if USE_NUPHAR
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Nuphar(true, nuphar_settings.c_str()));
-      nuphar_settings.clear();  // clear nuphar_settings after use to avoid it being accidentally passed on to next session
-#endif
-    } else if (type == kVitisAIExecutionProvider) {
-#if USE_VITISAI
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_VITISAI("dpuv1", 0));
-#endif
-    } else if (type == kAclExecutionProvider) {
-#ifdef USE_ACL
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_ACL(sess->GetSessionOptions().enable_cpu_mem_arena));
-#endif
-    } else if (type == kArmNNExecutionProvider) {
-#ifdef USE_ARMNN
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_ArmNN(sess->GetSessionOptions().enable_cpu_mem_arena));
-#endif
-    } else {
-      // unknown provider
-      throw std::runtime_error("Unknown Provider Type: " + type);
-    }
-  }
-}
-
 /*
  * Register execution provider with options.
  *
  * (note: currently only cuda EP supports this feature and rest of EPs use default options)
  */
-void RegisterExecutionProvidersWithOptions(InferenceSession* sess, const std::vector<std::string>& provider_types, ProviderOptionsMap& provider_options_map) {
+void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::string>& provider_types,
+                                ProviderOptionsMap& provider_options_map) {
   PYBIND_UNREFERENCED_PARAMETER(provider_options_map);
 
   for (const std::string& type : provider_types) {
     if (type == kCpuExecutionProvider) {
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CPU(sess->GetSessionOptions().enable_cpu_mem_arena));
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CPU(
+                                          sess->GetSessionOptions().enable_cpu_mem_arena));
     } else if (type == kTensorrtExecutionProvider) {
 #ifdef USE_TENSORRT
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Tensorrt(0));
@@ -574,20 +523,27 @@ void RegisterExecutionProvidersWithOptions(InferenceSession* sess, const std::ve
 #endif
     } else if (type == kCudaExecutionProvider) {
 #ifdef USE_CUDA
-      onnxruntime::CudaProviderOptions cuda_provider_options;
 
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
+        onnxruntime::CudaProviderOptions cuda_provider_options;
         UpdateCudaProviderOptions(sess, cuda_provider_options, it->second);
-      }
 
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_provider_options.device_id,
-                                                                                        cuda_provider_options.cuda_mem_limit,
-                                                                                        cuda_provider_options.arena_extend_strategy));
+        RegisterExecutionProvider(
+            sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_provider_options.device_id,
+                                                                    cuda_provider_options.cuda_mem_limit,
+                                                                    cuda_provider_options.arena_extend_strategy));
+      } else {
+        RegisterExecutionProvider(
+            sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id,
+                                                                    cuda_mem_limit,
+                                                                    arena_extend_strategy));
+      }
 #endif
     } else if (type == kDnnlExecutionProvider) {
 #ifdef USE_DNNL
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Dnnl(sess->GetSessionOptions().enable_cpu_mem_arena));
+      RegisterExecutionProvider(
+          sess, *onnxruntime::CreateExecutionProviderFactory_Dnnl(sess->GetSessionOptions().enable_cpu_mem_arena));
 #endif
     } else if (type == kNGraphExecutionProvider) {
 #if USE_NGRAPH
@@ -600,8 +556,11 @@ void RegisterExecutionProvidersWithOptions(InferenceSession* sess, const std::ve
 #endif
     } else if (type == kNupharExecutionProvider) {
 #if USE_NUPHAR
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Nuphar(true, nuphar_settings.c_str()));
-      nuphar_settings.clear();  // clear nuphar_settings after use to avoid it being accidentally passed on to next session
+      RegisterExecutionProvider(
+          sess, *onnxruntime::CreateExecutionProviderFactory_Nuphar(true, nuphar_settings.c_str()));
+
+      // clear nuphar_settings after use to avoid it being accidentally passed on to next session
+      nuphar_settings.clear();
 #endif
     } else if (type == kVitisAIExecutionProvider) {
 #if USE_VITISAI
@@ -609,11 +568,13 @@ void RegisterExecutionProvidersWithOptions(InferenceSession* sess, const std::ve
 #endif
     } else if (type == kAclExecutionProvider) {
 #ifdef USE_ACL
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_ACL(sess->GetSessionOptions().enable_cpu_mem_arena));
+      RegisterExecutionProvider(
+          sess, *onnxruntime::CreateExecutionProviderFactory_ACL(sess->GetSessionOptions().enable_cpu_mem_arena));
 #endif
     } else if (type == kArmNNExecutionProvider) {
 #ifdef USE_ARMNN
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_ArmNN(sess->GetSessionOptions().enable_cpu_mem_arena));
+      RegisterExecutionProvider(
+          sess, *onnxruntime::CreateExecutionProviderFactory_ArmNN(sess->GetSessionOptions().enable_cpu_mem_arena));
 #endif
     } else {
       // unknown provider
@@ -627,7 +588,8 @@ void RegisterExecutionProvidersWithOptions(InferenceSession* sess, const std::ve
  *
  * @param providers vector of excution providers. [ep1, ep2, ...]
  * @param provider_options_vector vector of excution provider options. [option1, option2 ...]
- * @param provider_options_map an unordered map for mapping excution provider to excution provider options. {'ep1' -> option1, 'ep2' -> option2 ...}
+ * @param provider_options_map an unordered map for mapping excution provider to excution provider options. 
+ *        {'ep1' -> option1, 'ep2' -> option2 ...}
  *
  */
 void GenerateProviderOptionsMap(const std::vector<std::string>& providers,
@@ -665,16 +627,6 @@ void RegisterCustomOpDomainsAndLibraries(PyInferenceSession* sess, const PySessi
 }
 #endif
 
-void InitializeSession(InferenceSession* sess, const std::vector<std::string>& provider_types) {
-  if (provider_types.empty()) {
-    // use default registration priority.
-    RegisterExecutionProviders(sess, GetAllProviders());
-  } else {
-    RegisterExecutionProviders(sess, provider_types);
-  }
-  OrtPybindThrowIfError(sess->Initialize());
-}
-
 void InitializeSession(InferenceSession* sess, const std::vector<std::string>& provider_types,
                        const ProviderOptionsVector& provider_options) {
   ProviderOptionsMap provider_options_map;
@@ -682,9 +634,9 @@ void InitializeSession(InferenceSession* sess, const std::vector<std::string>& p
 
   if (provider_types.empty()) {
     // use default registration priority.
-    RegisterExecutionProvidersWithOptions(sess, GetAllProviders(), provider_options_map);
+    RegisterExecutionProviders(sess, GetAllProviders(), provider_options_map);
   } else {
-    RegisterExecutionProvidersWithOptions(sess, provider_types, provider_options_map);
+    RegisterExecutionProviders(sess, provider_types, provider_options_map);
   }
   OrtPybindThrowIfError(sess->Initialize());
 }
@@ -1159,10 +1111,11 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           "get_session_config_entry",
           [](PySessionOptions* options, const char* config_key) -> std::string {
             const std::string key(config_key);
-            if (!options->HasConfigEntry(key))
+            std::string value;
+            if (!options->TryGetConfigEntry(key, value))
               throw std::runtime_error("SessionOptions does not have configuration with key: " + key);
 
-            return options->session_configurations.at(key);
+            return value;
           },
           "Rpbdoc(Get a single session configuration value using the given configuration key.)pbdoc")
       .def(

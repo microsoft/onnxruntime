@@ -220,8 +220,13 @@ def run_test_dir(model_or_dir):
                 expected = expected_outputs[output_names[idx]]
                 actual = run_outputs[idx]
 
-                if not np.isclose(expected, actual, rtol=1.e-3, atol=1.e-3).all():
-                    print(f'Mismatch for {output_names[idx]}:\nExpected:{expected}\nGot:{actual}')
-                    failed = True
+                if isinstance(expected[0], np.floating):
+                    if not np.isclose(expected, actual, rtol=1.e-3, atol=1.e-3).all():
+                        print(f'Mismatch for {output_names[idx]}:\nExpected:{expected}\nGot:{actual}')
+                        failed = True
+                else:
+                    if not np.equal(expected, actual).all():
+                        print(f'Mismatch for {output_names[idx]}:\nExpected:{expected}\nGot:{actual}')
+                        failed = True
 
         print('FAILED' if failed else 'PASS')

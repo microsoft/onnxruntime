@@ -39,7 +39,7 @@ static void CompareTensors(const OrtValue& left_value, const OrtValue& right_val
   const Tensor& left = left_value.Get<Tensor>();
   const Tensor& right = right_value.Get<Tensor>();
 
-  ASSERT_EQ(left.Shape(), right.Shape());
+  ASSERT_EQ(left.Shape().GetDims(), right.Shape().GetDims());
   ASSERT_EQ(left.GetElementType(), right.GetElementType());
 
   if (left.IsDataTypeString()) {
@@ -134,6 +134,9 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormat) {
   const auto& session_state = session_object.GetSessionState();
   const auto& session_state2 = session_object2.GetSessionState();
 
+  const auto& name_idx_map = session_state.GetOrtValueNameIdxMap();
+  const auto& name_idx_map2 = session_state2.GetOrtValueNameIdxMap();
+
   const auto& i1 = session_state.GetInitializedTensors();
   const auto& i2 = session_state2.GetInitializedTensors();
   ASSERT_EQ(i1.size(), i2.size());
@@ -145,10 +148,22 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormat) {
     const OrtValue& left = pair.second;
     const OrtValue& right = iter->second;
     CompareTensors(left, right);
+
+    // check NodeArgs for both initializers. need to get name from map as we store the initialized tensors against
+    // their OrtValueIdx in SessionState.
+    std::string name;
+    std::string name2;
+    ASSERT_STATUS_OK(name_idx_map.GetName(pair.first, name));
+    ASSERT_STATUS_OK(name_idx_map2.GetName(pair.first, name2));
+    ASSERT_EQ(name, name2);
+
+    const auto& left_nodearg = *graph.GetNodeArg(name);
+    const auto& right_nodearg = *graph2.GetNodeArg(name2);
+    CompareValueInfos(left_nodearg.ToProto(), right_nodearg.ToProto());
   }
 
   // check all node args are fine
-  for (const auto& input : graph.GetInputsIncludingInitializers()) {
+  for (const auto& input : graph.GetInputs()) {
     const auto& left = *graph.GetNodeArg(input->Name());
     const auto* right = graph2.GetNodeArg(input->Name());
     ASSERT_TRUE(right != nullptr);
