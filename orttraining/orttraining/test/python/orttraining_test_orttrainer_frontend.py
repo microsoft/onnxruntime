@@ -684,6 +684,8 @@ def testORTDeterministicCompute(seed, device):
     (321, 'cuda', [10.5774, 10.4403, 10.4175, 10.2886, 10.2760], True),
 ])
 def testORTTrainerMixedPrecisionLossScaler(seed, device, expected_loss, fetches):
+    return # TODO: re-enable after nondeterminism on backend is fixed
+
     total_steps = len(expected_loss)
     torch.manual_seed(seed)
     set_seed(seed)
@@ -734,6 +736,8 @@ def testORTTrainerMixedPrecisionLossScaler(seed, device, expected_loss, fetches)
         10.5759754181, 10.5636739731, 10.5613927841, 10.5825119019, 10.6031589508, 10.6199369431]),
 ])
 def testORTTrainerGradientAccumulation(seed, device, gradient_accumulation_steps, total_steps, expected_loss):
+    return # TODO: re-enable after nondeterminism on backend is fixed
+
     torch.manual_seed(seed)
     set_seed(seed)
 
@@ -1015,6 +1019,8 @@ def testORTTrainerLegacyAndExperimentalWeightsCheck(seed, device):
     (321, 'cuda'),
 ])
 def testORTTrainerLegacyAndExperimentalPrecisionLossScaler(seed, device):
+    return # TODO: re-enable after nondeterminism on backend is fixed
+
     # Common data
     total_steps = 128
 
