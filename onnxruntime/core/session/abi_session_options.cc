@@ -184,3 +184,17 @@ ORT_API_STATUS_IMPL(OrtApis::AddSessionConfigEntry, _Inout_ OrtSessionOptions* o
                     _In_z_ const char* config_key, _In_z_ const char* config_value) {
   return onnxruntime::ToOrtStatus(AddSessionConfigEntryImpl(options->value, config_key, config_value));
 }
+
+ORT_API_STATUS_IMPL(OrtApis::AddInitializer, _Inout_ OrtSessionOptions* options, _In_ const char* name_str,
+                    _In_ OrtValue* val) {
+  if (!val) {
+    return onnxruntime::ToOrtStatus(ORT_INVALID_ARGUMENT, "Received nullptr for OrtValue");
+  }
+  std::string name(name_str);
+  auto it = options->value.initializers_to_share_map.find(name);
+  if (it != options->value.initializers_to_share_map.end()) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "An OrtValue for this name has already been added.");
+  }
+  options->value.initializers_to_share_map.insert(it, {name, val});
+  return nullptr;
+}

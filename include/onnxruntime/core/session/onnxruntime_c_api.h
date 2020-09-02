@@ -1013,6 +1013,15 @@ struct OrtApi {
   */
   ORT_API2_STATUS(CreateAndRegisterAllocator, _Inout_ OrtEnv* env, _In_ const OrtMemoryInfo* mem_info,
                   _In_ const OrtArenaCfg* arena_cfg);
+
+  /**
+   * Add a pre-allocated initializer to a session. If a model contains an initializer with a name
+   * that is same as the name passed to this API call, ORT will use this initializer instance
+   * instead of deserializing one from the model file. This is useful when you want to share
+   * the same initializer across sessions.
+   */
+  ORT_API2_STATUS(AddInitializer, _Inout_ OrtSessionOptions* options, _In_ const char* name,
+                  _In_ OrtValue* val);
 };
 
 /*
