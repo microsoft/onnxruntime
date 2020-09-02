@@ -20,7 +20,7 @@ def parse_arguments():
     parser.add_argument("--packages_path", required=True, help="Nuget packages output directory.")
     parser.add_argument("--sources_path", required=True, help="OnnxRuntime source code root.")
     parser.add_argument("--commit_id", required=True, help="The last commit id included in this package.")
-    parser.add_argument("--is_store_build", default='false', help="Build for the Microsoft Store")
+    parser.add_argument("--is_store_build", default=False, type=lambda x: x.lower() == 'true', help="Build for the Microsoft Store")
     parser.add_argument("--is_release_build", required=False, default=None, type=str,
                         help="Flag indicating if the build is a release build. Accepted values: true/false.")
     parser.add_argument("--execution_provider", required=False, default='None', type=str,
