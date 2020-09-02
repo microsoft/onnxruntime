@@ -1,15 +1,15 @@
-# docker build --network=host --file Dockerfile.rocm3.5 --tag ort:rocm3.5-ort-dev .
+# docker build --network=host --file Dockerfile.rocm3.7 --tag ort:rocm3.7-ort-dev .
 
-FROM rocm/tensorflow:rocm3.5-tf2.1-dev
+FROM rocm/tensorflow:rocm3.7-tf2.1-dev
 
 RUN curl https://bazel.build/bazel-release.pub.gpg | apt-key add -
 RUN cat /dev/null > /etc/apt/sources.list.d/rocm.list
-RUN echo 'deb [arch=amd64] http://repo.radeon.com/rocm/apt/3.5/ xenial main' | tee /etc/apt/sources.list.d/rocm.list
+RUN echo 'deb [arch=amd64] http://repo.radeon.com/rocm/apt/3.7/ xenial main' | tee /etc/apt/sources.list.d/rocm.list
 
 RUN apt-get -y update
 RUN apt-get -y install apt-utils
 RUN apt-get -y install build-essential autotools-dev \
-    make git vim wget rsync jq openssh-server openssh-client sudo \
+    make git curl vim wget rsync jq openssh-server openssh-client sudo \
     iputils-ping net-tools ethtool libcap2 \
     automake autoconf libtool flex doxygen \
     perl lsb-release iproute2 pciutils graphviz \
@@ -17,11 +17,8 @@ RUN apt-get -y install build-essential autotools-dev \
     g++ gcc \
     && apt-get autoremove
 
-# ROCm library
-RUN apt-get -y install rocm-libs miopen-hip
-
-# Remove gtest and gmock
-RUN rm -rf /opt/rocm/include/gtest /opt/rocm/include/gmock
+# sh
+RUN rm /bin/sh && ln -s /bin/bash /bin/sh
 
 # Labels for the docker
 LABEL description="This docker sets up the environment to run ORT Training with AMD GPU"
@@ -32,6 +29,7 @@ RUN cd /usr/local && \
     wget -q -O - https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz | tar zxf -
 ENV PATH=/usr/local/cmake-${CMAKE_VERSION}-Linux-x86_64/bin:${PATH}
 
+# WORK_DIR
 ENV WORK_DIR=/work
 RUN mkdir -p $WORK_DIR
 WORKDIR $WORK_DIR
@@ -67,6 +65,7 @@ RUN conda install -y \
         git+https://github.com/NVIDIA/dllogger \
         onnx=="${ONNX_VERSION}"
 
+# GITHUB_DIR
 ENV GITHUB_DIR=$WORK_DIR/github
 RUN mkdir -p $GITHUB_DIR
 
@@ -112,12 +111,6 @@ ENV LD_LIBRARY_PATH=$OPENMPI_DIR/lib:${LD_LIBRARY_PATH}
 # install mpi4py (be sure to link existing /opt/openmpi-xxx)
 RUN CC=mpicc MPICC=mpicc pip install mpi4py --no-binary mpi4py
 
-# RCCL
-# RUN apt-get -y purge rccl
-# RUN git clone https://github.com/ROCmSoftwarePlatform/rccl.git && cd rccl && ./install.sh -i
-ENV HSA_FORCE_FINE_GRAIN_PCIE=1
-ENV NCCL_MAX_NCHANNELS=4
-
 # ONNX Runtime
 WORKDIR $GITHUB_DIR
 ENV ORT_DIR=$GITHUB_DIR/onnxruntime
@@ -139,6 +132,7 @@ RUN git clone --recursive -b wezhan/amdgpu https://github.com/microsoft/onnxrunt
   && ldconfig
 
 # OpenBLAS
+WORKDIR $GITHUB_DIR
 ARG OpenBLAS_VERSION=0.3.10
 ENV OpenBLAS_DIR=$WORK_DIR/OpenBLAS-${OpenBLAS_VERSION}
 RUN git clone https://github.com/xianyi/OpenBLAS.git \
@@ -146,6 +140,18 @@ RUN git clone https://github.com/xianyi/OpenBLAS.git \
   && git checkout v$OpenBLAS_VERSION \
   && make TARGET=ZEN \
   && make install PREFIX=$OpenBLAS_DIR
+
+# PyTorch
+RUN pip install pyyaml
+RUN for fn in $(find /opt/rocm/ -name \*.cmake ); do sed --in-place='~' 's/find_dependency(hip)/find_dependency(HIP)/' $fn ; done
+WORKDIR $GITHUB_DIR
+# ARG PYTORCH_VERSION=1.6.0
+# RUN git clone --recursive https://github.com/pytorch/pytorch.git \
+#   && cd pytorch \
+#   && git checkout v$PYTORCH_VERSION \
+#   && git submodule update --recursive \
+#   && python3 tools/amd_build/build_amd.py \
+#   && OpenBLAS_HOME=$OpenBLAS_DIR BLAS="OpenBLAS" RCCL_DIR=/opt/rocm/rccl/lib/cmake/rccl/ hip_DIR=/opt/rocm/hip/cmake/ PYTORCH_ROCM_ARCH=gfx906 USE_ROCM=ON USE_CUDA=OFF BUILD_CAFFE2_OPS=0 BUILD_TEST=0 python3 setup.py install
 
 # Enable ssh access without password needed
 RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/g' /etc/ssh/sshd_config
