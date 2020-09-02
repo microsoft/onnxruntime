@@ -24,7 +24,7 @@ class TrainStepInfo(object):
     Args:
         optimizer_config (optim._OptimizerConfig): reference to optimizer config
         all_finite (bool, default is True): flag that indicates whether all gradients are still finite after last step
-        fetches (list of str, default is []): list of output names to fetch from train_step/eval_step
+        fetches (list of str, default is []): list of output names to fetch from train_step/eval_step. Set it to [] to reset normal behavior.
         optimization_step (int): indicates the number of optimizations performed. Used for learning rate scheduling
         step (int): indicates current training step. Used for gradient accumulation
 
@@ -678,7 +678,8 @@ class ORTTrainer(object):
             input += (loss_scale, )
             extra_inputs += 1
 
-        assert len(self.model_desc.inputs) + extra_inputs == len(input)
+        # Only assert length of input when fetches is not used
+        assert self._train_step_info.fetches or len(self.model_desc.inputs) + extra_inputs == len(input)
         return input
 
     def _resolve_symbolic_dimensions(self, inputs, inputs_desc, outputs_desc):
