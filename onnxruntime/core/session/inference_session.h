@@ -358,8 +358,9 @@ class InferenceSession {
   std::string EndProfiling();
   /**
     * Return the stored start time of profiler
+    @return the stored start time of profiler
     */
-  TimePoint InferenceSession::GetProfilingStartTime();
+  TimePoint GetProfilingStartTime();
 
   /**
     * Search registered execution providers for an allocator that has characteristics
