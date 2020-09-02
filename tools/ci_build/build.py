@@ -1550,20 +1550,20 @@ def generate_documentation(source_dir, build_dir, configs):
         # Copy the gen_contrib_doc.py.
         shutil.copy(
             os.path.join(source_dir, 'tools', 'python', 'gen_contrib_doc.py'),
-            os.path.join(build_dir, config, config))
+            os.path.join(build_dir, config))
         shutil.copy(
             os.path.join(source_dir, 'tools', 'python', 'gen_opkernel_doc.py'),
-            os.path.join(build_dir, config, config))
+            os.path.join(build_dir, config))
         run_subprocess(
             [sys.executable,
              'gen_contrib_doc.py',
              '--output_path', operator_doc_path],
-            cwd=os.path.join(build_dir, config, config))
+            cwd=os.path.join(build_dir, config))
         run_subprocess(
             [sys.executable,
              'gen_opkernel_doc.py',
              '--output_path', opkernel_doc_path],
-            cwd=os.path.join(build_dir, config, config))
+            cwd=os.path.join(build_dir, config))
     docdiff = ''
     try:
         docdiff = subprocess.check_output(['git', 'diff', opkernel_doc_path])
