@@ -335,12 +335,6 @@ def parse_arguments():
                         help='Disable running ONNX Runtime with binded inputs and outputs. ')
     parser.set_defaults(disable_ort_io_binding=False)
 
-    parser.add_argument('--use_raw_attention_mask',
-                        required=False,
-                        action='store_true',
-                        help='Use raw attention mask in Attention operator for Bert models.')
-    parser.set_defaults(use_raw_attention_mask=False)
-
     parser.add_argument("--thread_num", required=False, type=int, default=-1, help="Threads to use")
 
     args = parser.parse_args()
@@ -392,10 +386,11 @@ def main():
     model_fusion_statistics = {}
     if enable_onnxruntime:
         try:
+            use_raw_attention_mask = True
             results += run_onnxruntime(args.use_gpu, args.models, args.precision, args.batch_sizes,
                                        args.sequence_lengths, args.test_times, args.input_counts, args.optimize_onnx,
                                        args.validate_onnx, args.cache_dir, args.onnx_dir, args.verbose, args.overwrite,
-                                       args.disable_ort_io_binding, args.use_raw_attention_mask, args.thread_num,
+                                       args.disable_ort_io_binding, use_raw_attention_mask, args.thread_num,
                                        model_fusion_statistics)
         except:
             logger.error(f"Exception", exc_info=True)
