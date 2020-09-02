@@ -233,11 +233,9 @@ struct ProviderHostImpl : ProviderHost {
     DataTypeImpl_GetTensorType_float = &DataTypeImpl::GetTensorType<float>;
   }
 
-  Provider_AllocatorPtr CreateAllocator(const Provider_AllocatorCreationInfo& info,
-                                        OrtDevice::DeviceId device_id = 0,
-                                        bool use_arena = true) override {
+  Provider_AllocatorPtr CreateAllocator(const Provider_AllocatorCreationInfo& info) override {
     AllocatorCreationInfo info_real{
-        info.mem_type, [&info](int value) -> std::unique_ptr<IDeviceAllocator> {
+        [&info](int value) -> std::unique_ptr<IDeviceAllocator> {
           auto allocator = info.factory(value);
           // If the allocator is a provider interface, we need to wrap it with ProviderAllocator to turn it into an IDeviceAllocator
           // Otherwise it's really a Provider_IDeviceAllocator_Impl, so we can just unwrap it to get back to the IDeviceAllocator inside
