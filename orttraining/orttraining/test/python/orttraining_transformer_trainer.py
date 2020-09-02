@@ -180,7 +180,6 @@ class ORTTransformerTrainer:
             loss_scaler = amp.DynamicLossScaler() if self.args.fp16 else None
             device = self.args.device.type
 
-            print('asasdas asd  world_size: ', self.args.local_rank, '/', self.world_size)
             device = f'{device}:{self.args.device.index}' if self.args.device.index else f'{device}:0'
             options = orttrainer.ORTTrainerOptions({'batch' : {
                                                         'gradient_accumulation_steps' : self.args.gradient_accumulation_steps},

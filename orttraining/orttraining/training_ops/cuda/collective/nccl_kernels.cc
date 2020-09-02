@@ -24,7 +24,7 @@ Status NcclAllReduce::ComputeInternal(OpKernelContext* context) const {
 
     ncclDataType_t dtype = GetNcclDataType(onnx_type);
     NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, comm, stream));
-}
+  }
 
   return Status::OK();
 }

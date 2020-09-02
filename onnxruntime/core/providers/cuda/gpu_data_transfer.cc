@@ -4,10 +4,6 @@
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "cuda_common.h"
 
-#include <iomanip>
-#include <iostream>
-#include <fstream>
-
 namespace onnxruntime {
 GPUDataTransfer::GPUDataTransfer() {
   // create streams, default is nullptr
