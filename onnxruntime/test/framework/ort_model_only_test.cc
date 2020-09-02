@@ -34,6 +34,7 @@ class InferenceSessionGetGraphWrapper : public InferenceSession {
 
 namespace test {
 
+#if !defined(ORT_MINIMAL_BUILD)
 // Same Tensor from ONNX and ORT format will have different binary representation, need to compare value by value
 static void CompareTensors(const OrtValue& left_value, const OrtValue& right_value) {
   const Tensor& left = left_value.Get<Tensor>();
@@ -88,7 +89,6 @@ static void CompareValueInfos(const ValueInfoProto& left, const ValueInfoProto& 
   }
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
 TEST(OrtModelOnlyTests, SerializeToOrtFormat) {
   const auto output_file = ORT_TSTR("ort_github_issue_4031.onnx.ort");
   SessionOptions so;
@@ -209,7 +209,8 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormat) {
 
 // test that we can deserialize and run a previously saved ORT format model
 TEST(OrtModelOnlyTests, LoadOrtFormatModel) {
-  const auto model_filename = ORT_TSTR("ort_github_issue_4031.onnx.ort");
+  // We load the pre-existing model in testdata
+  const auto model_filename = ORT_TSTR("testdata/ort_github_issue_4031.onnx.ort");
   SessionOptions so;
   so.session_logid = "LoadOrtFormatModel";
 

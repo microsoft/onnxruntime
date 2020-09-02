@@ -22,21 +22,17 @@ void InterOpDomainDeleter(OrtCustomOpDomain* domain) {
 void LoadInterOp(const std::basic_string<ORTCHAR_T>& model_uri, InterOpDomains& domains, const InterOpLogFunc& log_func) {
   int fd;
 
-  // match the error message from model.cc to keep the nodejs tests happy
-  //
-  // FIXME: Can we use an internal helper for this instead of cut-and-paste?
-  // Not clear why we're going through the public C++ API to call CreateCustomOpDomain as that seems
-  // unnecessarily indirect. Would also be better to return Status here instead of throwing for errors
-  // that are due to usage like invalid filenames.
+  // match the error message from model.cc to keep the nodejs tests happy.
+  // as this is deprecated just cut-and-paste equivalent code for now.
   auto status = Env::Default().FileOpenRd(model_uri, fd);
   if (!status.IsOK()) {
     if (status.Category() == common::SYSTEM) {
       switch (status.Code()) {
         case ENOENT:
-          status = ORT_MAKE_STATUS(ONNXRUNTIME, NO_SUCHFILE, "Load model ", ToMBString(file_path),
+          status = ORT_MAKE_STATUS(ONNXRUNTIME, NO_SUCHFILE, "Load model ", ToMBString(model_uri),
                                    " failed. File doesn't exist");
         case EINVAL:
-          status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Load model ", ToMBString(file_path), " failed");
+          status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Load model ", ToMBString(model_uri), " failed");
         default:
           status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "system error number ", status.Code());
       }

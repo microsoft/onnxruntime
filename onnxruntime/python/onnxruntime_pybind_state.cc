@@ -436,7 +436,8 @@ bool IsCudaDeviceIdValid(InferenceSession* sess, int id) {
   return true;
 }
 
-void UpdateCudaProviderOptions(InferenceSession* sess, onnxruntime::CudaProviderOptions& options, std::unordered_map<std::string, std::string> options_map) {
+void UpdateCudaProviderOptions(InferenceSession* sess, onnxruntime::CudaProviderOptions& options,
+                               std::unordered_map<std::string, std::string> options_map) {
   std::unordered_map<std::string, std::string>::iterator it;
 
   it = options_map.find("device_id");
