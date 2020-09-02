@@ -17,73 +17,11 @@ from perf_utils import *
 import pprint
 import time
 from float16 import *
-
-sys.path.append('./models/')
-from BERTSquad import *
-from Resnet18v1 import *
-from Resnet18v2 import *
-from Resnet34v1 import *
-from Resnet34v2 import *
-from Resnet50v1 import *
-from Resnet50v2 import *
-from Resnet101 import *
-from Resnet152v1 import *
-from Resnet152v2 import *
-from FasterRCNN import *
-from MaskRCNN import *
-from SSD import *
-from InceptionV1 import *
-from InceptionV2 import *
-from Mobilenet import *
-from ShufflenetV2 import *
-from ShufflenetV1 import *
-from Squeezenet import *
-from EmotionFerplus import *
-from Googlenet import *
-from Alexnet import *
-from Caffenet import *
-from Densenet import *
-from RcnnIlsvrc13 import *
-from TinyYolov2 import *
-from TinyYolov3 import *
-from YoloV3 import *
-from YoloV4 import *
-from Vgg19bn import *
-from Vgg16 import *
-from Zfnet512 import *
-from Retinanet import *
-from Resnet101DucHdc import *
-from ArcFace import *
-# from SuperResolution import *
-from FastNeural import *
-from BiDAF import *
-from GPT2 import *
-from GPT2_LM_HEAD import *
-from VehicleDetector import *
-from TwoStageProductReco import *
-from SeresnextGeneral import *
-from YoloV2V2LOGO import *
-from YoloV2V3 import *
-from YoloV3PyTorch import *
-from MNIST import *
-from Skeletal import *
-from Speech import *
-from VisionPeopleDetection import *
-from VisionYolov3 import *
 # import torch
 
 debug = False
 sys.path.append('.')
-
 logger = logging.getLogger('')
-
-########################################
-#
-# model name: (model class, model path)
-#
-########################################
-MODELS = {
-}
 
 ep_to_provider_list = {
     "CPUExecutionProvider": ["CPUExecutionProvider"],
@@ -94,40 +32,31 @@ ep_to_provider_list = {
 }
 
 def run_trt_standalone(trtexec, model_path, ort_inputs, all_inputs_shape, fp16):
-    # trtexec = "/home/hcsuser/tensorrt/TensorRT-7.1.3.4/bin/trtexec"
     model_path = "--onnx=" + model_path
     input_shape = []
 
     print(all_inputs_shape)
 
-    # ort_inputs = model.get_input_nodes()
     for i in range(len(ort_inputs)):
-        # name = str(ort_inputs[i])
-        # start = name.find('name=') + 5
-        # end = name.find(',')
-        # name = name[start+1:end-1]
         name = ort_inputs[i].name
-        print(name)
 
-        # shape_ = all_inputs_shape[i]
         shape = []
         for j in all_inputs_shape[i]:
             shape.append(str(j))
-        print(shape)
         shape = "x".join(shape)
         shape = name + ':' + shape
         input_shape.append(shape)
 
-    all_input_shape = '--optShapes=' + ','.join(input_shape)
-    print(all_input_shape)
+    shapes_arg = '--optShapes=' + ','.join(input_shape)
+    print(shapes_arg)
 
     result = {}
     try:
 
         if fp16:
-            p1 = subprocess.Popen([trtexec, model_path, "--fp16", "--percentile=90", "--explicitBatch", all_input_shape], stdout=subprocess.PIPE)
+            p1 = subprocess.Popen([trtexec, model_path, "--fp16", "--percentile=90", "--explicitBatch", shapes_arg], stdout=subprocess.PIPE)
         else:
-            p1 = subprocess.Popen([trtexec, model_path, "--percentile=90", "--explicitBatch", all_input_shape], stdout=subprocess.PIPE)
+            p1 = subprocess.Popen([trtexec, model_path, "--percentile=90", "--explicitBatch", shapes_arg], stdout=subprocess.PIPE)
         stdout, sterr = p1.communicate()
         print(stdout)
         stdout = stdout.decode("ascii").strip()
@@ -140,7 +69,6 @@ def run_trt_standalone(trtexec, model_path, ort_inputs, all_inputs_shape, fp16):
 
             if 'percentile:' in t:
                 target_list.append(t)
-
 
         target = target_list[2]
         start = target.find('mean:') + 6
@@ -504,11 +432,11 @@ def generate_onnx_model_random_input(test_times, ref_input):
                 new_tensor = np.random.randint(0, np.max(tensor)+1, shape, dtype)
             else:
                 new_tensor = np.random.random_sample(shape).astype(dtype)
-            print("\n")
             print("original tensor:")
             print(tensor)
             print("new random tensor:")
             print(new_tensor)
+            print("\n")
             input_data.append(new_tensor)
         inputs.append(input_data)
 
@@ -688,7 +616,7 @@ def get_system_info(info):
             infos.append(row)
     info["memory"] = infos
 
-def parse_models_info(path="./models/models_info.json"):
+def parse_models_info(path):
     models = {}
 
     with open(path) as f:
@@ -772,8 +700,6 @@ def run_onnxruntime(args, models):
         ep_list = ["CUDAExecutionProvider", "TensorrtExecutionProvider", "CUDAExecutionProvider_fp16", "TensorrtExecutionProvider_fp16"]
     else:
         ep_list = ["CUDAExecutionProvider", "TensorrtExecutionProvider"]
-
-    # ep_list = ["CUDAExecutionProvider"]
 
     validation_exemption = ["TensorrtExecutionProvider_fp16"]
 
@@ -1010,9 +936,13 @@ def run_onnxruntime(args, models):
                 elif ep == "TensorrtExecutionProvider_fp16":
                     trt_fp16_op_map = op_map
 
+            profile_metrics_map[name] = {}
+
+            if cuda_op_map:
+                profile_metrics_map[name]['ratio_of_ops_in_cuda_not_fallback_cpu'] = calculate_cuda_op_percentage(cuda_op_map) 
+
             if trt_op_map:
                 total_trt_execution_time, total_execution_time, ratio_of_execution_time_in_trt = calculate_trt_latency_percentage(trt_op_map)
-                profile_metrics_map[name] = {}
                 profile_metrics_map[name]['total_trt_execution_time'] = total_trt_execution_time
                 profile_metrics_map[name]['total_execution_time'] = total_execution_time
                 profile_metrics_map[name]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt
@@ -1191,6 +1121,7 @@ def output_latency(results, csv_filename):
 def output_ratio(results, csv_filename):
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = ["Model",
+                        "% CUDA operators (not fall back to CPU)",
                         "Total TRT operators",
                         "Total operators",
                         "% TRT operator",
@@ -1202,6 +1133,7 @@ def output_ratio(results, csv_filename):
 
         for key, value in results.items():
             row = [key,
+                   value['ratio_of_ops_in_cuda_not_fallback_cpu'] if 'ratio_of_ops_in_cuda_not_fallback_cpu' in value else "  ",
                    value['total_ops_in_trt'] if 'total_ops_in_trt' in value else "  ",
                    value['total_ops'] if 'total_ops' in value else "  ",
                    value['ratio_of_ops_in_trt'] if 'ratio_of_ops_in_trt' in value else "  ",
@@ -1270,7 +1202,7 @@ def main():
     logger.info("\nTotal time for running/profiling all models: {}".format(perf_end_time - perf_start_time))
     logger.info(list(models.keys()))
 
-    logger.info("\nTotal models: {}".format(len(MODELS)))
+    logger.info("\nTotal models: {}".format(len(models)))
     logger.info("Fail models: {}".format(len(failing_models)))
     logger.info("Models FAIL/SUCCESS: {}/{}".format(len(failing_models), len(models) - len(failing_models)))
 

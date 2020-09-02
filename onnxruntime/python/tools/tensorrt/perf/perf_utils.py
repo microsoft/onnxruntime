@@ -88,6 +88,21 @@ def parse_single_file(f):
 
     return None
 
+def calculate_cuda_op_percentage(cuda_op_map):
+    if not cuda_op_map or len(cuda_op_map) == 0:
+        return 0
+
+    cuda_ops = 0
+    cpu_ops = 0
+    for key, value in cuda_op_map.items():
+        if key == 'CUDAExecutionProvider':
+            cuda_ops += len(value)
+
+        if key == 'CPUExecutionProvider':
+            cpu_ops += len(value)
+
+    return cuda_ops / (cuda_ops + cpu_ops)
+
 ##########################################
 # Return: total ops executed in TRT,
 #         total ops,
