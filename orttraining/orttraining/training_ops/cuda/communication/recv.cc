@@ -5,6 +5,7 @@
 
 #include "orttraining/training_ops/cuda/communication/recv.h"
 #include "orttraining/training_ops/cuda/communication/common.h"
+#include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #include "core/profile/profile.h"
 #include "core/profile/context.h"
 #include "core/providers/cuda/cuda_common.h"
@@ -72,15 +73,23 @@ void Recv::ReceiveData(
   // count waiting time before setting up the actual communication.
   recvRange.Begin();
 #endif
-  buffer = AllocateBufferOnCPUPinned<char>(static_cast<size_t>(aggregated_aligned_tensor_bytes));
+  // buffer = AllocateBufferOnCPUPinned<char>(static_cast<size_t>(aggregated_aligned_tensor_bytes));
+  buffer = GetScratchBuffer<char>(aggregated_aligned_tensor_bytes);
+
   CommInfo_t info_data{buffer.get(),
                        static_cast<int>(aggregated_aligned_tensor_bytes),
                        src,
                        static_cast<int>(tag_)};
 
-  MPI_CHECK(MPI_Recv(
-      info_data.buffer, info_data.size, MPI_CHAR,
-      info_data.rank, info_data.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+  if (true) {
+    // std::cout << "[send.cc] Call Recv" << std::endl;
+    auto& nccl_service = cuda::NcclService::GetInstance();
+    nccl_service.SubmitRecvAndWait(info_data.buffer, info_data.size, info_data.rank);
+  } else {
+    MPI_CHECK(MPI_Recv(
+        info_data.buffer, info_data.size, MPI_CHAR,
+        info_data.rank, info_data.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+  }
 
 #ifdef ENABLE_NVTX_PROFILE
   // End of actual communication.
@@ -106,10 +115,10 @@ void Recv::ReceiveData(
     // Keep the sync copy in the previous design
     // TODO they can be moved to async call after global stream becoming accessible
     CUDA_CALL(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
-                              tensor->SizeInBytes(), cudaMemcpyHostToDevice));
+                              tensor->SizeInBytes(), cudaMemcpyDeviceToDevice));
     tensor_offset_in_bytes += tensor->SizeInBytes();
   }
-  AddDeferredReleaseCPUPtr(buffer.release());
+  // AddDeferredReleaseCPUPtr(buffer.release());
 
 #ifdef ENABLE_NVTX_PROFILE
   // End of host-to-device copy.

@@ -19,6 +19,7 @@
 #include "orttraining/core/framework/checkpointing.h"
 #include "orttraining/core/graph/optimizer_graph_builder.h"
 #include "orttraining/models/runner/training_util.h"
+#include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #include "single_include/nlohmann/json.hpp"
 #include "test/perftest/utils.h"
 
@@ -699,6 +700,35 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
   auto end_to_end_start = std::chrono::high_resolution_clock::now();
   bool end_to_end_measurement_started = false;
 
+  // NCCL-P2P
+  auto& nccl_service = cuda::NcclService::GetInstance();
+
+  nccl_service.StartPlan();
+  for (auto& slot : pipeline_schedule_.GetSchedule(pipeline_context_.pipeline_stage_id)) {
+    if (!slot.HasCommute()) {
+      continue;
+    }
+    nccl_service.PlanStartNewGroup();
+    for (auto& task : slot.GetTasks()) {
+      if (task.type == pipeline::PipelineTask::Type::Send) {
+        nccl_service.PlanSend(task.peer_rank);
+      } else if (task.type == pipeline::PipelineTask::Type::Recv) {
+        nccl_service.PlanRecv(task.peer_rank);
+      }
+    }
+    nccl_service.PlanEndNewGroup();
+  }
+  nccl_service.EndPlan();
+
+  std::cout << pipeline_schedule_ << std::endl;
+
+  nccl_service.Show();
+  pipeline_worker_pool_.nccl_worker = std::thread(
+    [&]() -> void {
+      nccl_service.Launch();
+    }
+  );
+
   auto all_steps_time_start = std::chrono::high_resolution_clock::now();
   while (step_ < params_.num_train_steps) {
     for (size_t shard_it = 0; shard_it < num_shards_to_visit; ++shard_it) {
@@ -748,6 +778,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
                                           fetch_names,
                                           fetches));
           RunWithUpdate(feed_names, fetch_names, feeds, fetches);
+          nccl_service.Reset();
         } else {
           ORT_RETURN_IF_ERROR(PrepareFeedNamesAndFeeds(GradientAccumulateStep,
                                                        training_data_loader,
@@ -870,6 +901,8 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
             << "Average Step Time: " << all_steps_duration_seconds.count() / (step_ - step_start) << " Second\n"
             << "Average Step Throughput: " << params_.batch_size * (step_ - step_start) / (all_steps_duration_seconds.count()) << " Examples / Second\n";
 
+  nccl_service.Terminate();
+  pipeline_worker_pool_.nccl_worker.join();
   return Status::OK();
 }
 
