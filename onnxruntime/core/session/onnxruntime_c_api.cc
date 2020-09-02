@@ -128,7 +128,7 @@ ORT_API_STATUS_IMPL(OrtApis::SetLanguageProjection, _In_ const OrtEnv* ort_env, 
   ORT_UNUSED_PARAMETER(ort_env);
   // note telemetry is controlled via the platform Env object, not the OrtEnv object instance
   const Env& env = Env::Default();
-  env.GetTelemetryProvider().SetLanguageProjection(projection);
+  env.GetTelemetryProvider().SetLanguageProjection(static_cast<uint32_t>(projection));
   return nullptr;
   API_IMPL_END
 }
