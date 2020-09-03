@@ -455,19 +455,6 @@ static ORT_STATUS_PTR InitializeSession(_In_ const OrtSessionOptions* options,
   if (options) {
     for (auto& factory : options->provider_factories) {
       auto provider = factory->CreateProvider();
-      if (provider->Type() == kDmlExecutionProvider) {
-        if (options->value.enable_mem_pattern) {
-          // TODO Instead of returning an error, should we set mem pattern to false here and log a warning saying so?
-          // Doing so would be inconsistent with the Python API that doesn't go through this code path.
-          return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                       "Mem pattern should be disabled when using DML execution provider.");
-        }
-        if (options->value.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
-          return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                       "Sequential execution should be enabled when using DML execution provider.");
-        }
-      }
-
       provider_list.push_back(std::move(provider));
     }
   }

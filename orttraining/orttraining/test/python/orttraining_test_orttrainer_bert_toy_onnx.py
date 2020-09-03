@@ -70,22 +70,6 @@ def bert_model_description(dynamic_shape=True):
     return model_desc
 
 
-def optimizer_parameters_mutiple_groups(model):
-    '''A method to assign different hyper parameters for different model parameter groups'''
-
-    no_decay_keys = ["bias", "gamma", "beta", "LayerNorm"]
-    no_decay_param_group = []
-    decay_param_group = []
-    for initializer in model.graph.initializer:
-        if any(key in initializer.name for key in no_decay_keys):
-            no_decay_param_group.append(initializer.name)
-        else:
-            decay_param_group.append(initializer.name)
-    params = [{'params': no_decay_param_group, "alpha": 0.9, "beta": 0.999, "lambda_coef": 0.0, "epsilon": 1e-6},
-              {'params': decay_param_group, "alpha": 0.9, "beta": 0.999, "lambda_coef": 0.01, "epsilon": 1e-6}]
-    return params
-
-
 def optimizer_parameters(model):
     '''A method to assign different hyper parameters for different model parameter groups'''
 
@@ -181,7 +165,7 @@ def legacy_optim_params_c(name):
     (True),
     (False)
 ])
-def testToyBERTModelSimpleTrainStep(dynamic_shape):
+def testToyBERTModelBasicTraining(dynamic_shape):
     model_desc = bert_model_description(dynamic_shape)
     model = load_bert_onnx_model()
 
@@ -307,7 +291,6 @@ def testToyBERTModelLRScheduler(initial_lr, lr_scheduler, expected_learning_rate
     _test_helpers.assert_model_outputs(losses, expected_losses, rtol=1e-6)
 
 
-# Dynamic Loss Scaler implemented implicitly
 @pytest.mark.parametrize("loss_scaler, expected_losses", [
     (None, [10.98803424835205, 10.99240493774414, 11.090575218200684, 11.042827606201172, 10.988829612731934,\
         11.105679512023926, 10.981968879699707, 11.081787109375, 10.997162818908691, 11.107288360595703]),
@@ -471,13 +454,17 @@ def testToyBertCheckpointLoadZero():
     assert_allclose(expected_eval_loss, actual_eval_loss, rtol=rtol)
 
 
-def testToyBertStateDictWrapModelLossFn():
+@pytest.mark.parametrize("loss_scaler, optimizer_config, gradient_accumulation_steps", [
+    (None, optim.AdamConfig(), 1),
+    (None, optim.LambConfig(), 1),
+    (None, optim.SGDConfig(), 1),
+    (amp.DynamicLossScaler(), optim.AdamConfig(), 1),
+    (amp.DynamicLossScaler(), optim.LambConfig(), 5),
+    #(amp.DynamicLossScaler(), optim.SGDConfig(), 1), # SGD doesnt support fp16
+])
+def testToyBertStateDictWrapModelLossFn(loss_scaler, optimizer_config, gradient_accumulation_steps):
     # Common setup
     seed = 1
-    torch.manual_seed(seed)
-    onnxruntime.set_seed(seed)
-
-    # Modeling
     class LinearModel(torch.nn.Module):
         def __init__(self):
             super().__init__()
@@ -487,28 +474,58 @@ def testToyBertStateDictWrapModelLossFn():
                 return self.linear(x) + y
             else:
                 return self.linear(x) + torch.ones(2, 4)
-    pt_model = LinearModel()
     model_desc = {'inputs' : [('x', [2, 2]),
                               ('label', [2, ])],
                   'outputs' : [('loss', [], True),
                                ('output', [2, 4])]}
-    optim_config = optim.SGDConfig(lr=0.02)
+
+    # Dummy data
+    data1 = torch.randn(2, 2)
+    label1 = torch.tensor([0, 1], dtype=torch.int64)
+    data2 = torch.randn(2, 2)
+    label2 = torch.tensor([0, 1], dtype=torch.int64)
+
+    # Setup training based on test parameters
+    opts =  {'debug' : {'deterministic_compute': True},
+             'batch' : { 'gradient_accumulation_steps' : gradient_accumulation_steps}}
+    if loss_scaler:
+        opts['mixed_precision'] = { 'enabled': True, 'loss_scaler': loss_scaler}
+    opts =  orttrainer.ORTTrainerOptions(opts)
+
+    # Training session 1
+    torch.manual_seed(seed)
+    onnxruntime.set_seed(seed)
+    pt_model = LinearModel()
     def loss_fn(x, label):
         return F.nll_loss(F.log_softmax(x, dim=1), label)
-    trainer = orttrainer.ORTTrainer(pt_model, model_desc, optim_config, loss_fn=loss_fn)
+    trainer = orttrainer.ORTTrainer(pt_model, model_desc, optimizer_config, loss_fn=loss_fn, options=opts)
 
-    # Compare resulting state_dict keys before train
+    # Check state_dict keys before train. Must be empty
     state_dict = checkpoint.experimental_state_dict(trainer)
     assert state_dict == {}
 
-    # Executing train_step() once
-    data = torch.randn(2, 2)
-    label = torch.tensor([0, 1], dtype=torch.int64)
-    trainer.train_step(x=data, label=label)
-
-    # Compare resulting state_dict keys after train
+    # Train once and check initial state
+    trainer.train_step(x=data1, label=label1)
     state_dict = checkpoint.experimental_state_dict(trainer)
-    assert state_dict.keys() == {'linear.bias', 'linear.weight'}
+    assert all([weight in state_dict.keys() for weight in ['linear.bias', 'linear.weight']])
+
+    # Initialize training session 2 from state of Training 1
+    torch.manual_seed(seed)
+    onnxruntime.set_seed(seed)
+    trainer2 = orttrainer.ORTTrainer(pt_model, model_desc, optimizer_config, loss_fn=loss_fn, options=opts)
+    checkpoint.experimental_load_state_dict(trainer2, state_dict)
+
+    # Verify state was loaded properly
+    for k,v in state_dict.items():
+        assert_allclose(v, trainer2._state_dict[k])
+
+    # Perform a second step in both training session 1 and 2 and verify they match
+    trainer.train_step(x=data2, label=label2)
+    state_dict = checkpoint.experimental_state_dict(trainer)
+    trainer2.train_step(x=data2, label=label2)
+    state_dict2 = checkpoint.experimental_state_dict(trainer2)
+    for k,v in state_dict.items():
+        assert_allclose(v, state_dict2[k])
 
 
 def testToyBertCheckpointFrozenWeights():
@@ -648,11 +665,15 @@ def testToyBERTSaveAsONNX():
 ###############################################################################
 # Temporary tests comparing Legacy vs Experimental ORTTrainer APIs ############
 ###############################################################################
-
-
-def testToyBERTModelLegacyExperimentalBasicTraining():
+@pytest.mark.parametrize("optimizer_config", [
+    (optim.AdamConfig),
+    (optim.LambConfig),
+    (optim.SGDConfig)
+])
+def testToyBERTModelLegacyExperimentalBasicTraining(optimizer_config):
     # Common setup
-    train_steps = 10
+    train_steps = 512
+
     device = 'cuda'
     seed = 1
     torch.manual_seed(seed)
@@ -661,8 +682,6 @@ def testToyBERTModelLegacyExperimentalBasicTraining():
     # EXPERIMENTAL API
     model_desc = bert_model_description()
     model = load_bert_onnx_model()
-    params = optimizer_parameters(model)
-    optim_config = optim.LambConfig()
     opts =  orttrainer.ORTTrainerOptions({
         'debug' : {
             'deterministic_compute': True
@@ -671,6 +690,7 @@ def testToyBERTModelLegacyExperimentalBasicTraining():
             'id': device,
         },
     })
+    optim_config = optimizer_config(lr=0.01)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
     experimental_losses = []
     for i in range(train_steps):
@@ -680,12 +700,24 @@ def testToyBERTModelLegacyExperimentalBasicTraining():
     # LEGACY IMPLEMENTATION
     torch.manual_seed(seed)
     onnxruntime.set_seed(seed)
+
+    if optimizer_config == optim.AdamConfig:
+        legacy_optimizer = 'AdamOptimizer'
+    elif optimizer_config == optim.LambConfig:
+        legacy_optimizer = 'LambOptimizer'
+    elif optimizer_config == optim.SGDConfig:
+        legacy_optimizer = 'SGDOptimizer'
+    else:
+        raise RuntimeError("Invalid optimizer_config")
+
     device = torch.device(device)
-    legacy_model_desc, learning_rate_description, learning_rate = legacy_model_params(lr=0.001)
-    legacy_trainer = Legacy_ORTTrainer(model, None, legacy_model_desc, "LambOptimizer",
+    model = load_bert_onnx_model()
+    legacy_model_desc, learning_rate_description, learning_rate = legacy_model_params(lr=optim_config.lr)
+    legacy_trainer = Legacy_ORTTrainer(model, None, legacy_model_desc, legacy_optimizer,
                        None,
                        learning_rate_description,
-                       device)
+                       device,
+                       _use_deterministic_compute=True)
     legacy_losses = []
     for i in range(train_steps):
         sample_input = generate_random_input_from_model_desc(model_desc, i)
@@ -693,7 +725,7 @@ def testToyBERTModelLegacyExperimentalBasicTraining():
         legacy_losses.append(leg_loss.cpu().item())
 
     # Check results
-    _test_helpers.assert_model_outputs(experimental_losses, legacy_losses, True, rtol=1e-5)
+    _test_helpers.assert_model_outputs(experimental_losses, legacy_losses, True)
 
 
 @pytest.mark.parametrize("initial_lr, lr_scheduler, legacy_lr_scheduler", [
@@ -709,7 +741,7 @@ def testToyBERTModelLegacyExperimentalLRScheduler(initial_lr, lr_scheduler, lega
     ############################################################################
 
     # Common setup
-    total_steps = 10
+    total_steps = 128
     device = 'cuda'
     seed = 1
     warmup = 0.05
@@ -762,7 +794,7 @@ def testToyBERTModelLegacyExperimentalLRScheduler(initial_lr, lr_scheduler, lega
     torch.manual_seed(seed)
     onnxruntime.set_seed(seed)
     device = torch.device(device)
-
+    model = load_bert_onnx_model()
     legacy_model_desc, learning_rate_description, learning_rate = legacy_model_params(initial_lr)
     legacy_trainer = Legacy_ORTTrainer(model, None, legacy_model_desc, "AdamOptimizer",
                        None,
@@ -787,7 +819,7 @@ def testToyBERTModelLegacyExperimentalLRScheduler(initial_lr, lr_scheduler, lega
 ])
 def testToyBERTModelMixedPrecisionLossScalerLegacyExperimental(loss_scaler, legacy_loss_scaler):
     # Common setup
-    total_steps = 10
+    total_steps = 128
     device = "cuda"
     seed = 1
 
@@ -796,7 +828,7 @@ def testToyBERTModelMixedPrecisionLossScalerLegacyExperimental(loss_scaler, lega
     onnxruntime.set_seed(seed)
     model_desc = bert_model_description()
     model = load_bert_onnx_model()
-    optim_config = optim.LambConfig()
+    optim_config = optim.AdamConfig(lr=0.001)
     opts =  orttrainer.ORTTrainerOptions({
         'debug' : {
             'deterministic_compute': True
@@ -816,11 +848,12 @@ def testToyBERTModelMixedPrecisionLossScalerLegacyExperimental(loss_scaler, lega
         experimental_losses.append(trainer.train_step(*sample_input).cpu().item())
 
     # LEGACY IMPLEMENTATION
-    device = torch.device(device)
-    legacy_model_desc, learning_rate_description, learning_rate = legacy_model_params(optim_config.lr)
     torch.manual_seed(seed)
     onnxruntime.set_seed(seed)
-    legacy_trainer = Legacy_ORTTrainer(model, None, legacy_model_desc, "LambOptimizer",
+    device = torch.device(device)
+    model = load_bert_onnx_model()
+    legacy_model_desc, learning_rate_description, learning_rate = legacy_model_params(optim_config.lr)
+    legacy_trainer = Legacy_ORTTrainer(model, None, legacy_model_desc, "AdamOptimizer",
                        None,
                        learning_rate_description,
                        device,
@@ -834,7 +867,7 @@ def testToyBERTModelMixedPrecisionLossScalerLegacyExperimental(loss_scaler, lega
         legacy_losses.append(leg_loss.cpu().item())
 
     # Check results
-    _test_helpers.assert_model_outputs(experimental_losses, legacy_losses, rtol=1e-5)
+    _test_helpers.assert_model_outputs(experimental_losses, legacy_losses)
 
 
 @pytest.mark.parametrize("gradient_accumulation_steps", [
@@ -844,7 +877,7 @@ def testToyBERTModelMixedPrecisionLossScalerLegacyExperimental(loss_scaler, lega
 ])
 def testToyBERTModelGradientAccumulationLegacyExperimental(gradient_accumulation_steps):
     # Common setup
-    total_steps = 10
+    total_steps = 128
     device = "cuda"
     seed = 1
 
@@ -853,7 +886,7 @@ def testToyBERTModelGradientAccumulationLegacyExperimental(gradient_accumulation
     onnxruntime.set_seed(seed)
     model_desc = bert_model_description()
     model = load_bert_onnx_model()
-    optim_config = optim.LambConfig()
+    optim_config = optim.AdamConfig()
     opts =  orttrainer.ORTTrainerOptions({
         'debug' : {
             'deterministic_compute': True
@@ -873,16 +906,17 @@ def testToyBERTModelGradientAccumulationLegacyExperimental(gradient_accumulation
         experimental_losses.append(loss.cpu().item())
 
     # LEGACY IMPLEMENTATION
-    device = torch.device(device)
     torch.manual_seed(seed)
     onnxruntime.set_seed(seed)
+    device = torch.device(device)
+    model = load_bert_onnx_model()
     legacy_model_desc, learning_rate_description, learning_rate = legacy_model_params(optim_config.lr)
-    legacy_trainer = Legacy_ORTTrainer(model, None, legacy_model_desc, "LambOptimizer",
+    legacy_trainer = Legacy_ORTTrainer(model, None, legacy_model_desc, "AdamOptimizer",
                        None,
                        learning_rate_description,
                        device,
-                       _use_deterministic_compute=True,
-                       gradient_accumulation_steps=gradient_accumulation_steps)
+                       _use_deterministic_compute = True,
+                       gradient_accumulation_steps = gradient_accumulation_steps)
     legacy_losses = []
     for i in range(total_steps):
         sample_input = generate_random_input_from_model_desc(model_desc, i)
@@ -890,7 +924,7 @@ def testToyBERTModelGradientAccumulationLegacyExperimental(gradient_accumulation
         legacy_losses.append(leg_loss.cpu().item())
 
     # Check results
-    _test_helpers.assert_model_outputs(experimental_losses, legacy_losses, rtol=1e-6)
+    _test_helpers.assert_model_outputs(experimental_losses, legacy_losses)
 
 @pytest.mark.parametrize("params, legacy_optim_map", [
     # Change the hyper parameters for all parameters
@@ -903,15 +937,17 @@ def testToyBERTModelGradientAccumulationLegacyExperimental(gradient_accumulation
 ])
 def testToyBERTModelLegacyExperimentalCustomOptimParameters(params, legacy_optim_map):
     # Common setup
-    total_steps = 10
+    total_steps = 128
     device = "cuda"
     seed = 1
 
     # EXPERIMENTAL API
+    torch.manual_seed(seed)
+    onnxruntime.set_seed(seed)
     model_desc = bert_model_description()
     model = load_bert_onnx_model()
 
-    optim_config = optim.LambConfig(params, alpha= 0.9, beta= 0.999, lambda_coef= 0.01, epsilon= 1e-6, do_bias_correction=False)
+    optim_config = optim.AdamConfig(params, alpha= 0.9, beta= 0.999, lambda_coef= 0.01, epsilon= 1e-6, do_bias_correction=False)
     opts =  orttrainer.ORTTrainerOptions({
         'debug' : {
             'deterministic_compute': True
@@ -920,9 +956,6 @@ def testToyBERTModelLegacyExperimentalCustomOptimParameters(params, legacy_optim
             'id': device,
         },
     })
-
-    torch.manual_seed(seed)
-    onnxruntime.set_seed(seed)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
 
     experimental_losses = []
@@ -931,12 +964,13 @@ def testToyBERTModelLegacyExperimentalCustomOptimParameters(params, legacy_optim
         experimental_losses.append(trainer.train_step(*sample_input).cpu().item())
 
     # LEGACY IMPLEMENTATION
-    device = torch.device(device)
-    legacy_model_desc, learning_rate_description, learning_rate = legacy_model_params(trainer.optim_config.lr)
     torch.manual_seed(seed)
     onnxruntime.set_seed(seed)
+    device = torch.device(device)
+    model = load_bert_onnx_model()
+    legacy_model_desc, learning_rate_description, learning_rate = legacy_model_params(trainer.optim_config.lr)
 
-    legacy_trainer = Legacy_ORTTrainer(model, None, legacy_model_desc, "LambOptimizer",
+    legacy_trainer = Legacy_ORTTrainer(model, None, legacy_model_desc, "AdamOptimizer",
                                        legacy_optim_map,
                                        learning_rate_description,
                                        device,

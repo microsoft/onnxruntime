@@ -24,7 +24,7 @@ class TrainStepInfo(object):
     Args:
         optimizer_config (optim._OptimizerConfig): reference to optimizer config
         all_finite (bool, default is True): flag that indicates whether all gradients are still finite after last step
-        fetches (list of str, default is []): list of output names to fetch from train_step/eval_step
+        fetches (list of str, default is []): list of output names to fetch from train_step/eval_step. Set it to [] to reset normal behavior.
         optimization_step (int): indicates the number of optimizations performed. Used for learning rate scheduling
         step (int): indicates current training step. Used for gradient accumulation
 
@@ -144,6 +144,8 @@ class ORTTrainer(object):
                 "'loss_fn' must be either 'None' or 'torch.nn.Module'"
             self._torch_model = model
             self.loss_fn = loss_fn
+            # TODO: Subject to change after checkpoint redesign
+            self._torch_state_dict_keys = list(model.state_dict().keys())
         elif isinstance(model, onnx.ModelProto):
             assert loss_fn is None, "'loss_fn' must not be specified when 'model' is an ONNX model"
             self._onnx_model = model
@@ -168,6 +170,7 @@ class ORTTrainer(object):
                 self._onnx_model = postprocess.run_postprocess(self._onnx_model)
             if self.options._internal_use.extra_postprocess:
                 self._onnx_model = self.options._internal_use.extra_postprocess(self._onnx_model)
+                assert isinstance(self._onnx_model, onnx.ModelProto), "'extra_postprocess' must return a ONNX model"
 
             # When input model is already ONNX (and not exported from Pytorch within ORTTrainer),
             # append 'dtype' from ONNX into model description's
@@ -195,9 +198,8 @@ class ORTTrainer(object):
                 ort.set_cuda_mem_limit(self.options.device.mem_limit)
             ort.set_cuda_device_id(_utils.get_device_index(self.options.device.id))
 
-        # TODO: thiagofc: Checkpoint related for redesign
-        self._original_model_state_keys = list(model.state_dict().keys()) if hasattr(model, 'state_dict') else []
-        self._state_dict = None
+        # TODO: Subject to change after checkpoint redesign
+        self._state_dict = {}
 
         self._train_step_info = TrainStepInfo(self.optim_config)
         self._training_session = None
@@ -337,7 +339,7 @@ class ORTTrainer(object):
         if self.options.mixed_precision.enabled:
             loss_scaler = self.options.mixed_precision.loss_scaler
             assert loss_scaler, "Loss scaler is required when mixed precision is enabled"
-            loss_scale = torch.tensor([loss_scaler.loss_scale])
+            loss_scale = loss_scaler.loss_scale
             inputs_desc = self._model_desc_inputs_with_lr_and_loss_scale
 
         # Get data. CombineTorchModelLossFn takes label as last input and outputs loss first
@@ -647,10 +649,11 @@ class ORTTrainer(object):
             self._model_desc_outputs_with_gradient_accumulation = [
                 *self.model_desc.outputs, self.model_desc.gradient_accumulation]
 
-        # TODO: thiagofc: Checkpoint related for redesign
+        # TODO: Subject to change after checkpoint redesign
         if self._state_dict:
-            checkpoint.load_state_dict(self, self._state_dict, self._load_state_dict_strict)
-        self._state_dict = None
+            checkpoint.experimental_load_state_dict(self, self._state_dict, self._load_state_dict_strict)
+            self._state_dict_debug = self._state_dict
+        self._state_dict = {}
 
     def _prepare_model_input(self, inputs_desc, lr, loss_scale, *inputs, **kwargs):
         # Normalize input to tuple of samples
@@ -674,11 +677,12 @@ class ORTTrainer(object):
         # Append loss scale
         if loss_scale is not None:
             assert self.options.mixed_precision.enabled, "Loss scale cannot be used without mixed precision"
-            loss_scale = loss_scale.clone().detach()
-            input += (loss_scale, )
+            loss_scale = torch.tensor([loss_scale])
+            input += (loss_scale,)
             extra_inputs += 1
 
-        assert len(self.model_desc.inputs) + extra_inputs == len(input)
+        # Only assert length of input when fetches is not used
+        assert self._train_step_info.fetches or len(self.model_desc.inputs) + extra_inputs == len(input)
         return input
 
     def _resolve_symbolic_dimensions(self, inputs, inputs_desc, outputs_desc):

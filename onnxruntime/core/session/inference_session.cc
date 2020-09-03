@@ -348,15 +348,34 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
 
   const std::string& provider_type = p_exec_provider->Type();
 
-  // DML's memory is not byte addressable and hence mem pattern doesn't work.
+  // Some session option values (default or user provided) may not work with some EPs.
+  // Rather than put the onus on the user to know these, make the appropriate change while logging the change.
   if (provider_type == onnxruntime::kDmlExecutionProvider) {
+    // DML's memory is not byte addressable and hence mem pattern doesn't work.
     if (session_options_.enable_mem_pattern) {
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT,
-                    "Memory pattern must be disabled before registering DMLExecutionProvider");
+      LOGS(*session_logger_, WARNING)
+          << "Having memory pattern enabled is not supported while using the DML Execution Provider. "
+          << "So disabling it for this session since it uses the DML Execution Provider.";
+      session_options_.enable_mem_pattern = false;
     }
+
+    // Parallel execution mode does not support DML EP
     if (session_options_.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT,
-                    "Sequential execution must be enabled before registering DMLExecutionProvider");
+      LOGS(*session_logger_, WARNING)
+          << "Parallel execution mode does not support the DML Execution Provider. "
+          << "So making the execution mode sequential for this session since it uses the DML Execution Provider.";
+
+      session_options_.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+    }
+  }
+
+  if (provider_type == onnxruntime::kCudaExecutionProvider) {
+    // Parallel execution mode does not support the CUDA EP
+    if (session_options_.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
+      LOGS(*session_logger_, WARNING)
+          << "Parallel execution mode does not support the CUDA Execution Provider. "
+          << "So making the execution mode sequential for this session since it uses the CUDA Execution Provider.";
+      session_options_.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
     }
   }
 
@@ -1035,14 +1054,6 @@ common::Status InferenceSession::Initialize() {
         session_profiler_,
         session_options_.use_deterministic_compute);
 
-    if (session_options_.execution_mode == ExecutionMode::ORT_PARALLEL &&
-        execution_providers_.Get(onnxruntime::kCudaExecutionProvider)) {
-      status = common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                              "Parallel execution mode doesn't support CUDA Execution Provider currently.");
-      LOGS(*session_logger_, ERROR) << status.ErrorMessage();
-      return status;
-    }
-
     onnxruntime::Graph& graph = model_->MainGraph();
 
     // Collect the kernel registries from execution provider instances;
@@ -1068,6 +1079,9 @@ common::Status InferenceSession::Initialize() {
 
     // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
     ORT_RETURN_IF_ERROR_SESSIONID_(graph.Resolve());
+    
+    // Update temporary copies of metadata, input- and output definitions to the same state as the resolved graph
+    ORT_RETURN_IF_ERROR_SESSIONID_(SaveModelMetadata(*model_));
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
     // need to keep the initializers if we're going to save the optimized model
@@ -1606,11 +1620,13 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
   model_metadata_.custom_metadata_map = model.MetaData();
   model_metadata_.graph_name = graph.Name();
 
+  required_inputs_.clear();
   for (auto input : graph.GetInputs()) {
     required_inputs_.insert(input->Name());
   }
 
   auto add_inputs = [this](const InputDefList& inputs) {
+    input_def_map_.clear();
     input_def_map_.reserve(inputs.size());
     for (auto elem : inputs) {
       auto elem_type = utils::GetMLDataType(*elem);
@@ -1636,6 +1652,8 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
   // save outputs
   const auto& outputs = graph.GetOutputs();
   output_def_list_ = outputs;  // A direct copy of outputs
+
+  model_output_names_.clear();
   model_output_names_.reserve(outputs.size());
   for (const auto& elem : outputs) {
     model_output_names_.insert(elem->Name());
