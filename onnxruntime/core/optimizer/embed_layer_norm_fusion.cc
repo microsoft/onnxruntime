@@ -112,7 +112,7 @@ static bool IsNeighborNodeExpectedTypes(Node::NodeConstIterator start, const Nod
  The Expand and Gather on the bottom will not be added to subgraph_node_indices.
  It is because they are matched as part of other subgraph.
 
- Two Shape node may merge into one
+ Two Shape nodes may merge into one.
 */
 
 static bool MatchInputToConcatSubgraph(
@@ -202,9 +202,9 @@ static bool MatchInputToConcatSubgraph(
   // We check if they share the same node
   if (!optimizer_utils::CheckOutputEdges(graph, shape_node_0, 1) ||
       !optimizer_utils::CheckOutputEdges(graph, shape_node_1, 1)) {
-    if (shape_node_0.GetOutputEdgesCount() > 1 &&
-        shape_node_1.GetOutputEdgesCount() > 1 &&
-        shape_node_0.Index() == shape_node_1.Index()) {
+    if (shape_node_0.Index() == shape_node_1.Index() &&
+        (shape_node_0.GetOutputEdgesCount() == 2 ||
+         shape_node_0.GetOutputEdgesCount() == 4)) {
       DEBUG_LOG("two paths share the same shape");
     } else {
       return false;
@@ -299,7 +299,9 @@ static bool MatchPositionEmbeddingSubgraphsFromGather(
       if (i == gather_index && optimizer_utils::CheckOutputEdges(graph, pg_edges[i]->GetNode(), 2)) {
         continue;
       }
-      if (i == shape_index && optimizer_utils::CheckOutputEdges(graph, pg_edges[i]->GetNode(), 4)) {
+      if (i == shape_index &&
+          (optimizer_utils::CheckOutputEdges(graph, pg_edges[i]->GetNode(), 2) ||
+           optimizer_utils::CheckOutputEdges(graph, pg_edges[i]->GetNode(), 4))) {
         continue;
       }
       DEBUG_LOG("Output edge count not expected for nodes in path1.");

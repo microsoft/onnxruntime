@@ -287,12 +287,11 @@ def GenerateModel7(model_name):
     nodes = [
         helper.make_node("Gather", ["word_embed", "input_ids"], ["word_gather_out"], "word_gather", axis=0),
 
-        helper.make_node("Shape", ["input_ids"], ["shape0_out"], "shape0"),
-        helper.make_node("Gather", ["shape0_out", "indices_1"], ["gather0_out"], "gather0"),
+        helper.make_node("Shape", ["input_ids"], ["shape_out"], "shape"),
+        helper.make_node("Gather", ["shape_out", "indices_1"], ["gather0_out"], "gather0"),
         helper.make_node("Range", ["start", "gather0_out", "delta"], ["range0_out"], "range0"),
         helper.make_node("Unsqueeze", ["range0_out"], ["unsqueeze0_out"], "unsqueeze0", axes=[0]),
-        helper.make_node("Shape", ["input_ids"], ["shape1_out"], "shape1"),
-        helper.make_node("Expand", ["unsqueeze0_out", "shape1_out"], ["expand_out"], "expand"),
+        helper.make_node("Expand", ["unsqueeze0_out", "shape_out"], ["expand_out"], "expand"),
         helper.make_node("Gather", ["pos_embed", "expand_out"], ["pos_gather_out"], "pos_gather", axis=0),
 
         helper.make_node("Add", ["word_gather_out", "pos_gather_out"], ["add1_out"], "add1"),
@@ -355,5 +354,5 @@ GenerateModel3('embed_layer_norm_format3.onnx', True)
 GenerateModel3('embed_layer_norm_format3_no_cast.onnx', False)
 GenerateModel5('embed_layer_norm_format5.onnx')
 GenerateModel6('embed_layer_norm_format6.onnx')
-GenerateModel7('embed_layer_norm_format7.onnx') #distilbert
+GenerateModel7('embed_layer_norm_format7.onnx') #distilbert & shape nodes integration
 GenerateMultipleEmbedModel('embed_layer_norm_multiple.onnx')
