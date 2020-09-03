@@ -202,15 +202,9 @@ CustomOpLibrary::CustomOpLibrary(const char* library_path, OrtSessionOptions& or
   {
     OrtPybindThrowIfError(platform_env.LoadDynamicLibrary(library_path, &library_handle_));
 
-    if (!library_handle_)
-      throw std::runtime_error("RegisterCustomOpsLibrary: Failed to load library");
-
     OrtStatus*(ORT_API_CALL * RegisterCustomOps)(OrtSessionOptions * options, const OrtApiBase* api);
 
     OrtPybindThrowIfError(platform_env.GetSymbolFromLibrary(library_handle_, "RegisterCustomOps", (void**)&RegisterCustomOps));
-
-    if (!RegisterCustomOps)
-      throw std::runtime_error("RegisterCustomOpsLibrary: Entry point RegisterCustomOps not found in library");
 
     auto* status_raw = RegisterCustomOps(&ort_so, OrtGetApiBase());
     // Manage the raw Status pointer using a smart pointer
