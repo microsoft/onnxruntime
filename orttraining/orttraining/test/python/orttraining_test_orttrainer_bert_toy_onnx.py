@@ -187,6 +187,7 @@ def testToyBERTDeterministicCheck(expected_losses):
     train_steps = 10
     device = 'cuda'
     seed = 1
+    rtol = 1e-3
     torch.manual_seed(seed)
     onnxruntime.set_seed(seed)
 
@@ -212,7 +213,7 @@ def testToyBERTDeterministicCheck(expected_losses):
         experimental_losses.append(trainer.train_step(*sample_input).cpu().item())
 
     # Check output
-    _test_helpers.assert_model_outputs(experimental_losses, expected_losses, rtol=1e-6)
+    _test_helpers.assert_model_outputs(experimental_losses, expected_losses, rtol=rtol)
 
 
 @pytest.mark.parametrize("initial_lr, lr_scheduler, expected_learning_rates, expected_losses", [
@@ -250,6 +251,7 @@ def testToyBERTModelLRScheduler(initial_lr, lr_scheduler, expected_learning_rate
     cycles = 0.5
     power = 1.
     lr_end = 1e-7
+    rtol = 1e-3
     torch.manual_seed(seed)
     onnxruntime.set_seed(seed)
 
@@ -287,8 +289,8 @@ def testToyBERTModelLRScheduler(initial_lr, lr_scheduler, expected_learning_rate
         learning_rates.append(trainer.options.lr_scheduler.get_last_lr()[0])
 
     # Check output
-    _test_helpers.assert_model_outputs(learning_rates, expected_learning_rates, rtol=1e-6)
-    _test_helpers.assert_model_outputs(losses, expected_losses, rtol=1e-6)
+    _test_helpers.assert_model_outputs(learning_rates, expected_learning_rates, rtol=rtol)
+    _test_helpers.assert_model_outputs(losses, expected_losses, rtol=rtol)
 
 
 @pytest.mark.parametrize("loss_scaler, expected_losses", [
@@ -300,12 +302,11 @@ def testToyBERTModelLRScheduler(initial_lr, lr_scheduler, expected_learning_rate
         11.105667114257812, 10.981982231140137, 11.081765174865723, 10.997125625610352, 11.107298851013184])
 ])
 def testToyBERTModelMixedPrecisionLossScaler(loss_scaler, expected_losses):
-    return # TODO: re-enable after nondeterminism on backend is fixed
-
     # Common setup
     total_steps = 10
     device = 'cuda'
     seed = 1
+    rtol = 1e-3
     torch.manual_seed(seed)
     onnxruntime.set_seed(seed)
 
@@ -334,7 +335,7 @@ def testToyBERTModelMixedPrecisionLossScaler(loss_scaler, expected_losses):
         losses.append(trainer.train_step(*sample_input).cpu().item())
 
     # Check output
-    _test_helpers.assert_model_outputs(losses, expected_losses, rtol=1e-4)
+    _test_helpers.assert_model_outputs(losses, expected_losses, rtol=rtol)
 
 
 @pytest.mark.parametrize("gradient_accumulation_steps, expected_losses", [
@@ -350,6 +351,7 @@ def testToyBERTModelGradientAccumulation(gradient_accumulation_steps, expected_l
     total_steps = 10
     device = "cuda"
     seed = 1
+    rtol = 1e-3
     torch.manual_seed(seed)
     onnxruntime.set_seed(seed)
 
@@ -377,7 +379,7 @@ def testToyBERTModelGradientAccumulation(gradient_accumulation_steps, expected_l
         losses.append(trainer.train_step(*sample_input).cpu().item())
 
     # Check output
-    _test_helpers.assert_model_outputs(losses, expected_losses, rtol=1e-6)
+    _test_helpers.assert_model_outputs(losses, expected_losses, rtol=rtol)
 
 
 def testToyBertCheckpointBasic():
@@ -664,8 +666,6 @@ def testToyBERTModelLegacyExperimentalBasicTraining(optimizer_config):
     (1.0, optim.lr_scheduler.PolyWarmupLRScheduler, _test_commons.legacy_poly_lr_scheduler),
 ])
 def testToyBERTModelLegacyExperimentalLRScheduler(initial_lr, lr_scheduler, legacy_lr_scheduler):
-    return # TODO: re-enable after nondeterminism on backend is fixed
-
     ############################################################################
     # These tests require hard-coded values for 'total_steps' and 'initial_lr' #
     ############################################################################
@@ -748,8 +748,6 @@ def testToyBERTModelLegacyExperimentalLRScheduler(initial_lr, lr_scheduler, lega
     (CustomLossScaler(), LegacyCustomLossScaler())
 ])
 def testToyBERTModelMixedPrecisionLossScalerLegacyExperimental(loss_scaler, legacy_loss_scaler):
-    return # TODO: re-enable after nondeterminism on backend is fixed
-
     # Common setup
     total_steps = 128
     device = "cuda"
