@@ -60,7 +60,20 @@ inline hipblasStatus_t hipblasGemmHelper(hipblasHandle_t handle,
                                          const half* B, int ldb,
                                          const half* beta,
                                          half* C, int ldc) {
-  return hipblasHgemm(handle, transa, transb, m, n, k, (const hipblasHalf*)alpha, (const hipblasHalf*)A, lda, (const hipblasHalf*)B, ldb, (const hipblasHalf*)beta, (hipblasHalf*)C, ldc);
+  //return hipblasHgemm(handle, transa, transb, m, n, k, (const hipblasHalf*)alpha, (const hipblasHalf*)A, lda, (const hipblasHalf*)B, ldb, (const hipblasHalf*)beta, (hipblasHalf*)C, ldc);
+  float h_a = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(alpha));
+  float h_b = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(beta));
+  return hipblasGemmEx(handle,
+                       transa,
+                       transb,
+                       m, n, k,
+                       &h_a,
+                       A, HIPBLAS_R_16F, lda,
+                       B, HIPBLAS_R_16F, ldb,
+                       &h_b,
+                       C, HIPBLAS_R_16F, ldc,
+                       HIPBLAS_R_32F,
+                       HIPBLAS_GEMM_DEFAULT);
 }
 
 // batched gemm
@@ -110,7 +123,21 @@ inline hipblasStatus_t hipblasGemmBatchedHelper(hipblasHandle_t handle,
                                                 const half* beta,
                                                 half* Carray[], int ldc,
                                                 int batchCount) {
-  return hipblasHgemmBatched(handle, transa, transb, m, n, k, (const hipblasHalf*)alpha, (const hipblasHalf**)Aarray, lda, (const hipblasHalf**)Barray, ldb, (const hipblasHalf*)beta, (hipblasHalf**)Carray, ldc, batchCount);
+  //return hipblasHgemmBatched(handle, transa, transb, m, n, k, (const hipblasHalf*)alpha, (const hipblasHalf**)Aarray, lda, (const hipblasHalf**)Barray, ldb, (const hipblasHalf*)beta, (hipblasHalf**)Carray, ldc, batchCount);
+  float h_a = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(alpha));
+  float h_b = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(beta));
+  return hipblasGemmBatchedEx(handle,
+                              transa,
+                              transb,
+                              m, n, k,
+                              &h_a,
+                              (const void**)Aarray, HIPBLAS_R_16F, lda,
+                              (const void**)Barray, HIPBLAS_R_16F, ldb,
+                              &h_b,
+                              (void**)Carray, HIPBLAS_R_16F, ldc,
+                              batchCount,
+                              HIPBLAS_R_32F,
+                              HIPBLAS_GEMM_DEFAULT);
 }
 
 // strided batched gemm
@@ -171,7 +198,21 @@ inline hipblasStatus_t hipblasGemmStridedBatchedHelper(hipblasHandle_t handle,
                                                        __half* C, int ldc,
                                                        long long int strideC,
                                                        int batchCount) {
-  return hipblasHgemmStridedBatched(handle, transa, transb, m, n, k, (const hipblasHalf*)alpha, (const hipblasHalf*)A, lda, strideA, (const hipblasHalf*)B, ldb, strideB, (const hipblasHalf*)beta, (hipblasHalf*)C, ldc, strideC, batchCount);
+  //return hipblasHgemmStridedBatched(handle, transa, transb, m, n, k, (const hipblasHalf*)alpha, (const hipblasHalf*)A, lda, strideA, (const hipblasHalf*)B, ldb, strideB, (const hipblasHalf*)beta, (hipblasHalf*)C, ldc, strideC, batchCount);
+  float h_a = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(alpha));
+  float h_b = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(beta));
+  return hipblasGemmStridedBatchedEx(handle,
+                                     transa,
+                                     transb,
+                                     m, n, k,
+                                     &h_a,
+                                     A, HIPBLAS_R_16F, lda, strideA,
+                                     B, HIPBLAS_R_16F, ldb, strideB,
+                                     &h_b,
+                                     C, HIPBLAS_R_16F, ldc, strideC,
+                                     batchCount,
+                                     HIPBLAS_R_32F,
+                                     HIPBLAS_GEMM_DEFAULT);
 }
 
 // // axpy
