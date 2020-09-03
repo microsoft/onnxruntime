@@ -67,7 +67,7 @@ class ORTGlueTest(unittest.TestCase):
         self.learning_rate = 2e-5
         self.num_train_epochs = 3.0
         self.local_rank = -1
-        self.world_size = 0
+        self.world_size = 1
         self.overwrite_output_dir = True
         self.gradient_accumulation_steps = 1
         self.data_dir = "/bert_data/hf_data/glue_data/"
@@ -222,7 +222,7 @@ class ORTGlueTest(unittest.TestCase):
             bool(training_args.local_rank != -1),
             training_args.fp16,
         )
-        logger.warning("Training/evaluation parameters %s", training_args)
+        logger.info("Training/evaluation parameters %s", training_args)
 
         set_seed(training_args.seed)
         onnxruntime.set_seed(training_args.seed)
@@ -307,7 +307,7 @@ class ORTGlueTest(unittest.TestCase):
 if __name__ == "__main__":
     local_rank = get_mpi_context_local_rank()
     world_size = get_mpi_context_world_size()
-    if world_size > 0:
+    if world_size > 1:
         # mpi launch
         logger.warning("mpirun launch, local_rank / world_size: %s : % s", local_rank, world_size)
 
