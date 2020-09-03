@@ -30,8 +30,6 @@ else()
   endif()   
 endif()
 
-set_target_properties(onnx_proto PROPERTIES FOLDER "External/ONNX")
-
 # Cpp Tests were added and they require googletest
 # since we have our own copy, try using that
 if(NOT onnxruntime_MINIMAL_BUILD)
@@ -62,11 +60,10 @@ add_library(onnx ${onnx_src})
 add_dependencies(onnx onnx_proto)
 target_include_directories(onnx PUBLIC "${ONNX_SOURCE_ROOT}")
 target_include_directories(onnx PUBLIC $<TARGET_PROPERTY:onnx_proto,INTERFACE_INCLUDE_DIRECTORIES>)
-target_compile_definitions(onnx PUBLIC $<TARGET_PROPERTY:onnx_proto,INTERFACE_COMPILE_DEFINITIONS> PRIVATE "__ONNX_DISABLE_STATIC_REGISTRATION")
 if (onnxruntime_USE_FULL_PROTOBUF)
   target_compile_definitions(onnx PUBLIC "ONNX_ML" "ONNX_NAMESPACE=onnx")
 else()
-  target_compile_definitions(onnx PUBLIC "ONNX_ML" "ONNX_NAMESPACE=onnx" "ONNX_USE_LITE_PROTO" "__ONNX_NO_DOC_STRINGS")
+  target_compile_definitions(onnx PUBLIC "ONNX_ML" "ONNX_NAMESPACE=onnx" "ONNX_USE_LITE_PROTO")
 endif()
 
 if (WIN32)
@@ -101,6 +98,4 @@ else()
     target_compile_options(onnx PRIVATE "-Wno-unused-but-set-variable")
   endif()
 endif()
-
-set_target_properties(onnx PROPERTIES FOLDER "External/ONNX")
 
