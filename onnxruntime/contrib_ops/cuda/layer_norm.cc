@@ -46,14 +46,15 @@ Status LayerNorm<T, U>::ComputeInternal(OpKernelContext* ctx) const {
 
   auto X_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
   auto scale_data = reinterpret_cast<const CudaT*>(scale->template Data<T>());
-  // T5 layernorm doesn't use bias
-  //auto bias_data = reinterpret_cast<const CudaT*>(bias->template Data<T>());
+  auto bias_data = reinterpret_cast<const CudaT*>(bias->template Data<T>());
 
   const TensorShape& x_shape = X->Shape();
   const int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
 
   auto n1 = x_shape.SizeToDimension(axis);
   auto n2 = x_shape.SizeFromDimension(axis);
+
+  bool use_t5_layer_norm = true;
 
   ORT_ENFORCE(n2 != 1, "n2 should not be 1");
 
@@ -82,7 +83,7 @@ Status LayerNorm<T, U>::ComputeInternal(OpKernelContext* ctx) const {
     inv_var_data = reinterpret_cast<CudaU*>(var->template MutableData<U>());
   }
 
-  HostApplyLayerNorm(GetDeviceProp(), Y_data, mean_data, inv_var_data, X_data, n1, n2, epsilon_, scale_data, bias_data);
+  HostApplyLayerNorm(GetDeviceProp(), Y_data, mean_data, inv_var_data, X_data, n1, n2, epsilon_, scale_data, bias_data, use_t5_layer_norm);
   return Status::OK();
 }
 

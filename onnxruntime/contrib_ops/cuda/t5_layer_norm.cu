@@ -1,30 +1,9 @@
-/**
-* Copyright (c) 2016-present, Facebook, Inc.
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*     http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*/
+	// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
-//
-// Copyright (c) 2017, NVIDIA CORPORATION. All rights reserved.
-// NVIDIA/apex is licensed under the
-// BSD 3 - Clause "New" or "Revised" License
-//
-
-/* Modifications Copyright (c) Microsoft. */
+#include "contrib_ops/cuda/custom_layer_norm.cuh"
 
 #include "core/providers/cuda/cu_inc/common.cuh"
-
-#include "layer_norm_impl.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -32,8 +11,14 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;
 
+/*
+t5 Layer Normalization, adapted from
+https://huggingface.co/transformers/_modules/transformers/modeling_t5.html
+No bias and no substraction of mean.
+*/
+
 template <typename U>
-__device__ void cuWelfordOnlineSum(
+__device__ void cuT5WelfordOnlineSum(
     const U curr,
     U& mu,
     U& sigma2,
@@ -42,12 +27,11 @@ __device__ void cuWelfordOnlineSum(
   U delta = curr - mu;
   U lmean = mu + delta / count;
   mu = lmean;
-  U delta2 = curr - lmean;
-  sigma2 = sigma2 + delta * delta2;
+  sigma2 = sigma2 + curr * curr;
 }
 
 template <typename U>
-__device__ void cuChanOnlineSum(
+__device__ void cuT5ChanOnlineSum(
     const U muB,
     const U sigma2B,
     const U countB,
@@ -63,7 +47,7 @@ __device__ void cuChanOnlineSum(
     nA = nA / nX;
     nB = nB / nX;
     mu = nA * mu + nB * muB;
-    sigma2 = sigma2 + sigma2B + delta * delta * nA * nB * nX;
+    sigma2 = sigma2 + sigma2B;
   } else {
     mu = U(0);
     sigma2 = U(0);
@@ -71,7 +55,7 @@ __device__ void cuChanOnlineSum(
 }
 
 template <typename T, typename U>
-__device__ void cuWelfordMuSigma2(
+__device__ void cuT5WelfordMuSigma2(
     const T* __restrict__ vals,
     const int n1,
     const int n2,
@@ -99,12 +83,12 @@ __device__ void cuWelfordMuSigma2(
     for (; l + 3 < n2; l += 4 * numx) {
       for (int k = 0; k < 4; ++k) {
         U curr = static_cast<U>(lvals[l + k]);
-        cuWelfordOnlineSum<U>(curr, mu, sigma2, count);
+        cuT5WelfordOnlineSum<U>(curr, mu, sigma2, count);
       }
     }
     for (; l < n2; ++l) {
       U curr = static_cast<U>(lvals[l]);
-      cuWelfordOnlineSum<U>(curr, mu, sigma2, count);
+      cuT5WelfordOnlineSum<U>(curr, mu, sigma2, count);
     }
     // intra-warp reductions
     #pragma unroll
@@ -112,7 +96,7 @@ __device__ void cuWelfordMuSigma2(
       U muB = WARP_SHFL_DOWN(mu, stride);
       U countB = WARP_SHFL_DOWN(count, stride);
       U sigma2B = WARP_SHFL_DOWN(sigma2, stride);
-      cuChanOnlineSum<U>(muB, sigma2B, countB, mu, sigma2, count);
+      cuT5ChanOnlineSum<U>(muB, sigma2B, countB, mu, sigma2, count);
     }
 
     // threadIdx.x == 0 has correct values for each warp
@@ -134,7 +118,7 @@ __device__ void cuWelfordMuSigma2(
           U muB = ubuf[2 * threadIdx.y];
           U sigma2B = ubuf[2 * threadIdx.y + 1];
           U countB = ibuf[threadIdx.y];
-          cuChanOnlineSum<U>(muB, sigma2B, countB, mu, sigma2, count);
+          cuT5ChanOnlineSum<U>(muB, sigma2B, countB, mu, sigma2, count);
         }
         __syncthreads();
       }
@@ -155,7 +139,7 @@ __device__ void cuWelfordMuSigma2(
 }
 
 template <>
-__device__ void cuWelfordMuSigma2(
+__device__ void cuT5WelfordMuSigma2(
     const half* __restrict__ vals,
     const int n1,
     const int n2,
@@ -185,7 +169,7 @@ __device__ void cuWelfordMuSigma2(
       // first thread consumes first point
       if (thrx == 0) {
         float curr = static_cast<float>(lvals[0]);
-        cuWelfordOnlineSum(curr, mu, sigma2, count);
+        cuT5WelfordOnlineSum(curr, mu, sigma2, count);
       }
       ++l;
     }
@@ -193,13 +177,13 @@ __device__ void cuWelfordMuSigma2(
     for (; l + 7 < n2; l += 8 * numx) {
       for (int k = 0; k < 8; k += 2) {
         float2 curr = __half22float2(*((__half2*)(lvals + l + k)));
-        cuWelfordOnlineSum(static_cast<float>(curr.x), mu, sigma2, count);
-        cuWelfordOnlineSum(static_cast<float>(curr.y), mu, sigma2, count);
+        cuT5WelfordOnlineSum(static_cast<float>(curr.x), mu, sigma2, count);
+        cuT5WelfordOnlineSum(static_cast<float>(curr.y), mu, sigma2, count);
       }
     }
     for (; l < n2; ++l) {
       float curr = static_cast<float>(lvals[l]);
-      cuWelfordOnlineSum(curr, mu, sigma2, count);
+      cuT5WelfordOnlineSum(curr, mu, sigma2, count);
     }
     // intra-warp reductions
     #pragma unroll
@@ -207,7 +191,7 @@ __device__ void cuWelfordMuSigma2(
       float muB = WARP_SHFL_DOWN(mu, stride);
       float countB = WARP_SHFL_DOWN(count, stride);
       float sigma2B = WARP_SHFL_DOWN(sigma2, stride);
-      cuChanOnlineSum(muB, sigma2B, countB, mu, sigma2, count);
+      cuT5ChanOnlineSum(muB, sigma2B, countB, mu, sigma2, count);
     }
 
     // threadIdx.x == 0 has correct values for each warp
@@ -229,7 +213,7 @@ __device__ void cuWelfordMuSigma2(
           float muB = ubuf[2 * threadIdx.y];
           float sigma2B = ubuf[2 * threadIdx.y + 1];
           float countB = ibuf[threadIdx.y];
-          cuChanOnlineSum(muB, sigma2B, countB, mu, sigma2, count);
+          cuT5ChanOnlineSum(muB, sigma2B, countB, mu, sigma2, count);
         }
         __syncthreads();
       }
@@ -249,56 +233,8 @@ __device__ void cuWelfordMuSigma2(
   }
 }
 
-template <typename U>
-__device__ U rsqrt(U v) {
-  return U(1) / sqrt(v);
-}
-template <>
-__device__ float rsqrt(float v) {
-  return rsqrtf(v);
-}
-template <>
-__device__ double rsqrt(double v) {
-  return rsqrt(v);
-}
-
-namespace {
-// This is the un-specialized struct.  Note that we prevent instantiation of this
-// struct by putting an undefined symbol in the function body so it won't compile.
-//  template <typename T>
-//  struct SharedMemory
-//  {
-//      // Ensure that we won't compile any un-specialized types
-//      __device__ T *getPointer()
-//      {
-//          extern __device__ void error(void);
-//          error();
-//          return NULL;
-//      }
-//  };
-// https://github.com/NVIDIA/apex/issues/246
-template <typename T>
-struct SharedMemory;
-
-template <>
-struct SharedMemory<float> {
-  __device__ float* getPointer() {
-    extern __shared__ float s_float[];
-    return s_float;
-  }
-};
-
-template <>
-struct SharedMemory<double> {
-  __device__ double* getPointer() {
-    extern __shared__ double s_double[];
-    return s_double;
-  }
-};
-}  // namespace
-
 template <typename T, typename U>
-__global__ void cuApplyLayerNorm(
+__global__ void cuApplyT5LayerNorm(
     T* __restrict__ output_vals,
     U* __restrict__ mean,
     U* __restrict__ invvar,
@@ -316,7 +252,7 @@ __global__ void cuApplyLayerNorm(
     SharedMemory<U> shared;
     U* buf = shared.getPointer();
     U mu, sigma2;
-    cuWelfordMuSigma2(vals, n1, n2, i1, mu, sigma2, buf);
+    cuT5WelfordMuSigma2(vals, n1, n2, i1, mu, sigma2, buf);
     const T* lvals = vals + i1 * n2;
     T* ovals = output_vals + i1 * n2;
     U c_invvar = rsqrt(sigma2 + epsilon);
@@ -326,6 +262,11 @@ __global__ void cuApplyLayerNorm(
       for (int i = thrx; i < n2; i += numx) {
         U curr = static_cast<U>(lvals[i]);
         ovals[i] = gamma[i] * static_cast<T>(c_invvar * (curr - mu)) + beta[i];
+      }
+    } else if (gemma != NULL) {
+      for (int i = thrx; i < n2; i += numx) {
+        U curr = static_cast<U>(lvals[i]);
+        ovals[i] = gamma[i] * static_cast<T>(c_invvar * curr);
       }
     } else {
       for (int i = thrx; i < n2; i += numx) {
@@ -340,58 +281,31 @@ __global__ void cuApplyLayerNorm(
   }
 }
 
-template <typename T, typename U>
-void HostApplyLayerNorm(
-    const cudaDeviceProp& prop,
-    T* output,
-    U* mean,
-    U* invvar,
-    const T* input,
+template <>
+void launch_t5_layer_norm<float, float>(
+    float* vals,
+    const float* residual,
+    const float* gamma,
+    const float* beta,
+    float epsilon,
     int64_t n1,
     int64_t n2,
-    double epsilon,
-    const T* gamma,
-    const T* beta,
-    bool use_t5_layer_norm) {
+    float* invvars,
+    float* means) {
   const uint64_t maxGridY = prop.maxGridSize[1];
   const int warp_size = prop.warpSize;
   ORT_ENFORCE(warp_size == GPU_WARP_SIZE);
-
-  if (use_t5_layer_norm) {
-    launch_t5_layer_norm<T, U>(
+  const dim3 threads(warp_size, 4, 1);
+  const dim3 blocks(1, std::min((uint64_t)n1, maxGridY), 1);
+  int nshared =
+      threads.y > 1 ? threads.y * sizeof(U) + (threads.y / 2) * sizeof(U) : 0;
+  cuApplyT5LayerNorm<<<blocks, threads, nshared, 0>>>(
       output,
-      input,
-      gamma,
-      static_cast<U>(epsilon),
-      n1,
-      n2,
+      mean,
       invvar,
-      mean);
-  } else {
-    const dim3 threads(warp_size, 4, 1);
-    const dim3 blocks(1, std::min((uint64_t)n1, maxGridY), 1);
-    int nshared =
-        threads.y > 1 ? threads.y * sizeof(U) + (threads.y / 2) * sizeof(U) : 0;
-    cuApplyLayerNorm<<<blocks, threads, nshared, 0>>>(
-        output,
-        mean,
-        invvar,
-        input,
-        n1, n2,
-        U(epsilon),
-        gamma, beta);
-  }
+      input,
+      n1, n2,
+      U(epsilon),
+      gamma, beta);
 }
-
-#define LAYERNORM_LINEAR_IMPL(T, U)                                                                       \
-  template void HostApplyLayerNorm(const cudaDeviceProp& prop, T* output, U* mean, U* invvar, const T* input, int64_t n1, int64_t n2, \
-                                   double epsilon, const T* gamma, const T* beta);
-
-LAYERNORM_LINEAR_IMPL(float, float)
-LAYERNORM_LINEAR_IMPL(half, float)
-LAYERNORM_LINEAR_IMPL(double, double)
-//LAYERNORM_LINEAR_IMPL(half, half)
-
-}  // namespace cuda
-}  // namespace contrib
-}  // namespace onnxruntime
+        
