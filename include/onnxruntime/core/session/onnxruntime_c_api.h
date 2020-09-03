@@ -225,6 +225,7 @@ typedef enum ExecutionMode {
   ORT_PARALLEL = 1,
 } ExecutionMode;
 
+// Set the language projection, default is C, which means it will classify the language not in the list to C also.
 typedef enum OrtLanguageProjection {
   ORT_PROJECTION_C = 0,  // default
   ORT_PROJECTION_CPLUSPLUS = 1,
@@ -900,9 +901,6 @@ struct OrtApi {
   ORT_API2_STATUS(AddSessionConfigEntry, _Inout_ OrtSessionOptions* options,
                   _In_z_ const char* config_key, _In_z_ const char* config_value);
 
-  // Set the languate projection for collecting telemetry data before creating session
-  ORT_API2_STATUS(SetLanguageProjection, _In_ const OrtEnv* ort_env, _In_ OrtLanguageProjection projection);
-
   /**
    * \param sess valid OrtSession instance
    * \param mem_info - valid OrtMemoryInfo instance
@@ -1024,6 +1022,13 @@ struct OrtApi {
   */
   ORT_API2_STATUS(CreateAndRegisterAllocator, _Inout_ OrtEnv* env, _In_ const OrtMemoryInfo* mem_info,
                   _In_ const OrtArenaCfg* arena_cfg);
+
+  /**
+   * Set the languate projection for collecting telemetry data when Env is created
+   * \param projection the source projected language.
+  */
+  ORT_API2_STATUS(SetLanguageProjection, _In_ const OrtEnv* ort_env, _In_ OrtLanguageProjection projection);
+
 };
 
 /*

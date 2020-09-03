@@ -161,7 +161,6 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr GetStringTensorElement;
         public IntPtr FillStringTensorElement;
         public IntPtr AddSessionConfigEntry;
-        public IntPtr SetLanguageProjection;
 
         public IntPtr CreateAllocator;
         public IntPtr ReleaseAllocator;
@@ -175,6 +174,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr GetBoundOutputValues;
         public IntPtr ClearBoundInputs;
         public IntPtr ClearBoundOutputs;
+        public IntPtr SetLanguageProjection;
     }
 
     internal static class NativeMethods

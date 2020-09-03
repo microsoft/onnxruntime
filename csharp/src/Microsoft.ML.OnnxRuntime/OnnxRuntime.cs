@@ -1,11 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#define ORT_UNUSED_PARAMETER(x) (x)
+
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Collections.Generic;
-
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -65,7 +66,15 @@ namespace Microsoft.ML.OnnxRuntime
             :base(IntPtr.Zero, true)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateEnv(LogLevel.Warning, @"CSharpOnnxRuntime", out handle));
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSetLanguageProjection(handle, OrtLanguageProjection.ORT_PROJECTION_CSHARP));
+            try
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetLanguageProjection(handle, OrtLanguageProjection.ORT_PROJECTION_CSHARP));
+            }
+            catch (OnnxRuntimeException e)
+            {
+                ReleaseHandle();
+                throw e;
+            }
         }
 
         protected override bool ReleaseHandle()

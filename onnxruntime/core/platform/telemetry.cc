@@ -20,6 +20,7 @@ void Telemetry::DisableTelemetryEvents() const {
 }
 
 void Telemetry::SetLanguageProjection(uint32_t projection) const {
+  ORT_UNUSED_PARAMETER(projection);
 }
 
 void Telemetry::LogProcessInfo() const {
