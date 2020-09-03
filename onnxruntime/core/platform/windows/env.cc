@@ -79,12 +79,14 @@ class WindowsThread : public EnvThread {
     // TODO: should I try to use SetThreadSelectedCpuSets?
     if (!p->thread_options.affinity.empty())
       SetThreadAffinityMask(GetCurrentThread(), p->thread_options.affinity[p->index]);
-    // kernel32.dll is always loaded
 #if WINVER >= _WIN32_WINNT_WIN10
     constexpr SetThreadDescriptionFunc pSetThrDesc = SetThreadDescription;
-#else
-    SetThreadDescriptionFunc pSetThrDesc =
+#elif WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
+    // kernel32.dll is always loaded
+    auto pSetThrDesc =
         (SetThreadDescriptionFunc)GetProcAddress(GetModuleHandle(TEXT("kernel32.dll")), "SetThreadDescription");
+#else
+    constexpr SetThreadDescriptionFunc pSetThrDesc = nullptr;
 #endif
     if (pSetThrDesc != nullptr) {
       const ORTCHAR_T* name_prefix =
