@@ -252,6 +252,10 @@ if (onnxruntime_USE_CUDA)
     if (onnxruntime_USE_HOROVOD)
       target_include_directories(onnxruntime_providers_cuda PRIVATE ${HOROVOD_INCLUDE_DIRS})
     endif()
+
+    if (onnxruntime_USE_NCCL)
+        target_include_directories(onnxruntime_providers_cuda PRIVATE ${NCCL_INCLUDE_DIRS})
+    endif()
   endif()
 
   if (WIN32)

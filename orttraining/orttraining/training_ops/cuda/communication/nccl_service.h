@@ -10,7 +10,7 @@
 #include <iostream>
 #include <string>
 
-#include "/bert_ort/wechi/nccl/nccl-2.7.3-1/build/include/nccl.h"
+#include <nccl.h>
 #include <mpi.h>
 
 namespace onnxruntime {

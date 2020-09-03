@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "/bert_ort/wechi/nccl/nccl-2.7.3-1/build/include/nccl.h"
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
+#include "nccl.h"
 #include "core/profile/context.h"
 #include <iostream>
 
@@ -127,13 +127,13 @@ void NcclService::Launch() {
             if (task.peers.size() != 1) {
               throw std::invalid_argument("Send can only send data to one rank.");
             }
-            ncclSend(task.ptr, task.size, ncclChar, task.peers.front(), comm_, nullptr);
+            ncclSend(task.ptr, task.size, ncclChar, task.peers.front(), comm_, stream_);
             break;
           case NcclTask::Type::RECV:
             if (task.peers.size() != 1) {
               throw std::invalid_argument("Recv can only send data to one rank.");
             }
-            ncclRecv(task.ptr, task.size, ncclChar, task.peers.front(), comm_, nullptr);
+            ncclRecv(task.ptr, task.size, ncclChar, task.peers.front(), comm_, stream_);
             break;
           default:
             throw std::runtime_error("NCCL service currently only support ncclSend and ncclRecv.");
