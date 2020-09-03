@@ -171,16 +171,16 @@ endif()
 
 if (onnxruntime_ENABLE_TRAINING)
   file(GLOB onnxruntime_python_capi_training_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/python/training/*.py"
+    "${ORTTRAINING_SOURCE_DIR}/python/deprecated/*.py"
   )
   file(GLOB onnxruntime_python_root_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/python/experimental/*.py"
+    "${ORTTRAINING_SOURCE_DIR}/python/training/*.py"
   )
   file(GLOB onnxruntime_python_amp_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/python/experimental/amp/*.py"
+    "${ORTTRAINING_SOURCE_DIR}/python/training/amp/*.py"
   )
   file(GLOB onnxruntime_python_optim_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/python/experimental/optim/*.py"
+    "${ORTTRAINING_SOURCE_DIR}/python/training/optim/*.py"
   )
   file(GLOB onnxruntime_python_train_tools_srcs CONFIGURE_DEPENDS
     "${REPO_ROOT}/tools/python/register_custom_ops_pytorch_exporter.py"
@@ -280,21 +280,24 @@ add_custom_command(
 if (onnxruntime_ENABLE_TRAINING)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/amp
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/optim
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/training
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/training/amp
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/training/optim
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_capi_training_srcs}
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/training/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_root_srcs}
-        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/training/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_amp_srcs}
-        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/amp/
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/training/amp/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_optim_srcs}
-        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/optim/
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/training/optim/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_train_tools_srcs}
-        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/training/
   )
 endif()
 
