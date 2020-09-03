@@ -90,10 +90,10 @@ static bool MatchLinearPattern(Graph& graph,
 
     sub_graph_node_ptrs.push_back(has_matched_op ? next_node_ptr : nullptr);
     if (has_matched_op) {
-      LOGS_DEFAULT(WARNING) << "  MatchLinearPattern 2222" << next_node_ptr->Name();
+      //LOGS_DEFAULT(WARNING) << "  MatchLinearPattern 2222" << next_node_ptr->Name();
       curr_node_ptr = next_node_ptr;
     } else if (node_info.required) {
-      LOGS_DEFAULT(WARNING) << "  MatchLinearPattern 11111" << next_node_ptr->Name();
+      //LOGS_DEFAULT(WARNING) << "  MatchLinearPattern 11111" << next_node_ptr->Name();
       return false;
     }
   }
@@ -446,7 +446,6 @@ Status MegatronTransformer::TransformT5MLP(Graph& graph, bool& modified, int gra
     graph_utils::ReplaceNodeInput(*transpose_op, 0, dense_wo_weight_partition_arg);
 
     self_attention_dropout_nodes.insert(&dropout_node);
-    self_attention_dropout_nodes.insert(&dropout2_node);
 
     const std::vector<NodeArg*> mlp_f_input_defs{node.MutableInputDefs()[0]};
     auto mlp_f_type_info = *node.MutableInputDefs()[0]->TypeAsProto();
@@ -1102,8 +1101,7 @@ Status MegatronTransformer::TransformDropout(Graph& graph, bool& modified, int g
     }
 
     // Only need to set the seed if it's a transformed self-attention dropout, or the seed attribute is not set.
-    if (self_attention_dropout_nodes.find(&node) != self_attention_dropout_nodes.end() ||
-        graph_utils::GetNodeAttribute(node, "seed") == nullptr) {
+    if (self_attention_dropout_nodes.find(&node) != self_attention_dropout_nodes.end()) {
       int64_t seed = static_cast<int64_t>(HashName(node.MutableOutputDefs()[0]->Name())) + utils::GetRandomSeed();
       if (self_attention_dropout_nodes.find(&node) != self_attention_dropout_nodes.end()) {
         seed += horizontal_parallel_rank_;
@@ -1112,7 +1110,7 @@ Status MegatronTransformer::TransformDropout(Graph& graph, bool& modified, int g
       if (graph_utils::GetNodeAttribute(node, "seed") != nullptr) {
         node.ClearAttribute("seed");
       }
-
+      std::cout << "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< add seed for node " << node.Name() << std::endl;
       node.AddAttribute("seed", seed);
       modified = true;
     }
