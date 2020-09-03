@@ -13,13 +13,13 @@ ONNX Runtime Node.js binding enables Node.js applications to run ONNX model infe
 
 Install the latest stable version:
 
-```bash
+```
 npm install onnxruntime
 ```
 
 Install the latest dev version:
 
-```bash
+```
 npm install onnxruntime@dev
 ```
 
@@ -35,7 +35,7 @@ Following platforms are supported with pre-built binaries:
 - Linux x64 CPU NAPI_v3
 - MacOS x64 CPU NAPI_v3
 
-To use on platforms without pre-built binaries, you can build Node.js binding from source and consume it by `npm install <onnxruntime_repo_root>/nodejs/`. See also [BUILD.MD](../how-to/build.md#apis-and-language-bindings) for building ONNX Runtime Node.js binding locally.
+To use on platforms without pre-built binaries, you can build Node.js binding from source and consume it by `npm install <onnxruntime_repo_root>/nodejs/`. See also [BUILD.MD](../BUILD.md#apis-and-language-bindings) for building ONNX Runtime Node.js binding locally.
 
 ## License
 

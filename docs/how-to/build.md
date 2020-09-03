@@ -5,45 +5,10 @@ nav_order: 5
 ---
 
 # Build ONNX Runtime from source
+{: .no_toc }
 
-*[Dockerfiles](https://github.com/microsoft/onnxruntime/tree/master/tools/ci_build/github/linux/docker) / [Pre-built packages](https://github.com/microsoft/onnxruntime#official-builds)*
+## Inference
 
-## Content
-
-**[Inferencing](#inferencing)**
-* [Start: Baseline CPU](#start-baseline-cpu)
-* [Supported architectures and build environments](#supported-architectures-and-build-environments)
-* [Common Build Instructions](#common-build-instructions)
-* Additional Build Instructions - complete list: `./build.sh (or .\build.bat) --help`
-  * [ONNX Runtime Server (Linux)](#Build-ONNX-Runtime-Server-on-Linux)
-  * Execution Providers
-    * [NVIDIA CUDA](#CUDA)
-    * [NVIDIA TensorRT](#TensorRT)
-    * [NVIDIA Jetson TX1/TX2/Nano/Xavier](#nvidia-jetson-tx1tx2nanoxavier)
-    * [Intel DNNL/MKL-ML](#DNNL-and-MKLML)
-    * [Intel nGraph](#nGraph)
-    * [Intel OpenVINO](#openvino)
-    * [Android NNAPI](#Android-NNAPI)
-    * [Nuphar Model Compiler](#Nuphar)
-    * [DirectML](#DirectML)
-    * [ARM Compute Library](#ARM-Compute-Library)
-    * [ArmNN](#ArmNN)
-    * [Rockchip RKNPU](#RKNPU)
-    * [Xilinx Vitis-AI](#Vitis-AI)
-    * [AMD MIGraphX](#AMD-MIGraphX)
-  * Options
-    * [OpenMP](#OpenMP)
-    * [OpenBLAS](#OpenBLAS)
-    * [DebugNodeInputsOutputs](#DebugNodeInputsOutputs)
-  * Architectures
-    * [x86](#x86)
-    * [ARM](#ARM)
-    * [Android](#Android)
-
-**[Training](#Training)**
-
-***
-# Inferencing
 ## Start: Baseline CPU
 
 ### Prerequisites
@@ -74,7 +39,7 @@ The shared library in the release Nuget(s) and the Python wheel may be installed
 #### Notes
 
 * Please note that these instructions build the debug build, which may have performance tradeoffs
-* To build the version from each release (which include Windows, Linux, and Mac variants), see these .yml files for reference: [CPU](./tools/ci_build/github/azure-pipelines/nuget/cpu-esrp-pipeline.yml), [GPU](./tools/ci_build/github/azure-pipelines/nuget/gpu-esrp-pipeline.yml)
+* To build the version from each release (which include Windows, Linux, and Mac variants), see these .yml files for reference: [CPU](https://github.com/microsoft/onnxruntime/tree/master/tools/ci_build/github/azure-pipelines/nuget/cpu-esrp-pipeline.yml), [GPU](https://github.com/microsoft/onnxruntime/tree/master/tools/ci_build/github/azure-pipelines/nuget/gpu-esrp-pipeline.yml)
 * The build script runs all unit tests by default (for native builds and skips tests by default for cross-compiled builds).
 * If you need to install protobuf 3.6.1 from source code (cmake/external/protobuf), please note:
    * CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned OFF. After the installation, you should have the 'protoc' executable in your PATH. It is recommended to run `ldconfig` to make sure protobuf libraries are found.
@@ -119,6 +84,7 @@ GCC 4.x and below are not supported.
 
 ---
 ## Common Build Instructions
+
 |Description|Command|Additional details|
 |-----------|-----------|-----------|
 |**Basic build**|build.bat (Windows)<br>./build.sh (Linux)||
@@ -128,6 +94,7 @@ GCC 4.x and below are not supported.
 |**Build Shared Library**|--build_shared_lib||
 
 ### APIs and Language Bindings
+
 |API|Command|Additional details|
 |-----------|-----------|-----------|
 |**Python**|--build_wheel||
@@ -139,9 +106,9 @@ GCC 4.x and below are not supported.
 ---
 
 ## Build ONNX Runtime Server on Linux
-Read more about ONNX Runtime Server [here](./docs/ONNX_Runtime_Server_Usage.md).
+Read more about ONNX Runtime Server [here](https://github.com/microsoft/onnxruntime/tree/master/docs/ONNX_Runtime_Server_Usage.md).
 
-Build instructions are [here](./docs/Server.md)
+Build instructions are [here](https://github.com/microsoft/onnxruntime/tree/master/docs/Server.md)
 
 ---
 
@@ -168,7 +135,7 @@ Build instructions are [here](./docs/Server.md)
 ./build.sh --use_cuda --cudnn_home <cudnn home path> --cuda_home <cuda home path>
 ```
 
-A Dockerfile is available [here](./dockerfiles#cuda).
+A Dockerfile is available [here](https://github.com/microsoft/onnxruntime/tree/master/dockerfiles#cuda).
 
 
 #### Notes
@@ -190,7 +157,7 @@ If you want to build with an earlier version, you must temporarily remove the 'C
 
 ### TensorRT
 
-See more information on the TensorRT Execution Provider [here](./docs/execution_providers/TensorRT-ExecutionProvider.md).
+See more information on the TensorRT Execution Provider [here](../reference/execution-providers/TensorRT-ExecutionProvider.md).
 
 #### Prerequisites
 * Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn)
@@ -198,7 +165,7 @@ See more information on the TensorRT Execution Provider [here](./docs/execution_
    * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home parameter`. The CUDA path should contain `bin`, `include` and `lib` directories.
    * The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
    * The path to the cuDNN installation (path to folder that contains libcudnn.so) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home parameter`.
- * Install [TensorRT](https://developer.nvidia.com/nvidia-tensorrt-download)
+ * Install [TensorRT](https://developer.nvidia.com/tensorrt)
    * The TensorRT execution provider for ONNX Runtime is built on TensorRT 7.x and is tested with TensorRT 7.0.0.11.
    * The path to TensorRT installation must be provided via the `--tensorrt_home parameter`.
 
@@ -214,7 +181,7 @@ See more information on the TensorRT Execution Provider [here](./docs/execution_
 ./build.sh --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home>
 ```
 
-Dockerfile instructions are available [here](./dockerfiles#tensorrt)
+Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/master/dockerfiles#tensorrt)
 
 ---
 
@@ -263,7 +230,7 @@ These instructions are for JetPack SDK 4.4.
 ---
 
 ### DNNL and MKLML
-See more information on DNNL and MKL-ML [here](./docs/execution_providers/DNNL-ExecutionProvider.md).
+See more information on DNNL and MKL-ML [here](../reference/execution-providers/DNNL-ExecutionProvider.md).
 
 #### Build Instructions
 ##### Linux
@@ -286,7 +253,7 @@ Starting with the OpenVINO™ toolkit 2020.2 release, all of the features previo
 
 Therefore, ONNX RT Execution Provider for **nGraph** will be deprecated starting June 1, 2020 and will be completely removed on December 1, 2020. Users are recommended to migrate to the ONNX RT Execution Provider for OpenVINO™ toolkit as the unified solution for all AI inferencing on Intel® hardware.
 
-See more information on the nGraph Execution Provider [here](./docs/execution_providers/nGraph-ExecutionProvider.md).
+See more information on the nGraph Execution Provider [here](../reference/execution-providers/nGraph-ExecutionProvider.md).
 
 #### Build Instructions
 #### Windows
@@ -302,7 +269,7 @@ See more information on the nGraph Execution Provider [here](./docs/execution_pr
 ---
 
 ### OpenVINO
-See more information on the OpenVINO Execution Provider [here](./docs/execution_providers/OpenVINO-ExecutionProvider.md).
+See more information on the OpenVINO Execution Provider [here](../reference/execution-providers/OpenVINO-ExecutionProvider.md).
 
 #### Prerequisites
 1. Install the Intel<sup>®</sup> Distribution of OpenVINO<sup>TM</sup> Toolkit **Release 2020.3** for the appropriate OS and target hardware :
@@ -351,7 +318,7 @@ See more information on the OpenVINO Execution Provider [here](./docs/execution_
 
    <code>--use_openvino</code>: Builds the OpenVINO Execution Provider in ONNX Runtime.
 
-* `<hardware_option>`: Specifies the default hardware target for building OpenVINO Execution Provider. This can be overriden dynamically at runtime with another option (refer to [OpenVINO-ExecutionProvider.md](./docs/execution_providers/OpenVINO-ExecutionProvider.md) for more details on dynamic device selection). Below are the options for different Intel target devices.
+* `<hardware_option>`: Specifies the default hardware target for building OpenVINO Execution Provider. This can be overriden dynamically at runtime with another option (refer to [OpenVINO-ExecutionProvider.md](../reference/execution-providers/OpenVINO-ExecutionProvider.md) for more details on dynamic device selection). Below are the options for different Intel target devices.
 
 | Hardware Option | Target Device |
 | --------------- | ------------------------|
@@ -362,12 +329,12 @@ See more information on the OpenVINO Execution Provider [here](./docs/execution_
 | <code>VAD-M_FP16</code> | Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs |
 | <code>VAD-F_FP32</code> | Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA |
 
-For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document [OpenVINO-ExecutionProvider.md](./docs/execution_providers/OpenVINO-ExecutionProvider.md) in <code>$onnxruntime_root/docs/execution_providers</code>
+For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document [OpenVINO-ExecutionProvider.md](../reference/execution-providers/OpenVINO-ExecutionProvider.md) in <code>$onnxruntime_root/docs/execution_providers</code>
 
 ---
 
 ### NUPHAR
-See more information on the Nuphar Execution Provider [here](./docs/execution_providers/Nuphar-ExecutionProvider.md).
+See more information on the Nuphar Execution Provider [here](../reference/execution-providers/Nuphar-ExecutionProvider.md).
 
 #### Prerequisites
 * The Nuphar execution provider for ONNX Runtime is built and tested with LLVM 9.0.0. Because of TVM's requirement when building with LLVM, you need to build LLVM from source. To build the debug flavor of ONNX Runtime, you need the debug build of LLVM.
@@ -437,13 +404,13 @@ index 7dfa97c..6d99e71 100644
 ./build.sh --use_tvm --use_llvm --llvm_path=/llvm/install/path/lib/cmake/llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
 ```
 
-Dockerfile instructions are available [here](./dockerfiles#nuphar).
+Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/master/dockerfiles#nuphar).
 
 
 ---
 
 ### DirectML
-See more information on the DirectML execution provider [here](./docs/execution_providers/DirectML-ExecutionProvider.md).
+See more information on the DirectML execution provider [here](../reference/execution-providers/DirectML-ExecutionProvider.md).
 #### Windows
 ```
 .\build.bat --use_dml
@@ -454,7 +421,7 @@ The DirectML execution provider supports building for both x64 and x86 architect
 ---
 
 ### ARM Compute Library
-See more information on the ACL Execution Provider [here](./docs/execution_providers/ACL-ExecutionProvider.md).
+See more information on the ACL Execution Provider [here](../reference/execution-providers/ACL-ExecutionProvider.md).
 
 #### Prerequisites
 * Supported backend: i.MX8QM Armv8 CPUs
@@ -512,7 +479,7 @@ export LD_LIBRARY_PATH=~/ComputeLibrary/build/
 ---
 
 ### ArmNN
-See more information on the ArmNN Execution Provider [here](./docs/execution_providers/ArmNN-ExecutionProvider.md).
+See more information on the ArmNN Execution Provider [here](../reference/execution-providers/ArmNN-ExecutionProvider.md).
 
 #### Prerequisites
 * Supported backend: i.MX8QM Armv8 CPUs
@@ -541,7 +508,7 @@ The Batch Normalization operator is set by default to use the CPU execution prov
 ---
 
 ### RKNPU
-See more information on the RKNPU Execution Provider [here](./docs/execution_providers/RKNPU-ExecutionProvider.md).
+See more information on the RKNPU Execution Provider [here](../reference/execution-providers/RKNPU-ExecutionProvider.md).
 
 #### Prerequisites
 
@@ -571,9 +538,9 @@ See more information on the RKNPU Execution Provider [here](./docs/execution_pro
 ---
 
 ### Vitis-AI
-See more information on the Xilinx Vitis-AI execution provider [here](./docs/execution_providers/Vitis-AI-ExecutionProvider.md).
+See more information on the Xilinx Vitis-AI execution provider [here](../reference/execution-providers/Vitis-AI-ExecutionProvider.md).
 
-For instructions to setup the hardware environment: [Hardware setup](./docs/execution_providers/Vitis-AI-ExecutionProvider.md#Hardware-setup)
+For instructions to setup the hardware environment: [Hardware setup](../reference/execution-providers/Vitis-AI-ExecutionProvider.md#Hardware-setup)
 
 #### Linux
 
@@ -671,7 +638,7 @@ There are a few options for building for ARM.
 
 This method rely on qemu user mode emulation. It allows you to compile using a desktop or cloud VM through instruction level simulation. You'll run the build on x86 CPU and translate every ARM instruction to x86. This is much faster than compiling natively on a low-end ARM device and avoids out-of-memory issues that may be encountered. The resulting ONNX Runtime Python wheel (.whl) file is then deployed to an ARM device where it can be invoked in Python 3 scripts.
 
-Here is [an example for Raspberrypi3 and Raspbian](./dockerfiles/README.md#arm-32v7). Note: this does not work for Raspberrypi 1 or Zero, and if your operating system is different from what the dockerfile uses, it also may not work.
+Here is [an example for Raspberrypi3 and Raspbian](https://github.com/microsoft/onnxruntime/tree/master/dockerfiles/README.md#arm-32v7). Note: this does not work for Raspberrypi 1 or Zero, and if your operating system is different from what the dockerfile uses, it also may not work.
 
 The build process can take hours.
 
@@ -1006,7 +973,7 @@ Android Archive (AAR) files, which can be imported directly in Android Studio, w
 
 #### Android NNAPI Execution Provider
 
-If you want to use NNAPI Execution Provider on Android, see [NNAPI Execution Provider](/docs/execution_providers/NNAPI-ExecutionProvider.md).
+If you want to use NNAPI Execution Provider on Android, see [NNAPI Execution Provider](../reference/execution-providers/NNAPI-ExecutionProvider.md).
 
 ##### Build Instructions
 
@@ -1016,7 +983,7 @@ Android NNAPI Execution Provider can be built using building commands in [Androi
 
 ### AMD MIGraphX
 
-See more information on the MIGraphX Execution Provider [here](./docs/execution_providers/MIGraphX-ExecutionProvider.md).
+See more information on the MIGraphX Execution Provider [here](../reference/execution-providers/MIGraphX-ExecutionProvider.md).
 
 #### Prerequisites
 * Install [ROCM](https://rocmdocs.amd.com/en/latest/Installation_Guide/Installation-Guide.html)
@@ -1032,11 +999,11 @@ See more information on the MIGraphX Execution Provider [here](./docs/execution_
 ./build.sh --config <Release|Debug|RelWithDebInfo> --use_migraphx --migraphx_home <path to MIGraphX home>
 ```
 
-Dockerfile instructions are available [here](./dockerfiles#migraphx)
+Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/master/dockerfiles#migraphx)
 
 ***
 
-# Training
+## Training
 ## Prerequisites
 
 The default NVIDIA GPU build requires CUDA runtime libraries installed on the system:
@@ -1075,3 +1042,9 @@ sudo ldconfig
    * Run `./build.sh --enable_training --use_cuda --config=RelWithDebInfo --build_wheel`
 
     This produces the .whl file in `./build/Linux/RelWithDebInfo/dist` for ONNX Runtime Training.
+
+## TABLE OF CONTENTS
+{: .no_toc }
+
+* TOC placeholder
+{:toc}

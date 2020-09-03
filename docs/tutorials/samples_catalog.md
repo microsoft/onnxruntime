@@ -52,7 +52,7 @@ This page catalogs code samples for ONNX Runtime, running locally, and on Azure,
 * Inferencing on **CPU** with model conversion for existing (CoreML) model:
   * [TinyYolo](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-convert-aml-deploy-tinyyolo.ipynb)
 * Inferencing on **GPU** with **TensorRT** Execution Provider (AKS):
-  * [FER+](../docs/python/notebooks/onnx-inference-byoc-gpu-cpu-aks.ipynb)
+  * [FER+](.https://github.com/microsoft/onnxruntime/tree/master/docs/python/notebooks/onnx-inference-byoc-gpu-cpu-aks.ipynb)
   
 ## Azure IoT Edge
 

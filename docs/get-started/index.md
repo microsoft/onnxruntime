@@ -28,27 +28,27 @@ You can benefit from ONNX Runtime if you want to:
 
 |API|Supported Versions|Samples|
 |---|---|---|
-[Python](https://aka.ms/onnxruntime-python)| 3.5, 3.6, 3.7<br>[Python Dev Notes](https://github.com/microsoft/onnxruntime/tree/master/docs/Python_Dev_Notes.md)| [Samples](./samples#python)|
-|[C#](docs/CSharp_API.md)| | [Samples](./samples#C)|
-|[C++](./include/onnxruntime/core/session/onnxruntime_cxx_api.h)| |[Samples](./samples#CC)|
-|[C](docs/C_API.md)| | [Samples](./samples#CC)|
-|[WinRT](docs/WinRT_API.md) | [Windows.AI.MachineLearning](https://docs.microsoft.com/en-us/windows/ai/windows-ml/api-reference)| [Samples](https://github.com/microsoft/windows-Machine-Learning)|
-|[Java](docs/Java_API.md)|8-13|[Samples](./samples#Java)| 
+[Python](https://aka.ms/onnxruntime-python)| 3.5, 3.6, 3.7<br>[Python Dev Notes](https://github.com/microsoft/onnxruntime/tree/master/docs/Python_Dev_Notes.md)| [Samples](https://github.com/microsoft/onnxruntime/tree/master/samples/#python)|
+|[C#](../reference/api/csharp-api.md)| | [Samples](https://github.com/microsoft/onnxruntime/tree/master/samples/#C)|
+|[C++](https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/onnxruntime_cxx_api.h)| |[Samples](https://github.com/microsoft/onnxruntime/tree/master/samples/#CC)|
+|[C](../reference/api/c-api.md)| | [Samples](https://github.com/microsoft/onnxruntime/tree/master/samples/#CC)|
+|[WinRT](../reference/api/winrt-api.md) | [Windows.AI.MachineLearning](https://docs.microsoft.com/en-us/windows/ai/windows-ml/api-reference)| [Samples](https://github.com/microsoft/windows-Machine-Learning)|
+|[Java](../reference/api/java-api.md)|8-13|[Samples](https://github.com/microsoft/onnxruntime/tree/master/samples/#Java)| 
 [Ruby](https://github.com/ankane/onnxruntime) (external project)| 2.4-2.7| [Samples](https://ankane.org/tensorflow-ruby)|
-|[Javascript (node.js)](./nodejs) |12.x | [Samples](./nodejs/examples/README.md) |
+|[Javascript (node.js)](../reference/api/nodejs-api.md) |12.x | [Samples](https://github.com/microsoft/onnxruntime/blob/master/samples/nodejs) |
 
 ### Supported Accelerators
 
-[Execution Providers](./docs/execution_providers)
+[Execution Providers](../reference/execution-providers)
 
 |CPU|GPU|IoT/Edge/Mobile|Other|
 |---|---|---|---|
-|Default CPU - *MLAS (Microsoft Linear Algebra Subprograms) + Eigen*|NVIDIA CUDA|[Intel OpenVINO](./docs/execution_providers/OpenVINO-ExecutionProvider.md)|[Nuphar Model Compiler](./docs/execution_providers/Nuphar-ExecutionProvider.md) (*preview*)|
-|[Intel DNNL](./docs/execution_providers/DNNL-ExecutionProvider.md)|[NVIDIA TensorRT](./docs/execution_providers/TensorRT-ExecutionProvider.md)|[ARM Compute Library](./docs/execution_providers/ACL-ExecutionProvider.md) (*preview*)|[Rockchip NPU](./docs/execution_providers/RKNPU-ExecutionProvider.md) (*preview*)|
-|[Intel nGraph](./docs/execution_providers/nGraph-ExecutionProvider.md)|[DirectML](./docs/execution_providers/DirectML-ExecutionProvider.md)|[Android Neural Networks API](./docs/execution_providers/NNAPI-ExecutionProvider.md) (*preview*)|[Xilinx Vitis-AI](./docs/execution_providers/Vitis-AI-ExecutionProvider.md) (*preview*)|
-|Intel MKL-ML *(build option)*|[AMD MIGraphX](./docs/execution_providers/MIGraphX-ExecutionProvider.md)|[ARM-NN](./docs/execution_providers/ArmNN-ExecutionProvider.md) (*preview*)|
+|Default CPU - *MLAS (Microsoft Linear Algebra Subprograms) + Eigen*|NVIDIA CUDA|[Intel OpenVINO](../reference/execution-providers/OpenVINO-ExecutionProvider.md)|[Nuphar Model Compiler](../reference/execution-providers/Nuphar-ExecutionProvider.md) (*preview*)|
+|[Intel DNNL](../reference/execution-providers/DNNL-ExecutionProvider.md)|[NVIDIA TensorRT](../reference/execution-providers/TensorRT-ExecutionProvider.md)|[ARM Compute Library](../reference/execution-providers/ACL-ExecutionProvider.md) (*preview*)|[Rockchip NPU](../reference/execution-providers/RKNPU-ExecutionProvider.md) (*preview*)|
+|[Intel nGraph](../reference/execution-providers/nGraph-ExecutionProvider.md)|[DirectML](../reference/execution-providers/DirectML-ExecutionProvider.md)|[Android Neural Networks API](../reference/execution-providers/NNAPI-ExecutionProvider.md) (*preview*)|[Xilinx Vitis-AI](../reference/execution-providers/Vitis-AI-ExecutionProvider.md) (*preview*)|
+|Intel MKL-ML *(build option)*|[AMD MIGraphX](../reference/execution-providers/MIGraphX-ExecutionProvider.md)|[ARM-NN](../reference/execution-providers/ArmNN-ExecutionProvider.md) (*preview*)|
 
-* [Roadmap: Upcoming accelerators](./docs/Roadmap.md#accelerators-and-execution-providers)
+* [Roadmap: Upcoming accelerators](https://github.com/microsoft/onnxruntime/tree/master/docs/Roadmap.md#accelerators-and-execution-providers)
 
 ### Deploying ONNX Runtime
 
@@ -67,7 +67,7 @@ You can benefit from ONNX Runtime if you want to:
 * [Reference implementations](https://github.com/Azure-Samples/onnxruntime-iot-edge)
 
 The expanding focus and selection of IoT devices with sensors and consistent signal streams introduces new opportunities to move AI workloads to the edge.
-This is particularly important when there are massive volumes of incoming data/signals that may not be efficient or useful to push to the cloud due to storage or latency considerations. Consider: surveillance tapes where 99% of footage is uneventful, or real-time person detection scenarios where immediate action is required. In these scenarios, directly executing model inferencing on the target device is crucial for optimal assistance.
+This is particularly important when there are massive volumes of incoming data/signals that may not be efficient or useful to push to the cloud due to storage or latency considerations. Consider: surveillance tapes where 99% of footage is uneventful, or real-time person detection scenarios where immediate action is required. In these scenarios, directly executing model inference on the target device is crucial for optimal assistance.
 
 #### Client applications
 
@@ -85,7 +85,7 @@ For production scenarios, it's strongly recommended to build only from an [offic
 
 ## Use ONNX Runtime for Training
 
-The ONNX Runtime training feature enables easy integration with existing Pytorch trainer code to accelerate the exection. With a few lines of code, you can add ONNX Runtime into your existing training scripts and start seeing acceleration. The current preview version supports training acceleration for transformer models on NVIDIA GPUs.
+The ONNX Runtime training feature enables easy integration with existing Pytorch trainer code to accelerate the execution. With a few lines of code, you can add ONNX Runtime into your existing training scripts and start seeing acceleration. The current preview version supports training acceleration for transformer models on NVIDIA GPUs.
 
 **[ONNX Runtime pre-training sample](https://github.com/microsoft/onnxruntime-training-examples)**: This sample is setup to pre-train the BERT-Large model to show how ONNX Runtime training can be used to accelerate training execution.
 
@@ -123,7 +123,7 @@ _NOTE: The current API is experimental and expected to see significant changes i
 
 ### Build ONNX Runtime Training from source
 
-To use ONNX Runtime training in a custom environment, like on-prem NVIDIA DGX-2 clusters, you can use these [build instructions](BUILD.md#training) to generate the Python package to integrate into existing trainer code.
+To use ONNX Runtime training in a custom environment, like on-prem NVIDIA DGX-2 clusters, you can use these [build instructions](../how-to/build.md#training) to generate the Python package to integrate into existing trainer code.
 
 ## TABLE OF CONTENTS
 {: .no_toc }

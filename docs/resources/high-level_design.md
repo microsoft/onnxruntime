@@ -14,7 +14,7 @@ ONNX Runtime - a high performance, cross platform engine.
 available on disparate platforms.
 * Provide the right abstraction and runtime support for custom accelerators and
 runtimes. We call this abstraction an [execution
-provider](../include/onnxruntime/core/framework/execution_provider.h). It defines and exposes a set of
+provider](.https://github.com/microsoft/onnxruntime/tree/master/include//onnxruntime/core/framework/execution_provider.h). It defines and exposes a set of
 its capabilities to ONNXRuntime: a set of single or fused nodes it can
 execute, its memory allocator, and more. Custom accelerators and runtimes are
 instances of execution providers.
@@ -23,11 +23,11 @@ on its device. This means that ONNXRuntime must be able to execute a single
 model in a heterogeneous environment involving multiple execution providers.
 * Provide support for high-level optimizations that can be expressed as
 model-to-model transformations via a [graph-transformation
-API](../include/onnxruntime/core/optimizer/graph_transformer.h). Such
+API](.https://github.com/microsoft/onnxruntime/tree/master/include//onnxruntime/core/optimizer/graph_transformer.h). Such
 transformations fall into two categories: global transformations, those that
 require analysis and transformation of the entire graph, and local
 transformations, which can be captured as simple (algebraic) [rewriting
-rules](../include/onnxruntime/core/optimizer/rewrite_rule.h).
+rules](.https://github.com/microsoft/onnxruntime/tree/master/include//onnxruntime/core/optimizer/rewrite_rule.h).
 
 ## High-level system architecture
 The flow is quite simple. Starting from an ONNX model, ONNXRuntime first
@@ -85,8 +85,8 @@ their subgraph.
 * [Add a custom operator/kernel](AddingCustomOp.md)
 * [Add an execution provider](AddingExecutionProvider.md)
 * [Add a new graph
-transform](../include/onnxruntime/core/optimizer/graph_transformer.h)
-* [Add a new rewrite rule](../include/onnxruntime/core/optimizer/rewrite_rule.h)
+transform](.https://github.com/microsoft/onnxruntime/tree/master/include//onnxruntime/core/optimizer/graph_transformer.h)
+* [Add a new rewrite rule](.https://github.com/microsoft/onnxruntime/tree/master/include//onnxruntime/core/optimizer/rewrite_rule.h)
 
 ## The ONNX Runtime and Windows OS integration
 

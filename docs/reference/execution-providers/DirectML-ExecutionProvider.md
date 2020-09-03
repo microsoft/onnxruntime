@@ -99,7 +99,7 @@ The DirectML execution provider does not support the use of memory pattern optim
 
 If using the onnxruntime C API, you must call `DisableMemPattern` and `SetSessionExecutionMode` functions to set the options required by the DirectML execution provider.
 
-See [onnxruntime\include\onnxruntime\core\session\onnxruntime_c_api.h](../../include/onnxruntime/core/session/onnxruntime_c_api.h).
+See [onnxruntime\include\onnxruntime\core\session\onnxruntime_c_api.h](../.https://github.com/microsoft/onnxruntime/tree/master/include//onnxruntime/core/session/onnxruntime_c_api.h).
 
     OrtStatus*(ORT_API_CALL* DisableMemPattern)(_Inout_ OrtSessionOptions* options)NO_EXCEPTION;
 
@@ -111,7 +111,7 @@ Additionally, as the DirectML execution provider does not support parallel execu
 
 ## Samples
 
-A complete sample of onnxruntime using the DirectML execution provider can be found under [samples/c_cxx/fns_candy_style_transfer](../../samples/c_cxx/fns_candy_style_transfer).
+A complete sample of onnxruntime using the DirectML execution provider can be found under [samples/c_cxx/fns_candy_style_transfer](../.https://github.com/microsoft/onnxruntime/tree/master/samples//c_cxx/fns_candy_style_transfer).
 
 ## Performance best practices
 The DirectML execution provider works most efficiently when tensor shapes are known at the time a session is created.  This provides a few performance benefits:
