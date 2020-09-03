@@ -80,39 +80,6 @@ class ThreadPool {
     kFixedBlockSize
   };
 
-  // Contains additional parameters for either the Adaptive or the Fixed Block
-  // Size scheduling strategy.
-  class SchedulingParams {
-   public:
-    explicit SchedulingParams(SchedulingStrategy strategy, optional<int64_t> cost_per_unit,
-                              optional<std::ptrdiff_t> block_size)
-        : strategy_(strategy), cost_per_unit_(cost_per_unit), block_size_(block_size) {
-    }
-
-    SchedulingStrategy strategy() const {
-      return strategy_;
-    }
-    optional<int64_t> cost_per_unit() const {
-      return cost_per_unit_;
-    }
-    optional<std::ptrdiff_t> block_size() const {
-      return block_size_;
-    }
-
-   private:
-    // The underlying Scheduling Strategy for which this instance contains
-    // additional parameters.
-    SchedulingStrategy strategy_;
-
-    // The estimated cost per unit of work in number of CPU cycles (or
-    // nanoseconds if not CPU-bound). Only applicable for Adaptive scheduling
-    // strategy.
-    optional<int64_t> cost_per_unit_;
-
-    // The block size of each shard. Only applicable for Fixed Block Size
-    // scheduling strategy.
-    optional<std::ptrdiff_t> block_size_;
-  };
 #ifdef _WIN32
   using NAME_CHAR_TYPE = wchar_t;
 #else
@@ -189,34 +156,6 @@ class ThreadPool {
       return;
     }
     tp->ParallelFor(total, cost_per_unit, fn);
-#endif
-  }
-
-  // Similar to ParallelFor above, but takes the specified scheduling strategy
-  // into account.
-  void ParallelFor(std::ptrdiff_t total, const SchedulingParams& scheduling_params,
-                   const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn);
-
-  static void TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t total,
-                             const SchedulingParams& scheduling_params,
-                             const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn) {
-#ifdef _OPENMP
-    ORT_UNUSED_PARAMETER(scheduling_params);
-    std::ptrdiff_t num_threads = concurrency::ThreadPool::DegreeOfParallelism(tp);
-    if (total < num_threads) {
-      num_threads = total;
-    }
-#pragma omp parallel for
-    for (std::ptrdiff_t i = 0; i < num_threads; i++) {
-      auto work = PartitionWork(i, num_threads, total);
-      fn(work.start, work.end);
-    }
-#else
-    if (tp == nullptr) {
-      fn(0, total);
-      return;
-    }
-    tp->ParallelFor(total, scheduling_params, fn);
 #endif
   }
 
