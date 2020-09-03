@@ -270,6 +270,145 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionRank1) {
   }
 }
 
+// TEST_F(GraphTransformationTests, MegatronT5MLPPartitionRank0) {
+//   auto model_uri = MODEL_FOLDER "model_parallel/t5_mlp_megatron_basic_test.onnx";
+//   std::shared_ptr<Model> p_model;
+//   auto ret = Model::Load(model_uri, p_model, nullptr, *logger_);
+//   ASSERT_TRUE(ret.IsOK());
+//   Graph& graph = p_model->MainGraph();
+//   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+//   std::unordered_map<std::string, std::string> updated_weight_names;
+//   std::unordered_set<std::string> weights_to_train;
+//   graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(0, 2, updated_weight_names, weights_to_train), TransformerLevel::Level1);
+//   ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
+//   ASSERT_TRUE(ret.IsOK());
+
+//   auto model_uri2 = "t5_mlp_megatron_basic_test_partition_rank0.onnx";
+//   Model::Save(*p_model, model_uri2);
+
+//   {
+//     std::vector<float> expected_value = {
+//         0.0f, 0.01f, 0.02f, 0.03f, 0.04f, 0.05f, 0.06f, 0.07f,
+//         0.16f, 0.17f, 0.18f, 0.19f, 0.20f, 0.21f, 0.22f, 0.23f,
+//         0.32f, 0.33f, 0.34f, 0.35f, 0.36f, 0.37f, 0.38f, 0.39f,
+//         0.48f, 0.49f, 0.50f, 0.51f, 0.52f, 0.53f, 0.54f, 0.55f};
+//     auto a1_weight_arg = GetNodeByName(graph, "matmul")->MutableInputDefs()[1];
+//     ORT_ENFORCE(a1_weight_arg != nullptr);
+//     std::vector<int64_t> expected_shape = {4, 8};
+//     std::vector<float> actual_val;
+//     std::vector<int64_t> actual_shape;
+//     horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, a1_weight_arg, actual_val, actual_shape);
+//     ASSERT_TRUE(std::equal(expected_shape.begin(), expected_shape.end(), actual_shape.begin()));
+
+//     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, true);
+//     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, false);
+//   }
+//   {
+//     std::vector<float> expected_value = {0.0f, 0.01f, 0.02f, 0.03f, 0.04f, 0.05f, 0.06f, 0.07f};
+//     auto input_arg = GetNodeByName(graph, "add")->MutableInputDefs()[1];
+//     ORT_ENFORCE(input_arg != nullptr);
+//     std::vector<int64_t> expected_shape = {8};
+//     std::vector<float> actual_val;
+//     std::vector<int64_t> actual_shape;
+//     horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, input_arg, actual_val, actual_shape);
+//     ASSERT_TRUE(std::equal(expected_shape.begin(), expected_shape.end(), actual_shape.begin()));
+
+//     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, true);
+//     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, false);
+//   }
+//   {
+//     std::vector<float> expected_value = {
+//         0.0f, 0.01f, 0.02f, 0.03f,
+//         0.04f, 0.05f, 0.06f, 0.07f,
+//         0.08f, 0.09f, 0.10f, 0.11f,
+//         0.12f, 0.13f, 0.14f, 0.15f,
+//         0.16f, 0.17f, 0.18f, 0.19f,
+//         0.20f, 0.21f, 0.22f, 0.23f,
+//         0.24f, 0.25f, 0.26f, 0.27f,
+//         0.28f, 0.29f, 0.30f, 0.31f};
+//     auto input_arg = GetNodeByName(graph, "matmul2")->MutableInputDefs()[1];
+//     ORT_ENFORCE(input_arg != nullptr);
+//     std::vector<int64_t> expected_shape = {8, 4};
+//     std::vector<float> actual_val;
+//     std::vector<int64_t> actual_shape;
+//     horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, input_arg, actual_val, actual_shape);
+//     ASSERT_TRUE(std::equal(expected_shape.begin(), expected_shape.end(), actual_shape.begin()));
+
+//     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, true);
+//     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, false);
+//   }
+// }
+
+// TEST_F(GraphTransformationTests, MegatronT5MLPPartitionRank1) {
+//   auto model_uri = MODEL_FOLDER "model_parallel/t5_mlp_megatron_basic_test.onnx";
+//   std::shared_ptr<Model> p_model;
+//   auto ret = Model::Load(model_uri, p_model, nullptr, *logger_);
+//   ASSERT_TRUE(ret.IsOK());
+//   Graph& graph = p_model->MainGraph();
+
+//   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+//   std::unordered_map<std::string, std::string> updated_weight_names;
+//   std::unordered_set<std::string> weights_to_train;
+//   graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(1, 2, updated_weight_names, weights_to_train), TransformerLevel::Level1);
+//   ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
+//   ASSERT_TRUE(ret.IsOK());
+
+//   auto model_uri2 = "t5_mlp_megatron_basic_test_partition_rank1.onnx";
+//   Model::Save(*p_model, model_uri2);
+
+//   {
+//     std::vector<float> expected_value = {
+//         0.08f, 0.09f, 0.10f, 0.11f, 0.12f, 0.13f, 0.14f, 0.15f,
+//         0.24f, 0.25f, 0.26f, 0.27f, 0.28f, 0.29f, 0.30f, 0.31f,
+//         0.40f, 0.41f, 0.42f, 0.43f, 0.44f, 0.45f, 0.46f, 0.47f,
+//         0.56f, 0.57f, 0.58f, 0.59f, 0.60f, 0.61f, 0.62f, 0.63f};
+//     auto a1_weight_arg = GetNodeByName(graph, "matmul")->MutableInputDefs()[1];
+//     ORT_ENFORCE(a1_weight_arg != nullptr);
+//     std::vector<int64_t> expected_shape = {4, 8};
+//     std::vector<float> actual_val;
+//     std::vector<int64_t> actual_shape;
+//     horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, a1_weight_arg, actual_val, actual_shape);
+//     ASSERT_TRUE(std::equal(expected_shape.begin(), expected_shape.end(), actual_shape.begin()));
+
+//     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, true);
+//     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, false);
+//   }
+//   {
+//     std::vector<float> expected_value = {0.08f, 0.09f, 0.1f, 0.11f, 0.12f, 0.13f, 0.14f, 0.15f};
+//     auto a1_bias_arg = GetNodeByName(graph, "add")->MutableInputDefs()[1];
+//     ORT_ENFORCE(a1_bias_arg != nullptr);
+//     std::vector<int64_t> expected_shape = {8};
+//     std::vector<float> actual_val;
+//     std::vector<int64_t> actual_shape;
+//     horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, a1_bias_arg, actual_val, actual_shape);
+//     ASSERT_TRUE(std::equal(expected_shape.begin(), expected_shape.end(), actual_shape.begin()));
+
+//     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, true);
+//     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, false);
+//   }
+//   {
+//     std::vector<float> expected_value = {
+//         0.32f, 0.33f, 0.34f, 0.35f,
+//         0.36f, 0.37f, 0.38f, 0.39f,
+//         0.40f, 0.41f, 0.42f, 0.43f,
+//         0.44f, 0.45f, 0.46f, 0.47f,
+//         0.48f, 0.49f, 0.50f, 0.51f,
+//         0.52f, 0.53f, 0.54f, 0.55f,
+//         0.56f, 0.57f, 0.58f, 0.59f,
+//         0.60f, 0.61f, 0.62f, 0.63f};
+//     auto input_arg = GetNodeByName(graph, "matmul2")->MutableInputDefs()[1];
+//     ORT_ENFORCE(input_arg != nullptr);
+//     std::vector<int64_t> expected_shape = {8, 4};
+//     std::vector<float> actual_val;
+//     std::vector<int64_t> actual_shape;
+//     horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, input_arg, actual_val, actual_shape);
+//     ASSERT_TRUE(std::equal(expected_shape.begin(), expected_shape.end(), actual_shape.begin()));
+
+//     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, true);
+//     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, false);
+//   }
+// }
+
 TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank0) {
   auto model_uri = MODEL_FOLDER "model_parallel/self_attention_megatron_basic_test.onnx";
   std::shared_ptr<Model> p_model;
@@ -414,7 +553,7 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionCorrectnessTest) {
     auto ret = Model::Load(model_uri, p_models[i], nullptr, *logger_);
     ASSERT_TRUE(ret.IsOK());
     Graph& graph = p_models[i]->MainGraph();
-    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
     std::unordered_map<std::string, std::string> updated_weight_names;
     std::unordered_set<std::string> weights_to_train;
     graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(i, total_rank, updated_weight_names, weights_to_train), TransformerLevel::Level1);
@@ -428,6 +567,115 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionCorrectnessTest) {
   auto ret = horizontal_parallel_test_utils::MergeGraphsOnAllWorkers(graphs, combine_graph);
   ORT_ENFORCE(ret.IsOK());
   auto model_uri2 = "mlp_megatron_basic_test_partition_combine.onnx";
+  Model::Save(combine_model, model_uri2);
+
+  float scale = 1.f;
+  float mean = 0.f;
+  float seed = 123.f;
+
+  std::default_random_engine generator{gsl::narrow_cast<uint32_t>(seed)};
+  std::normal_distribution<float> distribution{mean, scale};
+
+  std::vector<int64_t> dims_X = {8, 16, 4};
+  std::vector<float> values_X(TensorShape(dims_X).Size());
+  std::for_each(values_X.begin(), values_X.end(),
+                [&generator, &distribution](float& value) { value = distribution(generator); });
+
+  std::vector<OrtValue> expected_ort_values;
+  {
+    SessionOptions so;
+    so.session_logid = "RawGraphRun";
+
+    InferenceSession session_object{so, GetEnvironment()};
+    std::unique_ptr<IExecutionProvider> execution_provider = DefaultCudaExecutionProvider();
+    EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+
+    Status st;
+    ASSERT_TRUE((st = session_object.Load(model_uri)).IsOK()) << st;
+    ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st;
+
+    OrtValue ml_value;
+    CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_X, values_X, &ml_value);
+    NameMLValMap feeds;
+    feeds.insert(std::make_pair("input", ml_value));
+
+    // prepare outputs
+    std::vector<std::string> output_names;
+    output_names.push_back("output");
+
+    // Now run
+    RunOptions run_options;
+    run_options.training_mode = true;
+    st = session_object.Run(run_options, feeds, output_names, &expected_ort_values);
+
+    EXPECT_TRUE(st.IsOK());
+  }
+
+  std::vector<OrtValue> actual_ort_values;
+  {
+    SessionOptions so;
+    so.session_logid = "SplitThenCombineRun";
+
+    InferenceSession session_object{so, GetEnvironment()};
+    std::unique_ptr<IExecutionProvider> execution_provider = DefaultCudaExecutionProvider();
+    EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+
+    Status st;
+    ASSERT_TRUE((st = session_object.Load(model_uri2)).IsOK()) << st;
+    ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st;
+
+    OrtValue ml_value;
+    CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_X, values_X, &ml_value);
+    NameMLValMap feeds;
+    feeds.insert(std::make_pair("input", ml_value));
+
+    // prepare outputs
+    std::vector<std::string> output_names;
+    for (auto i = 0; i < total_rank; i++) {
+      output_names.push_back("output_rank_" + std::to_string(i));
+    }
+
+    // Now run
+    RunOptions run_options;
+    run_options.training_mode = true;
+    st = session_object.Run(run_options, feeds, output_names, &actual_ort_values);
+
+    EXPECT_TRUE(st.IsOK());
+  }
+
+  auto& expected_val = expected_ort_values[0].Get<Tensor>();
+  for (auto i = 0; i < total_rank; i++) {
+    auto& actual_val = actual_ort_values[i].Get<Tensor>();
+    horizontal_parallel_test_utils::VerifyOutputs(expected_val, actual_val, true);
+    horizontal_parallel_test_utils::VerifyOutputs(expected_val, actual_val, false);
+  }
+}
+
+TEST_F(GraphTransformationTests, MegatronT5MLPPartitionCorrectnessTest) {
+  auto model_uri = MODEL_FOLDER "model_parallel/t5_mlp_megatron_basic_test.onnx";
+  const int total_rank = 4;
+  std::vector<Graph*> graphs;
+  std::vector<std::shared_ptr<Model>> p_models(total_rank);
+  for (auto i = 0; i < total_rank; i++) {
+    auto ret = Model::Load(model_uri, p_models[i], nullptr, *logger_);
+    std::cout << ret.ErrorMessage() << std::endl;
+    ASSERT_TRUE(ret.IsOK());
+    Graph& graph = p_models[i]->MainGraph();
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+    std::unordered_map<std::string, std::string> updated_weight_names;
+    std::unordered_set<std::string> weights_to_train;
+    graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(i, total_rank, updated_weight_names, weights_to_train), TransformerLevel::Level1);
+    ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
+    ASSERT_TRUE(ret.IsOK());
+    graphs.push_back(&graph);
+  }
+
+  std::cout << "===============================================" << std::endl;
+  onnxruntime::Model combine_model("combine_graph", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}, {kMSDomain, 1}}, {}, *logger_);
+  auto& combine_graph = combine_model.MainGraph();
+  auto ret = horizontal_parallel_test_utils::MergeGraphsOnAllWorkers(graphs, combine_graph);
+  ORT_ENFORCE(ret.IsOK());
+  auto model_uri2 = "t5_mlp_megatron_basic_test_partition_combine.onnx";
   Model::Save(combine_model, model_uri2);
 
   float scale = 1.f;
@@ -623,6 +871,127 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionCorrectnessTest) 
     OrtValue mask_value;
     CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_Mask, values_Mask, &mask_value);
     feeds.insert(std::make_pair("mask", mask_value));
+
+    // prepare outputs
+    std::vector<std::string> output_names;
+    for (auto i = 0; i < total_rank; i++) {
+      output_names.push_back("output_rank_" + std::to_string(i));
+    }
+
+    // Now run
+    RunOptions run_options;
+    run_options.training_mode = true;
+    st = session_object.Run(run_options, feeds, output_names, &actual_ort_values);
+    EXPECT_TRUE(st.IsOK());
+  }
+
+  auto& expected_val = expected_ort_values[0].Get<Tensor>();
+  for (auto i = 0; i < total_rank; i++) {
+    auto& actual_val = actual_ort_values[i].Get<Tensor>();
+    horizontal_parallel_test_utils::VerifyOutputs(expected_val, actual_val, true);
+    horizontal_parallel_test_utils::VerifyOutputs(expected_val, actual_val, false);
+  }
+}
+
+TEST_F(GraphTransformationTests, MegatronT5SelfAttentionPartitionCorrectnessTest) {
+  auto model_uri = MODEL_FOLDER "model_parallel/t5_self_attention_megatron_basic_test.onnx";
+  const int total_rank = 2;  // The test graph is too small to partition to 4, so use 2 instead here.
+  std::vector<Graph*> graphs;
+  std::vector<std::shared_ptr<Model>> p_models(total_rank);
+  for (auto i = 0; i < total_rank; i++) {
+    auto ret = Model::Load(model_uri, p_models[i], nullptr, *logger_);
+    std::cout << ret.ErrorMessage() << std::endl;
+    ASSERT_TRUE(ret.IsOK());
+    Graph& graph = p_models[i]->MainGraph();
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{2};
+    std::unordered_map<std::string, std::string> updated_weight_names;
+    std::unordered_set<std::string> weights_to_train;
+    graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(i, total_rank, updated_weight_names, weights_to_train), TransformerLevel::Level1);
+    ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
+    ASSERT_TRUE(ret.IsOK());
+    graphs.push_back(&graph);
+  }
+
+  // // Dropout seed checking.
+  // const AttributeProto* attr = graph_utils::GetNodeAttribute(*GetNodeByName(*graphs[0], "dropout1"), "seed");
+  // ORT_ENFORCE(attr != nullptr && attr->has_i());
+  // int64_t dropout1_rank0_seed = attr->i();
+  // attr = graph_utils::GetNodeAttribute(*GetNodeByName(*graphs[0], "dropout2"), "seed");
+  // ORT_ENFORCE(attr != nullptr && attr->has_i());
+  // int64_t dropout2_rank0_seed = attr->i();
+  // for (auto i = 1; i < total_rank; i++) {
+  //   attr = graph_utils::GetNodeAttribute(*GetNodeByName(*graphs[i], "dropout1"), "seed");
+  //   ORT_ENFORCE(attr != nullptr && attr->has_i() && attr->i() == dropout1_rank0_seed + i);
+  //   attr = graph_utils::GetNodeAttribute(*GetNodeByName(*graphs[i], "dropout2"), "seed");
+  //   ORT_ENFORCE(attr != nullptr && attr->has_i() && attr->i() == dropout2_rank0_seed);
+  // }
+
+  onnxruntime::Model combine_model("combine_graph", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}, {kMSDomain, 1}}, {}, *logger_);
+  auto& combine_graph = combine_model.MainGraph();
+  auto ret = horizontal_parallel_test_utils::MergeGraphsOnAllWorkers(graphs, combine_graph);
+  ORT_ENFORCE(ret.IsOK());
+  auto model_uri2 = "t5_self_attention_megatron_basic_test_partition_combine.onnx";
+  Model::Save(combine_model, model_uri2);
+
+  float scale = 1.f;
+  float mean = 0.f;
+  float seed = 123.f;
+
+  std::default_random_engine generator{gsl::narrow_cast<uint32_t>(seed)};
+  std::normal_distribution<float> distribution{mean, scale};
+
+  std::vector<int64_t> dims_X = {8, 8, 4};
+  std::vector<float> values_X(TensorShape(dims_X).Size());
+  std::for_each(values_X.begin(), values_X.end(),
+                [&generator, &distribution](float& value) { value = distribution(generator); });
+
+  std::vector<OrtValue> expected_ort_values;
+  {
+    SessionOptions so;
+    so.session_logid = "RawGraphRun";
+
+    InferenceSession session_object{so, GetEnvironment()};
+    std::unique_ptr<IExecutionProvider> execution_provider = DefaultCudaExecutionProvider();
+    EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+
+    Status st;
+    ASSERT_TRUE((st = session_object.Load(model_uri)).IsOK()) << st;
+    ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st;
+
+    NameMLValMap feeds;
+
+    OrtValue ml_value;
+    CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_X, values_X, &ml_value);
+    feeds.insert(std::make_pair("input", ml_value));
+
+    // prepare outputs
+    std::vector<std::string> output_names;
+    output_names.push_back("output");
+
+    // Now run
+    RunOptions run_options;
+    run_options.training_mode = true;
+    st = session_object.Run(run_options, feeds, output_names, &expected_ort_values);
+    EXPECT_TRUE(st.IsOK());
+  }
+
+  std::vector<OrtValue> actual_ort_values;
+  {
+    SessionOptions so;
+    so.session_logid = "SplitThenCombineRun";
+
+    InferenceSession session_object{so, GetEnvironment()};
+    std::unique_ptr<IExecutionProvider> execution_provider = DefaultCudaExecutionProvider();
+    EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+
+    Status st;
+    ASSERT_TRUE((st = session_object.Load(model_uri2)).IsOK()) << st;
+    ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st;
+
+    NameMLValMap feeds;
+    OrtValue ml_value;
+    CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_X, values_X, &ml_value);
+    feeds.insert(std::make_pair("input", ml_value));
 
     // prepare outputs
     std::vector<std::string> output_names;
