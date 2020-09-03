@@ -85,8 +85,14 @@ TEST(AllOpTest, All_1d_large) {
   }
 }
 
-TEST(ReductionOpTest, ReduceAllL2) {
+class ReductionOpTest : public ::testing::TestWithParam<bool> {
+  protected:
+    bool use_determinism;
+};
+
+TEST_P(ReductionOpTest, ReduceAllL2) {
   OpTester test("ReduceAllL2", 1, onnxruntime::kMSDomain, true);
+  test.SetDeterminism(GetParam());
   std::vector<float> data0 = {1.0f, 2.0f, 3.0f};
   std::vector<float> data1 = {-1.0f, -2.0f};
 
@@ -96,8 +102,9 @@ TEST(ReductionOpTest, ReduceAllL2) {
   test.Run();
 }
 
-TEST(ReductionOpTest, ReduceAllL2HalfHalf) {
+TEST_P(ReductionOpTest, ReduceAllL2HalfHalf) {
   OpTester test("ReduceAllL2", 1, onnxruntime::kMSDomain, true);
+  test.SetDeterminism(GetParam());
 
   std::vector<float> data0 = {1.0f, 2.0f, 3.0f};
   std::vector<MLFloat16> data0_half(3);
@@ -118,8 +125,9 @@ TEST(ReductionOpTest, ReduceAllL2HalfHalf) {
   test.Run();
 }
 
-TEST(ReductionOpTest, ReduceAllL2FloatHalf) {
+TEST_P(ReductionOpTest, ReduceAllL2FloatHalf) {
   OpTester test("ReduceAllL2", 1, onnxruntime::kMSDomain, true);
+  test.SetDeterminism(GetParam());
 
   std::vector<float> data0 = {1.0f, 2.0f, 3.0f};
   std::vector<float> data1 = {-1.0f, -2.0f};
@@ -135,8 +143,9 @@ TEST(ReductionOpTest, ReduceAllL2FloatHalf) {
   test.Run();
 }
 
-TEST(ReductionOpTest, ReduceAllL2HalfFloat) {
+TEST_P(ReductionOpTest, ReduceAllL2HalfFloat) {
   OpTester test("ReduceAllL2", 1, onnxruntime::kMSDomain, true);
+  test.SetDeterminism(GetParam());
 
   std::vector<float> data0 = {1.0f, 2.0f, 3.0f};
   std::vector<MLFloat16> data0_half(3);
@@ -160,8 +169,10 @@ void TestMultiTensorReduce(
     const int min_tensor_size,
     const int max_tensor_size,
     const float min,
-    const float max) {
+    const float max,
+    bool use_determinism) {
   OpTester test("ReduceAllL2", 1, onnxruntime::kMSDomain, true);
+  test.SetDeterminism(use_determinism);
 
   // Set up random number generator.
   std::random_device random_device;
@@ -196,21 +207,24 @@ void TestMultiTensorReduce(
   test.Run();
 }
 
-TEST(ReductionOpTest, ReduceAllL2LargeOne) {
-  TestMultiTensorReduce(16, 1, 131072, 1.f, 1.f);
+TEST_P(ReductionOpTest, ReduceAllL2LargeOne) {
+  TestMultiTensorReduce(16, 1, 131072, 1.f, 1.f, GetParam());
 }
 
-TEST(ReductionOpTest, ReduceAllL2Large) {
-  TestMultiTensorReduce(16, 1, 131072, 1.2f, 1.3f);
+TEST_P(ReductionOpTest, ReduceAllL2Large) {
+  TestMultiTensorReduce(16, 1, 131072, 1.2f, 1.3f, GetParam());
 }
 
-TEST(ReductionOpTest, ReduceAllL2ManyOne) {
-  TestMultiTensorReduce(4096, 1, 8, 1.f, 1.f);
+TEST_P(ReductionOpTest, ReduceAllL2ManyOne) {
+  TestMultiTensorReduce(4096, 1, 8, 1.f, 1.f, GetParam());
 }
 
-TEST(ReductionOpTest, ReduceAllL2Many) {
-  TestMultiTensorReduce(4096, 1, 8, 1.2f, 1.3f);
+TEST_P(ReductionOpTest, ReduceAllL2Many) {
+  TestMultiTensorReduce(4096, 1, 8, 1.2f, 1.3f, GetParam());
 }
+
+// invoke with and without use_determinism flag for session
+INSTANTIATE_TEST_SUITE_P(ReductionOpTestWrapper, ReductionOpTest, ::testing::Bool());
 
 #endif
 

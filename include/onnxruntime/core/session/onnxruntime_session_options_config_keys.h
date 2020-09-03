@@ -23,3 +23,11 @@
 // A value of "1" means allocators registered in the env will be used. "0" means the allocators created in the session
 // will be used. Use this to override the usage of env allocators on a per session level.
 #define ORT_SESSION_OPTIONS_CONFIG_USE_ENV_ALLOCATORS "session.use_env_allocators"
+
+// Set to 'ORT' (case sensitive) to load an ORT format model.
+// If unset, model type will default to ONNX unless inferred from filename ('.ort' == ORT format) or bytes to be ORT
+#define ORT_SESSION_OPTIONS_CONFIG_LOAD_MODEL_FORMAT "session.load_model_format"
+
+// Set to 'ORT' (case sensitive) to save optimized model in ORT format when SessionOptions.optimized_model_path is set.
+// If unset, format will default to ONNX unless optimized_model_filepath ends in '.ort'.
+#define ORT_SESSION_OPTIONS_CONFIG_SAVE_MODEL_FORMAT "session.save_model_format"
