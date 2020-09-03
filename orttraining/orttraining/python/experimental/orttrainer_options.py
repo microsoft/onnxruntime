@@ -76,11 +76,18 @@ class ORTTrainerOptions(object):
                             'type' : 'boolean',
                             'default' : False
                         },
-                        'deepspeed_zero_stage' : {
-                            'type' : 'integer',
-                            'min' : 0,
-                            'max' : 1,
-                            'default' : 0
+                        'deepspeed_zero_optimization' : {
+                            'type' : 'dict',
+                            'default': {},
+                            'required': False,
+                            'schema': {
+                                'stage': {
+                                    'type': 'integer',
+                                    'min': 0,
+                                    'max': 1,
+                                    'default': 0
+                                },
+                            }
                         },
                         'enable_adasum' : {
                             'type' : 'boolean',
@@ -158,6 +165,10 @@ class ORTTrainerOptions(object):
                             'min' : 10,
                             'max' : 12,
                             'default': 12
+                        },
+                        'enable_onnx_contrib_ops' : {
+                            'type' : 'boolean',
+                            'default' : True
                         }
                     }
                 }
@@ -183,8 +194,10 @@ class ORTTrainerOptions(object):
         distributed.allreduce_post_accumulation (bool, default is False):
             True enables overlap of AllReduce with computation, while False,
             postpone AllReduce until all gradients are ready
-        distributed.deepspeed_zero_stage (int, default is 0):
-            select which stage of DeepSpeed ZeRO technique to use. Stage 0 means disabled.
+        distributed.deepspeed_zero_optimization:
+            DeepSpeed ZeRO options.
+        distributed.deepspeed_zero_optimization.stage (int, default is 0):
+            select which stage of DeepSpeed ZeRO to use. Stage 0 means disabled.
         distributed.enable_adasum (bool, default is False):
             enable `Adasum <https://github.com/horovod/horovod/pull/1484>`_
             algorithm for AllReduce
@@ -221,6 +234,9 @@ class ORTTrainerOptions(object):
             It does not override :py:attr:`._internal_use.enable_internal_postprocess`, but complement it
         _internal_use.onnx_opset_version (int, default is 12):
             ONNX opset version used during model exporting.
+        _internal_use.enable_onnx_contrib_ops (bool, default is True)
+            enable PyTorch to export nodes as contrib ops in ONNX.
+            This flag may be removed anytime in the future.
 
     Example:
         .. code-block:: python
@@ -455,6 +471,10 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'min' : 10,
                 'max' : 12,
                 'default': 12
+            },
+            'enable_onnx_contrib_ops' : {
+                'type' : 'boolean',
+                'default' : True
             }
         }
     }

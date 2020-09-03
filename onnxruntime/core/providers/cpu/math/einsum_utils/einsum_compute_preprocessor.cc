@@ -134,8 +134,10 @@ Status EinsumComputePreprocessor::ProcessSubscripts() {
               num_of_ellipsis_dims_ = static_cast<size_t>(current_num_of_ellipsis_dims);
             }
 
-            // We reserve 'EinsumOp::num_of_letters' for broadcasted dims as we only allow 'a' - 'z' (0 - 25) for non-broadcasted dims
-            // We will assign appropriate indices (based on number of dimensions the ellipsis corresponds to) during broadcasting related post-processing
+            // We reserve 'EinsumOp::num_of_letters' for broadcasted dims as we only allow 'a' - 'z'
+            // and 'A' - 'Z' (0 - 51) for non-broadcasted dims.
+            // We will assign appropriate indices (based on number of dimensions the ellipsis corresponds to)
+            // during broadcasting related post-processing.
             for (size_t i = 0; i < num_of_ellipsis_dims_; ++i) {
               current_subscript_indices.push_back(EinsumOp::num_of_letters);
             }
@@ -150,12 +152,13 @@ Status EinsumComputePreprocessor::ProcessSubscripts() {
                                  "Found '.' not part of an ellipsis in input: ", input_index);
         }
 
-        if (!(subscript_label >= 'a' && subscript_label <= 'z')) {
+        auto letter_index = EinsumOp::LetterToIndex(subscript_label);
+        if (letter_index == -1) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                 "The only subscript labels allowed are lowercase letters (a-z)");
+                                 "The only subscript labels allowed are lower-cased letters (a-z) and "
+                                 "upper-cased letters (A-Z)");
         }
 
-        auto letter_index = static_cast<int64_t>(subscript_label - 'a');
         auto dim_value = dims[dim_counter];
 
         // Subscript label not found in global subscript label array

@@ -205,7 +205,7 @@ struct ConvTransposeAttributes : public ConvAttributes {
           *out_size = (in_size - 1) * stride + adj + (kernel - 1) * dilation + 1;
           break;
         default:
-          throw NotImplementedException("pad type not supported");
+          ORT_NOT_IMPLEMENTED("pad type not supported");
       }
     } else {
       *out_size =

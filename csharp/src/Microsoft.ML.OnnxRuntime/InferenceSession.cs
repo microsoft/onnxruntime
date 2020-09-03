@@ -20,7 +20,8 @@ namespace Microsoft.ML.OnnxRuntime
         protected Dictionary<string, NodeMetadata> _inputMetadata, _outputMetadata, _overridableInitializerMetadata;
         private SessionOptions _builtInSessionOptions = null;
         private RunOptions _builtInRunOptions = null;
-
+        private ModelMetadata _modelMetadata = null;
+        private bool _disposed = false;
 
         #region Public API
 
@@ -641,12 +642,17 @@ namespace Microsoft.ML.OnnxRuntime
             return result;
         }
 
-        //TODO: kept internal until implemented
-        internal ModelMetadata ModelMetadata
+        public ModelMetadata ModelMetadata
         {
             get
             {
-                return new ModelMetadata(); //TODO: implement
+                if (_modelMetadata != null)
+                {
+                    return _modelMetadata;
+                }
+
+                _modelMetadata = new ModelMetadata(this);
+                return _modelMetadata;
             }
         }
 
@@ -897,27 +903,43 @@ namespace Microsoft.ML.OnnxRuntime
 
         #endregion
 
-        #region IDisposable/ no finalizers needed
+        #region IDisposable
+
+        /// <summary>
+        /// Finalizer. to cleanup session in case it runs
+        /// and the user forgets to Dispose() of the session
+        /// </summary>
+        ~InferenceSession()
+        {
+            Dispose(false);
+        }
 
         public void Dispose()
         {
-            GC.SuppressFinalize(this);
             Dispose(true);
+            GC.SuppressFinalize(this);
         }
 
         protected virtual void Dispose(bool disposing)
         {
+            if(_disposed)
+            {
+                return;
+            }
+
             if (disposing)
             {
                 // cleanup managed resources
                 if (_builtInSessionOptions != null)
                 {
                     _builtInSessionOptions.Dispose();
+                    _builtInSessionOptions = null;
                 }
 
                 if (_builtInRunOptions != null)
                 {
                     _builtInRunOptions.Dispose();
+                    _builtInRunOptions = null;
                 }
             }
 
@@ -925,11 +947,12 @@ namespace Microsoft.ML.OnnxRuntime
             if (_nativeHandle != IntPtr.Zero)
             {
                 NativeMethods.OrtReleaseSession(_nativeHandle);
+                _nativeHandle = IntPtr.Zero;
             }
+            _disposed = true;
         }
 
         #endregion
-
     }
 
 
@@ -993,9 +1016,158 @@ namespace Microsoft.ML.OnnxRuntime
     }
 
 
-    internal class ModelMetadata
+    public class ModelMetadata
     {
-        //TODO: placeholder for Model metadata. Currently C-API does not expose this.
+        private string _producerName;
+        private string _graphName;
+        private string _domain;
+        private string _description;
+        private long _version;
+        private Dictionary<string, string> _customMetadataMap = new Dictionary<string, string>();
+
+        internal ModelMetadata(InferenceSession session)
+        {
+            IntPtr modelMetadataHandle = IntPtr.Zero;
+
+            var allocator = OrtAllocator.DefaultInstance;
+
+            // Get the native ModelMetadata instance associated with the InferenceSession
+
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetModelMetadata(session.Handle, out modelMetadataHandle));
+
+            try
+            {
+
+                // Process producer name
+                IntPtr producerNameHandle = IntPtr.Zero;
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetProducerName(modelMetadataHandle, allocator.Pointer, out producerNameHandle));
+                using (var ortAllocation = new OrtMemoryAllocation(allocator, producerNameHandle, 0))
+                {
+                    _producerName = NativeOnnxValueHelper.StringFromNativeUtf8(producerNameHandle);
+                }
+
+                // Process graph name
+                IntPtr graphNameHandle = IntPtr.Zero;
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetGraphName(modelMetadataHandle, allocator.Pointer, out graphNameHandle));
+                using (var ortAllocation = new OrtMemoryAllocation(allocator, graphNameHandle, 0))
+                {
+                    _graphName = NativeOnnxValueHelper.StringFromNativeUtf8(graphNameHandle);
+                }
+
+
+                // Process domain
+                IntPtr domainHandle = IntPtr.Zero;
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetDomain(modelMetadataHandle, allocator.Pointer, out domainHandle));
+                using (var ortAllocation = new OrtMemoryAllocation(allocator, domainHandle, 0))
+                {
+                    _domain = NativeOnnxValueHelper.StringFromNativeUtf8(domainHandle);
+                }
+
+                // Process description
+                IntPtr descriptionHandle = IntPtr.Zero;
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetDescription(modelMetadataHandle, allocator.Pointer, out descriptionHandle));
+                using (var ortAllocation = new OrtMemoryAllocation(allocator, descriptionHandle, 0))
+                {
+                    _description = NativeOnnxValueHelper.StringFromNativeUtf8(descriptionHandle);
+                }
+
+                // Process version
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetVersion(modelMetadataHandle, out _version));
+
+
+                // Process CustomMetadata Map
+                IntPtr customMetadataMapKeysHandle = IntPtr.Zero;
+                long numKeys;
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetCustomMetadataMapKeys(modelMetadataHandle, allocator.Pointer, out customMetadataMapKeysHandle, out numKeys));
+
+                // We have received an array of null terminated C strings which are the keys that we can use to lookup the custom metadata map
+                // The OrtAllocator will finally free the customMetadataMapKeysHandle
+                using (var ortAllocationKeysArray = new OrtMemoryAllocation(allocator, customMetadataMapKeysHandle, 0))
+                using (var ortAllocationKeys = new DisposableList<OrtMemoryAllocation>((int)numKeys))
+                {
+                    // Put all the handles to each key in the DisposableList to be disposed off in an exception-safe manner
+                    for (int i = 0; i < (int)numKeys; ++i)
+                    {
+                        ortAllocationKeys.Add(new OrtMemoryAllocation(allocator, Marshal.ReadIntPtr(customMetadataMapKeysHandle, IntPtr.Size * i), 0));
+                    }
+
+                    // Process each key via the stored key handles
+                    foreach(var allocation in ortAllocationKeys)
+                    {
+                        IntPtr keyHandle = allocation.Pointer;
+                        IntPtr valueHandle = IntPtr.Zero;
+                        NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataLookupCustomMetadataMap(modelMetadataHandle, allocator.Pointer, keyHandle, out valueHandle));
+
+                        using (var ortAllocationValue = new OrtMemoryAllocation(allocator, valueHandle, 0))
+                        {
+                            var key = NativeOnnxValueHelper.StringFromNativeUtf8(keyHandle);
+                            var value = NativeOnnxValueHelper.StringFromNativeUtf8(valueHandle);
+
+                            // Put the key/value pair into the dictionary
+                            _customMetadataMap[key] = value;
+
+                        }
+                    }
+                }
+            }
+
+            finally
+            {
+
+                // Free ModelMetadata handle
+                 NativeMethods.OrtReleaseModelMetadata(modelMetadataHandle);
+
+             }
+
+        }
+
+        public string ProducerName
+        {
+            get
+            {
+                return _producerName;
+            }
+        }
+
+        public string GraphName
+        {
+            get
+            {
+                return _graphName;
+            }
+        }
+
+        public string Domain
+        {
+            get
+            {
+                return _domain;
+            }
+        }
+
+        public string Description
+        {
+            get
+            {
+                return _description;
+            }
+        }
+
+        public long Version
+        {
+            get
+            {
+                return _version;
+            }
+        }
+
+        public Dictionary<string, string> CustomMetadataMap
+        {
+            get
+            {
+                return _customMetadataMap;
+            }
+        }
     }
 
 

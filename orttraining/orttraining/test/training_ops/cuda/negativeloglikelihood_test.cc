@@ -92,7 +92,7 @@ TEST(CudaKernelTest, NegativeLogLikelihoodLoss_MediumSizeTensor) {
   TestNegativeLogLikelihoodLoss(&X_dims, &index_dims, nullptr, &Y_dims_none, "none");
 }
 
-TEST(CudaKernelTest, NegativeLogLikelihoodLoss_LargeSizeTensor) {
+TEST(CudaKernelTest, DISABLED_NegativeLogLikelihoodLoss_LargeSizeTensor) {
   std::vector<int64_t> X_dims{4, 512, 30528};
   std::vector<int64_t> index_dims{4, 30528};
   std::vector<int64_t> weight_dims{512};

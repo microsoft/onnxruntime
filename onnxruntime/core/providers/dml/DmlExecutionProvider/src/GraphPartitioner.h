@@ -61,7 +61,7 @@ namespace Dml
     );
 
     bool IsNodeSupportedByDml(
-        const onnxruntime::Node& node,    
+        const onnxruntime::Node& node,
         const onnxruntime::KernelRegistry& registry,
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap& internalRegInfoMap,
