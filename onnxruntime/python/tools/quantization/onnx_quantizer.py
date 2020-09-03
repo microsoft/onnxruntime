@@ -375,7 +375,7 @@ class ONNXQuantizer:
 
         return weight
 
-    def _get_quantized_weight_convolution(self, initializer, qType):
+    def _get_quantized_weight_per_channel(self, initializer, qType, channel_axis):
         '''
             :param initializer: initializer TypeProto to quantize
             :param qType: type to quantize to
@@ -385,10 +385,7 @@ class ONNXQuantizer:
             return self._get_quantized_weight(initializer, qType)
 
         weights = self.find_weight_data(initializer)
-        # Quantize per output channel
-        # Assuming (M x C/group x kH x kW) format where M is number of output channels.
-        channel_count = initializer.dims[0]
-        np_data = np.reshape(weights, initializer.dims)
+        channel_count = weights.shape[channel_axis]
         rmin_list = []
         rmax_list = []
         zero_point_list = []
@@ -396,7 +393,7 @@ class ONNXQuantizer:
         quantized_per_channel_data_list = []
         for i in range(channel_count):
             # for each channel, compute quantization data. Assuming (M x C/group x kH x kW)
-            per_channel_data = np_data[i, :, :, :].flatten()
+            per_channel_data = weights.take(i, channel_axis)
             rmin, rmax, zero_point, scale, quantized_per_channel_data = quantize_data(
                 per_channel_data.flatten().tolist(), _get_qrange_for_qType(qType), qType)
             rmin_list.append(rmin)
@@ -404,18 +401,17 @@ class ONNXQuantizer:
             zero_point_list.append(zero_point)
             scale_list.append(scale)
             quantized_per_channel_data_list.append(quantized_per_channel_data)
-        channel_index = 0  # (M x C/group x kH x kW)
+
         # combine per_channel_data into one
-        reshape_dims = list(initializer.dims)  # deep copy
-        reshape_dims[channel_index] = 1  # only one per channel for reshape
+        reshape_dims = list(weights.shape)  # deep copy
+        reshape_dims[channel_axis] = 1  # only one per channel for reshape
         quantized_weights = np.asarray(quantized_per_channel_data_list[0]).reshape(reshape_dims)
         for i in range(1, len(quantized_per_channel_data_list)):
             channel_weights = np.asarray(quantized_per_channel_data_list[i]).reshape(reshape_dims)
-            quantized_weights = np.concatenate((quantized_weights, channel_weights), axis=0)
+            quantized_weights = np.concatenate((quantized_weights, channel_weights), channel_axis)
 
         weight = QuantizedInitializer(initializer.name, initializer, rmin_list, rmax_list, zero_point_list, scale_list,
-                                      weights,
-                                      quantized_weights.flatten().tolist(), channel_index, qType)
+                                      weights, quantized_weights.flatten().tolist(), channel_axis, qType)
 
         # Make entry for this quantized weight
         assert (weight.name not in self.quantized_value_map)
@@ -642,7 +638,7 @@ class ONNXQuantizer:
 
                     return nodes + [qlinear_node]
 
-    def _get_bias_add_nodes(self, nodes, node, last_output, quantized_bias_name):
+    def get_bias_add_nodes(self, nodes, node, last_output, quantized_bias_name):
         '''
         Given a node, this function handles bias add by adding a "reshape" node on bias and an "add" node
             parameter nodes: new nodes would be appended into nodes
@@ -792,7 +788,7 @@ class ONNXQuantizer:
 
         return quantized_bias_name
 
-    def _quantize_inputs(self, node, indices):
+    def quantize_inputs(self, node, indices):
         '''
         Given a node, this function quantizes the inputs as follows:
             - If input is an initializer, quantize the initializer data, replace old initializer
@@ -834,7 +830,9 @@ class ONNXQuantizer:
             initializer = _find_by_name(node_input, self.model.initializer())
             if initializer is not None:
                 if node.op_type == "Conv":
-                    weight = self._get_quantized_weight_convolution(initializer, self.weight_qType)
+                    weight = self._get_quantized_weight_per_channel(initializer, self.weight_qType, 0)
+                if node.op_type == "MatMul":
+                    weight = self._get_quantized_weight_per_channel(initializer, self.weight_qType, -1)
                 else:
                     weight = self._get_quantized_weight(initializer, self.weight_qType)
 

@@ -13,7 +13,7 @@ class ConInteger(QuantOperatorBase):
         assert (node.op_type == "Conv")
 
         (quantized_input_names, zero_point_names, scale_names, nodes) = \
-            self.quantizer._quantize_inputs(node, [0, 1])
+            self.quantizer.quantize_inputs(node, [0, 1])
 
         # quantize bias if exist
         quantized_bias_name = ""
@@ -51,7 +51,7 @@ class ConInteger(QuantOperatorBase):
         else:
             scales_mul_op = scale_names[0] + "_" + scale_names[1] + "_mul"
 
-        scales_mul_node = _find_by_name(scales_mul_op, self.nodes)
+        scales_mul_node = _find_by_name(scales_mul_op, self.quantizer.new_nodes)
         if scales_mul_node is None:
             scales_mul_node = _get_mul_node(scale_names, scales_mul_op + ":0", scales_mul_op)
             nodes.append(scales_mul_node)
@@ -63,7 +63,7 @@ class ConInteger(QuantOperatorBase):
         output_scale_mul_op = conv_integer_name + "_output_scale_mul" if conv_integer_name != "" else ""
         nodes.append(_get_mul_node([cast_op_output, scales_mul_op_output], node.output[0], output_scale_mul_op))
 
-        self.new_nodes += nodes
+        self.quantizer.new_nodes += nodes
 
 
 class QLinearCov(QuantOperatorBase):
@@ -75,7 +75,7 @@ class QLinearCov(QuantOperatorBase):
         assert (node.op_type == "Conv")
 
         (quantized_input_names, zero_point_names, scale_names, nodes) = \
-            self.quantizer._quantize_inputs(node, [0, 1])
+            self.quantizer.quantize_inputs(node, [0, 1])
 
         quantized_bias_name = ""
         bias_present = False
