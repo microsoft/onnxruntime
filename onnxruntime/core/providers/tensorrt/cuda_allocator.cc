@@ -3,12 +3,8 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
-//#include "cuda_runtime_api.h"
 
 #include "cuda_allocator.h"
-//#include "cuda_common.h"
-//#include "core/framework/allocatormgr.h"
-//#include "core/framework/session_state.h"
 #include "cuda_fence.h"
 #include "gpu_data_transfer.h"
 

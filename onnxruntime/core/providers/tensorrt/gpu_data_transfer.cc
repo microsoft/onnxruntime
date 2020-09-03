@@ -3,8 +3,7 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
-//#include "cuda_runtime_api.h"
-#include "core/framework/allocator.h"
+
 #include "gpu_data_transfer.h"
 
 #define CUDA_RETURN_IF_ERROR(expr)               \
