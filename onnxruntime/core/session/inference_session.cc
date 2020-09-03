@@ -1540,7 +1540,7 @@ std::string InferenceSession::EndProfiling() {
   return std::string();
 }
 
-TimePoint InferenceSession::GetProfilingStartTime() {
+uint64_t InferenceSession::GetProfilingStartTime() {
   return session_profiler_.GetStartTime();
 }
 

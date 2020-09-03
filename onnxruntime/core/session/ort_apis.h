@@ -79,6 +79,7 @@ ORT_API_STATUS_IMPL(SessionGetOverridableInitializerName, _In_ const OrtSession*
                     _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
 ORT_API_STATUS_IMPL(SessionEndProfiling, _In_ OrtSession* sess, _Inout_ OrtAllocator* allocator,
                     _Outptr_ char** out);
+ORT_API_STATUS_IMPL(SessionGetProfilingStartTime, _In_ OrtSession* sess, _Outptr_ uint64_t* out);
 ORT_API_STATUS_IMPL(SessionGetModelMetadata, _In_ const OrtSession* sess,
                     _Outptr_ OrtModelMetadata** out);
 

@@ -62,8 +62,9 @@ class Profiler {
   /*
   Return the stored start time of profiler
   */
-  TimePoint GetStartTime() const {
-    return profiling_start_time_;
+  uint64_t GetStartTime() const {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(
+      profiling_start_time_.time_since_epoch()).count();
   }
   /*
   Record a single event. Time is measured till the call of this function from

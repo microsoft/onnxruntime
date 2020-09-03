@@ -940,6 +940,15 @@ ORT_API_STATUS_IMPL(OrtApis::SessionEndProfiling, _In_ OrtSession* sess, _Inout_
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::SessionGetProfilingStartTime, _In_ OrtSession* sess, _Outptr_ uint64_t* out) {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
+  auto profile_start_time = session->GetProfilingStartTime();
+  *out = static_cast<uint64_t>(profile_start_time);
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::SessionGetModelMetadata, _In_ const OrtSession* sess,
                     _Outptr_ OrtModelMetadata** out) {
   API_IMPL_BEGIN
@@ -1904,6 +1913,7 @@ static constexpr OrtApi ort_api_1_to_5 = {
     &OrtApis::ReleaseMapTypeInfo,
     &OrtApis::ReleaseSequenceTypeInfo,
     &OrtApis::SessionEndProfiling,
+    &OrtApis::SessionGetProfilingStartTime,
     &OrtApis::SessionGetModelMetadata,
     &OrtApis::ModelMetadataGetProducerName,
     &OrtApis::ModelMetadataGetGraphName,
