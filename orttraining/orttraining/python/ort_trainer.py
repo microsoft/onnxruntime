@@ -219,6 +219,7 @@ class WrapModel(torch.nn.Module):
         self.input_names_ = input_names
 
     def forward(self, *inputs):
+        import inspect
         # *inputs is given by torch trace. It is in the order of input_names.
         # model_ takes input in a order (which can be obtained via inspect.signature(model.forward)) different than input_names.
         sig = inspect.signature(self.model_.forward)
