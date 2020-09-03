@@ -105,7 +105,8 @@ def testORTTrainerOptionsDefaultValues(test_input):
         '_internal_use': {
             'enable_internal_postprocess': True,
             'extra_postprocess': None,
-            'onnx_opset_version' : 12
+            'onnx_opset_version' : 12,
+            'enable_onnx_contrib_ops': True,
         }
     }
 
@@ -781,6 +782,30 @@ def testORTTrainerDynamicShape(dynamic_axes):
         _, _ = trainer.train_step(data, targets)
 
     assert trainer._onnx_model is not None
+
+
+@pytest.mark.parametrize('enable_onnx_contrib_ops', [
+    (True),
+    (False),
+])
+def testORTTrainerInternalUseContribOps(enable_onnx_contrib_ops):
+    # Common setup
+    device = 'cuda'
+
+    # Setup ORTTrainer
+    options = orttrainer.ORTTrainerOptions({"_internal_use": {"enable_onnx_contrib_ops": enable_onnx_contrib_ops}})
+    model, model_desc, my_loss, batcher_fn,\
+        train_data, _, _ = _load_pytorch_transformer_model(device)
+    optim_config = optim.LambConfig(lr=0.001)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
+
+    # Training loop
+    data, targets = batcher_fn(train_data, 0)
+    if not enable_onnx_contrib_ops:
+        with pytest.raises(Exception) as e_info:
+            _, _ = trainer.train_step(data, targets)
+    else:
+        _, _ = trainer.train_step(data, targets)
 
 
 @pytest.mark.parametrize("model_params", [

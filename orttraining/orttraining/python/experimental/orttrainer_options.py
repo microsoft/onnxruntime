@@ -165,6 +165,10 @@ class ORTTrainerOptions(object):
                             'min' : 10,
                             'max' : 12,
                             'default': 12
+                        },
+                        'enable_onnx_contrib_ops' : {
+                            'type' : 'boolean',
+                            'default' : True
                         }
                     }
                 }
@@ -230,6 +234,9 @@ class ORTTrainerOptions(object):
             It does not override :py:attr:`._internal_use.enable_internal_postprocess`, but complement it
         _internal_use.onnx_opset_version (int, default is 12):
             ONNX opset version used during model exporting.
+        _internal_use.enable_onnx_contrib_ops (bool, default is True)
+            enable PyTorch to export nodes as contrib ops in ONNX.
+            This flag may be removed anytime in the future.
 
     Example:
         .. code-block:: python
@@ -464,6 +471,10 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'min' : 10,
                 'max' : 12,
                 'default': 12
+            },
+            'enable_onnx_contrib_ops' : {
+                'type' : 'boolean',
+                'default' : True
             }
         }
     }
