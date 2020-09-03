@@ -187,6 +187,13 @@ struct Provider_IExecutionProvider_Router_Impl : Provider_IExecutionProvider_Rou
     return std::make_shared<Provider_IAllocator_Impl>(IExecutionProvider::GetAllocator(id, mem_type));
   }
 
+  AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override {
+    auto allocator = outer_->Provider_GetAllocator(id, mem_type);
+    if (!allocator)
+      return nullptr;
+    return static_cast<Provider_IAllocator_Impl*>(allocator.get())->p_;
+  }
+
   std::unique_ptr<Provider_IDataTransfer> Provider_GetDataTransfer() const override {
     return std::unique_ptr<Provider_IDataTransfer>(reinterpret_cast<Provider_IDataTransfer*>(IExecutionProvider::GetDataTransfer().release()));
   }

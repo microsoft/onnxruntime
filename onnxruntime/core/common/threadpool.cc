@@ -242,24 +242,6 @@ int ThreadPool::NumShardsUsedByFixedBlockSizeScheduling(const std::ptrdiff_t tot
   }
 }
 
-void ThreadPool::ParallelFor(std::ptrdiff_t total, const SchedulingParams& scheduling_params,
-                             const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn) {
-  switch (scheduling_params.strategy()) {
-    case SchedulingStrategy::kAdaptive: {
-      if (scheduling_params.cost_per_unit().has_value()) {
-        ParallelFor(total, static_cast<double>(scheduling_params.cost_per_unit().value()), fn);
-      }
-      break;
-    }
-    case SchedulingStrategy::kFixedBlockSize: {
-      if (scheduling_params.block_size().has_value()) {
-        ParallelForFixedBlockSizeScheduling(total, scheduling_params.block_size().value(), fn);
-      }
-      break;
-    }
-  }
-}
-
 using CostModel = Eigen::TensorCostModel<Eigen::ThreadPoolDevice>;
 
 // Calculates block size based on (1) the iteration cost and (2) parallel

@@ -232,7 +232,11 @@ class PolyWarmupLRScheduler(_LRScheduler):
     Learning rate update strategy:
         When current_step < warmup
             lr = base_lr * (current_step / max(1, num_warmup_steps))
+        When current_step > total_steps
+            lr = lr_end / lr
         Otherwise
+            lr =  decay / lr, where decay is
+                (lr - lr_end) * (1 - (current_step - num_warmup_steps) / (total_steps - num_warmup_steps)) ** power + lr_end
 
     Args:
         total_steps (int): total training steps for learning.

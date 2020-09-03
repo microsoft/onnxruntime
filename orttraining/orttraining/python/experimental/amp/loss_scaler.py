@@ -8,8 +8,10 @@ class LossScaler(object):
     """
 
     def __init__(self, loss_scale):
+        assert isinstance(loss_scale, (int, float)) and loss_scale > 0, "'loss_scale' must be a positive float"
         self._input_name = None
-        self._loss_scale = loss_scale
+        self._loss_scale = float(loss_scale)
+        self._initial_loss_scale = float(loss_scale)
 
     @property
     def input_name(self):
@@ -27,12 +29,12 @@ class LossScaler(object):
 
     @loss_scale.setter
     def loss_scale(self, loss_scale):
-        assert isinstance(loss_scale, float) and loss_scale > 0, "'loss_scale' must be a positive float"
-        self._loss_scale = loss_scale
+        assert isinstance(loss_scale, (int, float)) and loss_scale > 0, "'loss_scale' must be a positive float"
+        self._loss_scale = float(loss_scale)
 
     def reset(self):
         r"""Resets loss scaler internal state"""
-        raise NotImplementedError
+        self._loss_scale = self._initial_loss_scale
 
     def update(self, train_step_info):
         r"""Updates loss based on user input and training session info
@@ -93,15 +95,16 @@ class DynamicLossScaler(LossScaler):
         self.up_scale_window = up_scale_window
         self.min_loss_scale = min_loss_scale
         self.max_loss_scale = max_loss_scale
-
-        self._initial_loss_scale = loss_scale
         self._stable_steps_count = 0
 
     def reset(self):
-        self.loss_scale = self._initial_loss_scale
+        super().reset()
         self._stable_steps_count = 0
 
     def update(self, train_step_info):
+        if not self.automatic_update:
+            return self.loss_scale
+
         if train_step_info.all_finite:
             self._stable_steps_count += 1
 
