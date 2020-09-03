@@ -453,10 +453,16 @@ class ORTTrainer(object):
         with torch.no_grad():
             # Deepcopy inputs, since input values may change after model run.
             sample_inputs_copy = copy.deepcopy(sample_inputs)
-            # Deepcopy model, in case model is stateful and changes after model run.
-            model_copy = copy.deepcopy(model)
+            try:
+                # Deepcopy model, in case model is stateful and changes after model run.
+                model_copy = copy.deepcopy(model)
+            except Exception:
+                model_copy = model
+                warnings.warn("This model cannot be deep copied (or pickled), which is a required step for stateful models to be properly exported to ONNX."
+                              " Compute will continue, but unexpected results may occur!")
             sample_outputs = model_copy(*sample_inputs_copy)
         model.train()
+
         if isinstance(sample_outputs, torch.Tensor):
             sample_outputs = [sample_outputs]
 
@@ -472,6 +478,7 @@ class ORTTrainer(object):
 
         # Export the model to ONNX
         f = io.BytesIO()
+
         # Deepcopy inputs, since input values may change after model run.
         sample_inputs_copy = copy.deepcopy(sample_inputs)
 
