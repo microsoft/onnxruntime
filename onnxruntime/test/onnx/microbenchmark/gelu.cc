@@ -303,14 +303,15 @@ static void BM_GeluBatchParallelFor3(benchmark::State& state) {
       static_cast<ptrdiff_t>(task_count),
       [batch_size, data, length_per_task, output](ptrdiff_t task_idx) {
         const auto first = task_idx * length_per_task;
-        const ptrdiff_t len = std::min(length_per_task, batch_size - first);
+        const ptrdiff_t len = std::min(length_per_task, static_cast<int64_t>(batch_size - first));
         float* output_ptr = output + first;
         onnxruntime::ConstEigenVectorArrayMap<float> xm(data + first, len);
         onnxruntime::EigenVectorArrayMap<float> ym(output_ptr, len);
         ym = xm * static_cast<float>(M_SQRT1_2);
         MlasComputeErf(output_ptr, output_ptr, len);
         ym = xm * 0.5f * (ym + 1.0f);
-      });
+      },
+      0);
   }
   aligned_free(data);
   aligned_free(output);
