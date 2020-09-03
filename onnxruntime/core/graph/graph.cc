@@ -588,7 +588,7 @@ Status Node::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Node& fbs_n
     return Status::OK();
   };
 
-  // Index was set in the ctor of this node
+  // index_ was set in the ctor of this Node instance
   experimental::utils::LoadStringFromOrtFormat(name_, fbs_node.name());
   experimental::utils::LoadStringFromOrtFormat(description_, fbs_node.doc_string());
   experimental::utils::LoadStringFromOrtFormat(domain_, fbs_node.domain());
@@ -2700,7 +2700,7 @@ std::string Graph::GenerateNodeArgName(const std::string& base_name) {
 }
 
 static flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
-GetInputsOutputsOrtFormat(flatbuffers::FlatBufferBuilder& builder, const std::vector<const NodeArg*>& src) {
+SaveInputsOutputsToOrtFormat(flatbuffers::FlatBufferBuilder& builder, const std::vector<const NodeArg*>& src) {
   std::vector<std::string> vec(src.size());
   std::transform(src.cbegin(), src.cend(), vec.begin(),
                  [](const NodeArg* entry) { return entry->Name(); });
@@ -2709,8 +2709,8 @@ GetInputsOutputsOrtFormat(flatbuffers::FlatBufferBuilder& builder, const std::ve
 
 common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                       flatbuffers::Offset<fbs::Graph>& fbs_graph) const {
-  auto inputs = GetInputsOutputsOrtFormat(builder, graph_inputs_including_initializers_);
-  auto outputs = GetInputsOutputsOrtFormat(builder, graph_outputs_);
+  auto inputs = SaveInputsOutputsToOrtFormat(builder, graph_inputs_including_initializers_);
+  auto outputs = SaveInputsOutputsToOrtFormat(builder, graph_outputs_);
 
   // outer_scope_node_args are required to determine outer scope values to make available when executing a subgraph.
   // For an ORT_MINIMAL_BUILD there is no Graph::Resolve() to calculate the outer_scope_node_args
@@ -3472,7 +3472,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Gr
       NodeArgInfo node_arg_info;
       ORT_RETURN_IF_ERROR(experimental::utils::LoadValueInfoOrtFormat(*fbs_value_info, node_arg_info));
       // NodeArg ctor is private, cannot use make_unique
-      node_args_[node_arg_info.name()] = std::unique_ptr<NodeArg>(new NodeArg(std::move(node_arg_info)));
+      node_args_[fbs_value_info->name()->str()] = std::unique_ptr<NodeArg>(new NodeArg(std::move(node_arg_info)));
     }
   }
 
@@ -3483,7 +3483,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Gr
   nodes_.resize(fbs_graph.max_node_index());
   auto* fbs_nodes = fbs_graph.nodes();
 
-  // It is possible to have no nodes in the model. Most likely scenario is the subgraph of an If Node 
+  // It is possible to have no nodes in the model. Most likely scenario is the subgraph of an If Node
   // where the subgraph returns a Constant node. The Constant node will be lifted to an initializer by ORT
   // (prior to serializing to ORT format), leaving a valid Graph that contains no nodes.
   if (fbs_nodes != nullptr) {
