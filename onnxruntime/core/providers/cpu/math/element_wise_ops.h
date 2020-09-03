@@ -811,25 +811,26 @@ Status BroadcastTwo(OpKernelContext& context, Input0Scalar input0scalar, Input1S
     Tensor& output_tensor = *context.Output(0, bc.GetOutputShape());
     auto span_size = bc.GetSpanSize();
     int64_t output_size = output_tensor.Shape().Size();
-
-    concurrency::ThreadPool* tp = context.GetOperatorThreadPool();
-    if (span_size != 0) {
-      if (output_size == static_cast<int64_t>(span_size)) {  // Only one big span for all data, parallel inside it
-        ORT_ENFORCE((output_size % span_size) == 0);
-        BroadcastOneSpan(tp, unit_cost, output_tensor.MutableData<TOutput>(), output_size,
-                         input0_tensor->Data<TInput>(), input0_tensor->Shape().Size(),
-                         input1_tensor->Data<TInput>(), input1_tensor->Shape().Size(),
-                         input0scalar, input1scalar, general);
-      } else {
-        concurrency::ThreadPool::TryParallelFor(
-            tp, output_size / span_size,
-            {static_cast<float>(sizeof(TInput)) * span_size, static_cast<float>(sizeof(TOutput)) * span_size, unit_cost * span_size},
-            [=, &bc, &output_tensor](std::ptrdiff_t first_span, std::ptrdiff_t last_span) {
-              TBroadcaster<TInput, TInput> span_bc(bc);
-              TBroadcastOutput<TOutput> span_output(span_size, output_tensor, first_span * span_size, last_span * span_size);
-              span_bc.AdvanceBy(first_span * span_size);
-              BroadcastLoop(span_bc, span_output, input0scalar, input1scalar, general);
-            });
+    if (output_size != 0) {
+      concurrency::ThreadPool* tp = context.GetOperatorThreadPool();
+      if (span_size != 0) {
+        if (output_size == static_cast<int64_t>(span_size)) {  // Only one big span for all data, parallel inside it
+          ORT_ENFORCE((output_size % span_size) == 0);
+          BroadcastOneSpan(tp, unit_cost, output_tensor.MutableData<TOutput>(), output_size,
+                           input0_tensor->Data<TInput>(), input0_tensor->Shape().Size(),
+                           input1_tensor->Data<TInput>(), input1_tensor->Shape().Size(),
+                           input0scalar, input1scalar, general);
+        } else {
+          concurrency::ThreadPool::TryParallelFor(
+              tp, output_size / span_size,
+              {static_cast<float>(sizeof(TInput)) * span_size, static_cast<float>(sizeof(TOutput)) * span_size, unit_cost * span_size},
+              [=, &bc, &output_tensor](std::ptrdiff_t first_span, std::ptrdiff_t last_span) {
+                TBroadcaster<TInput, TInput> span_bc(bc);
+                TBroadcastOutput<TOutput> span_output(span_size, output_tensor, first_span * span_size, last_span * span_size);
+                span_bc.AdvanceBy(first_span * span_size);
+                BroadcastLoop(span_bc, span_output, input0scalar, input1scalar, general);
+              });
+        }
       }
     }
   }
