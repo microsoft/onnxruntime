@@ -4,24 +4,27 @@
 // This is the Onnxruntime side of the bridge to allow providers to be built as a DLL
 // It implements onnxruntime::ProviderHost
 
-#include "core/framework/data_types.h"
 #include "core/framework/allocatormgr.h"
+#include "core/framework/compute_capability.h"
+#include "core/framework/data_types.h"
+#include "core/framework/data_transfer_manager.h"
+#include "core/framework/execution_provider.h"
+#include "core/framework/kernel_registry.h"
+#include "core/graph/model.h"
+#include "core/platform/env.h"
 #include "core/providers/dnnl/dnnl_provider_factory.h"
 #include "core/session/inference_session.h"
-#include "core/providers/tensorrt/tensorrt_provider_factory.h"
+#include "core/session/abi_session_options_impl.h"
+#include "core/session/ort_apis.h"
+
 #ifdef USE_TENSORRT
+#include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "core/providers/cuda/cuda_common.h"
 #endif
-#include "core/session/abi_session_options_impl.h"
-#include "core/session/ort_apis.h"
-#include "core/platform/env.h"
-#include "core/graph/model.h"
-#include "core/framework/data_transfer_manager.h"
-#include "core/framework/compute_capability.h"
-#include "core/framework/execution_provider.h"
+
 #define PROVIDER_BRIDGE_ORT
 #include "core/providers/shared_library/provider_interfaces.h"
 #include "onnx/common/stl_backports.h"
@@ -184,6 +187,13 @@ struct Provider_IExecutionProvider_Router_Impl : Provider_IExecutionProvider_Rou
     return std::make_shared<Provider_IAllocator_Impl>(IExecutionProvider::GetAllocator(id, mem_type));
   }
 
+  AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override {
+    auto allocator = outer_->Provider_GetAllocator(id, mem_type);
+    if (!allocator)
+      return nullptr;
+    return static_cast<Provider_IAllocator_Impl*>(allocator.get())->p_;
+  }
+
   std::unique_ptr<Provider_IDataTransfer> Provider_GetDataTransfer() const override {
     return std::unique_ptr<Provider_IDataTransfer>(reinterpret_cast<Provider_IDataTransfer*>(IExecutionProvider::GetDataTransfer().release()));
   }
@@ -212,16 +222,16 @@ struct ProviderHostImpl : ProviderHost {
     return onnxruntime::make_unique<Provider_OrtMemoryInfo_Impl>(name_, type_, device_ ? static_cast<Provider_OrtDevice_Impl*>(device_)->v_ : OrtDevice(), id_, mem_type_);
   }
 
-  Provider_AllocatorPtr CreateAllocator(const Provider_DeviceAllocatorRegistrationInfo& info,
-                                        OrtDevice::DeviceId device_id = 0,
-                                        bool use_arena = true) override {
-    DeviceAllocatorRegistrationInfo info_real{
-        info.mem_type, [&info](int value) {
+  Provider_AllocatorPtr CreateAllocator(const Provider_AllocatorCreationInfo& info) override {
+    AllocatorCreationInfo info_real{
+        [&info](int value) {
           return std::move(static_cast<Provider_IDeviceAllocator_Impl*>(&*info.factory(value))->p_);
         },
-        info.max_mem};
+        info.device_id,
+        info.use_arena,
+        info.arena_cfg};
 
-    return std::make_shared<Provider_IAllocator_Impl>(onnxruntime::CreateAllocator(info_real, device_id, use_arena));
+    return std::make_shared<Provider_IAllocator_Impl>(onnxruntime::CreateAllocator(info_real));
   }
 
   std::unique_ptr<Provider_IDeviceAllocator> CreateCPUAllocator(

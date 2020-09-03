@@ -19,11 +19,11 @@ TEST(CApiTest, model_from_array) {
   {
     std::ifstream file(model_path, std::ios::binary | std::ios::ate);
     if (!file)
-      throw std::runtime_error("Error reading model");
+      ORT_THROW("Error reading model");
     buffer.resize(file.tellg());
     file.seekg(0, std::ios::beg);
     if (!file.read(buffer.data(), buffer.size()))
-      throw std::runtime_error("Error reading model");
+      ORT_THROW("Error reading model");
   }
 
   Ort::SessionOptions so;

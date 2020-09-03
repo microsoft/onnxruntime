@@ -110,6 +110,8 @@ class InferenceSession {
   explicit InferenceSession(const SessionOptions& session_options,
                             const Environment& session_env);
 
+#if !defined(ORT_MINIMAL_BUILD)
+
   /**
     Create a new InferenceSession
     @param session_options Session options.
@@ -150,6 +152,8 @@ class InferenceSession {
                    const void* model_data,
                    int model_data_len);
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
   virtual ~InferenceSession();
 
   /**
@@ -161,6 +165,7 @@ class InferenceSession {
     */
   common::Status RegisterExecutionProvider(std::unique_ptr<IExecutionProvider> p_exec_provider) ORT_MUST_USE_RESULT;
 
+#if !defined(ORT_MINIMAL_BUILD)
   /**
     * Register a graph transformer. If you've one to register, call this before invoking Initialize().
     * Calling this API is optional.
@@ -196,8 +201,17 @@ class InferenceSession {
     */
   common::Status RegisterCustomRegistry(std::shared_ptr<CustomRegistry> custom_registry) ORT_MUST_USE_RESULT;
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
   /**
-    * Load an ONNX model.
+    * Load an ONNX or ORT format model.
+    *
+    * Set SessionOptions session config value ORT_SESSION_OPTIONS_CONFIG_LOAD_MODEL_FORMAT to 'ORT' or 'ONNX' to 
+    * explicitly choose model format.
+    *
+    * If format is not explicitly specified and filename ends in '.ort' it will be inferred to be an ORT format model.
+	* All other files are assumed to be in ONNX format.
+    * 
     * @param model_uri absolute path of the model file.
     * @return OK if success.
     */
@@ -206,6 +220,21 @@ class InferenceSession {
   common::Status Load(const std::wstring& model_uri) ORT_MUST_USE_RESULT;
 #endif
   /**
+    * Load an ONNX or ORT format model.
+    *
+    * Set SessionOptions session config value ORT_SESSION_OPTIONS_CONFIG_LOAD_MODEL_FORMAT to 'ORT' or 'ONNX' to 
+    * explicitly choose model format.
+    *
+    * If format is not explicitly specified the model format will be inferred from the bytes, defaulting to ONNX.
+    * 
+    * @param model_data Model data buffer
+    * @param model_data_len Model data buffer size
+    * @return OK if success.
+    */
+  common::Status Load(const void* model_data, int model_data_len) ORT_MUST_USE_RESULT;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  /**
     * Load an ONNX model.
     * @param istream object of the model.
     * @return OK if success.
@@ -213,22 +242,15 @@ class InferenceSession {
   common::Status Load(std::istream& model_istream) ORT_MUST_USE_RESULT;
 
   /**
-    * Load an ONNX model.
-    * @param model_data Model data buffer
-    * @param model_data_len Model data buffer size
-    * @return OK if success.
-    */
-  common::Status Load(const void* model_data, int model_data_len) ORT_MUST_USE_RESULT;
-
-  /**
     * Load an ONNX model from the member model_proto_.
     * To be called only in conjunction with a ctor that takes in a model path/ model stream/ model array
     * @return OK if success.
     */
   common::Status Load() ORT_MUST_USE_RESULT;
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   /**
-    * Initializes a previously loaded model. Initialization includes but is not
+    * Initializes a previously loaded ONNX model. Initialization includes but is not
     * limited to graph transformations, construction of kernels, etc.
     * This method assumes that a method has been loaded previously.
     * This API is thread-safe.
@@ -252,7 +274,7 @@ class InferenceSession {
     * @return OK if success.
     */
   common::Status Run(const NameMLValMap& feeds, const std::vector<std::string>& output_names,
-                             std::vector<OrtValue>* p_fetches) ORT_MUST_USE_RESULT;
+                     std::vector<OrtValue>* p_fetches) ORT_MUST_USE_RESULT;
 
   /**
    * See Run(const NameMLValMap& feeds, const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches)
@@ -319,17 +341,15 @@ class InferenceSession {
    */
   const SessionOptions& GetSessionOptions() const;
 
- 
   /*
    * Get the DataTransferManager associated with this session
    */
   const DataTransferManager& GetDataTransferManager() const;
-  
+
   /*
    * Get all the providers' options this session was initialized with.
    */
   const ProviderOptionsMap& GetAllProviderOptions() const;
-
 
   /**
     * Start profiling on this inference session. This simply turns on profiling events to be
@@ -360,13 +380,14 @@ class InferenceSession {
     * @return a ptr to the allocator or nullptr if not available
     */
   AllocatorPtr GetAllocator(const OrtMemoryInfo& mem_info) const;
-  
-   /** 
+
+  /**
     *Get InferenceSession logger.
     */
   const logging::Logger* GetLogger() const { return session_logger_; };
 
  protected:
+#if !defined(ORT_MINIMAL_BUILD)
   /**
     * Load an ONNX model.
     * @param protobuf object corresponding to the model file. model_proto will be copied by the API.
@@ -383,100 +404,8 @@ class InferenceSession {
 
   common::Status DoPostLoadProcessing(onnxruntime::Model& model) ORT_MUST_USE_RESULT;
 
-  /// convenience pointer to logger. should always be the same as session_state_.Logger();
-  const logging::Logger* session_logger_;
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
-  // The model served by this inference session instance.
-  // Currently this has to be a shared ptr because the Model::Load method
-  // returns a shared_ptr only. Ideally factory functions should always return
-  // unique_ptr for maximum flexibility. Client can always upgrade it to shared_ptr
-  // if they need.
-  std::shared_ptr<onnxruntime::Model> model_;
-
-  // names of model outputs used for quick validation.
-  std::unordered_set<std::string> model_output_names_;
-
-  // The file path of where the model was loaded. e.g. /tmp/test_squeezenet/model.onnx
-  std::basic_string<ORTCHAR_T> model_location_;
-
- private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
-
-  void ConstructorCommon(const SessionOptions& session_options,
-                         const Environment& session_env);
-
-  bool HasLocalSchema() const {
-    return !custom_schema_registries_.empty();
-  }
-
-  common::Status SaveModelMetadata(const onnxruntime::Model& model) ORT_MUST_USE_RESULT;
-
-  // Create a Logger for a single execution if possible. Otherwise use the default logger.
-  // If a new logger is created, it will also be stored in new_run_logger,
-  // which must remain valid for the duration of the execution.
-  // If the default logger is used, new_run_logger will remain empty.
-  // The returned value should be used in the execution.
-  const logging::Logger& CreateLoggerForRun(const RunOptions& run_options,
-                                            std::unique_ptr<logging::Logger>& new_run_logger);
-
-  common::Status Load(std::function<common::Status(std::shared_ptr<Model>&)> loader,
-                      const std::string& event_name) ORT_MUST_USE_RESULT;
-
-  common::Status TransformGraph(onnxruntime::Graph& graph,
-                                const onnxruntime::GraphTransformerManager& graph_transformer_mgr,
-                                const ExecutionProviders& providers, KernelRegistryManager& kernel_registry_manager,
-                                const InsertCastTransformer& insert_cast_transformer,
-                                SessionState& session_state) ORT_MUST_USE_RESULT;
-
-  common::Status CreateSubgraphSessionState(Graph& graph, SessionState& session_state) ORT_MUST_USE_RESULT;
-
-  common::Status InitializeSubgraphSessions(Graph& graph, SessionState& session_state) ORT_MUST_USE_RESULT;
-
-  virtual void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                         TransformerLevel graph_optimization_level,
-                                         const std::vector<std::string>& custom_list);
-
-  void InitLogger(logging::LoggingManager* logging_manager);
-
-  common::Status CheckShapes(const std::string& input_name, const TensorShape& input_shape,
-                             const TensorShape& expected_shape) const ORT_MUST_USE_RESULT;
-
-  common::Status ValidateInputs(const std::vector<std::string>& feed_names,
-                                const std::vector<OrtValue>& feeds) const ORT_MUST_USE_RESULT;
-
-  common::Status ValidateOutputs(const std::vector<std::string>& output_names,
-                                 const std::vector<OrtValue>* p_fetches) const ORT_MUST_USE_RESULT;
-
-  common::Status WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms) ORT_MUST_USE_RESULT;
-
-  template <typename T>
-  common::Status Load(const std::basic_string<T>& model_uri) ORT_MUST_USE_RESULT;
-
-  template <typename T>
-  void StartProfiling(const std::basic_string<T>& file_prefix);
-
-  SessionOptions session_options_;
-
-  onnxruntime::GraphTransformerManager graph_transformation_mgr_;
-
-  // List of transformers to run. When this list is not empty only the transformers in this list
-  // will be run regardless of the level set.
-  // .i.e This list overrides both SessionOptions.graph_optimization_level and predefined transformers.
-  std::vector<std::string> transformers_to_enable_;
-
-  /// Logging manager if provided.
-  logging::LoggingManager* const logging_manager_;
-
-  /// Logger for this session. WARNING: Will contain nullptr if logging_manager_ is nullptr.
-  std::unique_ptr<logging::Logger> owned_session_logger_ = nullptr;
-
-  // Profiler for this session.
-  profiling::Profiler session_profiler_;
-
-  // The list of execution providers.
-  ExecutionProviders execution_providers_;
-
- protected:
   bool IsInitialized() const;
 
   const SessionState& GetSessionState() const {
@@ -495,7 +424,128 @@ class InferenceSession {
     return session_options_.use_per_session_threads ? inter_op_thread_pool_.get() : inter_op_thread_pool_from_env_;
   }
 
+  /// convenience pointer to logger. should always be the same as session_state_.Logger();
+  const logging::Logger* session_logger_;
+
+  // The model served by this inference session instance.
+  // Currently this has to be a shared ptr because the Model::Load method
+  // returns a shared_ptr only. Ideally factory functions should always return
+  // unique_ptr for maximum flexibility. Client can always upgrade it to shared_ptr
+  // if they need.
+  std::shared_ptr<onnxruntime::Model> model_;
+
+  // names of model outputs used for quick validation.
+  std::unordered_set<std::string> model_output_names_;
+
+  // The file path of where the model was loaded. e.g. /tmp/test_squeezenet/model.onnx
+  std::basic_string<ORTCHAR_T> model_location_;
+
+  // The list of execution providers.
+  ExecutionProviders execution_providers_;
+
  private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
+
+  void ConstructorCommon(const SessionOptions& session_options,
+                         const Environment& session_env);
+
+  common::Status SaveModelMetadata(const onnxruntime::Model& model) ORT_MUST_USE_RESULT;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  common::Status Load(std::function<common::Status(std::shared_ptr<Model>&)> loader,
+                      const std::string& event_name) ORT_MUST_USE_RESULT;
+
+  template <typename T>
+  common::Status Load(const std::basic_string<T>& model_uri) ORT_MUST_USE_RESULT;
+
+  bool HasLocalSchema() const {
+    return !custom_schema_registries_.empty();
+  }
+
+  common::Status SaveToOrtFormat(const std::basic_string<ORTCHAR_T>& filepath) const;
+#endif
+
+  /**
+    * Load an ORT format model.
+    * @param model_uri absolute path of the model file.
+    * @return OK if success.
+    */
+  common::Status LoadOrtModel(const std::string& model_uri) ORT_MUST_USE_RESULT;
+#ifdef _WIN32
+  common::Status LoadOrtModel(const std::wstring& model_uri) ORT_MUST_USE_RESULT;
+#endif
+
+  /**
+    * Load an ORT format model.
+    * @param model_data Model data buffer
+    * @param model_data_len Model data buffer size
+    * @return OK if success.
+    * @remarks TODO: Provide way to load from in-memory bytes without copying. InferenceSession would need to
+    *                take ownership of the buffer passed in.
+    */
+  common::Status LoadOrtModel(const void* model_data, int model_data_len) ORT_MUST_USE_RESULT;
+
+  common::Status LoadOrtModel(std::function<Status()> load_ort_format_model_bytes) ORT_MUST_USE_RESULT;
+
+  // Create a Logger for a single execution if possible. Otherwise use the default logger.
+  // If a new logger is created, it will also be stored in new_run_logger,
+  // which must remain valid for the duration of the execution.
+  // If the default logger is used, new_run_logger will remain empty.
+  // The returned value should be used in the execution.
+  const logging::Logger& CreateLoggerForRun(const RunOptions& run_options,
+                                            std::unique_ptr<logging::Logger>& new_run_logger);
+
+  void InitLogger(logging::LoggingManager* logging_manager);
+
+  common::Status CheckShapes(const std::string& input_name, const TensorShape& input_shape,
+                             const TensorShape& expected_shape) const ORT_MUST_USE_RESULT;
+
+  common::Status ValidateInputs(const std::vector<std::string>& feed_names,
+                                const std::vector<OrtValue>& feeds) const ORT_MUST_USE_RESULT;
+
+  common::Status ValidateOutputs(const std::vector<std::string>& output_names,
+                                 const std::vector<OrtValue>* p_fetches) const ORT_MUST_USE_RESULT;
+
+  common::Status WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms) ORT_MUST_USE_RESULT;
+
+  template <typename T>
+  void StartProfiling(const std::basic_string<T>& file_prefix);
+
+  // Updates all providers with the allocators from the env based on OrtMemoryInfo
+  void UpdateProvidersWithSharedAllocators();
+
+#if !defined(ORT_MINIMAL_BUILD)
+  virtual void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
+                                         TransformerLevel graph_optimization_level,
+                                         const std::vector<std::string>& custom_list);
+
+  common::Status TransformGraph(onnxruntime::Graph& graph,
+                                const onnxruntime::GraphTransformerManager& graph_transformer_mgr,
+                                const ExecutionProviders& providers, KernelRegistryManager& kernel_registry_manager,
+                                const InsertCastTransformer& insert_cast_transformer,
+                                SessionState& session_state) ORT_MUST_USE_RESULT;
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr_;
+
+  InsertCastTransformer insert_cast_transformer_;
+
+  // List of transformers to run. When this list is not empty only the transformers in this list
+  // will be run regardless of the level set.
+  // .i.e This list overrides both SessionOptions.graph_optimization_level and predefined transformers.
+  std::vector<std::string> transformers_to_enable_;
+#endif
+
+  SessionOptions session_options_;
+
+  /// Logging manager if provided.
+  logging::LoggingManager* const logging_manager_;
+
+  /// Logger for this session. WARNING: Will contain nullptr if logging_manager_ is nullptr.
+  std::unique_ptr<logging::Logger> owned_session_logger_ = nullptr;
+
+  // Profiler for this session.
+  profiling::Profiler session_profiler_;
+
   // Immutable state for each op in the model. Shared by all executors.
   // It has a dependency on execution_providers_.
   std::unique_ptr<SessionState> session_state_;
@@ -516,7 +566,14 @@ class InferenceSession {
   bool use_per_session_threads_;
 
   KernelRegistryManager kernel_registry_manager_;
+
+#if !defined(ORT_MINIMAL_BUILD)
   std::list<std::shared_ptr<onnxruntime::IOnnxRuntimeOpSchemaCollection>> custom_schema_registries_;
+
+  //CustomRegistry objects own the corresponding KernelRegistry and OnnxRuntimeOpSchemaRegistry objects.
+  //So its lifetime should be same as its constituents. This vector is to extend the lifetime of the owner.
+  std::vector<std::shared_ptr<CustomRegistry>> custom_registries_;
+#endif
 
   ModelMetadata model_metadata_;
   std::unordered_set<std::string> required_inputs_;
@@ -542,11 +599,6 @@ class InferenceSession {
   mutable onnxruntime::OrtMutex session_mutex_;  // to ensure only one thread can invoke Load/Initialize
   bool is_model_loaded_ = false;                 // GUARDED_BY(session_mutex_)
   bool is_inited_ = false;                       // GUARDED_BY(session_mutex_)
-  InsertCastTransformer insert_cast_transformer_;
-
-  //CustomRegistry objects own the corresponding KernelRegistry and OnnxRuntimeOpSchemaRegistry objects.
-  //So its lifetime should be same as its constituents. This vector is to extend the lifetime of the owner.
-  std::vector<std::shared_ptr<CustomRegistry>> custom_registries_;
 
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
   InterOpDomains interop_domains_;
@@ -556,18 +608,14 @@ class InferenceSession {
   uint32_t session_id_;                             // the current session's id
 
   struct Telemetry {
-    Telemetry() : time_sent_last_(), time_sent_last_evalutation_start_() {}
+    Telemetry() : time_sent_last_() {}
     uint32_t total_runs_since_last_ = 0;           // the total number of Run() calls since the last report
     long long total_run_duration_since_last_ = 0;  // the total duration (us) of Run() calls since the last report
     std::string event_name_;                       // where the model is loaded from: ["model_loading_uri", "model_loading_proto", "model_loading_istream"]
 
     TimePoint time_sent_last_;  // the TimePoint of the last report
-    TimePoint time_sent_last_evalutation_start_;
     // Event Rate per provider < 20 peak events per second
     constexpr static long long kDurationBetweenSending = 1000 * 1000 * 60 * 10;     // duration in (us).  send a report every 10 mins
-    constexpr static long long kDurationBetweenSendingEvaluationStart = 1000 * 50;  // duration in (us). send a EvaluationStop Event every 50 ms;
-
-    bool isEvaluationStart = false;
   } telemetry_;
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
@@ -580,6 +628,15 @@ class InferenceSession {
 
   // Flag indicating if ModelProto has been parsed in an applicable ctor
   bool is_model_proto_parsed_ = false;
+  const Environment& environment_;
+
+  // Bytes from an ORT format model.
+  // We store them currently to make the Load + Initialize behave the same way as for an ONNX model
+  // as we need some of the bytes for the Load (create the Model) and some for the Initialize (create SessionState).
+  // Short term we free them after Initialize.
+  // Longer term we may want to directly refer to offsets in this buffer for initializers so we don't need to copy
+  // those into new OrtValue instances, at which point we won't free them until the InferenceSession goes away.
+  std::vector<uint8_t> ort_format_model_bytes_;
 };
 
 struct SessionIOBinding {

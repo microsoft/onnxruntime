@@ -43,7 +43,6 @@ class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kArmNNExecutionProvider, kOnnxDo
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kArmNNExecutionProvider, kOnnxDomain, 4, 10, Concat);
 
 static void RegisterArmNNKernels(KernelRegistry& kernel_registry) {
-
 #ifdef RELU_ARMNN
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kArmNNExecutionProvider, kOnnxDomain, 6, Relu)>());
 #endif
@@ -82,22 +81,19 @@ ArmNNExecutionProvider::ArmNNExecutionProvider(const ArmNNExecutionProviderInfo&
     : IExecutionProvider{onnxruntime::kArmNNExecutionProvider} {
   ORT_UNUSED_PARAMETER(info);
 
-  DeviceAllocatorRegistrationInfo default_memory_info{
-      OrtMemTypeDefault,
+  AllocatorCreationInfo default_memory_info{
       [](int) {
         return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo(ArmNN, OrtAllocatorType::OrtDeviceAllocator));
       },
-      std::numeric_limits<size_t>::max()};
+      0};
 
   InsertAllocator(CreateAllocator(default_memory_info));
 
-  DeviceAllocatorRegistrationInfo cpu_memory_info{
-      OrtMemTypeCPUOutput,
+  AllocatorCreationInfo cpu_memory_info{
       [](int) {
         return onnxruntime::make_unique<CPUAllocator>(
             OrtMemoryInfo(ArmNN_CPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
-      },
-      std::numeric_limits<size_t>::max()};
+      }};
 
   InsertAllocator(CreateAllocator(cpu_memory_info));
 }
@@ -112,7 +108,7 @@ std::shared_ptr<KernelRegistry> ArmNNExecutionProvider::GetKernelRegistry() cons
 
 std::vector<std::unique_ptr<ComputeCapability>>
 ArmNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
-                                    const std::vector<const KernelRegistry*>& kernel_registries) const {
+                                      const std::vector<const KernelRegistry*>& kernel_registries) const {
   std::vector<std::unique_ptr<ComputeCapability>>
       result = IExecutionProvider::GetCapability(graph, kernel_registries);
 

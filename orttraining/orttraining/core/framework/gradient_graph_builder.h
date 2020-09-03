@@ -29,6 +29,7 @@ static std::unordered_map<std::string, std::unordered_set<size_t>>
     STOP_GRADIENT_EDGES = {
         {"Pow", {1}},
         {"Gather", {1}},
+        {"Shape", {0}},
         {"Reshape", {1}},
         {"Expand", {1}},
         {"TrainableDropout", {1}},
