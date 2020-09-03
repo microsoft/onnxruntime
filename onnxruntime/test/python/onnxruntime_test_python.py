@@ -85,19 +85,6 @@ class TestInferenceSession(unittest.TestCase):
                 options = sess.get_provider_options()
                 self.assertEqual(options['CUDAExecutionProvider']['cuda_mem_limit'], ori_mem_limit)
 
-                option['cuda_mem_limit'] = -1024
-                with self.assertRaises(RuntimeError):
-                    sess.set_providers(['CUDAExecutionProvider'], [option])
-
-                option['cuda_mem_limit'] = 1024.1024
-                with self.assertRaises(RuntimeError):
-                    sess.set_providers(['CUDAExecutionProvider'], [option])
-
-                option['cuda_mem_limit'] = 'wrong_value'
-                with self.assertRaises(RuntimeError):
-                    sess.set_providers(['CUDAExecutionProvider'], [option])
-
-
                 # test get/set of "arena_extend_strategy" configuration.
                 options = sess.get_provider_options()
                 self.assertTrue('CUDAExecutionProvider' in options)
@@ -109,7 +96,26 @@ class TestInferenceSession(unittest.TestCase):
                     options = sess.get_provider_options()
                     self.assertEqual(options['CUDAExecutionProvider']['arena_extend_strategy'], strategy)
 
+                #
+                # Note: Tests that throw an exception leave an empty session due to how set_providers currently works,
+                #       so run them last. Each set_providers call will attempt to re-create a session, so it's
+                #       fine for a test that fails to run immediately after another one that fails.
+                #       Alternatively a valid call to set_providers could be used to recreate the underlying session
+                #       after a failed call.
+                #
                 option['arena_extend_strategy'] = 'wrong_value'
+                with self.assertRaises(RuntimeError):
+                    sess.set_providers(['CUDAExecutionProvider'], [option])
+
+                option['cuda_mem_limit'] = -1024
+                with self.assertRaises(RuntimeError):
+                    sess.set_providers(['CUDAExecutionProvider'], [option])
+
+                option['cuda_mem_limit'] = 1024.1024
+                with self.assertRaises(RuntimeError):
+                    sess.set_providers(['CUDAExecutionProvider'], [option])
+
+                option['cuda_mem_limit'] = 'wrong_value'
                 with self.assertRaises(RuntimeError):
                     sess.set_providers(['CUDAExecutionProvider'], [option])
 

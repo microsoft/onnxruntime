@@ -33,3 +33,22 @@ def register_custom_op():
     register_custom_op_symbolic('::gelu', gelu, _onnx_opset_version)
     register_custom_op_symbolic('::triu', triu, _onnx_opset_version)
     register_custom_op_symbolic('::tril', tril, _onnx_opset_version)
+
+
+def unregister_custom_op():
+    """
+    This function unregisters symbolic functions for
+    custom ops that are implemented as part of ONNX Runtime
+    """
+
+    import torch.onnx.symbolic_registry as sym_registry
+
+    def unregister(name, opset_version):
+        ns, kind = name.split("::")
+        if sym_registry.is_registered_op(kind, ns, opset_version):
+            del sym_registry._registry[(ns, opset_version)][kind]
+
+    unregister('::inverse', _onnx_opset_version)
+    unregister('::gelu', _onnx_opset_version)
+    unregister('::triu', _onnx_opset_version)
+    unregister('::tril', _onnx_opset_version)

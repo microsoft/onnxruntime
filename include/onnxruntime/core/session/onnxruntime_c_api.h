@@ -146,12 +146,11 @@ typedef enum OrtErrorCode {
 
 // This configures the arena based allocator used by ORT
 // See ONNX_Runtime_Perf_Tuning.md for details on what these mean and how to choose these values
-// Use -1 to allow ORT to choose defaults for all the options below
 typedef struct OrtArenaCfg {
-  int max_mem;
-  int arena_extend_strategy;  // 0 = kNextPowerOfTwo, 1 = kSameAsRequested
-  int initial_chunk_size_bytes;
-  int max_dead_bytes_per_chunk;
+  size_t max_mem;                // use 0 to allow ORT to choose the default
+  int arena_extend_strategy;     // use -1 to allow ORT to choose the default, 0 = kNextPowerOfTwo, 1 = kSameAsRequested
+  int initial_chunk_size_bytes;  // use -1 to allow ORT to choose the default
+  int max_dead_bytes_per_chunk;  // use -1 to allow ORT to choose the default
 } OrtArenaCfg;
 
 #define ORT_RUNTIME_CLASS(X) \

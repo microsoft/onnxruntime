@@ -46,7 +46,7 @@ std::string GetEnginePath(const ::std::string& root, const std::string& name) {
   }
 }
 
-std::string GetVecHash(const ::std::vector<int> & vec) {
+std::string GetVecHash(const ::std::vector<int>& vec) {
   std::size_t ret = 0;
   for (auto& i : vec) {
     ret ^= std::hash<uint32_t>()(i);
@@ -171,14 +171,14 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     : Provider_IExecutionProvider{onnxruntime::kTensorrtExecutionProvider}, device_id_(info.device_id) {
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
 
-  Provider_DeviceAllocatorRegistrationInfo default_memory_info(
-      {OrtMemTypeDefault, [](int id) { return Provider_CreateCUDAAllocator(id, TRT); }, std::numeric_limits<size_t>::max()});
-  allocator_ = CreateAllocator(default_memory_info, device_id_);
+  Provider_AllocatorCreationInfo default_memory_info(
+      [](int id) { return Provider_CreateCUDAAllocator(id, TRT); }, device_id_);
+  allocator_ = CreateAllocator(default_memory_info);
   Provider_InsertAllocator(allocator_);
 
-  Provider_DeviceAllocatorRegistrationInfo pinned_allocator_info(
-      {OrtMemTypeCPUOutput, [](int) { return Provider_CreateCUDAPinnedAllocator(0, TRT_PINNED); }, std::numeric_limits<size_t>::max()});
-  Provider_InsertAllocator(CreateAllocator(pinned_allocator_info, device_id_));
+  Provider_AllocatorCreationInfo pinned_allocator_info(
+      [](int) { return Provider_CreateCUDAPinnedAllocator(0, TRT_PINNED); }, device_id_);
+  Provider_InsertAllocator(CreateAllocator(pinned_allocator_info));
 
   // Get environment variables
   const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
@@ -1062,7 +1062,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           auto runtime_ = trt_state->runtime;
           trt_state->engine->reset();
           *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
-                                            runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
+              runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
           if (trt_state->engine->get() == nullptr) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
           }
