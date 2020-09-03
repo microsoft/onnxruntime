@@ -181,21 +181,41 @@ def optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, num_a
     else:
         logger.info(f"Skip optimization since model existed: {optimized_model_path}")
 
+def pipeline_dispatcher(model_attribute):
+    if len(model_attribute) < 4:
+        raise Exception("Length of model_attribute >= 4")
+    if len(model_attribute) == 4:
+        return AutoModel
 
-def load_pretrained_model(model_name, config, cache_dir):
+    auto_model_type = model_attribute[4]
+    if auto_model_type == "AutoModelWithLMHead":
+        from transformers import AutoModelWithLMHead
+        return AutoModelWithLMHead
+    elif auto_model_type == "AutoModelForSequenceClassification":
+        from transformers import AutoModelForSequenceClassification
+        return AutoModelForSequenceClassification
+    elif auto_model_type == "AutoModelForQuestionAnswering":
+        from transformers import AutoModelForQuestionAnswering
+        return AutoModelForQuestionAnswering
+    else:
+        raise Exception("Select from AutoModelWithLMHead, AutoModelForSequenceClassification, AutoModelForQuestionAnswering")
+
+def load_pretrained_model(model_name, config, cache_dir, pipeline):
     if model_name in PRETRAINED_GPT2_MODELS:
         return GPT2ModelNoPastState.from_pretrained(model_name, config=config, cache_dir=cache_dir)
-    return AutoModel.from_pretrained(model_name, config=config, cache_dir=cache_dir)
+
+    return pipeline.from_pretrained(model_name, config=config, cache_dir=cache_dir)
 
 
-def export_onnx_model(model_name, opset_version, use_external_data_format, model_type, cache_dir, onnx_dir, input_names,
-                      use_gpu, precision, optimize_onnx, validate_onnx, use_raw_attention_mask, overwrite,
-                      model_fusion_statistics):
+def export_onnx_model(model_name, model_attribute, cache_dir, onnx_dir, input_names, use_gpu, precision,
+                      optimize_onnx, validate_onnx, use_raw_attention_mask, overwrite, model_fusion_statistics):
+    opset_version, use_external_data_format, model_type = model_attribute[1], model_attribute[2], model_attribute[3]
+
     config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
     if hasattr(config, 'return_dict'):
         config.return_dict = False
 
-    model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir)
+    model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir, pipeline=pipeline_dispatcher(model_attribute))
     model.cpu()
 
     tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)

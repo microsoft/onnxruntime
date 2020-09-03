@@ -5,7 +5,9 @@
 # --------------------------------------------------------------------------
 
 # List of pretrained models: https://huggingface.co/transformers/pretrained_models.html
-# Pretrained model name to a tuple of input names, opset_version, use_external_data_format and optimization model type
+# Pretrained model name to a tuple of input names, opset_version, use_external_data_format, optimization model type
+# and AutomodelType(optional, default:AutoModel, select from AutoModelWithLMHead, AutoModelForSequenceClassification
+# and AutoModelForQuestionAnswering)
 MODELS = {
 # BERT
     "bert-base-uncased": (["input_ids", "attention_mask", "token_type_ids"], 11, False, "bert"),
@@ -18,8 +20,8 @@ MODELS = {
     "bert-base-german-cased": (["input_ids", "attention_mask", "token_type_ids"], 11, False, "bert"),
     "bert-large-uncased-whole-word-masking": (["input_ids", "attention_mask", "token_type_ids"], 11, False, "bert"),
     "bert-large-cased-whole-word-masking": (["input_ids", "attention_mask", "token_type_ids"], 11, False, "bert"),
-    "bert-large-uncased-whole-word-masking-finetuned-squad": (["input_ids", "attention_mask", "token_type_ids"], 11, False, "bert"),
-    "bert-large-cased-whole-word-masking-finetuned-squad": (["input_ids", "attention_mask", "token_type_ids"], 11, False, "bert"),
+    "bert-large-uncased-whole-word-masking-finetuned-squad": (["input_ids", "attention_mask", "token_type_ids"], 11, False, "bert", "AutoModelForQuestionAnswering"),
+    "bert-large-cased-whole-word-masking-finetuned-squad": (["input_ids", "attention_mask", "token_type_ids"], 11, False, "bert", "AutoModelForQuestionAnswering"),
     "bert-base-cased-finetuned-mrpc": (["input_ids", "attention_mask", "token_type_ids"], 11, False, "bert"),
     "bert-base-german-dbmdz-cased": (["input_ids", "attention_mask", "token_type_ids"], 11, False, "bert"),
     "bert-base-german-dbmdz-uncased": (["input_ids", "attention_mask", "token_type_ids"], 11, False, "bert"),
@@ -57,7 +59,7 @@ MODELS = {
     "roberta-large-openai-detector": (["input_ids", "attention_mask"], 11, False, "bert"),
 # DistilBERT
     "distilbert-base-uncased": (["input_ids", "attention_mask"], 11, False, "bert"),
-    "distilbert-base-uncased-distilled-squad": (["input_ids", "attention_mask"], 11, False, "bert"), 
+    "distilbert-base-uncased-distilled-squad": (["input_ids", "attention_mask"], 11, False, "bert"),
     "distilbert-base-cased": (["input_ids", "attention_mask"], 11, False, "bert"),
     "distilbert-base-cased-distilled-squad": (["input_ids", "attention_mask"], 11, False, "bert"),
     "distilbert-base-german-cased": (["input_ids", "attention_mask"], 11, False, "bert"),
