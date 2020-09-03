@@ -92,7 +92,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.AppendExecutionProvider_CUDA(0);
 #endif
 #if USE_DML
-                opt.AppendExecutionProvider_Dml(0);
+
+                opt.AppendExecutionProvider_DML(0);
 #endif
 #if USE_NGRAPH
                 opt.AppendExecutionProvider_NGraph("CPU");  //TODO: this API should be refined
@@ -1834,7 +1835,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             ,"OrtSessionOptionsAppendExecutionProvider_CUDA"
 #endif
 #if USE_DML
-            ,"OrtSessionOptionsAppendExecutionProvider_Dml"
+            ,"OrtSessionOptionsAppendExecutionProvider_DML"
 #endif
 #if USE_NGRAPH
             ,"OrtSessionOptionsAppendExecutionProvider_NGraph"
@@ -2196,7 +2197,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         public DisposableListTest() { }
         public DisposableListTest(int count) : base(count) { }
 
-        #region IDisposable Support
+#region IDisposable Support
         private bool disposedValue = false; // To detect redundant calls
 
         protected virtual void Dispose(bool disposing)
@@ -2229,6 +2230,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             Dispose(true);
             GC.SuppressFinalize(this);
         }
-        #endregion
+#endregion
     }
 }
