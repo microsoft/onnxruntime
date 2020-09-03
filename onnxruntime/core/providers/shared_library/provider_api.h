@@ -18,6 +18,7 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "core/framework/ortdevice.h"
 #include "core/framework/ortmemoryinfo.h"
+#include "core/framework/tensor_shape.h"
 #include "provider_interfaces.h"
 
 namespace ONNX_NAMESPACE {
@@ -99,6 +100,7 @@ class DataTypeImpl {
   static const std::vector<MLDataType>& AllFixedSizeTensorTypes();
 };
 
+#if 0
 class TensorShape : private std::vector<int64_t> {
  public:
   TensorShape() = default;
@@ -148,6 +150,7 @@ class TensorShape : private std::vector<int64_t> {
   */
   int64_t SizeHelper(size_t start, size_t end) const;
 };
+#endif
 
 template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;

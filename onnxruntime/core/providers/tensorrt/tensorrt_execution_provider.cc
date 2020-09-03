@@ -15,7 +15,7 @@
 #include "core/common/safeint.h"
 
 #include "tensorrt_execution_provider.h"
-#include "unary_elementwise_ops_impl.h"
+#include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "gpu_data_transfer.h"
 #include "gsl/gsl"
