@@ -85,12 +85,18 @@ Status SaveValueInfoOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                               flatbuffers::Offset<fbs::ValueInfo>& fbs_value_info) {
   auto name = builder.CreateString(value_info_proto.name());
   auto doc_string = builder.CreateString(value_info_proto.doc_string());
-  flatbuffers::Offset<fbs::TypeInfo> type_info;
+  flatbuffers::Offset<fbs::TypeInfo> type_info = 0;  // 0 indicates null
   if (value_info_proto.has_type()) {
     ORT_RETURN_IF_ERROR(
         GetTypeInfoOrtFormat(builder, value_info_proto.type(), type_info));
   } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "SaveValueInfoOrtFormat: value_info_proto has no type");
+    // we have a NodeArg for missing optional values (empty name, no type) so allow for that.
+    // everything else should have type info
+    if (!value_info_proto.name().empty()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "SaveValueInfoOrtFormat: value_info_proto for ", value_info_proto.name(),
+                             " is missing type info.");
+    }
   }
 
   fbs::ValueInfoBuilder vb(builder);
@@ -319,8 +325,14 @@ Status LoadValueInfoOrtFormat(const fbs::ValueInfo& fbs_value_info,
   LoadStringFromOrtFormat(*value_info_proto.mutable_doc_string(), fbs_value_info.doc_string());
 
   auto fbs_type_info = fbs_value_info.type();
-  ORT_RETURN_IF(nullptr == fbs_type_info, "Null ValueInfo type. Invalid ORT format model.");
-  ORT_RETURN_IF_ERROR(LoadTypeInfoOrtFormat(*fbs_type_info, *value_info_proto.mutable_type()));
+  if (fbs_type_info == nullptr) {
+    // there is a NodeArg with empty name for missing optional inputs that can have null type info.
+    // anything else should have a type
+    ORT_RETURN_IF(!value_info_proto.name().empty(),
+                  "Null type info for ", value_info_proto.name(), ". Invalid ORT format model.");
+  } else {
+    ORT_RETURN_IF_ERROR(LoadTypeInfoOrtFormat(*fbs_type_info, *value_info_proto.mutable_type()));
+  }
 
   return Status::OK();
 }

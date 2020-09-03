@@ -29,7 +29,7 @@ run_cpu_int8=false
 
 average_over=1000
 # CPU takes longer time to run, only run 100 inferences to get average latency.
-if [ "$run_cpu" = true ] ; then
+if [ "$run_cpu_fp32" = true ] || [ "$run_cpu_int8" = true ]; then
   average_over=100
 fi
 
@@ -62,9 +62,6 @@ cache_dir="./cache_models"
 
 # Directory for ONNX models
 onnx_dir="./onnx_models"
-
-# Use raw attention mask in Attention operator or not.
-use_raw_attention_mask=false
 
 # -------------------------------------------
 if [ "$run_cpu_fp32" = true ] || [ "$run_cpu_int8" = true ]; then
@@ -105,11 +102,6 @@ benchmark_options="-b $batch_sizes -s $sequence_lengths -t $average_over -f fusi
 if [ "$use_optimizer" = true ] ; then
   onnx_export_options="$onnx_export_options -o"
   benchmark_options="$benchmark_options -o"
-fi
-
-if [ "$use_raw_attention_mask" = true ] ; then
-  onnx_export_options="$onnx_export_options --use_raw_attention_mask"
-  benchmark_options="$benchmark_options --use_raw_attention_mask"
 fi
 
 # -------------------------------------------

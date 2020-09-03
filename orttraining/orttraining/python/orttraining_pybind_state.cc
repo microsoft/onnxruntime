@@ -206,9 +206,8 @@ void addObjectMethodsForTraining(py::module& m) {
 
   // Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
   struct PyTrainingSession : public PyInferenceSession {
-    PyTrainingSession(Environment& env, const PySessionOptions& so) {
-      // `sess_` is inherited from PyinferenceSession
-      sess_ = onnxruntime::make_unique<onnxruntime::training::TrainingSession>(so, env);
+    PyTrainingSession(Environment& env, const PySessionOptions& so)
+        : PyInferenceSession(onnxruntime::make_unique<TrainingSession>(so, env)) {
     }
   };
 
@@ -236,7 +235,9 @@ void addObjectMethodsForTraining(py::module& m) {
         OrtPybindThrowIfError(sess->GetSessionHandle()->Load(path));
 
 #if defined(USE_NCCL)
-        CopyMPIContextToTrainingParameters(parameters, sess->GetSessionHandle()->GetLogger());
+        bool use_nccl = parameters.allreduce_post_accumulation;
+        if (!use_nccl && parameters.world_size > 1)
+          CopyMPIContextToTrainingParameters(parameters, sess->GetSessionHandle()->GetLogger());
 #endif
         const auto config_result = ConfigureSessionForTraining(static_cast<TrainingSession*>(sess->GetSessionHandle()), parameters);
 
@@ -250,7 +251,9 @@ void addObjectMethodsForTraining(py::module& m) {
         OrtPybindThrowIfError(sess->GetSessionHandle()->Load(buffer));
 
 #if defined(USE_NCCL)
-        CopyMPIContextToTrainingParameters(parameters, sess->GetSessionHandle()->GetLogger());
+        bool use_nccl = parameters.allreduce_post_accumulation;
+        if (!use_nccl && parameters.world_size > 1)
+          CopyMPIContextToTrainingParameters(parameters, sess->GetSessionHandle()->GetLogger());
 #endif
         const auto config_result = ConfigureSessionForTraining(static_cast<TrainingSession*>(sess->GetSessionHandle()), parameters);
 

@@ -96,13 +96,11 @@ KernelRegistryAndStatus GetFusedKernelRegistry() {
 class FuseExecutionProvider : public IExecutionProvider {
  public:
   explicit FuseExecutionProvider() : IExecutionProvider{kFuseExecutionProvider} {
-    DeviceAllocatorRegistrationInfo device_info(
-        {OrtMemTypeDefault,
-         [](int) {
-           return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo("Fuse", OrtAllocatorType::OrtDeviceAllocator));
-         },
-         std::numeric_limits<size_t>::max()});
-    InsertAllocator(device_info.factory(0));
+    AllocatorCreationInfo device_info{
+        [](int) {
+          return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo("Fuse", OrtAllocatorType::OrtDeviceAllocator));
+        }};
+    InsertAllocator(device_info.device_alloc_factory(0));
   }
 
   std::vector<std::unique_ptr<ComputeCapability>>
@@ -1869,7 +1867,13 @@ TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
 
   auto status = session_object.Initialize();
 
-  ASSERT_TRUE(!status.IsOK());
+  ASSERT_TRUE(status.IsOK());
+
+  const auto& so_queried = session_object.GetSessionOptions();
+
+  // execution mode is sequential since we have registered the CUDA EP
+  // (which isn't supported by the parallel execution mode)
+  ASSERT_TRUE(so_queried.execution_mode == ExecutionMode::ORT_SEQUENTIAL);
 }
 
 #endif
@@ -2329,25 +2333,23 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsUseSameOrtCreatedAllo
   use_arena = false;
 #endif
   OrtMemoryInfo mem_info{onnxruntime::CPU, use_arena ? OrtArenaAllocator : OrtDeviceAllocator};
-  size_t max_mem = std::numeric_limits<size_t>::max();
-  DeviceAllocatorRegistrationInfo device_info{
-      OrtMemTypeDefault,
+  AllocatorCreationInfo device_info{
       [mem_info](int) { return onnxruntime::make_unique<TAllocator>(mem_info); },
-      max_mem};
+      0, use_arena};
 
-  AllocatorPtr allocator_ptr = CreateAllocator(device_info, 0, use_arena);
+  AllocatorPtr allocator_ptr = CreateAllocator(device_info);
   st = env->RegisterAllocator(allocator_ptr);
   ASSERT_STATUS_OK(st);
   // create sessions to share the allocator
 
   SessionOptions so1;
-  AddSessionConfigEntryImpl(so1, ORT_SESSION_OPTIONS_CONFIG_USE_ENV_ALLOCATORS, "1");
+  so1.AddConfigEntry(ORT_SESSION_OPTIONS_CONFIG_USE_ENV_ALLOCATORS, "1");
   InferenceSessionTestSharingAllocator sess1(so1, *env);
   ASSERT_STATUS_OK(sess1.Load(MODEL_URI));
   ASSERT_STATUS_OK(sess1.Initialize());
 
   SessionOptions so2;
-  AddSessionConfigEntryImpl(so2, ORT_SESSION_OPTIONS_CONFIG_USE_ENV_ALLOCATORS, "1");
+  so2.AddConfigEntry(ORT_SESSION_OPTIONS_CONFIG_USE_ENV_ALLOCATORS, "1");
   InferenceSessionTestSharingAllocator sess2(so2, *env);
   ASSERT_STATUS_OK(sess2.Load(MODEL_URI));
   ASSERT_STATUS_OK(sess2.Initialize());
@@ -2376,25 +2378,23 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsDontUseSameOrtCreated
   use_arena = false;
 #endif
   OrtMemoryInfo mem_info{onnxruntime::CPU, use_arena ? OrtArenaAllocator : OrtDeviceAllocator};
-  size_t max_mem = std::numeric_limits<size_t>::max();
-  DeviceAllocatorRegistrationInfo device_info{
-      OrtMemTypeDefault,
+  AllocatorCreationInfo device_info{
       [mem_info](int) { return onnxruntime::make_unique<TAllocator>(mem_info); },
-      max_mem};
+      0, use_arena};
 
-  AllocatorPtr allocator_ptr = CreateAllocator(device_info, 0, use_arena);
+  AllocatorPtr allocator_ptr = CreateAllocator(device_info);
   st = env->RegisterAllocator(allocator_ptr);
   ASSERT_STATUS_OK(st);
   // create sessions to share the allocator
 
   SessionOptions so1;
-  AddSessionConfigEntryImpl(so1, ORT_SESSION_OPTIONS_CONFIG_USE_ENV_ALLOCATORS, "1");
+  so1.AddConfigEntry(ORT_SESSION_OPTIONS_CONFIG_USE_ENV_ALLOCATORS, "1");
   InferenceSessionTestSharingAllocator sess1(so1, *env);
   ASSERT_STATUS_OK(sess1.Load(MODEL_URI));
   ASSERT_STATUS_OK(sess1.Initialize());
 
   SessionOptions so2;
-  AddSessionConfigEntryImpl(so2, ORT_SESSION_OPTIONS_CONFIG_USE_ENV_ALLOCATORS, "0");
+  so2.AddConfigEntry(ORT_SESSION_OPTIONS_CONFIG_USE_ENV_ALLOCATORS, "0");
   InferenceSessionTestSharingAllocator sess2(so2, *env);
   ASSERT_STATUS_OK(sess2.Load(MODEL_URI));
   ASSERT_STATUS_OK(sess2.Initialize());

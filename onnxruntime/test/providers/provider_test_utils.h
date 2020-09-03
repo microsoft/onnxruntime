@@ -477,6 +477,10 @@ class OpTester {
     return output_data_;
   }
 
+  void SetDeterminism(bool use_determinism) {
+    use_determinism_ = use_determinism;
+  }
+
  protected:
   virtual void AddNodes(onnxruntime::Graph& graph, std::vector<onnxruntime::NodeArg*>& graph_input_defs,
                         std::vector<onnxruntime::NodeArg*>& graph_output_defs,
@@ -619,6 +623,8 @@ class OpTester {
   std::vector<std::shared_ptr<CustomRegistry>> custom_session_registries_;
 
   bool verify_output_;
+
+  bool use_determinism_ = false;
 };
 
 template <typename TException>
