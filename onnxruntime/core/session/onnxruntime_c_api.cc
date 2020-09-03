@@ -3,6 +3,7 @@
 
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/allocator_impl.h"
+#include "core/session/inference_session_utils.h"
 #include "core/session/IOBinding.h"
 #include "core/framework/allocator.h"
 #include "core/framework/error_code_helper.h"
@@ -55,10 +56,20 @@ using namespace onnxruntime;
 #endif
 #endif
 
+// Return the OrtStatus if it indicates an error
 #define ORT_API_RETURN_IF_ERROR(expr) \
   do {                                \
     auto _status = (expr);            \
-    if (_status) return _status;      \
+    if (_status)                      \
+      return _status;                 \
+  } while (0)
+
+// Convert internal onnxruntime::Status to OrtStatus and return if there's an error
+#define ORT_API_RETURN_IF_STATUS_NOT_OK(expr) \
+  do {                                        \
+    auto _status = (expr);                    \
+    if (!_status.IsOK())                      \
+      return ToOrtStatus(_status);            \
   } while (0)
 
 #define TENSOR_READ_API_BEGIN                          \
@@ -377,10 +388,67 @@ ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions
 }
 
 namespace {
+// provider either model_path, or modal_data + model_data_length.
+static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
+                                                _In_ const OrtEnv* env,
+                                                _In_ const ORTCHAR_T* model_path,
+                                                _In_ const void* model_data,
+                                                _In_ size_t model_data_length,
+                                                _Outptr_ std::unique_ptr<onnxruntime::InferenceSession>& sess) {
+  // quick check here to decide load path. InferenceSession will provide error message for invalid values.
+  // TODO: Could move to a helper
+  const Env& os_env = Env::Default();  // OS environment (!= ORT environment)
+  bool load_config_from_model =
+      os_env.GetEnvironmentVar(inference_session_utils::kOrtLoadConfigFromModelEnvVar) == "1";
+
+  if (load_config_from_model) {
 #if !defined(ORT_MINIMAL_BUILD)
-static ORT_STATUS_PTR LoadAndInitializeSession(_In_ const OrtEnv* /*env*/, _In_ const OrtSessionOptions* options,
-                                               _In_ std::unique_ptr<::onnxruntime::InferenceSession>& sess,
-                                               _Outptr_ OrtSession** out) {
+    if (model_path != nullptr) {
+      sess = onnxruntime::make_unique<onnxruntime::InferenceSession>(
+          options == nullptr ? onnxruntime::SessionOptions() : options->value,
+          env->GetEnvironment(),
+          model_path);
+    } else {
+      sess = onnxruntime::make_unique<onnxruntime::InferenceSession>(
+          options == nullptr ? onnxruntime::SessionOptions() : options->value,
+          env->GetEnvironment(),
+          model_data, static_cast<int>(model_data_length));
+    }
+#else
+    return OrtApis::CreateStatus(ORT_FAIL, "Loading config from ONNX models is not supported in this build.");
+#endif
+  } else {
+    sess = onnxruntime::make_unique<onnxruntime::InferenceSession>(
+        options == nullptr ? onnxruntime::SessionOptions() : options->value,
+        env->GetEnvironment());
+  }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // Add custom domains
+  Status status;
+  if (options && !options->custom_op_domains_.empty()) {
+    ORT_API_RETURN_IF_STATUS_NOT_OK(sess->AddCustomOpDomains(options->custom_op_domains_));
+  }
+#endif
+
+  // Finish load
+  if (load_config_from_model) {
+#if !defined(ORT_MINIMAL_BUILD)
+    ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Load());
+#endif
+  } else {
+    if (model_path != nullptr) {
+      ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Load(model_path));
+    } else {
+      ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Load(model_data, static_cast<int>(model_data_length)));
+    }
+  }
+
+  return nullptr;
+}
+
+static ORT_STATUS_PTR InitializeSession(_In_ const OrtSessionOptions* options,
+                                        _In_ std::unique_ptr<::onnxruntime::InferenceSession>& sess) {
   // we need to disable mem pattern if DML is one of the providers since DML doesn't have the concept of
   // byte addressable memory
   std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
@@ -391,38 +459,17 @@ static ORT_STATUS_PTR LoadAndInitializeSession(_In_ const OrtEnv* /*env*/, _In_ 
     }
   }
 
-  Status status;
-  if (options) {
-    if (!options->custom_op_domains_.empty()) {
-      status = sess->AddCustomOpDomains(options->custom_op_domains_);
-      if (!status.IsOK()) {
-        return ToOrtStatus(status);
-      }
-    }
-  }
-
   // register the providers
   for (auto& provider : provider_list) {
     if (provider) {
-      status = sess->RegisterExecutionProvider(std::move(provider));
-      if (!status.IsOK())
-        return ToOrtStatus(status);
+      ORT_API_RETURN_IF_STATUS_NOT_OK(sess->RegisterExecutionProvider(std::move(provider)));
     }
   }
 
-  status = sess->Load();
-  if (!status.IsOK())
-    return ToOrtStatus(status);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Initialize());
 
-  status = sess->Initialize();
-
-  if (!status.IsOK())
-    return ToOrtStatus(status);
-
-  *out = reinterpret_cast<OrtSession*>(sess.release());
   return nullptr;
 }
-#endif
 
 }  // namespace
 
@@ -431,26 +478,20 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSession, _In_ const OrtEnv* env, _In_ const O
   API_IMPL_BEGIN
   std::unique_ptr<onnxruntime::InferenceSession> sess;
   OrtStatus* status = nullptr;
-  ORT_TRY {
-#if !defined(ORT_MINIMAL_BUILD)
-    sess = onnxruntime::make_unique<onnxruntime::InferenceSession>(
-        options == nullptr ? onnxruntime::SessionOptions() : options->value,
-        env->GetEnvironment(), model_path);
+  *out = nullptr;
 
-    return LoadAndInitializeSession(env, options, sess, out);
-#else
-    ORT_UNUSED_PARAMETER(env);
-    ORT_UNUSED_PARAMETER(model_path);
-    ORT_UNUSED_PARAMETER(options);
-    ORT_UNUSED_PARAMETER(out);
-    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Pending");
-#endif
+  ORT_TRY {
+    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, model_path, nullptr, 0, sess));
+    ORT_API_RETURN_IF_ERROR(InitializeSession(options, sess));
+
+    *out = reinterpret_cast<OrtSession*>(sess.release());
   }
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {
       status = OrtApis::CreateStatus(ORT_FAIL, e.what());
     });
   }
+
   return status;
   API_IMPL_END
 }
@@ -458,31 +499,23 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSession, _In_ const OrtEnv* env, _In_ const O
 ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArray, _In_ const OrtEnv* env, _In_ const void* model_data,
                     size_t model_data_length, _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out) {
   API_IMPL_BEGIN
-#if !defined(ORT_MINIMAL_BUILD)
   std::unique_ptr<onnxruntime::InferenceSession> sess;
   OrtStatus* status = nullptr;
+  *out = nullptr;
+
   ORT_TRY {
-    sess = onnxruntime::make_unique<onnxruntime::InferenceSession>(
-        options == nullptr ? onnxruntime::SessionOptions() : options->value,
-        env->GetEnvironment(), model_data, static_cast<int>(model_data_length));
+    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, nullptr, model_data, model_data_length, sess));
+    ORT_API_RETURN_IF_ERROR(InitializeSession(options, sess));
+
+    *out = reinterpret_cast<OrtSession*>(sess.release());
   }
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {
       status = OrtApis::CreateStatus(ORT_FAIL, e.what());
     });
   }
-  if (nullptr != status)
-    return status;
 
-  return LoadAndInitializeSession(env, options, sess, out);
-#else
-  ORT_UNUSED_PARAMETER(env);
-  ORT_UNUSED_PARAMETER(model_data);
-  ORT_UNUSED_PARAMETER(model_data_length);
-  ORT_UNUSED_PARAMETER(options);
-  ORT_UNUSED_PARAMETER(out);
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Pending");
-#endif
+  return status;
   API_IMPL_END
 }
 
