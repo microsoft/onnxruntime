@@ -1,6 +1,6 @@
 import onnx
 from .base_operator import QuantOperatorBase
-from ..quant_utils import _find_by_name, _get_mul_node, QuantizedValue, QuantizedValueType, _attribute_to_kwarg
+from ..quant_utils import find_by_name, get_mul_node, QuantizedValue, QuantizedValueType, attribute_to_kwarg
 from onnx import onnx_pb as onnx_proto
 
 
@@ -27,7 +27,7 @@ class ConInteger(QuantOperatorBase):
 
         kwargs = {}
         for attribute in node.attribute:
-            kwargs.update(_attribute_to_kwarg(attribute))
+            kwargs.update(attribute_to_kwarg(attribute))
         conv_integer_node = onnx.helper.make_node("ConvInteger", quantized_input_names + zero_point_names,
                                                   [conv_integer_output], conv_integer_name, **kwargs)
         nodes.append(conv_integer_node)
@@ -51,9 +51,9 @@ class ConInteger(QuantOperatorBase):
         else:
             scales_mul_op = scale_names[0] + "_" + scale_names[1] + "_mul"
 
-        scales_mul_node = _find_by_name(scales_mul_op, self.quantizer.new_nodes)
+        scales_mul_node = find_by_name(scales_mul_op, self.quantizer.new_nodes)
         if scales_mul_node is None:
-            scales_mul_node = _get_mul_node(scale_names, scales_mul_op + ":0", scales_mul_op)
+            scales_mul_node = get_mul_node(scale_names, scales_mul_op + ":0", scales_mul_op)
             nodes.append(scales_mul_node)
 
         scales_mul_op_output = scales_mul_node.output[0]
@@ -61,7 +61,7 @@ class ConInteger(QuantOperatorBase):
         # Add mul operation to multiply mul_scales_op result with output of ConvInteger
         # and make the output of this node the same as output of original conv node.
         output_scale_mul_op = conv_integer_name + "_output_scale_mul" if conv_integer_name != "" else ""
-        nodes.append(_get_mul_node([cast_op_output, scales_mul_op_output], node.output[0], output_scale_mul_op))
+        nodes.append(get_mul_node([cast_op_output, scales_mul_op_output], node.output[0], output_scale_mul_op))
 
         self.quantizer.new_nodes += nodes
 
@@ -94,7 +94,7 @@ class QLinearCov(QuantOperatorBase):
 
         kwargs = {}
         for attribute in node.attribute:
-            kwargs.update(_attribute_to_kwarg(attribute))
+            kwargs.update(attribute_to_kwarg(attribute))
         qlinear_conv_inputs = []
         # Input 0
         qlinear_conv_inputs.append(quantized_input_names[0])

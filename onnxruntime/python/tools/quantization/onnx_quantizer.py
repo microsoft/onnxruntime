@@ -16,7 +16,7 @@ from onnx import shape_inference
 from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
 
 from .quant_utils import QuantizationMode, QuantizedValueType, QuantizedInitializer, QuantizedValue, quantization_modes
-from .quant_utils import _find_by_name, _get_elem_index, _get_mul_node, _generate_identified_filename, _attribute_to_kwarg
+from .quant_utils import find_by_name, get_elem_index, get_mul_node, generate_identified_filename, attribute_to_kwarg
 from .quant_utils import QuantType, onnx_domain, __producer__, __version__
 
 from .registry import CreateOpQuantizer, CreateDefaultOpQuantizer
@@ -196,8 +196,8 @@ class ONNXQuantizer:
                 # TODO: convert it to the specified input_type
                 scale_tensor_name = curr_node.input[1]
                 zp_tensor_name = curr_node.input[2]
-                initializer_scale = _find_by_name(scale_tensor_name, self.model.initializer())
-                initializer_zp = _find_by_name(zp_tensor_name, self.model.initializer())
+                initializer_scale = find_by_name(scale_tensor_name, self.model.initializer())
+                initializer_zp = find_by_name(zp_tensor_name, self.model.initializer())
                 zp_and_scale = [
                     onnx.numpy_helper.to_array(initializer_zp),
                     onnx.numpy_helper.to_array(initializer_scale)
@@ -205,7 +205,7 @@ class ONNXQuantizer:
 
                 #connect the previous and successive node input and output
                 for succ_node in succ_nodes:
-                    succ_idx = _get_elem_index(next_node.output[0], succ_node.input)
+                    succ_idx = get_elem_index(next_node.output[0], succ_node.input)
                     if succ_idx != -1:
                         succ_node.input[succ_idx] = curr_node.input[0]
                     else:
@@ -293,11 +293,11 @@ class ONNXQuantizer:
         return self._is_valid_initializer_value(value_name)
 
     def _is_valid_initializer_value(self, value_name):
-        weight = _find_by_name(value_name, self.model.initializer())
+        weight = find_by_name(value_name, self.model.initializer())
         return weight is not None and weight.data_type == onnx_proto.TensorProto.FLOAT
 
     def _is_valid_quantize_weight(self, weight_name):
-        weight = _find_by_name(weight_name, self.model.initializer())
+        weight = find_by_name(weight_name, self.model.initializer())
         return weight is not None and weight.data_type == onnx_proto.TensorProto.FLOAT
 
     def _remove_quantized_weights(self):
@@ -734,12 +734,12 @@ class ONNXQuantizer:
 
         # get scale for weight
         weight_scale_name = self.quantized_value_map[node.input[1]].scale_name
-        weight_initializer = _find_by_name(weight_scale_name, self.model.initializer())
+        weight_initializer = find_by_name(weight_scale_name, self.model.initializer())
         weight_scale = self.find_weight_data(weight_initializer)
 
         # get bias
         bias_name = node.input[2]
-        bias_initializer = _find_by_name(bias_name, self.model.initializer())
+        bias_initializer = find_by_name(bias_name, self.model.initializer())
         bias_data = self.find_weight_data(bias_initializer)
         quantized_bias_name = bias_name + "_quantized"
 
@@ -758,7 +758,7 @@ class ONNXQuantizer:
                 raise ValueError("Expected {} to be in quantized value map for static quantization".format(
                     node.input[0]))
 
-            inputscale_initializer = _find_by_name(input_scale_name, self.model.initializer())
+            inputscale_initializer = find_by_name(input_scale_name, self.model.initializer())
             input_scale = self.find_weight_data(inputscale_initializer)
 
             # calcuate scale for bias
@@ -796,8 +796,6 @@ class ONNXQuantizer:
             - Else, add QuantizeLinear nodes to perform quantization
             parameter node: node being quantized in NodeProto format.
             parameter indices: input indices to quantize.
-            parameter new_nodes_list: List of new nodes created before processing this node. This is used to
-                                      check that two QuantizeLinear nodes are not being added for same input.
             return: (List of quantized input names,
                      List of zero point names used for input quantization,
                      List of scale names used for input quantization,
@@ -827,11 +825,12 @@ class ONNXQuantizer:
                 continue
 
             # Quantize the input
-            initializer = _find_by_name(node_input, self.model.initializer())
+            initializer = find_by_name(node_input, self.model.initializer())
             if initializer is not None:
+                #TODO: re-arch the code the let the operator to decide if doing per-channel or not
                 if node.op_type == "Conv":
                     weight = self._get_quantized_weight_per_channel(initializer, self.weight_qType, 0)
-                if node.op_type == "MatMul":
+                elif node.op_type == "MatMul":
                     weight = self._get_quantized_weight_per_channel(initializer, self.weight_qType, -1)
                 else:
                     weight = self._get_quantized_weight(initializer, self.weight_qType)

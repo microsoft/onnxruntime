@@ -1,6 +1,6 @@
 import onnx
 from .base_operator import QuantOperatorBase
-from ..quant_utils import _attribute_to_kwarg, ms_domain, QuantizedValue, QuantizedValueType
+from ..quant_utils import attribute_to_kwarg, ms_domain, QuantizedValue, QuantizedValueType
 from onnx import onnx_pb as onnx_proto
 
 
@@ -24,7 +24,7 @@ class QLinearBinaryOp(QuantOperatorBase):
 
         kwargs = {}
         for attribute in node.attribute:
-            kwargs.update(_attribute_to_kwarg(attribute))
+            kwargs.update(attribute_to_kwarg(attribute))
         kwargs["domain"] = ms_domain
 
         qlinear_binary_math_inputs = []
