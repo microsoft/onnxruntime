@@ -51,9 +51,8 @@ void operator delete(void* p, size_t /*size*/) { return onnxruntime::g_host->Hea
 
 namespace onnxruntime {
 
-Provider_AllocatorPtr CreateAllocator(const Provider_DeviceAllocatorRegistrationInfo& info, int16_t device_id,
-                                      bool use_arena) {
-  return g_host->CreateAllocator(info, device_id, use_arena);
+Provider_AllocatorPtr CreateAllocator(const Provider_AllocatorCreationInfo& info) {
+  return g_host->CreateAllocator(info);
 }
 
 std::unique_ptr<Provider_OrtMemoryInfo> Provider_OrtMemoryInfo::Create(
@@ -144,8 +143,8 @@ bool CPUIDInfo::HasAVX512f() const {
   return g_host->CPU_HasAVX512f();
 }
 
-Provider_AllocatorPtr CreateAllocator(Provider_DeviceAllocatorRegistrationInfo info, int16_t device_id) {
-  return g_host->CreateAllocator(info, device_id);
+Provider_AllocatorPtr CreateAllocator(Provider_AllocatorCreationInfo info) {
+  return g_host->CreateAllocator(info);
 }
 
 std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCPUAllocator(std::unique_ptr<Provider_OrtMemoryInfo> info) {
