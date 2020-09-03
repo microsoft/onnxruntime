@@ -52,34 +52,6 @@ class LoopCounter;
 
 class ThreadPool {
  public:
-  // Scheduling strategies for ParallelFor. The strategy governs how the given
-  // units of work are distributed among the available threads in the
-  // threadpool.
-  enum class SchedulingStrategy {
-    // The Adaptive scheduling strategy adaptively chooses the shard sizes based
-    // on the cost of each unit of work, and the cost model of the underlying
-    // threadpool device.
-    //
-    // The 'cost_per_unit' is an estimate of the number of CPU cycles (or
-    // nanoseconds if not CPU-bound) to complete a unit of work. Overestimating
-    // creates too many shards and CPU time will be dominated by per-shard
-    // overhead, such as Context creation. Underestimating may not fully make
-    // use of the specified parallelism, and may also cause inefficiencies due
-    // to load balancing issues and stragglers.
-    kAdaptive,
-    // The Fixed Block Size scheduling strategy shards the given units of work
-    // into shards of fixed size. In case the total number of units is not
-    // evenly divisible by 'block_size', at most one of the shards may be of
-    // smaller size. The exact number of shards may be found by a call to
-    // NumShardsUsedByFixedBlockSizeScheduling.
-    //
-    // Each shard may be executed on a different thread in parallel, depending
-    // on the number of threads available in the pool. Note that when there
-    // aren't enough threads in the pool to achieve full parallelism, function
-    // calls will be automatically queued.
-    kFixedBlockSize
-  };
-
 #ifdef _WIN32
   using NAME_CHAR_TYPE = wchar_t;
 #else
