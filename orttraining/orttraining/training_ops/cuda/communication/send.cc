@@ -100,10 +100,6 @@ void Send::SendData(
   memcpyRange.Begin();
 #endif
 
-  /*
-  IAllocatorUniquePtr<char> buffer = AllocateBufferOnCPUPinned<char>(
-      aggregated_aligned_tensor_bytes);
-  */
   IAllocatorUniquePtr<char> buffer = GetScratchBuffer<char>(aggregated_aligned_tensor_bytes);
 
   for (int i = 0; i < num_tensors; ++i) {
@@ -132,15 +128,8 @@ void Send::SendData(
                        static_cast<int>(tag_)};
 
 
-  if (true) {
-    // std::cout << "[send.cc] Call Send" << std::endl;
-    auto& nccl_service = cuda::NcclService::GetInstance();
-    nccl_service.SubmitSendAndWait(info_data.buffer, info_data.size, info_data.rank);
-  } else {
-    MPI_CHECK(MPI_Send(
-        info_data.buffer, info_data.size, MPI_CHAR,
-        info_data.rank, info_data.tag, MPI_COMM_WORLD));
-  }
+  auto& nccl_service = cuda::NcclService::GetInstance();
+  nccl_service.SubmitSendAndWait(info_data.buffer, info_data.size, info_data.rank);
 
 #ifdef ENABLE_NVTX_PROFILE
   // End of major communication tasks.

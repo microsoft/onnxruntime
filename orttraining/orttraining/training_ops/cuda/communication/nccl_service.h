@@ -161,6 +161,7 @@ class NcclService final {
       throw;
     }
   };
+
   void PlanStartNewGroup() {
     group_status_.push_back(true); 
     schedule_.push_back(NcclTaskGroup());
@@ -203,6 +204,7 @@ class NcclService final {
   ~NcclService() = default;
   NcclService(const NcclService&) = delete;
   NcclService& operator=(const NcclService&) = delete;
+  void Initialize();
 
   int FindNextCommunicationTime() {
     for (int i = 0; static_cast<size_t>(i) < schedule_.size(); ++i) {
