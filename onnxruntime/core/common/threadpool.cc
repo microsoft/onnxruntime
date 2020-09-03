@@ -399,21 +399,18 @@ void ThreadPool::TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t tota
 
     ptrdiff_t block_size = CalculateParallelForBlock(total, cost, nullptr, d_of_p);
     ptrdiff_t block_count = Eigen::divup(total, block_size);
-    if (block_count < num_threads) {
-      num_threads = block_count;
-    }
 
-    if (num_threads == 1) {
+    if (block_count == 1) {
       fn(0, total);
       return;
     }
 
-#pragma omp parallel for
-    for (std::ptrdiff_t i = 0; i < num_threads; i++) {
-      auto work = PartitionWork(i, num_threads, total);
-      fn(work.start, work.end);
+#pragma omp parallel for schedule(dynamic,1)
+    for (std::ptrdiff_t i = 0; i < block_count; i++) {
+      const auto start = i * block_size;
+      fn(start, std::min(start+block_size, total));
     }
-#else
+#else   //!_OPENMP
     if (tp == nullptr) {
       fn(0, total);
       return;
