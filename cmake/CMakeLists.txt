@@ -217,11 +217,14 @@ if(onnxruntime_MINIMAL_BUILD)
   set(onnxruntime_DISABLE_RTTI ON)
 
   if (MSVC)
-    # add MSVC specific flags to reduce build size here
+    # add MSVC specific flags to reduce build size here if needed
   else()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ffunction-sections -fdata-sections")
-    # TODO: May need to use -dead_strip instead of --gc-sections for iOS(XCode)
-    add_link_options(-Wl,--gc-sections)
+    if (CMAKE_HOST_SYSTEM MATCHES "Darwin")
+      add_link_options(-Wl -dead_strip)
+    else()
+      add_link_options(-Wl --gc-sections)
+    endif()  
   endif()
 
 endif()

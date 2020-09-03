@@ -6,6 +6,10 @@
 # We exclude everything but the essentials from the onnx library.
 #
 
+if(NOT onnxruntime_MINIMAL_BUILD)
+  message(FATAL_ERROR "This file should only be included in a minimal build")
+endif()
+
 #TODO: if protobuf is a shared lib and onnxruntime_USE_FULL_PROTOBUF is ON, then onnx_proto should be built as a shared lib instead of a static lib. Otherwise any code outside onnxruntime.dll can't use onnx protobuf definitions if they share the protobuf.dll with onnxruntime. For example, if protobuf is a shared lib and onnx_proto is a static lib then onnxruntime_perf_test won't work.
 
 set(ONNX_SOURCE_ROOT ${PROJECT_SOURCE_DIR}/external/onnx)
@@ -30,26 +34,21 @@ else()
   endif()   
 endif()
 
-# Cpp Tests were added and they require googletest
-# since we have our own copy, try using that
-if(NOT onnxruntime_MINIMAL_BUILD)
-  file(GLOB_RECURSE onnx_src CONFIGURE_DEPENDS
-      "${ONNX_SOURCE_ROOT}/onnx/*.h"
-      "${ONNX_SOURCE_ROOT}/onnx/*.cc"
-  )
-  file(GLOB_RECURSE onnx_exclude_src CONFIGURE_DEPENDS
-      "${ONNX_SOURCE_ROOT}/onnx/py_utils.h"
-      "${ONNX_SOURCE_ROOT}/onnx/proto_utils.h"
-      "${ONNX_SOURCE_ROOT}/onnx/backend/test/cpp/*"
-      "${ONNX_SOURCE_ROOT}/onnx/test/*"
-      "${ONNX_SOURCE_ROOT}/onnx/cpp2py_export.cc"
-  )
-  list(REMOVE_ITEM onnx_src ${onnx_exclude_src})  
-else()
-  file(GLOB onnx_src CONFIGURE_DEPENDS
-  "${ONNX_SOURCE_ROOT}/onnx/defs/data_type_utils.*"
-  )
-endif()
+# For reference, this would be the full ONNX source include. We only need data_type_utils.* in this build.
+# file(GLOB_RECURSE onnx_src CONFIGURE_DEPENDS
+#     "${ONNX_SOURCE_ROOT}/onnx/*.h"
+#     "${ONNX_SOURCE_ROOT}/onnx/*.cc"
+# )
+# file(GLOB_RECURSE onnx_exclude_src CONFIGURE_DEPENDS
+#     "${ONNX_SOURCE_ROOT}/onnx/py_utils.h"
+#     "${ONNX_SOURCE_ROOT}/onnx/proto_utils.h"
+#     "${ONNX_SOURCE_ROOT}/onnx/backend/test/cpp/*"
+#     "${ONNX_SOURCE_ROOT}/onnx/test/*"
+#     "${ONNX_SOURCE_ROOT}/onnx/cpp2py_export.cc"
+# )
+file(GLOB onnx_src CONFIGURE_DEPENDS
+"${ONNX_SOURCE_ROOT}/onnx/defs/data_type_utils.*"
+)
 
 if (MSVC)
   SET (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Gw /GL")
