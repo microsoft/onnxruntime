@@ -2,9 +2,9 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
-#include "nccl.h"
 #include "core/profile/context.h"
 #include <iostream>
+#include <nccl.h>
 
 namespace onnxruntime {
 namespace cuda {
