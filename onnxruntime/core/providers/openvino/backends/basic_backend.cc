@@ -37,7 +37,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
     : global_context_(global_context), subgraph_context_(subgraph_context) {
 
   ie_cnn_network_ = CreateCNNNetwork(model_proto, subgraph_context_, const_outputs_map_);
-  SetIODefs(model_proto, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_);
+  SetIODefs(model_proto, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_, subgraph_context_.device_id);
   InferenceEngine::ExecutableNetwork exe_network;
 
 #if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1)

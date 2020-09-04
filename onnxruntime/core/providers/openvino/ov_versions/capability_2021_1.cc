@@ -424,7 +424,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       return true;
     } else
       return false;
-  } 
+  }  
   //Op doesn't fall into known any of unsupported modes.
   return false;
 }
@@ -630,7 +630,6 @@ std::vector<std::unique_ptr<ComputeCapability>>
 GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string device_id) {
 
   std::vector<std::unique_ptr<ComputeCapability>> result;
-
   if (graph_viewer.IsSubgraph()) {
     return result;
   }
@@ -699,6 +698,24 @@ GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, std::string d
             (input_2_data_type != onnx_dtype::TensorProto_DataType_FLOAT) ||
             (output_data_type != onnx_dtype::TensorProto_DataType_FLOAT16))
           return result;
+      } else if ((node->OpType() == "Greater") || (node->OpType() == "Less")) {
+
+        if (device_id == "MYRIAD") {
+
+          auto input_0_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+          auto input_1_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
+          auto output_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+
+          if (!((output_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) ||
+            (output_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16))) {
+            return result;
+          }
+
+          if ((input_0_data_type != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) ||
+            (input_1_data_type != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16)) {
+            return result;
+          }
+        }
       }
     }
 
