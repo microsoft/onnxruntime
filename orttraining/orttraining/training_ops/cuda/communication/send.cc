@@ -5,7 +5,7 @@
 
 #include "orttraining/training_ops/cuda/communication/send.h"
 #include "orttraining/training_ops/cuda/communication/common.h"
-#include "orttraining/training_ops/cuda/communication/nccl_service.h"
+#include "orttraining/training_ops/cuda/communication/nccl_service.cuh"
 #include "core/profile/profile.h"
 #include "core/profile/context.h"
 #include "core/providers/cuda/cuda_common.h"

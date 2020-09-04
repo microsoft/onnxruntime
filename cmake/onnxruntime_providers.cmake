@@ -195,6 +195,8 @@ if (onnxruntime_USE_CUDA)
     file(GLOB_RECURSE onnxruntime_cuda_training_ops_cu_srcs CONFIGURE_DEPENDS
       "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/*.cu"
       "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/*.cuh"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/communication/*.cu"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/communication/*.cuh"
     )
 
     if (NOT onnxruntime_USE_HOROVOD)
@@ -257,7 +259,6 @@ if (onnxruntime_USE_CUDA)
 
     if (onnxruntime_USE_NCCL)
       target_include_directories(onnxruntime_providers_cuda PRIVATE ${NCCL_INCLUDE_DIRS})
-      target_include_directories(onnxruntime_cuda_training_ops_cc_srcs PRIVATE ${NCCL_INCLUDE_DIRS})
     endif()
   endif()
 

@@ -19,7 +19,7 @@
 #include "orttraining/core/framework/checkpointing.h"
 #include "orttraining/core/graph/optimizer_graph_builder.h"
 #include "orttraining/models/runner/training_util.h"
-#include "orttraining/training_ops/cuda/communication/nccl_service.h"
+#include "orttraining/training_ops/cuda/communication/nccl_service.cuh"
 #include "single_include/nlohmann/json.hpp"
 #include "test/perftest/utils.h"
 
@@ -700,6 +700,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
   auto end_to_end_start = std::chrono::high_resolution_clock::now();
   bool end_to_end_measurement_started = false;
 
+#if defined(USE_NCCL)
   // NCCL-P2P
   auto& nccl_service = cuda::NcclService::GetInstance();
 
@@ -726,6 +727,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
       nccl_service.Launch();
     }
   );
+#endif
 
   auto all_steps_time_start = std::chrono::high_resolution_clock::now();
   while (step_ < params_.num_train_steps) {
@@ -776,7 +778,9 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
                                           fetch_names,
                                           fetches));
           RunWithUpdate(feed_names, fetch_names, feeds, fetches);
+#if defined(USE_NCCL)
           nccl_service.Reset();
+#endif
         } else {
           ORT_RETURN_IF_ERROR(PrepareFeedNamesAndFeeds(GradientAccumulateStep,
                                                        training_data_loader,
@@ -899,8 +903,10 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
             << "Average Step Time: " << all_steps_duration_seconds.count() / (step_ - step_start) << " Second\n"
             << "Average Step Throughput: " << params_.batch_size * (step_ - step_start) / (all_steps_duration_seconds.count()) << " Examples / Second\n";
 
+#if defined(USE_NCCL)
   nccl_service.Terminate();
   pipeline_worker_pool_.nccl_worker.join();
+#endif
   return Status::OK();
 }
 
