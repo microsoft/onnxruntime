@@ -277,10 +277,6 @@ jobs:
         Copy-Item ([System.IO.Path]::Combine($arm_store_runtime_path_old, 'microsoft.ai.machinelearning.dll'))   $arm_store_runtime_path_new
         Copy-Item ([System.IO.Path]::Combine($arm_store_runtime_path_old, 'microsoft.ai.machinelearning.lib'))   $arm_store_runtime_path_new
 
-        $x64_store_build_path_old = [System.IO.Path]::Combine($x64_store_nupkg_unzipped_directory, 'build', 'uap10.0')
-        $x64_store_build_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'build', 'uap10.0')
-        Copy-Item -Recurse $x64_store_build_path_old $x64_store_build_path_new
-
         $merged_nuget_path = [System.IO.Path]::Combine($Env:BUILD_ARTIFACTSTAGINGDIRECTORY, 'merged')
         if (!(Test-Path $merged_nuget_path)) {
             New-Item -Path $merged_nuget_path -ItemType Directory

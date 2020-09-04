@@ -376,23 +376,12 @@ def generate_files(list, args):
         windowsai_native_props = os.path.join(args.sources_path, 'csharp', 'src', windowsai_src, windowsai_props)
         windowsai_rules = 'Microsoft.AI.MachineLearning.Rules.Project.xml'
         windowsai_native_rules = os.path.join(args.sources_path, 'csharp', 'src', windowsai_src, windowsai_rules)
-        if args.is_store_build:
-            # Process uap10.0 targets
-            files_list.append('<file src=' + '"' + windowsai_native_props + '" target="build\\uap10.0" />')
-            # Process uap10.0 targets
-            windowsai_uap10_targets = os.path.join(args.sources_path,
-                                                   'csharp', 'src', windowsai_src, 'uap10.0', windowsai_targets)
-            files_list.append('<file src=' + '"' + windowsai_uap10_targets + '" target="build\\uap10.0" />')
-            # Process rules
-            files_list.append('<file src=' + '"' + windowsai_native_rules + '" target="build\\uap10.0" />')
-        else:
-            files_list.append('<file src=' + '"' + windowsai_native_props + '" target="build\\native" />')
-            # Process native targets
-            windowsai_native_targets = os.path.join(args.sources_path, 'csharp', 'src', windowsai_src,
-                                                    windowsai_targets)
-            files_list.append('<file src=' + '"' + windowsai_native_targets + '" target="build\\native" />')
-            # Process rules
-            files_list.append('<file src=' + '"' + windowsai_native_rules + '" target="build\\native" />')
+        windowsai_native_targets = os.path.join(args.sources_path, 'csharp', 'src', windowsai_src, windowsai_targets)
+        files_list.append('<file src=' + '"' + windowsai_native_props + '" target="build\\native" />')
+        # Process native targets
+        files_list.append('<file src=' + '"' + windowsai_native_targets + '" target="build\\native" />')
+        # Process rules
+        files_list.append('<file src=' + '"' + windowsai_native_rules + '" target="build\\native" />')
         # Process .net standard 2.0 targets
         interop_src = 'Microsoft.AI.MachineLearning.Interop'
         interop_targets = 'Microsoft.AI.MachineLearning.targets'
