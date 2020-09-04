@@ -12,14 +12,11 @@ namespace onnxruntime {
 namespace experimental {
 namespace utils {
 
+#if !defined(ORT_MINIMAL_BUILD)
 static Status SaveTypeInfoOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                     const TypeProto& type_proto,
                                     flatbuffers::Offset<fbs::TypeInfo>& fbs_type_info) ORT_MUST_USE_RESULT;
 
-static Status LoadTypeInfoOrtFormat(const fbs::TypeInfo& fbs_type_info,
-                                    TypeProto& type_proto) ORT_MUST_USE_RESULT;
-
-#if !defined(ORT_MINIMAL_BUILD)
 static flatbuffers::Offset<fbs::Dimension> SaveTensorDimensionOrtFormat(
     flatbuffers::FlatBufferBuilder& builder,
     const TensorShapeProto_Dimension& tensor_shape_dim) {
@@ -89,25 +86,31 @@ static Status SaveTypeInfoOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   auto denotation = builder.CreateString(type_proto.denotation());
   auto value_type = fbs::TypeInfoValue_tensor_type;
   flatbuffers::Offset<void> value;
-  if (type_proto.has_tensor_type()) {
-    flatbuffers::Offset<fbs::TensorTypeAndShape> fbs_tensor_type;
-    ORT_RETURN_IF_ERROR(
-        SaveTensorTypeAndShapeOrtFormat(builder, type_proto.tensor_type(), fbs_tensor_type));
-    value = fbs_tensor_type.Union();
-  } else if (type_proto.has_sequence_type()) {
-    value_type = fbs::TypeInfoValue_sequence_type;
-    flatbuffers::Offset<fbs::SequenceType> fbs_sequence_type;
-    ORT_RETURN_IF_ERROR(
-        SaveSequenceTypeOrtFormat(builder, type_proto.sequence_type(), fbs_sequence_type));
-    value = fbs_sequence_type.Union();
-  } else if (type_proto.has_map_type()) {
-    value_type = fbs::TypeInfoValue_map_type;
-    flatbuffers::Offset<fbs::MapType> fbs_map_type;
-    ORT_RETURN_IF_ERROR(
-        SaveMapTypeOrtFormat(builder, type_proto.map_type(), fbs_map_type));
-    value = fbs_map_type.Union();
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "We only support tensor/map/sequence type for now");
+  auto value_case = type_proto.value_case();
+  switch (value_case) {
+    case TypeProto::kTensorType: {
+      flatbuffers::Offset<fbs::TensorTypeAndShape> fbs_tensor_type;
+      ORT_RETURN_IF_ERROR(
+          SaveTensorTypeAndShapeOrtFormat(builder, type_proto.tensor_type(), fbs_tensor_type));
+      value = fbs_tensor_type.Union();
+    } break;
+    case TypeProto::kSequenceType: {
+      value_type = fbs::TypeInfoValue_sequence_type;
+      flatbuffers::Offset<fbs::SequenceType> fbs_sequence_type;
+      ORT_RETURN_IF_ERROR(
+          SaveSequenceTypeOrtFormat(builder, type_proto.sequence_type(), fbs_sequence_type));
+      value = fbs_sequence_type.Union();
+    } break;
+    case TypeProto::kMapType: {
+      value_type = fbs::TypeInfoValue_map_type;
+      flatbuffers::Offset<fbs::MapType> fbs_map_type;
+      ORT_RETURN_IF_ERROR(
+          SaveMapTypeOrtFormat(builder, type_proto.map_type(), fbs_map_type));
+      value = fbs_map_type.Union();
+    } break;
+    default: {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "We do not support type [", value_case, "] for now");
+    } break;
   }
 
   fbs::TypeInfoBuilder tb(builder);
@@ -164,7 +167,7 @@ Status SaveInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
     string_data = builder.CreateVectorOfStrings(string_data_vec);
   } else {
     std::unique_ptr<uint8_t[]> unpacked_tensor;
-    size_t tensor_byte_size;
+    size_t tensor_byte_size = 0;
     ORT_RETURN_IF_ERROR(
         onnxruntime::utils::UnpackInitializerData(initializer, unpacked_tensor, tensor_byte_size));
     raw_data = builder.CreateVector(unpacked_tensor.get(), tensor_byte_size);
@@ -265,6 +268,9 @@ Status SaveAttributeOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 
 #undef GET_FBS_ATTR
 #undef GET_DATA_VEC
+
+static Status LoadTypeInfoOrtFormat(const fbs::TypeInfo& fbs_type_info,
+                                    TypeProto& type_proto) ORT_MUST_USE_RESULT;
 
 Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor,
                                 TensorProto& initializer) {

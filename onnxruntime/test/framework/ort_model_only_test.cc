@@ -34,6 +34,31 @@ class InferenceSessionGetGraphWrapper : public InferenceSession {
 
 namespace test {
 
+struct OrtModelTestInfo {
+  std::basic_string<ORTCHAR_T> model_filename;
+  std::string logid;
+  NameMLValMap inputs;
+  std::vector<std::string> output_names;
+  std::function<void(const std::vector<OrtValue>&)> output_verifier;
+  std::vector<std::pair<std::string, std::string>> configs;
+};
+
+void RunOrtModel(const OrtModelTestInfo& test_info) {
+  SessionOptions so;
+  so.session_logid = test_info.logid;
+  for (const auto& config : test_info.configs)
+    so.AddConfigEntry(config.first.c_str(), config.second.c_str());
+
+  InferenceSessionGetGraphWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(test_info.model_filename));  // infer type from filename
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  std::vector<OrtValue> fetches;
+  ASSERT_STATUS_OK(session_object.Run(test_info.inputs, test_info.output_names, &fetches));
+  test_info.output_verifier(fetches);
+}
+
+#if !defined(ORT_MINIMAL_BUILD)
 // Same Tensor from ONNX and ORT format will have different binary representation, need to compare value by value
 static void CompareTensors(const OrtValue& left_value, const OrtValue& right_value) {
   const Tensor& left = left_value.Get<Tensor>();
@@ -152,30 +177,6 @@ void CompareGraphAndSessionState(const InferenceSessionGetGraphWrapper& session_
   }
 }
 
-struct OrtModelTestInfo {
-  std::basic_string<ORTCHAR_T> model_filename;
-  std::string logid;
-  NameMLValMap inputs;
-  std::vector<std::string> output_names;
-  std::function<void(const std::vector<OrtValue>&)> output_verifier;
-  std::vector<std::pair<std::string, std::string>> configs;
-};
-
-void RunOrtModel(const OrtModelTestInfo& test_info) {
-  SessionOptions so;
-  so.session_logid = test_info.logid;
-  for (const auto& config : test_info.configs)
-    so.AddConfigEntry(config.first.c_str(), config.second.c_str());
-
-  InferenceSessionGetGraphWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.Load(test_info.model_filename));  // infer type from filename
-  ASSERT_STATUS_OK(session_object.Initialize());
-
-  std::vector<OrtValue> fetches;
-  ASSERT_STATUS_OK(session_object.Run(test_info.inputs, test_info.output_names, &fetches));
-  test_info.output_verifier(fetches);
-}
-
 void SaveAndCompareModels(const std::string& onnx_file, const std::basic_string<ORTCHAR_T>& ort_file) {
   SessionOptions so;
   so.session_logid = "SerializeToOrtFormat";
@@ -202,7 +203,6 @@ void SaveAndCompareModels(const std::string& onnx_file, const std::basic_string<
   CompareGraphAndSessionState(session_object, session_object2);
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
 TEST(OrtModelOnlyTests, SerializeToOrtFormat) {
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("ort_github_issue_4031.onnx.ort");
   SaveAndCompareModels("testdata/ort_github_issue_4031.onnx", ort_file);
@@ -228,6 +228,7 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormat) {
   RunOrtModel(test_info);
 }
 
+#if !defined(DISABLE_CONTRIB_OPS)
 TEST(OrtModelOnlyTests, SerializeToOrtFormatMLOps) {
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("sklearn_bin_voting_classifier_soft_converted.ort");
   SaveAndCompareModels("testdata/sklearn_bin_voting_classifier_soft.onnx", ort_file);
@@ -268,7 +269,8 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormatMLOps) {
 
   RunOrtModel(test_info);
 }
-#endif
+#endif  // #if !defined(DISABLE_CONTRIB_OPS)
+#endif  // #if !defined(ORT_MINIMAL_BUILD)
 
 // test that we can deserialize and run a previously saved ORT format model
 TEST(OrtModelOnlyTests, LoadOrtFormatModel) {
@@ -292,6 +294,7 @@ TEST(OrtModelOnlyTests, LoadOrtFormatModel) {
   RunOrtModel(test_info);
 }
 
+#if !defined(DISABLE_CONTRIB_OPS)
 // test that we can deserialize and run a previously saved ORT format model
 // for a model with sequence and map outputs
 TEST(OrtModelOnlyTests, LoadOrtFormatModelMLOps) {
@@ -330,6 +333,7 @@ TEST(OrtModelOnlyTests, LoadOrtFormatModelMLOps) {
 
   RunOrtModel(test_info);
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
