@@ -30,7 +30,7 @@ def convert(model: str):
 
     orig_size = os.path.getsize(onnx_target_path)
     new_size = os.path.getsize(ort_target_path)
-    print("Serialized {} to {}. Sizes: orig={} new={} Diff={} Ratio={:.4f}%".format(
+    print("Serialized {} to {}. Sizes: orig={} new={} diff={} new:old={:.4f}:1.0".format(
         onnx_target_path, ort_target_path, orig_size, new_size, new_size - orig_size, new_size / orig_size))
 
 
