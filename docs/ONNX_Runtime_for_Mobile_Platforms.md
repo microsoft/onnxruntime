@@ -2,37 +2,36 @@
 
 ## Overview
 
-ONNXRuntime (ORT) now supports an internal ORT model format to minimize the build size for usage in mobile and embedded scenarios.
+ONNX Runtime now supports an internal model format to minimize the build size for usage in mobile and embedded scenarios. An ONNX model can be converted to an internal ONNX Runtime format ('ORT format model') using the below instructions.
 
-The minimal build can be used with any ORT format model, provided that the kernels for the operators used in the model were included. i.e. the custom build provides a set of kernels, and if that set satisfies a given ORT format model's needs the model can be loaded and executed. 
+The minimal build can be used with any ORT format model, provided that the kernels for the operators used in the model were included in the build. 
+  i.e. the custom build provides a set of kernels, and if that set satisfies a given ORT format model's needs, the model can be loaded and executed. 
 
 ## Steps to create model and minimal build
 
-You will need a script from the the ORT repository, and to perform a custom build, so you will need to clone the repository locally. See [here](https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#prerequisites) for initial steps.
+You will need a script from the the ONNX Runtime repository, and to perform a custom build, so you will need to clone the repository locally. See [here](https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#prerequisites) for initial steps.
 
-Perform the following steps to create a minimal build of ORT that is model specific. 
+Perform the following steps to create a minimal build of ONNX Runtime that is model specific. 
 
 ### 1. Create ORT format model
 
 We will use a helper python script to convert an existing ONNX format model into an ORT format model.
-This will require the ORT python package to be installed, and the ORT repository to have been cloned. 
-The directory the ORT repository is cloned into is referred to as `<ORT repository root>` in this documentation.
+This will require the ORT python package to be installed, and the ONNX Runtime repository to have been cloned. 
+The directory the ONNX Runtime repository is cloned into is referred to as `<ONNX Runtime repository root>` in this documentation.
 A single model is converted at a time by this script.
 
-  - Install the ORT nighly python package from https://test.pypi.org/project/ort-nightly/
+  - Install the ONNX Runtime nightly python package from https://test.pypi.org/project/ort-nightly/
     - e.g. `pip install -i https://test.pypi.org/simple/ ort-nightly`
   - Convert the ONNX model to ORT format
-    - `python <ORT repository root>/tools/python/convert_onnx_model_to_ort.py <path to .onnx model>`
+    - `python <ONNX Runtime repository root>/tools/python/convert_onnx_model_to_ort.py <path to .onnx model>`
     - This script will first optimize the ONNX model and save it with a '.optimized.onnx' file extension
-      - *IMPORTANT* this optimized ONNX model should be used as the input to the minimal build. Do not use the original ONNX model for that step.
+      - *IMPORTANT* this optimized ONNX model should be used as the input to the minimal build. Do NOT use the original ONNX model for that step.
     - It will next convert the optimized ONNX model to ORT format and save the file using '.ort' as the file extension.
 
 Example:
 
-Running 
-`python <ORT repository root>/tools/python/convert_onnx_model_to_ort.py /models/ssd_mobilenet.onnx`
-
-  - Will create `/models/ssd_mobilenet.optimized.onnx` with the ORT optimized ONNX version of the model 
+Running `python <ORT repository root>/tools/python/convert_onnx_model_to_ort.py /models/ssd_mobilenet.onnx`
+  - Will create `/models/ssd_mobilenet.optimized.onnx`, which is an ONNX format model that ONNX Runtime has optimized 
     - e.g. constant folding will have run
   - Will use `/models/ssd_mobilenet.optimized.onnx` to create `/models/ssd_mobilenet.ort` 
     - ssd_mobilenet.ort is the ORT format version of the optimized model. 
@@ -59,7 +58,7 @@ Place the optimized ONNX model/s (files with '.optimized.onnx' from the 'Create 
 
 Run the script to exclude unused kernels using this directory.
 
-`python <ORT repository root>/tools/ci_build/exclude_unused_ops.py --model_path <directory with model/s>`
+`python <ONNX Runtime repository root>/tools/ci_build/exclude_unused_ops.py --model_path <directory with model/s>`
 
 ##### When building
 
@@ -68,7 +67,7 @@ When building as per the below instructions, add `--include_ops_by_model <direct
 
 ### 3. Create the minimal build
 
-You will need to build ORT from source to reduce the included operator kernels and other aspects of the binary. 
+You will need to build ONNX Runtime from source to reduce the included operator kernels and other aspects of the binary. 
 
 See [here](https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#start-baseline-cpu) for build instructions. 
 
@@ -91,11 +90,11 @@ Binary size reduction options.
 
 ##### Windows
 
-`<ORT repository root>\build.bat --config=MinSizeRel --cmake_generator="Visual Studio 16 2019" --build_shared_lib --minimal_build --disable_ml_ops --disable_exceptions`
+`<ONNX Runtime repository root>\build.bat --config=MinSizeRel --cmake_generator="Visual Studio 16 2019" --build_shared_lib --minimal_build --disable_ml_ops --disable_exceptions`
 
 ##### Linux
 
-`<ORT repository root>/build.sh --config=MinSizeRel --build_shared_lib --minimal_build --disable_ml_ops --disable_exceptions`
+`<ONNX Runtime repository root>/build.sh --config=MinSizeRel --build_shared_lib --minimal_build --disable_ml_ops --disable_exceptions`
 
 ## Executing ORT format models
 
