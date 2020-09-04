@@ -7,29 +7,33 @@
 # --------------------------------------------------------------------------
 
 import unittest
-import os
 import onnx
 import onnxruntime
 import numpy as np
-from onnx import helper, TensorProto, numpy_helper, shape_inference
+from onnx import helper, TensorProto, numpy_helper
 from onnxruntime.quantization.calibrate import calibrate, CalibrationDataReader, ONNXCalibrater
-
 
 
 def generate_input_initializer(tensor_shape,tensor_dtype,input_name):
   '''
-  Helper function to generate initializers for inputs
+  Helper function to generate initializers for test inputs
   '''
   tensor = np.random.ranf(tensor_shape).astype(tensor_dtype)
   init = numpy_helper.from_array(tensor,input_name)
   return init  
 
-
 class TestDataReader(CalibrationDataReader):
     '''for test purpose'''
     def __init__(self, calibration_image_folder):
         self.image_folder = calibration_image_folder
-        #self.augmented_model_path = augmented_model_path
+
+    def get_next(self):
+        return None
+
+class TestDataReaderSecond(CalibrationDataReader):
+    '''for test purpose'''
+    def __init__(self, calibration_image_folder):
+        self.image_folder = calibration_image_folder
         self.preprocess_flag = True
         self.enum_data_dicts = []
         self.datasize = 3
@@ -265,14 +269,15 @@ class TestCalibrate(unittest.TestCase):
         #
         #  [input_0] 
         #    |     
-        #   Relu      -- 
-        #    |          \
+        #   Relu      
+        #    |  [X1]    \
         #   Conv         \   
-        #    |            \   
-        #   Relu          |
-        #    |           /  
+        #    |  [X2]      \   
+        #   Relu           |
+        #    |  [X3]       /  [X1]
         #   Conv        Conv
-        #      \       /   
+        #      \ [X4]    /  [X5] 
+        #          |
         #         Add
         #          |
         #       [output_0]
@@ -310,7 +315,7 @@ class TestCalibrate(unittest.TestCase):
         model = helper.make_model(graph)
         test_model_path = './test_model_5.onnx'
         onnx.save(model, test_model_path)
-        data_reader = TestDataReader('./test_images')
+        data_reader = TestDataReaderSecond('./test_images')
         augmented_model_path = './augmented_test_model_5.onnx'
         calibrater = ONNXCalibrater(test_model_path, data_reader,['Conv','MatMul'], [], [], augmented_model_path)
         augmented_model = calibrater.augment_graph()
@@ -330,10 +335,8 @@ class TestCalibrate(unittest.TestCase):
             self.assertTrue(len(value) == 2)
           
             thresholds = dict_for_quantization[key]
-            rmin = thresholds[0]
-            rmax = thresholds[1]
-            rmin = min(rmin, 0)
-            rmax = max(rmax, 0)
+            rmin = min(thresholds[0], 0)
+            rmax = max(thresholds[1], 0)
             if key == 'X2':  #next_node is Relu
                if rmin < 0: rmin = 0
            
