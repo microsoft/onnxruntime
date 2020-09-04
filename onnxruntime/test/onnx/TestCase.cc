@@ -184,21 +184,21 @@ OrtValue* TensorToOrtValue(const ONNX_NAMESPACE::TensorProto& t, onnxruntime::te
   }
   void* p = len == 0 ? nullptr : b.AllocMemory(len);
   Ort::Value temp_value{nullptr};
-  auto d = onnxruntime::make_unique<onnxruntime::test::OrtCallback>();
+  onnxruntime::test::OrtCallback d;
   OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
   status = onnxruntime::test::TensorProtoToMLValue(t, onnxruntime::test::MemBuffer(p, len, cpu_memory_info),
-                                                   temp_value, *d);
+                                                   temp_value, d);
   if (!status.IsOK()) {
     ORT_THROW(status.ToString());
   }
-  if (d->f) {
-    b.AddDeleter(d.release());
+  if (d.f) {
+    b.AddDeleter(d);
   }
   return temp_value.release();
 }
 
 void LoopDataFile(int test_data_pb_fd, bool is_input, const TestModelInfo& modelinfo,
-                  std::unordered_map<std::string, OrtValue*>& name_data_map, onnxruntime::test::HeapBuffer& b,
+                  std::unordered_map<std::string, Ort::Value>& name_data_map, onnxruntime::test::HeapBuffer& b,
                   std::ostringstream& oss) {
   google::protobuf::io::FileInputStream f(test_data_pb_fd, protobuf_block_size_in_bytes);
   f.SetCloseOnDelete(true);
@@ -439,7 +439,7 @@ static void LoadTensors(const std::vector<PATH_STRING_TYPE>& pb_files,
 }
 
 void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
-                                std::unordered_map<std::string, OrtValue*>& name_data_map,
+                                std::unordered_map<std::string, Ort::Value>& name_data_map,
                                 bool is_input) const {
   if (id >= test_data_dirs_.size()) {
     ORT_THROW("index out of bound");
@@ -530,15 +530,15 @@ void OnnxTestCase::ConvertTestData(const std::vector<ONNX_NAMESPACE::TensorProto
     }
     void* p = len == 0 ? nullptr : b.AllocMemory(len);
     Ort::Value v1{nullptr};
-    auto d = onnxruntime::make_unique<onnxruntime::test::OrtCallback>();
+    onnxruntime::test::OrtCallback d;
     OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
     status = onnxruntime::test::TensorProtoToMLValue(input, onnxruntime::test::MemBuffer(p, len, cpu_memory_info),
-                                                     v1, *d);
+                                                     v1, d);
     if (!status.IsOK()) {
       ORT_THROW(status.ToString());
     }
-    if (d->f) {
-      b.AddDeleter(d.release());
+    if (d.f) {
+      b.AddDeleter(d);
     }
     out.insert(std::make_pair(name, v1.release()));
   }

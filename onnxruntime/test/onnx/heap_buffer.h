@@ -24,10 +24,10 @@ class HeapBuffer {
     buffers_.push_back(p);
     return p;
   }
-  void AddDeleter(OrtCallback* d);
+  void AddDeleter(const OrtCallback& d);
 
  private:
-  std::vector<OrtCallback*> deleters_;
+  std::vector<OrtCallback> deleters_;
   std::vector<void*> buffers_;
 };
 }  // namespace test

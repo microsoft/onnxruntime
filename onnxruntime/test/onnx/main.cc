@@ -489,7 +489,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
                 owned_tests.push_back(std::move(l));
               });
 
-    TestEnv args(tests, stat, env, sf);
+    TestEnv args(tests, stat, env, sf, GetDefaultThreadPool(Env::Default()));
     Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count),
                          GetDefaultThreadPool(Env::Default()));
     if (!st.IsOK()) {
