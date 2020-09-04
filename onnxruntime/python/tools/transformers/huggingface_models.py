@@ -70,9 +70,9 @@ MODELS = {
     "roberta-large-openai-detector": (["input_ids", "attention_mask"], 11, False, "bert"),
 # DistilBERT
     "distilbert-base-uncased": (["input_ids", "attention_mask"], 11, False, "bert"),
-    "distilbert-base-uncased-distilled-squad": (["input_ids", "attention_mask"], 11, False, "bert", "AutoModelForQuestionAnswering"),
+    "distilbert-base-uncased-distilled-squad": (["input_ids", "attention_mask"], 11, False, "bert"),
     "distilbert-base-cased": (["input_ids", "attention_mask"], 11, False, "bert"),
-    "distilbert-base-cased-distilled-squad": (["input_ids", "attention_mask"], 11, False, "bert", "AutoModelForQuestionAnswering"),
+    "distilbert-base-cased-distilled-squad": (["input_ids", "attention_mask"], 11, False, "bert"),
     "distilbert-base-german-cased": (["input_ids", "attention_mask"], 11, False, "bert"),
     "distilbert-base-multilingual-cased": (["input_ids", "attention_mask"], 11, False, "bert"),
 # CTRL
