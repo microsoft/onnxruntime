@@ -95,7 +95,7 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormat) {
   so.session_logid = "SerializeToOrtFormat";
   so.optimized_model_filepath = output_file;
   // not strictly necessary - type should be inferred from the filename
-  so.AddConfigEntry(ORT_SESSION_OPTIONS_CONFIG_SAVE_MODEL_FORMAT, "ORT");
+  so.AddConfigEntry(kOrtSessionOptionsConfigSaveModelFormat, "ORT");
 
   InferenceSessionGetGraphWrapper session_object{so, GetEnvironment()};
 
@@ -120,7 +120,7 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormat) {
   so.session_logid = "LoadOrtFormat";
   // not strictly necessary - type should be inferred from the filename, but to be sure we're testing what we
   // think we're testing set it.
-  so.AddConfigEntry(ORT_SESSION_OPTIONS_CONFIG_LOAD_MODEL_FORMAT, "ORT");
+  so.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT");
 
   // load serialized version
   InferenceSessionGetGraphWrapper session_object2{so2, GetEnvironment()};
