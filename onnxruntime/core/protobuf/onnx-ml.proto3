@@ -102,7 +102,7 @@ enum Version {
   // - Add message TrainingInfoProto to store initialization
   //   method and training algorithm. The execution of TrainingInfoProto
   //   can modify the values of mutable variables.
-  // - Make inference graph callable from TrainingInfoProto via GraphCall operator.
+  // - Implicitly add inference graph into each TrainingInfoProto's algorithm.
   IR_VERSION = 0x0000000000000007;
 }
 
@@ -214,7 +214,7 @@ message NodeProto {
 // TrainingInfoProto stores information for training a model.
 // In particular, this defines two functionalities: an initialization-step
 // and a training-algorithm-step. Initialization resets the model
-// back to its original state as if no training has been consumed.
+// back to its original state as if no training has been performed.
 // Training algorithm improves the model based on input data.
 //
 // The semantics of the initialization-step is that the initializers
@@ -227,8 +227,8 @@ message NodeProto {
 // training algorithm's step. After the execution of a
 // TrainingInfoProto.algorithm, the initializers specified by "update_binding"
 // may be immediately updated. If the targeted training algorithm contains
-// consecutive update stages (such as block coordinate descent methods),
-// the user needs to create a TrainingInfoProto for each stage.
+// consecutive update steps (such as block coordinate descent methods),
+// the user needs to create a TrainingInfoProto for each step.
 message TrainingInfoProto {
   // This field describes a graph to compute the initial tensors
   // upon starting the training process. Initialization graph has no input
@@ -242,20 +242,38 @@ message TrainingInfoProto {
   // iteration to zero.
   //
   // By default, this field is an empty graph and its evaluation does not
-  // produce any output.
+  // produce any output. Thus, no initializer would be changed by default.
   GraphProto initialization = 1;
 
   // This field represents a training algorithm step. Given required inputs,
   // it computes outputs to update initializers in its own or inference graph's
-  // initializer lists. In general, this graph contains loss node, gradient node,
-  // optimizer node, increment of iteration count, and some calls to the inference
-  // graph.
+  // initializer lists. In general, this field contains loss node, gradient node,
+  // optimizer node, increment of iteration count.
   //
-  // The field algorithm.node is the only place the user can use GraphCall
-  // operator. The only callable graph is the one stored in ModelProto.graph.
+  // An execution of the training algorithm step is performed by executing the
+  // graph obtained by combining the inference graph (namely "ModelProto.graph")
+  // and the "algorithm" graph. That is, the actual the actual
+  // input/initializer/output/node/value_info/sparse_initializer list of
+  // the training graph is the concatenation of
+  // "ModelProto.graph.input/initializer/output/node/value_info/sparse_initializer"
+  // and "algorithm.input/initializer/output/node/value_info/sparse_initializer"
+  // in that order. This combined graph must satisfy the normal ONNX conditions.
+  // Now, let's provide a visualization of graph combination for clarity.
+  // Let the inference graph (i.e., "ModelProto.graph") be
+  //    tensor_a, tensor_b -> MatMul -> tensor_c -> Sigmoid -> tensor_d
+  // and the "algorithm" graph be
+  //    tensor_d -> Add -> tensor_e
+  // The combination process results
+  //    tensor_a, tensor_b -> MatMul -> tensor_c -> Sigmoid -> tensor_d -> Add -> tensor_e
+  //
+  // Notice that an input of a node in the "algorithm" graph may reference the
+  // output of a node in the inference graph (but not the other way round). Also, inference
+  // node cannot reference inputs of "algorithm". With these restrictions, inference graph 
+  // can always be run independently without training information.
   //
   // By default, this field is an empty graph and its evaluation does not
-  // produce any output.
+  // produce any output. Evaluating the default training step never
+  // update any initializers.
   GraphProto algorithm = 2;
 
   // This field specifies the bindings from the outputs of "initialization" to
@@ -287,23 +305,16 @@ message TrainingInfoProto {
   // be multiple key-value pairs in "update_binding".
   //
   // The initializers appears as keys in "update_binding" are considered
-  // mutable and globally-visible variables. This implies some behaviors
+  // mutable variables. This implies some behaviors
   // as described below.
   //
-  //  1. We have only unique keys in all "update_binding"s so that two global
+  //  1. We have only unique keys in all "update_binding"s so that two
   //     variables may not have the same name. This ensures that one
-  //     global variable is assigned up to once.
+  //     variable is assigned up to once.
   //  2. The keys must appear in names of "ModelProto.graph.initializer" or
   //     "TrainingInfoProto.algorithm.initializer".
-  //  3. The values must be output names of "algorithm".
-  //  4. If an optional input of a graph is omitted when using GraphCall, the
-  //     global variable with the same name may be used.
-  //  5. When using GraphCall, the users always can pass values to optional 
-  //     inputs of the called graph even if the associated initializers appears
-  //     as keys in "update_binding"s.
-  //  6. The graphs in TrainingInfoProto's can use global variables as
-  //     their operator inputs.
-  //  7. Mutable variables are initialized to the value specified by the
+  //  3. The values must be output names of "algorithm" or "ModelProto.graph.output".
+  //  4. Mutable variables are initialized to the value specified by the
   //     corresponding initializer, and then potentially updated by
   //     "initializer_binding"s and "update_binding"s in "TrainingInfoProto"s.
   //
@@ -364,9 +375,6 @@ message ModelProto {
 
   // The parameterized graph that is evaluated to execute the model.
   GraphProto graph = 7;
-
-  // kezhan: This field is not in ONNX, and will be pushed into ONNX with good use cases in microsoft.
-  repeated FunctionProto functions = 100;
 
   // Named metadata values; keys should be distinct.
   repeated StringStringEntryProto metadata_props = 14;
@@ -727,53 +735,6 @@ message OperatorSetIdProto {
 }
 
 
-// Operator/function status.
-enum OperatorStatus {
-    EXPERIMENTAL = 0;
-    STABLE = 1;
-}
-
-message FunctionProto {
-  // The name of the function, similar usage of op_type in OperatorProto.
-  string name = 1;
-
-  // The first version of a function set which contains this function.
-  // When there's any breaking change for this function, the function set
-  // contains the function needs to bump its version, and since_version of
-  // the updated function will be changed to the updated function set version.  
-  int64 since_version = 2;
-
-  // This field indicates whether the syntax, semantics, or presence
-  // of this function is in an experimental or stable stage. Once an
-  // function is published as STABLE, its syntax and semantics MUST NOT
-  // change in subsequent versions of the operator set.
-  // When a function is published as EXPERIMENTAL, the syntax and semantics
-  // of the function MAY change across operator set versions.
-  // Functions "become" stable by deprecating the experimental version and
-  // introducing a new stable function with the same name.
-  OperatorStatus status = 3;
-
-  // The inputs and outputs of the function.
-  repeated string input = 4;
-  repeated string output = 5;
-
-  // The attributes of the function.
-  repeated string attribute= 6;
-
-  // The nodes in the function.
-  repeated NodeProto node = 7;
-  // A human-readable documentation for this function. Markdown is allowed.
-  string doc_string = 8;
-
-  // The OperatorSets this function body (graph) relies on.
-  // A FunctionProto body (graph) may implicitly rely on the OperatorSet that
-  // this function belongs to. It can also explicitly rely on more OperatorSets
-  // with this field specified.
-  //
-  // All nodes in the function body (graph) will bind against the operator
-  // with the same-domain/same-op_type operator with the HIGHEST version
-  // in the referenced operator sets. This means at most one version can be relied
-  // for one domain.
-  repeated OperatorSetIdProto opset_import = 9;
-}
+// For using protobuf-lite
+option optimize_for = LITE_RUNTIME;
 
