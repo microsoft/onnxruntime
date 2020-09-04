@@ -262,7 +262,7 @@ if(onnxruntime_DISABLE_EXCEPTIONS)
     string(APPEND CMAKE_CXX_FLAGS " /wd4834 /wd4702")
     add_compile_definitions("_HAS_EXCEPTIONS=0")
   else()
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables")
   endif()
 endif()
 
@@ -322,13 +322,13 @@ if (MSVC)
     set(protobuf_MSVC_STATIC_RUNTIME OFF CACHE BOOL "Link protobuf to static runtime libraries" FORCE)
     set(gtest_force_shared_crt ON CACHE BOOL "Use shared (DLL) run-time lib for gtest" FORCE)
   endif()
+
   #Always enable exception handling, even for Windows ARM
   if(NOT onnxruntime_DISABLE_EXCEPTIONS)
     string(APPEND CMAKE_CXX_FLAGS " /EHsc /wd26812")
     string(APPEND CMAKE_C_FLAGS " /EHsc /wd26812")
   endif()
-  string(APPEND CMAKE_CXX_FLAGS " /EHsc /wd26812")
-  string(APPEND CMAKE_C_FLAGS " /EHsc /wd26812")
+
   if(onnxruntime_USE_AVX)
     string(APPEND CMAKE_CXX_FLAGS " /arch:AVX")
     string(APPEND CMAKE_C_FLAGS " /arch:AVX")
@@ -339,10 +339,12 @@ if (MSVC)
     string(APPEND CMAKE_CXX_FLAGS " /arch:AVX512")
     string(APPEND CMAKE_C_FLAGS " /arch:AVX512")
   endif()
+
   if (onnxruntime_ENABLE_LTO AND NOT onnxruntime_USE_CUDA)
     SET (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Gw /GL")
     SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /Gw /GL")
   endif()
+  
   # The WinML build tool chain builds ARM/ARM64, and the internal tool chain does not have folders for spectre mitigation libs.
   # WinML performs spectre mitigation differently.
   if (NOT DEFINED onnxruntime_DISABLE_QSPECTRE_CHECK)
@@ -390,9 +392,9 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "iOSCross")
     #For ios compliance
     message("Adding flags for ios builds")
     if (CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -target arm64-apple-darwin-macho")
+      set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -target arm64-apple-darwin-macho")
     elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "arm")
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -target armv7a-apple-darwin-macho")
+      set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -target armv7a-apple-darwin-macho")
     endif()
 endif()
 

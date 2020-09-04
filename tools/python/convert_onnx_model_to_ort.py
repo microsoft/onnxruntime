@@ -1,3 +1,7 @@
+#!/usr/bin/env python
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
 import argparse
 import onnxruntime as ort
 import os
@@ -23,6 +27,8 @@ def convert(model: str):
 
     # Second, convert optimized ONNX model to ORT format
     so.optimized_model_filepath = ort_target_path
+    so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL  # Convert model as-is so we don't change the kernels in this step # noqa
+
     so.add_session_config_entry('session.save_model_format', 'ORT')
 
     print("Converting optimized ONNX model {} to ORT format model {}".format(onnx_target_path, ort_target_path))

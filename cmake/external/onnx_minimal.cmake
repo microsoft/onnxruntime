@@ -72,7 +72,6 @@ if (WIN32)
         /wd4125 # decimal digit terminates octal escape sequence
         /wd4100 # 'param' : unreferenced formal parameter
         /wd4244 # 'argument' conversion from 'google::protobuf::int64' to 'int', possible loss of data
-        /EHsc   # exception handling - C++ may throw, extern "C" will not
         /wd4996 # 'argument' Using double parameter version instead of single parameter version of SetTotalBytesLimit(). The second parameter is ignored.
     )
     if (NOT onnxruntime_DISABLE_EXCEPTIONS)
