@@ -103,7 +103,7 @@ class DataTypeImpl {
 template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
 
-std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCPUAllocator(const OrtMemoryInfo& memory_info);
+std::unique_ptr<Provider_IAllocator> Provider_CreateCPUAllocator(const OrtMemoryInfo& memory_info);
 Provider_AllocatorPtr CreateAllocator(const Provider_AllocatorCreationInfo& info);
 
 std::string GetEnvironmentVar(const std::string& var_name);
