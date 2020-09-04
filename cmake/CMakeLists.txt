@@ -84,9 +84,6 @@ option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
 
 #It's preferred to turn it OFF when onnxruntime is dynamically linked to PROTOBUF
 option(onnxruntime_USE_FULL_PROTOBUF "Link to libprotobuf instead of libprotobuf-lite when this option is ON" OFF)
-option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
-option(onnxruntime_DISABLE_ML_OPS "Disable traditional ML ops" OFF)
-option(onnxruntime_DISABLE_RTTI "Disable RTTI" OFF)
 option(tensorflow_C_PACKAGE_PATH "Path to tensorflow C package installation dir")
 option(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS "Enable operator implemented in language other than cpp" OFF)
 option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS "Dump debug information about node inputs and outputs when executing the model." OFF)
@@ -109,11 +106,14 @@ option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 #It's default OFF because it's experimental now.
 option(onnxruntime_PREFER_SYSTEM_LIB "Experimental: Build with the preinstalled libraries in your system" OFF)
 
-# ORT mininal build settings
+# Options to reduce build size
+option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
+option(onnxruntime_DISABLE_ML_OPS "Disable traditional ML ops" OFF)
+option(onnxruntime_DISABLE_RTTI "Disable RTTI" OFF)
+# For now onnxruntime_DISABLE_EXCEPTIONS will only work with onnxruntime_MINIMAL_BUILD, more changes (ONNX, non-CPU EP, ...) are required to run this standalone
+option(onnxruntime_DISABLE_EXCEPTIONS "Disable exception handling. Requires onnxruntime_MINIMAL_BUILD currently." OFF)
 option(onnxruntime_MINIMAL_BUILD "Exclude as much as possible from the build. Support ORT format models. No support for ONNX format models." OFF)
 option(onnxruntime_REDUCED_OPS_BUILD "Reduced set of kernels are registered in build via modification of the kernel registration source files." OFF)
-# For now onnxruntime_NO_EXCEPTIONS will only work with onnxruntime_MINIMAL_BUILD, more changes (ONNX, non-CPU EP, ...) are required to run this standalone
-option(onnxruntime_NO_EXCEPTIONS "Disable exception handling." OFF)
 
 # training options
 option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
@@ -214,15 +214,18 @@ endif()
 # Will expose option in build.py when all pieces are available
 if(onnxruntime_MINIMAL_BUILD)
   add_compile_definitions(ORT_MINIMAL_BUILD)
-  set(onnxruntime_REDUCED_OPS_BUILD ON)  # TODO Defaulting to ON. TBD if we should always do that.
+  set(onnxruntime_REDUCED_OPS_BUILD ON)
   set(onnxruntime_DISABLE_RTTI ON)
 
   if (MSVC)
-    # add MSVC specific flags to reduce build size here
+    # add MSVC specific flags to reduce build size here if needed
   else()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ffunction-sections -fdata-sections")
-    # TODO: May need to use -dead_strip instead of --gc-sections for iOS(XCode)
-    add_link_options(-Wl,--gc-sections)
+    if (CMAKE_HOST_SYSTEM MATCHES "Darwin")
+      add_link_options(-Wl,-dead_strip)
+    else()
+      add_link_options(-Wl,--gc-sections)
+    endif()  
   endif()
 
 endif()
@@ -243,9 +246,9 @@ endif()
 
 # If this is only enabled in an onnxruntime_ORT_MODEL_FORMAT_ONLY build we don't need ONNX changes
 # as we (currently) only pull in data_type_utils.cc/h which doesn't throw
-if(onnxruntime_NO_EXCEPTIONS)
+if(onnxruntime_DISABLE_EXCEPTIONS)
   if(NOT onnxruntime_MINIMAL_BUILD)
-    message(FATAL_ERROR "onnxruntime_MINIMAL_BUILD required for onnxruntime_NO_EXCEPTIONS")
+    message(FATAL_ERROR "onnxruntime_MINIMAL_BUILD required for onnxruntime_DISABLE_EXCEPTIONS")
   endif()
 
   add_compile_definitions("ORT_NO_EXCEPTIONS")
@@ -259,7 +262,7 @@ if(onnxruntime_NO_EXCEPTIONS)
     string(APPEND CMAKE_CXX_FLAGS " /wd4834 /wd4702")
     add_compile_definitions("_HAS_EXCEPTIONS=0")
   else()
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables")
   endif()
 endif()
 
@@ -319,13 +322,13 @@ if (MSVC)
     set(protobuf_MSVC_STATIC_RUNTIME OFF CACHE BOOL "Link protobuf to static runtime libraries" FORCE)
     set(gtest_force_shared_crt ON CACHE BOOL "Use shared (DLL) run-time lib for gtest" FORCE)
   endif()
+
   #Always enable exception handling, even for Windows ARM
-  if(NOT onnxruntime_NO_EXCEPTIONS)
+  if(NOT onnxruntime_DISABLE_EXCEPTIONS)
     string(APPEND CMAKE_CXX_FLAGS " /EHsc /wd26812")
     string(APPEND CMAKE_C_FLAGS " /EHsc /wd26812")
   endif()
-  string(APPEND CMAKE_CXX_FLAGS " /EHsc /wd26812")
-  string(APPEND CMAKE_C_FLAGS " /EHsc /wd26812")
+
   if(onnxruntime_USE_AVX)
     string(APPEND CMAKE_CXX_FLAGS " /arch:AVX")
     string(APPEND CMAKE_C_FLAGS " /arch:AVX")
@@ -336,10 +339,12 @@ if (MSVC)
     string(APPEND CMAKE_CXX_FLAGS " /arch:AVX512")
     string(APPEND CMAKE_C_FLAGS " /arch:AVX512")
   endif()
+
   if (onnxruntime_ENABLE_LTO AND NOT onnxruntime_USE_CUDA)
     SET (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Gw /GL")
     SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /Gw /GL")
   endif()
+  
   # The WinML build tool chain builds ARM/ARM64, and the internal tool chain does not have folders for spectre mitigation libs.
   # WinML performs spectre mitigation differently.
   if (NOT DEFINED onnxruntime_DISABLE_QSPECTRE_CHECK)
@@ -387,9 +392,9 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "iOSCross")
     #For ios compliance
     message("Adding flags for ios builds")
     if (CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -target arm64-apple-darwin-macho")
+      set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -target arm64-apple-darwin-macho")
     elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "arm")
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -target armv7a-apple-darwin-macho")
+      set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -target armv7a-apple-darwin-macho")
     endif()
 endif()
 
@@ -509,6 +514,7 @@ if(UNIX AND onnxruntime_ENABLE_LTO AND NOT onnxruntime_PREFER_SYSTEM_LIB)
   #https://github.com/protocolbuffers/protobuf/issues/5923
   target_link_options(protoc PRIVATE "-Wl,--no-as-needed")
 endif()
+
 include(protobuf_function.cmake)
 #protobuf end
 
@@ -571,8 +577,8 @@ endif()
 # we make it through via a handler so CUDA does not complain
 # The following -DGSL macros are recognized by gsl-lite along with -Dgsl macros
 # no bounds checking in release build so no perf cost
-# if we enable onnxruntime_NO_EXCEPTIONS, gsl will terminate
-if (onnxruntime_NO_EXCEPTIONS)
+# if we enable onnxruntime_DISABLE_EXCEPTIONS, gsl will terminate
+if (onnxruntime_DISABLE_EXCEPTIONS)
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DGSL_TERMINATE_ON_CONTRACT_VIOLATION")
 else()
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DGSL_THROW_ON_CONTRACT_VIOLATION")
@@ -703,7 +709,13 @@ if(NOT onnxruntime_USE_FULL_PROTOBUF)
 else()
   set(ONNX_USE_LITE_PROTO OFF CACHE BOOL "" FORCE)
 endif()
-add_subdirectory(external/onnx)
+
+if (NOT onnxruntime_MINIMAL_BUILD)
+  add_subdirectory(external/onnx)
+else()
+  include(onnx_minimal)
+endif()
+
 target_compile_definitions(onnx PUBLIC $<TARGET_PROPERTY:onnx_proto,INTERFACE_COMPILE_DEFINITIONS> PRIVATE "__ONNX_DISABLE_STATIC_REGISTRATION")
 if (NOT onnxruntime_USE_FULL_PROTOBUF)
   target_compile_definitions(onnx PUBLIC "__ONNX_NO_DOC_STRINGS")
