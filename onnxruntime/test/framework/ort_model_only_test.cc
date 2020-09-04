@@ -204,7 +204,7 @@ void SaveAndCompareModels(const std::string& onnx_file, const std::basic_string<
 
 #if !defined(ORT_MINIMAL_BUILD)
 TEST(OrtModelOnlyTests, SerializeToOrtFormat) {
-  const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/ort_github_issue_4031.onnx.ort");
+  const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("ort_github_issue_4031.onnx.ort");
   SaveAndCompareModels("testdata/ort_github_issue_4031.onnx", ort_file);
 
   OrtModelTestInfo test_info;
@@ -229,7 +229,7 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormat) {
 }
 
 TEST(OrtModelOnlyTests, SerializeToOrtFormatMLOps) {
-  const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/sklearn_bin_voting_classifier_soft.ort");
+  const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("sklearn_bin_voting_classifier_soft_converted.ort");
   SaveAndCompareModels("testdata/sklearn_bin_voting_classifier_soft.onnx", ort_file);
 
   OrtModelTestInfo test_info;
