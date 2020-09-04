@@ -1,4 +1,4 @@
-# ONNXRuntime Format Model Usage
+# ONNX Runtime for Mobile Platforms
 
 ## Overview
 
@@ -10,33 +10,65 @@ The minimal build can be used with any ORT format model, provided that the kerne
 
 You will need a script from the the ORT repository, and to perform a custom build, so you will need to clone the repository locally. See [here](https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#prerequisites) for initial steps.
 
-Perform the following steps to create a minimal build from an ONNX format model.
+Perform the following steps to create a minimal build of ORT that is model specific. 
 
-### Create ORT format model
+### 1. Create ORT format model
 
-We will use a helper python script to convert an existing ONNX format model into an optimized ORT format model.
-This will require the ORT python package to be installed, and the ORT repository to have been cloned.
+We will use a helper python script to convert an existing ONNX format model into an ORT format model.
+This will require the ORT python package to be installed, and the ORT repository to have been cloned. 
+The directory the ORT repository is cloned into is referred to as `<ORT repository root>` in this documentation.
+A single model is converted at a time by this script.
 
   - Install the ORT nighly python package from https://test.pypi.org/project/ort-nightly/
+    - e.g. `pip install -i https://test.pypi.org/simple/ ort-nightly`
   - Convert the ONNX model to ORT format
-    - `python <path to ORT repository>/tools/python/convert_onnx_model_to_ort.py <path to .onnx model>`
+    - `python <ORT repository root>/tools/python/convert_onnx_model_to_ort.py <path to .onnx model>`
     - This script will first optimize the ONNX model and save it with a '.optimized.onnx' file extension
-      - this optimized model should be used as input to the reduced build
-    - It will next convert the optimized ONNX model to ORT format.
+      - *IMPORTANT* this optimized ONNX model should be used as the input to the minimal build. Do not use the original ONNX model for that step.
+    - It will next convert the optimized ONNX model to ORT format and save the file using '.ort' as the file extension.
 
-### Setup information to reduce build to minimum set of operator kernels required
+Example:
 
-In order to reduce the operator kernels included in the build the required set must be either inferred from one or more ONNX models, or explicitly specified.d
+Running 
+`python <ORT repository root>/tools/python/convert_onnx_model_to_ort.py /models/ssd_mobilenet.onnx`
 
-To infer, put one or more ONNX models in a directory. The directory will be recursively searched for '.onnx' files. If taking this approach, you should only include the optimized ONNX models and not both the original and optimized models.
+  - Will create `/models/ssd_mobilenet.optimized.onnx` with the ORT optimized ONNX version of the model 
+    - e.g. constant folding will have run
+  - Will use `/models/ssd_mobilenet.optimized.onnx` to create `/models/ssd_mobilenet.ort` 
+    - ssd_mobilenet.ort is the ORT format version of the optimized model. 
 
-Alternatively a configuration file can be created for the set of kernels to include. 
 
-See the documentation on the [Reduced Operator Kernel build](Reduced_Operator_Kernel_build.md) for more information. This step can be run separately or as part of the minimal build.
+### 2. Setup information to reduce build to minimum set of operator kernels required
 
-### Create the minimal build
+In order to reduce the operator kernels included in the build, the required set must be either inferred from one or more ONNX models, or explicitly specified via configuration.
 
-You will need to build ORT from source to reduce the operator kernels and other aspects of the binary. 
+To infer, put one or more optimized ONNX models in a directory. The directory will be recursively searched for '.onnx' files. 
+If taking this approach (vs creating a configuration file), you should only include the optimized ONNX models and not both the original and optimized models, as there may be kernels that are were required in the original model that are not required in the optimized model.
+
+Alternatively a configuration file can be created to specify the set of kernels to include. 
+
+See the documentation on the [Reduced Operator Kernel build](Reduced_Operator_Kernel_build.md) for more information. 
+
+This step can be run prior to building, or as part of the minimal build.
+
+#### Example usage:
+
+##### Pre-build
+
+Place the optimized ONNX model/s (files with '.optimized.onnx' from the 'Create ORT format model' step above) in a directory. 
+
+Run the script to exclude unused kernels using this directory.
+
+`python <ORT repository root>/tools/ci_build/exclude_unused_ops.py --model_path <directory with model/s>`
+
+##### When building
+
+When building as per the below instructions, add `--include_ops_by_model <directory with model/s>` to the build command.
+
+
+### 3. Create the minimal build
+
+You will need to build ORT from source to reduce the included operator kernels and other aspects of the binary. 
 
 See [here](https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#start-baseline-cpu) for build instructions. 
 
