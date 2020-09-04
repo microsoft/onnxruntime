@@ -74,7 +74,7 @@ class ORTGlueTest(unittest.TestCase):
         self.output_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "glue_test_output/")
         self.cache_dir = '/tmp/glue/'
         self.logging_steps = 10
-        self.rtol = 1e-07
+        self.rtol = 1e-02
 
     def test_roberta_with_mrpc(self):
         expected_acc = 0.8676470588235294
