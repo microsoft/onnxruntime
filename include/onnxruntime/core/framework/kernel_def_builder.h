@@ -52,7 +52,7 @@ class KernelDef {
     return provider_type_;
   }
 
-  const std::unordered_map<std::string, std::vector<MLDataType>>& TypeConstraints() const {
+  const std::map<std::string, std::vector<MLDataType>>& TypeConstraints() const {
     return type_constraints_;
   }
 
@@ -98,31 +98,8 @@ class KernelDef {
  private:
   friend class KernelDefBuilder;
 
-  // call once the KernelDef has been built
-  void CalculateHash() {
-    // use name, start/end, domain, provider and the type constraints.
-    // we wouldn't have two kernels that only differed by the inplace or alias info or memory types.
-    // currently nothing sets exec_queue_id either (and would assumably be a runtime thing and not part of the base
-    // kernel definition)
-    hash_ = 0;  // reset in case this is called multiple times
-    HashCombine(hash_, op_name_);
-    HashCombine(hash_, op_since_version_start_);
-    // If we include op_since_version_end_ the hash of an existing op changes when it's superseded.
-    // e.g. Unsqueeze 11 had no end version until Unsqueeze 13, at which point the existing op is changed to have
-    // an end version of 12. That would result in a new ORT build having a different hash for Unsqueeze 11 and a
-    // previously serialized ORT format model wouldn't find the kernel. In order to select the kernel to include
-    // in the ORT model the full OpSchema info is used, so it's safe to exclude op_since_version_end_ from the hash.
-    // HashCombine(hash_, op_since_version_end_);
-    HashCombine(hash_, op_domain_);
-    HashCombine(hash_, provider_type_);
-    for (const auto& key_value : type_constraints_) {
-      HashCombine(hash_, key_value.first);
-      for (const auto& data_type : key_value.second) {
-        // need to construct a std::string so it doesn't hash the address of a const char*
-        HashCombine(hash_, std::string(DataTypeImpl::ToString(data_type)));
-      }
-    }
-  }
+  // called once by KernelDefBuilder::Build
+  void CalculateHash();
 
   // The operator name supported by <*this> kernel..
   std::string op_name_;
@@ -143,7 +120,8 @@ class KernelDef {
 
   // The supported data types for inputs/outputs.
   // Key is input/output name defined in op schema, Value are supported types.
-  std::unordered_map<std::string, std::vector<MLDataType>> type_constraints_;
+  // note: std::map as we need the order to be deterministic for the hash
+  std::map<std::string, std::vector<MLDataType>> type_constraints_;
 
   // An element <i, j> means that output j reuses the memory of input i.
   std::vector<std::pair<int, int>> inplace_map_;
