@@ -881,7 +881,7 @@ Example 4:
           "Constrain to float, float16 and double tensors.")
       .SetDoc(R"DOC(SoftmaxCrossEntropy)DOC");
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(MeanSquaredError)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MeanSquaredDistance)
       .SetDomain(kOnnxDomain) 
       .SinceVersion(12) 
       .Attr("reduction",

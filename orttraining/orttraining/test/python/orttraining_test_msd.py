@@ -21,7 +21,7 @@ def mean_squared_distance(input, target, reduction='mean', w=None):  # type: ign
     return out
 
 
-class MeanSquaredError(Base):
+class MeanSquaredDistance(Base):
 
     @staticmethod
     def export_mean_square_distance_none():  # type: () -> None
@@ -29,7 +29,7 @@ class MeanSquaredError(Base):
         reduction = 'none'
 
         # Create operator.
-        node = onnx.helper.make_node('MeanSquaredError',
+        node = onnx.helper.make_node('MeanSquaredDistance',
                                      inputs=['R', 'T'],
                                      outputs=['X'],
                                      reduction=reduction
@@ -51,7 +51,7 @@ class MeanSquaredError(Base):
         reduction = 'none'
 
         # Create operator.
-        node = onnx.helper.make_node('MeanSquaredError',
+        node = onnx.helper.make_node('MeanSquaredDistance',
                                      inputs=['R', 'T', 'W'],
                                      outputs=['X'],
                                      reduction=reduction
@@ -74,7 +74,7 @@ class MeanSquaredError(Base):
         reduction = 'sum'
 
         # Create operator.
-        node = onnx.helper.make_node('MeanSquaredError',
+        node = onnx.helper.make_node('MeanSquaredDistance',
                                      inputs=['R', 'T'],
                                      outputs=['X'],
                                      reduction=reduction
@@ -96,7 +96,7 @@ class MeanSquaredError(Base):
         reduction = 'mean'
 
         # Create operator.
-        node = onnx.helper.make_node('MeanSquaredError',
+        node = onnx.helper.make_node('MeanSquaredDistance',
                                      inputs=['R', 'T'],
                                      outputs=['X'],
                                      reduction=reduction
@@ -119,7 +119,7 @@ class MeanSquaredError(Base):
         reduction = 'mean'
 
         # Create operator.
-        node = onnx.helper.make_node('MeanSquaredError',
+        node = onnx.helper.make_node('MeanSquaredDistance',
                                      inputs=['R', 'T'],
                                      outputs=['X'],
                                      reduction=reduction
@@ -141,7 +141,7 @@ class MeanSquaredError(Base):
         reduction = 'mean'
 
         # Create operator.
-        node = onnx.helper.make_node('MeanSquaredError',
+        node = onnx.helper.make_node('MeanSquaredDistance',
                                      inputs=['R', 'T'],
                                      outputs=['X'],
                                      reduction=reduction
