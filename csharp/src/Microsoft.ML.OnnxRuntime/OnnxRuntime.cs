@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Collections.Generic;
 
+
 namespace Microsoft.ML.OnnxRuntime
 {
     internal struct GlobalOptions  //Options are currently not accessible to user
