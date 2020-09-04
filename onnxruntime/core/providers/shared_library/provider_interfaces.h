@@ -5,6 +5,7 @@
 // In the future the internal implementations could derive from these to remove the need for the wrapper implementations
 
 #include "core/framework/func_api.h"
+#include "core/framework/fence.h"  // For FencePtr
 
 #define PROVIDER_DISALLOW_ALL(TypeName)     \
   TypeName() = delete;                      \
@@ -62,6 +63,7 @@ struct Provider_NodeAttributes;
 struct Provider_OpKernel_Base;
 struct Provider_OpKernelContext;
 struct Provider_OpKernelInfo;
+struct Provider_SessionState;
 struct Provider_Tensor;
 class TensorShape;
 
@@ -106,25 +108,20 @@ struct Provider_IExecutionProviderFactory {
 class DataTypeImpl;
 using MLDataType = const DataTypeImpl*;
 
-struct Provider_OrtDevice {
-  virtual ~Provider_OrtDevice() {}
-};
-
-struct Provider_OrtMemoryInfo {
-  static std::unique_ptr<Provider_OrtMemoryInfo> Create(const char* name_, OrtAllocatorType type_, Provider_OrtDevice* device_ = nullptr, int id_ = 0, OrtMemType mem_type_ = OrtMemTypeDefault);
-  virtual ~Provider_OrtMemoryInfo() {}
-
-  void operator=(const Provider_OrtMemoryInfo&) = delete;
-};
-
 template <typename T>
 using Provider_IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
 
 struct Provider_IAllocator {
+  Provider_IAllocator(const OrtMemoryInfo& info) : memory_info_{info} {}
   virtual ~Provider_IAllocator() {}
 
   virtual void* Alloc(size_t size) = 0;
   virtual void Free(void* p) = 0;
+  const OrtMemoryInfo& Info() const { return memory_info_; };
+
+  virtual FencePtr CreateFence(const Provider_SessionState* /*session_state*/) { return nullptr; }
+
+  virtual bool IsProviderInterface() const { return true; }
 
   template <typename T>
   static Provider_IAllocatorUniquePtr<T> MakeUniquePtr(std::shared_ptr<Provider_IAllocator> allocator, size_t count_or_bytes) {
@@ -142,12 +139,15 @@ struct Provider_IAllocator {
         [=](T* ptr) { allocator->Free(ptr); }};         // capture IAllocator so it's always valid, and use as deleter
   }
 
-  Provider_IAllocator() = default;
+  const OrtMemoryInfo memory_info_;
+
   Provider_IAllocator(const Provider_IAllocator&) = delete;
   void operator=(const Provider_IAllocator&) = delete;
 };
 
-struct Provider_IDeviceAllocator : Provider_IAllocator {};
+struct Provider_IDeviceAllocator : Provider_IAllocator {
+  Provider_IDeviceAllocator(const OrtMemoryInfo& info) : Provider_IAllocator{info} {}
+};
 
 using Provider_AllocatorPtr = std::shared_ptr<Provider_IAllocator>;
 using Provider_DeviceAllocatorFactory = std::function<std::unique_ptr<Provider_IDeviceAllocator>(int)>;
@@ -263,6 +263,17 @@ struct Provider_IExecutionProvider {
   void operator=(const Provider_IExecutionProvider&) = delete;
 };
 
+struct Provider_IDataTransfer {
+  Provider_IDataTransfer() = default;
+  virtual ~Provider_IDataTransfer() {}
+
+  virtual bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const = 0;
+  virtual common::Status CopyTensor(const Provider_Tensor& src, Provider_Tensor& dst, int exec_queue_id) const = 0;
+
+  Provider_IDataTransfer(const Provider_IDataTransfer&) = delete;
+  void operator=(const Provider_IDataTransfer&) = delete;
+};
+
 struct Provider {
   virtual std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(int device_id) = 0;
 };
@@ -277,20 +288,7 @@ struct ProviderHost {
 
   virtual logging::Logger* LoggingManager_GetDefaultLogger() = 0;
 
-  virtual std::unique_ptr<Provider_OrtMemoryInfo> OrtMemoryInfo_Create(const char* name_, OrtAllocatorType type_, Provider_OrtDevice* device_, int id_, OrtMemType mem_type_) = 0;
-  virtual std::unique_ptr<Provider_IDeviceAllocator> CreateCPUAllocator(std::unique_ptr<Provider_OrtMemoryInfo> memory_info) = 0;
-
-#ifdef USE_TENSORRT
-  virtual std::unique_ptr<Provider_IDeviceAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) = 0;
-  virtual std::unique_ptr<Provider_IDeviceAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) = 0;
-  virtual std::unique_ptr<Provider_IDataTransfer> CreateGPUDataTransfer() = 0;
-
-  virtual void cuda__Impl_Cast(const int64_t* input_data, int32_t* output_data, size_t count) = 0;
-  virtual void cuda__Impl_Cast(const int32_t* input_data, int64_t* output_data, size_t count) = 0;
-
-  virtual bool CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
-  virtual bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
-#endif
+  virtual std::unique_ptr<Provider_IDeviceAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info) = 0;
 
   virtual std::unique_ptr<Provider_IExecutionProvider_Router> Create_IExecutionProvider_Router(Provider_IExecutionProvider* outer, const std::string& type) = 0;
 
@@ -390,9 +388,7 @@ struct ProviderHost {
 
   // Provider_DataTransferManager
   virtual Status Provider_DataTransferManager__CopyTensor(const Provider_DataTransferManager* p, const Provider_Tensor& src, Provider_Tensor& dst, int exec_queue_id) = 0;
-
-  // Provider_IDataTransfer
-  virtual void Provider_IDataTransfer__operator_delete(Provider_IDataTransfer* p) = 0;
+  virtual const Provider_IDataTransfer* Provider_DataTransferManager__GetProviderDataTransfer(const Provider_DataTransferManager* p, const OrtDevice& src_device, const OrtDevice& dst_device) = 0;
 
   // Provider_IndexedSubGraph_MetaDef
   virtual std::unique_ptr<Provider_IndexedSubGraph_MetaDef> Provider_IndexedSubGraph_MetaDef__construct() = 0;
@@ -549,10 +545,19 @@ struct ProviderHost {
   virtual const Provider_DataTransferManager& Provider_OpKernelInfo__GetDataTransferManager(const Provider_OpKernelInfo* p) noexcept = 0;
   virtual int Provider_OpKernelInfo__GetKernelDef_ExecQueueId(const Provider_OpKernelInfo* p) noexcept = 0;
 
+  // Provider_SessionState
+  virtual const Provider_DataTransferManager& Provider_SessionState__GetDataTransferManager(const Provider_SessionState* p) = 0;
+
   // Provider_Tensor
   virtual float* Provider_Tensor__MutableData_float(Provider_Tensor* p) = 0;
   virtual const float* Provider_Tensor__Data_float(const Provider_Tensor* p) = 0;
+
+  virtual void* Provider_Tensor__MutableDataRaw(Provider_Tensor* p) noexcept = 0;
+  virtual const void* Provider_Tensor__DataRaw(const Provider_Tensor* p) const noexcept = 0;
+
   virtual const TensorShape& Provider_Tensor__Shape(const Provider_Tensor* p) = 0;
+  virtual size_t Provider_Tensor__SizeInBytes(const Provider_Tensor* p) = 0;
+  virtual const OrtMemoryInfo& Provider_Tensor__Location(const Provider_Tensor* p) = 0;
 };
 
 extern ProviderHost* g_host;
@@ -685,16 +690,9 @@ struct Provider_ComputeCapability {
 
 struct Provider_DataTransferManager {
   Status CopyTensor(const Provider_Tensor& src, Provider_Tensor& dst, int exec_queue_id) const { return g_host->Provider_DataTransferManager__CopyTensor(this, src, dst, exec_queue_id); }
+  const Provider_IDataTransfer* GetProviderDataTransfer(const OrtDevice& src_device, const OrtDevice& dst_device) const { return g_host->Provider_DataTransferManager__GetProviderDataTransfer(this, src_device, dst_device); }
 
   PROVIDER_DISALLOW_ALL(Provider_DataTransferManager)
-};
-
-struct Provider_IDataTransfer {
-  static void operator delete(void* p) { g_host->Provider_IDataTransfer__operator_delete(reinterpret_cast<Provider_IDataTransfer*>(p)); }
-
-  Provider_IDataTransfer() = delete;
-  Provider_IDataTransfer(const Provider_IDataTransfer&) = delete;
-  void operator=(const Provider_IDataTransfer&) = delete;
 };
 
 struct Provider_IndexedSubGraph_MetaDef {
@@ -1021,6 +1019,10 @@ inline Status Provider_OpKernelInfo::GetAttr<float>(const std::string& name, flo
   return GetAttr(name, value);
 }
 
+struct Provider_SessionState {
+  const Provider_DataTransferManager& GetDataTransferManager() const { return g_host->Provider_SessionState__GetDataTransferManager(this); }
+};
+
 struct Provider_Tensor {
   float* MutableData_float() { return g_host->Provider_Tensor__MutableData_float(this); }
   const float* Data_float() const { return g_host->Provider_Tensor__Data_float(this); }
@@ -1031,7 +1033,12 @@ struct Provider_Tensor {
   template <typename T>
   const T* Data() const;
 
+  void* MutableDataRaw() noexcept { return g_host->Provider_Tensor__MutableDataRaw(this); }
+  const void* DataRaw() const noexcept { return g_host->Provider_Tensor__DataRaw(this); }
+
   const TensorShape& Shape() const { return g_host->Provider_Tensor__Shape(this); }
+  size_t SizeInBytes() const { return g_host->Provider_Tensor__SizeInBytes(this); }
+  const OrtMemoryInfo& Location() const { return g_host->Provider_Tensor__Location(this); }
 
   PROVIDER_DISALLOW_ALL(Provider_Tensor)
 };
