@@ -31,8 +31,8 @@ def map_domain(domain):
     return 'UnknownDomain'
 
 
-def extract_ops_from_file(file_path, referred_ops):
-    '''extract ops from file of format: domain;opset;op1,op2...'''
+def extract_ops_from_config(file_path, referred_ops):
+    '''extract ops from config file of format: domain;opset;op1,op2...'''
 
     if not file_path:
         return referred_ops
@@ -124,14 +124,12 @@ def extract_ops_from_model(model_path, referred_ops):
     return referred_ops  # end of extract_ops_from_model(...)
 
 
-def exclude_unused_ops(model_path, file_path, provider_paths):
+def exclude_unused_ops(model_path, config_path, provider_paths):
     '''rewrite multiple provider files'''
 
-    operators = extract_ops_from_file(file_path, extract_ops_from_model(model_path, {}))
+    operators = extract_ops_from_config(config_path, extract_ops_from_model(model_path, {}))
     for provider_path in provider_paths:
         exclude_unused_ops_in_provider(operators, provider_path)
-
-    # end of disable_ops_in_providers(...)
 
 
 def exclude_unused_ops_in_provider(operators, provider_path):
@@ -304,13 +302,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Script to exclude unused operator kernels by disabling their registration in ONNXRuntime."
         "See /docs/Reduced_Operator_Kernel_build.md for more information",
-        usage="Provide either model_path or file_path, or both.")
+        usage="Provide either model_path or config_path, or both.")
 
     parser.add_argument(
         "--model_path", type=str, help="path to folder containing one or more ONNX models")
 
     parser.add_argument(
-        "--file_path", type=str, help="path to configuration file with format of 'domain;opset;op1,op2...'")
+        "--config_path", type=str, help="path to configuration file with format of 'domain;opset;op1,op2...'")
 
     parser.add_argument(
         "--ort_root", type=str, help="path to ONNXRuntime repository root. "
@@ -319,10 +317,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     model_path = os.path.abspath(args.model_path) if args.model_path else ''
-    file_path = os.path.abspath(args.file_path) if args.file_path else ''
+    config_path = os.path.abspath(args.config_path) if args.config_path else ''
     ort_root = os.path.abspath(args.ort_root) if args.ort_root else ''
 
-    if not model_path and not file_path:
+    if not model_path and not config_path:
         log.error('Please specify at least either model path or file path.')
         parser.print_help()
         sys.exit(-1)
@@ -330,5 +328,5 @@ if __name__ == "__main__":
     if not ort_root:
         log.info('ort_root was not specified. Inferring ORT root from location of this script.')
 
-    exclude_unused_ops(model_path, file_path,
+    exclude_unused_ops(model_path, config_path,
                        get_provider_path(ort_root, use_cuda=True))

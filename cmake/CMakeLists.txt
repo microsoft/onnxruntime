@@ -213,15 +213,18 @@ endif()
 # Will expose option in build.py when all pieces are available
 if(onnxruntime_MINIMAL_BUILD)
   add_compile_definitions(ORT_MINIMAL_BUILD)
-  set(onnxruntime_REDUCED_OPS_BUILD ON)  # TODO Defaulting to ON. TBD if we should always do that.
+  set(onnxruntime_REDUCED_OPS_BUILD ON)
   set(onnxruntime_DISABLE_RTTI ON)
 
   if (MSVC)
-    # add MSVC specific flags to reduce build size here
+    # add MSVC specific flags to reduce build size here if needed
   else()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ffunction-sections -fdata-sections")
-    # TODO: May need to use -dead_strip instead of --gc-sections for iOS(XCode)
-    add_link_options(-Wl,--gc-sections)
+    if (CMAKE_HOST_SYSTEM MATCHES "Darwin")
+      add_link_options(-Wl,-dead_strip)
+    else()
+      add_link_options(-Wl,--gc-sections)
+    endif()  
   endif()
 
 endif()
@@ -504,7 +507,7 @@ else()
   endif()
 endif()
 
-if(UNIX AND onnxruntime_ENABLE_LTO)
+if(UNIX AND onnxruntime_ENABLE_LTO AND NOT onnxruntime_PREFER_SYSTEM_LIB)
   #https://github.com/protocolbuffers/protobuf/issues/5923
   target_link_options(protoc PRIVATE "-Wl,--no-as-needed")
 endif()
@@ -699,17 +702,20 @@ if(NOT onnxruntime_USE_FULL_PROTOBUF)
 else()
   set(ONNX_USE_LITE_PROTO OFF CACHE BOOL "" FORCE)
 endif()
+
 if (NOT onnxruntime_MINIMAL_BUILD)
   add_subdirectory(external/onnx)
-  target_compile_definitions(onnx PUBLIC $<TARGET_PROPERTY:onnx_proto,INTERFACE_COMPILE_DEFINITIONS> PRIVATE "__ONNX_DISABLE_STATIC_REGISTRATION")
-  if (NOT onnxruntime_USE_FULL_PROTOBUF)
-    target_compile_definitions(onnx PUBLIC "__ONNX_NO_DOC_STRINGS")
-  endif()
-  set_target_properties(onnx PROPERTIES FOLDER "External/ONNX")
-  set_target_properties(onnx_proto PROPERTIES FOLDER "External/ONNX")
 else()
   include(onnx_minimal)
 endif()
+
+target_compile_definitions(onnx PUBLIC $<TARGET_PROPERTY:onnx_proto,INTERFACE_COMPILE_DEFINITIONS> PRIVATE "__ONNX_DISABLE_STATIC_REGISTRATION")
+if (NOT onnxruntime_USE_FULL_PROTOBUF)
+  target_compile_definitions(onnx PUBLIC "__ONNX_NO_DOC_STRINGS")
+endif()
+set_target_properties(onnx PROPERTIES FOLDER "External/ONNX")
+set_target_properties(onnx_proto PROPERTIES FOLDER "External/ONNX")
+
 if (onnxruntime_USE_MKLML)
   add_definitions(-DUSE_MKLML=1 -DUSE_MKLML_FOR_BLAS=1)
   if (WIN32 OR APPLE)

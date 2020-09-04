@@ -46,7 +46,7 @@ NOTE: The exclusion script will only disable kernel registrations each time it r
 When running the ORT build script there are two arguments that can be used. These may be combined. 
 
   - `--include_ops_by_model=<path to directory containing ONNX model/s\>`
-  - `--include_ops_by_file=<path to configuration file\>`
+  - `--include_ops_by_config=<path to configuration file\>`
 
 `--skip_tests` MUST also be specified.
 
@@ -64,7 +64,7 @@ It can be run in a similar fashion.
 `--ort_root` is the path to the ORT repository root that the kernel registration exclusions should be done in. If not provided it will default to be the repository containing the exclude_unused_ops.py script.
 
 ```
-python exclude_unused_ops.py --model_path d:\ReduceSize\models --file_path d:\ReduceSize\ops_config.txt --ort_root d:\onnxruntime
+python exclude_unused_ops.py --model_path d:\ReduceSize\models --config_path d:\ReduceSize\ops_config.txt --ort_root d:\onnxruntime
 ```
 
 After running the script build ORT as per the build instructions. Remember to specify `--skip-tests`.

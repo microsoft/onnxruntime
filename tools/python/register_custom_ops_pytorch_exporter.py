@@ -43,10 +43,14 @@ def unregister_custom_op():
 
     import torch.onnx.symbolic_registry as sym_registry
 
+    # TODO: replace this once PyTorch supports unregister natively.
     def unregister(name, opset_version):
         ns, kind = name.split("::")
-        if sym_registry.is_registered_op(kind, ns, opset_version):
-            del sym_registry._registry[(ns, opset_version)][kind]
+        from torch.onnx.symbolic_helper import _onnx_stable_opsets
+
+        for version in _onnx_stable_opsets:
+            if version >= opset_version and sym_registry.is_registered_op(kind, ns, version):
+                del sym_registry._registry[(ns, version)][kind]
 
     unregister('::inverse', _onnx_opset_version)
     unregister('::gelu', _onnx_opset_version)
