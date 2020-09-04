@@ -20,7 +20,8 @@ bool IsDebugEnabled();
 void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
                std::shared_ptr<InferenceEngine::CNNNetwork> network,
                std::unordered_map<std::string, int> output_names,
-               std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map);
+               std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map,
+               std::string device_id);
 
 std::shared_ptr<InferenceEngine::CNNNetwork>
 CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const SubGraphContext& subgraph_context, std::map<std::string,
@@ -36,7 +37,7 @@ void FillOutputHelper(Ort::CustomOpApi& ort, OrtValue* out_tensor, std::shared_p
 #endif
 
 InferenceEngine::Precision
-ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type);
+ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type, std::string device_id);
 
 std::vector<OrtValue*> GetOutputTensors(Ort::CustomOpApi& ort,
                                         OrtKernelContext* context, size_t batch_size,

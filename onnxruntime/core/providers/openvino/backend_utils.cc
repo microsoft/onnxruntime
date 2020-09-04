@@ -104,7 +104,7 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const SubGraphCo
   }
 }
 
-InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type) {
+InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type, std::string device_id) {
   ONNX_NAMESPACE::DataType type_string = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(onnx_type);
   if (*type_string == "float" || *type_string == "tensor(float)") {
     return InferenceEngine::Precision::FP32;
@@ -121,7 +121,11 @@ InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::
   } else if (*type_string == "uint8" || *type_string == "tensor(uint8)") {
     return InferenceEngine::Precision::U8;
   } else if (*type_string == "bool" || *type_string == "tensor(bool)") {
-    return InferenceEngine::Precision::U8;
+    if (device_id == "MYRIAD") {
+      return InferenceEngine::Precision::I16;
+    } else {
+      return InferenceEngine::Precision::U8;
+    }
   } else if (*type_string == "int64" || *type_string == "tensor(int64)") {
     return InferenceEngine::Precision::I32;
   } else {
@@ -132,7 +136,8 @@ InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::
 void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
                std::shared_ptr<InferenceEngine::CNNNetwork> network,
                std::unordered_map<std::string, int> output_names,
-               std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map) {
+               std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map,
+               std::string device_id) {
   // Configure input & output
   // Prepare input blobs
 
@@ -143,7 +148,7 @@ void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
   int input_idx = 0;
   for (auto iter = inputInfo.begin(); iter != inputInfo.end(); ++iter, ++input_idx) {
     // Get the onnx index for the corresponding input (ignoring initializers)
-    auto precision = ConvertPrecisionONNXToOpenVINO(model_proto.graph().input(input_idx).type());
+    auto precision = ConvertPrecisionONNXToOpenVINO(model_proto.graph().input(input_idx).type(), device_id);
     iter->second->setPrecision(precision);
   }
 
@@ -157,7 +162,7 @@ void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
     if(it != const_outputs_map.end())
       break;
 #endif
-    auto precision = ConvertPrecisionONNXToOpenVINO(model_proto.graph().output(output_names.at(output_name)).type());
+    auto precision = ConvertPrecisionONNXToOpenVINO(model_proto.graph().output(output_names.at(output_name)).type(), device_id);
     iter->second->setPrecision(precision);
   }
 }
