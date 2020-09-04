@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#define ORT_UNUSED_PARAMETER(x) (x)
-
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;

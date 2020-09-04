@@ -1024,7 +1024,7 @@ struct OrtApi {
                   _In_ const OrtArenaCfg* arena_cfg);
 
   /**
-   * Set the languate projection for collecting telemetry data when Env is created
+   * Set the language projection for collecting telemetry data when Env is created
    * \param projection the source projected language.
   */
   ORT_API2_STATUS(SetLanguageProjection, _In_ const OrtEnv* ort_env, _In_ OrtLanguageProjection projection);
