@@ -361,7 +361,8 @@ int ThreadPool::CurrentThreadId() const {
 void ThreadPool::TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t total, const TensorOpCost& cost_per_unit,
                            const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn) {
 #ifdef _OPENMP
-    if (total == 1) {
+    ORT_ENFORCE(total >= 0);
+    if (total == 1 || total == 0) {
       fn(0, total);
       return;
     }
