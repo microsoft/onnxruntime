@@ -205,10 +205,6 @@ class BertModelTest(unittest.TestCase):
                                             epochs,
                                             use_new_api=False)
 
-                                    print(old_api_loss_ort)
-                                    print(old_api_prediction_scores_ort)
-                                    print(old_api_seq_relationship_score_ort)
-
                                     random.seed(seed)
                                     np.random.seed(seed)
                                     torch.manual_seed(seed)
@@ -226,14 +222,9 @@ class BertModelTest(unittest.TestCase):
                                                 epochs,
                                                 use_new_api=True)
                                     
-                                        print(new_api_loss_ort)
-                                        print(new_api_prediction_scores_ort)
-                                        print(new_api_seq_relationship_score_ort)
-                                        
-                                        atol = 1e-6
-                                        assert_allclose(old_api_loss_ort, new_api_loss_ort, atol=atol)
-                                        assert_allclose(old_api_prediction_scores_ort, new_api_prediction_scores_ort, atol=atol)
-                                        assert_allclose(old_api_seq_relationship_score_ort, new_api_seq_relationship_score_ort, atol=atol)
+                                        assert_allclose(old_api_loss_ort, new_api_loss_ort)
+                                        assert_allclose(old_api_prediction_scores_ort, new_api_prediction_scores_ort)
+                                        assert_allclose(old_api_seq_relationship_score_ort, new_api_seq_relationship_score_ort)
 
 
     def setUp(self):
