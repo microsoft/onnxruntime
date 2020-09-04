@@ -341,7 +341,7 @@ def parse_arguments():
         help="Enable Link Time Optimization")
     parser.add_argument(
         "--use_acl", nargs="?", const="ACL_1905",
-        choices=["ACL_1902", "ACL_1905", "ACL_1908"],
+        choices=["ACL_1902", "ACL_1905", "ACL_1908", "ACL_2002"],
         help="Build with ACL for ARM architectures.")
     parser.add_argument(
         "--use_armnn", action='store_true',
@@ -641,6 +641,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "ON" if args.use_acl == "ACL_1905" else "OFF"),
         "-Donnxruntime_USE_ACL_1908=" + (
             "ON" if args.use_acl == "ACL_1908" else "OFF"),
+        "-Donnxruntime_USE_ACL_2002=" + (
+            "ON" if args.use_acl == "ACL_2002" else "OFF"),
         "-Donnxruntime_USE_ARMNN=" + (
             "ON" if args.use_armnn else "OFF"),
         "-Donnxruntime_ARMNN_RELU_USE_CPU=" + (
@@ -1103,6 +1105,8 @@ def run_training_python_frontend_tests(cwd):
     run_subprocess([
         sys.executable, 'orttraining_test_transformers.py',
         'BertModelTest.test_for_pretraining_full_precision_list_and_dict_input'], cwd=cwd)
+    run_subprocess([sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_orttrainer_frontend.py'], cwd=cwd)
+    run_subprocess([sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_orttrainer_bert_toy_onnx.py'], cwd=cwd)
 
 
 def run_training_python_frontend_e2e_tests(cwd):
@@ -1550,20 +1554,20 @@ def generate_documentation(source_dir, build_dir, configs):
         # Copy the gen_contrib_doc.py.
         shutil.copy(
             os.path.join(source_dir, 'tools', 'python', 'gen_contrib_doc.py'),
-            os.path.join(build_dir, config, config))
+            os.path.join(build_dir, config))
         shutil.copy(
             os.path.join(source_dir, 'tools', 'python', 'gen_opkernel_doc.py'),
-            os.path.join(build_dir, config, config))
+            os.path.join(build_dir, config))
         run_subprocess(
             [sys.executable,
              'gen_contrib_doc.py',
              '--output_path', operator_doc_path],
-            cwd=os.path.join(build_dir, config, config))
+            cwd=os.path.join(build_dir, config))
         run_subprocess(
             [sys.executable,
              'gen_opkernel_doc.py',
              '--output_path', opkernel_doc_path],
-            cwd=os.path.join(build_dir, config, config))
+            cwd=os.path.join(build_dir, config))
     docdiff = ''
     try:
         docdiff = subprocess.check_output(['git', 'diff', opkernel_doc_path])

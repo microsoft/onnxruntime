@@ -23,6 +23,7 @@ class Pool final : public onnxruntime::Pool<T, PoolType> {
   explicit Pool(const OpKernelInfo& info) : onnxruntime::Pool<T, PoolType>(info) {
     provider_ = (const_cast<ArmNNExecutionProvider*>(
         static_cast<const ArmNNExecutionProvider*>(info.GetExecutionProvider())));
+    run = Pool<T, PoolType>::initRuntime();
   }
 
   ~Pool() {
@@ -32,7 +33,7 @@ class Pool final : public onnxruntime::Pool<T, PoolType> {
   Status Compute(OpKernelContext* context) const override;
 
   static armnn::IRuntimePtr initRuntime(){
-    if (Pool::run)
+    if(Pool::run)
       return std::move(Pool::run);
     armnn::IRuntime::CreationOptions options;
     return std::move(armnn::IRuntime::Create(options));
@@ -50,6 +51,7 @@ class MaxPoolV8 final : public onnxruntime::MaxPoolV8 {
   explicit MaxPoolV8(const OpKernelInfo& info) : onnxruntime::MaxPoolV8(info) {
     provider_ = (const_cast<ArmNNExecutionProvider*>(
         static_cast<const ArmNNExecutionProvider*>(info.GetExecutionProvider())));
+    run = MaxPoolV8<T>::initRuntime();
   }
 
   ~MaxPoolV8() {
@@ -59,7 +61,7 @@ class MaxPoolV8 final : public onnxruntime::MaxPoolV8 {
   Status Compute(OpKernelContext* context) const override;
 
   static armnn::IRuntimePtr initRuntime(){
-    if (MaxPoolV8::run)
+    if(MaxPoolV8::run)
       return std::move(MaxPoolV8::run);
     armnn::IRuntime::CreationOptions options;
     return std::move(armnn::IRuntime::Create(options));

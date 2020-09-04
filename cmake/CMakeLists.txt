@@ -97,6 +97,7 @@ option(onnxruntime_USE_ACL "Build with ACL support" OFF)
 option(onnxruntime_USE_ACL_1902 "Build with ACL version 1902 support" OFF)
 option(onnxruntime_USE_ACL_1905 "Build with ACL version 1905 support" OFF)
 option(onnxruntime_USE_ACL_1908 "Build with ACL version 1908 support" OFF)
+option(onnxruntime_USE_ACL_2002 "Build with ACL version 2002 support" OFF)
 option(onnxruntime_USE_ARMNN "Build with ArmNN support" OFF)
 option(onnxruntime_ARMNN_RELU_USE_CPU "Use the CPU implementation for the Relu operator for the ArmNN EP" ON)
 option(onnxruntime_ARMNN_BN_USE_CPU "Use the CPU implementation for the Batch Normalization operator for the ArmNN EP" ON)
@@ -504,7 +505,7 @@ else()
   endif()
 endif()
 
-if(UNIX AND onnxruntime_ENABLE_LTO)
+if(UNIX AND onnxruntime_ENABLE_LTO AND NOT onnxruntime_PREFER_SYSTEM_LIB)
   #https://github.com/protocolbuffers/protobuf/issues/5923
   target_link_options(protoc PRIVATE "-Wl,--no-as-needed")
 endif()
@@ -597,7 +598,7 @@ endfunction()
 set(onnxruntime_EXTERNAL_DEPENDENCIES onnx_proto)
 
 # ACL
-if (onnxruntime_USE_ACL OR onnxruntime_USE_ACL_1902 OR onnxruntime_USE_ACL_1905 OR onnxruntime_USE_ACL_1908)
+if (onnxruntime_USE_ACL OR onnxruntime_USE_ACL_1902 OR onnxruntime_USE_ACL_1905 OR onnxruntime_USE_ACL_1908 OR onnxruntime_USE_ACL_2002)
   set(onnxruntime_USE_ACL ON)
   if(onnxruntime_USE_ACL_1902)
     add_definitions(-DACL_1902=1)
@@ -605,7 +606,11 @@ if (onnxruntime_USE_ACL OR onnxruntime_USE_ACL_1902 OR onnxruntime_USE_ACL_1905 
     if(onnxruntime_USE_ACL_1908)
       add_definitions(-DACL_1908=1)
     else()
-      add_definitions(-DACL_1905=1)
+      if(onnxruntime_USE_ACL_2002)
+        add_definitions(-DACL_2002=1)
+      else()
+        add_definitions(-DACL_1905=1)
+      endif()
     endif()
   endif()
 
@@ -988,30 +993,29 @@ if (onnxruntime_USE_CUDA)
     link_directories(${onnxruntime_CUDNN_HOME}/lib64)
   endif()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${ONNXRUNTIME_CUDA_LIBRARIES})
+  if(NOT CMAKE_CUDA_ARCHITECTURES)
+    if(CMAKE_LIBRARY_ARCHITECTURE STREQUAL "aarch64-linux-gnu")
+      # Support for Jetson/Tegra ARM devices
+      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_53,code=sm_53") # TX1, Nano
+      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_62,code=sm_62") # TX2
+      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_72,code=sm_72") # AGX Xavier, NX Xavier
+    else()
+      # the following compute capabilities are removed in CUDA 11 Toolkit
+      if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 11)
+        set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_30,code=sm_30") # K series
+      endif()
+      # 37, 50 still work in CUDA 11 but are marked deprecated and will be removed in future CUDA version.
+      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_37,code=sm_37") # K80
+      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_50,code=sm_50") # M series
 
-  if(CMAKE_LIBRARY_ARCHITECTURE STREQUAL "aarch64-linux-gnu")
-    # Support for Jetson/Tegra ARM devices
-    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_53,code=sm_53") # TX1, Nano
-    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_62,code=sm_62") # TX2
-    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_72,code=sm_72") # AGX Xavier, NX Xavier
-  else()
-    # the following compute capabilities are removed in CUDA 11 Toolkit
-    if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 11)
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_30,code=sm_30") # K series
-    endif()
-    # 37, 50 still work in CUDA 11 but are marked deprecated and will be removed in future CUDA version.
-    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_37,code=sm_37") # K80
-    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_50,code=sm_50") # M series
-
-    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_52,code=sm_52") # M60
-    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_60,code=sm_60") # P series
-    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_70,code=sm_70") # V series
-
-    if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11)
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_80,code=sm_80") # A series
+      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_52,code=sm_52") # M60
+      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_60,code=sm_60") # P series
+      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_70,code=sm_70") # V series
+      if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11)
+        set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_80,code=sm_80") # A series
+      endif()
     endif()
   endif()
-
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr --default-stream legacy")
   if (NOT WIN32)
     set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} --expt-relaxed-constexpr --compiler-options -fPIC")

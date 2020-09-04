@@ -12,6 +12,7 @@
 #include <fstream>
 #include <sstream>
 #include <atomic>
+#include <mutex>
 #include <gtest/gtest.h>
 #include "test_allocator.h"
 #include "test_fixture.h"

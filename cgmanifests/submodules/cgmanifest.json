@@ -35,8 +35,8 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "39de59d5bca3a226a241b29571abe1493d15d07a",
-          "repositoryUrl": "https://github.com/dcleblanc/SafeInt.git"
+          "commitHash": "0ce2bb56e1ce46264333d75507bf99f2e4c07e3b",
+          "repositoryUrl": "https://github.com/gwang-msft/SafeInt.git"
         },
         "comments": "git submodule at cmake/external/SafeInt/safeint"
       }
