@@ -205,6 +205,10 @@ def generate_files(list, args):
         copy_command = "cp"
         runtimes_target = '" target="runtimes\\linux-'
 
+    runtimes = '{}{}\\{}"'.format(runtimes_target,
+                                 args.target_architecture,
+                                 'uap10.0' if args.is_store_build else 'native')
+
     # Process headers
     files_list.append('<file src=' + '"' + os.path.join(args.sources_path,
                                                         'include\\onnxruntime\\core\\session\\onnxruntime_*.h') +
@@ -274,12 +278,12 @@ def generate_files(list, args):
     # Process onnxruntime import lib, dll, and pdb
     if is_windows_build:
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.lib') +
-                          '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
+                          runtimes)
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.dll') +
-                          '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
+                          runtimes)
         if os.path.exists(os.path.join(args.native_build_path, 'onnxruntime.pdb')):
             files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.pdb') +
-                              '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
+                              runtimes)
     else:
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'nuget-staging/usr/local/lib',
                           'libonnxruntime.so') + '" target="runtimes\\linux-' + args.target_architecture +
@@ -287,9 +291,9 @@ def generate_files(list, args):
 
     if includes_directml:
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.dll') +
-                          '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
+                          '" target="' + runtimes + '" />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.pdb') +
-                          '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
+                          '" target="' + runtimes + '" />')
         files_list.append('<file src=' + '"' + os.path.join(args.packages_path, 'DirectML.3.0.0\\LICENSE.txt') +
                           '" target="DirectML_LICENSE.txt" />')
 
@@ -297,16 +301,16 @@ def generate_files(list, args):
         # Process microsoft.ai.machinelearning import lib, dll, and pdb
         files_list.append('<file src=' + '"' +
                           os.path.join(args.native_build_path, 'microsoft.ai.machinelearning.lib') +
-                          '" target="runtimes\\win-' + args.target_architecture +
-                          '\\native\\Microsoft.AI.MachineLearning.lib" />')
+                          runtimes +
+                          '\\Microsoft.AI.MachineLearning.lib" />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                                                             'microsoft.ai.machinelearning.dll') +
-                          '" target="runtimes\\win-' + args.target_architecture +
-                          '\\native\\Microsoft.AI.MachineLearning.dll" />')
+                          runtimes +
+                          '\\Microsoft.AI.MachineLearning.dll" />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                                                             'microsoft.ai.machinelearning.pdb') +
-                          '" target="runtimes\\win-' + args.target_architecture +
-                          '\\native\\Microsoft.AI.MachineLearning.pdb" />')
+                          runtimes +
+                          '\\Microsoft.AI.MachineLearning.pdb" />')
     # Process execution providers which are built as shared libs
     if args.execution_provider == "tensorrt":
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
@@ -329,26 +333,26 @@ def generate_files(list, args):
         # Process dnnl dependency
         if os.path.exists(os.path.join(args.native_build_path, nuget_dependencies['dnnl'])):
             files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, nuget_dependencies['dnnl']) +
-                              runtimes_target + args.target_architecture + '\\native" />')
+                              runtimes + ' />')
 
         # Process mklml dependency
         if os.path.exists(os.path.join(args.native_build_path, nuget_dependencies['mklml'])):
             files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, nuget_dependencies['mklml']) +
-                              runtimes_target + args.target_architecture + '\\native" />')
+                              runtimes + ' />')
 
         if is_linux() and os.path.exists(os.path.join(args.native_build_path, nuget_dependencies['mklml_1'])):
             files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, nuget_dependencies['mklml_1']) +
-                              runtimes_target + args.target_architecture + '\\native" />')
+                              runtimes + ' />')
 
         # Process libiomp5md dependency
         if os.path.exists(os.path.join(args.native_build_path, nuget_dependencies['openmp'])):
             files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, nuget_dependencies['openmp']) +
-                              runtimes_target + args.target_architecture + '\\native" />')
+                              runtimes + ' />')
 
         # Process tvm dependency
         if os.path.exists(os.path.join(args.native_build_path, nuget_dependencies['tvm'])):
             files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, nuget_dependencies['tvm']) +
-                              runtimes_target + args.target_architecture + '\\native" />')
+                              runtimes + ' />')
 
         # Some tools to be packaged in nightly build only, should not be released
         # These are copied to the runtimes folder for convenience of loading with the dlls
@@ -356,13 +360,13 @@ def generate_files(list, args):
                 os.path.exists(os.path.join(args.native_build_path, nuget_dependencies['onnxruntime_perf_test'])):
             files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                               nuget_dependencies['onnxruntime_perf_test']) +
-                              runtimes_target + args.target_architecture + '\\native" />')
+                              runtimes + ' />')
 
         if args.is_release_build.lower() != 'true' and args.target_architecture == 'x64' and \
                 os.path.exists(os.path.join(args.native_build_path, nuget_dependencies['onnx_test_runner'])):
             files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                               nuget_dependencies['onnx_test_runner']) +
-                              runtimes_target + args.target_architecture + '\\native" />')
+                              runtimes + ' />')
 
     # Process props and targets files
     if is_windowsai_package:

@@ -107,7 +107,7 @@ steps:
           workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
           createLogFile: true
 
-  - ${{ if and(eq(parameters.BuildArch, 'x64'), eq(parameters.BuildForStore, 'false')) }}:
+  - ${{ if and(eq(parameters.BuildArch, 'x64'), eq(parameters.BuildForStore, 'FIXME false')) }}:
     - script: |
         mklink  /D /J $(Build.BinariesDirectory)\RelWithDebInfo\models $(Build.BinariesDirectory)\models
         DIR dist\ /S /B > wheel_filename_file
@@ -213,7 +213,7 @@ steps:
 
   - ${{ if eq(parameters.BuildArch, 'arm64') }}:
     - script: |
-       msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreateWindowsAIPackage /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory) /p:OnnxRuntimeSourceDirectory=$(Build.SourcesDirectory) /p:TargetArchitecture=arm64 /p:IsStoreBuild=$(parameters.BuildForStore) /p:ProtocDirectory=$(Build.BinariesDirectory)\host_protoc\Release
+       msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreateWindowsAIPackage /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory) /p:OnnxRuntimeSourceDirectory=$(Build.SourcesDirectory) /p:TargetArchitecture=arm64 /p:IsStoreBuild=${{ parameters.BuildForStore }} /p:ProtocDirectory=$(Build.BinariesDirectory)\host_protoc\Release
        copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
        copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.snupkg $(Build.ArtifactStagingDirectory)
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
@@ -221,7 +221,7 @@ steps:
 
   - ${{ if eq(parameters.BuildArch, 'arm') }}:
     - script: |
-       msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreateWindowsAIPackage /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory) /p:OnnxRuntimeSourceDirectory=$(Build.SourcesDirectory) /p:TargetArchitecture=arm /p:IsStoreBuild=$(parameters.BuildForStore) /p:ProtocDirectory=$(Build.BinariesDirectory)\host_protoc\Release
+       msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreateWindowsAIPackage /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory) /p:OnnxRuntimeSourceDirectory=$(Build.SourcesDirectory) /p:TargetArchitecture=arm /p:IsStoreBuild=${{ parameters.BuildForStore }} /p:ProtocDirectory=$(Build.BinariesDirectory)\host_protoc\Release
        copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
        copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.snupkg $(Build.ArtifactStagingDirectory)
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
