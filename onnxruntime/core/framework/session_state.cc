@@ -788,8 +788,6 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
   } else {
 #if !defined(ORT_MINIMAL_BUILD)
     ORT_RETURN_IF_ERROR(PopulateKernelCreateInfo(kernel_registry_manager));
-    return FinalizeSessionStateImpl(graph_location, kernel_registry_manager, nullptr, session_options,
-                                    remove_initializers);
 #else
     ORT_UNUSED_PARAMETER(graph_location);
     ORT_UNUSED_PARAMETER(kernel_registry_manager);
@@ -858,7 +856,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   ORT_RETURN_IF_ERROR(CreateKernels(kernel_registry_manager));
 
   const auto disable_prepacking =
-      GetSessionConfigOrDefault(session_options, ORT_SESSION_OPTIONS_CONFIG_DISABLEPREPACKING, "0");
+      session_options.GetConfigOrDefault(ORT_SESSION_OPTIONS_CONFIG_DISABLEPREPACKING, "0");
 
   if (disable_prepacking != "1") {
     ORT_RETURN_IF_ERROR(PrepackInitializedConstantTensors());

@@ -80,17 +80,17 @@ if [[ $SYS_LONG_BIT = "64" && "$GLIBC_VERSION" -gt "9" ]]; then
   tar --strip 1 -xf /tmp/azcopy/azcopy.tar.gz -C /tmp/azcopy
   cp /tmp/azcopy/azcopy /usr/bin
   echo "Installing cmake"
-  GetFile https://github.com/Kitware/CMake/releases/download/v3.16.1/cmake-3.16.1-Linux-x86_64.tar.gz /tmp/src/cmake-3.16.1-Linux-x86_64.tar.gz
-  tar -zxf /tmp/src/cmake-3.16.1-Linux-x86_64.tar.gz --strip=1 -C /usr
+  GetFile https://github.com/Kitware/CMake/releases/download/v3.18.2/cmake-3.18.2-Linux-x86_64.tar.gz /tmp/src/cmake-3.18.2-Linux-x86_64.tar.gz
+  tar -zxf /tmp/src/cmake-3.18.2-Linux-x86_64.tar.gz --strip=1 -C /usr
   echo "Installing Node.js"
   GetFile https://nodejs.org/dist/v12.16.3/node-v12.16.3-linux-x64.tar.xz /tmp/src/node-v12.16.3-linux-x64.tar.xz
   tar -xf /tmp/src/node-v12.16.3-linux-x64.tar.xz --strip=1 -C /usr
 else
   echo "Installing cmake"
-  GetFile https://github.com/Kitware/CMake/releases/download/v3.16.1/cmake-3.16.1.tar.gz /tmp/src/cmake-3.16.1.tar.gz
-  tar -xf /tmp/src/cmake-3.16.1.tar.gz -C /tmp/src
+  GetFile https://github.com/Kitware/CMake/releases/download/v3.18.2/cmake-3.18.2.tar.gz /tmp/src/cmake-3.18.2.tar.gz
+  tar -xf /tmp/src/cmake-3.18.2.tar.gz -C /tmp/src
   pushd .
-  cd /tmp/src/cmake-3.16.1
+  cd /tmp/src/cmake-3.18.2
   ./bootstrap --prefix=/usr --parallel=$(getconf _NPROCESSORS_ONLN) --system-bzip2 --system-curl --system-zlib --system-expat
   make -j$(getconf _NPROCESSORS_ONLN)
   make install
@@ -128,7 +128,7 @@ elif [ $DEVICE_TYPE = "gpu" ]; then
     fi
 fi
 
-
 cd /
 rm -rf /tmp/src
-
+rm -rf /usr/include/google
+rm -rf /usr/$LIBDIR/libproto*

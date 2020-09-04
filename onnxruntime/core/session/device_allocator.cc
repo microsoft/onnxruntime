@@ -65,37 +65,41 @@ ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterAllocator, _Inout_ OrtEnv* env, _I
 #endif
 
   AllocatorPtr allocator_ptr;
-  size_t max_mem = std::numeric_limits<size_t>::max();
-
   // create appropriate DeviceAllocatorRegistrationInfo and allocator based on create_arena
   if (create_arena) {
-    ArenaExtendStrategy arena_extend_strategy = BFCArena::DEFAULT_ARENA_EXTEND_STRATEGY;
-    int initial_chunk_size_bytes = BFCArena::DEFAULT_INITIAL_CHUNK_SIZE_BYTES;
-    int max_dead_bytes_per_chunk = BFCArena::DEFAULT_MAX_DEAD_BYTES_PER_CHUNK;
+    // defaults in case arena_cfg is nullptr (not supplied by the user)
+    size_t max_mem = 0;
+    int arena_extend_strategy = -1;
+    int initial_chunk_size_bytes = -1;
+    int max_dead_bytes_per_chunk = -1;
+
+    // override with values from the user supplied arena_cfg object
     if (arena_cfg) {
-      if (arena_cfg->max_mem != -1) max_mem = arena_cfg->max_mem;
-      if (arena_cfg->arena_extend_strategy == 0) {
-        arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo;
-      } else if (arena_cfg->arena_extend_strategy == 1) {
-        arena_extend_strategy = ArenaExtendStrategy::kSameAsRequested;
+      max_mem = arena_cfg->max_mem;
+
+      arena_extend_strategy = arena_cfg->arena_extend_strategy;
+      // validate the value here
+      if (!(arena_extend_strategy == -1 || arena_extend_strategy == 0 || arena_extend_strategy == 1)) {
+        return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                     "Received invalid value for arena extend strategy."
+                                     " Valid values can be either 0, 1 or -1.");
       }
-      if (arena_cfg->initial_chunk_size_bytes != -1) initial_chunk_size_bytes = arena_cfg->initial_chunk_size_bytes;
-      if (arena_cfg->max_dead_bytes_per_chunk != -1) max_dead_bytes_per_chunk = arena_cfg->max_dead_bytes_per_chunk;
+
+      initial_chunk_size_bytes = arena_cfg->initial_chunk_size_bytes;
+      max_dead_bytes_per_chunk = arena_cfg->max_dead_bytes_per_chunk;
     }
 
-    DeviceAllocatorRegistrationInfo device_info{
-        OrtMemTypeDefault,
+    OrtArenaCfg l_arena_cfg{max_mem, arena_extend_strategy, initial_chunk_size_bytes, max_dead_bytes_per_chunk};
+    AllocatorCreationInfo alloc_creation_info{
         [mem_info](int) { return onnxruntime::make_unique<TAllocator>(*mem_info); },
-        max_mem,
-        arena_extend_strategy,
-        initial_chunk_size_bytes,
-        max_dead_bytes_per_chunk};
-    allocator_ptr = CreateAllocator(device_info, 0, create_arena);
+        0,
+        create_arena,
+        l_arena_cfg};
+    allocator_ptr = CreateAllocator(alloc_creation_info);
   } else {
-    DeviceAllocatorRegistrationInfo device_info{OrtMemTypeDefault,
-                                                [](int) { return onnxruntime::make_unique<TAllocator>(); },
-                                                max_mem};
-    allocator_ptr = CreateAllocator(device_info, 0, create_arena);
+    AllocatorCreationInfo alloc_creation_info{[](int) { return onnxruntime::make_unique<TAllocator>(); },
+                                              0, create_arena};
+    allocator_ptr = CreateAllocator(alloc_creation_info);
   }
 
   auto st = env->RegisterAllocator(allocator_ptr);

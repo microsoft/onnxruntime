@@ -596,10 +596,10 @@ common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
   model->model_proto_.set_model_version(fbs_model.model_version());
   model->model_proto_.set_ir_version(fbs_model.ir_version());
 #else
-  experimental::utils::LoadStringFromOrtFormat(producer_name_, fbs_model.producer_name());
-  experimental::utils::LoadStringFromOrtFormat(producer_version_, fbs_model.producer_version());
-  experimental::utils::LoadStringFromOrtFormat(domain_, fbs_model.domain());
-  experimental::utils::LoadStringFromOrtFormat(doc_string_, fbs_model.doc_string());
+  experimental::utils::LoadStringFromOrtFormat(model->producer_name_, fbs_model.producer_name());
+  experimental::utils::LoadStringFromOrtFormat(model->producer_version_, fbs_model.producer_version());
+  experimental::utils::LoadStringFromOrtFormat(model->domain_, fbs_model.domain());
+  experimental::utils::LoadStringFromOrtFormat(model->doc_string_, fbs_model.doc_string());
   model->model_version_ = fbs_model.model_version();
   model->ir_version_ = fbs_model.ir_version();
 #endif
