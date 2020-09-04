@@ -18,6 +18,7 @@ set(mlas_common_srcs
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/compute.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/quantize.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/qladd.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/qlmul.cpp
 )
 
 if(MSVC)
