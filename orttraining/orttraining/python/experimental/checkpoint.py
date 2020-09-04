@@ -11,11 +11,11 @@ import warnings
 ################################################################################
 
 
-def experimental_state_dict(ort_trainer):
+def experimental_state_dict(ort_trainer, include_optimizer_state=True):
     if not ort_trainer._training_session:
         warnings.warn("ONNX Runtime training session is not initialized yet. "
                         "Please run train_step or eval_step at least once before calling state_dict().")
-        return {}
+        return ort_trainer._state_dict
 
     # extract trained weights
     session_state = ort_trainer._training_session.get_state()
@@ -28,10 +28,11 @@ def experimental_state_dict(ort_trainer):
         if n.name not in torch_state:
             torch_state[n.name] = torch.from_numpy(np.array(onnx.numpy_helper.to_array(n)))
 
-    # Need to remove redundant initializers and name suffices to map back to original torch state names
-    torch_state_to_return = {key: torch_state[key] for key in ort_trainer._original_model_state_keys if key in torch_state} \
-                            if ort_trainer._original_model_state_keys else torch_state
-    return torch_state_to_return
+    # Need to remove redundant (optimizer) initializers to map back to original torch state names
+    if not include_optimizer_state and ort_trainer._torch_state_dict_keys:
+        return {key: torch_state[key] for key in ort_trainer._torch_state_dict_keys if key in torch_state}
+    return torch_state
+
 
 def experimental_load_state_dict(ort_trainer, state_dict, strict=False):
     # Note: It may happen ONNX model has not yet been initialized
@@ -42,7 +43,7 @@ def experimental_load_state_dict(ort_trainer, state_dict, strict=False):
         ort_trainer._load_state_dict_strict = strict
         return
 
-    # update onnx model from loaded state dict
+    # Update onnx model from loaded state dict
     cur_initializers_names = [n.name for n in ort_trainer._onnx_model.graph.initializer]
     new_initializers = {}
 
@@ -63,11 +64,11 @@ def experimental_load_state_dict(ort_trainer, state_dict, strict=False):
     ort_trainer._training_session.load_state(session_state, strict)
 
 
-def experimental_save_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", checkpoint_state_dict=None):
-    if checkpoint_state_dict == None:
-        checkpoint_state_dict = {'model': experimental_state_dict(ort_trainer)}
+def experimental_save_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", checkpoint_state_dict=None, include_optimizer_state=True):
+    if checkpoint_state_dict is None:
+        checkpoint_state_dict = {'model': experimental_state_dict(ort_trainer, include_optimizer_state)}
     else:
-        checkpoint_state_dict.update({'model': experimental_state_dict(ort_trainer)})
+        checkpoint_state_dict.update({'model': experimental_state_dict(ort_trainer, include_optimizer_state)})
 
     assert os.path.exists(checkpoint_dir), f"checkpoint_dir ({checkpoint_dir}) directory doesn't exist"
 

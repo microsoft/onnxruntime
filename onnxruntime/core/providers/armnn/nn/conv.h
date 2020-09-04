@@ -23,6 +23,7 @@ class Conv : public onnxruntime::Conv<T> {
   explicit Conv(const OpKernelInfo& info) : onnxruntime::Conv<T>(info), conv_attrs_(info) {
     provider_ = (const_cast<ArmNNExecutionProvider*>(
         static_cast<const ArmNNExecutionProvider*>(info.GetExecutionProvider())));
+    run = Conv<T>::initRuntime();
   }
 
   ~Conv() {
@@ -32,10 +33,10 @@ class Conv : public onnxruntime::Conv<T> {
   Status Compute(OpKernelContext* context) const override;
 
   static armnn::IRuntimePtr initRuntime(){
-  	if (Conv::run)
-  		return std::move(Conv::run);
-	armnn::IRuntime::CreationOptions options;
-  	return std::move(armnn::IRuntime::Create(options));
+    if(Conv::run)
+      return std::move(Conv::run);
+    armnn::IRuntime::CreationOptions options;
+    return std::move(armnn::IRuntime::Create(options));
   }
 
  protected:

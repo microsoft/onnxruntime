@@ -107,7 +107,12 @@ class KernelDef {
     hash_ = 0;  // reset in case this is called multiple times
     HashCombine(hash_, op_name_);
     HashCombine(hash_, op_since_version_start_);
-    HashCombine(hash_, op_since_version_end_);
+    // If we include op_since_version_end_ the hash of an existing op changes when it's superseded.
+    // e.g. Unsqueeze 11 had no end version until Unsqueeze 13, at which point the existing op is changed to have
+    // an end version of 12. That would result in a new ORT build having a different hash for Unsqueeze 11 and a
+    // previously serialized ORT format model wouldn't find the kernel. In order to select the kernel to include
+    // in the ORT model the full OpSchema info is used, so it's safe to exclude op_since_version_end_ from the hash.
+    // HashCombine(hash_, op_since_version_end_);
     HashCombine(hash_, op_domain_);
     HashCombine(hash_, provider_type_);
     for (const auto& key_value : type_constraints_) {

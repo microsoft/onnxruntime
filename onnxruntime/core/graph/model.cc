@@ -2,7 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/framework/tensorprotoutils.h"
+#include "core/graph/graph_flatbuffers_utils.h"
 #include "core/graph/model.h"
+#include "core/graph/model_load_utils.h"
 #include <memory>
 #include "core/common/logging/logging.h"
 
@@ -28,6 +30,7 @@
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime;
 using namespace onnxruntime::common;
+using namespace onnxruntime::experimental;
 
 namespace onnxruntime {
 
@@ -58,14 +61,21 @@ Model::Model(const std::string& graph_name,
     schema_registry->RegisterRegistry(schema_collection);
   }
 
+  auto allow_released_opsets_only =
+      model_load_utils::IsAllowReleasedONNXOpsetsOnlySet();
   auto* p_domain_to_version = &domain_to_version;
-  std::unordered_map<std::string, int> domain_to_version_static;
+  DomainToVersionMap domain_to_version_static;
+  domain_to_version_static = allow_released_opsets_only
+                                 ? schema_registry->GetLastReleasedOpsetVersions(is_onnx_domain_only)
+                                 : schema_registry->GetLatestOpsetVersions(is_onnx_domain_only);
   if (p_domain_to_version->empty()) {
-    domain_to_version_static = schema_registry->GetLatestOpsetVersions(is_onnx_domain_only);
     p_domain_to_version = &domain_to_version_static;
   }
 
   for (const auto& domain : *p_domain_to_version) {
+    model_load_utils::ValidateOpsetForDomain(
+        domain_to_version_static, logger, allow_released_opsets_only,
+        domain.first, domain.second);
     const gsl::not_null<OperatorSetIdProto*> opset_id_proto{model_proto_.add_opset_import()};
     opset_id_proto->set_domain(domain.first);
     opset_id_proto->set_version(domain.second);
@@ -111,10 +121,15 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path, const IOnnx
     }
   }
 
+  bool allow_official_onnx_release_only =
+      model_load_utils::IsAllowReleasedONNXOpsetsOnlySet();
+  const auto onnx_released_versions =
+      schema_registry->GetLastReleasedOpsetVersions(false);
+
   std::unordered_map<std::string, int> domain_to_version;
   for (auto& opSet : model_proto_.opset_import()) {
     const auto& domain = opSet.domain();
-    const auto version = opSet.version();
+    const auto version = gsl::narrow_cast<int>(opSet.version());
     // empty domain and 'ai.onnx' are equivalent
     if ((domain.empty() || domain == kOnnxDomainAlias) && version < 7) {
       // TODO: Check if we can upgrade all the current opset 6 models that are being tested
@@ -127,17 +142,23 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path, const IOnnx
                             << " model may run depending upon legacy support "
                                "of some older opset version operators.";
     }
+
+    model_load_utils::ValidateOpsetForDomain(onnx_released_versions, logger,
+                                             allow_official_onnx_release_only, domain, version);
+
     // We need to overwrite the domain here with ("") or else the loop below will try to find ("")
     // in the map and if not found (when domain == kOnnxDomainAlias), adds an entry for ("", 11).
     // This effectively ignores the opset version specified by the model for the onnx domain.
     if (domain == kOnnxDomainAlias) {
-      domain_to_version[kOnnxDomain] = gsl::narrow_cast<int>(version);
+      domain_to_version[kOnnxDomain] = version;
     } else {
-      domain_to_version[domain] = gsl::narrow_cast<int>(version);
+      domain_to_version[domain] = version;
     }
   }
 
-  auto domain_map = schema_registry->GetLatestOpsetVersions(false);
+  auto domain_map = allow_official_onnx_release_only
+                        ? schema_registry->GetLastReleasedOpsetVersions(false)
+                        : schema_registry->GetLatestOpsetVersions(false);
   for (const auto& domain : domain_map) {
     if (domain_to_version.find(domain.first) == domain_to_version.end()) {
       domain_to_version[domain.first] = domain.second;
@@ -520,6 +541,93 @@ Status Model::Save(Model& model, int p_fd) {
   return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf serialization failed.");
 }
 
+common::Status Model::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
+                                      flatbuffers::Offset<fbs::Model>& fbs_model) const {
+  auto producer_name = builder.CreateString(model_proto_.producer_name());
+  auto producer_version = builder.CreateString(model_proto_.producer_version());
+  auto domain = builder.CreateString(model_proto_.domain());
+  auto doc_string = builder.CreateString(model_proto_.doc_string());
+
+  std::vector<flatbuffers::Offset<fbs::OperatorSetId>> op_set_ids_vec;
+  op_set_ids_vec.reserve(model_proto_.opset_import().size());
+  for (const auto& entry : model_proto_.opset_import()) {
+    auto op_set_domain = builder.CreateSharedString(entry.domain());
+    fbs::OperatorSetIdBuilder ob(builder);
+    ob.add_domain(op_set_domain);
+    ob.add_version(entry.version());
+    op_set_ids_vec.push_back(ob.Finish());
+  }
+  auto op_set_ids = builder.CreateVector(op_set_ids_vec);
+
+  flatbuffers::Offset<fbs::Graph> fbs_graph;
+  ORT_RETURN_IF_ERROR(graph_->SaveToOrtFormat(builder, fbs_graph));
+
+  fbs::ModelBuilder mb(builder);
+  mb.add_ir_version(model_proto_.ir_version());
+  mb.add_opset_import(op_set_ids);
+  mb.add_producer_name(producer_name);
+  mb.add_producer_version(producer_version);
+  mb.add_domain(domain);
+  mb.add_model_version(model_proto_.model_version());
+  mb.add_doc_string(doc_string);
+  mb.add_graph(fbs_graph);
+
+  // add graph
+  fbs_model = mb.Finish();
+
+  return Status::OK();
+}
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
+
+Model::Model() : model_path_{} {
+}
+
+common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
+                                        const logging::Logger& logger,
+                                        std::unique_ptr<Model>& model) {
+  model.reset(new Model());
+
+#if !defined(ORT_MINIMAL_BUILD)
+  experimental::utils::LoadStringFromOrtFormat(*model->model_proto_.mutable_producer_name(), fbs_model.producer_name());
+  experimental::utils::LoadStringFromOrtFormat(*model->model_proto_.mutable_producer_version(), fbs_model.producer_version());
+  experimental::utils::LoadStringFromOrtFormat(*model->model_proto_.mutable_domain(), fbs_model.domain());
+  experimental::utils::LoadStringFromOrtFormat(*model->model_proto_.mutable_doc_string(), fbs_model.doc_string());
+  model->model_proto_.set_model_version(fbs_model.model_version());
+  model->model_proto_.set_ir_version(fbs_model.ir_version());
+#else
+  experimental::utils::LoadStringFromOrtFormat(model->producer_name_, fbs_model.producer_name());
+  experimental::utils::LoadStringFromOrtFormat(model->producer_version_, fbs_model.producer_version());
+  experimental::utils::LoadStringFromOrtFormat(model->domain_, fbs_model.domain());
+  experimental::utils::LoadStringFromOrtFormat(model->doc_string_, fbs_model.doc_string());
+  model->model_version_ = fbs_model.model_version();
+  model->ir_version_ = fbs_model.ir_version();
+#endif
+
+  std::unordered_map<std::string, int> domain_to_version;
+  auto fbs_op_set_ids = fbs_model.opset_import();
+  ORT_RETURN_IF(nullptr == fbs_op_set_ids, "Model must have opset imports. Invalid ORT format model.");
+
+  for (const auto* entry : *fbs_op_set_ids) {
+    const auto* fbs_domain = entry->domain();
+    ORT_RETURN_IF(nullptr == fbs_domain, "opset import domain is null. Invalid ORT format model.");
+
+    std::string domain = fbs_domain->str();
+
+    // perform same aliasing that we do when loading an ONNX format model
+    if (domain == kOnnxDomainAlias) {
+      domain_to_version[kOnnxDomain] = gsl::narrow_cast<int>(entry->version());
+    } else {
+      domain_to_version[domain] = gsl::narrow_cast<int>(entry->version());
+    }
+  }
+
+  auto fbs_graph = fbs_model.graph();
+  ORT_RETURN_IF(nullptr == fbs_graph, "Graph is null. Invalid ORT format model.");
+
+  ORT_RETURN_IF_ERROR(Graph::LoadFromOrtFormat(*fbs_graph, *model, domain_to_version, logger, model->graph_));
+
+  return Status::OK();
+}
 
 }  // namespace onnxruntime

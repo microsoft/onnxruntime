@@ -16,7 +16,7 @@
     * [Intel DNNL/MKL-ML](#DNNL-and-MKLML)
     * [Intel nGraph](#nGraph)
     * [Intel OpenVINO](#openvino)
-    * [Android NNAPI](#Android-NNAPI)
+    * [Android NNAPI](#Android-NNAPI-Execution-Provider)
     * [Nuphar Model Compiler](#Nuphar)
     * [DirectML](#DirectML)
     * [ARM Compute Library](#ARM-Compute-Library)
@@ -468,7 +468,7 @@ alias cmake="/usr/bin/cmake -DCMAKE_TOOLCHAIN_FILE=$OECORE_NATIVE_SYSROOT/usr/sh
 cmake ../onnxruntime-arm-upstream/cmake -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc -Donnxruntime_RUN_ONNX_TESTS=OFF -Donnxruntime_GENERATE_TEST_REPORTS=ON -Donnxruntime_DEV_MODE=ON -DPYTHON_EXECUTABLE=/usr/bin/python3 -Donnxruntime_USE_CUDA=OFF -Donnxruntime_USE_NSYNC=OFF -Donnxruntime_CUDNN_HOME= -Donnxruntime_USE_JEMALLOC=OFF -Donnxruntime_ENABLE_PYTHON=OFF -Donnxruntime_BUILD_CSHARP=OFF -Donnxruntime_BUILD_SHARED_LIB=ON -Donnxruntime_USE_EIGEN_FOR_BLAS=ON -Donnxruntime_USE_OPENBLAS=OFF -Donnxruntime_USE_ACL=ON -Donnxruntime_USE_DNNL=OFF -Donnxruntime_USE_MKLML=OFF -Donnxruntime_USE_OPENMP=ON -Donnxruntime_USE_TVM=OFF -Donnxruntime_USE_LLVM=OFF -Donnxruntime_ENABLE_MICROSOFT_INTERNAL=OFF -Donnxruntime_USE_BRAINSLICE=OFF -Donnxruntime_USE_NUPHAR=OFF -Donnxruntime_USE_EIGEN_THREADPOOL=OFF -Donnxruntime_BUILD_UNIT_TESTS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
 ```
 The ```-Donnxruntime_USE_ACL=ON``` option will use, by default, the 19.05 version of the Arm Compute Library. To set the right version you can use:
-```-Donnxruntime_USE_ACL_1902=ON```, ```-Donnxruntime_USE_ACL_1905=ON``` or ```-Donnxruntime_USE_ACL_1908=ON```;
+```-Donnxruntime_USE_ACL_1902=ON```, ```-Donnxruntime_USE_ACL_1905=ON```, ```-Donnxruntime_USE_ACL_1908=ON``` or ```-Donnxruntime_USE_ACL_2002=ON```;
 
 2. Build ONNX Runtime library, test and performance application:
 ```
@@ -616,26 +616,35 @@ The Vitis-AI execution provider is only supported on Linux.
 OnnxRuntime supports build options for enabling debugging of intermediate tensor shapes and data.
 
 #### Build Instructions
-Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUT to one of the values below.
+Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUT to build with this enabled.
 
 **Linux**
 ```
-./build.sh --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=VALUE
+./build.sh --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1
 ```
 
 **Windows**
 ```
-.\build.bat --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=VALUE
+.\build.bat --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1
 ```
 
-Values:
-* **0**: Disables this functionality if previously enabled; alternatively, delete CMakeCache.txt instead of setting this to 0
-* **1**: Dump tensor input/output shapes for all nodes to stdout
-* **2**: Dump tensor input/output shapes and output data for all nodes to stdout
+#### Configuration
+The debug dump behavior can be controlled with several environment variables.
+See [onnxruntime/core/framework/debug_node_inputs_outputs_utils.h](./onnxruntime/core/framework/debug_node_inputs_outputs_utils.h) for details.
 
+##### Examples
 
+To specify that node output data should be dumped (to stdout by default), set this environment variable:
+```
+ORT_DEBUG_NODE_IO_DUMP_OUTPUT_DATA=1
+```
 
-
+To specify that node output data should be dumped to files for nodes with name "Foo" or "Bar", set these environment variables:
+```
+ORT_DEBUG_NODE_IO_DUMP_OUTPUT_DATA=1
+ORT_DEBUG_NODE_IO_NODE_NAME_FILTER="Foo;Bar"
+ORT_DEBUG_NODE_IO_DUMP_DATA_TO_FILES=1
+```
 
 ---
 

@@ -187,6 +187,13 @@ struct Provider_IExecutionProvider_Router_Impl : Provider_IExecutionProvider_Rou
     return std::make_shared<Provider_IAllocator_Impl>(IExecutionProvider::GetAllocator(id, mem_type));
   }
 
+  AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override {
+    auto allocator = outer_->Provider_GetAllocator(id, mem_type);
+    if (!allocator)
+      return nullptr;
+    return static_cast<Provider_IAllocator_Impl*>(allocator.get())->p_;
+  }
+
   std::unique_ptr<Provider_IDataTransfer> Provider_GetDataTransfer() const override {
     return std::unique_ptr<Provider_IDataTransfer>(reinterpret_cast<Provider_IDataTransfer*>(IExecutionProvider::GetDataTransfer().release()));
   }
@@ -215,16 +222,16 @@ struct ProviderHostImpl : ProviderHost {
     return onnxruntime::make_unique<Provider_OrtMemoryInfo_Impl>(name_, type_, device_ ? static_cast<Provider_OrtDevice_Impl*>(device_)->v_ : OrtDevice(), id_, mem_type_);
   }
 
-  Provider_AllocatorPtr CreateAllocator(const Provider_DeviceAllocatorRegistrationInfo& info,
-                                        OrtDevice::DeviceId device_id = 0,
-                                        bool use_arena = true) override {
-    DeviceAllocatorRegistrationInfo info_real{
-        info.mem_type, [&info](int value) {
+  Provider_AllocatorPtr CreateAllocator(const Provider_AllocatorCreationInfo& info) override {
+    AllocatorCreationInfo info_real{
+        [&info](int value) {
           return std::move(static_cast<Provider_IDeviceAllocator_Impl*>(&*info.factory(value))->p_);
         },
-        info.max_mem};
+        info.device_id,
+        info.use_arena,
+        info.arena_cfg};
 
-    return std::make_shared<Provider_IAllocator_Impl>(onnxruntime::CreateAllocator(info_real, device_id, use_arena));
+    return std::make_shared<Provider_IAllocator_Impl>(onnxruntime::CreateAllocator(info_real));
   }
 
   std::unique_ptr<Provider_IDeviceAllocator> CreateCPUAllocator(

@@ -341,7 +341,7 @@ def parse_arguments():
         help="Enable Link Time Optimization")
     parser.add_argument(
         "--use_acl", nargs="?", const="ACL_1905",
-        choices=["ACL_1902", "ACL_1905", "ACL_1908"],
+        choices=["ACL_1902", "ACL_1905", "ACL_1908", "ACL_2002"],
         help="Build with ACL for ARM architectures.")
     parser.add_argument(
         "--use_armnn", action='store_true',
@@ -641,6 +641,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "ON" if args.use_acl == "ACL_1905" else "OFF"),
         "-Donnxruntime_USE_ACL_1908=" + (
             "ON" if args.use_acl == "ACL_1908" else "OFF"),
+        "-Donnxruntime_USE_ACL_2002=" + (
+            "ON" if args.use_acl == "ACL_2002" else "OFF"),
         "-Donnxruntime_USE_ARMNN=" + (
             "ON" if args.use_armnn else "OFF"),
         "-Donnxruntime_ARMNN_RELU_USE_CPU=" + (
@@ -1220,7 +1222,10 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             ctest_cmd = [ctest_path, "--build-config", config, "--verbose"]
             run_subprocess(ctest_cmd, cwd=cwd, dll_path=dll_path)
 
-        if args.enable_pybind:
+        if args.enable_pybind and not\
+           args.include_ops_by_model and not\
+           args.include_ops_by_file:
+
             # Disable python tests for TensorRT because many tests are
             # not supported yet.
             if args.use_tensorrt:
@@ -1547,20 +1552,20 @@ def generate_documentation(source_dir, build_dir, configs):
         # Copy the gen_contrib_doc.py.
         shutil.copy(
             os.path.join(source_dir, 'tools', 'python', 'gen_contrib_doc.py'),
-            os.path.join(build_dir, config, config))
+            os.path.join(build_dir, config))
         shutil.copy(
             os.path.join(source_dir, 'tools', 'python', 'gen_opkernel_doc.py'),
-            os.path.join(build_dir, config, config))
+            os.path.join(build_dir, config))
         run_subprocess(
             [sys.executable,
              'gen_contrib_doc.py',
              '--output_path', operator_doc_path],
-            cwd=os.path.join(build_dir, config, config))
+            cwd=os.path.join(build_dir, config))
         run_subprocess(
             [sys.executable,
              'gen_opkernel_doc.py',
              '--output_path', opkernel_doc_path],
-            cwd=os.path.join(build_dir, config, config))
+            cwd=os.path.join(build_dir, config))
     docdiff = ''
     try:
         docdiff = subprocess.check_output(['git', 'diff', opkernel_doc_path])
@@ -1610,17 +1615,13 @@ def main():
     if args.skip_tests:
         args.test = False
 
-    if (args.include_ops_by_model and len(args.include_ops_by_model) > 0) or\
-       (args.include_ops_by_file and len(args.include_ops_by_file) > 0):
+    if args.include_ops_by_model or args.include_ops_by_file:
 
         from exclude_unused_ops import exclude_unused_ops, get_provider_path
-
         include_ops_by_model = args.include_ops_by_model if args.include_ops_by_model else ''
         include_ops_by_file = args.include_ops_by_file if args.include_ops_by_file else ''
-
         exclude_unused_ops(include_ops_by_model, include_ops_by_file, get_provider_path(use_cuda=args.use_cuda))
-
-        args.test = False  # disable tests since we don't know which ops are enabled
+        cmake_extra_defines.append('onnxruntime_REDUCED_OPS_BUILD=ON')
 
     if args.use_tensorrt:
         args.use_cuda = True

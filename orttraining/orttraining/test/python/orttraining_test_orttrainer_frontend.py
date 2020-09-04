@@ -6,14 +6,14 @@ import onnx
 import os
 import pytest
 import torch
-
+import torch.nn.functional as F
 
 from onnxruntime import set_seed
 from onnxruntime.capi.ort_trainer import IODescription as Legacy_IODescription,\
                                          ModelDescription as Legacy_ModelDescription,\
                                          LossScaler as Legacy_LossScaler,\
                                          ORTTrainer as Legacy_ORTTrainer
-from onnxruntime.experimental import _utils, amp, optim, orttrainer, TrainStepInfo,\
+from onnxruntime.experimental import _utils, amp, checkpoint, optim, orttrainer, TrainStepInfo,\
                                       model_desc_validation as md_val,\
                                       orttrainer_options as orttrainer_options
 import _test_commons,_test_helpers
@@ -105,7 +105,8 @@ def testORTTrainerOptionsDefaultValues(test_input):
         '_internal_use': {
             'enable_internal_postprocess': True,
             'extra_postprocess': None,
-            'onnx_opset_version' : 12
+            'onnx_opset_version' : 12,
+            'enable_onnx_contrib_ops': True,
         }
     }
 
@@ -783,6 +784,30 @@ def testORTTrainerDynamicShape(dynamic_axes):
     assert trainer._onnx_model is not None
 
 
+@pytest.mark.parametrize('enable_onnx_contrib_ops', [
+    (True),
+    (False),
+])
+def testORTTrainerInternalUseContribOps(enable_onnx_contrib_ops):
+    # Common setup
+    device = 'cuda'
+
+    # Setup ORTTrainer
+    options = orttrainer.ORTTrainerOptions({"_internal_use": {"enable_onnx_contrib_ops": enable_onnx_contrib_ops}})
+    model, model_desc, my_loss, batcher_fn,\
+        train_data, _, _ = _load_pytorch_transformer_model(device)
+    optim_config = optim.LambConfig(lr=0.001)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
+
+    # Training loop
+    data, targets = batcher_fn(train_data, 0)
+    if not enable_onnx_contrib_ops:
+        with pytest.raises(Exception) as e_info:
+            _, _ = trainer.train_step(data, targets)
+    else:
+        _, _ = trainer.train_step(data, targets)
+
+
 @pytest.mark.parametrize("model_params", [
     (['decoder.weight',
       'transformer_encoder.layers.0.linear1.bias',
@@ -824,6 +849,121 @@ def testORTTrainerFrozenWeights(model_params):
     session_state = trainer._training_session.get_state()
     assert not all([param in session_state for param in model_params])
 
+
+@pytest.mark.parametrize("loss_scaler, optimizer_config, gradient_accumulation_steps", [
+    (None, optim.AdamConfig(), 1),
+    (None, optim.LambConfig(), 1),
+    (None, optim.SGDConfig(), 1),
+    (amp.DynamicLossScaler(), optim.AdamConfig(), 1),
+    (amp.DynamicLossScaler(), optim.LambConfig(), 5),
+    #(amp.DynamicLossScaler(), optim.SGDConfig(), 1), # SGD doesnt support fp16
+])
+def testORTTrainerStateDictWrapModelLossFn(loss_scaler, optimizer_config, gradient_accumulation_steps):
+    # Common setup
+    seed = 1
+    class LinearModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.linear = torch.nn.Linear(2, 4)
+        def forward(self, y=None, x=None):
+            if y is not None:
+                return self.linear(x) + y
+            else:
+                return self.linear(x) + torch.ones(2, 4)
+    model_desc = {'inputs' : [('x', [2, 2]),
+                              ('label', [2, ])],
+                  'outputs' : [('loss', [], True),
+                               ('output', [2, 4])]}
+
+    # Dummy data
+    data1 = torch.randn(2, 2)
+    label1 = torch.tensor([0, 1], dtype=torch.int64)
+    data2 = torch.randn(2, 2)
+    label2 = torch.tensor([0, 1], dtype=torch.int64)
+
+    # Setup training based on test parameters
+    opts =  {'debug' : {'deterministic_compute': True},
+             'batch' : { 'gradient_accumulation_steps' : gradient_accumulation_steps}}
+    if loss_scaler:
+        opts['mixed_precision'] = { 'enabled': True, 'loss_scaler': loss_scaler}
+    opts =  orttrainer.ORTTrainerOptions(opts)
+
+    # Training session 1
+    torch.manual_seed(seed)
+    set_seed(seed)
+    pt_model = LinearModel()
+    def loss_fn(x, label):
+        return F.nll_loss(F.log_softmax(x, dim=1), label)
+    trainer = orttrainer.ORTTrainer(pt_model, model_desc, optimizer_config, loss_fn=loss_fn, options=opts)
+
+    # Check state_dict keys before train. Must be empty
+    state_dict = checkpoint.experimental_state_dict(trainer)
+    assert state_dict == {}
+
+    # Train once and check initial state
+    trainer.train_step(x=data1, label=label1)
+    state_dict = checkpoint.experimental_state_dict(trainer)
+    assert all([weight in state_dict.keys() for weight in ['linear.bias', 'linear.weight']])
+
+    # Initialize training session 2 from state of Training 1
+    torch.manual_seed(seed)
+    set_seed(seed)
+    trainer2 = orttrainer.ORTTrainer(pt_model, model_desc, optimizer_config, loss_fn=loss_fn, options=opts)
+    checkpoint.experimental_load_state_dict(trainer2, state_dict)
+
+    # Verify state was loaded properly
+    for k,v in state_dict.items():
+        assert_allclose(v, trainer2._state_dict[k])
+
+    # Perform a second step in both training session 1 and 2 and verify they match
+    trainer.train_step(x=data2, label=label2)
+    state_dict = checkpoint.experimental_state_dict(trainer)
+    trainer2.train_step(x=data2, label=label2)
+    state_dict2 = checkpoint.experimental_state_dict(trainer2)
+    for k,v in state_dict.items():
+        assert_allclose(v, state_dict2[k])
+
+
+def testORTTrainerNonPickableModel():
+    # Common setup
+    import threading
+    seed = 1
+    class UnpickableModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.linear = torch.nn.Linear(2, 4)
+            self._lock = threading.Lock()
+
+        def forward(self, y=None, x=None):
+            with self._lock:
+                if y is not None:
+                    return self.linear(x) + y
+                else:
+                    return self.linear(x) + torch.ones(2, 4)
+
+    model_desc = {'inputs' : [('x', [2, 2]),
+                              ('label', [2, ])],
+                  'outputs' : [('loss', [], True),
+                               ('output', [2, 4])]}
+
+    # Dummy data
+    data = torch.randn(2, 2)
+    label = torch.tensor([0, 1], dtype=torch.int64)
+
+    # Setup training based on test parameters
+    opts =  orttrainer.ORTTrainerOptions({'debug' : {'deterministic_compute': True}})
+
+    # Training session
+    torch.manual_seed(seed)
+    set_seed(seed)
+    pt_model = UnpickableModel()
+    def loss_fn(x, label):
+        return F.nll_loss(F.log_softmax(x, dim=1), label)
+    optim_config = optim.AdamConfig()
+    trainer = orttrainer.ORTTrainer(pt_model, model_desc, optim_config, loss_fn=loss_fn, options=opts)
+
+    # Train must succeed despite warning
+    _, _ = trainer.train_step(data, label)
 
 ###############################################################################
 # Temporary tests comparing Legacy vs Experimental ORTTrainer APIs ############
@@ -876,7 +1016,7 @@ def testORTTrainerLegacyAndExperimentalWeightsCheck(seed, device):
 ])
 def testORTTrainerLegacyAndExperimentalPrecisionLossScaler(seed, device):
     # Common data
-    total_steps = 5
+    total_steps = 128
 
     # Setup experimental API
     torch.manual_seed(seed)
@@ -921,7 +1061,7 @@ def testORTTrainerLegacyAndExperimentalPrecisionLossScaler(seed, device):
     # Compare legacy vs experimental APIs
     assert experimental_preds_dtype == legacy_preds_dtype
     _test_helpers.assert_legacy_onnx_weights(trainer, legacy_trainer, rtol=1e-4, atol=1e-2)
-    _test_helpers.assert_model_outputs(legacy_loss, experimental_loss, rtol=1e-4)
+    _test_helpers.assert_model_outputs(legacy_loss, experimental_loss)
 
 
 @pytest.mark.parametrize("seed,device,gradient_accumulation_steps,total_steps", [
@@ -966,7 +1106,7 @@ def testORTTrainerLegacyAndExperimentalGradientAccumulation(seed, device, gradie
         legacy_loss.append(leg_loss.cpu())
 
     # Compare legacy vs experimental APIs
-    _test_helpers.assert_model_outputs(legacy_loss, experimental_loss, rtol=1e-6)
+    _test_helpers.assert_model_outputs(legacy_loss, experimental_loss)
 
 
 @pytest.mark.parametrize("seed,device,optimizer_config,lr_scheduler, get_lr_this_step", [
@@ -1008,7 +1148,7 @@ def testORTTrainerLegacyAndExperimentalLRScheduler(seed, device, optimizer_confi
     options = orttrainer.ORTTrainerOptions({'device' : {'id' : device},
                                             'debug' : {'deterministic_compute' : True},
                                             'lr_scheduler' : lr_scheduler})
-    model, model_desc, my_loss, batcher_fn, train_data, val_data, _ = _load_pytorch_transformer_model(device)
+    model, model_desc, my_loss, batcher_fn, train_data, _, _ = _load_pytorch_transformer_model(device)
     optim_config = optimizer_config(lr=lr)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
     # Training loop
@@ -1054,3 +1194,92 @@ def testORTTrainerLegacyAndExperimentalLRScheduler(seed, device, optimizer_confi
 
     # Compare legacy vs experimental APIs
     _test_helpers.assert_model_outputs(legacy_loss, experimental_loss)
+
+
+def testLossScalerLegacyAndExperimentalFullCycle():
+    info = orttrainer.TrainStepInfo(optimizer_config=optim.LambConfig(lr=0.001), all_finite=True, fetches=[], optimization_step=0, step=0)
+    new_ls = amp.DynamicLossScaler()
+    old_ls = Legacy_LossScaler("ort_test_input_loss_scaler", True)
+
+    # Initial state
+    train_step_info = orttrainer.TrainStepInfo(optim.LambConfig())
+    assert_allclose(new_ls.loss_scale, old_ls.loss_scale_)
+    assert new_ls.up_scale_window == old_ls.up_scale_window_
+    assert_allclose(new_ls.min_loss_scale, old_ls.min_loss_scale_)
+    assert_allclose(new_ls.max_loss_scale, old_ls.max_loss_scale_)
+
+    # Performing 9*2000 updates to cover all branches of LossScaler.update(train_step_info.all_finite=True)
+    for cycles in range(1, 10):
+
+        # 1999 updates without overflow produces 1999 stable steps
+        for i in range(1, 2000):
+            new_loss_scale = new_ls.update(train_step_info)
+            old_ls.update_loss_scale(train_step_info.all_finite)
+            old_loss_scale = old_ls.loss_scale_
+            assert new_ls._stable_steps_count == old_ls.stable_steps_
+            # import pdb; pdb.set_trace()
+            assert_allclose(new_loss_scale, old_loss_scale)
+
+        # 2000th update without overflow doubles the loss and zero stable steps until max_loss_scale is reached
+        new_loss_scale = new_ls.update(train_step_info)
+        old_ls.update_loss_scale(train_step_info.all_finite)
+        old_loss_scale = old_ls.loss_scale_
+        assert new_ls._stable_steps_count == old_ls.stable_steps_
+        assert_allclose(new_loss_scale, old_loss_scale)
+
+    # After 8 cycles, loss scale should be float(1 << 16)*(2**8)
+    assert_allclose(new_loss_scale, old_loss_scale)
+
+    # After 9 cycles, loss scale reaches max_loss_scale and it is not doubled from that point on
+    for count in range(1, 2050):
+        new_loss_scale = new_ls.update(train_step_info)
+        old_ls.update_loss_scale(train_step_info.all_finite)
+        old_loss_scale = old_ls.loss_scale_
+        assert new_ls._stable_steps_count == old_ls.stable_steps_
+        assert_allclose(new_loss_scale, old_loss_scale)
+
+    # Setting train_step_info.all_finite = False to test down scaling
+    train_step_info.all_finite = False
+
+    # Performing 24 updates to half the loss scale each time
+    for count in range(1, 25):
+        new_loss_scale = new_ls.update(train_step_info)
+        old_ls.update_loss_scale(train_step_info.all_finite)
+        old_loss_scale = old_ls.loss_scale_
+        assert new_ls._stable_steps_count == old_ls.stable_steps_
+        assert_allclose(new_loss_scale, old_loss_scale)
+
+    # After 24 updates with gradient overflow, loss scale is 1.0
+    assert_allclose(new_loss_scale, old_loss_scale)
+
+    # After 25 updates, min_loss_scale is reached and loss scale is not halfed from that point on
+    for count in range(1, 5):
+        new_loss_scale = new_ls.update(train_step_info)
+        old_ls.update_loss_scale(train_step_info.all_finite)
+        old_loss_scale = old_ls.loss_scale_
+        assert new_ls._stable_steps_count == old_ls.stable_steps_
+        assert_allclose(new_loss_scale, old_loss_scale)
+
+
+def testLossScalerLegacyAndExperimentalRandomAllFinite():
+    new_ls = amp.DynamicLossScaler()
+    old_ls = Legacy_LossScaler("ort_test_input_loss_scaler", True)
+
+    # Initial state
+    train_step_info = orttrainer.TrainStepInfo(optim.LambConfig())
+    assert_allclose(new_ls.loss_scale, old_ls.loss_scale_)
+    assert new_ls.up_scale_window == old_ls.up_scale_window_
+    assert_allclose(new_ls.min_loss_scale, old_ls.min_loss_scale_)
+    assert_allclose(new_ls.max_loss_scale, old_ls.max_loss_scale_)
+
+    import random
+    out = []
+    for _ in range(1, 64):
+        train_step_info.all_finite = bool(random.getrandbits(1))
+        new_loss_scale = new_ls.update(train_step_info)
+        old_ls.update_loss_scale(train_step_info.all_finite)
+        old_loss_scale = old_ls.loss_scale_
+        assert new_ls._stable_steps_count == old_ls.stable_steps_
+        assert_allclose(new_loss_scale, old_loss_scale)
+        out.append(new_loss_scale)
+        assert new_loss_scale > 1e-7

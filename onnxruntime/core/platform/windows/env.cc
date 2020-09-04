@@ -473,22 +473,29 @@ class WindowsEnv : public Env {
 
   virtual Status LoadDynamicLibrary(const std::string& library_filename, void** handle) const override {
     *handle = ::LoadLibraryExA(library_filename.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
-    if (!*handle)
-      return common::Status(common::ONNXRUNTIME, common::FAIL, "Failed to load library");
-    return common::Status::OK();
+    if (!*handle) {
+      const auto error_code = GetLastError();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to load library, error code: ", error_code);
+    }
+    return Status::OK();
   }
 
-  virtual common::Status UnloadDynamicLibrary(void* handle) const override {
-    if (::FreeLibrary(reinterpret_cast<HMODULE>(handle)) == 0)
-      return common::Status(common::ONNXRUNTIME, common::FAIL, "Failed to unload library");
-    return common::Status::OK();
+  virtual Status UnloadDynamicLibrary(void* handle) const override {
+    if (::FreeLibrary(reinterpret_cast<HMODULE>(handle)) == 0) {
+      const auto error_code = GetLastError();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to unload library, error code: ", error_code);
+    }
+    return Status::OK();
   }
 
   virtual Status GetSymbolFromLibrary(void* handle, const std::string& symbol_name, void** symbol) const override {
     *symbol = ::GetProcAddress(reinterpret_cast<HMODULE>(handle), symbol_name.c_str());
-    if (!*symbol)
-      return common::Status(common::ONNXRUNTIME, common::FAIL, "Failed to find symbol in library");
-    return common::Status::OK();
+    if (!*symbol) {
+      const auto error_code = GetLastError();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to find symbol in library, error code: ",
+                             error_code);
+    }
+    return Status::OK();
   }
 
   virtual std::string FormatLibraryFileName(const std::string& name, const std::string& version) const override {

@@ -6,6 +6,8 @@
 #include <new>
 #include <random>
 
+#include "core/common/common.h"
+
 // aligned memory allocate and free functions
 inline void* aligned_alloc(size_t size, size_t align) {
   void* ptr;
