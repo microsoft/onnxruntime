@@ -42,10 +42,7 @@ See [here](https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#start-b
 
 Binary size reduction options.
   - Enable minimal build (`--minimal_build`)
-    - A minimal build will ONLY support loading and executing ORT format models.
-
-  - Disable RTTI (`--disable_rtti`)
-    - Disabling RTTI support will result in significant savings at the cost of a small number of unlikely error messages losing type information. If you encounter such errors you can attempt to run the model with a full ORT build to get the full error information.
+    - A minimal build will ONLY support loading and executing ORT format models. RTTI is disabled by default in this build.
 
   - Disable exceptions (`--disable_exceptions`)
     - Disables exceptions in the build. Any locations that would have thrown an exception will instead log the error message and call abort(). 
@@ -62,11 +59,11 @@ Binary size reduction options.
 
 ##### Windows
 
-`<ORT repository root>\build.bat --config=MinSizeRel --cmake_generator="Visual Studio 16 2019" --build_shared_lib --minimal_build --disable_rtti --disable_ml_ops --disable_exceptions`
+`<ORT repository root>\build.bat --config=MinSizeRel --cmake_generator="Visual Studio 16 2019" --build_shared_lib --minimal_build --disable_ml_ops --disable_exceptions`
 
 ##### Linux
 
-`<ORT repository root>/build.sh --config=MinSizeRel --build_shared_lib --minimal_build --disable_rtti --disable_ml_ops --disable_exceptions`
+`<ORT repository root>/build.sh --config=MinSizeRel --build_shared_lib --minimal_build --disable_ml_ops --disable_exceptions`
 
 ## Executing ORT format models
 

@@ -213,7 +213,7 @@ endif()
 # Will expose option in build.py when all pieces are available
 if(onnxruntime_MINIMAL_BUILD)
   add_compile_definitions(ORT_MINIMAL_BUILD)
-  set(onnxruntime_REDUCED_OPS_BUILD ON)  # TODO Defaulting to ON. TBD if we should always do that.
+  set(onnxruntime_REDUCED_OPS_BUILD ON)
   set(onnxruntime_DISABLE_RTTI ON)
 
   if (MSVC)

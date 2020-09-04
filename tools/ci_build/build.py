@@ -351,9 +351,10 @@ def parse_arguments():
     # options to reduce binary size
     parser.add_argument("--minimal_build", action='store_true',
                         help="Create a build that only supports ORT format models. "
-                        "See /docs/ONNX_Runtime_Format_Model_Usage.md for more information.")
+                        "See /docs/ONNX_Runtime_Format_Model_Usage.md for more information. "
+                        "RTTI is automatically disabled in a minimal build.")
     parser.add_argument("--include_ops_by_model", type=str, help="include ops from model(s) under designated path.")
-    parser.add_argument("--include_ops_by_file", type=str, 
+    parser.add_argument("--include_ops_by_config", type=str,
                         help="include ops from config file. "
                         "See /docs/Reduced_Operator_Kernel_build.md for more information.")
 
@@ -627,7 +628,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_DISABLE_EXCEPTIONS=" + ("ON" if args.disable_exceptions else "OFF"),
         "-Donnxruntime_MINIMAL_BUILD=" + ("ON" if args.minimal_build else "OFF"),
         "-Donnxruntime_REDUCED_OPS_BUILD=" + (
-            "ON" if args.include_ops_by_file or args.include_ops_by_model else "OFF"),
+            "ON" if args.include_ops_by_config or args.include_ops_by_model else "OFF"),
         "-Donnxruntime_MSVC_STATIC_RUNTIME=" + (
             "ON" if args.enable_msvc_static_runtime else "OFF"),
         # enable pyop if it is nightly build
@@ -1233,7 +1234,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
             # Disable python tests in a reduced build as we don't know which ops have been included and which
             # models can run
-            if args.include_ops_by_model or args.include_ops_by_file or args.minimal_build:
+            if args.include_ops_by_model or args.include_ops_by_config or args.minimal_build:
                 return
 
             if is_windows():
@@ -1609,11 +1610,11 @@ def main():
     if args.skip_tests:
         args.test = False
 
-    if args.include_ops_by_model or args.include_ops_by_file:
+    if args.include_ops_by_model or args.include_ops_by_config:
         from exclude_unused_ops import exclude_unused_ops, get_provider_path
         include_ops_by_model = args.include_ops_by_model if args.include_ops_by_model else ''
-        include_ops_by_file = args.include_ops_by_file if args.include_ops_by_file else ''
-        exclude_unused_ops(include_ops_by_model, include_ops_by_file, get_provider_path(use_cuda=args.use_cuda))
+        include_ops_by_config = args.include_ops_by_config if args.include_ops_by_config else ''
+        exclude_unused_ops(include_ops_by_model, include_ops_by_config, get_provider_path(use_cuda=args.use_cuda))
 
     if args.use_tensorrt:
         args.use_cuda = True

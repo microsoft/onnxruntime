@@ -149,10 +149,10 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
     }                                                                                          \
   } while (false)
 
-#define ORT_THROW_EX(ex, ...)                                                       \
-  do {                                                                              \
-    std::cerr << #ex << ::onnxruntime::MakeString(__VA_ARGS__) << ")" << std::endl; \
-    abort();                                                                        \
+#define ORT_THROW_EX(ex, ...)                                                              \
+  do {                                                                                     \
+    std::cerr << #ex << "(" << ::onnxruntime::MakeString(__VA_ARGS__) << ")" << std::endl; \
+    abort();                                                                               \
   } while (false)
 
 #else
@@ -182,7 +182,7 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
                                             ::onnxruntime::MakeString(__VA_ARGS__))
 
 #define ORT_THROW_EX(ex, ...) \
-  throw ex(##__VA_ARGS__)
+  throw ex(__VA_ARGS__)
 
 #endif
 
