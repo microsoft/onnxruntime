@@ -138,14 +138,14 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
     ORT_ENFORCE(is_model_proto_parsed, "ModelProto needs to be parsed to check for ORT config within it");
 
     // Use default logger as the session_logger_ hasn't been initialized yet.
-    InferenceSessionUtils inference_session_utils(default_logger);
+    inference_session_utils::JsonConfigParser config_parser(default_logger);
 
-    auto status = inference_session_utils.ParseOrtConfigJsonInModelProto(model_proto);
+    auto status = config_parser.ParseOrtConfigJsonInModelProto(model_proto);
     if (!status.IsOK()) {
       return status;
     }
 
-    status = inference_session_utils.ParseSessionOptionsFromModelProto(constructed_session_options);
+    status = config_parser.ParseSessionOptionsFromModelProto(constructed_session_options);
     if (!status.IsOK()) {
       return status;
     }
@@ -547,7 +547,18 @@ common::Status InferenceSession::Load(const std::basic_string<T>& model_uri) {
   return Status::OK();
 }
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 common::Status InferenceSession::Load(const std::string& model_uri) {
+  std::string model_type = session_options_.GetConfigOrDefault(ORT_SESSION_OPTIONS_CONFIG_LOAD_MODEL_FORMAT, "");
+  bool has_explicit_type = !model_type.empty();
+
+  if ((has_explicit_type && model_type == "ORT") ||
+      (!has_explicit_type && inference_session_utils::IsOrtFormatModel(model_uri))) {
+    return LoadOrtModel(model_uri);
+  }
+
+#if !defined(ORT_MINIMAL_BUILD)
   if (is_model_proto_parsed_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
@@ -555,10 +566,22 @@ common::Status InferenceSession::Load(const std::string& model_uri) {
   }
 
   return Load<char>(model_uri);
+#else
+  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ONNX format model is not supported in this build.");
+#endif
 }
 
 #ifdef _WIN32
 common::Status InferenceSession::Load(const std::wstring& model_uri) {
+  std::string model_type = session_options_.GetConfigOrDefault(ORT_SESSION_OPTIONS_CONFIG_LOAD_MODEL_FORMAT, "");
+  bool has_explicit_type = !model_type.empty();
+
+  if ((has_explicit_type && model_type == "ORT") ||
+      (!has_explicit_type && inference_session_utils::IsOrtFormatModel(model_uri))) {
+    return LoadOrtModel(model_uri);
+  }
+
+#if !defined(ORT_MINIMAL_BUILD)
   if (is_model_proto_parsed_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
@@ -566,8 +589,55 @@ common::Status InferenceSession::Load(const std::wstring& model_uri) {
   }
 
   return Load<PATH_CHAR_TYPE>(model_uri);
+#else
+  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ONNX format model is not supported in this build.");
+#endif
 }
 #endif
+
+common::Status InferenceSession::Load(const void* model_data, int model_data_len) {
+  std::string model_type = session_options_.GetConfigOrDefault(ORT_SESSION_OPTIONS_CONFIG_LOAD_MODEL_FORMAT, "");
+  bool has_explicit_type = !model_type.empty();
+
+  if ((has_explicit_type && model_type == "ORT") ||
+      (!has_explicit_type &&
+       inference_session_utils::IsOrtFormatModelBytes(model_data, model_data_len))) {
+    return LoadOrtModel(model_data, model_data_len);
+  }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  if (is_model_proto_parsed_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "ModelProto corresponding to the model to be loaded has already been parsed. "
+                           "Invoke Load().");
+  }
+
+  auto loader = [this, model_data, model_data_len](std::shared_ptr<onnxruntime::Model>& model) {
+    ModelProto model_proto;
+
+    const bool result = model_proto.ParseFromArray(model_data, model_data_len);
+    if (!result) {
+      return Status(common::ONNXRUNTIME, common::INVALID_PROTOBUF,
+                    "Failed to load model because protobuf parsing failed.");
+    }
+#ifdef ENABLE_LANGUAGE_INTEROP_OPS
+    LoadInterOp(model_proto, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
+    for (const auto& domain : interop_domains_) {
+      ORT_RETURN_IF_ERROR(AddCustomOpDomains({domain.get()}));
+    }
+#endif
+
+    return onnxruntime::Model::Load(std::move(model_proto), PathString(), model,
+                                    HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_);
+  };
+
+  return Load(loader, "model_loading_array");
+#else
+  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ONNX format model is not supported in this build.");
+#endif
+}
+
+#if !defined(ORT_MINIMAL_BUILD)
 
 common::Status InferenceSession::Load(const ModelProto& model_proto) {
   if (is_model_proto_parsed_) {
@@ -636,35 +706,6 @@ common::Status InferenceSession::Load(std::istream& model_istream) {
   };
 
   return Load(loader, "model_loading_istream");
-}
-
-common::Status InferenceSession::Load(const void* model_data, int model_data_len) {
-  if (is_model_proto_parsed_) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "ModelProto corresponding to the model to be loaded has already been parsed. "
-                           "Invoke Load().");
-  }
-
-  auto loader = [this, model_data, model_data_len](std::shared_ptr<onnxruntime::Model>& model) {
-    ModelProto model_proto;
-
-    const bool result = model_proto.ParseFromArray(model_data, model_data_len);
-    if (!result) {
-      return Status(common::ONNXRUNTIME, common::INVALID_PROTOBUF,
-                    "Failed to load model because protobuf parsing failed.");
-    }
-#ifdef ENABLE_LANGUAGE_INTEROP_OPS
-    LoadInterOp(model_proto, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
-    for (const auto& domain : interop_domains_) {
-      ORT_RETURN_IF_ERROR(AddCustomOpDomains({domain.get()}));
-    }
-#endif
-
-    return onnxruntime::Model::Load(std::move(model_proto), PathString(), model,
-                                    HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_);
-  };
-
-  return Load(loader, "model_loading_array");
 }
 
 common::Status InferenceSession::Load() {
@@ -990,8 +1031,8 @@ common::Status InferenceSession::Initialize() {
     // since we've to take into account the per-thread cuda allocators.
     // TODO (contd.) We could also possibly absorb the per-thread logic in a new allocator decorator that derives
     // from IAllocator to keep things clean.
-    std::string use_env_allocators = GetSessionConfigOrDefault(session_options_,
-                                                               ORT_SESSION_OPTIONS_CONFIG_USE_ENV_ALLOCATORS, "0");
+    std::string use_env_allocators = session_options_.GetConfigOrDefault(ORT_SESSION_OPTIONS_CONFIG_USE_ENV_ALLOCATORS,
+                                                                         "0");
     if (use_env_allocators == "1") {
       UpdateProvidersWithSharedAllocators();
     }
@@ -1057,14 +1098,22 @@ common::Status InferenceSession::Initialize() {
 
 #if !defined(ORT_MINIMAL_BUILD)
     if (!session_options_.optimized_model_filepath.empty()) {
-      // Serialize optimized ONNX model.
-      ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(*model_, session_options_.optimized_model_filepath));
       if (session_options_.graph_optimization_level >= TransformerLevel::Level3) {
-        LOGS(*session_logger_, WARNING) << "Serializing Optimized ONNX model with Graph Optimization"
-                                           " level greater than ORT_ENABLE_EXTENDED. The generated"
-                                           " model may contain hardware and execution provider specific"
-                                           " optimizations, and should only be used in the same environment"
-                                           " the model was optimized for.";
+        LOGS(*session_logger_, WARNING)
+            << "Serializing optimized model with Graph Optimization level greater than ORT_ENABLE_EXTENDED. "
+               "The generated model may contain hardware and execution provider specific optimizations, "
+               "and should only be used in the same environment the model was optimized for.";
+      }
+
+      std::string model_type = session_options_.GetConfigOrDefault(ORT_SESSION_OPTIONS_CONFIG_SAVE_MODEL_FORMAT, "");
+      bool has_explicit_type = !model_type.empty();
+
+      if ((has_explicit_type && model_type == "ORT") ||
+          (!has_explicit_type &&
+           inference_session_utils::IsOrtFormatModel(session_options_.optimized_model_filepath))) {
+        ORT_RETURN_IF_ERROR_SESSIONID_(SaveToOrtFormat(session_options_.optimized_model_filepath));
+      } else {
+        ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(*model_, session_options_.optimized_model_filepath));
       }
     }
 #endif  // !defined(ORT_MINIMAL_BUILD)
