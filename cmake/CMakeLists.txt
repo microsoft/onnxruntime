@@ -223,7 +223,7 @@ if(onnxruntime_MINIMAL_BUILD)
     if (CMAKE_HOST_SYSTEM MATCHES "Darwin")
       add_link_options(-Wl -dead_strip)
     else()
-      add_link_options(-Wl --gc-sections)
+      add_link_options(-Wl,--gc-sections)
     endif()  
   endif()
 
