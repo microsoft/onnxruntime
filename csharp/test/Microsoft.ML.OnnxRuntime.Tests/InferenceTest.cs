@@ -92,7 +92,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.AppendExecutionProvider_CUDA(0);
 #endif
 #if USE_DML
-
                 opt.AppendExecutionProvider_DML(0);
 #endif
 #if USE_NGRAPH
@@ -1617,7 +1616,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
         // TestGpu() will test the CUDA EP on CUDA enabled builds and 
         // the DML EP on DML enabled builds
-        [Fact]
+        [GpuFact]
         private void TestGpu()
         {
             var tuple = OpenSessionSqueezeNet(0); // run on deviceID 0
