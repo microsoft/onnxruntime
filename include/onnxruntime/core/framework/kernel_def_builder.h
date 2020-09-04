@@ -98,7 +98,7 @@ class KernelDef {
  private:
   friend class KernelDefBuilder;
 
-  // call once the KernelDef has been built
+  // called once by KernelDefBuilder::Build
   void CalculateHash();
 
   // The operator name supported by <*this> kernel..
