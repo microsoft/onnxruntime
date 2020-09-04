@@ -701,6 +701,11 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
     if (input_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
       return true;
     }
+  } else if (optype == "NonZero") {
+    if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {0}, logger))
+    {
+      return true;
+    }
   } else if (optype == "OneHot") {
     if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger))
     {
