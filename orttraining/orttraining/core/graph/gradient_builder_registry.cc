@@ -60,6 +60,7 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("Sub", GetAddSubGradient);
   REGISTER_GRADIENT_BUILDER("Mul", GetMulGradient);
   REGISTER_GRADIENT_BUILDER("Div", GetDivGradient);
+  REGISTER_GRADIENT_BUILDER("Neg", GetNegGradient);
   REGISTER_GRADIENT_BUILDER("Concat", GetConcatGradient);
   REGISTER_GRADIENT_BUILDER("ConcatTraining", GetConcatTrainingGradient);
   REGISTER_GRADIENT_BUILDER("Reshape", GetReshapeGradient);

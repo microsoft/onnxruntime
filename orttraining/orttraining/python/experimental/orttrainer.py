@@ -453,10 +453,16 @@ class ORTTrainer(object):
         with torch.no_grad():
             # Deepcopy inputs, since input values may change after model run.
             sample_inputs_copy = copy.deepcopy(sample_inputs)
-            # Deepcopy model, in case model is stateful and changes after model run.
-            model_copy = copy.deepcopy(model)
+            try:
+                # Deepcopy model, in case model is stateful and changes after model run.
+                model_copy = copy.deepcopy(model)
+            except Exception:
+                model_copy = model
+                warnings.warn("This model cannot be deep copied (or pickled), which is a required step for stateful models to be properly exported to ONNX."
+                              " Compute will continue, but unexpected results may occur!")
             sample_outputs = model_copy(*sample_inputs_copy)
         model.train()
+
         if isinstance(sample_outputs, torch.Tensor):
             sample_outputs = [sample_outputs]
 
@@ -472,12 +478,18 @@ class ORTTrainer(object):
 
         # Export the model to ONNX
         f = io.BytesIO()
+
         # Deepcopy inputs, since input values may change after model run.
         sample_inputs_copy = copy.deepcopy(sample_inputs)
 
-        # Enable contrib ops export from PyTorch
         from onnxruntime.experimental import register_custom_ops_pytorch_exporter
-        register_custom_ops_pytorch_exporter.register_custom_op()
+        if self.options._internal_use.enable_onnx_contrib_ops:
+            # Enable contrib ops export from PyTorch
+            register_custom_ops_pytorch_exporter.register_custom_op()
+        else:
+            # unregister contrib ops, if they were registered in previous calls
+            register_custom_ops_pytorch_exporter.unregister_custom_op()
+
 
         torch.onnx._export(model, tuple(sample_inputs_copy), f,
                            input_names=[input.name for input in self.model_desc.inputs],
