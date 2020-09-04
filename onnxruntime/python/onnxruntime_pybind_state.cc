@@ -1462,7 +1462,7 @@ void InitializeEnv() {
       // import_array1() forces a void return value.
       import_array1();
     })();
-
+    Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
     OrtPybindThrowIfError(Environment::Create(onnxruntime::make_unique<LoggingManager>(
                                                   std::unique_ptr<ISink>{new CLogSink{}},
                                                   Severity::kWARNING, false, LoggingManager::InstanceType::Default,
