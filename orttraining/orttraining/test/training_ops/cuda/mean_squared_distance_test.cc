@@ -6,9 +6,9 @@
 namespace onnxruntime {
 namespace test {
 
-static void TestMeanSquaredDistance(const std::vector<int64_t> X_dims,
-                        const std::vector<int64_t> label_dims,
-                        const std::vector<int64_t> Y_dims,
+static void TestMeanSquaredDistance(const std::vector<int64_t>& X_dims,
+                        const std::vector<int64_t>& label_dims,
+                        const std::vector<int64_t>& Y_dims,
                         const std::string& reduction,
                         const std::vector<int64_t>* weight_dims) {
   CompareOpTester test("MeanSquaredDistance", 12, kOnnxDomain);
