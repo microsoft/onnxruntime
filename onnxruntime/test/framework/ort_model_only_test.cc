@@ -183,7 +183,7 @@ void SaveAndCompareModels(const std::string& onnx_file, const std::basic_string<
   so.session_logid = "SerializeToOrtFormat";
   so.optimized_model_filepath = ort_file;
   // not strictly necessary - type should be inferred from the filename
-  so.AddConfigEntry(ORT_SESSION_OPTIONS_CONFIG_SAVE_MODEL_FORMAT, "ORT");
+  so.AddConfigEntry(kOrtSessionOptionsConfigSaveModelFormat, "ORT");
   InferenceSessionGetGraphWrapper session_object{so, GetEnvironment()};
 
   // create .ort file during Initialize due to values in SessionOptions
@@ -194,7 +194,7 @@ void SaveAndCompareModels(const std::string& onnx_file, const std::basic_string<
   so2.session_logid = "LoadOrtFormat";
   // not strictly necessary - type should be inferred from the filename, but to be sure we're testing what we
   // think we're testing set it.
-  so2.AddConfigEntry(ORT_SESSION_OPTIONS_CONFIG_LOAD_MODEL_FORMAT, "ORT");
+  so2.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT");
 
   // load serialized version
   InferenceSessionGetGraphWrapper session_object2{so2, GetEnvironment()};
@@ -211,7 +211,7 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormat) {
   OrtModelTestInfo test_info;
   test_info.model_filename = ort_file;
   test_info.logid = "SerializeToOrtFormat";
-  test_info.configs.push_back(std::make_pair(ORT_SESSION_OPTIONS_CONFIG_LOAD_MODEL_FORMAT, "ORT"));
+  test_info.configs.push_back(std::make_pair(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
 
   OrtValue ml_value;
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), {1}, {123.f},
@@ -237,7 +237,7 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormatMLOps) {
   OrtModelTestInfo test_info;
   test_info.model_filename = ort_file;
   test_info.logid = "SerializeToOrtFormatMLOps";
-  test_info.configs.push_back(std::make_pair(ORT_SESSION_OPTIONS_CONFIG_LOAD_MODEL_FORMAT, "ORT"));
+  test_info.configs.push_back(std::make_pair(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
 
   OrtValue ml_value;
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), {3, 2},
