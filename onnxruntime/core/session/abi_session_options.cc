@@ -185,10 +185,10 @@ ORT_API_STATUS_IMPL(OrtApis::AddSessionConfigEntry, _Inout_ OrtSessionOptions* o
   return onnxruntime::ToOrtStatus(options->value.AddConfigEntry(config_key, config_value));
 }
 
-ORT_API_STATUS_IMPL(OrtApis::AddInitializer, _Inout_ OrtSessionOptions* options, _In_ const char* name_str,
+ORT_API_STATUS_IMPL(OrtApis::AddInitializer, _Inout_ OrtSessionOptions* options, _In_z_ const char* name_str,
                     _In_ OrtValue* val) {
-  if (!val) {
-    return onnxruntime::ToOrtStatus(ORT_INVALID_ARGUMENT, "Received nullptr for OrtValue");
+  if (!name_str || !val) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Received nullptr for either name or OrtValue.");
   }
   std::string name(name_str);
   auto it = options->value.initializers_to_share_map.find(name);

@@ -28,6 +28,8 @@ chooses to override this by setting ```session_state.use_env_allocators``` to "0
    * Set ```session.use_env_allocators``` to "1" for each session that wants to use the env registered allocators.
    * See test ```TestSharedAllocatorUsingCreateAndRegisterAllocator``` in
      onnxruntime/test/shared_lib/test_inference.cc for an example.
+* **Share initializer(s) between sessions:** This feature allows a user to share the same instance of an initializer across
+multiple sessions. Use the ```AddInitializer``` API to register a pre-allocated initializer with the session before calling ```CreateSession``.
 
 ## Usage Overview
 

@@ -101,23 +101,25 @@ common::Status SaveInitializedTensors(
   // Determine if an intializer was supplied by the user for the purpose of sharing and if it requires a cross-device
   // copy. In case a cross-device copy is required, sharing cannot be accomplished since we allocate our own buffer
   // for the destn device which cannot be shared between sessions.
-  auto use_user_supplied_initializer = [&session_options, &exec_plan, &logger, &ort_value_name_idx_map](const std::string& name) -> bool {
+  auto use_user_supplied_initializer =
+      [&session_options, &exec_plan, &logger, &ort_value_name_idx_map](const std::string& name) -> bool {
     bool retval = false;
     auto it = session_options.initializers_to_share_map.find(name);
     if (it == session_options.initializers_to_share_map.end()) {
       retval = false;
     } else {
-      int ort_value_index;
+      int ort_value_index = -1;
       if (!ort_value_name_idx_map.GetIdx(name, ort_value_index).IsOK()) {
         retval = false;
       } else {
-        auto planned_mem_type = exec_plan.GetLocation(ort_value_index).mem_type;
-        auto user_mem_type = it->second->Get<Tensor>().Location().mem_type;
-        retval = user_mem_type == planned_mem_type;
+        auto planned_mem_info = exec_plan.GetLocation(ort_value_index);
+        auto user_mem_info = it->second->Get<Tensor>().Location();
+        retval = user_mem_info == planned_mem_info;
         if (!retval) {
-          LOGS(logger, WARNING) << "Cannot share user supplied initializer with name: "
-                                << name << " between sessions because the mem_type is not the same between what is planned ("
-                                << planned_mem_type << ") and what is supplied (" << user_mem_type << ")";
+          LOGS(logger, WARNING) << "Cannot use user supplied initializer with name: ("
+                                << name << ") because the ORT planned memory location info "
+                                << planned_mem_info.ToString()
+                                << " ) is different from what is supplied (" << user_mem_info.ToString() << ")";
         }
       }
     }
@@ -140,7 +142,7 @@ common::Status SaveInitializedTensors(
 
   for (const auto& entry : id_to_initialized_tensor) {
     // We don't want to trace shared initializers since their memory is provided by the user
-    if (user_supplied_initializer_ids.count(entry.first)) {
+    if (user_supplied_initializer_ids.find(entry.first) != user_supplied_initializer_ids.end()) {
       continue;
     }
     ORT_RETURN_IF_ERROR(planner.Trace(entry.first, entry.second));
@@ -166,9 +168,9 @@ common::Status SaveInitializedTensors(
     const char* name = (entry.second->name().empty()) ? "" : entry.second->name().c_str();
     OrtValue ort_value;
 
-    if (user_supplied_initializer_ids.count(entry.first)) {
+    if (user_supplied_initializer_ids.find(entry.first) != user_supplied_initializer_ids.end()) {
       ort_value = *(session_options.initializers_to_share_map.at(name));
-      LOGS(logger, INFO) << "Using user supplied initializer with name " << name << " between sessions.";
+      LOGS(logger, INFO) << "Using user supplied initializer with name (" << name << ").";
     } else {
       const ONNX_NAMESPACE::TensorProto& tensor_proto = *(entry.second);
 

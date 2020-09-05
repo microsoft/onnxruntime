@@ -175,6 +175,11 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, libraryPath, out libraryHandle));
         }
 
+        public void AddInitializer(string name, OrtValue ort_value)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtAddInitializer(handle, name, ort_value.Handle));
+        }
+
         #endregion
 
         internal IntPtr Handle

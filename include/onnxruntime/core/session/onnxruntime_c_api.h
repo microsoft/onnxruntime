@@ -1035,7 +1035,7 @@ struct OrtApi {
    * instead of deserializing one from the model file. This is useful when you want to share
    * the same initializer across sessions.
    */
-  ORT_API2_STATUS(AddInitializer, _Inout_ OrtSessionOptions* options, _In_ const char* name,
+  ORT_API2_STATUS(AddInitializer, _Inout_ OrtSessionOptions* options, _In_z_ const char* name,
                   _In_ OrtValue* val);
 };
 
