@@ -500,7 +500,8 @@ void UpdateCudaProviderOptions(InferenceSession* sess, onnxruntime::CudaProvider
 // is fine as they are associated with the same device memory.
 // Currently we allow DML and CUDA together as we have a CI pipeline using it, but we will only register
 // one of the two below.
-static_assert(USE_MIGRAPHX && (USE_CUDA || USE_DML), "Including multiple GPU EPs in the build is not supported");
+static_assert(!(USE_MIGRAPHX && (USE_CUDA || USE_DML)),
+              "Including multiple GPU EPs in the build is not supported");
 
 /*
  * Register execution provider with options.
