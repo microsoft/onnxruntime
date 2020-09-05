@@ -148,8 +148,6 @@ static constexpr PATH_TYPE PYOP_MULTI_MODEL_URI = TSTR("testdata/pyop_2.onnx");
 static constexpr PATH_TYPE PYOP_KWARG_MODEL_URI = TSTR("testdata/pyop_3.onnx");
 #endif
 
-
-
 class CApiTestWithProvider : public testing::Test, public ::testing::WithParamInterface<int> {
 };
 
@@ -895,7 +893,7 @@ TEST(CApiTest, TestSharedAllocatorUsingCreateAndRegisterAllocator) {
 
   Ort::SessionOptions session_options;
   auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
-  session_options.AddConfigEntry(ORT_SESSION_OPTIONS_CONFIG_USE_ENV_ALLOCATORS, "1");
+  session_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
 
   // create session 1
   Ort::Session session1(*ort_env, MODEL_URI, session_options);
