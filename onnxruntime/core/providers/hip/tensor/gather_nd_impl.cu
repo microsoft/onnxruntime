@@ -106,10 +106,8 @@ SPECIALIZED_COMPUTE_SLICE_OFFSETS_IMPL(int32_t)
 SPECIALIZED_COMPUTE_SLICE_OFFSETS_IMPL(int64_t)
 
 SPECIALIZED_IMPL(float)
-#if !defined(__HIP_ARCH__) || __HIP_ARCH__ >= 600
 SPECIALIZED_IMPL(half)
 SPECIALIZED_IMPL(double)
-#endif
 
 }  // namespace hip
 }  // namespace onnxruntime
