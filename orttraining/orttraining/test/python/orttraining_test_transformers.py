@@ -205,10 +205,6 @@ class BertModelTest(unittest.TestCase):
                                             epochs,
                                             use_new_api=False)
 
-                                    print(old_api_loss_ort)
-                                    print(old_api_prediction_scores_ort)
-                                    print(old_api_seq_relationship_score_ort)
-
                                     random.seed(seed)
                                     np.random.seed(seed)
                                     torch.manual_seed(seed)
@@ -226,26 +222,37 @@ class BertModelTest(unittest.TestCase):
                                                 epochs,
                                                 use_new_api=True)
                                     
-                                        print(new_api_loss_ort)
-                                        print(new_api_prediction_scores_ort)
-                                        print(new_api_seq_relationship_score_ort)
-                                        
-                                        atol = 1e-6
-                                        assert_allclose(old_api_loss_ort, new_api_loss_ort, atol=atol)
-                                        assert_allclose(old_api_prediction_scores_ort, new_api_prediction_scores_ort, atol=atol)
-                                        assert_allclose(old_api_seq_relationship_score_ort, new_api_seq_relationship_score_ort, atol=atol)
+                                        assert_allclose(old_api_loss_ort, new_api_loss_ort)
+                                        assert_allclose(old_api_prediction_scores_ort, new_api_prediction_scores_ort)
+                                        assert_allclose(old_api_seq_relationship_score_ort, new_api_seq_relationship_score_ort)
 
 
     def setUp(self):
         self.model_tester = BertModelTest.BertModelTester(self)
 
-    def test_for_pretraining_mixed_precision_all(self):
+    def test_for_pretraining_mixed_precision(self):
         # It would be better to test both with/without mixed precision and allreduce_post_accumulation.
         # However, stress test of all the 4 cases is not stable at least on the test machine.
         # There we only test mixed precision and allreduce_post_accumulation because it is the most useful use cases.
         option_fp16 = [True]
         option_allreduce_post_accumulation = [True]
-        option_gradient_accumulation_steps = [1, 8]
+        option_gradient_accumulation_steps = [1]
+        option_split_batch = [BatchArgsOption.ListAndDict]
+        config_and_inputs = self.model_tester.prepare_config_and_inputs()
+        self.model_tester.create_and_check_bert_for_pretraining(
+            *config_and_inputs,
+            option_fp16,
+            option_allreduce_post_accumulation,
+            option_gradient_accumulation_steps,
+            option_split_batch)
+
+    def test_for_pretraining_mixed_precision_with_gradient_accumulation(self):
+        # It would be better to test both with/without mixed precision and allreduce_post_accumulation.
+        # However, stress test of all the 4 cases is not stable at least on the test machine.
+        # There we only test mixed precision and allreduce_post_accumulation because it is the most useful use cases.
+        option_fp16 = [True]
+        option_allreduce_post_accumulation = [True]
+        option_gradient_accumulation_steps = [8]
         option_split_batch = [BatchArgsOption.ListAndDict]
         config_and_inputs = self.model_tester.prepare_config_and_inputs()
         self.model_tester.create_and_check_bert_for_pretraining(

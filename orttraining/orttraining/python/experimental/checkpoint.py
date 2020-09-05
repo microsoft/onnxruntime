@@ -88,8 +88,8 @@ def experimental_load_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix=
         checkpoint_dir, checkpoint_prefix)
     is_partitioned = False
     if len(checkpoint_files) > 1:
-        msg = (f"Found more than one file with prefix {checkpoint_prefix} in directory {checkpoint_dir}.",
-               "Attempting to load ZeRO checkpoint.")
+        msg = (f"Found more than one file with prefix {checkpoint_prefix} in directory {checkpoint_dir}."
+               " Attempting to load ZeRO checkpoint.")
         warnings.warn(msg)
         is_partitioned = True
     if (not ort_trainer.options.distributed.deepspeed_zero_optimization.stage) and is_partitioned:
@@ -109,9 +109,9 @@ def _load_single_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix, is_p
     checkpoint_file = os.path.join(checkpoint_dir, checkpoint_name)
 
     if is_partitioned:
-        assert_msg = f"Couldn't find checkpoint file {checkpoint_file}.",\
-                      "Optimizer partitioning is enabled using ZeRO. Please make sure the checkpoint file exists ",\
-                     f"for rank {ort_trainer.options.distributed.world_rank} of {ort_trainer.options.distributed.world_size}"
+        assert_msg = (f"Couldn't find checkpoint file {checkpoint_file}."
+                      " Optimizer partitioning is enabled using ZeRO. Please make sure the checkpoint file exists "
+                     f"for rank {ort_trainer.options.distributed.world_rank} of {ort_trainer.options.distributed.world_size}")
     else:
         assert_msg = f"Couldn't find checkpoint file {checkpoint_file}."
     assert os.path.exists(checkpoint_file), assert_msg

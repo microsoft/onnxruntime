@@ -55,11 +55,6 @@ Provider_AllocatorPtr CreateAllocator(const Provider_AllocatorCreationInfo& info
   return g_host->CreateAllocator(info);
 }
 
-std::unique_ptr<Provider_OrtMemoryInfo> Provider_OrtMemoryInfo::Create(
-    const char* name_, OrtAllocatorType type_, Provider_OrtDevice* device_, int id_, OrtMemType mem_type_) {
-  return g_host->OrtMemoryInfo_Create(name_, type_, device_, id_, mem_type_);
-}
-
 template <>
 MLDataType DataTypeImpl::GetType<float>() {
   return g_host->DataTypeImpl_GetType_float();
@@ -147,23 +142,9 @@ Provider_AllocatorPtr CreateAllocator(Provider_AllocatorCreationInfo info) {
   return g_host->CreateAllocator(info);
 }
 
-std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCPUAllocator(std::unique_ptr<Provider_OrtMemoryInfo> info) {
-  return g_host->CreateCPUAllocator(std::move(info));
+std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCPUAllocator(const OrtMemoryInfo& info) {
+  return g_host->CreateCPUAllocator(info);
 }
-
-#ifdef USE_TENSORRT
-std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCUDAAllocator(int16_t device_id, const char* name) {
-  return g_host->CreateCUDAAllocator(device_id, name);
-}
-
-std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCUDAPinnedAllocator(int16_t device_id, const char* name) {
-  return g_host->CreateCUDAPinnedAllocator(device_id, name);
-}
-
-std::unique_ptr<Provider_IDataTransfer> Provider_CreateGPUDataTransfer() {
-  return g_host->CreateGPUDataTransfer();
-}
-#endif
 
 std::string GetEnvironmentVar(const std::string& var_name) {
   return g_host->GetEnvironmentVar(var_name);
