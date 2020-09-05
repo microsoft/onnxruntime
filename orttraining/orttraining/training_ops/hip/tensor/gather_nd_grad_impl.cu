@@ -39,10 +39,8 @@ void GatherNDGradImpl(
   template void GatherNDGradImpl<T>(const size_t num_slices, const void* update_data, void* output_data, const size_t slice_size, const int64_t* input_slice_offsets_data)
 
 SPECIALIZED_GRAD_IMPL(float);
-#if !defined(__HIP_ARCH__) || __HIP_ARCH__ >= 600
 SPECIALIZED_GRAD_IMPL(half);
 SPECIALIZED_GRAD_IMPL(double);
-#endif
 
 }  // namespace hip
 }  // namespace onnxruntime
