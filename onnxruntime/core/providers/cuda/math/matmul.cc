@@ -19,10 +19,19 @@ namespace cuda {
       KernelDefBuilder()                                          \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       MatMul<T>);                                                 \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
+      MatMul,                                                     \
+      kOnnxDomain,                                                \
+      9, 12,                                                       \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      KernelDefBuilder()                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      MatMul<T>);                                                 \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       MatMul,                                                     \
       kOnnxDomain,                                                \
-      9,                                                          \
+      13,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       KernelDefBuilder()                                          \
