@@ -527,9 +527,16 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
 #endif
     } else if (type == kCudaExecutionProvider) {
 #if (defined USE_CUDA && defined USE_DML)
-      // If both CUDA and DML are requested, just register DML EP (below) - so no op here
-      // as ORT doesn't have semantics of dealing with nodes assigned to multiple
+      // If both CUDA and DML are requested in this build, just register DML EP (below) -
+      // so no op here as ORT doesn't have semantics of dealing with nodes assigned to multiple
       // device memory based GPU EPs. See comment and static_assert above.
+
+      // Adding logs to indicate that this is a no op as technically a user could try to
+      // register the CUDA EP given that it would be part of the list of available providers
+      // in a build that enables USE_CUDA
+      const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
+      LOGS(default_logger, WARNING) << "Unable to register the CUDA EP as this build supports DML "
+                                    << "and ORT doesn't support both DML and CUDA in the same build";
 
 #elif defined USE_CUDA
       auto it = provider_options_map.find(type);
