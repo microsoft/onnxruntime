@@ -68,6 +68,15 @@ table TensorTypeAndShape{
   shape:Shape;
 }
 
+table MapType{
+  key_type:TensorDataType;
+  value_type:onnxruntime.experimental.fbs.TypeInfo;
+}
+
+table SequenceType{
+  elem_type:onnxruntime.experimental.fbs.TypeInfo;
+}
+
 // Node
 enum NodeType : int32 {
   Primitive = 0,
@@ -115,6 +124,8 @@ table ValueInfo {
 // TODO add support of Sequence/Map/SparseTensor/Opaque
 union TypeInfoValue {
   tensor_type:TensorTypeAndShape,
+  sequence_type:SequenceType,
+  map_type:MapType,
 }
 
 table TypeInfo {
