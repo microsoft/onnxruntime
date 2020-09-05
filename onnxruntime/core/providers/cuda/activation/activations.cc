@@ -6,6 +6,19 @@
 namespace onnxruntime {
 namespace cuda {
 
+#define REGISTER_ACTIVATION_VERSIONED_KERNEL(x, startver, endver, T)  \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                            \
+      x,                                                              \
+      kOnnxDomain,                                                    \
+      startver,                                                       \
+      endver,                                                         \
+      T,                                                              \
+      kCudaExecutionProvider,                                         \
+      KernelDefBuilder()                                              \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())      \
+          .MayInplace(0, 0),                                          \
+      x<T>);
+
 #define REGISTER_ACTIVATION_KERNEL(x, ver, T)                    \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                 \
       x,                                                         \
@@ -32,6 +45,14 @@ namespace cuda {
     return Status::OK();                                                                                   \
   }
 
+#define UNARY_ACTIVATION_OP_VERSIONED_TYPED(name, startver, endver, T) \
+  REGISTER_ACTIVATION_VERSIONED_KERNEL(name, startver, endver, T)
+
+#define UNARY_ACTIVATION_OP_VERSIONED_HFD(name, startver, endver)        \
+  UNARY_ACTIVATION_OP_VERSIONED_TYPED(name, startver, endver, MLFloat16) \
+  UNARY_ACTIVATION_OP_VERSIONED_TYPED(name, startver, endver, float)     \
+  UNARY_ACTIVATION_OP_VERSIONED_TYPED(name, startver, endver, double)
+
 #define UNARY_ACTIVATION_OP_TYPED(name, ver, T) \
   REGISTER_ACTIVATION_KERNEL(name, ver, T)      \
   UNARY_ACTIVATION_COMPUTE(name, T)
@@ -44,12 +65,15 @@ namespace cuda {
 UNARY_ACTIVATION_OP_HFD(Elu, 6);
 UNARY_ACTIVATION_OP_HFD(HardSigmoid, 6);
 UNARY_ACTIVATION_OP_HFD(LeakyRelu, 6);
-UNARY_ACTIVATION_OP_HFD(Relu, 6);
+UNARY_ACTIVATION_OP_HFD(Relu, 13);
+UNARY_ACTIVATION_OP_VERSIONED_HFD(Relu, 6, 12);
 UNARY_ACTIVATION_OP_HFD(Selu, 6);
-UNARY_ACTIVATION_OP_HFD(Sigmoid, 6);
+UNARY_ACTIVATION_OP_HFD(Sigmoid, 13);
+UNARY_ACTIVATION_OP_VERSIONED_HFD(Sigmoid, 6, 12);
 UNARY_ACTIVATION_OP_HFD(Softplus, 1);
 UNARY_ACTIVATION_OP_HFD(Softsign, 1);
-UNARY_ACTIVATION_OP_HFD(Tanh, 6);
+UNARY_ACTIVATION_OP_HFD(Tanh, 13);
+UNARY_ACTIVATION_OP_VERSIONED_HFD(Tanh, 6, 12);
 UNARY_ACTIVATION_OP_HFD(ThresholdedRelu, 10);
 
 }  // namespace cuda
