@@ -457,6 +457,16 @@
             },
             "comments": "Installed in the training docker image"
          }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "92cf3702fcfaadc84eb7bef59825a23e0cd84f56",
+               "repositoryUrl": "https://github.com/aappleby/smhasher"
+            },
+            "comments": "MurmurHash3"
+         }
       }
    ],
    "Version": 1

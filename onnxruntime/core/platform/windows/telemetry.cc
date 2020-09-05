@@ -57,6 +57,7 @@ TRACELOGGING_DEFINE_PROVIDER(telemetry_provider_handle, "Microsoft.ML.ONNXRuntim
 OrtMutex WindowsTelemetry::mutex_;
 uint32_t WindowsTelemetry::global_register_count_ = 0;
 bool WindowsTelemetry::enabled_ = true;
+uint32_t WindowsTelemetry::projection_ = 0;
 
 
 WindowsTelemetry::WindowsTelemetry() {
@@ -86,6 +87,10 @@ void WindowsTelemetry::EnableTelemetryEvents() const {
 
 void WindowsTelemetry::DisableTelemetryEvents() const {
   enabled_ = false;
+}
+
+void WindowsTelemetry::SetLanguageProjection(uint32_t projection) const {
+  projection_ = projection;
 }
 
 void WindowsTelemetry::LogProcessInfo() const {
@@ -196,6 +201,7 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                     TraceLoggingUInt8(0, "schemaVersion"),
                     TraceLoggingUInt32(session_id, "sessionId"),
                     TraceLoggingInt64(ir_version, "irVersion"),
+                    TraceLoggingUInt32(projection_, "OrtProgrammingProjection"),
                     TraceLoggingString(model_producer_name.c_str(), "modelProducerName"),
                     TraceLoggingString(model_producer_version.c_str(), "modelProducerVersion"),
                     TraceLoggingString(model_domain.c_str(), "modelDomain"),

@@ -550,7 +550,7 @@ common::Status InferenceSession::Load(const std::basic_string<T>& model_uri) {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 common::Status InferenceSession::Load(const std::string& model_uri) {
-  std::string model_type = session_options_.GetConfigOrDefault(ORT_SESSION_OPTIONS_CONFIG_LOAD_MODEL_FORMAT, "");
+  std::string model_type = session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigLoadModelFormat, "");
   bool has_explicit_type = !model_type.empty();
 
   if ((has_explicit_type && model_type == "ORT") ||
@@ -573,7 +573,7 @@ common::Status InferenceSession::Load(const std::string& model_uri) {
 
 #ifdef _WIN32
 common::Status InferenceSession::Load(const std::wstring& model_uri) {
-  std::string model_type = session_options_.GetConfigOrDefault(ORT_SESSION_OPTIONS_CONFIG_LOAD_MODEL_FORMAT, "");
+  std::string model_type = session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigLoadModelFormat, "");
   bool has_explicit_type = !model_type.empty();
 
   if ((has_explicit_type && model_type == "ORT") ||
@@ -596,7 +596,7 @@ common::Status InferenceSession::Load(const std::wstring& model_uri) {
 #endif
 
 common::Status InferenceSession::Load(const void* model_data, int model_data_len) {
-  std::string model_type = session_options_.GetConfigOrDefault(ORT_SESSION_OPTIONS_CONFIG_LOAD_MODEL_FORMAT, "");
+  std::string model_type = session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigLoadModelFormat, "");
   bool has_explicit_type = !model_type.empty();
 
   if ((has_explicit_type && model_type == "ORT") ||
@@ -1031,7 +1031,7 @@ common::Status InferenceSession::Initialize() {
     // since we've to take into account the per-thread cuda allocators.
     // TODO (contd.) We could also possibly absorb the per-thread logic in a new allocator decorator that derives
     // from IAllocator to keep things clean.
-    std::string use_env_allocators = session_options_.GetConfigOrDefault(ORT_SESSION_OPTIONS_CONFIG_USE_ENV_ALLOCATORS,
+    std::string use_env_allocators = session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigUseEnvAllocators,
                                                                          "0");
     if (use_env_allocators == "1") {
       UpdateProvidersWithSharedAllocators();
@@ -1079,7 +1079,7 @@ common::Status InferenceSession::Initialize() {
 
     // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
     ORT_RETURN_IF_ERROR_SESSIONID_(graph.Resolve());
-    
+
     // Update temporary copies of metadata, input- and output definitions to the same state as the resolved graph
     ORT_RETURN_IF_ERROR_SESSIONID_(SaveModelMetadata(*model_));
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -1105,7 +1105,7 @@ common::Status InferenceSession::Initialize() {
                "and should only be used in the same environment the model was optimized for.";
       }
 
-      std::string model_type = session_options_.GetConfigOrDefault(ORT_SESSION_OPTIONS_CONFIG_SAVE_MODEL_FORMAT, "");
+      std::string model_type = session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigSaveModelFormat, "");
       bool has_explicit_type = !model_type.empty();
 
       if ((has_explicit_type && model_type == "ORT") ||

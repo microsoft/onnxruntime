@@ -145,6 +145,7 @@ TEST_F(LoggingTestsFixture, TestLoggerFiltering) {
 /// <summary>
 /// Tests that the logging manager constructor validates its usage correctly.
 /// </summary>
+#if !defined(ORT_NO_EXCEPTIONS)
 TEST_F(LoggingTestsFixture, TestLoggingManagerCtor) {
   // throw if sink is null
   EXPECT_THROW((LoggingManager{std::unique_ptr<ISink>{nullptr}, Severity::kINFO, false,
@@ -157,6 +158,7 @@ TEST_F(LoggingTestsFixture, TestLoggingManagerCtor) {
                                InstanceType::Default}),
                ::onnxruntime::OnnxRuntimeException);
 }
+#endif
 
 /// <summary>
 /// Tests that the conditional logging macros work correctly.

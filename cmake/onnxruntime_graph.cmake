@@ -105,17 +105,19 @@ if (onnxruntime_ENABLE_TRAINING)
 endif()
 
 if (WIN32)
-    set(onnxruntime_graph_static_library_flags
-        -IGNORE:4221 # LNK4221: This object file does not define any previously undefined public symbols, so it will not be used by any link operation that consumes this library
-    )
+  set(onnxruntime_graph_static_library_flags
+      -IGNORE:4221 # LNK4221: This object file does not define any previously undefined public symbols, so it will not be used by any link operation that consumes this library
+  )
 
-    set_target_properties(onnxruntime_graph PROPERTIES
-        STATIC_LIBRARY_FLAGS "${onnxruntime_graph_static_library_flags}")
+  set_target_properties(onnxruntime_graph PROPERTIES
+      STATIC_LIBRARY_FLAGS "${onnxruntime_graph_static_library_flags}")
 
+  if (NOT onnxruntime_DISABLE_EXCEPTIONS)  
     target_compile_options(onnxruntime_graph PRIVATE
         /EHsc   # exception handling - C++ may throw, extern "C" will not
     )
+  endif()
 
-    # Add Code Analysis properties to enable C++ Core checks. Have to do it via a props file include.
-    set_target_properties(onnxruntime_graph PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/EnableVisualStudioCodeAnalysis.props)
+  # Add Code Analysis properties to enable C++ Core checks. Have to do it via a props file include.
+  set_target_properties(onnxruntime_graph PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/EnableVisualStudioCodeAnalysis.props)
 endif()
