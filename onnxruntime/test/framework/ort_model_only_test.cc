@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include "core/framework/data_types.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
@@ -64,7 +65,7 @@ static void CompareTensors(const OrtValue& left_value, const OrtValue& right_val
   const Tensor& left = left_value.Get<Tensor>();
   const Tensor& right = right_value.Get<Tensor>();
 
-  ASSERT_EQ(left.Shape(), right.Shape());
+  ASSERT_EQ(left.Shape().GetDims(), right.Shape().GetDims());
   ASSERT_EQ(left.GetElementType(), right.GetElementType());
 
   if (left.IsDataTypeString()) {
