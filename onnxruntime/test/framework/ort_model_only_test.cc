@@ -228,7 +228,7 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormat) {
   RunOrtModel(test_info);
 }
 
-#if !defined(DISABLE_CONTRIB_OPS)
+#if !defined(DISABLE_ML_OPS)
 TEST(OrtModelOnlyTests, SerializeToOrtFormatMLOps) {
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("sklearn_bin_voting_classifier_soft_converted.ort");
   SaveAndCompareModels("testdata/sklearn_bin_voting_classifier_soft.onnx", ort_file);
@@ -269,7 +269,7 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormatMLOps) {
 
   RunOrtModel(test_info);
 }
-#endif  // #if !defined(DISABLE_CONTRIB_OPS)
+#endif  // #if !defined(DISABLE_ML_OPS)
 #endif  // #if !defined(ORT_MINIMAL_BUILD)
 
 // test that we can deserialize and run a previously saved ORT format model
@@ -294,7 +294,7 @@ TEST(OrtModelOnlyTests, LoadOrtFormatModel) {
   RunOrtModel(test_info);
 }
 
-#if !defined(DISABLE_CONTRIB_OPS)
+#if !defined(DISABLE_ML_OPS)
 // test that we can deserialize and run a previously saved ORT format model
 // for a model with sequence and map outputs
 TEST(OrtModelOnlyTests, LoadOrtFormatModelMLOps) {
