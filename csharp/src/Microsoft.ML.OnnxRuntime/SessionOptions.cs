@@ -175,6 +175,10 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, libraryPath, out libraryHandle));
         }
 
+        public void AddSessionConfigEntry(string configKey, string configValue)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtAddSessionConfigEntry(handle, configKey, configValue));
+        }
         #endregion
 
         internal IntPtr Handle
