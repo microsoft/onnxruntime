@@ -525,7 +525,7 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
 #endif
     } else if (type == kCudaExecutionProvider) {
 #if (defined USE_CUDA && defined USE_DML)
-      // If both CUDA and DML are requested, just register DML EP - so no op here
+      // If both CUDA and DML are requested, just register DML EP (below) - so no op here
       // as ORT doesn't have semantics of dealing with nodes assigned to multiple
       // device memory based GPU EPs. See comment and static_assert above.
 
