@@ -721,7 +721,6 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
   }
   nccl_service.EndPlan();
 
-  nccl_service.Show();
   pipeline_worker_pool_.nccl_worker = std::thread(
     [&]() -> void {
       nccl_service.Launch();

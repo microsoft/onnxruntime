@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if defined(USE_NCCL) || defined(USE_HOROVOD)
+#if defined(USE_NCCL)
 
 #pragma once
 #include <condition_variable>
@@ -223,7 +223,6 @@ class NcclService final {
   std::condition_variable cv_;
 
   // Stream for running NCCL.
-  cudaStream_t stream_;
   ncclComm_t comm_;
 
   bool is_launched_;

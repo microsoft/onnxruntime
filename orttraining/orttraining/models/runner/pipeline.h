@@ -87,38 +87,33 @@ class PipelineSlot {
 
   bool IsEmpty() const { return tasks_.empty(); };
   size_t NumActions() const { return tasks_.size(); }
+
   bool HasCompute() const {
-    for (auto& task : tasks_) {
-      if (task.IsCompute())
-        return true;
-    }
-    return false;
+    return std::any_of(
+        tasks_.begin(), tasks_.end(), [&](const PipelineTask& task) {
+          return task.IsCompute();
+        });
   }
 
   bool HasCommute() const {
-    for (auto& task: tasks_) {
-      if (task.IsCommute())
-        return true;
-    }
-    return false;
+    return std::any_of(
+        tasks_.begin(), tasks_.end(), [&](const PipelineTask& task) {
+          return task.IsCommute();
+        });
   }
 
   bool HasRendTo(const int stage) const {
-    for (auto& task : tasks_) {
-      if (task.IsSendTo(stage)) {
-        return true;
-      }
-    }
-    return false;
+    return std::any_of(
+        tasks_.begin(), tasks_.end(), [&](const PipelineTask& task) {
+          return task.IsSendTo(stage);
+        });
   }
 
   bool HasRecvFrom(const int stage) const {
-    for (auto& task : tasks_) {
-      if (task.IsRecvFrom(stage)) {
-        return true;
-      }
-    }
-    return false;
+    return std::any_of(
+        tasks_.begin(), tasks_.end(), [&](const PipelineTask& task) {
+          return task.IsRecvFrom(stage);
+        });
   }
 
   PipelineTask& operator[](int index);

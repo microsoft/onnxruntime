@@ -1,10 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if defined(USE_NCCL) || defined(USE_HOROVOD)
+#if defined(USE_NCCL)
 
-#include "orttraining/training_ops/cuda/communication/nccl_service.cuh"
 #include "core/profile/context.h"
+#include "core/providers/cuda/cuda_common.h"
+#include "orttraining/core/framework/mpi_context.h"
+#include "orttraining/training_ops/cuda/communication/nccl_service.cuh"
 #include <iostream>
 #include <nccl.h>
 
@@ -65,26 +67,23 @@ void NcclService::SubmitRecvAndWait(void* ptr, size_t size, int peer) {
 void NcclService::Initialize() {
   // Here we assume GPU i is assigned to local process i.
   // TODO: Create a general class to describe for computation topology and unify all similar uses.
-  // Hardwoards a process can own:
+  // Hardware a process can own:
   //   GPUs
   //   CPUs
   //   Other devices
   int mpi_rank;
   int mpi_size;
-  MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
-  MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
+  MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank));
+  MPI_CHECK(MPI_Comm_size(MPI_COMM_WORLD, &mpi_size));
 
   // Set device this NCCL communicator runs on.
-  cudaSetDevice(mpi_rank);
-
-  // Create stream to run NCCL.
-  cudaStreamCreate(&stream_);
+  CUDA_CALL(cudaSetDevice(mpi_rank));
 
   // Get NCCL unique ID at rank 0 and broadcast it to all others.
   ncclUniqueId id;
-  if (mpi_rank == 0) ncclGetUniqueId(&id);
-  MPI_Bcast((void *)&id, sizeof(id), MPI_BYTE, 0, MPI_COMM_WORLD);
-  ncclCommInitRank(&comm_, mpi_size, id, mpi_rank);
+  if (mpi_rank == 0) NCCL_CALL(ncclGetUniqueId(&id));
+  MPI_CHECK(MPI_Bcast((void *)&id, sizeof(id), MPI_BYTE, 0, MPI_COMM_WORLD));
+  NCCL_CALL(ncclCommInitRank(&comm_, mpi_size, id, mpi_rank));
 }
 
 void NcclService::Launch() {
@@ -118,7 +117,7 @@ void NcclService::Launch() {
       }
 
       // Start NCCL parallel communication.
-      ncclGroupStart();
+      NCCL_CALL(ncclGroupStart());
       for (auto& task : schedule_[time_].batch) {
         if (!task.is_enqueued) {
           throw std::runtime_error("Unscheduled task cannot be run.");
@@ -129,23 +128,20 @@ void NcclService::Launch() {
             if (task.peers.size() != 1) {
               throw std::invalid_argument("Send can only send data to one rank.");
             }
-            ncclSend(task.ptr, task.size, ncclChar, task.peers.front(), comm_, stream_);
+            NCCL_CALL(ncclSend(task.ptr, task.size, ncclChar, task.peers.front(), comm_, nullptr));
             break;
           case NcclTask::Type::RECV:
             if (task.peers.size() != 1) {
               throw std::invalid_argument("Recv can only send data to one rank.");
             }
-            ncclRecv(task.ptr, task.size, ncclChar, task.peers.front(), comm_, stream_);
+            NCCL_CALL(ncclRecv(task.ptr, task.size, ncclChar, task.peers.front(), comm_, nullptr));
             break;
           default:
             throw std::runtime_error("NCCL service currently only support ncclSend and ncclRecv.");
         }
         task.is_finished = true;
       }
-      ncclGroupEnd();
-
-      // Wait all communication to be finished.
-      cudaStreamSynchronize(stream_);
+      NCCL_CALL(ncclGroupEnd());
 
       // This round of communication is done.
       // We can start waiting for the tasks to be fully scheduled.
@@ -187,8 +183,7 @@ void NcclService::Terminate() {
   }
 
   is_launched_ = false;
-  cudaStreamDestroy(stream_);
-  ncclCommDestroy(comm_);
+  NCCL_CALL(ncclCommDestroy(comm_));
 }
 
 }  // namespace cuda
