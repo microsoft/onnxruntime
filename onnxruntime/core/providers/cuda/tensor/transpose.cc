@@ -9,9 +9,17 @@
 namespace onnxruntime {
 namespace cuda {
 
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Transpose,
+                        kOnnxDomain,
+                        1, 12,
+                        kCudaExecutionProvider,
+                        KernelDefBuilder()
+                            .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+                        Transpose);
+
 ONNX_OPERATOR_KERNEL_EX(Transpose,
                         kOnnxDomain,
-                        1,
+                        13,
                         kCudaExecutionProvider,
                         KernelDefBuilder()
                             .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
