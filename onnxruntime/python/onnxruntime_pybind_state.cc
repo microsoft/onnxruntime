@@ -495,19 +495,20 @@ void UpdateCudaProviderOptions(InferenceSession* sess, onnxruntime::CudaProvider
 }
 #endif
 
-// We don't have provision in ORT to perform data copies across nodes assigned to different GPU based
-// EPs (which have different device memories associated with each). Using CUDA and TensorRT together
-// is fine as they are associated with the same device memory.
-// Currently we allow DML and CUDA together as we have a CI pipeline using it, but we will only register
-// one of the two below.
-static_assert(!(USE_MIGRAPHX && (USE_CUDA || USE_DML)),
-              "Including multiple GPU EPs in the build is not supported");
-
 /*
  * Register execution provider with options.
  *
  * (note: currently only cuda EP supports this feature and rest of EPs use default options)
  */
+// We don't have provision in ORT to perform data copies across nodes assigned to different GPU based
+// EPs (which have different device memories associated with each). Using CUDA and TensorRT together
+// is fine as they are associated with the same device memory.
+// Currently we allow DML and CUDA together as we have a CI pipeline using it, but we will only register
+// one of the two below.
+#if (defined USE_MIGRAPHX && (defined USE_CUDA || defined USE_DML))
+static_assert(false, "Including multiple GPU EPs in the build is not supported");
+#endif
+
 void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::string>& provider_types,
                                 ProviderOptionsMap& provider_options_map) {
   PYBIND_UNREFERENCED_PARAMETER(provider_options_map);
