@@ -495,12 +495,11 @@ void UpdateCudaProviderOptions(InferenceSession* sess, onnxruntime::CudaProvider
 }
 #endif
 
-// We don't have provision in ORT to perform data copies across nodes assigned different GPU based
+// We don't have provision in ORT to perform data copies across nodes assigned to different GPU based
 // EPs (which have different device memories associated with each). Using CUDA and TensorRT together
 // is fine as they are associated with the same device memory.
 // Currently we allow DML and CUDA together as we have a CI pipeline using it, but we will only register
-// one of the two below. This is because ORT doesn't have a provision to deal with potentially different device
-// memories involved.
+// one of the two below.
 static_assert(USE_MIGRAPHX && (USE_CUDA || USE_DML), "Including multiple GPU EPs in the build is not supported");
 
 /*
@@ -525,7 +524,7 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_MIGraphX(0));
 #endif
     } else if (type == kCudaExecutionProvider) {
-#if (defined USE_CUDA && defined USE_DML) || (defined USE_DML)
+#if (defined USE_CUDA && defined USE_DML)
       // If both CUDA and DML are requested, just register DML EP - so no op here
       // as ORT doesn't have semantics of dealing with nodes assigned to multiple
       // device memory based GPU EPs. See comment and static_assert above.
