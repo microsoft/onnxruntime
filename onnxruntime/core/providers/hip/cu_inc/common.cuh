@@ -14,63 +14,6 @@
 namespace onnxruntime {
 namespace hip {
 
-// float16 arithmetic is supported after sm5.3 with intrinsics, and hip does not provide fallback for lower versions
-#if defined(__HIP_ARCH__) && __HIP_ARCH__ < 530
-__device__ __forceinline__ half operator+(const half& lh, const half& rh) { return half((float)lh + (float)rh); }
-__device__ __forceinline__ half operator-(const half& lh, const half& rh) { return half((float)lh - (float)rh); }
-__device__ __forceinline__ half operator*(const half& lh, const half& rh) { return half((float)lh * (float)rh); }
-__device__ __forceinline__ half operator/(const half& lh, const half& rh) { return half((float)lh / (float)rh); }
-
-__device__ __forceinline__ half& operator+=(half& lh, const half& rh) {
-  lh = half((float)lh + (float)rh);
-  return lh;
-}
-__device__ __forceinline__ half& operator-=(half& lh, const half& rh) {
-  lh = half((float)lh - (float)rh);
-  return lh;
-}
-__device__ __forceinline__ half& operator*=(half& lh, const half& rh) {
-  lh = half((float)lh * (float)rh);
-  return lh;
-}
-__device__ __forceinline__ half& operator/=(half& lh, const half& rh) {
-  lh = half((float)lh / (float)rh);
-  return lh;
-}
-
-/* Note for increment and decrement we use the raw value 0x3C00 equating to half(1.0f), to avoid the extra conversion */
-__device__ __forceinline__ __half& operator++(__half& h) {
-  h = half((float)h + 1.0f);
-  return h;
-}
-__device__ __forceinline__ __half& operator--(__half& h) {
-  h = half((float)h - 1.0f);
-  return h;
-}
-__device__ __forceinline__ __half operator++(__half& h, int) {
-  half ret = h;
-  h = half((float)h + 1);
-  return ret;
-}
-__device__ __forceinline__ __half operator--(__half& h, int) {
-  half ret = h;
-  h = half((float)h - 1);
-  return ret;
-}
-
-/* Unary plus and inverse operators */
-__device__ __forceinline__ half operator+(const half& h) { return h; }
-__device__ __forceinline__ half operator-(const half& h) { return half(-(float)h); }
-
-/* Some basic comparison operations to make it look like a builtin */
-__device__ __forceinline__ bool operator==(const half& lh, const half& rh) { return (float)lh == (float)rh; }
-__device__ __forceinline__ bool operator!=(const half& lh, const half& rh) { return (float)lh != (float)rh; }
-__device__ __forceinline__ bool operator>(const half& lh, const half& rh) { return (float)lh > (float)rh; }
-__device__ __forceinline__ bool operator<(const half& lh, const half& rh) { return (float)lh < (float)rh; }
-__device__ __forceinline__ bool operator>=(const half& lh, const half& rh) { return (float)lh >= (float)rh; }
-__device__ __forceinline__ bool operator<=(const half& lh, const half& rh) { return (float)lh <= (float)rh; }
-#endif
-
 template <typename T>
 __device__ __inline__ T _Ceil(T a);
 
@@ -130,11 +73,7 @@ __device__ __inline__ double _Round(double a) { return rint(a); }
 
 template <>
 __device__ __inline__ half _Round(half a) { 
-#if __HIP_ARCH__ < 530
-  return half(rintf((float)a));
-#else
   return hrint(a);
-#endif
 }
 
 template <typename T>
