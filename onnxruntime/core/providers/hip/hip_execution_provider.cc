@@ -59,6 +59,7 @@ ONNX_OPERATOR_KERNEL_EX(
 HIPExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, size_t hip_mem_limit, ArenaExtendStrategy arena_extend_strategy) {
   HIP_CALL_THROW(hipSetDevice(device_id));
   HIPBLAS_CALL_THROW(hipblasCreate(&hipblas_handle_));
+  ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
   MIOPEN_CALL_THROW(miopenCreate(&miopen_handle_));
   // HIPRAND_CALL_THROW(hiprandCreateGenerator(&hiprand_generator_, HIPRAND_RNG_PSEUDO_DEFAULT));
 
@@ -84,6 +85,12 @@ HIPExecutionProvider::PerThreadContext::~PerThreadContext() {
     HIPBLAS_CALL(hipblasDestroy(hipblas_handle_));
   } catch (const std::exception& ex) {
     LOGS_DEFAULT(ERROR) << "hipblasDestroy threw:" << ex.what();
+  }
+
+  try {
+    ROCBLAS_CALL(rocblas_destroy_handle(rocblas_handle_));
+  } catch (const std::exception& ex) {
+    LOGS_DEFAULT(ERROR) << "rocblas_destroy_handle threw:" << ex.what();
   }
 
   try {

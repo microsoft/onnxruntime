@@ -287,6 +287,7 @@ Status ReduceComputeCore(const Tensor& input, PrepareReduceMetadata& prepare_red
     if (output.template MutableData<T>() != input.template Data<T>()) {
       HIP_RETURN_IF_ERROR(hipMemcpyAsync(output.template MutableData<T>(), input.template Data<T>(), input_count * sizeof(T), hipMemcpyDeviceToDevice));
     }
+    return Status::OK();
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "reduction2 is not supported");

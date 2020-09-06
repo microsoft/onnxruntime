@@ -49,9 +49,14 @@ class HIPExecutionProvider : public IExecutionProvider {
     return GetPerThreadContext().HipblasHandle();
   }
 
+  rocblas_handle PerThreadRocblasHandle() {
+    return GetPerThreadContext().RocblasHandle();
+  }
+
   miopenHandle_t PerThreadMiopenHandle() {
     return GetPerThreadContext().MiopenHandle();
   }
+
   hiprandGenerator_t PerThreadHiprandGenerator() {
     return GetPerThreadContext().HiprandGenerator();
   }
@@ -105,6 +110,10 @@ class HIPExecutionProvider : public IExecutionProvider {
       return hipblas_handle_;
     }
 
+    rocblas_handle RocblasHandle() const {
+      return rocblas_handle_;
+    }
+
     miopenHandle_t MiopenHandle() const {
       return miopen_handle_;
     }
@@ -145,6 +154,7 @@ class HIPExecutionProvider : public IExecutionProvider {
 
    private:
     hipblasHandle_t hipblas_handle_ = nullptr;
+    rocblas_handle rocblas_handle_ = nullptr;
     miopenHandle_t miopen_handle_ = nullptr;
     hiprandGenerator_t hiprand_generator_ = nullptr;
 
