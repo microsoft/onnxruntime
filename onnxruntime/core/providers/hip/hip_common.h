@@ -26,6 +26,11 @@ namespace hip {
                           ? common::Status::OK() \
                           : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "HIPBLAS error executing ", #expr))
 
+#define ROCBLAS_RETURN_IF_ERROR(expr)             \
+  ORT_RETURN_IF_ERROR(ROCBLAS_CALL(expr)          \
+                          ? common::Status::OK() \
+                          : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ROCBLAS error executing ", #expr))
+
 #define HIPSPARSE_RETURN_IF_ERROR(expr)           \
   ORT_RETURN_IF_ERROR(HIPSPARSE_CALL(expr)        \
                           ? common::Status::OK() \
@@ -163,6 +168,10 @@ class HipKernel : public OpKernel {
 
   inline hipblasHandle_t HipblasHandle() const {
     return provider_->PerThreadHipblasHandle();
+  }
+
+  inline rocblas_handle RocblasHandle() const {
+    return provider_->PerThreadRocblasHandle();
   }
 
   inline miopenHandle_t MiopenHandle() const {

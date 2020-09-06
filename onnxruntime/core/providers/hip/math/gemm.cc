@@ -79,12 +79,29 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
           0,
           out_data,
           1));
+      // ROCBLAS_RETURN_IF_ERROR(rocblasCopyHelper(
+      //     RocblasHandle(),
+      //     M * N,
+      //     b_data,
+      //     0,
+      //     out_data,
+      //     1));
     } else if (b_shape.NumDimensions() == 1 || b_shape[0] == 1) {
       // B is (N,) or (1, N), broadcast using Y(N,M) = 1 * B(N,1) x ones(1,M) + 0 * Y
-      HIPBLAS_RETURN_IF_ERROR(hipblasGemmHelper(
-          HipblasHandle(),
-          HIPBLAS_OP_N,
-          HIPBLAS_OP_N,
+      // HIPBLAS_RETURN_IF_ERROR(hipblasGemmHelper(
+      //     HipblasHandle(),
+      //     HIPBLAS_OP_N,
+      //     HIPBLAS_OP_N,
+      //     N, M, 1,
+      //     /*alpha*/ &one,
+      //     b_data, N,
+      //     GetConstOnes<HipT>(M), 1,
+      //     /*beta*/ &zero,
+      //     out_data, N));
+      ROCBLAS_RETURN_IF_ERROR(rocblasGemmHelper(
+          RocblasHandle(),
+          rocblas_operation_none,
+          rocblas_operation_none,
           N, M, 1,
           /*alpha*/ &one,
           b_data, N,
@@ -93,10 +110,20 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
           out_data, N));
     } else if (b_shape.NumDimensions() == 2 && b_shape[1] == 1) {
       // B is (M, 1), broadcast using Y(N,M) = 1 * ones(N,1) x B(1,M) + 0 * Y
-      HIPBLAS_RETURN_IF_ERROR(hipblasGemmHelper(
-          HipblasHandle(),
-          HIPBLAS_OP_N,
-          HIPBLAS_OP_N,
+      // HIPBLAS_RETURN_IF_ERROR(hipblasGemmHelper(
+      //     HipblasHandle(),
+      //     HIPBLAS_OP_N,
+      //     HIPBLAS_OP_N,
+      //     N, M, 1,
+      //     /*alpha*/ &one,
+      //     GetConstOnes<HipT>(N), N,
+      //     b_data, 1,
+      //     /*beta*/ &zero,
+      //     out_data, N));
+      ROCBLAS_RETURN_IF_ERROR(rocblasGemmHelper(
+          RocblasHandle(),
+          rocblas_operation_none,
+          rocblas_operation_none,
           N, M, 1,
           /*alpha*/ &one,
           GetConstOnes<HipT>(N), N,
@@ -112,10 +139,24 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
   HipT alpha = ToHipType<T>::FromFloat(alpha_);
   HipT beta = ToHipType<T>::FromFloat(beta_);
   // Gemm, note that HIP assumes col-major, so Y(N,M) = alpha * op(W) x op(X) + beta * Y
-  HIPBLAS_RETURN_IF_ERROR(hipblasGemmHelper(
-      HipblasHandle(),
-      trans_B_ ? HIPBLAS_OP_T : HIPBLAS_OP_N,
-      trans_A_ ? HIPBLAS_OP_T : HIPBLAS_OP_N,
+  // HIPBLAS_RETURN_IF_ERROR(hipblasGemmHelper(
+  //     HipblasHandle(),
+  //     trans_B_ ? HIPBLAS_OP_T : HIPBLAS_OP_N,
+  //     trans_A_ ? HIPBLAS_OP_T : HIPBLAS_OP_N,
+  //     N, M, K,
+  //     &alpha,
+  //     reinterpret_cast<const HipT*>(W->template Data<T>()),
+  //     (trans_B_ ? K : N),
+  //     reinterpret_cast<const HipT*>(X->template Data<T>()),
+  //     (trans_A_ ? M : K),
+  //     // ideally we need to set the output buffer contents to 0 if bias is missing,
+  //     // but passing 0 for beta is cheaper and it will ignore any junk in the output buffer
+  //     B != nullptr ? &beta : &zero,
+  //     out_data, N));
+  ROCBLAS_RETURN_IF_ERROR(rocblasGemmHelper(
+      RocblasHandle(),
+      trans_B_ ? rocblas_operation_transpose : rocblas_operation_none,
+      trans_A_ ? rocblas_operation_transpose : rocblas_operation_none,
       N, M, K,
       &alpha,
       reinterpret_cast<const HipT*>(W->template Data<T>()),
@@ -126,7 +167,6 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
       // but passing 0 for beta is cheaper and it will ignore any junk in the output buffer
       B != nullptr ? &beta : &zero,
       out_data, N));
-
   return Status::OK();
 }
 

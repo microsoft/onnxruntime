@@ -797,9 +797,10 @@ if (onnxruntime_USE_HIP)
 
   find_library(HIP_LIB amdhip64 REQUIRED)
   find_library(HIP_BLAS hipblas REQUIRED)
+  find_library(ROC_BLAS rocblas REQUIRED)
   find_library(MIOPEN_LIB MIOpen REQUIRED)
   find_library(RCCL_LIB rccl REQUIRED)
-  set(ONNXRUNTIME_HIP_LIBS ${HIP_LIB} ${HIP_BLAS} ${MIOPEN_LIB} ${RCCL_LIB})
+  set(ONNXRUNTIME_HIP_LIBS ${HIP_LIB} ${HIP_BLAS} ${ROC_BLAS} ${MIOPEN_LIB} ${RCCL_LIB})
 
   file(GLOB_RECURSE onnxruntime_providers_hip_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/hip/*.h"

@@ -51,6 +51,29 @@ const char* HipErrString<hipblasStatus_t>(hipblasStatus_t e) {
   }
 }
 
+template <>
+const char* HipErrString<rocblas_status>(rocblas_status e) {
+  hipDeviceSynchronize();
+
+  switch (e) {
+    CASE_ENUM_TO_STR(rocblas_status_success);
+    CASE_ENUM_TO_STR(rocblas_status_invalid_handle);
+    CASE_ENUM_TO_STR(rocblas_status_not_implemented);
+    CASE_ENUM_TO_STR(rocblas_status_invalid_pointer);
+    CASE_ENUM_TO_STR(rocblas_status_invalid_size);
+    CASE_ENUM_TO_STR(rocblas_status_memory_error);
+    CASE_ENUM_TO_STR(rocblas_status_internal_error);
+    CASE_ENUM_TO_STR(rocblas_status_perf_degraded);
+    CASE_ENUM_TO_STR(rocblas_status_size_query_mismatch);
+    CASE_ENUM_TO_STR(rocblas_status_size_increased);
+    CASE_ENUM_TO_STR(rocblas_status_size_unchanged);
+    CASE_ENUM_TO_STR(rocblas_status_invalid_value);
+    CASE_ENUM_TO_STR(rocblas_status_continue);
+    default:
+      return "(look for rocblas_status in rocblas-types.h)";
+  }
+}
+
 // template <>
 // const char* HipErrString<hiprandStatus_t>(hiprandStatus_t) {
 //   hipDeviceSynchronize();
@@ -134,6 +157,8 @@ template bool HipCall<hipError_t, false>(hipError_t retCode, const char* exprStr
 template bool HipCall<hipError_t, true>(hipError_t retCode, const char* exprString, const char* libName, hipError_t successCode, const char* msg);
 template bool HipCall<hipblasStatus_t, false>(hipblasStatus_t retCode, const char* exprString, const char* libName, hipblasStatus_t successCode, const char* msg);
 template bool HipCall<hipblasStatus_t, true>(hipblasStatus_t retCode, const char* exprString, const char* libName, hipblasStatus_t successCode, const char* msg);
+template bool HipCall<rocblas_status, false>(rocblas_status retCode, const char* exprString, const char* libName, rocblas_status successCode, const char* msg);
+template bool HipCall<rocblas_status, true>(rocblas_status retCode, const char* exprString, const char* libName, rocblas_status successCode, const char* msg);
 template bool HipCall<miopenStatus_t, false>(miopenStatus_t retCode, const char* exprString, const char* libName, miopenStatus_t successCode, const char* msg);
 template bool HipCall<miopenStatus_t, true>(miopenStatus_t retCode, const char* exprString, const char* libName, miopenStatus_t successCode, const char* msg);
 // template bool HipCall<hiprandStatus_t, false>(hiprandStatus_t retCode, const char* exprString, const char* libName, hiprandStatus_t successCode, const char* msg);
