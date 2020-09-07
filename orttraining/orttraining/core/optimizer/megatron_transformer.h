@@ -33,15 +33,15 @@ class MegatronTransformer : public GraphTransformer {
 
   Status TransformT5SelfAttention(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger,
                                   std::vector<Node*>& nodes_to_clear_shape,
-                                  std::unordered_set<Node*>& self_attention_dropout_nodes) const;
+                                  std::unordered_set<Node*>& self_attention_dropout_nodes, int32_t& counter) const;
 
   Status TransformT5MLP(Graph& graph, bool& modified, int graph_level,
                         const logging::Logger& logger,
                         std::vector<Node*>& nodes_to_clear_shape,
-                        std::unordered_set<Node*>& self_attention_dropout_nodes) const;
+                        std::unordered_set<Node*>& self_attention_dropout_nodes, int32_t& counter) const;
 
   Status TransformDropout(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger,
-                          std::unordered_set<Node*>& self_attention_dropout_nodes) const;
+                          std::unordered_set<Node*>& self_attention_dropout_nodes, int32_t& counter) const;
 
   NodeArg& PartitionWeightByColumn(Graph& graph, const NodeArg& input_arg, int stride = 1) const;
 
