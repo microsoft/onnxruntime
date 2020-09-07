@@ -3,12 +3,12 @@
 
 #pragma once
 
-// Currently everything here is unused in a minimal build.
-// Leaving the file included in case there are other InferenceSession utils needed in a minimal build, as this would
-// be the best place to add them.
+#include "core/flatbuffers/ort.fbs.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
-
+//
+// Includes to parse json session config from onnx model file
+//
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 #include "core/framework/session_options.h"
@@ -24,20 +24,25 @@
 #endif
 
 using json = nlohmann::json;
+#endif
 
 namespace onnxruntime {
 
 namespace inference_session_utils {
 
-static constexpr const char* kOrtConfigKey = "ort_config";
-static constexpr const char* kSessionOptionsKey = "session_options";
+// need this value to be accessible in all builds in order to report error for attempted usage in a minimal build
 static constexpr const char* kOrtLoadConfigFromModelEnvVar = "ORT_LOAD_CONFIG_FROM_MODEL";
 
-}  // namespace inference_session_utils
+#if !defined(ORT_MINIMAL_BUILD)
+//
+// Code to parse json session config from onnx model file
+//
+static constexpr const char* kOrtConfigKey = "ort_config";
+static constexpr const char* kSessionOptionsKey = "session_options";
 
-class InferenceSessionUtils {
+class JsonConfigParser {
  public:
-  InferenceSessionUtils(const logging::Logger& logger) : logger_(logger) {
+  JsonConfigParser(const logging::Logger& logger) : logger_(logger) {
   }
 
   Status ParseOrtConfigJsonInModelProto(const ONNX_NAMESPACE::ModelProto& model_proto);
@@ -60,6 +65,24 @@ class InferenceSessionUtils {
   bool is_ort_config_json_available_ = false;
 };
 
-}  // namespace onnxruntime
-
 #endif  // !defined(ORT_MINIMAL_BUILD)
+
+// check if filename ends in .ort
+template <typename T>
+bool IsOrtFormatModel(const std::basic_string<T>& filename) {
+  auto len = filename.size();
+  return len > 4 &&
+         filename[len - 4] == '.' &&
+         std::tolower(filename[len - 3]) == 'o' &&
+         std::tolower(filename[len - 2]) == 'r' &&
+         std::tolower(filename[len - 1]) == 't';
+}
+
+// check if bytes has the flatbuffer ORT identifier
+inline bool IsOrtFormatModelBytes(const void* bytes, int num_bytes) {
+  return num_bytes > 8 &&  // check buffer is large enough to contain identifier so we don't read random memory
+         experimental::fbs::InferenceSessionBufferHasIdentifier(bytes);
+}
+
+}  // namespace inference_session_utils
+}  // namespace onnxruntime

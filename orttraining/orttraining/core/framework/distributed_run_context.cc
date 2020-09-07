@@ -32,8 +32,6 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
               "world_size(" + std::to_string(world_size) + ") is not divisible by "
               "data_parallel_size(" + std::to_string(data_parallel_size) + ").");
 
-  // Be noted: this check and subsequent logic should be updated when we introduce pipeline group
-  // depending how to split the pipeline groups.
   ORT_ENFORCE(data_parallel_size * horizontal_parallel_size * pipeline_stage_size == world_size,
               "data_parallel_size(" + std::to_string(data_parallel_size) + ") "
               "* horizontal_parallel_size(" + std::to_string(horizontal_parallel_size) + ") "
@@ -47,27 +45,87 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
   params_.data_parallel_size = data_parallel_size;
   params_.horizontal_parallel_size = horizontal_parallel_size;
   params_.pipeline_stage_size = pipeline_stage_size;
-  groups_.resize(2);
+  groups_.resize(static_cast<size_t>(WorkerGroupType::WorkerGroupTypeCount));
+
+  // Consider distributed training forms three axes, data parallel, horizontal parallel and pipeline parallel.
+  // The three axes are pependicular to each other and like x, y, z axes in 3D space (but only the positive directions).
+  // Now the world ranks are numbers filling in this 3D space alone the three axes. It will try fill alone the
+  // horizontal axis first, then data parallel axis, and last pipeline parallel axis.
+  //
+  // Ranks that are aligned with a specific axis forms a group. For example, for a 3D cube with size
+  // horizontal_parallel x data_parallel x pipeline_parallel equal to 4x3x2, there are 24 rank numbers fill into the
+  // cubic. It will have 6 horizontal groups, 8 data parallel groups and 12 pipeline groups, as shown below.
+  //
+  //          pipeline (z)
+  //            ^
+  //            | 12, 16, 20,
+  //            |  13, 17, 21,
+  //            |   14, 18, 22,
+  //            |    15, 19, 23,
+  //            |__________________> data (y)
+  //             \ 0, 4, 8,
+  //              \ 1, 5, 9,
+  //               \ 2, 6, 10,
+  //                \ 3, 7, 11,
+  //                 v
+  //                horizontal (x)
+  //
+  // For a given world rank, say 11, it will be in the 3th data parallel group (3, 7, 11), with in-group index 2,
+  // and be in the 2th horizontal parallel group (8, 9, 10, 11) with in-group index 3; and be in the 11th pipeline
+  // parallel group (11, 23), with in-group index 0. Both the group id and in-group index are 0-based indexing.
+  //
+  // The calculation below is for a given world_rank, calculating its group index, in-group index and all ranks in this
+  // particular group.
+  //
+  // Calculate current rank's coordinate in the 3D space.
+  const int32_t x = world_rank % horizontal_parallel_size;
+  const int32_t y = (world_rank / horizontal_parallel_size) % data_parallel_size;
+  const int32_t z = (world_rank / (horizontal_parallel_size * data_parallel_size)) % pipeline_stage_size;
+
+  // lambda function to convert a 3-D coordinates back to its linear 1D representation.
+  auto calculate_linear_index = [](const int32_t hori_parallel_size,
+                                   const int32_t data_parallel_size,
+                                   const int32_t xx,
+                                   const int32_t yy,
+                                   const int32_t zz) {
+    return xx + yy * hori_parallel_size + zz * hori_parallel_size * data_parallel_size;
+  };
+
+  // Calculate the id of a group the current rank belongs to.
+  const int32_t hori_group_id = calculate_linear_index(1, data_parallel_size, 0, y, z);
+  const int32_t data_group_id = calculate_linear_index(horizontal_parallel_size, 1, x, 0, z);
+  const int32_t pipe_group_id = calculate_linear_index(horizontal_parallel_size, data_parallel_size, x, y, 0);
 
   // Initialize Data Parallel Group
-  const int32_t data_group_id = world_rank % horizontal_parallel_size;
-  const int32_t rank_in_owning_data_group = world_rank / horizontal_parallel_size;
+  const int32_t data_group_start_index = calculate_linear_index(horizontal_parallel_size, data_parallel_size, x, 0, z);
   std::vector<int32_t> data_group_ranks;
   for (auto r = 0; r < data_parallel_size; r++) {
-    data_group_ranks.push_back(data_group_id + horizontal_parallel_size * r);
+    data_group_ranks.push_back(data_group_start_index + r * horizontal_parallel_size);
   }
   groups_[WorkerGroupType::DataParallel] = {data_group_ranks, data_group_id,
-                                            WorkerGroupType::DataParallel, rank_in_owning_data_group};
+                                            WorkerGroupType::DataParallel, y};
 
   // Horizontal Model Parallel Group
-  const int32_t hori_group_id = world_rank / horizontal_parallel_size;
-  const int32_t rank_in_owning_hori_group = world_rank % horizontal_parallel_size;
+  const int32_t hori_group_start_index = calculate_linear_index(horizontal_parallel_size, data_parallel_size, 0, y, z);
   std::vector<int32_t> hori_group_ranks;
   for (auto r = 0; r < horizontal_parallel_size; r++) {
-    hori_group_ranks.push_back(hori_group_id * horizontal_parallel_size + r);
+    hori_group_ranks.push_back(hori_group_start_index + r);
   }
   groups_[WorkerGroupType::HorizontalParallel] = {hori_group_ranks, hori_group_id,
-                                                  WorkerGroupType::HorizontalParallel, rank_in_owning_hori_group};
+                                                  WorkerGroupType::HorizontalParallel, x};
+
+  // Model Parallel Group
+  // Note: Pipeline parallel group is different than Data and horizontal parallel in a way that ranks in the same
+  // pipeline group belongs to different pipeline stage. In another word, each pipeline group is composed of one and
+  // only one rank from each pipeline stage.
+  //
+  const int32_t pipe_group_start_index = calculate_linear_index(horizontal_parallel_size, data_parallel_size, x, y, 0);
+  std::vector<int32_t> pipeline_group_ranks;
+  for (auto r = 0; r < pipeline_stage_size; r++) {
+    pipeline_group_ranks.push_back(pipe_group_start_index + r * (data_parallel_size * horizontal_parallel_size));
+  }
+  groups_[WorkerGroupType::ModelParallel] = {pipeline_group_ranks, pipe_group_id,
+                                             WorkerGroupType::ModelParallel, z};
 }
 
 }  // namespace training

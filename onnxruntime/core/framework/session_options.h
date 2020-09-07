@@ -32,7 +32,13 @@ struct SessionOptions {
   // enable profiling for this session.
   bool enable_profiling = false;
 
-  // non empty filepath enables serialization of the transformed optimized model to the specified filepath.
+  // Non empty filepath enables serialization of the transformed optimized model to the specified filepath.
+  //
+  // Set session config value for ORT_SESSION_OPTIONS_CONFIG_SAVE_MODEL_FORMAT to 'ORT' or 'ONNX' to explicitly
+  // specify the format.
+  //
+  // If session config value is not set, it will be assumed to be ONNX
+  // unless the filepath ends in '.ort' (case insensitive).
   std::basic_string<ORTCHAR_T> optimized_model_filepath;
 
   // enable the memory pattern optimization.
@@ -87,17 +93,18 @@ struct SessionOptions {
   // The configuration keys and value formats are defined in
   // /include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h
   std::unordered_map<std::string, std::string> session_configurations;
+
+  // Check if the given SessionOptions has a config using the given config_key.
+  // Returns true if found and copies the value into config_value.
+  // Returns false if not found and clears config_value.
+  bool TryGetConfigEntry(const std::string& config_key, std::string& config_value) const noexcept;
+
+  // Get the config string of the given SessionOptions using the given config_key
+  // If there is no such config, the given default string will be returned
+  const std::string GetConfigOrDefault(const std::string& config_key, const std::string& default_value) const noexcept;
+
+  // Add a config pair (config_key, config_value) to the given SessionOptions
+  Status AddConfigEntry(_In_z_ const char* config_key, _In_z_ const char* config_value) noexcept;
 };
 
-// Check if the given SessionOptions has a config using the given config_key
-bool HasSessionConfigEntry(const SessionOptions& options, const std::string& config_key);
-
-// Get the config string of the given SessionOptions using the given config_key
-// If there is no such config, the given default string will be returned
-const std::string GetSessionConfigOrDefault(const SessionOptions& options,
-                                            const std::string& config_key,
-                                            const std::string& default_value);
-
-// Add a config pair (config_key, config_value) to the given SessionOptions
-Status AddSessionConfigEntryImpl(SessionOptions& options, _In_z_ const char* config_key, _In_z_ const char* config_value);
 }  // namespace onnxruntime

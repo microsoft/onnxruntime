@@ -87,14 +87,15 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
     : IExecutionProvider{onnxruntime::kMIGraphXExecutionProvider} {
   // Set GPU device to be used
   hipSetDevice(info.device_id);
-  DeviceAllocatorRegistrationInfo default_memory_info(
-      {OrtMemTypeDefault, [](int id) { return onnxruntime::make_unique<HIPAllocator>(id, MIGRAPHX); }, std::numeric_limits<size_t>::max()});
-  allocator_ = CreateAllocator(default_memory_info, device_id_);
+  AllocatorCreationInfo default_memory_info(
+      [](int id) { return onnxruntime::make_unique<HIPAllocator>(id, MIGRAPHX); }, device_id_);
+  allocator_ = CreateAllocator(default_memory_info);
   InsertAllocator(allocator_);
 
-  DeviceAllocatorRegistrationInfo pinned_memory_info(
-      {OrtMemTypeCPUOutput, [](int) { return onnxruntime::make_unique<HIPPinnedAllocator>(0, MIGRAPHX_PINNED); }, std::numeric_limits<size_t>::max()});
-  InsertAllocator(CreateAllocator(pinned_memory_info, device_id_));
+  AllocatorCreationInfo pinned_memory_info(
+      [](int) { return onnxruntime::make_unique<HIPPinnedAllocator>(0, MIGRAPHX_PINNED); },
+      device_id_);
+  InsertAllocator(CreateAllocator(pinned_memory_info));
 
   // create the target based on the device_id
   hipDeviceProp_t prop;
