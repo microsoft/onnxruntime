@@ -28,11 +28,11 @@ const std::string SessionOptions::GetConfigOrDefault(const std::string& config_k
 Status SessionOptions::AddConfigEntry(const char* config_key, const char* config_value) noexcept {
   std::string key(config_key);
   if (key.empty() || key.length() > 128)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "config_key is empty or longer than maximum length 128");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Config key is empty or longer than maximum length 128");
 
   std::string val(config_value);
   if (val.length() > 1024)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "config_value is longer than maximum length 1024");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Config value is longer than maximum length 1024");
 
   auto iter = session_configurations.find(config_key);
   if (iter != session_configurations.cend()) {
