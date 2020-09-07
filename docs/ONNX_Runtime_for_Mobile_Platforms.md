@@ -22,6 +22,7 @@ A single model is converted at a time by this script.
 
   - Install the ONNX Runtime nightly python package from https://test.pypi.org/project/ort-nightly/
     - e.g. `pip install -i https://test.pypi.org/simple/ ort-nightly`
+    - ensure that any existing ONNX Runtime python package was uninstalled first, or use `-U` with the above command to upgrade an existing package
   - Convert the ONNX model to ORT format
     - `python <ONNX Runtime repository root>/tools/python/convert_onnx_model_to_ort.py <path to .onnx model>`
     - This script will first optimize the ONNX model and save it with a '.optimized.onnx' file extension
@@ -71,7 +72,7 @@ You will need to build ONNX Runtime from source to reduce the included operator 
 
 See [here](https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#start-baseline-cpu) for build instructions. 
 
-Binary size reduction options.
+#### Binary size reduction options:
   - Enable minimal build (`--minimal_build`)
     - A minimal build will ONLY support loading and executing ORT format models. RTTI is disabled by default in this build.
 
@@ -85,6 +86,9 @@ Binary size reduction options.
     - Whilst the operator kernel reduction script will disable all unused ML operator kernels, additional savings can be achieved by removing support for ML specific types. If you know your model has no ML ops, or no ML ops that use the Map type, this flag can be provided. 
     - See the specs for the [ONNX ML Operators](https://github.com/onnx/onnx/blob/master/docs/Operators-ml.md) if unsure.
 
+#### Build Configuration 
+The `MinSizeRel` configuration will produce the smallest binary size.
+The `Release` configuration could also be used if you wish to prioritize performance over binary size.
 
 #### Example build commands
 
@@ -95,6 +99,17 @@ Binary size reduction options.
 ##### Linux
 
 `<ONNX Runtime repository root>/build.sh --config=MinSizeRel --build_shared_lib --minimal_build --disable_ml_ops --disable_exceptions`
+
+##### Building ONNX Runtime Python Wheel
+
+Remove `--disable_exceptions` (Python requires exceptions to be enabled) and add `--build_wheel` to build a Python Wheel with the ONNX Runtime bindings. 
+A .whl file will be produced in the build output directory under the `<config>/dist` folder.
+
+  - The Python Wheel for a Windows MinSizeRel build using build.bat would be in `<ONNX Runtime repository root>\build\Windows\MinSizeRel\MinSizeRel\dist\`
+  - The Python Wheel for a Linux MinSizeRel build using build.sh would be in `<ONNX Runtime repository root>/build/Linux/MinSizeRel/dist/`
+
+The wheel can be installed using `pip`. Adjust the following command for your platform and the whl filename.
+  -  `pip install -U .\build\Windows\MinSizeRel\MinSizeRel\dist\onnxruntime-1.4.0-cp37-cp37m-win_amd64.whl`
 
 ## Executing ORT format models
 
@@ -121,12 +136,12 @@ session = onnxruntime.InferenceSession(<path to model>, so)
 
 ## Limitations
 
-A minimal build has the following limitations
+A minimal build has the following limitations currently:
   - No support for ONNX format models
     - Model must be converted to ORT format
   - No support for runtime optimizations
     - Optimizations should be performed prior to conversion to ORT format
-  - No support for runtime partioning
+  - No support for runtime partitioning (assigning nodes in a model to an execution provider)
     - Execution providers that will be used at runtime must be enabled when creating the ORT format model
   - Only supports execution providers that have statically registered kernels
     - e.g. ORT CPU and CUDA execution providers
