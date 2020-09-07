@@ -43,11 +43,11 @@ REGISTER_V10_TYPED_SLICE(int32_t)
 REGISTER_V10_TYPED_SLICE(int64_t)
 REGISTER_V10_TYPED_SLICE(float)
 
-#define REGISTER_V11_TYPED_SLICE(TIND)                                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
+#define REGISTER_V12_TYPED_SLICE(TIND)                                  \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                              \
       Slice,                                                            \
       kOnnxDomain,                                                      \
-      11,                                                               \
+      11, 12,                                                           \
       TIND,                                                             \
       kCudaExecutionProvider,                                           \
       KernelDefBuilder()                                                \
@@ -59,9 +59,29 @@ REGISTER_V10_TYPED_SLICE(float)
           .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()), \
       Slice<true>);
 
-REGISTER_V11_TYPED_SLICE(int32_t)
-REGISTER_V11_TYPED_SLICE(int64_t)
-REGISTER_V11_TYPED_SLICE(float)
+REGISTER_V12_TYPED_SLICE(int32_t)
+REGISTER_V12_TYPED_SLICE(int64_t)
+REGISTER_V12_TYPED_SLICE(float)
+
+#define REGISTER_V13_TYPED_SLICE(TIND)                                  \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
+      Slice,                                                            \
+      kOnnxDomain,                                                      \
+      13,                                                               \
+      TIND,                                                             \
+      kCudaExecutionProvider,                                           \
+      KernelDefBuilder()                                                \
+          .InputMemoryType<OrtMemTypeCPUInput>(1)                       \
+          .InputMemoryType<OrtMemTypeCPUInput>(2)                       \
+          .InputMemoryType<OrtMemTypeCPUInput>(3)                       \
+          .InputMemoryType<OrtMemTypeCPUInput>(4)                       \
+          .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()) \
+          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()), \
+      Slice<true>);
+
+REGISTER_V13_TYPED_SLICE(int32_t)
+REGISTER_V13_TYPED_SLICE(int64_t)
+REGISTER_V13_TYPED_SLICE(float)
 
 static Status SliceImpCore(const void* input_data, void* output_data,
                            size_t element_size, size_t dimension_count,

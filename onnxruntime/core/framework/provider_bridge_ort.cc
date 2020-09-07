@@ -12,24 +12,17 @@
 #include "core/framework/kernel_registry.h"
 #include "core/graph/model.h"
 #include "core/platform/env.h"
-#include "core/providers/dnnl/dnnl_provider_factory.h"
 #include "core/session/inference_session.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_apis.h"
-
-#ifdef USE_TENSORRT
-#include "core/providers/tensorrt/tensorrt_provider_factory.h"
-#include "core/providers/cuda/cuda_allocator.h"
-#include "core/providers/cuda/gpu_data_transfer.h"
-#include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
-#include "core/providers/cuda/cuda_common.h"
-#endif
-
 #define PROVIDER_BRIDGE_ORT
 #include "core/providers/shared_library/provider_interfaces.h"
 #include "onnx/common/stl_backports.h"
 #include "core/common/logging/logging.h"
 #include "core/common/cpuid_info.h"
+
+#include "core/providers/dnnl/dnnl_provider_factory.h"
+#include "core/providers/tensorrt/tensorrt_provider_factory.h"
 
 // The filename extension for a shared library is different per platform
 #ifdef _WIN32
@@ -51,18 +44,8 @@ namespace onnxruntime {
 
 ProviderHost* g_host{};
 
-struct Provider_OrtDevice_Impl : Provider_OrtDevice {
-  OrtDevice v_;
-};
-
-struct Provider_OrtMemoryInfo_Impl : Provider_OrtMemoryInfo {
-  Provider_OrtMemoryInfo_Impl(const char* name_, OrtAllocatorType type_, OrtDevice device_, int id_, OrtMemType mem_type_) : info_{onnxruntime::make_unique<OrtMemoryInfo>(name_, type_, device_, id_, mem_type_)} {}
-
-  std::unique_ptr<OrtMemoryInfo> info_;
-};
-
 struct Provider_IAllocator_Impl : Provider_IAllocator {
-  Provider_IAllocator_Impl(AllocatorPtr p) : p_{p} {}
+  Provider_IAllocator_Impl(AllocatorPtr p) : Provider_IAllocator{p->Info()}, p_{p} {}
 
   void* Alloc(size_t size) override { return p_->Alloc(size); }
   void Free(void* p) override { return p_->Free(p); }
@@ -70,13 +53,41 @@ struct Provider_IAllocator_Impl : Provider_IAllocator {
   AllocatorPtr p_;
 };
 
+// This is really a IDeviceAllocator, but we wrap it with this class to make it into a Provider_IDeviceAllocator
 struct Provider_IDeviceAllocator_Impl : Provider_IDeviceAllocator {
-  Provider_IDeviceAllocator_Impl(std::unique_ptr<IDeviceAllocator> p) : p_{std::move(p)} {}
+  Provider_IDeviceAllocator_Impl(std::unique_ptr<IDeviceAllocator> p) : Provider_IDeviceAllocator{p->Info()}, p_{std::move(p)} {}
 
   void* Alloc(size_t size) override { return p_->Alloc(size); }
   void Free(void* p) override { return p_->Free(p); }
 
+  FencePtr CreateFence(const Provider_SessionState* session_state) override { return p_->CreateFence(reinterpret_cast<const SessionState*>(session_state)); }
+
+  bool IsProviderInterface() const override { return false; }
+
   std::unique_ptr<IDeviceAllocator> p_;
+};
+
+// This is really a Provider_IDeviceAllocator, but we wrap it with this class to make it into a IDeviceAllocator
+struct ProviderAllocator : IDeviceAllocator {
+  ProviderAllocator(std::shared_ptr<Provider_IDeviceAllocator> p) : IDeviceAllocator{p->memory_info_}, p_{std::move(p)} {}
+
+  void* Alloc(size_t size) override { return p_->Alloc(size); }
+  void Free(void* p) override { return p_->Free(p); }
+
+  FencePtr CreateFence(const SessionState* session_state) override { return p_->CreateFence(reinterpret_cast<const Provider_SessionState*>(session_state)); }
+
+  std::shared_ptr<Provider_IDeviceAllocator> p_;
+};
+
+struct IDataTransfer_Wrapper : IDataTransfer {
+  IDataTransfer_Wrapper(std::unique_ptr<Provider_IDataTransfer> p) : p_{std::move(p)} {}
+
+  bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override { return p_->CanCopy(src_device, dst_device); }
+  common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override { return p_->CopyTensor(*reinterpret_cast<const Provider_Tensor*>(&src), *reinterpret_cast<Provider_Tensor*>(&dst), exec_queue_id); }
+
+  bool IsProviderInterface() const override { return true; }
+
+  std::unique_ptr<Provider_IDataTransfer> p_;
 };
 
 struct Provider_TensorShapeProto_Dimension_Iterator_Impl : Provider_TensorShapeProto_Dimension_Iterator {
@@ -199,7 +210,11 @@ struct Provider_IExecutionProvider_Router_Impl : Provider_IExecutionProvider_Rou
   }
 
   std::unique_ptr<IDataTransfer> GetDataTransfer() const override {
-    return std::unique_ptr<IDataTransfer>(reinterpret_cast<IDataTransfer*>(outer_->Provider_GetDataTransfer().release()));
+    auto internal = outer_->Provider_GetDataTransfer();
+    if (internal)
+      return onnxruntime::make_unique<IDataTransfer_Wrapper>(std::move(internal));
+    else
+      return nullptr;
   }
 
   void Provider_InsertAllocator(Provider_AllocatorPtr allocator) override {
@@ -218,57 +233,36 @@ struct ProviderHostImpl : ProviderHost {
     DataTypeImpl_GetTensorType_float = &DataTypeImpl::GetTensorType<float>;
   }
 
-  std::unique_ptr<Provider_OrtMemoryInfo> OrtMemoryInfo_Create(const char* name_, OrtAllocatorType type_, Provider_OrtDevice* device_, int id_, OrtMemType mem_type_) override {
-    return onnxruntime::make_unique<Provider_OrtMemoryInfo_Impl>(name_, type_, device_ ? static_cast<Provider_OrtDevice_Impl*>(device_)->v_ : OrtDevice(), id_, mem_type_);
-  }
-
   Provider_AllocatorPtr CreateAllocator(const Provider_AllocatorCreationInfo& info) override {
     AllocatorCreationInfo info_real{
-        [&info](int value) {
-          return std::move(static_cast<Provider_IDeviceAllocator_Impl*>(&*info.factory(value))->p_);
+        [&info](int value) -> std::unique_ptr<IDeviceAllocator> {
+          auto allocator = info.factory(value);
+          // If the allocator is a provider interface, we need to wrap it with ProviderAllocator to turn it into an IDeviceAllocator
+          // Otherwise it's really a Provider_IDeviceAllocator_Impl, so we can just unwrap it to get back to the IDeviceAllocator inside
+          if (allocator->IsProviderInterface())
+            return onnxruntime::make_unique<ProviderAllocator>(std::move(allocator));
+          else
+            return std::move(static_cast<Provider_IDeviceAllocator_Impl*>(&*allocator)->p_);
         },
         info.device_id,
         info.use_arena,
         info.arena_cfg};
 
+    // info_real will always return a unique_ptr to an IAllocator, which might be a native IAllocator or a provider interface wrapped by ProviderAllocator.
+    // Either way we wrap it in a Provider_IAllocator_Impl to be unwrapped by Provider_InsertAllocator
     return std::make_shared<Provider_IAllocator_Impl>(onnxruntime::CreateAllocator(info_real));
   }
 
   std::unique_ptr<Provider_IDeviceAllocator> CreateCPUAllocator(
-      std::unique_ptr<Provider_OrtMemoryInfo> memory_info) override {
+      const OrtMemoryInfo& memory_info) override {
     return onnxruntime::make_unique<Provider_IDeviceAllocator_Impl>(
-        onnxruntime::make_unique<CPUAllocator>(*static_cast<Provider_OrtMemoryInfo_Impl*>(memory_info.get())->info_));
+        onnxruntime::make_unique<CPUAllocator>(memory_info));
   };
 
   std::unique_ptr<Provider_IExecutionProvider_Router> Create_IExecutionProvider_Router(
       Provider_IExecutionProvider* outer, const std::string& type) override {
     return onnxruntime::make_unique<Provider_IExecutionProvider_Router_Impl>(outer, type);
   };
-
-#ifdef USE_TENSORRT
-  std::unique_ptr<Provider_IDeviceAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) override {
-    return onnxruntime::make_unique<Provider_IDeviceAllocator_Impl>(onnxruntime::make_unique<CUDAAllocator>(device_id, name));
-  }
-
-  std::unique_ptr<Provider_IDeviceAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) override {
-    return onnxruntime::make_unique<Provider_IDeviceAllocator_Impl>(onnxruntime::make_unique<CUDAPinnedAllocator>(device_id, name));
-  }
-
-  std::unique_ptr<Provider_IDataTransfer> CreateGPUDataTransfer() override {
-    return std::unique_ptr<Provider_IDataTransfer>(reinterpret_cast<Provider_IDataTransfer*>(new GPUDataTransfer()));
-  }
-
-  void cuda__Impl_Cast(const int64_t* input_data, int32_t* output_data, size_t count) override {
-    return cuda::Impl_Cast(input_data, output_data, count);
-  }
-
-  void cuda__Impl_Cast(const int32_t* input_data, int64_t* output_data, size_t count) override {
-    return cuda::Impl_Cast(input_data, output_data, count);
-  }
-
-  bool CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return CudaCall<cudaError, false>(cudaError(retCode), exprString, libName, cudaError(successCode), msg); }
-  bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return CudaCall<cudaError, true>(cudaError(retCode), exprString, libName, cudaError(successCode), msg); }
-#endif
 
   std::string GetEnvironmentVar(const std::string& var_name) override {
     return Env::Default().GetEnvironmentVar(var_name);
@@ -283,7 +277,7 @@ struct ProviderHostImpl : ProviderHost {
   }
 
   void* HeapAllocate(size_t size) override { return new uint8_t[size]; }
-  void HeapFree(void* p) override { delete reinterpret_cast<uint8_t*>(p); }
+  void HeapFree(void* p) override { delete[] reinterpret_cast<uint8_t*>(p); }
 
   bool CPU_HasAVX2() override {
     return CPUIDInfo::GetCPUIDInfo().HasAVX2();
@@ -385,9 +379,12 @@ struct ProviderHostImpl : ProviderHost {
 
   // Provider_DataTransferManager
   Status Provider_DataTransferManager__CopyTensor(const Provider_DataTransferManager* p, const Provider_Tensor& src, Provider_Tensor& dst, int exec_queue_id) override { return reinterpret_cast<const DataTransferManager*>(p)->CopyTensor(*reinterpret_cast<const Tensor*>(&src), *reinterpret_cast<Tensor*>(&dst), exec_queue_id); }
-
-  // Provider_IDataTransfer
-  void Provider_IDataTransfer__operator_delete(Provider_IDataTransfer* p) override { delete reinterpret_cast<Provider_IDataTransfer*>(p); }
+  const Provider_IDataTransfer* Provider_DataTransferManager__GetProviderDataTransfer(const Provider_DataTransferManager* p, const OrtDevice& src_device, const OrtDevice& dst_device) override {
+    auto* data_transfer = reinterpret_cast<const DataTransferManager*>(p)->GetDataTransfer(src_device, dst_device);
+    if (data_transfer->IsProviderInterface())
+      return reinterpret_cast<const IDataTransfer_Wrapper*>(data_transfer)->p_.get();
+    return nullptr;
+  }
 
   // Provider_IndexedSubGraph_MetaDef
   std::unique_ptr<Provider_IndexedSubGraph_MetaDef> Provider_IndexedSubGraph_MetaDef__construct() override { return std::unique_ptr<Provider_IndexedSubGraph_MetaDef>(reinterpret_cast<Provider_IndexedSubGraph_MetaDef*>(new IndexedSubGraph::MetaDef())); }
@@ -588,10 +585,19 @@ struct ProviderHostImpl : ProviderHost {
   const Provider_DataTransferManager& Provider_OpKernelInfo__GetDataTransferManager(const Provider_OpKernelInfo* p) noexcept override { return *reinterpret_cast<const Provider_DataTransferManager*>(&reinterpret_cast<const OpKernelInfo*>(p)->GetDataTransferManager()); }
   int Provider_OpKernelInfo__GetKernelDef_ExecQueueId(const Provider_OpKernelInfo* p) noexcept override { return reinterpret_cast<const OpKernelInfo*>(p)->GetKernelDef().ExecQueueId(); }
 
+  // Provider_SessionState
+  const Provider_DataTransferManager& Provider_SessionState__GetDataTransferManager(const Provider_SessionState* p) override { return *reinterpret_cast<const Provider_DataTransferManager*>(&reinterpret_cast<const SessionState*>(p)->GetDataTransferMgr()); }
+
   // Provider_Tensor
   float* Provider_Tensor__MutableData_float(Provider_Tensor* p) override { return reinterpret_cast<Tensor*>(p)->MutableData<float>(); }
   const float* Provider_Tensor__Data_float(const Provider_Tensor* p) override { return reinterpret_cast<const Tensor*>(p)->Data<float>(); }
+
+  void* Provider_Tensor__MutableDataRaw(Provider_Tensor* p) noexcept override { return reinterpret_cast<Tensor*>(p)->MutableDataRaw(); }
+  const void* Provider_Tensor__DataRaw(const Provider_Tensor* p) const noexcept override { return reinterpret_cast<const Tensor*>(p)->DataRaw(); }
+
   const TensorShape& Provider_Tensor__Shape(const Provider_Tensor* p) override { return reinterpret_cast<const Tensor*>(p)->Shape(); }
+  size_t Provider_Tensor__SizeInBytes(const Provider_Tensor* p) override { return reinterpret_cast<const Tensor*>(p)->SizeInBytes(); }
+  const OrtMemoryInfo& Provider_Tensor__Location(const Provider_Tensor* p) override { return reinterpret_cast<const Tensor*>(p)->Location(); }
 
 } provider_host_;
 
@@ -668,22 +674,6 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(i
   static ProviderLibrary library(LIBRARY_PREFIX "onnxruntime_providers_dnnl" LIBRARY_EXTENSION);
   if (!library.provider_)
     return nullptr;
-
-#if defined(_WIN32) && !defined(_OPENMP)
-  {
-    // We crash when unloading DNNL on Windows when OpenMP also unloads (As there are threads
-    // still running code inside the openmp runtime DLL if OMP_WAIT_POLICY is set to ACTIVE).
-    // To avoid this, we pin the OpenMP DLL so that it unloads as late as possible.
-    HMODULE handle{};
-#ifdef _DEBUG
-    constexpr const char* dll_name = "vcomp140d.dll";
-#else
-    constexpr const char* dll_name = "vcomp140.dll";
-#endif
-    ::GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_PIN, dll_name, &handle);
-    assert(handle);  // It should exist
-  }
-#endif
 
   //return std::make_shared<onnxruntime::MkldnnProviderFactory>(device_id);
   //TODO: This is apparently a bug. The constructor parameter is create-arena-flag, not the device-id

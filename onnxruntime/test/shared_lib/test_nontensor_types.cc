@@ -195,6 +195,8 @@ TEST(CApiTest, TypeInfoMap) {
   map_value_type_info.release();
   map_type_info.release();
 #else
+
+#if !defined(ORT_NO_EXCEPTIONS)
   // until https://github.com/google/googletest/pull/2904/ makes it into a release,
   // check an exception is thrown with the expected message the ugly way
   try {
@@ -203,6 +205,7 @@ TEST(CApiTest, TypeInfoMap) {
   } catch (const Ort::Exception& ex) {
     ASSERT_THAT(ex.what(), testing::HasSubstr("Map type is not supported in this build"));
   }
+#endif
 #endif
 }
 
