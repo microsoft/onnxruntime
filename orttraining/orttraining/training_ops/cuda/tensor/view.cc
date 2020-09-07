@@ -8,7 +8,7 @@ namespace cuda {
 
 namespace {
 
-constexpr int view_count_limit = 1024;  // limit of of output count
+constexpr int view_count_limit = 2048;  // limit of of output count
 
 std::vector<std::pair<int, int>> GenerateAliasMapping() {
   std::vector<std::pair<int, int>> alias_pairs{};
@@ -45,6 +45,7 @@ Status View::ComputeInternal(OpKernelContext* context) const {
   size_t bytes_per_elem = X->DataType()->Size();
 
   int view_count = context->InputCount() - 1;
+  ORT_ENFORCE(view_count <= view_count_limit, "please increase view_count_limit's value, otherwise segmentation fault will happen");
   std::vector<TensorShape> y_shapes(view_count);
   std::vector<size_t> y_byte_offsets(view_count);
   size_t byte_offset = 0;
