@@ -22,8 +22,7 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAll
   ORT_ENFORCE(p_type != nullptr);
   int64_t shape_size = shape.Size();  // value returned is checked for overflow by TensorShape::Size()
   if (shape_size < 0)
-    throw std::runtime_error("shape.Size() must >=0");
-  // ORT_THROW("shape.Size() must >=0");
+    ORT_THROW("shape.Size() must >=0");
 
   void* p_data = nullptr;
   if (shape_size > 0) {
