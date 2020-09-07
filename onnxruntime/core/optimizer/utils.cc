@@ -139,7 +139,7 @@ bool IsAttributeWithExpectedValue(const Node& node, const std::string& attr_name
 bool IsAttributeWithExpectedValue(const Node& node, const std::string& attr_name, float expected_value, float eps) {
   const auto* attr_proto = graph_utils::GetNodeAttribute(node, attr_name);
   if ((nullptr != attr_proto) && attr_proto->has_f()) {
-    return abs(attr_proto->f() - expected_value) < eps;
+    return std::abs(attr_proto->f() - expected_value) < eps;
   }
   return false;
 }
