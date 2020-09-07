@@ -20,6 +20,7 @@ jobs:
       script: |
         mkdir -p $HOME/.models
         cp $(Build.SourcesDirectory)/onnxruntime/test/testdata/ort_github_issue_4031.onnx $HOME/.models/
+        cp $(Build.SourcesDirectory)/onnxruntime/test/testdata/sklearn_bin_voting_classifier_soft.onnx $HOME/.models/
         mkdir -p $HOME/.onnx
         docker run --rm \
           --volume /data/onnx:/data/onnx:ro \
