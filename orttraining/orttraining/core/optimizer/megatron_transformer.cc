@@ -361,9 +361,9 @@ DenseWeight -- Transpose \
 Status MegatronTransformer::TransformT5MLP(Graph& graph, bool& modified, int graph_level,
                                            const logging::Logger& logger,
                                            std::vector<Node*>& nodes_to_clear_shape,
-                                           std::unordered_set<Node*>& self_attention_dropout_nodes) const {
+                                           std::unordered_set<Node*>& self_attention_dropout_nodes, int32_t& counter) const {
   GraphViewer graph_viewer(graph);
-  //LOGS_DEFAULT(WARNING) << " T5MLP Enter TransformT5MLP";
+  LOGS_DEFAULT(WARNING) << "T5MLP Enter TransformT5MLP";
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   for (auto node_index : node_topology_list) {
     auto& node = *graph.GetNode(node_index);
@@ -374,7 +374,7 @@ Status MegatronTransformer::TransformT5MLP(Graph& graph, bool& modified, int gra
         node.GetOutputEdgesCount() != 1) {
       continue;
     }
-    //LOGS_DEFAULT(WARNING) << " T5MLP " << node.Name() << " MatMul ";
+    // LOGS_DEFAULT(WARNING) << " T5MLP " << node.Name() << " MatMul ";
     Node* second_op = const_cast<Node*>(graph.GetProducerNode(node.MutableInputDefs()[1]->Name()));
     Node* first_op = const_cast<Node*>(graph.GetProducerNode(node.MutableInputDefs()[0]->Name()));
     if (node.GetInputEdgesCount() > 0) {
@@ -382,7 +382,7 @@ Status MegatronTransformer::TransformT5MLP(Graph& graph, bool& modified, int gra
         LOGS_DEFAULT(WARNING) << " T5MLP " << node.Name() << "'s second input is nullptr";
         break;
       }
-      if (first_op->OpType().compare("MegatronF") == 0) {
+      if (first_op != nullptr && first_op->OpType().compare("MegatronF") == 0) {
         continue;
       }
 
@@ -392,62 +392,60 @@ Status MegatronTransformer::TransformT5MLP(Graph& graph, bool& modified, int gra
     } else {
       continue;
     }
-    //LOGS_DEFAULT(WARNING) << " T5MLP " << node.Name() << " Transpose ";
+    // LOGS_DEFAULT(WARNING) << " T5MLP " << node.Name() << " Transpose ";
     // todo check tranpose is only 2-dim transpose
 
-    Node& relu_node = *graph.GetNode(node.OutputNodesBegin()->Index());
+    Node* relu_node_ptr = graph.GetNode(node.OutputNodesBegin()->Index());
+    Node& relu_node = *relu_node_ptr;
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(relu_node, "Relu", {6}) ||
         relu_node.GetExecutionProviderType() != node.GetExecutionProviderType() ||
         relu_node.GetOutputEdgesCount() != 1) {
       continue;
     }
-    //LOGS_DEFAULT(WARNING) << " T5MLP " << node.Name() << " Relu ";
+    // LOGS_DEFAULT(WARNING) << " T5MLP " << node.Name() << " Relu ";
     Node& dropout_node = *graph.GetNode(relu_node.OutputNodesBegin()->Index());
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(dropout_node, "Dropout", {12}) ||
         dropout_node.GetExecutionProviderType() != node.GetExecutionProviderType() ||
         dropout_node.GetOutputEdgesCount() != 1) {
       continue;
     }
-    //LOGS_DEFAULT(WARNING) << " T5MLP " << node.Name() << " Dropout ";
+    // LOGS_DEFAULT(WARNING) << " T5MLP " << node.Name() << " Dropout ";
     Node& matmul2_node = *graph.GetNode(dropout_node.OutputNodesBegin()->Index());
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(matmul2_node, "MatMul", {9}) ||
         matmul2_node.GetExecutionProviderType() != node.GetExecutionProviderType() ||
         matmul2_node.GetOutputEdgesCount() != 1) {
       continue;
     }
-    //LOGS_DEFAULT(WARNING) << " T5MLP " << node.Name() << " MatMul2 ";
+    // LOGS_DEFAULT(WARNING) << " T5MLP " << node.Name() << " MatMul2 ";
     Node& dropout2_node = *graph.GetNode(matmul2_node.OutputNodesBegin()->Index());
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(dropout2_node, "Dropout", {12}) ||
         dropout2_node.GetExecutionProviderType() != node.GetExecutionProviderType() ||
         dropout2_node.GetOutputEdgesCount() != 1) {
       continue;
     }
-    //LOGS_DEFAULT(WARNING) << " T5MLP " << node.Name() << " Dropout2 ";
+    // LOGS_DEFAULT(WARNING) << " T5MLP " << node.Name() << " Dropout2 ";
     Node* transpose_op = const_cast<Node*>(graph.GetProducerNode(matmul2_node.MutableInputDefs()[1]->Name()));
     if (transpose_op->OpType().compare("Transpose") != 0) {
       continue;
     }
-    //LOGS_DEFAULT(WARNING) << " T5MLP " << node.Name() << " Transpose2 ";
+    // LOGS_DEFAULT(WARNING) << " T5MLP " << node.Name() << " Transpose2 ";
     nodes_to_clear_shape.insert(nodes_to_clear_shape.end(), {&node, second_op, &relu_node, &dropout_node,
                                                              &matmul2_node, &dropout2_node, transpose_op});
 
     auto dense_wi_weight_arg = second_op->MutableInputDefs()[0];
     NodeArg& dense_wi_weight_partition_arg = PartitionWeightByRow(graph, *dense_wi_weight_arg);
-    //ORT_ENFORCE(dense_wi_weight_arg == &dense_wi_weight_partition_arg);
 
-    //LOGS_DEFAULT(WARNING) << " T5MLP " << node.Name() << " Partion 1 ";
+    // LOGS_DEFAULT(WARNING) << " T5MLP " << node.Name() << " Partion 1 ";
     auto dense_wo_weight_arg = transpose_op->MutableInputDefs()[0];
     NodeArg& dense_wo_weight_partition_arg = PartitionWeightByColumn(graph, *dense_wo_weight_arg);
-    //ORT_ENFORCE(dense_wo_weight_arg == &dense_wo_weight_partition_arg);
 
-    //LOGS_DEFAULT(WARNING) << " T5MLP " << node.Name() << " Partion 2 " << transpose_op->MutableInputDefs()[0]->Name();
+    // LOGS_DEFAULT(WARNING) << " T5MLP " << node.Name() << " Partion 2 " << transpose_op->MutableInputDefs()[0]->Name();
     //LOGS_DEFAULT(WARNING) << dense_wo_weight_partition_arg.Name() << "dd" << second_op->MutableInputDefs()[0]->Name()
     //                      << "," << dense_wi_weight_partition_arg.Name();
     graph_utils::ReplaceNodeInput(*second_op, 0, dense_wi_weight_partition_arg);
     graph_utils::ReplaceNodeInput(*transpose_op, 0, dense_wo_weight_partition_arg);
 
     self_attention_dropout_nodes.insert(&dropout_node);
-    self_attention_dropout_nodes.insert(&dropout2_node);
 
     const std::vector<NodeArg*> mlp_f_input_defs{node.MutableInputDefs()[0]};
     auto mlp_f_type_info = *node.MutableInputDefs()[0]->TypeAsProto();
@@ -458,6 +456,7 @@ Status MegatronTransformer::TransformT5MLP(Graph& graph, bool& modified, int gra
                                      mlp_f_input_defs,
                                      {&mlp_f_out_arg}, {}, kMSDomain);
     LOGS_DEFAULT(WARNING) << "T5MLP " << node.Name() << " is Partitioned ";
+    counter++;
     mlp_f_node.SetExecutionProviderType(node.GetExecutionProviderType());
     const Node::EdgeEnd* edge = graph_utils::GetInputEdge(node, 0);
     if (nullptr == edge) {  // handle input/initializer
@@ -672,13 +671,13 @@ Status MegatronTransformer::TransformSelfAttention(Graph& graph, bool& modified,
     // Add MegatronF before the 1st MatMul and MegatronG before the last Add.
     const std::vector<NodeArg*> sa_f_input_defs{node.MutableInputDefs()[0]};
     auto sa_f_type_info = *node.MutableInputDefs()[0]->TypeAsProto();
-    auto& sa_f_out_arg = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("T5Attention_MegatronF_Output"), &sa_f_type_info);
-    Node& sa_f_node = graph.AddNode(graph.GenerateNodeName(node.Name() + "T5Attention_MegatronF"),
+    auto& sa_f_out_arg = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("SeftAttention_MegatronF_Output"), &sa_f_type_info);
+    Node& sa_f_node = graph.AddNode(graph.GenerateNodeName(node.Name() + "SeftAttention_MegatronF"),
                                     "MegatronF",
-                                    "T5Attention MegatronF",
+                                    "SeftAttention MegatronF",
                                     sa_f_input_defs,
                                     {&sa_f_out_arg}, {}, kMSDomain);
-    LOGS_DEFAULT(WARNING) << "T5Attention " << node.Name() << " Partitioned ";
+    LOGS_DEFAULT(WARNING) << "SeftAttention " << node.Name() << " Partitioned ";
     sa_f_node.SetExecutionProviderType(node.GetExecutionProviderType());
     const Node::EdgeEnd* edge = graph_utils::GetInputEdge(node, 0);
     if (nullptr == edge) {  // handle input/initializer
@@ -690,10 +689,10 @@ Status MegatronTransformer::TransformSelfAttention(Graph& graph, bool& modified,
 
     const std::vector<NodeArg*> sa_g_input_defs{matmul_node.MutableOutputDefs()[0]};
     auto sa_g_type_info = *matmul_node.MutableOutputDefs()[0]->TypeAsProto();  // copy
-    auto& sa_g_out_arg = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("T5Attention_MegatronG_Output"), &sa_g_type_info);
-    Node& sa_g_node = graph.AddNode(graph.GenerateNodeName(node.Name() + "T5Attention_MegatronG"),
+    auto& sa_g_out_arg = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("SeftAttention_MegatronG_Output"), &sa_g_type_info);
+    Node& sa_g_node = graph.AddNode(graph.GenerateNodeName(node.Name() + "SelfAttention_MegatronG"),
                                     "MegatronG",
-                                    "T5Attention MegatronG",
+                                    "Attention MegatronG",
                                     sa_g_input_defs,
                                     {&sa_g_out_arg}, {}, kMSDomain);
     sa_g_node.AddAttribute("group_type", static_cast<int64_t>(training::WorkerGroupType::HorizontalParallel));
@@ -708,7 +707,8 @@ Status MegatronTransformer::TransformSelfAttention(Graph& graph, bool& modified,
 Status MegatronTransformer::TransformT5SelfAttention(Graph& graph, bool& modified, int graph_level,
                                                      const logging::Logger& logger,
                                                      std::vector<Node*>& nodes_to_clear_shape,
-                                                     std::unordered_set<Node*>& self_attention_dropout_nodes) const {
+                                                     std::unordered_set<Node*>& self_attention_dropout_nodes,
+                                                     int32_t& counter) const {
   static std::vector<std::string> relative_attention_bias_names;
 
   GraphViewer graph_viewer(graph);
@@ -734,7 +734,7 @@ Status MegatronTransformer::TransformT5SelfAttention(Graph& graph, bool& modifie
     //}
 
     Node* k_matmul_input_node_ptr = const_cast<Node*>(graph.GetProducerNode(node.MutableInputDefs()[0]->Name()));
-    if (k_matmul_input_node_ptr == nullptr || k_matmul_input_node_ptr->OpType().compare("MegatronF") == 0) {
+    if (k_matmul_input_node_ptr != nullptr && k_matmul_input_node_ptr->OpType().compare("MegatronF") == 0) {
       //LOGS_DEFAULT(WARNING) << " Skip T5 Attention " << node.Name() << " because already processed " << node.MutableInputDefs()[0]->Name() << " " << (k_matmul_input_node_ptr == nullptr);
       continue;
     }
@@ -847,7 +847,7 @@ Status MegatronTransformer::TransformT5SelfAttention(Graph& graph, bool& modifie
     for (auto trans_ptr : weight_transpose_node_ptrs) {
       const ONNX_NAMESPACE::TensorProto* tensor_proto;
       if (!graph.GetInitializedTensor(trans_ptr->MutableInputDefs()[0]->Name(), tensor_proto)) {
-        LOGS_DEFAULT(WARNING) << " T5 Attention Skipping now" << trans_ptr->MutableInputDefs()[0]->Name() << " " << trans_ptr->Name();
+        //LOGS_DEFAULT(WARNING) << " T5 Attention Skipping now" << trans_ptr->MutableInputDefs()[0]->Name() << " " << trans_ptr->Name();
         need_skip = true;
         break;
       }
@@ -885,7 +885,7 @@ Status MegatronTransformer::TransformT5SelfAttention(Graph& graph, bool& modifie
       //ORT_ENFORCE(rab_weight_arg == &rab_weight_partition_arg);
       relative_attention_bias_names.push_back(rab_weight_partition_arg.Name());
     } else {
-      LOGS_DEFAULT(WARNING) << " Skip T5 Attention Partitoned Relative Attention because already partitioned " << rab_weight_arg->Name();
+      //LOGS_DEFAULT(WARNING) << " Skip T5 Attention Partitoned Relative Attention because already partitioned " << rab_weight_arg->Name();
     }
 
     // Check the constant value in the Reshape nodes.
@@ -1009,7 +1009,8 @@ Status MegatronTransformer::TransformT5SelfAttention(Graph& graph, bool& modifie
       new_consumer_nodes.push_back(&sa_f_node);
     }
     graph.UpdateConsumerNodes(prev_input_node_ptr->Name(), new_consumer_nodes);
-    LOGS_DEFAULT(WARNING) << "T5 SelfAttention " << k_matmul->Name() << " Partitioned " << k_matmul->MutableInputDefs()[0]->Name();
+    LOGS_DEFAULT(WARNING) << "T5 Attention " << k_matmul->Name() << " Partitioned " << k_matmul->MutableInputDefs()[0]->Name();
+    counter++;
     if (!shared_same_input) {
       {
         NodeArg* prev_input_node_ptr = q_matmul->MutableInputDefs()[0];
@@ -1086,7 +1087,7 @@ Status MegatronTransformer::TransformT5SelfAttention(Graph& graph, bool& modifie
 }
 
 Status MegatronTransformer::TransformDropout(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger,
-                                             std::unordered_set<Node*>& self_attention_dropout_nodes) const {
+                                             std::unordered_set<Node*>& self_attention_dropout_nodes, int32_t& counter) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   for (auto node_index : node_topology_list) {
@@ -1103,8 +1104,7 @@ Status MegatronTransformer::TransformDropout(Graph& graph, bool& modified, int g
     }
 
     // Only need to set the seed if it's a transformed self-attention dropout, or the seed attribute is not set.
-    if (self_attention_dropout_nodes.find(&node) != self_attention_dropout_nodes.end() ||
-        graph_utils::GetNodeAttribute(node, "seed") == nullptr) {
+    if (self_attention_dropout_nodes.find(&node) != self_attention_dropout_nodes.end()) {
       int64_t seed = static_cast<int64_t>(HashName(node.MutableOutputDefs()[0]->Name())) + utils::GetRandomSeed();
       if (self_attention_dropout_nodes.find(&node) != self_attention_dropout_nodes.end()) {
         seed += horizontal_parallel_rank_;
@@ -1113,8 +1113,9 @@ Status MegatronTransformer::TransformDropout(Graph& graph, bool& modified, int g
       if (graph_utils::GetNodeAttribute(node, "seed") != nullptr) {
         node.ClearAttribute("seed");
       }
-
+      //std::cout << "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< add seed for node " << node.Name() << std::endl;
       node.AddAttribute("seed", seed);
+      counter++;
       modified = true;
     }
   }
@@ -1130,11 +1131,15 @@ Status MegatronTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_le
   std::vector<Node*> nodes_to_clear_shape;
   std::unordered_set<Node*> self_attention_dropout_nodes;
 
+  int32_t partitioned_t5_mlp_count_ = 0;
+  int32_t partitioned_t5_attention_count_ = 0;
+  int32_t dropout_changed_ = 0;
+
   ORT_ENFORCE(TransformMLP(graph, modified, graph_level, logger, nodes_to_clear_shape).IsOK());
-  ORT_ENFORCE(TransformT5MLP(graph, modified, graph_level, logger, nodes_to_clear_shape, self_attention_dropout_nodes).IsOK());
+  ORT_ENFORCE(TransformT5MLP(graph, modified, graph_level, logger, nodes_to_clear_shape, self_attention_dropout_nodes, partitioned_t5_mlp_count_).IsOK());
   ORT_ENFORCE(TransformSelfAttention(graph, modified, graph_level, logger, nodes_to_clear_shape, self_attention_dropout_nodes).IsOK());
-  ORT_ENFORCE(TransformT5SelfAttention(graph, modified, graph_level, logger, nodes_to_clear_shape, self_attention_dropout_nodes).IsOK());
-  ORT_ENFORCE(TransformDropout(graph, modified, graph_level, logger, self_attention_dropout_nodes).IsOK());
+  ORT_ENFORCE(TransformT5SelfAttention(graph, modified, graph_level, logger, nodes_to_clear_shape, self_attention_dropout_nodes, partitioned_t5_attention_count_).IsOK());
+  ORT_ENFORCE(TransformDropout(graph, modified, graph_level, logger, self_attention_dropout_nodes, dropout_changed_).IsOK());
 
   auto& graph_inputs = graph.GetInputs();
   for (auto& node : nodes_to_clear_shape) {
@@ -1151,7 +1156,9 @@ Status MegatronTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_le
   if (modified) {
     graph.SetGraphResolveNeeded();
     auto ret = graph.Resolve();
-    std::cout << "Megatron transformer result" << ret.ErrorMessage() << std::endl;
+    std::cout << "Megatron transformer result : Partitioned " << partitioned_t5_mlp_count_ << " T5 MLP Blocks, "
+              << partitioned_t5_attention_count_ << " T5 Attention Blocks; Reset seed for " << dropout_changed_
+              << " Dropout nodes. Error Message: " << ret.ErrorMessage() << std::endl;
     ORT_ENFORCE(ret.IsOK());
   }
 

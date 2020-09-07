@@ -410,6 +410,9 @@ Status SessionState::GenerateActivationMemoryPatterns(MemoryPatternGroup* output
         auto location = exe_plan->GetLocation(ml_value_idx);
         LOGS_DEFAULT(INFO) << "tensor name: " << node->OutputDefs().at(i)->Name() << ", tensor location: " << location.ToString() << ", tensor index: " << ml_value_idx;
         mem_planner.TraceAllocation(ml_value_idx, aligned_size);
+        if (node->GetExecutionProviderType().empty() || node->GetExecutionProviderType() == kCpuExecutionProvider) {
+          std::cout << "Activation CPU tensor " << node->OpType() << ": " << size << std::endl;
+        }
       }
     }
     //release nodes

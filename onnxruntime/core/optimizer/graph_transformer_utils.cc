@@ -106,6 +106,8 @@ std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(Tra
   return rule_transformer;
 }
 
+static std::unordered_set<std::string> excluded_initializers = {};
+
 std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerLevel level,
                                                                     gsl::span<const FreeDimensionOverride> free_dimension_overrides,
                                                                     const IExecutionProvider& execution_provider, /*required by constant folding*/
@@ -115,7 +117,6 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
   switch (level) {
     case TransformerLevel::Level1: {
       std::unordered_set<std::string> l1_execution_providers = {};
-      std::unordered_set<std::string> excluded_initializers = {};
       transformers.emplace_back(onnxruntime::make_unique<CommonSubexpressionElimination>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(execution_provider, excluded_initializers, l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<MatMulAddFusion>(l1_execution_providers));

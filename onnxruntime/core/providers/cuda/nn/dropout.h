@@ -44,6 +44,7 @@ class Dropout final : public CudaKernel {
   Dropout(const OpKernelInfo& info) : CudaKernel(info) {
     int64_t seed = 0;
     if (info.GetAttr<int64_t>("seed", &seed).IsOK()) {
+      std::cout << "Dropout kernel seed branch " << info.node().Name() << std::endl;
       generator_ = onnxruntime::make_unique<PhiloxGenerator>(static_cast<uint64_t>(seed));
     }
   }
