@@ -67,6 +67,7 @@ class ORTGlueTest(unittest.TestCase):
         self.learning_rate = 2e-5
         self.num_train_epochs = 3.0
         self.local_rank = -1
+        self.world_size = 1
         self.overwrite_output_dir = True
         self.gradient_accumulation_steps = 1
         self.data_dir = "/bert_data/hf_data/glue_data/"
@@ -76,10 +77,10 @@ class ORTGlueTest(unittest.TestCase):
         self.rtol = 1e-02
 
     def test_roberta_with_mrpc(self):
-        expected_acc = 0.8848039215686274
-        expected_f1 = 0.917975567190227
-        expected_acc_and_f1 = 0.9013897443794272
-        expected_loss = 0.35917433314755853
+        expected_acc = 0.8676470588235294
+        expected_f1 = 0.9035714285714286
+        expected_acc_and_f1 = 0.885609243697479
+        expected_loss = 0.3022572344862947
 
         results_per_api = dict()
         for use_new_api in [True, False]:
@@ -93,10 +94,10 @@ class ORTGlueTest(unittest.TestCase):
         verify_old_and_new_api_are_equal(results_per_api)
 
     def test_roberta_fp16_with_mrpc(self):
-        expected_acc = 0.8946078431372549
-        expected_f1 = 0.924693520140105
-        expected_acc_and_f1 = 0.90965068163868
-        expected_loss = 0.3052181116506165
+        expected_acc = 0.8897058823529411
+        expected_f1 = 0.9197860962566845
+        expected_acc_and_f1 = 0.9047459893048129
+        expected_loss = 0.3035417107098243
 
         results_per_api = dict()
         for use_new_api in [True, False]:
@@ -279,7 +280,8 @@ class ORTGlueTest(unittest.TestCase):
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
             compute_metrics=compute_metrics,
-            use_new_api=use_new_api
+            use_new_api=use_new_api,
+            world_size=self.world_size,
         )
 
         # Training
@@ -303,17 +305,17 @@ class ORTGlueTest(unittest.TestCase):
         return results
 
 if __name__ == "__main__":
-    if get_mpi_context_world_size() > 1:
+    local_rank = get_mpi_context_local_rank()
+    world_size = get_mpi_context_world_size()
+    if world_size > 1:
         # mpi launch
+        logger.warning("mpirun launch, local_rank / world_size: %s : % s", local_rank, world_size)
 
-        print("mpirun launch")
         # TrainingArguments._setup_devices will call torch.distributed.init_process_group(backend="nccl")
         # pytorch expects following environment settings (which would be set if launched with torch.distributed.launch).
 
-        local_rank = get_mpi_context_local_rank()
-        print("get_mpi_context_local_rank(): ", local_rank)
         os.environ['RANK'] = str(local_rank)
-        os.environ['WORLD_SIZE'] = str(get_mpi_context_world_size())
+        os.environ['WORLD_SIZE'] = str(world_size)
         os.environ['MASTER_ADDR'] = '127.0.0.1'
         os.environ['MASTER_PORT'] = '29500'
 
@@ -323,6 +325,7 @@ if __name__ == "__main__":
         test = ORTGlueTest()
         test.setUp()
         test.local_rank = local_rank
+        test.world_size = world_size
         test.test_bert_with_mrpc()
     else:
         unittest.main()

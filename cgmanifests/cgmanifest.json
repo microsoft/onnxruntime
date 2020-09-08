@@ -417,6 +417,56 @@
             },
             "comments": "Python 3.5.9"
          }
+      },
+      {
+         "component": {
+            "type": "pip",
+            "pip": {
+               "Name": "transformers",
+               "Version": "2.11.0"
+            },
+            "comments": "Installed in the training docker image"
+         }
+      },
+      {
+         "component": {
+            "type": "pip",
+            "pip": {
+               "Name": "msgpack",
+               "Version": "1.0.0"
+            },
+            "comments": "Installed in the training docker image"
+         }
+      },
+      {
+         "component": {
+            "type": "pip",
+            "pip": {
+               "Name": "tensorboardX",
+               "Version": "1.8"
+            },
+            "comments": "Installed in the training docker image"
+         }
+      },
+      {
+         "component": {
+            "type": "pip",
+            "pip": {
+               "Name": "tensorboard",
+               "Version": "2.3.0"
+            },
+            "comments": "Installed in the training docker image"
+         }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "92cf3702fcfaadc84eb7bef59825a23e0cd84f56",
+               "repositoryUrl": "https://github.com/aappleby/smhasher"
+            },
+            "comments": "MurmurHash3"
+         }
       }
    ],
    "Version": 1
