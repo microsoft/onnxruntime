@@ -185,8 +185,6 @@ table Graph{
 
   inputs:[string];
   outputs:[string];
-
-  outer_scope_node_args:[string];
 }
 
 table Model {

@@ -145,6 +145,8 @@ common::Status SaveInitializedTensors(
       return Status(st.Category(), st.Code(), oss.str());
     }
 
+    // any outer scope value is shadowed by a local value and can't override it.
+    // due to that check_outer_scope is false
     bool constant = graph.IsConstantInitializer(name, /* check_outer_scope */ false);
     ORT_RETURN_IF_ERROR(save_tensor_func(ort_value_index, ort_value, deleter, constant));
 
