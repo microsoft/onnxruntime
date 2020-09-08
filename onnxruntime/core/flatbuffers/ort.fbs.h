@@ -1567,8 +1567,7 @@ struct Graph FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_MAX_NODE_INDEX = 10,
     VT_NODE_EDGES = 12,
     VT_INPUTS = 14,
-    VT_OUTPUTS = 16,
-    VT_OUTER_SCOPE_NODE_ARGS = 18
+    VT_OUTPUTS = 16
   };
   const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::experimental::fbs::Tensor>> *initializers() const {
     return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::experimental::fbs::Tensor>> *>(VT_INITIALIZERS);
@@ -1591,9 +1590,6 @@ struct Graph FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> *outputs() const {
     return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> *>(VT_OUTPUTS);
   }
-  const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> *outer_scope_node_args() const {
-    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> *>(VT_OUTER_SCOPE_NODE_ARGS);
-  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_INITIALIZERS) &&
@@ -1615,9 +1611,6 @@ struct Graph FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyOffset(verifier, VT_OUTPUTS) &&
            verifier.VerifyVector(outputs()) &&
            verifier.VerifyVectorOfStrings(outputs()) &&
-           VerifyOffset(verifier, VT_OUTER_SCOPE_NODE_ARGS) &&
-           verifier.VerifyVector(outer_scope_node_args()) &&
-           verifier.VerifyVectorOfStrings(outer_scope_node_args()) &&
            verifier.EndTable();
   }
 };
@@ -1647,9 +1640,6 @@ struct GraphBuilder {
   void add_outputs(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>> outputs) {
     fbb_.AddOffset(Graph::VT_OUTPUTS, outputs);
   }
-  void add_outer_scope_node_args(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>> outer_scope_node_args) {
-    fbb_.AddOffset(Graph::VT_OUTER_SCOPE_NODE_ARGS, outer_scope_node_args);
-  }
   explicit GraphBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -1669,10 +1659,8 @@ inline flatbuffers::Offset<Graph> CreateGraph(
     uint32_t max_node_index = 0,
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::experimental::fbs::NodeEdge>>> node_edges = 0,
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>> inputs = 0,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>> outputs = 0,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>> outer_scope_node_args = 0) {
+    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>> outputs = 0) {
   GraphBuilder builder_(_fbb);
-  builder_.add_outer_scope_node_args(outer_scope_node_args);
   builder_.add_outputs(outputs);
   builder_.add_inputs(inputs);
   builder_.add_node_edges(node_edges);
@@ -1691,15 +1679,13 @@ inline flatbuffers::Offset<Graph> CreateGraphDirect(
     uint32_t max_node_index = 0,
     const std::vector<flatbuffers::Offset<onnxruntime::experimental::fbs::NodeEdge>> *node_edges = nullptr,
     const std::vector<flatbuffers::Offset<flatbuffers::String>> *inputs = nullptr,
-    const std::vector<flatbuffers::Offset<flatbuffers::String>> *outputs = nullptr,
-    const std::vector<flatbuffers::Offset<flatbuffers::String>> *outer_scope_node_args = nullptr) {
+    const std::vector<flatbuffers::Offset<flatbuffers::String>> *outputs = nullptr) {
   auto initializers__ = initializers ? _fbb.CreateVector<flatbuffers::Offset<onnxruntime::experimental::fbs::Tensor>>(*initializers) : 0;
   auto node_args__ = node_args ? _fbb.CreateVector<flatbuffers::Offset<onnxruntime::experimental::fbs::ValueInfo>>(*node_args) : 0;
   auto nodes__ = nodes ? _fbb.CreateVector<flatbuffers::Offset<onnxruntime::experimental::fbs::Node>>(*nodes) : 0;
   auto node_edges__ = node_edges ? _fbb.CreateVector<flatbuffers::Offset<onnxruntime::experimental::fbs::NodeEdge>>(*node_edges) : 0;
   auto inputs__ = inputs ? _fbb.CreateVector<flatbuffers::Offset<flatbuffers::String>>(*inputs) : 0;
   auto outputs__ = outputs ? _fbb.CreateVector<flatbuffers::Offset<flatbuffers::String>>(*outputs) : 0;
-  auto outer_scope_node_args__ = outer_scope_node_args ? _fbb.CreateVector<flatbuffers::Offset<flatbuffers::String>>(*outer_scope_node_args) : 0;
   return onnxruntime::experimental::fbs::CreateGraph(
       _fbb,
       initializers__,
@@ -1708,8 +1694,7 @@ inline flatbuffers::Offset<Graph> CreateGraphDirect(
       max_node_index,
       node_edges__,
       inputs__,
-      outputs__,
-      outer_scope_node_args__);
+      outputs__);
 }
 
 struct Model FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
