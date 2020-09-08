@@ -91,7 +91,7 @@ TEST(CudaKernelTest, LayerNorm_SmallSizeTensor) {
 
 TEST(CudaKernelTest, T5LayerNorm_SmallSizeTensor) {
   const std::vector<int64_t> X_dims{4, 20, 128};
-  TestLayerNorm(X_dims, k_epsilon_default);
+  TestLayerNorm(X_dims, "T5LayerNormalization", k_epsilon_default);
 }
 #endif
 }  // namespace test

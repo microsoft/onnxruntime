@@ -67,7 +67,7 @@ __device__ void cuChanOnlineSum(
     nA = nA / nX;
     nB = nB / nX;
     mu = nA * mu + nB * muB;
-    if use_t5_layer_norm {
+    if (use_t5_layer_norm) {
       sigma2 = sigma2 + sigma2B;
     } else {
       sigma2 = sigma2 + sigma2B + delta * delta * nA * nB * nX;
@@ -193,7 +193,7 @@ __device__ void cuWelfordMuSigma2(
       // first thread consumes first point
       if (thrx == 0) {
         float curr = static_cast<float>(lvals[0]);
-        cuWelfordOnlineSum(curr, mu, sigma2, count);
+        cuWelfordOnlineSum<float, use_t5_layer_norm>(curr, mu, sigma2, count);
       }
       ++l;
     }
@@ -201,13 +201,13 @@ __device__ void cuWelfordMuSigma2(
     for (; l + 7 < n2; l += 8 * numx) {
       for (int k = 0; k < 8; k += 2) {
         float2 curr = __half22float2(*((__half2*)(lvals + l + k)));
-        cuWelfordOnlineSum(static_cast<float>(curr.x), mu, sigma2, count);
-        cuWelfordOnlineSum(static_cast<float>(curr.y), mu, sigma2, count);
+        cuWelfordOnlineSum<float, use_t5_layer_norm>(static_cast<float>(curr.x), mu, sigma2, count);
+        cuWelfordOnlineSum<float, use_t5_layer_norm>(static_cast<float>(curr.y), mu, sigma2, count);
       }
     }
     for (; l < n2; ++l) {
       float curr = static_cast<float>(lvals[l]);
-      cuWelfordOnlineSum(curr, mu, sigma2, count);
+      cuWelfordOnlineSum<float, use_t5_layer_norm>(curr, mu, sigma2, count);
     }
     // intra-warp reductions
     #pragma unroll
@@ -215,7 +215,7 @@ __device__ void cuWelfordMuSigma2(
       float muB = WARP_SHFL_DOWN(mu, stride);
       float countB = WARP_SHFL_DOWN(count, stride);
       float sigma2B = WARP_SHFL_DOWN(sigma2, stride);
-      cuChanOnlineSum(muB, sigma2B, countB, mu, sigma2, count);
+      cuChanOnlineSum<float, use_t5_layer_norm>(muB, sigma2B, countB, mu, sigma2, count);
     }
 
     // threadIdx.x == 0 has correct values for each warp
@@ -237,7 +237,7 @@ __device__ void cuWelfordMuSigma2(
           float muB = ubuf[2 * threadIdx.y];
           float sigma2B = ubuf[2 * threadIdx.y + 1];
           float countB = ibuf[threadIdx.y];
-          cuChanOnlineSum(muB, sigma2B, countB, mu, sigma2, count);
+          cuChanOnlineSum<float, use_t5_layer_norm>(muB, sigma2B, countB, mu, sigma2, count);
         }
         __syncthreads();
       }
@@ -324,7 +324,7 @@ __global__ void cuApplyLayerNorm(
     SharedMemory<U> shared;
     U* buf = shared.getPointer();
     U mu, sigma2;
-    cuWelfordMuSigma2<T, U, use_t5_layer_norm>(vals, n1, n2, i1, mu, sigma2);
+    cuWelfordMuSigma2<T, U, use_t5_layer_norm>(vals, n1, n2, i1, mu, sigma2, buf);
     const T* lvals = vals + i1 * n2;
     T* ovals = output_vals + i1 * n2;
     U c_invvar = rsqrt(sigma2 + epsilon);
@@ -379,7 +379,7 @@ void HostApplyLayerNorm(
 }
 
 #define LAYERNORM_LINEAR_IMPL(T, U, use_t5_layer_norm)                                                                       \
-  template void HostApplyLayerNorm(const cudaDeviceProp& prop, T* output, U* mean, U* invvar, const T* input, int64_t n1, int64_t n2, \
+  template void HostApplyLayerNorm<T, U, use_t5_layer_norm>(const cudaDeviceProp& prop, T* output, U* mean, U* invvar, const T* input, int64_t n1, int64_t n2, \
                                    double epsilon, const T* gamma, const T* beta);
 
 // LAYERNORM_LINEAR_IMPL(float, float)

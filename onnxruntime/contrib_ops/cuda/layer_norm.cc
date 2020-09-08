@@ -36,6 +36,7 @@ namespace cuda {
 REGISTER_KERNEL_TYPED(float, float)
 REGISTER_KERNEL_TYPED(double, double)
 REGISTER_KERNEL_TYPED(MLFloat16, float)
+//REGISTER_KERNEL_TYPED(half, float)
 
 template <typename T, typename U, bool use_t5_layer_norm>
 LayerNorm<T, U, use_t5_layer_norm>::LayerNorm(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
@@ -91,7 +92,7 @@ Status LayerNorm<T, U, use_t5_layer_norm>::ComputeInternal(OpKernelContext* ctx)
     inv_var_data = reinterpret_cast<CudaU*>(var->template MutableData<U>());
   }
 
-  HostApplyLayerNorm(GetDeviceProp(), Y_data, mean_data, inv_var_data, X_data, n1, n2, epsilon_, scale_data, bias_data);
+  HostApplyLayerNorm<CudaT, CudaU, use_t5_layer_norm>(GetDeviceProp(), Y_data, mean_data, inv_var_data, X_data, n1, n2, epsilon_, scale_data, bias_data);
   return Status::OK();
 }
 
