@@ -3,19 +3,27 @@
 
 #pragma once
 
-#include <vector>
-#include <type_traits>
-#include "core/session/onnxruntime_c_api.h"
-#include "core/session/onnxruntime_cxx_api.h"
-#include "callback.h"
-#include "mem_buffer.h"
+#include <stdint.h>
+
+#include "core/common/status.h"
+
+enum ONNXTensorElementDataType;
 
 namespace onnx {
 class TensorProto;
 }
 
+namespace Ort {
+struct Value;
+}
+
 namespace onnxruntime {
+
 namespace test {
+
+struct OrtCallback;
+class MemBuffer;
+
 // How much memory it will need for putting the content of this tensor into a plain array
 // complex64/complex128 tensors are not supported.
 // The output value could be zero or -1.

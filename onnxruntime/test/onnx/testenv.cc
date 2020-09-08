@@ -2,10 +2,14 @@
 // Licensed under the MIT License.
 
 #include "testenv.h"
+#include "TestCase.h"
 #include "callables.h"
 #include "heap_buffer.h"
 #include "TestCaseResult.h"
 #include "FixedCountFinishCallback.h"
+#include "core/common/logging/logging.h"
+#include "core/common/common.h"
+#include "core/platform/env.h"
 #include <core/session/onnxruntime_cxx_api.h>
 
 // Class that allows to run a single TestCase either sync or async.
@@ -51,16 +55,16 @@ private:
 
 void DataTaskRequestContext::RunImpl() {
   onnxruntime::test::HeapBuffer holder;
-  std::unordered_map<std::string, OrtValue*> feeds;
+  std::unordered_map<std::string, Ort::Value> feeds;
   c_.LoadTestData(task_id_, holder, feeds, true);
 
   // Create output feed
   size_t output_count = 0;
-  Ort::ThrowOnError(Ort::GetApi().SessionGetOutputCount(session, &output_count));
+  Ort::ThrowOnError(Ort::GetApi().SessionGetOutputCount(session_, &output_count));
   std::vector<std::string> output_names(output_count);
   for (size_t i = 0; i != output_count; ++i) {
     char* output_name = nullptr;
-    Ort::ThrowOnError(Ort::GetApi().SessionGetOutputName(session, i, default_allocator.get(), &output_name));
+    Ort::ThrowOnError(Ort::GetApi().SessionGetOutputName(session_, i, default_allocator.get(), &output_name));
     assert(output_name != nullptr);
     output_names[i] = output_name;
     default_allocator->Free(output_name);

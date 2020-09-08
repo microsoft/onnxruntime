@@ -8,8 +8,16 @@
 #include <core/common/common.h>
 #include <core/common/status.h>
 #include <core/platform/path_lib.h>
-#include <core/session/onnxruntime_cxx_api.h>
-#include "heap_buffer.h"
+
+namespace onnxruntime {
+namespace test {
+class HeapBuffer;
+}
+}  // namespace onnxruntime
+
+namespace Ort {
+struct Value;
+}
 
 namespace ONNX_NAMESPACE {
 class ValueInfoProto;
@@ -20,7 +28,7 @@ class ValueInfoProto;
 class ITestCase {
  public:
   virtual void LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
-                            std::unordered_map<std::string, OrtValue*>& name_data_map,
+                            std::unordered_map<std::string, Ort::Value>& name_data_map,
                             bool is_input) const = 0;
   virtual const PATH_CHAR_TYPE* GetModelUrl() const = 0;
   virtual const std::string& GetNodeName() const = 0;

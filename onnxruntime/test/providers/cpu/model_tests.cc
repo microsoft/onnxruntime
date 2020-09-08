@@ -13,7 +13,9 @@
 #include "test/onnx/runner.h"
 #include "test/compare_ortvalue.h"
 #include "default_providers.h"
+#include "test/onnx/heap_buffer.h"
 #include "test/onnx/onnx_model_info.h"
+#include "test/onnx/callback.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
@@ -498,7 +500,7 @@ TEST_P(ModelTest, Run) {
       const size_t data_count = l->GetDataCount();
       for (size_t task_id = 0; task_id != data_count; ++task_id) {
         onnxruntime::test::HeapBuffer holder;
-        std::unordered_map<std::string, OrtValue*> feeds;
+        std::unordered_map<std::string, Ort::Value> feeds;
         l->LoadTestData(task_id, holder, feeds, true);
 
         std::pair<common::Status, const OutputDefList*> output_meta_data = session_object.GetModelOutputs();
@@ -514,8 +516,8 @@ TEST_P(ModelTest, Run) {
         {
           std::unordered_map<std::string, OrtValue> input;
           for (auto& p : feeds) {
-            input[p.first] = *p.second;
-            delete p.second;
+            const OrtValue* v = p.second;
+            input.emplace(p.first, *v);
           }
           ASSERT_STATUS_OK(session_object.Run(input, output_names, &output_values));
         }
@@ -527,7 +529,7 @@ TEST_P(ModelTest, Run) {
         ASSERT_STATUS_OK(l->GetPostProcessing(&post_procesing));
 
         // TODO: if there are no output value files, just skip the validation
-        std::unordered_map<std::string, OrtValue*> expected_output_values;
+        std::unordered_map<std::string, Ort::Value> expected_output_values;
         l->LoadTestData(task_id, holder, expected_output_values, false);
 
         std::unordered_map<std::string, OrtValue*> name_fetch_output_map;
@@ -543,7 +545,7 @@ TEST_P(ModelTest, Run) {
         }
 
         for (auto& output : expected_output_values) {
-          OrtValue* expected_output_value = output.second;
+          const OrtValue* expected_output_value = output.second;
           const std::string& output_name = output.first;
           auto iter = name_fetch_output_map.find(output_name);
           ASSERT_NE(iter, name_fetch_output_map.end());
@@ -565,9 +567,6 @@ TEST_P(ModelTest, Run) {
           if (compare_result != COMPARE_RESULT::SUCCESS) {
             break;
           }
-        }
-        for (auto& kvp : expected_output_values) {
-          delete kvp.second;
         }
       }
     }

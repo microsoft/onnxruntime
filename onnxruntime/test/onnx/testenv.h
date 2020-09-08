@@ -6,14 +6,23 @@
 #include <vector>
 #include "TestResultStat.h"
 #include <core/common/common.h>
-#include <core/session/onnxruntime_cxx_api.h>
 
 class ITestCase;
 class TestCaseResult;
 
+namespace Ort {
+struct Env;
+struct SessionOptions;
+}
+
+namespace Eigen {
+class ThreadPoolInterface;
+}
+
+
 class TestEnv {
  public:
-  TestEnv(const std::vector<ITestCase*>& tests, TestResultStat& stat1, Ort::Env& env, Ort::SessionOptions& sf1, PThreadPool tp);
+  TestEnv(const std::vector<ITestCase*>& tests, TestResultStat& stat1, Ort::Env& env, Ort::SessionOptions& sf1, Eigen::ThreadPoolInterface* tp);
   ~TestEnv();
 
  private:
@@ -25,5 +34,5 @@ class TestEnv {
   // FixedCountFinishCallbackImpl<TestCaseResult> finished;
   Ort::Env& env;
   const Ort::SessionOptions& sf;
-  PThreadPool tp_;
+  Eigen::ThreadPoolInterface* tp_;
 };
