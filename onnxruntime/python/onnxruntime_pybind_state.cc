@@ -119,7 +119,13 @@ struct OrtStatus {
 #define BACKEND_ARMNN ""
 #endif
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_MKLML BACKEND_NGRAPH BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN
+#if USE_DML
+#define BACKEND_DML "-DML"
+#else
+#define BACKEND_DML ""
+#endif
+
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_MKLML BACKEND_NGRAPH BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -159,6 +165,9 @@ std::string nuphar_settings;
 #ifdef USE_ARMNN
 #include "core/providers/armnn/armnn_provider_factory.h"
 #endif
+#ifdef USE_DML
+#include "core/providers/dml/dml_provider_factory.h"
+#endif
 
 #define PYBIND_UNREFERENCED_PARAMETER(parameter) ((void)(parameter))
 
@@ -176,6 +185,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char* backend_type, int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(int use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(int device_id);
 }  // namespace onnxruntime
 
 #if defined(_MSC_VER)
@@ -374,7 +384,7 @@ const std::vector<std::string>& GetAllProviders() {
   static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kCudaExecutionProvider, kMIGraphXExecutionProvider,
                                                    kNGraphExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider,
                                                    kNupharExecutionProvider, kVitisAIExecutionProvider, kArmNNExecutionProvider,
-                                                   kAclExecutionProvider, kCpuExecutionProvider};
+                                                   kAclExecutionProvider, kDmlExecutionProvider, kCpuExecutionProvider};
   return all_providers;
 }
 
@@ -572,6 +582,9 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
           sess, *onnxruntime::CreateExecutionProviderFactory_ArmNN(sess->GetSessionOptions().enable_cpu_mem_arena));
 #endif
     } else if (type == kDmlExecutionProvider) {
+#ifdef USE_DML
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_DML(0));
+#endif
     } else {
       // unknown provider
       throw std::runtime_error("Unknown Provider Type: " + type);
@@ -721,6 +734,9 @@ void addGlobalMethods(py::module& m, const Environment& env) {
 #endif
 #ifdef USE_ARMNN
                 onnxruntime::CreateExecutionProviderFactory_ArmNN(0)
+#endif
+#ifdef USE_DML
+                    onnxruntime::CreateExecutionProviderFactory_DML(0)
 #endif
         };
 
