@@ -27,9 +27,8 @@ class DX12TextureToGPUTensorTelemetryEvent {
     runtime_session_id_ = telemetry_helper.GetRuntimeSessionId();
     TraceLoggingWrite(
         winml_trace_logging_provider,
-        "DX12TextureToGPUTensor",
+        "DX12TextureToGPUTensorStart",
         TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
-        TraceLoggingOpcode(EVENT_TRACE_TYPE_START),
         TraceLoggingHexInt32(tensorDesc.channelType, "Type"),
         TraceLoggingInt64(tensorDesc.sizes[2], "Height"),
         TraceLoggingInt64(tensorDesc.sizes[3], "Width"),
@@ -40,9 +39,8 @@ class DX12TextureToGPUTensorTelemetryEvent {
   ~DX12TextureToGPUTensorTelemetryEvent() {
     TraceLoggingWrite(
         winml_trace_logging_provider,
-        "DX12TextureToGPUTensor",
+        "DX12TextureToGPUTensorStop",
         TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
-        TraceLoggingOpcode(EVENT_TRACE_TYPE_STOP),
         TraceLoggingHexInt32(S_OK, "HRESULT"),
         TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
         TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
@@ -59,9 +57,8 @@ class SoftwareBitmapToGPUTensorTelemetryEvent {
     runtime_session_id_ = telemetry_helper.GetRuntimeSessionId();
     TraceLoggingWrite(
         winml_trace_logging_provider,
-        "SoftwareBitmapToGPUTensor",
+        "SoftwareBitmapToGPUTensorStart",
         TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
-        TraceLoggingOpcode(EVENT_TRACE_TYPE_START),
         TraceLoggingHexInt32(tensorDesc.channelType, "Type"),
         TraceLoggingInt64(tensorDesc.sizes[2], "Height"),
         TraceLoggingInt64(tensorDesc.sizes[3], "Width"),
@@ -72,9 +69,8 @@ class SoftwareBitmapToGPUTensorTelemetryEvent {
   ~SoftwareBitmapToGPUTensorTelemetryEvent() {
     TraceLoggingWrite(
         winml_trace_logging_provider,
-        "SoftwareBitmapToGPUTensor",
+        "SoftwareBitmapToGPUTensorStop",
         TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
-        TraceLoggingOpcode(EVENT_TRACE_TYPE_STOP),
         TraceLoggingHexInt32(S_OK, "HRESULT"),
         TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
         TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
@@ -91,9 +87,8 @@ class ConvertVideoFrameWithSoftwareBitmapToCPUTensorTelemetryEvent {
     runtime_session_id_ = telemetry_helper.GetRuntimeSessionId();
     TraceLoggingWrite(
         winml_trace_logging_provider,
-        "ConvertVideoFrameWithSoftwareBitmapToCPUTensor",
+        "ConvertVideoFrameWithSoftwareBitmapToCPUTensorStart",
         TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
-        TraceLoggingOpcode(EVENT_TRACE_TYPE_START),
         TraceLoggingHexInt32(tensorDesc.channelType, "Type"),
         TraceLoggingInt64(tensorDesc.sizes[2], "Height"),
         TraceLoggingInt64(tensorDesc.sizes[3], "Width"),
@@ -104,9 +99,8 @@ class ConvertVideoFrameWithSoftwareBitmapToCPUTensorTelemetryEvent {
   ~ConvertVideoFrameWithSoftwareBitmapToCPUTensorTelemetryEvent() {
     TraceLoggingWrite(
         winml_trace_logging_provider,
-        "ConvertVideoFrameWithSoftwareBitmapToCPUTensor",
+        "ConvertVideoFrameWithSoftwareBitmapToCPUTensorStop",
         TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
-        TraceLoggingOpcode(EVENT_TRACE_TYPE_STOP),
         TraceLoggingHexInt32(S_OK, "HRESULT"),
         TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
         TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
