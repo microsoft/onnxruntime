@@ -5,7 +5,7 @@
 
 #include "orttraining/training_ops/cuda/communication/recv.h"
 #include "orttraining/training_ops/cuda/communication/common.h"
-#include "orttraining/training_ops/cuda/communication/nccl_service.cuh"
+#include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #include "core/profile/profile.h"
 #include "core/profile/context.h"
 #include "core/providers/cuda/cuda_common.h"
@@ -13,6 +13,9 @@
 #include <mpi.h>
 
 #include "orttraining/core/framework/mpi_context.h"
+
+// Uncomment this line to replace NCCL call with MPI call.
+// #define DEBUG_NCCL
 
 namespace onnxruntime {
 namespace cuda {
@@ -73,15 +76,27 @@ void Recv::ReceiveData(
   // count waiting time before setting up the actual communication.
   recvRange.Begin();
 #endif
+#ifdef DEBUG_NCCL
+  buffer = AllocateBufferOnCPUPinned<char>(static_cast<size_t>(aggregated_aligned_tensor_bytes));
+#else
   buffer = GetScratchBuffer<char>(aggregated_aligned_tensor_bytes);
+#endif
 
   CommInfo_t info_data{buffer.get(),
                        static_cast<int>(aggregated_aligned_tensor_bytes),
                        src,
                        static_cast<int>(tag_)};
 
+  // The following NCCL call is equivalent to the following MPI call. User can
+  // uncomment the MPI call to debug.
+#ifdef DEBUG_NCCL
+  MPI_CHECK(MPI_Recv(
+  info_data.buffer, info_data.size, MPI_CHAR,
+  info_data.rank, info_data.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+#else
   auto& nccl_service = cuda::NcclService::GetInstance();
   nccl_service.SubmitRecvAndWait(info_data.buffer, info_data.size, info_data.rank);
+#endif
 
 #ifdef ENABLE_NVTX_PROFILE
   // End of actual communication.
@@ -105,10 +120,19 @@ void Recv::ReceiveData(
     tensor_offset_in_bytes = GetAggregatedAlignedAddress(tensor_offset_in_bytes);
 
     // Copy data out from buffer.
+#ifdef DEBUG_NCCL
     CUDA_CALL(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
                               tensor->SizeInBytes(), cudaMemcpyDeviceToDevice));
+#else
+    CUDA_CALL(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
+                              tensor->SizeInBytes(), cudaMemcpyHostToDevice));
+#endif
     tensor_offset_in_bytes += tensor->SizeInBytes();
   }
+
+#ifdef  DEBUG_NCCL
+  AddDeferredReleaseCPUPtr(buffer.release());
+#endif
 
 #ifdef ENABLE_NVTX_PROFILE
   // End of host-to-device copy.

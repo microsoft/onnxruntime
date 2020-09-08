@@ -19,7 +19,7 @@
 #include "orttraining/core/framework/checkpointing.h"
 #include "orttraining/core/graph/optimizer_graph_builder.h"
 #include "orttraining/models/runner/training_util.h"
-#include "orttraining/training_ops/cuda/communication/nccl_service.cuh"
+#include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #include "single_include/nlohmann/json.hpp"
 #include "test/perftest/utils.h"
 
