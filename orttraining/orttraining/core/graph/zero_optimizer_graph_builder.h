@@ -25,7 +25,7 @@ class ZeROOptimizerGraphBuilder : public OptimizerGraphBuilder {
       OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs) override;
 
  private:
-  int stage_;
+  const int stage_;
 };
 
 }  // namespace training

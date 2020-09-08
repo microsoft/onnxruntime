@@ -148,7 +148,8 @@ static Status AddNcclAllGatherForWeights(
     std::vector<int64_t>& partitions,
     std::vector<ArgDef>& weight_argdefs,
     GraphAugmenter::GraphDefs& graph_defs,
-    int64_t max_group_size_val) {
+    int64_t max_group_size_val, 
+    const bool partition_even) {
   std::vector<ArgDef> allgather_outputs(weight_argdefs.size());
   for (size_t i = 0; i < weight_argdefs.size(); i++) {
     allgather_outputs[i] = ArgDef(weight_argdefs[i].name + "_AllGather_Out",
@@ -156,7 +157,6 @@ static Status AddNcclAllGatherForWeights(
   }
 
   // Add NCCL AllGather node.
-  bool partition_even = partitions.empty();
   if (partition_even) {
     graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclAllGather", kMSDomain, 1},
                                     weight_argdefs,
@@ -297,14 +297,14 @@ static Status ModifyParametersForOptimizerPartitioningByBoundary(
     std::vector<int64_t>& partitions,
     int64_t& max_group_size) {
   std::vector<int64_t> size_arr;
-  int max_size = 0;
+  int64_t max_size = 0;
   int64_t total_size = 0;
   for (const auto& gradient_argdef : gradient_argdefs) {
     ORT_ENFORCE(gradient_argdef.type_proto != nullptr);
     const auto& gradient_shape_proto = gradient_argdef.type_proto->tensor_type().shape();
     const TensorShape& gradient_shape = utils::GetTensorShapeFromTensorShapeProto(gradient_shape_proto);
 
-    total_size += int(gradient_shape.Size());
+    total_size += gradient_shape.Size();
     ORT_ENFORCE(total_size > 0);
     if (max_size < gradient_shape.Size()) max_size = gradient_shape.Size();
     size_arr.push_back(gradient_shape.Size());
@@ -528,11 +528,10 @@ ZeROOptimizerGraphBuilder::ZeROOptimizerGraphBuilder(
     const std::unordered_map<std::string, OptimizerNodeConfig>& weight_names_to_opt_configs)
     : OptimizerGraphBuilder(opt_builder_registry,
                             opt_graph_config,
-                            weight_names_to_opt_configs) {
+                            weight_names_to_opt_configs), stage_(opt_graph_config.deepspeed_zero.stage) {
   ORT_ENFORCE(opt_graph_config.data_parallel_group_size > 1, "ZeRO optimizer graph builder can only be used for distributed training.");
   ORT_ENFORCE(opt_graph_config.use_nccl, "Distributed training with ZeRO is only supported with NCCL.");
   ORT_ENFORCE(IsNcclAvailable(), "Distributed training with NCCL is not supported, as NCCL is not enabled in this build.");
-  stage_ = opt_graph_config.deepspeed_zero.stage;
 }
 
 Status ZeROOptimizerGraphBuilder::BuildInternal(
@@ -593,7 +592,7 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
     // add Allgather for weights
     std::vector<int64_t> partitions;
     std::vector<ArgDef> input_readies;
-    ORT_RETURN_IF_ERROR(AddNcclAllGatherForWeights(input_readies, partitions, weight_argdefs, graph_defs, 0));
+    ORT_RETURN_IF_ERROR(AddNcclAllGatherForWeights(input_readies, partitions, weight_argdefs, graph_defs, 0, false));
 
     return Status::OK();
   } else /*(stage_ == 2) */ {
@@ -649,7 +648,7 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
         optimizer_state_initializer_names));
 
     // add Allgather for weights
-    ORT_RETURN_IF_ERROR(AddNcclAllGatherForWeights(reduce_output_readies, partitions, weight_argdefs, graph_defs, max_group_size));
+    ORT_RETURN_IF_ERROR(AddNcclAllGatherForWeights(reduce_output_readies, partitions, weight_argdefs, graph_defs, max_group_size, true));
 
     return Status::OK();
   }
