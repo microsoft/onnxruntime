@@ -158,6 +158,9 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
     return Status::OK();                                                                                         \
   }
 
+#define BINARY_OP_VERSIONED_TYPED(name, startver, endver, T)                    \
+  BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, T)
+
 #define BINARY_OP_TYPED(name, ver, T)                    \
   BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, T) \
   BINARY_ELEMENTWISE_COMPUTE(name, T)
@@ -184,6 +187,18 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
 // F: float
 // D: double
 // O: bool
+
+#define BINARY_OP_VERSIONED_HFD(name, startver, endver)         \
+  BINARY_OP_VERSIONED_TYPED(name, startver, endver, MLFloat16)  \
+  BINARY_OP_VERSIONED_TYPED(name, startver, endver, float)      \
+  BINARY_OP_VERSIONED_TYPED(name, startver, endver, double)
+
+#define BINARY_OP_VERSIONED_UZILHFD(name, startver, endver) \
+  BINARY_OP_VERSIONED_TYPED(name, startver, endver, uint32_t)         \
+  BINARY_OP_VERSIONED_TYPED(name, startver, endver, uint64_t)         \
+  BINARY_OP_VERSIONED_TYPED(name, startver, endver, int32_t)          \
+  BINARY_OP_VERSIONED_TYPED(name, startver, endver, int64_t)          \
+  BINARY_OP_VERSIONED_HFD(name, startver, endver)
 
 #define BINARY_OP_HFD(name, ver)        \
   BINARY_OP_TYPED(name, ver, MLFloat16) \
@@ -250,21 +265,35 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
   BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, int64_t)  \
   BINARY_OP_REGISTER_VERSIONED_HFD(name, startver, endver)
 
-BINARY_OP_UZILHFD(Add, 7)
-BINARY_OP_UZILHFD(Sub, 7)
-BINARY_OP_UZILHFD(Mul, 7)
-BINARY_OP_UZILHFD(Div, 7)
+BINARY_OP_VERSIONED_UZILHFD(Add, 7, 12)
+BINARY_OP_VERSIONED_UZILHFD(Sub, 7, 12)
+BINARY_OP_VERSIONED_UZILHFD(Mul, 7, 12)
+BINARY_OP_VERSIONED_UZILHFD(Div, 7, 12)
+
+BINARY_OP_UZILHFD(Add, 13)
+BINARY_OP_UZILHFD(Sub, 13)
+BINARY_OP_UZILHFD(Mul, 13)
+BINARY_OP_UZILHFD(Div, 13)
+
 BINARY_OP_REGISTER_VERSIONED_CLASS_HFD(Pow, Pow_7, 7, 11)
 BINARY_LOGICALOP_TYPED(And, 7, bool)
 BINARY_LOGICALOP_TYPED(Or, 7, bool)
 BINARY_LOGICALOP_TYPED(Xor, 7, bool)
 BINARY_OP_HFD(PRelu, 7)
 
-// Pow version 12
+// Pow since version 12
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Pow,
+    kOnnxDomain,
+    12, 12,
+    kCudaExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, float, double>()).TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t, float, double>()),
+    Pow);
+
 ONNX_OPERATOR_KERNEL_EX(
     Pow,
     kOnnxDomain,
-    12,
+    13,
     kCudaExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, float, double>()).TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t, float, double>()),
     Pow);
@@ -410,11 +439,14 @@ Status Less<T>::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
-BINARY_LOGICALOP_REGISTER_UZILHFD(Greater, 9)
+BINARY_OP_REGISTER_OIL(Equal, 13)
+BINARY_OP_REGISTER_VERSIONED_OIL(Equal, 11, 12)
 BINARY_OP_REGISTER_VERSIONED_OIL(Equal, 7, 10)
-BINARY_OP_REGISTER_OIL(Equal, 11)
+BINARY_LOGICALOP_REGISTER_UZILHFD(Greater, 13)
+BINARY_OP_REGISTER_VERSIONED_UZILHFD(Greater, 9, 12)
 BINARY_OP_REGISTER_VERSIONED_HFD(Greater, 7, 8)
-BINARY_LOGICALOP_REGISTER_UZILHFD(Less, 9)
+BINARY_LOGICALOP_REGISTER_UZILHFD(Less, 13)
+BINARY_OP_REGISTER_VERSIONED_UZILHFD(Less, 9, 12)
 BINARY_OP_REGISTER_VERSIONED_HFD(Less, 7, 8)
 
 }  // namespace cuda

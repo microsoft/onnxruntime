@@ -4804,3 +4804,20 @@ INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
 LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
 OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
+
+-----
+
+MurmurHash3
+
+MIT license
+
+https://github.com/aappleby/smhasher
+
+SMHasher is a test suite designed to test the distribution, collision, and 
+performance properties of non-cryptographic hash functions.
+This is the home for the MurmurHash family of hash functions along with the 
+SMHasher test suite used to verify them. 
+SMHasher is released under the MIT license. 
+All MurmurHash versions are public domain software, and the author disclaims all copyright to their code.
+
+-----
