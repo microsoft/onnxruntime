@@ -52,7 +52,7 @@ from benchmark_helper import (create_onnxruntime_session, Precision, setup_logge
                               output_summary, output_fusion_statistics, inference_ort, inference_ort_with_io_binding,
                               allocateOutputBuffers)
 from quantize_helper import QuantizeHelper
-from onnx_exporter import create_onnxruntime_input, load_pretrained_model, export_onnx_model, pipeline_dispatcher
+from onnx_exporter import create_onnxruntime_input, load_pretrained_model, export_onnx_model
 
 logger = logging.getLogger('')
 
@@ -91,8 +91,9 @@ def run_onnxruntime(use_gpu, model_names, model_class, precision, batch_sizes, s
 
             with torch.no_grad():
                 onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length = export_onnx_model(
-                    model_name, MODELS[model_name], model_class, cache_dir, onnx_dir, input_names, use_gpu, precision,
-                    optimize_onnx, validate_onnx, use_raw_attention_mask, overwrite, model_fusion_statistics)
+                    model_name, MODELS[model_name][1], MODELS[model_name][2], MODELS[model_name][3], model_class,
+                    cache_dir, onnx_dir, input_names, use_gpu, precision, optimize_onnx, validate_onnx,
+                    use_raw_attention_mask, overwrite, model_fusion_statistics)
             if not is_valid_onnx_model:
                 continue
 
@@ -164,7 +165,7 @@ def run_pytorch(use_gpu, model_names, model_class, precision, batch_sizes, seque
 
     for model_name in model_names:
         config = AutoConfig.from_pretrained(model_name, torchscript=torchscript, cache_dir=cache_dir)
-        model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir, pipeline=pipeline_dispatcher(model_name, model_class))
+        model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir, custom_model_class=model_class)
         tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
 
         max_input_size = tokenizer.max_model_input_sizes[model_name] if model_name in tokenizer.max_model_input_sizes else 1024

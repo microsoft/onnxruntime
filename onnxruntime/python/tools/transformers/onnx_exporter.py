@@ -183,7 +183,7 @@ def optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, num_a
         logger.info(f"Skip optimization since model existed: {optimized_model_path}")
 
 
-def pipeline_dispatcher(model_name, custom_model_class):
+def modelclass_dispatcher(model_name, custom_model_class):
     if (custom_model_class != None):
         return MODEL_CLASSES[custom_model_class]
 
@@ -204,19 +204,19 @@ def pipeline_dispatcher(model_name, custom_model_class):
     return AutoModel
 
 
-def load_pretrained_model(model_name, config, cache_dir, pipeline):
-    return pipeline.from_pretrained(model_name, config=config, cache_dir=cache_dir)
+def load_pretrained_model(model_name, config, cache_dir, custom_model_class):
+    model_class = modelclass_dispatcher(model_name, custom_model_class)
+    return model_class.from_pretrained(model_name, config=config, cache_dir=cache_dir)
 
 
-def export_onnx_model(model_name, model_attribute, model_class, cache_dir, onnx_dir, input_names, use_gpu, precision,
-                      optimize_onnx, validate_onnx, use_raw_attention_mask, overwrite, model_fusion_statistics):
-    opset_version, use_external_data_format, model_type = model_attribute[1], model_attribute[2], model_attribute[3]
-
+def export_onnx_model(model_name, opset_version, use_external_data_format, model_type, model_class, cache_dir, onnx_dir,
+                      input_names, use_gpu, precision, optimize_onnx, validate_onnx, use_raw_attention_mask, overwrite,
+                      model_fusion_statistics):
     config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
     if hasattr(config, 'return_dict'):
         config.return_dict = False
 
-    model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir, pipeline=pipeline_dispatcher(model_name, model_class))
+    model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir, custom_model_class=model_class)
     model.cpu()
 
     tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
