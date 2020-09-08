@@ -997,6 +997,7 @@ class Graph {
     return resolve_context_.outer_scope_node_args.find(name) != resolve_context_.outer_scope_node_args.cend();
 #else
     // we shouldn't have code that calls this in a minimal build
+    ORT_UNUSED_PARAMETER(name);
     ORT_THROW("Internal error. Outer scope value lookup is not currently supported in a minimal build.");
 #endif
   }
