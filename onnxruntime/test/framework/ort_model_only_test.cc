@@ -9,6 +9,10 @@
 #include "test_utils.h"
 #include "test/util/include/asserts.h"
 
+#include "core/flatbuffers/ort.fbs.h"
+#include "flatbuffers/idl.h"
+#include "flatbuffers/util.h"
+
 #include "gtest/gtest.h"
 
 using namespace std;
@@ -44,7 +48,7 @@ struct OrtModelTestInfo {
   std::vector<std::pair<std::string, std::string>> configs;
 };
 
-void RunOrtModel(const OrtModelTestInfo& test_info) {
+static void RunOrtModel(const OrtModelTestInfo& test_info) {
   SessionOptions so;
   so.session_logid = test_info.logid;
   for (const auto& config : test_info.configs)
@@ -125,8 +129,8 @@ static void CompareValueInfos(const ValueInfoProto& left, const ValueInfoProto& 
   CompareTypeProtos(left.type(), right.type());
 }
 
-void CompareGraphAndSessionState(const InferenceSessionGetGraphWrapper& session_object_1,
-                                 const InferenceSessionGetGraphWrapper& session_object_2) {
+static void CompareGraphAndSessionState(const InferenceSessionGetGraphWrapper& session_object_1,
+                                        const InferenceSessionGetGraphWrapper& session_object_2) {
   const auto& graph_1 = session_object_1.GetGraph();
   const auto& graph_2 = session_object_2.GetGraph();
 
@@ -178,7 +182,7 @@ void CompareGraphAndSessionState(const InferenceSessionGetGraphWrapper& session_
   }
 }
 
-void SaveAndCompareModels(const std::string& onnx_file, const std::basic_string<ORTCHAR_T>& ort_file) {
+static void SaveAndCompareModels(const std::string& onnx_file, const std::basic_string<ORTCHAR_T>& ort_file) {
   SessionOptions so;
   so.session_logid = "SerializeToOrtFormat";
   so.optimized_model_filepath = ort_file;
@@ -204,9 +208,32 @@ void SaveAndCompareModels(const std::string& onnx_file, const std::basic_string<
   CompareGraphAndSessionState(session_object, session_object2);
 }
 
+/*
+static void DumpOrtModelAsJson(const std::string& model_uri) {
+  std::string ort_repo_root("path to your ORT repo root");
+  std::string ort_flatbuffers_dir(ort_repo_root + "onnxruntime/core/flatbuffers/");
+  std::string schemafile(ort_flatbuffers_dir + "ort.fbs");
+  std::string jsonfile;
+
+  ORT_ENFORCE(flatbuffers::LoadFile(schemafile.c_str(), false, &schemafile));
+  flatbuffers::Parser parser;
+  const char* include_directories[] = {ort_flatbuffers_dir.c_str(), nullptr};
+
+  ORT_ENFORCE(parser.Parse(schemafile.c_str(), include_directories));
+
+  std::string flatbuffer;
+  std::string json;
+  flatbuffers::LoadFile(model_uri.c_str(), true, &flatbuffer);
+  flatbuffers::GenerateText(parser, flatbuffer.data(), &json);
+  std::ofstream(model_uri + ".json") << json;
+}
+*/
+
 TEST(OrtModelOnlyTests, SerializeToOrtFormat) {
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("ort_github_issue_4031.onnx.ort");
   SaveAndCompareModels("testdata/ort_github_issue_4031.onnx", ort_file);
+
+  // DumpOrtModelAsJson(ToMBString(ort_file));
 
   OrtModelTestInfo test_info;
   test_info.model_filename = ort_file;
