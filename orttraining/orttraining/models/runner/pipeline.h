@@ -236,7 +236,6 @@ struct PipelineWorkerPool {
   void JoinAll();
 
   std::vector<std::thread> workers;
-  std::thread nccl_worker;
   std::vector<PipelineWorkerState> worker_states;
 };
 

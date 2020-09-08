@@ -704,12 +704,12 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
   // NCCL-P2P
   auto& nccl_service = cuda::NcclService::GetInstance();
 
-  nccl_service.StartPlan();
+  nccl_service.PlanStart();
   for (auto& slot : pipeline_schedule_.GetSchedule(pipeline_context_.pipeline_stage_id)) {
     if (!slot.HasCommute()) {
       continue;
     }
-    nccl_service.PlanStartNewGroup();
+    nccl_service.PlanNewGroupStart();
     for (auto& task : slot.GetTasks()) {
       if (task.type == pipeline::PipelineTask::Type::Send) {
         nccl_service.PlanSend(task.peer_rank);
@@ -717,15 +717,11 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
         nccl_service.PlanRecv(task.peer_rank);
       }
     }
-    nccl_service.PlanEndNewGroup();
+    nccl_service.PlanNewGroupEnd();
   }
-  nccl_service.EndPlan();
+  nccl_service.PlanEnd();
 
-  pipeline_worker_pool_.nccl_worker = std::thread(
-    [&]() -> void {
-      nccl_service.Launch();
-    }
-  );
+  nccl_service.Launch();
 #endif
 
   auto all_steps_time_start = std::chrono::high_resolution_clock::now();
@@ -904,7 +900,6 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
 
 #if defined(USE_NCCL)
   nccl_service.Terminate();
-  pipeline_worker_pool_.nccl_worker.join();
 #endif
   return Status::OK();
 }

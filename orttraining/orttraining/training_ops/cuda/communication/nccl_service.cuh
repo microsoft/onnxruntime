@@ -11,6 +11,7 @@
 #include <vector>
 #include <iostream>
 #include <string>
+#include <thread>
 
 #include <nccl.h>
 #include <mpi.h>
@@ -20,7 +21,9 @@ namespace cuda {
 
 struct NcclTask final {
   // Attributes for communication operator.
-  enum class Type {SEND, RECV, ALLREDUCE};
+  enum class Type { SEND,
+                    RECV,
+                    ALLREDUCE };
   // Operator to perform.
   Type type;
   // For Send, this field is destination device's ID.
@@ -41,181 +44,111 @@ struct NcclTask final {
   std::string info;
 
   // Return true if the two operations are the same.
-  bool Compare(const NcclTask& other) const {
-    if (type != other.type) {
-      return false;
-    }
-    if (peers.size() != other.peers.size()) {
-      return false;
-    }
-    for (size_t i = 0; i < peers.size(); ++i) {
-      if (peers[i] != other.peers[i]) {
-        return false;
-      }
-    }
+  bool Compare(const NcclTask& other) const;
 
-    return true;
-  }
-
-  void ResetTask() {
-    ptr = nullptr;
-    size = 0;
-    is_enqueued = false;
-    is_finished = false;
-  }
+  // Clear runtime information.
+  void ResetTask();
 };
 
-class NcclTaskGroup final {
-public:
-  void PlanTask(const NcclTask::Type type, const std::vector<int> peers) {
-    batch.push_back({type, peers, nullptr, 0, false, false, ""});
-  };
-
+// A collection of independent communication operations.
+struct NcclTaskGroup final {
+  // Schedule a communication operation in this group.
+  // We don't know the pointer to the actual data and other runtime information yet;
+  // runtime information is filled by calling EqunueTask(...).
+  void PlanTask(const NcclTask::Type type, const std::vector<int> peers);
   // Fill in task's details.
-  const NcclTask* EqueueTask(const NcclTask::Type type, const std::vector<int> peers, void* ptr, const size_t size, const std::string info) {
-    NcclTask scheduled_task;
-    scheduled_task.type = type;
-    scheduled_task.peers = peers;
-
-    for (auto& task : batch) {
-      if (!task.Compare(scheduled_task)) {
-        continue;
-      }
-      if (task.is_finished || task.is_enqueued) {
-        throw;
-      }
-
-      task.ptr = ptr;
-      task.size = size;
-      task.is_enqueued = true;
-      task.info = info;
-      return &task;
-    }
-
-    return nullptr;
-  };
-
-  bool IsAllTasksEqueued() {
-    for (auto& task : batch) {
-      if (!task.is_enqueued) {
-        return false;
-      }
-    }
-    return true;
-  };
-
-  bool IsAllTasksFinished() {
-    for (auto& task : batch) {
-      if (!task.is_finished) {
-        return false;
-      }
-    }
-    return true;
-  };
-
-  void ResetAllTasks () {
-    for (auto& task : batch) {
-      task.ptr = nullptr;
-      task.size = 0;
-      task.is_enqueued = false;
-      task.is_finished = false;
-    }
-  };
-
-  void Show(const std::string& prefix) const {
-    for (int i = 0; static_cast<size_t>(i) < batch.size(); ++i) {
-      std::string line = prefix;
-      auto& task = batch[i];
-      if (task.type == NcclTask::Type::SEND) {
-        line += "Send, ";
-      } else if (task.type == NcclTask::Type::RECV) {
-        line += "Recv, ";
-      }
-
-      for (int j = 0; static_cast<size_t>(j) < task.peers.size(); ++j) {
-        line += std::to_string(task.peers[j]);
-        if (static_cast<size_t>(j) != task.peers.size() - 1) {
-          line += ", ";
-        } else {
-          line += "\n";
-        }
-      }
-      std::cout << line;
-    }
-  }
-
+  const NcclTask* EqueueTask(
+      const NcclTask::Type type,
+      const std::vector<int> peers,
+      void* ptr,
+      const size_t size,
+      const std::string info);
+  bool IsAllTasksEqueued() const;
+  bool IsAllTasksFinished() const;
+  void ResetAllTasks();
+  friend std::ostream& operator<<(std::ostream& stream, const NcclTaskGroup& task_group);
   std::vector<NcclTask> batch;
 };
 
+// The use of this class has two stages. First, the user needs to plan the communication operators.
+// Second, when running a model, the user should submit tasks following the communication plan.
+// Function names begin with "Plan" are used for creating communication plan. Function names begin
+// with "Submit" asks this class to run the submitted task. Communication usually does not happen
+// immediately after submitting a task. The actual communication time is decided by this class based on
+// the communication plan.
+//
+// Below is an example of planning tasks. Notice that the communication operations in the same group are
+// called in random order, so those operations cannot have mutual dependency.
+//
+//   auto& nccl_service = cuda::NcclService::GetInstance();
+//
+//   nccl_service.PlanStart();         // Signal the begin of communication planning.
+//
+//   nccl_service.PlanStartNewGroup(); // Create new time slot.
+//   nccl_service.PlanSend(0);
+//   nccl_service.PlanRecv(1);
+//   nccl_service.PlanEndNewGroup();   // Mark the end of the first time slot.
+//
+//   nccl_service.PlanStartNewGroup(); // Create the second time slot.
+//   nccl_service.PlanSend(1);
+//   nccl_service.PlanRecv(0);
+//   nccl_service.PlanEndNewGroup();   // Mark the end of the second time slot.
+//
+//   nccl_service.EndPlan();           // Signal the end of communication planning.
 class NcclService final {
  public:
+  // Get the singleton of this class.
   static NcclService& GetInstance() {
     static NcclService instance_;
     return instance_;
   };
 
-  void SubmitSendAndWait(void* buffer, size_t count, int peer);
+  // Planning APIs. They are not thread-safe.
 
-  void SubmitRecvAndWait(void* buffer, size_t count, int peer);
+  // Mark the start of entire plan.
+  void PlanStart();
+  // Mark the end of entire plan.
+  void PlanEnd();
+  // Mark the begin of a new communication group. It uses the latest time slot.
+  // Operations in a group can happen in random order.
+  void PlanNewGroupStart();
+  // Mark the end of the current communication group.
+  void PlanNewGroupEnd();
+  // Add Send to the current communication group.
+  void PlanSend(const int dst);
+  // Add Recv to the current communication group.
+  void PlanRecv(const int src);
 
-  void StartPlan() {
-    if (is_planned_) {
-      throw;
-    }
-  };
+  // Runtime APIs. They are thread-safe.
 
-  void PlanStartNewGroup() {
-    group_status_.push_back(true); 
-    schedule_.push_back(NcclTaskGroup());
-  };
-  void PlanSend(const int dst) {
-    if (!group_status_.back()) {
-      throw;
-    }
-    
-    schedule_.back().PlanTask(NcclTask::Type::SEND, {dst});
-  };
-  void PlanRecv(const int src) {
-    if (!group_status_.back()) {
-      throw;
-    }
-    schedule_.back().PlanTask(NcclTask::Type::RECV, {src});
-  };
-  void PlanEndNewGroup() {
-    group_status_.back() = false;
-  }
-  void EndPlan() {
-    is_planned_ = true;
-  }
-
+  // Launch NCCL service. It's an infinite loop which repeatedly calls corresponding NCCL
+  // when planned operators (e.g., Send and Recv) arrive.
   void Launch();
-
+  // Submit a Send request with needed information such as tensor's address and number bytes to send.
+  void SubmitSendAndWait(void* buffer, size_t count, int peer);
+  // Submit a Recv request with needed information such as tensor's address and number bytes to recv.
+  void SubmitRecvAndWait(void* buffer, size_t count, int peer);
+  // Reset communication plan's status so that we can reuse the same communication plan for multiple
+  // model update steps.
   void Reset();
-
+  // Terminate NCCL service.
   void Terminate();
 
-  void Show() const {
-    for (int i = 0; static_cast<size_t>(i) < schedule_.size(); ++i) {
-      std::cout << "Time " << i << std::endl;
-      schedule_[i].Show("  ");
-    }
-  }
+  // Print debug string.
+  friend std::ostream& operator<<(std::ostream& stream, const NcclService& service);
 
  private:
   NcclService() = default;
   ~NcclService() = default;
   NcclService(const NcclService&) = delete;
   NcclService& operator=(const NcclService&) = delete;
+  // Initialization for running NCCL service.
   void Initialize();
-
-  int FindNextCommunicationTime() {
-    for (int i = 0; static_cast<size_t>(i) < schedule_.size(); ++i) {
-      if (schedule_[i].IsAllTasksEqueued() && !schedule_[i].IsAllTasksFinished()) {
-        return i;
-      }
-    }
-    return -1;
-  }
+  // Most member functions should start with a call to this function because
+  // they are valid only after NCCL service is launched.
+  void WaitForLaunch();
+  // Search the next unfinished communication group to work on.
+  int FindNextCommunicationTime() const;
 
   // Mutex to gurantee thread-safe access to this class.
   std::mutex mutex_;
@@ -225,15 +158,25 @@ class NcclService final {
   // Stream for running NCCL.
   ncclComm_t comm_;
 
-  bool is_launched_;
+  // Indicates if NCCL service launched.
+  bool is_running_;
+  // Indicates if NCCL service has a plan, which must be true when calling Launch(...).
   bool is_planned_;
   // Pipeline stage.
   size_t rank_;
 
   size_t time_;
   size_t total_time_;
+
+  // group_status_[t] indicates if the t-th group's plan is done. Once group_status_[t] is
+  // set to false, we can add communication operations to that group.
   std::vector<bool> group_status_;
+  // schedule_[t] communication group at time t. Communication group at time t-1 must be
+  // finished before working on the group at time t. In other words, communication groups
+  // are stored in their actual time order.
   std::vector<NcclTaskGroup> schedule_;
+  // Thread to asynchronously run Launc(...).
+  std::thread worker_;
 };
 
 }  // namespace cuda
