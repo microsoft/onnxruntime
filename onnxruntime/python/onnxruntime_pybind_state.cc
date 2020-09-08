@@ -571,6 +571,7 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
       RegisterExecutionProvider(
           sess, *onnxruntime::CreateExecutionProviderFactory_ArmNN(sess->GetSessionOptions().enable_cpu_mem_arena));
 #endif
+    } else if (type == kDmlExecutionProvider) {
     } else {
       // unknown provider
       throw std::runtime_error("Unknown Provider Type: " + type);
