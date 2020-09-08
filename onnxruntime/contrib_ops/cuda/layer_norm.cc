@@ -21,22 +21,32 @@ namespace cuda {
       KernelDefBuilder()                                          \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())  \
           .TypeConstraint("U", DataTypeImpl::GetTensorType<U>()), \
-      LayerNorm<T, U>);
+      LayerNorm<T, U, false>);                                    \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      T5LayerNormalization,                                       \
+      kOnnxDomain,                                                \
+      1,                                                          \
+      T##_##U,                                                    \
+      kCudaExecutionProvider,                                     \
+      KernelDefBuilder()                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())  \
+          .TypeConstraint("U", DataTypeImpl::GetTensorType<U>()), \
+      LayerNorm<T, U, true>);
 
 REGISTER_KERNEL_TYPED(float, float)
 REGISTER_KERNEL_TYPED(double, double)
 REGISTER_KERNEL_TYPED(MLFloat16, float)
 
-template <typename T, typename U>
-LayerNorm<T, U>::LayerNorm(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
+template <typename T, typename U, bool use_t5_layer_norm>
+LayerNorm<T, U, use_t5_layer_norm>::LayerNorm(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
   ORT_ENFORCE(op_kernel_info.GetAttr("axis", &axis_).IsOK());
   float tmp_epsilon;
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &tmp_epsilon).IsOK());
   epsilon_ = tmp_epsilon;
 }
 
-template <typename T, typename U>
-Status LayerNorm<T, U>::ComputeInternal(OpKernelContext* ctx) const {
+template <typename T, typename U, bool use_t5_layer_norm>
+Status LayerNorm<T, U, use_t5_layer_norm>::ComputeInternal(OpKernelContext* ctx) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
   typedef typename ToCudaType<U>::MappedType CudaU;
   //Inputs
@@ -46,15 +56,13 @@ Status LayerNorm<T, U>::ComputeInternal(OpKernelContext* ctx) const {
 
   auto X_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
   auto scale_data = reinterpret_cast<const CudaT*>(scale->template Data<T>());
-  auto bias_data = reinterpret_cast<const CudaT*>(bias->template Data<T>());
+  auto bias_data = use_t5_layer_norm ? nullptr: reinterpret_cast<const CudaT*>(bias->template Data<T>());
 
   const TensorShape& x_shape = X->Shape();
   const int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
 
   auto n1 = x_shape.SizeToDimension(axis);
   auto n2 = x_shape.SizeFromDimension(axis);
-
-  bool use_t5_layer_norm = true;
 
   ORT_ENFORCE(n2 != 1, "n2 should not be 1");
 
@@ -74,7 +82,7 @@ Status LayerNorm<T, U>::ComputeInternal(OpKernelContext* ctx) const {
   Tensor* mean = ctx->Output(1, TensorShape(mean_inv_std_var_dim));
   Tensor* var = ctx->Output(2, TensorShape(mean_inv_std_var_dim));
   CudaU* mean_data = nullptr;
-  if (mean != nullptr) {
+  if (mean != nullptr && !use_t5_layer_norm) {
     mean_data = reinterpret_cast<CudaU*>(mean->template MutableData<U>());
   }
 
