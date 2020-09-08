@@ -24,6 +24,7 @@ using namespace _winml;
 class DX12TextureToGPUTensorTelemetryEvent {
  public:
   DX12TextureToGPUTensorTelemetryEvent(const ImageTensorDescription& tensorDesc) {
+    runtime_session_id_ = telemetry_helper.GetRuntimeSessionId();
     TraceLoggingWrite(
         winml_trace_logging_provider,
         "DX12TextureToGPUTensor",
@@ -32,6 +33,7 @@ class DX12TextureToGPUTensorTelemetryEvent {
         TraceLoggingHexInt32(tensorDesc.channelType, "Type"),
         TraceLoggingInt64(tensorDesc.sizes[2], "Height"),
         TraceLoggingInt64(tensorDesc.sizes[3], "Width"),
+        TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
         TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
         TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
   }
@@ -42,14 +44,19 @@ class DX12TextureToGPUTensorTelemetryEvent {
         TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
         TraceLoggingOpcode(EVENT_TRACE_TYPE_STOP),
         TraceLoggingHexInt32(S_OK, "HRESULT"),
+        TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
         TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
         TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
   }
+
+private:
+  int runtime_session_id_;
 };
 
 class SoftwareBitmapToGPUTensorTelemetryEvent {
  public:
   SoftwareBitmapToGPUTensorTelemetryEvent(const ImageTensorDescription& tensorDesc) {
+    runtime_session_id_ = telemetry_helper.GetRuntimeSessionId();
     TraceLoggingWrite(
         winml_trace_logging_provider,
         "SoftwareBitmapToGPUTensor",
@@ -58,6 +65,7 @@ class SoftwareBitmapToGPUTensorTelemetryEvent {
         TraceLoggingHexInt32(tensorDesc.channelType, "Type"),
         TraceLoggingInt64(tensorDesc.sizes[2], "Height"),
         TraceLoggingInt64(tensorDesc.sizes[3], "Width"),
+        TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
         TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
         TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
   }
@@ -68,14 +76,19 @@ class SoftwareBitmapToGPUTensorTelemetryEvent {
         TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
         TraceLoggingOpcode(EVENT_TRACE_TYPE_STOP),
         TraceLoggingHexInt32(S_OK, "HRESULT"),
+        TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
         TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
         TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
   }
+
+private:
+  int runtime_session_id_;
 };
 
 class ConvertVideoFrameWithSoftwareBitmapToCPUTensorTelemetryEvent {
  public:
   ConvertVideoFrameWithSoftwareBitmapToCPUTensorTelemetryEvent(const ImageTensorDescription& tensorDesc) {
+    runtime_session_id_ = telemetry_helper.GetRuntimeSessionId();
     TraceLoggingWrite(
         winml_trace_logging_provider,
         "ConvertVideoFrameWithSoftwareBitmapToCPUTensor",
@@ -84,6 +97,7 @@ class ConvertVideoFrameWithSoftwareBitmapToCPUTensorTelemetryEvent {
         TraceLoggingHexInt32(tensorDesc.channelType, "Type"),
         TraceLoggingInt64(tensorDesc.sizes[2], "Height"),
         TraceLoggingInt64(tensorDesc.sizes[3], "Width"),
+        TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
         TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
         TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
   }
@@ -94,9 +108,13 @@ class ConvertVideoFrameWithSoftwareBitmapToCPUTensorTelemetryEvent {
         TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
         TraceLoggingOpcode(EVENT_TRACE_TYPE_STOP),
         TraceLoggingHexInt32(S_OK, "HRESULT"),
+        TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
         TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
         TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
   }
+
+private:
+  int runtime_session_id_;
 };
 
 void VideoFrameToTensorConverter::VideoFrameToSoftwareTensor(
