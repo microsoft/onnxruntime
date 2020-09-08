@@ -206,8 +206,8 @@ def generate_files(list, args):
         runtimes_target = '" target="runtimes\\linux-'
 
     runtimes = '{}{}\\{}"'.format(runtimes_target,
-                                 args.target_architecture,
-                                 'uap10.0' if args.is_store_build else 'native')
+                                  args.target_architecture,
+                                  'uap' if args.is_store_build else 'native')
 
     # Process headers
     files_list.append('<file src=' + '"' + os.path.join(args.sources_path,
@@ -266,7 +266,7 @@ def generate_files(list, args):
         # Process microsoft.ai.machinelearning.winmd
         files_list.append('<file src=' + '"' + os.path.join(args.ort_build_path, args.build_config,
                                                             'microsoft.ai.machinelearning.winmd') +
-                          '" target="lib\\uap10.0\\Microsoft.AI.MachineLearning.winmd" />')
+                          '" target="lib\\uap\\Microsoft.AI.MachineLearning.winmd" />')
         interop_dll = 'Microsoft.AI.MachineLearning.Interop\\netstandard2.0\\Microsoft.AI.MachineLearning.Interop.dll'
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, interop_dll) +
                           '" target="lib\\netstandard2.0\\Microsoft.AI.MachineLearning.Interop.dll" />')
@@ -278,12 +278,12 @@ def generate_files(list, args):
     # Process onnxruntime import lib, dll, and pdb
     if is_windows_build:
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.lib') +
-                          runtimes)
+                          runtimes + ' />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.dll') +
-                          runtimes)
+                          runtimes + ' />')
         if os.path.exists(os.path.join(args.native_build_path, 'onnxruntime.pdb')):
             files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.pdb') +
-                              runtimes)
+                              runtimes + ' />')
     else:
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'nuget-staging/usr/local/lib',
                           'libonnxruntime.so') + '" target="runtimes\\linux-' + args.target_architecture +
@@ -291,9 +291,9 @@ def generate_files(list, args):
 
     if includes_directml:
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.dll') +
-                          '" target="' + runtimes + '" />')
+                          runtimes + ' />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.pdb') +
-                          '" target="' + runtimes + '" />')
+                          runtimes + ' />')
         files_list.append('<file src=' + '"' + os.path.join(args.packages_path, 'DirectML.3.0.0\\LICENSE.txt') +
                           '" target="DirectML_LICENSE.txt" />')
 
@@ -301,15 +301,18 @@ def generate_files(list, args):
         # Process microsoft.ai.machinelearning import lib, dll, and pdb
         files_list.append('<file src=' + '"' +
                           os.path.join(args.native_build_path, 'microsoft.ai.machinelearning.lib') +
-                          runtimes +
+                          runtimes_target + args.target_architecture + '\\' +
+                          ('uap' if args.is_store_build else 'native') +
                           '\\Microsoft.AI.MachineLearning.lib" />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                                                             'microsoft.ai.machinelearning.dll') +
-                          runtimes +
+                          runtimes_target + args.target_architecture + '\\' +
+                          ('uap' if args.is_store_build else 'native') +
                           '\\Microsoft.AI.MachineLearning.dll" />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                                                             'microsoft.ai.machinelearning.pdb') +
-                          runtimes +
+                          runtimes_target + args.target_architecture + '\\' +
+                          ('uap' if args.is_store_build else 'native') +
                           '\\Microsoft.AI.MachineLearning.pdb" />')
     # Process execution providers which are built as shared libs
     if args.execution_provider == "tensorrt":
@@ -377,11 +380,12 @@ def generate_files(list, args):
         windowsai_rules = 'Microsoft.AI.MachineLearning.Rules.Project.xml'
         windowsai_native_rules = os.path.join(args.sources_path, 'csharp', 'src', windowsai_src, windowsai_rules)
         windowsai_native_targets = os.path.join(args.sources_path, 'csharp', 'src', windowsai_src, windowsai_targets)
-        files_list.append('<file src=' + '"' + windowsai_native_props + '" target="build\\native" />')
+        build = 'build\\{}'.format('uap' if args.is_store_build else 'native')
+        files_list.append('<file src=' + '"' + windowsai_native_props + '" target="' + build + '" />')
         # Process native targets
-        files_list.append('<file src=' + '"' + windowsai_native_targets + '" target="build\\native" />')
+        files_list.append('<file src=' + '"' + windowsai_native_targets + '" target="' + build + '" />')
         # Process rules
-        files_list.append('<file src=' + '"' + windowsai_native_rules + '" target="build\\native" />')
+        files_list.append('<file src=' + '"' + windowsai_native_rules + '" target="' + build + '" />')
         # Process .net standard 2.0 targets
         interop_src = 'Microsoft.AI.MachineLearning.Interop'
         interop_targets = 'Microsoft.AI.MachineLearning.targets'

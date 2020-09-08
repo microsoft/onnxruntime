@@ -107,7 +107,7 @@ steps:
           workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
           createLogFile: true
 
-  - ${{ if and(eq(parameters.BuildArch, 'x64'), eq(parameters.BuildForStore, 'FIXME false')) }}:
+  - ${{ if and(eq(parameters.BuildArch, 'x64'), eq(parameters.BuildForStore, 'false')) }}:
     - script: |
         mklink  /D /J $(Build.BinariesDirectory)\RelWithDebInfo\models $(Build.BinariesDirectory)\models
         DIR dist\ /S /B > wheel_filename_file
