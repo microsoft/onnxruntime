@@ -359,8 +359,7 @@ void HostApplyLayerNorm(
     int64_t n2,
     double epsilon,
     const T* gamma,
-    const T* beta,
-    const bool use_t5_layer_norm) {
+    const T* beta) {
   const uint64_t maxGridY = prop.maxGridSize[1];
   const int warp_size = prop.warpSize;
   ORT_ENFORCE(warp_size == GPU_WARP_SIZE);
@@ -379,20 +378,20 @@ void HostApplyLayerNorm(
       gamma, beta);
 }
 
-#define LAYERNORM_LINEAR_IMPL(T, U)                                                                       \
+#define LAYERNORM_LINEAR_IMPL(T, U, use_t5_layer_norm)                                                                       \
   template void HostApplyLayerNorm(const cudaDeviceProp& prop, T* output, U* mean, U* invvar, const T* input, int64_t n1, int64_t n2, \
-                                   double epsilon, const T* gamma, const T* beta, const bool use_t5_layer_norm);
+                                   double epsilon, const T* gamma, const T* beta);
 
-LAYERNORM_LINEAR_IMPL(float, float)
-LAYERNORM_LINEAR_IMPL(half, float)
-LAYERNORM_LINEAR_IMPL(double, double)
+// LAYERNORM_LINEAR_IMPL(float, float)
+// LAYERNORM_LINEAR_IMPL(half, float)
+// LAYERNORM_LINEAR_IMPL(double, double)
 
-// LAYERNORM_LINEAR_IMPL(float, float, true)
-// LAYERNORM_LINEAR_IMPL(half, float, true)
-// LAYERNORM_LINEAR_IMPL(double, double, true)
-// LAYERNORM_LINEAR_IMPL(float, float, false)
-// LAYERNORM_LINEAR_IMPL(half, float, false)
-// LAYERNORM_LINEAR_IMPL(double, double, false)
+LAYERNORM_LINEAR_IMPL(float, float, true)
+LAYERNORM_LINEAR_IMPL(half, float, true)
+LAYERNORM_LINEAR_IMPL(double, double, true)
+LAYERNORM_LINEAR_IMPL(float, float, false)
+LAYERNORM_LINEAR_IMPL(half, float, false)
+LAYERNORM_LINEAR_IMPL(double, double, false)
 
 //LAYERNORM_LINEAR_IMPL(half, half)
 

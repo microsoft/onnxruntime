@@ -91,7 +91,7 @@ Status LayerNorm<T, U, use_t5_layer_norm>::ComputeInternal(OpKernelContext* ctx)
     inv_var_data = reinterpret_cast<CudaU*>(var->template MutableData<U>());
   }
 
-  HostApplyLayerNorm(GetDeviceProp(), Y_data, mean_data, inv_var_data, X_data, n1, n2, epsilon_, scale_data, bias_data, use_t5_layer_norm);
+  HostApplyLayerNorm(GetDeviceProp(), Y_data, mean_data, inv_var_data, X_data, n1, n2, epsilon_, scale_data, bias_data);
   return Status::OK();
 }
 
