@@ -123,7 +123,8 @@ def run_test(model, model_desc, device, args, gradient_accumulation_steps, fp16,
             allreduce_post_accumulation=allreduce_post_accumulation,
             get_lr_this_step=get_lr_this_step if use_internal_get_lr_this_step else None,
             loss_scaler=loss_scaler if use_internal_loss_scaler else None,
-            _opset_version=12)
+            _opset_version=12,
+            _use_deterministic_compute=True)
         print ("running with old frontend API")
 
     # trainig loop
@@ -163,8 +164,6 @@ def run_test(model, model_desc, device, args, gradient_accumulation_steps, fp16,
                 if not use_internal_loss_scaler and fp16:
                     kwargs[model.loss_scale_input_name] = loss_scale
                 outputs = model.train_step(*args, **kwargs)
-
-            print(outputs[0])
 
     # eval
     if batch_args_option == BatchArgsOption.List:

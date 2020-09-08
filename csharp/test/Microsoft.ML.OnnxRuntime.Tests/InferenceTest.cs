@@ -84,6 +84,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 Assert.Throws<OnnxRuntimeException>(() => { opt.GraphOptimizationLevel = (GraphOptimizationLevel)10; });
 
+                opt.AddSessionConfigEntry("key", "value");
+				
+                var ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AddSessionConfigEntry("", "invalid key"); });
+                Assert.Contains("[ErrorCode:InvalidArgument] Config key is empty", ex.Message);
+
                 opt.AppendExecutionProvider_CPU(1);
 #if USE_DNNL
                 opt.AppendExecutionProvider_Dnnl(0);

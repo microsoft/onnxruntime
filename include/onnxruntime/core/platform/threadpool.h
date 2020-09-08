@@ -110,26 +110,7 @@ class ThreadPool {
                    const std::function<void(std::ptrdiff_t first, std::ptrdiff_t)>& fn);
 
   static void TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t total, const TensorOpCost& cost_per_unit,
-                             const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn) {
-#ifdef _OPENMP
-    ORT_UNUSED_PARAMETER(cost_per_unit);
-    std::ptrdiff_t num_threads = concurrency::ThreadPool::DegreeOfParallelism(tp);
-    if (total < num_threads) {
-      num_threads = total;
-    }
-#pragma omp parallel for
-    for (std::ptrdiff_t i = 0; i < num_threads; i++) {
-      auto work = PartitionWork(i, num_threads, total);
-      fn(work.start, work.end);
-    }
-#else
-    if (tp == nullptr) {
-      fn(0, total);
-      return;
-    }
-    tp->ParallelFor(total, cost_per_unit, fn);
-#endif
-  }
+                             const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn); 
 
   // Return the degree of parallelism that code should assume when using the thread pool.
   // This API takes into account if OpenMP is enabled/disabled, and if the thread pool ptr is

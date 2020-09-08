@@ -90,6 +90,19 @@ Status GatherNDBase::PrepareCompute(
   return Status::OK();
 }
 
+#define REGISTER_KERNEL_VERSIONED_TYPED_GATHER_ND(TIndex, startver, endver) \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                  \
+      GatherND,                                                             \
+      kOnnxDomain,                                                          \
+      startver,                                                             \
+      endver,                                                               \
+      TIndex,                                                               \
+      kCudaExecutionProvider,                                               \
+      KernelDefBuilder()                                                    \
+          .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())     \
+          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIndex>()),   \
+      GatherND<TIndex>);
+
 #define REGISTER_KERNEL_TYPED_GATHER_ND(TIndex, ver)                      \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                          \
       GatherND,                                                           \
@@ -112,7 +125,8 @@ Status GatherNDBase::PrepareCompute(
 #ifdef ENABLE_TRAINING
 REGISTER_KERNEL_TYPED_GATHER_ND(int64_t, 1)
 #endif
-REGISTER_KERNEL_TYPED_GATHER_ND(int64_t, 12)
+REGISTER_KERNEL_TYPED_GATHER_ND(int64_t, 13)
+REGISTER_KERNEL_VERSIONED_TYPED_GATHER_ND(int64_t, 12, 12)
 
 template <typename T>
 struct GatherNDComputeImpl {

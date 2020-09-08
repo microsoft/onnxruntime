@@ -174,6 +174,9 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr GetBoundOutputValues;
         public IntPtr ClearBoundInputs;
         public IntPtr ClearBoundOutputs;
+        public IntPtr TensorAt;
+        public IntPtr CreateAndRegisterAllocator;
+        public IntPtr SetLanguageProjection;
     }
 
     internal static class NativeMethods
@@ -235,7 +238,7 @@ namespace Microsoft.ML.OnnxRuntime
             OrtSetSessionGraphOptimizationLevel = (DOrtSetSessionGraphOptimizationLevel)Marshal.GetDelegateForFunctionPointer(api_.SetSessionGraphOptimizationLevel, typeof(DOrtSetSessionGraphOptimizationLevel));
             OrtRegisterCustomOpsLibrary = (DOrtRegisterCustomOpsLibrary)Marshal.GetDelegateForFunctionPointer(api_.RegisterCustomOpsLibrary, typeof(DOrtRegisterCustomOpsLibrary));
             OrtAddSessionConfigEntry = (DOrtAddSessionConfigEntry)Marshal.GetDelegateForFunctionPointer(api_.AddSessionConfigEntry, typeof(DOrtAddSessionConfigEntry));
-
+            
             OrtCreateRunOptions = (DOrtCreateRunOptions)Marshal.GetDelegateForFunctionPointer(api_.CreateRunOptions, typeof(DOrtCreateRunOptions));
             OrtReleaseRunOptions = (DOrtReleaseRunOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseRunOptions, typeof(DOrtReleaseRunOptions));
             OrtRunOptionsSetRunLogVerbosityLevel = (DOrtRunOptionsSetRunLogVerbosityLevel)Marshal.GetDelegateForFunctionPointer(api_.RunOptionsSetRunLogVerbosityLevel, typeof(DOrtRunOptionsSetRunLogVerbosityLevel));
@@ -272,6 +275,9 @@ namespace Microsoft.ML.OnnxRuntime
             OrtGetBoundOutputValues = (DOrtGetBoundOutputValues)Marshal.GetDelegateForFunctionPointer(api_.GetBoundOutputValues, typeof(DOrtGetBoundOutputValues));
             OrtClearBoundInputs = (DOrtClearBoundInputs)Marshal.GetDelegateForFunctionPointer(api_.ClearBoundInputs, typeof(DOrtClearBoundInputs));
             OrtClearBoundOutputs = (DOrtClearBoundOutputs)Marshal.GetDelegateForFunctionPointer(api_.ClearBoundOutputs, typeof(DOrtClearBoundOutputs));
+            OrtTensorAt = (DOrtTensorAt)Marshal.GetDelegateForFunctionPointer(api_.TensorAt, typeof(DOrtTensorAt));
+            OrtCreateAndRegisterAllocator = (DOrtCreateAndRegisterAllocator)Marshal.GetDelegateForFunctionPointer(api_.CreateAndRegisterAllocator, typeof(DOrtCreateAndRegisterAllocator));
+            OrtSetLanguageProjection = (DOrtSetLanguageProjection)Marshal.GetDelegateForFunctionPointer(api_.SetLanguageProjection, typeof(DOrtSetLanguageProjection));
 
             OrtGetValue = (DOrtGetValue)Marshal.GetDelegateForFunctionPointer(api_.GetValue, typeof(DOrtGetValue));
             OrtGetValueType = (DOrtGetValueType)Marshal.GetDelegateForFunctionPointer(api_.GetValueType, typeof(DOrtGetValueType));
@@ -775,6 +781,33 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="io_binding">instance of OrtIoBinding</param>
         public delegate void DOrtClearBoundOutputs(IntPtr /*(OrtIoBinding)*/ io_binding);
         public static DOrtClearBoundOutputs OrtClearBoundOutputs;
+
+        /// <summary>
+        /// Provides element-level access into a tensor.
+        /// </summary>
+        /// <param name="location_values">a pointer to an array of index values that specify an element's location in the tensor data blob</param>
+        /// <param name="location_values_count">length of location_values</param>
+        /// <param name="out">a pointer to the element specified by location_values</param>
+        public delegate void DOrtTensorAt(IntPtr /*(OrtIoBinding)*/ io_binding);
+        public static DOrtTensorAt OrtTensorAt;
+
+        /// <summary>
+        /// Creates an allocator instance and registers it with the env to enable
+        ///sharing between multiple sessions that use the same env instance.
+        ///Lifetime of the created allocator will be valid for the duration of the environment.
+        ///Returns an error if an allocator with the same OrtMemoryInfo is already registered.
+        /// </summary>
+        /// <param name="mem_info">must be non-null</param>
+        /// <param name="arena_cfg">if nullptr defaults will be used</param>
+        public delegate void DOrtCreateAndRegisterAllocator(IntPtr /*(OrtIoBinding)*/ io_binding);
+        public static DOrtCreateAndRegisterAllocator OrtCreateAndRegisterAllocator;
+
+        /// <summary>
+        /// Set the language projection for collecting telemetry data when Env is created
+        /// </summary>
+        /// <param name="projection">the source projected language</param>
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtSetLanguageProjection(IntPtr /* (OrtEnv*) */ environment, OrtLanguageProjection projection);
+        public static DOrtSetLanguageProjection OrtSetLanguageProjection;
 
         #endregion IoBinding API
 
