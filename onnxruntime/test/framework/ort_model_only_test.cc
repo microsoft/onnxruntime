@@ -285,7 +285,7 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormatMLOps) {
                                                 {{"A", 0.596016f}, {"B", 0.403984f}},
                                                 {{"A", 0.656315f}, {"B", 0.343685f}}};
     const auto& actual_output_1 = fetches[1].Get<VectorMapStringToFloat>();
-    ASSERT_EQ(actual_output_1.size(), 3);
+    ASSERT_EQ(actual_output_1.size(), size_t(3));
     for (size_t i = 0; i < 3; i++) {
       const auto& expected = expected_output_1[i];
       const auto& actual = actual_output_1[i];
