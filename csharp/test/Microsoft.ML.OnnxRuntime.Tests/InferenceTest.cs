@@ -2112,7 +2112,19 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         internal static Tuple<InferenceSession, float[], DenseTensor<float>, float[]> OpenSessionSqueezeNet(int? deviceId = null)
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
-#if USE_CUDA
+#if USE_DML
+            using (var option = new SessionOptions())
+            {
+                if (!deviceId.HasValue)
+                {
+                    option.AppendExecutionProvider_CPU(1);
+                }
+
+                else
+                {
+                    option.AppendExecutionProvider_DML(deviceId.Value);
+                }
+#elif USE_CUDA
             using (var option = (deviceId.HasValue) ?
                 SessionOptions.MakeSessionOptionWithCudaProvider(deviceId.Value) :
                 new SessionOptions())
@@ -2121,21 +2133,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 {
                     option.AppendExecutionProvider_CPU(1);
                 }
-
-#elif USE_DML
-            using (var option = new SessionOptions())
-            {
-                if(!deviceId.HasValue)
-                {
-                    option.AppendExecutionProvider_CPU(1);
-                }
-
-                else 
-                {
-                    option.AppendExecutionProvider_DML(deviceId.Value);
-                }
 #else
-            using (var option = new SessionOptions())
+                using (var option = new SessionOptions())
             {
                 option.AppendExecutionProvider_CPU(1);
 #endif
