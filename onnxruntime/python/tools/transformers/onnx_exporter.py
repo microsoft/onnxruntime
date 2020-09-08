@@ -12,6 +12,7 @@ from transformers import AutoConfig, AutoTokenizer, AutoModel
 from benchmark_helper import create_onnxruntime_session, Precision
 from gpt2_helper import GPT2ModelNoPastState, PRETRAINED_GPT2_MODELS
 from quantize_helper import QuantizeHelper
+from huggingface_models import MODEL_CLASSES
 
 logger = logging.getLogger(__name__)
 
@@ -182,20 +183,40 @@ def optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, num_a
         logger.info(f"Skip optimization since model existed: {optimized_model_path}")
 
 
-def load_pretrained_model(model_name, config, cache_dir):
+def modelclass_dispatcher(model_name, custom_model_class):
+    if (custom_model_class != None):
+        return MODEL_CLASSES[custom_model_class]
+
     if model_name in PRETRAINED_GPT2_MODELS:
-        return GPT2ModelNoPastState.from_pretrained(model_name, config=config, cache_dir=cache_dir)
-    return AutoModel.from_pretrained(model_name, config=config, cache_dir=cache_dir)
+        return GPT2ModelNoPastState
+
+    import re
+    if (re.search('-squad$', model_name) != None):
+        from transformers import AutoModelForQuestionAnswering
+        return AutoModelForQuestionAnswering
+    elif (re.search('-mprc$', model_name) != None):
+        from transformers import AutoModelForSequenceClassification
+        return AutoModelForSequenceClassification
+    elif (re.search('gpt2', model_name) != None):
+        from transformers import AutoModelWithLMHead
+        return AutoModelWithLMHead
+
+    return AutoModel
 
 
-def export_onnx_model(model_name, opset_version, use_external_data_format, model_type, cache_dir, onnx_dir, input_names,
-                      use_gpu, precision, optimize_onnx, validate_onnx, use_raw_attention_mask, overwrite,
+def load_pretrained_model(model_name, config, cache_dir, custom_model_class):
+    model_class = modelclass_dispatcher(model_name, custom_model_class)
+    return model_class.from_pretrained(model_name, config=config, cache_dir=cache_dir)
+
+
+def export_onnx_model(model_name, opset_version, use_external_data_format, model_type, model_class, cache_dir, onnx_dir,
+                      input_names, use_gpu, precision, optimize_onnx, validate_onnx, use_raw_attention_mask, overwrite,
                       model_fusion_statistics):
     config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
     if hasattr(config, 'return_dict'):
         config.return_dict = False
 
-    model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir)
+    model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir, custom_model_class=model_class)
     model.cpu()
 
     tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
