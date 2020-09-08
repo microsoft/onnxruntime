@@ -27,6 +27,15 @@ static bool IsNcclAvailable() {
 #endif
 }
 
+/*
+Utility function. The number of paritions (workers) needed to partition a given vector of tensor sizes(size_arr), where the total tensor size cannot be larger than a given number (max_len)
+Inputs
+  size_arr: A vector of integers, each element in the vector is a tensor size
+  max_len: The total tensor size of each parition cannot be larger than the max_len
+  partitions: The vector to store the index of element in size_arr, where that element is the last element in the current partition. 
+Return value:
+  num_workers: The number of partitiones (workers) needed
+*/
 static int NumberOfWorkers(const std::vector<int64_t>& size_arr, int64_t max_len, std::vector<int64_t>& partitions) {
   int64_t total = 0;
   int num_workers = 1;
@@ -48,6 +57,18 @@ static int NumberOfWorkers(const std::vector<int64_t>& size_arr, int64_t max_len
 }
 
 //Binary search to find the most even partition of gradients cross workers
+
+//size_arr: The vector of gradient tensor sizes. Each element is the size of a gradient. 
+//dp_group: The number of ranks to partition the gradients into
+//max_size: The biggest gradient size in the tensors to be partitioned. I.e., the largest number in size_arr. 
+//total_size: The total size of all gradient tensors added together
+//return: lo: The total tensor size of the maximum partitioned group
+
+//In the each iteration of the algorithm, it finds the number of workers needed for the size_arr, given the max length of each partition to be the average of lower(lo) and higher (hi) bounds. 
+//If the number of workers is less than the data parallel groups (dp_group), it updates the higher bound (hi) to be the current average, and goes to the next iteration.
+//Else it is a invalid partition, increase the lower bounds by 1, goest to next iteration
+//The algorithm terminates until lo >= hi
+
 static int64_t WorkersPartition(const std::vector<int64_t>& size_arr, int dp_group, int64_t max_size, int64_t total_size, std::vector<int64_t>& partitions) {
   int64_t lo = max_size;
   int64_t hi = total_size;
@@ -56,6 +77,7 @@ static int64_t WorkersPartition(const std::vector<int64_t>& size_arr, int dp_gro
 
   while (lo < hi) {
     mid = lo + (hi - lo) / 2;
+    //Collect the number of workers needed given each partition cannot not exceeding
     int num_workers = NumberOfWorkers(size_arr, mid, tmp_partitions);
     // find better optimum in lower half. Here mid is included because we may not get anything better
     if (num_workers <= dp_group) {
