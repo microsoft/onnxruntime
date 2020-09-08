@@ -91,7 +91,8 @@ NodeSet GradientGraphBuilder::ReverseBFS(const NodeSet& nodes) {
     for (auto edge_it = n->InputEdgesBegin(); edge_it != n->InputEdgesEnd(); ++edge_it) {
       auto it = STOP_GRADIENT_EDGES.find(n->OpType());
       if (it != STOP_GRADIENT_EDGES.end() && it->second.count(edge_it->GetDstArgIndex())) {
-        LOGS(logger_, WARNING) << "Skip building gradient for node: " << edge_it->GetNode().Name() ;
+        LOGS(logger_, WARNING) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
+                               << " of node: " << n->Name();
         continue;
       }
 
@@ -158,6 +159,13 @@ Status GradientGraphBuilder::Build() {
       const Node& next_node = edge_it->GetNode();
 
       if (reachable_nodes.find(&next_node) == reachable_nodes.end()) continue;
+
+      auto it = STOP_GRADIENT_EDGES.find(next_node.OpType());
+      if (it != STOP_GRADIENT_EDGES.end() && it->second.count(edge_it->GetDstArgIndex())) {
+        LOGS(logger_, WARNING) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
+                               << " of node: " << next_node.Name();
+        continue;
+      }
 
       const NodeArg* node_arg = node->OutputDefs()[edge_it->GetSrcArgIndex()];
       string grad_node_arg_name = GradientBuilderBase::GradientName(node_arg->Name());
