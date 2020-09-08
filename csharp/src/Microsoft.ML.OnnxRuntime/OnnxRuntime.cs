@@ -25,6 +25,19 @@ namespace Microsoft.ML.OnnxRuntime
     }
 
     /// <summary>
+    /// Language projection property for telemetry event for tracking the source usage of ONNXRUNTIME
+    /// </summary>
+    public enum OrtLanguageProjection
+    {
+        ORT_PROJECTION_C = 0,
+        ORT_PROJECTION_CPLUSPLUS = 1 ,
+        ORT_PROJECTION_CSHARP = 2,
+        ORT_PROJECTION_PYTHON = 3,
+        ORT_PROJECTION_JAVA = 4,
+        ORT_PROJECTION_WINML = 5,
+    }
+
+    /// <summary>
     /// This class intializes the process-global ONNX runtime
     /// C# API users do not need to access this, thus kept as internal
     /// </summary>
@@ -52,6 +65,15 @@ namespace Microsoft.ML.OnnxRuntime
             :base(IntPtr.Zero, true)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateEnv(LogLevel.Warning, @"CSharpOnnxRuntime", out handle));
+            try
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetLanguageProjection(handle, OrtLanguageProjection.ORT_PROJECTION_CSHARP));
+            }
+            catch (OnnxRuntimeException e)
+            {
+                ReleaseHandle();
+                throw e;
+            }
         }
 
         protected override bool ReleaseHandle()
