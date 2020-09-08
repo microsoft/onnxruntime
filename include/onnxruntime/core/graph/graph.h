@@ -993,7 +993,12 @@ class Graph {
 
   /** Returns true if the name is for a value that is coming from outer scope */
   bool IsOuterScopeValue(const std::string& name) const {
+#if !defined(ORT_MINIMAL_BUILD)
     return resolve_context_.outer_scope_node_args.find(name) != resolve_context_.outer_scope_node_args.cend();
+#else
+    // we shouldn't have code that calls this in a minimal build
+    ORT_THROW("Internal error. Outer scope value lookup is not currently supported in a minimal build.");
+#endif
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
