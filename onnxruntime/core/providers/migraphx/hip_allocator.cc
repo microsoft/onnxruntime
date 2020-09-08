@@ -19,7 +19,7 @@ static const GPUDataTransfer* GetGPUDataTransfer(const SessionState* session_sta
 void HIPAllocator::CheckDevice() const {
 #ifndef NDEBUG
   // check device to match at debug build
-  // if it's expected to change, call cudaSetDevice instead of the check
+  // if it's expected to change, call hipSetDevice instead of the check
   int current_device;
   auto hip_err = hipGetDevice(&current_device);
   if (hip_err == hipSuccess) {
