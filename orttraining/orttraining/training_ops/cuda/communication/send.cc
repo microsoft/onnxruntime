@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if defined(USE_NCCL)
-
 #include "orttraining/training_ops/cuda/communication/send.h"
 #include "orttraining/training_ops/cuda/communication/common.h"
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
@@ -15,8 +13,6 @@
 
 #include "orttraining/core/framework/mpi_context.h"
 
-// Uncomment this line to replace NCCL call with MPI call.
-// #define DEBUG_NCCL
 namespace onnxruntime {
 namespace cuda {
 
@@ -102,16 +98,16 @@ void Send::SendData(
   memcpyRange.Begin();
 #endif
 
-#ifdef DEBUG_NCCL
+#ifdef USE_NCCL
+  IAllocatorUniquePtr<char> buffer = GetScratchBuffer<char>(aggregated_aligned_tensor_bytes);
+#else
   IAllocatorUniquePtr<char> buffer = AllocateBufferOnCPUPinned<char>(
       aggregated_aligned_tensor_bytes);
-#else
-  IAllocatorUniquePtr<char> buffer = GetScratchBuffer<char>(aggregated_aligned_tensor_bytes);
 #endif
 
   for (int i = 0; i < num_tensors; ++i) {
     const Tensor* tensor = ctx->Input<Tensor>(i + 2);
-#ifdef DEBUG_NCCL
+#ifdef USE_NCCL
     CUDA_CALL(cudaMemcpy(buffer.get() + tensor_offsets_in_bytes[i], tensor->DataRaw(),
                          tensor_sizes_in_bytes[i], cudaMemcpyDeviceToDevice));
 #else
@@ -139,13 +135,13 @@ void Send::SendData(
                        dst,
                        static_cast<int>(tag_)};
 
-#ifdef DEBUG_NCCL
+#ifdef USE_NCCL
+  auto& nccl_service = cuda::NcclService::GetInstance();
+  nccl_service.SubmitSendAndWait(info_data.buffer, info_data.size, info_data.rank);
+#else
   MPI_CHECK(MPI_Send(
       info_data.buffer, info_data.size, MPI_CHAR,
       info_data.rank, info_data.tag, MPI_COMM_WORLD));
-#else
-  auto& nccl_service = cuda::NcclService::GetInstance();
-  nccl_service.SubmitSendAndWait(info_data.buffer, info_data.size, info_data.rank);
 #endif
 
 #ifdef ENABLE_NVTX_PROFILE
@@ -256,5 +252,3 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
 
 }  // namespace cuda
 }  // namespace onnxruntime
-
-#endif

@@ -700,7 +700,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
   auto end_to_end_start = std::chrono::high_resolution_clock::now();
   bool end_to_end_measurement_started = false;
 
-#if defined(USE_NCCL)
+#ifdef USE_NCCL
   // NCCL-P2P
   auto& nccl_service = cuda::NcclService::GetInstance();
 
@@ -773,7 +773,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
                                           fetch_names,
                                           fetches));
           RunWithUpdate(feed_names, fetch_names, feeds, fetches);
-#if defined(USE_NCCL)
+#ifdef USE_NCCL
           nccl_service.Reset();
 #endif
         } else {
@@ -898,7 +898,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
             << "Average Step Time: " << all_steps_duration_seconds.count() / (step_ - step_start) << " Second\n"
             << "Average Step Throughput: " << params_.batch_size * (step_ - step_start) / (all_steps_duration_seconds.count()) << " Examples / Second\n";
 
-#if defined(USE_NCCL)
+#ifdef USE_NCCL
   nccl_service.Terminate();
 #endif
   return Status::OK();

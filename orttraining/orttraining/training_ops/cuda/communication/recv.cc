@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if defined(USE_NCCL) || defined(USE_HOROVOD)
-
 #include "orttraining/training_ops/cuda/communication/recv.h"
 #include "orttraining/training_ops/cuda/communication/common.h"
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
@@ -13,9 +11,6 @@
 #include <mpi.h>
 
 #include "orttraining/core/framework/mpi_context.h"
-
-// Uncomment this line to replace NCCL call with MPI call.
-// #define DEBUG_NCCL
 
 namespace onnxruntime {
 namespace cuda {
@@ -76,10 +71,11 @@ void Recv::ReceiveData(
   // count waiting time before setting up the actual communication.
   recvRange.Begin();
 #endif
-#ifdef DEBUG_NCCL
-  buffer = AllocateBufferOnCPUPinned<char>(static_cast<size_t>(aggregated_aligned_tensor_bytes));
-#else
+
+#ifdef USE_NCCL
   buffer = GetScratchBuffer<char>(aggregated_aligned_tensor_bytes);
+#else
+  buffer = AllocateBufferOnCPUPinned<char>(static_cast<size_t>(aggregated_aligned_tensor_bytes));
 #endif
 
   CommInfo_t info_data{buffer.get(),
@@ -89,13 +85,13 @@ void Recv::ReceiveData(
 
   // The following NCCL call is equivalent to the following MPI call. User can
   // uncomment the MPI call to debug.
-#ifdef DEBUG_NCCL
+#ifdef USE_NCCL
+  auto& nccl_service = cuda::NcclService::GetInstance();
+  nccl_service.SubmitRecvAndWait(info_data.buffer, info_data.size, info_data.rank);
+#else
   MPI_CHECK(MPI_Recv(
   info_data.buffer, info_data.size, MPI_CHAR,
   info_data.rank, info_data.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
-#else
-  auto& nccl_service = cuda::NcclService::GetInstance();
-  nccl_service.SubmitRecvAndWait(info_data.buffer, info_data.size, info_data.rank);
 #endif
 
 #ifdef ENABLE_NVTX_PROFILE
@@ -120,17 +116,17 @@ void Recv::ReceiveData(
     tensor_offset_in_bytes = GetAggregatedAlignedAddress(tensor_offset_in_bytes);
 
     // Copy data out from buffer.
-#ifdef DEBUG_NCCL
-    CUDA_CALL(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
-                              tensor->SizeInBytes(), cudaMemcpyDeviceToDevice));
-#else
+#ifdef USE_NCCL
     CUDA_CALL(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
                               tensor->SizeInBytes(), cudaMemcpyHostToDevice));
+#else
+    CUDA_CALL(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
+                              tensor->SizeInBytes(), cudaMemcpyDeviceToDevice));
 #endif
     tensor_offset_in_bytes += tensor->SizeInBytes();
   }
 
-#ifdef  DEBUG_NCCL
+#ifndef USE_NCCL
   AddDeferredReleaseCPUPtr(buffer.release());
 #endif
 
@@ -288,5 +284,3 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
 
 }  // namespace cuda
 }  // namespace onnxruntime
-
-#endif
