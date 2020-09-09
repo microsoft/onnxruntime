@@ -188,27 +188,34 @@ def optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, num_a
 
 def modelclass_dispatcher(model_name, custom_model_class):
     if (custom_model_class != None):
-        return MODEL_CLASSES[custom_model_class]
+        if (custom_model_class in MODEL_CLASSES):
+            return custom_model_class
+        else:
+            raise Exception("Valid model class: " + ' '.join(MODEL_CLASSES))
 
     if model_name in PRETRAINED_GPT2_MODELS:
-        return GPT2ModelNoPastState
+        return "GPT2ModelNoPastState"
 
     import re
     if (re.search('-squad$', model_name) != None):
-        from transformers import AutoModelForQuestionAnswering
-        return AutoModelForQuestionAnswering
+        return "AutoModelForQuestionAnswering"
     elif (re.search('-mprc$', model_name) != None):
-        from transformers import AutoModelForSequenceClassification
-        return AutoModelForSequenceClassification
+        return "AutoModelForSequenceClassification"
     elif (re.search('gpt2', model_name) != None):
-        from transformers import AutoModelWithLMHead
-        return AutoModelWithLMHead
+        return "AutoModelWithLMHead"
 
-    return AutoModel
+    return "AutoModel"
 
 
-def load_pretrained_model(model_name, config, cache_dir, custom_model_class):
-    model_class = modelclass_dispatcher(model_name, custom_model_class)
+def load_pretrained_model(model_name, config, cache_dir, custom_model_class, if_tf_model=False):
+    model_class_name = modelclass_dispatcher(model_name, custom_model_class)
+
+    if if_tf_model: # Currently does not support TFGPT2ModelNoPastState
+        model_class_name = 'TF' + model_class_name
+
+    transformers_module = __import__("transformers", fromlist=[model_class_name])
+    model_class = getattr(transformers_module, model_class_name)
+
     return model_class.from_pretrained(model_name, config=config, cache_dir=cache_dir)
 
 
@@ -249,10 +256,10 @@ def validate_and_optimize_onnx(model_name, use_external_data_format, model_type,
     return onnx_model_path, is_valid_onnx_model, config.vocab_size, max_input_size
 
 
-def export_onnx_model_from_pt(model_name, opset_version, use_external_data_format, model_type, model_class, cache_dir, onnx_dir, 
+def export_onnx_model_from_pt(model_name, opset_version, use_external_data_format, model_type, model_class, cache_dir, onnx_dir,
                               input_names, use_gpu, precision, optimize_onnx, validate_onnx, use_raw_attention_mask, overwrite,
                               model_fusion_statistics):
-  
+
     config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
     if hasattr(config, 'return_dict'):
         config.return_dict = False
@@ -302,15 +309,14 @@ def export_onnx_model_from_pt(model_name, opset_version, use_external_data_forma
                                       tokenizer)
 
 
-def export_onnx_model_from_tf(model_name, opset_version, use_external_data_format, model_type, model_class, cache_dir, onnx_dir, 
+def export_onnx_model_from_tf(model_name, opset_version, use_external_data_format, model_type, model_class, cache_dir, onnx_dir,
                               input_names, use_gpu, precision, optimize_onnx, validate_onnx, use_raw_attention_mask, overwrite,
                               model_fusion_statistics):
 
     config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
 
-    #bugbug: hardcode temporaryily, will refactor after PR5051 is in
-    from transformers import TFAutoModel
-    model = TFAutoModel.from_pretrained(model_name, cache_dir=cache_dir)
+    model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir, custom_model_class=model_class, if_tf_model=True)
+
     model._saved_model_inputs_spec = None
 
     tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)

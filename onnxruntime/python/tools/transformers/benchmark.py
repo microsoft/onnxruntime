@@ -93,13 +93,13 @@ def run_onnxruntime(use_gpu, model_names, model_class, precision, batch_sizes, s
                 with torch.no_grad():
                     onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length = export_onnx_model_from_pt(
                         model_name, MODELS[model_name][1], MODELS[model_name][2], MODELS[model_name][3], model_class, cache_dir,
-                        onnx_dir, input_names, use_gpu, precision, optimize_onnx, validate_onnx, use_raw_attention_mask,
-                        overwrite, model_fusion_statistics)
+                        onnx_dir, input_names, use_gpu, precision, optimize_onnx, validate_onnx, use_raw_attention_mask, overwrite,
+                        model_fusion_statistics)
             if 'tf' in model_source:
                 onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length = export_onnx_model_from_tf(
                     model_name, MODELS[model_name][1], MODELS[model_name][2], MODELS[model_name][3], model_class, cache_dir,
-                    onnx_dir, input_names, use_gpu, precision, optimize_onnx, validate_onnx, use_raw_attention_mask,
-                    overwrite, model_fusion_statistics)
+                    onnx_dir, input_names, use_gpu, precision, optimize_onnx, validate_onnx, use_raw_attention_mask, overwrite,
+                    model_fusion_statistics)
 
             if not is_valid_onnx_model:
                 continue
@@ -235,7 +235,7 @@ def run_pytorch(use_gpu, model_names, model_class, precision, batch_sizes, seque
     return results
 
 
-def run_tensorflow(use_gpu, model_names, precision, batch_sizes, sequence_lengths, repeat_times, thread_n, cache_dir,
+def run_tensorflow(use_gpu, model_names, model_class, precision, batch_sizes, sequence_lengths, repeat_times, thread_n, cache_dir,
                    verbose):
     results = []
 
@@ -255,9 +255,7 @@ def run_tensorflow(use_gpu, model_names, precision, batch_sizes, sequence_length
     for model_name in model_names:
         config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
 
-        ##bugbug: hardcode temporaryily, will refactor after PR5051 is in
-        from transformers import TFAutoModel
-        model = TFAutoModel.from_pretrained(model_name, cache_dir=cache_dir)
+        model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir, custom_model_class=model_class, if_tf_model=True)
         model._saved_model_inputs_spec = None
 
         tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
@@ -325,7 +323,7 @@ def parse_arguments():
                         required=False,
                         nargs=1,
                         type=str,
-                        default=['pt'],
+                        default=['tf'],
                         choices=['pt', 'tf'],
                         help="Export onnx from pt or tf")
 
@@ -333,8 +331,8 @@ def parse_arguments():
                         required=False,
                         type=str,
                         default=None,
-                        choices=list(MODEL_CLASSES.keys()),
-                        help='Model type selected in the list: ' + ', '.join(MODEL_CLASSES.keys()))
+                        choices=list(MODEL_CLASSES),
+                        help='Model type selected in the list: ' + ', '.join(MODEL_CLASSES))
 
     parser.add_argument("-e",
                         "--engines",
@@ -468,7 +466,7 @@ def main():
                                    args.test_times, False, args.cache_dir, args.verbose)
 
     if enable_tensorflow:
-        results += run_tensorflow(args.use_gpu, args.models, args.precision, args.batch_sizes, args.sequence_lengths,
+        results += run_tensorflow(args.use_gpu, args.models, args.model_class, args.precision, args.batch_sizes, args.sequence_lengths,
                                   args.test_times, thread_n, args.cache_dir, args.verbose)
 
     model_fusion_statistics = {}
