@@ -1,0 +1,69 @@
+jobs:
+- job: Linux_CPU_Minimal_Build
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  pool: Linux-CPU
+  steps:
+  - checkout: self
+    clean: true
+    submodules: recursive
+
+  - task: Docker@2
+    displayName: login
+    inputs:
+      containerRegistry: onnxruntimeregistry
+      command: login
+      addPipelineData: false
+  - task: CmdLine@2
+    inputs:
+      script: |
+        # We need copy the related test files to a separated folder since the --include_ops_by_model will search the testdata folder recursively
+        # and include many unnecessary ops, minimal build UT currently uses .ort format models converted from the models we copied below,
+        # which will be used as the input of --include_ops_by_model to have ops to be included for the minimal build UT.
+        mkdir -p $HOME/.models
+        cp $(Build.SourcesDirectory)/onnxruntime/test/testdata/ort_github_issue_4031.onnx $HOME/.models/
+        mkdir -p $HOME/.onnx
+        docker run --rm \
+          --volume /data/onnx:/data/onnx:ro \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume /data/models:/build/models:ro \
+          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+          --volume $HOME/.models:/home/onnxruntimedev/.models \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecpubuild:chn \
+            /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+              --build_dir /build --cmake_generator Ninja \
+              --config Debug\
+              --skip_submodule_sync \
+              --build_shared_lib \
+              --parallel \
+              --minimal_build \
+              --disable_ml_ops \
+              --disable_exceptions \
+              --include_ops_by_model /home/onnxruntimedev/.models/
+      workingDirectory: $(Build.SourcesDirectory)
+  - task: Docker@2
+    displayName: logout
+    inputs:
+      containerRegistry: onnxruntimeregistry
+      command: logout
+      addPipelineData: false
+  - task: PublishTestResults@2
+    displayName: 'Publish unit test results'
+    inputs:
+      testResultsFiles: '**/*.results.xml'
+      searchFolder: '$(Build.BinariesDirectory)'
+      testRunTitle: 'Unit Test Run'
+    condition: succeededOrFailed()
+
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters:
+      condition: 'succeeded'
+
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
