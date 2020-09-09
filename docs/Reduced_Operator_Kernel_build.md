@@ -69,3 +69,9 @@ python exclude_unused_ops.py --model_path d:\ReduceSize\models --config_path d:\
 
 After running the script build ORT as per the build instructions. Remember to specify `--skip-tests`.
 
+#### Generating configuration file
+
+Note: It is also possible to generate a configuration file for future usage by providing the `--write_combined_config_to` argument to `exclude_unused_ops.py`.
+If run this way it will process the information provided by `--model_path` and/or `--config_path`, and output a configuration file with the combined list of required operators to the provided path. 
+No kernel registration changes will be made when run this way. 
+
