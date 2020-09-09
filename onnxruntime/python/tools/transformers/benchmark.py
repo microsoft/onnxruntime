@@ -323,7 +323,7 @@ def parse_arguments():
                         required=False,
                         nargs=1,
                         type=str,
-                        default=['tf'],
+                        default='pt',
                         choices=['pt', 'tf'],
                         help="Export onnx from pt or tf")
 
