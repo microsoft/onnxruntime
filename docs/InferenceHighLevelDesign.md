@@ -123,7 +123,7 @@ The WinRT API NuGet is distributed with a curated build of the OnnxRuntime engin
 
 App developers may additionally wish to use a custom build-from-source version of the OnnxRuntime engine as well, or use a prebuilt version of the OnnxRuntime engine from another distribution source like the Micorosoft.ML.OnnxRuntime.MKLML distribution.
 
-To enable this, the WinRT API NuGet has been made to be compatible with a set of OnnxRuntime engines that ship in different Nuget packages.
+To enable this, the WinRT API NuGet has been made to be compatible with a set of OnnxRuntime engines that ship in different NuGet packages.
 
 Please refer to the following table listing the distributions with compatible OnnxRuntime engines.
 - [Microsoft.ML.OnnxRuntime](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime)
@@ -132,4 +132,4 @@ Please refer to the following table listing the distributions with compatible On
 
 Note that compatible distributions must match in release version.
 
-In order to use compatilbe engines, replace the onnxruntime.dll with the desired engine binary and its associated binaries.
+In order to use compatible engines, replace the onnxruntime.dll with the desired engine binary and its associated binaries.
