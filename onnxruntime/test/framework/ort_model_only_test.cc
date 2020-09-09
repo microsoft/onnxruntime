@@ -289,7 +289,7 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormatMLOps) {
     for (size_t i = 0; i < 3; i++) {
       const auto& expected = expected_output_1[i];
       const auto& actual = actual_output_1[i];
-      ASSERT_EQ(actual.size(), 2);
+      ASSERT_EQ(actual.size(), size_t(2));
       ASSERT_NEAR(expected.at("A"), actual.at("A"), 1e-6);
       ASSERT_NEAR(expected.at("B"), actual.at("B"), 1e-6);
     }
@@ -349,11 +349,11 @@ TEST(OrtModelOnlyTests, LoadOrtFormatModelMLOps) {
                                                 {{"A", 0.596016f}, {"B", 0.403984f}},
                                                 {{"A", 0.656315f}, {"B", 0.343685f}}};
     const auto& actual_output_1 = fetches[1].Get<VectorMapStringToFloat>();
-    ASSERT_EQ(actual_output_1.size(), 3);
+    ASSERT_EQ(actual_output_1.size(), size_t(3));
     for (size_t i = 0; i < 3; i++) {
       const auto& expected = expected_output_1[i];
       const auto& actual = actual_output_1[i];
-      ASSERT_EQ(actual.size(), 2);
+      ASSERT_EQ(actual.size(), size_t(2));
       ASSERT_NEAR(expected.at("A"), actual.at("A"), 1e-6);
       ASSERT_NEAR(expected.at("B"), actual.at("B"), 1e-6);
     }
