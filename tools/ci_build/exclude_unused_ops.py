@@ -25,7 +25,7 @@ domain_map = {'': 'kOnnxDomain',
               'com.xilinx': 'kVitisAIDomain'}
 
 
-def map_domain(domain):
+def _map_domain(domain):
 
     if domain in domain_map:
         return domain_map[domain]
@@ -34,7 +34,7 @@ def map_domain(domain):
     return 'UnknownDomain'
 
 
-def extract_ops_from_config(file_path, required_ops):
+def _extract_ops_from_config(file_path, required_ops):
     '''extract ops from config file of format: domain;opset;op1,op2...'''
 
     if not file_path:
@@ -59,7 +59,7 @@ def extract_ops_from_config(file_path, required_ops):
             raw_domain, raw_opset, raw_ops =\
                 [segment.strip() for segment in stripped_line.split(';')]
 
-            domain = map_domain(raw_domain)
+            domain = _map_domain(raw_domain)
             opset = int(raw_opset)
             operators = set([raw_op.strip() for raw_op in raw_ops.split(',')])
 
@@ -75,7 +75,7 @@ def extract_ops_from_config(file_path, required_ops):
     return required_ops  # end of extract_ops_from_file(...)
 
 
-def extract_ops_from_model(model_path, required_ops):
+def _extract_ops_from_model(model_path, required_ops):
     '''extract ops from models under model_path and return a diction'''
 
     if not model_path:
@@ -91,7 +91,7 @@ def extract_ops_from_model(model_path, required_ops):
 
         for operator in graph.node:
 
-            mapped_domain = map_domain(operator.domain)
+            mapped_domain = _map_domain(operator.domain)
 
             if mapped_domain not in operators or\
                mapped_domain not in domain_opset_map:
@@ -118,7 +118,7 @@ def extract_ops_from_model(model_path, required_ops):
 
                 for opset in model.opset_import:
 
-                    mapped_domain = map_domain(opset.domain)
+                    mapped_domain = _map_domain(opset.domain)
                     domain_opset_map[mapped_domain] = opset.version
 
                     if mapped_domain not in required_ops:
@@ -132,7 +132,7 @@ def extract_ops_from_model(model_path, required_ops):
     return required_ops  # end of extract_ops_from_model(...)
 
 
-def exclude_unused_ops_in_provider(operators, provider_path):
+def _exclude_unused_ops_in_provider(operators, provider_path):
     '''rewrite provider file to exclude unused ops'''
 
     if not os.path.isfile(provider_path):
@@ -279,14 +279,14 @@ def exclude_unused_ops_in_provider(operators, provider_path):
     # end of rewrite_cpu_provider(...)
 
 
-def exclude_unused_ops(required_operators, provider_paths):
+def _exclude_unused_ops_in_providers(required_operators, provider_paths):
     '''rewrite multiple provider files'''
 
     for provider_path in provider_paths:
-        exclude_unused_ops_in_provider(required_operators, provider_path)
+        _exclude_unused_ops_in_provider(required_operators, provider_path)
 
 
-def get_provider_path(ort_root=None, use_cuda=False):
+def _get_provider_paths(ort_root=None, use_cuda=False):
     '''return paths to cpu and cuda providers'''
 
     if not ort_root:
@@ -304,7 +304,7 @@ def get_provider_path(ort_root=None, use_cuda=False):
     return provider_paths  # end of get_provider_paths
 
 
-def create_config_file_with_required_ops(required_operators, model_path, config_path, output_file):
+def _create_config_file_with_required_ops(required_operators, model_path, config_path, output_file):
 
     directory, filename = os.path.split(output_file)
     if not filename:
@@ -337,6 +337,13 @@ def create_config_file_with_required_ops(required_operators, model_path, config_
     log.info("Wrote set of required operators to {}".format(output_file))
 
 
+def exclude_unused_ops(models_path, config_path, ort_root=None, use_cuda=True):
+    "Note that this called directly from build.py"
+
+    required_operators = _extract_ops_from_config(config_path, _extract_ops_from_model(models_path, {}))
+    _exclude_unused_ops_in_providers(required_operators, _get_provider_paths(ort_root, use_cuda))
+
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(
@@ -363,11 +370,11 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    model_path = os.path.abspath(args.model_path) if args.model_path else ''
+    models_path = os.path.abspath(args.model_path) if args.model_path else ''
     config_path = os.path.abspath(args.config_path) if args.config_path else ''
     ort_root = os.path.abspath(args.ort_root) if args.ort_root else ''
 
-    if not model_path and not config_path:
+    if not models_path and not config_path:
         log.error('Please specify at least either model path or file path.')
         parser.print_help()
         sys.exit(-1)
@@ -375,9 +382,9 @@ if __name__ == "__main__":
     if not ort_root:
         log.info('ort_root was not specified. Inferring ORT root from location of this script.')
 
-    required_operators = extract_ops_from_config(config_path, extract_ops_from_model(model_path, {}))
 
     if not args.write_combined_config_to:
-        exclude_unused_ops(required_operators, get_provider_path(ort_root, use_cuda=True))
+        exclude_unused_ops(models_path, config_path, ort_root, use_cuda=True)
     else:
-        create_config_file_with_required_ops(required_operators, model_path, config_path, args.write_combined_config_to)
+        required_ops = _extract_ops_from_config(config_path, _extract_ops_from_model(models_path, {}))
+        _create_config_file_with_required_ops(required_ops, models_path, config_path, args.write_combined_config_to)
