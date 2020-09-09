@@ -111,6 +111,8 @@ static bool IsNeighborNodeExpectedTypes(Node::NodeConstIterator start, const Nod
 
  The Expand and Gather on the bottom will not be added to subgraph_node_indices.
  It is because they are matched as part of other subgraph.
+
+ Two Shape nodes may merge into one.
 */
 
 static bool MatchInputToConcatSubgraph(
@@ -134,8 +136,14 @@ static bool MatchInputToConcatSubgraph(
     DEBUG_LOG("Failed to find path 1 of position shape.");
     return false;
   }
+  const size_t shape_index = edges.size() - 1;
   for (size_t i = 0; i < edges.size(); i++) {
     if (!optimizer_utils::CheckOutputEdges(graph, edges[i]->GetNode(), 1)) {
+      // Shape may have multiple outputs due to shape integration
+      // So check it later
+      if (i == shape_index) {
+        continue;
+      }
       DEBUG_LOG("Output edge count not expected for nodes in path 1 of position shape.");
       return false;
     }
@@ -161,9 +169,10 @@ static bool MatchInputToConcatSubgraph(
     return false;
   }
 
+  // Shape may have multiple outputs due to shape integration
+  // Check it later
   if (!optimizer_utils::CheckOutputEdges(graph, edges[0]->GetNode(), 1) ||
-      !optimizer_utils::CheckOutputEdges(graph, edges[1]->GetNode(), 2) ||
-      !optimizer_utils::CheckOutputEdges(graph, edges[2]->GetNode(), 1)) {
+      !optimizer_utils::CheckOutputEdges(graph, edges[1]->GetNode(), 2)) {
     DEBUG_LOG("Output edge count not expected for nodes in path 2 of position shape.");
     return false;
   }
@@ -189,6 +198,19 @@ static bool MatchInputToConcatSubgraph(
     return false;
   }
 
+  // Check if shape have more than one output, it may due to shape integration
+  // We check if they share the same node
+  if (!optimizer_utils::CheckOutputEdges(graph, shape_node_0, 1) ||
+      !optimizer_utils::CheckOutputEdges(graph, shape_node_1, 1)) {
+    if (shape_node_0.Index() == shape_node_1.Index() &&
+        (shape_node_0.GetOutputEdgesCount() == 2 ||
+         shape_node_0.GetOutputEdgesCount() == 4)) {
+      DEBUG_LOG("two paths share the same shape");
+    } else {
+      return false;
+    }
+  }
+
   AddNodes(subgraph_node_indices, edges);
   return true;
 }
@@ -210,6 +232,7 @@ static bool MatchInputToConcatSubgraph(
  * Note that position gather node is the node in the bottom of above sub-graph.
  * Paths in ^^ are alternative path to be matched if path input_ids -> Shape -> Expand -> Gather is not found.
  * Path in ** is an alternative path to check.
+ * Two shape node may merge into one
  */
 static bool MatchPositionEmbeddingSubgraphsFromGather(
     Graph& graph,
@@ -268,10 +291,17 @@ static bool MatchPositionEmbeddingSubgraphsFromGather(
     return false;
   }
   const size_t gather_index = pg_edges.size() - 2;
+  const size_t shape_index = pg_edges.size() - 1;
   // All nodes in Path 1 must have only 1 output edge, except the gather node allowed 1 or 2 output edges
+  // And shape node allowed multiple output edges due to shape integration
   for (size_t i = 0; i < pg_edges.size(); i++) {
     if (!optimizer_utils::CheckOutputEdges(graph, pg_edges[i]->GetNode(), 1)) {
       if (i == gather_index && optimizer_utils::CheckOutputEdges(graph, pg_edges[i]->GetNode(), 2)) {
+        continue;
+      }
+      if (i == shape_index &&
+          (optimizer_utils::CheckOutputEdges(graph, pg_edges[i]->GetNode(), 2) ||
+           optimizer_utils::CheckOutputEdges(graph, pg_edges[i]->GetNode(), 4))) {
         continue;
       }
       DEBUG_LOG("Output edge count not expected for nodes in path1.");

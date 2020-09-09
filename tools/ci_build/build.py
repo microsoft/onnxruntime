@@ -1353,7 +1353,7 @@ def run_nodejs_tests(nodejs_binding_dir):
 
 def build_python_wheel(
         source_dir, build_dir, configs, use_cuda, use_ngraph, use_dnnl,
-        use_tensorrt, use_openvino, use_nuphar, use_vitisai, use_acl, use_armnn,
+        use_tensorrt, use_openvino, use_nuphar, use_vitisai, use_acl, use_armnn, use_dml,
         wheel_name_suffix, enable_training, nightly_build=False, featurizers_build=False, use_ninja=False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
@@ -1402,6 +1402,8 @@ def build_python_wheel(
             args.append('--use_acl')
         elif use_armnn:
             args.append('--use_armnn')
+        elif use_dml:
+            args.append('--use_dml')
 
         run_subprocess(args, cwd=cwd)
 
@@ -1794,6 +1796,7 @@ def main():
                 args.use_vitisai,
                 args.use_acl,
                 args.use_armnn,
+                args.use_dml,
                 args.wheel_name_suffix,
                 args.enable_training,
                 nightly_build=nightly_build,
