@@ -18,6 +18,7 @@ set(mlas_common_srcs
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/compute.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/quantize.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/qladd.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/qlmul.cpp
 )
 
 if(MSVC)
@@ -175,7 +176,11 @@ else()
     set(mlas_platform_srcs_avx
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86/SgemmKernelAvx.S
     )
-    set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_FLAGS "-mavx")
+    if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+      set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_FLAGS "-mavx -fno-integrated-as")
+    else()
+      set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_FLAGS "-mavx")
+    endif()
 
     set(mlas_platform_srcs
       ${mlas_platform_srcs_sse2}

@@ -596,6 +596,7 @@ class Graph {
   cannot be overridden at runtime. If the initializer is not found or is not constant, a nullptr is returned.
   @param check_outer_scope If true and the graph is a subgraph,
          check ancestor graph/s for 'name' if not found in 'graph'.
+  @remarks check_outer_scope of true is not supported in a minimal build
   */
   const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const std::string& name, bool check_outer_scope) const;
 
@@ -992,7 +993,13 @@ class Graph {
 
   /** Returns true if the name is for a value that is coming from outer scope */
   bool IsOuterScopeValue(const std::string& name) const {
+#if !defined(ORT_MINIMAL_BUILD)
     return resolve_context_.outer_scope_node_args.find(name) != resolve_context_.outer_scope_node_args.cend();
+#else
+    // we shouldn't have code that calls this in a minimal build
+    ORT_UNUSED_PARAMETER(name);
+    ORT_THROW("Internal error. Outer scope value lookup is not currently supported in a minimal build.");
+#endif
   }
 
 #if !defined(ORT_MINIMAL_BUILD)

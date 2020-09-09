@@ -242,24 +242,6 @@ int ThreadPool::NumShardsUsedByFixedBlockSizeScheduling(const std::ptrdiff_t tot
   }
 }
 
-void ThreadPool::ParallelFor(std::ptrdiff_t total, const SchedulingParams& scheduling_params,
-                             const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn) {
-  switch (scheduling_params.strategy()) {
-    case SchedulingStrategy::kAdaptive: {
-      if (scheduling_params.cost_per_unit().has_value()) {
-        ParallelFor(total, static_cast<double>(scheduling_params.cost_per_unit().value()), fn);
-      }
-      break;
-    }
-    case SchedulingStrategy::kFixedBlockSize: {
-      if (scheduling_params.block_size().has_value()) {
-        ParallelForFixedBlockSizeScheduling(total, scheduling_params.block_size().value(), fn);
-      }
-      break;
-    }
-  }
-}
-
 using CostModel = Eigen::TensorCostModel<Eigen::ThreadPoolDevice>;
 
 // Calculates block size based on (1) the iteration cost and (2) parallel
@@ -328,9 +310,7 @@ void ThreadPool::ParallelFor(std::ptrdiff_t n, const TensorOpCost& c,
   auto d_of_p = DegreeOfParallelism(this);
   // Compute small problems directly in the caller thread.
   if ((!ShouldParallelizeLoop(n)) ||
-      Eigen::TensorCostModel<Eigen::ThreadPoolDevice>::numThreads(static_cast<double>(n),
-                                                                  cost,
-                                                                  d_of_p) == 1) {
+      CostModel::numThreads(static_cast<double>(n), cost, d_of_p) == 1) {
     f(0, n);
     return;
   }
@@ -377,6 +357,51 @@ int ThreadPool::CurrentThreadId() const {
     return -1;
   }
 }
+
+void ThreadPool::TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t total, const TensorOpCost& cost_per_unit,
+                           const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn) {
+#ifdef _OPENMP
+    ORT_ENFORCE(total >= 0);
+    if (total == 1 || total == 0) {
+      fn(0, total);
+      return;
+    }
+
+    Eigen::TensorOpCost cost{cost_per_unit.bytes_loaded, cost_per_unit.bytes_stored, cost_per_unit.compute_cycles};
+    auto d_of_p = DegreeOfParallelism(tp);
+    std::ptrdiff_t num_threads = CostModel::numThreads(static_cast<double>(total), cost, d_of_p);
+
+    if (total < num_threads) {
+      num_threads = total;
+    }
+
+    if (num_threads == 1) {
+      fn(0, total);
+      return;
+    }
+
+    ptrdiff_t block_size = CalculateParallelForBlock(total, cost, nullptr, d_of_p);
+    ptrdiff_t block_count = Eigen::divup(total, block_size);
+
+    if (block_count == 1) {
+      fn(0, total);
+      return;
+    }
+
+#pragma omp parallel for schedule(dynamic,1)
+    for (std::ptrdiff_t i = 0; i < block_count; i++) {
+      const auto start = i * block_size;
+      fn(start, std::min(start+block_size, total));
+    }
+#else   //!_OPENMP
+    if (tp == nullptr) {
+      fn(0, total);
+      return;
+    }
+    tp->ParallelFor(total, cost_per_unit, fn);
+#endif
+  }
+
 
 }  // namespace concurrency
 }  // namespace onnxruntime
