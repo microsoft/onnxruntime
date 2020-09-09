@@ -482,15 +482,16 @@ class ORTTrainer(object):
         # Deepcopy inputs, since input values may change after model run.
         sample_inputs_copy = copy.deepcopy(sample_inputs)
 
-        from onnxruntime.experimental import register_custom_ops_pytorch_exporter
+        # Handle contrib OPs support
+        from onnxruntime.training import register_custom_ops_pytorch_exporter
         if self.options._internal_use.enable_onnx_contrib_ops:
             # Enable contrib ops export from PyTorch
             register_custom_ops_pytorch_exporter.register_custom_op()
         else:
-            # unregister contrib ops, if they were registered in previous calls
+            # Unregister contrib ops, if they were registered in previous calls
             register_custom_ops_pytorch_exporter.unregister_custom_op()
 
-
+        # Export torch.nn.Module to ONNX
         torch.onnx._export(model, tuple(sample_inputs_copy), f,
                            input_names=[input.name for input in self.model_desc.inputs],
                            output_names=[output.name for output in self.model_desc.outputs],
