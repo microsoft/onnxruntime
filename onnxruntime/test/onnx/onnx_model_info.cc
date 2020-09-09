@@ -1,12 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <fstream>
+#include "core/flatbuffers/ort.fbs.h"
+#include "core/graph/model.h"
+#include "core/common/logging/logging.h"
+
 #include "onnx_model_info.h"
 #include "core/platform/env.h"
 #include "re2/re2.h"
 #include "pb_helper.h"
 
 using namespace onnxruntime;
+using namespace onnxruntime::experimental;
 static constexpr int protobuf_block_size_in_bytes = 4 * 1024 * 1024;
 
 template <typename T>
@@ -69,4 +75,44 @@ OnnxModelInfo::OnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url) : model_url_(
     if (initializer_names.find(p.name()) == initializer_names.end()) input_value_info_.push_back(p);
   }
   RepeatedPtrFieldToVector(graph.output(), output_value_info_);
+}
+
+OrtModelInfo::OrtModelInfo(_In_ const PATH_CHAR_TYPE* model_url) : model_url_(model_url) {
+  std::vector<uint8_t> bytes;
+  size_t num_bytes = 0;
+  const auto model_location = ToWideString(model_url);
+  ORT_THROW_IF_ERROR(Env::Default().GetFileLength(model_location.c_str(), num_bytes));
+  bytes.resize(num_bytes);
+  std::ifstream bytes_stream(model_location, std::ifstream::in | std::ifstream::binary);
+  bytes_stream.read(reinterpret_cast<char*>(bytes.data()), num_bytes);
+  const auto* fbs_session = fbs::GetInferenceSession(bytes.data());
+  if (nullptr == fbs_session)
+    ORT_THROW("InferenceSession is null. Invalid ORT format model.");
+
+  const auto* fbs_model = fbs_session->model();
+  if (nullptr == fbs_model)
+    ORT_THROW("Missing Model. Invalid ORT format model.");
+
+  std::unique_ptr<Model> model;
+  ORT_THROW_IF_ERROR(Model::LoadFromOrtFormat(*fbs_model, logging::LoggingManager::DefaultLogger(), model));
+
+  // TODO use ort format version here?
+  onnx_commit_tag_ = TestModelInfo::unknown_version;
+
+  Graph& graph = model->MainGraph();
+  for (const auto entry : graph.DomainToVersionMap()) {
+    domain_to_version_[entry.first] = entry.second;
+  }
+
+  if (graph.NumberOfNodes() == 1) {
+    node_name_ = graph.Nodes().cbegin()->OpType();
+  }
+
+  for (const auto* node_arg : graph.GetInputs()) {
+    input_value_info_.push_back(node_arg->ToProto());
+  }
+
+  for (const auto* node_arg : graph.GetOutputs()) {
+    output_value_info_.push_back(node_arg->ToProto());
+  }
 }

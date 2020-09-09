@@ -111,12 +111,12 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
     "${TEST_SRC_DIR}/ir/*.cc"
     "${TEST_SRC_DIR}/ir/*.h"
     )
- 
+
   file(GLOB onnxruntime_test_optimizer_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/optimizer/*.cc"
     "${TEST_SRC_DIR}/optimizer/*.h"
     )
- 
+
   set(onnxruntime_test_framework_src_patterns
     "${TEST_SRC_DIR}/framework/*.cc"
     "${TEST_SRC_DIR}/framework/*.h"
@@ -130,7 +130,7 @@ else()  # minimal and/or reduced ops build
     )
 
   if (onnxruntime_MINIMAL_BUILD)
-    list(APPEND onnxruntime_test_framework_src_patterns 
+    list(APPEND onnxruntime_test_framework_src_patterns
       "${TEST_SRC_DIR}/framework/ort_model_only_test.cc"
     )
 
@@ -526,7 +526,7 @@ if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
   target_compile_options(onnx_test_runner_common PRIVATE "/wd4244")
 endif()
 onnxruntime_add_include_to_target(onnx_test_runner_common onnxruntime_common onnxruntime_framework
-        onnxruntime_test_utils onnx onnx_proto re2::re2)
+        onnxruntime_test_utils onnx onnx_proto re2::re2 flatbuffers)
 
 add_dependencies(onnx_test_runner_common onnx_test_data_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnx_test_runner_common PRIVATE ${eigen_INCLUDE_DIRS} ${RE2_INCLUDE_DIR}
