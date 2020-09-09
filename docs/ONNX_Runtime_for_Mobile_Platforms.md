@@ -80,7 +80,7 @@ The follow options can be used to reduce the build size. Enable all options that
 
   - Enable minimal build (`--minimal_build`)
     - A minimal build will ONLY support loading and executing ORT format models. 
-      - RTTI is disabled by default in this build, so adding the `--disable_rtti` build flag is not necessary.
+    - RTTI is disabled by default in this build, unless the Python bindings (`--build_wheel`) are enabled. 
 
   - Disable exceptions (`--disable_exceptions`)
     - Disables support for exceptions in the build.
@@ -92,6 +92,10 @@ The follow options can be used to reduce the build size. Enable all options that
   - ML op support (`--disable_ml_ops`)
     - Whilst the operator kernel reduction script will disable all unused ML operator kernels, additional savings can be achieved by removing support for ML specific types. If you know that your model has no ML ops, or no ML ops that use the Map type, this flag can be provided. 
     - See the specs for the [ONNX ML Operators](https://github.com/onnx/onnx/blob/master/docs/Operators-ml.md) if unsure.
+
+  - Use shared libc++ on Android (`--android_cpp_shared`)
+    - Building using the shared libc++ library instead of the default static libc++ library will result in a smaller libonnxruntime.so library.
+    - See [Android NDK documentation](https://developer.android.com/ndk/guides/cpp-support) for more information.
 
 #### Build Configuration 
 
