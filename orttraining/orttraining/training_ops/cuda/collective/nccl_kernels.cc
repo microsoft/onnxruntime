@@ -111,7 +111,7 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
       output_tensor->SetByteOffset(input_tensor->ByteOffset());
 
       // Only copy outputs that came from other ranks.
-      if (rank_start <= offset && offset < rank_end) {
+      if (offset < rank_start || offset >= rank_end) {
         void* output_data = output_tensor->MutableDataRaw();
         const void* fusion_data_at_offset = (const int8_t*)fusion_data + offset;
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, fusion_data_at_offset, tensor_bytes, cudaMemcpyDeviceToDevice));
