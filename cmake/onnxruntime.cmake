@@ -68,11 +68,12 @@ if (NOT WIN32)
   endif()
 endif()
 
-
-# strip binary on Android, or for a minimal build on Unix
-if(CMAKE_SYSTEM_NAME STREQUAL "Android" OR (onnxruntime_MINIMAL_BUILD AND UNIX))
-  set_target_properties(onnxruntime PROPERTIES LINK_FLAGS_RELEASE -s)
-  set_target_properties(onnxruntime PROPERTIES LINK_FLAGS_MINSIZEREL -s)
+if (CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "MinSizeRel")
+  # strip binary on Android, or for a minimal build on Unix
+  if(CMAKE_SYSTEM_NAME STREQUAL "Android" OR (onnxruntime_MINIMAL_BUILD AND UNIX))
+    set_target_properties(onnxruntime PROPERTIES LINK_FLAGS_RELEASE -s)
+    set_target_properties(onnxruntime PROPERTIES LINK_FLAGS_MINSIZEREL -s)
+  endif()
 endif()
 
 target_link_libraries(onnxruntime PRIVATE
