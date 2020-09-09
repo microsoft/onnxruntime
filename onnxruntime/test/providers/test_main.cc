@@ -45,8 +45,24 @@ std::unique_ptr<Ort::Env> ort_env;
 
 int main(int argc, char** argv) {
   int status = 0;
+
+
   ORT_TRY {
     ::testing::InitGoogleTest(&argc, argv);
+   char cwd[PATH_MAX];
+   if (getcwd(cwd, sizeof(cwd)) != NULL) {
+       printf("Current working dir: %s\n", cwd);
+   } else {
+       perror("getcwd() error");
+       return 1;
+   }
+
+   printf("the exec dir: %s\n", argv[0]);
+   std::string exe_dir(argv[0]);
+   auto bundle_dir = exe_dir.substr(0, exe_dir.find_last_of('/'));
+   chdir(bundle_dir.c_str());
+
+
     OrtThreadingOptions tpo;
     ort_env.reset(new Ort::Env(&tpo, ORT_LOGGING_LEVEL_WARNING, "Default"));
     status = RUN_ALL_TESTS();
