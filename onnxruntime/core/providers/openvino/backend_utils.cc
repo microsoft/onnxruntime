@@ -122,7 +122,7 @@ InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::
     return InferenceEngine::Precision::U8;
   } else if (*type_string == "bool" || *type_string == "tensor(bool)") {
     if (device_id == "MYRIAD") {
-      return InferenceEngine::Precision::I16;
+      return InferenceEngine::Precision::FP32;
     } else {
       return InferenceEngine::Precision::U8;
     }
