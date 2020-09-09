@@ -35,6 +35,7 @@ class GPUTensorToDX12TextureTelemetryEvent {
         TraceLoggingInt64(tensorDesc.sizes[3], "Width"),
         TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
         TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+        TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
         TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
   }
   ~GPUTensorToDX12TextureTelemetryEvent() {
@@ -45,6 +46,7 @@ class GPUTensorToDX12TextureTelemetryEvent {
         TraceLoggingHexInt32(S_OK, "HRESULT"),
         TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
         TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+        TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
         TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
   }
 
@@ -65,6 +67,7 @@ class ConvertGPUTensorToSoftwareBitmapTelemetryEvent {
         TraceLoggingInt64(tensorDesc.sizes[3], "Width"),
         TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
         TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+        TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
         TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
   }
   ~ConvertGPUTensorToSoftwareBitmapTelemetryEvent() {
@@ -75,6 +78,7 @@ class ConvertGPUTensorToSoftwareBitmapTelemetryEvent {
         TraceLoggingHexInt32(S_OK, "HRESULT"),
         TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
         TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+        TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
         TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
   }
 
@@ -95,6 +99,7 @@ class ConvertCPUTensorToVideoFrameWithSoftwareBitmapTelemetryEvent {
         TraceLoggingInt64(tensorDesc.sizes[3], "Width"),
         TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
         TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+        TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
         TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
   }
   ~ConvertCPUTensorToVideoFrameWithSoftwareBitmapTelemetryEvent() {
@@ -105,6 +110,7 @@ class ConvertCPUTensorToVideoFrameWithSoftwareBitmapTelemetryEvent {
         TraceLoggingHexInt32(S_OK, "HRESULT"),
         TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
         TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+        TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
         TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
   }
 
