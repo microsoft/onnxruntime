@@ -9,6 +9,7 @@ import * as path from 'path';
 
 import {binding} from '../lib/binding';
 import {Tensor} from '../lib/tensor';
+import {InferenceSession} from '../lib';
 
 export const TEST_ROOT = __dirname;
 export const TEST_DATA_ROOT = path.join(TEST_ROOT, 'testdata');
@@ -249,7 +250,7 @@ export function loadTensorFromFile(pbFile: string): Tensor {
   }
 }
 
-export function shouldSkipModel(model: string, eps: string[]): boolean {
+export function shouldSkipModel(model: string, eps: string[], modelPath: string): boolean {
   const filters = ['(FLOAT16)'];
   filters.push(...BACKEND_TEST_SERIES_FILTERS.current_failing_tests);
 
@@ -266,6 +267,24 @@ export function shouldSkipModel(model: string, eps: string[]): boolean {
     const regex = new RegExp(filter);
     for (const ep of eps) {
       if (regex.test(`${model}_${ep}`)) {
+        return true;
+      }
+    }
+  }
+
+  if (process.env.ALLOW_RELEASED_ONNX_OPSET_ONLY !== '0') {
+    try {
+      // create native session wrapper and load the model
+      let options: InferenceSession.SessionOptions = {};
+      const sessionWrapper = new binding.InferenceSession();
+      // load model
+      sessionWrapper.loadModel(modelPath, options);
+    } catch (e) {
+      // Mark this model to be skipped if model load fails because of the opset being out of the range of
+      // supported opsets.
+      // For all other errors ignore as they will be taken care of when the test
+      // for this model executes.
+      if (e.message.includes("ValidateOpsetForDomain")) {
         return true;
       }
     }
