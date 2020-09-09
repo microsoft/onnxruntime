@@ -614,7 +614,7 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
     // add Allgather for weights
     std::vector<int64_t> partitions;
     std::vector<ArgDef> input_readies;
-    ORT_RETURN_IF_ERROR(AddNcclAllGatherForWeights(input_readies, partitions, weight_argdefs, graph_defs, 0, false));
+    ORT_RETURN_IF_ERROR(AddNcclAllGatherForWeights(input_readies, partitions, weight_argdefs, graph_defs, 0, true));
 
     return Status::OK();
   } else /*(stage_ == 2) */ {
@@ -670,7 +670,7 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
         optimizer_state_initializer_names));
 
     // add Allgather for weights
-    ORT_RETURN_IF_ERROR(AddNcclAllGatherForWeights(reduce_output_readies, partitions, weight_argdefs, graph_defs, max_group_size, true));
+    ORT_RETURN_IF_ERROR(AddNcclAllGatherForWeights(reduce_output_readies, partitions, weight_argdefs, graph_defs, max_group_size, false));
 
     return Status::OK();
   }
