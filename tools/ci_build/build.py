@@ -190,17 +190,13 @@ def parse_arguments():
         "CMake setup. Delete CMakeCache.txt if needed")
     parser.add_argument(
         "--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
-    parser.add_argument(
-        "--android", action='store_true', help='Build for Android')
-    parser.add_argument(
-        "--android_abi", type=str, default='arm64-v8a', help='')
-    parser.add_argument(
-        "--android_api", type=int, default=27,
-        help='Android API Level, e.g. 21')
-    parser.add_argument(
-        "--android_sdk_path", type=str, help='Path to the Android SDK')
-    parser.add_argument(
-        "--android_ndk_path", default="", help="Path to the Android NDK")
+    parser.add_argument("--android", action='store_true', help='Build for Android')
+    parser.add_argument("--android_abi", type=str, default='arm64-v8a', help='')
+    parser.add_argument("--android_api", type=int, default=27, help='Android API Level, e.g. 21')
+    parser.add_argument("--android_sdk_path", type=str, help='Path to the Android SDK')
+    parser.add_argument("--android_ndk_path", default="", help="Path to the Android NDK")
+    parser.add_argument("--android_cpp_shared", action="store_true",
+                        help="Build with shared libc++ instead of the default static libc++.")
 
     parser.add_argument("--ios", action='store_true', help="build for ios")
     parser.add_argument(
@@ -724,6 +720,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "-DANDROID_PLATFORM=android-" + str(args.android_api),
             "-DANDROID_ABI=" + str(args.android_abi)
         ]
+
+        if args.android_cpp_shared:
+            cmake_args += ["-DANDROID_STL=c++_shared"]
 
     if args.ios:
         if is_macOS():
