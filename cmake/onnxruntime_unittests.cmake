@@ -1,6 +1,8 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-find_package(XCTest REQUIRED)
+if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
+  find_package(XCTest REQUIRED)
+endif()
 
 set(TEST_SRC_DIR ${ONNXRUNTIME_ROOT}/test)
 set(TEST_INC_DIR ${ONNXRUNTIME_ROOT})
@@ -38,11 +40,6 @@ function(AddTest)
   if (MSVC)
     target_compile_options(${_UT_TARGET} PRIVATE "/wd6330")
   endif()
-  set_target_properties(${_UT_TARGET} PROPERTIES FOLDER "ONNXRuntimeTest"
-    MACOSX_BUNDLE_BUNDLE_NAME ONNXRuntimeTest
-    MACOSX_BUNDLE_GUI_IDENTIFIER ONNXRuntimeTest
-    MACOSX_BUNDLE_SHORT_VERSION_STRING 1.42.0
-    MACOSX_BUNDLE_BUNDLE_VERSION 1.42.0)
 
   if (_UT_DEPENDS)
     add_dependencies(${_UT_TARGET} ${_UT_DEPENDS})
@@ -89,10 +86,29 @@ function(AddTest)
       "--gtest_output=xml:$<SHELL_PATH:$<TARGET_FILE:${_UT_TARGET}>.$<CONFIG>.results.xml>")
   endif(onnxruntime_GENERATE_TEST_REPORTS)
 
-  add_test(NAME ${_UT_TARGET}
-    COMMAND ${_UT_TARGET} ${TEST_ARGS}
-    WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>
-  )
+  if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
+    xctest_add_bundle(${_UT_TARGET}_xc ${_UT_TARGET} ${TEST_SRC_DIR}/xctest/OrtTestAll.mm)
+
+    set_target_properties(${_UT_TARGET}_xc PROPERTIES FOLDER "ONNXRuntimeXCTest"
+      MACOSX_BUNDLE_INFO_PLIST ${TEST_SRC_DIR}/xctest/Info.plist)
+
+    xctest_add_test(xctest.${_UT_TARGET} ${_UT_TARGET}_xc)
+  else()
+    add_test(NAME ${_UT_TARGET}
+      COMMAND ${_UT_TARGET} ${TEST_ARGS}
+      WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>
+    )
+  endif()
+
+#  if (${CMAKE_SYSTEM_NAME} MATCHES "iOS")
+#    set_target_properties(${_UT_TARGET} PROPERTIES FOLDER "ONNXRuntimeTest"
+#      MACOSX_BUNDLE_BUNDLE_NAME ${_UT_TARGET}
+#      MACOSX_BUNDLE_GUI_IDENTIFIER com.microsoft.onnxruntime.utest.${_UT_TARGET}
+#      MACOSX_BUNDLE_LONG_VERSION_STRING ${ORT_VERSION}
+#      MACOSX_BUNDLE_BUNDLE_VERSION ${ORT_VERSION}
+#      MACOSX_BUNDLE_SHORT_VERSION_STRING ${ORT_VERSION} )
+#  endif()
+
 endfunction(AddTest)
 
 #Do not add '${TEST_SRC_DIR}/util/include' to your include directories directly
@@ -834,7 +850,7 @@ if (onnxruntime_BUILD_SHARED_LIB)
   )
 
   # test inference using global threadpools
-  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Android" AND NOT onnxruntime_MINIMAL_BUILD)
+  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Android|iOS" AND NOT onnxruntime_MINIMAL_BUILD)
   AddTest(DYN
           TARGET onnxruntime_global_thread_pools_test
           SOURCES ${onnxruntime_global_thread_pools_test_SRC}
@@ -844,7 +860,7 @@ if (onnxruntime_BUILD_SHARED_LIB)
   endif()
 
  # A separate test is needed to test the APIs that don't rely on the env being created first.
-  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
+  if (NOT CMAKE_SYSTEM_NAME MATCHES "Android|iOS")
   AddTest(DYN
           TARGET onnxruntime_api_tests_without_env
           SOURCES ${onnxruntime_api_tests_without_env_SRC}
