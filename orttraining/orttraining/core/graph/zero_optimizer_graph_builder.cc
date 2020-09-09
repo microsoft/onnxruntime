@@ -135,11 +135,13 @@ static Status AddNcclReduceForGradients(
 
     std::vector<AttributeProto> attributes({onnx::MakeAttribute("root_rank", int64_t(i)),
                                             onnx::MakeAttribute("num_input_readies", has_old_reduce)});  //,
-    graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclReduce", kMSDomain, 1},
+    auto nd = NodeDef(OpDef{"NcclReduce", kMSDomain, 1},
                                     reduce_inputs,
                                     reduce_outputs,
                                     attributes,
-                                    node_name)});
+                                    node_name);
+    nd.SetPriority(-1);
+    graph_defs.AddNodeDefs({nd});
     output_readies.push_back(reduce_outputs[0]);
   }
   return Status::OK();
@@ -614,7 +616,7 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
     // add Allgather for weights
     std::vector<int64_t> partitions;
     std::vector<ArgDef> input_readies;
-    ORT_RETURN_IF_ERROR(AddNcclAllGatherForWeights(input_readies, partitions, weight_argdefs, graph_defs, 0, false));
+    ORT_RETURN_IF_ERROR(AddNcclAllGatherForWeights(input_readies, partitions, weight_argdefs, graph_defs, 0, true));
 
     return Status::OK();
   } else /*(stage_ == 2) */ {
@@ -670,7 +672,7 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
         optimizer_state_initializer_names));
 
     // add Allgather for weights
-    ORT_RETURN_IF_ERROR(AddNcclAllGatherForWeights(reduce_output_readies, partitions, weight_argdefs, graph_defs, max_group_size, true));
+    ORT_RETURN_IF_ERROR(AddNcclAllGatherForWeights(reduce_output_readies, partitions, weight_argdefs, graph_defs, max_group_size, false));
 
     return Status::OK();
   }

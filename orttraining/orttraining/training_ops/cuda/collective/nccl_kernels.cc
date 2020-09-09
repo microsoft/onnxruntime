@@ -57,6 +57,7 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
   // slows down significantly if the data is not aligned.  Nvidia recommends 32-byte alignment,
   // so pad to multiple of 32 and world size.
   // Note: the alignment here needs to be kept in-sync with the alignment in zero_optimizer_graph_builder.cc
+  printf("partition even = %d\n", partition_even_);
   if (partition_even_) {
     ORT_ENFORCE(num_input_readies_ == 0);
     // Count total number of elements to AllGather.
