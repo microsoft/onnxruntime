@@ -157,7 +157,7 @@ Return Value:
 
     for (size_t k = 0; k < K; k += CountK) {
 
-        CountK = (std::min)(K - k, Strides.K);
+        CountK = std::min(K - k, Strides.K);
 
         //
         // Step through each slice of matrix B along the N dimension.
@@ -167,7 +167,7 @@ Return Value:
 
         for (size_t n = 0; n < N; n += CountN) {
 
-            CountN = (std::min)(N - n, Strides.N);
+            CountN = std::min(N - n, Strides.N);
 
             //
             // Copy a panel of matrix B to a local packed buffer.
@@ -191,7 +191,7 @@ Return Value:
 
             for (size_t m = 0; m < M; m += CountM) {
 
-                CountM = (std::min)(M - m, Strides.M);
+                CountM = std::min(M - m, Strides.M);
 
                 //
                 // Copy a panel of matrix A to a local packed buffer.
@@ -311,7 +311,7 @@ Return Value:
 
     for (size_t k = 0; k < K; k += CountK) {
 
-        CountK = (std::min)(K - k, Strides.K);
+        CountK = std::min(K - k, Strides.K);
 
         const size_t PackedCountK = (CountK + KernelType::PackedK - 1) /
             KernelType::PackedK;
@@ -328,7 +328,7 @@ Return Value:
 
         for (size_t n = 0; n < N; n += CountN) {
 
-            CountN = (std::min)(N - n, Strides.N);
+            CountN = std::min(N - n, Strides.N);
 
             if (k == 0) {
                 MlasGemmU8X8ScaleSumBuffer(ColumnSumBuffer, PackedColumnSumBuffer + n,
@@ -347,7 +347,7 @@ Return Value:
 
             for (size_t m = 0; m < M; m += CountM) {
 
-                CountM = (std::min)(M - m, Strides.M);
+                CountM = std::min(M - m, Strides.M);
 
                 //
                 // Copy a panel of matrix A to a local packed buffer.
@@ -2126,7 +2126,7 @@ Return Value:
 
     for (size_t k = 0; k < K; k += CountK) {
 
-        CountK = (std::min)(K - k, StrideK);
+        CountK = std::min(K - k, StrideK);
 
         //
         // Step through each slice of matrix B along the N dimension.
@@ -2141,7 +2141,7 @@ Return Value:
             constexpr size_t BatchedN = 128;
             MLAS_DECLSPEC_ALIGN(int32_t ColumnSumBuffer[BatchedN], 64);
 
-            CountN = (std::min)(N - n, BatchedN);
+            CountN = std::min(N - n, BatchedN);
 
             if (GemmU8X8Operation == &MlasGemmU8X8PackedOperation<MLAS_GEMM_U8S8_KERNEL_AVX2>) {
                 MLAS_GEMM_U8S8_KERNEL_AVX2::CopyPackB(pb, B + n, ldb, CountN, CountK, ColumnSumBuffer, BIsSigned);
@@ -2164,6 +2164,530 @@ Return Value:
         PackedB = (uint8_t*)PackedB + AlignedN * AlignedK;
         B += ldb * CountK;
     }
+}
+
+#endif
+
+#ifdef MLAS_TARGET_AMD64
+
+struct MLAS_QNHWC_CONV_WORK_BLOCK {
+    int32_t ThreadCountM;
+    int32_t ThreadCountN;
+    size_t RangeStartM;
+    size_t RangeStartN;
+    size_t RangeCountM;
+    size_t RangeCountN;
+    size_t InputChannels;
+    size_t OutputChannels;
+    size_t M;
+    size_t N;
+    size_t K;
+    const uint8_t* Input;
+    const uint8_t* PackedFilter;
+    int32_t* C;
+    int16_t offa;
+    int16_t offb;
+    size_t InputShape[2];
+    size_t OutputShape[2];
+    size_t KernelShape[2];
+    size_t StrideShape[2];
+    size_t DilationShape[2];
+    size_t Padding[4];
+};
+
+void
+MlasGemmU8S8PackAIm2col(
+    const MLAS_QNHWC_CONV_WORK_BLOCK* WorkBlock,
+    uint8_t* PanelA,
+    size_t m,
+    size_t CountM,
+    size_t k,
+    size_t CountK
+    )
+{
+    const size_t InputChannels = WorkBlock->InputChannels;
+
+    const size_t InputHeight = WorkBlock->InputShape[0];
+    const size_t InputWidth = WorkBlock->InputShape[1];
+
+    const size_t OutputWidth = WorkBlock->OutputShape[1];
+
+    const size_t StrideHeight = WorkBlock->StrideShape[0];
+    const size_t StrideWidth = WorkBlock->StrideShape[1];
+
+    const size_t DilationHeight = WorkBlock->DilationShape[0];
+    const size_t DilationWidth = WorkBlock->DilationShape[1];
+
+    const size_t PaddingLeftY = WorkBlock->Padding[0];
+    const size_t PaddingLeftX = WorkBlock->Padding[1];
+
+    const size_t KernelHeight = WorkBlock->KernelShape[0];
+    const size_t KernelWidth = WorkBlock->KernelShape[1];
+
+    const uint8_t* Input = WorkBlock->Input;
+
+    uint8_t* pa = PanelA;
+
+    size_t zic = (k % InputChannels);
+    size_t zkxy = (k / InputChannels);
+    size_t zkw = (zkxy % KernelWidth);
+    size_t zkh = (zkxy / KernelWidth);
+
+    if (DilationHeight == 1 && DilationWidth == 1 && CountK == InputChannels * KernelHeight * KernelWidth) {
+
+        for (size_t EndingM = m + CountM; m < EndingM; m++) {
+
+            const size_t mx = (m % OutputWidth);
+            const size_t my = (m / OutputWidth);
+
+            const size_t OriginInputX = mx * StrideWidth;
+            const size_t OriginInputY = my * StrideHeight;
+
+            uint8_t* paa = pa;
+            pa += ((CountK + 3) & (~3));
+
+            for (size_t kh = 0; kh < KernelHeight; kh++) {
+
+                size_t InputY = kh + OriginInputY - PaddingLeftY;
+                size_t InputX = OriginInputX - PaddingLeftX;
+
+                if (InputY >= InputHeight) {
+                    paa = std::fill_n(paa, KernelWidth * InputChannels, uint8_t(0));
+                    continue;
+                }
+
+                size_t kw = KernelWidth;
+
+                while (InputX > InputWidth) {
+                    InputX++;
+                    kw--;
+                    paa = std::fill_n(paa, InputChannels, uint8_t(0));
+                }
+
+                size_t pp = std::min(kw, InputWidth - InputX);
+
+                const uint8_t* inputPixel = Input + (InputY * InputWidth + InputX) * InputChannels;
+                paa = std::copy_n(inputPixel, pp * InputChannels, paa);
+
+                kw -= pp;
+
+                while (kw--) {
+                    paa = std::fill_n(paa, InputChannels, uint8_t(0));
+                }
+            }
+        }
+
+    } else {
+
+        for (size_t EndingM = m + CountM; m < EndingM; m++) {
+
+            const size_t mx = (m % OutputWidth);
+            const size_t my = (m / OutputWidth);
+
+            const size_t OriginInputX = mx * StrideWidth;
+            const size_t OriginInputY = my * StrideHeight;
+
+            size_t ic = zic;
+            size_t kw = zkw;
+            size_t kh = zkh;
+
+            size_t RemainingK = CountK;
+
+            uint8_t* paa = pa;
+            pa += ((CountK + 3) & (~3));
+
+            do {
+
+                size_t InputY = (kh * DilationHeight) + OriginInputY - PaddingLeftY;
+                size_t InputX = (kw * DilationWidth) + OriginInputX - PaddingLeftX;
+
+                size_t kk = InputChannels - ic;
+                if (kk > RemainingK) {
+                    kk = RemainingK;
+                }
+
+                const uint8_t* inputPixel = Input + (InputY * InputWidth + InputX) * InputChannels + ic;
+
+                if (InputY < InputHeight && InputX < InputWidth) {
+                    paa = std::copy_n(inputPixel, kk, paa);
+                } else {
+                    paa = std::fill_n(paa, kk, uint8_t(0));
+                }
+
+                ic = 0;
+                RemainingK -= kk;
+
+                if (++kw == KernelWidth) {
+
+                    if (++kh == KernelHeight) {
+
+                        kh = 0;
+                    }
+
+                    kw = 0;
+                }
+
+            } while (RemainingK > 0);
+        }
+    }
+}
+
+template<typename KernelType>
+void
+MLASCALL
+MlasQnhwcConvU8S8Operation(
+    const MLAS_QNHWC_CONV_WORK_BLOCK* WorkBlock
+    )
+/*++
+
+Routine Description:
+
+    This routine implements the quantized integer convolution operation.
+
+Arguments:
+
+    WorkBlock - Supplies the structure containing the convolution parameters.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    constexpr MLAS_GEMM_U8X8_STRIDES Strides = KernelType::PackedStrides;
+
+    MLAS_DECLSPEC_ALIGN(typename KernelType::PackedAType PanelA[Strides.M * Strides.K], 64);
+
+    MLAS_DECLSPEC_ALIGN(int32_t RowSumBuffer[Strides.M], 64);
+    MLAS_DECLSPEC_ALIGN(int32_t ColumnSumBuffer[Strides.N], 64);
+
+    const size_t M = WorkBlock->RangeCountM;
+    const size_t N = WorkBlock->RangeCountN;
+    const size_t K = WorkBlock->K;
+
+    const size_t ldc = WorkBlock->N;
+
+    const uint8_t* PackedFilter = (const uint8_t*)WorkBlock->PackedFilter;
+    int32_t* C = WorkBlock->C + WorkBlock->RangeStartM * ldc + WorkBlock->RangeStartN;
+
+    int32_t offa = WorkBlock->offa;
+    int32_t offb = typename KernelType::OffsetBType(WorkBlock->offb);
+
+    std::fill_n(RowSumBuffer, Strides.M, 0);
+
+    //
+    // Extract the pointer to the column sum buffer from the packed matrix.
+    //
+
+    const size_t AlignedN =
+        (WorkBlock->N + MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1);
+    const int32_t* PackedColumnSumBuffer = (const int32_t*)PackedFilter;
+    PackedFilter = (const uint8_t*)(PackedColumnSumBuffer + AlignedN);
+    PackedColumnSumBuffer += WorkBlock->RangeStartN;
+
+    //
+    // Step through each slice of matrix B along the K dimension.
+    //
+
+    size_t CountK;
+
+    for (size_t k = 0; k < K; k += CountK) {
+
+        CountK = std::min(K - k, Strides.K);
+
+        const size_t PackedCountK = (CountK + KernelType::PackedK - 1) /
+            KernelType::PackedK;
+
+        if (k > 0) {
+            std::fill_n(ColumnSumBuffer, Strides.N, 0);
+        }
+
+        //
+        // Step through each slice of matrix B along the N dimension.
+        //
+
+        size_t CountN;
+
+        for (size_t n = 0; n < N; n += CountN) {
+
+            CountN = std::min(N - n, Strides.N);
+
+            if (k == 0) {
+                MlasGemmU8X8ScaleSumBuffer(ColumnSumBuffer, PackedColumnSumBuffer + n,
+                    CountN, -offa);
+            }
+
+            //
+            // Step through each slice of matrix A along the M dimension.
+            //
+
+            const int32_t DepthValue = int32_t(CountK) * offa * offb;
+            const uint8_t* b = PackedFilter + (WorkBlock->RangeStartN + n) *
+                KernelType::PackedK * PackedCountK;
+            int32_t* c = C + n;
+            size_t CountM;
+
+            for (size_t m = 0; m < M; m += CountM) {
+
+                CountM = std::min(M - m, Strides.M);
+
+                MlasGemmU8S8PackAIm2col(WorkBlock, PanelA, WorkBlock->RangeStartM + m, CountM, k, CountK);
+
+                typename KernelType::PackedAType* pa = PanelA;
+                int32_t* RowSums = RowSumBuffer;
+                size_t RowsRemaining = CountM;
+
+                bool ZeroMode = (k == 0);
+
+                while (RowsRemaining > 0) {
+
+                    size_t RowsHandled;
+
+                    RowsHandled = KernelType::GemmKernel(pa, b, c, PackedCountK,
+                        RowsRemaining, CountN, ldc, RowSums, ColumnSumBuffer,
+                        DepthValue, ZeroMode);
+
+                    c += ldc * RowsHandled;
+                    pa += KernelType::PackedK * PackedCountK * RowsHandled;
+                    RowSums += RowsHandled;
+                    RowsRemaining -= RowsHandled;
+                }
+            }
+        }
+
+        PackedFilter = (const uint8_t*)PackedFilter + AlignedN * CountK;
+    }
+}
+
+void
+MlasQnhwcConvX8X8Threaded(
+    void* Context,
+    int32_t ThreadId
+    )
+/*++
+
+Routine Description:
+
+    This routine is invoked from a worker thread to execute a segment of a
+    QGEMM operation.
+
+Arguments:
+
+    Context - Supplies the pointer to the context for the threaded operation.
+
+    ThreadId - Supplies the current index of the threaded operation.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    MLAS_QNHWC_CONV_WORK_BLOCK WorkBlock;
+
+    memcpy(&WorkBlock, Context, sizeof(MLAS_QNHWC_CONV_WORK_BLOCK));
+
+    const int32_t ThreadIdM = ThreadId / WorkBlock.ThreadCountN;
+    const int32_t ThreadIdN = ThreadId % WorkBlock.ThreadCountN;
+
+    //
+    // Partition the operation along the M dimension.
+    //
+
+    MlasPartitionWork(ThreadIdM, WorkBlock.ThreadCountM, WorkBlock.M,
+        &WorkBlock.RangeStartM, &WorkBlock.RangeCountM);
+
+    //
+    // Partition the operation along the N dimension.
+    //
+
+    const size_t BlockedN = (WorkBlock.N + MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1) /
+        MLAS_QGEMM_STRIDEN_THREAD_ALIGN;
+
+    MlasPartitionWork(ThreadIdN, WorkBlock.ThreadCountN, BlockedN,
+        &WorkBlock.RangeStartN, &WorkBlock.RangeCountN);
+
+    WorkBlock.RangeStartN *= MLAS_QGEMM_STRIDEN_THREAD_ALIGN;
+    WorkBlock.RangeCountN *= MLAS_QGEMM_STRIDEN_THREAD_ALIGN;
+
+    WorkBlock.RangeCountN = std::min(WorkBlock.N - WorkBlock.RangeStartN,
+        WorkBlock.RangeCountN);
+
+    //
+    // Dispatch the partitioned operation.
+    //
+
+    MlasQnhwcConvU8S8Operation<MLAS_GEMM_U8S8_KERNEL_AVX2>(&WorkBlock);
+}
+
+void
+MlasQnhwcConvX8X8Schedule(
+    MLAS_QNHWC_CONV_WORK_BLOCK* WorkBlock,
+    MLAS_THREADPOOL* ThreadPool
+    )
+/*++
+
+Routine Description:
+
+    This module schedules the quantized integer matrix/matrix multiply
+    operation (QGEMM) across one or more threads.
+
+Arguments:
+
+    WorkBlock - Supplies the structure containing the GEMM parameters.
+
+    ThreadPool - Supplies the thread pool object to use, else nullptr if the
+        base library threading support should be used.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    const size_t M = WorkBlock->M;
+    const size_t N = WorkBlock->N;
+    const size_t K = WorkBlock->K;
+
+    //
+    // Compute the number of target threads given the complexity of the SGEMM
+    // operation. Small requests should run using the single threaded path.
+    //
+
+    double Complexity = double(M) * double(N) * double(K);
+
+    int32_t TargetThreadCount;
+
+    if (Complexity < double(MLAS_QGEMM_THREAD_COMPLEXITY * MLAS_MAXIMUM_THREAD_COUNT)) {
+        TargetThreadCount = int32_t(Complexity / double(MLAS_QGEMM_THREAD_COMPLEXITY)) + 1;
+    } else {
+        TargetThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
+    }
+
+    int32_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool);
+
+    if (TargetThreadCount >= MaximumThreadCount) {
+        TargetThreadCount = MaximumThreadCount;
+    }
+
+    //
+    // Segment the operation across multiple threads.
+    //
+    // N.B. Currently, the operation is segmented as a 1D partition, which
+    // works okay for operations involving skinny matrices.
+    //
+
+    if (N > M) {
+
+        const size_t BlockedN = (N + MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1) /
+            MLAS_QGEMM_STRIDEN_THREAD_ALIGN;
+
+        if (size_t(TargetThreadCount) > BlockedN) {
+            TargetThreadCount = int32_t(BlockedN);
+        }
+
+        WorkBlock->ThreadCountM = 1;
+        WorkBlock->ThreadCountN = TargetThreadCount;
+
+    } else {
+
+        if (size_t(TargetThreadCount) > M) {
+            TargetThreadCount = int32_t(M);
+        }
+
+        WorkBlock->ThreadCountM = TargetThreadCount;
+        WorkBlock->ThreadCountN = 1;
+    }
+
+    MlasExecuteThreaded(MlasQnhwcConvX8X8Threaded, WorkBlock, TargetThreadCount, ThreadPool);
+}
+
+void
+MLASCALL
+MlasQnhwcConv(
+    const int64_t* InputShape,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    const int64_t* Padding,
+    const int64_t* StrideShape,
+    const int64_t* OutputShape,
+    const uint8_t* Input,
+    uint8_t offa,
+    const int8_t* PackedFilter,
+    uint8_t offb,
+    int32_t* C,
+    MLAS_THREADPOOL* ThreadPool
+    )
+/*++
+
+Routine Description:
+
+    This module implements the quantized integer NHWC convolution operation.
+
+Arguments:
+
+    InputShape - Supplies the shape of the input tensor.
+
+    KernelShape - Supplies the shape of the kernel transform.
+
+    DilationShape - Supplies the shape of the dilation.
+
+    Padding - Supplies the number of padding elements at the edge of the input
+        tensor.
+
+    StrideShape - Supplies the shape of the stride.
+
+    OutputShape - Supplies the shape of the output tensor.
+
+    Input - Supplies the input tensor.
+
+    offa -
+
+    PackedFilter -
+
+    Output - Supplies the output tensor.
+
+    ThreadPool - Supplies the thread pool object to use, else nullptr if the
+        base library threading support should be used.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    MLAS_QNHWC_CONV_WORK_BLOCK WorkBlock;
+
+    //
+    // Capture the convolution parameters to the work block.
+    //
+
+    WorkBlock.InputChannels = size_t(InputShape[3]);
+    WorkBlock.OutputChannels = size_t(OutputShape[3]);
+    WorkBlock.M = size_t(OutputShape[1]) * size_t(OutputShape[2]);
+    WorkBlock.N = size_t(OutputShape[3]);
+    WorkBlock.K = size_t(InputShape[3]) * size_t(KernelShape[0]) * size_t(KernelShape[1]);
+    WorkBlock.Input = Input;
+    WorkBlock.PackedFilter = (const uint8_t*)PackedFilter;
+    WorkBlock.C = C;
+    WorkBlock.offa = int16_t(offa);
+    WorkBlock.offb = int16_t(offb);
+
+    for (size_t dim = 0; dim < 2; dim++) {
+        WorkBlock.InputShape[dim] = size_t(InputShape[dim + 1]);
+        WorkBlock.OutputShape[dim] = size_t(OutputShape[dim + 1]);
+        WorkBlock.KernelShape[dim] = size_t(KernelShape[dim]);
+        WorkBlock.StrideShape[dim] = size_t(StrideShape[dim]);
+        WorkBlock.DilationShape[dim] = size_t(DilationShape[dim]);
+        WorkBlock.Padding[dim] = size_t(Padding[dim]);
+        WorkBlock.Padding[dim + 2] = size_t(Padding[dim + 2]);
+    }
+
+    //
+    // Schedule the operation across a set of worker threads.
+    //
+
+    MlasQnhwcConvX8X8Schedule(&WorkBlock, ThreadPool);
 }
 
 #endif

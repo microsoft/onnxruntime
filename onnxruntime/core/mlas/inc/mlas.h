@@ -402,6 +402,28 @@ MlasConvertHalfToFloatBuffer(
     );
 
 //
+// Transpose routines.
+//
+
+void
+MLASCALL
+MlasTranspose(
+    const uint8_t* Input,
+    uint8_t* Output,
+    size_t M,
+    size_t N
+    );
+
+void
+MLASCALL
+MlasTranspose(
+    const uint32_t* Input,
+    uint32_t* Output,
+    size_t M,
+    size_t N
+    );
+
+//
 // Buffer reordering routines.
 //
 
@@ -527,6 +549,18 @@ MlasRequantizeOutput(
 
 void
 MLASCALL
+MlasRequantizeOutputNhwc(
+    const int32_t* Input,
+    uint8_t* Output,
+    const int32_t* Bias,
+    size_t M,
+    size_t N,
+    float Scale,
+    uint8_t ZeroPoint
+    );
+
+void
+MLASCALL
 MlasFindMinMaxElement(
     const float* Input,
     float* Min,
@@ -570,4 +604,21 @@ MlasQLinearMul(
     DataType* OutputC,
     size_t N,
     bool IsScalarB
+    );
+
+void
+MLASCALL
+MlasQnhwcConv(
+    const int64_t* InputShape,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    const int64_t* Padding,
+    const int64_t* StrideShape,
+    const int64_t* OutputShape,
+    const uint8_t* Input,
+    uint8_t offa,
+    const int8_t* B,
+    uint8_t offb,
+    int32_t* C,
+    MLAS_THREADPOOL* ThreadPool
     );

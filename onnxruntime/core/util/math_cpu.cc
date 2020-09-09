@@ -412,12 +412,12 @@ void Im2col<T, StorageOrder::NCHW>::operator()(const T* data_im, int64_t channel
 template struct Im2col<float, StorageOrder::NCHW>;
 template struct Im2col<uint8_t, StorageOrder::NCHW>;
 
-template <>
-void Im2col<float, StorageOrder::NHWC>::operator()(const float* data_im, int64_t channels, int64_t height,
-                                                   int64_t width, int64_t kernel_h, int64_t kernel_w,
-                                                   int64_t dilation_h, int64_t dilation_w, int64_t pad_t,
-                                                   int64_t pad_l, int64_t pad_b, int64_t pad_r, int64_t stride_h,
-                                                   int64_t stride_w, float* data_col, float padding_value) {
+template <typename T>
+void Im2col<T, StorageOrder::NHWC>::operator()(const T* data_im, int64_t channels, int64_t height,
+                                               int64_t width, int64_t kernel_h, int64_t kernel_w,
+                                               int64_t dilation_h, int64_t dilation_w, int64_t pad_t,
+                                               int64_t pad_l, int64_t pad_b, int64_t pad_r, int64_t stride_h,
+                                               int64_t stride_w, T* data_col, T padding_value) {
   const int64_t dkernel_h = dilation_h * (kernel_h - 1) + 1;
   const int64_t dkernel_w = dilation_w * (kernel_w - 1) + 1;
 
@@ -430,9 +430,9 @@ void Im2col<float, StorageOrder::NHWC>::operator()(const float* data_im, int64_t
     for (int64_t w = 0; w < width_col; ++w) {
       for (int64_t ih = h_pad; ih < h_pad + dkernel_h; ih += dilation_h) {
         for (int64_t iw = w_pad; iw < w_pad + dkernel_w; iw += dilation_w) {
-          if (ih >= 0 && ih < height && iw >= 0 && iw < width) {
+          if (is_a_ge_zero_and_a_lt_b(ih, height) && is_a_ge_zero_and_a_lt_b(iw, width)) {
             memcpy(data_col, data_im + (ih * width + iw) * channels,
-                   sizeof(float) * channels);
+                   sizeof(T) * channels);
           } else {
             std::fill_n(data_col, channels, padding_value);
           }
@@ -444,6 +444,8 @@ void Im2col<float, StorageOrder::NHWC>::operator()(const float* data_im, int64_t
     h_pad += stride_h;
   }
 }
+
+template struct Im2col<uint8_t, StorageOrder::NHWC>;
 
 template <>
 void Col2im<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, int64_t channels, int64_t height,
