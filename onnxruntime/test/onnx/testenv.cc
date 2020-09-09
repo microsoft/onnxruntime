@@ -4,6 +4,7 @@
 #include "testenv.h"
 #include "TestCase.h"
 #include "callables.h"
+#include "eigen_threadpool.h"
 #include "heap_buffer.h"
 #include "TestCaseResult.h"
 #include "test_allocator.h"
@@ -14,113 +15,10 @@
 #include "pb_helper.h"
 #include "test/compare_ortvalue.h"
 
-#if defined(_MSC_VER)
-#pragma warning(disable : 4267)
-#endif
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-#endif
-#include <core/platform/EigenNonBlockingThreadPool.h>
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
-
-
 // Class that allows to run a single TestCase either sync or async.
 namespace onnxruntime {
 namespace test {
 
-// This runs a single DataTask on a threadpool and
-// invokes a callback to TestCaseRequestContext that orchestrates
-// the DataTasks related to the model
-class DataTaskRequestContext {
- public:
-  // This is a callback that will be invoked by the individual task
-   // when it completes
-  using Callback = Callable<void, size_t, EXECUTE_RESULT, const TIME_SPEC&>;
-  static EXECUTE_RESULT Run(const ITestCase& c, Ort::Session& session,
-                  OrtAllocator* allocator, size_t task_id);
-
- static void Request(const Callback& cb, PThreadPool tp,
-                     const ITestCase& c, Ort::Session& session,
-                     OrtAllocator* allocator, size_t task_id);
-
-
-  DataTaskRequestContext(const DataTaskRequestContext&) = delete;
-  DataTaskRequestContext& operator=(const DataTaskRequestContext&) = delete;
-
-private:
-
-  DataTaskRequestContext(const Callback& cb, const ITestCase& c, Ort::Session& session,
-                         OrtAllocator* allocator, size_t task_id) 
-    : cb_(cb),
-      session_(session),
-      c_(c),
-      default_allocator_(allocator),
-      task_id_(task_id) {
-   SetTimeSpecToZero(&spent_time_);
-  }
-
-  ~DataTaskRequestContext() {}
-
-  void RunAsync();
-  EXECUTE_RESULT RunImpl();
-
-  Callback cb_;
-  Ort::Session& session_;
-  const ITestCase& c_;
-  OrtAllocator* default_allocator_;
-  size_t task_id_;
-  TIME_SPEC spent_time_;
-};
-
-EXECUTE_RESULT DataTaskRequestContext::Run(const ITestCase& c, Ort::Session& session,
-                         OrtAllocator* allocator, size_t task_id) {
-  EXECUTE_RESULT result;
-  Callback empty_cb;
-  DataTaskRequestContext ctx(empty_cb, c, session, allocator, task_id);
-  ORT_TRY {
-    result = ctx.RunImpl();
-  }
-  ORT_CATCH(const std::exception& ex) {
-    ORT_HANDLE_EXCEPTION([&]() {
-      result = EXECUTE_RESULT::WITH_EXCEPTION;
-      LOGS_DEFAULT(ERROR) << ctx.c_.GetTestCaseName() << ":" << ex.what();
-    });
-  }
-  return result;
-}
-
-void DataTaskRequestContext::Request(const Callback& cb, PThreadPool tp,
-  const ITestCase& c, Ort::Session& session,
-  OrtAllocator* allocator, size_t task_id) {
-
-  assert(cb);
-  std::unique_ptr<DataTaskRequestContext> self(new DataTaskRequestContext(cb, c, session, allocator, task_id));
-  CallableFactory<DataTaskRequestContext, void> f(self.get());
-  auto runnable = f.GetCallable<&DataTaskRequestContext::RunAsync>();
-  tp->Schedule([runnable]() { runnable.Invoke(); });
-  self.release();
-}
-
-
-void DataTaskRequestContext::RunAsync() {
-  EXECUTE_RESULT result;
-  ORT_TRY {
-    result = RunImpl();
-  }
-  ORT_CATCH(const std::exception& ex) {
-    ORT_HANDLE_EXCEPTION([&]() {
-      result = EXECUTE_RESULT::WITH_EXCEPTION;
-      LOGS_DEFAULT(ERROR) << c_.GetTestCaseName() << ":" << ex.what();
-    });
-  }
-
-  assert(cb_);
-  std::unique_ptr<DataTaskRequestContext> self(this);
-  cb_.Invoke(task_id_, result, spent_time_);
-}
 
 EXECUTE_RESULT DataTaskRequestContext::RunImpl() {
   onnxruntime::test::HeapBuffer holder;

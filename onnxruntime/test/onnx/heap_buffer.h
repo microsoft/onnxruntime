@@ -2,13 +2,15 @@
 // Licensed under the MIT License.
 
 #pragma once
+
+#include "callback.h"
+
 #include <vector>
 #include <memory>
 #include <stdlib.h>
 
 namespace onnxruntime {
 namespace test {
-struct OrtCallback;
 /**
  * A holder for delay freed buffers
  */

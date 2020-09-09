@@ -9,12 +9,6 @@
 #include <core/common/status.h>
 #include <core/platform/path_lib.h>
 
-namespace onnxruntime {
-namespace test {
-class HeapBuffer;
-}
-}  // namespace onnxruntime
-
 namespace Ort {
 struct Value;
 }
@@ -22,6 +16,12 @@ struct Value;
 namespace ONNX_NAMESPACE {
 class ValueInfoProto;
 }
+
+namespace onnxruntime {
+namespace test {
+class HeapBuffer;
+}
+}  // namespace onnxruntime
 
 //One test case is for one model file
 //One test case can contain multiple test data(input/output pairs)
