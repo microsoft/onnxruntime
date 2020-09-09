@@ -215,19 +215,29 @@ endif()
 if(onnxruntime_MINIMAL_BUILD)
   add_compile_definitions(ORT_MINIMAL_BUILD)
   set(onnxruntime_REDUCED_OPS_BUILD ON)
-  set(onnxruntime_DISABLE_RTTI ON)
+
+  if (NOT onnxruntime_ENABLE_PYTHON)
+    # Python bindings use typeid so can't automatically disable RTTI in that case
+    set(onnxruntime_DISABLE_RTTI ON)
+  endif()
 
   if (MSVC)
     # add MSVC specific flags to reduce build size here if needed
+    
+    # undocumented internal flag to allow analysis of a minimal build binary size
+    if (ADD_DEBUG_INFO_TO_MINIMAL_BUILD)
+      string(APPEND CMAKE_CXX_FLAGS " /Zi")
+      string(APPEND CMAKE_C_FLAGS " /Zi")
+      string(APPEND CMAKE_SHARED_LINKER_FLAGS " /debug")
+    endif()
   else()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ffunction-sections -fdata-sections")
     if (CMAKE_HOST_SYSTEM MATCHES "Darwin")
-      add_link_options(-Wl,-dead_strip)
+      add_link_options(-Wl, -dead_strip)
     else()
       add_link_options(-Wl,--gc-sections)
-    endif()  
+    endif()
   endif()
-
 endif()
 
 if (onnxruntime_REDUCED_OPS_BUILD)
@@ -344,7 +354,7 @@ if (MSVC)
     SET (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Gw /GL")
     SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /Gw /GL")
   endif()
-  
+
   # The WinML build tool chain builds ARM/ARM64, and the internal tool chain does not have folders for spectre mitigation libs.
   # WinML performs spectre mitigation differently.
   if (NOT DEFINED onnxruntime_DISABLE_QSPECTRE_CHECK)
