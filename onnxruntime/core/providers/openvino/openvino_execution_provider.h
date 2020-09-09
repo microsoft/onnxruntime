@@ -17,8 +17,11 @@ namespace onnxruntime {
 struct OpenVINOExecutionProviderInfo {
   std::string device_id_;
   std::string precision_;
+  bool enable_vpu_fast_compile_;
 
-  explicit OpenVINOExecutionProviderInfo(std::string dev_id) {
+  explicit OpenVINOExecutionProviderInfo(std::string dev_id, bool enable_vpu_fast_compile = false)
+            : enable_vpu_fast_compile_(enable_vpu_fast_compile) {
+
     if (dev_id == "") {
       LOGS_DEFAULT(INFO) << "[OpenVINO-EP]"
                          << "No runtime device selection option provided.";

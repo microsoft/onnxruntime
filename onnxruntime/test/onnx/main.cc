@@ -325,7 +325,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
         sf.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
       }
 
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, ""));
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, "", false));
 #else
       fprintf(stderr, "OpenVINO is not supported in this build");
       return -1;

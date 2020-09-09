@@ -20,6 +20,8 @@ constexpr const char* OpenVINO = "OpenVINO";
 
 OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kOpenVINOExecutionProvider}, info_(info) {
+
+  openvino_ep::BackendManager::GetGlobalContext().enable_vpu_fast_compile = info_.enable_vpu_fast_compile_;
   AllocatorCreationInfo device_info(
       [](int) {
         return std::make_unique<CPUAllocator>(OrtMemoryInfo(OpenVINO, OrtDeviceAllocator));

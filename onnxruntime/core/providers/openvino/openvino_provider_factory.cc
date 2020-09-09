@@ -7,7 +7,8 @@
 
 namespace onnxruntime {
 struct OpenVINOProviderFactory : IExecutionProviderFactory {
-  OpenVINOProviderFactory(const char* device) {
+  OpenVINOProviderFactory(const char* device, bool enable_vpu_fast_compile)
+    : enable_vpu_fast_compile_(enable_vpu_fast_compile) {
     if (device == nullptr) {
       device_ = "";
     } else {
@@ -21,23 +22,24 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
 
  private:
   std::string device_;
+  bool enable_vpu_fast_compile_;
 };
 
 std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
-  OpenVINOExecutionProviderInfo info(device_);
+  OpenVINOExecutionProviderInfo info(device_, enable_vpu_fast_compile_);
   return std::make_unique<OpenVINOExecutionProvider>(info);
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(
-    const char* device_id) {
-  return std::make_shared<onnxruntime::OpenVINOProviderFactory>(device_id);
+    const char* device_id, bool enable_vpu_fast_compile) {
+  return std::make_shared<onnxruntime::OpenVINOProviderFactory>(device_id, enable_vpu_fast_compile);
 }
 
 }  // namespace onnxruntime
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_OpenVINO,
-                    _In_ OrtSessionOptions* options, const char* device_id) {
+                    _In_ OrtSessionOptions* options, const char* device_id, bool enable_vpu_fast_compile) {
   options->provider_factories.push_back(
-      onnxruntime::CreateExecutionProviderFactory_OpenVINO(device_id));
+      onnxruntime::CreateExecutionProviderFactory_OpenVINO(device_id, enable_vpu_fast_compile));
   return nullptr;
 }

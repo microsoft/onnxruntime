@@ -8,14 +8,14 @@ For build instructions, please see the [BUILD page](../../BUILD.md#openvino).
 ## Onnxruntime Graph Optimization level
 OpenVINO backend performs both hardware dependent as well as independent optimizations to the graph to infer it with on the target hardware with best possible performance. In most of the cases it has been observed that passing in the graph from the input model as is would lead to best possible optimizations by OpenVINO. For this reason, it is advised to turn off high level optimizations performed by ONNX Runtime before handing the graph over to OpenVINO backend. This can be done using Session options as shown below:-
 
-1. Python API
+### Python API
 ```
 options = onnxruntime.SessionOptions()
 options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
 sess = onnxruntime.InferenceSession(<path_to_model_file>, options)
 ```
 
-2. C++ API
+### C/C++ API
 ```
 SessionOptions::SetGraphOptimizationLevel(ORT_DISABLE_ALL);
 ```
@@ -24,15 +24,38 @@ SessionOptions::SetGraphOptimizationLevel(ORT_DISABLE_ALL);
 When ONNX Runtime is built with OpenVINO Execution Provider, a target hardware option needs to be provided. This build time option becomes the default target harware the EP schedules inference on. However, this target may be overriden at runtime to schedule inference on a different hardware as shown below.
 
 Note. This dynamic hardware selection is optional. The EP falls back to the build-time default selection if no dynamic hardware option value is specified.
-1. Python API
+
+### Python API
 ```
 import onnxruntime
 onnxruntime.capi._pybind_state.set_openvino_device("<harware_option>")
 # Create session after this
 ```
-2. C/C++ API
+*This property persists and gets applied to new sessions until it is explicity unset. To unset, assign a null string ("").*
+
+### C/C++ API
+
+Pass the device string as the **second** argument of the call to append OpenVINO EP.
 ```
-Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, "<hardware_option>"));
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, "<hardware_option>", ... ));
+```
+
+## Enable VPU Fast-compile
+When scheduling inference on VPU, Fast-compile may be option that speeds up the model's compilation to VPU device specific format which speeds up model initialization time. However, enabling this option may slowdown inference due to some of the optimizations not being fully applied, so caution is to be exercised while enabling this.
+
+### Python API
+```
+import onnxruntime
+onnxruntime.capi._pybind_state.enable_vpu_fast_compile(True)
+# Create session after this
+```
+*This property persists and gets applied to new sessions until it is explicity unset. To unset, assign a value False to the property.*
+
+### C/C++ API
+
+Pass the boolen value as the **third** argument of the call to append OpenVINO EP.
+```
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, "<hardware_option>", true));
 ```
 
 ## ONNX Layers supported using OpenVINO
