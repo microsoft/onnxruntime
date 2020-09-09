@@ -13,7 +13,7 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "gtest/gtest.h"
-#include "onnx/defs/schema.h"
+#include "core/graph/onnx_protobuf.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/framework/test_utils.h"
 

@@ -1752,6 +1752,16 @@ ORT_API_STATUS_IMPL(OrtApis::TensorAt, _Inout_ OrtValue* value, size_t* location
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::SetLanguageProjection, _In_ const OrtEnv* ort_env, _In_ OrtLanguageProjection projection) {
+  API_IMPL_BEGIN
+  ORT_UNUSED_PARAMETER(ort_env);
+  // note telemetry is controlled via the platform Env object, not the OrtEnv object instance
+  const Env& env = Env::Default();
+  env.GetTelemetryProvider().SetLanguageProjection(static_cast<uint32_t>(projection));
+  return nullptr;
+  API_IMPL_END
+}
+
 // End support for non-tensor types
 
 static constexpr OrtApiBase ort_api_base = {
@@ -1972,6 +1982,7 @@ static constexpr OrtApi ort_api_1_to_5 = {
     &OrtApis::ClearBoundOutputs,
     &OrtApis::TensorAt,
     &OrtApis::CreateAndRegisterAllocator,
+    &OrtApis::SetLanguageProjection,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

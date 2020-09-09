@@ -77,10 +77,10 @@ class ORTGlueTest(unittest.TestCase):
         self.rtol = 1e-02
 
     def test_roberta_with_mrpc(self):
-        expected_acc = 0.8848039215686274
-        expected_f1 = 0.917975567190227
-        expected_acc_and_f1 = 0.9013897443794272
-        expected_loss = 0.35917433314755853
+        expected_acc = 0.8676470588235294
+        expected_f1 = 0.9035714285714286
+        expected_acc_and_f1 = 0.885609243697479
+        expected_loss = 0.3022572344862947
 
         results_per_api = dict()
         for use_new_api in [True, False]:
@@ -94,10 +94,10 @@ class ORTGlueTest(unittest.TestCase):
         verify_old_and_new_api_are_equal(results_per_api)
 
     def test_roberta_fp16_with_mrpc(self):
-        expected_acc = 0.8946078431372549
-        expected_f1 = 0.924693520140105
-        expected_acc_and_f1 = 0.90965068163868
-        expected_loss = 0.3052181116506165
+        expected_acc = 0.8897058823529411
+        expected_f1 = 0.9197860962566845
+        expected_acc_and_f1 = 0.9047459893048129
+        expected_loss = 0.3035417107098243
 
         results_per_api = dict()
         for use_new_api in [True, False]:

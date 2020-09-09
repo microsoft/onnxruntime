@@ -149,10 +149,10 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
     }                                                                                          \
   } while (false)
 
-#define ORT_THROW_EX(ex, ...)                                                       \
-  do {                                                                              \
-    std::cerr << #ex << ::onnxruntime::MakeString(__VA_ARGS__) << ")" << std::endl; \
-    abort();                                                                        \
+#define ORT_THROW_EX(ex, ...)                                                              \
+  do {                                                                                     \
+    std::cerr << #ex << "(" << ::onnxruntime::MakeString(__VA_ARGS__) << ")" << std::endl; \
+    abort();                                                                               \
   } while (false)
 
 #else
@@ -182,7 +182,7 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
                                             ::onnxruntime::MakeString(__VA_ARGS__))
 
 #define ORT_THROW_EX(ex, ...) \
-  throw ex(##__VA_ARGS__)
+  throw ex(__VA_ARGS__)
 
 #endif
 
@@ -314,12 +314,5 @@ inline std::wstring ToWideString(const std::wstring& s) { return s; }
 #else
 inline std::string ToWideString(const std::string& s) { return s; }
 #endif
-
-// from http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2014/n3876.pdf
-template <class T>
-inline void HashCombine(std::uint64_t& seed, const T& v) {
-  std::hash<T> hasher;
-  seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-}
 
 }  // namespace onnxruntime

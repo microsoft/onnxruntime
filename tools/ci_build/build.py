@@ -287,15 +287,7 @@ def parse_arguments():
     parser.add_argument(
         "--use_full_protobuf", action='store_true',
         help="Use the full protobuf library")
-    parser.add_argument(
-        "--disable_contrib_ops", action='store_true',
-        help="Disable contrib ops (reduces binary size)")
-    parser.add_argument(
-        "--disable_ml_ops", action='store_true',
-        help="Disable traditional ML ops (reduces binary size)")
-    parser.add_argument(
-        "--disable_rtti", action='store_true',
-        help="Disable RTTI (reduces binary size)")
+
     parser.add_argument(
         "--skip_onnx_tests", action='store_true', help="Explicitly disable "
         "all onnx related tests. Note: Use --skip_tests to skip all tests.")
@@ -341,7 +333,7 @@ def parse_arguments():
         help="Enable Link Time Optimization")
     parser.add_argument(
         "--use_acl", nargs="?", const="ACL_1905",
-        choices=["ACL_1902", "ACL_1905", "ACL_1908"],
+        choices=["ACL_1902", "ACL_1905", "ACL_1908", "ACL_2002"],
         help="Build with ACL for ARM architectures.")
     parser.add_argument(
         "--use_armnn", action='store_true',
@@ -355,12 +347,25 @@ def parse_arguments():
     parser.add_argument(
         "--build_micro_benchmarks", action='store_true',
         help="Build ONNXRuntime micro-benchmarks.")
-    parser.add_argument(
-        "--include_ops_by_model", type=str,
-        help="include ops from model(s) under designated path.")
-    parser.add_argument(
-        "--include_ops_by_file", type=str,
-        help="include ops from csv file.")
+
+    # options to reduce binary size
+    parser.add_argument("--minimal_build", action='store_true',
+                        help="Create a build that only supports ORT format models. "
+                        "See /docs/ONNX_Runtime_Format_Model_Usage.md for more information. "
+                        "RTTI is automatically disabled in a minimal build.")
+    parser.add_argument("--include_ops_by_model", type=str, help="include ops from model(s) under designated path.")
+    parser.add_argument("--include_ops_by_config", type=str,
+                        help="include ops from config file. "
+                        "See /docs/Reduced_Operator_Kernel_build.md for more information.")
+
+    parser.add_argument("--disable_contrib_ops", action='store_true',
+                        help="Disable contrib ops (reduces binary size)")
+    parser.add_argument("--disable_ml_ops", action='store_true',
+                        help="Disable traditional ML ops (reduces binary size)")
+    parser.add_argument("--disable_rtti", action='store_true', help="Disable RTTI (reduces binary size)")
+    parser.add_argument("--disable_exceptions", action='store_true',
+                        help="Disable exceptions to reduce binary size. Requires --minimal_build.")
+
     return parser.parse_args()
 
 
@@ -617,12 +622,13 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         # script).
         "-Donnxruntime_CROSS_COMPILING=" + (
             "ON" if args.arm64 or args.arm else "OFF"),
-        "-Donnxruntime_DISABLE_CONTRIB_OPS=" + (
-            "ON" if args.disable_contrib_ops else "OFF"),
-        "-Donnxruntime_DISABLE_ML_OPS=" + (
-            "ON" if args.disable_ml_ops else "OFF"),
-        "-Donnxruntime_DISABLE_RTTI=" + (
-            "ON" if args.disable_rtti else "OFF"),
+        "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
+        "-Donnxruntime_DISABLE_ML_OPS=" + ("ON" if args.disable_ml_ops else "OFF"),
+        "-Donnxruntime_DISABLE_RTTI=" + ("ON" if args.disable_rtti else "OFF"),
+        "-Donnxruntime_DISABLE_EXCEPTIONS=" + ("ON" if args.disable_exceptions else "OFF"),
+        "-Donnxruntime_MINIMAL_BUILD=" + ("ON" if args.minimal_build else "OFF"),
+        "-Donnxruntime_REDUCED_OPS_BUILD=" + (
+            "ON" if args.include_ops_by_config or args.include_ops_by_model else "OFF"),
         "-Donnxruntime_MSVC_STATIC_RUNTIME=" + (
             "ON" if args.enable_msvc_static_runtime else "OFF"),
         # enable pyop if it is nightly build
@@ -641,6 +647,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "ON" if args.use_acl == "ACL_1905" else "OFF"),
         "-Donnxruntime_USE_ACL_1908=" + (
             "ON" if args.use_acl == "ACL_1908" else "OFF"),
+        "-Donnxruntime_USE_ACL_2002=" + (
+            "ON" if args.use_acl == "ACL_2002" else "OFF"),
         "-Donnxruntime_USE_ARMNN=" + (
             "ON" if args.use_armnn else "OFF"),
         "-Donnxruntime_ARMNN_RELU_USE_CPU=" + (
@@ -1103,6 +1111,8 @@ def run_training_python_frontend_tests(cwd):
     run_subprocess([
         sys.executable, 'orttraining_test_transformers.py',
         'BertModelTest.test_for_pretraining_full_precision_list_and_dict_input'], cwd=cwd)
+    run_subprocess([sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_orttrainer_frontend.py'], cwd=cwd)
+    run_subprocess([sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_orttrainer_bert_toy_onnx.py'], cwd=cwd)
 
 
 def run_training_python_frontend_e2e_tests(cwd):
@@ -1144,7 +1154,11 @@ def run_training_python_frontend_e2e_tests(cwd):
 
     run_subprocess([
         sys.executable, 'orttraining_test_transformers.py',
-        'BertModelTest.test_for_pretraining_mixed_precision_all'], cwd=cwd)
+        'BertModelTest.test_for_pretraining_mixed_precision'], cwd=cwd)
+
+    run_subprocess([
+        sys.executable, 'orttraining_test_transformers.py',
+        'BertModelTest.test_for_pretraining_mixed_precision_with_gradient_accumulation'], cwd=cwd)
 
 
 def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
@@ -1220,20 +1234,21 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             ctest_cmd = [ctest_path, "--build-config", config, "--verbose"]
             run_subprocess(ctest_cmd, cwd=cwd, dll_path=dll_path)
 
-        if args.enable_pybind and not\
-           args.include_ops_by_model and not\
-           args.include_ops_by_file:
-
+        if args.enable_pybind:
             # Disable python tests for TensorRT because many tests are
             # not supported yet.
             if args.use_tensorrt:
                 return
+
+            # Disable python tests in a reduced build as we don't know which ops have been included and which
+            # models can run
+            if args.include_ops_by_model or args.include_ops_by_config or args.minimal_build:
+                return
+
             if is_windows():
                 cwd = os.path.join(cwd, config)
 
-            run_subprocess(
-                [sys.executable, 'onnxruntime_test_python.py'],
-                cwd=cwd, dll_path=dll_path)
+            run_subprocess([sys.executable, 'onnxruntime_test_python.py'], cwd=cwd, dll_path=dll_path)
 
             # For CUDA enabled builds test IOBinding feature
             # Limit testing to Windows non-ARM builds for now
@@ -1273,34 +1288,24 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 onnx_test = True
             except ImportError as error:
                 log.exception(error)
-                log.warning(
-                    "onnx is not installed. "
-                    "The ONNX tests will be skipped.")
+                log.warning("onnx is not installed. The ONNX tests will be skipped.")
                 onnx_test = False
 
             if onnx_test:
-                run_subprocess(
-                    [sys.executable, 'onnxruntime_test_python_backend.py'],
-                    cwd=cwd, dll_path=dll_path)
+                run_subprocess([sys.executable, 'onnxruntime_test_python_backend.py'], cwd=cwd, dll_path=dll_path)
 
                 if not args.disable_ml_ops:
-                    run_subprocess(
-                        [sys.executable, 'onnxruntime_test_python_backend_mlops.py'],
-                        cwd=cwd, dll_path=dll_path)
+                    run_subprocess([sys.executable, 'onnxruntime_test_python_backend_mlops.py'],
+                                   cwd=cwd, dll_path=dll_path)
 
-                run_subprocess(
-                    [sys.executable,
-                     os.path.join(source_dir, 'onnxruntime', 'test', 'onnx',
-                                  'gen_test_models.py'),
-                     '--output_dir', 'test_models'], cwd=cwd)
+                run_subprocess([sys.executable,
+                                os.path.join(source_dir, 'onnxruntime', 'test', 'onnx', 'gen_test_models.py'),
+                                '--output_dir', 'test_models'], cwd=cwd)
+
                 if not args.skip_onnx_tests:
-                    run_subprocess(
-                        [os.path.join(cwd, 'onnx_test_runner'), 'test_models'],
-                        cwd=cwd)
+                    run_subprocess([os.path.join(cwd, 'onnx_test_runner'), 'test_models'], cwd=cwd)
                 if config != 'Debug':
-                    run_subprocess(
-                        [sys.executable, 'onnx_backend_test_series.py'],
-                        cwd=cwd, dll_path=dll_path)
+                    run_subprocess([sys.executable, 'onnx_backend_test_series.py'], cwd=cwd, dll_path=dll_path)
 
             if not args.skip_keras_test:
                 try:
@@ -1348,7 +1353,7 @@ def run_nodejs_tests(nodejs_binding_dir):
 
 def build_python_wheel(
         source_dir, build_dir, configs, use_cuda, use_ngraph, use_dnnl,
-        use_tensorrt, use_openvino, use_nuphar, use_vitisai, use_acl, use_armnn,
+        use_tensorrt, use_openvino, use_nuphar, use_vitisai, use_acl, use_armnn, use_dml,
         wheel_name_suffix, enable_training, nightly_build=False, featurizers_build=False, use_ninja=False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
@@ -1397,6 +1402,8 @@ def build_python_wheel(
             args.append('--use_acl')
         elif use_armnn:
             args.append('--use_armnn')
+        elif use_dml:
+            args.append('--use_dml')
 
         run_subprocess(args, cwd=cwd)
 
@@ -1613,13 +1620,11 @@ def main():
     if args.skip_tests:
         args.test = False
 
-    if args.include_ops_by_model or args.include_ops_by_file:
-
+    if args.include_ops_by_model or args.include_ops_by_config:
         from exclude_unused_ops import exclude_unused_ops, get_provider_path
         include_ops_by_model = args.include_ops_by_model if args.include_ops_by_model else ''
-        include_ops_by_file = args.include_ops_by_file if args.include_ops_by_file else ''
-        exclude_unused_ops(include_ops_by_model, include_ops_by_file, get_provider_path(use_cuda=args.use_cuda))
-        cmake_extra_defines.append('onnxruntime_REDUCED_OPS_BUILD=ON')
+        include_ops_by_config = args.include_ops_by_config if args.include_ops_by_config else ''
+        exclude_unused_ops(include_ops_by_model, include_ops_by_config, get_provider_path(use_cuda=args.use_cuda))
 
     if args.use_tensorrt:
         args.use_cuda = True
@@ -1631,8 +1636,10 @@ def main():
         args.build_shared_lib = True
 
     if args.build_nuget and cross_compiling:
-        raise BuildError(
-                'Currently nuget package creation is not supported while cross-compiling')
+        raise BuildError('Currently nuget package creation is not supported while cross-compiling')
+
+    if args.enable_pybind and args.disable_exceptions:
+        raise BuildError('Python bindings require exceptions to be enabled.')
 
     # Disabling unit tests for VAD-F as FPGA only supports
     # models with NCHW layout
@@ -1789,6 +1796,7 @@ def main():
                 args.use_vitisai,
                 args.use_acl,
                 args.use_armnn,
+                args.use_dml,
                 args.wheel_name_suffix,
                 args.enable_training,
                 nightly_build=nightly_build,

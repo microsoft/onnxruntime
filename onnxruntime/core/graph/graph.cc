@@ -1199,9 +1199,6 @@ common::Status Graph::SetOuterScopeNodeArgs(const std::unordered_set<std::string
     //   - any inputs/initializers from this graph
     //   - any outputs from nodes in this graph
     //
-    // NOTE: We must add the most outer most NodeArgs first, and then local NodeArgs, as the local should override
-    // an outer scope value if they have the same name.
-    //
     // We provide outputs from all nodes in this graph at this stage.
     // BuildConnections will link the node with the subgraph to any outer scope Node/NodeArgs it consumes.
     // PerformTopologicalSortAndCheckIsAcyclic will validate these links.
@@ -2712,15 +2709,6 @@ common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   auto inputs = SaveInputsOutputsToOrtFormat(builder, graph_inputs_including_initializers_);
   auto outputs = SaveInputsOutputsToOrtFormat(builder, graph_outputs_);
 
-  // outer_scope_node_args are required to determine outer scope values to make available when executing a subgraph.
-  // For an ORT_MINIMAL_BUILD there is no Graph::Resolve() to calculate the outer_scope_node_args
-  // so we serialize that information into the ORT format file.
-  std::vector<std::string> outer_scope_node_args_vec(resolve_context_.outer_scope_node_args.size());
-  std::copy(resolve_context_.outer_scope_node_args.cbegin(),
-            resolve_context_.outer_scope_node_args.cend(),
-            outer_scope_node_args_vec.begin());
-  auto outer_scope_node_args = builder.CreateVectorOfStrings(outer_scope_node_args_vec);
-
   std::vector<flatbuffers::Offset<fbs::Tensor>> initializers_data;
   initializers_data.reserve(name_to_initial_tensor_.size());
   for (const auto& pair : name_to_initial_tensor_) {
@@ -2763,7 +2751,6 @@ common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   gb.add_node_edges(node_edges);
   gb.add_inputs(inputs);
   gb.add_outputs(outputs);
-  gb.add_outer_scope_node_args(outer_scope_node_args);
   fbs_graph = gb.Finish();
   return Status::OK();
 }
@@ -3529,15 +3516,6 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Gr
   ComputeOverridableInitializers();
 
   ORT_RETURN_IF_ERROR(add_node_args(fbs_graph.outputs(), graph_outputs_));
-
-  auto fbs_outer_scope_node_args = fbs_graph.outer_scope_node_args();
-  if (fbs_outer_scope_node_args != nullptr) {
-    resolve_context_.outer_scope_node_args.reserve(fbs_outer_scope_node_args->size());
-    for (const auto node_arg_name : *fbs_outer_scope_node_args) {
-      ORT_RETURN_IF(nullptr == node_arg_name, "node_arg_name is null. Invalid ORT format model.");
-      resolve_context_.outer_scope_node_args.insert(node_arg_name->str());
-    }
-  }
 
   return Status::OK();
 }
