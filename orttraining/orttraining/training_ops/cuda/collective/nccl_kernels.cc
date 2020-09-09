@@ -67,7 +67,7 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
       total_count += input_tensor->Shape().Size();
     }
     const int64_t alignment = size * 32;
-    const int64_t padded_count = (total_count % alignment) ? (total_count + alignment - (total_count % alignment)) : total_count;
+    const int64_t padded_count = total_count + alignment - (total_count % alignment);
     const int64_t padded_size = padded_count * element_size;
     auto fusion_buffer = GetScratchBuffer<void>(padded_size);
     void* fusion_data = fusion_buffer.get();
@@ -112,7 +112,7 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
       output_tensor->SetByteOffset(input_tensor->ByteOffset());
 
       // Only copy outputs that came from other ranks.
-      if (rank_start <= offset && offset < rank_end) {
+      if (offset < rank_start || offset >= rank_end) {
         void* output_data = output_tensor->MutableDataRaw();
         const void* fusion_data_at_offset = (const int8_t*)fusion_data + offset;
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, fusion_data_at_offset, tensor_bytes, cudaMemcpyDeviceToDevice));
