@@ -2,9 +2,10 @@
 // Licensed under the MIT License.
 
 #include <fstream>
+
+#include "core/common/logging/logging.h"
 #include "core/flatbuffers/ort.fbs.h"
 #include "core/graph/model.h"
-#include "core/common/logging/logging.h"
 
 #include "onnx_model_info.h"
 #include "core/platform/env.h"
@@ -23,7 +24,15 @@ static void RepeatedPtrFieldToVector(const ::google::protobuf::RepeatedPtrField<
   }
 }
 
-OnnxModelInfo::OnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url) : model_url_(model_url) {
+OnnxModelInfo::OnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url, bool is_ort_model)
+    : model_url_(model_url) {
+  if (is_ort_model)
+    InitOrtModelInfo(model_url);
+  else
+    InitOnnxModelInfo(model_url);
+}
+
+void OnnxModelInfo::InitOnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {
   // parse model
   int model_fd;
   auto st = Env::Default().FileOpenRd(model_url, model_fd);
@@ -77,7 +86,7 @@ OnnxModelInfo::OnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url) : model_url_(
   RepeatedPtrFieldToVector(graph.output(), output_value_info_);
 }
 
-OrtModelInfo::OrtModelInfo(_In_ const PATH_CHAR_TYPE* model_url) : model_url_(model_url) {
+void OnnxModelInfo::InitOrtModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {
   std::vector<uint8_t> bytes;
   size_t num_bytes = 0;
   const auto model_location = ToWideString(model_url);
@@ -85,6 +94,9 @@ OrtModelInfo::OrtModelInfo(_In_ const PATH_CHAR_TYPE* model_url) : model_url_(mo
   bytes.resize(num_bytes);
   std::ifstream bytes_stream(model_location, std::ifstream::in | std::ifstream::binary);
   bytes_stream.read(reinterpret_cast<char*>(bytes.data()), num_bytes);
+
+  // TODO, verify it is a valid ort format
+  // TODO, version matches the ORT version
   const auto* fbs_session = fbs::GetInferenceSession(bytes.data());
   if (nullptr == fbs_session)
     ORT_THROW("InferenceSession is null. Invalid ORT format model.");
