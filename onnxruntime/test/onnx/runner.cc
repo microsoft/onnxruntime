@@ -297,10 +297,15 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
       }
 
       std::basic_string<PATH_CHAR_TYPE> filename_str = filename;
-      bool is_onnx_format = HasExtensionOf(filename_str, ORT_TSTR("onnx"));
       bool is_ort_format = HasExtensionOf(filename_str, ORT_TSTR("ort"));
+#if !defined(ORT_MINIMAL_BUILD)
+      bool is_onnx_format = HasExtensionOf(filename_str, ORT_TSTR("onnx"));
       if (!is_onnx_format && !is_ort_format)
         return true;
+#else
+      if( !is_ort_format )
+         return true;
+#endif
 
       std::basic_string<PATH_CHAR_TYPE> test_case_name = my_dir_name;
       if (test_case_name.compare(0, 5, ORT_TSTR("test_")) == 0) test_case_name = test_case_name.substr(5);
@@ -314,10 +319,15 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
       std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent<PATH_CHAR_TYPE>(node_data_root_path, filename_str);
 
       std::unique_ptr<TestModelInfo> model_info;
-      if (is_onnx_format)
+#if !defined(ORT_MINIMAL_BUILD)
+      if (is_onnx_format) {
         model_info = TestModelInfo::LoadOnnxModel(p.c_str());
-      else
+      } else {
         model_info = TestModelInfo::LoadOrtModel(p.c_str());
+      }
+#else
+      model_info = TestModelInfo::LoadOrtModel(p.c_str());
+#endif
 
       std::unique_ptr<ITestCase> l = CreateOnnxTestCase(ToMBString(test_case_name), std::move(model_info),
                                                         default_per_sample_tolerance,
