@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if defined(USE_NCCL) || defined(USE_HOROVOD)
+
 #include "orttraining/training_ops/cuda/communication/send.h"
 #include "orttraining/training_ops/cuda/communication/common.h"
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
@@ -252,3 +254,5 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
 
 }  // namespace cuda
 }  // namespace onnxruntime
+
+#endif

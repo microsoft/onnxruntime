@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if defined(USE_NCCL)
+#ifdef USE_NCCL
 
 #pragma once
 #include <condition_variable>

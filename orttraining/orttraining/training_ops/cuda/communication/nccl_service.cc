@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if defined(USE_NCCL)
+#ifdef USE_NCCL
 
 #include "core/common/common.h"
 #include "core/profile/context.h"
