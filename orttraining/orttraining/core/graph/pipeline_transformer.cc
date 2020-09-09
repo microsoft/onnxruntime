@@ -629,12 +629,12 @@ Status TransformGraphForPipeline(
 // It may create a NodeArg so that other Node can references its value.
 // It also cerates an initializer to store its value.
 template <typename T>
-void AddNewScalarNodeArgAndInitializer(Graph& graph,
-                                       const std::string& op_name,
-                                       onnx::TensorProto_DataType type,
-                                       T data,
-                                       std::vector<NodeArg*>& new_node_args,
-                                       std::vector<std::string>& new_names) {
+Status AddNewScalarNodeArgAndInitializer(Graph& graph,
+                                         const std::string& op_name,
+                                         onnx::TensorProto_DataType type,
+                                         T data,
+                                         std::vector<NodeArg*>& new_node_args,
+                                         std::vector<std::string>& new_names) {
   AddNewNodeArg(graph, op_name, type, new_node_args, new_names);
 
   ONNX_NAMESPACE::TensorProto proto_data;
@@ -649,9 +649,10 @@ void AddNewScalarNodeArgAndInitializer(Graph& graph,
       proto_data.add_int64_data(static_cast<int64_t>(data));
       break;
     default:
-      ORT_THROW("pipeline partition unsupported 'type' value: ", type);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "pipeline partition unsupported 'type' value: ", type);
   }
   graph.AddInitializedTensor(proto_data);
+  return Status::OK();
 }
 
 // Given a node, this function finds all its connected nodes (consumer nodes and producer nodes) and
@@ -662,7 +663,7 @@ Status FindAllConnectedNodes(Graph& graph,
                              std::set<NodeArg*>& connected_inputs,
                              std::set<NodeArg*>& connected_outputs) {
   assert(node);
-  ORT_THROW_IF_ERROR(node->ForEachMutableWithIndex(
+  ORT_RETURN_IF_ERROR(node->ForEachMutableWithIndex(
       node->MutableInputDefs(),
       [&](NodeArg& node_arg, size_t /*index*/) {
         if (graph.IsInputsIncludingInitializers(&node_arg) || graph.IsInitializedTensor(node_arg.Name())) {
@@ -681,7 +682,7 @@ Status FindAllConnectedNodes(Graph& graph,
         return Status::OK();
       }));
 
-  ORT_THROW_IF_ERROR(node->ForEachMutableWithIndex(
+  ORT_RETURN_IF_ERROR(node->ForEachMutableWithIndex(
       node->MutableOutputDefs(),
       [&](NodeArg& node_arg, size_t /*index*/) {
         if (!graph.IsOutput(&node_arg)) {
@@ -773,11 +774,11 @@ common::Status AddPassthroughInitializer(Graph& graph,
 
 // Traverse the graph to find out all connected elements in the graph from start_node. The traverse treats the graph as an
 // undirected graph.
-void TraverseGraphWithConnectedElement(Graph& graph,
-                                       Node* start_node,
-                                       std::set<Node*>& visited_nodes,
-                                       std::set<NodeArg*>& visited_inputs,
-                                       std::set<NodeArg*>& visited_outputs) {
+Status TraverseGraphWithConnectedElement(Graph& graph,
+                                         Node* start_node,
+                                         std::set<Node*>& visited_nodes,
+                                         std::set<NodeArg*>& visited_inputs,
+                                         std::set<NodeArg*>& visited_outputs) {
   assert(start_node);
   visited_nodes.clear();
   visited_inputs.clear();
@@ -791,7 +792,7 @@ void TraverseGraphWithConnectedElement(Graph& graph,
     node_queue.pop();
     if (visited_nodes.insert(node).second) {
       std::vector<Node*> connected_nodes;
-      ORT_THROW_IF_ERROR(FindAllConnectedNodes(graph, node, connected_nodes, visited_inputs, visited_outputs));
+      ORT_RETURN_IF_ERROR(FindAllConnectedNodes(graph, node, connected_nodes, visited_inputs, visited_outputs));
 
       for (auto n : connected_nodes) {
         ORT_ENFORCE(n != nullptr, "Found nullptr in searching for connected nodes");
@@ -799,6 +800,7 @@ void TraverseGraphWithConnectedElement(Graph& graph,
       }
     }
   }
+  return Status::OK();
 }
 
 // If an initializer is shared across partitions, instead of creating a separate all_reduce op to
@@ -823,11 +825,11 @@ common::Status HandleSharedInitializer(Graph& graph,
     // forward pass. When not in last stage, traverse start from send node; otherwise start with the recv node as
     // send node doesn't exist in last partition's forward pass.
     Node* traverse_start_node = stage < send_nodes.size() ? send_nodes[stage] : recv_nodes.back();
-    TraverseGraphWithConnectedElement(graph,
-                                      traverse_start_node,
-                                      visited_nodes,
-                                      visited_inputs,
-                                      visited_outputs);
+    ORT_RETURN_IF_ERROR(TraverseGraphWithConnectedElement(graph,
+                                                          traverse_start_node,
+                                                          visited_nodes,
+                                                          visited_inputs,
+                                                          visited_outputs));
 
     for (const auto input : visited_inputs) {
       // If the node is an input instead of an initializer, continue
@@ -918,31 +920,31 @@ common::Status SplitGraph(Graph& graph,
 
     auto cut_index_str = std::to_string(index);
     // add input node_arg and initializer for send/recv
-    AddNewScalarNodeArgAndInitializer<bool>(graph,
-                                            "send_input_signal" + cut_index_str,
-                                            ONNX_NAMESPACE::TensorProto_DataType_BOOL,
-                                            true, /* initializer data */
-                                            send_input_args,
-                                            new_input_names);
-    AddNewScalarNodeArgAndInitializer<bool>(graph,
-                                            "recv_input_signal" + cut_index_str,
-                                            ONNX_NAMESPACE::TensorProto_DataType_BOOL,
-                                            true, /* initializer data */
-                                            recv_input_args,
-                                            new_input_names);
+    ORT_RETURN_IF_ERROR(AddNewScalarNodeArgAndInitializer<bool>(graph,
+                                                                "send_input_signal" + cut_index_str,
+                                                                ONNX_NAMESPACE::TensorProto_DataType_BOOL,
+                                                                true, /* initializer data */
+                                                                send_input_args,
+                                                                new_input_names));
+    ORT_RETURN_IF_ERROR(AddNewScalarNodeArgAndInitializer<bool>(graph,
+                                                                "recv_input_signal" + cut_index_str,
+                                                                ONNX_NAMESPACE::TensorProto_DataType_BOOL,
+                                                                true, /* initializer data */
+                                                                recv_input_args,
+                                                                new_input_names));
 
-    AddNewScalarNodeArgAndInitializer<size_t>(graph,
-                                      "send_dst_rank" + cut_index_str,
-                                      ONNX_NAMESPACE::TensorProto_DataType_INT64,
-                                      ranks[index + 1], /* initializer data */
-                                      send_input_args,
-                                      new_input_names);
-    AddNewScalarNodeArgAndInitializer<size_t>(graph,
-                                      "recv_src_rank" + cut_index_str,
-                                      ONNX_NAMESPACE::TensorProto_DataType_INT64,
-                                      ranks[index], /* initializer data */
-                                      recv_input_args,
-                                      new_input_names);
+    ORT_RETURN_IF_ERROR(AddNewScalarNodeArgAndInitializer<size_t>(graph,
+                                                                  "send_dst_rank" + cut_index_str,
+                                                                  ONNX_NAMESPACE::TensorProto_DataType_INT64,
+                                                                  ranks[index + 1], /* initializer data */
+                                                                  send_input_args,
+                                                                  new_input_names));
+    ORT_RETURN_IF_ERROR(AddNewScalarNodeArgAndInitializer<size_t>(graph,
+                                                                  "recv_src_rank" + cut_index_str,
+                                                                  ONNX_NAMESPACE::TensorProto_DataType_INT64,
+                                                                  ranks[index], /* initializer data */
+                                                                  recv_input_args,
+                                                                  new_input_names));
 
     // add output node_arg for send/recv
     AddNewNodeArg(graph, "send_output_signal" + cut_index_str, ONNX_NAMESPACE::TensorProto_DataType_BOOL,
@@ -966,7 +968,8 @@ common::Status SplitGraph(Graph& graph,
       // find node whose output contains id.node_arg_name
       auto producer_node = graph.GetMutableProducerNode(id.node_arg_name);
       if (!producer_node) {
-        ORT_THROW("Cannot find producer node of node_arg with name: ", id.node_arg_name, ". Wrong cutting infomation.");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cannot find producer node of node_arg with name: ", id.node_arg_name,
+                               ". Wrong cutting infomation.");
       }
 
       // once we find out the producer node for id.node_arg_name, find which output index that leads
@@ -982,8 +985,8 @@ common::Status SplitGraph(Graph& graph,
           });
 
       if (upstream_nodes_output_index < 0) {
-        ORT_THROW("Node with name: ", producer_node->Name(),
-                  " doesn't have an output node_arg with name ", id.node_arg_name);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node with name: ", producer_node->Name(),
+                               " doesn't have an output node_arg with name ", id.node_arg_name);
       }
 
       size_t idx = static_cast<size_t>(upstream_nodes_output_index);
@@ -1079,8 +1082,8 @@ common::Status GenerateSubgraph(Graph& graph, Node* start_node) {
   std::set<NodeArg*> visited_outputs;
 
   // BFS graph traverse
-  TraverseGraphWithConnectedElement(graph, start_node,
-                                    visited_nodes, visited_inputs, visited_outputs);
+  ORT_RETURN_IF_ERROR(TraverseGraphWithConnectedElement(graph, start_node,
+                                                        visited_nodes, visited_inputs, visited_outputs));
 
   std::set<NodeIndex> visited_node_index;
   for (auto n : visited_nodes) {
@@ -1123,10 +1126,10 @@ Status ApplyPipelinePartitionToMainGraph(
   size_t split_count = cut_info.size();
 
   if (num_pipeline_stage != split_count + 1) {
-    ORT_THROW("Wrong pipeline partition cutting info. Total pipeline stage number is ",
-              num_pipeline_stage,
-              ", cut info length is: ",
-              split_count);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Wrong pipeline partition cutting info. Total pipeline stage number is ",
+                           num_pipeline_stage,
+                           ", cut info length is: ",
+                           split_count);
   }
 
   std::vector<Node *> send_nodes, recv_nodes;
@@ -1138,8 +1141,8 @@ Status ApplyPipelinePartitionToMainGraph(
   ORT_RETURN_IF_ERROR(SplitGraph(graph, cut_info, send_nodes, recv_nodes));
 
   if (send_nodes.size() != split_count || recv_nodes.size() != split_count) {
-    ORT_THROW("Split error: not all cut has Send and Recv inserted. Send node count: ",
-              send_nodes.size(), ", Recv node count: ", recv_nodes.size(), ", split count: ", split_count);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Split error: not all cut has Send and Recv inserted. Send node count: ",
+                           send_nodes.size(), ", Recv node count: ", recv_nodes.size(), ", split count: ", split_count);
   }
 
   // Check to see if there are any initializers that is being shared between different partitions. If there
@@ -1167,21 +1170,21 @@ Status ApplyPipelinePartitionToMainGraph(
   if (pipeline_stage_id == 0) {
     // For the first stage, there should be no recv node, and the send node contained in graph should match the first
     // send_node inserted during split.
-    ORT_ENFORCE(recv_node == nullptr, "Error: first stage contains Recv node in forward pass.");
-    ORT_ENFORCE(send_node == send_nodes[0],
+    ORT_RETURN_IF_NOT(recv_node == nullptr, "Error: first stage contains Recv node in forward pass.");
+    ORT_RETURN_IF_NOT(send_node == send_nodes[0],
                 "Error: first stage doesn't contain the right Send node. Possibly CutInfo data is wrong.");
   } else if (pipeline_stage_id == split_count) {
     // For the last stage, there should be no send node, and the recv node contained in graph should match the last
     // recv_node inserted during split.
-    ORT_ENFORCE(recv_node == recv_nodes.back(),
+    ORT_RETURN_IF_NOT(recv_node == recv_nodes.back(),
                 "Error: last stage doesn't contain the right Recv node. Possibly CutInfo data is wrong.");
-    ORT_ENFORCE(send_node == nullptr, "Error: last stage contains Send node in forward pass.");
+    ORT_RETURN_IF_NOT(send_node == nullptr, "Error: last stage contains Send node in forward pass.");
   } else {
     // For stages in the middle, i-th stage should contain recv node that matches the (i-1)-th inserted recv node, and the i-th
     // inserted send node.
-    ORT_ENFORCE(recv_node == recv_nodes[pipeline_stage_id - 1],
+    ORT_RETURN_IF_NOT(recv_node == recv_nodes[pipeline_stage_id - 1],
                 "Error: stage ", pipeline_stage_id, " doesn't contain the right Recv node. Possibly CutInfo data is wrong.");
-    ORT_ENFORCE(send_node == send_nodes[pipeline_stage_id],
+    ORT_RETURN_IF_NOT(send_node == send_nodes[pipeline_stage_id],
                 "Error: stage ", pipeline_stage_id, " doesn't contain the right Send node. Possibly CutInfo data is wrong.");
   }
 

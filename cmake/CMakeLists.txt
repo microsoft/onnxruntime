@@ -171,7 +171,6 @@ if(NOT WIN32)
     set(onnxruntime_ENABLE_INSTRUMENT OFF)
   endif()
 else()
-  add_compile_definitions(WINVER=0x0601)  # Support Windows 7 and newer
   if(WINDOWS_STORE)
     # cmake/external/protobuf/src/google/protobuf/compiler/subprocess.cc and onnxruntime/core/platform/windows/env.cc call a bunch of Win32 APIs.
     # For now, we'll set the API family to desktop globally to expose Win32 symbols in headers; this must be fixed!
@@ -215,19 +214,29 @@ endif()
 if(onnxruntime_MINIMAL_BUILD)
   add_compile_definitions(ORT_MINIMAL_BUILD)
   set(onnxruntime_REDUCED_OPS_BUILD ON)
-  set(onnxruntime_DISABLE_RTTI ON)
+
+  if (NOT onnxruntime_ENABLE_PYTHON)
+    # Python bindings use typeid so can't automatically disable RTTI in that case
+    set(onnxruntime_DISABLE_RTTI ON)
+  endif()
 
   if (MSVC)
     # add MSVC specific flags to reduce build size here if needed
+    
+    # undocumented internal flag to allow analysis of a minimal build binary size
+    if (ADD_DEBUG_INFO_TO_MINIMAL_BUILD)
+      string(APPEND CMAKE_CXX_FLAGS " /Zi")
+      string(APPEND CMAKE_C_FLAGS " /Zi")
+      string(APPEND CMAKE_SHARED_LINKER_FLAGS " /debug")
+    endif()
   else()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ffunction-sections -fdata-sections")
     if (CMAKE_HOST_SYSTEM MATCHES "Darwin")
-      add_link_options(-Wl,-dead_strip)
+      add_link_options(-Wl, -dead_strip)
     else()
       add_link_options(-Wl,--gc-sections)
-    endif()  
+    endif()
   endif()
-
 endif()
 
 if (onnxruntime_REDUCED_OPS_BUILD)
@@ -344,7 +353,7 @@ if (MSVC)
     SET (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Gw /GL")
     SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /Gw /GL")
   endif()
-  
+
   # The WinML build tool chain builds ARM/ARM64, and the internal tool chain does not have folders for spectre mitigation libs.
   # WinML performs spectre mitigation differently.
   if (NOT DEFINED onnxruntime_DISABLE_QSPECTRE_CHECK)
@@ -1240,6 +1249,27 @@ if(WIN32)
 else()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES nsync_cpp)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${CMAKE_DL_LIBS} Threads::Threads)
+endif()
+
+if (WIN32)
+  if (onnxruntime_BUILD_FOR_WINDOWS_STORE)
+    # Setting WINAPI_FAMILY, WINVER and _WIN32_WINNT restrict the APIs exposed in Windows headers to those available
+    # in store or desktop, and that support at least the version of Windows specified
+    # add_compile_definitions(WINAPI_FAMILY=2)
+    add_compile_definitions(WINVER=0x0A00 _WIN32_WINNT=0x0A00)  # Support Windows 10
+    # /ZW adds /FUplatform.winmd and /FUwindows.winmd. windows.winmd, in turn, overrides the include path for
+    # the cppwinrt headers, which we set to use the WinML built ones.
+    # Instead, we use /ZW:nostdlib and force include platform.winml only.
+    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:SHELL:/ZW:nostdlib /FUplatform.winmd>")
+    get_filename_component(msvc_path "${CMAKE_C_COMPILER}/../../../.." ABSOLUTE)
+    link_directories("${msvc_path}/lib/${onnxruntime_target_platform}/store")
+    add_link_options(/APPCONTAINER)
+  else()
+    add_compile_definitions(WINVER=0x0601)  # Support Windows 7 and newer
+    # add_compile_definitions(WINAPI_FAMILY=3)
+    # FIXME adding _WIN32_WINNT=0x0601 and WINAPI_FAMILY is desirable. However, it hides some symbols that are used in WRL
+    # headers and breaks the build of WinML. We should have separate WINVER/_WIN32_WINNT definitions for WinML
+  endif()
 endif()
 
 # Default version parts for Microsoft.AI.MachineLearning.dll and onnxruntime.dll in non-ADO pipeline local builds

@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
+#define _SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING
 #include <gtest/gtest.h>
 #include "runtimeParameters.h"
 
