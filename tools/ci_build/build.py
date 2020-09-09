@@ -1631,10 +1631,10 @@ def main():
         args.test = False
 
     if args.include_ops_by_model or args.include_ops_by_config:
-        from exclude_unused_ops import exclude_unused_ops, get_provider_path
-        include_ops_by_model = args.include_ops_by_model if args.include_ops_by_model else ''
-        include_ops_by_config = args.include_ops_by_config if args.include_ops_by_config else ''
-        exclude_unused_ops(include_ops_by_model, include_ops_by_config, get_provider_path(use_cuda=args.use_cuda))
+        from exclude_unused_ops import exclude_unused_ops
+        models_path = args.include_ops_by_model if args.include_ops_by_model else ''
+        config_path = args.include_ops_by_config if args.include_ops_by_config else ''
+        exclude_unused_ops(models_path, config_path, use_cuda=args.use_cuda)
 
     if args.use_tensorrt:
         args.use_cuda = True
