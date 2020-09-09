@@ -349,7 +349,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Script to exclude unused operator kernels by disabling their registration in ONNXRuntime."
                     "See /docs/Reduced_Operator_Kernel_build.md for more information",
-        usage="Provide model_path, config_path, or both, to disabled kernel registration of unused kernels.")
+        usage="Provide model_path, config_path, or both, to disable kernel registration of unused kernels.")
 
     parser.add_argument(
         "--model_path", type=str, help="Path to folder containing one or more ONNX models")
