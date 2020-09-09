@@ -22,30 +22,25 @@ struct OpenVINOExecutionProviderInfo {
     if (dev_id == "") {
       LOGS_DEFAULT(INFO) << "[OpenVINO-EP]"
                          << "No runtime device selection option provided.";
-#ifdef OPENVINO_CONFIG_CPU_FP32
+      #if defined OPENVINO_CONFIG_CPU_FP32
       device_id_ = "CPU";
       precision_ = "FP32";
-#endif
-#ifdef OPENVINO_CONFIG_GPU_FP32
+      #elif defined OPENVINO_CONFIG_GPU_FP32
       device_id_ = "GPU";
       precision_ = "FP32";
-#endif
-#ifdef OPENVINO_CONFIG_GPU_FP16
+      #elif defined OPENVINO_CONFIG_GPU_FP16
       device_id_ = "GPU";
       precision_ = "FP16";
-#endif
-#ifdef OPENVINO_CONFIG_MYRIAD
+      #elif defined OPENVINO_CONFIG_MYRIAD
       device_id_ = "MYRIAD";
       precision_ = "FP16";
-#endif
-#ifdef OPENVINO_CONFIG_VAD_M
+      #elif defined OPENVINO_CONFIG_VAD_M
       device_id_ = "HDDL";
       precision_ = "FP16";
-#endif
-#ifdef OPENVINO_CONFIG_VAD_F
+      #elif defined OPENVINO_CONFIG_VAD_F
       device_id_ = "HETERO:FPGA,CPU";
       precision_ = "FP32";
-#endif
+      #endif
     } else if (dev_id == "CPU_FP32") {
       device_id_ = "CPU";
       precision_ = "FP32";
