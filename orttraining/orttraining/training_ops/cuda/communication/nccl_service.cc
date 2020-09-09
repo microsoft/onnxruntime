@@ -204,7 +204,7 @@ void NcclService::SubmitRecvAndWait(void* ptr, size_t size, int peer) {
     std::lock_guard<std::mutex> guard(mutex_);
 #ifdef ENABLE_NVTX_PROFILE
     auto& profile_context = profile::Context::GetInstance();
-    const std::string = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
+    const std::string tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
 #else
     const std::string tag = "";
 #endif
