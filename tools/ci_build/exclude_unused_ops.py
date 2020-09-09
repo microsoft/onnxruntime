@@ -50,6 +50,9 @@ def extract_ops_from_config(file_path, required_ops):
         for stripped_line in [line.strip() for line in
                               file_to_read.readlines()]:
 
+            if not stripped_line:  # skip empty lines
+                continue
+
             if stripped_line.startswith("#"):  # skip comments
                 continue
 
