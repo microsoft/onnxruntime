@@ -20,7 +20,9 @@
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/graph/optimizer_graph_builder.h"
 #include "orttraining/models/runner/training_util.h"
+#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
+#endif
 #include "single_include/nlohmann/json.hpp"
 #include "test/perftest/utils.h"
 
@@ -706,8 +708,8 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
   auto end_to_end_start = std::chrono::high_resolution_clock::now();
   bool end_to_end_measurement_started = false;
 
-#ifdef USE_NCCL
-  // NCCL-P2P
+#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+  // Create communication plan.
   auto& nccl_service = cuda::NcclService::GetInstance();
 
   nccl_service.PlanStart();
@@ -727,6 +729,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
   }
   nccl_service.PlanEnd();
 
+  // Launch NCCL service to execute the plan.
   nccl_service.Launch();
 #endif
 
@@ -779,7 +782,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
                                           fetch_names,
                                           fetches));
           RunWithUpdate(feed_names, fetch_names, feeds, fetches);
-#ifdef USE_NCCL
+#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
           nccl_service.Reset();
 #endif
         } else {
@@ -904,7 +907,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
             << "Average Step Time: " << all_steps_duration_seconds.count() / (step_ - step_start) << " Second\n"
             << "Average Step Throughput: " << params_.batch_size * (step_ - step_start) / (all_steps_duration_seconds.count()) << " Examples / Second\n";
 
-#ifdef USE_NCCL
+#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
   nccl_service.Terminate();
 #endif
   return Status::OK();
