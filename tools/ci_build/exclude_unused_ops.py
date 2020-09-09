@@ -306,6 +306,7 @@ def create_config_file_with_required_ops(required_operators, model_path, config_
     directory, filename = os.path.split(output_file)
     if not filename:
         log.error("Invalid path to write final config to. {}".format(output_file))
+        sys.exit(-1)
 
     if not os.path.exists(directory):
         os.makedirs(directory)
