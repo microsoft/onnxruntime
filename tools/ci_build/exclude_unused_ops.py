@@ -382,7 +382,6 @@ if __name__ == "__main__":
     if not ort_root:
         log.info('ort_root was not specified. Inferring ORT root from location of this script.')
 
-
     if not args.write_combined_config_to:
         exclude_unused_ops(models_path, config_path, ort_root, use_cuda=True)
     else:
