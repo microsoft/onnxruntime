@@ -101,6 +101,10 @@ class Node {
   /** Gets the Node's Node::Type. */
   Node::Type NodeType() const noexcept { return node_type_; }
 
+  void SetPriority(int p) {priority_ = p};
+
+  const int& Prority() const noexcept {return priority_};
+
   /** Gets the opset version that the Node's operator was first defined in.
   @returns Opset version. If -1 the Node's operator has not been set.
   @remarks Prefer over Op()->SinceVersion() as Op() is disabled in a minimal build
@@ -451,7 +455,7 @@ class Node {
   // the data members directly, so that the Node can maintain its internal invariants.
   friend class Graph;
 
-  Node(NodeIndex index, Graph& graph) : index_(index), graph_(&graph) {}
+  Node(NodeIndex index, Graph& graph) : index_(index), graph_(&graph), priority_(0) {}
 
 #if !defined(ORT_MINIMAL_BUILD)
   void Init(const std::string& name,
@@ -496,6 +500,9 @@ class Node {
 
   // OperatorSet domain of op_type_.
   std::string domain_;
+
+  //
+  int priority_;
 
 #if !defined(ORT_MINIMAL_BUILD)
   // OperatorSchema that <*this> node refers to.
