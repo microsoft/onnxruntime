@@ -847,7 +847,7 @@ void NchwcTransformerImpl::TransformResize(Node& node) {
   }
 
   NodeArg* scales_arg;
-  if (node.Op()->SinceVersion() >= 11) {
+  if (node.SinceVersion() >= 11) {
     // Bail out if Resize has the optional "sizes" tensor.
     if (input_defs.size() == 3) {
       scales_arg = input_defs[2];

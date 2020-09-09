@@ -1,6 +1,8 @@
 jobs:
 - job: Linux_CI_GPU_TENSORRT_Dev
   pool: Linux-GPU-CUDA10
+  variables:
+    ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
   timeoutInMinutes: 90
   steps:
     - template: templates/set-test-data-variables-step.yml

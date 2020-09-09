@@ -65,10 +65,18 @@ SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16)
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Softmax<T>);                                                              \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
+      Softmax,                                                                  \
+      kOnnxDomain,                                                              \
+      11, 12,                                                                    \
+      T,                                                                        \
+      kCudaExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Softmax<T>);                                                              \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       Softmax,                                                                  \
       kOnnxDomain,                                                              \
-      11,                                                                       \
+      13,                                                                       \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
@@ -81,10 +89,18 @@ SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16)
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Softmax<T>);                                                              \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
+      LogSoftmax,                                                               \
+      kOnnxDomain,                                                              \
+      11, 12,                                                                    \
+      T,                                                                        \
+      kCudaExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Softmax<T>);                                                              \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       LogSoftmax,                                                               \
       kOnnxDomain,                                                              \
-      11,                                                                       \
+      13,                                                                       \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \

@@ -6,10 +6,8 @@
     <OnnxRuntimeCsharpRoot>..\..</OnnxRuntimeCsharpRoot>
     <Platforms>AnyCPU;x86</Platforms>
     <OutputPath>bin\$(Configuration)\</OutputPath>
-    <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</OnnxRuntimeBuildDirectory>
-    <ProtocDirectory Condition="'$(ProtocDirectory)'==''">$(OnnxRuntimeBuildDirectory)\$(Configuration)\external\protobuf\cmake\$(Configuration)</ProtocDirectory>
+    <IsLinuxBuild Condition="'$(IsLinuxBuild)' == ''">false</IsLinuxBuild>
     <ProtoSrc>$(OnnxRuntimeCsharpRoot)\..\onnxruntime\core\protobuf</ProtoSrc>
-    <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
 
     <!-- following attributes were necessary for the migrated Tensor tests -->  
     <LangVersion>7.2</LangVersion>
@@ -19,6 +17,22 @@
     <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
     <Configurations>Debug;Release;RelWithDebInfo</Configurations>
     <!-- end -->
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(IsLinuxBuild)'=='true'">
+    <!--internal build related properties for Linux -->
+    <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Linux</OnnxRuntimeBuildDirectory>
+    <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)</NativeBuildOutputDir>
+    <ProtocDirectory Condition="'$(ProtocDirectory)'==''">$(OnnxRuntimeBuildDirectory)\$(Configuration)\external\protobuf\cmake</ProtocDirectory>
+    <ProtocExe>$(ProtocDirectory)\protoc</ProtocExe>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(IsLinuxBuild)'=='false'">
+    <!--internal build related properties for Windows -->
+    <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</OnnxRuntimeBuildDirectory>
+    <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
+    <ProtocDirectory Condition="'$(ProtocDirectory)'==''">$(OnnxRuntimeBuildDirectory)\$(Configuration)\external\protobuf\cmake\$(Configuration)</ProtocDirectory>
+    <ProtocExe>$(ProtocDirectory)\protoc.exe</ProtocExe>
   </PropertyGroup>
 
   <ItemGroup>
@@ -59,7 +73,7 @@
   </ItemGroup>
 
   <Target Name="ProtoGen" BeforeTargets="Build">
-    <Exec Command="$(ProtocDirectory)\protoc.exe  -I=$(ProtoSrc) --csharp_out=. $(ProtoSrc)\onnx-ml.proto3" ContinueOnError="false"></Exec>
+    <Exec Command="$(ProtocExe) -I=$(ProtoSrc) --csharp_out=. $(ProtoSrc)\onnx-ml.proto3" ContinueOnError="false"></Exec>
   </Target>
 
   <ItemGroup>

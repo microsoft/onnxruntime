@@ -13,7 +13,7 @@
 OrtSessionOptions::~OrtSessionOptions() = default;
 
 OrtSessionOptions& OrtSessionOptions::operator=(const OrtSessionOptions&) {
-  throw std::runtime_error("not implemented");
+  ORT_THROW("not implemented");
 }
 OrtSessionOptions::OrtSessionOptions(const OrtSessionOptions& other)
     : value(other.value), provider_factories(other.provider_factories) {
@@ -182,5 +182,5 @@ ORT_API_STATUS_IMPL(OrtApis::DisablePerSessionThreads, _In_ OrtSessionOptions* o
 
 ORT_API_STATUS_IMPL(OrtApis::AddSessionConfigEntry, _Inout_ OrtSessionOptions* options,
                     _In_z_ const char* config_key, _In_z_ const char* config_value) {
-  return onnxruntime::ToOrtStatus(AddSessionConfigEntryImpl(options->value, config_key, config_value));
+  return onnxruntime::ToOrtStatus(options->value.AddConfigEntry(config_key, config_value));
 }

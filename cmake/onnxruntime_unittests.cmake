@@ -49,7 +49,7 @@ function(AddTest)
   else()
     target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} GTest::gtest GTest::gmock ${onnxruntime_EXTERNAL_LIBRARIES})
   endif()
-  onnxruntime_add_include_to_target(${_UT_TARGET} date_interface)
+  onnxruntime_add_include_to_target(${_UT_TARGET} date_interface flatbuffers)
   target_include_directories(${_UT_TARGET} PRIVATE ${TEST_INC_DIR})
   if (onnxruntime_USE_CUDA)
     target_include_directories(${_UT_TARGET} PRIVATE ${CUDA_INCLUDE_DIRS} ${onnxruntime_CUDNN_HOME}/include)
@@ -59,6 +59,9 @@ function(AddTest)
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
   endif()
   if (WIN32)
+    # include dbghelp in case tests throw an ORT exception, as that exception includes a stacktrace, which requires dbghelp.
+    target_link_libraries(${_UT_TARGET} PRIVATE debug dbghelp)
+
     if (onnxruntime_USE_CUDA)
       # disable a warning from the CUDA headers about unreferenced local functions
       if (MSVC)
@@ -102,21 +105,42 @@ file(GLOB onnxruntime_test_common_src CONFIGURE_DEPENDS
   "${TEST_SRC_DIR}/common/logging/*.h"
   )
 
-file(GLOB onnxruntime_test_ir_src CONFIGURE_DEPENDS
-  "${TEST_SRC_DIR}/ir/*.cc"
-  "${TEST_SRC_DIR}/ir/*.h"
-  )
+if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
 
-file(GLOB onnxruntime_test_optimizer_src CONFIGURE_DEPENDS
-  "${TEST_SRC_DIR}/optimizer/*.cc"
-  "${TEST_SRC_DIR}/optimizer/*.h"
-  )
+  file(GLOB onnxruntime_test_ir_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/ir/*.cc"
+    "${TEST_SRC_DIR}/ir/*.h"
+    )
+ 
+  file(GLOB onnxruntime_test_optimizer_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/optimizer/*.cc"
+    "${TEST_SRC_DIR}/optimizer/*.h"
+    )
+ 
+  set(onnxruntime_test_framework_src_patterns
+    "${TEST_SRC_DIR}/framework/*.cc"
+    "${TEST_SRC_DIR}/framework/*.h"
+    "${TEST_SRC_DIR}/platform/*.cc"
+    )
 
-set(onnxruntime_test_framework_src_patterns
-  "${TEST_SRC_DIR}/framework/*.cc"
-  "${TEST_SRC_DIR}/framework/*.h"
-  "${TEST_SRC_DIR}/platform/*.cc"
-  )
+else()  # minimal and/or reduced ops build
+
+  set(onnxruntime_test_framework_src_patterns
+    "${TEST_SRC_DIR}/platform/*.cc"
+    )
+
+  if (onnxruntime_MINIMAL_BUILD)
+    list(APPEND onnxruntime_test_framework_src_patterns 
+      "${TEST_SRC_DIR}/framework/ort_model_only_test.cc"
+    )
+
+  else() # reduced ops build
+    file(GLOB onnxruntime_test_ir_src CONFIGURE_DEPENDS
+      "${TEST_SRC_DIR}/ir/*.cc"
+      "${TEST_SRC_DIR}/ir/*.h"
+      )
+  endif()
+endif()
 
 file(GLOB onnxruntime_test_training_src
   "${ORTTRAINING_SOURCE_DIR}/test/model/*.cc"
@@ -133,36 +157,49 @@ if(WIN32)
     "${TEST_SRC_DIR}/platform/windows/logging/*.cc" )
 endif()
 
-if(onnxruntime_USE_CUDA)
-  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/framework/cuda/*)
-endif()
+if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
 
-set(onnxruntime_test_providers_src_patterns
-  "${TEST_SRC_DIR}/providers/*.h"
-  "${TEST_SRC_DIR}/providers/*.cc"
-  "${TEST_SRC_DIR}/opaque_api/test_opaque_api.cc"
-  "${TEST_SRC_DIR}/framework/TestAllocatorManager.cc"
-  "${TEST_SRC_DIR}/framework/TestAllocatorManager.h"
-  "${TEST_SRC_DIR}/framework/test_utils.cc"
-  "${TEST_SRC_DIR}/framework/test_utils.h"
+  if(onnxruntime_USE_CUDA)
+    list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/framework/cuda/*)
+  endif()
+
+  set(onnxruntime_test_providers_src_patterns
+    "${TEST_SRC_DIR}/providers/*.h"
+    "${TEST_SRC_DIR}/providers/*.cc"
+    "${TEST_SRC_DIR}/opaque_api/test_opaque_api.cc"
+    "${TEST_SRC_DIR}/framework/TestAllocatorManager.cc"
+    "${TEST_SRC_DIR}/framework/TestAllocatorManager.h"
+    "${TEST_SRC_DIR}/framework/test_utils.cc"
+    "${TEST_SRC_DIR}/framework/test_utils.h"
   )
-if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
-  list(APPEND onnxruntime_test_providers_src_patterns
-    "${TEST_SRC_DIR}/contrib_ops/*.h"
-    "${TEST_SRC_DIR}/contrib_ops/*.cc")
-endif()
 
-if(onnxruntime_USE_FEATURIZERS)
-  list(APPEND onnxruntime_test_providers_src_patterns
-    "${TEST_SRC_DIR}/featurizers_ops/*.h"
-    "${TEST_SRC_DIR}/featurizers_ops/*.cc")
-endif()
+  if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
+    list(APPEND onnxruntime_test_providers_src_patterns
+      "${TEST_SRC_DIR}/contrib_ops/*.h"
+      "${TEST_SRC_DIR}/contrib_ops/*.cc")
+  endif()
 
-file(GLOB onnxruntime_test_providers_src CONFIGURE_DEPENDS
-  ${onnxruntime_test_providers_src_patterns})
-file(GLOB_RECURSE onnxruntime_test_providers_cpu_src CONFIGURE_DEPENDS
-  "${TEST_SRC_DIR}/providers/cpu/*"
+  if(onnxruntime_USE_FEATURIZERS)
+    list(APPEND onnxruntime_test_providers_src_patterns
+      "${TEST_SRC_DIR}/featurizers_ops/*.h"
+      "${TEST_SRC_DIR}/featurizers_ops/*.cc")
+  endif()
+
+else()
+  set(onnxruntime_test_providers_src_patterns
+    "${TEST_SRC_DIR}/framework/test_utils.cc"
+    "${TEST_SRC_DIR}/framework/test_utils.h"
+    # TODO: Add anything that is needed for testing a minimal build
   )
+endif()
+
+file(GLOB onnxruntime_test_providers_src CONFIGURE_DEPENDS ${onnxruntime_test_providers_src_patterns})
+
+if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
+  file(GLOB_RECURSE onnxruntime_test_providers_cpu_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/providers/cpu/*"
+    )
+endif()
 
 if(onnxruntime_DISABLE_ML_OPS)
   list(FILTER onnxruntime_test_providers_cpu_src EXCLUDE REGEX ".*/ml/.*")
@@ -170,7 +207,7 @@ endif()
 
 list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cpu_src})
 
-if (onnxruntime_USE_CUDA)
+if (onnxruntime_USE_CUDA AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
   file(GLOB_RECURSE onnxruntime_test_providers_cuda_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/cuda/*"
     )
@@ -227,12 +264,16 @@ set (ONNXRUNTIME_API_TESTS_WITHOUT_ENV_SRC_DIR "${ONNXRUNTIME_ROOT}/test/api_tes
 
 set (onnxruntime_shared_lib_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_fixture.h
-          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_inference.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_session_options.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_run_options.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_allocator.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_nontensor_types.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_model_loading.cc)
+
+if (NOT onnxruntime_MINIMAL_BUILD)
+  list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_inference.cc)
+endif()
+
 if(onnxruntime_RUN_ONNX_TESTS)
   list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_io_types.cc)
 endif()
@@ -428,7 +469,7 @@ else()
   target_include_directories(onnxruntime_test_utils PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
           "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
 endif()
-onnxruntime_add_include_to_target(onnxruntime_test_utils onnxruntime_common onnxruntime_framework GTest::gtest onnx onnx_proto)
+onnxruntime_add_include_to_target(onnxruntime_test_utils onnxruntime_common onnxruntime_framework GTest::gtest onnx onnx_proto flatbuffers)
 
 if (onnxruntime_USE_DNNL)
   target_compile_definitions(onnxruntime_test_utils PUBLIC USE_DNNL=1)
@@ -489,7 +530,7 @@ onnxruntime_add_include_to_target(onnx_test_runner_common onnxruntime_common onn
 
 add_dependencies(onnx_test_runner_common onnx_test_data_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnx_test_runner_common PRIVATE ${eigen_INCLUDE_DIRS} ${RE2_INCLUDE_DIR}
-        ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx ${ONNXRUNTIME_ROOT})
+        ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
 
 set_target_properties(onnx_test_runner_common PROPERTIES FOLDER "ONNXRuntimeTest")
 
@@ -538,6 +579,9 @@ set(all_dependencies ${onnxruntime_test_providers_dependencies} )
   if(onnxruntime_RUN_MODELTEST_IN_DEBUG_MODE)
     target_compile_definitions(onnxruntime_test_all PUBLIC -DRUN_MODELTEST_IN_DEBUG_MODE)
   endif()
+  if (onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
+    target_compile_definitions(onnxruntime_test_all PRIVATE DEBUG_NODE_INPUTS_OUTPUTS)
+  endif()
   if (onnxruntime_USE_FEATURIZERS)
     target_include_directories(onnxruntime_test_all PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/external/FeaturizersLibrary/src)
   endif()
@@ -554,12 +598,22 @@ set(all_dependencies ${onnxruntime_test_providers_dependencies} )
 set(TEST_DATA_SRC ${TEST_SRC_DIR}/testdata)
 set(TEST_DATA_DES $<TARGET_FILE_DIR:${test_data_target}>/testdata)
 
+set(TEST_SAMPLES_SRC ${REPO_ROOT}/samples)
+set(TEST_SAMPLES_DES $<TARGET_FILE_DIR:${test_data_target}>/samples)
+
 # Copy test data from source to destination.
 add_custom_command(
   TARGET ${test_data_target} POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_directory
   ${TEST_DATA_SRC}
   ${TEST_DATA_DES})
+
+# Copy test samples from source to destination.
+add_custom_command(
+  TARGET ${test_data_target} POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+  ${TEST_SAMPLES_SRC}
+  ${TEST_SAMPLES_DES})
 
 if (onnxruntime_USE_DNNL)
   list(APPEND onnx_test_libs dnnl)
@@ -595,7 +649,8 @@ endif()
 
 add_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/tml.proto)
 add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
-
+#onnx_proto target should mark this definition as public, instead of private
+target_compile_definitions(onnx_test_data_proto PRIVATE "-DONNX_API=")
 if(WIN32)
   target_compile_options(onnx_test_data_proto PRIVATE "/wd4125" "/wd4456" "/wd4100" "/wd4267" "/wd6011" "/wd6387" "/wd28182")
 else()
@@ -610,13 +665,10 @@ else()
   endif()
 endif()
 add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
-
 onnxruntime_add_include_to_target(onnx_test_data_proto onnx_proto)
-target_include_directories(onnx_test_data_proto PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx)
+target_include_directories(onnx_test_data_proto PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 set_target_properties(onnx_test_data_proto PROPERTIES FOLDER "ONNXRuntimeTest")
-onnxruntime_protobuf_generate(APPEND_PATH IMPORT_DIRS ${ONNXRUNTIME_ROOT}/core/protobuf TARGET onnx_test_data_proto)
-
-
+onnxruntime_protobuf_generate(APPEND_PATH IMPORT_DIRS external/onnx TARGET onnx_test_data_proto)
 
 if(WIN32)
   set(wide_get_opt_src_dir ${TEST_SRC_DIR}/win_getopt/wide)
@@ -687,10 +739,12 @@ if(WIN32)
   target_compile_options(onnx_test_runner_common PRIVATE -D_CRT_SECURE_NO_WARNINGS)
 endif()
 
-add_test(NAME onnx_test_pytorch_converted
-  COMMAND onnx_test_runner ${PROJECT_SOURCE_DIR}/external/onnx/onnx/backend/test/data/pytorch-converted)
-add_test(NAME onnx_test_pytorch_operator
-  COMMAND onnx_test_runner ${PROJECT_SOURCE_DIR}/external/onnx/onnx/backend/test/data/pytorch-operator)
+if (NOT onnxruntime_REDUCED_OPS_BUILD)
+  add_test(NAME onnx_test_pytorch_converted
+    COMMAND onnx_test_runner ${PROJECT_SOURCE_DIR}/external/onnx/onnx/backend/test/data/pytorch-converted)
+  add_test(NAME onnx_test_pytorch_operator
+    COMMAND onnx_test_runner ${PROJECT_SOURCE_DIR}/external/onnx/onnx/backend/test/data/pytorch-operator)
+endif()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
     list(APPEND android_shared_libs log android)
@@ -722,7 +776,7 @@ if(MSVC)
 endif()
 target_include_directories(onnxruntime_perf_test PRIVATE ${onnx_test_runner_src_dir} ${ONNXRUNTIME_ROOT}
         ${eigen_INCLUDE_DIRS} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir}
-        ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx)
+        ${CMAKE_CURRENT_BINARY_DIR})
 if (WIN32)
   target_compile_options(onnxruntime_perf_test PRIVATE ${disabled_warnings})
   if (NOT DEFINED SYS_PATH_LIB)
@@ -790,7 +844,7 @@ if (onnxruntime_BUILD_SHARED_LIB)
   )
 
   # test inference using global threadpools
-  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
+  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Android" AND NOT onnxruntime_MINIMAL_BUILD)
   AddTest(DYN
           TARGET onnxruntime_global_thread_pools_test
           SOURCES ${onnxruntime_global_thread_pools_test_SRC}

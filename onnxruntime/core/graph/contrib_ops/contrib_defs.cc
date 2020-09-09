@@ -7,8 +7,8 @@
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/contrib_ops/nchwc_schema_defs.h"
 #include "core/graph/contrib_ops/range_schema_defs.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/graph/op.h"
-#include "onnx/defs/schema.h"
 #include "onnx/defs/shape_inference.h"
 #include "onnx/defs/tensor_proto_util.h"
 #include "core/mlas/inc/mlas.h"
@@ -2252,6 +2252,35 @@ and produces one output data (Tensor<T>) where the function `f(x) = quantize(alp
       .SinceVersion(1)
       .SetDoc(QLinearLeakyReluDoc_ver1)
       .Attr("alpha", "Coefficient of leakage.", AttributeProto::FLOAT, 0.01f)
+      .Input(0, "X", "Input tensor", "T")
+      .Input(1, "X_scale",
+             "Input X's scale. It's a scalar, which means a per-tensor/layer quantization.",
+             "tensor(float)")
+      .Input(2, "X_zero_point",
+             "Input X's zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
+             "T", OpSchema::Optional)
+      .Input(3, "Y_scale",
+             "Output Y's scale. It's a scalar, which means a per-tensor/layer quantization.",
+             "tensor(float)")
+      .Input(4, "Y_zero_point",
+             "Output Y's zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
+             "T", OpSchema::Optional)
+      .Output(0, "Y", "Output tensor", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(uint8)", "tensor(int8)"},
+          "Constrain input and output types to 8 bit tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+  const char* QLinearSigmoidDoc_ver1 = R"DOC(
+QLinearSigmoid takes quantized input data (Tensor), and quantize parameter for output, and produces one output data 
+(Tensor<T>) where the function `f(x) = quantize(Sigmoid(dequantize(x)))`, is applied to the data tensor elementwise.
+Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))` )DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearSigmoid)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(QLinearSigmoidDoc_ver1)
       .Input(0, "X", "Input tensor", "T")
       .Input(1, "X_scale",
              "Input X's scale. It's a scalar, which means a per-tensor/layer quantization.",

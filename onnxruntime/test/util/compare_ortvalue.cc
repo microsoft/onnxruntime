@@ -305,6 +305,7 @@ std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& o, const 
     return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, "");
   }
   if (!o.IsTensor()) {
+#if !defined(DISABLE_ML_OPS)
     if (o.Type() == DataTypeImpl::GetType<VectorMapInt64ToFloat>()) {
       return CompareSeqOfMapToFloat(o.Get<VectorMapInt64ToFloat>(), expected_mlvalue.Get<VectorMapInt64ToFloat>(),
                                     per_sample_tolerance, relative_per_sample_tolerance, post_processing);
@@ -314,6 +315,9 @@ std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& o, const 
                                     per_sample_tolerance, relative_per_sample_tolerance, post_processing);
     }
     return std::make_pair(COMPARE_RESULT::NOT_SUPPORT, "");
+#else
+    return std::make_pair(COMPARE_RESULT::NOT_SUPPORT, "Map type is not supported in this build.");
+#endif
   }
   const Tensor& outvalue = o.Get<Tensor>();
   const Tensor& expected_tensor = expected_mlvalue.Get<Tensor>();
