@@ -178,7 +178,7 @@ def parse_arguments():
         "generation. These are just CMake -D options without the leading -D.")
     parser.add_argument(
         "--target",
-        help="Build a specific target")
+        help="Build a specific target, e.g. winml_dll")
     parser.add_argument(
         "--x86", action='store_true',
         help="Create x86 makefiles. Requires --update and no existing cache "
