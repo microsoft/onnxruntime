@@ -19,10 +19,12 @@ namespace Eigen {
 class ThreadPoolInterface;
 }
 
+using PThreadPool = Eigen::ThreadPoolInterface*;
 
 class TestEnv {
  public:
-  TestEnv(const std::vector<ITestCase*>& tests, TestResultStat& stat1, Ort::Env& env, Ort::SessionOptions& sf1, Eigen::ThreadPoolInterface* tp);
+  TestEnv(const std::vector<ITestCase*>& tests, TestResultStat& stat1, Ort::Env& env, Ort::SessionOptions& sf1, 
+    PThreadPool tp);
   ~TestEnv();
 
  private:
@@ -34,5 +36,5 @@ class TestEnv {
   // FixedCountFinishCallbackImpl<TestCaseResult> finished;
   Ort::Env& env;
   const Ort::SessionOptions& sf;
-  Eigen::ThreadPoolInterface* tp_;
+  PThreadPool tp_;
 };

@@ -3,29 +3,31 @@
 
 // needs to be included first to get around onnxruntime\cmake\external\onnx\onnx/common/constants.h(14): error C2513: 'bool': no variable declared before '='
 
+#include "tensorprotoutils.h"
+
 #include "TestCase.h"
-
-#include "core/session/onnxruntime_cxx_api.h"
-
+#include <cctype>
+#include <fstream>
+#include <memory>
 #include "core/common/logging/logging.h"
 #include "core/common/common.h"
-#include "core/framework/allocator.h"
 #include "core/platform/env.h"
 #include "core/platform/ort_mutex.h"
+#include "core/platform/path_lib.h"
+#include "core/session/onnxruntime_cxx_api.h"
+#include "core/framework/allocator.h"
+#include "re2/re2.h"
+
+#include <sstream>
+#include <map>
+#include <regex>
+
+#include "onnx_model_info.h"
 
 #include "heap_buffer.h"
 #include "mem_buffer.h"
-#include "onnx_model_info.h"
 #include "callback.h"
 #include "pb_helper.h"
-#include "tensorprotoutils.h"
-
-#include <cctype>
-#include <fstream>
-#include <map>
-#include <memory>
-#include <regex>
-#include <sstream>
 
 using namespace onnxruntime;
 using namespace onnxruntime::common;
@@ -233,13 +235,11 @@ void LoopDataFile(int test_data_pb_fd, bool is_input, const TestModelInfo& model
         value_name = is_input ? modelinfo.GetInputName(c) : modelinfo.GetOutputName(c);
       }
 
-      name_data_map.emplace(value_name, std::move(gvalue));
-      //auto hit = name_data_map.find(value_name);
-      //if (hit != name_data_map.end()) {
-      //  ORT_THROW("duplicated test data name");
-      //  break;
-      //}
-      //name_data_map[value_name] = std::move(gvalue);
+      auto p = name_data_map.emplace(value_name, std::move(gvalue));
+      if (!p.second) {
+        ORT_THROW("duplicated test data name");
+        break;
+      }
     }
     ORT_CATCH(onnxruntime::NotImplementedException & ex) {
       ORT_HANDLE_EXCEPTION([&]() {
@@ -307,9 +307,9 @@ class OnnxTestCase : public ITestCase {
  public:
   OnnxTestCase(const std::string& test_case_name, _In_ std::unique_ptr<TestModelInfo> model,
                double default_per_sample_tolerance, double default_relative_per_sample_tolerance);
-  Status GetPerSampleTolerance(double* value) const override;
-  Status GetRelativePerSampleTolerance(double* value) const override;
-  Status GetPostProcessing(bool* value) const override;
+  void GetPerSampleTolerance(double* value) const override;
+  void GetRelativePerSampleTolerance(double* value) const override;
+  void GetPostProcessing(bool* value) const override;
 
   const ONNX_NAMESPACE::ValueInfoProto* GetOutputInfoFromModel(size_t i) const override {
     return model_info_->GetOutputInfoFromModel(i);
@@ -334,19 +334,16 @@ std::unique_ptr<ITestCase> CreateOnnxTestCase(const std::string& test_case_name,
                                                      default_relative_per_sample_tolerance));
 }
 
-Status OnnxTestCase::GetPerSampleTolerance(double* value) const {
+void OnnxTestCase::GetPerSampleTolerance(double* value) const {
   *value = per_sample_tolerance_;
-  return Status::OK();
 }
 
-Status OnnxTestCase::GetRelativePerSampleTolerance(double* value) const {
+void OnnxTestCase::GetRelativePerSampleTolerance(double* value) const {
   *value = relative_per_sample_tolerance_;
-  return Status::OK();
 }
 
-Status OnnxTestCase::GetPostProcessing(bool* value) const {
+void OnnxTestCase::GetPostProcessing(bool* value) const {
   *value = post_processing_;
-  return Status::OK();
 }
 
 // CentOS lacks find_if

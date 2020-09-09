@@ -41,9 +41,9 @@ class ITestCase {
   //The number of input/output pairs
   virtual size_t GetDataCount() const = 0;
   virtual ~ITestCase() = default;
-  virtual ::onnxruntime::common::Status GetPerSampleTolerance(double* value) const = 0;
-  virtual ::onnxruntime::common::Status GetRelativePerSampleTolerance(double* value) const = 0;
-  virtual ::onnxruntime::common::Status GetPostProcessing(bool* value) const = 0;
+  virtual void GetPerSampleTolerance(double* value) const = 0;
+  virtual void GetRelativePerSampleTolerance(double* value) const = 0;
+  virtual void GetPostProcessing(bool* value) const = 0;
 };
 
 class TestModelInfo {
