@@ -89,13 +89,13 @@ def run_onnxruntime(use_gpu, model_names, precision, batch_sizes, sequence_lengt
 
             input_names = all_input_names[:num_inputs]
 
-            if model_source is 'pt':
+            if 'pt' in model_source:
                 with torch.no_grad():
                     onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length = export_onnx_model_from_pt(
                         model_name, MODELS[model_name][1], MODELS[model_name][2], MODELS[model_name][3], cache_dir,
                         onnx_dir, input_names, use_gpu, precision, optimize_onnx, validate_onnx, use_raw_attention_mask,
                         overwrite, model_fusion_statistics)
-            if model_source is 'tf':
+            if 'tf' in model_source:
                 onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length = export_onnx_model_from_tf(
                     model_name, MODELS[model_name][1], MODELS[model_name][2], MODELS[model_name][3], cache_dir,
                     onnx_dir, input_names, use_gpu, precision, optimize_onnx, validate_onnx, use_raw_attention_mask,
@@ -126,7 +126,7 @@ def run_onnxruntime(use_gpu, model_names, precision, batch_sizes, sequence_lengt
                     if max_sequence_length is not None and sequence_length > max_sequence_length:
                         continue
 
-                    input_value_type = numpy.int64 if model_source is 'pt' else numpy.int32
+                    input_value_type = numpy.int64 if 'pt' in model_source else numpy.int32
                     ort_inputs = create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_names, input_value_type)
 
                     result_template = {
@@ -154,7 +154,7 @@ def run_onnxruntime(use_gpu, model_names, precision, batch_sizes, sequence_lengt
                         # Get output sizes from a dummy ort run
                         ort_outputs = ort_session.run(ort_output_names, ort_inputs)
 
-                        data_type = numpy.longlong if model_source is 'pt' else numpy.int32
+                        data_type = numpy.longlong if 'pt' in model_source else numpy.int32
                         result = inference_ort_with_io_binding(ort_session, ort_inputs, result_template, repeat_times,
                                                                ort_output_names, ort_outputs, output_buffers, max_last_state_size,
                                                                max_pooler_size, batch_size, device, data_type)
@@ -323,6 +323,7 @@ def parse_arguments():
 
     parser.add_argument("--model_source",
                         required=False,
+                        nargs=1,
                         type=str,
                         default=['pt'],
                         choices=['pt', 'tf'],
