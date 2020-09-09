@@ -119,15 +119,12 @@ class ONNXQuantizer:
             raise ValueError('Failed to find proper ai.onnx domain')
         opset_version = ai_onnx_domain[0].version
 
-        if opset_version < 10:
-            raise ValueError("The original model opset version is {}, which does not support quantized operators.\n\
-                The opset version of quantized model will be set to 10. Use onnx model checker to verify model after quantization."
-                             .format(opset_version))
+        if opset_version <= 10:
+            print("Warning: The original model opset version is {}, which does not support node fusions.\n\
+                Forcing fusions can break other nodes in the model.".format(opset_version))
 
-        if opset_version == 10:
-            self.fuse_dynamic_quant = False
-        else:
-            self.fuse_dynamic_quant = True
+            self.model.model.opset_import.remove(ai_onnx_domain[0])
+            self.model.model.opset_import.extend([onnx.helper.make_opsetid("", 11)])
 
     def replace_gemm_with_matmul(self):
         nodes_to_remove = []

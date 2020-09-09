@@ -153,8 +153,8 @@ def quantize_static(model_input,
         when it is not None.
     '''
 
-    if activation_type != QuantType.QUInt8 or weight_type != QuantType.QUInt8:
-        raise ValueError("Static quantization only support uint8 now.")
+    if activation_type != QuantType.QUInt8:
+        raise ValueError("Static quantization only support uint8 for activation now.")
 
     input_qType = onnx_proto.TensorProto.INT8 if activation_type == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
     weight_qType = onnx_proto.TensorProto.INT8 if weight_type == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
