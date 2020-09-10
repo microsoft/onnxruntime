@@ -209,14 +209,12 @@ if(onnxruntime_MINIMAL_BUILD)
     set(onnxruntime_DISABLE_RTTI ON)
   endif()
 
-  # turn on LTO (which adds some compiler flags and turns on LTCG in MSVC) unless it's a Debug build to minimize binary size
-  if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set (onnxruntime_ENABLE_LTO ON)
-  endif()
-
   if (MSVC)
-    # add MSVC specific flags to reduce build size here if needed
-    
+    # turn on LTO (which adds some compiler flags and turns on LTCG) unless it's a Debug build to minimize binary size
+    if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+      set (onnxruntime_ENABLE_LTO ON)
+    endif()
+
     # undocumented internal flag to allow analysis of a minimal build binary size
     if (ADD_DEBUG_INFO_TO_MINIMAL_BUILD)
       string(APPEND CMAKE_CXX_FLAGS " /Zi")
