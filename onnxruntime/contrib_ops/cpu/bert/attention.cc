@@ -33,13 +33,13 @@ AttentionBase::AttentionBase(const OpKernelInfo& info) {
 Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                                   const TensorShape& weights_shape,
                                   const TensorShape& bias_shape,
-                                  const Tensor* mask_index,
+                                  const Tensor*& mask_index,
                                   const Tensor* past) const {
   // Input shapes:
   //   input       : (batch_size, sequence_length, hidden_size)
   //   weights     : (hidden_size, 3 * hidden_size)
   //   bias        : (3 * hidden_size)
-  //   mask_index  : nullptr, (batch_size), (2 * batch_size), or (batch_size, past_sequence_length + sequence_length)
+  //   mask_index  : nullptr, (batch_size), (2 * batch_size), (batch_size, 1), (1, 1) or (batch_size, past_sequence_length + sequence_length)
   //   past        : (2, batch_size, num_heads, past_sequence_length, head_size)
 
   const auto& dims = input_shape.GetDims();
@@ -112,7 +112,14 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
       }
     } else if (mask_dims.size() == 2) {
       if (static_cast<int>(mask_dims[0]) != batch_size || static_cast<int>(mask_dims[1]) != past_sequence_length + sequence_length) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'mask_index' with raw attention mask shall have shape batch_size x (past_sequence_length + sequence_length)");
+        // Add operator supports broadcasting. Here we handle a case with only one element in the 2nd dimension.
+        if ((static_cast<int>(mask_dims[0]) == batch_size || static_cast<int>(mask_dims[0]) == 1) && static_cast<int>(mask_dims[1]) == 1) {
+          // Mask will have same value after propogation, which has same effect as no mask.
+          mask_index = nullptr;
+        }
+        else {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'mask_index' with raw attention mask shall have shape batch_size x (past_sequence_length + sequence_length)");
+        }
       }
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'mask_index' is expected to have 1 or 2 dimensions, got ",
