@@ -3,6 +3,7 @@ import onnx
 import os
 import pytest
 import torch
+import torchvision
 
 from numpy.testing import assert_allclose
 
@@ -57,11 +58,11 @@ def _load_pytorch_transformer_model(device, dynamic_axes=False, legacy_api=False
 ###############################################################################
 
 
-@pytest.mark.parametrize("seed, device", [
-    (0, 'cpu'),
-    (24, 'cuda')
+@pytest.mark.parametrize("seed, device, file_name", [
+    #(0, 'cpu'),
+    (24, 'cuda', 'run_1.pk'),
 ])
-def testORTDeterministicCompute(seed, device):
+def testORTTransformerModelExport(seed, device, file_name):
     # Common setup
     optim_config = optim.LambConfig()
     opts = orttrainer.ORTTrainerOptions({
@@ -82,6 +83,10 @@ def testORTDeterministicCompute(seed, device):
     data, targets = batcher_fn(train_data, 0)
     _ = first_trainer.train_step(data, targets)
     assert first_trainer._onnx_model is not None
-
-
+    """
+    import pickle
+    outfile = open(file_name, 'wb')
+    pickle.dump(_, outfile)
+    outfile.close()
+    """
 

@@ -284,7 +284,42 @@ class ORTTrainer(object):
             f.write(self._onnx_model.SerializeToString())
 
     def _debug_model_export(self, input):
-        _inference_sess = ort.InferenceSession(self._onnx_model.SerializeToString())
+        from onnx import helper, TensorProto, numpy_helper
+        import numpy as np
+        onnx_model_copy = copy.deepcopy(self._onnx_model)
+        dropout_nodes = [n for n in onnx_model_copy.graph.node if n.op_type == 'Dropout']
+        for node in dropout_nodes:
+            print(node.input)
+            ratio_node = [n for n in onnx_model_copy.graph.node if node.input[1] in n.output][0]
+            training_mode_node = [n for n in onnx_model_copy.graph.node if node.input[2] in n.output][0]
+            print("BEFORE ---")
+            print(training_mode_node.attribute)
+            print(" ----- ")
+            print(ratio_node.attribute)
+            print(" ----- ")
+            
+            training_mode_node.attribute.pop()
+            ratio_node.attribute.pop()
+            new_training_mode_arr = np.array(False, dtype=bool)
+            #new_ratio_arr = np.asscalar(np.array(0.0, dtype=np.float32))
+            new_ratio_arr = np.array(0.0, dtype=np.float32)
+            new_training_mode = numpy_helper.from_array(new_training_mode_arr)
+            new_ratio = numpy_helper.from_array(new_ratio_arr)
+            training_mode_node.attribute.add().t.CopyFrom(new_training_mode)
+            ratio_node.attribute.add().t.CopyFrom(new_ratio)
+            training_mode_node.attribute[0].type = 4
+            ratio_node.attribute[0].type = 4
+            training_mode_node.attribute[0].name = "value"
+            ratio_node.attribute[0].name = "value"
+
+            print("AFTER ---")
+            print(training_mode_node.attribute)
+            print(" ----- ")
+            print(ratio_node.attribute)
+            print(" ----- ")
+            
+        _inference_sess = ort.InferenceSession(onnx_model_copy.SerializeToString())
+        # look to see if we pass otpion of training mode is true
         inf_inputs = {}
         for i, input_elem in enumerate(input):
             if i >= len(_inference_sess.get_inputs()):
@@ -292,11 +327,20 @@ class ORTTrainer(object):
             else:
                 inf_inputs[_inference_sess.get_inputs()[i].name] = input_elem.cpu().numpy()
         _inference_outs = _inference_sess.run(None, inf_inputs)
+        """
+        import pickle
+        outfile = open("run_5.pk", 'wb')
+        pickle.dump(_inference_outs, outfile)
+        outfile.close()
+        """
         import _test_helpers
         for torch_item, ort_item in zip(self.torch_sample_outputs, _inference_outs):
             from numpy.testing import assert_allclose
             import numpy as np
-            print(np.absolute(torch_item - ort_item).max())
+            print("atol", torch_item.shape, np.absolute(torch_item - ort_item).max())
+            denom = ((torch_item + ort_item) * 0.5) * 100
+            numer = np.absolute(torch_item - ort_item)
+            print("rtol", torch_item.shape, (numer/denom).max())
             #assert_allclose(torch_item, ort_item, rtol=1e-3)
 
 
