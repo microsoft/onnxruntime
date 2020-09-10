@@ -285,6 +285,49 @@ class ORTTrainer(object):
         with open(path, "wb") as f:
             f.write(self._onnx_model.SerializeToString())
 
+    def _debug_model_export(self, input):
+        from onnx import helper, TensorProto, numpy_helper
+        import numpy as np
+        onnx_model_copy = copy.deepcopy(self._onnx_model)
+        
+        # Mute the dropout nodes
+        dropout_nodes = [n for n in onnx_model_copy.graph.node if n.op_type == 'Dropout']
+        for node in dropout_nodes:
+            ratio_node = [n for n in onnx_model_copy.graph.node if node.input[1] in n.output][0]
+            training_mode_node = [n for n in onnx_model_copy.graph.node if node.input[2] in n.output][0]
+            
+            training_mode_node.attribute.pop()
+            ratio_node.attribute.pop()
+            new_training_mode_arr = np.array(False, dtype=bool)
+            new_ratio_arr = np.array(0.0, dtype=np.float32)
+            new_training_mode = numpy_helper.from_array(new_training_mode_arr)
+            new_ratio = numpy_helper.from_array(new_ratio_arr)
+            training_mode_node.attribute.add().t.CopyFrom(new_training_mode)
+            ratio_node.attribute.add().t.CopyFrom(new_ratio)
+            training_mode_node.attribute[0].type = 4
+            ratio_node.attribute[0].type = 4
+            training_mode_node.attribute[0].name = "value"
+            ratio_node.attribute[0].name = "value"
+            
+        _inference_sess = ort.InferenceSession(onnx_model_copy.SerializeToString())
+        # look to see if we pass otpion of training mode is true
+        inf_inputs = {}
+        for i, input_elem in enumerate(input):
+            if i >= len(_inference_sess.get_inputs()):
+                continue
+            else:
+                inf_inputs[_inference_sess.get_inputs()[i].name] = input_elem.cpu().numpy()
+        _inference_outs = _inference_sess.run(None, inf_inputs)
+        import _test_helpers
+        for torch_item, ort_item in zip(self.torch_sample_outputs, _inference_outs):
+            from numpy.testing import assert_allclose
+            import numpy as np
+            #print("atol", torch_item.shape, np.absolute(torch_item - ort_item).max())
+            denom = ((torch_item + ort_item) * 0.5) * 100
+            numer = np.absolute(torch_item - ort_item)
+            #print("rtol", torch_item.shape, (numer/denom).max())
+            assert_allclose(torch_item, ort_item, rtol=1e-2, atol=1e-6)
+
     def train_step(self, *args, **kwargs):
         r"""Train step method
 
@@ -348,6 +391,10 @@ class ORTTrainer(object):
         # Normalize input
         if not isinstance(args, (list, tuple)):
             args = (args,)
+
+        # Debug Model Export if indicated
+        if self.options.debug.check_model_export:
+            self._debug_model_export(input)
 
         # Run a train step and return
         session_run_results = self._training_session_run_helper(True, input, inputs_desc,
@@ -461,6 +508,7 @@ class ORTTrainer(object):
                 warnings.warn("This model cannot be deep copied (or pickled), which is a required step for stateful models to be properly exported to ONNX."
                               " Compute will continue, but unexpected results may occur!")
             sample_outputs = model_copy(*sample_inputs_copy)
+            self.torch_sample_outputs = sample_outputs
         model.train()
 
         if isinstance(sample_outputs, torch.Tensor):
