@@ -2132,7 +2132,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
 #if USE_DML
-<<<<<<< HEAD
             // Explicitly set dll probe path so that the (potentially) stale system DirectML.dll 
             // doesn't get loaded by the test process when it is eventually delay loaded by onnruntime.dll
             // The managed tests binary path already contains the right DirectML.dll, so use that
@@ -2140,8 +2139,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var directml_dll_path = AppDomain.CurrentDomain.BaseDirectory;
             SetDllDirectory(directml_dll_path);
 
-=======
->>>>>>> origin/master
             using (var option = new SessionOptions())
             {
                 if (!deviceId.HasValue)
