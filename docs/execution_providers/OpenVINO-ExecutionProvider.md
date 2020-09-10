@@ -68,8 +68,15 @@ After a device type is selected is selected for inference (either during build t
 Note. This dynamic hardware selection is optional. The EP falls back to the build-time default selection if no dynamic hardware option value is specified.
 
 ### Python API
+
+Get list of available OpenVINO compatible devices
 ```
 import onnxruntime
+onnxruntime.capi._pybind_state.get_available_openvino_device_ids()
+```
+
+Select a device ID from the list obtained above
+```
 onnxruntime.capi._pybind_state.set_openvino_device_id("<device_id>")
 # Create session after this
 ```

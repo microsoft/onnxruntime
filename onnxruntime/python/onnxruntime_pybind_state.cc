@@ -23,6 +23,10 @@
 #include "core/session/abi_session_options_impl.h"
 #include "core/platform/env.h"
 
+#if USE_OPENVINO
+#include <inference_engine.hpp>
+#endif
+
 struct OrtStatus {
   OrtErrorCode code;
   char msg[1];  // a null-terminated string
@@ -707,6 +711,12 @@ void addGlobalMethods(py::module& m, const Environment& env) {
         return enable_vpu_fast_compile;
       },
       "Gets the status of VPU fast compile selection.");
+  m.def(
+      "get_available_openvino_device_ids", []() -> std::vector<std::string> {
+        InferenceEngine::Core ie_core;
+        return ie_core.GetAvailableDevices();
+      },
+      "Lists all OpenVINO device ids available.");
   m.def(
       "set_openvino_device_id", [](const std::string& device_id) { openvino_device_id = device_id; },
       "Set the prefered OpenVINO device id of a type to be used. If left unset, an arbitrary free device of type will be used.");
