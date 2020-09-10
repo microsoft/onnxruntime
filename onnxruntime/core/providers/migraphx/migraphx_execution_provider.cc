@@ -18,6 +18,7 @@
 #include "hip_allocator.h"
 #include "gpu_data_transfer.h"
 #include <fstream>
+#include <algorithm>
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4244 4245)
@@ -552,6 +553,57 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
   return false;
 }
 
+void SubgraphPostProcessing(const onnxruntime::GraphViewer& graph_viewer, std::vector<std::vector<NodeIndex>>& clusters)
+{
+  // If the number of nodes in the graph is less than 5, do nothing
+  // this is to deal with onnx unit tests
+  if (graph_viewer.NumberOfNodes() <= 5)
+  {
+    return;
+  }
+
+  // Then check whether a subgraph should fallback to CPU
+  // 1. Check whether a subgraph contains a RNN operator
+  std::unordered_set<std::string> rnn_names = {"RNN", "GRU", "LSTM"};
+  std::unordered_set<std::string> op_names = {"AveragePool", "Conv", "Gemm", "LRN", "MatMul", "MaxPool"};
+
+  auto it = std::remove_if(clusters.begin(), clusters.end(), [&](auto git) {
+    // if 6 operators or more
+    if (git.size() > 5)
+    {
+      return false;
+    }
+
+    // rnn operators, run on GPU
+    if (std::any_of(git.begin(), git.end(), [&](auto nid) {
+      const auto& node = graph_viewer.GetNode(nid);
+      const auto& op_type = node->OpType();
+      return (rnn_names.count(op_type) > 0);
+    }))
+    {
+      return false;
+    }
+
+    // check operators gemm, matmul, convolution, lrn.
+    if (std::any_of(git.begin(), git.end(), [&](auto nid) {
+      const auto& node = graph_viewer.GetNode(nid);
+      const auto& op_type = node->OpType();
+      if (op_names.count(op_type) > 0)
+      {
+        return true;
+      }
+      return false;
+    }))
+    {
+      return false;
+    }
+    
+    return true;
+  });
+
+  clusters.erase(it, clusters.end());
+}
+
 static bool IsNodeSupported(const std::set<std::string>& op_set,
                             const onnxruntime::GraphViewer& graph_viewer,
                             const NodeIndex node_idx,
@@ -819,32 +871,6 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   std::unordered_set<std::string> mgx_required_initializers;
   const auto unsupported_nodes = GetUnsupportedNodeIndices(graph_viewer, mgx_required_initializers, *GetLogger());
   
-  // migraphx cannot handle Loop, If, and SoftmaxCrossEntropyLoss for now,
-  // so if a model contain any of these operators, fall back to CPU
-  std::unordered_set<std::string> vec_ops = {"If", "Loop", "SoftmaxCrossEntropyLoss"};
-  if (std::any_of(unsupported_nodes.begin(), unsupported_nodes.end(), [&](auto i) {
-    return (vec_ops.count(graph_viewer.GetNode(i)->OpType()) > 0);
-  })) {
-    return result;
-  }
-
-  if (!unsupported_nodes.empty())
-  {
-    std::cout << "=======================================" << std::endl;
-    std::cout << "Unsupported_node_num = " << unsupported_nodes.size() << std::endl;
-    for (auto& idx : unsupported_nodes)
-    {
-      auto&& node = graph_viewer.GetNode(idx);
-      std::cout << "idx = " << idx << ", op_type = " << node->OpType() << std::endl;
-    }
-    std::cout << "=======================================" << std::endl;
-  }
-
-  // Too many unsupported operators, fallback to run on CPU
-  if (unsupported_nodes.size() >= 6) {
-    return result;
-  }
-
   //If all ops are supported, no partitioning is required. Short-circuit and avoid splitting.
   if (unsupported_nodes.empty()) {
     std::vector<std::string> inputs;
@@ -872,7 +898,30 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     AppendNodesToSubGraph(graph_viewer.GetNodesInTopologicalOrder(), inputs, outputs, result);
 
   } else {  // unsupported_nodes_idx.empty()
-    const auto mgx_clusters = GetPartitionedSubgraphs(graph_viewer.GetNodesInTopologicalOrder(), unsupported_nodes);
+    // migraphx cannot handle Loop, If, and SoftmaxCrossEntropyLoss for now,
+    // so if a model contain any of these operators, fall back to CPU
+    std::unordered_set<std::string> vec_ops = {"If", "Loop", "SoftmaxCrossEntropyLoss"};
+    if (std::any_of(unsupported_nodes.begin(), unsupported_nodes.end(), [&](auto i) {
+      return (vec_ops.count(graph_viewer.GetNode(i)->OpType()) > 0);
+    })) {
+      return result;
+    }
+
+    if (!unsupported_nodes.empty())
+    {
+      std::cout << "=======================================" << std::endl;
+      std::cout << "Unsupported_node_num = " << unsupported_nodes.size() << std::endl;
+      for (auto& idx : unsupported_nodes)
+      {
+        auto&& node = graph_viewer.GetNode(idx);
+        std::cout << "idx = " << idx << ", op_type = " << node->OpType() << std::endl;
+      }
+      std::cout << "=======================================" << std::endl;
+    }
+
+    auto mgx_clusters = GetPartitionedSubgraphs(graph_viewer.GetNodesInTopologicalOrder(), unsupported_nodes);
+    // check whether a subgrap should fallback to CPU
+    SubgraphPostProcessing(graph_viewer, mgx_clusters);
 
     for (const auto& this_cluster : mgx_clusters) {
       std::vector<std::string> cluster_inputs, cluster_outputs;
