@@ -27,9 +27,24 @@ typedef std::set<const Node*, NodeCompare> NodeSet;
 
 static std::unordered_map<std::string, std::unordered_set<size_t>>
     STOP_GRADIENT_EDGES = {
-        {"Pow", {1}},
+        {"Not", {0}},
+        {"And", {0, 1}},
+        {"Or", {0, 1}},
+        {"Xor", {0, 1}},
+        {"Equal", {0, 1}},
+        {"Less", {0, 1}},
+        {"LessOrEqual", {0, 1}},
+        {"Greater", {0, 1}},
+        {"GreaterOrEqual", {0, 1}},
+        {"IsInf", {0}},
+        {"IsNaN", {0}},
+        {"NonZero", {0}},
+        {"Pow", {1}},  // TODO: Pow's input_1 is differentiable, but gradient not yet implemented
         {"Gather", {1}},
+        {"GatherElements", {1}},
+        {"GatherND", {1}},
         {"Shape", {0}},
+        {"Size", {0}},
         {"Reshape", {1}},
         {"Expand", {1}},
         {"TrainableDropout", {1}},
@@ -39,10 +54,13 @@ static std::unordered_map<std::string, std::unordered_set<size_t>>
         {"SoftmaxCrossEntropyLoss", {1, 2}},
         {"ConstantOfShape", {0}},
         {"Scatter", {1}},
+        {"ScatterElements", {1}},
+        {"ScatterND", {1}},
         {"OneHot", {0, 1, 2}},
         {"Where", {0}},
         {"Range", {0, 1, 2}},
         {"Tile", {1}},
+        {"NonZero", {0}},
         {"BroadcastGradientArgs", {0, 1}}};
 
 class GradientGraphBuilder {

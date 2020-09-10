@@ -68,7 +68,9 @@ if (NOT WIN32)
   endif()
 endif()
 
-if(${CMAKE_SYSTEM_NAME} MATCHES "Android")
+
+# strip binary on Android, or for a minimal build on Unix
+if(CMAKE_SYSTEM_NAME STREQUAL "Android" OR (onnxruntime_MINIMAL_BUILD AND UNIX))
   set_target_properties(onnxruntime PROPERTIES LINK_FLAGS_RELEASE -s)
   set_target_properties(onnxruntime PROPERTIES LINK_FLAGS_MINSIZEREL -s)
 endif()

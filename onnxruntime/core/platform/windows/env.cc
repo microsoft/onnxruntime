@@ -67,7 +67,9 @@ class WindowsThread : public EnvThread {
   // This function is called when the threadpool is cancelled.
   // TODO: Find a way to avoid calling TerminateThread
   void OnCancel() {
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
     TerminateThread(hThread.get(), 1);
+#endif
   }
 
  private:
@@ -77,9 +79,15 @@ class WindowsThread : public EnvThread {
     // TODO: should I try to use SetThreadSelectedCpuSets?
     if (!p->thread_options.affinity.empty())
       SetThreadAffinityMask(GetCurrentThread(), p->thread_options.affinity[p->index]);
+#if WINVER >= _WIN32_WINNT_WIN10
+    constexpr SetThreadDescriptionFunc pSetThrDesc = SetThreadDescription;
+#elif WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
     // kernel32.dll is always loaded
-    SetThreadDescriptionFunc pSetThrDesc =
+    auto pSetThrDesc =
         (SetThreadDescriptionFunc)GetProcAddress(GetModuleHandle(TEXT("kernel32.dll")), "SetThreadDescription");
+#else
+    constexpr SetThreadDescriptionFunc pSetThrDesc = nullptr;
+#endif
     if (pSetThrDesc != nullptr) {
       const ORTCHAR_T* name_prefix =
           (p->name_prefix == nullptr || wcslen(p->name_prefix) == 0) ? L"onnxruntime" : p->name_prefix;
@@ -180,8 +188,13 @@ class WindowsEnv : public Env {
   }
 
   Status GetFileLength(_In_z_ const ORTCHAR_T* file_path, size_t& length) const override {
+#if WINVER >= _WIN32_WINNT_WIN8
     wil::unique_hfile file_handle{
-        CreateFileW(file_path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)};
+        CreateFile2(file_path, FILE_READ_ATTRIBUTES, FILE_SHARE_READ, OPEN_EXISTING, NULL)};
+#else
+    wil::unique_hfile file_handle{
+        CreateFileW(file_path, FILE_READ_ATTRIBUTES, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)};
+#endif
     LARGE_INTEGER filesize;
     if (!GetFileSizeEx(file_handle.get(), &filesize)) {
       const int err = GetLastError();
@@ -223,9 +236,13 @@ class WindowsEnv : public Env {
     ORT_RETURN_IF_NOT(file_path);
     ORT_RETURN_IF_NOT(offset >= 0);
     ORT_RETURN_IF_NOT(length <= buffer.size());
-
+#if WINVER >= _WIN32_WINNT_WIN8
+    wil::unique_hfile file_handle{
+        CreateFile2(file_path, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, NULL)};
+#else
     wil::unique_hfile file_handle{
         CreateFileW(file_path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)};
+#endif
     if (file_handle.get() == INVALID_HANDLE_VALUE) {
       const int err = GetLastError();
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToMBString(file_path), " fail, errcode = ", err);
@@ -400,7 +417,14 @@ class WindowsEnv : public Env {
       PathString& canonical_path) const override {
     // adapted from MSVC STL std::filesystem::canonical() implementation
     // https://github.com/microsoft/STL/blob/ed3cbf36416a385828e7a5987ca52cb42882d84b/stl/inc/filesystem#L2986
-
+#if WINVER >= _WIN32_WINNT_WIN8
+    wil::unique_hfile file_handle{CreateFile2(
+        path.c_str(),
+        FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        OPEN_EXISTING,
+        NULL)};
+#else
     wil::unique_hfile file_handle{CreateFileW(
         path.c_str(),
         FILE_READ_ATTRIBUTES,
@@ -409,6 +433,7 @@ class WindowsEnv : public Env {
         OPEN_EXISTING,
         FILE_FLAG_BACKUP_SEMANTICS,
         nullptr)};
+#endif
 
     if (file_handle.get() == INVALID_HANDLE_VALUE) {
       const int err = GetLastError();
@@ -472,23 +497,34 @@ class WindowsEnv : public Env {
   }
 
   virtual Status LoadDynamicLibrary(const std::string& library_filename, void** handle) const override {
+#if WINAPI_FAMILY == WINAPI_FAMILY_PC_APP
+    *handle = ::LoadPackagedLibrary(ToWideString(library_filename).c_str(), 0);
+#else
     *handle = ::LoadLibraryExA(library_filename.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
-    if (!*handle)
-      return common::Status(common::ONNXRUNTIME, common::FAIL, "Failed to load library");
-    return common::Status::OK();
+#endif
+    if (!*handle) {
+      const auto error_code = GetLastError();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to load library, error code: ", error_code);
+    }
+    return Status::OK();
   }
 
-  virtual common::Status UnloadDynamicLibrary(void* handle) const override {
-    if (::FreeLibrary(reinterpret_cast<HMODULE>(handle)) == 0)
-      return common::Status(common::ONNXRUNTIME, common::FAIL, "Failed to unload library");
-    return common::Status::OK();
+  virtual Status UnloadDynamicLibrary(void* handle) const override {
+    if (::FreeLibrary(reinterpret_cast<HMODULE>(handle)) == 0) {
+      const auto error_code = GetLastError();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to unload library, error code: ", error_code);
+    }
+    return Status::OK();
   }
 
   virtual Status GetSymbolFromLibrary(void* handle, const std::string& symbol_name, void** symbol) const override {
     *symbol = ::GetProcAddress(reinterpret_cast<HMODULE>(handle), symbol_name.c_str());
-    if (!*symbol)
-      return common::Status(common::ONNXRUNTIME, common::FAIL, "Failed to find symbol in library");
-    return common::Status::OK();
+    if (!*symbol) {
+      const auto error_code = GetLastError();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to find symbol in library, error code: ",
+                             error_code);
+    }
+    return Status::OK();
   }
 
   virtual std::string FormatLibraryFileName(const std::string& name, const std::string& version) const override {
@@ -530,20 +566,7 @@ class WindowsEnv : public Env {
   }
 
  private:
-  WindowsEnv() : GetSystemTimePreciseAsFileTime_(nullptr) {
-    // GetSystemTimePreciseAsFileTime function is only available in the latest
-    // versions of Windows. For that reason, we try to look it up in
-    // kernel32.dll at runtime and use an alternative option if the function
-    // is not available.
-    HMODULE module = GetModuleHandleW(L"kernel32.dll");
-    if (module != nullptr) {
-      auto func = (FnGetSystemTimePreciseAsFileTime)GetProcAddress(module, "GetSystemTimePreciseAsFileTime");
-      GetSystemTimePreciseAsFileTime_ = func;
-    }
-  }
-
   typedef VOID(WINAPI* FnGetSystemTimePreciseAsFileTime)(LPFILETIME);
-  FnGetSystemTimePreciseAsFileTime GetSystemTimePreciseAsFileTime_;
   WindowsTelemetry telemetry_provider_;
 };
 }  // namespace

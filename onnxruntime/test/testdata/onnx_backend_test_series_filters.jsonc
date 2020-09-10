@@ -32,7 +32,9 @@
         "^test_resize_downsample_scales_linear_align_corners", // results mismatch with onnx tests
         "^test_adam", // NOT_IMPLEMENTED : Could not find an implementation for the node Adam(1)
         "^test_adam_multiple", // NOT_IMPLEMENTED : Could not find an implementation for the node Adam(1)
-        "^test_training_dropout.*" // NOT_IMPLEMENTED : Could not find an implementation for the node Dropout(12) (Temporary, subsequent PR will add this -- we need training_mode change in the kernel)
+        "^test_training_dropout.*", // NOT_IMPLEMENTED : Could not find an implementation for the node Dropout(12) (Temporary, subsequent PR will add this -- we need training_mode change in the kernel)
+        "^test_if_seq_cpu", // NOT_IMPLEMENTED : Could not find an implementation for the node If(13)
+        "^test_loop13_seq_cpu" // NOT_IMPLEMENTED : Could not find an implementation for the node Loop(13)
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",
@@ -84,9 +86,9 @@
         "^test_softmax_cross_entropy.*"
     ],
     "current_failing_tests_OPENVINO_MYRIAD": [
-         "^test_range",
-         "^test_dynamicquantizelinear",
-         "^test_operator_index"
+        "^test_range",
+        "^test_dynamicquantizelinear",
+        "^test_operator_index"
     ],
     "current_failing_tests_OPENVINO_GPU": [
         "^test_div",

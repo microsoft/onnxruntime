@@ -9,7 +9,7 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
 #include <unsupported/Eigen/SpecialFunctions>
-#include "core/providers/cpu/activation/element_wise_ranged_transform.h"
+#include "core/providers/cpu/element_wise_ranged_transform.h"
 
 namespace onnxruntime {
 namespace functors {

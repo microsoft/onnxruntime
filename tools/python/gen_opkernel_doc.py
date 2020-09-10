@@ -16,7 +16,10 @@ def format_version_range(v):
     if (v[1] >= 2147483647):
         return str(v[0])+'+'
     else:
-        return '['+str(v[0])+', '+str(v[1])+']'
+        if (v[0] == v[1]):
+            return str(v[0])
+        else:
+            return '['+str(v[0])+', '+str(v[1])+']'
 
 
 def format_type_constraints(tc):
@@ -102,35 +105,33 @@ def main(args):  # type: (Type[Args]) -> None
             fout.write('| Op Name | Parameters | OpSet Version | Types Supported |\n')
             fout.write('|---------|------------|---------------|-----------------|\n')
             for domain, namemap in sorted(domainmap.items()):
-                fout.write('**Operator Domain:** *'+domain+'*\n')
+                fout.write('|**Operator Domain:** *'+domain+'*||||\n')
                 for name, ops in sorted(namemap.items()):
                     version_type_index = defaultdict(lambda: defaultdict(set))
                     for op in ops:
-                        formatted_version_range = format_version_range(op.version_range)
                         for tname, tclist in op.type_constraints.items():
                             for c in tclist:
-                                version_type_index[formatted_version_range][tname].add(c)
+                                version_type_index[op.version_range][tname].add(c)
 
                     namefirsttime = True
-                    for version, typemap in sorted(version_type_index.items()):
-                        versionfirsttime = True
+                    for version_range, typemap in sorted(version_type_index.items(), key=lambda x: x[0], reverse=True):
+                        if (namefirsttime):
+                            params = paramdict.get(domain+'.'+name, None)
+                            fout.write('|' + name + '|' + format_param_strings(params) + '|')
+                            namefirsttime = False
+                        else:
+                            fout.write('|||')
+                        fout.write(format_version_range(version_range) + '|')
+                        tnameindex = 0
                         for tname, tcset in sorted(typemap.items()):
-                            if (namefirsttime):
-                                params = paramdict.get(domain+'.'+name, None)
-                                fout.write('|'+name+'|'+format_param_strings(params) + '|')
-                                namefirsttime = False
-                            else:
-                                fout.write('| | |')
-                            if (versionfirsttime):
-                                versionfirsttime = False
-                                fout.write(version+'|')
-                            else:
-                                fout.write('|')
-
+                            tnameindex += 1
                             tclist = []
                             for tc in sorted(tcset):
                                 tclist.append(tc)
-                            fout.write('**'+tname+'** = '+format_type_constraints(tclist)+'|\n')
+                            fout.write('**'+tname+'** = '+format_type_constraints(tclist))
+                            if (tnameindex < len(typemap)):
+                                fout.write('<br/> ')
+                        fout.write('|\n')
 
                 fout.write('| |\n| |\n')
 

@@ -16,7 +16,7 @@
     * [Intel DNNL/MKL-ML](#DNNL-and-MKLML)
     * [Intel nGraph](#nGraph)
     * [Intel OpenVINO](#openvino)
-    * [Android NNAPI](#Android-NNAPI)
+    * [Android NNAPI](#Android-NNAPI-Execution-Provider)
     * [Nuphar Model Compiler](#Nuphar)
     * [DirectML](#DirectML)
     * [ARM Compute Library](#ARM-Compute-Library)
@@ -146,8 +146,8 @@ Build instructions are [here](./docs/Server.md)
 * Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn)
   * ONNX Runtime is built and tested with CUDA 10.1 and cuDNN 7.6 using the Visual Studio 2019 14.12 toolset (i.e. Visual Studio 2019 v16.5).
     ONNX Runtime can also be built with CUDA versions from 9.1 up to 10.1, and cuDNN versions from 7.1 up to 7.4.
-  * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home parameter`
-  * The path to the cuDNN installation (include the `cuda` folder in the path) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home parameter`. The cuDNN path should contain `bin`, `include` and `lib` directories.
+  * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home` parameter
+  * The path to the cuDNN installation (include the `cuda` folder in the path) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home` parameter. The cuDNN path should contain `bin`, `include` and `lib` directories.
   * The path to the cuDNN bin directory must be added to the PATH environment variable so that cudnn64_7.dll is found.
 
 #### Build Instructions
@@ -189,12 +189,12 @@ See more information on the TensorRT Execution Provider [here](./docs/execution_
 #### Prerequisites
 * Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn)
    * The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 10.2 and cuDNN 7.6.5.
-   * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home parameter`. The CUDA path should contain `bin`, `include` and `lib` directories.
+   * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home` parameter. The CUDA path should contain `bin`, `include` and `lib` directories.
    * The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
-   * The path to the cuDNN installation (path to folder that contains libcudnn.so) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home parameter`.
+   * The path to the cuDNN installation (path to folder that contains libcudnn.so) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home` parameter.
  * Install [TensorRT](https://developer.nvidia.com/nvidia-tensorrt-download)
    * The TensorRT execution provider for ONNX Runtime is built on TensorRT 7.x and is tested with TensorRT 7.0.0.11.
-   * The path to TensorRT installation must be provided via the `--tensorrt_home parameter`.
+   * The path to TensorRT installation must be provided via the `--tensorrt_home` parameter.
 
 #### Build Instructions
 ##### Windows
@@ -468,7 +468,7 @@ alias cmake="/usr/bin/cmake -DCMAKE_TOOLCHAIN_FILE=$OECORE_NATIVE_SYSROOT/usr/sh
 cmake ../onnxruntime-arm-upstream/cmake -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc -Donnxruntime_RUN_ONNX_TESTS=OFF -Donnxruntime_GENERATE_TEST_REPORTS=ON -Donnxruntime_DEV_MODE=ON -DPYTHON_EXECUTABLE=/usr/bin/python3 -Donnxruntime_USE_CUDA=OFF -Donnxruntime_USE_NSYNC=OFF -Donnxruntime_CUDNN_HOME= -Donnxruntime_USE_JEMALLOC=OFF -Donnxruntime_ENABLE_PYTHON=OFF -Donnxruntime_BUILD_CSHARP=OFF -Donnxruntime_BUILD_SHARED_LIB=ON -Donnxruntime_USE_EIGEN_FOR_BLAS=ON -Donnxruntime_USE_OPENBLAS=OFF -Donnxruntime_USE_ACL=ON -Donnxruntime_USE_DNNL=OFF -Donnxruntime_USE_MKLML=OFF -Donnxruntime_USE_OPENMP=ON -Donnxruntime_USE_TVM=OFF -Donnxruntime_USE_LLVM=OFF -Donnxruntime_ENABLE_MICROSOFT_INTERNAL=OFF -Donnxruntime_USE_BRAINSLICE=OFF -Donnxruntime_USE_NUPHAR=OFF -Donnxruntime_USE_EIGEN_THREADPOOL=OFF -Donnxruntime_BUILD_UNIT_TESTS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
 ```
 The ```-Donnxruntime_USE_ACL=ON``` option will use, by default, the 19.05 version of the Arm Compute Library. To set the right version you can use:
-```-Donnxruntime_USE_ACL_1902=ON```, ```-Donnxruntime_USE_ACL_1905=ON``` or ```-Donnxruntime_USE_ACL_1908=ON```;
+```-Donnxruntime_USE_ACL_1902=ON```, ```-Donnxruntime_USE_ACL_1905=ON```, ```-Donnxruntime_USE_ACL_1908=ON``` or ```-Donnxruntime_USE_ACL_2002=ON```;
 
 2. Build ONNX Runtime library, test and performance application:
 ```

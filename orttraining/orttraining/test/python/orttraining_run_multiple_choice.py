@@ -108,7 +108,7 @@ class ORTMultipleChoiceTest(unittest.TestCase):
         self.train_batch_size = 32
 
         expected_acc = 0.7482255323402979
-        expected_loss = 0.6665529619455844
+        expected_loss = 0.6665752871014349
 
         results_per_api = dict()
         for use_new_api in [False, True]:

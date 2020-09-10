@@ -201,8 +201,17 @@ class InferenceSession {
     */
   common::Status RegisterCustomRegistry(std::shared_ptr<CustomRegistry> custom_registry) ORT_MUST_USE_RESULT;
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
   /**
-    * Load an ONNX model.
+    * Load an ONNX or ORT format model.
+    *
+    * Set SessionOptions session config value ORT_SESSION_OPTIONS_CONFIG_LOAD_MODEL_FORMAT to 'ORT' or 'ONNX' to 
+    * explicitly choose model format.
+    *
+    * If format is not explicitly specified and filename ends in '.ort' it will be inferred to be an ORT format model.
+	* All other files are assumed to be in ONNX format.
+    * 
     * @param model_uri absolute path of the model file.
     * @return OK if success.
     */
@@ -211,19 +220,26 @@ class InferenceSession {
   common::Status Load(const std::wstring& model_uri) ORT_MUST_USE_RESULT;
 #endif
   /**
-    * Load an ONNX model.
-    * @param istream object of the model.
-    * @return OK if success.
-    */
-  common::Status Load(std::istream& model_istream) ORT_MUST_USE_RESULT;
-
-  /**
-    * Load an ONNX model.
+    * Load an ONNX or ORT format model.
+    *
+    * Set SessionOptions session config value ORT_SESSION_OPTIONS_CONFIG_LOAD_MODEL_FORMAT to 'ORT' or 'ONNX' to 
+    * explicitly choose model format.
+    *
+    * If format is not explicitly specified the model format will be inferred from the bytes, defaulting to ONNX.
+    * 
     * @param model_data Model data buffer
     * @param model_data_len Model data buffer size
     * @return OK if success.
     */
   common::Status Load(const void* model_data, int model_data_len) ORT_MUST_USE_RESULT;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  /**
+    * Load an ONNX model.
+    * @param istream object of the model.
+    * @return OK if success.
+    */
+  common::Status Load(std::istream& model_istream) ORT_MUST_USE_RESULT;
 
   /**
     * Load an ONNX model from the member model_proto_.
@@ -592,18 +608,14 @@ class InferenceSession {
   uint32_t session_id_;                             // the current session's id
 
   struct Telemetry {
-    Telemetry() : time_sent_last_(), time_sent_last_evalutation_start_() {}
+    Telemetry() : time_sent_last_() {}
     uint32_t total_runs_since_last_ = 0;           // the total number of Run() calls since the last report
     long long total_run_duration_since_last_ = 0;  // the total duration (us) of Run() calls since the last report
     std::string event_name_;                       // where the model is loaded from: ["model_loading_uri", "model_loading_proto", "model_loading_istream"]
 
     TimePoint time_sent_last_;  // the TimePoint of the last report
-    TimePoint time_sent_last_evalutation_start_;
     // Event Rate per provider < 20 peak events per second
     constexpr static long long kDurationBetweenSending = 1000 * 1000 * 60 * 10;     // duration in (us).  send a report every 10 mins
-    constexpr static long long kDurationBetweenSendingEvaluationStart = 1000 * 50;  // duration in (us). send a EvaluationStop Event every 50 ms;
-
-    bool isEvaluationStart = false;
   } telemetry_;
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
