@@ -85,7 +85,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.Throws<OnnxRuntimeException>(() => { opt.GraphOptimizationLevel = (GraphOptimizationLevel)10; });
 
                 opt.AddSessionConfigEntry("key", "value");
-				
+
                 var ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AddSessionConfigEntry("", "invalid key"); });
                 Assert.Contains("[ErrorCode:InvalidArgument] Config key is empty", ex.Message);
 
@@ -97,7 +97,14 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.AppendExecutionProvider_CUDA(0);
 #endif
 #if USE_DML
+                // Explicitly set dll probe path so that the (potentially) stale system DirectML.dll 
+                // doesn't get loaded by the test process when it is eventually delay loaded by onnruntime.dll
+                // The managed tests binary path already contains the right DirectML.dll, so use that
+
+                var directml_dll_path = AppDomain.CurrentDomain.BaseDirectory;
+                SetDllDirectory(directml_dll_path);
                 opt.AppendExecutionProvider_DML(0);
+
 #endif
 #if USE_NGRAPH
                 opt.AppendExecutionProvider_NGraph("CPU");  //TODO: this API should be refined
@@ -118,6 +125,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             }
         }
+
+        // Use to set dll probe path so that the right dll(s) is loaded by the test process
+        // Invoke only to specify Windows specific EPs' dll locations explicitly
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+
+        [return: MarshalAs(UnmanagedType.Bool)]
+        static extern bool SetDllDirectory(string lpPathName);
 
         [Fact]
         public void TestRunOptions()
@@ -1593,7 +1607,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 Assert.Equal(2, modelMetadata.CustomMetadataMap.Keys.Count);
                 Assert.Equal("dummy_value", modelMetadata.CustomMetadataMap["dummy_key"]);
-                Assert.Equal("{\"session_options\": {\"inter_op_num_threads\": 5, \"intra_op_num_threads\": 2, \"graph_optimization_level\": 99, \"enable_profiling\": 1}}", 
+                Assert.Equal("{\"session_options\": {\"inter_op_num_threads\": 5, \"intra_op_num_threads\": 2, \"graph_optimization_level\": 99, \"enable_profiling\": 1}}",
                               modelMetadata.CustomMetadataMap["ort_config"]);
 
 
@@ -2118,6 +2132,16 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
 #if USE_DML
+<<<<<<< HEAD
+            // Explicitly set dll probe path so that the (potentially) stale system DirectML.dll 
+            // doesn't get loaded by the test process when it is eventually delay loaded by onnruntime.dll
+            // The managed tests binary path already contains the right DirectML.dll, so use that
+
+            var directml_dll_path = AppDomain.CurrentDomain.BaseDirectory;
+            SetDllDirectory(directml_dll_path);
+
+=======
+>>>>>>> origin/master
             using (var option = new SessionOptions())
             {
                 if (!deviceId.HasValue)
@@ -2139,7 +2163,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     option.AppendExecutionProvider_CPU(1);
                 }
 #else
-                using (var option = new SessionOptions())
+            using (var option = new SessionOptions())
             {
                 option.AppendExecutionProvider_CPU(1);
 #endif
@@ -2214,7 +2238,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         public DisposableListTest() { }
         public DisposableListTest(int count) : base(count) { }
 
-#region IDisposable Support
+        #region IDisposable Support
         private bool disposedValue = false; // To detect redundant calls
 
         protected virtual void Dispose(bool disposing)
@@ -2247,6 +2271,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             Dispose(true);
             GC.SuppressFinalize(this);
         }
-#endregion
+        #endregion
     }
 }
