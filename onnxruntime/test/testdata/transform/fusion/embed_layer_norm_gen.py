@@ -278,12 +278,33 @@ def GenerateModel6(model_name):
     model = helper.make_model(graph)
     onnx.save(model, model_name)
 
-def GenerateModel7(model_name):
-    batch_size = 2
-    hidden_size = 4
-    attention_heads = 2
-    sequence_length = 3
+def GenerateInitializers2(hidden_size):
+    qkv_weights = [
+        1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0, 1.0, 2.0,
+        3.0, 4.0, 1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0,
+        1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0
+    ]
 
+    initializers = [  # initializers
+        helper.make_tensor('word_embed', TensorProto.FLOAT, [2, hidden_size], [1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0]),
+        helper.make_tensor('pos_embed', TensorProto.FLOAT, [2, hidden_size], [1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0]),
+        helper.make_tensor('indices_0', TensorProto.INT64, [], [0]),
+        helper.make_tensor('indices_1', TensorProto.INT64, [], [1]),
+        helper.make_tensor('start', TensorProto.INT64, [], [0]),
+        helper.make_tensor('delta', TensorProto.INT64, [], [1]),
+        helper.make_tensor('layer_norm_weight', TensorProto.FLOAT, [hidden_size], [1.0, 2.0, 3.0, 4.0]),
+        helper.make_tensor('layer_norm_bias', TensorProto.FLOAT, [hidden_size], [0.1, 0.2, 0.3, 0.4]),
+        helper.make_tensor('qkv_weights', TensorProto.FLOAT, [hidden_size, 3 * hidden_size], qkv_weights),
+        helper.make_tensor('qkv_bias', TensorProto.FLOAT, [3 * hidden_size],
+                           [0.1, 0.2, 0.3, 0.4, 0.1, 0.2, 0.3, 0.4, 0.1, 0.2, 0.3, 0.4]),
+        helper.make_tensor('matmul_weight', TensorProto.FLOAT, [hidden_size, hidden_size],
+                           [1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0]),
+        helper.make_tensor('add_bias', TensorProto.FLOAT, [hidden_size], [0.1, 0.2, 0.3, 0.4]),
+    ]
+
+    return initializers
+
+def GenerateNodes2(attention_heads):
     nodes = [
         helper.make_node("Gather", ["word_embed", "input_ids"], ["word_gather_out"], "word_gather", axis=0),
 
@@ -313,28 +334,17 @@ def GenerateModel7(model_name):
         helper.make_node("Add", ["add2_out", "layernorm_out"], ["add3_out"], "add3")
     ]
 
-    qkv_weights = [
-        1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0, 1.0, 2.0,
-        3.0, 4.0, 1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0,
-        1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0
-    ]
+    return nodes
 
-    initializers = [  # initializers
-        helper.make_tensor('word_embed', TensorProto.FLOAT, [2, hidden_size], [1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0]),
-        helper.make_tensor('pos_embed', TensorProto.FLOAT, [2, hidden_size], [1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0]),
-        helper.make_tensor('indices_0', TensorProto.INT64, [], [0]),
-        helper.make_tensor('indices_1', TensorProto.INT64, [], [1]),
-        helper.make_tensor('start', TensorProto.INT64, [], [0]),
-        helper.make_tensor('delta', TensorProto.INT64, [], [1]),
-        helper.make_tensor('layer_norm_weight', TensorProto.FLOAT, [hidden_size], [1.0, 2.0, 3.0, 4.0]),
-        helper.make_tensor('layer_norm_bias', TensorProto.FLOAT, [hidden_size], [0.1, 0.2, 0.3, 0.4]),
-        helper.make_tensor('qkv_weights', TensorProto.FLOAT, [hidden_size, 3 * hidden_size], qkv_weights),
-        helper.make_tensor('qkv_bias', TensorProto.FLOAT, [3 * hidden_size],
-                           [0.1, 0.2, 0.3, 0.4, 0.1, 0.2, 0.3, 0.4, 0.1, 0.2, 0.3, 0.4]),
-        helper.make_tensor('matmul_weight', TensorProto.FLOAT, [hidden_size, hidden_size],
-                           [1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0]),
-        helper.make_tensor('add_bias', TensorProto.FLOAT, [hidden_size], [0.1, 0.2, 0.3, 0.4]),
-    ]
+def GenerateModel7(model_name):
+    batch_size = 2
+    hidden_size = 4
+    attention_heads = 2
+    sequence_length = 3
+
+    nodes = GenerateNodes2(attention_heads)
+
+    initializers = GenerateInitializers2(hidden_size)
 
     graph = helper.make_graph(
         nodes,
@@ -351,9 +361,87 @@ def GenerateModel7(model_name):
     model = helper.make_model(graph)
     onnx.save(model, model_name)
 
+def GenerateModel8(model_name):
+    batch_size = -1
+    hidden_size = 4
+    attention_heads = 2
+    sequence_length = -1
+
+    nodes = GenerateNodes2(attention_heads)
+
+    del nodes[5:7]
+    del nodes[1:3]
+    new_nodes = [
+        helper.make_node("Shape", ["input_ids"], ["shape_out"], "shape"),
+        helper.make_node("Gather", ["shape_out", "indices_1"], ["gather0_out"], "gather0"),
+        helper.make_node("Expand", ["unsqueeze0_out", "shape_out"], ["expand_out"], "expand")
+    ]
+    nodes = nodes + new_nodes
+
+    initializers = GenerateInitializers2(hidden_size)
+
+    graph = helper.make_graph(
+        nodes,
+        "EmbedLayerNorm_format8",  #name
+        [  # inputs
+            helper.make_tensor_value_info('input_ids', TensorProto.INT64, [batch_size, sequence_length]),
+            helper.make_tensor_value_info('input_mask', TensorProto.INT64, [batch_size, sequence_length]),
+        ],
+        [  # outputs
+            helper.make_tensor_value_info('add3_out', TensorProto.FLOAT, [batch_size, sequence_length, hidden_size]),
+        ],
+        initializers)
+
+    model = helper.make_model(graph)
+    onnx.save(model, model_name)
+
+def GenerateModel9(model_name):
+    batch_size = -1
+    hidden_size = 4
+    attention_heads = 2
+    sequence_length = -1
+
+    nodes = GenerateNodes2(attention_heads)
+
+    del nodes[10]
+    del nodes[5:7]
+    del nodes[1:3]
+    new_nodes = [
+        helper.make_node("Shape", ["input_ids"], ["shape_out"], "shape"),
+        helper.make_node("Gather", ["shape_out", "indices_1"], ["gather0_out"], "gather0"),
+        helper.make_node("Expand", ["unsqueeze0_out", "shape_out"], ["expand_out"], "expand"),
+        helper.make_node("Gather", ["shape_out", "indices_0"], ["gather1_out"], "gather1"),
+        helper.make_node("Gather", ["shape_out", "indices_1"], ["gather2_out"], "gather2"),
+        helper.make_node("Unsqueeze", ["gather1_out"], ["unsqueeze1_out"], "unsqueeze1", axes=[0]),
+        helper.make_node("Unsqueeze", ["gather2_out"], ["unsqueeze2_out"], "unsqueeze2", axes=[0]),
+        helper.make_node("Concat", ["unsqueeze1_out", "unsqueeze2_out"], ["concat_out"], "concat", axis=0),
+        helper.make_node('ConstantOfShape', ['concat_out'], ['constant_of_shape_out'], "constant_of_shape",
+                         value=helper.make_tensor('mask_shape', TensorProto.FLOAT, [1], [1.0])),
+        helper.make_node("Cast", ["constant_of_shape_out"], ["mask_cast_out"], "mask_cast", to=6),
+    ]
+    nodes = nodes + new_nodes
+
+    initializers = GenerateInitializers2(hidden_size)
+
+    graph = helper.make_graph(
+        nodes,
+        "EmbedLayerNorm_format9",  #name
+        [  # inputs
+            helper.make_tensor_value_info('input_ids', TensorProto.INT64, [batch_size, sequence_length]),
+        ],
+        [  # outputs
+            helper.make_tensor_value_info('add3_out', TensorProto.FLOAT, [batch_size, sequence_length, hidden_size]),
+        ],
+        initializers)
+
+    model = helper.make_model(graph)
+    onnx.save(model, model_name)
+
 GenerateModel3('embed_layer_norm_format3.onnx', True)
 GenerateModel3('embed_layer_norm_format3_no_cast.onnx', False)
 GenerateModel5('embed_layer_norm_format5.onnx')
 GenerateModel6('embed_layer_norm_format6.onnx')
 GenerateModel7('embed_layer_norm_format7.onnx') #distilbert
+GenerateModel8('embed_layer_norm_format8.onnx') #distilbert & shape nodes integration with input mask
+GenerateModel9('embed_layer_norm_format9.onnx') #distilbert & shape nodes integration without input mask
 GenerateMultipleEmbedModel('embed_layer_norm_multiple.onnx')

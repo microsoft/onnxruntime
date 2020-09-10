@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-if (NOT WINDOWS_STORE)
+if (CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib)
   message(FATAL_ERROR "WinML is only supported on WCOS")
 endif()
 
@@ -339,7 +339,7 @@ add_library(winml_lib_image STATIC
 
 # Compiler options
 target_compile_features(winml_lib_image PRIVATE cxx_std_17)
-target_compile_options(winml_lib_image PRIVATE /GR- /await /wd4238)
+target_compile_options(winml_lib_image PRIVATE /GR- /await /wd4238 /wd5205)
 
 # Compiler flags
 target_compile_definitions(winml_lib_image PRIVATE WINML_ROOT_NS=${winml_root_ns})
@@ -435,7 +435,7 @@ add_library(winml_lib_api STATIC
 
 # Compiler options
 target_compile_features(winml_lib_api PRIVATE cxx_std_17)
-target_compile_options(winml_lib_api PRIVATE /GR- /await /bigobj /wd4238)
+target_compile_options(winml_lib_api PRIVATE /GR- /await /bigobj /wd4238 /wd5205)
 
 # Compiler flags
 target_compile_definitions(winml_lib_api PRIVATE WINML_ROOT_NS=${winml_root_ns})

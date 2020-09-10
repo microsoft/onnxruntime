@@ -2630,25 +2630,55 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat6) {
   EXPECT_EQ(op_to_count["EmbedLayerNormalization"], 1);
 }
 
-//DistilBert
-TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat7) {
-  auto model_uri = MODEL_FOLDER "fusion/embed_layer_norm_format7.onnx";
+static void TestEmbedLayerNormFusionDistilBert(const std::basic_string<ORTCHAR_T>& model_uri,
+                                               std::map<std::string, int>& op_to_count,
+                                               logging::Logger* logger) {
   std::shared_ptr<Model> p_model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger));
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<EmbedLayerNormFusion>(), TransformerLevel::Level2);
-  auto ret1 = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
+  auto ret1 = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger);
   ASSERT_TRUE(ret1.IsOK());
 
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  op_to_count = CountOpsInGraph(graph);
+}
+
+//DistilBert
+TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat7) {
+  std::map<std::string, int> op_to_count;
+  TestEmbedLayerNormFusionDistilBert(MODEL_FOLDER "fusion/embed_layer_norm_format7.onnx", op_to_count, logger_.get());
   EXPECT_EQ(op_to_count["EmbedLayerNormalization"], 1);
   EXPECT_EQ(op_to_count["Attention"], 1);
   EXPECT_EQ(op_to_count["Cast"], 2);
   EXPECT_EQ(op_to_count["Shape"], 0);
   EXPECT_EQ(op_to_count["Gather"], 0);
   EXPECT_EQ(op_to_count["Unsqueeze"], 0);
+  EXPECT_EQ(op_to_count["ReduceSum"], 1);
+}
+
+TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat8) {
+  std::map<std::string, int> op_to_count;
+  TestEmbedLayerNormFusionDistilBert(MODEL_FOLDER "fusion/embed_layer_norm_format8.onnx", op_to_count, logger_.get());
+  EXPECT_EQ(op_to_count["EmbedLayerNormalization"], 1);
+  EXPECT_EQ(op_to_count["Attention"], 1);
+  EXPECT_EQ(op_to_count["Cast"], 2);
+  EXPECT_EQ(op_to_count["Shape"], 0);
+  EXPECT_EQ(op_to_count["Gather"], 0);
+  EXPECT_EQ(op_to_count["Unsqueeze"], 0);
+  EXPECT_EQ(op_to_count["ReduceSum"], 1);
+}
+
+TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat9) {
+  std::map<std::string, int> op_to_count;
+  TestEmbedLayerNormFusionDistilBert(MODEL_FOLDER "fusion/embed_layer_norm_format9.onnx", op_to_count, logger_.get());
+  EXPECT_EQ(op_to_count["EmbedLayerNormalization"], 1);
+  EXPECT_EQ(op_to_count["Attention"], 1);
+  EXPECT_EQ(op_to_count["Cast"], 2);
+  EXPECT_EQ(op_to_count["Shape"], 0);
+  EXPECT_EQ(op_to_count["Gather"], 2);
+  EXPECT_EQ(op_to_count["Unsqueeze"], 2);
   EXPECT_EQ(op_to_count["ReduceSum"], 1);
 }
 
