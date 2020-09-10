@@ -150,8 +150,9 @@ onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExten
 #endif
 #ifdef USE_OPENVINO
 #include "core/providers/openvino/openvino_provider_factory.h"
-std::string openvino_device;
+std::string openvino_device_type;
 bool enable_vpu_fast_compile = false;
+std::string openvino_device_id;
 #endif
 #ifdef USE_NUPHAR
 #include "core/providers/nuphar/nuphar_provider_factory.h"
@@ -181,7 +182,9 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensor
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device, bool enable_vpu_fast_compile);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device_type, 
+                                                                                    bool enable_vpu_fast_compile,
+                                                                                    const char* device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char* backend_type, int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
@@ -557,7 +560,9 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
 #endif
     } else if (type == kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device.c_str(), enable_vpu_fast_compile));
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device_type.c_str(),
+                                                                                            enable_vpu_fast_compile,
+                                                                                            openvino_device_id.c_str()));
 #endif
     } else if (type == kNupharExecutionProvider) {
 #if USE_NUPHAR
@@ -687,21 +692,29 @@ void addGlobalMethods(py::module& m, const Environment& env) {
 
 #ifdef USE_OPENVINO
   m.def(
-      "set_openvino_device", [](const std::string& device) { openvino_device = device; },
-      "Set the prefered OpenVINO device(s) to be used. If left unset, device selected during build time will be used.");
+      "set_openvino_device", [](const std::string& device_type) { openvino_device_type = device_type; },
+      "Set the prefered OpenVINO device type to be used. If left unset, the device type selected during build time will be used.");
+  m.def(
+      "get_openvino_device", []() -> std::string {
+        return openvino_device_type;
+      },
+      "Gets the dynamically selected OpenVINO device type for inference.");
   m.def(
       "set_vpu_fast_compile", [](const bool& vpu_fast_compile_bool) {enable_vpu_fast_compile = vpu_fast_compile_bool; },
       "Enable/Disable VPU fast compile. Default value is false.");
-  m.def(
-      "get_openvino_device", []() -> std::string {
-        return openvino_device;
-      },
-      "Gets the dynamically selected OpenVINO device for inference.");
   m.def(
       "get_vpu_fast_compile", []() -> bool {
         return enable_vpu_fast_compile;
       },
       "Gets the status of VPU fast compile selection.");
+  m.def(
+      "set_openvino_device_id", [](const std::string& device_id) { openvino_device_id = device_id; },
+      "Set the prefered OpenVINO device id of a type to be used. If left unset, an arbitrary free device of type will be used.");
+  m.def(
+      "get_openvino_device_id", []() -> std::string {
+        return openvino_device_id;
+      },
+      "Gets the dynamically selected OpenVINO device id for inference.");
 #endif
 
 #ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
@@ -726,7 +739,9 @@ void addGlobalMethods(py::module& m, const Environment& env) {
             onnxruntime::CreateExecutionProviderFactory_NGraph("CPU"),
 #endif
 #ifdef USE_OPENVINO
-            onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device, enable_vpu_fast_compile),
+            onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device_type,
+                                                                  enable_vpu_fast_compile,
+                                                                  openvino_device_id),
 #endif
 #ifdef USE_TENSORRT
             onnxruntime::CreateExecutionProviderFactory_Tensorrt(0),

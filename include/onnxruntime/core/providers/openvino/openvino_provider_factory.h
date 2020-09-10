@@ -13,7 +13,8 @@ extern "C" {
  * \param device_id openvino device id, starts from zero.
  */
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_OpenVINO,
-    _In_ OrtSessionOptions* options, const char* device_id, bool enable_vpu_fast_compile);
+    _In_ OrtSessionOptions* options, const char* device_type,
+    bool enable_vpu_fast_compile, const char* device_id);
 
 #ifdef __cplusplus
 }
