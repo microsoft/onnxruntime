@@ -92,7 +92,14 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.AppendExecutionProvider_CUDA(0);
 #endif
 #if USE_DML
+                // Explicitly set dll probe path so that the (potentially) stale system DirectML.dll 
+                // doesn't get loaded by the test process when it is eventually delay loaded by onnruntime.dll
+                // The managed tests binary path already contains the right DirectML.dll, so use that
+
+                var directml_dll_path = AppDomain.CurrentDomain.BaseDirectory;
+                SetDllDirectory(directml_dll_path);
                 opt.AppendExecutionProvider_DML(0);
+
 #endif
 #if USE_NGRAPH
                 opt.AppendExecutionProvider_NGraph("CPU");  //TODO: this API should be refined
@@ -113,6 +120,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             }
         }
+
+        // Use to set dll probe path so that the right dll(s) is loaded by the test process
+        // Invoke only to specify Windows specific EPs' dll locations explicitly
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+
+        [return: MarshalAs(UnmanagedType.Bool)]
+        static extern bool SetDllDirectory(string lpPathName);
 
         [Fact]
         public void TestRunOptions()
@@ -2113,6 +2127,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
 #if USE_DML
+            // Explicitly set dll probe path so that the (potentially) stale system DirectML.dll 
+            // doesn't get loaded by the test process when it is eventually delay loaded by onnruntime.dll
+            // The managed tests binary path already contains the right DirectML.dll, so use that
+
+            var directml_dll_path = AppDomain.CurrentDomain.BaseDirectory;
+            SetDllDirectory(directml_dll_path);
+
             using (var option = new SessionOptions())
             {
                 if (!deviceId.HasValue)
