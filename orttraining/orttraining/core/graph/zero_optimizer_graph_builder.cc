@@ -135,11 +135,13 @@ static Status AddNcclReduceForGradients(
 
     std::vector<AttributeProto> attributes({onnx::MakeAttribute("root_rank", int64_t(i)),
                                             onnx::MakeAttribute("num_input_readies", has_old_reduce)});  //,
-    graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclReduce", kMSDomain, 1},
+    auto nd = NodeDef(OpDef{"NcclReduce", kMSDomain, 1},
                                     reduce_inputs,
                                     reduce_outputs,
                                     attributes,
-                                    node_name)});
+                                    node_name);
+    nd.SetPriority(-1);
+    graph_defs.AddNodeDefs({nd});
     output_readies.push_back(reduce_outputs[0]);
   }
   return Status::OK();

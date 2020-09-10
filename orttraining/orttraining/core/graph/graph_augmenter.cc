@@ -53,7 +53,7 @@ Status GraphAugmenter::AugmentGraph(Graph& graph, const GraphDefs& graph_element
 
   // Add new nodes to the graph.
   for (const auto& node_def : graph_element_defs.NodeDefs()) {
-    std::vector<NodeArg*> input_args, output_args;
+    std::vector<NodeArg *> input_args, output_args;
 
     for (const auto& arg : node_def.input_args) {
       NodeArg& node_arg = graph.GetOrCreateNodeArg(arg.name, arg.type_proto);
@@ -71,7 +71,9 @@ Status GraphAugmenter::AugmentGraph(Graph& graph, const GraphDefs& graph_element
                   input_args,
                   output_args,
                   &node_def.attributes,
-                  node_def.domain);
+                  node_def.domain,
+                  node_def.priority_
+                  );
   }
 
   // Add new inputs to the graph.

@@ -8,34 +8,75 @@
 
 #include "core/graph/graph_viewer.h"
 
+#include "core/graph/graph_utils.h"
+
+#include <queue>
+
 namespace onnxruntime {
 
 bool NodeCompare::operator()(const Node* n1, const Node* n2) const {
   return n1->Index() < n2->Index();
 }
 
+struct PriorityNodeCompare {
+  inline bool IsHighPri(const Node* n) const {
+    static const std::unordered_set<std::string> high_pri_ops = {"Shape", "Size"};
+    return high_pri_ops.find(n->OpType()) != high_pri_ops.end();
+  }
+
+  // Used for std::priority_queue
+  // If return false, n1 will be output first
+  // If return true, n2 will be output first
+  bool operator()(const Node* n1, const Node* n2) const {
+    // nodes in global high priorty list will be output first
+    if (IsHighPri(n1) && !IsHighPri(n2)) {
+      return false;
+    }
+    if (!IsHighPri(n1) && IsHighPri(n2)) {
+      return true;
+    }
+
+    // nodes with lower priority value will be output first
+    if (n1->Priority() != n2->Priority()) {
+      return n1->Priority() > n2->Priority();
+    }
+
+    // otherwise, nodes with lower index will be output first
+    return n1->Index() > n2->Index();
+  }
+};
+
 GraphViewer::GraphViewer(const Graph& graph) {
   graph_ = &graph;
   std::vector<const Node*> leaf_nodes;
   for (auto& node : graph_->Nodes()) {
+    // This is a leaf node (without any output node)
     if (node.OutputNodesBegin() == node.OutputNodesEnd()) {
-      // This is a leaf node (without any output node).
       leaf_nodes.push_back(&node);
     }
-  }
-  graph.ReverseDFSFrom(
-      leaf_nodes,
-      nullptr,
-      [this](const Node* n) {
-        nodes_in_topological_order_.push_back(n->Index());
-      },
-      NodeCompare());
-
-  for (auto& node : graph_->Nodes()) {
+    // This is a root node (without any input node)
     if (node.InputEdgesBegin() == node.InputEdgesEnd()) {
       root_nodes_.push_back(node.Index());
     }
   }
+
+  // Reverse the order of input vector, such that forward nodes are visted in ReverseDFS first
+  // This results in an execution order that forward nodes is always ran before the backward nodes
+  std::reverse(leaf_nodes.begin(), leaf_nodes.end());
+
+  //graph.ReverseDFSFrom(
+  //    leaf_nodes,
+  //    nullptr,
+  //    [this](const Node* n) {
+  //      nodes_in_topological_order_.push_back(n->Index());
+  //    },
+  //    NodeCompare());
+
+  graph.KahnsTopologicalSort(
+      [this](const Node* n) {
+        nodes_in_topological_order_.push_back(n->Index());
+      },
+      PriorityNodeCompare());
 }
 
 // Graph name.
@@ -113,7 +154,7 @@ bool GraphViewer::IsSubgraph() const {
 }
 
 bool GraphViewer::IsConstantInitializer(const std::string& name, bool check_outer_scope) const {
-  return graph_->GetConstantInitializer(name, check_outer_scope) != nullptr;
+  return graph_utils::IsConstantInitializer(*graph_, name, check_outer_scope);
 }
 
 }  // namespace onnxruntime

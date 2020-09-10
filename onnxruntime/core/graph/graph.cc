@@ -11,6 +11,7 @@
 #include <iostream>
 #include <numeric>
 #include <stack>
+#include <queue>
 
 #include "gsl/gsl"
 #include "core/common/logging/logging.h"
@@ -1555,6 +1556,45 @@ void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
 
 #if !defined(ORT_MINIMAL_BUILD)
 
+void Graph::KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
+                                 const std::function<bool(const Node*, const Node*)>& comp) const {
+  std::unordered_map<NodeIndex, size_t> in_degree;
+  std::priority_queue<const Node*, std::vector<const Node*>, decltype(comp)> to_visit(comp);
+  std::vector<NodeIndex> topo_order;
+
+  for (auto& node : Nodes()) {
+    size_t input_edge_count = node.GetInputEdgesCount();
+    in_degree.insert({node.Index(), input_edge_count});
+    if (input_edge_count == 0) {
+      to_visit.push(&node);
+    }
+  }
+
+  while (!to_visit.empty()) {
+    const Node* current = to_visit.top();
+    to_visit.pop();
+
+    if (!current) continue;
+
+    if (enter) {
+      enter(current);
+    }
+
+    for (auto node_it = current->OutputNodesBegin(); node_it != current->OutputNodesEnd(); ++node_it) {
+      in_degree[node_it->Index()]--;
+
+      if (in_degree[node_it->Index()] == 0) {
+        to_visit.push(&*node_it);
+      }
+    }
+    topo_order.push_back(current->Index());
+  }
+
+  if (NumberOfNodes() != static_cast<int>(topo_order.size())) {
+    LOGS(logger_, WARNING) << "Some nodes are not included in the topological sort, graph might have a cycle.";
+  }
+}
+
 GSL_SUPPRESS(es .84)  // noisy warning about ignoring return value from insert(...)
 Status Graph::PerformTopologicalSortAndCheckIsAcyclic() {
   nodes_in_topological_order_.clear();
@@ -2800,7 +2840,8 @@ Node& Graph::AddNode(const std::string& name,
                      const std::vector<NodeArg*>& input_args,
                      const std::vector<NodeArg*>& output_args,
                      const NodeAttributes* attributes,
-                     const std::string& domain) {
+                     const std::string& domain,
+                     const int& priority){
   std::vector<NodeArg*> inputs;
   std::vector<NodeArg*> outputs;
   inputs.resize(input_args.size());
@@ -2816,6 +2857,7 @@ Node& Graph::AddNode(const std::string& name,
 
   const gsl::not_null<Node*> node = AllocateNode();
   node->Init(name, op_type, description, inputs, outputs, attributes, domain);
+  node->SetPriority(priority);
   if (0 != op_type.compare(kNoOp)) {
     GraphProtoSyncNeeded(true);
   }
@@ -3275,7 +3317,7 @@ Status Graph::InlineFunction(Node& node) {
       ORT_RETURN_IF_ERROR(utils::ConstantNodeProtoToTensorProto(subgraph_node_proto, *tensor));
       name_to_initial_tensor_[tensor->name()] = tensor;
     } else {
-      std::vector<NodeArg*> inputs, outputs;
+      std::vector<NodeArg *> inputs, outputs;
       for (auto* input : subgraph_node.InputDefs()) {
         auto it = remap_input_output.find(input->Name());
         if (it != remap_input_output.end())
@@ -3394,7 +3436,7 @@ Status Graph::LoadFromOrtFormat(
   // and in InferenceSession::Initialize skip partitioning and running optimizers.
   ORT_RETURN_IF_ERROR(graph->Resolve());
 #else
-  // probably nothing required here. validate with model that has nested subgraphs.
+// probably nothing required here. validate with model that has nested subgraphs.
 #endif
 
   return Status::OK();
