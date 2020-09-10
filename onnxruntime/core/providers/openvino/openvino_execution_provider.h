@@ -101,8 +101,6 @@ class OpenVINOExecutionProvider : public IExecutionProvider {
   const void* GetExecutionHandle() const noexcept override {
     return nullptr;
   }
- private:
-  // OpenVINOExecutionProviderInfo info_;
 };
 
 }  // namespace onnxruntime

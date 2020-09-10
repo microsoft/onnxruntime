@@ -19,7 +19,7 @@ namespace onnxruntime {
 constexpr const char* OpenVINO = "OpenVINO";
 
 OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kOpenVINOExecutionProvider} { //, info_(info) {
+    : IExecutionProvider{onnxruntime::kOpenVINOExecutionProvider} {
 
   openvino_ep::BackendManager::GetGlobalContext().device_type = info.device_type_;
   openvino_ep::BackendManager::GetGlobalContext().precision_str = info.precision_;
