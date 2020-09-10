@@ -249,6 +249,13 @@ def run_tensorflow(use_gpu, model_names, model_class, precision, batch_sizes, se
         logger.error("Please install Tensorflow-gpu, and use a machine with GPU for testing gpu performance.")
         return results
 
+    if use_gpu: # Restrict TensorFlow to only use the first GPU
+        physical_devices = tf.config.list_physical_devices('GPU')
+        try:
+            tf.config.set_visible_devices(physical_devices[0], 'GPU')
+        except RuntimeError as e:
+            logger.exception(e)
+
     if precision == Precision.FLOAT16 or precision == Precision.INT8:
         raise NotImplementedError("Mixed precision is currently not supported.")
 
@@ -256,7 +263,6 @@ def run_tensorflow(use_gpu, model_names, model_class, precision, batch_sizes, se
         config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
 
         model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir, custom_model_class=model_class, if_tf_model=True)
-        model._saved_model_inputs_spec = None
 
         tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
 

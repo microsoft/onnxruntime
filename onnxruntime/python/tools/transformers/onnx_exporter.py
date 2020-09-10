@@ -174,8 +174,8 @@ def optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, num_a
                                    optimization_options=optimization_options,
                                    use_gpu=use_gpu,
                                    only_onnxruntime=False)
-        # Added for onnx exporting from keras
-        opt_model.use_dynamic_axes()
+        if model_type == 'bert_keras':
+            opt_model.use_dynamic_axes()
 
         model_fusion_statistics[optimized_model_path] = opt_model.get_fused_operator_statistics()
 
@@ -213,7 +213,7 @@ def load_pretrained_model(model_name, config, cache_dir, custom_model_class, if_
 
     model_class_name = modelclass_dispatcher(model_name, custom_model_class)
 
-    if if_tf_model: # Currently does not support TFGPT2ModelNoPastState
+    if if_tf_model:
         model_class_name = 'TF' + model_class_name
 
     transformers_module = __import__("transformers", fromlist=[model_class_name])
@@ -224,8 +224,7 @@ def load_pretrained_model(model_name, config, cache_dir, custom_model_class, if_
 
 def validate_and_optimize_onnx(model_name, use_external_data_format, model_type, onnx_dir, input_names, use_gpu,
                                precision, optimize_onnx, validate_onnx, use_raw_attention_mask, overwrite, config,
-                               model_fusion_statistics, onnx_model_path, example_inputs, example_outputs_flatten,
-                               tokenizer):
+                               model_fusion_statistics, onnx_model_path, example_inputs, example_outputs_flatten):
     is_valid_onnx_model = True
     if validate_onnx:
         is_valid_onnx_model = validate_onnx_model(onnx_model_path, example_inputs, example_outputs_flatten, use_gpu,
@@ -254,9 +253,7 @@ def validate_and_optimize_onnx(model_name, use_external_data_format, model_type,
                                                 use_external_data_format)
             optimize_onnx_model_by_ort(onnx_model_path, ort_model_path, use_gpu, overwrite, model_fusion_statistics)
 
-    max_input_size = tokenizer.max_model_input_sizes[model_name] if model_name in tokenizer.max_model_input_sizes else 1024
-
-    return onnx_model_path, is_valid_onnx_model, config.vocab_size, max_input_size
+    return onnx_model_path, is_valid_onnx_model, config.vocab_size
 
 
 def export_onnx_model_from_pt(model_name, opset_version, use_external_data_format, model_type, model_class, cache_dir, onnx_dir,
@@ -271,6 +268,8 @@ def export_onnx_model_from_pt(model_name, opset_version, use_external_data_forma
     model.cpu()
 
     tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
+    max_input_size = tokenizer.max_model_input_sizes[model_name] if model_name in tokenizer.max_model_input_sizes else 1024
+
     example_inputs = tokenizer.encode_plus("This is a sample input", return_tensors="pt")
 
     example_inputs = filter_inputs(example_inputs, input_names)
@@ -306,10 +305,11 @@ def export_onnx_model_from_pt(model_name, opset_version, use_external_data_forma
     else:
         logger.info(f"Skip export since model existed: {onnx_model_path}")
 
-    return validate_and_optimize_onnx(model_name, use_external_data_format, model_type, onnx_dir, input_names, use_gpu,
-                                      precision, optimize_onnx, validate_onnx, use_raw_attention_mask, overwrite, config,
-                                      model_fusion_statistics, onnx_model_path, example_inputs, example_outputs_flatten,
-                                      tokenizer)
+    onnx_model_file, is_valid_onnx_model, vocab_size = validate_and_optimize_onnx(
+        model_name, use_external_data_format, model_type, onnx_dir, input_names, use_gpu, precision, optimize_onnx, validate_onnx,
+        use_raw_attention_mask, overwrite, config, model_fusion_statistics, onnx_model_path, example_inputs, example_outputs_flatten)
+
+    return onnx_model_file, is_valid_onnx_model, vocab_size, max_input_size
 
 
 def export_onnx_model_from_tf(model_name, opset_version, use_external_data_format, model_type, model_class, cache_dir, onnx_dir,
@@ -323,7 +323,9 @@ def export_onnx_model_from_tf(model_name, opset_version, use_external_data_forma
     model._saved_model_inputs_spec = None
 
     tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
-    example_inputs = tokenizer.encode_plus("This is a sample input", return_tensors="tf", max_length=512, pad_to_max_length=True, truncation=True)
+    max_input_size = tokenizer.max_model_input_sizes[model_name] if model_name in tokenizer.max_model_input_sizes else 1024
+
+    example_inputs = tokenizer.encode_plus("This is a sample input", return_tensors="tf", max_length=max_input_size, pad_to_max_length=True, truncation=True)
 
     example_inputs = filter_inputs(example_inputs, input_names)
 
@@ -346,8 +348,9 @@ def export_onnx_model_from_tf(model_name, opset_version, use_external_data_forma
 
     model_type = model_type + '_keras'
 
-    return validate_and_optimize_onnx(model_name, use_external_data_format, model_type, onnx_dir, input_names, use_gpu,
-                                      precision, optimize_onnx, validate_onnx, use_raw_attention_mask, overwrite, config,
-                                      model_fusion_statistics, onnx_model_path, example_inputs, example_outputs_flatten,
-                                      tokenizer)
+    onnx_model_file, is_valid_onnx_model, vocab_size = validate_and_optimize_onnx(
+        model_name, use_external_data_format, model_type, onnx_dir, input_names, use_gpu, precision, optimize_onnx, validate_onnx,
+        use_raw_attention_mask, overwrite, config, model_fusion_statistics, onnx_model_path, example_inputs, example_outputs_flatten)
+
+    return onnx_model_file, is_valid_onnx_model, vocab_size, max_input_size
 
