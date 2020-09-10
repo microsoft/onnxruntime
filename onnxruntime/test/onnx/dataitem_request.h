@@ -4,9 +4,9 @@
 #pragma once
 
 #include "callables.h"
+#include "TestCaseResult.h"
 #include "core/platform/env_time.h"
 
-enum EXECUTE_RESULT;
 
 class ITestCase;
 struct OrtAllocator;
@@ -17,7 +17,6 @@ struct Session;
 
 // Class that allows to run a single TestCase either sync or async.
 namespace onnxruntime {
-
 namespace concurrency {
 class ThreadPool;
 }
@@ -66,3 +65,6 @@ class DataTaskRequestContext {
   size_t task_id_;
   TIME_SPEC spent_time_;
 };
+
+}  // namespace test
+}  // namespace onnxruntime

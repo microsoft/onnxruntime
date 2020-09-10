@@ -3,12 +3,15 @@
 
 // needs to be included first to get around onnxruntime\cmake\external\onnx\onnx/common/constants.h(14): error C2513: 'bool': no variable declared before '='
 
+#include "TestCase.h"
+
+#include "callback.h"
+#include "heap_buffer.h"
+#include "mem_buffer.h"
+#include "onnx_model_info.h"
+#include "pb_helper.h"
 #include "tensorprotoutils.h"
 
-#include "TestCase.h"
-#include <cctype>
-#include <fstream>
-#include <memory>
 #include "core/common/logging/logging.h"
 #include "core/common/common.h"
 #include "core/platform/env.h"
@@ -18,16 +21,13 @@
 #include "core/framework/allocator.h"
 #include "re2/re2.h"
 
+#include <cctype>
+#include <fstream>
+#include <memory>
 #include <sstream>
 #include <map>
 #include <regex>
 
-#include "onnx_model_info.h"
-
-#include "heap_buffer.h"
-#include "mem_buffer.h"
-#include "callback.h"
-#include "pb_helper.h"
 
 using namespace onnxruntime;
 using namespace onnxruntime::common;
@@ -48,6 +48,7 @@ inline Ort::Value CreateTensorWithDataAsOrtValue(const Ort::MemoryInfo& info,
                                        dims.data(), dims.size());
 }
 
+template<>
 inline Ort::Value CreateTensorWithDataAsOrtValue(const Ort::MemoryInfo&,
                                                  OrtAllocator* allocator,
                                                  const std::vector<int64_t>& dims,
@@ -80,7 +81,7 @@ Ort::Value PbMapToOrtValue(const google::protobuf::Map<key_type, value_type>& ma
     ++i;
   }
 
-  // See helper above
+  //// See helper above
   auto ort_keys = CreateTensorWithDataAsOrtValue(info, allocator, dims, keys);
   auto ort_values = CreateTensorWithDataAsOrtValue(info, allocator, dims, values);
   return Ort::Value::CreateMap(ort_keys, ort_values);
@@ -90,8 +91,8 @@ template <typename T>
 Ort::Value VectorProtoToOrtValue(const RepeatedPtrField<T>& input) {
   auto info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
   Ort::AllocatorWithDefaultOptions allocator;
-  std::vector<Ort::Value> seq(input.size(), Ort::Value(nullptr));
-  size_t j = 0;
+  std::vector<Ort::Value> seq;
+  seq.reserve(input.size());
   for (const T& v : input) {
     // create key tensor
     const auto& map = v.v();
@@ -111,7 +112,7 @@ Ort::Value VectorProtoToOrtValue(const RepeatedPtrField<T>& input) {
     auto ort_keys = CreateTensorWithDataAsOrtValue(info, allocator, dims, keys);
     auto ort_values = CreateTensorWithDataAsOrtValue(info, allocator, dims, values);
     auto ort_map = Ort::Value::CreateMap(ort_keys, ort_values);
-    seq[j++] = std::move(ort_map);
+    seq.emplace_back(std::move(ort_map));
   }
   return Ort::Value::CreateSequence(seq);
 }

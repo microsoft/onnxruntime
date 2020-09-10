@@ -58,18 +58,14 @@ public:
   // Differentiate instantiation on the presence
   // of return value. The below two overloads
   // must be mutually exclusive
-  template<typename RT = ResultType>
-  typename std::enable_if<
-    !std::is_same<void, RT>::value,
-    RT>::type
+  template<typename T = ResultType>
+  typename std::enable_if<!std::is_same<void, T>::value, T>::type
   Invoke(Args... args) const {
     return func_(context_, std::forward<Args>(args)...);
   }
 
-  template<typename RT = ResultType>
-  typename std::enable_if<
-    std::is_same<void, RT>::value,
-    void>::type
+  template <typename T = ResultType>
+  typename std::enable_if<std::is_same<void, T>::value, void>::type
   Invoke(Args... args) const {
     func_(context_, std::forward<Args>(args)...);
   }

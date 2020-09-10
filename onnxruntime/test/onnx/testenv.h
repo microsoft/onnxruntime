@@ -15,11 +15,13 @@ struct Env;
 struct SessionOptions;
 }
 
-namespace Eigen {
-class ThreadPoolInterface;
+namespace onnxruntime {
+namespace concurrency {
+class ThreadPool;
+}
 }
 
-using PThreadPool = Eigen::ThreadPoolInterface*;
+using PThreadPool = onnxruntime::concurrency::ThreadPool*;
 
 class TestEnv {
  public:

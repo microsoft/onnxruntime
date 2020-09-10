@@ -6,7 +6,6 @@
 #include "callback.h"
 
 #include <vector>
-#include <memory>
 #include <stdlib.h>
 
 namespace onnxruntime {
@@ -32,5 +31,6 @@ class HeapBuffer {
   std::vector<OrtCallback> deleters_;
   std::vector<void*> buffers_;
 };
+
 }  // namespace test
 }  // namespace onnxruntime
