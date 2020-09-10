@@ -297,13 +297,11 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
       }
 
       std::basic_string<PATH_CHAR_TYPE> filename_str = filename;
-      bool is_ort_format = HasExtensionOf(filename_str, ORT_TSTR("ort"));
 #if !defined(ORT_MINIMAL_BUILD)
-      bool is_onnx_format = HasExtensionOf(filename_str, ORT_TSTR("onnx"));
-      if (!is_onnx_format && !is_ort_format)
+      if (!HasExtensionOf(filename_str, ORT_TSTR("onnx")))
         return true;
 #else
-      if( !is_ort_format )
+      if( !HasExtensionOf(filename_str, ORT_TSTR("ort")) )
          return true;
 #endif
 
@@ -320,11 +318,7 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
 
       std::unique_ptr<TestModelInfo> model_info;
 #if !defined(ORT_MINIMAL_BUILD)
-      if (is_onnx_format) {
-        model_info = TestModelInfo::LoadOnnxModel(p.c_str());
-      } else {
-        model_info = TestModelInfo::LoadOrtModel(p.c_str());
-      }
+      model_info = TestModelInfo::LoadOnnxModel(p.c_str());
 #else
       model_info = TestModelInfo::LoadOrtModel(p.c_str());
 #endif

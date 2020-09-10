@@ -786,8 +786,14 @@ endif()
 
 if (onnxruntime_BUILD_SHARED_LIB)
   set(onnxruntime_perf_test_libs onnx_test_runner_common onnxruntime_test_utils  onnxruntime_common re2::re2
-          onnx_test_data_proto onnx_proto ${PROTOBUF_LIB} ${GETOPT_LIB_WIDE} onnxruntime onnxruntime_graph onnx ${SYS_PATH_LIB}
+          onnx_test_data_proto onnx_proto ${PROTOBUF_LIB} ${GETOPT_LIB_WIDE} onnxruntime ${SYS_PATH_LIB}
           ${CMAKE_DL_LIBS})
+  # We want to enable onnx_test_runner/perf_test for ort minimal builds, which will need the following
+  # ort lib statically linked, this is a temporary solution and is tracked by,
+  # Product Backlog Item 895235: Re-work onnx_test_runner/perf_test for ort/onnx model
+  if (onnxruntime_MINIMAL_BUILD)
+    list(APPEND onnxruntime_perf_test_libs onnxruntime_graph onnx onnxruntime_framework onnxruntime_mlas)
+  endif()
   if(NOT WIN32)
     list(APPEND onnxruntime_perf_test_libs nsync_cpp)
   endif()

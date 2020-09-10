@@ -1,21 +1,20 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <fstream>
-
-#include "core/common/logging/logging.h"
-#include "core/flatbuffers/ort.fbs.h"
-#include "core/graph/model.h"
-
 #include "onnx_model_info.h"
 #include "core/platform/env.h"
 #include "re2/re2.h"
 #include "pb_helper.h"
 
-using namespace onnxruntime;
+#if defined(ORT_MINIMAL_BUILD)
+#include <fstream>
+#include "core/graph/model.h"
 using namespace onnxruntime::experimental;
-static constexpr int protobuf_block_size_in_bytes = 4 * 1024 * 1024;
+#endif
 
+using namespace onnxruntime;
+
+static constexpr int protobuf_block_size_in_bytes = 4 * 1024 * 1024;
 template <typename T>
 static void RepeatedPtrFieldToVector(const ::google::protobuf::RepeatedPtrField<T>& input_value_info,
                                      std::vector<T>& out) {
@@ -24,15 +23,8 @@ static void RepeatedPtrFieldToVector(const ::google::protobuf::RepeatedPtrField<
   }
 }
 
-OnnxModelInfo::OnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url, bool is_ort_model)
-    : model_url_(model_url) {
-  if (is_ort_model)
-    InitOrtModelInfo(model_url);
-  else
-    InitOnnxModelInfo(model_url);
-}
-
-void OnnxModelInfo::InitOnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {
+OnnxModelInfo::OnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url)
+    : BaseModelInfo(model_url) {
   // parse model
   int model_fd;
   auto st = Env::Default().FileOpenRd(model_url, model_fd);
@@ -86,7 +78,9 @@ void OnnxModelInfo::InitOnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {
   RepeatedPtrFieldToVector(graph.output(), output_value_info_);
 }
 
-void OnnxModelInfo::InitOrtModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {
+#if defined(ORT_MINIMAL_BUILD)
+OrtModelInfo::OrtModelInfo(_In_ const PATH_CHAR_TYPE* model_url)
+    : BaseModelInfo(model_url) {
   std::vector<uint8_t> bytes;
   size_t num_bytes = 0;
   const auto model_location = ToWideString(model_url);
@@ -128,3 +122,4 @@ void OnnxModelInfo::InitOrtModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {
     output_value_info_.push_back(node_arg->ToProto());
   }
 }
+#endif

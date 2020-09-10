@@ -285,12 +285,14 @@ void LoopDataFile(int test_data_pb_fd, bool is_input, const TestModelInfo& model
 }  // namespace
 
 std::unique_ptr<TestModelInfo> TestModelInfo::LoadOnnxModel(_In_ const PATH_CHAR_TYPE* model_url) {
-  return std::unique_ptr<TestModelInfo>(new OnnxModelInfo(model_url, false));
+  return std::unique_ptr<TestModelInfo>(new OnnxModelInfo(model_url));
 }
 
+#if defined(ORT_MINIMAL_BUILD)
 std::unique_ptr<TestModelInfo> TestModelInfo::LoadOrtModel(_In_ const PATH_CHAR_TYPE* model_url) {
-  return std::unique_ptr<TestModelInfo>(new OnnxModelInfo(model_url, true));
+  return std::unique_ptr<TestModelInfo>(new OrtModelInfo(model_url));
 }
+#endif
 
 /**
    * test_case_dir must have contents of:
