@@ -142,7 +142,7 @@ Currently only supported on Windows and Linux.
 ### Prerequisites
 * dotnet is required for building csharp bindings and creating managed nuget package. Follow the instructions [here]((https://dotnet.microsoft.com/download) to download dotnet. Tested with versions 2.1 and 3.1.
 * nuget.exe. Follow the instructions [here](https://docs.microsoft.com/en-us/nuget/install-nuget-client-tools#nugetexe-cli) to download nuget
-  * On windows, downloading nuget is straightforward and simply following the instructions above should work.
+  * On Windows, downloading nuget is straightforward and simply following the instructions above should work.
   * On Linux, nuget relies on Mono runtime and therefore this needs to be setup too. Above link has all the information to setup Mono and nuget. The instructions can directly be found [here](https://www.mono-project.com/docs/getting-started/install/). In some cases it is required to run `sudo apt-get install mono-complete` after installing mono. 
 
 ### Build Instructions
@@ -155,6 +155,8 @@ Currently only supported on Windows and Linux.
 ```
 ./build.sh --build_nuget
 ```
+Nuget packages are created under <native_build_dir>\nuget-artifacts
+
 ---
 
 ## Execution Providers
