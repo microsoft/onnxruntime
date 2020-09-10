@@ -53,7 +53,7 @@ export function run(testDataFolder: string): void {
     // add cases
     describe(`${model}`, () => {
       let session: InferenceSession|null = null;
-      const skipModel = shouldSkipModel(model, ['cpu'], modelPath);
+      const skipModel = shouldSkipModel(model, ['cpu']);
       if (!skipModel) {
         before(async function () {
           try {

@@ -249,7 +249,7 @@ export function loadTensorFromFile(pbFile: string): Tensor {
   }
 }
 
-export function shouldSkipModel(model: string, eps: string[], modelPath: string): boolean {
+export function shouldSkipModel(model: string, eps: string[]): boolean {
   const filters = ['(FLOAT16)'];
   filters.push(...BACKEND_TEST_SERIES_FILTERS.current_failing_tests);
 
