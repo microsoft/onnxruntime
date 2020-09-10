@@ -29,7 +29,11 @@ function(AddTest)
     list(REMOVE_DUPLICATES _UT_DEPENDS)
   endif(_UT_DEPENDS)
 
-  add_executable(${_UT_TARGET} ${_UT_SOURCES})
+  if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
+    add_library(${_UT_TARGET} ${_UT_SOURCES})
+  else()
+    add_executable(${_UT_TARGET} ${_UT_SOURCES})
+  endif()
 
   source_group(TREE ${REPO_ROOT} FILES ${_UT_SOURCES})
 
@@ -87,12 +91,26 @@ function(AddTest)
   endif(onnxruntime_GENERATE_TEST_REPORTS)
 
   if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
-    xctest_add_bundle(${_UT_TARGET}_xc ${_UT_TARGET} ${TEST_SRC_DIR}/xctest/OrtTestAll.mm)
+    xctest_add_bundle(${_UT_TARGET}_xc ${_UT_TARGET} ${TEST_SRC_DIR}/xctest/OrtTestAll.mm ${_UT_SOURCES})
 
     set_target_properties(${_UT_TARGET}_xc PROPERTIES FOLDER "ONNXRuntimeXCTest"
-      MACOSX_BUNDLE_INFO_PLIST ${TEST_SRC_DIR}/xctest/Info.plist)
+      MACOSX_BUNDLE_BUNDLE_NAME ${_UT_TARGET}_xc
+      MACOSX_BUNDLE_GUI_IDENTIFIER com.microsoft.onnxruntime.utest.${_UT_TARGET}
+      MACOSX_BUNDLE_LONG_VERSION_STRING ${ORT_VERSION}
+      MACOSX_BUNDLE_BUNDLE_VERSION ${ORT_VERSION}
+      MACOSX_BUNDLE_SHORT_VERSION_STRING ${ORT_VERSION})
+
+#    set_target_properties(${_UT_TARGET}_xc PROPERTIES FOLDER "ONNXRuntimeXCTest"
+#      MACOSX_BUNDLE_INFO_PLIST ${TEST_SRC_DIR}/xctest/Info.plist)
 
     xctest_add_test(xctest.${_UT_TARGET} ${_UT_TARGET}_xc)
+
+    target_link_libraries(${_UT_TARGET}_xc PRIVATE ${_UT_LIBS} GTest::gtest GTest::gmock ${onnxruntime_EXTERNAL_LIBRARIES})
+    onnxruntime_add_include_to_target(${_UT_TARGET}_xc date_interface flatbuffers)
+    target_include_directories(${_UT_TARGET}_xc PRIVATE ${TEST_INC_DIR})
+
+    set_target_properties(${_UT_TARGET} PROPERTIES FOLDER "ONNXRuntimeTest")
+
   else()
     add_test(NAME ${_UT_TARGET}
       COMMAND ${_UT_TARGET} ${TEST_ARGS}
