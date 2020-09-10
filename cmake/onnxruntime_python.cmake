@@ -147,6 +147,7 @@ set_target_properties(onnxruntime_pybind11_state PROPERTIES FOLDER "ONNXRuntime"
 if(onnxruntime_ENABLE_LTO)
   set_target_properties(onnxruntime_pybind11_state PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
   set_target_properties(onnxruntime_pybind11_state PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
+  set_target_properties(onnxruntime_pybind11_state PROPERTIES INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL TRUE)
 endif()
 if (MSVC)
   set_target_properties(onnxruntime_pybind11_state PROPERTIES SUFFIX ".pyd")
