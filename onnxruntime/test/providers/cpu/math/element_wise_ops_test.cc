@@ -749,6 +749,7 @@ TEST(MathOpTest, Pow_double_int64) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
 }
 
+#ifdef USE_CUDA
 TEST(MathOpTest, Pow_float16_float16) {
   OpTester test("Pow", 12);
   std::vector<int64_t> dims{4};
@@ -774,6 +775,7 @@ TEST(MathOpTest, Pow_float_float16) {
   execution_providers.push_back(DefaultCudaExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
+#endif
 
 TEST(MathOpTest, Exp_float) {
   OpTester test("Exp");
