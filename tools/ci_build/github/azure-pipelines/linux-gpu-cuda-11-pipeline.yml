@@ -1,9 +1,9 @@
 jobs:
-- job: Linux_CPU_Minimal_Build
+- job: Linux_Build
   timeoutInMinutes: 120
   workspace:
     clean: all
-  pool: Linux-CPU
+  pool: Linux-GPU-CUDA10
   steps:
   - checkout: self
     clean: true
@@ -18,33 +18,28 @@ jobs:
   - task: CmdLine@2
     inputs:
       script: |
-        # We need copy the related test files to a separated folder since the --include_ops_by_model will search the testdata folder recursively
-        # and include many unnecessary ops, minimal build UT currently uses .ort format models converted from the models we copied below,
-        # which will be used as the input of --include_ops_by_model to have ops to be included for the minimal build UT.
-        mkdir -p $HOME/.models
-        cp $(Build.SourcesDirectory)/onnxruntime/test/testdata/ort_github_issue_4031.onnx $HOME/.models/
         mkdir -p $HOME/.onnx
-        docker run --rm \
+        docker run --gpus all --rm \
           --volume /data/onnx:/data/onnx:ro \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --volume /data/models:/build/models:ro \
           --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-          --volume $HOME/.models:/home/onnxruntimedev/.models \
-          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
-          onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecpubuild:ch2j \
+          onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecuda11build:ch2e \
             /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build --cmake_generator Ninja \
-              --config Debug\
+              --config Debug Release \
               --skip_submodule_sync \
               --build_shared_lib \
               --parallel \
-              --minimal_build \
-              --disable_ml_ops \
-              --disable_exceptions \
-              --include_ops_by_model /home/onnxruntimedev/.models/
+              --build_wheel \
+              --use_openmp \
+              --enable_onnx_tests --use_cuda --cuda_version=11.0 --cuda_home=/usr/local/cuda-11.0 --cudnn_home=/usr/local/cuda-11.0 \
+              --use_mklml --enable_pybind --build_java --build_nodejs \
+              --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp37-cp37m/include/python3.7m PYTHON_LIBRARY=/usr/lib64/librt.so CMAKE_CUDA_ARCHITECTURES=52
       workingDirectory: $(Build.SourcesDirectory)
   - task: Docker@2
     displayName: logout
