@@ -590,8 +590,32 @@ void SubgraphPostProcessing(const onnxruntime::GraphViewer& graph_viewer, std::v
       const auto& op_type = node->OpType();
       if (op_names.count(op_type) > 0)
       {
+        // check number of elements in input
+        auto inputs = node->InputDefs();
+        if (std::any_of(inputs.begin(), inputs.end(), [&](auto& arg) {
+          const auto& arg_s = arg->Shape();
+          if (arg_s == nullptr) return false;
+          auto tensor_dims = arg_s->dim();
+          std::vector<std::size_t> dims;
+          std::transform(tensor_dims.begin(),
+                        tensor_dims.end(),
+                        std::back_inserter(dims),
+                        [&](auto&& d) -> std::size_t {
+                          if (d.has_dim_value()) {
+                            return d.dim_value();
+                          } else {
+                            return 1;
+                          }
+                        });
+          return (std::accumulate(dims.begin(), dims.end(), 1, std::multiplies<std::size_t>{}) > 300);
+        }))
+        {
+          return false;
+        }
+
         return true;
       }
+
       return false;
     }))
     {
