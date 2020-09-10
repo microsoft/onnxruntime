@@ -32,7 +32,7 @@ using TIME_SPEC = timespec;
 bool GetMonotonicTimeCounter(TIME_SPEC* value);
 
 void SetTimeSpecToZero(TIME_SPEC* value);
-void AccumulateTimeSpec(TIME_SPEC* base, TIME_SPEC* start, TIME_SPEC* end);
+void AccumulateTimeSpec(TIME_SPEC* base, const TIME_SPEC* start, const TIME_SPEC* end);
 
 //Return the interval in seconds.
 //If the function fails, the return value is zero

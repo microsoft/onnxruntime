@@ -112,7 +112,7 @@ Ort::Value VectorProtoToOrtValue(const RepeatedPtrField<T>& input) {
     auto ort_keys = CreateTensorWithDataAsOrtValue(info, allocator, dims, keys);
     auto ort_values = CreateTensorWithDataAsOrtValue(info, allocator, dims, values);
     auto ort_map = Ort::Value::CreateMap(ort_keys, ort_values);
-    seq.emplace_back(std::move(ort_map));
+    seq.push_back(std::move(ort_map));
   }
   return Ort::Value::CreateSequence(seq);
 }

@@ -269,11 +269,11 @@ struct Session : Base<OrtSession> {
   Session(Env& env, const void* model_data, size_t model_data_length, const SessionOptions& options);
 
   // Run that will allocate the output values
-  std::vector<Value> Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
-                         const char* const* output_names, size_t output_count);
+  std::vector<Value> Run(const RunOptions& run_options, const char** input_names, const Value* input_values, size_t input_count,
+                         const char** output_names, size_t output_count);
   // Run for when there is a list of prealloated outputs
-  void Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
-           const char* const* output_names, Value* output_values, size_t output_count);
+  void Run(const RunOptions& run_options, const char** input_names, const Value* input_values, size_t input_count,
+           const char** output_names, Value* output_values, size_t output_count);
 
   void Run(const RunOptions& run_options, const struct IoBinding&);
 

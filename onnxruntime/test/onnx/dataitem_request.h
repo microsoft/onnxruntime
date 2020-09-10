@@ -5,6 +5,7 @@
 
 #include "callables.h"
 #include "TestCaseResult.h"
+#include "core/common/common.h"
 #include "core/platform/env_time.h"
 
 
@@ -31,17 +32,20 @@ class DataTaskRequestContext {
   // This is a callback that will be invoked by the individual task
   // when it completes
   using Callback = Callable<void, size_t, EXECUTE_RESULT, const TIME_SPEC&>;
-  static EXECUTE_RESULT Run(const ITestCase& c, ::Ort::Session& session,
+  static std::pair<EXECUTE_RESULT, TIME_SPEC> Run(const ITestCase& c, ::Ort::Session& session,
                             OrtAllocator* allocator, size_t task_id);
 
   static void Request(const Callback& cb, concurrency::ThreadPool* tp,
                       const ITestCase& c, ::Ort::Session& session,
                       OrtAllocator* allocator, size_t task_id);
 
-  DataTaskRequestContext(const DataTaskRequestContext&) = delete;
-  DataTaskRequestContext& operator=(const DataTaskRequestContext&) = delete;
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(DataTaskRequestContext);
 
   ~DataTaskRequestContext() = default;
+
+  const TIME_SPEC& GetTimeSpent() const {
+    return spent_time_;
+  }
 
  private:
   DataTaskRequestContext(const Callback& cb,
@@ -56,11 +60,11 @@ class DataTaskRequestContext {
   }
 
   void RunAsync();
-  EXECUTE_RESULT RunImpl();
+  std::pair<EXECUTE_RESULT, TIME_SPEC> RunImpl();
 
   Callback cb_;
   const ITestCase& c_;
-  ::Ort::Session& session_;
+  Ort::Session& session_;
   OrtAllocator* default_allocator_;
   size_t task_id_;
   TIME_SPEC spent_time_;

@@ -18,9 +18,9 @@
 namespace onnxruntime {
 namespace test {
 
-EXECUTE_RESULT DataTaskRequestContext::Run(const ITestCase& c, ::Ort::Session& session,
-                                           OrtAllocator* allocator, size_t task_id) {
-  EXECUTE_RESULT result;
+std::pair<EXECUTE_RESULT, TIME_SPEC> DataTaskRequestContext::Run(const ITestCase& c, ::Ort::Session& session,
+                                                                 OrtAllocator* allocator, size_t task_id) {
+  std::pair<EXECUTE_RESULT, TIME_SPEC> result;
   Callback empty_cb;
   DataTaskRequestContext ctx(empty_cb, c, session, allocator, task_id);
   ORT_TRY {
@@ -28,7 +28,7 @@ EXECUTE_RESULT DataTaskRequestContext::Run(const ITestCase& c, ::Ort::Session& s
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
-      result = EXECUTE_RESULT::WITH_EXCEPTION;
+      result = std::make_pair(EXECUTE_RESULT::WITH_EXCEPTION, ctx.GetTimeSpent());
       LOGS_DEFAULT(ERROR) << ctx.c_.GetTestCaseName() << ":" << ex.what();
     });
   }
@@ -47,45 +47,44 @@ void DataTaskRequestContext::Request(const Callback& cb, concurrency::ThreadPool
 }
 
 void DataTaskRequestContext::RunAsync() {
-  EXECUTE_RESULT result;
+  std::pair<EXECUTE_RESULT, TIME_SPEC> result;
   ORT_TRY {
     result = RunImpl();
   }
-  ORT_CATCH(const ::std::exception& ex) {
+  ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
-      result = EXECUTE_RESULT::WITH_EXCEPTION;
+      result = std::make_pair(EXECUTE_RESULT::WITH_EXCEPTION, spent_time_);
       LOGS_DEFAULT(ERROR) << c_.GetTestCaseName() << ":" << ex.what();
     });
   }
 
   assert(cb_);
-  ::std::unique_ptr<DataTaskRequestContext> self(this);
-  cb_.Invoke(task_id_, result, spent_time_);
+  std::unique_ptr<DataTaskRequestContext> self(this);
+  cb_.Invoke(task_id_, result.first, spent_time_);
 }
 
-EXECUTE_RESULT DataTaskRequestContext::RunImpl() {
+std::pair<EXECUTE_RESULT, TIME_SPEC> DataTaskRequestContext::RunImpl() {
   onnxruntime::test::HeapBuffer holder;
   std::unordered_map<std::string, Ort::Value> feeds;
   c_.LoadTestData(task_id_, holder, feeds, true);
 
   std::vector<const char*> input_names(feeds.size());
-  std::vector<OrtValue*> input_values(feeds.size());
+  std::vector<OrtValue*> input_values;
+  input_values.reserve(feeds.size());
   {
     size_t input_index = 0;
     for (auto& kvp : feeds) {
       input_names[input_index] = kvp.first.c_str();
-      input_values[input_index] = kvp.second;  // Automatic cast
+      input_values.push_back(kvp.second);  // automatic cast
       ++input_index;
     }
   }
 
   // Create output feed
-  size_t output_count = 0;
-  Ort::ThrowOnError(Ort::GetApi().SessionGetOutputCount(session_, &output_count));
+  size_t output_count = session_.GetOutputCount();
   std::vector<std::string> output_names(output_count);
   for (size_t i = 0; i != output_count; ++i) {
-    char* output_name = nullptr;
-    Ort::ThrowOnError(Ort::GetApi().SessionGetOutputName(session_, i, default_allocator_, &output_name));
+    char* output_name = session_.GetOutputName(i, default_allocator_);
     assert(output_name != nullptr);
     output_names[i] = output_name;
     Ort::GetApi().AllocatorFree(default_allocator_, output_name);
@@ -94,17 +93,22 @@ EXECUTE_RESULT DataTaskRequestContext::RunImpl() {
   TIME_SPEC start_time;
   TIME_SPEC end_time;
   std::vector<const char*> output_names_raw_ptr(output_count);
-  std::vector<Ort::Value> output_values(output_count, Ort::Value(nullptr));
+  std::vector<Ort::Value> output_values;
+  output_values.reserve(output_names.size());
   {
     for (size_t i = 0; i != output_count; ++i) {
       output_names_raw_ptr[i] = output_names[i].c_str();
+      output_values.emplace_back(nullptr);
     }
-    GetMonotonicTimeCounter(&start_time);
-    Ort::ThrowOnError(Ort::GetApi().Run(session_, nullptr, input_names.data(), input_values.data(),
-                                        input_values.size(), output_names_raw_ptr.data(),
-                                        output_count, reinterpret_cast<OrtValue**>(output_values.data())));
-    GetMonotonicTimeCounter(&end_time);
   }
+
+  GetMonotonicTimeCounter(&start_time);
+  assert(input_names.size() == input_values.size());
+
+  Ort::ThrowOnError(Ort::GetApi().Run(session_, nullptr, input_names.data(), input_values.data(),
+                                      input_values.size(), output_names_raw_ptr.data(),
+                                      output_count, reinterpret_cast<OrtValue**>(output_values.data())));
+  GetMonotonicTimeCounter(&end_time);
   AccumulateTimeSpec(&spent_time_, &start_time, &end_time);
 
   double per_sample_tolerance;
@@ -192,9 +196,8 @@ EXECUTE_RESULT DataTaskRequestContext::RunImpl() {
       break;
     }
   }
-  return res;
+  return std::make_pair(res, spent_time_);
 }
-
 
 }  // namespace test
 }  // namespace onnxruntime

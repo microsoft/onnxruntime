@@ -107,7 +107,7 @@ void SetTimeSpecToZero(TIME_SPEC* value) {
   *value = 0;
 }
 
-void AccumulateTimeSpec(TIME_SPEC* base, TIME_SPEC* start, TIME_SPEC* end) {
+void AccumulateTimeSpec(TIME_SPEC* base, const TIME_SPEC* start, const TIME_SPEC* end) {
   *base += std::max<TIME_SPEC>(0, *end - *start);
 }
 

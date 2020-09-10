@@ -9,7 +9,34 @@
 namespace onnxruntime {
 namespace test {
 
-// Main callback class
+/// <summary>
+/// This class serves as a callable entity that can be used
+/// either in a threadpool or as a callback fro async operations. It supports both
+/// plain functions as well as member functions and provides type
+/// erasure functionality. Unlike std::function, it
+/// does do any memory allocations and it is cheap to copy.
+/// </summary>
+/// 
+/// <example>
+/// Plain function:
+///   int g(void* context, float);
+///   Callable<int, float> cb(nullptr, g);
+///   int result = cb.Invoke(1.2f);
+///
+/// Class method:
+/// class A {
+///    int f(float);
+/// };
+/// 
+/// A a;
+/// CallableFactory<A, int, float> f(&a);
+/// - We get back Callable<int, float> as above but call instance method
+/// auto cb = f.GetCallable<&A::f>();
+/// int result = cb.Invoke(1.2f);
+/// </example>
+/// 
+/// <typeparam name="Result">Call back result type</typeparam>
+/// <typeparam name="...Args">Types of args for the callable</typeparam>
 template <typename    Result,
           typename... Args>
 class Callable {
