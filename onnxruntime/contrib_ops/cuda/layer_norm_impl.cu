@@ -43,8 +43,6 @@ __device__ void cuWelfordOnlineSum(
   U lmean = mu + delta / count;
   mu = lmean;
   if (t5_layer_norm) {
-    U delta2 = curr - lmean;
-    //sigma2 = sigma2 + delta * delta2;
     sigma2 = sigma2 + curr * curr;
   } else {
     U delta2 = curr - lmean;
@@ -71,7 +69,6 @@ __device__ void cuChanOnlineSum(
     mu = nA * mu + nB * muB;
     if (t5_layer_norm) {
       sigma2 = sigma2 + sigma2B;
-      //sigma2 = sigma2 + sigma2B + delta * delta * nA * nB * nX;
     } else {
       sigma2 = sigma2 + sigma2B + delta * delta * nA * nB * nX;
     }
