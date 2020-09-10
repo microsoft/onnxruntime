@@ -440,7 +440,7 @@ class Gpt2Helper:
     def onnxruntime_inference_with_binded_io(ort_session,
                                              inputs: Gpt2Inputs,
                                              output_buffers: Dict[str, torch.Tensor],
-                                             output_shapes : Dict[str, List[int]],
+                                             output_shapes: Dict[str, List[int]],
                                              total_runs: int = 0,
                                              return_numpy: bool = True,
                                              include_copy_output_latency: bool = False):
