@@ -46,6 +46,7 @@ std::string GetEnginePath(const ::std::string& root, const std::string& name) {
   }
 }
 
+/*
 std::string GetVecHash(const ::std::vector<int>& vec) {
   std::size_t ret = 0;
   for (auto& i : vec) {
@@ -53,6 +54,7 @@ std::string GetVecHash(const ::std::vector<int>& vec) {
   }
   return std::to_string(ret);
 }
+*/
 }  // namespace
 
 namespace google {
@@ -825,8 +827,9 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
     tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine> trt_engine;
     tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext> trt_context;
     if (!has_dynamic_shape) {
-      std::string trt_node_name_with_precision_shape = trt_node_name_with_precision + "_" + GetVecHash(input_shapes);
-      std::string cached_path = GetEnginePath(engine_cache_path_, trt_node_name_with_precision_shape);
+      //std::string trt_node_name_with_precision_shape = trt_node_name_with_precision + "_" + GetVecHash(input_shapes);
+      //std::string cached_path = GetEnginePath(engine_cache_path_, trt_node_name_with_precision_shape);
+      std::string cached_path = GetEnginePath(engine_cache_path_, trt_node_name_with_precision);
       std::ifstream planFile(cached_path, std::ios::binary | std::ios::in);
       if (planFile && engine_cache_enable_) {
         planFile.seekg(0, std::ios::end);
@@ -1077,8 +1080,9 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       // Regenerate engine
       // Only one profile is generated, so no need to explicitly set optimization profile
       if (engine_update) {
-        std::string trt_node_name_with_precision_shape = trt_state->trt_node_name_with_precision + "_" + GetVecHash(input_shapes);
-        std::string cached_path = GetEnginePath(trt_state->engine_cache_path, trt_node_name_with_precision_shape);
+        //std::string trt_node_name_with_precision_shape = trt_state->trt_node_name_with_precision + "_" + GetVecHash(input_shapes);
+        //std::string cached_path = GetEnginePath(trt_state->engine_cache_path, trt_node_name_with_precision_shape);
+        std::string cached_path = GetEnginePath(trt_state->engine_cache_path, trt_node_name_with_precision);
         std::ifstream planFile(cached_path, std::ios::binary | std::ios::in);
         if (planFile && trt_state->engine_cache_enable) {
           planFile.seekg(0, std::ios::end);
