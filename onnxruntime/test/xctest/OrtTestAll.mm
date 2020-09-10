@@ -10,6 +10,12 @@
 #import <gtest/gtest.h>
 #import <objc/runtime.h>
 
+#include <google/protobuf/message_lite.h>
+#include "core/session/onnxruntime_cxx_api.h"
+#include "core/util/thread_utils.h"
+#include "test/test_environment.h"
+
+
 using testing::TestCase;
 using testing::TestInfo;
 using testing::TestPartResult;
@@ -120,6 +126,8 @@ private:
 
 @end
 
+extern std::unique_ptr<Ort::Env> ort_env;
+
 /**
  * Runs a single test.
  */
@@ -134,7 +142,19 @@ static void RunTest(id self, SEL _cmd) {
 
     testing::GTEST_FLAG(filter) = [testFilter UTF8String];
 
+    OrtThreadingOptions tpo;
+    ort_env.reset(new Ort::Env(&tpo, ORT_LOGGING_LEVEL_WARNING, "Default"));
+
     (void)RUN_ALL_TESTS();
+    
+  //TODO: Fix the C API issue
+  ort_env.reset();  //If we don't do this, it will crash
+
+#ifndef USE_ONNXRUNTIME_DLL
+  //make memory leak checker happy
+  ::google::protobuf::ShutdownProtobufLibrary();
+#endif
+
 
     delete googleTest->listeners().Release(listener);
 
@@ -170,6 +190,10 @@ static void RunTest(id self, SEL _cmd) {
     for (NSString *arg in arguments) {
         argv[i++] = [arg UTF8String];
     }
+
+    std::string exe_dir(argv[0]);
+    auto bundle_dir = exe_dir.substr(0, exe_dir.find_last_of('/'));
+    chdir(bundle_dir.c_str());
 
     testing::InitGoogleTest(&argc, (char **)argv);
     UnitTest *googleTest = UnitTest::GetInstance();
