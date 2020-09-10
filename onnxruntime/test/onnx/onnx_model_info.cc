@@ -3,8 +3,6 @@
 
 #include <fstream>
 
-#include "core/common/logging/logging.h"
-#include "core/flatbuffers/ort.fbs.h"
 #include "core/graph/model.h"
 
 #include "onnx_model_info.h"
@@ -24,15 +22,8 @@ static void RepeatedPtrFieldToVector(const ::google::protobuf::RepeatedPtrField<
   }
 }
 
-OnnxModelInfo::OnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url, bool is_ort_model)
-    : model_url_(model_url) {
-  if (is_ort_model)
-    InitOrtModelInfo(model_url);
-  else
-    InitOnnxModelInfo(model_url);
-}
-
-void OnnxModelInfo::InitOnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {
+OnnxModelInfo::OnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url)
+    : BaseModelInfo(model_url) {
   // parse model
   int model_fd;
   auto st = Env::Default().FileOpenRd(model_url, model_fd);
@@ -86,7 +77,8 @@ void OnnxModelInfo::InitOnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {
   RepeatedPtrFieldToVector(graph.output(), output_value_info_);
 }
 
-void OnnxModelInfo::InitOrtModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {
+OrtModelInfo::OrtModelInfo(_In_ const PATH_CHAR_TYPE* model_url)
+    : BaseModelInfo(model_url) {
   std::vector<uint8_t> bytes;
   size_t num_bytes = 0;
   const auto model_location = ToWideString(model_url);
