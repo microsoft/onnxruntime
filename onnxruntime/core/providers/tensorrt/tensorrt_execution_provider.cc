@@ -1082,7 +1082,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       if (engine_update) {
         //std::string trt_node_name_with_precision_shape = trt_state->trt_node_name_with_precision + "_" + GetVecHash(input_shapes);
         //std::string cached_path = GetEnginePath(trt_state->engine_cache_path, trt_node_name_with_precision_shape);
-        std::string cached_path = GetEnginePath(trt_state->engine_cache_path, trt_node_name_with_precision);
+        std::string cached_path = GetEnginePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
         std::ifstream planFile(cached_path, std::ios::binary | std::ios::in);
         if (planFile && trt_state->engine_cache_enable) {
           planFile.seekg(0, std::ios::end);
