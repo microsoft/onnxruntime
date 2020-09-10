@@ -32,6 +32,7 @@
     * [x86](#x86)
     * [ARM](#ARM)
     * [Android](#Android)
+    * [iOS](#iOS)
 
 **[Training](#Training)**
 
@@ -1015,6 +1016,32 @@ If you want to use NNAPI Execution Provider on Android, see [NNAPI Execution Pro
 
 Android NNAPI Execution Provider can be built using building commands in [Android Build instructions](#android-build-instructions) with `--use_nnapi`
 
+---
+
+### iOS
+
+#### Prerequisites
+* A Mac computer with latest macOS
+* Xcode
+   * Install Xcode from https://developer.apple.com/xcode/
+* General Info:
+   * iOS Architectures
+
+      | ios_sysroot     | arm64       | x86_64      |
+      |-----------------|:-----------:|:-----------:|
+      | iphoneos        | YES         | NO          |
+      | iphonesimulator | NO          | YES         |
+      armv7, armv7s and i386 architectures are not currently supported.
+   * apple_deploy_target
+
+      Specify the minimum version of the target platform (iOS) on which the target binaries are to be deployed.
+
+#### Build Instructions
+```
+./build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> \
+           --ios --ios_sysroot <iphoneos|iphonesimulator> --osx_arch <arm64|x86_64> \
+           --apple_deploy_target 13 --use_xcode
+```
 ---
 
 ### AMD MIGraphX
