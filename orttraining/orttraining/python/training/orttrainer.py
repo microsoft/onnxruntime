@@ -313,19 +313,16 @@ class ORTTrainer(object):
         # look to see if we pass otpion of training mode is true
         inf_inputs = {}
         for i, input_elem in enumerate(input):
-            if i >= len(_inference_sess.get_inputs()):
-                continue
-            else:
-                inf_inputs[_inference_sess.get_inputs()[i].name] = input_elem.cpu().numpy()
+            inf_inputs[_inference_sess.get_inputs()[i].name] = input_elem.cpu().numpy()
         _inference_outs = _inference_sess.run(None, inf_inputs)
         import _test_helpers
         for torch_item, ort_item in zip(self.torch_sample_outputs, _inference_outs):
             from numpy.testing import assert_allclose
             import numpy as np
-            #print("atol", torch_item.shape, np.absolute(torch_item - ort_item).max())
+            print("atol", torch_item.shape, np.absolute(torch_item - ort_item).max())
             denom = ((torch_item + ort_item) * 0.5) * 100
             numer = np.absolute(torch_item - ort_item)
-            #print("rtol", torch_item.shape, (numer/denom).max())
+            print("rtol", torch_item.shape, (numer/denom).max())
             assert_allclose(torch_item, ort_item, rtol=1e-2, atol=1e-6)
 
     def train_step(self, *args, **kwargs):
@@ -346,6 +343,11 @@ class ORTTrainer(object):
         if self._onnx_model is None:
             sample_input = self._prepare_model_input(self.model_desc.inputs, None, None, *args, **kwargs)
             self._init_onnx_model(sample_input)
+            
+            # Debug Model Export if indicated
+            if self.options.debug.check_model_export:
+                self._debug_model_export(sample_input)
+
 
         # Prepare inputs+lr and output descriptions
         inputs_desc = self._model_desc_inputs_with_lr
@@ -391,10 +393,6 @@ class ORTTrainer(object):
         # Normalize input
         if not isinstance(args, (list, tuple)):
             args = (args,)
-
-        # Debug Model Export if indicated
-        if self.options.debug.check_model_export:
-            self._debug_model_export(input)
 
         # Run a train step and return
         session_run_results = self._training_session_run_helper(True, input, inputs_desc,
