@@ -181,32 +181,3 @@ Microsoft.ML.OnnxRuntime.Managed and Microsoft.ML.OnnxRuntime.Openvino.
 
 Detailed instructions for building nuget packages can be found [here](./../../Build.md)
 
-1. Windows
-
-Build a custom nuget package for windows.
-```
-.\build.bat --config Debug --build --use_openvino $Device --build_csharp
-msbuild csharp\OnnxRuntime.CSharp.proj /p:OrtPackageId=Microsoft.ML.OnnxRuntime.Openvino /p:Configuration=Debug /t:CreatePackage
-```
-The msbuild log will show the paths of the nuget packages created. 
-
-2. Linux
-
-We currently do not have a process to build directly in Linux. But we can
-copy shared library <ORT linux repo>/build/Linux/<config>/libonnxruntime.so
-to onnxruntime source repository in windows and execute the same commands 
-above to get custom nuget package for linux. Two nuget packages will be 
-created Microsoft.ML.OnnxRuntime.Managed and Microsoft.ML.OnnxRuntime.Openvino.
-
-On Linux Machine
-```
-./build.sh --config Debug --build_shared_lib --use_openvino $Device 
-```
-
-On Windows Machine
-```
-cp libonnxruntime.so onnxruntime/ 
-.\build.bat --config Debug --build --use_openvino $Device --build_csharp
-msbuild csharp\OnnxRuntime.CSharp.proj /p:OrtPackageId=Microsoft.ML.OnnxRuntime.Openvino /p:Configuration=Debug /t:CreatePackage
-```
-The msbuild log will show the path of the nuget packages created. 
