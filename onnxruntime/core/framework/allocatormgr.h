@@ -10,10 +10,10 @@
 
 namespace onnxruntime {
 
-using DeviceAllocatorFactory = std::function<std::unique_ptr<IDeviceAllocator>(OrtDevice::DeviceId)>;
+using AllocatorFactory = std::function<std::unique_ptr<IAllocator>(OrtDevice::DeviceId)>;
 
 struct AllocatorCreationInfo {
-  AllocatorCreationInfo(DeviceAllocatorFactory device_alloc_factory0,
+  AllocatorCreationInfo(AllocatorFactory device_alloc_factory0,
                         OrtDevice::DeviceId device_id0 = 0,
                         bool use_arena0 = true,
                         OrtArenaCfg arena_cfg0 = {0, -1, -1, -1})
@@ -23,7 +23,7 @@ struct AllocatorCreationInfo {
         arena_cfg(arena_cfg0) {
   }
 
-  DeviceAllocatorFactory device_alloc_factory;
+  AllocatorFactory device_alloc_factory;
   OrtDevice::DeviceId device_id;
   bool use_arena;
   OrtArenaCfg arena_cfg;

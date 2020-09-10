@@ -135,33 +135,21 @@ bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, siz
   return CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out);
 }
 
-/**
-   The resource allocator on a physical device.
-   This allocator will directly allocate resource from system call
-*/
-class IDeviceAllocator : public IAllocator {
+class CPUAllocator : public IAllocator {
  public:
-  IDeviceAllocator(const OrtMemoryInfo& info) : IAllocator(info) {}
-  ~IDeviceAllocator() override = default;
-  void* Alloc(size_t size) override = 0;
-  void Free(void* p) override = 0;
-};
+  explicit CPUAllocator(const OrtMemoryInfo& memory_info) : IAllocator(memory_info) {}
 
-class CPUAllocator : public IDeviceAllocator {
- public:
-  explicit CPUAllocator(const OrtMemoryInfo& memory_info) : IDeviceAllocator(memory_info) {}
-
-  CPUAllocator() : IDeviceAllocator(OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator)) {}
+  CPUAllocator() : IAllocator(OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator)) {}
 
   void* Alloc(size_t size) override;
   void Free(void* p) override;
 };
 
 #if defined(USE_MIMALLOC_ARENA_ALLOCATOR)
-class MiMallocAllocator : public IDeviceAllocator {
+class MiMallocAllocator : public IAllocator {
  public:
-  explicit MiMallocAllocator(const OrtMemoryInfo& memory_info) : IDeviceAllocator(memory_info) {}
-  MiMallocAllocator() : IDeviceAllocator(OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator)) {}
+  explicit MiMallocAllocator(const OrtMemoryInfo& memory_info) : IAllocator(memory_info) {}
+  MiMallocAllocator() : IAllocator(OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator)) {}
 
   void* Alloc(size_t size) override;
   void Free(void* p) override;

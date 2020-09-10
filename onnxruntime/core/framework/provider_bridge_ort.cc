@@ -44,8 +44,8 @@ namespace onnxruntime {
 
 ProviderHost* g_host{};
 
-struct Provider_IAllocator_Impl : Provider_IAllocator {
-  Provider_IAllocator_Impl(AllocatorPtr p) : Provider_IAllocator{p->Info()}, p_{p} {}
+struct Provider_AllocatorPtr_Impl : Provider_IAllocator {
+  Provider_AllocatorPtr_Impl(AllocatorPtr p) : Provider_IAllocator{p->Info()}, p_{p} {}
 
   void* Alloc(size_t size) override { return p_->Alloc(size); }
   void Free(void* p) override { return p_->Free(p); }
@@ -53,9 +53,9 @@ struct Provider_IAllocator_Impl : Provider_IAllocator {
   AllocatorPtr p_;
 };
 
-// This is really a IDeviceAllocator, but we wrap it with this class to make it into a Provider_IDeviceAllocator
-struct Provider_IDeviceAllocator_Impl : Provider_IDeviceAllocator {
-  Provider_IDeviceAllocator_Impl(std::unique_ptr<IDeviceAllocator> p) : Provider_IDeviceAllocator{p->Info()}, p_{std::move(p)} {}
+// This is really a IAllocator, but we wrap it with this class to make it into a Provider_IAllocator
+struct Provider_IAllocator_Impl : Provider_IAllocator {
+  Provider_IAllocator_Impl(std::unique_ptr<IAllocator> p) : Provider_IAllocator{p->Info()}, p_{std::move(p)} {}
 
   void* Alloc(size_t size) override { return p_->Alloc(size); }
   void Free(void* p) override { return p_->Free(p); }
@@ -64,19 +64,19 @@ struct Provider_IDeviceAllocator_Impl : Provider_IDeviceAllocator {
 
   bool IsProviderInterface() const override { return false; }
 
-  std::unique_ptr<IDeviceAllocator> p_;
+  std::unique_ptr<IAllocator> p_;
 };
 
-// This is really a Provider_IDeviceAllocator, but we wrap it with this class to make it into a IDeviceAllocator
-struct ProviderAllocator : IDeviceAllocator {
-  ProviderAllocator(std::shared_ptr<Provider_IDeviceAllocator> p) : IDeviceAllocator{p->memory_info_}, p_{std::move(p)} {}
+// This is really a Provider_IAllocator, but we wrap it with this class to make it into a IAllocator
+struct ProviderAllocator : IAllocator {
+  ProviderAllocator(std::shared_ptr<Provider_IAllocator> p) : IAllocator{p->memory_info_}, p_{std::move(p)} {}
 
   void* Alloc(size_t size) override { return p_->Alloc(size); }
   void Free(void* p) override { return p_->Free(p); }
 
   FencePtr CreateFence(const SessionState* session_state) override { return p_->CreateFence(reinterpret_cast<const Provider_SessionState*>(session_state)); }
 
-  std::shared_ptr<Provider_IDeviceAllocator> p_;
+  std::shared_ptr<Provider_IAllocator> p_;
 };
 
 struct IDataTransfer_Wrapper : IDataTransfer {
@@ -195,14 +195,14 @@ struct Provider_IExecutionProvider_Router_Impl : Provider_IExecutionProvider_Rou
   }
 
   Provider_AllocatorPtr Provider_GetAllocator(int id, OrtMemType mem_type) const override {
-    return std::make_shared<Provider_IAllocator_Impl>(IExecutionProvider::GetAllocator(id, mem_type));
+    return std::make_shared<Provider_AllocatorPtr_Impl>(IExecutionProvider::GetAllocator(id, mem_type));
   }
 
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override {
     auto allocator = outer_->Provider_GetAllocator(id, mem_type);
     if (!allocator)
       return nullptr;
-    return static_cast<Provider_IAllocator_Impl*>(allocator.get())->p_;
+    return static_cast<Provider_AllocatorPtr_Impl*>(allocator.get())->p_;
   }
 
   std::unique_ptr<Provider_IDataTransfer> Provider_GetDataTransfer() const override {
@@ -218,7 +218,7 @@ struct Provider_IExecutionProvider_Router_Impl : Provider_IExecutionProvider_Rou
   }
 
   void Provider_InsertAllocator(Provider_AllocatorPtr allocator) override {
-    IExecutionProvider::InsertAllocator(static_cast<Provider_IAllocator_Impl*>(allocator.get())->p_);
+    IExecutionProvider::InsertAllocator(static_cast<Provider_AllocatorPtr_Impl*>(allocator.get())->p_);
   }
 
   const logging::Logger* GetLogger() const override { return IExecutionProvider::GetLogger(); }
@@ -235,14 +235,14 @@ struct ProviderHostImpl : ProviderHost {
 
   Provider_AllocatorPtr CreateAllocator(const Provider_AllocatorCreationInfo& info) override {
     AllocatorCreationInfo info_real{
-        [&info](int value) -> std::unique_ptr<IDeviceAllocator> {
+        [&info](int value) -> std::unique_ptr<IAllocator> {
           auto allocator = info.factory(value);
           // If the allocator is a provider interface, we need to wrap it with ProviderAllocator to turn it into an IDeviceAllocator
           // Otherwise it's really a Provider_IDeviceAllocator_Impl, so we can just unwrap it to get back to the IDeviceAllocator inside
           if (allocator->IsProviderInterface())
             return onnxruntime::make_unique<ProviderAllocator>(std::move(allocator));
           else
-            return std::move(static_cast<Provider_IDeviceAllocator_Impl*>(&*allocator)->p_);
+            return std::move(static_cast<Provider_IAllocator_Impl*>(&*allocator)->p_);
         },
         info.device_id,
         info.use_arena,
@@ -250,12 +250,12 @@ struct ProviderHostImpl : ProviderHost {
 
     // info_real will always return a unique_ptr to an IAllocator, which might be a native IAllocator or a provider interface wrapped by ProviderAllocator.
     // Either way we wrap it in a Provider_IAllocator_Impl to be unwrapped by Provider_InsertAllocator
-    return std::make_shared<Provider_IAllocator_Impl>(onnxruntime::CreateAllocator(info_real));
+    return std::make_shared<Provider_AllocatorPtr_Impl>(onnxruntime::CreateAllocator(info_real));
   }
 
-  std::unique_ptr<Provider_IDeviceAllocator> CreateCPUAllocator(
+  std::unique_ptr<Provider_IAllocator> CreateCPUAllocator(
       const OrtMemoryInfo& memory_info) override {
-    return onnxruntime::make_unique<Provider_IDeviceAllocator_Impl>(
+    return onnxruntime::make_unique<Provider_IAllocator_Impl>(
         onnxruntime::make_unique<CPUAllocator>(memory_info));
   };
 
