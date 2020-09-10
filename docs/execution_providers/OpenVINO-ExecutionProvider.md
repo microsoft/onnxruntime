@@ -179,6 +179,8 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO Execut
 To use csharp api for openvino execution provider create a custom nuget package. Two nuget packages will be created
 Microsoft.ML.OnnxRuntime.Managed and Microsoft.ML.OnnxRuntime.Openvino.
 
+Detailed instructions for building nuget packages can be found [here](./../../Build.md)
+
 1. Windows
 
 Build a custom nuget package for windows.
