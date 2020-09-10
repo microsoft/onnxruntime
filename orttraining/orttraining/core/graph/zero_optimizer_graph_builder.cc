@@ -27,6 +27,15 @@ static bool IsNcclAvailable() {
 #endif
 }
 
+/*
+Utility function. The number of paritions (workers) needed to partition a given vector of tensor sizes(size_arr), where the total tensor size cannot be larger than a given number (max_len)
+Inputs
+  size_arr: A vector of integers, each element in the vector is a tensor size
+  max_len: The total tensor size of each parition cannot be larger than the max_len
+  partitions: The vector to store the index of element in size_arr, where that element is the last element in the current partition. 
+Return value:
+  num_workers: The number of partitiones (workers) needed
+*/
 static int NumberOfWorkers(const std::vector<int64_t>& size_arr, int64_t max_len, std::vector<int64_t>& partitions) {
   int64_t total = 0;
   int num_workers = 1;
@@ -48,6 +57,18 @@ static int NumberOfWorkers(const std::vector<int64_t>& size_arr, int64_t max_len
 }
 
 //Binary search to find the most even partition of gradients cross workers
+
+//size_arr: The vector of gradient tensor sizes. Each element is the size of a gradient. 
+//dp_group: The number of ranks to partition the gradients into
+//max_size: The biggest gradient size in the tensors to be partitioned. I.e., the largest number in size_arr. 
+//total_size: The total size of all gradient tensors added together
+//return: lo: The total tensor size of the maximum partitioned group
+
+//In the each iteration of the algorithm, it finds the number of workers needed for the size_arr, given the max length of each partition to be the average of lower(lo) and higher (hi) bounds. 
+//If the number of workers is less than the data parallel groups (dp_group), it updates the higher bound (hi) to be the current average, and goes to the next iteration.
+//Else it is a invalid partition, increase the lower bounds by 1, goest to next iteration
+//The algorithm terminates until lo >= hi
+
 static int64_t WorkersPartition(const std::vector<int64_t>& size_arr, int dp_group, int64_t max_size, int64_t total_size, std::vector<int64_t>& partitions) {
   int64_t lo = max_size;
   int64_t hi = total_size;
@@ -56,6 +77,7 @@ static int64_t WorkersPartition(const std::vector<int64_t>& size_arr, int dp_gro
 
   while (lo < hi) {
     mid = lo + (hi - lo) / 2;
+    //Collect the number of workers needed given each partition cannot not exceeding
     int num_workers = NumberOfWorkers(size_arr, mid, tmp_partitions);
     // find better optimum in lower half. Here mid is included because we may not get anything better
     if (num_workers <= dp_group) {
@@ -148,7 +170,8 @@ static Status AddNcclAllGatherForWeights(
     std::vector<int64_t>& partitions,
     std::vector<ArgDef>& weight_argdefs,
     GraphAugmenter::GraphDefs& graph_defs,
-    int64_t max_group_size_val) {
+    int64_t max_group_size_val, 
+    const bool partition_even) {
   std::vector<ArgDef> allgather_outputs(weight_argdefs.size());
   for (size_t i = 0; i < weight_argdefs.size(); i++) {
     allgather_outputs[i] = ArgDef(weight_argdefs[i].name + "_AllGather_Out",
@@ -156,7 +179,6 @@ static Status AddNcclAllGatherForWeights(
   }
 
   // Add NCCL AllGather node.
-  bool partition_even = partitions.empty();
   if (partition_even) {
     graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclAllGather", kMSDomain, 1},
                                     weight_argdefs,
@@ -297,14 +319,14 @@ static Status ModifyParametersForOptimizerPartitioningByBoundary(
     std::vector<int64_t>& partitions,
     int64_t& max_group_size) {
   std::vector<int64_t> size_arr;
-  int max_size = 0;
+  int64_t max_size = 0;
   int64_t total_size = 0;
   for (const auto& gradient_argdef : gradient_argdefs) {
     ORT_ENFORCE(gradient_argdef.type_proto != nullptr);
     const auto& gradient_shape_proto = gradient_argdef.type_proto->tensor_type().shape();
     const TensorShape& gradient_shape = utils::GetTensorShapeFromTensorShapeProto(gradient_shape_proto);
 
-    total_size += int(gradient_shape.Size());
+    total_size += gradient_shape.Size();
     ORT_ENFORCE(total_size > 0);
     if (max_size < gradient_shape.Size()) max_size = gradient_shape.Size();
     size_arr.push_back(gradient_shape.Size());
@@ -528,11 +550,10 @@ ZeROOptimizerGraphBuilder::ZeROOptimizerGraphBuilder(
     const std::unordered_map<std::string, OptimizerNodeConfig>& weight_names_to_opt_configs)
     : OptimizerGraphBuilder(opt_builder_registry,
                             opt_graph_config,
-                            weight_names_to_opt_configs) {
+                            weight_names_to_opt_configs), stage_(opt_graph_config.deepspeed_zero.stage) {
   ORT_ENFORCE(opt_graph_config.data_parallel_group_size > 1, "ZeRO optimizer graph builder can only be used for distributed training.");
   ORT_ENFORCE(opt_graph_config.use_nccl, "Distributed training with ZeRO is only supported with NCCL.");
   ORT_ENFORCE(IsNcclAvailable(), "Distributed training with NCCL is not supported, as NCCL is not enabled in this build.");
-  stage_ = opt_graph_config.deepspeed_zero.stage;
 }
 
 Status ZeROOptimizerGraphBuilder::BuildInternal(
@@ -593,7 +614,7 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
     // add Allgather for weights
     std::vector<int64_t> partitions;
     std::vector<ArgDef> input_readies;
-    ORT_RETURN_IF_ERROR(AddNcclAllGatherForWeights(input_readies, partitions, weight_argdefs, graph_defs, 0));
+    ORT_RETURN_IF_ERROR(AddNcclAllGatherForWeights(input_readies, partitions, weight_argdefs, graph_defs, 0, true));
 
     return Status::OK();
   } else /*(stage_ == 2) */ {
@@ -649,7 +670,7 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
         optimizer_state_initializer_names));
 
     // add Allgather for weights
-    ORT_RETURN_IF_ERROR(AddNcclAllGatherForWeights(reduce_output_readies, partitions, weight_argdefs, graph_defs, max_group_size));
+    ORT_RETURN_IF_ERROR(AddNcclAllGatherForWeights(reduce_output_readies, partitions, weight_argdefs, graph_defs, max_group_size, false));
 
     return Status::OK();
   }

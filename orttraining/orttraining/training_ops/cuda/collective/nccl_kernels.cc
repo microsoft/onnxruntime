@@ -66,7 +66,7 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
       total_count += input_tensor->Shape().Size();
     }
     const int64_t alignment = size * 32;
-    const int64_t padded_count = (total_count % alignment) ? (total_count + alignment - (total_count % alignment)) : total_count;
+    const int64_t padded_count = total_count + alignment - (total_count % alignment);
     const int64_t padded_size = padded_count * element_size;
     auto fusion_buffer = GetScratchBuffer<void>(padded_size);
     void* fusion_data = fusion_buffer.get();
