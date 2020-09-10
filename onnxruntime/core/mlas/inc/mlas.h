@@ -560,6 +560,17 @@ MlasRequantizeOutputNhwc(
     );
 
 void
+    MLASCALL
+    MlasRequantizeOutputNhwcPerChannel(
+        const int32_t* Input,
+        uint8_t* Output,
+        const int32_t* Bias,
+        size_t M,
+        size_t N,
+        const float* Scale,
+        uint8_t ZeroPoint);
+
+void
 MLASCALL
 MlasFindMinMaxElement(
     const float* Input,
