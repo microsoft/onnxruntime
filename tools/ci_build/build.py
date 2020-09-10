@@ -177,6 +177,9 @@ def parse_arguments():
         help="Extra definitions to pass to CMake during build system "
         "generation. These are just CMake -D options without the leading -D.")
     parser.add_argument(
+        "--target",
+        help="Build a specific target, e.g. winml_dll")
+    parser.add_argument(
         "--x86", action='store_true',
         help="Create x86 makefiles. Requires --update and no existing cache "
         "CMake setup. Delete CMakeCache.txt if needed")
@@ -893,13 +896,15 @@ def clean_targets(cmake_path, build_dir, configs):
         run_subprocess(cmd_args)
 
 
-def build_targets(args, cmake_path, build_dir, configs, parallel):
+def build_targets(args, cmake_path, build_dir, configs, parallel, target=None):
     for config in configs:
         log.info("Building targets for %s configuration", config)
         build_dir2 = get_config_build_dir(build_dir, config)
         cmd_args = [cmake_path,
                     "--build", build_dir2,
                     "--config", config]
+        if target:
+            cmd_args.extend(['--target', target])
 
         build_tool_args = []
         if parallel:
@@ -1506,10 +1511,10 @@ def run_csharp_tests(use_cuda, use_openvino, use_tensorrt, use_dnnl):
 
 
 def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
-    if (args.arm or args.arm64) and (not is_windows() and not args.ios):
+    if (args.arm or args.arm64 or args.enable_windows_store) and (not is_windows() and not args.ios):
         raise BuildError(
             'Currently only support building protoc for Windows host while '
-            'cross-compiling for ARM/ARM64 arch and linux cross-compiling iOS')
+            'cross-compiling for ARM/ARM64/Store and linux cross-compiling iOS')
 
     log.info(
         "Building protoc for host to be used in cross-compiled build process")
@@ -1747,7 +1752,7 @@ def main():
         elif is_macOS() and args.use_xcode:
             cmake_extra_args += ['-G', 'Xcode']
 
-        if (args.android or args.ios) and args.path_to_protoc_exe is None:
+        if (args.android or args.ios or args.enable_windows_store) and args.path_to_protoc_exe is None:
             # Cross-compiling for Android and iOS
             path_to_protoc_exe = build_protoc_for_host(
                 cmake_path, source_dir, build_dir, args)
@@ -1776,7 +1781,7 @@ def main():
     setup_dml_build(args, cmake_path, build_dir, configs)
 
     if args.build:
-        build_targets(args, cmake_path, build_dir, configs, args.parallel)
+        build_targets(args, cmake_path, build_dir, configs, args.parallel, args.target)
 
     if args.test:
         run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs)

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef USE_NCCL
+#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
 
 #include "core/common/common.h"
 #include "core/profile/context.h"
@@ -172,17 +172,18 @@ int NcclService::FindNextCommunicationTime() const {
 void NcclService::SubmitSendAndWait(void* ptr, size_t size, int peer) {
   // Wait until NCCL service is launched.
   WaitForLaunch();
-  auto& profile_context = profile::Context::GetInstance();
-  const auto tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
-
   // Pointer to enqueued task.
   const NcclTask* task;
 
   // Submit task.
   {
     std::lock_guard<std::mutex> guard(mutex_);
+#ifdef ENABLE_NVTX_PROFILE
     auto& profile_context = profile::Context::GetInstance();
-    const auto tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
+    const std::string tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
+#else
+    const std::string tag = "";
+#endif
     task = schedule_[time_].EqueueTask(NcclTask::Type::SEND, std::vector<int>{peer}, ptr, size, tag);
   }
 
@@ -201,8 +202,12 @@ void NcclService::SubmitRecvAndWait(void* ptr, size_t size, int peer) {
   const NcclTask* task;
   {
     std::lock_guard<std::mutex> guard(mutex_);
+#ifdef ENABLE_NVTX_PROFILE
     auto& profile_context = profile::Context::GetInstance();
-    const auto tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
+    const std::string tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
+#else
+    const std::string tag = "";
+#endif
     task = schedule_[time_].EqueueTask(NcclTask::Type::RECV, std::vector<int>{peer}, ptr, size, tag);
   }
 

@@ -23,9 +23,9 @@ static flatbuffers::Offset<fbs::Dimension> SaveTensorDimensionOrtFormat(
   auto denotation = builder.CreateString(tensor_shape_dim.denotation());
   flatbuffers::Offset<fbs::DimensionValue> dim_val;
   if (tensor_shape_dim.has_dim_param()) {
-    dim_val = fbs::CreateDimensionValueDirect(builder, fbs::DimensionValueType_PARAM, 0, tensor_shape_dim.dim_param().c_str());
+    dim_val = fbs::CreateDimensionValueDirect(builder, fbs::DimensionValueType::PARAM, 0, tensor_shape_dim.dim_param().c_str());
   } else if (tensor_shape_dim.has_dim_value()) {
-    dim_val = fbs::CreateDimensionValueDirect(builder, fbs::DimensionValueType_VALUE, tensor_shape_dim.dim_value());
+    dim_val = fbs::CreateDimensionValueDirect(builder, fbs::DimensionValueType::VALUE, tensor_shape_dim.dim_value());
   } else {
     dim_val = fbs::CreateDimensionValueDirect(builder);
   }
@@ -84,7 +84,7 @@ static Status SaveTypeInfoOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                     const TypeProto& type_proto,
                                     flatbuffers::Offset<fbs::TypeInfo>& fbs_type_info) {
   auto denotation = builder.CreateString(type_proto.denotation());
-  auto value_type = fbs::TypeInfoValue_tensor_type;
+  auto value_type = fbs::TypeInfoValue::tensor_type;
   flatbuffers::Offset<void> value;
   auto value_case = type_proto.value_case();
   switch (value_case) {
@@ -95,14 +95,14 @@ static Status SaveTypeInfoOrtFormat(flatbuffers::FlatBufferBuilder& builder,
       value = fbs_tensor_type.Union();
     } break;
     case TypeProto::kSequenceType: {
-      value_type = fbs::TypeInfoValue_sequence_type;
+      value_type = fbs::TypeInfoValue::sequence_type;
       flatbuffers::Offset<fbs::SequenceType> fbs_sequence_type;
       ORT_RETURN_IF_ERROR(
           SaveSequenceTypeOrtFormat(builder, type_proto.sequence_type(), fbs_sequence_type));
       value = fbs_sequence_type.Union();
     } break;
     case TypeProto::kMapType: {
-      value_type = fbs::TypeInfoValue_map_type;
+      value_type = fbs::TypeInfoValue::map_type;
       flatbuffers::Offset<fbs::MapType> fbs_map_type;
       ORT_RETURN_IF_ERROR(
           SaveMapTypeOrtFormat(builder, type_proto.map_type(), fbs_map_type));
@@ -206,44 +206,44 @@ Status SaveAttributeOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   auto doc_string = builder.CreateString(attr_proto.doc_string());
   auto type = static_cast<fbs::AttributeType>(attr_proto.type());
   switch (type) {
-    case fbs::AttributeType_FLOAT: {
+    case fbs::AttributeType::FLOAT: {
       GET_FBS_ATTR(builder, type, f, attr_proto.f());
     } break;
-    case fbs::AttributeType_INT: {
+    case fbs::AttributeType::INT: {
       GET_FBS_ATTR(builder, type, i, attr_proto.i());
     } break;
-    case fbs::AttributeType_STRING: {
+    case fbs::AttributeType::STRING: {
       auto s = builder.CreateString(attr_proto.s());
       GET_FBS_ATTR(builder, type, s, s);
     } break;
-    case fbs::AttributeType_TENSOR: {
+    case fbs::AttributeType::TENSOR: {
       flatbuffers::Offset<fbs::Tensor> fbs_tensor;
       ORT_RETURN_IF_ERROR(
           experimental::utils::SaveInitializerOrtFormat(builder, attr_proto.t(), fbs_tensor));
       GET_FBS_ATTR(builder, type, t, fbs_tensor);
     } break;
-    case fbs::AttributeType_GRAPH: {
+    case fbs::AttributeType::GRAPH: {
       ORT_RETURN_IF(nullptr == graph, "Graph attribute value was null. Invalid ORT format model.");
       flatbuffers::Offset<fbs::Graph> fbs_graph;
       ORT_RETURN_IF_ERROR(graph->SaveToOrtFormat(builder, fbs_graph));
       GET_FBS_ATTR(builder, type, g, fbs_graph);
     } break;
-    case fbs::AttributeType_FLOATS: {
+    case fbs::AttributeType::FLOATS: {
       GET_DATA_VEC(float, floats_vec_, attr_proto.floats());
       auto floats = builder.CreateVector(floats_vec_);
       GET_FBS_ATTR(builder, type, floats, floats);
     } break;
-    case fbs::AttributeType_INTS: {
+    case fbs::AttributeType::INTS: {
       GET_DATA_VEC(int64_t, ints_vec_, attr_proto.ints());
       auto ints = builder.CreateVector(ints_vec_);
       GET_FBS_ATTR(builder, type, ints, ints);
     } break;
-    case fbs::AttributeType_STRINGS: {
+    case fbs::AttributeType::STRINGS: {
       GET_DATA_VEC(std::string, strings_vec_, attr_proto.strings());
       auto strings = builder.CreateVectorOfStrings(strings_vec_);
       GET_FBS_ATTR(builder, type, strings, strings);
     } break;
-    case fbs::AttributeType_TENSORS: {
+    case fbs::AttributeType::TENSORS: {
       std::vector<flatbuffers::Offset<fbs::Tensor>> fbs_tensors_vec;
       fbs_tensors_vec.reserve(attr_proto.tensors().size());
       for (const auto& tensor : attr_proto.tensors()) {
@@ -257,7 +257,7 @@ Status SaveAttributeOrtFormat(flatbuffers::FlatBufferBuilder& builder,
     } break;
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "SaveAttributeOrtFormat: Unsupported attribute type: ", type);
+                             "SaveAttributeOrtFormat: Unsupported attribute type: ", fbs::EnumNameAttributeType(type));
       break;
   }
 
@@ -284,8 +284,8 @@ Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor,
   initializer.mutable_dims()->Add(fbs_dims->cbegin(), fbs_dims->cend());
 
   auto fbs_data_type = fbs_tensor.data_type();
-  initializer.set_data_type(fbs_data_type);
-  if (fbs_data_type == fbs::TensorDataType_STRING) {
+  initializer.set_data_type(static_cast<int32_t>(fbs_data_type));
+  if (fbs_data_type == fbs::TensorDataType::STRING) {
     auto fbs_str_data = fbs_tensor.string_data();
     ORT_RETURN_IF(nullptr == fbs_str_data, "Missing string data for initializer. Invalid ORT format model.");
     auto mutable_str_data = initializer.mutable_string_data();
@@ -310,9 +310,9 @@ static Status LoadTensorDimensionOrtFormat(const fbs::Dimension& fbs_dim,
   auto fbs_dim_val = fbs_dim.value();
   if (fbs_dim_val) {
     auto type = fbs_dim_val->dim_type();
-    if (type == fbs::DimensionValueType_VALUE)
+    if (type == fbs::DimensionValueType::VALUE)
       dim.set_dim_value(fbs_dim_val->dim_value());
-    else if (type == fbs::DimensionValueType_PARAM) {
+    else if (type == fbs::DimensionValueType::PARAM) {
       auto fbs_dim_param = fbs_dim_val->dim_param();
       ORT_RETURN_IF(nullptr == fbs_dim_param, "dim_param value with no name. Invalid ORT format model.");
       dim.set_dim_param(fbs_dim_param->str());
@@ -328,7 +328,7 @@ static Status LoadTensorDimensionOrtFormat(const fbs::Dimension& fbs_dim,
 
 static Status LoadTensorTypeAndShapeOrtFormat(const fbs::TensorTypeAndShape& fbs_tensor_type,
                                               TypeProto_Tensor& tensor_type_proto) {
-  tensor_type_proto.set_elem_type(fbs_tensor_type.elem_type());
+  tensor_type_proto.set_elem_type(static_cast<int32_t>(fbs_tensor_type.elem_type()));
   auto fbs_shape = fbs_tensor_type.shape();
   if (fbs_shape) {
     auto fbs_dims = fbs_shape->dim();
@@ -355,7 +355,7 @@ static Status LoadSequenceTypeOrtFormat(const fbs::SequenceType& fbs_sequence_ty
 
 static Status LoadMapTypeOrtFormat(const fbs::MapType& fbs_map_type,
                                    TypeProto_Map& map_type_proto) {
-  map_type_proto.set_key_type(fbs_map_type.key_type());
+  map_type_proto.set_key_type(static_cast<int32_t>(fbs_map_type.key_type()));
   auto fbs_type_info = fbs_map_type.value_type();
   ORT_RETURN_IF(nullptr == fbs_type_info, "Null value type info in fbs::MapType. Invalid ORT format model.");
   ORT_RETURN_IF_ERROR(LoadTypeInfoOrtFormat(*fbs_type_info, *map_type_proto.mutable_value_type()));
@@ -366,21 +366,22 @@ static Status LoadTypeInfoOrtFormat(const fbs::TypeInfo& fbs_type_info,
                                     TypeProto& type_proto) {
   LoadStringFromOrtFormat(*type_proto.mutable_denotation(), fbs_type_info.denotation());
   auto value_type = fbs_type_info.value_type();
-  if (value_type == fbs::TypeInfoValue_tensor_type) {
+  if (value_type == fbs::TypeInfoValue::tensor_type) {
     auto fbs_tensor_type = fbs_type_info.value_as_tensor_type();
     ORT_RETURN_IF(nullptr == fbs_tensor_type, "Null tensor type info. Invalid ORT format model.");
     ORT_RETURN_IF_ERROR(LoadTensorTypeAndShapeOrtFormat(*fbs_tensor_type, *type_proto.mutable_tensor_type()));
-  } else if (value_type == fbs::TypeInfoValue_sequence_type) {
+  } else if (value_type == fbs::TypeInfoValue::sequence_type) {
     auto fbs_sequence_type = fbs_type_info.value_as_sequence_type();
     ORT_RETURN_IF(nullptr == fbs_sequence_type, "Null sequence type info. Invalid ORT format model.");
     ORT_RETURN_IF_ERROR(LoadSequenceTypeOrtFormat(*fbs_sequence_type, *type_proto.mutable_sequence_type()));
-  } else if (value_type == fbs::TypeInfoValue_map_type) {
+  } else if (value_type == fbs::TypeInfoValue::map_type) {
     auto fbs_map_type = fbs_type_info.value_as_map_type();
     ORT_RETURN_IF(nullptr == fbs_map_type, "Null map type info. Invalid ORT format model.");
     ORT_RETURN_IF_ERROR(LoadMapTypeOrtFormat(*fbs_map_type, *type_proto.mutable_map_type()));
   } else {
     // We do not support SparseTensor and Opaque for now
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Type:", value_type, " is not supported currently");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Type:",
+                           fbs::EnumNameTypeInfoValue(value_type), " is not supported currently");
   }
 
   return Status::OK();
