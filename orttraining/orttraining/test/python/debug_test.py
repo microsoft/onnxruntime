@@ -58,11 +58,10 @@ def _load_pytorch_transformer_model(device, dynamic_axes=False, legacy_api=False
 ###############################################################################
 
 
-@pytest.mark.parametrize("seed, device, file_name", [
-    #(0, 'cpu'),
-    (24, 'cuda', 'run_1.pk'),
+@pytest.mark.parametrize("seed, device", [
+    (24, 'cuda'),
 ])
-def testORTTransformerModelExport(seed, device, file_name):
+def testORTTransformerModelExport(seed, device):
     # Common setup
     optim_config = optim.LambConfig()
     opts = orttrainer.ORTTrainerOptions({

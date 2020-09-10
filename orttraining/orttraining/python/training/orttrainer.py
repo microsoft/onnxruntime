@@ -288,6 +288,8 @@ class ORTTrainer(object):
     def _debug_model_export(self, input):
         from onnx import helper, TensorProto, numpy_helper
         import numpy as np
+        from numpy.testing import assert_allclose
+        import _test_helpers
         onnx_model_copy = copy.deepcopy(self._onnx_model)
         
         # Mute the dropout nodes
@@ -315,14 +317,9 @@ class ORTTrainer(object):
         for i, input_elem in enumerate(input):
             inf_inputs[_inference_sess.get_inputs()[i].name] = input_elem.cpu().numpy()
         _inference_outs = _inference_sess.run(None, inf_inputs)
-        import _test_helpers
         for torch_item, ort_item in zip(self.torch_sample_outputs, _inference_outs):
-            from numpy.testing import assert_allclose
-            import numpy as np
-            print("atol", torch_item.shape, np.absolute(torch_item - ort_item).max())
             denom = ((torch_item + ort_item) * 0.5) * 100
             numer = np.absolute(torch_item - ort_item)
-            print("rtol", torch_item.shape, (numer/denom).max())
             assert_allclose(torch_item, ort_item, rtol=1e-2, atol=1e-6)
 
     def train_step(self, *args, **kwargs):
