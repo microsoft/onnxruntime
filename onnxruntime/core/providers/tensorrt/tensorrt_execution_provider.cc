@@ -49,7 +49,7 @@ std::string GetEnginePath(const ::std::string& root, const std::string& name) {
 std::string GetVecHash(const ::std::vector<int>& vec) {
   std::size_t ret = 0;
   for (auto& i : vec) {
-    ret ^= std::hash<uint32_t>()(i);
+    ret += std::hash<uint32_t>()(i);
   }
   return std::to_string(ret);
 }
