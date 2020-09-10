@@ -893,7 +893,7 @@ TEST(CApiTest, TestSharedAllocatorUsingCreateAndRegisterAllocator) {
 
   Ort::SessionOptions session_options;
   auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
-  session_options.AddConfigEntry(ORT_SESSION_OPTIONS_CONFIG_USE_ENV_ALLOCATORS, "1");
+  session_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
 
   // create session 1
   Ort::Session session1(*ort_env, MODEL_URI, session_options);

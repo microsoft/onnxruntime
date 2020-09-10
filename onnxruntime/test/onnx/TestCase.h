@@ -59,6 +59,9 @@ class TestModelInfo {
   virtual ~TestModelInfo() = default;
 
   static std::unique_ptr<TestModelInfo> LoadOnnxModel(_In_ const PATH_CHAR_TYPE* model_url);
+#if defined(ORT_MINIMAL_BUILD)
+  static std::unique_ptr<TestModelInfo> LoadOrtModel(_In_ const PATH_CHAR_TYPE* model_url);
+#endif
   static const std::string unknown_version;
 };
 

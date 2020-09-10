@@ -142,7 +142,7 @@ Provider_AllocatorPtr CreateAllocator(Provider_AllocatorCreationInfo info) {
   return g_host->CreateAllocator(info);
 }
 
-std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCPUAllocator(const OrtMemoryInfo& info) {
+std::unique_ptr<Provider_IAllocator> Provider_CreateCPUAllocator(const OrtMemoryInfo& info) {
   return g_host->CreateCPUAllocator(info);
 }
 

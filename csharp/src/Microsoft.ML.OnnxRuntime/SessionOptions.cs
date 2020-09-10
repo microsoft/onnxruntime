@@ -44,7 +44,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Constructs an empty SessionOptions
         /// </summary>
         public SessionOptions()
-            :base(IntPtr.Zero, true)
+            : base(IntPtr.Zero, true)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionOptions(out handle));
         }
@@ -114,9 +114,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
-        public void AppendExecutionProvider_Dml(int deviceId)
+        public void AppendExecutionProvider_DML(int deviceId)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Dml(handle, deviceId));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_DML(handle, deviceId));
         }
 
         /// <summary>
@@ -180,6 +180,10 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtAddInitializer(handle, name, ort_value.Handle));
         }
 
+        public void AddSessionConfigEntry(string configKey, string configValue)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtAddSessionConfigEntry(handle, configKey, configValue));
+        }
         #endregion
 
         internal IntPtr Handle

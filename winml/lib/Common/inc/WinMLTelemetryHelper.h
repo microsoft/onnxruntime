@@ -103,6 +103,7 @@ class WinMLTelemetryHelper {
       uint32_t value);
   void EndRuntimeSession() { ++runtime_session_id_; };
   bool IsMeasureSampled();
+  int GetRuntimeSessionId() { return runtime_session_id_; }
 
  private:
   void RestartTimer() {

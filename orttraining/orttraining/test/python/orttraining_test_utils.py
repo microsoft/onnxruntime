@@ -5,10 +5,10 @@ from onnxruntime.capi.ort_trainer import ORTTrainer, IODescription
 from orttraining_test_data_loader import create_ort_test_dataloader, BatchArgsOption, split_batch
 from orttraining_test_bert_postprocess import postprocess_model
 
-from onnxruntime.experimental import _utils, amp, optim, orttrainer, TrainStepInfo,\
+from onnxruntime.training import _utils, amp, optim, orttrainer, TrainStepInfo,\
                                       model_desc_validation as md_val,\
                                       orttrainer_options as orttrainer_options
-from onnxruntime.experimental.optim import _LRScheduler
+from onnxruntime.training.optim import _LRScheduler
 
 def warmup_cosine(x, warmup=0.002):
     if x < warmup:
@@ -123,7 +123,8 @@ def run_test(model, model_desc, device, args, gradient_accumulation_steps, fp16,
             allreduce_post_accumulation=allreduce_post_accumulation,
             get_lr_this_step=get_lr_this_step if use_internal_get_lr_this_step else None,
             loss_scaler=loss_scaler if use_internal_loss_scaler else None,
-            _opset_version=12)
+            _opset_version=12,
+            _use_deterministic_compute=True)
         print ("running with old frontend API")
 
     # trainig loop
@@ -164,8 +165,6 @@ def run_test(model, model_desc, device, args, gradient_accumulation_steps, fp16,
                     kwargs[model.loss_scale_input_name] = loss_scale
                 outputs = model.train_step(*args, **kwargs)
 
-            print(outputs[0])
-
     # eval
     if batch_args_option == BatchArgsOption.List:
         outputs = model.eval_step(*batch)
@@ -178,4 +177,3 @@ def run_test(model, model_desc, device, args, gradient_accumulation_steps, fp16,
         outputs = model.eval_step(*args, **kwargs)
 
     return (output.cpu().numpy() for output in outputs)
-

@@ -84,6 +84,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 Assert.Throws<OnnxRuntimeException>(() => { opt.GraphOptimizationLevel = (GraphOptimizationLevel)10; });
 
+                opt.AddSessionConfigEntry("key", "value");
+				
+                var ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AddSessionConfigEntry("", "invalid key"); });
+                Assert.Contains("[ErrorCode:InvalidArgument] Config key is empty", ex.Message);
+
                 opt.AppendExecutionProvider_CPU(1);
 #if USE_DNNL
                 opt.AppendExecutionProvider_Dnnl(0);
@@ -92,7 +97,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.AppendExecutionProvider_CUDA(0);
 #endif
 #if USE_DML
-                opt.AppendExecutionProvider_Dml(0);
+                opt.AppendExecutionProvider_DML(0);
 #endif
 #if USE_NGRAPH
                 opt.AppendExecutionProvider_NGraph("CPU");  //TODO: this API should be refined
@@ -1616,10 +1621,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+        // TestGpu() will test the CUDA EP on CUDA enabled builds and 
+        // the DML EP on DML enabled builds
         [GpuFact]
         private void TestGpu()
         {
-            var gpu = Environment.GetEnvironmentVariable("TESTONGPU");
             var tuple = OpenSessionSqueezeNet(0); // run on deviceID 0
             float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");
 
@@ -1902,7 +1908,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             ,"OrtSessionOptionsAppendExecutionProvider_CUDA"
 #endif
 #if USE_DML
-            ,"OrtSessionOptionsAppendExecutionProvider_Dml"
+            ,"OrtSessionOptionsAppendExecutionProvider_DML"
 #endif
 #if USE_NGRAPH
             ,"OrtSessionOptionsAppendExecutionProvider_NGraph"
@@ -2176,24 +2182,36 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             return NamedOnnxValue.CreateFromTensor<T>(name, dt);
         }
 
-        internal static Tuple<InferenceSession, float[], DenseTensor<float>, float[]> OpenSessionSqueezeNet(int? cudaDeviceId = null)
+        internal static Tuple<InferenceSession, float[], DenseTensor<float>, float[]> OpenSessionSqueezeNet(int? deviceId = null)
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
-#if USE_CUDA
-            using (var option = (cudaDeviceId.HasValue) ?
-                SessionOptions.MakeSessionOptionWithCudaProvider(cudaDeviceId.Value) :
+#if USE_DML
+            using (var option = new SessionOptions())
+            {
+                if (!deviceId.HasValue)
+                {
+                    option.AppendExecutionProvider_CPU(1);
+                }
+
+                else
+                {
+                    option.AppendExecutionProvider_DML(deviceId.Value);
+                }
+#elif USE_CUDA
+            using (var option = (deviceId.HasValue) ?
+                SessionOptions.MakeSessionOptionWithCudaProvider(deviceId.Value) :
                 new SessionOptions())
             {
-                if(!cudaDeviceId.HasValue)
+                if(!deviceId.HasValue)
                 {
                     option.AppendExecutionProvider_CPU(1);
                 }
 #else
-            using (var option = new SessionOptions())
+                using (var option = new SessionOptions())
             {
                 option.AppendExecutionProvider_CPU(1);
 #endif
-                var session = (cudaDeviceId.HasValue)
+                var session = (deviceId.HasValue)
                     ? new InferenceSession(modelPath, option)
                     : new InferenceSession(modelPath);
                 float[] inputData = LoadTensorFromFile(@"bench.in");
@@ -2264,7 +2282,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         public DisposableListTest() { }
         public DisposableListTest(int count) : base(count) { }
 
-        #region IDisposable Support
+#region IDisposable Support
         private bool disposedValue = false; // To detect redundant calls
 
         protected virtual void Dispose(bool disposing)
@@ -2297,6 +2315,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             Dispose(true);
             GC.SuppressFinalize(this);
         }
-        #endregion
+#endregion
     }
 }

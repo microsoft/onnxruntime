@@ -4,8 +4,21 @@
 # license information.
 # --------------------------------------------------------------------------
 
+from transformers import AutoModelForQuestionAnswering
+from transformers import AutoModelForSequenceClassification
+from transformers import AutoModelWithLMHead
+from transformers import AutoModel
+
+# Maps model class name to a tuple of model class
+MODEL_CLASSES = {
+    'AutoModel': AutoModel,
+    'AutoModelWithLMHead': AutoModelWithLMHead,
+    'AutoModelForSequenceClassification': AutoModelForSequenceClassification,
+    'AutoModelForQuestionAnswering': AutoModelForQuestionAnswering
+}
+
 # List of pretrained models: https://huggingface.co/transformers/pretrained_models.html
-# Pretrained model name to a tuple of input names, opset_version, use_external_data_format and optimization model type
+# Pretrained model name to a tuple of input names, opset_version, use_external_data_format, optimization model type
 MODELS = {
 # BERT
     "bert-base-uncased": (["input_ids", "attention_mask", "token_type_ids"], 11, False, "bert"),
@@ -57,7 +70,7 @@ MODELS = {
     "roberta-large-openai-detector": (["input_ids", "attention_mask"], 11, False, "bert"),
 # DistilBERT
     "distilbert-base-uncased": (["input_ids", "attention_mask"], 11, False, "bert"),
-    "distilbert-base-uncased-distilled-squad": (["input_ids", "attention_mask"], 11, False, "bert"), 
+    "distilbert-base-uncased-distilled-squad": (["input_ids", "attention_mask"], 11, False, "bert"),
     "distilbert-base-cased": (["input_ids", "attention_mask"], 11, False, "bert"),
     "distilbert-base-cased-distilled-squad": (["input_ids", "attention_mask"], 11, False, "bert"),
     "distilbert-base-german-cased": (["input_ids", "attention_mask"], 11, False, "bert"),

@@ -558,6 +558,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"cast_BFLOAT16_to_FLOAT", "onnx generate bfloat tensor as uint16 type", {}},
       {"sequence_insert_at_back", "onnx currently not supporting loading segment", {}},
       {"sequence_insert_at_front", "onnx currently not supporting loading segment", {}},
+      {"if_seq", "NOT_IMPLEMENTED : Could not find an implementation for the node If(13)", {}},
+      {"loop13_seq", "NOT_IMPLEMENTED : Could not find an implementation for the node Loop(13)", {}},
   };
 
 #ifdef DISABLE_ML_OPS
