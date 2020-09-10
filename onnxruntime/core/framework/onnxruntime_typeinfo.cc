@@ -228,7 +228,6 @@ OrtStatus* OrtTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto* input, Or
     case on::TypeProto::kSparseTensorType: {
       ONNXType ten_type = ONNX_TYPE_UNKNOWN;
       const on::TypeProto_Tensor* tensor_type = nullptr;
-      const on::TypeProto_SparseTensor* sparse_type = nullptr;
       const on::TensorShapeProto* sp = nullptr;
       if (value_case == on::TypeProto::kTensorType) {
         tensor_type = &input->tensor_type();
@@ -238,7 +237,7 @@ OrtStatus* OrtTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto* input, Or
         }
       } else if (value_case == on::TypeProto::kSparseTensorType) {
 #if !defined(ORT_MINIMAL_BUILD)
-        sparse_type = &input->sparse_tensor_type();
+        const on::TypeProto_SparseTensor* sparse_type = &input->sparse_tensor_type();
         ten_type = ONNX_TYPE_SPARSETENSOR;
         if (onnxruntime::utils::HasShape(*sparse_type)) {
           sp = &sparse_type->shape();
