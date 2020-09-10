@@ -214,8 +214,8 @@ Memory_LeakCheck::~Memory_LeakCheck() {
     //     empty_named_groups = new std::map<string, int>;
     //     empty_group_names = new std::map<int, string>; });
     if (string.find("RtlRunOnceExecuteOnce") == std::string::npos &&
-        string.find("testing::internal::Mutex::ThreadSafeLazyInit") == std::string::npos &&
         string.find("re2::RE2::Init") == std::string::npos &&
+        string.find("testing::internal::Mutex::ThreadSafeLazyInit") == std::string::npos &&
         string.find("testing::internal::ThreadLocalRegistryImpl::GetThreadLocalsMapLocked") == std::string::npos &&
         string.find("testing::internal::ThreadLocalRegistryImpl::GetValueOnCurrentThread") == std::string::npos) {
       if (leaked_bytes == 0)
