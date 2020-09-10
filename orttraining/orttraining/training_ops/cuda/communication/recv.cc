@@ -74,7 +74,7 @@ void Recv::ReceiveData(
   recvRange.Begin();
 #endif
 
-#ifdef USE_NCCL
+#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
   buffer = GetScratchBuffer<char>(aggregated_aligned_tensor_bytes);
 #else
   buffer = AllocateBufferOnCPUPinned<char>(static_cast<size_t>(aggregated_aligned_tensor_bytes));
@@ -87,7 +87,7 @@ void Recv::ReceiveData(
 
   // The following NCCL call is equivalent to the following MPI call. User can
   // uncomment the MPI call to debug.
-#ifdef USE_NCCL
+#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
   auto& nccl_service = cuda::NcclService::GetInstance();
   nccl_service.SubmitRecvAndWait(info_data.buffer, info_data.size, info_data.rank);
 #else
@@ -118,7 +118,7 @@ void Recv::ReceiveData(
     tensor_offset_in_bytes = GetAggregatedAlignedAddress(tensor_offset_in_bytes);
 
     // Copy data out from buffer.
-#ifdef USE_NCCL
+#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
     CUDA_CALL(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
                               tensor->SizeInBytes(), cudaMemcpyHostToDevice));
 #else
@@ -128,7 +128,8 @@ void Recv::ReceiveData(
     tensor_offset_in_bytes += tensor->SizeInBytes();
   }
 
-#ifndef USE_NCCL
+#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#else
   AddDeferredReleaseCPUPtr(buffer.release());
 #endif
 
