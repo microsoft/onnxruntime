@@ -85,7 +85,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.Throws<OnnxRuntimeException>(() => { opt.GraphOptimizationLevel = (GraphOptimizationLevel)10; });
 
                 opt.AddSessionConfigEntry("key", "value");
-				
+
                 var ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AddSessionConfigEntry("", "invalid key"); });
                 Assert.Contains("[ErrorCode:InvalidArgument] Config key is empty", ex.Message);
 
@@ -605,6 +605,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             if (System.Environment.Is64BitProcess == false)
             {
                 skipModels["test_vgg19"] = "Get preallocated buffer for initializer conv4_4_b_0 failed";
+                skipModels["GPT2_LM_HEAD"] = "System out of memory";
                 skipModels["tf_pnasnet_large"] = "Get preallocated buffer for initializer ConvBnFusion_BN_B_cell_5/comb_iter_1/left/bn_sep_7x7_1/beta:0_203 failed";
                 skipModels["tf_nasnet_large"] = "Get preallocated buffer for initializer ConvBnFusion_BN_B_cell_11/beginning_bn/beta:0_331 failed";
                 skipModels["test_zfnet512"] = "System out of memory";

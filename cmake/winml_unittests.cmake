@@ -29,6 +29,7 @@ function(set_winml_target_properties target)
   target_include_directories(${target} PRIVATE ${WINML_TEST_INC_DIR})
   target_compile_definitions(${target} PRIVATE WINML_ROOT_NS=${winml_root_ns})
   target_compile_definitions(${target} PRIVATE BINARY_NAME=\"${BINARY_NAME}\")
+  target_compile_definitions(${target} PRIVATE _SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING)
 endfunction()
 
 function(add_winml_test)
