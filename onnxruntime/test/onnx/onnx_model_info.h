@@ -5,8 +5,8 @@
 #include "core/graph/onnx_protobuf.h"
 #include "TestCase.h"
 
-class BaseModelInfo : public TestModelInfo {
- protected:
+class OnnxModelInfo : public TestModelInfo {
+ private:
   std::string node_name_;
   std::string onnx_commit_tag_;
   std::vector<ONNX_NAMESPACE::ValueInfoProto> input_value_info_;
@@ -15,7 +15,8 @@ class BaseModelInfo : public TestModelInfo {
   const std::basic_string<PATH_CHAR_TYPE> model_url_;
 
  public:
-  BaseModelInfo(_In_ const PATH_CHAR_TYPE* model_url) : model_url_(model_url) {}
+  OnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url, bool is_ort_model = false);
+
   bool HasDomain(const std::string& name) const {
     return domain_to_version_.find(name) != domain_to_version_.end();
   }
@@ -35,15 +36,10 @@ class BaseModelInfo : public TestModelInfo {
   int GetInputCount() const override { return static_cast<int>(input_value_info_.size()); }
   int GetOutputCount() const override { return static_cast<int>(output_value_info_.size()); }
   const std::string& GetInputName(size_t i) const override { return input_value_info_[i].name(); }
+
   const std::string& GetOutputName(size_t i) const override { return output_value_info_[i].name(); }
-};
 
-class OnnxModelInfo : public BaseModelInfo {
- public:
-  OnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url);
-};
-
-class OrtModelInfo : public BaseModelInfo {
- public:
-  OrtModelInfo(_In_ const PATH_CHAR_TYPE* model_url);
+ private:
+  void InitOnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url);
+  void InitOrtModelInfo(_In_ const PATH_CHAR_TYPE* model_url);
 };
