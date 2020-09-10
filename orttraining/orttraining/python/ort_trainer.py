@@ -563,7 +563,8 @@ def save_checkpoint(model, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", c
 
     assert os.path.exists(checkpoint_dir), "ERROR: Checkpoint directory doesn't exist: {}".format(checkpoint_dir)
 
-    checkpoint_name = get_checkpoint_name(checkpoint_prefix, model.deepspeed_zero_stage_, model.world_rank, model.world_size)
+    checkpoint_name = get_checkpoint_name(checkpoint_prefix, model.deepspeed_zero_stage_, model.world_rank, model.world_size, 
+        model.horizontal_parallel_size, model.pipeline_parallel_size)
     checkpoint_file = os.path.join(checkpoint_dir, checkpoint_name)
 
     if os.path.exists(checkpoint_file):
@@ -572,7 +573,8 @@ def save_checkpoint(model, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", c
     torch.save(checkpoint_state_dict, checkpoint_file)
 
 def _load_single_checkpoint(model, checkpoint_dir, checkpoint_prefix, is_partitioned, strict):
-    checkpoint_name = get_checkpoint_name(checkpoint_prefix, is_partitioned, model.world_rank, model.world_size)
+    checkpoint_name = get_checkpoint_name(checkpoint_prefix, is_partitioned, model.world_rank, model.world_size, 
+        model.horizontal_parallel_size, model.pipeline_parallel_size)
     checkpoint_file = os.path.join(checkpoint_dir, checkpoint_name)
 
     if is_partitioned:
