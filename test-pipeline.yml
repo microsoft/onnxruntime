@@ -1,18 +1,12 @@
 trigger: none
 
-pool: Linux-GPU-CUDA10
+pool:
+  vmImage: ubuntu-18.04
 
 jobs:
 - job: Job
-  strategy:
-    matrix:
-      a:
-        letter: "A"
-      b:
-        letter: "B"
 
   steps:
   - script: |
-      echo $letter
-    condition: eq(variables['letter'], 'A')
+      curl https://rr.openpai.org/rest-server/api/v2/info
 
