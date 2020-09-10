@@ -105,6 +105,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 SetDllDirectory(directml_dll_path);
                 opt.AppendExecutionProvider_DML(0);
 
+                // Restore the default dll search order
+                SetDllDirectory(null);
+
 #endif
 #if USE_NGRAPH
                 opt.AppendExecutionProvider_NGraph("CPU");  //TODO: this API should be refined
@@ -2150,6 +2153,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 {
                     option.AppendExecutionProvider_DML(deviceId.Value);
                 }
+
+                 // Restore the default dll search order
+                SetDllDirectory(null);
 #elif USE_CUDA
             using (var option = (deviceId.HasValue) ?
                 SessionOptions.MakeSessionOptionWithCudaProvider(deviceId.Value) :
