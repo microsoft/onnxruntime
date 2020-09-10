@@ -23,6 +23,12 @@ class CalibrationDataReader(metaclass=abc.ABCMeta):
     def get_next(self) -> dict:
         """generate the input data dict for ONNXinferenceSession run"""
         raise NotImplementedError
+    
+    @property
+    @abc.abstractmethod
+    def datasize(self) -> int:
+        """number of images if calibration dataset"""
+        raise NotImplementedError
 
 
 class ONNXCalibrater:
