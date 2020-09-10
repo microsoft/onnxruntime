@@ -1036,7 +1036,7 @@ struct OrtApi {
    * the same initializer across sessions.
    */
   ORT_API2_STATUS(AddInitializer, _Inout_ OrtSessionOptions* options, _In_z_ const char* name,
-                  _In_ OrtValue* val);
+                  _In_ const OrtValue* val);
 };
 
 /*

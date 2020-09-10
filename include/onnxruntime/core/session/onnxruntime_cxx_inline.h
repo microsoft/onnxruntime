@@ -450,7 +450,7 @@ inline SessionOptions& SessionOptions::AddConfigEntry(const char* config_key, co
   return *this;
 }
 
-inline SessionOptions& SessionOptions::AddInitializer(const char* name, OrtValue* ort_val) {
+inline SessionOptions& SessionOptions::AddInitializer(const char* name, const OrtValue* ort_val) {
   ThrowOnError(GetApi().AddInitializer(p_, name, ort_val));
   return *this;
 }
@@ -927,6 +927,6 @@ inline std::vector<std::string> GetAvailableProviders() {
   return available_providers;
 }
 
-SessionOptions& AddInitializer(const char* name, OrtValue* ort_val);
+SessionOptions& AddInitializer(const char* name, const OrtValue* ort_val);
 
 }  // namespace Ort

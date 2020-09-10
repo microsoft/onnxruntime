@@ -249,7 +249,7 @@ struct SessionOptions : Base<OrtSessionOptions> {
 
   SessionOptions& AddConfigEntry(const char* config_key, const char* config_value);
 
-  SessionOptions& AddInitializer(const char* name, OrtValue* ort_val);
+  SessionOptions& AddInitializer(const char* name, const OrtValue* ort_val);
 };
 
 struct ModelMetadata : Base<OrtModelMetadata> {
