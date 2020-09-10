@@ -177,34 +177,16 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO Execut
 ## CSharp API
 
 To use csharp api for openvino execution provider create a custom nuget package. Two nuget packages will be created
-Microsoft.ML.OnnxRuntime.Managed and Microsoft.ML.OnnxRuntime.Openvino.
+Microsoft.ML.OnnxRuntime.Managed and Microsoft.ML.OnnxRuntime.Openvino in a build folder nuget_artifacts.
 
-1. Windows
+### On Windows:
+```
+.\build.bat --config RelWithDebInfo --use_openvino <hardware_option> --build_shared_lib --build_nuget
+```
+### On Linux:
+```
+./build.sh --config RelWithDebInfo --use_openvino <hardware_option> --build_shared_lib --build_nuget
+```
+Please refer to https://github.com/intel/onnxruntime/blob/master/BUILD.md for further details.   
 
-Build a custom nuget package for windows.
-```
-.\build.bat --config Debug --build --use_openvino $Device --build_csharp
-msbuild csharp\OnnxRuntime.CSharp.proj /p:OrtPackageId=Microsoft.ML.OnnxRuntime.Openvino /p:Configuration=Debug /t:CreatePackage
-```
-The msbuild log will show the paths of the nuget packages created. 
 
-2. Linux
-
-We currently do not have a process to build directly in Linux. But we can
-copy shared library <ORT linux repo>/build/Linux/<config>/libonnxruntime.so
-to onnxruntime source repository in windows and execute the same commands 
-above to get custom nuget package for linux. Two nuget packages will be 
-created Microsoft.ML.OnnxRuntime.Managed and Microsoft.ML.OnnxRuntime.Openvino.
-
-On Linux Machine
-```
-./build.sh --config Debug --build_shared_lib --use_openvino $Device 
-```
-
-On Windows Machine
-```
-cp libonnxruntime.so onnxruntime/ 
-.\build.bat --config Debug --build --use_openvino $Device --build_csharp
-msbuild csharp\OnnxRuntime.CSharp.proj /p:OrtPackageId=Microsoft.ML.OnnxRuntime.Openvino /p:Configuration=Debug /t:CreatePackage
-```
-The msbuild log will show the path of the nuget packages created. 
