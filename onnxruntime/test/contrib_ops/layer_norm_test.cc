@@ -79,21 +79,21 @@ TEST(CudaKernelTest, LayerNorm_SmallSizeTensor) {
   TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default);
 }
 
-// TEST(CudaKernelTest, LayerNorm_SmallSizeTensor_IntermediateAxis) {
-//   const std::vector<int64_t> X_dims{4, 20, 8, 16};
-//   const int64_t axis = -2;
-//   TestLayerNorm(X_dims, k_epsilon_default, axis);
-// }
+TEST(CudaKernelTest, LayerNorm_SmallSizeTensor_IntermediateAxis) {
+  const std::vector<int64_t> X_dims{4, 20, 8, 16};
+  const int64_t axis = -2;
+  TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default, axis);
+}
 
-// TEST(CudaKernelTest, LayerNorm_MidSizeTensor) {
-//   std::vector<int64_t> X_dims{8, 80, 768};
-//   TestLayerNorm(X_dims, k_epsilon_default);
-// }
+TEST(CudaKernelTest, LayerNorm_MidSizeTensor) {
+  std::vector<int64_t> X_dims{8, 80, 768};
+  TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default);
+}
 
-// TEST(CudaKernelTest, LayerNorm_LargeSizeTensor) {
-//   std::vector<int64_t> X_dims{16, 512, 1024};
-//   TestLayerNorm(X_dims, k_epsilon_default);
-// }
+TEST(CudaKernelTest, LayerNorm_LargeSizeTensor) {
+  std::vector<int64_t> X_dims{16, 512, 1024};
+  TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default);
+}
 
 TEST(CudaKernelTest, T5LayerNorm_SmallSizeTensor) {
   const std::vector<int64_t> X_dims{4, 20, 128};

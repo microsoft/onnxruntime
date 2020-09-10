@@ -10,7 +10,7 @@
 namespace onnxruntime {
 namespace contrib {
 
-template <typename T, bool use_t5_layer_norm>
+template <typename T, bool t5_layer_norm>
 class LayerNorm final : public OpKernel {
  public:
   LayerNorm(const OpKernelInfo& op_kernel_info);

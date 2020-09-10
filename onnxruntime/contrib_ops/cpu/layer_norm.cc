@@ -35,22 +35,22 @@ namespace contrib {
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(double)
 
-template <typename T, bool use_t5_layer_norm>
-LayerNorm<T, use_t5_layer_norm>::LayerNorm(const OpKernelInfo& op_kernel_info)
+template <typename T, bool t5_layer_norm>
+LayerNorm<T, t5_layer_norm>::LayerNorm(const OpKernelInfo& op_kernel_info)
     : OpKernel(op_kernel_info) {
   ORT_ENFORCE(op_kernel_info.GetAttr("axis", &axis_).IsOK());
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
 }
 
-template <typename T, bool use_t5_layer_norm>
-Status LayerNorm<T, use_t5_layer_norm>::Compute(OpKernelContext* p_ctx) const {
+template <typename T, bool t5_layer_norm>
+Status LayerNorm<T, t5_layer_norm>::Compute(OpKernelContext* p_ctx) const {
   // Inputs
   const Tensor* X = p_ctx->Input<Tensor>(0);
   const Tensor* scale = p_ctx->Input<Tensor>(1);
   const Tensor* bias = p_ctx->Input<Tensor>(2);
   auto X_data = X->template Data<T>();
   auto scale_data = scale->template Data<T>();
-  auto bias_data = use_t5_layer_norm ? nullptr : bias->template Data<T>();
+  auto bias_data = t5_layer_norm ? nullptr : bias->template Data<T>();
 
   const TensorShape& x_shape = X->Shape();
   const int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
@@ -78,7 +78,7 @@ Status LayerNorm<T, use_t5_layer_norm>::Compute(OpKernelContext* p_ctx) const {
 
   int output_index = 1;
 
-  if (!use_t5_layer_norm) {
+  if (!t5_layer_norm) {
     Tensor* mean = p_ctx->Output(output_index++, TensorShape(mean_inv_std_var_dim));
     if (mean != nullptr) {
       mean_data = mean->template MutableData<T>();
@@ -115,19 +115,18 @@ Status LayerNorm<T, use_t5_layer_norm>::Compute(OpKernelContext* p_ctx) const {
                                                  }
 
                                                  mean = mean / norm_size;
-                                                 if (use_t5_layer_norm) {
+                                                 if (t5_layer_norm) {
                                                    mean_square = sqrt(mean_square / norm_size + epsilon_);
                                                  } else {
                                                    mean_square = sqrt(mean_square / norm_size - mean * mean + epsilon_);
                                                  }
 
                                                  for (int64_t h = 0; h < norm_size; h++) {
-                                                   if (use_t5_layer_norm) {
+                                                   if (t5_layer_norm) {
                                                      p_output[h] = p_input[h] / mean_square * scale_data[h];
                                                    } else {
                                                      p_output[h] = (p_input[h] - mean) / mean_square * scale_data[h] + bias_data[h];
                                                    }
-                                                   
                                                  }
 
                                                  if (mean_data != nullptr) {
