@@ -144,6 +144,10 @@ class ORTTrainerOptions(object):
                             'type' : 'boolean',
                             'default' : False
                         },
+                        'check_model_export' : {
+                            'type' : 'boolean',
+                            'default' : False
+                        },
                     }
                 },
                 '_internal_use' : {
@@ -225,6 +229,9 @@ class ORTTrainerOptions(object):
             debug options
         debug.deterministic_compute (bool, default is False)
             forces compute to be deterministic accross runs
+        debug.check_model_export (bool, default is False)
+            compares PyTorch outputs with InferenceSession outputs before the first
+            train step to ensure successful model export
         _internal_use (dict):
             internal options, possibly undocumented, that might be removed without notice
         _internal_use.enable_internal_postprocess (bool, default is True):
@@ -447,6 +454,10 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
         'required': False,
         'schema': {
             'deterministic_compute': {
+                'type': 'boolean',
+                'default': False
+            },
+            'check_model_export': {
                 'type': 'boolean',
                 'default': False
             },
