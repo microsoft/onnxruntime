@@ -57,9 +57,9 @@ class TestModelInfo {
   virtual const std::string& GetOutputName(size_t i) const = 0;
   virtual std::string GetModelVersion() const { return ""; }
   virtual ~TestModelInfo() = default;
-#if !defined(ORT_MINIMAL_BUILD)
+
   static std::unique_ptr<TestModelInfo> LoadOnnxModel(_In_ const PATH_CHAR_TYPE* model_url);
-#else
+#if defined(ORT_MINIMAL_BUILD)
   static std::unique_ptr<TestModelInfo> LoadOrtModel(_In_ const PATH_CHAR_TYPE* model_url);
 #endif
   static const std::string unknown_version;

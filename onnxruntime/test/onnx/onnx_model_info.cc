@@ -9,14 +9,11 @@
 #if defined(ORT_MINIMAL_BUILD)
 #include <fstream>
 #include "core/graph/model.h"
-#include "core/common/logging/sinks/clog_sink.h"
 using namespace onnxruntime::experimental;
-using namespace onnxruntime::logging;
 #endif
 
 using namespace onnxruntime;
 
-#if !defined(ORT_MINIMAL_BUILD)
 static constexpr int protobuf_block_size_in_bytes = 4 * 1024 * 1024;
 template <typename T>
 static void RepeatedPtrFieldToVector(const ::google::protobuf::RepeatedPtrField<T>& input_value_info,
@@ -80,7 +77,8 @@ OnnxModelInfo::OnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url)
   }
   RepeatedPtrFieldToVector(graph.output(), output_value_info_);
 }
-#else
+
+#if defined(ORT_MINIMAL_BUILD)
 OrtModelInfo::OrtModelInfo(_In_ const PATH_CHAR_TYPE* model_url)
     : BaseModelInfo(model_url) {
   std::vector<uint8_t> bytes;
@@ -102,14 +100,7 @@ OrtModelInfo::OrtModelInfo(_In_ const PATH_CHAR_TYPE* model_url)
     ORT_THROW("Missing Model. Invalid ORT format model.");
 
   std::unique_ptr<Model> model;
-  // create scoped manager so sink gets destroyed once done
-  {
-    LoggingManager manager{std::unique_ptr<ISink>{new CLogSink{}}, Severity::kVERBOSE, false,
-                           LoggingManager::InstanceType::Temporal};
-
-    auto logger = manager.CreateLogger("CreateOrtModelInfo");
-    ORT_THROW_IF_ERROR(Model::LoadFromOrtFormat(*fbs_model, *logger, model));
-  }
+  ORT_THROW_IF_ERROR(Model::LoadFromOrtFormat(*fbs_model, logging::LoggingManager::DefaultLogger(), model));
 
   // TODO use ort format version here?
   onnx_commit_tag_ = TestModelInfo::unknown_version;
