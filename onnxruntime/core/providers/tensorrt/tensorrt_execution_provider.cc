@@ -1034,9 +1034,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           plan_file.read((char*)engine_buf.get(), engine_size);
 
           auto runtime_ = trt_state->runtime;
-          if (trt_state->engine->get() != nullptr) {
-            trt_state->engine->get()->destroy();
-          }
           trt_state->engine->reset();
           *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
               runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
@@ -1052,9 +1049,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           trt_config->addOptimizationProfile(trt_profile);
           if (*(trt_state->fp16_enable_ptr) && trt_builder->platformHasFastFp16()) {
             trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
-          }
-          if (trt_state->engine->get() != nullptr) {
-            trt_state->engine->get()->destroy();
           }
           trt_state->engine->reset();
           *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
@@ -1072,10 +1066,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
             LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + cached_path;
           }
         }
-        
-        if (trt_state->context->get() != nullptr) {
-          trt_state->context->get()->destroy();
-        }    
         trt_state->context->reset();
         *(trt_state->context) = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(
             trt_state->engine->get()->createExecutionContext());
