@@ -24,7 +24,11 @@ class FusionSkipLayerNormalization(Fusion):
 
         # In some models there is input_ids->gather->add->LayerNorm and one of input of the
         # add node is initializer with fixed shape which should not be fused into SkipLayerNorm
-        # The number of input node of add in this case is 1
+        for add_input in add.input:
+            if self.model.get_initializer(add_input) != None:
+                return
+
+        # The number of input node of add should be 2
         if len(self.model.get_parents(add)) != 2:
             return
 
