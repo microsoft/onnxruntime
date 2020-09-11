@@ -20,6 +20,7 @@ run_install=true
 run_ort=true
 run_torch=false
 run_torchscript=true
+run_tensorflow=false
 
 # Devices to test (You can run either CPU or GPU, but not both: gpu need onnxruntime-gpu, and CPU need onnxruntime).
 run_gpu_fp32=true
@@ -29,7 +30,7 @@ run_cpu_int8=false
 
 average_over=1000
 # CPU takes longer time to run, only run 100 inferences to get average latency.
-if [ "$run_cpu" = true ] ; then
+if [ "$run_cpu_fp32" = true ] || [ "$run_cpu_int8" = true ]; then
   average_over=100
 fi
 
@@ -52,7 +53,7 @@ models_to_test="bert-base-cased roberta-base gpt2"
 # export CUDA_VISIBLE_DEVICES=1
 
 # This script will generate a logs file with a list of commands used in tests.
-echo echo "ort=$run_ort torch=$run_torch torchscript=$run_torchscript gpu_fp32=$run_gpu_fp32 gpu_fp16=$run_gpu_fp16 cpu=$run_cpu optimizer=$use_optimizer batch=$batch_sizes sequence=$sequence_length models=$models_to_test" >> benchmark.log
+echo echo "ort=$run_ort torch=$run_torch torchscript=$run_torchscript tensorflow=$run_tensorflow gpu_fp32=$run_gpu_fp32 gpu_fp16=$run_gpu_fp16 cpu=$run_cpu optimizer=$use_optimizer batch=$batch_sizes sequence=$sequence_length models=$models_to_test" >> benchmark.log
 
 # Set it to false to skip testing. You can use it to dry run this script with the log file.
 run_tests=true
@@ -62,9 +63,6 @@ cache_dir="./cache_models"
 
 # Directory for ONNX models
 onnx_dir="./onnx_models"
-
-# Use raw attention mask in Attention operator or not.
-use_raw_attention_mask=false
 
 # -------------------------------------------
 if [ "$run_cpu_fp32" = true ] || [ "$run_cpu_int8" = true ]; then
@@ -93,7 +91,7 @@ if [ "$run_install" = true ] ; then
 fi
 
 if [ "$run_cli" = true ] ; then
-  echo "Use onnxruntime_tools.transformers.benchmark" 
+  echo "Use onnxruntime_tools.transformers.benchmark"
   benchmark_script="-m onnxruntime_tools.transformers.benchmark"
 else
   benchmark_script="benchmark.py"
@@ -105,11 +103,6 @@ benchmark_options="-b $batch_sizes -s $sequence_lengths -t $average_over -f fusi
 if [ "$use_optimizer" = true ] ; then
   onnx_export_options="$onnx_export_options -o"
   benchmark_options="$benchmark_options -o"
-fi
-
-if [ "$use_raw_attention_mask" = true ] ; then
-  onnx_export_options="$onnx_export_options --use_raw_attention_mask"
-  benchmark_options="$benchmark_options --use_raw_attention_mask"
 fi
 
 # -------------------------------------------
@@ -136,6 +129,13 @@ run_one_test() {
         python $benchmark_script -e torchscript -m $1 $benchmark_options $2 $3 $4
       fi
     fi
+
+    if [ "$run_tensorflow" = true ] ; then
+      echo python $benchmark_script -e tensorflow -m $1 $benchmark_options $2 $3 $4 >> benchmark.log
+      if [ "$run_tests" = true ] ; then
+        python $benchmark_script -e tensorflow -m $1 $benchmark_options $2 $3 $4
+      fi
+    fi
 }
 
 # -------------------------------------------
@@ -159,9 +159,9 @@ if [ "$run_cpu_fp32" = true ] ; then
   for m in $models_to_test
   do
     echo Run CPU Benchmark on model ${m}
-    run_one_test "${m}" 
+    run_one_test "${m}"
   done
-fi 
+fi
 
 if [ "$run_cpu_int8" = true ] ; then
   for m in $models_to_test
@@ -169,7 +169,7 @@ if [ "$run_cpu_int8" = true ] ; then
     echo Run CPU Benchmark on model ${m}
     run_one_test "${m}" -p int8
   done
-fi 
+fi
 
 if [ "run_tests" = false ] ; then
     more $log_file

@@ -104,7 +104,7 @@ stages:
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
-              onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecpubuild:chn \
+              onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecpubuild:ch2j \
                 $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build --cmake_generator Ninja \
                   --config Release \
@@ -182,15 +182,14 @@ stages:
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
-              onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecpubuild:chp \
+              onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecuda102build:ch2q \
                 $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build --cmake_generator Ninja \
                   --config Release \
                   --skip_submodule_sync \
                   --parallel \
                   --build_wheel \
-                  --use_openmp \
-                  --enable_onnx_tests --use_cuda --cuda_version=10.1 --cuda_home=/usr/local/cuda-10.1 --cudnn_home=/usr/local/cuda-10.1 \
+                  --enable_onnx_tests --use_cuda --cuda_version=10.2 --cuda_home=/usr/local/cuda-10.2 --cudnn_home=/usr/local/cuda-10.2 \
                   ${{ parameters.build_py_parameters }} \
                   --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.manylinux.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so
           workingDirectory: $(Build.SourcesDirectory)
@@ -275,7 +274,7 @@ stages:
                   --enable_onnx_tests \
                   ${{ parameters.build_py_parameters }} \
                   --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.manylinux.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so \
-                  --use_cuda --cuda_version=10.1 --cuda_home=/usr/local/cuda-10.1 --cudnn_home=/usr/local/cuda-10.1
+                  --use_cuda --cuda_version=10.2 --cuda_home=/usr/local/cuda-10.2 --cudnn_home=/usr/local/cuda-10.2
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CopyFiles@2
@@ -645,6 +644,7 @@ stages:
             aria2c -q https://github.com/protocolbuffers/protobuf/releases/download/v3.11.1/protoc-3.11.1-linux-x86_64.zip
             unzip protoc-3.11.1-linux-x86_64.zip
             sudo cp /mnt/toolchains/manylinux2014_aarch64/usr/include/stdlib.h /mnt/toolchains/gcc-linaro-7.5.0-2019.12-x86_64_aarch64-linux-gnu/aarch64-linux-gnu/libc/usr/include/
+            #The PYTHON_EXECUTABLE cmake variable is only used for generating ONNX's protobuf definition file.(Invoking the onnx/gen_proto.py file in ONNX's source folder)
             cmake \
               -Donnxruntime_GCC_STATIC_CPP_RUNTIME=ON \
               -DCMAKE_BUILD_TYPE=Release \
@@ -652,7 +652,7 @@ stages:
               -DCMAKE_TOOLCHAIN_FILE=tool-chain.cmake \
               -Donnxruntime_ENABLE_PYTHON=ON \
               -DPYTHON_LIBRARY=dl \
-              -DPYTHON_EXECUTABLE=/mnt/toolchains/manylinux2014_aarch64/'$(python.manylinux.dir)'/bin/python3  \
+              -DPYTHON_EXECUTABLE=/usr/bin/python3  \
               -Donnxruntime_BUILD_SHARED_LIB=OFF \
               -Donnxruntime_RUN_ONNX_TESTS=OFF \
               -Donnxruntime_DEV_MODE=ON \

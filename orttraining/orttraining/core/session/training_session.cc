@@ -7,6 +7,7 @@
 #include "core/graph/model.h"
 #include "core/session/IOBinding.h"
 #include "core/providers/cpu/controlflow/utils.h"
+#include "core/providers/cpu/cpu_execution_provider.h"
 #include "orttraining/core/graph/loss_function_builder.h"
 #include "orttraining/core/graph/optimizer_builder.h"
 #include "orttraining/core/framework/checkpointing.h"
@@ -151,13 +152,28 @@ Status TrainingSession::ConfigureForTraining(
                                          config.distributed_config.horizontal_parallel_size,
                                          config.distributed_config.pipeline_parallel_size});
 
+  const int32_t pipeline_stage_id = config.pipeline_config.has_value() ?
+                              DistributedRunContext::RankInGroup(WorkerGroupType::ModelParallel) :
+                              -1;
+
   if (config.pipeline_config.has_value() && config.pipeline_config.value().do_partition) {
     // Apply online pipeline partition to graph obj. This needs to be done first before any graph
     // transportation which may alter node_arg and invalidate cut_list info from the original graph.
+    ORT_ENFORCE(pipeline_stage_id >= 0, "invalid pipelie stage id (", pipeline_stage_id, ") before doing online partition.");
+
     ORT_RETURN_IF_ERROR(ApplyPipelinePartitionToMainGraph(model_->MainGraph(),
                                                           config.pipeline_config.value().cut_list,
-                                                          config.distributed_config.world_rank,
-                                                          config.distributed_config.world_size));
+                                                          pipeline_stage_id,
+                                                          config.distributed_config.pipeline_parallel_size));
+
+    if (config.pipeline_config.value().partitioned_model_path.has_value()) {
+      // Save the partitioned file out.
+      // To avoid writing conflict, only the ranks in first pipeline group write the partition file out.
+      if (DistributedRunContext::GroupId(WorkerGroupType::ModelParallel) == 0) {
+        ORT_IGNORE_RETURN_VALUE(Save(
+            config.pipeline_config.value().partitioned_model_path.value(), SaveOption::NO_RELOAD));
+      }
+    }
   }
 
   is_mixed_precision_enabled_ = config.mixed_precision_config.has_value();
@@ -169,7 +185,7 @@ Status TrainingSession::ConfigureForTraining(
   // enabled, we need to devise another way to check MP stages.
   bool enable_loss_scale = is_mixed_precision_enabled_ &&
                            (!config.pipeline_config.has_value() ||
-                            (config.distributed_config.world_rank + 1 == config.distributed_config.world_size));
+                            (pipeline_stage_id + 1 == config.distributed_config.pipeline_parallel_size));
   optional<std::string> loss_scale_input_name =
       enable_loss_scale ? optional<std::string>{""} : optional<std::string>{};
   if (config.pipeline_config.has_value()) {
@@ -252,18 +268,12 @@ Status TrainingSession::ConfigureForTraining(
   if (config.pipeline_config.has_value()) {
     TrainingConfigurationResult::PipelineConfigurationResult pipeline_result{};
     ORT_RETURN_IF_ERROR(InsertPipelineOps(weight_names_to_train,
-                                          pipeline_result.forward_waited_event_name,
-                                          pipeline_result.forward_recorded_event_name,
-                                          pipeline_result.backward_waited_event_name,
-                                          pipeline_result.backward_recorded_event_name,
-                                          pipeline_result.forward_wait_output_name,
-                                          pipeline_result.forward_record_output_name,
-                                          pipeline_result.backward_wait_output_name,
-                                          pipeline_result.backward_record_output_name,
-                                          pipeline_result.forward_waited_event_after_recv_name,
-                                          pipeline_result.forward_recorded_event_before_send_name,
-                                          pipeline_result.backward_waited_event_after_recv_name,
-                                          pipeline_result.backward_recorded_event_before_send_name));
+                                          pipeline_result.pipeline_tensor_names));
+    // Records which which tensors can be fed into the graph.
+    // It may be different than the original graph because of extra event tensors.
+    for (auto& node_arg : model_->MainGraph().GetInputsIncludingInitializers()) {
+      pipeline_result.feed_names.push_back(node_arg->Name());
+    }
     // The following loop is for not to fetch tensors not in this pipeline stage.
     for (size_t i = 0; i < config.pipeline_config.value().fetch_names.size(); ++i) {
       auto name = config.pipeline_config.value().fetch_names[i];
@@ -358,9 +368,12 @@ Status TrainingSession::ConfigureForTraining(
   // If the current node is in rank0 or if the current session is running pipeline (in which case different rank would
   // store different model partition), and if model_with_training_graph_path is specified, save the model.
   // Note: in the pipeline case, different ranks may resident in the same node. This could lead to a potential write
-  // conflict. It is user's responsibility to make sure different rank is passed in with different
+  // conflict. It is user's responsibility to make sure different rank is passed in with different. Also, to avoid
+  // writing conflict, only the ranks in first pipeline group write the partition file out.
   // model_with_training_graph_path value.
-  if ((IsRootNode(config) || config.pipeline_config.has_value()) && config.model_with_training_graph_path.has_value()) {
+  if ((IsRootNode(config) || (config.pipeline_config.has_value() &&
+                              DistributedRunContext::GroupId(WorkerGroupType::ModelParallel) == 0)) &&
+      config.model_with_training_graph_path.has_value()) {
     ORT_IGNORE_RETURN_VALUE(Save(
         config.model_with_training_graph_path.value(), SaveOption::NO_RELOAD));
   }
@@ -492,7 +505,14 @@ static Status AddGradientAccumulationNodes(Graph& graph,
 Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,
                                                         const TrainingConfiguration::GraphTransformerConfiguration& config) {
   GraphTransformerManager graph_transformation_mgr{1};
-  AddPreTrainingTransformers(graph_transformation_mgr, weights_to_train, config);
+  // TODO: ideally we can just reuse the CPU EP registered with the session, but in the training session case
+  // the EPs are registered after ConfigureForTraining and before Initialize is called. Hence we don't have access
+  // to the registered CPU EP at this stage. Hence creating the EP here again. This is still much better than
+  // creating an EP instance for every single node in ConstantFolding.
+  // Create execution frame for executing constant nodes.
+  std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
+      onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  AddPreTrainingTransformers(*cpu_execution_provider, graph_transformation_mgr, weights_to_train, config);
 
   // apply transformers
   Graph& graph = model_->MainGraph();
@@ -504,15 +524,17 @@ Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set
 }
 
 // Registers all the pre transformers with transformer manager
-void TrainingSession::AddPreTrainingTransformers(GraphTransformerManager& transformer_manager,
+void TrainingSession::AddPreTrainingTransformers(const IExecutionProvider& execution_provider,
+                                                 GraphTransformerManager& transformer_manager,
                                                  const std::unordered_set<std::string>& weights_to_train,
                                                  const TrainingConfiguration::GraphTransformerConfiguration& config,
                                                  TransformerLevel graph_optimization_level,
                                                  const std::vector<std::string>& custom_list) {
   auto add_transformers = [&](TransformerLevel level) {
     // Generate and register transformers for level
+
     auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(
-        level, weights_to_train, config, custom_list);
+        level, weights_to_train, config, execution_provider, custom_list);
     for (auto& entry : transformers_to_register) {
       transformer_manager.Register(std::move(entry), level);
     }
@@ -584,33 +606,11 @@ Status TrainingSession::AddTensorboard(const std::string& summary_name,
 
 Status TrainingSession::InsertPipelineOps(
     const std::unordered_set<std::string>& initializer_names_to_preserve,
-    std::string& forward_waited_event_name,
-    std::string& forward_recorded_event_name,
-    std::string& backward_waited_event_name,
-    std::string& backward_recorded_event_name,
-    std::string& forward_wait_output_name,
-    std::string& forward_record_output_name,
-    std::string& backward_wait_output_name,
-    std::string& backward_record_output_name,
-    std::string& forward_waited_event_after_recv_name,
-    std::string& forward_recorded_event_before_send_name,
-    std::string& backward_waited_event_after_recv_name,
-    std::string& backward_recorded_event_before_send_name) {
+    pipeline::PipelineTensorNames& pipeline_tensor_names) {
   ORT_RETURN_IF_ERROR(TransformGraphForPipeline(
       model_->MainGraph(),
       initializer_names_to_preserve,
-      forward_waited_event_name,
-      forward_recorded_event_name,
-      backward_waited_event_name,
-      backward_recorded_event_name,
-      forward_wait_output_name,
-      forward_record_output_name,
-      backward_wait_output_name,
-      backward_record_output_name,
-      forward_waited_event_after_recv_name,
-      forward_recorded_event_before_send_name,
-      backward_waited_event_after_recv_name,
-      backward_recorded_event_before_send_name));
+      pipeline_tensor_names));
   return DoPostLoadProcessing(*model_);
 }
 
@@ -884,6 +884,8 @@ Status TrainingSession::SetEvalFeedNames() {
   Graph& graph = model_->MainGraph();
 
   GraphAugmenter::GraphDefs defs{};
+  std::set<std::string> def_graph_input_names;
+  std::set<std::string> def_graph_initializer_names;
 
   for (auto& node : graph.Nodes()) {
     auto it = Nodes_Need_Eval_Feeds.find(node.OpType());
@@ -895,7 +897,10 @@ Status TrainingSession::SetEvalFeedNames() {
         dropout_eval_feeds_.insert(ratio_name);
         ORT_ENFORCE(model_->MainGraph().GetProducerNode(ratio_name) == nullptr,
                     "Input: " + ratio_name + " should not have any producer node.");
-        defs.AddGraphInputs({ratio_name});
+        if (def_graph_input_names.find(ratio_name) == def_graph_input_names.end()) {
+          defs.AddGraphInputs({ratio_name});
+          def_graph_input_names.insert(ratio_name);
+        }
       }
       // Found an opset-12 dropout node, replace initializer name.
       else if (node.InputArgCount().size() > 2) {
@@ -909,12 +914,18 @@ Status TrainingSession::SetEvalFeedNames() {
                       "Dropout's input: " + mode_input->Name() + " must be an initializer.");
           ONNX_NAMESPACE::TensorProto new_mode_initializer(*original_mode_initializer);
           new_mode_initializer.set_name(training_mode_string_);
-          defs.AddInitializers({new_mode_initializer});
+          if (def_graph_initializer_names.find(training_mode_string_) == def_graph_initializer_names.end()) {
+            defs.AddInitializers({new_mode_initializer});
+            def_graph_initializer_names.insert(training_mode_string_);
+          }
         }
         mode_input = &model_->MainGraph().GetOrCreateNodeArg(training_mode_string_, mode_input->TypeAsProto());
         // Set training_mode as graph input if any node that needs eval feed is found,
         // it's okay to add it multiple times since it will be de-dup'ed downstream.
-        defs.AddGraphInputs({training_mode_string_});
+        if (def_graph_input_names.find(training_mode_string_) == def_graph_input_names.end()) {
+          defs.AddGraphInputs({training_mode_string_});
+          def_graph_input_names.insert(training_mode_string_);
+        }
       }
     }
   }

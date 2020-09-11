@@ -260,15 +260,15 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
             // due to that we can still run and use those blocks (inside the arena logic) instead of one large one.
             // it's less efficient (the arena will add some overhead to coalesce individual allocations
             // back into blocks on 'free'), but better than failing completely.
-            try {
+            ORT_TRY {
               auto peak_size = mem_patterns_->patterns[i].PeakSize();
               // Planning of one memory type should only happen once.
               ORT_ENFORCE(
-                static_activation_memory_sizes_in_byte_.find(location.name) ==
-                static_activation_memory_sizes_in_byte_.end(),
-                "Memory type ",
-                location.name,
-                " should only appear once.");
+                  static_activation_memory_sizes_in_byte_.find(location.name) ==
+                      static_activation_memory_sizes_in_byte_.end(),
+                  "Memory type ",
+                  location.name,
+                  " should only appear once.");
               // static_activation_memory_in_bytes_ is max virtual memory size the planner computes.
               // Memory dynamically allocated when executing kernels is not recorded using this field.
               static_activation_memory_sizes_in_byte_[location.name] = peak_size;
@@ -279,10 +279,12 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
                 LOGS(session_state_.Logger(), INFO) << "Allocation of memory pattern buffer for "
                                                     << location.ToString() << " returned nullptr";
               }
-
-            } catch (const OnnxRuntimeException& ex) {
-              LOGS(session_state_.Logger(), INFO) << "Allocation of memory pattern buffer for "
-                                                  << location.ToString() << " failed. Error:" << ex.what();
+            }
+            ORT_CATCH(const OnnxRuntimeException& ex) {
+              ORT_HANDLE_EXCEPTION([&]() {
+                LOGS(session_state_.Logger(), INFO) << "Allocation of memory pattern buffer for "
+                                                    << location.ToString() << " failed. Error:" << ex.what();
+              });
             }
 
             if (buffer != nullptr) {
@@ -395,7 +397,6 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     TraceAllocate(ort_value_index, size);
   }
 
-  
   {
     // This code block is not thread-safe.
     // Dynamic activation size would be accessed by multiple threads
@@ -477,6 +478,7 @@ static Status AllocateTensorSequence(OrtValue& ort_value) {
   return Status::OK();
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 static Status AllocateSparseTensor(MLValue& mlvalue, const DataTypeImpl& ml_type, AllocatorPtr allocator,
                                    const TensorShape& shape, size_t nnz, bool create_fence,
                                    const SessionState& session_state) {
@@ -494,6 +496,7 @@ static Status AllocateSparseTensor(MLValue& mlvalue, const DataTypeImpl& ml_type
 
   return Status::OK();
 }
+#endif
 
 // This method is not thread safe!
 Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_value_index, const TensorShape* shape,
@@ -567,8 +570,13 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
 
     return Status::OK();
   } else if (ml_type->IsSparseTensorType()) {
+#if !defined(ORT_MINIMAL_BUILD)
     return AllocateSparseTensor(ort_value, *ml_type, GetAllocator(alloc_info),
                                 *shape, nnz, per_alloc_plan.create_fence_if_async, session_state_);
+#else
+    // Model load should have failed so this should be unreachable
+    ORT_THROW("SparseTensor is not supported in this build.");
+#endif
   } else if (ml_type->IsTensorSequenceType()) {
     return AllocateTensorSequence(ort_value);
   } else {

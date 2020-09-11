@@ -347,6 +347,126 @@
             },
             "comments": "For Nodejs binding"
          }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "f97fd8664fa824e5d081d776cf4a811dbf09bca4",
+               "repositoryUrl": "https://github.com/pypa/manylinux"
+            },
+            "comments": "For building our CI build docker image"
+         }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "aaa5eab410c2e3fe41ebf7a2316be9c51572dbd2",
+               "repositoryUrl": "https://gitlab.kitware.com/cmake/cmake"
+            },
+            "comments": "CMake 3.18.2. For building our CI build docker image"
+         }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "439c93d51f45c50541fc755b597725168ecd939a",
+               "repositoryUrl": "https://github.com/python/cpython"
+            },
+            "comments": "Python 3.9.0rc1"
+         }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "580fbb018fd0844806119614d752b41fc69660f9",
+               "repositoryUrl": "https://github.com/python/cpython"
+            },
+            "comments": "Python 3.8.5"
+         }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "13c94747c74437e594b7fc242ff7da668e81887c",
+               "repositoryUrl": "https://github.com/python/cpython"
+            },
+            "comments": "Python 3.7.9"
+         }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "c0a9afe2ac1820409e6173bd1893ebee2cf50270",
+               "repositoryUrl": "https://github.com/python/cpython"
+            },
+            "comments": "Python 3.6.12"
+         }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "e5f6aba872e66bfd86eb592214696a519cded197",
+               "repositoryUrl": "https://github.com/python/cpython"
+            },
+            "comments": "Python 3.5.9"
+         }
+      },
+      {
+         "component": {
+            "type": "pip",
+            "pip": {
+               "Name": "transformers",
+               "Version": "2.11.0"
+            },
+            "comments": "Installed in the training docker image"
+         }
+      },
+      {
+         "component": {
+            "type": "pip",
+            "pip": {
+               "Name": "msgpack",
+               "Version": "1.0.0"
+            },
+            "comments": "Installed in the training docker image"
+         }
+      },
+      {
+         "component": {
+            "type": "pip",
+            "pip": {
+               "Name": "tensorboardX",
+               "Version": "1.8"
+            },
+            "comments": "Installed in the training docker image"
+         }
+      },
+      {
+         "component": {
+            "type": "pip",
+            "pip": {
+               "Name": "tensorboard",
+               "Version": "2.3.0"
+            },
+            "comments": "Installed in the training docker image"
+         }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "92cf3702fcfaadc84eb7bef59825a23e0cd84f56",
+               "repositoryUrl": "https://github.com/aappleby/smhasher"
+            },
+            "comments": "MurmurHash3"
+         }
       }
    ],
    "Version": 1
