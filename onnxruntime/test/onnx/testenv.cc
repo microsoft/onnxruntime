@@ -50,11 +50,14 @@ class TestCaseRequestContext {
   ~TestCaseRequestContext() = default;
 
  private:
-  TestCaseRequestContext(const Callback& cb, PThreadPool tp, const ITestCase& c, Ort::Session&& session)
+  TestCaseRequestContext(const Callback& cb, PThreadPool tp, const ITestCase& c, Ort::Env& env,
+                         const Ort::SessionOptions& session_opts)
       : cb_(cb),
         tp_(tp),
         c_(c),
-        session_(std::move(session)),
+        env_(env),
+        session_opts_(session_opts.Clone()),
+        session_(nullptr),
         allocator_(),
         result_(),
         data_tasks_started_(0),
@@ -78,7 +81,9 @@ class TestCaseRequestContext {
   Callback cb_;
   PThreadPool tp_;
   const ITestCase& c_;
-  Ort::Session session_{nullptr};
+  Ort::Env& env_;
+  Ort::SessionOptions session_opts_;
+  Ort::Session session_;
   MockedOrtAllocator allocator_;
   std::shared_ptr<TestCaseResult> result_;
   TIME_SPEC test_case_time_;
@@ -95,22 +100,16 @@ std::shared_ptr<TestCaseResult> TestCaseRequestContext::Run(PThreadPool tpool,
                                                             const ITestCase& c, Ort::Env& env,
                                                             const Ort::SessionOptions& session_opts,
                                                             size_t concurrent_runs, size_t repeat_count) {
-  const auto* test_case_name = c.GetTestCaseName().c_str();
-  auto opts = session_opts.Clone();
-  opts.SetLogId(test_case_name);
-  Ort::Session session{env, c.GetModelUrl(), opts};
-  LOGF_DEFAULT(INFO, "testing %s\n", test_case_name);
 
   //temp hack. Because we have no resource control. We may not have enough memory to run this test in parallel
   if (c.GetTestCaseName() == "coreml_FNS-Candy_ImageNet") {
     concurrent_runs = 1;
   }
 
-  const size_t data_count = c.GetDataCount();
-
   Callback empty_cb;
-  TestCaseRequestContext ctx(empty_cb, tpool, c, std::move(session));
+  TestCaseRequestContext ctx(empty_cb, tpool, c, env, session_opts);
 
+  const size_t data_count = c.GetDataCount();
   if (concurrent_runs > 1 && data_count > 1) {
     ctx.RunAsync(concurrent_runs);
     ctx.Wait();
@@ -126,18 +125,12 @@ void TestCaseRequestContext::Request(Callback cb, PThreadPool tpool,
                                                 const Ort::SessionOptions& session_opts,
                                                 size_t concurrent_runs) {
 
-  const auto* test_case_name = c.GetTestCaseName().c_str();
-  auto opts = session_opts.Clone();
-  opts.SetLogId(test_case_name);
-  Ort::Session session{env, c.GetModelUrl(), opts};
-  LOGF_DEFAULT(INFO, "testing %s\n", test_case_name);
-
   //temp hack. Because we have no resource control. We may not have enough memory to run this test in parallel
   if (c.GetTestCaseName() == "coreml_FNS-Candy_ImageNet") {
     concurrent_runs = 1;
   }
 
-  std::unique_ptr<TestCaseRequestContext> self(new TestCaseRequestContext(cb, tpool, c, std::move(session)));
+  std::unique_ptr<TestCaseRequestContext> self(new TestCaseRequestContext(cb, tpool, c, env, session_opts));
   CallableFactory<TestCaseRequestContext, void, size_t> f(self.get());
   auto runnable = f.GetCallable<&TestCaseRequestContext::RunAsync>();
   tpool->Schedule([runnable, concurrent_runs](){ runnable.Invoke(concurrent_runs); });
@@ -147,6 +140,13 @@ void TestCaseRequestContext::Request(Callback cb, PThreadPool tpool,
 void TestCaseRequestContext::RunAsync(size_t concurrent_runs) {
   assert(concurrent_runs > 0);
   concurrent_runs = std::min(concurrent_runs, c_.GetDataCount());
+
+  const auto* test_case_name = c_.GetTestCaseName().c_str();
+  session_opts_.SetLogId(test_case_name);
+  Ort::Session session{env_, c_.GetModelUrl(), session_opts_};
+  LOGF_DEFAULT(INFO, "testing %s\n", test_case_name);
+  session_ = std::move(session);
+
   // Reserve one refcount for this thread so the object does not get deleted when
   // several TestCases are run in parallel
   // by worker threads before this thread finishes. In exchange, we run one of the tasks.
