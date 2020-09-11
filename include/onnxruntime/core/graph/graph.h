@@ -299,7 +299,10 @@ class Node {
   ADD_ATTR_INTERFACES(std::string)
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::TensorProto)
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::GraphProto)
+
+#if !defined(ORT_MINIMAL_BUILD)
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::SparseTensorProto)
+#endif
 
   /** Gets the Node's attributes. */
   const NodeAttributes& GetAttributes() const noexcept { return attributes_; }

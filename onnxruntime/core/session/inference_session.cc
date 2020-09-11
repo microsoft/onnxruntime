@@ -55,6 +55,7 @@
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::experimental;
+using namespace onnxruntime::common;
 
 namespace onnxruntime {
 namespace {
@@ -1281,14 +1282,20 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
         ORT_RETURN_IF_ERROR_SESSIONID_(CheckShapes(feed_name, input_shape, expected_shape));
       }
     } else if (input_ml_value.IsSparseTensor()) {
+#if !defined(ORT_MINIMAL_BUILD)
       if (!expected_type->IsSparseTensorType()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name: ", feed_name,
                                " is not expected to be of type sparse tensor.");
       }
       auto expected_element_type = expected_type->AsSparseTensorType()->GetElementType();
       auto input_element_type = input_ml_value.Get<SparseTensor>().Values().DataType();
-      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type));
       // TODO: In the future, when sparsetensors are in use, find out how to properly verify the shape
+      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type));
+#else
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name ", feed_name,
+                             " is a sparse tensor, which is not supported in this build.");
+#endif
+
     } else if (input_ml_value.IsTensorSequence()) {
       if (!expected_type->IsTensorSequenceType()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name: ", feed_name,
