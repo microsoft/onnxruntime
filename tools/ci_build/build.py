@@ -177,6 +177,9 @@ def parse_arguments():
         help="Extra definitions to pass to CMake during build system "
         "generation. These are just CMake -D options without the leading -D.")
     parser.add_argument(
+        "--target",
+        help="Build a specific target, e.g. winml_dll")
+    parser.add_argument(
         "--x86", action='store_true',
         help="Create x86 makefiles. Requires --update and no existing cache "
         "CMake setup. Delete CMakeCache.txt if needed")
@@ -190,17 +193,13 @@ def parse_arguments():
         "CMake setup. Delete CMakeCache.txt if needed")
     parser.add_argument(
         "--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
-    parser.add_argument(
-        "--android", action='store_true', help='Build for Android')
-    parser.add_argument(
-        "--android_abi", type=str, default='arm64-v8a', help='')
-    parser.add_argument(
-        "--android_api", type=int, default=27,
-        help='Android API Level, e.g. 21')
-    parser.add_argument(
-        "--android_sdk_path", type=str, help='Path to the Android SDK')
-    parser.add_argument(
-        "--android_ndk_path", default="", help="Path to the Android NDK")
+    parser.add_argument("--android", action='store_true', help='Build for Android')
+    parser.add_argument("--android_abi", type=str, default='arm64-v8a', help='')
+    parser.add_argument("--android_api", type=int, default=27, help='Android API Level, e.g. 21')
+    parser.add_argument("--android_sdk_path", type=str, help='Path to the Android SDK')
+    parser.add_argument("--android_ndk_path", default="", help="Path to the Android NDK")
+    parser.add_argument("--android_cpp_shared", action="store_true",
+                        help="Build with shared libc++ instead of the default static libc++.")
 
     parser.add_argument("--ios", action='store_true', help="build for ios")
     parser.add_argument(
@@ -725,6 +724,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "-DANDROID_ABI=" + str(args.android_abi)
         ]
 
+        if args.android_cpp_shared:
+            cmake_args += ["-DANDROID_STL=c++_shared"]
+
     if args.ios:
         if is_macOS():
             needed_args = [
@@ -894,13 +896,15 @@ def clean_targets(cmake_path, build_dir, configs):
         run_subprocess(cmd_args)
 
 
-def build_targets(args, cmake_path, build_dir, configs, parallel):
+def build_targets(args, cmake_path, build_dir, configs, parallel, target=None):
     for config in configs:
         log.info("Building targets for %s configuration", config)
         build_dir2 = get_config_build_dir(build_dir, config)
         cmd_args = [cmake_path,
                     "--build", build_dir2,
                     "--config", config]
+        if target:
+            cmd_args.extend(['--target', target])
 
         build_tool_args = []
         if parallel:
@@ -1173,25 +1177,36 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             run_training_python_frontend_tests(cwd=cwd)
             continue
 
-        android_x86_64 = args.android_abi == 'x86_64'
-        if android_x86_64:
-            run_subprocess(os.path.join(
-                source_dir, 'tools', 'ci_build', 'github', 'android',
-                'start_android_emulator.sh'))
-            adb_push('testdata', '/data/local/tmp/', cwd=cwd)
-            adb_push(
-                os.path.join(source_dir, 'cmake', 'external', 'onnx', 'onnx', 'backend', 'test'),
-                '/data/local/tmp/', cwd=cwd)
-            adb_push('onnxruntime_test_all', '/data/local/tmp/', cwd=cwd)
-            adb_push('onnx_test_runner', '/data/local/tmp/', cwd=cwd)
-            adb_shell(
-                'cd /data/local/tmp && /data/local/tmp/onnxruntime_test_all')
-            if args.use_nnapi:
+        if args.android:
+            if args.android_abi == 'x86_64':
+                run_subprocess(os.path.join(
+                    source_dir, 'tools', 'ci_build', 'github', 'android',
+                    'start_android_emulator.sh'))
+                adb_push('testdata', '/data/local/tmp/', cwd=cwd)
+                adb_push(
+                    os.path.join(source_dir, 'cmake', 'external', 'onnx', 'onnx', 'backend', 'test'),
+                    '/data/local/tmp/', cwd=cwd)
+                adb_push('onnxruntime_test_all', '/data/local/tmp/', cwd=cwd)
+                adb_push('onnx_test_runner', '/data/local/tmp/', cwd=cwd)
                 adb_shell(
-                    'cd /data/local/tmp && /data/local/tmp/onnx_test_runner -e nnapi /data/local/tmp/test')  # noqa
-            else:
-                adb_shell(
-                    'cd /data/local/tmp && /data/local/tmp/onnx_test_runner /data/local/tmp/test')  # noqa
+                    'cd /data/local/tmp && /data/local/tmp/onnxruntime_test_all')
+                if args.use_nnapi:
+                    adb_shell(
+                        'cd /data/local/tmp && /data/local/tmp/onnx_test_runner -e nnapi /data/local/tmp/test')  # noqa
+                else:
+                    adb_shell(
+                        'cd /data/local/tmp && /data/local/tmp/onnx_test_runner /data/local/tmp/test')  # noqa
+            elif args.android_abi == 'arm64-v8a':
+                # For Android arm64 abi we are only verify the size of the binary generated by minimal build config
+                # Will fail the build if the shared_lib size is larger than the threshold
+                if args.minimal_build and config == 'MinSizeRel' and args.build_shared_lib:
+                    # set current size limit to 1100KB
+                    bin_size_threshold = 1100000
+                    bin_actual_size = os.path.getsize(os.path.join(cwd, 'libonnxruntime.so'))
+                    log.info('Android arm64 minsizerel libonnxruntime.so size [' + str(bin_actual_size) + 'B]')
+                    if bin_actual_size > bin_size_threshold:
+                        raise BuildError('Android arm64 minsizerel libonnxruntime.so size [' + str(bin_actual_size) +
+                                         'B] is bigger than threshold [' + str(bin_size_threshold) + 'B]')
             continue
         dll_path_list = []
         if args.use_nuphar:
@@ -1496,10 +1511,10 @@ def run_csharp_tests(use_cuda, use_openvino, use_tensorrt, use_dnnl):
 
 
 def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
-    if (args.arm or args.arm64) and (not is_windows() and not args.ios):
+    if (args.arm or args.arm64 or args.enable_windows_store) and (not is_windows() and not args.ios):
         raise BuildError(
             'Currently only support building protoc for Windows host while '
-            'cross-compiling for ARM/ARM64 arch and linux cross-compiling iOS')
+            'cross-compiling for ARM/ARM64/Store and linux cross-compiling iOS')
 
     log.info(
         "Building protoc for host to be used in cross-compiled build process")
@@ -1613,7 +1628,7 @@ def main():
         args.update = True
         args.build = True
         if cross_compiling:
-            args.test = args.android_abi == 'x86_64'
+            args.test = args.android_abi == 'x86_64' or args.android_abi == 'arm64-v8a'
         else:
             args.test = True
 
@@ -1621,10 +1636,10 @@ def main():
         args.test = False
 
     if args.include_ops_by_model or args.include_ops_by_config:
-        from exclude_unused_ops import exclude_unused_ops, get_provider_path
-        include_ops_by_model = args.include_ops_by_model if args.include_ops_by_model else ''
-        include_ops_by_config = args.include_ops_by_config if args.include_ops_by_config else ''
-        exclude_unused_ops(include_ops_by_model, include_ops_by_config, get_provider_path(use_cuda=args.use_cuda))
+        from exclude_unused_ops import exclude_unused_ops
+        models_path = args.include_ops_by_model if args.include_ops_by_model else ''
+        config_path = args.include_ops_by_config if args.include_ops_by_config else ''
+        exclude_unused_ops(models_path, config_path, use_cuda=args.use_cuda)
 
     if args.use_tensorrt:
         args.use_cuda = True
@@ -1737,7 +1752,7 @@ def main():
         elif is_macOS() and args.use_xcode:
             cmake_extra_args += ['-G', 'Xcode']
 
-        if (args.android or args.ios) and args.path_to_protoc_exe is None:
+        if (args.android or args.ios or args.enable_windows_store) and args.path_to_protoc_exe is None:
             # Cross-compiling for Android and iOS
             path_to_protoc_exe = build_protoc_for_host(
                 cmake_path, source_dir, build_dir, args)
@@ -1766,7 +1781,7 @@ def main():
     setup_dml_build(args, cmake_path, build_dir, configs)
 
     if args.build:
-        build_targets(args, cmake_path, build_dir, configs, args.parallel)
+        build_targets(args, cmake_path, build_dir, configs, args.parallel, args.target)
 
     if args.test:
         run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs)

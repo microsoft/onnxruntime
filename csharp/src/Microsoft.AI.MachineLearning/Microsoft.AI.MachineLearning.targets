@@ -6,19 +6,20 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <WindowsAIBinary>$(MSBuildThisFileDirectory)..\..\runtimes\win-$(WindowsAI-Platform)\native\Microsoft.AI.MachineLearning.dll</WindowsAIBinary>
-  </PropertyGroup>
+    <RuntimesDirectory Condition="'$(OutputType)' == 'AppContainerExe'">$(MSBuildThisFileDirectory)..\..\runtimes\win-$(WindowsAI-Platform)\uap</RuntimesDirectory>
+    <RuntimesDirectory Condition="'$(RuntimesDirectory)' == ''">$(MSBuildThisFileDirectory)..\..\runtimes\win-$(WindowsAI-Platform)\native</RuntimesDirectory>
 
-  <PropertyGroup>
+    <WindowsAIBinary>$(RuntimesDirectory)\Microsoft.AI.MachineLearning.dll</WindowsAIBinary>
+
     <OnnxRuntimeBinary Condition="'$(OnnxRuntimePathOverride)' != ''">$(OnnxRuntimePathOverride)</OnnxRuntimeBinary>
-    <OnnxRuntimeBinary Condition="'$(OnnxRuntimeBinary)' == ''">$(MSBuildThisFileDirectory)..\..\runtimes\win-$(WindowsAI-Platform)\native\onnxruntime.dll</OnnxRuntimeBinary>
+    <OnnxRuntimeBinary Condition="'$(OnnxRuntimeBinary)' == ''">$(RuntimesDirectory)\onnxruntime.dll</OnnxRuntimeBinary>
 
     <DirectMLBinary Condition="'$(DirectMLPathOverride)' != ''">$(DirectMLPathOverride)</DirectMLBinary>
-    <DirectMLBinary Condition="'$(DirectMLBinary)' == ''">$(MSBuildThisFileDirectory)..\..\runtimes\win-$(WindowsAI-Platform)\native\directml.dll</DirectMLBinary>
+    <DirectMLBinary Condition="'$(DirectMLBinary)' == ''">$(RuntimesDirectory)\directml.dll</DirectMLBinary>
   </PropertyGroup>
 
   <ItemGroup>
-    <Reference Include="$(MSBuildThisFileDirectory)\..\..\lib\uap10.0\Microsoft.AI.MachineLearning.winmd">
+    <Reference Include="$(MSBuildThisFileDirectory)\..\..\lib\uap\Microsoft.AI.MachineLearning.winmd">
       <Implementation>$(WindowsAIBinary)</Implementation>
     </Reference>
   </ItemGroup>
@@ -26,7 +27,7 @@
   <PropertyGroup Condition="'$(WindowsAI-Platform)' == x64 OR '$(WindowsAI-Platform)' == x86">
     <MLBinaries>$(WindowsAIBinary);$(OnnxRuntimeBinary);$(DirectMLBinary)</MLBinaries>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(WindowsAI-Platform)' == arm OR '$(WindowsAI-Platform)' == arm64">
+  <PropertyGroup Condition="'$(OutputType)' == 'AppContainerExe' OR '$(WindowsAI-Platform)' == arm OR '$(WindowsAI-Platform)' == arm64">
     <MLBinaries>$(WindowsAIBinary);$(OnnxRuntimeBinary)</MLBinaries>
   </PropertyGroup>
 

@@ -47,9 +47,9 @@ std::string GetEnginePath(const ::std::string& root, const std::string& name) {
 }
 
 std::string GetVecHash(const ::std::vector<int>& vec) {
-  std::size_t ret = 0;
+  std::size_t ret = vec.size();
   for (auto& i : vec) {
-    ret ^= std::hash<uint32_t>()(i);
+    ret ^= i + 0x9e3779b9 + (ret << 6) + (ret >> 2);
   }
   return std::to_string(ret);
 }
@@ -774,14 +774,13 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
     if (!has_dynamic_shape) {
       std::string trt_node_name_with_precision_shape = trt_node_name_with_precision + "_" + GetVecHash(input_shapes);
       std::string cached_path = GetEnginePath(engine_cache_path_, trt_node_name_with_precision_shape);
-      std::ifstream planFile(cached_path, std::ios::binary | std::ios::in);
-      if (planFile && engine_cache_enable_) {
-        planFile.seekg(0, std::ios::end);
-        int engine_size = planFile.tellg();
-        planFile.seekg(0, std::ios::beg);
+      std::ifstream plan_file(cached_path, std::ios::binary | std::ios::in);
+      if (plan_file && engine_cache_enable_) {
+        plan_file.seekg(0, std::ios::end);
+        int engine_size = plan_file.tellg();
+        plan_file.seekg(0, std::ios::beg);
         std::unique_ptr<char[]> engine_buf{new char[engine_size]};
-        planFile.read((char*)engine_buf.get(), engine_size);
-        planFile.close();
+        plan_file.read((char*)engine_buf.get(), engine_size);
         trt_engine = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
         LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + cached_path;
       } else {
@@ -1026,24 +1025,23 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       if (engine_update) {
         std::string trt_node_name_with_precision_shape = trt_state->trt_node_name_with_precision + "_" + GetVecHash(input_shapes);
         std::string cached_path = GetEnginePath(trt_state->engine_cache_path, trt_node_name_with_precision_shape);
-        std::ifstream planFile(cached_path, std::ios::binary | std::ios::in);
-        if (planFile && trt_state->engine_cache_enable) {
-          planFile.seekg(0, std::ios::end);
-          int engine_size = planFile.tellg();
-          planFile.seekg(0, std::ios::beg);
+        std::ifstream plan_file(cached_path, std::ios::binary | std::ios::in);
+        trt_state->context->reset();
+        trt_state->engine->reset();
+        if (plan_file && trt_state->engine_cache_enable) {
+          plan_file.seekg(0, std::ios::end);
+          int engine_size = plan_file.tellg();
+          plan_file.seekg(0, std::ios::beg);
           std::unique_ptr<char[]> engine_buf{new char[engine_size]};
-          planFile.read((char*)engine_buf.get(), engine_size);
-          planFile.close();
-
+          plan_file.read((char*)engine_buf.get(), engine_size);
           auto runtime_ = trt_state->runtime;
-          trt_state->engine->reset();
           *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
               runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
           if (trt_state->engine->get() == nullptr) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
           }
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + cached_path;
           trt_engine = trt_state->engine->get();
-
         } else {
           auto trt_config = tensorrt_ptr::unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
           trt_config->setMaxWorkspaceSize(*(trt_state->max_workspace_size_ptr));
@@ -1051,8 +1049,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           if (*(trt_state->fp16_enable_ptr) && trt_builder->platformHasFastFp16()) {
             trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
           }
-          trt_state->context->reset();
-          trt_state->engine->reset();
           *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
               trt_builder->buildEngineWithConfig(*trt_state->network, *trt_config));
 
@@ -1068,7 +1064,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
             LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + cached_path;
           }
         }
-        trt_state->context->reset();
         *(trt_state->context) = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(
             trt_state->engine->get()->createExecutionContext());
         if (trt_state->context->get() == nullptr) {

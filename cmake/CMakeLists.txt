@@ -39,7 +39,7 @@ enable_testing()
 
 if(NOT CMAKE_BUILD_TYPE)
   message(STATUS "Build type not set - using RelWithDebInfo")
-  set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Choose build type: Debug Release RelWithDebInfo." FORCE)
+  set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Choose build type: Debug Release RelWithDebInfo MinSizeRel." FORCE)
 endif()
 
 # Options
@@ -171,7 +171,6 @@ if(NOT WIN32)
     set(onnxruntime_ENABLE_INSTRUMENT OFF)
   endif()
 else()
-  add_compile_definitions(WINVER=0x0601)  # Support Windows 7 and newer
   if(WINDOWS_STORE)
     # cmake/external/protobuf/src/google/protobuf/compiler/subprocess.cc and onnxruntime/core/platform/windows/env.cc call a bunch of Win32 APIs.
     # For now, we'll set the API family to desktop globally to expose Win32 symbols in headers; this must be fixed!
@@ -199,6 +198,44 @@ if(onnxruntime_USE_OPENMP)
   endif()
 endif()
 
+# ORT build with as much excluded as possible. Supports ORT flatbuffers models only.
+# Will expose option in build.py when all pieces are available
+if(onnxruntime_MINIMAL_BUILD)
+  add_compile_definitions(ORT_MINIMAL_BUILD)
+  set(onnxruntime_REDUCED_OPS_BUILD ON)
+
+  if (NOT onnxruntime_ENABLE_PYTHON)
+    # Python bindings use typeid so can't automatically disable RTTI in that case
+    set(onnxruntime_DISABLE_RTTI ON)
+  endif()
+
+  if (MSVC)
+    # turn on LTO (which adds some compiler flags and turns on LTCG) unless it's a Debug build to minimize binary size
+    if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+      set (onnxruntime_ENABLE_LTO ON)
+    endif()
+
+    # undocumented internal flag to allow analysis of a minimal build binary size
+    if (ADD_DEBUG_INFO_TO_MINIMAL_BUILD)
+      string(APPEND CMAKE_CXX_FLAGS " /Zi")
+      string(APPEND CMAKE_C_FLAGS " /Zi")
+      string(APPEND CMAKE_SHARED_LINKER_FLAGS " /debug")
+    endif()
+  else()
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ffunction-sections -fdata-sections")
+    if (CMAKE_HOST_SYSTEM MATCHES "Darwin")
+      add_link_options(-Wl, -dead_strip)
+    else()
+      add_link_options(-Wl,--gc-sections)
+    endif()
+
+    if (ADD_DEBUG_INFO_TO_MINIMAL_BUILD)
+      string(APPEND CMAKE_CXX_FLAGS " -g")
+      string(APPEND CMAKE_C_FLAGS " -g")
+    endif()
+  endif()
+endif()
+
 if(onnxruntime_ENABLE_LTO)
     include(CheckIPOSupported)
     check_ipo_supported(RESULT ipo_enabled OUTPUT ipo_output)
@@ -208,26 +245,6 @@ if(onnxruntime_ENABLE_LTO)
     else()
       set (CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
     endif()
-endif()
-
-# ORT build with as much excluded as possible. Supports ORT flatbuffers models only.
-# Will expose option in build.py when all pieces are available
-if(onnxruntime_MINIMAL_BUILD)
-  add_compile_definitions(ORT_MINIMAL_BUILD)
-  set(onnxruntime_REDUCED_OPS_BUILD ON)
-  set(onnxruntime_DISABLE_RTTI ON)
-
-  if (MSVC)
-    # add MSVC specific flags to reduce build size here if needed
-  else()
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ffunction-sections -fdata-sections")
-    if (CMAKE_HOST_SYSTEM MATCHES "Darwin")
-      add_link_options(-Wl,-dead_strip)
-    else()
-      add_link_options(-Wl,--gc-sections)
-    endif()  
-  endif()
-
 endif()
 
 if (onnxruntime_REDUCED_OPS_BUILD)
@@ -343,8 +360,9 @@ if (MSVC)
   if (onnxruntime_ENABLE_LTO AND NOT onnxruntime_USE_CUDA)
     SET (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Gw /GL")
     SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /Gw /GL")
+    SET (CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} /Gw /GL")
   endif()
-  
+
   # The WinML build tool chain builds ARM/ARM64, and the internal tool chain does not have folders for spectre mitigation libs.
   # WinML performs spectre mitigation differently.
   if (NOT DEFINED onnxruntime_DISABLE_QSPECTRE_CHECK)
@@ -361,6 +379,8 @@ if (MSVC)
     SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /guard:cf")
     SET(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} /guard:cf")
     SET(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /guard:cf")
+    SET(CMAKE_C_FLAGS_MINSIZEREL "${CMAKE_C_FLAGS_MINSIZEREL} /guard:cf")
+    SET(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} /guard:cf")
     SET(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} /guard:cf")
   endif()
 else()
@@ -553,7 +573,6 @@ get_filename_component(ONNXRUNTIME_ROOT "${ONNXRUNTIME_ROOT}" ABSOLUTE)
 get_filename_component(ORTTRAINING_ROOT "${ORTTRAINING_ROOT}" ABSOLUTE)
 get_filename_component(REPO_ROOT "${REPO_ROOT}" ABSOLUTE)
 set(ONNXRUNTIME_INCLUDE_DIR ${REPO_ROOT}/include/onnxruntime)
-
 
 add_subdirectory(external/date EXCLUDE_FROM_ALL)
 
@@ -810,13 +829,17 @@ if (WIN32)
     if (MSVC)
       foreach(type EXE STATIC SHARED)
         if (NOT type MATCHES STATIC)
+          set(CMAKE_${type}_LINKER_FLAGS_RELEASE "${CMAKE_${type}_LINKER_FLAGS_RELEASE} /OPT:REF,ICF,LBR")
+          set(CMAKE_${type}_LINKER_FLAGS_RELEASE "${CMAKE_${type}_LINKER_FLAGS_RELEASE} /INCREMENTAL:NO")
           set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /OPT:REF,ICF,LBR")
           set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /INCREMENTAL:NO")
-          #TODO: the "/LTCG" switch should be controlled by onnxruntime_ENABLE_LTO
+          set(CMAKE_${type}_LINKER_FLAGS_MINSIZEREL "${CMAKE_${type}_LINKER_FLAGS_MINSIZEREL} /OPT:REF,ICF,LBR")
+          set(CMAKE_${type}_LINKER_FLAGS_MINSIZEREL "${CMAKE_${type}_LINKER_FLAGS_MINSIZEREL} /INCREMENTAL:NO")
         endif()
         if (onnxruntime_ENABLE_LTO AND NOT onnxruntime_USE_CUDA)
           set(CMAKE_${type}_LINKER_FLAGS_RELEASE "${CMAKE_${type}_LINKER_FLAGS_RELEASE} /LTCG")
           set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /LTCG")
+          set(CMAKE_${type}_LINKER_FLAGS_MINSIZEREL "${CMAKE_${type}_LINKER_FLAGS_MINSIZEREL} /LTCG")
         endif()
       endforeach()
     endif()
@@ -1163,6 +1186,13 @@ if (onnxruntime_ENABLE_TRAINING)
           message(STATUS "NCCL_MINOR_VERSION: ${NCCL_MINOR_VERSION}")
         endif()
 
+        if (NCCL_MAJOR_VERSION_DEFINED AND NCCL_MINOR_VERSION_DEFINED)
+          if ("${NCCL_MAJOR_VERSION}.${NCCL_MINOR_VERSION}" VERSION_GREATER_EQUAL "2.7")
+            add_definitions(-DUSE_NCCL_P2P=1)
+            message( STATUS "NCCL P2P is enabled for supporting ncclSend and ncclRecv." )
+          endif()
+        endif()
+
         set(NCCL_INCLUDE_DIRS ${NCCL_INCLUDE_DIR})
         set(NCCL_LIBRARIES ${NCCL_LIBRARY})
         message( STATUS "NCCL (include: ${NCCL_INCLUDE_DIRS}, library: ${NCCL_LIBRARIES})" )
@@ -1240,6 +1270,27 @@ if(WIN32)
 else()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES nsync_cpp)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${CMAKE_DL_LIBS} Threads::Threads)
+endif()
+
+if (WIN32)
+  if (onnxruntime_BUILD_FOR_WINDOWS_STORE)
+    # Setting WINAPI_FAMILY, WINVER and _WIN32_WINNT restrict the APIs exposed in Windows headers to those available
+    # in store or desktop, and that support at least the version of Windows specified
+    # add_compile_definitions(WINAPI_FAMILY=2)
+    add_compile_definitions(WINVER=0x0A00 _WIN32_WINNT=0x0A00)  # Support Windows 10
+    # /ZW adds /FUplatform.winmd and /FUwindows.winmd. windows.winmd, in turn, overrides the include path for
+    # the cppwinrt headers, which we set to use the WinML built ones.
+    # Instead, we use /ZW:nostdlib and force include platform.winml only.
+    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:SHELL:/ZW:nostdlib /FUplatform.winmd>")
+    get_filename_component(msvc_path "${CMAKE_C_COMPILER}/../../../.." ABSOLUTE)
+    link_directories("${msvc_path}/lib/${onnxruntime_target_platform}/store")
+    add_link_options(/APPCONTAINER)
+  else()
+    add_compile_definitions(WINVER=0x0601)  # Support Windows 7 and newer
+    # add_compile_definitions(WINAPI_FAMILY=3)
+    # FIXME adding _WIN32_WINNT=0x0601 and WINAPI_FAMILY is desirable. However, it hides some symbols that are used in WRL
+    # headers and breaks the build of WinML. We should have separate WINVER/_WIN32_WINNT definitions for WinML
+  endif()
 endif()
 
 # Default version parts for Microsoft.AI.MachineLearning.dll and onnxruntime.dll in non-ADO pipeline local builds
