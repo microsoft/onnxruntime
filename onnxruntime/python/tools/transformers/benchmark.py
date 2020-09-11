@@ -66,9 +66,10 @@ if "OMP_NUM_THREADS" not in os.environ:
 import torch
 from transformers import (AutoConfig, AutoTokenizer, AutoModel, GPT2Model)
 
-def run_onnxruntime(use_gpu, model_names, model_class, precision, batch_sizes, sequence_lengths, repeat_times, input_counts,
-                    optimize_onnx, validate_onnx, cache_dir, onnx_dir, verbose, overwrite, disable_ort_io_binding,
-                    use_raw_attention_mask, thread_num, model_fusion_statistics):
+
+def run_onnxruntime(use_gpu, model_names, model_class, precision, batch_sizes, sequence_lengths, repeat_times,
+                    input_counts, optimize_onnx, validate_onnx, cache_dir, onnx_dir, verbose, overwrite,
+                    disable_ort_io_binding, use_raw_attention_mask, thread_num, model_fusion_statistics):
     import onnxruntime
 
     results = []
@@ -154,8 +155,8 @@ def run_onnxruntime(use_gpu, model_names, model_class, precision, batch_sizes, s
     return results
 
 
-def run_pytorch(use_gpu, model_names, model_class, precision, batch_sizes, sequence_lengths, repeat_times, torchscript, cache_dir,
-                verbose):
+def run_pytorch(use_gpu, model_names, model_class, precision, batch_sizes, sequence_lengths, repeat_times, torchscript,
+                cache_dir, verbose):
     results = []
     if use_gpu and not torch.cuda.is_available():
         logger.error("Please install PyTorch with Cuda, and use a machine with GPU for testing gpu performance.")
@@ -168,7 +169,8 @@ def run_pytorch(use_gpu, model_names, model_class, precision, batch_sizes, seque
         model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir, custom_model_class=model_class)
         tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
 
-        max_input_size = tokenizer.max_model_input_sizes[model_name] if model_name in tokenizer.max_model_input_sizes else 1024
+        max_input_size = tokenizer.max_model_input_sizes[
+            model_name] if model_name in tokenizer.max_model_input_sizes else 1024
 
         logger.debug(f"Model {model}")
         logger.debug(f"Number of parameters {model.num_parameters()}")
@@ -365,12 +367,12 @@ def main():
             logger.warning("--input_counts is not implemented for torch or torchscript engine.")
 
         if enable_torchscript:
-            results += run_pytorch(args.use_gpu, args.models, args.model_class, args.precision, args.batch_sizes, args.sequence_lengths,
-                                   args.test_times, True, args.cache_dir, args.verbose)
+            results += run_pytorch(args.use_gpu, args.models, args.model_class, args.precision, args.batch_sizes,
+                                   args.sequence_lengths, args.test_times, True, args.cache_dir, args.verbose)
 
         if enable_torch:
-            results += run_pytorch(args.use_gpu, args.models, args.model_class, args.precision, args.batch_sizes, args.sequence_lengths,
-                                   args.test_times, False, args.cache_dir, args.verbose)
+            results += run_pytorch(args.use_gpu, args.models, args.model_class, args.precision, args.batch_sizes,
+                                   args.sequence_lengths, args.test_times, False, args.cache_dir, args.verbose)
 
     model_fusion_statistics = {}
     if enable_onnxruntime:
