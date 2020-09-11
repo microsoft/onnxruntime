@@ -9,7 +9,7 @@ jobs:
     AgentPool : 'Win-CPU-2019'
     ArtifactName: 'drop-nodejs-win32'
     JobName: 'Windows_CI'
-    BuildCommand:  '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_nodejs --enable_onnx_tests --enable_wcos --use_telemetry --cmake_generator "Visual Studio 16 2019"'
+    BuildCommand:  '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --disable_ort_format_load --use_openmp --build_nodejs --enable_onnx_tests --enable_wcos --use_telemetry --cmake_generator "Visual Studio 16 2019"'
     BuildArch: 'x64'
     EnvSetupScript: 'setup_env.bat'
     sln_platform: 'x64'
@@ -25,7 +25,7 @@ jobs:
     AgentPool : $(AgentPoolMacOS)
     ArtifactName: 'drop-nodejs-darwin'
     JobName: 'Mac_CI'
-    BuildCommand: 'python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_nodejs --config Release'
+    BuildCommand: 'python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --disable_ort_format_load --use_openmp --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_nodejs --config Release'
     DoNodejsPack : 'true'
     DoNugetPack: 'false'
     DoEsrp: ${{ parameters.DoEsrp }}
@@ -50,7 +50,7 @@ jobs:
           mkdir -p $HOME/.onnx && docker run --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro \
           --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecpubuild:ch2j /bin/bash -c "/opt/python/cp37-cp37m/bin/python3 \
           /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --enable_lto --build_nodejs \
-          --skip_submodule_sync  --parallel --build_shared_lib --use_openmp && cd /onnxruntime_src/nodejs && npm pack"
+          --skip_submodule_sync  --parallel --build_shared_lib --disable_ort_format_load --use_openmp && cd /onnxruntime_src/nodejs && npm pack"
         workingDirectory: $(Build.SourcesDirectory)
     - task: Docker@2
       displayName: logout
