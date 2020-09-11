@@ -15,42 +15,10 @@ from onnxruntime.capi.ort_trainer import IODescription as Legacy_IODescription,\
 from onnxruntime.training import _utils, amp, optim, orttrainer, TrainStepInfo,\
                                       model_desc_validation as md_val,\
                                       orttrainer_options as orttrainer_options
+
+from orttraining_test_orttrainer_frontend import _load_pytorch_transformer_model
+
 import _test_helpers
-
-
-###############################################################################
-# Helper functions ############################################################
-###############################################################################
-
-
-def _load_pytorch_transformer_model(device, dynamic_axes=False, legacy_api=False):
-    # Loads external Pytorch TransformerModel into utils
-    pytorch_transformer_path = os.path.join('..', '..', '..', 'samples', 'python', 'pytorch_transformer')
-    pt_model_path = os.path.join(pytorch_transformer_path, 'pt_model.py')
-    pt_model = _utils.import_module_from_file(pt_model_path)
-    ort_utils_path = os.path.join(pytorch_transformer_path, 'ort_utils.py')
-    ort_utils = _utils.import_module_from_file(ort_utils_path)
-    utils_path = os.path.join(pytorch_transformer_path, 'utils.py')
-    utils = _utils.import_module_from_file(utils_path)
-
-    # Modeling
-    model = pt_model.TransformerModel(28785, 200, 2, 200, 2, 0.2).to(device)
-    my_loss = ort_utils.my_loss
-    if legacy_api:
-        if dynamic_axes:
-            model_desc = ort_utils.legacy_transformer_model_description_dynamic_axes()
-        else:
-            model_desc = ort_utils.legacy_transformer_model_description()
-    else:
-        if dynamic_axes:
-            model_desc = ort_utils.transformer_model_description_dynamic_axes()
-        else:
-            model_desc = ort_utils.transformer_model_description()
-
-
-    # Preparing data
-    train_data, val_data, test_data = utils.prepare_data(device, 20, 20)
-    return model, model_desc, my_loss, utils.get_batch, train_data, val_data, test_data
 
 
 ###############################################################################
