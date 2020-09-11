@@ -4,18 +4,13 @@
 # license information.
 # --------------------------------------------------------------------------
 
-from transformers import AutoModelForQuestionAnswering
-from transformers import AutoModelForSequenceClassification
-from transformers import AutoModelWithLMHead
-from transformers import AutoModel
-
 # Maps model class name to a tuple of model class
-MODEL_CLASSES = {
-    'AutoModel': AutoModel,
-    'AutoModelWithLMHead': AutoModelWithLMHead,
-    'AutoModelForSequenceClassification': AutoModelForSequenceClassification,
-    'AutoModelForQuestionAnswering': AutoModelForQuestionAnswering
-}
+MODEL_CLASSES = [
+    'AutoModel',
+    'AutoModelWithLMHead',
+    'AutoModelForSequenceClassification',
+    'AutoModelForQuestionAnswering'
+]
 
 # List of pretrained models: https://huggingface.co/transformers/pretrained_models.html
 # Pretrained model name to a tuple of input names, opset_version, use_external_data_format, optimization model type
