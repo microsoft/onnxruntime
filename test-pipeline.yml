@@ -1,7 +1,6 @@
 trigger: none
 
-pool:
-  vmImage: ubuntu-18.04
+pool: 'Linux-CPU'
 
 jobs:
 - job: Job
