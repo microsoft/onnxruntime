@@ -203,7 +203,7 @@ endif()
 # Will expose option in build.py when all pieces are available
 if(onnxruntime_MINIMAL_BUILD)
   add_compile_definitions(ORT_MINIMAL_BUILD)
-  add_compile_defintions(ENABLE_ORT_FORMAT_LOAD)
+  add_compile_definitions(ENABLE_ORT_FORMAT_LOAD)
   
   set(onnxruntime_REDUCED_OPS_BUILD ON)
 
