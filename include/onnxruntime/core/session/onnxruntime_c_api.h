@@ -1034,6 +1034,10 @@ struct OrtApi {
    * that is same as the name passed to this API call, ORT will use this initializer instance
    * instead of deserializing one from the model file. This is useful when you want to share
    * the same initializer across sessions.
+   * \param name name of the initializer
+   * \param val OrtValue containing the initializer. Lifetime of 'val' and the underlying initializer buffer must be
+   * managed by the user (created using the CreateTensorWithDataAsOrtValue API) and it must outlive the session object
+   * to which it is added.
    */
   ORT_API2_STATUS(AddInitializer, _Inout_ OrtSessionOptions* options, _In_z_ const char* name,
                   _In_ const OrtValue* val);

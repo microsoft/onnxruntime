@@ -114,10 +114,10 @@ common::Status SaveInitializedTensors(
       } else {
         auto planned_mem_info = exec_plan.GetLocation(ort_value_index);
         auto user_mem_info = it->second->Get<Tensor>().Location();
-        retval = user_mem_info == planned_mem_info;
+        retval = user_mem_info.device == planned_mem_info.device;
         if (!retval) {
           LOGS(logger, WARNING) << "Cannot use user supplied initializer with name: ("
-                                << name << ") because the ORT planned memory location info "
+                                << name << ") because the ORT planned memory location device "
                                 << planned_mem_info.ToString()
                                 << " ) is different from what is supplied (" << user_mem_info.ToString() << ")";
         }
