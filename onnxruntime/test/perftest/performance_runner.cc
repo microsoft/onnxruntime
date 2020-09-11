@@ -242,6 +242,8 @@ static std::unique_ptr<TestModelInfo> CreateModelInfo(const PerformanceTestConfi
       return TestModelInfo::LoadOrtModel(performance_test_config_.model_info.model_file_path.c_str());
     }
 #endif
+
+    ORT_NOT_IMPLEMENTED(ToMBString(file_path), " is not supported");
   }
 
   if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("tf")) == 0) {
