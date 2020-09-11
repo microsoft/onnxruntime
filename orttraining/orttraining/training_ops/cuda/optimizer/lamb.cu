@@ -1,7 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cuda/cu_inc/common.cuh"
+//bugbug
+//#include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/atomic/common.cuh"
 #include "orttraining/training_ops/cuda/math/isfinite.cuh"
@@ -192,7 +193,8 @@ __device__ __forceinline__ void _LambUpdateRule(
 
   if (_IsFiniteScalar(w_new_tmp)) {
     if (g_new) {
-      *g_new = T3(delta);
+      //bugbug
+      *g_new = T3((delta) * T2(16384.0f));
     }
     if (w_new) {
       *w_new = w_new_tmp;
@@ -202,6 +204,7 @@ __device__ __forceinline__ void _LambUpdateRule(
     }
   } else {
     if (g_new) {
+      printf("####gradient is zero\n");
       *g_new = T3(0);
     }
     if (w_new) {

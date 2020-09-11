@@ -76,7 +76,7 @@ def input_get_device_index(input):
 
 def get_all_gradients_finite_arg_name(session):
     all_fp16_or_fp32_gradients_finite_node_args = [x for x in session._outputs_meta if 'all_gradients_finite' in x.name]
-    if len(all_fp16_or_fp32_gradients_finite_node_args) != 1:
+    if len(all_fp16_or_fp32_gradients_finite_node_args) < 1:
         raise RuntimeError("Failed to find a group NodeArg with name that matches 'all_gradients_finite'\
              from the training session.")
 
@@ -392,7 +392,8 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
                                                enable_grad_norm_clip=True,
                                                frozen_weights=[], opset_version=DEFAULT_OPSET_VERSION,
                                                use_deterministic_compute=False,
-                                               use_invertible_layernorm_grad=False):
+                                               use_invertible_layernorm_grad=False,
+                                               use_adasum=False, perform_fp16_allreduce=True):
     output_name = model.graph.output[0].name
     ort_parameters = ort.TrainingParameters()
     ort_parameters.loss_output_name = output_name
@@ -405,7 +406,10 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     ort_parameters.enable_grad_norm_clip = enable_grad_norm_clip
     ort_parameters.set_gradients_as_graph_outputs = False
     ort_parameters.use_invertible_layernorm_grad = use_invertible_layernorm_grad
-
+    ort_parameters.use_adasum = use_adasum
+    ort_parameters.perform_fp16_allreduce = perform_fp16_allreduce
+    ort_parameters.data_parallel_size = data_parallel_size
+    ort_parameters.horizontal_parallel_size = horizontal_parallel_size
     output_types = {}
     for output in model.graph.output:
         output_types[output.name] = output.type.tensor_type
@@ -547,7 +551,7 @@ class ORTTrainer():
                  global_step=0, get_lr_this_step=None, loss_scaler=None, deepspeed_zero_stage=0,
                  enable_grad_norm_clip=True, frozen_weights=[], _opset_version=DEFAULT_OPSET_VERSION,
                  _enable_internal_postprocess=True, _extra_postprocess=None, _use_deterministic_compute=False,
-                 use_invertible_layernorm_grad=False, run_symbolic_shape_infer=False):
+                 use_invertible_layernorm_grad=False, run_symbolic_shape_infer=False, use_adasum=False, perform_fp16_allreduce=True):
         super(ORTTrainer, self).__init__()
         """
         Initialize ORTTrainer.
@@ -651,10 +655,13 @@ class ORTTrainer():
         self.world_size = world_size
         self.use_mixed_precision = use_mixed_precision
 
+        self.perform_fp16_allreduce = perform_fp16_allreduce
+
         self.session = None
         self.device_ = device
         self.gradient_accumulation_steps = gradient_accumulation_steps
-
+        self.data_parallel_size = data_parallel_size
+        self.horizontal_parallel_size = horizontal_parallel_size
         # we use self.current_step to count calls to train_step. It is used for gradient accumulation.
         # gradients are being accumulated when self.current_step is not divisible by gradient_accumulation_steps.
         # gradients are updated when self.current_step is divisible by gradient_accumulation_steps.
@@ -680,6 +687,7 @@ class ORTTrainer():
         self._use_deterministic_compute = _use_deterministic_compute
         self.use_invertible_layernorm_grad = use_invertible_layernorm_grad
         self.run_symbolic_shape_infer = run_symbolic_shape_infer
+        self.use_adasum = use_adasum
 
         # use this special string to workaround a corner case that external loss_scale is passed into train_step as kwargs.
         # see prepare_input_and_fetches for more details.
@@ -710,7 +718,8 @@ class ORTTrainer():
                 enable_grad_norm_clip=self.enable_grad_norm_clip_,
                 frozen_weights=self.frozen_weights_, opset_version=self.opset_version_,
                 use_deterministic_compute=self._use_deterministic_compute,
-                use_invertible_layernorm_grad=self.use_invertible_layernorm_grad)
+                use_invertible_layernorm_grad=self.use_invertible_layernorm_grad, use_adasum=self.use_adasum,
+                perform_fp16_allreduce=self.perform_fp16_allreduce)
 
         self.loss_scale_input_name = self.session.loss_scale_input_name
 
@@ -739,6 +748,38 @@ class ORTTrainer():
             self.output_desc_with_all_fp_16_or_fp32_gradients_finite = [
                 *self.model_desc_.outputs_,
                 IODescription(get_all_gradients_finite_arg_name(self.session), [1], torch.bool)]
+
+        #bugbug
+        global_norm = [x for x in self.session._outputs_meta if 'global_gradient_norm' in x.name]
+        if len(global_norm) > 0:
+            if self.use_mixed_precision:
+                self.output_desc_with_all_fp_16_or_fp32_gradients_finite.append(IODescription(global_norm[0].name, [], torch.float32))
+            else:
+                self.model_desc_.outputs_.append(IODescription(global_norm[0].name, [], torch.float32))
+
+        #bugbug
+        delta_finite = [x for x in self.session._outputs_meta if 'adasum_all_deltas_finite' in x.name]
+        if len(delta_finite) > 0:
+            if self.use_mixed_precision:
+                self.output_desc_with_all_fp_16_or_fp32_gradients_finite.append(IODescription(delta_finite[0].name, [1], torch.bool))
+            else:
+                self.model_desc_.outputs_.append(IODescription(delta_finite[0].name, [1], torch.bool))
+
+        #bugbug
+        delta_norm = [x for x in self.session._outputs_meta if 'delta_norm' in x.name]
+        if len(delta_norm) > 0:
+            if self.use_mixed_precision:
+                self.output_desc_with_all_fp_16_or_fp32_gradients_finite.append(IODescription(delta_norm[0].name, [], torch.float32))
+            else:
+                self.model_desc_.outputs_.append(IODescription(delta_norm[0].name, [], torch.float32))
+
+        #bugbug
+        delta_initial_norm = [x for x in self.session._outputs_meta if 'delta_initial_norm' in x.name]
+        if len(delta_initial_norm) > 0:
+            if self.use_mixed_precision:
+                self.output_desc_with_all_fp_16_or_fp32_gradients_finite.append(IODescription(delta_initial_norm[0].name, [], torch.float32))
+            else:
+                self.model_desc_.outputs_.append(IODescription(delta_initial_norm[0].name, [], torch.float32))
 
         if self.state_dict_:
             self.load_state_dict(self.state_dict_, self.strict_)
@@ -953,8 +994,8 @@ class ORTTrainer():
             # Otherwise next run with only_execute_path_to_fetches will lead to gradient all reduce
             # because all_fp32_gradients_finite is still in the feed.
             self.train_io_binding.clear_binding_outputs()
-
-            all_finite = session_run_results[self.output_desc_with_all_fp_16_or_fp32_gradients_finite[-1].name_]
+            index = -5 if self.use_adasum else -2
+            all_finite = session_run_results[self.output_desc_with_all_fp_16_or_fp32_gradients_finite[index].name_]
             if self.loss_scaler_ is not None:
                 self.loss_scaler_.update_loss_scale(all_finite)
             if all_finite:
@@ -966,12 +1007,27 @@ class ORTTrainer():
 
         if fetches is not None:
             results = [session_run_results[fetch] for fetch in fetches]
-        elif has_if_all_finite and self.loss_scaler_ is None:
-            # return descripted outputs plus the all_finite flag so that the training script can handle loss scaling.
-            results = [session_run_results[output_desc.name_] for output_desc in self.output_desc_with_all_fp_16_or_fp32_gradients_finite]
         else:
-            results = [session_run_results[output_desc.name_] for output_desc in self.model_desc_.outputs_]
+            results = [session_run_results[output.name_] for output in output_desc]
+        #     # return descripted outputs plus the all_finite flag so that the training script can handle loss scaling.
+        #     results = [session_run_results[output_desc.name_] for output_desc in self.output_desc_with_all_fp_16_or_fp32_gradients_finite]
+        # else:
+        #     results = [session_run_results[output_desc.name_] for output_desc in self.model_desc_.outputs_]
+        
+        #bugbug
+        if 'global_gradient_norm' in session_run_results:
+            print("#####Global norm is {}".format(session_run_results['global_gradient_norm']))
 
+        if 'delta_norm' in session_run_results:
+            print("#####delta norm is {}".format(session_run_results['delta_norm']))
+
+        if 'delta_initial_norm' in session_run_results:
+            print("#####delta norm before reduction is {}".format(session_run_results['delta_initial_norm']))
+
+        if 'adasum_all_deltas_finite' in session_run_results:
+            print("#####adasum_all_deltas_finite is {}".format(session_run_results['adasum_all_deltas_finite']))
+        
+        print("#####Internal global step is: {}".format(self.global_step_))
         return results[0] if len(results) == 1 else results
 
     def __call__(self, *args, **kwargs):

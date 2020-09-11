@@ -143,6 +143,7 @@ Status AdamOptimizerBuilder::Build(
       } else if (!config.gradient_norm_argdef && enable_grad_clipping) {
         ORT_THROW("Gradient clipping is enabled but gradient norm is not given.");
       } else {
+        std::cout<<"gradient_norm_argdef is null."<<std::endl;
         input_args.push_back(ArgDef());
       }
 

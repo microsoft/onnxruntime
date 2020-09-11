@@ -2,7 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/cuda_common.h"
+//bugbug
 #include "core/providers/cuda/cu_inc/common.cuh"
+#include "orttraining/training_ops/cuda/math/isfinite.cuh"
 #include "orttraining/training_ops/cuda/optimizer/common.cuh"
 #include "orttraining/training_ops/cuda/optimizer/adam.h"
 #include "orttraining/training_ops/cuda/optimizer/common.h"
@@ -52,11 +54,9 @@ __global__ void _AdamOptimizer_mode0(
 
   const T4 delta = -T4(*eta) * update;
 
-  // Compute the new gradient.
   if (grads_out) {
-    grads_out[id] = T_GRAD(delta);
-  }
-
+    grads_out[id] = T_GRAD(delta * T4(4096.0f));
+  }  
   // Compute the new weight.
   if (weights_out) {
     weights_out[id] = weights[id] + T3(delta);
@@ -68,6 +68,10 @@ __global__ void _AdamOptimizer_mode0(
 
   moment_1_out[id] = m1o;
   moment_2_out[id] = m2o;
+
+  if (fp16_weights_out) {
+    fp16_weights_out[id] = static_cast<half>(weights_out[id]);
+  }
 }
 
 template <typename T1, typename T3, typename T4, typename T_GRAD, typename T_GRAD_NORM, typename T_MIXED_PRECISION_FP>

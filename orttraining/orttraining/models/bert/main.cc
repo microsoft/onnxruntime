@@ -18,7 +18,7 @@
 #endif
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
-#include "orttraining/core/framework/mpi_context.h"
+#include "orttraining/core/framework/communication/mpi/mpi_context.h"
 #include "orttraining/models/runner/constant.h"
 #include "orttraining/models/runner/training_runner.h"
 #include "orttraining/models/runner/training_util.h"
@@ -578,7 +578,7 @@ void setup_training_params(BertParameters& params) {
 
   params.use_adasum = params.use_adasum && (params.data_parallel_size > 1);
   if (params.use_adasum)
-    std::cout << "Use Adsum for allreduce." << std::endl;
+    std::cout << "Use Adasum for allreduce." << std::endl;
 #endif
 
 #ifdef USE_CUDA

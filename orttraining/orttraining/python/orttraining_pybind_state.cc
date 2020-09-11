@@ -10,7 +10,7 @@
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/graph/optimizer_config.h"
-#include "orttraining/core/framework/mpi_context.h"
+#include "orttraining/core/framework/communication/mpi/mpi_context.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
 
 namespace onnxruntime {
@@ -55,6 +55,8 @@ struct TrainingParameters {
   bool gelu_recompute = false;
   bool transformer_layer_recompute = false;
   int number_recompute_layers = 0;
+  bool use_adasum = false;
+  bool perform_fp16_allreduce = true;
 };
 
 struct TrainingConfigurationResult {
@@ -126,6 +128,8 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     };
     opt.use_mixed_precision_moments = parameters.use_fp16_moments;
     opt.do_all_reduce_in_mixed_precision_type = true;
+    opt.use_fp16_moments = parameters.use_fp16_moments;
+    opt.do_all_reduce_in_fp16 = parameters.perform_fp16_allreduce;
     // TODO: this mapping is temporary.
     // For now, nccl allreduce kernel only implements for allreduce_post_accumulation
     // hovorod allreduce kernel only implements for not allreduce_post_accumulation.
@@ -136,6 +140,17 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     // TODO: The norm clipping value is 1.0f which is the default used in most frameworks.
     // Need to have another option to support more values in the future.
     opt.enable_grad_norm_clip = parameters.enable_grad_norm_clip;
+
+    // TODO reduction types
+    if (parameters.use_adasum) {
+#ifdef USE_CUDA
+//bugbug
+      //opt.adasum_reduction_type = training::AdasumReductionType::GpuHierarchical;
+      opt.adasum_reduction_type = training::AdasumReductionType::CpuReduction;
+#else
+      opt.adasum_reduction_type = training::AdasumReductionType::CpuReduction;
+#endif
+    }
 
     config.optimizer_config = opt;
   }
@@ -234,7 +249,9 @@ void addObjectMethodsForTraining(py::module& m) {
                optim_state.emplace(weight_it.first, state_tensors);
              }
              parameters.optimizer_initial_state = optim_state;
-           });
+           })
+      .def_readwrite("use_adasum", &TrainingParameters::use_adasum)
+      .def_readwrite("perform_fp16_allreduce", &TrainingParameters::perform_fp16_allreduce);
 
 #if defined(USE_MPI)
   m.def("get_mpi_context_local_rank", []() -> int { return MPIContext::GetInstance().GetLocalRank(); });

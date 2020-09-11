@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "distributed_run_context.h"
+#include "orttraining/core/framework/distributed_run_context.h"
 #include "core/common/common.h"
 
 namespace onnxruntime {
@@ -15,7 +15,6 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
                                              int32_t horizontal_parallel_size,
                                              int32_t pipeline_stage_size) {
   // We only check world_size and world_rank since local_size and local_rank might not be set if using NCCL.
-  // TODO tix, refactor the mpi related code to populate all fields correctly by default.
   ORT_ENFORCE(world_rank >= 0 && world_size > 0,
               "Fail to initialize DistributedRunContext due to invalid distributed run config");
 
@@ -126,6 +125,26 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
   }
   groups_[WorkerGroupType::ModelParallel] = {pipeline_group_ranks, pipe_group_id,
                                              WorkerGroupType::ModelParallel, z};
+  
+  // Node local parallel group
+  const int32_t node_group_id = params_.world_rank / params_.local_size;
+  const int32_t rank_in_owning_node_group = params_.local_rank;
+  std::vector<int32_t> node_group_ranks;
+  for (auto r = 0; r < local_size; r++) {
+    node_group_ranks.push_back(node_group_id * local_size + r);
+  }
+  groups_[WorkerGroupType::NodeLocalDataParallel] = {node_group_ranks, node_group_id,
+                                                  WorkerGroupType::NodeLocalDataParallel, rank_in_owning_node_group};
+
+  // Cross node parallel group
+  const int32_t cross_node_group_id = params_.local_rank;
+  const int32_t rank_in_owning_cross_node_group = params_.world_rank / params_.local_size;
+  std::vector<int32_t> cross_node_group_ranks;
+  for (auto r = 0; r < (world_size / local_size); r++) {
+    cross_node_group_ranks.push_back(cross_node_group_id + local_size * r);
+  }
+  groups_[WorkerGroupType::CrossNodeDataParallel] = {cross_node_group_ranks, cross_node_group_id,
+                                                  WorkerGroupType::CrossNodeDataParallel, rank_in_owning_cross_node_group};
 }
 
 }  // namespace training

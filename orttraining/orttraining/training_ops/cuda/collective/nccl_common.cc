@@ -4,7 +4,7 @@
 #include "orttraining/training_ops/cuda/collective/nccl_common.h"
 #include <mpi.h>
 
-#include "orttraining/core/framework/mpi_context.h"
+#include "orttraining/core/framework/communication/mpi/mpi_context.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -38,6 +38,11 @@ static Status CreateNcclCommunicator(MPI_Group* mpi_world_group,
                           << worker_group.ToString();
     return Status::OK();
   }
+
+  // bugbug
+  std::cout<<"worker group: "<<worker_group_type<<" has ranks:"<<std::endl;
+  for (size_t i=0; i<worker_group.ranks.size(); i++)
+    std::cout<<" "<<worker_group.ranks[i]<<" "<<std::endl;
 
   // Create new group
   MPI_Group mpi_group;
@@ -85,6 +90,16 @@ NcclContext::NcclContext() {
                                &horizontal_group_comm_);
   ORT_ENFORCE(ret.IsOK());
 
+  // Initialize node local Parallel Group NCCL Communicator
+  ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::NodeLocalParallel,
+                               &node_local_comm_);
+  ORT_ENFORCE(ret.IsOK());
+
+  // Initialize cross node Parallel Group NCCL Communicator
+  ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::CrossNodeParallel,
+                               &cross_node_comm_);
+  ORT_ENFORCE(ret.IsOK());
+
   MPI_Group_free(&mpi_world_group);
 }
 
@@ -93,6 +108,12 @@ ncclComm_t NcclContext::Comm(training::WorkerGroupType group_type) {
     return data_group_comm_;
   } else if (training::WorkerGroupType::HorizontalParallel == group_type) {
     return horizontal_group_comm_;
+  }
+  else if (training::WorkerGroupType::NodeLocalParallel == group_type) {
+    return node_local_comm_;
+  }
+  else if (training::WorkerGroupType::CrossNodeParallel == group_type) {
+    return cross_node_comm_;
   }
 
   return nullptr;
@@ -105,6 +126,14 @@ NcclContext::~NcclContext() {
 
   if (horizontal_group_comm_ != nullptr) {
     ncclCommDestroy(horizontal_group_comm_);
+  }
+
+  if (node_local_comm_ != nullptr) {
+    ncclCommDestroy(node_local_comm_);
+  }
+
+  if (cross_node_comm_ != nullptr) {
+    ncclCommDestroy(cross_node_comm_);
   }
 
   int is_mpi_finalized = 0;
