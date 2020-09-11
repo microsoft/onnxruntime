@@ -100,7 +100,7 @@ void Send::SendData(
   memcpyRange.Begin();
 #endif
 
-#ifdef USE_NCCL
+#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
   IAllocatorUniquePtr<char> buffer = GetScratchBuffer<char>(aggregated_aligned_tensor_bytes);
 #else
   IAllocatorUniquePtr<char> buffer = AllocateBufferOnCPUPinned<char>(
@@ -109,7 +109,7 @@ void Send::SendData(
 
   for (int i = 0; i < num_tensors; ++i) {
     const Tensor* tensor = ctx->Input<Tensor>(i + 2);
-#ifdef USE_NCCL
+#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
     CUDA_CALL(cudaMemcpy(buffer.get() + tensor_offsets_in_bytes[i], tensor->DataRaw(),
                          tensor_sizes_in_bytes[i], cudaMemcpyDeviceToDevice));
 #else
@@ -137,7 +137,7 @@ void Send::SendData(
                        dst,
                        static_cast<int>(tag_)};
 
-#ifdef USE_NCCL
+#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
   auto& nccl_service = cuda::NcclService::GetInstance();
   nccl_service.SubmitSendAndWait(info_data.buffer, info_data.size, info_data.rank);
 #else

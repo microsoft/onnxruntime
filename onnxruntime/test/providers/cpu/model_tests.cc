@@ -19,6 +19,8 @@
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
+using namespace onnxruntime::common;
+
 namespace onnxruntime {
 namespace test {
 // parameter is provider_name + "_" + model_path
@@ -771,6 +773,7 @@ TEST_P(ModelTest, Run) {
                                                     ORT_TSTR("faster_rcnn"),
                                                     ORT_TSTR("vgg19"),
                                                     ORT_TSTR("zfnet512"),
+                                                    ORT_TSTR("GPT2_LM_HEAD"),
                                                     ORT_TSTR("coreml_VGG16_ImageNet")};
     all_disabled_tests.insert(std::begin(x86_disabled_tests), std::end(x86_disabled_tests));
 #endif
