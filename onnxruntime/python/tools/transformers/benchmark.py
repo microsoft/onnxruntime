@@ -209,10 +209,23 @@ def run_pytorch(use_gpu, model_names, model_class, precision, batch_sizes, seque
                                           dtype=torch.long,
                                           device=device)
                 try:
-                    inference = torch.jit.trace(model, input_ids) if torchscript else model
-                    inference(input_ids)
+                    inference_model = torch.jit.trace(model, input_ids) if torchscript else model
 
-                    runtimes = timeit.repeat(lambda: inference(input_ids), repeat=repeat_times, number=1)
+                    def encoder_decoder_forward():
+                        # T5 not yet supported on torch trace
+                        # https://github.com/huggingface/transformers/issues/5647
+                        with torch.no_grad():
+                            outputs = inference_model(input_ids, decoder_input_ids=input_ids)
+
+                    def encoder_forward():
+                        with torch.no_grad():
+                            outputs = inference_model(input_ids)
+
+                    inference = encoder_decoder_forward if config.is_encoder_decoder else encoder_forward
+
+                    inference()
+
+                    runtimes = timeit.repeat(lambda: inference(), repeat=repeat_times, number=1)
 
                     result = {
                         "engine": "torchscript" if torchscript else "torch",
@@ -286,9 +299,17 @@ def run_tensorflow(use_gpu, model_names, model_class, precision, batch_sizes, se
                 input_ids = tf.constant(values, shape=(batch_size, sequence_length), dtype=tf.int32)
 
                 try:
-                    model(input_ids, training=False)
+                    def encoder_forward():
+                        return model(input_ids, training=False)
 
-                    runtimes = timeit.repeat(lambda: model(input_ids, training=False), repeat=repeat_times, number=1)
+                    def encoder_decoder_forward():
+                        return model(input_ids, decoder_input_ids=input_ids, training=False)
+
+                    inference = encoder_decoder_forward if config.is_encoder_decoder else encoder_forward
+
+                    inference()
+
+                    runtimes = timeit.repeat(lambda: inference(), repeat=repeat_times, number=1)
 
                     result = {
                         "engine": "tensorflow",
