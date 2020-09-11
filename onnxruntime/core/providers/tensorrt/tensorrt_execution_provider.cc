@@ -774,14 +774,13 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
     if (!has_dynamic_shape) {
       std::string trt_node_name_with_precision_shape = trt_node_name_with_precision + "_" + GetVecHash(input_shapes);
       std::string cached_path = GetEnginePath(engine_cache_path_, trt_node_name_with_precision_shape);
-      std::ifstream planFile(cached_path, std::ios::binary | std::ios::in);
-      if (planFile && engine_cache_enable_) {
-        planFile.seekg(0, std::ios::end);
-        int engine_size = planFile.tellg();
-        planFile.seekg(0, std::ios::beg);
+      std::ifstream plan_file(cached_path, std::ios::binary | std::ios::in);
+      if (plan_file && engine_cache_enable_) {
+        plan_file.seekg(0, std::ios::end);
+        int engine_size = plan_file.tellg();
+        plan_file.seekg(0, std::ios::beg);
         std::unique_ptr<char[]> engine_buf{new char[engine_size]};
-        planFile.read((char*)engine_buf.get(), engine_size);
-        planFile.close();
+        plan_file.read((char*)engine_buf.get(), engine_size);
         trt_engine = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
         LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + cached_path;
       } else {
@@ -1026,14 +1025,13 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       if (engine_update) {
         std::string trt_node_name_with_precision_shape = trt_state->trt_node_name_with_precision + "_" + GetVecHash(input_shapes);
         std::string cached_path = GetEnginePath(trt_state->engine_cache_path, trt_node_name_with_precision_shape);
-        std::ifstream planFile(cached_path, std::ios::binary | std::ios::in);
-        if (planFile && trt_state->engine_cache_enable) {
-          planFile.seekg(0, std::ios::end);
-          int engine_size = planFile.tellg();
-          planFile.seekg(0, std::ios::beg);
+        std::ifstream plan_file(cached_path, std::ios::binary | std::ios::in);
+        if (plan_file && trt_state->engine_cache_enable) {
+          plan_file.seekg(0, std::ios::end);
+          int engine_size = plan_file.tellg();
+          plan_file.seekg(0, std::ios::beg);
           std::unique_ptr<char[]> engine_buf{new char[engine_size]};
-          planFile.read((char*)engine_buf.get(), engine_size);
-          planFile.close();
+          plan_file.read((char*)engine_buf.get(), engine_size);
 
           auto runtime_ = trt_state->runtime;
           trt_state->engine->reset();

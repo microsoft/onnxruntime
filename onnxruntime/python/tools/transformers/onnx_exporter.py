@@ -18,7 +18,8 @@ logger = logging.getLogger(__name__)
 
 # Walkaround by replacing torch.triu using self-defined op
 # Since torch.triu cannot be exported to ONNX. See https://github.com/pytorch/pytorch/issues/32968
-torch_func = {"triu" : torch.triu}
+torch_func = {"triu": torch.triu}
+
 
 def triu_onnx(x, diagonal=0, out=None):
     assert out is None
@@ -26,14 +27,17 @@ def triu_onnx(x, diagonal=0, out=None):
 
     torch_triu = torch_func["triu"]
     template = torch_triu(torch.ones((1024, 1024), dtype=torch.uint8), diagonal)
-    mask = template[:x.size(0),:x.size(1)]
+    mask = template[:x.size(0), :x.size(1)]
     return torch.where(mask.bool(), x, torch.zeros_like(x))
+
 
 def replace_torch_functions():
     torch.triu = triu_onnx
 
+
 def restore_torch_functions():
     torch.triu = torch_func["triu"]
+
 
 def create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_names, data_type=numpy.int64):
     input_ids = numpy.random.randint(low=0, high=vocab_size - 1, size=(batch_size, sequence_length), dtype=data_type)
@@ -268,7 +272,8 @@ def export_onnx_model_from_pt(model_name, opset_version, use_external_data_forma
     model.cpu()
 
     tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
-    max_input_size = tokenizer.max_model_input_sizes[model_name] if model_name in tokenizer.max_model_input_sizes else 1024
+    max_input_size = tokenizer.max_model_input_sizes[
+        model_name] if model_name in tokenizer.max_model_input_sizes else 1024
 
     example_inputs = tokenizer.encode_plus("This is a sample input", return_tensors="pt")
 
@@ -323,7 +328,8 @@ def export_onnx_model_from_tf(model_name, opset_version, use_external_data_forma
     model._saved_model_inputs_spec = None
 
     tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
-    max_input_size = tokenizer.max_model_input_sizes[model_name] if model_name in tokenizer.max_model_input_sizes else 1024
+    max_input_size = tokenizer.max_model_input_sizes[
+        model_name] if model_name in tokenizer.max_model_input_sizes else 1024
 
     example_inputs = tokenizer.encode_plus("This is a sample input", return_tensors="tf", max_length=max_input_size, pad_to_max_length=True, truncation=True)
 

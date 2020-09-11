@@ -5,10 +5,10 @@
 
 namespace onnxruntime {
 
-class CUDAAllocator : public Provider_IDeviceAllocator {
+class CUDAAllocator : public Provider_IAllocator {
  public:
   CUDAAllocator(OrtDevice::DeviceId device_id, const char* name)
-      : Provider_IDeviceAllocator(
+      : Provider_IAllocator(
             OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
                           OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, device_id),
                           device_id, OrtMemTypeDefault)) {}
@@ -21,10 +21,10 @@ class CUDAAllocator : public Provider_IDeviceAllocator {
 };
 
 //TODO: add a default constructor
-class CUDAPinnedAllocator : public Provider_IDeviceAllocator {
+class CUDAPinnedAllocator : public Provider_IAllocator {
  public:
   CUDAPinnedAllocator(OrtDevice::DeviceId device_id, const char* name)
-      : Provider_IDeviceAllocator(
+      : Provider_IAllocator(
             OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
                           OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, device_id),
                           device_id, OrtMemTypeCPUOutput)) {}

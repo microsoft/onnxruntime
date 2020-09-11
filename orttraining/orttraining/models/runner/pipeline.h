@@ -39,6 +39,7 @@ struct PipelineTask {
   bool IsForward() const { return pass == Pass::Forward; }
   bool IsBackward() const { return pass == Pass::Backward; }
   bool IsCompute() const { return type == Type::Compute; }
+  bool IsCommute() const { return type == Type::Send || type == Type::Recv; }
   bool IsSendTo(const int dst_rank) const {
     if (type != Type::Send) {
       return false;
@@ -86,30 +87,33 @@ class PipelineSlot {
 
   bool IsEmpty() const { return tasks_.empty(); };
   size_t NumActions() const { return tasks_.size(); }
+
   bool HasCompute() const {
-    for (auto& task : tasks_) {
-      if (task.IsCompute())
-        return true;
-    }
-    return false;
+    return std::any_of(
+        tasks_.begin(), tasks_.end(), [&](const PipelineTask& task) {
+          return task.IsCompute();
+        });
+  }
+
+  bool HasCommute() const {
+    return std::any_of(
+        tasks_.begin(), tasks_.end(), [&](const PipelineTask& task) {
+          return task.IsCommute();
+        });
   }
 
   bool HasRendTo(const int stage) const {
-    for (auto& task : tasks_) {
-      if (task.IsSendTo(stage)) {
-        return true;
-      }
-    }
-    return false;
+    return std::any_of(
+        tasks_.begin(), tasks_.end(), [&](const PipelineTask& task) {
+          return task.IsSendTo(stage);
+        });
   }
 
   bool HasRecvFrom(const int stage) const {
-    for (auto& task : tasks_) {
-      if (task.IsRecvFrom(stage)) {
-        return true;
-      }
-    }
-    return false;
+    return std::any_of(
+        tasks_.begin(), tasks_.end(), [&](const PipelineTask& task) {
+          return task.IsRecvFrom(stage);
+        });
   }
 
   PipelineTask& operator[](int index);
@@ -124,6 +128,8 @@ class PipelineSlot {
   std::vector<int> GetWaitedEvent() const;
   void SetRecordedEvent(const std::vector<int> event);
   std::vector<int> GetRecordedEvent() const;
+
+  std::vector<PipelineTask> GetTasks() { return tasks_; }
 
  private:
   // Actions which can be executed in parallel in this time slot.
@@ -141,6 +147,18 @@ class PipelineScheduler {
   size_t GetScheduleSize() const { return compute_commute_table_.size(); }
   // Number of stages.
   size_t GetStageSize() const { return num_stages_; }
+  std::vector<PipelineSlot> GetSchedule(const int stage_id) const {
+    std::vector<PipelineSlot> commute_slots;
+    for (int t = 0; static_cast<size_t>(t) < GetScheduleSize(); ++t) {
+      auto& slot = compute_commute_table_[t][stage_id];
+      if (!slot.HasCommute()) {
+        continue;
+      }
+      commute_slots.push_back(slot);
+    }
+    return commute_slots;
+  }
+
   // APIs to get events for the following pattern.
   //   Wait -> Recv -> Record -> Wait -> Compute -> Record -> Wait -> Send -> Record.
   // If no event exists, -1 may be returned.
