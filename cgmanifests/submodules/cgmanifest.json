@@ -305,6 +305,16 @@
       "component": {
         "type": "git",
         "git": {
+          "commitHash": "87c2d9f351250b5eeaccbdc3303ff19311bd83b0",
+          "repositoryUrl": "https://github.com/leetal/ios-cmake.git"
+        },
+        "comments": "git submodule at cmake/external/ios-cmake"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
           "commitHash": "d98bf0278d6f59a58271425963a8422ff48fe249",
           "repositoryUrl": "https://github.com/nlohmann/json"
         },
