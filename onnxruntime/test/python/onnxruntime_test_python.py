@@ -284,7 +284,7 @@ class TestInferenceSession(unittest.TestCase):
         # EPs are available (Windows GPU CI pipeline has this config) - this test will pass because CUDA has higher precendence than DML
         # and the nodes are assigned to only the CUDA EP (which supports this test)
         if ('DmlExecutionProvider' in available_providers and not 'CUDAExecutionProvider' in available_providers):
-            print("Skipping testRunModelMultipleThreads as the DML EP doesn not support calling Run() on different threads using the same session object ")
+            print("Skipping testRunModelMultipleThreads as the DML EP does not support calling Run() on different threads using the same session object ")
         else:
             so = onnxrt.SessionOptions()
             so.log_verbosity_level = 1
