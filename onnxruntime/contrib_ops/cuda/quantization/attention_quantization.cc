@@ -45,7 +45,7 @@ Status QAttention<T, int8_t>::CheckInputs(const Tensor* input,
                                           const Tensor* bias,
                                           const Tensor* input_scale_tensor,
                                           const Tensor* weight_scale_tensor,
-                                          const Tensor* mask_index,
+                                          const Tensor*& mask_index,
                                           const Tensor* i_zp_tensor,
                                           const Tensor* w_zp_tensor,
                                           const Tensor* past_tensor) const {
@@ -55,7 +55,7 @@ Status QAttention<T, int8_t>::CheckInputs(const Tensor* input,
   //   Input 2 - bias              : (3 * hidden_size)
   //   Input 3 - input_scale       : scalar
   //   Input 4 - weight_scale      : scalar
-  //   Input 5 - mask_index        : (batch_size)
+  //   Input 5 - mask_index        : nullptr, (batch_size), (2 * batch_size), (batch_size, 1), (1, 1) or (batch_size, past_sequence_length + sequence_length)
   //   Input 6 - input_zero_point  : scalar
   //   Input 7 - weight_zero_point : scalar
   //   Output                      : (batch_size, sequence_length, hidden_size)
