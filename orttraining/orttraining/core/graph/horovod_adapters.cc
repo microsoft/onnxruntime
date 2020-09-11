@@ -38,6 +38,7 @@ ORTTensor::ORTTensor(const onnxruntime::Tensor* tensor) : tensor_(tensor) {}
 
 const hvd::DataType ORTTensor::dtype() const {
   auto type = tensor_->DataType();
+
   if (type == DataTypeImpl::GetType<uint8_t>()) {
     return hvd::HOROVOD_UINT8;
   } else if (type == DataTypeImpl::GetType<int8_t>()) {
@@ -86,6 +87,10 @@ const hvd::TensorShape ORTTensor::shape() const {
 
 const void* ORTTensor::data() const {
   return tensor_->DataRaw();
+}
+
+void* ORTTensor::mutable_data() {
+  return (const_cast<onnxruntime::Tensor*>(tensor_))->MutableDataRaw();
 }
 
 int64_t ORTTensor::size() const {

@@ -114,6 +114,8 @@ Status OptimizerGraphBuilder::AddGradientScalingNodes(
                              graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
   graph_defs.AddInitializers({CreateTensorProto<float>(pre_allreduce_scale.name, scale, {})});
 
+  auto target_type = allreduce_in_fp16 ? ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
+                                       : ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
   if (fuse_scaling_outputs) {
     TypeProto* fused_gradient_type_proto = graph_defs.CreateTypeProto();
     fused_gradient_type_proto->mutable_tensor_type()->set_elem_type(allreduce_element_type);
@@ -318,7 +320,9 @@ Status OptimizerGraphBuilder::AddGradientNorm(
     const NodeArgNameGeneratorFn& nodearg_name_generator,
     const std::vector<ArgDef>& grad_argdefs,
     GraphAugmenter::GraphDefs& graph_defs,
-    ArgDef& grad_norm_argdef) {
+    ArgDef& grad_norm_argdef,
+    //bugbug
+    const std::string& name) {
   ONNX_NAMESPACE::TensorProto_DataType grad_type =
       static_cast<ONNX_NAMESPACE::TensorProto_DataType>(grad_argdefs[0].type_proto->tensor_type().elem_type());
   if (grad_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
@@ -338,7 +342,7 @@ Status OptimizerGraphBuilder::AddGradientNorm(
   }
 
   const TypeProto* const grad_norm_type = graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  grad_norm_argdef = ArgDef{nodearg_name_generator("global_gradient_norm"), grad_norm_type};
+  grad_norm_argdef = ArgDef{nodearg_name_generator(name), grad_norm_type};
 
   graph_defs.AddNodeDefs({NodeDef{OpDef{"ReduceAllL2", kMSDomain, 1},
                                   grad_argdefs,

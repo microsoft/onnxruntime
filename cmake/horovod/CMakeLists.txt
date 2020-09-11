@@ -58,7 +58,18 @@ target_compile_options(horovod PRIVATE
     -Wno-error=strict-aliasing
     -Wno-error=unused-parameter
     -Wno-reorder
-    -Wno-unused-variable)
+    -Wno-unused-variable
+    -std=c++11
+    -fPIC
+    -O2
+    -mf16c
+    -mavx
+    -mfma
+    -fassociative-math
+    -ffast-math
+    -ftree-vectorize
+    -funsafe-math-optimizations
+    -fopt-info-vec-optimized)
 
 target_include_directories(horovod PRIVATE
     ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}

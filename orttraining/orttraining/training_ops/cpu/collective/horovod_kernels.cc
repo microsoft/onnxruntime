@@ -29,8 +29,9 @@ Status HorovodAllReduce::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(ConvertStatus(horovod::common::CheckInitialized()));
 
   auto device_id = context->GetDeviceId();
-  auto allocator = training::TrainingUtil::GetCpuAllocator();
-
+  //bugbug
+  //auto allocator = training::TrainingUtil::GetCpuAllocator();
+  auto allocator = Info().GetAllocator(0, OrtMemTypeDefault);
   const Tensor* input_tensor = context->Input<Tensor>(0);
   auto hvd_input = std::make_shared<ORTTensor>(input_tensor);
   auto hvd_context = std::make_shared<ORTOpContext>(allocator);

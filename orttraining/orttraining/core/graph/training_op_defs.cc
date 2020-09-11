@@ -74,7 +74,8 @@ void AddRepeatedOutputs(
 static void checkSendInputTensorElemTypes(
     InferenceContext& ctx,
     const std::string& attributeName,
-    const size_t inputSize) {
+    const size_t inputSize,
+    const size_t starting_idx_offset = 2) {
   auto attr_proto = ctx.getAttribute(attributeName);
   if (nullptr == attr_proto) {  // attribute not present
     fail_type_inference("Value of attribute ", attributeName, " not specified");
@@ -94,7 +95,7 @@ static void checkSendInputTensorElemTypes(
       fail_type_inference("Attribute ", attributeName, " does not specify a valid type.");
     }
 
-    auto input_type = ctx.getInputType(i + 2);
+    auto input_type = ctx.getInputType(i + starting_idx_offset);
     if (input_type->tensor_type().has_elem_type()) {
       auto input_elem_type = static_cast<::ONNX_NAMESPACE::TensorProto_DataType>(input_type->tensor_type().elem_type());
       if (input_elem_type != elem_type) {
@@ -926,6 +927,7 @@ Example 4:
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)
       .Attr("reduce_op", "Reduce operation supported by Horovod. Valid values are: AVERAGE(0), SUM(1) or ADASUM(2)", AttributeProto::INT, int64_t(1))
+      .Attr("reduce_algo", "Algorithms for Adasum. Valid values are: None(0), CpuReduction(1) or GpuHierarchical(2)", AttributeProto::INT, int64_t(0))
       .Input(0, "input", "tensor to be reduced", "T")
       .Output(0, "output", "reduced tensor", "T")
       .Output(1, "ready", "true when reduced tensor is ready", "B")
@@ -959,7 +961,8 @@ Example 4:
   ONNX_CONTRIB_OPERATOR_SCHEMA(NcclAllReduce)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Attr("group_type", "0 - data parallel group, 1 - horizontal parallel group",
+      .Attr("group_type", "0 - data parallel group, 1 - horizontal parallel group,"
+                           "2 - node local parallel group, 3 - cross node parallel group",
             AttributeProto::INT,
             static_cast<int64_t>(0))
       .Input(0, "input", "tensors to be reduced", "T", OpSchema::Variadic)
@@ -1000,6 +1003,32 @@ Example 4:
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain to float, float16 and double tensors.");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(AdasumAllReduce)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr("reduce_algo", "Algorithms for Adasum. Valid values are: CpuReduction(0) or GpuHierarchical(1)",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
+      .Input(0, "input", "tensors to be reduced", "T", OpSchema::Variadic)
+      .Output(0, "output", "reduced tensors", "T", OpSchema::Variadic)
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain to float, float16 and double tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        if (ctx.getNumInputs() != ctx.getNumOutputs())
+          fail_shape_inference("AdasumAllReduce's input count must be equal to output count.");
+
+        for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
+          propagateElemTypeFromInputToOutput(ctx, i, i);
+          auto typeProto = ctx.getInputType(i);
+          if (!hasShape(*typeProto)) {
+              continue;
+          }
+          propagateShapeFromInputToOutput(ctx, i, i);
+        }
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SparseSoftmaxCrossEntropy)
       .SetDomain(kOnnxDomain)

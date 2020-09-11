@@ -11,7 +11,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include <mpi.h>
 
-#include "orttraining/core/framework/mpi_context.h"
+#include "orttraining/core/framework/communication/mpi/mpi_context.h"
 
 namespace onnxruntime {
 namespace cuda {
