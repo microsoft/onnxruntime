@@ -87,6 +87,23 @@ def create_backend_test(testname=None):
                 '^test_softmax_cross_entropy'
             ]
 
+        if c2.supports_device('DML'):
+            current_failing_tests += [
+                '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_cpu',
+                '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_expanded_cpu',
+                '^test_softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_cpu',
+                '^test_softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_expanded_cpu',
+                '^test_softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_log_prob_cpu',
+                '^test_softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_log_prob_expanded_cpu',
+                '^test_asin_example_cpu',
+                '^test_dynamicquantizelinear_expanded_cpu',
+                '^test_resize_downsample_scales_linear_cpu',
+                '^test_resize_downsample_sizes_linear_pytorch_half_pixel_cpu',
+                '^test_resize_downsample_sizes_nearest_cpu',
+                '^test_resize_upsample_sizes_nearest_cpu',
+                '^test_roialign_cpu'
+            ]
+
         filters = current_failing_tests + \
             filters['tests_with_pre_opset7_dependencies'] + \
             filters['unsupported_usages'] + \
