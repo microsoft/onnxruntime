@@ -87,7 +87,10 @@ def create_backend_test(testname=None):
                 '^test_softmax_cross_entropy'
             ]
 
-        if c2.supports_device('DML'):
+        # Skip these tests for a "pure" DML onnxruntime python wheel. We keep these tests enabled for instances where both DML and CUDA
+        # EPs are available (Windows GPU CI pipeline has this config) - these test will pass because CUDA has higher precendence than DML
+        # and the nodes are assigned to only the CUDA EP (which supports these tests)
+        if c2.supports_device('DML') and not c2.supports_device('GPU'):
             current_failing_tests += [
                 '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_cpu',
                 '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_expanded_cpu',
