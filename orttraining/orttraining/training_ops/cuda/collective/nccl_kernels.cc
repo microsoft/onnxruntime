@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "nccl_kernels.h"
+#include "orttraining/training_ops/cpu/controlflow/common.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -204,21 +205,13 @@ Status NcclReduceScatter::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
-static std::vector<std::pair<int, int>> AliasRange(int start, int end) {
-  std::vector<std::pair<int, int>> aliases;
-  for (int i = start; i < end; i++) {
-    aliases.push_back(std::pair<int, int>(i, i));
-  }
-  return aliases;
-}
-
 ONNX_OPERATOR_KERNEL_EX(
     NcclAllReduce,
     kMSDomain,
     1,
     kCudaExecutionProvider,
     KernelDefBuilder()
-        .Alias(AliasRange(0, 1024))
+        .Alias(onnxruntime::contrib::AliasRange<0, 0>(0, 1024))
         .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
     NcclAllReduce);
 
@@ -228,7 +221,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCudaExecutionProvider,
     KernelDefBuilder()
-        .Alias(AliasRange(0, 1024))
+        .Alias(onnxruntime::contrib::AliasRange<0, 0>(0, 1024))
         .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
     NcclAllGather);
 
@@ -238,7 +231,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCudaExecutionProvider,
     KernelDefBuilder()
-        .Alias(AliasRange(0, 1024))
+        .Alias(onnxruntime::contrib::AliasRange<0, 0>(0, 1024))
         .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
     NcclReduceScatter);
 

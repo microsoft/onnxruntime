@@ -12,7 +12,7 @@ import subprocess
 import sys
 import hashlib
 from logger import log
-
+import shlex
 
 class BaseError(Exception):
     """Base class for errors originating from build.py."""
@@ -105,6 +105,8 @@ def parse_arguments():
         "--mpi_home", help="Path to MPI installation dir")
     parser.add_argument(
         "--nccl_home", help="Path to NCCL installation dir")
+    parser.add_argument(
+        "--disable_mpi", action='store_true', help="Disable building wtih MPI.")
 
     # enable ONNX tests
     parser.add_argument(
@@ -568,6 +570,21 @@ def setup_test_data(build_dir, configs):
                 run_subprocess(['mklink', '/D', '/J', dest_model_dir,
                                 src_model_dir], shell=True)
 
+def check_all_flags_supported(input_flags):
+    supported = False
+    # No Windows support for now
+    if is_windows():
+        return supported
+    try:
+        flags_output = subprocess.check_output(
+            'gcc -march=native -E -v - </dev/null 2>&1 | grep cc1',
+            shell=True, universal_newlines=True).strip()
+        all_flags = shlex.split(flags_output)
+        supported_flags = [x for x in input_flags if x in all_flags or x.replace('-m', '+') in all_flags]
+        supported = len(supported_flags) == len(input_flags)
+    except subprocess.CalledProcessError:
+        pass
+    return supported
 
 def use_dev_mode(args):
     if args.use_acl:
@@ -684,10 +701,15 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "ON" if args.enable_nvtx_profile else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING=" + (
             "ON" if args.enable_training else "OFF"),
+        # Enable advanced computations such as AVX for some traininig related ops.
+        "-Donnxruntime_ENABLE_ADVANCED_INSTRUCTIONS_FOR_TRAINING=" + (
+            "ON" if args.enable_training and check_all_flags_supported(['-mf16c', '-mavx', '-mfma']) else "OFF"),
         "-Donnxruntime_USE_HOROVOD=" + (
             "ON" if args.use_horovod else "OFF"),
         "-Donnxruntime_BUILD_BENCHMARKS=" + (
-            "ON" if args.build_micro_benchmarks else "OFF")
+            "ON" if args.build_micro_benchmarks else "OFF"),
+        "-Donnxruntime_USE_MPI=" + (
+            "ON" if not args.disable_mpi else "OFF"),
     ]
 
     if mpi_home and os.path.exists(mpi_home):
@@ -909,7 +931,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  args.enable_msvc_static_runtime
                  else "OFF"), "-DCMAKE_BUILD_TYPE={}".format(config)],
             cwd=config_build_dir)
-
 
 def clean_targets(cmake_path, build_dir, configs):
     for config in configs:

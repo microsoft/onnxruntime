@@ -9,7 +9,7 @@
 #include "core/session/environment.h"
 #include "core/framework/random_seed.h"
 #include "core/providers/cuda/cuda_allocator.h"
-#include "orttraining/core/framework/mpi_context.h"
+#include "orttraining/core/framework/communication/mpi/mpi_context.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/models/runner/constant.h"

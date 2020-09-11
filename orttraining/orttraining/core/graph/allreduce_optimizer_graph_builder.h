@@ -31,7 +31,6 @@ class AllreduceOptimizerGraphBuilder : public OptimizerGraphBuilder {
       std::vector<ArgDef>& gradient_argdefs,
       std::unordered_set<std::string>& optimizer_state_initializer_names,
       OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs) override;
-  
   Status AddHorovodAllReduceForGradients(
       std::vector<ArgDef>& gradient_argdefs,
       GraphAugmenter::GraphDefs& graph_defs,

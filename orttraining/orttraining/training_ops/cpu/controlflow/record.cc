@@ -3,7 +3,7 @@
 
 #include "orttraining/training_ops/cpu/controlflow/record.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "common.h"
+#include "orttraining/training_ops/cpu/controlflow/common.h"
 
 namespace onnxruntime {
 namespace contrib {

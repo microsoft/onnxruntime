@@ -10,7 +10,7 @@
 #include "core/common/logging/sinks/clog_sink.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
-#include "orttraining/core/framework/mpi_context.h"
+#include "orttraining/core/framework/communication/mpi/mpi_context.h"
 #include "orttraining/models/runner/constant.h"
 #include "orttraining/models/runner/training_runner.h"
 #include "orttraining/models/runner/training_util.h"
@@ -100,7 +100,9 @@ int main(int argc, char* argv[]) {
       {},                                //inter_op_param
       overrides,                         //free_dimension_overrides
       true,                              //use_per_session_threads
-      true                               //thread_pool_allow_spinning
+      true,                              //thread_pool_allow_spinning
+      false,                             //use_deterministic_compute
+      {},                                //session_configurations
   };
 
   InferenceSession session_object{so, *env};

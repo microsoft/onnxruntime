@@ -46,8 +46,14 @@ Status AdamOptimizerBuilder::Build(
     // Return either the input gradient/weight/mixed-precision-weight or updated gradient/weight/mixed-precision-weight.
     ArgDef output_gradient_argdef = gradient_argdefs[i];
     ArgDef output_weight_argdef = weight_argdefs[i];
+<<<<<<< 6132e1f6ae690ddb44053f015da37786390d0167
     if (opt_configs[i].mixed_precision_weight_arg != nullptr)
       output_weight_argdef = ArgDef(opt_configs[i].mixed_precision_weight_arg->Name(), opt_configs[i].mixed_precision_weight_arg->TypeAsProto());
+=======
+
+    if (opt_configs[i].fp16_weight_arg != nullptr)
+      output_weight_argdef = ArgDef(opt_configs[i].fp16_weight_arg->Name(), opt_configs[i].fp16_weight_arg->TypeAsProto());
+>>>>>>> prepare for merge
 
     // In distributed training, some weights may not be updated by all ranks.
     if (opt_configs[i].enabled) {
@@ -130,6 +136,7 @@ Status AdamOptimizerBuilder::Build(
       } else if (gradient_norm_argdef == nullptr && enable_grad_clipping) {
         ORT_THROW("Gradient clipping is enabled but gradient norm is not given.");
       } else {
+        std::cout<<"gradient_norm_argdef is null."<<std::endl;
         input_args.push_back(ArgDef());
       }
 

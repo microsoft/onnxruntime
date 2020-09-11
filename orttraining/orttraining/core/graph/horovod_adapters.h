@@ -28,6 +28,7 @@ public:
   virtual const hvd::DataType dtype() const override;
   virtual const hvd::TensorShape shape() const override;
   virtual const void* data() const override;
+  void* mutable_data();
   virtual int64_t size() const override;
 
 private:

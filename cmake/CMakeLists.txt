@@ -128,10 +128,12 @@ option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
 option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
 option(onnxruntime_USE_HOROVOD "Build with HOROVOD support" OFF)
+option(onnxruntime_ENABLE_ADVANCED_INSTRUCTIONS_FOR_TRAINING "Build with advanced instruction sets" OFF)
 option(onnxruntime_USE_NCCL "Build with NCCL support" ON)
 #A special option just for debugging and sanitize check. Please do not enable in option in retail builds.
 #The option has no effect on Windows.
 option(onnxruntime_USE_VALGRIND "Build with valgrind hacks" OFF)
+option(onnxruntime_USE_MPI "Build with MPI support" ON)
 
 # A special build option only used for gathering code coverage info
 option(onnxruntime_RUN_MODELTEST_IN_DEBUG_MODE "Run model tests even in debug mode" OFF)
@@ -441,6 +443,10 @@ else()
   endif()
   if(onnxruntime_GCC_STATIC_CPP_RUNTIME)
     string(APPEND CMAKE_CXX_FLAGS " -static-libstdc++")
+  endif()
+  if(onnxruntime_ENABLE_ADVANCED_INSTRUCTIONS_FOR_TRAINING)
+    string(APPEND CMAKE_CXX_FLAGS " -fassociative-math -ffast-math -ftree-vectorize -funsafe-math-optimizations -mf16c -mavx -mfma")
+    string(APPEND CMAKE_C_FLAGS " -fassociative-math -ffast-math -ftree-vectorize -funsafe-math-optimizations -mf16c -mavx -mfma")
   endif()
 endif()
 
@@ -1189,6 +1195,8 @@ if (onnxruntime_ENABLE_TRAINING)
       mark_as_advanced(MPI_INCLUDE_DIRS MPI_LIBRARIES)
 
       list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
+      add_definitions(-DORT_USE_MPI=1)
+      message( STATUS "MPI is enabled in Linux Build." )
     else ()
       set(onnxruntime_USE_NCCL OFF)
       set(onnxruntime_USE_HOROVOD OFF)
