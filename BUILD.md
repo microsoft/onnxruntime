@@ -124,8 +124,7 @@ GCC 4.x and below are not supported.
 |API|Command|Additional details|
 |-----------|-----------|-----------|
 |**Python**|--build_wheel||
-|**C# and C packages**|--build_nuget|Builds C# bindings and creates nuget package. Currently supported on Windows and Linux only. Implies `--build_shared_lib` <br>
-Requires [dotnet](https://dotnet.microsoft.com/download) for building csharp bindings and [nuget.exe](https://docs.microsoft.com/en-us/nuget/install-nuget-client-tools#nugetexe-cli) for creating nuget package.|
+|**C# and C packages**|--build_nuget|Builds C# bindings and creates nuget package. Currently supported on Windows and Linux only. Implies `--build_shared_lib` <br> Detailed instructions can be found [below](./BUILD.md#build-nuget-packages).|
 |**WindowsML**|--use_winml<br>--use_dml<br>--build_shared_lib|WindowsML depends on DirectML and the OnnxRuntime shared library|
 |**Java**|--build_java|Creates an onnxruntime4j.jar in the build directory, implies `--build_shared_lib`<br>Compiling the Java API requires [gradle](https://gradle.org) v6.1+ to be installed in addition to the usual requirements.|
 |**Node.js**|--build_nodejs|Build Node.js binding. Implies `--build_shared_lib`|
@@ -136,6 +135,26 @@ Requires [dotnet](https://dotnet.microsoft.com/download) for building csharp bin
 Read more about ONNX Runtime Server [here](./docs/ONNX_Runtime_Server_Usage.md).
 
 Build instructions are [here](./docs/Server.md)
+
+## Build Nuget packages
+Currently only supported on Windows and Linux.
+### Prerequisites
+* dotnet is required for building csharp bindings and creating managed nuget package. Follow the instructions [here](https://dotnet.microsoft.com/download) to download dotnet. Tested with versions 2.1 and 3.1.
+* nuget.exe. Follow the instructions [here](https://docs.microsoft.com/en-us/nuget/install-nuget-client-tools#nugetexe-cli) to download nuget
+  * On Windows, downloading nuget is straightforward and simply following the instructions above should work.
+  * On Linux, nuget relies on Mono runtime and therefore this needs to be setup too. Above link has all the information to setup Mono and nuget. The instructions can directly be found [here](https://www.mono-project.com/docs/getting-started/install/). In some cases it is required to run `sudo apt-get install mono-complete` after installing mono. 
+
+### Build Instructions
+#### Windows
+```
+.\build.bat --build_nuget
+```
+
+#### Linux
+```
+./build.sh --build_nuget
+```
+Nuget packages are created under <native_build_dir>\nuget-artifacts
 
 ---
 
