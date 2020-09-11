@@ -521,7 +521,7 @@ inline char* Session::EndProfiling(OrtAllocator* allocator) const {
   return out;
 }
 
-inline uint64_t Session::GetProfilingStartTime() const {
+inline uint64_t Session::GetProfilingStartTimeNs() const {
   uint64_t out;
   ThrowOnError(GetApi().SessionGetProfilingStartTimeNs(p_, &out));
   return out;  
