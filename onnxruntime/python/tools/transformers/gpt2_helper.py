@@ -297,6 +297,7 @@ class Gpt2Helper:
                           use_external_data_format=use_external_data_format,
                           verbose=verbose)
 
+    @staticmethod
     def optimize_onnx(onnx_model_path,
                       optimized_model_path,
                       is_float16,
@@ -322,7 +323,7 @@ class Gpt2Helper:
     def pytorch_inference(model, inputs: Gpt2Inputs, total_runs: int = 0):
         """ Run inference of PyTorch model, and returns average latency in ms when total_runs > 0 besides outputs.
         """
-        logger.debug(f"start pytorch_inference")
+        logger.debug("start pytorch_inference")
 
         # Convert it to fp32 as the PyTroch model cannot deal with half input.
         input_list = inputs.to_fp32().to_list()
@@ -563,8 +564,11 @@ class Gpt2Helper:
                        new_folder=False):
         """ Build a  path name for given model based on given attributes.
         """
-        model_name = model_name_or_path if re.match('^[\w_-]+$',
-                                                    model_name_or_path) else os.path.dirname(model_name_or_path)
+        model_name = model_name_or_path
+        if not re.match('^[\w_-]+$', model_name_or_path):  # It is not a name, shall be a path
+            assert os.path.isdir(model_name_or_path)
+            from pathlib import Path
+            model_name = Path(model_name_or_path).parts[-1]
 
         if model_class != 'GPT2LMHeadModel':
             model_name += "_" + model_class
