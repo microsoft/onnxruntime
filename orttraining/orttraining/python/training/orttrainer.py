@@ -312,14 +312,11 @@ class ORTTrainer(object):
             ratio_node.attribute[0].name = "value"
             
         _inference_sess = ort.InferenceSession(onnx_model_copy.SerializeToString())
-        # look to see if we pass option of training mode is true
         inf_inputs = {}
         for i, input_elem in enumerate(input):
             inf_inputs[_inference_sess.get_inputs()[i].name] = input_elem.cpu().numpy()
         _inference_outs = _inference_sess.run(None, inf_inputs)
         for torch_item, ort_item in zip(self.torch_sample_outputs, _inference_outs):
-            denom = ((torch_item + ort_item) * 0.5) * 100
-            numer = np.absolute(torch_item - ort_item)
             assert_allclose(torch_item, ort_item, rtol=1e-2, atol=1e-6)
 
     def train_step(self, *args, **kwargs):
