@@ -81,6 +81,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
 
       transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(compatible_eps));
       transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(compatible_eps));
+      transformers.emplace_back(onnxruntime::make_unique<LayerNormT5Fusion>(compatible_eps));
       transformers.emplace_back(onnxruntime::make_unique<FastGeluFusion>(compatible_eps));
 
       transformers.emplace_back(onnxruntime::make_unique<BiasGeluFusion>(compatible_eps));
