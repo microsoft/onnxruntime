@@ -100,7 +100,8 @@ def testORTTrainerOptionsDefaultValues(test_input):
             'invertible_layer_norm_gradient': False,
         },
         'debug': {
-            'deterministic_compute': False
+            'deterministic_compute': False,
+            'check_model_export': False
         },
         '_internal_use': {
             'enable_internal_postprocess': True,
