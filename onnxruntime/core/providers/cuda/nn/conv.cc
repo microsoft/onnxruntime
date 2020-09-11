@@ -213,6 +213,7 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
         int algo_count = 1;
         const CUDAExecutionProvider* cuda_ep = static_cast<const CUDAExecutionProvider*>(this->Info().GetExecutionProvider());
         int cudnn_conv_algo = cuda_ep->GetCudnnConvAlgo();
+        ORT_ENFORCE(cudnn_conv_algo > -1 && cudnn_conv_algo < 3, "cudnn_conv_algo should be 0, 1 or 2, but got ", cudnn_conv_algo);
         switch (cudnn_conv_algo) {
           case 0:
               CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionForwardAlgorithmEx(
