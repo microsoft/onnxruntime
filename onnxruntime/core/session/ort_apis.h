@@ -79,7 +79,6 @@ ORT_API_STATUS_IMPL(SessionGetOverridableInitializerName, _In_ const OrtSession*
                     _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
 ORT_API_STATUS_IMPL(SessionEndProfiling, _In_ OrtSession* sess, _Inout_ OrtAllocator* allocator,
                     _Outptr_ char** out);
-ORT_API_STATUS_IMPL(SessionGetProfilingStartTime, _In_ OrtSession* sess, _Outptr_ uint64_t* out);
 ORT_API_STATUS_IMPL(SessionGetModelMetadata, _In_ const OrtSession* sess,
                     _Outptr_ OrtModelMetadata** out);
 
@@ -234,4 +233,5 @@ ORT_API_STATUS_IMPL(TensorAt, _Inout_ OrtValue* value, size_t* location_values, 
 ORT_API_STATUS_IMPL(CreateAndRegisterAllocator, _Inout_ OrtEnv* env, _In_ const OrtMemoryInfo* mem_info, _In_ const OrtArenaCfg* arena_cfg);
 
 ORT_API_STATUS_IMPL(SetLanguageProjection, _In_ const OrtEnv* ort_env, _In_ OrtLanguageProjection projection);
+ORT_API_STATUS_IMPL(SessionGetProfilingStartTimeNs, _In_ OrtSession* sess, _Outptr_ uint64_t* out);
 }  // namespace OrtApis

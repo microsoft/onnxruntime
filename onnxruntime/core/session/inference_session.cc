@@ -1595,8 +1595,8 @@ std::string InferenceSession::EndProfiling() {
   return std::string();
 }
 
-uint64_t InferenceSession::GetProfilingStartTime() {
-  return session_profiler_.GetStartTime();
+profiling::Profiler InferenceSession::GetProfiling() {
+  return session_profiler_;
 }
 
 AllocatorPtr InferenceSession::GetAllocator(const OrtMemoryInfo& mem_info) const {

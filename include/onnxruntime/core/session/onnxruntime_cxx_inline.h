@@ -523,7 +523,7 @@ inline char* Session::EndProfiling(OrtAllocator* allocator) const {
 
 inline uint64_t Session::GetProfilingStartTime() const {
   uint64_t out;
-  ThrowOnError(GetApi().SessionGetProfilingStartTime(p_, &out));
+  ThrowOnError(GetApi().SessionGetProfilingStartTimeNs(p_, &out));
   return out;  
 }
 

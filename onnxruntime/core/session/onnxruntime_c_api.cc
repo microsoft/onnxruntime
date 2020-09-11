@@ -963,11 +963,11 @@ ORT_API_STATUS_IMPL(OrtApis::SessionEndProfiling, _In_ OrtSession* sess, _Inout_
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SessionGetProfilingStartTime, _In_ OrtSession* sess, _Outptr_ uint64_t* out) {
+ORT_API_STATUS_IMPL(OrtApis::SessionGetProfilingStartTimeNs, _In_ OrtSession* sess, _Outptr_ uint64_t* out) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
-  auto profile_start_time = session->GetProfilingStartTime();
-  *out = static_cast<uint64_t>(profile_start_time);
+  auto profiling_start_time = session->GetProfiling().GetStartTime();
+  *out = static_cast<uint64_t>(profiling_start_time);
   return nullptr;
   API_IMPL_END
 }
@@ -1946,7 +1946,6 @@ static constexpr OrtApi ort_api_1_to_5 = {
     &OrtApis::ReleaseMapTypeInfo,
     &OrtApis::ReleaseSequenceTypeInfo,
     &OrtApis::SessionEndProfiling,
-    &OrtApis::SessionGetProfilingStartTime,
     &OrtApis::SessionGetModelMetadata,
     &OrtApis::ModelMetadataGetProducerName,
     &OrtApis::ModelMetadataGetGraphName,
@@ -1993,6 +1992,7 @@ static constexpr OrtApi ort_api_1_to_5 = {
     &OrtApis::TensorAt,
     &OrtApis::CreateAndRegisterAllocator,
     &OrtApis::SetLanguageProjection,
+    &OrtApis::SessionGetProfilingStartTimeNs,    
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

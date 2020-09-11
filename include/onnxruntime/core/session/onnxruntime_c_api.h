@@ -786,7 +786,11 @@ struct OrtApi {
    * on the SessionOptions instance used to create the session.
    */
   ORT_API2_STATUS(SessionEndProfiling, _In_ OrtSession* sess, _Inout_ OrtAllocator* allocator, _Outptr_ char** out);
-  ORT_API2_STATUS(SessionGetProfilingStartTime, _In_ OrtSession* sess, _Outptr_ uint64_t* out);
+  
+  /**
+   * \param out is set to the nanoseconds of profiling's start time
+   */
+  ORT_API2_STATUS(SessionGetProfilingStartTimeNs, _In_ OrtSession* sess, _Outptr_ uint64_t* out);
 
   /**
    * \param out is a pointer to the newly created object. The pointer should be freed by calling ReleaseModelMetadata after use.
