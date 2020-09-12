@@ -1595,7 +1595,7 @@ std::string InferenceSession::EndProfiling() {
   return std::string();
 }
 
-profiling::Profiler InferenceSession::GetProfiling() {
+const profiling::Profiler& InferenceSession::GetProfiling() const {
   return session_profiler_;
 }
 

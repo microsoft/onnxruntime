@@ -376,7 +376,7 @@ class InferenceSession {
     * Return the profiler to access its attributes
     @return the profiler object
     */
-  profiling::Profiler GetProfiling();
+  const profiling::Profiler& GetProfiling() const;
 
   /**
     * Search registered execution providers for an allocator that has characteristics
