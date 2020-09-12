@@ -269,6 +269,8 @@ Status SaveAttributeOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 #undef GET_FBS_ATTR
 #undef GET_DATA_VEC
 
+#if defined(ENABLE_ORT_FORMAT_LOAD)
+
 static Status LoadTypeInfoOrtFormat(const fbs::TypeInfo& fbs_type_info,
                                     TypeProto& type_proto) ORT_MUST_USE_RESULT;
 
@@ -483,6 +485,8 @@ Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
 
   return Status::OK();
 }
+
+#endif  // defined(ENABLE_ORT_FORMAT_LOAD)
 
 }  // namespace utils
 }  // namespace experimental
