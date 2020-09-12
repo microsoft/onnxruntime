@@ -7,7 +7,6 @@
 
 #include "core/common/logging/logging.h"
 #include "core/common/logging/macros.h"
-#include <core/session/onnxruntime_cxx_api.h>
 
 #include <utility>
 
@@ -63,7 +62,7 @@ std::shared_ptr<TestCaseResult> TestCaseRequestContext::Run(PThreadPool tpool,
   return ctx.GetResult();
 }
 
-void TestCaseRequestContext::Request(Callback cb, PThreadPool tpool,
+void TestCaseRequestContext::Request(const Callback& cb, PThreadPool tpool,
                                      const ITestCase& c,
                                      Ort::Env& env,
                                      const Ort::SessionOptions& session_opts,
@@ -127,9 +126,11 @@ void TestCaseRequestContext::OnDataTaskComplete(size_t task_id, EXECUTE_RESULT r
       cb_.Invoke(result_);
       // No member access beyond this point
     } else {
-      std::unique_lock<std::mutex> g(mut_);
+      std::lock_guard<std::mutex> g(mut_);
       finished_ = true;
-      g.unlock();
+      // We do not unlock here before notifying
+      // so the Waiting thread does not destroy us before
+      // we access cond_ in case it discovers finished_ is already true
       cond_.notify_one();
     }
   }
@@ -150,6 +151,7 @@ void TestCaseRequestContext::RunSequentially(size_t repeat_count) {
       AccumulateTimeSpec(&test_case_time_, &zero, &result.second);
     }
   }
+  CalculateAndLogStats();
 }
 
 void TestCaseRequestContext::Wait() const {

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "TestCaseResult.h"
+#include <iostream>
 
 void TestCaseResult::SetResult(size_t task_id, EXECUTE_RESULT r) {
   std::lock_guard<std::mutex> guard(result_mutex_);
@@ -12,3 +13,8 @@ void TestCaseResult::SetResult(size_t task_id, EXECUTE_RESULT r) {
     execution_result_[task_id] = r;
   }
 }
+
+std::ostream& operator<<(std::ostream& os, EXECUTE_RESULT result) {
+  return os << "EXECUTION_RESULT: " << static_cast<int>(result);
+}
+

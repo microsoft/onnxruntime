@@ -14,7 +14,6 @@
 #include "TestResultStat.h"
 #include "testenv.h"
 #include "runner.h"
-#include "sync_api.h"
 #include "providers.h"
 #include <google/protobuf/stubs/common.h>
 #include "core/platform/path_lib.h"
@@ -481,7 +480,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
 
     std::vector<ITestCase*> tests;
-
     LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance,
               all_disabled_tests,
               [&owned_tests, &tests](std::unique_ptr<ITestCase> l) {
@@ -489,9 +487,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
                 owned_tests.push_back(std::move(l));
               });
 
-    TestEnv args(tests, stat, env, sf, GetDefaultThreadPool(Env::Default()));
-    Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count),
-                         GetDefaultThreadPool(Env::Default()));
+    TestEnv args(env, sf, GetDefaultThreadPool(Env::Default()), std::move(tests), stat);
+    Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count));
     if (!st.IsOK()) {
       fprintf(stderr, "%s\n", st.ErrorMessage().c_str());
       return -1;

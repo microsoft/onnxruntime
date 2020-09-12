@@ -9,10 +9,7 @@
 #include <core/platform/env.h>
 
 #define ORT_CALLBACK
-namespace Eigen {
-class ThreadPoolInterface;
-}
-using PThreadPool = Eigen::ThreadPoolInterface*;
+
 #define ORT_WORK void*
 struct OnnxRuntimeEvent;
 using ORT_EVENT = OnnxRuntimeEvent*;

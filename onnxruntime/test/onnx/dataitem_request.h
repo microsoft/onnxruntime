@@ -24,17 +24,35 @@ class ThreadPool;
 
 namespace test {
 
-// This runs a single DataTask on a threadpool and
-// invokes a callback to TestCaseRequestContext that orchestrates
-// the DataTasks related to the model
+/// <summary>
+/// This runs a single DataTask either on a threadpool or
+/// in the same thread
+/// </summary>
 class DataTaskRequestContext {
  public:
-  // This is a callback that will be invoked by the individual task
-  // when it completes
   using Callback = Callable<void, size_t, EXECUTE_RESULT, const TIME_SPEC&>;
+
+  /// <summary>
+  /// Runs a single data task on the same thread
+  /// </summary>
+  /// <param name="c">TestCase</param>
+  /// <param name="session">session handle</param>
+  /// <param name="allocator">allocator to use</param>
+  /// <param name="task_id">this task id</param>
+  /// <returns>execution result and elapsed time</returns>
   static std::pair<EXECUTE_RESULT, TIME_SPEC> Run(const ITestCase& c, ::Ort::Session& session,
                             OrtAllocator* allocator, size_t task_id);
 
+  /// <summary>
+  /// Schedules a data task to run on a threadpool. The function
+  /// returns immediately. Completion is reported via  callback
+  /// </summary>
+  /// <param name="cb">callback that will be invoked on completion</param>
+  /// <param name="tp">threadpool</param>
+  /// <param name="c">testcase</param>
+  /// <param name="session">session handle</param>
+  /// <param name="allocator">allocator to use</param>
+  /// <param name="task_id">this taks id</param>
   static void Request(const Callback& cb, concurrency::ThreadPool* tp,
                       const ITestCase& c, ::Ort::Session& session,
                       OrtAllocator* allocator, size_t task_id);

@@ -7,6 +7,7 @@
 #include <core/platform/env_time.h>
 #include <cstring>
 #include <mutex>
+#include <iosfwd>
 
 //result of a single test run: 1 model with 1 test dataset
 enum class EXECUTE_RESULT {
@@ -24,6 +25,8 @@ enum class EXECUTE_RESULT {
   MODEL_SHAPE_MISMATCH = -10,
   MODEL_TYPE_MISMATCH = -11,
 };
+
+std::ostream& operator<<(std::ostream& os, EXECUTE_RESULT);
 
 class TestCaseResult {
  public:

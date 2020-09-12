@@ -526,9 +526,9 @@ TEST_P(ModelTest, Run) {
 
         bool post_procesing = false;
         Status status;
-        ASSERT_STATUS_OK(l->GetPerSampleTolerance(&per_sample_tolerance));
-        ASSERT_STATUS_OK(l->GetRelativePerSampleTolerance(&relative_per_sample_tolerance));
-        ASSERT_STATUS_OK(l->GetPostProcessing(&post_procesing));
+        l->GetPerSampleTolerance(&per_sample_tolerance);
+        l->GetRelativePerSampleTolerance(&relative_per_sample_tolerance);
+        l->GetPostProcessing(&post_procesing);
 
         // TODO: if there are no output value files, just skip the validation
         std::unordered_map<std::string, Ort::Value> expected_output_values;

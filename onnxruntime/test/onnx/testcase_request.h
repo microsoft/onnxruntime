@@ -27,24 +27,42 @@ using PThreadPool = onnxruntime::concurrency::ThreadPool*;
 
 namespace test {
 
-// This runs data tasks related to a single model in parallel
+/// <summary>
+/// Runs a single Test Case (model)
+/// </summary>
 class TestCaseRequestContext {
  public:
   using Callback = Callable<void, const std::shared_ptr<TestCaseResult>&>;
 
-  // Run sync with the individual data items running on a threadpool
+  /// <summary>
+  /// Runs data tests on the model sequentially (concurrent_runs < 2)
+  ///  and repeats them (repeat_count > 1) or concurrently (never repeats)
+  /// </summary>
+  /// <param name="tpool">ThreadPool</param>
+  /// <param name="c">TestCase</param>
+  /// <param name="env">test env</param>
+  /// <param name="sf">SessionOptions from the command line</param>
+  /// <param name="concurrent_runs">Number of data tests to run on the model concurrently</param>
+  /// <param name="repeat_count">Repeat count for sequential execution</param>
+  /// <returns>Test case result</returns>
   static std::shared_ptr<TestCaseResult> Run(PThreadPool tpool,
                                              const ITestCase& c, Ort::Env& env,
                                              const Ort::SessionOptions& sf,
                                              size_t concurrent_runs, size_t repeat_count);
-  // Run async and report status via a callback
-  static void Request(Callback cb, PThreadPool tpool, const ITestCase& c,
+
+  /// <summary>
+  /// Schedules a TestCase to asynchronously on a TP. The function returns immediately.
+  /// The completion is reported via  a supplied callback
+  /// </summary>
+  /// <param name="cb"></param>
+  /// <param name="tpool"></param>
+  /// <param name="c"></param>
+  /// <param name="env"></param>
+  /// <param name="sf"></param>
+  /// <param name="concurrent_runs"></param>
+  static void Request(const Callback& cb, PThreadPool tpool, const ITestCase& c,
                       Ort::Env& env, const Ort::SessionOptions& sf,
                       size_t concurrent_runs);
-
-  std::shared_ptr<TestCaseResult> GetResult() const {
-    return result_;
-  }
 
   const TIME_SPEC& GetTimeSpend() const {
     return test_case_time_;
@@ -60,6 +78,10 @@ class TestCaseRequestContext {
                          const Ort::SessionOptions& session_opts);
 
   void SetupSession();
+
+  std::shared_ptr<TestCaseResult> GetResult() const {
+    return result_;
+  }
 
   void RunSequentially(size_t repeat_count);
   // Wait for all concurrent data tasks to finish

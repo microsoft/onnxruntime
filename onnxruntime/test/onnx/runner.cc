@@ -187,8 +187,9 @@ static Status ParallelRunTests(TestEnv& env, int p_models, size_t current_runs, 
   return Status::OK();
 }
 
-Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_count, PThreadPool tpool) {
+Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_count) {
   TestResultStat& stat = env.stat;
+  auto tpool = env.GetThreadPool();
   stat.total_model_count = env.tests.size();
   stat.total_test_case_count = std::accumulate(env.tests.begin(), env.tests.end(), static_cast<size_t>(0),
                                                [](size_t v, const ITestCase* info) {

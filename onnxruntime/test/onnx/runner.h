@@ -136,7 +136,7 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
                const std::function<void(std::unique_ptr<ITestCase>)>& process_function);
 
 //Do not run this function in the thread pool passed in
-onnxruntime::common::Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_count, PThreadPool tpool);
+onnxruntime::common::Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_count);
 EXECUTE_RESULT StatusCodeToExecuteResult(int input);
 void RunSingleTestCase(const ITestCase& info, Ort::Env& env, const Ort::SessionOptions& sf, size_t concurrent_runs,
                        size_t repeat_count, PThreadPool tpool, ORT_CALLBACK_INSTANCE pci, TestCaseCallBack on_finished);
