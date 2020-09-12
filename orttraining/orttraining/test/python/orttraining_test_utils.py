@@ -5,10 +5,10 @@ from onnxruntime.capi.ort_trainer import ORTTrainer, IODescription
 from orttraining_test_data_loader import create_ort_test_dataloader, BatchArgsOption, split_batch
 from orttraining_test_bert_postprocess import postprocess_model
 
-from onnxruntime.experimental import _utils, amp, optim, orttrainer, TrainStepInfo,\
+from onnxruntime.training import _utils, amp, optim, orttrainer, TrainStepInfo,\
                                       model_desc_validation as md_val,\
                                       orttrainer_options as orttrainer_options
-from onnxruntime.experimental.optim import _LRScheduler
+from onnxruntime.training.optim import _LRScheduler
 
 def warmup_cosine(x, warmup=0.002):
     if x < warmup:
@@ -177,4 +177,3 @@ def run_test(model, model_desc, device, args, gradient_accumulation_steps, fp16,
         outputs = model.eval_step(*args, **kwargs)
 
     return (output.cpu().numpy() for output in outputs)
-

@@ -24,6 +24,7 @@ onnxruntime::common::Status SaveAttributeOrtFormat(
     flatbuffers::FlatBufferBuilder& builder, const ONNX_NAMESPACE::AttributeProto& attr_proto,
     flatbuffers::Offset<fbs::Attribute>& fbs_attr, const onnxruntime::Graph* graph) ORT_MUST_USE_RESULT;
 
+#if defined(ENABLE_ORT_FORMAT_LOAD)
 inline void LoadStringFromOrtFormat(std::string& dst, const flatbuffers::String* fbs_string) {
   if (fbs_string)
     dst = fbs_string->c_str();
@@ -43,6 +44,8 @@ onnxruntime::common::Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_att
                                                    std::unique_ptr<onnxruntime::Graph>& sub_graph,
                                                    Graph& graph, Node& node,
                                                    const logging::Logger& logger) ORT_MUST_USE_RESULT;
+
+#endif
 
 }  // namespace utils
 }  // namespace experimental

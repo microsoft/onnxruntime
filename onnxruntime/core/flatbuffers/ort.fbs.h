@@ -69,39 +69,39 @@ struct SessionStateBuilder;
 struct InferenceSession;
 struct InferenceSessionBuilder;
 
-enum AttributeType {
-  AttributeType_UNDEFINED = 0,
-  AttributeType_FLOAT = 1,
-  AttributeType_INT = 2,
-  AttributeType_STRING = 3,
-  AttributeType_TENSOR = 4,
-  AttributeType_GRAPH = 5,
-  AttributeType_FLOATS = 6,
-  AttributeType_INTS = 7,
-  AttributeType_STRINGS = 8,
-  AttributeType_TENSORS = 9,
-  AttributeType_GRAPHS = 10,
-  AttributeType_SPARSE_TENSOR = 11,
-  AttributeType_SPARSE_TENSORS = 12,
-  AttributeType_MIN = AttributeType_UNDEFINED,
-  AttributeType_MAX = AttributeType_SPARSE_TENSORS
+enum class AttributeType : int32_t {
+  UNDEFINED = 0,
+  FLOAT = 1,
+  INT = 2,
+  STRING = 3,
+  TENSOR = 4,
+  GRAPH = 5,
+  FLOATS = 6,
+  INTS = 7,
+  STRINGS = 8,
+  TENSORS = 9,
+  GRAPHS = 10,
+  SPARSE_TENSOR = 11,
+  SPARSE_TENSORS = 12,
+  MIN = UNDEFINED,
+  MAX = SPARSE_TENSORS
 };
 
 inline const AttributeType (&EnumValuesAttributeType())[13] {
   static const AttributeType values[] = {
-    AttributeType_UNDEFINED,
-    AttributeType_FLOAT,
-    AttributeType_INT,
-    AttributeType_STRING,
-    AttributeType_TENSOR,
-    AttributeType_GRAPH,
-    AttributeType_FLOATS,
-    AttributeType_INTS,
-    AttributeType_STRINGS,
-    AttributeType_TENSORS,
-    AttributeType_GRAPHS,
-    AttributeType_SPARSE_TENSOR,
-    AttributeType_SPARSE_TENSORS
+    AttributeType::UNDEFINED,
+    AttributeType::FLOAT,
+    AttributeType::INT,
+    AttributeType::STRING,
+    AttributeType::TENSOR,
+    AttributeType::GRAPH,
+    AttributeType::FLOATS,
+    AttributeType::INTS,
+    AttributeType::STRINGS,
+    AttributeType::TENSORS,
+    AttributeType::GRAPHS,
+    AttributeType::SPARSE_TENSOR,
+    AttributeType::SPARSE_TENSORS
   };
   return values;
 }
@@ -127,24 +127,24 @@ inline const char * const *EnumNamesAttributeType() {
 }
 
 inline const char *EnumNameAttributeType(AttributeType e) {
-  if (flatbuffers::IsOutRange(e, AttributeType_UNDEFINED, AttributeType_SPARSE_TENSORS)) return "";
+  if (flatbuffers::IsOutRange(e, AttributeType::UNDEFINED, AttributeType::SPARSE_TENSORS)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesAttributeType()[index];
 }
 
-enum DimensionValueType {
-  DimensionValueType_UNKNOWN = 0,
-  DimensionValueType_VALUE = 1,
-  DimensionValueType_PARAM = 2,
-  DimensionValueType_MIN = DimensionValueType_UNKNOWN,
-  DimensionValueType_MAX = DimensionValueType_PARAM
+enum class DimensionValueType : int8_t {
+  UNKNOWN = 0,
+  VALUE = 1,
+  PARAM = 2,
+  MIN = UNKNOWN,
+  MAX = PARAM
 };
 
 inline const DimensionValueType (&EnumValuesDimensionValueType())[3] {
   static const DimensionValueType values[] = {
-    DimensionValueType_UNKNOWN,
-    DimensionValueType_VALUE,
-    DimensionValueType_PARAM
+    DimensionValueType::UNKNOWN,
+    DimensionValueType::VALUE,
+    DimensionValueType::PARAM
   };
   return values;
 }
@@ -160,52 +160,52 @@ inline const char * const *EnumNamesDimensionValueType() {
 }
 
 inline const char *EnumNameDimensionValueType(DimensionValueType e) {
-  if (flatbuffers::IsOutRange(e, DimensionValueType_UNKNOWN, DimensionValueType_PARAM)) return "";
+  if (flatbuffers::IsOutRange(e, DimensionValueType::UNKNOWN, DimensionValueType::PARAM)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesDimensionValueType()[index];
 }
 
-enum TensorDataType {
-  TensorDataType_UNDEFINED = 0,
-  TensorDataType_FLOAT = 1,
-  TensorDataType_UINT8 = 2,
-  TensorDataType_INT8 = 3,
-  TensorDataType_UINT16 = 4,
-  TensorDataType_INT16 = 5,
-  TensorDataType_INT32 = 6,
-  TensorDataType_INT64 = 7,
-  TensorDataType_STRING = 8,
-  TensorDataType_BOOL = 9,
-  TensorDataType_FLOAT16 = 10,
-  TensorDataType_DOUBLE = 11,
-  TensorDataType_UINT32 = 12,
-  TensorDataType_UINT64 = 13,
-  TensorDataType_COMPLEX64 = 14,
-  TensorDataType_COMPLEX128 = 15,
-  TensorDataType_BFLOAT16 = 16,
-  TensorDataType_MIN = TensorDataType_UNDEFINED,
-  TensorDataType_MAX = TensorDataType_BFLOAT16
+enum class TensorDataType : int32_t {
+  UNDEFINED = 0,
+  FLOAT = 1,
+  UINT8 = 2,
+  INT8 = 3,
+  UINT16 = 4,
+  INT16 = 5,
+  INT32 = 6,
+  INT64 = 7,
+  STRING = 8,
+  BOOL = 9,
+  FLOAT16 = 10,
+  DOUBLE = 11,
+  UINT32 = 12,
+  UINT64 = 13,
+  COMPLEX64 = 14,
+  COMPLEX128 = 15,
+  BFLOAT16 = 16,
+  MIN = UNDEFINED,
+  MAX = BFLOAT16
 };
 
 inline const TensorDataType (&EnumValuesTensorDataType())[17] {
   static const TensorDataType values[] = {
-    TensorDataType_UNDEFINED,
-    TensorDataType_FLOAT,
-    TensorDataType_UINT8,
-    TensorDataType_INT8,
-    TensorDataType_UINT16,
-    TensorDataType_INT16,
-    TensorDataType_INT32,
-    TensorDataType_INT64,
-    TensorDataType_STRING,
-    TensorDataType_BOOL,
-    TensorDataType_FLOAT16,
-    TensorDataType_DOUBLE,
-    TensorDataType_UINT32,
-    TensorDataType_UINT64,
-    TensorDataType_COMPLEX64,
-    TensorDataType_COMPLEX128,
-    TensorDataType_BFLOAT16
+    TensorDataType::UNDEFINED,
+    TensorDataType::FLOAT,
+    TensorDataType::UINT8,
+    TensorDataType::INT8,
+    TensorDataType::UINT16,
+    TensorDataType::INT16,
+    TensorDataType::INT32,
+    TensorDataType::INT64,
+    TensorDataType::STRING,
+    TensorDataType::BOOL,
+    TensorDataType::FLOAT16,
+    TensorDataType::DOUBLE,
+    TensorDataType::UINT32,
+    TensorDataType::UINT64,
+    TensorDataType::COMPLEX64,
+    TensorDataType::COMPLEX128,
+    TensorDataType::BFLOAT16
   };
   return values;
 }
@@ -235,22 +235,22 @@ inline const char * const *EnumNamesTensorDataType() {
 }
 
 inline const char *EnumNameTensorDataType(TensorDataType e) {
-  if (flatbuffers::IsOutRange(e, TensorDataType_UNDEFINED, TensorDataType_BFLOAT16)) return "";
+  if (flatbuffers::IsOutRange(e, TensorDataType::UNDEFINED, TensorDataType::BFLOAT16)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesTensorDataType()[index];
 }
 
-enum NodeType {
-  NodeType_Primitive = 0,
-  NodeType_Fused = 1,
-  NodeType_MIN = NodeType_Primitive,
-  NodeType_MAX = NodeType_Fused
+enum class NodeType : int32_t {
+  Primitive = 0,
+  Fused = 1,
+  MIN = Primitive,
+  MAX = Fused
 };
 
 inline const NodeType (&EnumValuesNodeType())[2] {
   static const NodeType values[] = {
-    NodeType_Primitive,
-    NodeType_Fused
+    NodeType::Primitive,
+    NodeType::Fused
   };
   return values;
 }
@@ -265,26 +265,26 @@ inline const char * const *EnumNamesNodeType() {
 }
 
 inline const char *EnumNameNodeType(NodeType e) {
-  if (flatbuffers::IsOutRange(e, NodeType_Primitive, NodeType_Fused)) return "";
+  if (flatbuffers::IsOutRange(e, NodeType::Primitive, NodeType::Fused)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesNodeType()[index];
 }
 
-enum TypeInfoValue {
-  TypeInfoValue_NONE = 0,
-  TypeInfoValue_tensor_type = 1,
-  TypeInfoValue_sequence_type = 2,
-  TypeInfoValue_map_type = 3,
-  TypeInfoValue_MIN = TypeInfoValue_NONE,
-  TypeInfoValue_MAX = TypeInfoValue_map_type
+enum class TypeInfoValue : uint8_t {
+  NONE = 0,
+  tensor_type = 1,
+  sequence_type = 2,
+  map_type = 3,
+  MIN = NONE,
+  MAX = map_type
 };
 
 inline const TypeInfoValue (&EnumValuesTypeInfoValue())[4] {
   static const TypeInfoValue values[] = {
-    TypeInfoValue_NONE,
-    TypeInfoValue_tensor_type,
-    TypeInfoValue_sequence_type,
-    TypeInfoValue_map_type
+    TypeInfoValue::NONE,
+    TypeInfoValue::tensor_type,
+    TypeInfoValue::sequence_type,
+    TypeInfoValue::map_type
   };
   return values;
 }
@@ -301,25 +301,25 @@ inline const char * const *EnumNamesTypeInfoValue() {
 }
 
 inline const char *EnumNameTypeInfoValue(TypeInfoValue e) {
-  if (flatbuffers::IsOutRange(e, TypeInfoValue_NONE, TypeInfoValue_map_type)) return "";
+  if (flatbuffers::IsOutRange(e, TypeInfoValue::NONE, TypeInfoValue::map_type)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesTypeInfoValue()[index];
 }
 
 template<typename T> struct TypeInfoValueTraits {
-  static const TypeInfoValue enum_value = TypeInfoValue_NONE;
+  static const TypeInfoValue enum_value = TypeInfoValue::NONE;
 };
 
 template<> struct TypeInfoValueTraits<onnxruntime::experimental::fbs::TensorTypeAndShape> {
-  static const TypeInfoValue enum_value = TypeInfoValue_tensor_type;
+  static const TypeInfoValue enum_value = TypeInfoValue::tensor_type;
 };
 
 template<> struct TypeInfoValueTraits<onnxruntime::experimental::fbs::SequenceType> {
-  static const TypeInfoValue enum_value = TypeInfoValue_sequence_type;
+  static const TypeInfoValue enum_value = TypeInfoValue::sequence_type;
 };
 
 template<> struct TypeInfoValueTraits<onnxruntime::experimental::fbs::MapType> {
-  static const TypeInfoValue enum_value = TypeInfoValue_map_type;
+  static const TypeInfoValue enum_value = TypeInfoValue::map_type;
 };
 
 bool VerifyTypeInfoValue(flatbuffers::Verifier &verifier, const void *obj, TypeInfoValue type);
@@ -522,7 +522,7 @@ struct DimensionValueBuilder {
 
 inline flatbuffers::Offset<DimensionValue> CreateDimensionValue(
     flatbuffers::FlatBufferBuilder &_fbb,
-    onnxruntime::experimental::fbs::DimensionValueType dim_type = onnxruntime::experimental::fbs::DimensionValueType_UNKNOWN,
+    onnxruntime::experimental::fbs::DimensionValueType dim_type = onnxruntime::experimental::fbs::DimensionValueType::UNKNOWN,
     int64_t dim_value = 0,
     flatbuffers::Offset<flatbuffers::String> dim_param = 0) {
   DimensionValueBuilder builder_(_fbb);
@@ -534,7 +534,7 @@ inline flatbuffers::Offset<DimensionValue> CreateDimensionValue(
 
 inline flatbuffers::Offset<DimensionValue> CreateDimensionValueDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
-    onnxruntime::experimental::fbs::DimensionValueType dim_type = onnxruntime::experimental::fbs::DimensionValueType_UNKNOWN,
+    onnxruntime::experimental::fbs::DimensionValueType dim_type = onnxruntime::experimental::fbs::DimensionValueType::UNKNOWN,
     int64_t dim_value = 0,
     const char *dim_param = nullptr) {
   auto dim_param__ = dim_param ? _fbb.CreateString(dim_param) : 0;
@@ -589,7 +589,7 @@ struct TensorTypeAndShapeBuilder {
 
 inline flatbuffers::Offset<TensorTypeAndShape> CreateTensorTypeAndShape(
     flatbuffers::FlatBufferBuilder &_fbb,
-    onnxruntime::experimental::fbs::TensorDataType elem_type = onnxruntime::experimental::fbs::TensorDataType_UNDEFINED,
+    onnxruntime::experimental::fbs::TensorDataType elem_type = onnxruntime::experimental::fbs::TensorDataType::UNDEFINED,
     flatbuffers::Offset<onnxruntime::experimental::fbs::Shape> shape = 0) {
   TensorTypeAndShapeBuilder builder_(_fbb);
   builder_.add_shape(shape);
@@ -641,7 +641,7 @@ struct MapTypeBuilder {
 
 inline flatbuffers::Offset<MapType> CreateMapType(
     flatbuffers::FlatBufferBuilder &_fbb,
-    onnxruntime::experimental::fbs::TensorDataType key_type = onnxruntime::experimental::fbs::TensorDataType_UNDEFINED,
+    onnxruntime::experimental::fbs::TensorDataType key_type = onnxruntime::experimental::fbs::TensorDataType::UNDEFINED,
     flatbuffers::Offset<onnxruntime::experimental::fbs::TypeInfo> value_type = 0) {
   MapTypeBuilder builder_(_fbb);
   builder_.add_value_type(value_type);
@@ -919,7 +919,7 @@ inline flatbuffers::Offset<Node> CreateNode(
     int32_t since_version = 0,
     uint32_t index = 0,
     flatbuffers::Offset<flatbuffers::String> op_type = 0,
-    onnxruntime::experimental::fbs::NodeType type = onnxruntime::experimental::fbs::NodeType_Primitive,
+    onnxruntime::experimental::fbs::NodeType type = onnxruntime::experimental::fbs::NodeType::Primitive,
     flatbuffers::Offset<flatbuffers::String> execution_provider_type = 0,
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>> inputs = 0,
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>> outputs = 0,
@@ -951,7 +951,7 @@ inline flatbuffers::Offset<Node> CreateNodeDirect(
     int32_t since_version = 0,
     uint32_t index = 0,
     const char *op_type = nullptr,
-    onnxruntime::experimental::fbs::NodeType type = onnxruntime::experimental::fbs::NodeType_Primitive,
+    onnxruntime::experimental::fbs::NodeType type = onnxruntime::experimental::fbs::NodeType::Primitive,
     const char *execution_provider_type = nullptr,
     const std::vector<flatbuffers::Offset<flatbuffers::String>> *inputs = nullptr,
     const std::vector<flatbuffers::Offset<flatbuffers::String>> *outputs = nullptr,
@@ -1081,13 +1081,13 @@ struct TypeInfo FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   template<typename T> const T *value_as() const;
   const onnxruntime::experimental::fbs::TensorTypeAndShape *value_as_tensor_type() const {
-    return value_type() == onnxruntime::experimental::fbs::TypeInfoValue_tensor_type ? static_cast<const onnxruntime::experimental::fbs::TensorTypeAndShape *>(value()) : nullptr;
+    return value_type() == onnxruntime::experimental::fbs::TypeInfoValue::tensor_type ? static_cast<const onnxruntime::experimental::fbs::TensorTypeAndShape *>(value()) : nullptr;
   }
   const onnxruntime::experimental::fbs::SequenceType *value_as_sequence_type() const {
-    return value_type() == onnxruntime::experimental::fbs::TypeInfoValue_sequence_type ? static_cast<const onnxruntime::experimental::fbs::SequenceType *>(value()) : nullptr;
+    return value_type() == onnxruntime::experimental::fbs::TypeInfoValue::sequence_type ? static_cast<const onnxruntime::experimental::fbs::SequenceType *>(value()) : nullptr;
   }
   const onnxruntime::experimental::fbs::MapType *value_as_map_type() const {
-    return value_type() == onnxruntime::experimental::fbs::TypeInfoValue_map_type ? static_cast<const onnxruntime::experimental::fbs::MapType *>(value()) : nullptr;
+    return value_type() == onnxruntime::experimental::fbs::TypeInfoValue::map_type ? static_cast<const onnxruntime::experimental::fbs::MapType *>(value()) : nullptr;
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -1139,7 +1139,7 @@ struct TypeInfoBuilder {
 inline flatbuffers::Offset<TypeInfo> CreateTypeInfo(
     flatbuffers::FlatBufferBuilder &_fbb,
     flatbuffers::Offset<flatbuffers::String> denotation = 0,
-    onnxruntime::experimental::fbs::TypeInfoValue value_type = onnxruntime::experimental::fbs::TypeInfoValue_NONE,
+    onnxruntime::experimental::fbs::TypeInfoValue value_type = onnxruntime::experimental::fbs::TypeInfoValue::NONE,
     flatbuffers::Offset<void> value = 0) {
   TypeInfoBuilder builder_(_fbb);
   builder_.add_value(value);
@@ -1151,7 +1151,7 @@ inline flatbuffers::Offset<TypeInfo> CreateTypeInfo(
 inline flatbuffers::Offset<TypeInfo> CreateTypeInfoDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
     const char *denotation = nullptr,
-    onnxruntime::experimental::fbs::TypeInfoValue value_type = onnxruntime::experimental::fbs::TypeInfoValue_NONE,
+    onnxruntime::experimental::fbs::TypeInfoValue value_type = onnxruntime::experimental::fbs::TypeInfoValue::NONE,
     flatbuffers::Offset<void> value = 0) {
   auto denotation__ = denotation ? _fbb.CreateString(denotation) : 0;
   return onnxruntime::experimental::fbs::CreateTypeInfo(
@@ -1308,7 +1308,7 @@ inline flatbuffers::Offset<Tensor> CreateTensor(
     flatbuffers::Offset<flatbuffers::String> name = 0,
     flatbuffers::Offset<flatbuffers::String> doc_string = 0,
     flatbuffers::Offset<flatbuffers::Vector<int64_t>> dims = 0,
-    onnxruntime::experimental::fbs::TensorDataType data_type = onnxruntime::experimental::fbs::TensorDataType_UNDEFINED,
+    onnxruntime::experimental::fbs::TensorDataType data_type = onnxruntime::experimental::fbs::TensorDataType::UNDEFINED,
     flatbuffers::Offset<flatbuffers::Vector<uint8_t>> raw_data = 0,
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>> string_data = 0) {
   TensorBuilder builder_(_fbb);
@@ -1326,7 +1326,7 @@ inline flatbuffers::Offset<Tensor> CreateTensorDirect(
     const char *name = nullptr,
     const char *doc_string = nullptr,
     const std::vector<int64_t> *dims = nullptr,
-    onnxruntime::experimental::fbs::TensorDataType data_type = onnxruntime::experimental::fbs::TensorDataType_UNDEFINED,
+    onnxruntime::experimental::fbs::TensorDataType data_type = onnxruntime::experimental::fbs::TensorDataType::UNDEFINED,
     const std::vector<uint8_t> *raw_data = nullptr,
     const std::vector<flatbuffers::Offset<flatbuffers::String>> *string_data = nullptr) {
   auto name__ = name ? _fbb.CreateString(name) : 0;
@@ -1490,7 +1490,7 @@ inline flatbuffers::Offset<Attribute> CreateAttribute(
     flatbuffers::FlatBufferBuilder &_fbb,
     flatbuffers::Offset<flatbuffers::String> name = 0,
     flatbuffers::Offset<flatbuffers::String> doc_string = 0,
-    onnxruntime::experimental::fbs::AttributeType type = onnxruntime::experimental::fbs::AttributeType_UNDEFINED,
+    onnxruntime::experimental::fbs::AttributeType type = onnxruntime::experimental::fbs::AttributeType::UNDEFINED,
     float f = 0.0f,
     int64_t i = 0,
     flatbuffers::Offset<flatbuffers::String> s = 0,
@@ -1522,7 +1522,7 @@ inline flatbuffers::Offset<Attribute> CreateAttributeDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
     const char *name = nullptr,
     const char *doc_string = nullptr,
-    onnxruntime::experimental::fbs::AttributeType type = onnxruntime::experimental::fbs::AttributeType_UNDEFINED,
+    onnxruntime::experimental::fbs::AttributeType type = onnxruntime::experimental::fbs::AttributeType::UNDEFINED,
     float f = 0.0f,
     int64_t i = 0,
     const char *s = nullptr,
@@ -2122,18 +2122,18 @@ inline flatbuffers::Offset<InferenceSession> CreateInferenceSessionDirect(
 
 inline bool VerifyTypeInfoValue(flatbuffers::Verifier &verifier, const void *obj, TypeInfoValue type) {
   switch (type) {
-    case TypeInfoValue_NONE: {
+    case TypeInfoValue::NONE: {
       return true;
     }
-    case TypeInfoValue_tensor_type: {
+    case TypeInfoValue::tensor_type: {
       auto ptr = reinterpret_cast<const onnxruntime::experimental::fbs::TensorTypeAndShape *>(obj);
       return verifier.VerifyTable(ptr);
     }
-    case TypeInfoValue_sequence_type: {
+    case TypeInfoValue::sequence_type: {
       auto ptr = reinterpret_cast<const onnxruntime::experimental::fbs::SequenceType *>(obj);
       return verifier.VerifyTable(ptr);
     }
-    case TypeInfoValue_map_type: {
+    case TypeInfoValue::map_type: {
       auto ptr = reinterpret_cast<const onnxruntime::experimental::fbs::MapType *>(obj);
       return verifier.VerifyTable(ptr);
     }

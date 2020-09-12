@@ -4,7 +4,7 @@ import sys
 import torch
 
 from numpy.testing import assert_allclose
-from onnxruntime.experimental import orttrainer
+from onnxruntime.training import orttrainer
 from onnxruntime.capi.ort_trainer import ORTTrainer as Legacy_ORTTrainer
 
 

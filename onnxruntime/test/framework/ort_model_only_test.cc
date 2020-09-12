@@ -1,5 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+
+// if we can't load an ORT format model we can't really test anything
+#if defined(ENABLE_ORT_FORMAT_LOAD)
+
 #include "core/framework/data_types.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
@@ -289,7 +293,7 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormatMLOps) {
     for (size_t i = 0; i < 3; i++) {
       const auto& expected = expected_output_1[i];
       const auto& actual = actual_output_1[i];
-      ASSERT_EQ(actual.size(), 2);
+      ASSERT_EQ(actual.size(), size_t(2));
       ASSERT_NEAR(expected.at("A"), actual.at("A"), 1e-6);
       ASSERT_NEAR(expected.at("B"), actual.at("B"), 1e-6);
     }
@@ -349,11 +353,11 @@ TEST(OrtModelOnlyTests, LoadOrtFormatModelMLOps) {
                                                 {{"A", 0.596016f}, {"B", 0.403984f}},
                                                 {{"A", 0.656315f}, {"B", 0.343685f}}};
     const auto& actual_output_1 = fetches[1].Get<VectorMapStringToFloat>();
-    ASSERT_EQ(actual_output_1.size(), 3);
+    ASSERT_EQ(actual_output_1.size(), size_t(3));
     for (size_t i = 0; i < 3; i++) {
       const auto& expected = expected_output_1[i];
       const auto& actual = actual_output_1[i];
-      ASSERT_EQ(actual.size(), 2);
+      ASSERT_EQ(actual.size(), size_t(2));
       ASSERT_NEAR(expected.at("A"), actual.at("A"), 1e-6);
       ASSERT_NEAR(expected.at("B"), actual.at("B"), 1e-6);
     }
@@ -361,7 +365,9 @@ TEST(OrtModelOnlyTests, LoadOrtFormatModelMLOps) {
 
   RunOrtModel(test_info);
 }
-#endif
+#endif  // !defined(DISABLE_ML_OPS)
 
 }  // namespace test
 }  // namespace onnxruntime
+
+#endif  //  defined(ENABLE_ORT_FORMAT_LOAD)

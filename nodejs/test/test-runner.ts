@@ -52,11 +52,26 @@ export function run(testDataFolder: string): void {
 
     // add cases
     describe(`${model}`, () => {
-      let session: InferenceSession;
+      let session: InferenceSession|null = null;
       const skipModel = shouldSkipModel(model, ['cpu']);
       if (!skipModel) {
-        before(async () => {
-          session = await InferenceSession.create(modelPath);
+        before(async function () {
+          try {
+            session = await InferenceSession.create(modelPath);
+          } catch (e) {
+            // By default ort allows models with opsets from an official onnx release only. If it encounters
+            // a model with opset > than released opset, ValidateOpsetForDomain throws an error and model load fails.
+            // Since this is by design such a failure is acceptable in the context of this test. Therefore we simply
+            // skip this test. Setting env variable ALLOW_RELEASED_ONNX_OPSET_ONLY=0 allows loading a model with 
+            // opset > released onnx opset.
+            if (process.env.ALLOW_RELEASED_ONNX_OPSET_ONLY !== '0' && e.message.includes("ValidateOpsetForDomain")) {
+              session = null;
+              console.log(`Skipping ${model}. To run this test set env variable ALLOW_RELEASED_ONNX_OPSET_ONLY=0`);
+              this.skip();
+            } else {
+              throw e;
+            }
+          }
         });
       } else {
         console.log(`[test-runner] skipped: ${model}`);
@@ -68,19 +83,24 @@ export function run(testDataFolder: string): void {
         const expectedOutputs = testCase[1];
         if (!skipModel && !inputs.some(t => t === undefined) && !expectedOutputs.some(t => t === undefined)) {
           it(`case${i}`, async () => {
-            const feeds = {};
-            if (inputs.length !== session.inputNames.length) {
-              throw new RangeError('input length does not match name list');
-            }
-            for (let i = 0; i < inputs.length; i++) {
-              feeds[session.inputNames[i]] = inputs[i];
-            }
-            const outputs = await session.run(feeds);
+            if (session !== null) {
+              const feeds = {};
+              if (inputs.length !== session.inputNames.length) {
+                throw new RangeError('input length does not match name list');
+              }
+              for (let i = 0; i < inputs.length; i++) {
+                feeds[session.inputNames[i]] = inputs[i];
+              }
+              const outputs = await session.run(feeds);
 
-            let j = 0;
-            for (const name of session.outputNames) {
-              assertTensorEqual(outputs[name], expectedOutputs[j++]!);
+              let j = 0;
+              for (const name of session.outputNames) {
+                assertTensorEqual(outputs[name], expectedOutputs[j++]!);
+              }
+            } else {
+              throw new TypeError('session is null');
             }
+
           });
         }
       }

@@ -183,12 +183,14 @@ const TensorShapeProto* NodeArg::Shape() const {
       }
       return nullptr;
     }
+#if !defined(ORT_MINIMAL_BUILD)
     case TypeProto::kSparseTensorType: {
       if (utils::HasShape(type->sparse_tensor_type())) {
         return &(type->sparse_tensor_type().shape());
       }
       return nullptr;
     }
+#endif
     case TypeProto::kSequenceType:
     case TypeProto::kMapType:
     case TypeProto::kOpaqueType:
@@ -564,6 +566,7 @@ flatbuffers::Offset<fbs::NodeEdge> Node::SaveEdgesToOrtFormat(flatbuffers::FlatB
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
+#if defined(ENABLE_ORT_FORMAT_LOAD)
 Status Node::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Node& fbs_node, Graph& graph,
                                const logging::Logger& logger, std::unique_ptr<Node>& node) {
   node.reset(new Node(fbs_node.index(), graph));
@@ -657,6 +660,7 @@ Status Node::LoadEdgesFromOrtFormat(const onnxruntime::experimental::fbs::NodeEd
 
   return Status::OK();
 }
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD)
 void Node::Init(const std::string& name,
@@ -780,13 +784,15 @@ ADD_BASIC_ATTR_IMPL(float, AttributeProto_AttributeType::AttributeProto_Attribut
 ADD_BASIC_ATTR_IMPL(int64_t, AttributeProto_AttributeType::AttributeProto_AttributeType_INT, i)
 ADD_BASIC_ATTR_IMPL(std::string, AttributeProto_AttributeType::AttributeProto_AttributeType_STRING, s)
 ADD_ATTR_IMPL(TensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TENSOR, t)
-ADD_ATTR_IMPL(SparseTensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_SPARSE_TENSOR, sparse_tensor)
 ADD_LIST_ATTR_IMPL(float, AttributeProto_AttributeType::AttributeProto_AttributeType_FLOATS, floats)
 ADD_LIST_ATTR_IMPL(int64_t, AttributeProto_AttributeType::AttributeProto_AttributeType_INTS, ints)
 ADD_LIST_ATTR_IMPL(std::string, AttributeProto_AttributeType::AttributeProto_AttributeType_STRINGS, strings)
 ADD_LIST_ATTR_IMPL(TensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TENSORS, tensors)
 ADD_LIST_ATTR_IMPL(GraphProto, AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPHS, graphs)
+#if !defined(ORT_MINIMAL_BUILD)
+ADD_ATTR_IMPL(SparseTensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_SPARSE_TENSOR, sparse_tensor)
 ADD_LIST_ATTR_IMPL(SparseTensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_SPARSE_TENSORS, sparse_tensors)
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD)
 bool Node::ClearAttribute(const std::string& attr_name) {
@@ -1650,10 +1656,12 @@ bool FullyDefinedType(const TypeProto& type_proto) {
       auto& tensor_type = type_proto.tensor_type();
       return utils::HasElemType(tensor_type);
     }
+#if !defined(ORT_MINIMAL_BUILD)
     case TypeProto::kSparseTensorType: {
       auto& tensor_type = type_proto.sparse_tensor_type();
       return utils::HasElemType(tensor_type);
     }
+#endif
     case TypeProto::kSequenceType: {
       auto& seq_type = type_proto.sequence_type();
       return utils::HasElemType(seq_type) && FullyDefinedType(seq_type.elem_type());
@@ -3377,6 +3385,7 @@ std::ostream& operator<<(std::ostream& out, const Graph& graph) {
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
+#if defined(ENABLE_ORT_FORMAT_LOAD)
 Status Graph::LoadFromOrtFormat(
     const onnxruntime::experimental::fbs::Graph& fbs_graph,
     const Model& owning_model,
@@ -3519,5 +3528,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Gr
 
   return Status::OK();
 }
+
+#endif  // defined(ENABLE_ORT_FORMAT_LOAD)
 
 }  // namespace onnxruntime

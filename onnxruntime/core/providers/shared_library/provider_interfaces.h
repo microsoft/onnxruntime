@@ -145,16 +145,12 @@ struct Provider_IAllocator {
   void operator=(const Provider_IAllocator&) = delete;
 };
 
-struct Provider_IDeviceAllocator : Provider_IAllocator {
-  Provider_IDeviceAllocator(const OrtMemoryInfo& info) : Provider_IAllocator{info} {}
-};
-
 using Provider_AllocatorPtr = std::shared_ptr<Provider_IAllocator>;
-using Provider_DeviceAllocatorFactory = std::function<std::unique_ptr<Provider_IDeviceAllocator>(int)>;
+using Provider_AllocatorFactory = std::function<std::unique_ptr<Provider_IAllocator>(int)>;
 
 using DeviceId = int16_t;
 struct Provider_AllocatorCreationInfo {
-  Provider_AllocatorCreationInfo(Provider_DeviceAllocatorFactory device_alloc_factory0,
+  Provider_AllocatorCreationInfo(Provider_AllocatorFactory device_alloc_factory0,
                                  DeviceId device_id0 = 0,
                                  bool use_arena0 = true,
                                  OrtArenaCfg arena_cfg0 = {0, -1, -1, -1})
@@ -164,7 +160,7 @@ struct Provider_AllocatorCreationInfo {
         arena_cfg(arena_cfg0) {
   }
 
-  Provider_DeviceAllocatorFactory factory;
+  Provider_AllocatorFactory factory;
   DeviceId device_id;
   bool use_arena;
   OrtArenaCfg arena_cfg;
@@ -288,7 +284,7 @@ struct ProviderHost {
 
   virtual logging::Logger* LoggingManager_GetDefaultLogger() = 0;
 
-  virtual std::unique_ptr<Provider_IDeviceAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info) = 0;
+  virtual std::unique_ptr<Provider_IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info) = 0;
 
   virtual std::unique_ptr<Provider_IExecutionProvider_Router> Create_IExecutionProvider_Router(Provider_IExecutionProvider* outer, const std::string& type) = 0;
 
