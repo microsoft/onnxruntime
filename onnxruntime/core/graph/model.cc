@@ -583,6 +583,7 @@ common::Status Model::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 Model::Model() : model_path_{} {
 }
 
+#if defined(ENABLE_ORT_FORMAT_LOAD)
 common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
                                         const logging::Logger& logger,
                                         std::unique_ptr<Model>& model) {
@@ -629,5 +630,6 @@ common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
 
   return Status::OK();
 }
+#endif
 
 }  // namespace onnxruntime
