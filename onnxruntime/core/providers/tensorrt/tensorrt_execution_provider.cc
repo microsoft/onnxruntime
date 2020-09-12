@@ -47,9 +47,9 @@ std::string GetEnginePath(const ::std::string& root, const std::string& name) {
 }
 
 std::string GetVecHash(const ::std::vector<int>& vec) {
-  std::size_t ret = 0;
+  std::size_t ret = vec.size();
   for (auto& i : vec) {
-    ret ^= std::hash<uint32_t>()(i);
+    ret ^= i + 0x9e3779b9 + (ret << 6) + (ret >> 2);
   }
   return std::to_string(ret);
 }
@@ -281,6 +281,54 @@ bool FindCycleHelper(int i, const std::list<int>* adjacency_map, bool visited[],
   }
   st[i] = false;
   return false;
+}
+
+// Remove nodes with empty shape (for example [1, 0]) because TensorRT 7.0 doens't support empty shape
+SubGraphCollection_t RemoveEmptyShapeNodes(const onnxruntime::Provider_GraphViewer& graph) {
+  // Here only NonZero, NonMaxSuppression and TopK related empty shape nodes are removed, particularly for RCNN models.
+  // TODO: Remove the code if TensorRT fixed the issue in the future release, or find a better generic way here to work around
+  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
+  const std::vector<std::string> exclude_dim_names{"NonZero", "NonMaxSuppression", "TopK"};
+  SubGraphCollection_t parser_nodes_vector = {{{}, false}};
+  std::vector<size_t> nodes_vector(node_index.size());
+  std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
+  for (const auto& index : nodes_vector) {
+    // Check if node has empty input shape
+    const auto& node = graph.GetNode(node_index[index]);
+    bool exclude_node = false;
+    for (const auto& input : node->InputDefs()) {
+      const auto& input_shape = input->Shape();
+      if (input_shape) {
+        for (const auto& dim : input_shape->dim()) {
+          std::string dim_name = dim.dim_param();
+          if (!dim_name.empty()) {
+            for (const auto& exclude : exclude_dim_names) {
+              if (dim_name.find(exclude) != std::string::npos) {
+                exclude_node = true;
+                break;
+              }
+            }
+            if (exclude_node) {
+              break;
+            }
+          }
+        }
+      }
+
+      if (exclude_node) {
+        break;
+      }
+    }
+
+    // Remove the node with empty input shape
+    if (!exclude_node) {
+      parser_nodes_vector.back().first.push_back(index);
+    } else if (!parser_nodes_vector.back().first.empty()) {
+      parser_nodes_vector.push_back({{}, false});
+    }
+  }
+
+  return parser_nodes_vector;
 }
 
 std::unique_ptr<Provider_IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph_t graph_nodes_index, int& kernels_index, const onnxruntime::Provider_GraphViewer& graph) const {
@@ -660,10 +708,13 @@ void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& 
 std::vector<std::unique_ptr<Provider_ComputeCapability>>
 TensorrtExecutionProvider::Provider_GetCapability(const onnxruntime::Provider_GraphViewer& graph,
                                                   const std::vector<const Provider_KernelRegistry*>& /*kernel_registries*/) const {
+  // Remove nodes with empty shape
+  SubGraphCollection_t parser_nodes_vector = RemoveEmptyShapeNodes(graph);
+
   // Get supported node list from TensorRT parser
-  std::vector<size_t> nodes_vector(graph.NumberOfNodes());
-  std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
-  SubGraphCollection_t supported_nodes_vector, parser_nodes_vector = {{nodes_vector, false}};
+  //std::vector<size_t> nodes_vector(graph.NumberOfNodes());
+  //std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
+  SubGraphCollection_t supported_nodes_vector;//, parser_nodes_vector = {{nodes_vector, false}};
   bool early_termination = false;
   supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination);
   if (early_termination) {
@@ -1051,6 +1102,8 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
         std::string trt_node_name_with_precision_shape = trt_state->trt_node_name_with_precision + "_" + GetVecHash(input_shapes);
         std::string cached_path = GetEnginePath(trt_state->engine_cache_path, trt_node_name_with_precision_shape);
         std::ifstream planFile(cached_path, std::ios::binary | std::ios::in);
+        trt_state->context->reset();
+        trt_state->engine->reset();
         if (planFile && trt_state->engine_cache_enable) {
           planFile.seekg(0, std::ios::end);
           int engine_size = planFile.tellg();
@@ -1058,16 +1111,14 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           std::unique_ptr<char[]> engine_buf{new char[engine_size]};
           planFile.read((char*)engine_buf.get(), engine_size);
           planFile.close();
-
           auto runtime_ = trt_state->runtime;
-          trt_state->engine->reset();
           *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
               runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
           if (trt_state->engine->get() == nullptr) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
           }
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + cached_path;
           trt_engine = trt_state->engine->get();
-
         } else {
           auto trt_config = tensorrt_ptr::unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
           trt_config->setMaxWorkspaceSize(*(trt_state->max_workspace_size_ptr));
@@ -1075,8 +1126,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           if (*(trt_state->fp16_enable_ptr) && trt_builder->platformHasFastFp16()) {
             trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
           }
-          trt_state->context->reset();
-          trt_state->engine->reset();
           *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
               trt_builder->buildEngineWithConfig(*trt_state->network, *trt_config));
 
@@ -1092,7 +1141,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
             LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + cached_path;
           }
         }
-        trt_state->context->reset();
         *(trt_state->context) = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(
             trt_state->engine->get()->createExecutionContext());
         if (trt_state->context->get() == nullptr) {
