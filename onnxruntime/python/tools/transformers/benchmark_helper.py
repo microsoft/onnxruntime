@@ -186,7 +186,7 @@ def inference_ort(ort_session, ort_inputs, result_template, repeat_times, batch_
 
 
 def inference_ort_with_io_binding(ort_session, ort_inputs, result_template, repeat_times, ort_output_names, ort_outputs,
-                                  output_buffers, max_last_state_size, max_pooler_size, batch_size, device):
+                                  output_buffers, max_last_state_size, max_pooler_size, batch_size, device, data_type=numpy.longlong):
     result = {}
 
     # Bind inputs and outputs to onnxruntime session
@@ -194,7 +194,7 @@ def inference_ort_with_io_binding(ort_session, ort_inputs, result_template, repe
     # Bind inputs to device
     for name in ort_inputs.keys():
         np_input = torch.from_numpy(ort_inputs[name]).to(device)
-        io_binding.bind_input(name, np_input.device.type, 0, numpy.longlong, np_input.shape, np_input.data_ptr())
+        io_binding.bind_input(name, np_input.device.type, 0, data_type, np_input.shape, np_input.data_ptr())
     has_pooler = True if len(ort_output_names) == 2 else False
     # Bind outputs buffers with the sizes needed if not allocated already
     if output_buffers["last_state"] is None:

@@ -34,7 +34,7 @@ class QAttention<T, int8_t> final : public CudaKernel, public AttentionBase {
                      const Tensor* bias,
                      const Tensor* input_scale_tensor,
                      const Tensor* weight_scale_tensor,
-                     const Tensor* mask_index,
+                     const Tensor*& mask_index,
                      const Tensor* i_zp_tensor,
                      const Tensor* w_zp_tensor,
                      const Tensor* past_tensor) const;

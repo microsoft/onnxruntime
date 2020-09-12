@@ -65,6 +65,9 @@ elif '--use_acl' in sys.argv:
 elif '--use_armnn' in sys.argv:
     package_name = 'onnxruntime-armnn'
     sys.argv.remove('--use_armnn')
+elif '--use_dml' in sys.argv:
+    package_name = 'onnxruntime-dml'
+    sys.argv.remove('--use_dml')
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
 # PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
@@ -188,6 +191,8 @@ else:
   libs.extend(['onnxruntime_providers_tensorrt.dll'])
   # nGraph Libs
   libs.extend(['ngraph.dll', 'cpu_backend.dll', 'tbb.dll', 'mimalloc-override.dll', 'mimalloc-redirect.dll', 'mimalloc-redirect32.dll'])
+  # DirectML Libs
+  libs.extend(['directml.dll'])
   # Nuphar Libs
   libs.extend(['tvm.dll'])
   if nightly_build:
@@ -230,13 +235,14 @@ packages = [
     'onnxruntime.datasets',
     'onnxruntime.tools',
     'onnxruntime.quantization',
+    'onnxruntime.quantization.operators',
+    'onnxruntime.transformers',
 ]
 
-# TODO: thiagofc: Temporary 'experimental' namespace for new PyTorch front-end
 if '--enable_training' in sys.argv:
-    packages.extend(['onnxruntime.experimental',
-                     'onnxruntime.experimental.amp',
-                     'onnxruntime.experimental.optim'])
+    packages.extend(['onnxruntime.training',
+                     'onnxruntime.training.amp',
+                     'onnxruntime.training.optim'])
     sys.argv.remove('--enable_training')
 
 package_data = {}

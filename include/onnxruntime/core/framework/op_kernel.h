@@ -143,12 +143,14 @@ class OpKernelContext {
     return *output_ptr;
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
   // Fetch a sparse-tensor output corresponding to the specified index.
   // num_values must specify the number of non-zero values (commonly known as NNZ/nnz),
   // and shape must specify the shape of the underlying dense-tensor.
   // Memory allocation for the output may happen when this method is invoked,
   // unless static optimization pre-allocates it.
   SparseTensor* Output(int index, size_t num_values, const TensorShape& shape);
+#endif
 
   // Retrieve indexed shape obtained from memory planning before actual
   // computation. If the indexed shape cannot be inferred, this function returns
@@ -430,6 +432,23 @@ using BuildKernelCreateInfoFn = KernelCreateInfo (*)();
             .Provider(provider)                                                                                              \
             .Build(),                                                                                                        \
         static_cast<KernelCreatePtrFn>([](const OpKernelInfo& info) -> OpKernel* { return new __VA_ARGS__(info); }));        \
+  }
+
+#define ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type1, type2, name) \
+  provider##_##name##_##domain##_ver##startver##_##endver##_##type1##_##type2
+
+#define ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_EX(name, domain, startver, endver, type1, type2, provider, builder, ...)                \
+  class ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type1, type2, name);                     \
+  template <>                                                                                                                            \
+  KernelCreateInfo                                                                                                                       \
+  BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type1, type2, name)>() { \
+    return KernelCreateInfo(                                                                                                             \
+        builder.SetName(#name)                                                                                                           \
+            .SetDomain(domain)                                                                                                           \
+            .SinceVersion(startver, endver)                                                                                              \
+            .Provider(provider)                                                                                                          \
+            .Build(),                                                                                                                    \
+        static_cast<KernelCreatePtrFn>([](const OpKernelInfo& info) -> OpKernel* { return new __VA_ARGS__(info); }));                    \
   }
 
 // Use within macro definitions to create a custom vector of constraints.

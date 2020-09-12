@@ -28,6 +28,7 @@ class Gemm : public onnxruntime::Gemm<T> {
 
     ORT_ENFORCE(info.GetAttr<float>("alpha", &alpha_).IsOK());
     ORT_ENFORCE(info.GetAttr<float>("beta", &beta_).IsOK());
+    run = Gemm<T>::initRuntime();
   }
 
   Status Compute(OpKernelContext* context) const override {
@@ -165,7 +166,7 @@ class Gemm : public onnxruntime::Gemm<T> {
   }
 
   static armnn::IRuntimePtr initRuntime(){
-    if (Gemm::run)
+    if(Gemm::run)
       return std::move(Gemm::run);
     armnn::IRuntime::CreationOptions options;
     return std::move(armnn::IRuntime::Create(options));
@@ -186,7 +187,7 @@ template <typename T>
 thread_local std::map<OpKernel*, armnn::NetworkId> onnxruntime::armnn_ep::Gemm<T>::gemmLayers;
 
 template <typename T>
-armnn::IRuntimePtr Gemm<T>::run = Gemm<T>::initRuntime();
+armnn::IRuntimePtr Gemm<T>::run = armnn::IRuntimePtr(nullptr, nullptr);
 
 }  // namespace armnn_ep
 }  // namespace onnxruntime

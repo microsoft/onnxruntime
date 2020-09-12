@@ -2,25 +2,25 @@
 // Licensed under the MIT License.
 
 #include <fstream>
+#include <limits>
 #include <list>
+#include <map>
+#include <memory>
 #include <unordered_set>
+#include <unordered_map>
+#include <utility>
 #include "core/providers/shared_library/provider_api.h"
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/common/safeint.h"
 
 #include "tensorrt_execution_provider.h"
-#include "core/providers/cuda/cuda_allocator.h"
-#include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
-#include "cuda_runtime_api.h"
+#include "core/providers/cuda/shared_inc/cuda_call.h"
+#include "gpu_data_transfer.h"
 #include "gsl/gsl"
 #include <experimental/filesystem>
-#include <unordered_map>
-#include <utility>
-#include <limits>
-#include <map>
-#include <memory>
+#include "cuda_allocator.h"
 
 #define CUDA_RETURN_IF_ERROR(expr)               \
   ORT_RETURN_IF_ERROR(CUDA_CALL(expr)            \
@@ -46,10 +46,10 @@ std::string GetEnginePath(const ::std::string& root, const std::string& name) {
   }
 }
 
-std::string GetVecHash(const ::std::vector<int> & vec) {
-  std::size_t ret = 0;
+std::string GetVecHash(const ::std::vector<int>& vec) {
+  std::size_t ret = vec.size();
   for (auto& i : vec) {
-    ret ^= std::hash<uint32_t>()(i);
+    ret ^= i + 0x9e3779b9 + (ret << 6) + (ret >> 2);
   }
   return std::to_string(ret);
 }
@@ -69,32 +69,8 @@ struct ShutdownProtobuf {
 
 namespace onnxruntime {
 
-namespace cuda {
-template <>
-void Impl_Cast(
-    const int64_t* input_data, int32_t* output_data,
-    size_t count) {
-  return g_host->cuda__Impl_Cast(input_data, output_data, count);
-}
-
-template <>
-void Impl_Cast(
-    const int32_t* input_data, int64_t* output_data,
-    size_t count) {
-  return g_host->cuda__Impl_Cast(input_data, output_data, count);
-}
-
-}  // namespace cuda
-
-template <>
-bool CudaCall<cudaError, false>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg) {
-  return g_host->CudaCall_false(retCode, exprString, libName, successCode, msg);
-}
-
-template <>
-bool CudaCall<cudaError, true>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg) {
-  return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg);
-}
+constexpr const char* TRT = "Tensorrt";
+constexpr const char* TRT_PINNED = "TensorrtPinned";
 
 class Memcpy final : public Provider_OpKernel {
  public:
@@ -155,7 +131,7 @@ KernelRegistryAndStatus GetTensorrtKernelRegistry() {
 }
 
 std::shared_ptr<Provider_KernelRegistry> TensorrtExecutionProvider::Provider_GetKernelRegistry() const {
-  static KernelRegistryAndStatus k = onnxruntime::GetTensorrtKernelRegistry();
+  static KernelRegistryAndStatus k = GetTensorrtKernelRegistry();
   // throw if the registry failed to initialize
   ORT_THROW_IF_ERROR(k.st);
   return k.kernel_registry;
@@ -171,14 +147,14 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     : Provider_IExecutionProvider{onnxruntime::kTensorrtExecutionProvider}, device_id_(info.device_id) {
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
 
-  Provider_DeviceAllocatorRegistrationInfo default_memory_info(
-      {OrtMemTypeDefault, [](int id) { return Provider_CreateCUDAAllocator(id, TRT); }, std::numeric_limits<size_t>::max()});
-  allocator_ = CreateAllocator(default_memory_info, device_id_);
+  Provider_AllocatorCreationInfo default_memory_info(
+      [](int id) { return onnxruntime::make_unique<CUDAAllocator>(id, TRT); }, device_id_);
+  allocator_ = CreateAllocator(default_memory_info);
   Provider_InsertAllocator(allocator_);
 
-  Provider_DeviceAllocatorRegistrationInfo pinned_allocator_info(
-      {OrtMemTypeCPUOutput, [](int) { return Provider_CreateCUDAPinnedAllocator(0, TRT_PINNED); }, std::numeric_limits<size_t>::max()});
-  Provider_InsertAllocator(CreateAllocator(pinned_allocator_info, device_id_));
+  Provider_AllocatorCreationInfo pinned_allocator_info(
+      [](int) { return onnxruntime::make_unique<CUDAPinnedAllocator>(0, TRT_PINNED); }, device_id_);
+  Provider_InsertAllocator(CreateAllocator(pinned_allocator_info));
 
   // Get environment variables
   const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
@@ -233,7 +209,7 @@ Provider_AllocatorPtr TensorrtExecutionProvider::Provider_GetAllocator(int id, O
 }
 
 std::unique_ptr<onnxruntime::Provider_IDataTransfer> TensorrtExecutionProvider::Provider_GetDataTransfer() const {
-  return onnxruntime::Provider_CreateGPUDataTransfer();
+  return onnxruntime::make_unique<GPUDataTransfer>();
 }
 
 // Convert GraphViewer graph to GraphProto
@@ -798,14 +774,13 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
     if (!has_dynamic_shape) {
       std::string trt_node_name_with_precision_shape = trt_node_name_with_precision + "_" + GetVecHash(input_shapes);
       std::string cached_path = GetEnginePath(engine_cache_path_, trt_node_name_with_precision_shape);
-      std::ifstream planFile(cached_path, std::ios::binary | std::ios::in);
-      if (planFile && engine_cache_enable_) {
-        planFile.seekg(0, std::ios::end);
-        int engine_size = planFile.tellg();
-        planFile.seekg(0, std::ios::beg);
+      std::ifstream plan_file(cached_path, std::ios::binary | std::ios::in);
+      if (plan_file && engine_cache_enable_) {
+        plan_file.seekg(0, std::ios::end);
+        int engine_size = plan_file.tellg();
+        plan_file.seekg(0, std::ios::beg);
         std::unique_ptr<char[]> engine_buf{new char[engine_size]};
-        planFile.read((char*)engine_buf.get(), engine_size);
-        planFile.close();
+        plan_file.read((char*)engine_buf.get(), engine_size);
         trt_engine = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
         LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + cached_path;
       } else {
@@ -1050,24 +1025,23 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       if (engine_update) {
         std::string trt_node_name_with_precision_shape = trt_state->trt_node_name_with_precision + "_" + GetVecHash(input_shapes);
         std::string cached_path = GetEnginePath(trt_state->engine_cache_path, trt_node_name_with_precision_shape);
-        std::ifstream planFile(cached_path, std::ios::binary | std::ios::in);
-        if (planFile && trt_state->engine_cache_enable) {
-          planFile.seekg(0, std::ios::end);
-          int engine_size = planFile.tellg();
-          planFile.seekg(0, std::ios::beg);
+        std::ifstream plan_file(cached_path, std::ios::binary | std::ios::in);
+        trt_state->context->reset();
+        trt_state->engine->reset();
+        if (plan_file && trt_state->engine_cache_enable) {
+          plan_file.seekg(0, std::ios::end);
+          int engine_size = plan_file.tellg();
+          plan_file.seekg(0, std::ios::beg);
           std::unique_ptr<char[]> engine_buf{new char[engine_size]};
-          planFile.read((char*)engine_buf.get(), engine_size);
-          planFile.close();
-
+          plan_file.read((char*)engine_buf.get(), engine_size);
           auto runtime_ = trt_state->runtime;
-          trt_state->engine->reset();
           *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
-                                            runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
+              runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
           if (trt_state->engine->get() == nullptr) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
           }
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + cached_path;
           trt_engine = trt_state->engine->get();
-
         } else {
           auto trt_config = tensorrt_ptr::unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
           trt_config->setMaxWorkspaceSize(*(trt_state->max_workspace_size_ptr));
@@ -1075,8 +1049,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
           if (*(trt_state->fp16_enable_ptr) && trt_builder->platformHasFastFp16()) {
             trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
           }
-          trt_state->context->reset();
-          trt_state->engine->reset();
           *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
               trt_builder->buildEngineWithConfig(*trt_state->network, *trt_config));
 
@@ -1092,7 +1064,6 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
             LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + cached_path;
           }
         }
-        trt_state->context->reset();
         *(trt_state->context) = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(
             trt_state->engine->get()->createExecutionContext());
         if (trt_state->context->get() == nullptr) {
@@ -1374,4 +1345,5 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
 
   return Status::OK();
 }
+
 }  // namespace onnxruntime

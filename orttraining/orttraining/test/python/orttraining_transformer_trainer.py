@@ -24,10 +24,10 @@ import onnxruntime
 from orttraining_test_bert_postprocess import postprocess_model
 from onnxruntime.capi.ort_trainer import ORTTrainer, LossScaler, ModelDescription, IODescription
 
-from onnxruntime.experimental import _utils, amp, optim, orttrainer, TrainStepInfo,\
+from onnxruntime.training import _utils, amp, optim, orttrainer, TrainStepInfo,\
                                       model_desc_validation as md_val,\
                                       orttrainer_options as orttrainer_options
-from onnxruntime.experimental.optim import LinearWarmupLRScheduler, _LRScheduler
+from onnxruntime.training.optim import LinearWarmupLRScheduler, _LRScheduler
 
 try:
     from torch.utils.tensorboard import SummaryWriter
@@ -106,6 +106,7 @@ class ORTTransformerTrainer:
         train_dataset: Dataset,
         eval_dataset: Dataset,
         compute_metrics: Callable[[EvalPrediction], Dict],
+        world_size: Optional[int] = 1,
         use_new_api : Optional[bool] = False,
     ):
         """
@@ -115,6 +116,7 @@ class ORTTransformerTrainer:
         self.model_desc = model_desc
         self.new_model_desc = new_model_desc
         self.args = args
+        self.world_size = world_size
         self.data_collator = DefaultDataCollator()
         self.train_dataset = train_dataset
         self.eval_dataset = eval_dataset
@@ -177,6 +179,7 @@ class ORTTransformerTrainer:
 
             loss_scaler = amp.DynamicLossScaler() if self.args.fp16 else None
             device = self.args.device.type
+
             device = f'{device}:{self.args.device.index}' if self.args.device.index else f'{device}:0'
             options = orttrainer.ORTTrainerOptions({'batch' : {
                                                         'gradient_accumulation_steps' : self.args.gradient_accumulation_steps},
@@ -187,7 +190,13 @@ class ORTTransformerTrainer:
                                                     'debug': {'deterministic_compute': True, },
                                                     'utils': {
                                                         'grad_norm_clip': False},
-                                                    'distributed': {'allreduce_post_accumulation': True},
+                                                    'distributed': {
+                                                        # we are running single node multi gpu test. thus world_rank = local_rank
+                                                        # and world_size = self.args.n_gpu
+                                                        'world_rank': max(0, self.args.local_rank),
+                                                        'world_size': int(self.world_size),
+                                                        'local_rank': max(0, self.args.local_rank),
+                                                        'allreduce_post_accumulation': True},
                                                     'lr_scheduler': lr_scheduler
                                                     })
 
@@ -217,6 +226,8 @@ class ORTTransformerTrainer:
                 learning_rate_description=IODescription('Learning_Rate', [1,], torch.float32),
                 device=self.args.device,
                 gradient_accumulation_steps=self.args.gradient_accumulation_steps,
+                world_rank=max(0, self.args.local_rank),
+                world_size=int(self.world_size),
                 use_mixed_precision=self.args.fp16,
                 allreduce_post_accumulation=True,
                 get_lr_this_step=get_lr_this_step,

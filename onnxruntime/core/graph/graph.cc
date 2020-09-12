@@ -183,12 +183,14 @@ const TensorShapeProto* NodeArg::Shape() const {
       }
       return nullptr;
     }
+#if !defined(ORT_MINIMAL_BUILD)
     case TypeProto::kSparseTensorType: {
       if (utils::HasShape(type->sparse_tensor_type())) {
         return &(type->sparse_tensor_type().shape());
       }
       return nullptr;
     }
+#endif
     case TypeProto::kSequenceType:
     case TypeProto::kMapType:
     case TypeProto::kOpaqueType:
@@ -588,7 +590,7 @@ Status Node::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Node& fbs_n
     return Status::OK();
   };
 
-  // Index was set in the ctor of this node
+  // index_ was set in the ctor of this Node instance
   experimental::utils::LoadStringFromOrtFormat(name_, fbs_node.name());
   experimental::utils::LoadStringFromOrtFormat(description_, fbs_node.doc_string());
   experimental::utils::LoadStringFromOrtFormat(domain_, fbs_node.domain());
@@ -780,13 +782,15 @@ ADD_BASIC_ATTR_IMPL(float, AttributeProto_AttributeType::AttributeProto_Attribut
 ADD_BASIC_ATTR_IMPL(int64_t, AttributeProto_AttributeType::AttributeProto_AttributeType_INT, i)
 ADD_BASIC_ATTR_IMPL(std::string, AttributeProto_AttributeType::AttributeProto_AttributeType_STRING, s)
 ADD_ATTR_IMPL(TensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TENSOR, t)
-ADD_ATTR_IMPL(SparseTensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_SPARSE_TENSOR, sparse_tensor)
 ADD_LIST_ATTR_IMPL(float, AttributeProto_AttributeType::AttributeProto_AttributeType_FLOATS, floats)
 ADD_LIST_ATTR_IMPL(int64_t, AttributeProto_AttributeType::AttributeProto_AttributeType_INTS, ints)
 ADD_LIST_ATTR_IMPL(std::string, AttributeProto_AttributeType::AttributeProto_AttributeType_STRINGS, strings)
 ADD_LIST_ATTR_IMPL(TensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TENSORS, tensors)
 ADD_LIST_ATTR_IMPL(GraphProto, AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPHS, graphs)
+#if !defined(ORT_MINIMAL_BUILD)
+ADD_ATTR_IMPL(SparseTensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_SPARSE_TENSOR, sparse_tensor)
 ADD_LIST_ATTR_IMPL(SparseTensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_SPARSE_TENSORS, sparse_tensors)
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD)
 bool Node::ClearAttribute(const std::string& attr_name) {
@@ -1198,9 +1202,6 @@ common::Status Graph::SetOuterScopeNodeArgs(const std::unordered_set<std::string
     //   - outer scope for this graph
     //   - any inputs/initializers from this graph
     //   - any outputs from nodes in this graph
-    //
-    // NOTE: We must add the most outer most NodeArgs first, and then local NodeArgs, as the local should override
-    // an outer scope value if they have the same name.
     //
     // We provide outputs from all nodes in this graph at this stage.
     // BuildConnections will link the node with the subgraph to any outer scope Node/NodeArgs it consumes.
@@ -1653,10 +1654,12 @@ bool FullyDefinedType(const TypeProto& type_proto) {
       auto& tensor_type = type_proto.tensor_type();
       return utils::HasElemType(tensor_type);
     }
+#if !defined(ORT_MINIMAL_BUILD)
     case TypeProto::kSparseTensorType: {
       auto& tensor_type = type_proto.sparse_tensor_type();
       return utils::HasElemType(tensor_type);
     }
+#endif
     case TypeProto::kSequenceType: {
       auto& seq_type = type_proto.sequence_type();
       return utils::HasElemType(seq_type) && FullyDefinedType(seq_type.elem_type());
@@ -2700,7 +2703,7 @@ std::string Graph::GenerateNodeArgName(const std::string& base_name) {
 }
 
 static flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
-GetInputsOutputsOrtFormat(flatbuffers::FlatBufferBuilder& builder, const std::vector<const NodeArg*>& src) {
+SaveInputsOutputsToOrtFormat(flatbuffers::FlatBufferBuilder& builder, const std::vector<const NodeArg*>& src) {
   std::vector<std::string> vec(src.size());
   std::transform(src.cbegin(), src.cend(), vec.begin(),
                  [](const NodeArg* entry) { return entry->Name(); });
@@ -2709,17 +2712,8 @@ GetInputsOutputsOrtFormat(flatbuffers::FlatBufferBuilder& builder, const std::ve
 
 common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                       flatbuffers::Offset<fbs::Graph>& fbs_graph) const {
-  auto inputs = GetInputsOutputsOrtFormat(builder, graph_inputs_including_initializers_);
-  auto outputs = GetInputsOutputsOrtFormat(builder, graph_outputs_);
-
-  // outer_scope_node_args are required to determine outer scope values to make available when executing a subgraph.
-  // For an ORT_MINIMAL_BUILD there is no Graph::Resolve() to calculate the outer_scope_node_args
-  // so we serialize that information into the ORT format file.
-  std::vector<std::string> outer_scope_node_args_vec(resolve_context_.outer_scope_node_args.size());
-  std::copy(resolve_context_.outer_scope_node_args.cbegin(),
-            resolve_context_.outer_scope_node_args.cend(),
-            outer_scope_node_args_vec.begin());
-  auto outer_scope_node_args = builder.CreateVectorOfStrings(outer_scope_node_args_vec);
+  auto inputs = SaveInputsOutputsToOrtFormat(builder, graph_inputs_including_initializers_);
+  auto outputs = SaveInputsOutputsToOrtFormat(builder, graph_outputs_);
 
   std::vector<flatbuffers::Offset<fbs::Tensor>> initializers_data;
   initializers_data.reserve(name_to_initial_tensor_.size());
@@ -2763,7 +2757,6 @@ common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   gb.add_node_edges(node_edges);
   gb.add_inputs(inputs);
   gb.add_outputs(outputs);
-  gb.add_outer_scope_node_args(outer_scope_node_args);
   fbs_graph = gb.Finish();
   return Status::OK();
 }
@@ -3472,7 +3465,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Gr
       NodeArgInfo node_arg_info;
       ORT_RETURN_IF_ERROR(experimental::utils::LoadValueInfoOrtFormat(*fbs_value_info, node_arg_info));
       // NodeArg ctor is private, cannot use make_unique
-      node_args_[node_arg_info.name()] = std::unique_ptr<NodeArg>(new NodeArg(std::move(node_arg_info)));
+      node_args_[fbs_value_info->name()->str()] = std::unique_ptr<NodeArg>(new NodeArg(std::move(node_arg_info)));
     }
   }
 
@@ -3483,7 +3476,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Gr
   nodes_.resize(fbs_graph.max_node_index());
   auto* fbs_nodes = fbs_graph.nodes();
 
-  // It is possible to have no nodes in the model. Most likely scenario is the subgraph of an If Node 
+  // It is possible to have no nodes in the model. Most likely scenario is the subgraph of an If Node
   // where the subgraph returns a Constant node. The Constant node will be lifted to an initializer by ORT
   // (prior to serializing to ORT format), leaving a valid Graph that contains no nodes.
   if (fbs_nodes != nullptr) {
@@ -3529,15 +3522,6 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Gr
   ComputeOverridableInitializers();
 
   ORT_RETURN_IF_ERROR(add_node_args(fbs_graph.outputs(), graph_outputs_));
-
-  auto fbs_outer_scope_node_args = fbs_graph.outer_scope_node_args();
-  if (fbs_outer_scope_node_args != nullptr) {
-    resolve_context_.outer_scope_node_args.reserve(fbs_outer_scope_node_args->size());
-    for (const auto node_arg_name : *fbs_outer_scope_node_args) {
-      ORT_RETURN_IF(nullptr == node_arg_name, "node_arg_name is null. Invalid ORT format model.");
-      resolve_context_.outer_scope_node_args.insert(node_arg_name->str());
-    }
-  }
 
   return Status::OK();
 }

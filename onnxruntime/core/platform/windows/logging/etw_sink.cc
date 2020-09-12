@@ -142,7 +142,7 @@ void EtwSink::SendImpl(const Timestamp& timestamp, const std::string& logger_id,
         TRACE_LOG_WRITE(TRACE_LEVEL_CRITICAL);
         break;
       default:
-        ORT_LOGIC_ERROR("Unexpected Severity of " + static_cast<int>(severity));
+        ORT_THROW("Unexpected Severity of " + std::to_string(static_cast<int>(severity)));
     }
   }
 
