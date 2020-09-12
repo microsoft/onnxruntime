@@ -788,15 +788,6 @@ ORT_API_STATUS_IMPL(OrtApis::FillStringTensorElement, _Inout_ OrtValue* value, _
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SessionGetProfilingStartTimeNs, _In_ OrtSession* sess, _Outptr_ uint64_t* out) {
-  API_IMPL_BEGIN
-  auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
-  auto profiling_start_time = session->GetProfiling().GetStartTime();
-  *out = static_cast<uint64_t>(profiling_start_time);
-  return nullptr;
-  API_IMPL_END
-}
-
 ORT_API_STATUS_IMPL(OrtApis::GetStringTensorDataLength, _In_ const OrtValue* value, _Out_ size_t* out) {
   TENSOR_READ_API_BEGIN
   const auto* src = tensor.Data<std::string>();
@@ -1771,6 +1762,15 @@ ORT_API_STATUS_IMPL(OrtApis::SetLanguageProjection, _In_ const OrtEnv* ort_env, 
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::SessionGetProfilingStartTimeNs, _In_ OrtSession* sess, _Outptr_ uint64_t* out) {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
+  auto profiling_start_time = session->GetProfiling().GetStartTime();
+  *out = static_cast<uint64_t>(profiling_start_time);
+  return nullptr;
+  API_IMPL_END
+}
+
 // End support for non-tensor types
 
 static constexpr OrtApiBase ort_api_base = {
@@ -1974,7 +1974,6 @@ static constexpr OrtApi ort_api_1_to_5 = {
     &OrtApis::GetStringTensorElement,
     &OrtApis::FillStringTensorElement,
     &OrtApis::AddSessionConfigEntry,
-    &OrtApis::SessionGetProfilingStartTimeNs,
 
     // IoBinding and above are propagated in the same order to C# API
     // Do not move
@@ -1993,6 +1992,7 @@ static constexpr OrtApi ort_api_1_to_5 = {
     &OrtApis::TensorAt,
     &OrtApis::CreateAndRegisterAllocator,
     &OrtApis::SetLanguageProjection,
+    &OrtApis::SessionGetProfilingStartTimeNs,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

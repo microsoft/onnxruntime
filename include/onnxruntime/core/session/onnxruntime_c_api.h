@@ -902,11 +902,6 @@ struct OrtApi {
                   _In_z_ const char* config_key, _In_z_ const char* config_value);
 
   /**
-   * \param out is set to the nanoseconds of profiling's start time
-   */
-  ORT_API2_STATUS(SessionGetProfilingStartTimeNs, _In_ OrtSession* sess, _Outptr_ uint64_t* out);
-
-  /**
    * \param sess valid OrtSession instance
    * \param mem_info - valid OrtMemoryInfo instance
    * \param - out a ptr to a new instance of OrtAllocator according to the spec within mem_info
@@ -1033,6 +1028,11 @@ struct OrtApi {
    * \param projection the source projected language.
   */
   ORT_API2_STATUS(SetLanguageProjection, _In_ const OrtEnv* ort_env, _In_ OrtLanguageProjection projection);
+
+  /**
+   * \param out is set to the nanoseconds of profiling's start time
+   */
+  ORT_API2_STATUS(SessionGetProfilingStartTimeNs, _In_ OrtSession* sess, _Outptr_ uint64_t* out);
 
 };
 
