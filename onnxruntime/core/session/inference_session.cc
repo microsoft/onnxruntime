@@ -99,15 +99,22 @@ std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 // The current model versions for saving the ort format models
 // This version is NOT onnxruntime version
 // Only update this version when there is a file format change which will break the compatibilites
-// Once this model version is updated, the s_supported_ort_model_versions also need to be updated
-static constexpr const char* s_ort_model_version = "1.4.0";
+// Once this model version is updated, the s_supported_ort_model_versions in IsOrtModelVersionSupported
+// below will also need to be updated.
+static constexpr const char* s_ort_model_version = "1";
 
-// The ort model versions we will support in this version of onnxruntime
-// This may contain more versions than the s_ort_model_version, based on the compatibilities
+// Check if the givne ort model version is supported in the version of onnxruntime
 // TODO, only include this in ENABLE_ORT_FORMAT_LOAD
-static const std::unordered_set<std::string> s_supported_ort_model_versions{
-    std::string(s_ort_model_version),
-};
+bool IsOrtModelVersionSupported(const std::string& ort_model_version) {
+  // The ort model versions we will support in this version of onnxruntime
+  // This may contain more versions than the s_ort_model_version, based on the compatibilities
+  static const std::unordered_set<std::string> s_supported_ort_model_versions{
+      std::string("1.4.0"),  // This is a special model version for existing converted model
+      std::string(s_ort_model_version),
+  };
+
+  return s_supported_ort_model_versions.find(ort_model_version) != s_supported_ort_model_versions.cend();
+}
 
 static Status FinalizeSessionOptions(const SessionOptions& user_provided_session_options,
                                      const ONNX_NAMESPACE::ModelProto& model_proto,
@@ -869,10 +876,6 @@ static Status LoadOrtModelBytes(const std::basic_string<T>& model_uri,
   return Status::OK();
 }
 
-bool InferenceSession::IsOrtModelVersionSupported(const std::string& ort_model_version) {
-  return s_supported_ort_model_versions.find(ort_model_version) != s_supported_ort_model_versions.cend();
-}
-
 Status InferenceSession::LoadOrtModel(const std::string& model_uri) {
   return LoadOrtModel(
       [&]() {
@@ -929,7 +932,8 @@ Status InferenceSession::LoadOrtModel(std::function<Status()> load_ort_format_mo
   const auto* fbs_ort_version = fbs_session->ort_version();
   ORT_RETURN_IF(fbs_ort_version == nullptr, "Serialized version info is null. Invalid ORT format model.");
   ORT_RETURN_IF_NOT(IsOrtModelVersionSupported(fbs_ort_version->str()),
-                    "The ort model version [", fbs_ort_version->str(), "] is not supported in current onnxruntime");
+                    "The ort model version [", fbs_ort_version->str(),
+                    "] is not supported in current onnxruntime version ", ORT_VERSION);
 
   const auto* fbs_model = fbs_session->model();
   ORT_RETURN_IF(nullptr == fbs_model, "Missing Model. Invalid ORT format model.");
