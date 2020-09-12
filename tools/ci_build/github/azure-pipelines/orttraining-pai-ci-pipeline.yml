@@ -18,6 +18,6 @@ steps:
       --user-env PAI_USER --token-env PAI_TOKEN --yaml-sub-env docker_password DOCKER_PASSWORD
   displayName: 'Run PAI job'
   env:
-    - PAI_USER: $(pai-user)
-    - PAI_TOKEN: $(pai-token)
-    - DOCKER_PASSWORD: $(docker-password)
+    PAI_USER: $(pai-user)
+    PAI_TOKEN: $(pai-token)
+    DOCKER_PASSWORD: $(docker-password)
