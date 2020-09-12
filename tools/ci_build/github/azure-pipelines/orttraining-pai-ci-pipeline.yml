@@ -1,6 +1,6 @@
 trigger: none
 
-name: 'orttraining_ci_$(Date:yyyyMMdd)$(Rev:.r)'
+name: 'orttraining_ci_$(Date:yyyyMMdd)_$(Rev:r)'
 
 pool: 'Linux-CPU-CorpNet'
 
