@@ -23,12 +23,6 @@ class CalibrationDataReader(metaclass=abc.ABCMeta):
     def get_next(self) -> dict:
         """generate the input data dict for ONNXinferenceSession run"""
         raise NotImplementedError
-    
-    @property
-    @abc.abstractmethod
-    def datasize(self) -> int:
-        """number of images if calibration dataset"""
-        raise NotImplementedError
 
 
 class ONNXCalibrater:
@@ -131,7 +125,7 @@ class ONNXCalibrater:
             intermediate_outputs.append(session.run(None, inputs))
         node_output_names = [session.get_outputs()[i].name for i in range(len(intermediate_outputs[0]))]
         output_dicts_list = [
-            dict(zip(node_output_names, intermediate_outputs[i])) for i in range(self.data_reader.datasize)
+            dict(zip(node_output_names, intermediate_output)) for intermediate_output in intermediate_outputs
         ]
 
         #number of outputs in original model
