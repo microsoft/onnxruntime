@@ -120,10 +120,16 @@ class ONNXQuantizer:
             raise ValueError('Failed to find proper ai.onnx domain')
         opset_version = ai_onnx_domain[0].version
 
-        if opset_version <= 10:
-            print("Warning: The original model opset version is {}, which does not support node fusions.\n\
-                Forcing fusions can break other nodes in the model.".format(opset_version))
+        if opset_version == 10:
+            print(
+                "Warning: The original model opset version is {}, which does not support node fusions. Please update the model to opset >= 11 for better performance."
+                .format(opset_version))
+            return
 
+        if opset_version < 10:
+            print(
+                "Warning: The original model opset version is {}, which does not support quantization. Please update the model to opset >= 11. Updating the model automatically to opset 11. Please verify the quantized model."
+                .format(opset_version))
             self.model.model.opset_import.remove(ai_onnx_domain[0])
             self.model.model.opset_import.extend([onnx.helper.make_opsetid("", 11)])
 
