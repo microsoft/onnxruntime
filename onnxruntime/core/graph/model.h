@@ -217,9 +217,11 @@ class Model {
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
+#if defined(ENABLE_ORT_FORMAT_LOAD)
   static common::Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::Model& fbs_model,
                                           const logging::Logger& logger,
                                           std::unique_ptr<Model>& model);
+#endif
 
  private:
   Model();

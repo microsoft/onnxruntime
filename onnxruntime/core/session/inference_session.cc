@@ -556,7 +556,11 @@ common::Status InferenceSession::Load(const std::string& model_uri) {
 
   if ((has_explicit_type && model_type == "ORT") ||
       (!has_explicit_type && inference_session_utils::IsOrtFormatModel(model_uri))) {
+#if defined(ENABLE_ORT_FORMAT_LOAD)
     return LoadOrtModel(model_uri);
+#else
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ORT format model is not supported in this build.");
+#endif
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -579,7 +583,11 @@ common::Status InferenceSession::Load(const std::wstring& model_uri) {
 
   if ((has_explicit_type && model_type == "ORT") ||
       (!has_explicit_type && inference_session_utils::IsOrtFormatModel(model_uri))) {
+#if defined(ENABLE_ORT_FORMAT_LOAD)
     return LoadOrtModel(model_uri);
+#else
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ORT format model is not supported in this build.");
+#endif
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -603,7 +611,11 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
   if ((has_explicit_type && model_type == "ORT") ||
       (!has_explicit_type &&
        inference_session_utils::IsOrtFormatModelBytes(model_data, model_data_len))) {
+#if defined(ENABLE_ORT_FORMAT_LOAD)
     return LoadOrtModel(model_data, model_data_len);
+#else
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ORT format model is not supported in this build.");
+#endif
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -834,6 +846,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
+#if defined(ENABLE_ORT_FORMAT_LOAD)
 template <typename T>
 static Status LoadOrtModelBytes(const std::basic_string<T>& model_uri,
                                 std::basic_string<ORTCHAR_T>& model_location,
@@ -932,6 +945,7 @@ Status InferenceSession::LoadOrtModel(std::function<Status()> load_ort_format_mo
 
   return Status::OK();
 }
+#endif  // defined(ENABLE_ORT_FORMAT_LOAD)
 
 bool InferenceSession::IsInitialized() const {
   std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
