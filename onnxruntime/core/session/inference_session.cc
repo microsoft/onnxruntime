@@ -103,8 +103,8 @@ std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 // below will also need to be updated.
 static constexpr const char* kOrtModelVersion = "1";
 
+#if defined(ENABLE_ORT_FORMAT_LOAD)
 // Check if the givne ort model version is supported in this build
-// TODO, only include this in ENABLE_ORT_FORMAT_LOAD
 static bool IsOrtModelVersionSupported(const std::string& ort_model_version) {
   // The ort model versions we will support in this build
   // This may contain more versions than the kOrtModelVersion, based on the compatibilities
@@ -115,6 +115,7 @@ static bool IsOrtModelVersionSupported(const std::string& ort_model_version) {
 
   return kSupportedOrtModelVersions.find(ort_model_version) != kSupportedOrtModelVersions.cend();
 }
+#endif  // defined(ENABLE_ORT_FORMAT_LOAD)
 
 static Status FinalizeSessionOptions(const SessionOptions& user_provided_session_options,
                                      const ONNX_NAMESPACE::ModelProto& model_proto,
