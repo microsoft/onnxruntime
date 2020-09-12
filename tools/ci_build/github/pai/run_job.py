@@ -4,6 +4,7 @@
 # Licensed under the MIT License.
 
 import argparse
+import json
 import os
 import re
 import time
@@ -68,7 +69,7 @@ def wait_for_job(job_name, user, token):
         elif job_status == "SUCCEEDED":
             break
         else:
-            raise RuntimeError("Job failed. Status query response:\n{}".format(response_json))
+            raise RuntimeError("Job failed. Status query response:\n{}".format(json.dumps(response_json, indent=2)))
 
 
 def main():

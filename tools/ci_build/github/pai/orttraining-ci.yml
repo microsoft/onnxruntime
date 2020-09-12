@@ -26,7 +26,7 @@ taskRoles:
       - >-
         git clone https://github.com/microsoft/onnxruntime.git &&
         cd onnxruntime &&
-        git checkout edch/amdgpu_ci &&
+        git checkout edgchen1/amdgpu_ci &&
         python tools/ci_build/build.py
         --config RelWithDebInfo
         --build_dir ./build
