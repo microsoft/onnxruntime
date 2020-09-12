@@ -364,6 +364,8 @@ def parse_arguments():
     parser.add_argument("--disable_rtti", action='store_true', help="Disable RTTI (reduces binary size)")
     parser.add_argument("--disable_exceptions", action='store_true',
                         help="Disable exceptions to reduce binary size. Requires --minimal_build.")
+    parser.add_argument("--disable_ort_format_load", action='store_true',
+                        help='Disable support for loading ORT format models in a non-minimal build.')
 
     return parser.parse_args()
 
@@ -625,6 +627,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_DISABLE_ML_OPS=" + ("ON" if args.disable_ml_ops else "OFF"),
         "-Donnxruntime_DISABLE_RTTI=" + ("ON" if args.disable_rtti else "OFF"),
         "-Donnxruntime_DISABLE_EXCEPTIONS=" + ("ON" if args.disable_exceptions else "OFF"),
+        "-Donnxruntime_DISABLE_ORT_FORMAT_LOAD=" + ("ON" if args.disable_ort_format_load else "OFF"),
         "-Donnxruntime_MINIMAL_BUILD=" + ("ON" if args.minimal_build else "OFF"),
         "-Donnxruntime_REDUCED_OPS_BUILD=" + (
             "ON" if args.include_ops_by_config or args.include_ops_by_model else "OFF"),
@@ -1655,6 +1658,9 @@ def main():
 
     if args.enable_pybind and args.disable_exceptions:
         raise BuildError('Python bindings require exceptions to be enabled.')
+
+    if args.minimal_build and args.disable_ort_format_load:
+        raise BuildError('Minimal build requires loading ORT format models.')
 
     # Disabling unit tests for VAD-F as FPGA only supports
     # models with NCHW layout
