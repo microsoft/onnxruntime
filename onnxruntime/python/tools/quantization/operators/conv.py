@@ -74,8 +74,16 @@ class QLinearCov(QuantOperatorBase):
         node = self.node
         assert (node.op_type == "Conv")
 
-        (quantized_input_names, zero_point_names, scale_names, nodes) = \
-            self.quantizer.quantize_inputs(node, [0, 1])
+        if self.quantizer.is_input_a_weight(node.input[1]):
+            (quantized_input_names, zero_point_names, scale_names, nodes) = \
+                self.quantizer.quantize_inputs(node, [0])
+            quant_weight_tuple = self.quantizer.quantize_weight_per_channel(node.input[1], 0)
+            quantized_input_names.append(quant_weight_tuple[0])
+            zero_point_names.append(quant_weight_tuple[1])
+            scale_names.append(quant_weight_tuple[2])
+        else:
+            (quantized_input_names, zero_point_names, scale_names, nodes) = \
+                self.quantizer.quantize_inputs(node, [0, 1])
 
         quantized_bias_name = ""
         bias_present = False

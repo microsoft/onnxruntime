@@ -56,7 +56,7 @@ class ONNXCalibrater:
         model = onnx.load(self.model_path)
         model = onnx.shape_inference.infer_shapes(model)
         value_infos = {vi.name: vi for vi in model.graph.value_info}
-        value_infos.update({ ot.name: ot for ot in model.graph.output })
+        value_infos.update({ot.name: ot for ot in model.graph.output})
 
         added_nodes = []
         added_outputs = []
@@ -233,7 +233,7 @@ class ONNXCalibrater:
             child = None
             if tensor_name in self.input_name_to_nodes:
                 children = self.input_name_to_nodes[tensor_name]
-                if(len(children) == 1):
+                if (len(children) == 1):
                     child = children[0]
             node_thresholds = quantization_thresholds[tensor_name]
             node_params = self.calculate_scale_zeropoint(child, node_thresholds[0], node_thresholds[1])

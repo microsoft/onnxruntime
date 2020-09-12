@@ -126,6 +126,7 @@ def quantize_static(model_input,
                     calibration_data_reader: CalibrationDataReader,
                     op_types_to_quantize=[],
                     per_channel=False,
+                    reduce_range=False,
                     activation_type=QuantType.QUInt8,
                     weight_type=QuantType.QUInt8,
                     nodes_to_quantize=[],
@@ -138,6 +139,7 @@ def quantize_static(model_input,
     :param op_types_to_quantize: specify the types of operators to quantize, like ['Conv'] to quantize Conv only. It quantizes all supported operators by default.
     :param op_types: operators to quantize
     :param per_channel: quantize weights per channel
+    :param reduce_range: quantize weights with 7-bits. It may improve the accuracy for some models running on non-VNNI machine, especially for per-channel mode
     :param activation_type: quantization data type of activation
     :param weight_type: quantization data type of weight
     :param nodes_to_quantize:
@@ -169,6 +171,7 @@ def quantize_static(model_input,
     quantizer = ONNXQuantizer(
         onnx.load(model_input),
         per_channel,
+        reduce_range,
         mode,
         True,  # static
         weight_qType,
@@ -186,6 +189,7 @@ def quantize_dynamic(model_input: Path,
                      model_output: Path,
                      op_types_to_quantize=[],
                      per_channel=False,
+                     reduce_range=False,
                      activation_type=QuantType.QUInt8,
                      weight_type=QuantType.QUInt8,
                      nodes_to_quantize=[],
@@ -194,8 +198,9 @@ def quantize_dynamic(model_input: Path,
         Given an onnx model, create a quantized onnx model and save it into a file
     :param model_input: file path of model to quantize
     :param model_output: file path of quantized model
-    :param op_types_to_quantize: specify the types of operators to quantize, like ['Conv'] to quantize Conv only. It quantizes all supported operators by default.
+    :param op_types_to_quantize: specify the types of operators to quantize, like ['Conv'] to quantize Conv only. It quantizes all supported operators by default
     :param per_channel: quantize weights per channel
+    :param reduce_range: quantize weights with 7-bits. It may improve the accuracy for some models running on non-VNNI machine, especially for per-channel mode
     :param nbits: number of bits to represent quantized data. Currently only supporting 8-bit types
     :param activation_type: quantization data type of activation
     :param weight_type: quantization data type of weight
@@ -225,6 +230,7 @@ def quantize_dynamic(model_input: Path,
     quantizer = ONNXQuantizer(
         optimized_model,
         per_channel,
+        reduce_range,
         mode,
         False,  #static
         weight_qType,
@@ -242,6 +248,7 @@ def quantize_qat(model_input: Path,
                  model_output: Path,
                  op_types_to_quantize=[],
                  per_channel=False,
+                 reduce_range=False,
                  activation_type=QuantType.QUInt8,
                  weight_type=QuantType.QUInt8,
                  nodes_to_quantize=[],
@@ -250,8 +257,9 @@ def quantize_qat(model_input: Path,
         Given a quantize-aware traning onnx model, create a quantized onnx model and save it into a file
     :param model_input: file path of model to quantize
     :param model_output: file path of quantized model
-    :param op_types_to_quantize: specify the types of operators to quantize, like ['Conv'] to quantize Conv only. It quantizes all supported operators by default.
+    :param op_types_to_quantize: specify the types of operators to quantize, like ['Conv'] to quantize Conv only. It quantizes all supported operators by default
     :param per_channel: quantize weights per channel
+    :param reduce_range: quantize weights with 7-bits. It may improve the accuracy for some models running on non-VNNI machine, especially for per-channel mode
     :param activation_type: quantization data type of activation
     :param nodes_to_quantize:
         List of nodes names to quantize. When this list is not None only the nodes in this list
@@ -279,6 +287,7 @@ def quantize_qat(model_input: Path,
     quantizer = ONNXQuantizer(
         optimized_model,
         per_channel,
+        reduce_range,
         mode,
         False,  #static
         weight_qType,
