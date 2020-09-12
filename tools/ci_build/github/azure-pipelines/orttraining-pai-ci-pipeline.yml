@@ -1,0 +1,23 @@
+trigger: none
+
+name: 'orttraining_ci_$(Date:yyyyMMdd)$(Rev:.r)'
+
+pool: 'Linux-CPU-CorpNet'
+
+variables:
+- group: pai-variables
+
+steps:
+- script: |-
+    python3 -m pip install -r tools/ci_build/github/pai/requirements.txt
+  displayName: 'Install requirements'
+
+- script: |-
+    python3 tools/ci_build/github/pai/run_job.py \
+      tools/ci_build/github/pai/orttraining-ci.yml $(Build.BuildNumber) \
+      --user-env PAI_USER --token-env PAI_TOKEN --yaml-sub-env docker_password DOCKER_PASSWORD
+  displayName: 'Run PAI job'
+  env:
+    - PAI_USER: $(pai-user)
+    - PAI_TOKEN: $(pai-token)
+    - DOCKER_PASSWORD: $(docker-password)
