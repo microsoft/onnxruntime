@@ -65,9 +65,6 @@ class MemPatternPlanner {
     buffer_size_ = std::max(buffer_size_, SafeInt<size_t>(best_offset) + size);
     allocs_.emplace_back(ml_value_idx, MemoryBlock(best_offset, size));
     blocks_.insert(best_fit_it, (static_cast<int>(allocs_.size()) - 1));
-    size_t buffer_size_tmp = buffer_size_;
-    LOGS_DEFAULT(INFO) << "allocate ml_value " << ml_value_idx << ", a size of "
-                       << size << " memory from " << best_offset << " to " << best_offset + size << ", the buffer_size_ is " << buffer_size_tmp;
   }
 
   void TraceFree(int ml_value_index) {
@@ -75,9 +72,6 @@ class MemPatternPlanner {
 
     for (auto it = blocks_.begin(); it != blocks_.end(); it++) {
       if (allocs_[*it].index_ == ml_value_index) {
-        auto size_tmp = allocs_[*it].block_.size_;
-        auto offset_tmp = allocs_[*it].block_.offset_;
-        LOGS_DEFAULT(INFO) << "free ml_value " << ml_value_index << ", a size of " << size_tmp << " memory from " << offset_tmp << " to " << offset_tmp + size_tmp;
         blocks_.erase(it);
         break;
       }

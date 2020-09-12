@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <queue>
-
 #include "core/framework/allocation_planner.h"
 #include <list>
 #include <unordered_map>
