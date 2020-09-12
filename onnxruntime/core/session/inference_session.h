@@ -206,12 +206,12 @@ class InferenceSession {
   /**
     * Load an ONNX or ORT format model.
     *
-    * Set SessionOptions session config value ORT_SESSION_OPTIONS_CONFIG_LOAD_MODEL_FORMAT to 'ORT' or 'ONNX' to 
+    * Set SessionOptions session config value ORT_SESSION_OPTIONS_CONFIG_LOAD_MODEL_FORMAT to 'ORT' or 'ONNX' to
     * explicitly choose model format.
     *
     * If format is not explicitly specified and filename ends in '.ort' it will be inferred to be an ORT format model.
 	* All other files are assumed to be in ONNX format.
-    * 
+    *
     * @param model_uri absolute path of the model file.
     * @return OK if success.
     */
@@ -222,11 +222,11 @@ class InferenceSession {
   /**
     * Load an ONNX or ORT format model.
     *
-    * Set SessionOptions session config value ORT_SESSION_OPTIONS_CONFIG_LOAD_MODEL_FORMAT to 'ORT' or 'ONNX' to 
+    * Set SessionOptions session config value ORT_SESSION_OPTIONS_CONFIG_LOAD_MODEL_FORMAT to 'ORT' or 'ONNX' to
     * explicitly choose model format.
     *
     * If format is not explicitly specified the model format will be inferred from the bytes, defaulting to ONNX.
-    * 
+    *
     * @param model_data Model data buffer
     * @param model_data_len Model data buffer size
     * @return OK if success.
@@ -465,6 +465,9 @@ class InferenceSession {
   common::Status SaveToOrtFormat(const std::basic_string<ORTCHAR_T>& filepath) const;
 #endif
 
+  // Check if the givne ort model version is supported in the version of onnxruntime
+  static bool IsOrtModelVersionSupported(const std::string& ort_model_version);
+
   /**
     * Load an ORT format model.
     * @param model_uri absolute path of the model file.
@@ -615,7 +618,7 @@ class InferenceSession {
 
     TimePoint time_sent_last_;  // the TimePoint of the last report
     // Event Rate per provider < 20 peak events per second
-    constexpr static long long kDurationBetweenSending = 1000 * 1000 * 60 * 10;     // duration in (us).  send a report every 10 mins
+    constexpr static long long kDurationBetweenSending = 1000 * 1000 * 60 * 10;  // duration in (us).  send a report every 10 mins
   } telemetry_;
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
