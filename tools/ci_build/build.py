@@ -216,7 +216,7 @@ def parse_arguments():
         "--use_xcode", action='store_true',
         help="Use Xcode as cmake generator, this is only supported on MacOS.")
     parser.add_argument(
-        "--xcode_attribute_development_team", default="",
+        "--xcode_code_signing_team_id", default="",
         help="The development team ID used for code signing in Xcode")
     parser.add_argument(
         "--osx_arch", type=str,
@@ -769,8 +769,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                     args.ios_toolchain_file if args.ios_toolchain_file
                     else "../cmake/onnxruntime_ios.toolchain.cmake")
             ]
-            if args.xcode_attribute_development_team:
-                cmake_args += ["-DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=" + args.xcode_attribute_development_team]
+            if args.xcode_code_signing_team_id:
+                cmake_args += ["-DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=" + args.xcode_code_signing_team_id]
         else:
             # We are cross comppiling on linux
             needed_args = [

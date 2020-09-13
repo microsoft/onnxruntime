@@ -1056,11 +1056,11 @@ Android NNAPI Execution Provider can be built using building commands in [Androi
 * apple_deploy_target
 
    Specify the minimum version of the target platform (iOS) on which the target binaries are to be deployed.
-* xcode_attribute_development_team
+* xcode_code_signing_team_id (optional)
 
    The development team ID used for code signing if it is required or desired, for more information, see [Code Signing](https://developer.apple.com/support/code-signing/).
 
-   The code signing is usually required to run you app on an iOS device.
+   The code signing is usually required to build a shared onnxruntime library for iOS devices.
 
 #### Build Instructions
 Run one of the following build scripts from the ONNX Runtime repository root,
@@ -1069,11 +1069,16 @@ Run one of the following build scripts from the ONNX Runtime repository root,
 /build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
            --ios --ios_sysroot iphoneos --osx_arch arm64 --apple_deploy_target 12
 ```
+##### Cross build a shared library for iOS device
+```
+/build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
+           --ios --ios_sysroot iphoneos --osx_arch arm64 --apple_deploy_target 12
+           --build_shared_lib --xcode_code_signing_team_id <your team id>
+```
 ##### Cross build for iOS simulator
 ```
 /build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
            --ios --ios_sysroot iphonesimulator --osx_arch x86_64 --apple_deploy_target 12
-           --xcode_attribute_development_team <your team id>
 ```
 ---
 
