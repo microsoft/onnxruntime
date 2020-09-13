@@ -143,7 +143,7 @@ Currently only supported on Windows and Linux.
 * dotnet is required for building csharp bindings and creating managed nuget package. Follow the instructions [here](https://dotnet.microsoft.com/download) to download dotnet. Tested with versions 2.1 and 3.1.
 * nuget.exe. Follow the instructions [here](https://docs.microsoft.com/en-us/nuget/install-nuget-client-tools#nugetexe-cli) to download nuget
   * On Windows, downloading nuget is straightforward and simply following the instructions above should work.
-  * On Linux, nuget relies on Mono runtime and therefore this needs to be setup too. Above link has all the information to setup Mono and nuget. The instructions can directly be found [here](https://www.mono-project.com/docs/getting-started/install/). In some cases it is required to run `sudo apt-get install mono-complete` after installing mono. 
+  * On Linux, nuget relies on Mono runtime and therefore this needs to be setup too. Above link has all the information to setup Mono and nuget. The instructions can directly be found [here](https://www.mono-project.com/docs/getting-started/install/). In some cases it is required to run `sudo apt-get install mono-complete` after installing mono.
 
 ### Build Instructions
 #### Windows
@@ -1056,6 +1056,11 @@ Android NNAPI Execution Provider can be built using building commands in [Androi
 * apple_deploy_target
 
    Specify the minimum version of the target platform (iOS) on which the target binaries are to be deployed.
+* xcode_attribute_development_team
+
+   The development team ID used for code signing if it is required or desired, for more information, see [Code Signing](https://developer.apple.com/support/code-signing/).
+
+   The code signing is usually required to run you app on an iOS device.
 
 #### Build Instructions
 Run one of the following build scripts from the ONNX Runtime repository root,
@@ -1068,6 +1073,7 @@ Run one of the following build scripts from the ONNX Runtime repository root,
 ```
 /build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
            --ios --ios_sysroot iphonesimulator --osx_arch x86_64 --apple_deploy_target 12
+           --xcode_attribute_development_team <your team id>
 ```
 ---
 
