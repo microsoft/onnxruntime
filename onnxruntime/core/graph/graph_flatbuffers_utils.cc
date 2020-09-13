@@ -124,7 +124,7 @@ static Status SaveTypeInfoOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 Status SaveValueInfoOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                               const ValueInfoProto& value_info_proto,
                               flatbuffers::Offset<fbs::ValueInfo>& fbs_value_info) {
-  auto name = builder.CreateString(value_info_proto.name());
+  auto name = builder.CreateSharedString(value_info_proto.name());
   auto doc_string = builder.CreateString(value_info_proto.doc_string());
   flatbuffers::Offset<fbs::TypeInfo> type_info = 0;  // 0 indicates null
   if (value_info_proto.has_type()) {
