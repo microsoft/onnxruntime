@@ -202,6 +202,8 @@ endif()
 # Will expose option in build.py when all pieces are available
 if(onnxruntime_MINIMAL_BUILD)
   add_compile_definitions(ORT_MINIMAL_BUILD)
+  add_compile_definitions(ENABLE_ORT_FORMAT_LOAD)
+
   set(onnxruntime_REDUCED_OPS_BUILD ON)
 
   if (NOT onnxruntime_ENABLE_PYTHON)
@@ -406,16 +408,6 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     #For Mac compliance
     message("Adding flags for Mac builds")
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-strong")
-endif()
-
-if (${CMAKE_SYSTEM_NAME} MATCHES "iOSCross")
-    #For ios compliance
-    message("Adding flags for ios builds")
-    if (CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
-      set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -target arm64-apple-darwin-macho")
-    elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "arm")
-      set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -target armv7a-apple-darwin-macho")
-    endif()
 endif()
 
 #Dependencies begin

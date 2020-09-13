@@ -61,7 +61,7 @@ else()
 endif()
 
 if (NOT WIN32)
-  if (APPLE OR ${CMAKE_SYSTEM_NAME} MATCHES "iOSCross")
+  if (APPLE)
     set_target_properties(onnxruntime PROPERTIES INSTALL_RPATH "@loader_path")
   else()
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-rpath='$ORIGIN'")
