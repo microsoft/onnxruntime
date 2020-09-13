@@ -22,6 +22,7 @@ import logging
 import torch
 import numpy
 import json
+from pathlib import Path
 from transformers import AutoConfig
 from gpt2_helper import Gpt2Helper, MODEL_CLASSES, DEFAULT_TOLERANCE, PRETRAINED_GPT2_MODELS
 from gpt2_tester import Gpt2Tester
@@ -216,7 +217,9 @@ def main():
                                    top_k_no_order=True,
                                    max_steps=24,
                                    max_inputs=0,
-                                   verbose=args.verbose)
+                                   verbose=args.verbose,
+                                   save_test_data=3,
+                                   save_test_data_dir=Path(output_path).parent)
 
     logger.info(f"Done. Output model: {output_path}")
 
