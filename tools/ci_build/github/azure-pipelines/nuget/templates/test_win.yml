@@ -27,9 +27,9 @@ jobs:
       architecture: x64
 
   - task: NuGetToolInstaller@0
-    displayName: Use Nuget 4.9
+    displayName: Use Nuget 5.7.0
     inputs:
-      versionSpec: 4.9.4
+      versionSpec: 5.7.0
 
   - task: BatchScript@1
     displayName: 'setup env'
