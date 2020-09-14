@@ -550,7 +550,7 @@ struct ProviderHost {
   virtual const TensorShape& Provider_Tensor__Shape(const Provider_Tensor* p) = 0;
   virtual size_t Provider_Tensor__SizeInBytes(const Provider_Tensor* p) = 0;
   virtual const OrtMemoryInfo& Provider_Tensor__Location(const Provider_Tensor* p) = 0;
-};  // namespace onnxruntime
+};
 
 extern ProviderHost* g_host;
 

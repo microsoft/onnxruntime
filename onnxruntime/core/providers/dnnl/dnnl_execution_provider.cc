@@ -30,16 +30,14 @@ DNNLExecutionProvider::DNNLExecutionProvider(const DNNLExecutionProviderInfo& in
     : Provider_IExecutionProvider{onnxruntime::kDnnlExecutionProvider} {
   Provider_AllocatorCreationInfo default_memory_info(
       {[](int) {
-        return onnxruntime::Provider_CreateCPUAllocator(
-            onnxruntime::Provider_OrtMemoryInfo::Create(DNNL, OrtAllocatorType::OrtDeviceAllocator));
+        return onnxruntime::Provider_CreateCPUAllocator(OrtMemoryInfo(DNNL, OrtAllocatorType::OrtDeviceAllocator));
       }},
       0, info.create_arena);
 
   Provider_AllocatorCreationInfo cpu_memory_info(
       {[](int) {
-        return onnxruntime::Provider_CreateCPUAllocator(
-            onnxruntime::Provider_OrtMemoryInfo::Create(DNNL_CPU, OrtAllocatorType::OrtDeviceAllocator, nullptr, 0,
-                                                        OrtMemTypeCPUOutput));
+        return onnxruntime::Provider_CreateCPUAllocator(OrtMemoryInfo(DNNL_CPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0,
+                                                                      OrtMemTypeCPUOutput));
       }},
       0, info.create_arena);
 
