@@ -203,59 +203,6 @@ static bool get_migraphx_type(ONNXTensorElementDataType type,
   return true;
 }
 
-// static void print_node_info(const Node* node)
-// {
-//   std::cout << "=========================" << std::endl;
-//   std::cout << "node_name = " << node->Name() << std::endl;
-//   std::cout << "node_optype = " << node->OpType() << std::endl;
-
-//   // input arguments info
-//   auto inputs = node->InputDefs();
-//   std::cout << "intput_arg_info:" << std::endl;
-//   std::cout << "\tinpput_arg_count = " << inputs.size() << std::endl;
-//   for (std::size_t i = 0; i < inputs.size(); ++i)
-//   {
-//     const auto& arg = inputs[i];
-//     if (arg)
-//     {
-//       std::cout << "\targ_name = " << arg->Name() << std::endl;
-//     }
-//     else
-//     {
-//       std::cout << "\tnullptr" << std::endl;
-//     }
-//   }
-
-//   std::cout << "output_arg_info = " << std::endl;
-//   auto outputs = node->OutputDefs();
-//   std::cout << "\toutput_arg_count = " << outputs.size() << std::endl;
-//   for (std::size_t i = 0; i < outputs.size(); ++i)
-//   {
-//     const auto& arg = outputs[i];
-//     if (arg)
-//     {
-//       std::cout << "\targ_name = " << arg->Name() << std::endl;
-//     }
-//     else
-//     {
-//       std::cout << "\tnullptr" << std::endl;
-//     }
-//   }
-
-//   // Input node info
-//   std::cout << "Input node info:" << std::endl;
-//   auto edges_begin = node->InputEdgesBegin();
-//   auto edges_end = node->InputEdgesEnd();
-//   std::cout << "Input_node_num = " << std::distance(edges_begin, edges_end) << std::endl;
-//   for (auto eit = edges_begin; eit != edges_end; ++eit)
-//   {
-//     std::cout << "\tnode_name = " << eit->GetNode().Name() << ", op_type = " << eit->GetNode().OpType();
-//     std::cout << ", index = " << eit->GetNode().Index() << std::endl;
-//   }
-//   std::cout << "*****************************" << std::endl << std::endl;
-// }
-
-
 static bool can_eval_shape_general(const Graph& graph, const Node* node, const logging::Logger& logger)
 {
   if (node == nullptr)
