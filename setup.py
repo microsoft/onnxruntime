@@ -236,6 +236,7 @@ packages = [
     'onnxruntime.tools',
     'onnxruntime.quantization',
     'onnxruntime.quantization.operators',
+    'onnxruntime.transformers',
 ]
 
 if '--enable_training' in sys.argv:

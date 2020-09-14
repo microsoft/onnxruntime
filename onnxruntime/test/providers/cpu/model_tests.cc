@@ -17,6 +17,8 @@
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
+using namespace onnxruntime::common;
+
 namespace onnxruntime {
 namespace test {
 // parameter is provider_name + "_" + model_path

@@ -18,7 +18,7 @@ inline common::Status GetFloatParam(const std::string& name, const onnxruntime::
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "No attribute with name:'", name, "'is defined.");
   }
   if (attr->second.type() != ONNX_NAMESPACE::AttributeProto::AttributeType::AttributeProto_AttributeType_FLOAT) {
-    return Status(ONNXRUNTIME, FAIL, "Attibute name and type don't match");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Attribute name and type don't match for '", name, "'");
   }
   out = attr->second.f();
   return common::Status::OK();
