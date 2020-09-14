@@ -55,11 +55,6 @@ Provider_AllocatorPtr CreateAllocator(const Provider_AllocatorCreationInfo& info
   return g_host->CreateAllocator(info);
 }
 
-std::unique_ptr<Provider_OrtMemoryInfo> Provider_OrtMemoryInfo::Create(
-    const char* name_, OrtAllocatorType type_, Provider_OrtDevice* device_, int id_, OrtMemType mem_type_) {
-  return g_host->OrtMemoryInfo_Create(name_, type_, device_, id_, mem_type_);
-}
-
 template <>
 MLDataType DataTypeImpl::GetType<float>() {
   return g_host->DataTypeImpl_GetType_float();

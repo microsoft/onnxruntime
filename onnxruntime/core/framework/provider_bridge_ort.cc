@@ -69,8 +69,6 @@ struct Provider_IAllocator_Impl : Provider_IAllocator {
   void* Alloc(size_t size) override { return p_->Alloc(size); }
   void Free(void* p) override { return p_->Free(p); }
 
-  FencePtr CreateFence(const Provider_SessionState* session_state) override { return p_->CreateFence(reinterpret_cast<const SessionState*>(session_state)); }
-
   bool IsProviderInterface() const override { return false; }
 
   std::unique_ptr<IAllocator> p_;
@@ -83,20 +81,7 @@ struct ProviderAllocator : IAllocator {
   void* Alloc(size_t size) override { return p_->Alloc(size); }
   void Free(void* p) override { return p_->Free(p); }
 
-  FencePtr CreateFence(const SessionState* session_state) override { return p_->CreateFence(reinterpret_cast<const Provider_SessionState*>(session_state)); }
-
   std::shared_ptr<Provider_IAllocator> p_;
-};
-
-struct IDataTransfer_Wrapper : IDataTransfer {
-  IDataTransfer_Wrapper(std::unique_ptr<Provider_IDataTransfer> p) : p_{std::move(p)} {}
-
-  bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override { return p_->CanCopy(src_device, dst_device); }
-  common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override { return p_->CopyTensor(*reinterpret_cast<const Provider_Tensor*>(&src), *reinterpret_cast<Provider_Tensor*>(&dst), exec_queue_id); }
-
-  bool IsProviderInterface() const override { return true; }
-
-  std::unique_ptr<Provider_IDataTransfer> p_;
 };
 
 struct Provider_TensorShapeProto_Dimension_Iterator_Impl : Provider_TensorShapeProto_Dimension_Iterator {
@@ -242,8 +227,8 @@ struct ProviderHostImpl : ProviderHost {
     AllocatorCreationInfo info_real{
         [&info](int value) -> std::unique_ptr<IAllocator> {
           auto allocator = info.factory(value);
-          // If the allocator is a provider interface, we need to wrap it with ProviderAllocator to turn it into an IDeviceAllocator
-          // Otherwise it's really a Provider_IDeviceAllocator_Impl, so we can just unwrap it to get back to the IDeviceAllocator inside
+          // If the allocator is a provider interface, we need to wrap it with ProviderAllocator to turn it into an IAllocator
+          // Otherwise it's really a Provider_IAllocator_Impl, so we can just unwrap it to get back to the IAllocator inside
           if (allocator->IsProviderInterface())
             return onnxruntime::make_unique<ProviderAllocator>(std::move(allocator));
           else
@@ -270,12 +255,12 @@ struct ProviderHostImpl : ProviderHost {
   };
 
 #ifdef USE_TENSORRT
-  std::unique_ptr<Provider_IDeviceAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) override {
-    return onnxruntime::make_unique<Provider_IDeviceAllocator_Impl>(onnxruntime::make_unique<CUDAAllocator>(device_id, name));
+  std::unique_ptr<Provider_IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) override {
+    return onnxruntime::make_unique<Provider_IAllocator_Impl>(onnxruntime::make_unique<CUDAAllocator>(device_id, name));
   }
 
-  std::unique_ptr<Provider_IDeviceAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) override {
-    return onnxruntime::make_unique<Provider_IDeviceAllocator_Impl>(onnxruntime::make_unique<CUDAPinnedAllocator>(device_id, name));
+  std::unique_ptr<Provider_IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) override {
+    return onnxruntime::make_unique<Provider_IAllocator_Impl>(onnxruntime::make_unique<CUDAPinnedAllocator>(device_id, name));
   }
 
   std::unique_ptr<Provider_IDataTransfer> CreateGPUDataTransfer() override {

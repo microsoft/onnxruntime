@@ -96,6 +96,9 @@ bool CudaCall<cudaError, true>(cudaError retCode, const char* exprString, const 
   return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg);
 }
 
+constexpr const char* TRT = "Tensorrt";
+constexpr const char* TRT_PINNED = "TensorrtPinned";
+
 class Memcpy final : public Provider_OpKernel {
  public:
   Memcpy(const Provider_OpKernelInfo&) {}
