@@ -24,16 +24,24 @@ namespace cuda {
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);                                                                 \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
+      name,                                                                     \
+      kOnnxDomain,                                                              \
+      11, 12,                                                                    \
+      T,                                                                        \
+      kCudaExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);                                                                 \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       name,                                                                     \
       kOnnxDomain,                                                              \
-      11,                                                                       \
+      13,                                                                       \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);
 
-// Register with the latest version 12
+// Register those with changes in OpSet12.
 #define REGISTER_KERNEL_TYPED_12(name, T)                                       \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
       name,                                                                     \
@@ -51,10 +59,37 @@ namespace cuda {
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);                                                                 \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
+      name,                                                                     \
+      kOnnxDomain,                                                              \
+      12, 12,                                                                   \
+      T,                                                                        \
+      kCudaExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);                                                                 \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       name,                                                                     \
       kOnnxDomain,                                                              \
-      12,                                                                       \
+      13,                                                                       \
+      T,                                                                        \
+      kCudaExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);
+
+// CUDA ArgMax/ArgMin doesn't have OpSet12 implementation (with select_last_index attr), keep it in OpSet11 for now.
+#define REGISTER_KERNEL_TYPED_11(name, T)                                       \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
+      name,                                                                     \
+      kOnnxDomain,                                                              \
+      1, 10,                                                                    \
+      T,                                                                        \
+      kCudaExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);                                                                 \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
+      name,                                                                     \
+      kOnnxDomain,                                                              \
+      11,                                                                       \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
@@ -157,7 +192,7 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
       auto exp_result = GetScratchBuffer<T>(input_count).get();
       auto log_sum_result = GetScratchBuffer<T>(output_count).get();
       BinaryElementwisePreparation prepare;
-      prepare.BinaryElementwiseBroadcastPrepareHelper(input_shape, rhs_shape, input_shape);
+      ORT_RETURN_IF_ERROR(prepare.BinaryElementwiseBroadcastPrepareHelper(input_shape, rhs_shape, input_shape));
       Impl_Sub<CudaT>(prepare.output_rank_or_simple_broadcast,
                       &prepare.lhs_padded_strides,
                       reinterpret_cast<const CudaT*>(X),
@@ -481,7 +516,7 @@ Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& input, Pr
       auto log_sum_result_buffer = cuda_ep.GetScratchBuffer<T>(output_count);
       auto log_sum_result = log_sum_result_buffer.get();
       BinaryElementwisePreparation prepare;
-      prepare.BinaryElementwiseBroadcastPrepareHelper(input_shape, output_shape, input_shape);
+      ORT_RETURN_IF_ERROR(prepare.BinaryElementwiseBroadcastPrepareHelper(input_shape, output_shape, input_shape));
       Impl_Sub<CudaT>(prepare.output_rank_or_simple_broadcast,
                       &prepare.lhs_padded_strides,
                       reinterpret_cast<const CudaT*>(input.template Data<T>()),
@@ -890,8 +925,13 @@ template Tensor ReduceCompute<double, CUDNN_REDUCE_TENSOR_NO_INDICES>(
   REGISTER_KERNEL_TYPED(name, float)     \
   REGISTER_KERNEL_TYPED(name, double)
 
-REGISTER_KERNEL_HFD(ArgMax)
-REGISTER_KERNEL_HFD(ArgMin)
+#define REGISTER_KERNEL_HFD_11(name)        \
+  REGISTER_KERNEL_TYPED_11(name, MLFloat16) \
+  REGISTER_KERNEL_TYPED_11(name, float)     \
+  REGISTER_KERNEL_TYPED_11(name, double)
+
+REGISTER_KERNEL_HFD_11(ArgMax)
+REGISTER_KERNEL_HFD_11(ArgMin)
 REGISTER_KERNEL_HFD(ReduceL1)
 REGISTER_KERNEL_HFD(ReduceL2)
 

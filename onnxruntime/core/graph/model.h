@@ -8,11 +8,13 @@
 #include <climits>
 #include <string>
 #include "core/common/path.h"
+#include "core/flatbuffers/ort.fbs.h"
 #include "core/graph/graph_viewer.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "gsl/gsl"
 
 namespace onnxruntime {
+
 typedef std::unordered_map<std::string, std::string> ModelMetaData;
 using IOnnxRuntimeOpSchemaRegistryList = std::list<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>>;
 
@@ -23,6 +25,7 @@ class Model {
  public:
   static constexpr Version kNoVersion = INT64_MAX;
 
+#if !defined(ORT_MINIMAL_BUILD)
   explicit Model(const std::string& graph_name,
                  bool is_onnx_domain_only,
                  const logging::Logger& logger)
@@ -67,6 +70,9 @@ class Model {
                  const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                  const logging::Logger& logger);
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD)
   // Get model's IR version.
   // Return <kNoVersion> if not specified.
   Version IrVersion() const;
@@ -100,6 +106,31 @@ class Model {
   const std::string& DocString() const;
   // Set models' doc string.
   void SetDocString(const std::string& doc_string);
+#else
+  // Get model's IR version.
+  // Return <kNoVersion> if not specified.
+  Version IrVersion() const { return ir_version_; }
+
+  // Get model's producer name.
+  // Return null pointer if not specified.
+  const std::string& ProducerName() const { return producer_name_; }
+
+  // Get model's producer version.
+  // Return null pointer if not specified.
+  const std::string& ProducerVersion() const { return producer_version_; }
+
+  // Get model's domain.
+  const std::string& Domain() const { return domain_; }
+
+  // Get model's version.
+  // Return null pointer if not specified.
+  Version ModelVersion() const { return model_version_; }
+
+  // Get model's doc string.
+  // Return null pointer if not specified.
+  const std::string& DocString() const { return doc_string_; }
+
+#endif
 
   const ModelMetaData& MetaData() const noexcept;
 
@@ -110,9 +141,7 @@ class Model {
   Graph& MainGraph() noexcept;
   const Graph& MainGraph() const noexcept;
 
-  // Add function proto to Model
-  void AddFunction(const ONNX_NAMESPACE::FunctionProto& func_proto);
-
+#if !defined(ORT_MINIMAL_BUILD)
   // Get model's serialization proto data.
   ONNX_NAMESPACE::ModelProto ToProto();
 
@@ -183,9 +212,32 @@ class Model {
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                              const logging::Logger& logger);
 
+  common::Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
+                                 flatbuffers::Offset<onnxruntime::experimental::fbs::Model>& model) const;
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if defined(ENABLE_ORT_FORMAT_LOAD)
+  static common::Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::Model& fbs_model,
+                                          const logging::Logger& logger,
+                                          std::unique_ptr<Model>& model);
+#endif
+
  private:
+  Model();
+
   // Model data.
+#if !defined(ORT_MINIMAL_BUILD)
   ONNX_NAMESPACE::ModelProto model_proto_;
+#else
+  // properties that would normally come from ModelProto
+  std::string producer_version_;
+  std::string producer_name_;
+  int64_t model_version_ = 0;
+  int64_t ir_version_ = kNoVersion;
+  std::string domain_;
+  std::string doc_string_;
+#endif
 
   // This is a duplication of <model_proto_.metadata_props()>.
   // It gives better accessibility.

@@ -327,6 +327,35 @@ TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_tf_crop_and_resize_with_extrapo
   test.Run();
 }
 
+TEST(ResizeOpTest, ResizeOpNearestDownSample5dTest_tf_crop_and_resize_with_extrapolation) {
+  OpTester test("Resize", 11);
+  std::vector<float> scales{1.0f, 1.0f, 1.0f, 0.8f, 0.8f};
+  std::vector<float> roi{0.0f, 0.0f, 0.0f, 0.4f, 0.6f, 1.0f, 1.0f, 1.0f, 1.2f, 1.7f};
+
+  test.AddAttribute("mode", "nearest");
+  test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
+  test.AddAttribute("extrapolation_value", 10.0f);
+
+  const int64_t N = 1, C = 1, H = 4, W = 4;
+  std::vector<float> X = {
+      1.0f, 2.0f, 3.0f, 4.0f,
+      5.0f, 6.0f, 7.0f, 8.0f,
+      9.0f, 10.0f, 11.0f, 12.0f,
+      13.0f, 14.0f, 15.0f, 16.0f};
+
+  test.AddInput<float>("X", {1, N, C, H, W}, X);
+  test.AddInput<float>("roi", {10}, roi);
+  test.AddInput<float>("scales", {5}, scales);
+
+  std::vector<float> Y = {7.0f, 10.0f, 10.0f,
+                          11.0f, 10.f, 10.0f,
+                          10.0f, 10.0f, 10.0f};
+
+  test.AddOutput<float>("Y", {1, N, C, static_cast<int64_t>(H * scales[3]), static_cast<int64_t>(W * scales[4])}, Y);
+  // Current cuda provider do not support more than 4d
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider});
+}
+
 TEST(ResizeOpTest, ResizeOpNearestUpSampleTest) {
   OpTester test("Resize", 11);
   std::vector<float> roi{};
@@ -378,6 +407,37 @@ TEST(ResizeOpTest, ResizeOpNearestUpSampleTest_WithSizes_CeilMode) {
   test.AddOutput<float>("Y", {N, C, sizes[2], sizes[3]}, Y);
   test.Run();
 }
+
+TEST(ResizeOpTest, ResizeOpNearestUpSample5dTest_WithSizes_CeilMode) {
+  OpTester test("Resize", 11);
+  std::vector<float> roi{};
+  std::vector<float> scales{};
+  std::vector<int64_t> sizes{1, 1, 1, 7, 8};
+
+  test.AddAttribute("mode", "nearest");
+  test.AddAttribute("nearest_mode", "ceil");
+
+  const int64_t N = 1, C = 1, H = 2, W = 2;
+  std::vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f};
+
+  test.AddInput<float>("X", {1, N, C, H, W}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {0}, scales);
+  test.AddInput<int64_t>("sizes", {5}, sizes);
+
+  std::vector<float> Y = {1.0f, 1.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f,
+                          1.0f, 1.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f,
+                          3.0f, 3.0f, 4.0f, 4.0f, 4.0f, 4.0f, 4.0f, 4.0f,
+                          3.0f, 3.0f, 4.0f, 4.0f, 4.0f, 4.0f, 4.0f, 4.0f,
+                          3.0f, 3.0f, 4.0f, 4.0f, 4.0f, 4.0f, 4.0f, 4.0f,
+                          3.0f, 3.0f, 4.0f, 4.0f, 4.0f, 4.0f, 4.0f, 4.0f,
+                          3.0f, 3.0f, 4.0f, 4.0f, 4.0f, 4.0f, 4.0f, 4.0f};
+
+  test.AddOutput<float>("Y", {1, N, C, sizes[3], sizes[4]}, Y);
+  // Current cuda provider do not support more than 4d
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider});
+}
+
 
 TEST(ResizeOpTest, ResizeOpNearestUpSample_Floor_Align_Corners) {
   OpTester test("Resize", 11);

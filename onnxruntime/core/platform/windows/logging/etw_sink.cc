@@ -66,7 +66,7 @@ class EtwRegistrationManager {
     const HRESULT etw_status = ::TraceLoggingRegister(etw_provider_handle);
 
     if (FAILED(etw_status)) {
-      throw std::runtime_error("ETW registration failed. Logging will be broken: " + std::to_string(etw_status));
+      ORT_THROW("ETW registration failed. Logging will be broken: " + std::to_string(etw_status));
     }
 
     // return an instance that is just used to unregister as the program exits
@@ -142,7 +142,7 @@ void EtwSink::SendImpl(const Timestamp& timestamp, const std::string& logger_id,
         TRACE_LOG_WRITE(TRACE_LEVEL_CRITICAL);
         break;
       default:
-        throw std::logic_error("Unexpected Severity of " + static_cast<int>(severity));
+        ORT_THROW("Unexpected Severity of " + std::to_string(static_cast<int>(severity)));
     }
   }
 

@@ -322,7 +322,8 @@ OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
 
 void RegisterTrainingOpSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA(ReluGrad)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Input(0, "dY", "Gradient of output Y", "T")
       .Input(1, "X", "Input tensor", "T")
       .Output(0, "dX", "Gradient of input X", "T")

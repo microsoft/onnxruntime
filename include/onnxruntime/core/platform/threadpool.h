@@ -52,67 +52,6 @@ class LoopCounter;
 
 class ThreadPool {
  public:
-  // Scheduling strategies for ParallelFor. The strategy governs how the given
-  // units of work are distributed among the available threads in the
-  // threadpool.
-  enum class SchedulingStrategy {
-    // The Adaptive scheduling strategy adaptively chooses the shard sizes based
-    // on the cost of each unit of work, and the cost model of the underlying
-    // threadpool device.
-    //
-    // The 'cost_per_unit' is an estimate of the number of CPU cycles (or
-    // nanoseconds if not CPU-bound) to complete a unit of work. Overestimating
-    // creates too many shards and CPU time will be dominated by per-shard
-    // overhead, such as Context creation. Underestimating may not fully make
-    // use of the specified parallelism, and may also cause inefficiencies due
-    // to load balancing issues and stragglers.
-    kAdaptive,
-    // The Fixed Block Size scheduling strategy shards the given units of work
-    // into shards of fixed size. In case the total number of units is not
-    // evenly divisible by 'block_size', at most one of the shards may be of
-    // smaller size. The exact number of shards may be found by a call to
-    // NumShardsUsedByFixedBlockSizeScheduling.
-    //
-    // Each shard may be executed on a different thread in parallel, depending
-    // on the number of threads available in the pool. Note that when there
-    // aren't enough threads in the pool to achieve full parallelism, function
-    // calls will be automatically queued.
-    kFixedBlockSize
-  };
-
-  // Contains additional parameters for either the Adaptive or the Fixed Block
-  // Size scheduling strategy.
-  class SchedulingParams {
-   public:
-    explicit SchedulingParams(SchedulingStrategy strategy, optional<int64_t> cost_per_unit,
-                              optional<std::ptrdiff_t> block_size)
-        : strategy_(strategy), cost_per_unit_(cost_per_unit), block_size_(block_size) {
-    }
-
-    SchedulingStrategy strategy() const {
-      return strategy_;
-    }
-    optional<int64_t> cost_per_unit() const {
-      return cost_per_unit_;
-    }
-    optional<std::ptrdiff_t> block_size() const {
-      return block_size_;
-    }
-
-   private:
-    // The underlying Scheduling Strategy for which this instance contains
-    // additional parameters.
-    SchedulingStrategy strategy_;
-
-    // The estimated cost per unit of work in number of CPU cycles (or
-    // nanoseconds if not CPU-bound). Only applicable for Adaptive scheduling
-    // strategy.
-    optional<int64_t> cost_per_unit_;
-
-    // The block size of each shard. Only applicable for Fixed Block Size
-    // scheduling strategy.
-    optional<std::ptrdiff_t> block_size_;
-  };
 #ifdef _WIN32
   using NAME_CHAR_TYPE = wchar_t;
 #else
@@ -171,54 +110,7 @@ class ThreadPool {
                    const std::function<void(std::ptrdiff_t first, std::ptrdiff_t)>& fn);
 
   static void TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t total, const TensorOpCost& cost_per_unit,
-                             const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn) {
-#ifdef _OPENMP
-    ORT_UNUSED_PARAMETER(cost_per_unit);
-    std::ptrdiff_t num_threads = concurrency::ThreadPool::DegreeOfParallelism(tp);
-    if (total < num_threads) {
-      num_threads = total;
-    }
-#pragma omp parallel for
-    for (std::ptrdiff_t i = 0; i < num_threads; i++) {
-      auto work = PartitionWork(i, num_threads, total);
-      fn(work.start, work.end);
-    }
-#else
-    if (tp == nullptr) {
-      fn(0, total);
-      return;
-    }
-    tp->ParallelFor(total, cost_per_unit, fn);
-#endif
-  }
-
-  // Similar to ParallelFor above, but takes the specified scheduling strategy
-  // into account.
-  void ParallelFor(std::ptrdiff_t total, const SchedulingParams& scheduling_params,
-                   const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn);
-
-  static void TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t total,
-                             const SchedulingParams& scheduling_params,
-                             const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn) {
-#ifdef _OPENMP
-    ORT_UNUSED_PARAMETER(scheduling_params);
-    std::ptrdiff_t num_threads = concurrency::ThreadPool::DegreeOfParallelism(tp);
-    if (total < num_threads) {
-      num_threads = total;
-    }
-#pragma omp parallel for
-    for (std::ptrdiff_t i = 0; i < num_threads; i++) {
-      auto work = PartitionWork(i, num_threads, total);
-      fn(work.start, work.end);
-    }
-#else
-    if (tp == nullptr) {
-      fn(0, total);
-      return;
-    }
-    tp->ParallelFor(total, scheduling_params, fn);
-#endif
-  }
+                             const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn); 
 
   // Return the degree of parallelism that code should assume when using the thread pool.
   // This API takes into account if OpenMP is enabled/disabled, and if the thread pool ptr is

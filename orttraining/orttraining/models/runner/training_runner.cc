@@ -17,8 +17,12 @@
 #endif
 #include "core/session/environment.h"
 #include "orttraining/core/framework/checkpointing.h"
+#include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/graph/optimizer_graph_builder.h"
 #include "orttraining/models/runner/training_util.h"
+#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#include "orttraining/training_ops/cuda/communication/nccl_service.h"
+#endif
 #include "single_include/nlohmann/json.hpp"
 #include "test/perftest/utils.h"
 
@@ -44,7 +48,9 @@ static SessionOptions SESSION_OPTION = {
     {},                                //inter_op_param
     overrides,                         //free_dimension_overrides
     true,                              //use_per_session_threads
-    true                               //thread_pool_allow_spinning
+    true,                              //thread_pool_allow_spinning
+    false,                             //use_deterministic_compute
+    {},                                //session_configurations
 };
 
 TrainingRunner::TrainingRunner(Parameters params, const Environment& env)
@@ -77,8 +83,8 @@ Status TrainingRunner::Initialize() {
   if (params_.pipeline_parallel_size > 1 && !params_.pipeline_stage_paths.empty()) {
     // Pipeline partition happens outside ORT. We just load the result of partitioning forward graph.
     // Backward graph will be generated using ORT's graph transformers.
-    ORT_ENFORCE(static_cast<size_t>(params_.mpi_context.world_size) == params_.pipeline_stage_paths.size());
-    ORT_RETURN_IF_ERROR(session_.Load(params_.pipeline_stage_paths[params_.mpi_context.world_rank]));
+    ORT_ENFORCE(static_cast<size_t>(MPIContext::GetInstance().GetWorldSize()) == params_.pipeline_stage_paths.size());
+    ORT_RETURN_IF_ERROR(session_.Load(params_.pipeline_stage_paths[MPIContext::GetInstance().GetWorldRank()]));
   } else {
     ORT_RETURN_IF_ERROR(session_.Load(params_.model_path));
   }
@@ -96,10 +102,10 @@ Status TrainingRunner::Initialize() {
 
   config.gradient_accumulation_steps = params_.gradient_accumulation_steps;
 
-  config.distributed_config.world_rank = params_.mpi_context.world_rank;
-  config.distributed_config.world_size = params_.mpi_context.world_size;
-  config.distributed_config.local_size = params_.mpi_context.local_size;
-  config.distributed_config.local_rank = params_.mpi_context.local_rank;
+  config.distributed_config.world_rank = MPIContext::GetInstance().GetWorldRank();
+  config.distributed_config.world_size = MPIContext::GetInstance().GetWorldSize();
+  config.distributed_config.local_size = MPIContext::GetInstance().GetLocalSize();
+  config.distributed_config.local_rank = MPIContext::GetInstance().GetLocalRank();
   config.distributed_config.data_parallel_size = params_.data_parallel_size;
   config.distributed_config.horizontal_parallel_size = params_.horizontal_parallel_size;
   config.distributed_config.pipeline_parallel_size = params_.pipeline_parallel_size;
@@ -113,8 +119,12 @@ Status TrainingRunner::Initialize() {
     config.mixed_precision_config = mp;
   }
 
-  // always configure the loss function
-  if (params_.pipeline_parallel_size == 1 || params_.mpi_context.world_rank == params_.mpi_context.world_size - 1) {
+  // configure the loss function if no pipeline is used or it's the last stage of pipeline
+  auto pipeline_stage_id = GetPipelineStageId(MPIContext::GetInstance().GetWorldRank(),
+                                              params_.horizontal_parallel_size,
+                                              params_.data_parallel_size);
+  if (params_.pipeline_parallel_size == 1 ||
+      (pipeline_stage_id + 1) == params_.pipeline_parallel_size) {
     TrainingSession::TrainingConfiguration::LossFunctionConfiguration lf{};
     lf.loss_function_info = params_.loss_func_info;
 
@@ -162,6 +172,7 @@ Status TrainingRunner::Initialize() {
     pipe.do_partition = params_.pipeline_stage_paths.empty() ? true : false;
     pipe.fetch_names = params_.fetch_names;
     pipe.cut_list = params_.pipeline_partition_cut_list;
+    pipe.partitioned_model_path = params_.pipeline_partitioned_model_path;
     // Do not assign value to config.pipeline_config if pipeline is not used.
     config.pipeline_config = pipe;
   }
@@ -198,97 +209,26 @@ Status TrainingRunner::Initialize() {
   VectorString fetch_names;
   if (params_.pipeline_parallel_size > 1) {
     fetch_names = config_result.pipeline_config_result.value().fetch_names;
-    // Exposes forward waited event tensor ID name to TrainingRunner.
-    // It's an input of a graph.
-    // Wait->Recv->Wait->FW->Record->Send->Record
-    //  ^
-    //  |
-    // this event's operator.
-    pipeline_context_.forward_waited_event_name = config_result.pipeline_config_result.value().forward_waited_event_name;
 
-    // Exposes forward waited event tensor ID name to TrainingRunner.
-    // It's an input of a graph.
-    // Wait->Recv->Wait->FW->Record->Send->Record
-    //              ^
-    //              |
-    //             this event's operator.
-    pipeline_context_.forward_waited_event_after_recv_name = config_result.pipeline_config_result.value().forward_waited_event_after_recv_name;
+    // Set tensor names for event IDs and outputs of event ops.
+    pipeline_context_.pipeline_tensor_names = config_result.pipeline_config_result.value().pipeline_tensor_names;
 
-    // Exposes forward recorded event tensor ID name to TrainingRunner.
-    // It's an input of a graph.
-    // Wait->Recv->Wait->FW->Record->Send->Record
-    //                         ^
-    //                         |
-    //                        this event's operator.
-    pipeline_context_.forward_recorded_event_before_send_name = config_result.pipeline_config_result.value().forward_recorded_event_before_send_name;
+    // Create a local function to append non-empty name to fetch_names list.
+    auto append_non_empty_name = [&] (const std::string& name) {
+      if (!name.empty()) {
+        fetch_names.push_back(name);
+      }
+    };
 
-    // Exposes forward recorded event tensor ID name to TrainingRunner.
-    // It's an input of a graph.
-    // Wait->Recv->Wait->FW->Record->Send->Record
-    //                                       ^
-    //                                       |
-    //                                      this event's operator.
-    pipeline_context_.forward_recorded_event_name = config_result.pipeline_config_result.value().forward_recorded_event_name;
-
-    // Exposes backward waited event tensor ID name to TrainingRunner.
-    // It's an input of a graph.
-    // Wait->Recv->Wait->BW->Record->Send->Record
-    //  ^
-    //  |
-    // this event's operator.
-    pipeline_context_.backward_waited_event_name = config_result.pipeline_config_result.value().backward_waited_event_name;
-
-    // Exposes backward waited event tensor ID name to TrainingRunner.
-    // It's an input of a graph.
-    // Wait->Recv->Wait->BW->Record->Send->Record
-    //              ^
-    //              |
-    //             this event's operator.
-    pipeline_context_.backward_waited_event_after_recv_name = config_result.pipeline_config_result.value().backward_waited_event_after_recv_name;
-
-    // Exposes backward recorded event tensor ID name to TrainingRunner.
-    // It's an input of a graph.
-    // Wait->Recv->Wait->BW->Record->Send->Record
-    //                         ^
-    //                         |
-    //                        this event's operator.
-    pipeline_context_.backward_recorded_event_before_send_name = config_result.pipeline_config_result.value().backward_recorded_event_before_send_name;
-
-    // Exposes backward recorded event tensor ID name to TrainingRunner.
-    // It's an input of a graph.
-    // Wait->Recv->Wait->BW->Record->Send->Record
-    //                                       ^
-    //                                       |
-    //                                      this event's operator.
-    pipeline_context_.backward_recorded_event_name = config_result.pipeline_config_result.value().backward_recorded_event_name;
-
-    pipeline_context_.forward_wait_output_name = config_result.pipeline_config_result.value().forward_wait_output_name;
-    pipeline_context_.forward_record_output_name = config_result.pipeline_config_result.value().forward_record_output_name;
-    pipeline_context_.backward_wait_output_name = config_result.pipeline_config_result.value().backward_wait_output_name;
-    pipeline_context_.backward_record_output_name = config_result.pipeline_config_result.value().backward_record_output_name;
-
-    if (!pipeline_context_.forward_wait_output_name.empty()) {
-      fetch_names.push_back(pipeline_context_.forward_wait_output_name);
-    }
-
-    if (!pipeline_context_.forward_record_output_name.empty()) {
-      fetch_names.push_back(pipeline_context_.forward_record_output_name);
-    }
-
-    if (!pipeline_context_.backward_wait_output_name.empty()) {
-      fetch_names.push_back(pipeline_context_.backward_wait_output_name);
-    }
-
-    if (!pipeline_context_.backward_record_output_name.empty()) {
-      fetch_names.push_back(pipeline_context_.backward_record_output_name);
-    }
+    // Append first output of each event operator.
+    pipeline_context_.pipeline_tensor_names.ForEachOutputName(append_non_empty_name);
 
     // Names of allowed inputs after pipeline partition.
     pipeline_context_.feed_names = config_result.pipeline_config_result.value().feed_names;
     // Names of allowed outputs after pipeline partition.
-    pipeline_context_.fetch_names = config_result.pipeline_config_result.value().fetch_names;
-
     // Configure dimension of this pipeline.
+    pipeline_context_.fetch_names = fetch_names;
+
     pipeline_context_.pipeline_stage_id = config_result.pipeline_config_result.value().pipeline_stage_id;
     pipeline_context_.num_pipeline_batches = params_.gradient_accumulation_steps;
   } else {
@@ -336,7 +276,8 @@ Status TrainingRunner::Initialize() {
 
 Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_data_loader,
                            const MapStringToString& mapped_dimensions) {
-  if (params_.mpi_context.world_rank == 0 && !params_.model_actual_running_graph_path.empty()) {
+  if (MPIContext::GetInstance().GetWorldRank() == 0 && !params_.model_actual_running_graph_path.empty()) {
+
     session_.Save(params_.model_actual_running_graph_path, TrainingSession::SaveOption::NO_RELOAD);
   }
 
@@ -408,142 +349,67 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     }
   }
 
-  // Create feed of the first waited event in forward pass.
-  if (!pipeline_context_.forward_waited_event_name.empty()) {
-    ORT_RETURN_IF(params_.pipeline_parallel_size <= 1, "Internal event name should be empty if there is no pipeline.");
-    feed_names.push_back(pipeline_context_.forward_waited_event_name);
+  // Define a helper function to append scalar inputs to feeds for event operators.
+  auto append_event_to_feeds = [&](const std::string event_name, const int64_t event_value) -> void {
+    if (event_name.empty()) {
+      return;
+    }
+    feed_names.push_back(event_name);
     OrtValue event_id;
-    const int64_t id =
-        (mode == EvaluateStep) ? -1
-                               : pipeline_schedule_.GetForwardWaitedEventBeforeRecv(
-                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches,
-                                     pipeline_context_.pipeline_stage_id);
     TrainingUtil::CreateCpuMLScalar(
-        id,
+        event_value,
         &event_id,
         input_allocator_);
     feeds.push_back(event_id);
+  };
+
+  // Add event IDs to feeds.
+  if (params_.pipeline_parallel_size > 1) {
+    const auto batch_id = static_cast<int>(step_) % pipeline_context_.num_pipeline_batches;
+    const auto stage_id = pipeline_context_.pipeline_stage_id;
+
+    int64_t id = -1;
+
+    // Forward Recv
+    id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetForwardRecvWaitedEvent(batch_id, stage_id);
+    append_event_to_feeds(pipeline_context_.pipeline_tensor_names.forward_recv_waited_event_name, id);
+    id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetForwardRecvRecordedEvent(batch_id, stage_id);
+    append_event_to_feeds(pipeline_context_.pipeline_tensor_names.forward_recv_recorded_event_name, id);
+
+    // Forward Send
+    id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetForwardSendWaitedEvent(batch_id, stage_id);
+    append_event_to_feeds(pipeline_context_.pipeline_tensor_names.forward_send_waited_event_name, id);
+    id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetForwardSendRecordedEvent(batch_id, stage_id);
+    append_event_to_feeds(pipeline_context_.pipeline_tensor_names.forward_send_recorded_event_name, id);
+
+    // Backward Recv
+    id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetBackwardRecvWaitedEvent(batch_id, stage_id);
+    append_event_to_feeds(pipeline_context_.pipeline_tensor_names.backward_recv_waited_event_name, id);
+    id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetBackwardRecvRecordedEvent(batch_id, stage_id);
+    append_event_to_feeds(pipeline_context_.pipeline_tensor_names.backward_recv_recorded_event_name, id);
+
+    // Backward Send
+    id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetBackwardSendWaitedEvent(batch_id, stage_id);
+    append_event_to_feeds(pipeline_context_.pipeline_tensor_names.backward_send_waited_event_name, id);
+    id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetBackwardSendRecordedEvent(batch_id, stage_id);
+    append_event_to_feeds(pipeline_context_.pipeline_tensor_names.backward_send_recorded_event_name, id);
+
+    // Forward Compute
+    id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetForwardComputeWaitedEvent(batch_id, stage_id);
+    append_event_to_feeds(pipeline_context_.pipeline_tensor_names.forward_compute_waited_event_name, id);
+    id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetForwardComputeRecordedEvent(batch_id, stage_id);
+    append_event_to_feeds(pipeline_context_.pipeline_tensor_names.forward_compute_recorded_event_name, id);
+
+    // Backward Compute
+    id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetBackwardComputeWaitedEvent(batch_id, stage_id);
+    append_event_to_feeds(pipeline_context_.pipeline_tensor_names.backward_compute_waited_event_name, id);
+    id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetBackwardComputeRecordedEvent(batch_id, stage_id);
+    append_event_to_feeds(pipeline_context_.pipeline_tensor_names.backward_compute_recorded_event_name, id);
   }
 
-  // Create feed of the second waited event in forward pass.
-  if (!pipeline_context_.forward_waited_event_after_recv_name.empty()) {
-    ORT_RETURN_IF(params_.pipeline_parallel_size <= 1, "Internal event name should be empty if there is no pipeline.");
-    feed_names.push_back(pipeline_context_.forward_waited_event_after_recv_name);
-    OrtValue event_id;
-    const int64_t id =
-        (mode == EvaluateStep) ? -1
-                               : pipeline_schedule_.GetForwardWaitedEventAfterRecv(
-                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches,
-                                     pipeline_context_.pipeline_stage_id);
-    TrainingUtil::CreateCpuMLScalar(
-        id,
-        &event_id,
-        input_allocator_);
-    feeds.push_back(event_id);
+  for (auto name : feed_names) {
+    ORT_ENFORCE(!name.empty(), "feed name cannot be empty string.");
   }
-
-  // Create feed of first recorded event in forward pass.
-  if (!pipeline_context_.forward_recorded_event_before_send_name.empty()) {
-    ORT_RETURN_IF(params_.pipeline_parallel_size <= 1, "Internal event name should be empty if there is no pipeline.");
-    feed_names.push_back(pipeline_context_.forward_recorded_event_before_send_name);
-    OrtValue event_id;
-    const int64_t id =
-        (mode == EvaluateStep) ? -1
-                               : pipeline_schedule_.GetForwardRecordedEventBeforeSend(
-                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches,
-                                     pipeline_context_.pipeline_stage_id);
-    TrainingUtil::CreateCpuMLScalar(
-        id,
-        &event_id,
-        input_allocator_);
-    feeds.push_back(event_id);
-  }
-
-  // Create feed of second recorded event in forward pass.
-  if (!pipeline_context_.forward_recorded_event_name.empty()) {
-    ORT_RETURN_IF(params_.pipeline_parallel_size <= 1, "Internal event name should be empty if there is no pipeline.");
-    feed_names.push_back(pipeline_context_.forward_recorded_event_name);
-    OrtValue event_id;
-    const int64_t id =
-        (mode == EvaluateStep) ? -1
-                               : pipeline_schedule_.GetForwardRecordedEventAfterSend(
-                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches,
-                                     pipeline_context_.pipeline_stage_id);
-    TrainingUtil::CreateCpuMLScalar(
-        id,
-        &event_id,
-        input_allocator_);
-    feeds.push_back(event_id);
-  }
-
-  // Create feed of first waited event in backward pass.
-  if (!pipeline_context_.backward_waited_event_name.empty()) {
-    ORT_RETURN_IF(params_.pipeline_parallel_size <= 1, "Internal event name should be empty if there is no pipeline.");
-    feed_names.push_back(pipeline_context_.backward_waited_event_name);
-    OrtValue event_id;
-    const int64_t id =
-        (mode == EvaluateStep) ? -1
-                               : pipeline_schedule_.GetBackwardWaitedEventBeforeRecv(
-                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches,
-                                     pipeline_context_.pipeline_stage_id);
-    TrainingUtil::CreateCpuMLScalar(
-        id,
-        &event_id,
-        input_allocator_);
-    feeds.push_back(event_id);
-  }
-
-  // Create feed of second waited event in backward pass.
-  if (!pipeline_context_.backward_waited_event_after_recv_name.empty()) {
-    ORT_RETURN_IF(params_.pipeline_parallel_size <= 1, "Internal event name should be empty if there is no pipeline.");
-    feed_names.push_back(pipeline_context_.backward_waited_event_after_recv_name);
-    OrtValue event_id;
-    const int64_t id =
-        (mode == EvaluateStep) ? -1
-                               : pipeline_schedule_.GetBackwardWaitedEventAfterRecv(
-                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches,
-                                     pipeline_context_.pipeline_stage_id);
-    TrainingUtil::CreateCpuMLScalar(
-        id,
-        &event_id,
-        input_allocator_);
-    feeds.push_back(event_id);
-  }
-
-  // Create feed of first recorded event in backward pass.
-  if (!pipeline_context_.backward_recorded_event_before_send_name.empty()) {
-    ORT_RETURN_IF(params_.pipeline_parallel_size <= 1, "Internal event name should be empty if there is no pipeline.");
-    feed_names.push_back(pipeline_context_.backward_recorded_event_before_send_name);
-    OrtValue event_id;
-    int64_t id =
-        (mode == EvaluateStep) ? -1
-                               : pipeline_schedule_.GetBackwardRecordedEventBeforeSend(
-                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches,
-                                     pipeline_context_.pipeline_stage_id);
-    TrainingUtil::CreateCpuMLScalar(
-        id,
-        &event_id,
-        input_allocator_);
-    feeds.push_back(event_id);
-  }
-
-  // Create feed of second recorded event in backward pass.
-  if (!pipeline_context_.backward_recorded_event_name.empty()) {
-    ORT_RETURN_IF(params_.pipeline_parallel_size <= 1, "Internal event name should be empty if there is no pipeline.");
-    feed_names.push_back(pipeline_context_.backward_recorded_event_name);
-    OrtValue event_id;
-    int64_t id =
-        (mode == EvaluateStep) ? -1
-                               : pipeline_schedule_.GetBackwardRecordedEventAfterSend(
-                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches,
-                                     pipeline_context_.pipeline_stage_id);
-    TrainingUtil::CreateCpuMLScalar(
-        id,
-        &event_id,
-        input_allocator_);
-    feeds.push_back(event_id);
-  }
-
   return Status::OK();
 }
 
@@ -598,19 +464,17 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const SessionMode mode,
 
     // Always execute event operators to avoid deadlock if pipeline is used.
     // TODO: create a list of must-to-fetch tensors and pass it to all graph transformer.
-    if (params_.pipeline_parallel_size) {
-      if (!pipeline_context_.forward_wait_output_name.empty()) {
-        fetch_names.push_back(pipeline_context_.forward_wait_output_name);
-      }
-      if (!pipeline_context_.forward_record_output_name.empty()) {
-        fetch_names.push_back(pipeline_context_.forward_record_output_name);
-      }
-      if (!pipeline_context_.backward_wait_output_name.empty()) {
-        fetch_names.push_back(pipeline_context_.backward_wait_output_name);
-      }
-      if (!pipeline_context_.backward_record_output_name.empty()) {
-        fetch_names.push_back(pipeline_context_.backward_record_output_name);
-      }
+    if (params_.pipeline_parallel_size > 1) {
+      // Create a local function to append non-empty name to fetch_names list.
+      auto append_non_empty_name = [&] (const std::string& name) {
+        if (!name.empty()) {
+          fetch_names.push_back(name);
+        }
+      };
+
+      // Append first output of each event operator to fetch_names list to make sure all event ops will
+      // be computed.
+      pipeline_context_.pipeline_tensor_names.ForEachOutputName(append_non_empty_name);
     }
   } else if (mode == EvaluateStep) {
     // Set up tensor to be fetched when doing model evaluation.
@@ -640,6 +504,9 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const SessionMode mode,
     fetch_names = allowed_fetch_names;
   }
 
+  for (auto name : fetch_names) {
+    ORT_ENFORCE(!name.empty(), "fetch name cannot be empty string.");
+  }
   return Status::OK();
 }
 
@@ -707,7 +574,7 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
   // We must join here because main thread needs to access thread-produced
   // fetches and those fetches must be ready.
   pipeline_worker_pool_.JoinAll();
-  for(auto& status : pipeline_worker_pool_.worker_states){
+  for (auto& status : pipeline_worker_pool_.worker_states) {
     CheckWorkerException(status.execution_exception);
   }
 
@@ -742,9 +609,12 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
   // Wait all workers to finish this around of pipeline parallism.
   // The last batch in a pipeline collects gradient and update the model.
   pipeline_worker_pool_.JoinAll();
-  for(auto& status : pipeline_worker_pool_.worker_states){
+  for (auto& status : pipeline_worker_pool_.worker_states) {
     CheckWorkerException(status.execution_exception);
   }
+
+  // TODO: move this to an operator in graph.
+  onnxruntime::contrib::OrtEventPool::GetInstance().ResetAllEvents();
 
   // Add one after process one batch.
   ++step_;
@@ -809,7 +679,7 @@ void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
 Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader,
                                     const MapStringToString& mapped_dimensions) {
   const bool enable_checkpoint_saving =
-      params_.mpi_context.world_rank == 0 &&
+      MPIContext::GetInstance().GetWorldRank() == 0 &&
       checkpoint_registry_ && params_.checkpoint_period > 0;
 
   std::unique_ptr<perftest::utils::ICPUUsage> cpu_usage_calculator;
@@ -838,6 +708,31 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
   const size_t end_to_end_perf_start_step = 128;
   auto end_to_end_start = std::chrono::high_resolution_clock::now();
   bool end_to_end_measurement_started = false;
+
+#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+  // Create communication plan.
+  auto& nccl_service = cuda::NcclService::GetInstance();
+
+  nccl_service.PlanStart();
+  for (auto& slot : pipeline_schedule_.GetSchedule(pipeline_context_.pipeline_stage_id)) {
+    if (!slot.HasCommute()) {
+      continue;
+    }
+    nccl_service.PlanNewGroupStart();
+    for (auto& task : slot.GetTasks()) {
+      if (task.type == pipeline::PipelineTask::Type::Send) {
+        nccl_service.PlanSend(task.peer_rank);
+      } else if (task.type == pipeline::PipelineTask::Type::Recv) {
+        nccl_service.PlanRecv(task.peer_rank);
+      }
+    }
+    nccl_service.PlanNewGroupEnd();
+  }
+  nccl_service.PlanEnd();
+
+  // Launch NCCL service to execute the plan.
+  nccl_service.Launch();
+#endif
 
   auto all_steps_time_start = std::chrono::high_resolution_clock::now();
   while (step_ < params_.num_train_steps) {
@@ -888,6 +783,9 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
                                           fetch_names,
                                           fetches));
           RunWithUpdate(feed_names, fetch_names, feeds, fetches);
+#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+          nccl_service.Reset();
+#endif
         } else {
           ORT_RETURN_IF_ERROR(PrepareFeedNamesAndFeeds(GradientAccumulateStep,
                                                        training_data_loader,
@@ -1010,6 +908,9 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
             << "Average Step Time: " << all_steps_duration_seconds.count() / (step_ - step_start) << " Second\n"
             << "Average Step Throughput: " << params_.batch_size * (step_ - step_start) / (all_steps_duration_seconds.count()) << " Examples / Second\n";
 
+#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+  nccl_service.Terminate();
+#endif
   return Status::OK();
 }
 
