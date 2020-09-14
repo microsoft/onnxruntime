@@ -32,6 +32,9 @@ ORT_API_STATUS_IMPL(OrtApis::CreateKernelSession,
   API_IMPL_BEGIN
     ORT_ENFORCE(session_, "OrtKernelSession pointer must not be null");
     std::unordered_map<std::string, int> domain_to_version{{"", opset_version}};
+
+
+    KernelSessionImpl *session = new KernelSessionImpl();
     std::unique_ptr<Model> model = onnxruntime::make_unique<Model>("KernelExecutionModel",
                                        /*is_onnx_domain_only=*/true,
                                        /*model_metadata=*/ModelMetaData(),
@@ -39,9 +42,9 @@ ORT_API_STATUS_IMPL(OrtApis::CreateKernelSession,
                                        /*local_registries=*/IOnnxRuntimeOpSchemaRegistryList(),
                                        /*domain_to_version=*/domain_to_version,
                                        /*model_functions=*/std::initializer_list<ONNX_NAMESPACE::FunctionProto>{},
-                                       /*logger=*/logging::LoggingManager::DefaultLogger());
+                                       /*logger=*/session->logger_);
+    session->model = std::move(model);
 
-    KernelSessionImpl *session = new KernelSessionImpl(std::move(model));
 
     // initialize the providers
     for(auto& factory : options->provider_factories) {
@@ -56,6 +59,19 @@ ORT_API_STATUS_IMPL(OrtApis::CreateKernelSession,
       }
       session->provider_list.push_back(std::move(provider));
     }
+
+    // Create the session state. We need only this because some CUDA ops static_cast
+    // the OpKernelContext to OpKernelContextInternal. That could be decoupled better
+    session->session_state_ = onnxruntime::make_unique<SessionState>(
+                session->model->MainGraph(),
+                ExecutionProviders(), // empty for now, doesn't seem to be used
+                false,
+                nullptr,
+                nullptr,
+                session->data_transfer_mgr_,
+                session->logger_,
+                session->profiler_,
+                false);
 
     *session_ = reinterpret_cast<OrtKernelSession *>(session);
 
@@ -423,9 +439,13 @@ ORT_API(void, OrtApis::ReleaseExecutableKernelContext, _Frees_ptr_opt_ OrtExecut
   delete reinterpret_cast<ExecutableKernelContextImpl*>(value);
 }
 
-SingleKernelExecutionFrame::Info::Info(std::unique_ptr<OpKernel> kernel, const logging::Logger& logger, const std::unique_ptr<IExecutionProvider>& provider)
+SingleKernelExecutionFrame::Info::Info(std::unique_ptr<OpKernel> kernel,
+                                       const logging::Logger& logger,
+                                       const std::unique_ptr<IExecutionProvider>& provider,
+                                       const std::unique_ptr<SessionState>& session_state)
     : kernel_(std::move(kernel)),
       logger_(&logger),
+      session_state_(session_state),
       provider_(provider)
 {
   ORT_ENFORCE(kernel_, "kernel cannot be null");
@@ -557,11 +577,13 @@ Status ExecutableKernelContextImpl::CreateExecutionFrame(KernelSessionImpl* sess
     return status;
   }
 
+
   // create the context info
   std::unique_ptr<SingleKernelExecutionFrame::Info> info = onnxruntime::make_unique<SingleKernelExecutionFrame::Info>(
-      std::move(op_kernel),
-      logging::LoggingManager::DefaultLogger(),
-      execution_provider);
+              std::move(op_kernel),
+              session->logger_,
+              execution_provider,
+              session->session_state_);
 
   *frame = new SingleKernelExecutionFrame(std::move(info));
   return Status::OK();
@@ -627,6 +649,12 @@ Status ExecutableKernelContextImpl::SetupTensorType(const std::unique_ptr<ONNX_N
     }
   }
   return Status::OK();
+}
+
+onnxruntime::common::Status SingleKernelExecutionFrame::Compute() {
+    // We need to use OpKernelContextInternal here because some CUDA ops static_cast the context to it...
+    OpKernelContextInternal context(*info_->session_state_, *this, *info_->kernel_, *info_->logger_, false);
+    return info_->kernel_->Compute(&context);
 }
 
 // taken from OptimizerExecutionFrame

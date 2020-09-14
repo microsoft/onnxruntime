@@ -2,6 +2,7 @@
 
 #include <core/framework/op_kernel.h>
 #include "core/graph/graph.h"
+#include "core/common/profiler.h"
 #include <iostream>
 
 namespace onnxruntime {
@@ -13,7 +14,7 @@ class SingleKernelExecutionFrame final : public IExecutionFrame {
   class Info {
    public:
     Info(std::unique_ptr<OpKernel> kernel,
-         const logging::Logger &logger, const std::unique_ptr<IExecutionProvider>& provider);
+         const logging::Logger &logger, const std::unique_ptr<IExecutionProvider>& provider, const std::unique_ptr<SessionState>& session_state);
 
     AllocatorPtr GetAllocator() const {
       return allocator_;
@@ -50,6 +51,7 @@ class SingleKernelExecutionFrame final : public IExecutionFrame {
     std::vector<int> feed_mlvalue_idxs_;
     std::vector<OrtValue> feeds_;
 
+    const std::unique_ptr<SessionState>& session_state_;
     const std::unique_ptr<IExecutionProvider>& provider_;
     AllocatorPtr allocator_;
   };
@@ -77,10 +79,7 @@ class SingleKernelExecutionFrame final : public IExecutionFrame {
       return info_->kernel_->Info().GetExecutionProvider()->Type() == kCpuExecutionProvider || info_->kernel_->KernelDef().IsInputOnCpu(index);
   }
 
-  Status Compute() {
-    OpKernelContext context(this, info_->kernel_.get(), nullptr, *info_->logger_);
-    return info_->kernel_->Compute(&context);
-  }
+  Status Compute();
 
 
  protected:
@@ -105,8 +104,11 @@ class SingleKernelExecutionFrame final : public IExecutionFrame {
 
 
 struct KernelSessionImpl {
-  KernelSessionImpl(std::unique_ptr<Model> model) : model(
-      std::move(model)) {}
+  KernelSessionImpl() :
+      logger_(logging::LoggingManager::DefaultLogger()),
+      profiler_() {
+      profiler_.Initialize(&logger_);
+  }
 
   // the model who's MainGraph holds the nodes for the kernels that we will execute
   std::unique_ptr<Model> model;
@@ -114,7 +116,14 @@ struct KernelSessionImpl {
   // providers for the session
   std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
 
+  // providers for the session
+  std::unique_ptr<SessionState> session_state_;
+
   DataTransferManager data_transfer_mgr_;
+
+  // these are just for the session state
+  const logging::Logger &logger_;
+  profiling::Profiler profiler_;
 };
 
 class ExecutableKernelContextImpl {
