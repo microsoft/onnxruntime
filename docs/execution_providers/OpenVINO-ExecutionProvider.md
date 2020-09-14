@@ -43,7 +43,7 @@ Append the settings string "device_type|<hardware_option>\n" to the EP settings 
 std::string settings_str;
 ...
 settings_str.append("device_type|CPU_FP32\n");
-Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINOEP(sf, settings_str));
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProviderEx_OpenVINO(sf, settings_str));
 ```
 
 ## Enabling VPU Fast-compile
@@ -64,7 +64,7 @@ Append the settings string "enable_vpu_fast_compile|true\n" to the EP settings s
 std::string settings_str;
 ...
 settings_str.append("enable_vpu_fast_compile|true\n");
-Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINOEP(sf, settings_str));
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProviderEx_OpenVINO(sf, settings_str));
 ```
 
 ## Dynamic device id selection
@@ -93,7 +93,7 @@ Append the settings string "device_id|<device_id>\n" to the EP settings string, 
 std::string settings_str;
 ...
 settings_str.append("device_id|<device_id>\n");
-Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINOEP(sf, settings_str));
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProviderEx_OpenVINO(sf, settings_str));
 ```
 
 

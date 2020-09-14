@@ -43,7 +43,7 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_OpenVINO,
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_OpenVINOEP,
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProviderEx_OpenVINOEP,
                     _In_ OrtSessionOptions* options, _In_ const char* settings_str) {
 
   std::string device_type = "";

@@ -20,7 +20,7 @@ ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_OpenVINO,
  * \param settings_str string of Key-Value pairs with '\n' used to delimit
  * pairs and '|' used to delimit key and value within a pair.
  */
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_OpenVINOEP,
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProviderEx_OpenVINO,
     _In_ OrtSessionOptions* options, _In_ const char* settings_str);
 
 #ifdef __cplusplus
