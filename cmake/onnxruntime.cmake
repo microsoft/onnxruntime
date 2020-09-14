@@ -9,6 +9,9 @@ else()
   set(OUTPUT_STYLE vc)
 endif()
 
+if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
+  set(CMAKE_SHARED_LIBRARY_RUNTIME_C_FLAG "-Wl,-rpath,")
+endif()
 
 #If you want to verify if there is any extra line in symbols.txt, run
 # nm -C -g --defined libonnxruntime.so |grep -v '\sA\s' | cut -f 3 -d ' ' | sort
@@ -61,8 +64,17 @@ else()
 endif()
 
 if (NOT WIN32)
-  if (APPLE OR ${CMAKE_SYSTEM_NAME} MATCHES "iOSCross")
-    set_target_properties(onnxruntime PROPERTIES INSTALL_RPATH "@loader_path")
+  if (APPLE OR ${CMAKE_SYSTEM_NAME} MATCHES "^iOS")
+    if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
+      set_target_properties(onnxruntime PROPERTIES
+        SOVERSION ${ORT_VERSION}
+        MACOSX_RPATH TRUE
+        INSTALL_RPATH_USE_LINK_PATH FALSE
+        BUILD_WITH_INSTALL_NAME_DIR TRUE
+        INSTALL_NAME_DIR @rpath)
+    else()
+        set_target_properties(onnxruntime PROPERTIES INSTALL_RPATH "@loader_path")
+    endif()
   else()
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-rpath='$ORIGIN'")
   endif()
@@ -71,8 +83,12 @@ endif()
 
 # strip binary on Android, or for a minimal build on Unix
 if(CMAKE_SYSTEM_NAME STREQUAL "Android" OR (onnxruntime_MINIMAL_BUILD AND UNIX))
-  set_target_properties(onnxruntime PROPERTIES LINK_FLAGS_RELEASE -s)
-  set_target_properties(onnxruntime PROPERTIES LINK_FLAGS_MINSIZEREL -s)
+  if (onnxruntime_MINIMAL_BUILD AND ADD_DEBUG_INFO_TO_MINIMAL_BUILD)
+    # don't strip
+  else()
+    set_target_properties(onnxruntime PROPERTIES LINK_FLAGS_RELEASE -s)
+    set_target_properties(onnxruntime PROPERTIES LINK_FLAGS_MINSIZEREL -s)
+  endif()
 endif()
 
 target_link_libraries(onnxruntime PRIVATE
@@ -109,6 +125,7 @@ set_target_properties(onnxruntime PROPERTIES LINK_DEPENDS ${SYMBOL_FILE})
 if(onnxruntime_ENABLE_LTO)
   set_target_properties(onnxruntime PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
   set_target_properties(onnxruntime PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
+  set_target_properties(onnxruntime PROPERTIES INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL TRUE)
 endif()
 install(TARGETS onnxruntime
         ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}

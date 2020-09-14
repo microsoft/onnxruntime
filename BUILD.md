@@ -32,6 +32,7 @@
     * [x86](#x86)
     * [ARM](#ARM)
     * [Android](#Android)
+    * [iOS](#iOS)
 
 **[Training](#Training)**
 
@@ -124,8 +125,7 @@ GCC 4.x and below are not supported.
 |API|Command|Additional details|
 |-----------|-----------|-----------|
 |**Python**|--build_wheel||
-|**C# and C packages**|--build_nuget|Builds C# bindings and creates nuget package. Currently supported on Windows and Linux only. Implies `--build_shared_lib` <br>
-Requires [dotnet](https://dotnet.microsoft.com/download) for building csharp bindings and [nuget.exe](https://docs.microsoft.com/en-us/nuget/install-nuget-client-tools#nugetexe-cli) for creating nuget package.|
+|**C# and C packages**|--build_nuget|Builds C# bindings and creates nuget package. Currently supported on Windows and Linux only. Implies `--build_shared_lib` <br> Detailed instructions can be found [below](./BUILD.md#build-nuget-packages).|
 |**WindowsML**|--use_winml<br>--use_dml<br>--build_shared_lib|WindowsML depends on DirectML and the OnnxRuntime shared library|
 |**Java**|--build_java|Creates an onnxruntime4j.jar in the build directory, implies `--build_shared_lib`<br>Compiling the Java API requires [gradle](https://gradle.org) v6.1+ to be installed in addition to the usual requirements.|
 |**Node.js**|--build_nodejs|Build Node.js binding. Implies `--build_shared_lib`|
@@ -136,6 +136,26 @@ Requires [dotnet](https://dotnet.microsoft.com/download) for building csharp bin
 Read more about ONNX Runtime Server [here](./docs/ONNX_Runtime_Server_Usage.md).
 
 Build instructions are [here](./docs/Server.md)
+
+## Build Nuget packages
+Currently only supported on Windows and Linux.
+### Prerequisites
+* dotnet is required for building csharp bindings and creating managed nuget package. Follow the instructions [here](https://dotnet.microsoft.com/download) to download dotnet. Tested with versions 2.1 and 3.1.
+* nuget.exe. Follow the instructions [here](https://docs.microsoft.com/en-us/nuget/install-nuget-client-tools#nugetexe-cli) to download nuget
+  * On Windows, downloading nuget is straightforward and simply following the instructions above should work.
+  * On Linux, nuget relies on Mono runtime and therefore this needs to be setup too. Above link has all the information to setup Mono and nuget. The instructions can directly be found [here](https://www.mono-project.com/docs/getting-started/install/). In some cases it is required to run `sudo apt-get install mono-complete` after installing mono.
+
+### Build Instructions
+#### Windows
+```
+.\build.bat --build_nuget
+```
+
+#### Linux
+```
+./build.sh --build_nuget
+```
+Nuget packages are created under <native_build_dir>\nuget-artifacts
 
 ---
 
@@ -1015,6 +1035,45 @@ If you want to use NNAPI Execution Provider on Android, see [NNAPI Execution Pro
 
 Android NNAPI Execution Provider can be built using building commands in [Android Build instructions](#android-build-instructions) with `--use_nnapi`
 
+---
+
+### iOS
+
+#### Prerequisites
+* A Mac computer with latest macOS
+* Xcode, https://developer.apple.com/xcode/
+* CMake, https://cmake.org/download/
+* Python 3, https://www.python.org/downloads/mac-osx/
+
+#### General Info:
+* iOS Platforms
+
+   The following two platforms are supported
+   * iOS device (iPhone, iPad) with arm64 architecture
+   * iOS simulator with x86_64 architecture
+
+   armv7, armv7s and i386 architectures are not currently supported.
+
+   tvOS and watchOS platforms are not currently supported.
+* apple_deploy_target
+
+   Specify the minimum version of the target platform (iOS) on which the target binaries are to be deployed.
+* Code Signing
+
+   The onnxruntime library is not code signed, it may be required or desired to code sign the library for iOS devices. For more information, see [Code Signing](https://developer.apple.com/support/code-signing/).
+
+#### Build Instructions
+Run one of the following build scripts from the ONNX Runtime repository root,
+##### Cross build for iOS device
+```
+/build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
+           --ios --ios_sysroot iphoneos --osx_arch arm64 --apple_deploy_target <minimal iOS version>
+```
+##### Cross build for iOS simulator
+```
+/build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
+           --ios --ios_sysroot iphonesimulator --osx_arch x86_64 --apple_deploy_target <minimal iOS version>
+```
 ---
 
 ### AMD MIGraphX

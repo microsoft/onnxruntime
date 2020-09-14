@@ -14,7 +14,13 @@ endif()
 # Support OS X versions 10.12+
 # This variable is ignored on non-Apple platforms and needs to be set prior to the first project(...) invocation
 # TODO: Make the miniumum deployment target MacOSX version configurable
-set(CMAKE_OSX_DEPLOYMENT_TARGET "10.12" CACHE STRING "Minimum OS X deployment version for ORT" FORCE)
+# If the CMAKE_OSX_DEPLOYMENT_TARGET was set (currently valid only for iOS build),
+# we will cache its value instead of the default "10.12"
+if (NOT DEFINED CMAKE_OSX_DEPLOYMENT_TARGET)
+  set(CMAKE_OSX_DEPLOYMENT_TARGET "10.12" CACHE STRING "Minimum OS X deployment version for ORT" FORCE)
+else()
+  set(CMAKE_OSX_DEPLOYMENT_TARGET ${CMAKE_OSX_DEPLOYMENT_TARGET} CACHE STRING "Minimum OS X deployment version for ORT" FORCE)
+endif()
 
 # Project
 project(onnxruntime C CXX)
@@ -39,7 +45,7 @@ enable_testing()
 
 if(NOT CMAKE_BUILD_TYPE)
   message(STATUS "Build type not set - using RelWithDebInfo")
-  set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Choose build type: Debug Release RelWithDebInfo." FORCE)
+  set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Choose build type: Debug Release RelWithDebInfo MinSizeRel." FORCE)
 endif()
 
 # Options
@@ -106,7 +112,7 @@ option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 #It's default OFF because it's experimental now.
 option(onnxruntime_PREFER_SYSTEM_LIB "Experimental: Build with the preinstalled libraries in your system" OFF)
 
-# Options to reduce build size
+# Options related to reducing the binary size produced by the build
 option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
 option(onnxruntime_DISABLE_ML_OPS "Disable traditional ML ops" OFF)
 option(onnxruntime_DISABLE_RTTI "Disable RTTI" OFF)
@@ -114,6 +120,7 @@ option(onnxruntime_DISABLE_RTTI "Disable RTTI" OFF)
 option(onnxruntime_DISABLE_EXCEPTIONS "Disable exception handling. Requires onnxruntime_MINIMAL_BUILD currently." OFF)
 option(onnxruntime_MINIMAL_BUILD "Exclude as much as possible from the build. Support ORT format models. No support for ONNX format models." OFF)
 option(onnxruntime_REDUCED_OPS_BUILD "Reduced set of kernels are registered in build via modification of the kernel registration source files." OFF)
+option(onnxruntime_DISABLE_ORT_FORMAT_LOAD "Disable loading an ORT format model when onnxruntime_MINIMAL_BUILD=OFF (i.e. in a full build)." OFF)
 
 # training options
 option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
@@ -198,21 +205,12 @@ if(onnxruntime_USE_OPENMP)
   endif()
 endif()
 
-if(onnxruntime_ENABLE_LTO)
-    include(CheckIPOSupported)
-    check_ipo_supported(RESULT ipo_enabled OUTPUT ipo_output)
-    if(NOT ipo_enabled)
-      message(WARNING "IPO is not supported by this compiler")
-      set(onnxruntime_ENABLE_LTO OFF)
-    else()
-      set (CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
-    endif()
-endif()
-
 # ORT build with as much excluded as possible. Supports ORT flatbuffers models only.
 # Will expose option in build.py when all pieces are available
 if(onnxruntime_MINIMAL_BUILD)
   add_compile_definitions(ORT_MINIMAL_BUILD)
+  add_compile_definitions(ENABLE_ORT_FORMAT_LOAD)
+  
   set(onnxruntime_REDUCED_OPS_BUILD ON)
 
   if (NOT onnxruntime_ENABLE_PYTHON)
@@ -221,8 +219,11 @@ if(onnxruntime_MINIMAL_BUILD)
   endif()
 
   if (MSVC)
-    # add MSVC specific flags to reduce build size here if needed
-    
+    # turn on LTO (which adds some compiler flags and turns on LTCG) unless it's a Debug build to minimize binary size
+    if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+      set (onnxruntime_ENABLE_LTO ON)
+    endif()
+
     # undocumented internal flag to allow analysis of a minimal build binary size
     if (ADD_DEBUG_INFO_TO_MINIMAL_BUILD)
       string(APPEND CMAKE_CXX_FLAGS " /Zi")
@@ -236,7 +237,28 @@ if(onnxruntime_MINIMAL_BUILD)
     else()
       add_link_options(-Wl,--gc-sections)
     endif()
+
+    if (ADD_DEBUG_INFO_TO_MINIMAL_BUILD)
+      string(APPEND CMAKE_CXX_FLAGS " -g")
+      string(APPEND CMAKE_C_FLAGS " -g")
+    endif()
   endif()
+else()
+  # support ORT format model loading unless onnxruntime_DISABLE_ORT_FORMAT_LOAD is set
+  if (NOT onnxruntime_DISABLE_ORT_FORMAT_LOAD)
+    add_compile_definitions(ENABLE_ORT_FORMAT_LOAD)
+  endif()
+endif()
+
+if(onnxruntime_ENABLE_LTO)
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT ipo_enabled OUTPUT ipo_output)
+    if(NOT ipo_enabled)
+      message(WARNING "IPO is not supported by this compiler")
+      set(onnxruntime_ENABLE_LTO OFF)
+    else()
+      set (CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+    endif()
 endif()
 
 if (onnxruntime_REDUCED_OPS_BUILD)
@@ -352,6 +374,7 @@ if (MSVC)
   if (onnxruntime_ENABLE_LTO AND NOT onnxruntime_USE_CUDA)
     SET (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Gw /GL")
     SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /Gw /GL")
+    SET (CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} /Gw /GL")
   endif()
 
   # The WinML build tool chain builds ARM/ARM64, and the internal tool chain does not have folders for spectre mitigation libs.
@@ -370,6 +393,8 @@ if (MSVC)
     SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /guard:cf")
     SET(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} /guard:cf")
     SET(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /guard:cf")
+    SET(CMAKE_C_FLAGS_MINSIZEREL "${CMAKE_C_FLAGS_MINSIZEREL} /guard:cf")
+    SET(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} /guard:cf")
     SET(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} /guard:cf")
   endif()
 else()
@@ -562,7 +587,6 @@ get_filename_component(ONNXRUNTIME_ROOT "${ONNXRUNTIME_ROOT}" ABSOLUTE)
 get_filename_component(ORTTRAINING_ROOT "${ORTTRAINING_ROOT}" ABSOLUTE)
 get_filename_component(REPO_ROOT "${REPO_ROOT}" ABSOLUTE)
 set(ONNXRUNTIME_INCLUDE_DIR ${REPO_ROOT}/include/onnxruntime)
-
 
 add_subdirectory(external/date EXCLUDE_FROM_ALL)
 
@@ -819,13 +843,17 @@ if (WIN32)
     if (MSVC)
       foreach(type EXE STATIC SHARED)
         if (NOT type MATCHES STATIC)
+          set(CMAKE_${type}_LINKER_FLAGS_RELEASE "${CMAKE_${type}_LINKER_FLAGS_RELEASE} /OPT:REF,ICF,LBR")
+          set(CMAKE_${type}_LINKER_FLAGS_RELEASE "${CMAKE_${type}_LINKER_FLAGS_RELEASE} /INCREMENTAL:NO")
           set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /OPT:REF,ICF,LBR")
           set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /INCREMENTAL:NO")
-          #TODO: the "/LTCG" switch should be controlled by onnxruntime_ENABLE_LTO
+          set(CMAKE_${type}_LINKER_FLAGS_MINSIZEREL "${CMAKE_${type}_LINKER_FLAGS_MINSIZEREL} /OPT:REF,ICF,LBR")
+          set(CMAKE_${type}_LINKER_FLAGS_MINSIZEREL "${CMAKE_${type}_LINKER_FLAGS_MINSIZEREL} /INCREMENTAL:NO")
         endif()
         if (onnxruntime_ENABLE_LTO AND NOT onnxruntime_USE_CUDA)
           set(CMAKE_${type}_LINKER_FLAGS_RELEASE "${CMAKE_${type}_LINKER_FLAGS_RELEASE} /LTCG")
           set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /LTCG")
+          set(CMAKE_${type}_LINKER_FLAGS_MINSIZEREL "${CMAKE_${type}_LINKER_FLAGS_MINSIZEREL} /LTCG")
         endif()
       endforeach()
     endif()
@@ -1172,13 +1200,10 @@ if (onnxruntime_ENABLE_TRAINING)
           message(STATUS "NCCL_MINOR_VERSION: ${NCCL_MINOR_VERSION}")
         endif()
 
-        if (${NCCL_MAJOR_VERSION} GREATER 2)
-          add_definitions(-DUSE_NCCL_P2P=1)
-        else()
-          if(${NCCL_MAJOR_VERSION} EQUAL 2)
-            if(${NCCL_MINOR_VERSION} GREATER 7)
-              add_definitions(-DUSE_NCCL_P2P=1)
-            endif()
+        if (NCCL_MAJOR_VERSION_DEFINED AND NCCL_MINOR_VERSION_DEFINED)
+          if ("${NCCL_MAJOR_VERSION}.${NCCL_MINOR_VERSION}" VERSION_GREATER_EQUAL "2.7")
+            add_definitions(-DUSE_NCCL_P2P=1)
+            message( STATUS "NCCL P2P is enabled for supporting ncclSend and ncclRecv." )
           endif()
         endif()
 
