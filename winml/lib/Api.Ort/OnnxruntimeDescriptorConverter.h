@@ -23,7 +23,7 @@ struct OnnxruntimeDescriptorConverter {
       const std::unordered_map<std::string, std::string>& model_metadata);
 
   wfc::IVector<winml::ILearningModelFeatureDescriptor>
-  ConvertToLearningModelDescriptors(const std::vector<OnnxruntimeValueInfoWrapper>& descriptors);
+  ConvertToLearningModelDescriptors(const OnnxruntimeValueInfoWrapper* descriptors, size_t num_descriptors);
 
  private:
   Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_;

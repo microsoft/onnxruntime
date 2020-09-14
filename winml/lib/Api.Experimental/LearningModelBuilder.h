@@ -12,11 +12,10 @@ struct LearningModelBuilder : LearningModelBuilderT<LearningModelBuilder> {
 
   winml_experimental::LearningModelInputs Inputs();
   winml_experimental::LearningModelOutputs Outputs();
+  winml_experimental::LearningModelOperatorSet Operators();
   winml::LearningModel CreateModel();
 
   static winml_experimental::LearningModelBuilder Create();
-  static winml_experimental::LearningModelOperator AfterAll(winml_experimental::LearningModelOperator const& target, wfc::IVectorView<winml_experimental::LearningModelOperator> const& input_operators);
-  static winml_experimental::LearningModelOperator AfterAll(winml_experimental::LearningModelOperator const& target, wfc::IVectorView<winml_experimental::LearningModelOperator> const& input_operators, winml_experimental::LearningModelOperatorResolutionPolicy const& policy);
 
   _winml::IModel* UseModel();
   
@@ -26,6 +25,7 @@ struct LearningModelBuilder : LearningModelBuilderT<LearningModelBuilder> {
 
   winml_experimental::LearningModelInputs inputs_;
   winml_experimental::LearningModelOutputs outputs_;
+  winml_experimental::LearningModelOperatorSet operators_;
 };
 }  // WINML_EXPERIMENTALP
 

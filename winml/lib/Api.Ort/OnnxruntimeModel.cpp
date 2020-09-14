@@ -81,7 +81,7 @@ HRESULT ModelInfo::RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_facto
   // Create inputs
   std::vector<OnnxruntimeValueInfoWrapper> inputs;
   RETURN_IF_FAILED(CreateFeatureDescriptors(engine_factory, &input_helpers, ort_model, inputs));
-  input_features_ = converter.ConvertToLearningModelDescriptors(inputs);
+  input_features_ = converter.ConvertToLearningModelDescriptors(inputs.data(), inputs.size());
 
   // Create outputs
   static const winml_adapter_api_model_feature_helper output_helpers = {
@@ -92,7 +92,7 @@ HRESULT ModelInfo::RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_facto
 
   std::vector<OnnxruntimeValueInfoWrapper> outputs;
   RETURN_IF_FAILED(CreateFeatureDescriptors(engine_factory, &output_helpers, ort_model, outputs));
-  output_features_ = converter.ConvertToLearningModelDescriptors(outputs);
+  output_features_ = converter.ConvertToLearningModelDescriptors(outputs.data(), outputs.size());
 
   const char* out;
   size_t len;
@@ -240,10 +240,62 @@ STDMETHODIMP OnnruntimeModel::DetachOrtModel(OrtModel** model) {
   return S_OK;
 }
 
-STDMETHODIMP OnnruntimeModel::AddOperator(const char* const op_type, const char* const op_name, const char* const* input_names,
-                                          size_t num_inputs, const char* const* output_names, size_t num_outputs) {
+HRESULT GetValue(const char* key, const char* const* keys, const char* const* values,
+                 size_t num_values_in_dictionary, const char** value) {
+  auto found_it =
+      std::find_if(keys, keys + num_values_in_dictionary, [key](auto& key_name) {
+        return _stricmp(key, key_name) == 0;
+      });
+  if (found_it == (keys + num_values_in_dictionary)) {
+    return S_FALSE;
+  }
+  *value = values[std::distance(keys, found_it)];
+  return S_OK;
+}
+
+STDMETHODIMP OnnruntimeModel::AddOperator(
+    const char* const op_type, const char* const op_name, const char* const op_domain,
+    const char* const* op_input_names, const char* const* actual_input_names, size_t num_inputs,
+    const char* const* op_output_names, const char* const* actual_output_names, size_t num_outputs) {
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
-  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->ModelAddOperator(ort_model_.get(), op_type, op_name, input_names, num_inputs, output_names, num_outputs, nullptr, nullptr, 0),
+
+  size_t input_count;
+  //RETURN_HR_IF_NOT_OK_MSG(
+  winml_adapter_api->OperatorGetNumInputs(op_type, op_domain, &input_count);
+  //);
+  size_t output_count;
+  //RETURN_HR_IF_NOT_OK_MSG(
+  winml_adapter_api->OperatorGetNumOutputs(op_type, op_domain, & output_count);
+  //);
+
+  std::vector<const char*> input_names(input_count);
+  for (int i = 0; i < input_count; i++) {
+    const char* name;
+    //RETURN_HR_IF_NOT_OK_MSG(
+    winml_adapter_api->OperatorGetInputName(op_type, op_domain, i, &name);
+    //);
+
+    const char* actual_name;
+    if (S_OK == GetValue(name, op_input_names, actual_input_names, num_inputs, &actual_name))
+    {
+      input_names[i] = actual_name;
+    }
+  }
+
+  std::vector<const char*> output_names(output_count);
+  for (int i = 0; i < output_count; i++) {
+    const char* name;
+    //RETURN_HR_IF_NOT_OK_MSG(
+        winml_adapter_api->OperatorGetOutputName(op_type, op_domain, i, &name);
+    //);
+    const char* actual_name = nullptr;
+    if (S_OK == GetValue(name, op_output_names, actual_output_names, num_outputs, &actual_name)) {
+        output_names[i] = actual_name;
+    }
+  }
+
+  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->ModelAddOperator(
+    ort_model_.get(), op_type, op_name, op_domain, input_names.data(), input_count, output_names.data(), output_count, nullptr, nullptr, 0),
                           engine_factory_->UseOrtApi());
   return S_OK;
 }
@@ -302,7 +354,7 @@ ONNXTensorElementDataTypeFromTensorKind(winml::TensorKind kind) {
   }
 }
 
-STDMETHODIMP OnnruntimeModel::AddModelInput(_In_ const char* const name, _In_ IDescriptorInfoProvider* descriptor_provider, bool is_constant) {
+STDMETHODIMP OnnruntimeModel::AddModelInput(_In_ const char* const name, _In_ IDescriptorInfoProvider* descriptor_provider, bool is_constant, IValue* /*default_value*/) {
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
   auto ort_api = engine_factory_->UseOrtApi();
 
@@ -330,52 +382,5 @@ STDMETHODIMP OnnruntimeModel::AddModelOutput(_In_ const char* const name, _In_ I
   ort_type_info_provider->GetTypeInfo(&type_info);
 
   RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->ModelAddOutput(ort_model_.get(), name, type_info), ort_api);
-  return S_OK;
-}
-
-STDMETHODIMP OnnruntimeModel::InferOperatorOutputs(_In_ const char* const op_name, _In_ const wfc::IVector<winml::ILearningModelFeatureDescriptor>& inputs, _Out_ wfc::IVector<winml::ILearningModelFeatureDescriptor>& outputs) {
-  UNREFERENCED_PARAMETER(op_name);
-  UNREFERENCED_PARAMETER(inputs);
-  UNREFERENCED_PARAMETER(outputs);
-  return S_OK;
-}
-
-STDMETHODIMP OnnruntimeModel::ResolveOperatorInputs(_In_ const char* const op_type,
-                                                    _In_ wfc::IVectorView<winml::ILearningModelFeatureDescriptor>& available_inputs,
-                                                    _Out_ wfc::IVector<winml::ILearningModelFeatureDescriptor>& resolved_inputs,
-                                                    _Out_ wfc::IMap<winrt::hstring, winrt::hstring>& mapping) {
-  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
-
-  std::vector<OrtTypeInfo*> available_inputs_vector;
-  for (uint32_t i = 0; i < available_inputs.Size(); i++) {
-    auto learning_model_descriptor = available_inputs.GetAt(i);
-    auto descriptor_provider = learning_model_descriptor.as<IDescriptorInfoProvider>();
-
-    winrt::com_ptr<IDescriptorInfo> descriptor_info;
-    descriptor_provider->GetDescriptorInfo(engine_factory_.Get(), descriptor_info.put());
-    auto ort_type_info_provider = descriptor_info.as<IOrtTypeInfoProvider>();
-
-    OrtTypeInfo* info;
-    ort_type_info_provider->GetTypeInfo(&info);
-
-    available_inputs_vector.emplace_back(info);
-  }
-
-  size_t num_inputs;
-  winml_adapter_api->OperatorGetNumInputs(op_type, &num_inputs);
-  std::vector<size_t> indexes(num_inputs);
-  winml_adapter_api->ResolveOperatorInputs(op_type, available_inputs_vector.data(), available_inputs_vector.size(), indexes.data(), num_inputs);
-
-  resolved_inputs.Clear();
-  mapping.Clear();
-  for (size_t i = 0; i < num_inputs; i++) {
-    auto feature_descriptor = available_inputs.GetAt(static_cast<uint32_t>(indexes[i]));
-    resolved_inputs.Append(feature_descriptor);
-
-    const char* name;
-    winml_adapter_api->OperatorGetInputName(op_type, i, &name);
-    mapping.Insert(_winml::Strings::HStringFromUTF8(name), feature_descriptor.Name());
-  }
-
   return S_OK;
 }

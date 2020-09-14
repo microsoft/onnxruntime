@@ -25,55 +25,45 @@ namespace ROOT_NS.AI.MachineLearning.Experimental {
   [threading(both)]
   [marshaling_behavior(agile)]
   [dualapipartition(1)]
-  runtimeclass Dummy {
-    Dummy();
-
-    void Test();
+  runtimeclass Gemm {
+    static String InputA();
+    static String InputB();
+    static String AttributeBlah();
+    static String OptionalInputA();
+    static String OptionalInputB();
+    static String OptionalAttributeBias();
+    static String OutputY();
   }
 
-  [threading(both)]
-  [marshaling_behavior(agile)]
-  [dualapipartition(1)]
-  runtimeclass LearningModelOperatorResolutionPolicy {
-    LearningModelOperatorResolutionPolicy();
-
-    LearningModelOperatorResolutionPolicy ConnectInputs();
-    LearningModelOperatorResolutionPolicy ConnectConstants();
-    LearningModelOperatorResolutionPolicy AddInputMapping(String operator_input, String incoming_input);
-    LearningModelOperatorResolutionPolicy GenerateMissingInputsAsModelConstants();
-    LearningModelOperatorResolutionPolicy GenerateMissingInputsAsModelInputs();
-  }
 
   runtimeclass LearningModelBuilder;
-
 
   [threading(both)]
   [marshaling_behavior(agile)]
   [dualapipartition(1)]
   runtimeclass LearningModelOperator {
     LearningModelOperator(String type, String name);
+    LearningModelOperator(String type, String name, String domain);
 
-    LearningModelOperator Then(LearningModelOperator next_operator);
-    LearningModelOperator Then(LearningModelOperator next_operator, LearningModelOperatorResolutionPolicy policy);
-    LearningModelBuilder ConnectToOutputs();
-    LearningModelBuilder ConnectToOutputs(LearningModelOperatorResolutionPolicy policy);
-
+    LearningModelOperator SetInput(String operator_input_name, String input_name);
+    LearningModelOperator SetOutput(String operator_output_name, String output_name);
     LearningModelOperator SetAttribute(String name, IInspectable value);
-    Windows.Foundation.Collections.IVectorView<ROOT_NS.AI.MachineLearning.ILearningModelFeatureDescriptor> Inputs { get; };
-    Windows.Foundation.Collections.IMapView<String, String> InputMapping { get; };
-    Windows.Foundation.Collections.IVectorView<ROOT_NS.AI.MachineLearning.ILearningModelFeatureDescriptor> Attributes { get; };
-    Windows.Foundation.Collections.IVectorView<ROOT_NS.AI.MachineLearning.ILearningModelFeatureDescriptor> Outputs { get; };
-    String Name { get; };
 
-    static LearningModelOperator Gemm();
-    static LearningModelOperator Gemm(String name);
+    String Name { get; };
+    String Type { get; };
+    String Domain { get; };
+  }
+
+  [threading(both)]
+  [marshaling_behavior(agile)]
+  [dualapipartition(1)]
+  runtimeclass LearningModelOperatorSet {
+    LearningModelBuilder Add(LearningModelOperator op);
   }
 
   [marshaling_behavior(agile)]
   [dualapipartition(1)]
   runtimeclass LearningModelInputs {
-    LearningModelOperator Then(LearningModelOperator next_operator);
-    LearningModelOperator Then(LearningModelOperator next_operator, LearningModelOperatorResolutionPolicy policy);
     LearningModelBuilder Add(ROOT_NS.AI.MachineLearning.ILearningModelFeatureDescriptor input);
     LearningModelBuilder Add(ROOT_NS.AI.MachineLearning.ILearningModelFeatureDescriptor input, IInspectable default_value);
     LearningModelBuilder AddConstant(ROOT_NS.AI.MachineLearning.ILearningModelFeatureDescriptor input, IInspectable value);
@@ -97,18 +87,10 @@ namespace ROOT_NS.AI.MachineLearning.Experimental {
   runtimeclass LearningModelBuilder {
     LearningModelInputs Inputs { get; };
     LearningModelOutputs Outputs { get; };
+    LearningModelOperatorSet Operators { get; };
 
     //! Create a builder.
     static LearningModelBuilder Create();
-
-    static LearningModelOperator AfterAll(
-        LearningModelOperator target,
-        Windows.Foundation.Collections.IVectorView<LearningModelOperator> input_operators);
-
-    static LearningModelOperator AfterAll(
-        LearningModelOperator target,
-        Windows.Foundation.Collections.IVectorView<LearningModelOperator> input_operators,
-        LearningModelOperatorResolutionPolicy policy);
 
     ROOT_NS.AI.MachineLearning.LearningModel CreateModel();
   }

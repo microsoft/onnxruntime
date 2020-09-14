@@ -8,9 +8,7 @@
 #include "LearningModelDevice.h"
 #include "OnnxruntimeProvider.h"
 #include "LearningModelBuilder.h"
-#include "LearningModelOperatorResolutionPolicy.h"
 #include "LearningModelOperator.h"
-#include "Dummy.h"
 
 #define STRINGIFY(x) #x
 #define XSTRINGIFY(x) STRINGIFY(x)
@@ -103,13 +101,6 @@ STDAPI DllGetExperimentalActivationFactory(void* classId, void** factory) noexce
       return std::equal(left.rbegin(), left.rend(), right.rbegin(), right.rend());
     };
 
-    std::wostringstream dummy_class;
-    dummy_class << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.Dummy";
-    if (requal(name, dummy_class.str())) {
-      *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::Dummy>());
-      return 0;
-    }
-
     std::wostringstream learning_model_builder_class;
     learning_model_builder_class << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelBuilder";
     if (requal(name, learning_model_builder_class.str())) {
@@ -121,13 +112,6 @@ STDAPI DllGetExperimentalActivationFactory(void* classId, void** factory) noexce
     learning_model_operator_class << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelOperator";
     if (requal(name, learning_model_operator_class.str())) {
       *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelOperator>());
-      return 0;
-    }
-
-    std::wostringstream learning_model_operator_resolution_policy_class;
-    learning_model_operator_resolution_policy_class << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelOperatorResolutionPolicy";
-    if (requal(name, learning_model_operator_resolution_policy_class.str())) {
-      *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelOperatorResolutionPolicy>());
       return 0;
     }
 

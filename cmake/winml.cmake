@@ -500,8 +500,6 @@ endif(onnxruntime_USE_DML)
 
 # Add static library that will be archived/linked for both static/dynamic library
 add_library(winml_lib_api_experimental STATIC
-  ${winml_lib_api_experimental_dir}/Dummy.cpp
-  ${winml_lib_api_experimental_dir}/Dummy.h
   ${winml_lib_api_experimental_dir}/LearningModelBuilder.cpp
   ${winml_lib_api_experimental_dir}/LearningModelBuilder.h
   ${winml_lib_api_experimental_dir}/LearningModelInputs.cpp
@@ -510,8 +508,8 @@ add_library(winml_lib_api_experimental STATIC
   ${winml_lib_api_experimental_dir}/LearningModelOutputs.h
   ${winml_lib_api_experimental_dir}/LearningModelOperator.cpp
   ${winml_lib_api_experimental_dir}/LearningModelOperator.h
-  ${winml_lib_api_experimental_dir}/LearningModelOperatorResolutionPolicy.cpp
-  ${winml_lib_api_experimental_dir}/LearningModelOperatorResolutionPolicy.h
+  ${winml_lib_api_experimental_dir}/LearningModelOperatorSet.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelOperatorSet.h
 )
 
 # Compiler options

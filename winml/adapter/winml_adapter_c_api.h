@@ -428,31 +428,33 @@ struct WinmlAdapterApi {
       _In_ OrtModel* model,
       _In_ const char* const op_type,
       _In_ const char* const op_name,
+      _In_ const char* const op_domain,
       _In_ const char* const* input_names, _In_ size_t num_inputs,
       _In_ const char* const* output_names, _In_ size_t num_outputs,
       _In_ const char* const* attribute_names, _In_ OrtValue** attribute_values, _In_ size_t num_attributes)NO_EXCEPTION;
 
-  OrtStatus*(ORT_API_CALL* InferOperatorOutputs)(
-      _In_ OrtModel* model,
-      _In_ const char* const op_type,
-      _In_ OrtTypeInfo** input_type_info, size_t num_inputs,
-      _In_ const char* const* attribute_names, _In_ OrtValue** attribute_values, _In_ size_t num_attributes,
-      _Out_ OrtTypeInfo** output_type_info, const char* const* output_names, size_t num_outputs)NO_EXCEPTION;
-
-  OrtStatus*(ORT_API_CALL* ResolveOperatorInputs)(
-      _In_ const char* const op_type,
-      _In_ OrtTypeInfo** inputs_type_info, size_t num_inputs,
-      _Out_ size_t* indexes, size_t num_indexes)NO_EXCEPTION;
-
   OrtStatus*(ORT_API_CALL* OperatorGetNumInputs)(
-      _In_ const char* const op_type, 
+      _In_ const char* const op_type,
+      _In_ const char* const op_domain, 
       _Out_ size_t* num_inputs)NO_EXCEPTION;
 
   OrtStatus*(ORT_API_CALL* OperatorGetInputName)(
       _In_ const char* const op_type,
+      _In_ const char* const op_domain,
       _In_ size_t index,
       _Out_ const char** const name
       )NO_EXCEPTION;
+
+  OrtStatus*(ORT_API_CALL* OperatorGetNumOutputs)(
+      _In_ const char* const op_type,
+      _In_ const char* const op_domain,
+      _Out_ size_t* num_inputs)NO_EXCEPTION;
+
+  OrtStatus*(ORT_API_CALL* OperatorGetOutputName)(
+      _In_ const char* const op_type,
+      _In_ const char* const op_domain,
+      _In_ size_t index,
+      _Out_ const char** const name)NO_EXCEPTION;
 
   ORT_CLASS_RELEASE(Model);
 };

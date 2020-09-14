@@ -7,6 +7,37 @@ namespace _winml {
 
 interface IEngineFactory;
 
+using Resource = std::unique_ptr<void, std::function<void(void*)>>;
+MIDL_INTERFACE("31f39226-cfe8-4758-af38-3d01b2a33ee1")
+IValue : IUnknown {
+  STDMETHOD(IsEmpty)
+  (bool* out) PURE;
+
+  STDMETHOD(IsCpu)
+  (bool* out) PURE;
+
+  STDMETHOD(GetResource)
+  (_winml::Resource & resource) PURE;
+
+  STDMETHOD(IsTensor)
+  (bool* out) PURE;
+
+  STDMETHOD(IsOfTensorType)
+  (winml::TensorKind kind, bool* out) PURE;
+
+  STDMETHOD(GetTensorShape)
+  (std::vector<int64_t> & shape_vector) PURE;
+
+  STDMETHOD(IsOfMapType)
+  (winml::TensorKind key_kind, winml::TensorKind value_kind, bool* out) PURE;
+
+  STDMETHOD(IsOfVectorMapType)
+  (winml::TensorKind key_kind, winml::TensorKind value_kind, bool* out) PURE;
+
+  STDMETHOD(IsOfVectorTensorType)
+  (winml::TensorKind kind, bool* out) PURE;
+};
+
 MIDL_INTERFACE("4637dfcb-fc19-45c3-a632-c84942d0cf8e")
 IOrtTypeInfoProvider : IUnknown {
   STDMETHOD(GetTypeInfo)
@@ -64,53 +95,15 @@ IModel : IUnknown {
   (IModel * *copy) PURE;
 
   STDMETHOD(AddOperator)
-  (_In_ const char* const op_type, _In_ const char* const op_name, _In_ const char* const* input_names, _In_ size_t num_inputs, _In_ const char* const* output_names, _In_ size_t num_outputs) PURE;
+  (_In_ const char* const op_type, _In_ const char* const op_name, _In_ const char* const op_domain,
+   _In_ const char* const* op_input_names, _In_ const char* const* actual_input_names, size_t num_inputs,
+   _In_ const char* const* op_output_names, _In_ const char* const* actual_output_names, size_t num_outputs) PURE;
 
   STDMETHOD(AddModelInput)
-  (_In_ const char* const name, _In_ IDescriptorInfoProvider* descriptor_provider, bool is_constant) PURE;
+  (_In_ const char* const name, _In_ IDescriptorInfoProvider* descriptor_provider, bool is_constant, IValue* default_value) PURE;
 
   STDMETHOD(AddModelOutput)
   (_In_ const char* const name, _In_ IDescriptorInfoProvider* descriptor_provider) PURE;
-
-  STDMETHOD(InferOperatorOutputs)
-  (_In_ const char* const op_name, _In_ const wfc::IVector<winml::ILearningModelFeatureDescriptor>& inputs, _Out_ wfc::IVector<winml::ILearningModelFeatureDescriptor>& outputs) PURE;
-
-  STDMETHOD(ResolveOperatorInputs)
-  (_In_ const char* const op_type,
-   _In_ wfc::IVectorView<winml::ILearningModelFeatureDescriptor>& available_inputs,
-   _Out_ wfc::IVector<winml::ILearningModelFeatureDescriptor>& resolved_inputs,
-   _Out_ wfc::IMap<winrt::hstring, winrt::hstring>& mapping) PURE;
-};
-
-using Resource = std::unique_ptr<void, std::function<void(void*)>>;
-MIDL_INTERFACE("31f39226-cfe8-4758-af38-3d01b2a33ee1")
-IValue : IUnknown {
-  STDMETHOD(IsEmpty)
-  (bool* out) PURE;
-
-  STDMETHOD(IsCpu)
-  (bool* out) PURE;
-
-  STDMETHOD(GetResource)
-  (_winml::Resource & resource) PURE;
-
-  STDMETHOD(IsTensor)
-  (bool* out) PURE;
-
-  STDMETHOD(IsOfTensorType)
-  (winml::TensorKind kind, bool* out) PURE;
-
-  STDMETHOD(GetTensorShape)
-  (std::vector<int64_t> & shape_vector) PURE;
-
-  STDMETHOD(IsOfMapType)
-  (winml::TensorKind key_kind, winml::TensorKind value_kind, bool* out) PURE;
-
-  STDMETHOD(IsOfVectorMapType)
-  (winml::TensorKind key_kind, winml::TensorKind value_kind, bool* out) PURE;
-
-  STDMETHOD(IsOfVectorTensorType)
-  (winml::TensorKind kind, bool* out) PURE;
 };
 
 MIDL_INTERFACE("30c99886-38d2-41cb-a615-203fe7d7daac")

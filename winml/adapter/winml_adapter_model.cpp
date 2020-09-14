@@ -18,6 +18,7 @@
 #include "google/protobuf/io/zero_copy_stream_impl.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 
+#include "onnx/defs/schema.h"
 #include "core/framework/tensor_type_and_shape.h"
 
 #include "onnx/onnx-ml.pb.h"
@@ -164,6 +165,7 @@ OrtStatus* OrtModel::CreateEmptyModel(OrtModel** model) {
   auto model_proto = std::unique_ptr<ONNX_NAMESPACE::ModelProto>(new ONNX_NAMESPACE::ModelProto());
   auto opsetimportproto = model_proto->add_opset_import();
   opsetimportproto->set_version(7);
+  model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   return OrtModel::CreateOrtModelFromProto(std::move(model_proto), model);
 }
 
@@ -543,6 +545,7 @@ ORT_API_STATUS_IMPL(winmla::ModelAddOperator,
                     _In_ OrtModel* model,
                     _In_ const char* const op_type,
                     _In_ const char* const op_name,
+                    _In_ const char* const op_domain,
                     _In_ const char* const* input_names, _In_ size_t num_inputs,
                     _In_ const char* const* output_names, _In_ size_t num_outputs,
                     _In_ const char* const* attribute_names, _In_ OrtValue** attribute_values, _In_ size_t num_attributes) {
@@ -552,34 +555,26 @@ ORT_API_STATUS_IMPL(winmla::ModelAddOperator,
   onnx::NodeProto& node = *graph.add_node();
   node.set_op_type(op_type);
   node.set_name(op_name);
+  node.set_domain(op_domain);
 
   for (size_t i = 0; i < num_inputs; i++) {
-    node.add_input(input_names[i]);
+    auto name = input_names[i];
+    if (name != nullptr) {
+      node.add_input(name);
+    } else {
+      node.add_input();
+    }
   }
 
   for (size_t i = 0; i < num_outputs; i++) {
-    node.add_output(output_names[i]);
+    auto name = output_names[i];
+    if (name != nullptr) {
+      node.add_output(name);
+    }
+    else {
+      node.add_output("unused");
+    }
   }
-  return nullptr;
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(winmla::InferOperatorOutputs,
-                    _In_ OrtModel* model,
-                    _In_ const char* const op_type,
-                    _In_ OrtTypeInfo** input_type_info, size_t num_inputs,
-                    _In_ const char* const* attribute_names, _In_ OrtValue** attribute_values, _In_ size_t num_attributes,
-                    _Out_ OrtTypeInfo** output_type_info, const char* const* output_names, size_t num_outputs) {
-  API_IMPL_BEGIN
-  return nullptr;
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(winmla::ResolveOperatorInputs,
-                    _In_ const char* const op_type,
-                    _In_ OrtTypeInfo** inputs_type_info, size_t num_inputs,
-                    _Out_ size_t* indexes, size_t num_indexes) {
-  API_IMPL_BEGIN
   return nullptr;
   API_IMPL_END
 }
@@ -618,14 +613,44 @@ ORT_API_STATUS_IMPL(winmla::CreateMapTypeInfo, _Out_ OrtTypeInfo** type_info) {
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::OperatorGetNumInputs, _In_ const char* const op_type, _Out_ size_t* num_inputs) {
+static const onnx::OpSchema* GetSchema(const char* const op_type, const char* const op_domain) {
+  std::string domain = onnx::ONNX_DOMAIN;
+  if (op_domain) {
+    domain = op_domain;
+  }
+
+  auto registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
+  return registry->GetSchema(op_type, 12, domain);
+}
+
+ORT_API_STATUS_IMPL(winmla::OperatorGetNumInputs, _In_ const char* const op_type, _In_ const char* const op_domain, _Out_ size_t* num_inputs) {
   API_IMPL_BEGIN
+  auto schema = GetSchema(op_type, op_domain);
+  *num_inputs = schema->inputs().size();
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::OperatorGetInputName, _In_ const char* const op_type, _In_ size_t index, _Out_ const char** const name) {
+ORT_API_STATUS_IMPL(winmla::OperatorGetInputName, _In_ const char* const op_type, _In_ const char* const op_domain, _In_ size_t index, _Out_ const char** const name) {
   API_IMPL_BEGIN
+  auto schema = GetSchema(op_type, op_domain);
+  *name = schema->inputs().at(index).GetName().c_str();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(winmla::OperatorGetNumOutputs, _In_ const char* const op_type, _In_ const char* const op_domain, _Out_ size_t* num_outputs) {
+  API_IMPL_BEGIN
+  auto schema = GetSchema(op_type, op_domain);
+  *num_outputs = schema->outputs().size();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(winmla::OperatorGetOutputName, _In_ const char* const op_type, _In_ const char* const op_domain, _In_ size_t index, _Out_ const char** const name) {
+  API_IMPL_BEGIN
+  auto schema = GetSchema(op_type, op_domain);
+  *name = schema->outputs().at(index).GetName().c_str();
   return nullptr;
   API_IMPL_END
 }

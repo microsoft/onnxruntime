@@ -5,6 +5,8 @@
 #include "LearningModelBuilder.h"
 #include "TensorFeatureDescriptor.h"
 
+#include "..\Api\inc\ILotusValueProviderPrivate.h"
+
 namespace WINML_EXPERIMENTALP {
 
 LearningModelInputs::LearningModelInputs(winml_experimental::LearningModelBuilder builder) : builder_(builder),
@@ -14,36 +16,20 @@ LearningModelInputs::LearningModelInputs(winml_experimental::LearningModelBuilde
                                                                                       constant_values_(winrt::single_threaded_vector<wf::IInspectable>()) {
 }
 
-winml_experimental::LearningModelOperator LearningModelInputs::Then(winml_experimental::LearningModelOperator const& next_operator) {
-  auto operator_impl = next_operator.as<winml_experimentalp::LearningModelOperator>();
-  operator_impl->SetBuilder(builder_);
-  operator_impl->JoinAfter(*this);
-  return next_operator;
-}
-
-winml_experimental::LearningModelOperator LearningModelInputs::Then(winml_experimental::LearningModelOperator const& next_operator, winml_experimental::LearningModelOperatorResolutionPolicy const& /*policy*/) {
-  auto operator_impl = next_operator.as<winml_experimentalp::LearningModelOperator>();
-  operator_impl->SetBuilder(builder_);
-  operator_impl->JoinAfter(*this);
-  return next_operator;
-}
-
 winml_experimental::LearningModelBuilder LearningModelInputs::AddInput(winml::ILearningModelFeatureDescriptor const& input, Windows::Foundation::IInspectable const& default_value, bool is_constant) {
   // Perform model update inside the builder
   auto model = builder_.as<winml_experimentalp::LearningModelBuilder>()->UseModel();
-
   auto descriptor_provider = input.as<_winml::IDescriptorInfoProvider>();
-
   auto input_name = _winml::Strings::UTF8FromHString(input.Name());
-  model->AddModelInput(input_name.c_str(), descriptor_provider.get(), is_constant);
 
-  if (is_constant) {
-    constant_descriptors_.Append(input);
-    constant_values_.Append(default_value);
-  } else {
-    input_descriptors_.Append(input);
-    input_default_values_.Append(default_value);
+  winrt::com_ptr<_winml::IValue> default_value_ivalue;
+  if (default_value) {
+    auto default_value_value_provider = default_value.as<_winml::ILotusValueProviderPrivate>();
+    _winml::BindingContext bc{};
+    default_value_value_provider->GetValue(bc, default_value_ivalue.put());
   }
+
+  model->AddModelInput(input_name.c_str(), descriptor_provider.get(), is_constant, default_value_ivalue.get());
 
   return builder_;
 }
@@ -59,16 +45,4 @@ winml_experimental::LearningModelBuilder LearningModelInputs::Add(winml::ILearni
 winml_experimental::LearningModelBuilder LearningModelInputs::AddConstant(winml::ILearningModelFeatureDescriptor const& input, Windows::Foundation::IInspectable const& value) {
   return AddInput(input, value, true);
 }
-
-wfc::IVector<winml::ILearningModelFeatureDescriptor> LearningModelInputs::Inputs() {
-  auto all_inputs = winrt::single_threaded_vector<winml::ILearningModelFeatureDescriptor>();
-
-  std::vector<winml::ILearningModelFeatureDescriptor> all;
-
-  std::copy(begin(input_descriptors_), end(input_descriptors_), std::back_inserter(all));
-  std::copy(begin(constant_descriptors_), end(constant_descriptors_), std::back_inserter(all));
-
-  return winrt::single_threaded_vector<winml::ILearningModelFeatureDescriptor>(std::move(all));
-}
-
 }  // namespace WINML_EXPERIMENTALP

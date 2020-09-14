@@ -85,10 +85,10 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
     &winmla::ModelAddInput,
     &winmla::ModelAddOutput,
     &winmla::ModelAddOperator,
-    &winmla::InferOperatorOutputs,
-    &winmla::ResolveOperatorInputs,
     &winmla::OperatorGetNumInputs,
     &winmla::OperatorGetInputName,
+    &winmla::OperatorGetNumOutputs,
+    &winmla::OperatorGetOutputName,
 
     // Release
     &winmla::ReleaseModel

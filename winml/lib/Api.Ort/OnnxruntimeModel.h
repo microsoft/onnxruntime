@@ -44,7 +44,7 @@ class ModelInfo : public Microsoft::WRL::RuntimeClass<
   std::string name_;
   std::string domain_;
   std::string description_;
-  int64_t version_;
+  int64_t version_ = 0;
   std::unordered_map<std::string, std::string> model_metadata_;
   wfc::IVector<winml::ILearningModelFeatureDescriptor> input_features_;
   wfc::IVector<winml::ILearningModelFeatureDescriptor> output_features_;
@@ -69,22 +69,15 @@ class OnnruntimeModel : public Microsoft::WRL::RuntimeClass<
   (OrtModel** model);
 
   STDMETHOD(AddOperator)
-  (_In_ const char* const op_type, _In_ const char* const op_name, _In_ const char* const* input_names, _In_ size_t num_inputs, _In_ const char* const* output_names, _In_ size_t num_outputs);
+  (_In_ const char* const op_type, _In_ const char* const op_name, _In_ const char* const op_domain,
+   _In_ const char* const* op_input_names, _In_ const char* const* actual_input_names, size_t num_inputs,
+   _In_ const char* const* op_output_names, _In_ const char* const* actual_output_names, size_t num_outputs);
     
   STDMETHOD(AddModelInput)
-  (_In_ const char* const name, _In_ IDescriptorInfoProvider* descriptor_provider, bool is_constant);
+  (_In_ const char* const name, _In_ IDescriptorInfoProvider* descriptor_provider, bool is_constant, IValue* default_value);
 
   STDMETHOD(AddModelOutput)
   (_In_ const char* const name, _In_ IDescriptorInfoProvider* descriptor_provider);
-
-  STDMETHOD(InferOperatorOutputs)
-  (_In_ const char* const op_name, _In_ const wfc::IVector<winml::ILearningModelFeatureDescriptor>& inputs, _Out_ wfc::IVector<winml::ILearningModelFeatureDescriptor>& outputs);
-
-  STDMETHOD(ResolveOperatorInputs)
-  (_In_ const char* const op_type,
-   _In_ wfc::IVectorView<winml::ILearningModelFeatureDescriptor>& available_inputs,
-   _Out_ wfc::IVector<winml::ILearningModelFeatureDescriptor>& resolved_inputs,
-   _Out_ wfc::IMap<winrt::hstring, winrt::hstring>& mapping);
 
  private:
   UniqueOrtModel ort_model_;
