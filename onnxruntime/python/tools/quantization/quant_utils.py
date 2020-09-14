@@ -104,7 +104,7 @@ class QuantizedValue:
         self.qType = qType
 
 
-def _attribute_to_kwarg(attribute):
+def attribute_to_kwarg(attribute):
     '''
     Convert attribute to kwarg format for use with onnx.helper.make_node.
         :parameter attribute: attribute in AttributeProto format.
@@ -141,7 +141,7 @@ def _attribute_to_kwarg(attribute):
     return {attribute.name: value}
 
 
-def _find_by_name(item_name, item_list):
+def find_by_name(item_name, item_list):
     '''
     Helper function to find item by name in a list.
         parameter item_name: name of the item.
@@ -152,7 +152,7 @@ def _find_by_name(item_name, item_list):
     return items[0] if len(items) > 0 else None
 
 
-def _get_elem_index(elem_name, elem_list):
+def get_elem_index(elem_name, elem_list):
     '''
     Helper function to return index of an item in a node list
     '''
@@ -163,7 +163,7 @@ def _get_elem_index(elem_name, elem_list):
     return elem_idx
 
 
-def _get_mul_node(inputs, output, name):
+def get_mul_node(inputs, output, name):
     '''
     Helper function to create a Mul node.
         parameter inputs: list of input names.
@@ -174,7 +174,7 @@ def _get_mul_node(inputs, output, name):
     return onnx.helper.make_node("Mul", inputs, [output], name)
 
 
-def _generate_identified_filename(filename: Path, identifier: str) -> Path:
+def generate_identified_filename(filename: Path, identifier: str) -> Path:
     '''
     Helper function to generate a identifiable filepath by concatenating the given identifier as a suffix.   
     '''
