@@ -756,6 +756,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                         if not cond))
             cmake_args += [
                 "-DCMAKE_SYSTEM_NAME=iOS",
+                "-Donnxruntime_BUILD_SHARED_LIB=ON",
                 "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
                 "-DCMAKE_OSX_SYSROOT=" + args.ios_sysroot,
                 "-DCMAKE_OSX_ARCHITECTURES=" + args.osx_arch,
