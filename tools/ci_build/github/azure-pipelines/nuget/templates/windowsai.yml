@@ -397,7 +397,7 @@ jobs:
     displayName: 'Setup VS2019 env vars'
     inputs:
       filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
-      arguments: 'amd64'
+      arguments: x64
       modifyEnvironment: true
 
   - task: PowerShell@2
@@ -426,7 +426,7 @@ jobs:
         $output_props_content = $input_props_content -replace '\[PackageVersion\]', $package_version
         Set-Content -Path $output_props -Value $output_props_content
 
-        nuget restore -PackagesDirectory $packages_dir -Source https://api.nuget.org/v3/index.json -Source $merged_nuget_path $csproj
+        nuget restore -MSBuildVersion 16.7.0+b89cb5fde -PackagesDirectory $packages_dir -Source https://api.nuget.org/v3/index.json -Source $merged_nuget_path $csproj
 
         $project_assets_json = [System.IO.Path]::Combine($src_dir, 'obj', 'project.assets.json')
         Remove-Item -Force $project_assets_json
