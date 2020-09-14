@@ -1762,7 +1762,7 @@ ORT_API_STATUS_IMPL(OrtApis::SetLanguageProjection, _In_ const OrtEnv* ort_env, 
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SessionGetProfilingStartTimeNs, _In_ OrtSession* const sess, _Outptr_ uint64_t* out) {
+ORT_API_STATUS_IMPL(OrtApis::SessionGetProfilingStartTimeNs, _In_ const OrtSession* sess, _Outptr_ uint64_t* out) {
   API_IMPL_BEGIN
   const auto* session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
   auto profiling_start_time = session->GetProfiling().GetStartTime();

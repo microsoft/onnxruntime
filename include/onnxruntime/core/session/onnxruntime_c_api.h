@@ -1032,7 +1032,7 @@ struct OrtApi {
   /**
    * \param out is set to the nanoseconds of profiling's start time
    */
-  ORT_API2_STATUS(SessionGetProfilingStartTimeNs, _In_ OrtSession* sess, _Outptr_ uint64_t* out);
+  ORT_API2_STATUS(SessionGetProfilingStartTimeNs, _In_ const OrtSession* sess, _Outptr_ uint64_t* out);
 
 };
 
