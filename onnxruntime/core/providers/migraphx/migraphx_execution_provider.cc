@@ -931,18 +931,6 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
       return result;
     }
 
-    if (!unsupported_nodes.empty())
-    {
-      std::cout << "=======================================" << std::endl;
-      std::cout << "Unsupported_node_num = " << unsupported_nodes.size() << std::endl;
-      for (auto& idx : unsupported_nodes)
-      {
-        auto&& node = graph_viewer.GetNode(idx);
-        std::cout << "idx = " << idx << ", op_type = " << node->OpType() << std::endl;
-      }
-      std::cout << "=======================================" << std::endl;
-    }
-
     auto mgx_clusters = GetPartitionedSubgraphs(graph_viewer.GetNodesInTopologicalOrder(), unsupported_nodes);
     // check whether a subgrap should fallback to CPU
     SubgraphPostProcessing(graph_viewer, mgx_clusters);
@@ -1032,7 +1020,6 @@ bool get_input_output_names(std::string& onnx_buffer,
 
 Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                                           std::vector<NodeComputeInfo>& node_compute_funcs) {
-  std::cout << "Run on MIGraphX...." << std::endl;
   migraphx::onnx_options options;
   bool no_input_shape = false;
 
