@@ -212,11 +212,6 @@ Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_c
                           });
 
         ORT_RETURN_IF_ERROR(WaitAndCloseEvent(ev));
-        TIME_SPEC ts = results[i]->GetSpentTime();
-        double spent = TimeSpecToSeconds(&ts);
-        double spent2 = spent / results[i]->GetExcutionResult().size() / repeat_count;
-        LOGF_DEFAULT(ERROR, "Test %s finished in %.3g seconds, took %.3g for each input",
-                env.tests[i]->GetTestCaseName().c_str(), spent, spent2);
       }
       ORT_CATCH(const std::exception& ex) {
         ORT_HANDLE_EXCEPTION([&]() {
