@@ -5,6 +5,7 @@
 #include <vector>
 #include <mutex>
 #include <unordered_map>
+#include <unordered_set>
 #include <core/common/common.h>
 #include <core/common/status.h>
 #include <core/platform/path_lib.h>
@@ -78,3 +79,9 @@ std::unique_ptr<ITestCase> CreateOnnxTestCase(const std::string& test_case_name,
                                               std::unique_ptr<TestModelInfo> model,
                                               double default_per_sample_tolerance,
                                               double default_relative_per_sample_tolerance);
+
+void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths,
+               const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
+               double default_per_sample_tolerance, double default_relative_per_sample_tolerance,
+               const std::unordered_set<std::basic_string<ORTCHAR_T>>& disabled_tests,
+               const std::function<void(std::unique_ptr<ITestCase>)>& process_function);

@@ -16,6 +16,7 @@ struct SessionOptions;
 }  // namespace Ort
 
 namespace onnxruntime {
+class Env;
 namespace common {
 class Status;
 }
@@ -35,6 +36,8 @@ class TestEnv {
           std::vector<ITestCase*>&& tests, TestResultStat& stat1);
 
   ~TestEnv();
+
+  static PThreadPool GetDefaultThreadPool(onnxruntime::Env& env);
 
   /// <summary>
   /// Runs all tests cases either concurrently or sequentially

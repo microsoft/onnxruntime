@@ -59,7 +59,8 @@ std::shared_ptr<TestCaseResult> TestCaseRequestContext::Run(PThreadPool tpool,
   } else {
     ctx.RunSequentially(repeat_count);
   }
-  return ctx.GetResult();
+  auto result = ctx.GetResult();
+  return result;
 }
 
 void TestCaseRequestContext::Request(const Callback& cb, PThreadPool tpool,
@@ -123,7 +124,7 @@ void TestCaseRequestContext::OnDataTaskComplete(size_t task_id, EXECUTE_RESULT r
     CalculateAndLogStats();
     if (cb_) {
       std::unique_ptr<TestCaseRequestContext> self(this);
-      cb_.Invoke(result_);
+      cb_.Invoke(std::move(result_));
       // No member access beyond this point
     } else {
       std::lock_guard<std::mutex> g(mut_);

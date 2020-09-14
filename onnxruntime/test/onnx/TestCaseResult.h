@@ -60,5 +60,4 @@ class TestCaseResult {
   std::string node_name;
   onnxruntime::TIME_SPEC spent_time_;
   std::vector<EXECUTE_RESULT> execution_result_;
-  std::mutex result_mutex_;
 };

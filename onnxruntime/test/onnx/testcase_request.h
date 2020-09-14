@@ -32,7 +32,7 @@ namespace test {
 /// </summary>
 class TestCaseRequestContext {
  public:
-  using Callback = Callable<void, const std::shared_ptr<TestCaseResult>&>;
+  using Callback = Callable<void, std::shared_ptr<TestCaseResult>>;
 
   /// <summary>
   /// Runs data tests on the model sequentially (concurrent_runs < 2)

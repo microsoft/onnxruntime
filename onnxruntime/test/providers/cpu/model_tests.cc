@@ -9,10 +9,11 @@
 #include <iterator>
 #include "gtest/gtest.h"
 #include <core/platform/path_lib.h>
-#include "test/onnx/TestCase.h"
-#include "test/onnx/runner.h"
-#include "test/compare_ortvalue.h"
 #include "default_providers.h"
+
+// test infrastructure
+#include "test/onnx/TestCase.h"
+#include "test/compare_ortvalue.h"
 #include "test/onnx/heap_buffer.h"
 #include "test/onnx/onnx_model_info.h"
 #include "test/onnx/callback.h"

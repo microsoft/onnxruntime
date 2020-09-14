@@ -5,8 +5,27 @@
 #include "TestCase.h"
 #include "TestCaseResult.h"
 #include "TestResultStat.h"
+#include "testcase_driver.h"
+
+#include "core/platform/env.h"
+#include "core/platform/threadpool.h"
 
 using onnxruntime::Status;
+
+static std::unique_ptr<onnxruntime::concurrency::ThreadPool> default_pool;
+static std::once_flag default_pool_init;
+
+PThreadPool TestEnv::GetDefaultThreadPool(onnxruntime::Env& env) {
+  std::call_once(default_pool_init, [&env] {
+    using namespace onnxruntime::concurrency;
+    int core_num = env.GetNumCpuCores();
+
+    onnxruntime::ThreadOptions t_opts;
+    default_pool = onnxruntime::make_unique<ThreadPool>(&env, t_opts, ORT_TSTR("onnx_runer_tp"), core_num, false);
+  });
+  return default_pool.get();
+}
+
 
 TestEnv::TestEnv(Ort::Env& env, Ort::SessionOptions& so, PThreadPool tp,
                  std::vector<ITestCase*>&& tests, TestResultStat& stat)
@@ -25,16 +44,14 @@ Status TestEnv::Run(size_t parallel_models, int concurrent_runs, size_t repeat_c
 
   std::vector<std::shared_ptr<TestCaseResult>> results;
   if (parallel_models > 1U && tests_.size() > 1U) {
-    // Run all in parallel
-    // results = 
+    results = onnxruntime::test::TestCaseDriver::RunParallel(*this, parallel_models, concurrent_runs);
   } else {
-    // Run sequentially
-    // results = 
+    results = onnxruntime::test::TestCaseDriver::Run(*this, concurrent_runs, repeat_count);
   }
 
-  // CalculateStats();
+  CalculateStats(results);
 
-  return Status();
+  return Status::OK();
 }
 
 static
@@ -48,6 +65,7 @@ inline void AddFailedName(const TestCaseResult& r, TestResultStat& stat) {
 }
 
 void TestEnv::CalculateStats(const std::vector<std::shared_ptr<TestCaseResult>>& results) {
+  ORT_ENFORCE(tests_.size() == results.size(), "Should have received results for all the test cases");
   stat_.total_model_count = tests_.size();
   stat_.total_test_case_count = std::accumulate(std::begin(tests_), std::end(tests_), size_t{0},
                                                 [](size_t v, const ITestCase* c) {

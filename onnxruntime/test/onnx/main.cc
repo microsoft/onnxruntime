@@ -12,8 +12,8 @@
 #include <thread>
 #endif
 #include "TestResultStat.h"
+#include "TestCase.h"
 #include "testenv.h"
-#include "runner.h"
 #include "providers.h"
 #include <google/protobuf/stubs/common.h>
 #include "core/platform/path_lib.h"
@@ -487,8 +487,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
                 owned_tests.push_back(std::move(l));
               });
 
-    TestEnv args(env, sf, GetDefaultThreadPool(Env::Default()), std::move(tests), stat);
-    Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count));
+    TestEnv test_env(env, sf, TestEnv::GetDefaultThreadPool(Env::Default()), std::move(tests), stat);
+    Status st = test_env.Run(p_models, concurrent_session_runs, repeat_count);
     if (!st.IsOK()) {
       fprintf(stderr, "%s\n", st.ErrorMessage().c_str());
       return -1;

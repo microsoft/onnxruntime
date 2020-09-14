@@ -458,8 +458,8 @@ inline Session::Session(Env& env, const void* model_data, size_t model_data_leng
   ThrowOnError(GetApi().CreateSessionFromArray(env, model_data, model_data_length, options, &p_));
 }
 
-inline std::vector<Value> Session::Run(const RunOptions& run_options, const char** input_names, const Value* input_values, size_t input_count,
-                                       const char** output_names, size_t output_names_count) {
+inline std::vector<Value> Session::Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
+                                       const char* const* output_names, size_t output_names_count) {
   std::vector<Ort::Value> output_values;
   for (size_t i = 0; i < output_names_count; i++)
     output_values.emplace_back(nullptr);
@@ -467,8 +467,8 @@ inline std::vector<Value> Session::Run(const RunOptions& run_options, const char
   return output_values;
 }
 
-inline void Session::Run(const RunOptions& run_options, const char** input_names, const Value* input_values, size_t input_count,
-                         const char** output_names, Value* output_values, size_t output_count) {
+inline void Session::Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
+                         const char* const* output_names, Value* output_values, size_t output_count) {
   static_assert(sizeof(Value) == sizeof(OrtValue*), "Value is really just an array of OrtValue* in memory, so we can reinterpret_cast safely");
   auto ort_input_values = reinterpret_cast<const OrtValue**>(const_cast<Value*>(input_values));
   auto ort_output_values = reinterpret_cast<OrtValue**>(output_values);
