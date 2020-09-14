@@ -110,6 +110,7 @@ stages:
                   --config Release \
                   --skip_submodule_sync \
                   --parallel \
+                  --disable_ort_format_load \
                   --enable_lto \
                   --build_wheel \
                   --use_openmp \
@@ -188,6 +189,7 @@ stages:
                   --config Release \
                   --skip_submodule_sync \
                   --parallel \
+                  --disable_ort_format_load \
                   --build_wheel \
                   --enable_onnx_tests --use_cuda --cuda_version=10.2 --cuda_home=/usr/local/cuda-10.2 --cudnn_home=/usr/local/cuda-10.2 \
                   ${{ parameters.build_py_parameters }} \
@@ -270,6 +272,7 @@ stages:
                   --config Release \
                   --skip_submodule_sync \
                   --parallel \
+                  --disable_ort_format_load \
                   --build_wheel \
                   --enable_onnx_tests \
                   ${{ parameters.build_py_parameters }} \
@@ -365,6 +368,7 @@ stages:
             --config RelWithDebInfo
             --enable_lto
             --disable_rtti
+            --disable_ort_format_load
             --build_dir $(Build.BinariesDirectory)
             --skip_submodule_sync
             --cmake_generator "Visual Studio 16 2019"
@@ -488,6 +492,7 @@ stages:
             --build_dir $(Build.BinariesDirectory)
             --skip_submodule_sync
             --cmake_generator "Visual Studio 16 2019"
+            --disable_ort_format_load
             --enable_pybind
             --enable_onnx_tests
             ${{ parameters.build_py_parameters }}
@@ -575,7 +580,7 @@ stages:
       - script: |
           sudo python -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
           sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
-          ./build.sh --config Release --skip_submodule_sync --parallel --build_wheel --use_openmp ${{ parameters.build_py_parameters }}
+          ./build.sh --config Release --skip_submodule_sync --parallel --disable_ort_format_load --build_wheel --use_openmp ${{ parameters.build_py_parameters }}
         displayName: 'Command Line Script'
 
       - task: CopyFiles@2
