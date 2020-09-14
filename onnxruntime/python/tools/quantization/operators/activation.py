@@ -1,6 +1,6 @@
 import onnx
 from .base_operator import QuantOperatorBase
-from ..quant_utils import QuantizedValue, QuantizedValueType, _attribute_to_kwarg, ms_domain
+from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
 from onnx import onnx_pb as onnx_proto
 
 
@@ -24,18 +24,18 @@ class QLinearActivation(QuantOperatorBase):
 
     def quantize(self):
         node = self.node
-        if (node.op_type == "Relu" or node.op_type == 'Clip'):
+        if node.op_type == "Relu" or node.op_type == 'Clip':
             self.QuantizeClipRelu()
             return
 
         # No assert on op_type as it is controlled by registry
         # only try to quantize when given quantization parameters for it
         data_found, output_scale_name, output_zp_name, _, _ = self.quantizer._get_quantization_params(node.output[0])
-        if (not data_found):
+        if not data_found:
             super().quantize()
             return
 
-        quantized_input_names, zero_point_names, scale_names, nodes = self.quantizer._quantize_inputs(node, [0])
+        quantized_input_names, zero_point_names, scale_names, nodes = self.quantizer.quantize_inputs(node, [0])
 
         qlinear_activation_output = node.output[0] + "_quantized"
         qlinear_activation_name = ""
@@ -43,7 +43,7 @@ class QLinearActivation(QuantOperatorBase):
             qlinear_activation_name = node.name + "_quant"
         kwargs = {}
         for attribute in node.attribute:
-            kwargs.update(_attribute_to_kwarg(attribute))
+            kwargs.update(attribute_to_kwarg(attribute))
         kwargs["domain"] = ms_domain
 
         qlinear_activation_inputs = [quantized_input_names[0], scale_names[0], zero_point_names[0], output_scale_name, output_zp_name]
