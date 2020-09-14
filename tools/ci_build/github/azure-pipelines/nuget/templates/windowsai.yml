@@ -388,17 +388,17 @@ jobs:
       PlatformsSupported: 'win-x64,win-x86,win-arm64,win-arm'
       VerifyNugetSigning: 'true'
 
+  - task: NuGetToolInstaller@0
+    displayName: Use Nuget 4.9
+    inputs:
+      versionSpec: 4.9.4
+
   - task: BatchScript@1
     displayName: 'Setup VS2019 env vars'
     inputs:
       filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
       arguments: 'amd64'
       modifyEnvironment: true
-
-  - task: NuGetToolInstaller@0
-    displayName: Use Nuget 4.9
-    inputs:
-      versionSpec: 4.9.4
 
   - task: PowerShell@2
     displayName: 'NuGet Tests: Restore Windows.AI.MachineLearning Nuget Package (CppWinRT)'

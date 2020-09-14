@@ -148,10 +148,6 @@ steps:
        copy $(Build.SourcesDirectory)\onnxruntime\test\testdata\sequence_length.onnx $(Build.ArtifactStagingDirectory)\test_artifact\
        copy $(Build.SourcesDirectory)\onnxruntime\test\testdata\sequence_construct.onnx $(Build.ArtifactStagingDirectory)\test_artifact\
       displayName: 'Copy WinML test collateral to artifact directory'
-  - task: NuGetToolInstaller@0
-    displayName: Use Nuget 4.9
-    inputs:
-      versionSpec: 4.9.4
 
   - task: BatchScript@1
     displayName: 'Setup VS2019 env vars'
@@ -166,6 +162,11 @@ steps:
       ${{ if eq(parameters.BuildArch, 'arm') }}:
         arguments: 'x64'
       modifyEnvironment: true
+
+  - task: NuGetToolInstaller@0
+    displayName: Use Nuget 4.9
+    inputs:
+      versionSpec: 4.9.4
 
   - script: msbuild Microsoft.AI.MachineLearning.Interop.csproj /p:Configuration=RelWithDebInfo /p:Platform="Any CPU" /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory) -restore
     workingDirectory: '$(Build.SourcesDirectory)\csharp\src\Microsoft.AI.MachineLearning.Interop'
