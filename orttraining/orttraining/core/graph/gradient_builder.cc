@@ -113,7 +113,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetSqrtGradient) {
 IMPLEMENT_GRADIENT_BUILDER(GetErfGradient) {
   ArgDef X = I(0);
   std::vector<NodeDef> result;
-  NodeDef two_sqrt_pi_node = ConstantValueNode(static_cast<float>(M_2_SQRTPI), Name("Two_Sqrt_Pi"), IElemType(0));
+  NodeDef two_sqrt_pi_node = ConstantScalarNode(static_cast<float>(M_2_SQRTPI), Name("Two_Sqrt_Pi"), IElemType(0));
   ArgDef two_sqrt_pi_arg = two_sqrt_pi_node.output_args[0];
   result.push_back(two_sqrt_pi_node);
   result.push_back(NodeDef("Mul", {X, X}, {IA("Squared_X")}));
@@ -128,13 +128,14 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
   std::vector<NodeDef> result;
 
   ArgDef A = I(0), B = I(1), Y = O(0);
+  int elem_type = OElemType(0);
   std::vector<Dimension> A_shape, B_shape, Y_shape;
   const bool A_has_shape = GetShape(A, A_shape).IsOK();
   const bool B_has_shape = GetShape(B, B_shape).IsOK();
   const bool Y_has_shape = GetShape(Y, Y_shape).IsOK();
 
   auto dB_2d_case = [&]() {
-    NodeDef zero_float_const_node = ConstantScalarNode(float{0.0f}, {1}, Name("zero_float"));
+    NodeDef zero_float_const_node = ConstantScalarNode(0.0f, Name("zero_float"), elem_type);
     ArgDef ZERO_F = zero_float_const_node.output_args[0];
 
     if (B_shape[0].has_dim_value() && B_shape[1].has_dim_value()) {
@@ -200,7 +201,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
     AttributeProto transpose_second_input = MakeAttribute("transB", int64_t(1));
 
     if (A_shape.size() == 2 && B_shape.size() == 2) {
-      NodeDef zero_constant_node = ZeroConstantNode(OElemType(0));
+      NodeDef zero_constant_node = ZeroConstantNode(elem_type);
       ArgDef ZERO = zero_constant_node.output_args[0];
       result.push_back(zero_constant_node);
 
@@ -385,10 +386,11 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
 
   ArgDef A = I(0), B = I(1), C = I(2), dY = GO(0),
          dA = GI(0), dB = GI(1), dC = GI(2);
+  int elem_type = OElemType(0);
   AttributeProto transpose_first_input = MakeAttribute("transA", int64_t(1));
   AttributeProto transpose_second_input = MakeAttribute("transB", int64_t(1));
 
-  NodeDef zero_contant_node = ZeroConstantNode(OElemType(0));
+  NodeDef zero_contant_node = ZeroConstantNode(elem_type);
   ArgDef ZERO = zero_contant_node.output_args[0];
 
   std::vector<NodeDef> result;
@@ -477,7 +479,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
         HandleBroadcasting(dY, C, IA("dC_reduced"), C_axes, result);
 
         if (has_beta && beta != 1.0f) {
-          NodeDef scale_node = ConstantScalarNode(beta, Name("Scale"), IElemType(2));
+          NodeDef scale_node = ConstantScalarNode(beta, Name("Scale"), elem_type);
           ArgDef SCALE = scale_node.output_args[0];
           result.push_back(scale_node);
           result.push_back(
@@ -490,7 +492,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
         }
       } else {
         if (has_beta && beta != 1.0f) {
-          NodeDef scale_node = ConstantScalarNode(beta, Name("Scale"), IElemType(2));
+          NodeDef scale_node = ConstantScalarNode(beta, Name("Scale"), elem_type);
           ArgDef SCALE = scale_node.output_args[0];
           result.push_back(scale_node);
           result.push_back(
@@ -515,7 +517,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
       HandleBroadcastingDynamic(dY, C, c_shape, IA("dC_reduced"), c_axes, result);
 
       if (has_beta && beta != 1.0f) {
-        NodeDef scale_node = ConstantScalarNode(beta, Name("Scale"), IElemType(2));
+        NodeDef scale_node = ConstantScalarNode(beta, Name("Scale"), elem_type);
         ArgDef SCALE = scale_node.output_args[0];
         result.push_back(scale_node);
         result.push_back(

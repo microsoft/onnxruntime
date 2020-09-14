@@ -461,18 +461,21 @@ static Status ConfigureLossFunctionInternal(
 static Status BuildGradientGraphInternal(Graph& graph,
                                          const std::string& loss_function_output_name,
                                          const std::unordered_set<std::string>& node_arg_names_to_train,
-                                         const std::unordered_set<std::string>& mixed_precision_node_arg_names_to_train,
+                                         const std::unordered_set<std::string>* p_mixed_precision_node_arg_names_to_train,
                                          const GradientGraphConfiguration& gradient_graph_config,
                                          const logging::Logger& logger) {
   // Compute the gradient graph def.
-  bool is_mixed_precision_enabled = !mixed_precision_node_arg_names_to_train.empty();
+  // If mixed precision is enabled and use mixed precision initializers,
+  // p_mixed_precision_node_arg_names_to_train will not be empty and contains arg names of mixed precision initializers,
+  // in this case, the original weigth names need to be kept when resolve graph in GradientGraphBuilder::Build.
   GradientGraphBuilder grad_graph_builder(&graph,
                                           {loss_function_output_name},
-                                          is_mixed_precision_enabled ? mixed_precision_node_arg_names_to_train: node_arg_names_to_train,
+                                          p_mixed_precision_node_arg_names_to_train != nullptr ?
+                                              *p_mixed_precision_node_arg_names_to_train : node_arg_names_to_train,
                                           loss_function_output_name,
                                           gradient_graph_config,
                                           logger);
-  return grad_graph_builder.Build(is_mixed_precision_enabled ? &node_arg_names_to_train : nullptr);
+  return grad_graph_builder.Build(p_mixed_precision_node_arg_names_to_train != nullptr ? &node_arg_names_to_train : nullptr);
 }
 
 static Status BuildOptimizerInternal(Graph& graph,
@@ -685,7 +688,8 @@ Status TrainingSession::BuildGradientGraph(const std::unordered_set<std::string>
   ORT_RETURN_IF_ERROR(BuildGradientGraphInternal(model_->MainGraph(),
                                                  loss_function_output_name,
                                                  weights_to_train_,
-                                                 mixed_precision_weight_initializer_names_,
+                                                 mixed_precision_weight_initializer_names_.empty() ?
+                                                     nullptr : &mixed_precision_weight_initializer_names_,
                                                  gradient_graph_config_,
                                                  logger));
 
@@ -804,7 +808,8 @@ Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveO
     ORT_RETURN_IF_ERROR(BuildGradientGraphInternal(new_model->MainGraph(),
                                                    actual_loss_name,
                                                    weights_to_train_,
-                                                   mixed_precision_weight_initializer_names_,
+                                                   mixed_precision_weight_initializer_names_.empty() ?
+                                                       nullptr : &mixed_precision_weight_initializer_names_,
                                                    gradient_graph_config_,
                                                    *session_logger_));
 
