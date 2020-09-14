@@ -46,6 +46,7 @@ def quantize(model,
              nbits=8,
              quantization_mode=QuantizationMode.IntegerOps,
              static=False,
+             force_fusions=False,
              symmetric_activation=False,
              symmetric_weight=False,
              quantization_params=None,
@@ -102,7 +103,7 @@ def quantize(model,
     '''
     print("Warning: onnxruntime.quantization.quantize is deprecated.\n\
          Please use quantize_static for static quantization, quantize_dynamic for dynamic quantization.")
-    if nbits == 8:
+    if nbits == 8 or nbits == 7:
         input_qType = onnx_proto.TensorProto.INT8 if symmetric_activation else onnx_proto.TensorProto.UINT8
         weight_qType = onnx_proto.TensorProto.INT8 if symmetric_weight else onnx_proto.TensorProto.UINT8
         mode = quantization_mode
@@ -112,13 +113,13 @@ def quantize(model,
         if not op_types_to_quantize or len(op_types_to_quantize) == 0:
             op_types_to_quantize = list(QLinearOpsRegistry.keys()) if static else list(IntegerOpsRegistry.keys())
 
-        quantizer = ONNXQuantizer(copy_model, per_channel, mode, static, weight_qType, input_qType, quantization_params,
+        quantizer = ONNXQuantizer(copy_model, per_channel, nbits == 7, mode, static, weight_qType, input_qType, quantization_params,
                                   nodes_to_quantize, nodes_to_exclude, op_types_to_quantize)
 
         quantizer.quantize_model()
         return quantizer.model.model
     else:
-        raise ValueError('Only 8 bit quantization is currently supported')
+        raise ValueError('Only 8 and 7 bit quantization is currently supported')
 
 
 def quantize_static(model_input,
