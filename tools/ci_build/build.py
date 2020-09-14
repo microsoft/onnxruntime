@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 
 import argparse
+import glob
 import multiprocessing
 import os
 import re
@@ -193,7 +194,10 @@ def parse_arguments():
     parser.add_argument(
         "--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
     parser.add_argument("--android", action='store_true', help='Build for Android')
-    parser.add_argument("--android_abi", type=str, default='arm64-v8a', help='')
+    parser.add_argument(
+        "--android_abi", default="arm64-v8a",
+        choices=["armeabi-v7a", "arm64-v8a", "x86", "x86_64"],
+        help="Specify the target Android Application Binary Interface (ABI)")
     parser.add_argument("--android_api", type=int, default=27, help='Android API Level, e.g. 21')
     parser.add_argument("--android_sdk_path", type=str, help='Path to the Android SDK')
     parser.add_argument("--android_ndk_path", default="", help="Path to the Android NDK")
@@ -202,12 +206,9 @@ def parse_arguments():
 
     parser.add_argument("--ios", action='store_true', help="build for ios")
     parser.add_argument(
-        "--ios_sysroot", default="",
-        help="Specify the location name of the macOS platform SDK to be used")
-    parser.add_argument(
-        "--ios_toolchain_file", default="",
-        help="Path to ios toolchain file, "
-        "or cmake/onnxruntime_ios.toolchain.cmake will be used")
+        "--ios_platform", default="SIMULATOR64",
+        choices=["SIMULATOR64", "OS64", "OS64COMBINED"],
+        help="Specify the target iOS platform")
     parser.add_argument(
         "--use_xcode", action='store_true',
         help="Use Xcode as cmake generator, this is only supported on MacOS.")
@@ -215,14 +216,17 @@ def parse_arguments():
         "--xcode_code_signing_team_id", default="",
         help="The development team ID used for code signing in Xcode")
     parser.add_argument(
-        "--osx_arch", type=str,
-        help="Specify the Target specific architectures for macOS and iOS"
-        "This is only supported on macOS")
-    parser.add_argument(
         "--apple_deploy_target", type=str,
         help="Specify the minimum version of the target platform "
         "(e.g. macOS or iOS)"
         "This is only supported on macOS")
+    # The two parameters below are required for experimental iOS Cross Build on Linux
+    parser.add_argument(
+        "--ios_sysroot", default="",
+        help="Specify the location name of the macOS platform SDK to be used")
+    parser.add_argument(
+        "--ios_toolchain_dir", default="",
+        help="Path to ios toolchain binaries")
 
     # Arguments needed by CI
     parser.add_argument(
@@ -730,39 +734,73 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             cmake_args += ["-DANDROID_STL=c++_shared"]
 
     if args.ios:
-        if not is_macOS():
-            raise BuildError("macOS is require for iOS build")
+        if is_macOS():
+            needed_args = [
+                args.use_xcode,
+                args.apple_deploy_target,
+            ]
+            arg_names = [
+                "--use_xcode            " +
+                "<need use xcode to cross build iOS on MacOS>",
+                "--apple_deploy_target  " +
+                "<the minimum version of the target platform>",
+            ]
+            if not all(needed_args):
+                raise BuildError(
+                    "iOS build on MacOS canceled due to missing arguments: " +
+                    ', '.join(
+                        val for val, cond in zip(arg_names, needed_args)
+                        if not cond))
+            cmake_args += [
+                "-DCMAKE_TOOLCHAIN_FILE=../cmake/external/ios-cmake/ios.toolchain.cmake",
+                "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
+                "-DPLATFORM=" + args.ios_platform,
+                "-DENABLE_BITCODE=FALSE",
+                "-DDEPLOYMENT_TARGET=" + args.apple_deploy_target,
+                # we do not need protoc binary for ios cross build
+                "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF"
+            ]
+            if args.xcode_code_signing_team_id:
+                cmake_args += ["-DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=" + args.xcode_code_signing_team_id]
+        else:
+            # We are cross comppiling on linux
+            needed_args = [
+                args.ios_sysroot,
+                args.arm64 or args.arm,
+                args.ios_toolchain_dir
+            ]
+            arg_names = [
+                "--ios_sysroot <path to sysroot>",
+                "--arm or --arm64",
+                "--ios_toolchain_dir <path to toolchain>"
+            ]
+            if not all(needed_args):
+                raise BuildError(
+                    "iOS build canceled due to missing arguments: " +
+                    ', '.join(
+                        val for val, cond in zip(arg_names, needed_args)
+                        if not cond))
+            compilers = sorted(
+                glob.glob(args.ios_toolchain_dir + "/bin/*-clang*"))
+            os.environ["PATH"] = os.path.join(
+                args.ios_toolchain_dir, "bin") + os.pathsep + os.environ.get(
+                    "PATH", "")
+            os.environ["LD_LIBRARY_PATH"] = os.path.join(
+                args.ios_toolchain_dir, "/lib") + os.pathsep + os.environ.get(
+                    "LD_LIBRARY_PATH", "")
+            if len(compilers) != 2:
+                raise BuildError(
+                    "error identifying compilers in ios_toolchain_dir")
+            cmake_args += [
+                "-DCMAKE_OSX_ARCHITECTURES=" +
+                ("arm64" if args.arm64 else "arm"),
+                "-DCMAKE_SYSTEM_NAME=iOSCross",
+                "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
+                "-DCMAKE_OSX_SYSROOT=" + args.ios_sysroot,
+                "-DCMAKE_C_COMPILER=" + compilers[0],
+                "-DCMAKE_CXX_COMPILER=" + compilers[1]
+            ]
 
-        needed_args = [
-            args.use_xcode,
-            args.ios_sysroot,
-            args.apple_deploy_target,
-        ]
-        arg_names = [
-            "--use_xcode            " +
-            "<need use xcode to cross build iOS on MacOS>",
-            "--ios_sysroot          " +
-            "<the location or name of the macOS platform SDK>",
-            "--apple_deploy_target  " +
-            "<the minimum version of the target platform>",
-        ]
-        if not all(needed_args):
-            raise BuildError(
-                "iOS build on MacOS canceled due to missing arguments: " +
-                ', '.join(
-                    val for val, cond in zip(arg_names, needed_args)
-                    if not cond))
-        cmake_args += [
-            "-DCMAKE_TOOLCHAIN_FILE=../cmake/external/ios-cmake/ios.toolchain.cmake",
-            "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
-            "-DPLATFORM=" + args.ios_sysroot,
-            "-DENABLE_BITCODE=FALSE",
-            "-DDEPLOYMENT_TARGET=" + args.apple_deploy_target,
-            # we do not need protoc binary for ios cross build
-            "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF"
-        ]
-        if args.xcode_code_signing_team_id:
-            cmake_args += ["-DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=" + args.xcode_code_signing_team_id]
     if path_to_protoc_exe:
         cmake_args += [
             "-DONNX_CUSTOM_PROTOC_EXECUTABLE=%s" % path_to_protoc_exe]
