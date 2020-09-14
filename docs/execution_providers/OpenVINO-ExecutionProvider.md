@@ -38,9 +38,12 @@ onnxruntime.capi._pybind_state.set_openvino_device("<harware_option>")
 
 ### C/C++ API
 
-Pass the device string as the **second** argument of the call to append OpenVINO EP.
+Append the settings string "device_type|<hardware_option>\n" to the EP settings string. Example shown below for the CPU_FP32 option:
 ```
-Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, "<hardware_option>", ... ));
+std::string settings_str;
+...
+settings_str.append("device_type|CPU_FP32\n");
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINOEP(sf, settings_str));
 ```
 
 ## Enabling VPU Fast-compile
@@ -56,11 +59,13 @@ onnxruntime.capi._pybind_state.set_vpu_fast_compile(True)
 
 ### C/C++ API
 
-Pass the boolen value as the **third** argument of the call to append OpenVINO EP.
+Append the settings string "enable_vpu_fast_compile|true\n" to the EP settings string.
 ```
-Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, "<hardware_option>", true));
+std::string settings_str;
+...
+settings_str.append("enable_vpu_fast_compile|true\n");
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINOEP(sf, settings_str));
 ```
-
 
 ## Dynamic device id selection
 After a device type is selected is selected for inference (either during build time or run time), a specific physical hardware device of the type that is available on the host may optionally be specified for inference.
@@ -83,11 +88,14 @@ onnxruntime.capi._pybind_state.set_openvino_device_id("<device_id>")
 *This property persists and gets applied to new sessions until it is explicity unset. To unset, assign a null string ("").*
 
 ### C/C++ API
+Append the settings string "device_id|<device_id>\n" to the EP settings string, where <device_id> is the unique identifier of the hardware device.
+```
+std::string settings_str;
+...
+settings_str.append("device_id|<device_id>\n");
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINOEP(sf, settings_str));
+```
 
-Pass the device string as the **third** argument of the call to append OpenVINO EP.
-```
-Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, "<hardware_option>", <vpu_fast_compile>, <device_id> ));
-```
 
 ## ONNX Layers supported using OpenVINO
 

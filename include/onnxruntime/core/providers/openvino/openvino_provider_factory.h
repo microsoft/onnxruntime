@@ -10,11 +10,18 @@ extern "C" {
 #endif
 
 /**
- * \param device_id openvino device id, starts from zero.
+ * \param device_type openvino device type and precision. Could be any of
+ * CPU_FP32, GPU_FP32, GPU_FP16, MYRIAD_FP16, VAD-M_FP16 or VAD-F_FP32.
  */
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_OpenVINO,
-    _In_ OrtSessionOptions* options, const char* device_type,
-    bool enable_vpu_fast_compile, const char* device_id);
+    _In_ OrtSessionOptions* options, _In_ const char* device_type);
+
+/**
+ * \param settings_str string of Key-Value pairs with '\n' used to delimit
+ * pairs and '|' used to delimit key and value within a pair.
+ */
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_OpenVINOEP,
+    _In_ OrtSessionOptions* options, _In_ const char* settings_str);
 
 #ifdef __cplusplus
 }
