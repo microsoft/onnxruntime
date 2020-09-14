@@ -15,6 +15,15 @@
 #include "core/session/inference_session.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_apis.h"
+
+#ifdef USE_TENSORRT
+#include "core/providers/tensorrt/tensorrt_provider_factory.h"
+#include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/gpu_data_transfer.h"
+#include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
+#include "core/providers/cuda/cuda_common.h"
+#endif
+
 #define PROVIDER_BRIDGE_ORT
 #include "core/providers/shared_library/provider_interfaces.h"
 #include "onnx/common/stl_backports.h"
@@ -210,11 +219,7 @@ struct Provider_IExecutionProvider_Router_Impl : Provider_IExecutionProvider_Rou
   }
 
   std::unique_ptr<IDataTransfer> GetDataTransfer() const override {
-    auto internal = outer_->Provider_GetDataTransfer();
-    if (internal)
-      return onnxruntime::make_unique<IDataTransfer_Wrapper>(std::move(internal));
-    else
-      return nullptr;
+    return std::unique_ptr<IDataTransfer>(reinterpret_cast<IDataTransfer*>(outer_->Provider_GetDataTransfer().release()));
   }
 
   void Provider_InsertAllocator(Provider_AllocatorPtr allocator) override {
@@ -263,6 +268,31 @@ struct ProviderHostImpl : ProviderHost {
       Provider_IExecutionProvider* outer, const std::string& type) override {
     return onnxruntime::make_unique<Provider_IExecutionProvider_Router_Impl>(outer, type);
   };
+
+#ifdef USE_TENSORRT
+  std::unique_ptr<Provider_IDeviceAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) override {
+    return onnxruntime::make_unique<Provider_IDeviceAllocator_Impl>(onnxruntime::make_unique<CUDAAllocator>(device_id, name));
+  }
+
+  std::unique_ptr<Provider_IDeviceAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) override {
+    return onnxruntime::make_unique<Provider_IDeviceAllocator_Impl>(onnxruntime::make_unique<CUDAPinnedAllocator>(device_id, name));
+  }
+
+  std::unique_ptr<Provider_IDataTransfer> CreateGPUDataTransfer() override {
+    return std::unique_ptr<Provider_IDataTransfer>(reinterpret_cast<Provider_IDataTransfer*>(new GPUDataTransfer()));
+  }
+
+  void cuda__Impl_Cast(const int64_t* input_data, int32_t* output_data, size_t count) override {
+    return cuda::Impl_Cast(input_data, output_data, count);
+  }
+
+  void cuda__Impl_Cast(const int32_t* input_data, int64_t* output_data, size_t count) override {
+    return cuda::Impl_Cast(input_data, output_data, count);
+  }
+
+  bool CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return CudaCall<cudaError, false>(cudaError(retCode), exprString, libName, cudaError(successCode), msg); }
+  bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return CudaCall<cudaError, true>(cudaError(retCode), exprString, libName, cudaError(successCode), msg); }
+#endif
 
   std::string GetEnvironmentVar(const std::string& var_name) override {
     return Env::Default().GetEnvironmentVar(var_name);
@@ -379,12 +409,9 @@ struct ProviderHostImpl : ProviderHost {
 
   // Provider_DataTransferManager
   Status Provider_DataTransferManager__CopyTensor(const Provider_DataTransferManager* p, const Provider_Tensor& src, Provider_Tensor& dst, int exec_queue_id) override { return reinterpret_cast<const DataTransferManager*>(p)->CopyTensor(*reinterpret_cast<const Tensor*>(&src), *reinterpret_cast<Tensor*>(&dst), exec_queue_id); }
-  const Provider_IDataTransfer* Provider_DataTransferManager__GetProviderDataTransfer(const Provider_DataTransferManager* p, const OrtDevice& src_device, const OrtDevice& dst_device) override {
-    auto* data_transfer = reinterpret_cast<const DataTransferManager*>(p)->GetDataTransfer(src_device, dst_device);
-    if (data_transfer->IsProviderInterface())
-      return reinterpret_cast<const IDataTransfer_Wrapper*>(data_transfer)->p_.get();
-    return nullptr;
-  }
+
+  // Provider_IDataTransfer
+  void Provider_IDataTransfer__operator_delete(Provider_IDataTransfer* p) override { delete reinterpret_cast<Provider_IDataTransfer*>(p); }
 
   // Provider_IndexedSubGraph_MetaDef
   std::unique_ptr<Provider_IndexedSubGraph_MetaDef> Provider_IndexedSubGraph_MetaDef__construct() override { return std::unique_ptr<Provider_IndexedSubGraph_MetaDef>(reinterpret_cast<Provider_IndexedSubGraph_MetaDef*>(new IndexedSubGraph::MetaDef())); }
@@ -585,9 +612,6 @@ struct ProviderHostImpl : ProviderHost {
   const Provider_DataTransferManager& Provider_OpKernelInfo__GetDataTransferManager(const Provider_OpKernelInfo* p) noexcept override { return *reinterpret_cast<const Provider_DataTransferManager*>(&reinterpret_cast<const OpKernelInfo*>(p)->GetDataTransferManager()); }
   int Provider_OpKernelInfo__GetKernelDef_ExecQueueId(const Provider_OpKernelInfo* p) noexcept override { return reinterpret_cast<const OpKernelInfo*>(p)->GetKernelDef().ExecQueueId(); }
 
-  // Provider_SessionState
-  const Provider_DataTransferManager& Provider_SessionState__GetDataTransferManager(const Provider_SessionState* p) override { return *reinterpret_cast<const Provider_DataTransferManager*>(&reinterpret_cast<const SessionState*>(p)->GetDataTransferMgr()); }
-
   // Provider_Tensor
   float* Provider_Tensor__MutableData_float(Provider_Tensor* p) override { return reinterpret_cast<Tensor*>(p)->MutableData<float>(); }
   const float* Provider_Tensor__Data_float(const Provider_Tensor* p) override { return reinterpret_cast<const Tensor*>(p)->Data<float>(); }
@@ -674,6 +698,22 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(i
   static ProviderLibrary library(LIBRARY_PREFIX "onnxruntime_providers_dnnl" LIBRARY_EXTENSION);
   if (!library.provider_)
     return nullptr;
+
+#if defined(_WIN32) && !defined(_OPENMP)
+  {
+    // We crash when unloading DNNL on Windows when OpenMP also unloads (As there are threads
+    // still running code inside the openmp runtime DLL if OMP_WAIT_POLICY is set to ACTIVE).
+    // To avoid this, we pin the OpenMP DLL so that it unloads as late as possible.
+    HMODULE handle{};
+#ifdef _DEBUG
+    constexpr const char* dll_name = "vcomp140d.dll";
+#else
+    constexpr const char* dll_name = "vcomp140.dll";
+#endif
+    ::GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_PIN, dll_name, &handle);
+    assert(handle);  // It should exist
+  }
+#endif
 
   //return std::make_shared<onnxruntime::MkldnnProviderFactory>(device_id);
   //TODO: This is apparently a bug. The constructor parameter is create-arena-flag, not the device-id
