@@ -3,7 +3,6 @@
 # Licensed under the MIT License.
 
 import argparse
-import glob
 import multiprocessing
 import os
 import re
@@ -212,6 +211,9 @@ def parse_arguments():
     parser.add_argument(
         "--use_xcode", action='store_true',
         help="Use Xcode as cmake generator, this is only supported on MacOS.")
+    parser.add_argument(
+        "--xcode_code_signing_team_id", default="",
+        help="The development team ID used for code signing in Xcode")
     parser.add_argument(
         "--osx_arch", type=str,
         help="Specify the Target specific architectures for macOS and iOS"
@@ -751,53 +753,16 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                     val for val, cond in zip(arg_names, needed_args)
                     if not cond))
         cmake_args += [
+            "-DCMAKE_TOOLCHAIN_FILE=../cmake/external/ios-cmake/ios.toolchain.cmake",
             "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
+            "-DPLATFORM=" + args.ios_sysroot,
+            "-DENABLE_BITCODE=FALSE",
             "-DDEPLOYMENT_TARGET=" + args.apple_deploy_target,
             # we do not need protoc binary for ios cross build
-            "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF",
-            "-DCMAKE_TOOLCHAIN_FILE=" + (
-                args.ios_toolchain_file if args.ios_toolchain_file
-                else "../cmake/onnxruntime_ios.toolchain.cmake")
+            "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF"
         ]
-        # else:
-        #     # We are cross comppiling on linux
-        #     needed_args = [
-        #         args.ios_sysroot,
-        #         args.arm64 or args.arm,
-        #         args.ios_toolchain_dir
-        #     ]
-        #     arg_names = [
-        #         "--ios_sysroot <path to sysroot>",
-        #         "--arm or --arm64",
-        #         "--ios_toolchain_dir <path to toolchain>"
-        #     ]
-        #     if not all(needed_args):
-        #         raise BuildError(
-        #             "iOS build canceled due to missing arguments: " +
-        #             ', '.join(
-        #                 val for val, cond in zip(arg_names, needed_args)
-        #                 if not cond))
-        #     compilers = sorted(
-        #         glob.glob(args.ios_toolchain_dir + "/bin/*-clang*"))
-        #     os.environ["PATH"] = os.path.join(
-        #         args.ios_toolchain_dir, "bin") + os.pathsep + os.environ.get(
-        #             "PATH", "")
-        #     os.environ["LD_LIBRARY_PATH"] = os.path.join(
-        #         args.ios_toolchain_dir, "/lib") + os.pathsep + os.environ.get(
-        #             "LD_LIBRARY_PATH", "")
-        #     if len(compilers) != 2:
-        #         raise BuildError(
-        #             "error identifying compilers in ios_toolchain_dir")
-        #     cmake_args += [
-        #         "-DCMAKE_OSX_ARCHITECTURES=" +
-        #         ("arm64" if args.arm64 else "arm"),
-        #         "-DCMAKE_SYSTEM_NAME=iOSCross",
-        #         "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
-        #         "-DCMAKE_OSX_SYSROOT=" + args.ios_sysroot,
-        #         "-DCMAKE_C_COMPILER=" + compilers[0],
-        #         "-DCMAKE_CXX_COMPILER=" + compilers[1]
-        #     ]
-
+        if args.xcode_code_signing_team_id:
+            cmake_args += ["-DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=" + args.xcode_code_signing_team_id]
     if path_to_protoc_exe:
         cmake_args += [
             "-DONNX_CUSTOM_PROTOC_EXECUTABLE=%s" % path_to_protoc_exe]
