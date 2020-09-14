@@ -60,6 +60,6 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessi
 //      1: lightweight heuristic based search using cudnnGetConvolutionForwardAlgorithm_v7
 //      2: default algorithm using CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CUDA_CONV_ALGO, _In_ OrtSessionOptions* options, int device_id, int conv_algo) {
-  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_CUDA(static_cast<OrtDevice::DeviceId>(device_id, conv_algo)));
+  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_CUDA(static_cast<OrtDevice::DeviceId>(device_id), conv_algo));
   return nullptr;
 }
