@@ -9,6 +9,9 @@ else()
   set(OUTPUT_STYLE vc)
 endif()
 
+if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
+  set(CMAKE_SHARED_LIBRARY_RUNTIME_C_FLAG "-Wl,-rpath,")
+endif()
 
 #If you want to verify if there is any extra line in symbols.txt, run
 # nm -C -g --defined libonnxruntime.so |grep -v '\sA\s' | cut -f 3 -d ' ' | sort
@@ -61,8 +64,17 @@ else()
 endif()
 
 if (NOT WIN32)
-  if (APPLE OR ${CMAKE_SYSTEM_NAME} MATCHES "iOSCross")
-    set_target_properties(onnxruntime PROPERTIES INSTALL_RPATH "@loader_path")
+  if (APPLE OR ${CMAKE_SYSTEM_NAME} MATCHES "^iOS")
+    if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
+      set_target_properties(onnxruntime PROPERTIES
+        SOVERSION ${ORT_VERSION}
+        MACOSX_RPATH TRUE
+        INSTALL_RPATH_USE_LINK_PATH FALSE
+        BUILD_WITH_INSTALL_NAME_DIR TRUE
+        INSTALL_NAME_DIR @rpath)
+    else()
+        set_target_properties(onnxruntime PROPERTIES INSTALL_RPATH "@loader_path")
+    endif()
   else()
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-rpath='$ORIGIN'")
   endif()
