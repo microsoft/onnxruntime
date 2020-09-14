@@ -492,12 +492,13 @@ Status Node::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   }
 
   auto GetNodeArgsOrtFormat = [&builder](const std::vector<NodeArg*>& src) {
-    std::vector<std::string> node_args(src.size());
+    std::vector<flatbuffers::Offset<flatbuffers::String>> node_args(src.size());
     std::transform(src.cbegin(), src.cend(), node_args.begin(),
-                   [](const NodeArg* nodearg) {
-                     return nodearg->Name();
+                   [&builder](const NodeArg* nodearg) {
+                     // NodeArg's name will be used by multiple places, create shared string
+                     return builder.CreateSharedString(nodearg->Name());
                    });
-    return builder.CreateVectorOfStrings(node_args);
+    return builder.CreateVector(node_args);
   };
 
   auto name = builder.CreateString(name_);
@@ -2706,10 +2707,12 @@ std::string Graph::GenerateNodeArgName(const std::string& base_name) {
 
 static flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
 SaveInputsOutputsToOrtFormat(flatbuffers::FlatBufferBuilder& builder, const std::vector<const NodeArg*>& src) {
-  std::vector<std::string> vec(src.size());
+  std::vector<flatbuffers::Offset<flatbuffers::String>> vec(src.size());
   std::transform(src.cbegin(), src.cend(), vec.begin(),
-                 [](const NodeArg* entry) { return entry->Name(); });
-  return builder.CreateVectorOfStrings(vec);
+                 [&builder](const NodeArg* entry) {
+                   return builder.CreateSharedString(entry->Name());
+                 });
+  return builder.CreateVector(vec);
 }
 
 common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,

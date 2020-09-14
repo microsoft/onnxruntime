@@ -1,5 +1,5 @@
 import onnx
-from .quant_utils import _find_by_name
+from .quant_utils import find_by_name
 
 
 class ONNXModel:
@@ -37,7 +37,7 @@ class ONNXModel:
         self.model.graph.node.extend(nodes_to_add)
 
     def add_initializer(self, tensor):
-        if _find_by_name(tensor.name, self.model.graph.initializer) is None:
+        if find_by_name(tensor.name, self.model.graph.initializer) is None:
             self.model.graph.initializer.extend([tensor])
 
     def get_initializer(self, name):
@@ -112,7 +112,7 @@ class ONNXModel:
         '''
         graph_nodes_list = list(graph.node)  #deep copy
         graph_nodes_list.extend(new_nodes_list)
-        node = _find_by_name(node_name, graph_nodes_list)
+        node = find_by_name(node_name, graph_nodes_list)
         return node
 
     def find_nodes_by_initializer(self, graph, initializer):
