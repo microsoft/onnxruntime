@@ -155,8 +155,6 @@ onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExten
 #ifdef USE_OPENVINO
 #include "core/providers/openvino/openvino_provider_factory.h"
 std::string openvino_device_type;
-bool enable_vpu_fast_compile = false;
-std::string openvino_device_id;
 #endif
 #ifdef USE_NUPHAR
 #include "core/providers/nuphar/nuphar_provider_factory.h"
@@ -564,6 +562,8 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
 #endif
     } else if (type == kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
+      bool enable_vpu_fast_compile = false;
+      std::string openvino_device_id;
       auto it = provider_options_map.find(type);
       if(it != provider_options_map.end()) {
         for(auto option : it->second) {
@@ -587,10 +587,8 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device_type.c_str(),
                                                                                             enable_vpu_fast_compile,
                                                                                             openvino_device_id.c_str()));
-      // Reset config settings to avoid it being accidentally passed on to the next session
+      // Reset global variables config to avoid it being accidentally passed on to the next session
       openvino_device_type.clear();
-      openvino_device_id.clear();
-      enable_vpu_fast_compile = false;
 #endif
     } else if (type == kNupharExecutionProvider) {
 #if USE_NUPHAR
@@ -760,9 +758,7 @@ void addGlobalMethods(py::module& m, const Environment& env) {
             onnxruntime::CreateExecutionProviderFactory_NGraph("CPU"),
 #endif
 #ifdef USE_OPENVINO
-            onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device_type,
-                                                                  enable_vpu_fast_compile,
-                                                                  openvino_device_id),
+            onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device_type, false, "");
 #endif
 #ifdef USE_TENSORRT
             onnxruntime::CreateExecutionProviderFactory_Tensorrt(0),
