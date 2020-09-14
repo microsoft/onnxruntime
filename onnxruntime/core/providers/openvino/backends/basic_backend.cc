@@ -36,7 +36,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
                            const SubGraphContext& subgraph_context)
     : global_context_(global_context), subgraph_context_(subgraph_context) {
 
-  ie_cnn_network_ = CreateCNNNetwork(model_proto, subgraph_context_, const_outputs_map_);
+  ie_cnn_network_ = CreateCNNNetwork(model_proto, global_context_, subgraph_context_, const_outputs_map_);
   SetIODefs(model_proto, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_);
   InferenceEngine::ExecutableNetwork exe_network;
 
@@ -49,11 +49,20 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   if(subgraph_context_.is_constant)
     return;
   std::map<std::string, std::string> config;
-  if(subgraph_context_.device_id == "MYRIAD" && subgraph_context_.set_vpu_config){
-    config["VPU_DETECT_NETWORK_BATCH"] = CONFIG_VALUE(NO);
+  if(global_context_.device_type == "MYRIAD"){
+
+    if(subgraph_context_.set_vpu_config) {
+      config["VPU_DETECT_NETWORK_BATCH"] = CONFIG_VALUE(NO);
+    }
+
+    if(global_context_.enable_vpu_fast_compile) {
+      config["VPU_HW_INJECT_STAGES"] = CONFIG_VALUE(NO);
+      config["VPU_COPY_OPTIMIZATION"] = CONFIG_VALUE(NO);
+    }
   }
+  std::string& hw_target = (global_context_.device_id != "") ? global_context_.device_id : global_context_.device_type;
   try {
-    exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, subgraph_context_.device_id, config);
+    exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, hw_target, config);
   } catch (InferenceEngine::details::InferenceEngineException e) {
     ORT_THROW(log_tag + " Exception while Loading Network for graph: " + subgraph_context_.subgraph_name + ": " +  e.what());
   } catch (...) {
