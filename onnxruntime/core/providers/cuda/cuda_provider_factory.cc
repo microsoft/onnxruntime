@@ -50,9 +50,8 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(O
 
 }  // namespace onnxruntime
 
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, int device_id) {
-  OrtSessionOptionsAppendExecutionProvider_CUDA_CONV_ALGO(options, device_id, 0);
-  return nullptr;
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, int device_id){
+  return OrtSessionOptionsAppendExecutionProvider_CUDA_CONV_ALGO(options, device_id, 0);
 }
 
 //conv_algo parameter:
