@@ -77,6 +77,17 @@ static void AddNodes(std::vector<NodeIndex>& node_indices,
   }
 }
 
+static void RemoveNodes(std::vector<NodeIndex>& node_indices,
+                        const std::vector<const Node::EdgeEnd*>& edges) {
+  for (size_t i = 0; i < edges.size(); i++) {
+    NodeIndex item = edges[i]->GetNode().Index();
+    auto it = std::find(node_indices.begin(), node_indices.end(), item);
+    if (it != node_indices.end()) {
+      node_indices.erase(it);
+    }
+  }
+}
+
 static bool IsNeighborNodeExpectedTypes(Node::NodeConstIterator start, const Node::NodeConstIterator end, const std::vector<std::string>& expected_types) {
   for (const std::string& expected_type : expected_types) {
     if (start == end || (*start).OpType().compare(expected_type) != 0) {
@@ -386,6 +397,15 @@ static bool MatchPositionEmbeddingSubgraphsFromGather(
   }
 
   AddNodes(subgraph_node_indices, pg_edges);
+
+  // We shall not delete shape node when multiple shape nodes are merged into a single node
+  // As this node will be shared with other nodes, the below code removes shape node from node_to_remove list
+  if (optimizer_utils::CheckOutputEdges(graph, pg_edges[shape_index]->GetNode(), 2) ||
+      optimizer_utils::CheckOutputEdges(graph, pg_edges[shape_index]->GetNode(), 4)) {
+    std::vector<const Node::EdgeEnd*> nodes_to_remove;
+    nodes_to_remove.push_back(pg_edges[shape_index]);
+    RemoveNodes(subgraph_node_indices, nodes_to_remove);
+  }
 
   return true;
 }
