@@ -16,6 +16,9 @@ struct CudaProviderOptions {
   // use cuda device with id=0 as default device.
   OrtDevice::DeviceId device_id = 0;
 
+  //set cudnn conv algo search option
+  int cudnn_conv_algo_search = 0;
+
   // set default cuda memory limitation to maximum finite value of size_t.
   size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
 

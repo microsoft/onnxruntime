@@ -136,6 +136,7 @@ struct OrtStatus {
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/cuda_provider_options.h"
 OrtDevice::DeviceId cuda_device_id = 0;
+int cudnn_conv_algo_search = 0;
 size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
 onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
 #endif
@@ -174,6 +175,7 @@ std::string nuphar_settings;
 namespace onnxruntime {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
+                                                                               int cudnn_conv_algo_search,
                                                                                size_t cuda_mem_limit,
                                                                                onnxruntime::ArenaExtendStrategy arena_extend_strategy);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id);
@@ -536,11 +538,13 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
 
         RegisterExecutionProvider(
             sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_provider_options.device_id,
+                                                                    cuda_provider_options.cudnn_conv_algo_search,
                                                                     cuda_provider_options.cuda_mem_limit,
                                                                     cuda_provider_options.arena_extend_strategy));
       } else {
         RegisterExecutionProvider(
             sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id,
+                                                                    cudnn_conv_algo_search,
                                                                     cuda_mem_limit,
                                                                     arena_extend_strategy));
       }
@@ -709,7 +713,7 @@ void addGlobalMethods(py::module& m, const Environment& env) {
         std::vector<std::shared_ptr<onnxruntime::IExecutionProviderFactory>> factories = {
             onnxruntime::CreateExecutionProviderFactory_CPU(0),
 #ifdef USE_CUDA
-            onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id, cuda_mem_limit, arena_extend_strategy),
+            onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id, cudnn_conv_algo_search, cuda_mem_limit, arena_extend_strategy),
 #endif
 #ifdef USE_DNNL
             onnxruntime::CreateExecutionProviderFactory_Dnnl(1),
@@ -762,6 +766,7 @@ void addGlobalMethods(py::module& m, const Environment& env) {
    *
    */
   m.def("set_cuda_device_id", [](const int id) { cuda_device_id = static_cast<OrtDevice::DeviceId>(id); });
+  m.def("set_cudnn_conv_algo_search", [](const int algo) { cudnn_conv_algo_search = algo; });
   m.def("set_cuda_mem_limit", [](const int64_t limit) { cuda_mem_limit = static_cast<size_t>(limit); });
   m.def("set_arena_extend_strategy", [](const onnxruntime::ArenaExtendStrategy strategy) { arena_extend_strategy = strategy; });
 #endif
