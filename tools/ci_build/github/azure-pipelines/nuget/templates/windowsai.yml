@@ -426,7 +426,7 @@ jobs:
         $output_props_content = $input_props_content -replace '\[PackageVersion\]', $package_version
         Set-Content -Path $output_props -Value $output_props_content
 
-        nuget restore -MSBuildVersion 16.7.0+b89cb5fde -PackagesDirectory $packages_dir -Source https://api.nuget.org/v3/index.json -Source $merged_nuget_path $csproj
+        nuget restore -PackagesDirectory $packages_dir -Source https://api.nuget.org/v3/index.json -Source $merged_nuget_path $csproj
 
         $project_assets_json = [System.IO.Path]::Combine($src_dir, 'obj', 'project.assets.json')
         Remove-Item -Force $project_assets_json
