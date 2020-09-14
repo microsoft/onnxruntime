@@ -43,7 +43,7 @@
 
 std::unique_ptr<Ort::Env> ort_env;
 
-int _main(int argc, char** argv) {
+int main(int argc, char** argv) {
   int status = 0;
 
 
