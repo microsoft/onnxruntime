@@ -435,7 +435,7 @@ stages:
       pool: 'Win-GPU-2019'
       timeoutInMinutes:  120
       variables:
-        CUDA_VERSION: '10.1'
+        CUDA_VERSION: '10.2'
         buildArch: x64
         EnvSetupScript: setup_env_cuda.bat
         GDN_CODESIGN_TARGETDIRECTORY: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
