@@ -1736,8 +1736,8 @@ ORT_API_STATUS_IMPL(OrtApis::TensorAt, _Inout_ OrtValue* value, const int64_t* l
   }
 
   const auto& tensor_shape = tensor->Shape();
-  const auto num_dimenstions = tensor_shape.NumDimensions();
-  if (location_values_count != num_dimenstions) {
+  const auto num_dimensions = tensor_shape.NumDimensions();
+  if (location_values_count != num_dimensions) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "location dimensions do not match shape size");
   }
 
@@ -1746,13 +1746,24 @@ ORT_API_STATUS_IMPL(OrtApis::TensorAt, _Inout_ OrtValue* value, const int64_t* l
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "invalid location range");
     }
   }
-  // data has row-major format
-  int64_t offset = 0;
-  for (size_t i = 1; i <= num_dimenstions; i++) {
-    size_t sum = 1;
-    for (size_t j = i + 1; j <= num_dimenstions; j++) sum *= tensor_shape[j - 1];
-    offset += location_values[i - 1] * sum;
+
+  // compute strides
+  // TensorPitches p;
+  std::vector<int64_t> strides(num_dimensions);
+  {
+    int64_t stride = 1;
+    for (size_t dim = num_dimensions; dim > 0; --dim) {
+      strides[dim - 1] = stride;
+      stride *= tensor_shape[dim - 1];
+    }
   }
+
+  // For Scalers the offset would always be zero
+  int64_t offset = 0;
+  for (size_t i = 0; i < num_dimensions; i++) {
+    offset += location_values[i] * strides[i];
+  }
+
   auto data = reinterpret_cast<char*>(tensor->MutableDataRaw()) + tensor->DataType()->Size() * offset;
   *out = data;
   return nullptr;
