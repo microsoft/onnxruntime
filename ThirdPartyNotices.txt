@@ -4185,7 +4185,7 @@ libprotobuf-mutator
    Copyright (c) 2014-2015      UT-Battelle, LLC. All rights reserved.
    Copyright (C) 2014-2020      Mellanox Technologies Ltd. All rights reserved.
    Copyright (C) 2014-2015      The University of Houston System. All rights reserved.
-   Copyright (C) 2015           The University of Tennessee and The University 
+   Copyright (C) 2015           The University of Tennessee and The University
                               of Tennessee Research Foundation. All rights reserved.
    Copyright (C) 2016-2020      ARM Ltd. All rights reserved.
    Copyright (c) 2016           Los Alamos National Security, LLC. All rights reserved.
@@ -4195,29 +4195,29 @@ libprotobuf-mutator
    Copyright (C) 2020           Huawei Technologies Co., Ltd. All rights reserved.
    Copyright (C) 2016-2020      Stony Brook University. All rights reserved.
 
-   Redistribution and use in source and binary forms, with or without 
-   modification, are permitted provided that the following conditions 
+   Redistribution and use in source and binary forms, with or without
+   modification, are permitted provided that the following conditions
    are met:
 
-   1. Redistributions of source code must retain the above copyright 
+   1. Redistributions of source code must retain the above copyright
    notice, this list of conditions and the following disclaimer.
    2. Redistributions in binary form must reproduce the above copyright
-   notice, this list of conditions and the following disclaimer in the 
+   notice, this list of conditions and the following disclaimer in the
    documentation and/or other materials provided with the distribution.
-   3. Neither the name of the copyright holder nor the names of its 
-   contributors may be used to endorse or promote products derived from 
+   3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
    this software without specific prior written permission.
 
-   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
-   "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
-   LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR 
-   A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT 
-   HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, 
-   SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED 
-   TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR 
-   PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF 
-   LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING 
-   NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS 
+   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+   "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+   LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+   A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+   HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+   SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
+   TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+   PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+   LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+   NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
    -----
@@ -4240,23 +4240,23 @@ libprotobuf-mutator
 
    All contributions by Facebook:
    Copyright (c) 2016 Facebook Inc.
-   
+
    All contributions by Google:
    Copyright (c) 2015 Google Inc.
    All rights reserved.
-   
+
    All contributions by Yangqing Jia:
    Copyright (c) 2015 Yangqing Jia
    All rights reserved.
-   
+
    All contributions from Caffe:
    Copyright(c) 2013, 2014, 2015, the respective contributors
    All rights reserved.
-   
+
    All other contributions:
    Copyright(c) 2015, 2016 the respective contributors
    All rights reserved.
-   
+
    Caffe2 uses a copyright model similar to Caffe: each contributor holds
    copyright over their contributions to Caffe2. The project versioning records
    all such contribution and copyright details. If a contributor wants to further
@@ -4330,7 +4330,7 @@ libprotobuf-mutator
    DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
    THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
    (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.	
+   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 _____
 huggingface/transformers
 
@@ -4813,11 +4813,50 @@ MIT license
 
 https://github.com/aappleby/smhasher
 
-SMHasher is a test suite designed to test the distribution, collision, and 
+SMHasher is a test suite designed to test the distribution, collision, and
 performance properties of non-cryptographic hash functions.
-This is the home for the MurmurHash family of hash functions along with the 
-SMHasher test suite used to verify them. 
-SMHasher is released under the MIT license. 
+This is the home for the MurmurHash family of hash functions along with the
+SMHasher test suite used to verify them.
+SMHasher is released under the MIT license.
 All MurmurHash versions are public domain software, and the author disclaims all copyright to their code.
+
+-----
+
+ios-cmake
+
+A CMake toolchain file for iOS, watchOS and tvOS development with full simulator support and toggable options!
+
+https://github.com/leetal/ios-cmake
+
+Copyright (c) 2011-2014, Andrew Fischer <andrew@ltengsoft.com>
+
+Copyright (c) 2017, Alexander Widerberg <widerbergaren@gmail.com>
+
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+this list of conditions and the following disclaimer in the documentation
+and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its contributors
+may be used to endorse or promote products derived from this software without
+specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 -----
