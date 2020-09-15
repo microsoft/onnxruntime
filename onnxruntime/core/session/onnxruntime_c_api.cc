@@ -1730,6 +1730,11 @@ ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char** ptr,
 ORT_API_STATUS_IMPL(OrtApis::TensorAt, _Inout_ OrtValue* value, const int64_t* location_values, size_t location_values_count,
                     _Outptr_ void** out) {
   TENSOR_READWRITE_API_BEGIN
+
+  if(tensor->IsDataTypeString()) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "this API does not support strings");
+  }
+
   const auto& tensor_shape = tensor->Shape();
   const auto num_dimenstions = tensor_shape.NumDimensions();
   if (location_values_count != num_dimenstions) {
@@ -1748,7 +1753,7 @@ ORT_API_STATUS_IMPL(OrtApis::TensorAt, _Inout_ OrtValue* value, const int64_t* l
     for (size_t j = i + 1; j <= num_dimenstions; j++) sum *= tensor_shape[j - 1];
     offset += location_values[i - 1] * sum;
   }
-  auto data = reinterpret_cast<char*>(tensor->MutableDataRaw()) + (tensor->DataType()->Size() * offset);
+  auto data = reinterpret_cast<char*>(tensor->MutableDataRaw()) + tensor->DataType()->Size() * offset;
   *out = data;
   return nullptr;
   API_IMPL_END
