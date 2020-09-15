@@ -771,9 +771,9 @@ const T* Value::GetTensorData() const {
 }
 
 template <typename T>
-inline T Value::At(const std::initializer_list<size_t>& location) {
+inline T Value::At(const std::initializer_list<int64_t>& location) {
   T* out;
-  std::vector<size_t> location_ = location;
+  std::vector<int64_t> location_ = location;
   ThrowOnError(GetApi().TensorAt(p_, location_.data(), location_.size(), (void**)&out));
   return *out;
 }

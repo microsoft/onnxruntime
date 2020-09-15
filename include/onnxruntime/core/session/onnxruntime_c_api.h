@@ -1009,7 +1009,7 @@ struct OrtApi {
    * This function only works for numeric tensors.
    * This is a no-copy method whose pointer is only valid until the backing OrtValue is free'd.
    */
-  ORT_API2_STATUS(TensorAt, _Inout_ OrtValue* value, size_t* location_values, size_t location_values_count, _Outptr_ void** out);
+  ORT_API2_STATUS(TensorAt, _Inout_ OrtValue* value, const int64_t* location_values, size_t location_values_count, _Outptr_ void** out);
 
   /**
    * Creates an allocator instance and registers it with the env to enable
