@@ -52,9 +52,15 @@ class ONNXCalibrater:
         model and ensures their outputs are stored as part of the graph output
         :return: augmented ONNX model
         '''
+        #infer shapes of the model
+        if onnx.__version__ < "1.8.0":
+            model = onnx.load(self.model_path)
+            model = onnx.shape_inference.infer_shapes(model)  
 
-        onnx.shape_inference.infer_shapes(self.model_path)
-        model = onnx.load(self.model_path)
+        if onnx.__version__ == "1.8.0":
+            onnx.shape_inference.infer_shapes(self.model_path)
+            model = onnx.load(self.model_path)  
+
         value_infos = {vi.name: vi for vi in model.graph.value_info}
         value_infos.update({ot.name: ot for ot in model.graph.output})
 

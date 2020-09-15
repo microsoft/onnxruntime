@@ -155,6 +155,7 @@ def quantize_static(model_input,
     :param nodes_to_exclude:
         List of nodes names to exclude. The nodes in this list will be excluded from quantization
         when it is not None.
+    :parma use_external_data_format: option used for large size (>2GB) model. Set to False by default.
     '''
 
     if activation_type != QuantType.QUInt8:
@@ -170,8 +171,16 @@ def quantize_static(model_input,
     quantization_params_dict = calibrate(model_input, calibration_data_reader, op_types_to_quantize, nodes_to_quantize,
                                          nodes_to_exclude)
 
+    #infer the shapes of the model
+    if onnx.__version__ < "1.8.0":
+        onnx_model = shape_inference.infer_shapes(onnx.load(model_input)) 
+
+    if onnx.__version__ == "1.8.0":
+        shape_inference.infer_shapes(model_input)
+        onnx_model = onnx.load(model_input) 
+
     quantizer = ONNXQuantizer(
-        model_input,
+        onnx_model,
         per_channel,
         reduce_range,
         mode,
@@ -218,6 +227,7 @@ def quantize_dynamic(model_input: Path,
     :param nodes_to_exclude:
         List of nodes names to exclude. The nodes in this list will be excluded from quantization
         when it is not None.
+    :parma use_external_data_format: option used for large size (>2GB) model. Set to False by default.
     '''
 
     input_qType = onnx_proto.TensorProto.INT8 if activation_type == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
@@ -229,9 +239,18 @@ def quantize_dynamic(model_input: Path,
 
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(IntegerOpsRegistry.keys())
+    
+    #infer the shapes of the optimized model
+    if onnx.__version__ < "1.8.0":
+        optimized_model = onnx.load(optimized_model_path)
+        onnx_model = shape_inference.infer_shapes(optimized_model) 
+
+    if onnx.__version__ == "1.8.0":
+        shape_inference.infer_shapes(optimized_model_path)
+        onnx_model = onnx.load(optimized_model_path)  
 
     quantizer = ONNXQuantizer(
-        optimized_model_path,
+        onnx_model,
         per_channel,
         reduce_range,
         mode,
@@ -286,9 +305,18 @@ def quantize_qat(model_input: Path,
 
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(IntegerOpsRegistry.keys())
+    
+    #infer the shapes of the optimized model
+    if onnx.__version__ < "1.8.0":
+        optimized_model = onnx.load(optimized_model_path)
+        onnx_model = shape_inference.infer_shapes(optimized_model) 
+
+    if onnx.__version__ == "1.8.0":
+        shape_inference.infer_shapes(optimized_model_path)
+        onnx_model = onnx.load(optimized_model_path) 
 
     quantizer = ONNXQuantizer(
-        optimized_model_path,
+        onnx_model,
         per_channel,
         reduce_range,
         mode,
