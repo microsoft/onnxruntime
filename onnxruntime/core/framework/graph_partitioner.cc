@@ -155,6 +155,7 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
     std::vector<std::unique_ptr<ComputeCapability>> capabilities =
         provider->GetCapability(graph_viewer, kernel_registry_mgr_.GetKernelRegistriesByProviderType(provider->Type()));
 
+#if !defined(ORT_MINIMAL_BUILD)
     // For CUDA EP, exclude the subgraph that is prefered to be placed in CPU
     // These are usually shape related computation subgraphs
     // Following logic can be extended for other EPs
@@ -168,6 +169,7 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
         ORT_ENFORCE(n == nullptr);
       }
     }
+#endif
 
     for (auto& capability : capabilities) {
       Node* n = PlaceNode(graph, std::move(capability->sub_graph), kernel_registry_mgr_, provider->Type(), count);
@@ -247,6 +249,7 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
   return Status::OK();
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 const int64_t Small_Initializer_Threshold = 100;
 
 bool IsSmallInitializer(const onnxruntime::GraphViewer& graph, const NodeArg* arg) {
@@ -295,8 +298,15 @@ GraphPartitioner::GetCpuPreferedCapability(const onnxruntime::GraphViewer& graph
     const Node* node = graph.GetNode(node_id);
 
     const KernelCreateInfo* kernel_info;
-    Status st = provider->GetKernelRegistry()->TryFindKernel(*node, provider->Type(), &kernel_info);
-    ORT_ENFORCE(st.IsOK());
+    std::vector<const KernelRegistry*> kernel_registries =
+        kernel_registry_mgr_.GetKernelRegistriesByProviderType(provider->Type());
+    for (auto registry : kernel_registries) {
+      auto st = registry->TryFindKernel(*node, provider->Type(), &kernel_info);
+      if (st.IsOK())
+        break;
+    }
+    // at least one registry has a CUDA kernel for this node
+    ORT_ENFORCE(kernel_info != nullptr);
 
     // first, find all the direct consumer of cpu tensors.
     ORT_THROW_IF_ERROR(node->ForEachWithIndex(
@@ -376,10 +386,11 @@ GraphPartitioner::GetCpuPreferedCapability(const onnxruntime::GraphViewer& graph
 
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (auto index : cpu_nodes) {
-    std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+    std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
     sub_graph->nodes.push_back(index);
-    result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+    result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
   }
   return result;
 }
+#endif
 }  // namespace onnxruntime

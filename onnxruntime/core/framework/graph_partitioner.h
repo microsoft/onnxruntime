@@ -25,6 +25,7 @@ class GraphPartitioner {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphPartitioner);
 
+#if !defined(ORT_MINIMAL_BUILD)
   /**
   Returns a list of compute capabilities that are prefered on CPU. 
   They are commonly shape-related computation subgraphs.
@@ -36,6 +37,7 @@ class GraphPartitioner {
   GetCpuPreferedCapability(const onnxruntime::GraphViewer& graph,
                            const std::unique_ptr<IExecutionProvider>& provider,
                            const std::vector<std::unique_ptr<ComputeCapability>>& capabilities) const;
+#endif
 
   KernelRegistryManager& kernel_registry_mgr_;
   const ExecutionProviders& providers_;
