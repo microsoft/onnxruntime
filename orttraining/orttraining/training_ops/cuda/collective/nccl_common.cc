@@ -29,6 +29,16 @@ ncclDataType_t GetNcclDataType(onnxruntime::MLDataType type) {
   }
 }
 
+typedef struct {
+  void *type;
+  int size;
+  struct {
+      int grp_proc_count;
+      int grp_proc_pointers;
+      int grp_my_rank;
+      int grp_flags;
+  } offset;
+} ompi_group_t_;
 static Status CreateNcclCommunicator(MPI_Group* mpi_world_group,
                                      const training::WorkerGroupType worker_group_type,
                                      ncclComm_t* group_comm) {
@@ -62,6 +72,16 @@ static Status CreateNcclCommunicator(MPI_Group* mpi_world_group,
   MPI_CHECK(MPI_Bcast(&nccl_id, sizeof(nccl_id), MPI_BYTE, 0, mpi_comm));
 
   std::cout << "***** step - before ncclCommInitRank\n";
+  std::cout << "worker_group.ranks.size(): " << worker_group.ranks.size() << "\n";
+  std::cout << "nccl_id: " << nccl_id.internal << "\n";
+  std::cout << "worker_group.rank_in_group: " << worker_group.rank_in_group << "\n";
+
+  // ompi_group_t_* myompi_group_t = reinterpret_cast<ompi_group_t_*>(*group_comm);
+  // std::cout << "group_comm.size: " << myompi_group_t->size << "\n";
+  // std::cout << "grp_proc_count: " << myompi_group_t->offset.grp_proc_count << "\n";
+  // std::cout << "grp_proc_pointers: " << myompi_group_t->offset.grp_proc_pointers << "\n";
+  // std::cout << "grp_my_rank: " << myompi_group_t->offset.grp_my_rank << "\n";
+  // std::cout << "grp_flags: " << myompi_group_t->offset.grp_flags << "\n";
   NCCL_RETURN_IF_ERROR(ncclCommInitRank(group_comm, worker_group.ranks.size(), nccl_id, worker_group.rank_in_group));
 
   // Clean up
@@ -85,12 +105,12 @@ NcclContext::NcclContext() {
   // Initialize Data Parallel Group NCCL Communicator
   auto ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::DataParallel,
                                     &data_group_comm_);
-  ORT_ENFORCE(ret.IsOK());
+  ORT_THROW_IF_ERROR(ret);
 
   // Initialize Horizontal Model Parallel Group NCCL Communicator
   ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::HorizontalParallel,
                                &horizontal_group_comm_);
-  ORT_ENFORCE(ret.IsOK());
+  ORT_THROW_IF_ERROR(ret);
 
   MPI_Group_free(&mpi_world_group);
 }
