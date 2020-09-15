@@ -14,5 +14,5 @@ jobs:
       displayName: Install onnx for minimal build
     - script: rm -rf build && mkdir -p $TMPDIR/include_ops && touch $TMPDIR/include_ops/include_no_ops.txt
       displayName: Clear the previous build and setup for arm64 minimal build
-    - script: tools/ci_build/build.py --android --build_dir build --android_sdk_path $ANDROID_HOME --android_ndk_path $ANDROID_HOME/ndk-bundle --android_abi=arm64-v8a --android_api=29 --skip_submodule_sync --parallel --cmake_generator=Ninja --config MinSizeRel --minimal_build --disable_rtti --disable_ml_ops --disable_exceptions --build_shared_lib --test_binary_size --include_ops_by_config $TMPDIR/include_ops/include_no_ops.txt
+    - script: tools/ci_build/build.py --android --build_dir build --android_sdk_path $ANDROID_HOME --android_ndk_path $ANDROID_HOME/ndk-bundle --android_abi=arm64-v8a --android_api=29 --skip_submodule_sync --parallel --cmake_generator=Ninja --config MinSizeRel --minimal_build --disable_rtti --disable_ml_ops --disable_exceptions --build_java --test_binary_size --include_ops_by_config $TMPDIR/include_ops/include_no_ops.txt
       displayName: Build arm64 absolutely minimal build and verify the library size
