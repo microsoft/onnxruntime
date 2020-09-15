@@ -132,6 +132,8 @@ class ONNXQuantizer:
                 .format(opset_version))
             self.model.model.opset_import.remove(ai_onnx_domain[0])
             self.model.model.opset_import.extend([onnx.helper.make_opsetid("", 11)])
+        
+        self.fuse_dynamic_quant = True
 
     def replace_gemm_with_matmul(self):
         nodes_to_remove = []
@@ -656,7 +658,13 @@ class ONNXQuantizer:
         reshape_input = [quantized_bias_name]
 
         # Add tensors for the shape to be reshaped to
-        init_shape = onnx.helper.make_tensor("reshape_shape", onnx_proto.TensorProto.INT64, [4], [1, -1, 1, 1])
+        weight = find_by_name(node.input[1], self.model.initializer())
+        if weight is None:
+            raise ValueError("Expected {} to be an initializer".format(node.input[1]))
+
+        reshape_shape = np.ones((len(weight.dims)), dtype=np.int64)
+        reshape_shape[1] = -1
+        init_shape = onnx.helper.make_tensor("reshape_shape", onnx_proto.TensorProto.INT64, [len(weight.dims)], reshape_shape)
         self.model.add_initializer(init_shape)
 
         reshape_input.append('reshape_shape')

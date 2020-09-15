@@ -88,6 +88,13 @@ constexpr const char* kMSDomain = "com.microsoft";
 constexpr const char* kDnnlExecutionProvider = "DnnlExecutionProvider";
 constexpr const char* kTensorrtExecutionProvider = "TensorrtExecutionProvider";
 
+enum CUDAStreamType : int {
+  kCudaStreamDefault = 0,
+  kCudaStreamCopyIn,
+  kCudaStreamCopyOut,
+  kTotalCudaStreams,
+};
+
 class DataTypeImpl {
  public:
   virtual ~DataTypeImpl() = default;
@@ -104,7 +111,11 @@ template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
 
 std::unique_ptr<Provider_IAllocator> Provider_CreateCPUAllocator(const OrtMemoryInfo& memory_info);
+std::unique_ptr<Provider_IAllocator> Provider_CreateCUDAAllocator(int16_t device_id, const char* name);
+std::unique_ptr<Provider_IAllocator> Provider_CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
 Provider_AllocatorPtr CreateAllocator(const Provider_AllocatorCreationInfo& info);
+
+std::unique_ptr<Provider_IDataTransfer> Provider_CreateGPUDataTransfer();
 
 std::string GetEnvironmentVar(const std::string& var_name);
 

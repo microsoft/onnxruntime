@@ -744,7 +744,7 @@ else()
 endif()
 
 if (NOT onnxruntime_MINIMAL_BUILD)
-  add_subdirectory(external/onnx)
+  add_subdirectory(external/onnx EXCLUDE_FROM_ALL)
 else()
   include(onnx_minimal)
 endif()

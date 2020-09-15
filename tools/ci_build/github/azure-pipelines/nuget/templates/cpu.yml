@@ -9,7 +9,7 @@ jobs:
     AgentPool : 'Win-CPU-2019'
     ArtifactName: 'drop-nuget'
     JobName: 'Windows_CI_Dev'
-    BuildCommand:  '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_shared_lib --disable_ort_format_load --enable_onnx_tests --enable_wcos --use_telemetry --use_winml --cmake_generator "Visual Studio 16 2019"'
+    BuildCommand:  '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_winml --cmake_generator "Visual Studio 16 2019"'
     BuildArch: 'x64'
     EnvSetupScript: 'setup_env.bat'
     sln_platform: 'x64'
@@ -29,7 +29,7 @@ jobs:
     AgentPool : 'Win-CPU-2019'
     ArtifactName: 'drop-win-x86-zip'
     JobName: 'Windows_CI_Dev_x86'
-    BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_shared_lib --disable_ort_format_load --enable_onnx_tests --enable_wcos --x86 --use_telemetry --use_winml --cmake_generator "Visual Studio 16 2019"'
+    BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_shared_lib --enable_onnx_tests --enable_wcos --x86 --use_telemetry --use_winml --cmake_generator "Visual Studio 16 2019"'
     BuildArch: 'x86'
     EnvSetupScript: 'setup_env_x86.bat'
     sln_platform: 'Win32'
@@ -50,7 +50,7 @@ jobs:
     AgentPool : 'Win-CPU-2019'
     ArtifactName: 'drop-win-arm64-zip'
     JobName: 'Windows_CI_Dev_arm64'
-    BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_shared_lib --disable_ort_format_load --enable_onnx_tests --enable_wcos --arm64 --use_telemetry --use_winml --cmake_generator "Visual Studio 16 2019"'
+    BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_shared_lib --enable_onnx_tests --enable_wcos --arm64 --use_telemetry --use_winml --cmake_generator "Visual Studio 16 2019"'
     BuildArch: 'x64'
     EnvSetupScript: 'setup_env.bat'
     sln_platform: 'arm64'
@@ -71,7 +71,7 @@ jobs:
     AgentPool : 'Win-CPU-2019'
     ArtifactName: 'drop-win-arm-zip'
     JobName: 'Windows_CI_Dev_arm'
-    BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_shared_lib --disable_ort_format_load --enable_onnx_tests --enable_wcos --arm --use_telemetry --use_winml --cmake_generator "Visual Studio 16 2019"'
+    BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_shared_lib --enable_onnx_tests --enable_wcos --arm --use_telemetry --use_winml --cmake_generator "Visual Studio 16 2019"'
     BuildArch: 'x64'
     EnvSetupScript: 'setup_env.bat'
     sln_platform: 'arm'
@@ -105,7 +105,7 @@ jobs:
       inputs:
         script: |
           mkdir -p $HOME/.onnx
-          docker run --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecpubuild:ch2j /bin/bash -c "/opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --enable_lto --skip_submodule_sync --parallel --build_shared_lib --disable_ort_format_load --use_openmp --enable_onnx_tests && cd /build/Release && make install DESTDIR=/build/linux-x64"
+          docker run --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecpubuild:ch2j /bin/bash -c "/opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --enable_lto --skip_submodule_sync --parallel --build_shared_lib --use_openmp --enable_onnx_tests && cd /build/Release && make install DESTDIR=/build/linux-x64"
         workingDirectory: $(Build.SourcesDirectory)
     - task: Docker@2
       displayName: logout
@@ -137,7 +137,7 @@ jobs:
   parameters:
     AgentPool : $(AgentPoolMacOS)
     JobName: 'MacOS_CI_Dev'
-    BuildCommand: 'python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --disable_ort_format_load --use_openmp --config RelWithDebInfo'
+    BuildCommand: 'python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --use_openmp --config RelWithDebInfo'
     DoNugetPack : 'true'
     NuPackScript: |
      set -e -x
