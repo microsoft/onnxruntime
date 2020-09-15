@@ -762,7 +762,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF"
             ]
 
-            # Disable code signing for output binaries, ff the code signing development team id is not provided
+            # Disable code signing for output binaries, if the code signing development team id is not provided
             if args.xcode_code_signing_team_id:
                 cmake_args += ["-DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=" + args.xcode_code_signing_team_id]
             else:
