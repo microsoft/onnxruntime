@@ -93,8 +93,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       if (config.enable_gelu_approximation) {
         transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(compatible_eps));
       }
-
       transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(execution_provider, weights_to_train, compatible_eps));
+      transformers.emplace_back(onnxruntime::make_unique<ReshapeFusion>(compatible_eps));
       auto horizontal_parallel_size = training::DistributedRunContext::GroupSize(training::WorkerGroupType::HorizontalParallel);
       if (horizontal_parallel_size > 1) {
         LOGS_DEFAULT(WARNING) << horizontal_parallel_size << "-way horizontal model parallel is enabled";
