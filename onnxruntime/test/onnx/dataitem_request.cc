@@ -87,7 +87,7 @@ std::pair<EXECUTE_RESULT, TIME_SPEC> DataTaskRequestContext::RunImpl() {
     char* output_name = session_.GetOutputName(i, default_allocator_);
     assert(output_name != nullptr);
     output_names[i] = output_name;
-    Ort::GetApi().AllocatorFree(default_allocator_, output_name);
+    Ort::ThrowOnError(Ort::GetApi().AllocatorFree(default_allocator_, output_name));
   }
 
   TIME_SPEC start_time;
