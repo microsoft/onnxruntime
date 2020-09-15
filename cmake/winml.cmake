@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-if (NOT WINDOWS_STORE)
+if (CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib)
   message(FATAL_ERROR "WinML is only supported on WCOS")
 endif()
 
@@ -32,7 +32,7 @@ if (onnxruntime_WINML_NAMESPACE_OVERRIDE)
   set(experimental_output_name "${onnxruntime_WINML_NAMESPACE_OVERRIDE}.AI.MachineLearning.Experimental")
   set(idl_native_output_name "${onnxruntime_WINML_NAMESPACE_OVERRIDE}.AI.MachineLearning.Native")
   set(idl_native_internal_output_name "${onnxruntime_WINML_NAMESPACE_OVERRIDE}.AI.MachineLearning.Native.Internal")
-  
+
   if (onnxruntime_WINML_NAMESPACE_OVERRIDE STREQUAL "Windows")
     set(winml_midl_defines "/DBUILD_INBOX=1")
     set(winml_is_inbox ON)
@@ -274,8 +274,8 @@ endif()
 
 add_library(winml_adapter ${winml_adapter_files})
 
-if (onnxruntime_WINML_NAMESPACE_OVERRIDE STREQUAL "Windows") 
-  target_compile_definitions(winml_adapter PRIVATE "BUILD_INBOX=1") 
+if (onnxruntime_WINML_NAMESPACE_OVERRIDE STREQUAL "Windows")
+  target_compile_definitions(winml_adapter PRIVATE "BUILD_INBOX=1")
 endif()
 
 # wil requires C++17
@@ -283,7 +283,7 @@ set_target_properties(winml_adapter PROPERTIES CXX_STANDARD 17)
 set_target_properties(winml_adapter PROPERTIES CXX_STANDARD_REQUIRED ON)
 
 # Compiler definitions
-onnxruntime_add_include_to_target(winml_adapter onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
+onnxruntime_add_include_to_target(winml_adapter onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf flatbuffers)
 target_include_directories(winml_adapter PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS})
 add_dependencies(winml_adapter ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
@@ -339,7 +339,7 @@ add_library(winml_lib_image STATIC
 
 # Compiler options
 target_compile_features(winml_lib_image PRIVATE cxx_std_17)
-target_compile_options(winml_lib_image PRIVATE /GR- /await /wd4238)
+target_compile_options(winml_lib_image PRIVATE /GR- /await /wd4238 /wd5205)
 
 # Compiler flags
 target_compile_definitions(winml_lib_image PRIVATE WINML_ROOT_NS=${winml_root_ns})
@@ -367,6 +367,8 @@ target_include_directories(winml_lib_image PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})  
 target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/cmake/external/gsl/include)
 target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/cmake/external/onnx)
 target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/cmake/external/protobuf/src)
+target_include_directories(winml_lib_image PRIVATE ${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows)
+target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/cmake/external/flatbuffers/include)
 
 # Properties
 set_target_properties(winml_lib_image
@@ -433,7 +435,7 @@ add_library(winml_lib_api STATIC
 
 # Compiler options
 target_compile_features(winml_lib_api PRIVATE cxx_std_17)
-target_compile_options(winml_lib_api PRIVATE /GR- /await /bigobj /wd4238)
+target_compile_options(winml_lib_api PRIVATE /GR- /await /bigobj /wd4238 /wd5205)
 
 # Compiler flags
 target_compile_definitions(winml_lib_api PRIVATE WINML_ROOT_NS=${winml_root_ns})
@@ -475,6 +477,7 @@ target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/onn
 target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/protobuf/src)
 target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/gsl/include)
 target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/SafeInt)
+target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/flatbuffers/include)
 
 # Properties
 set_target_properties(winml_lib_api
@@ -550,6 +553,7 @@ target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake
 target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake/external/protobuf/src)
 target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake/external/gsl/include)
 target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake/external/SafeInt)
+target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake/external/flatbuffers/include)
 
 # Properties
 set_target_properties(winml_lib_api_experimental
@@ -696,6 +700,7 @@ target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/protobu
 target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/gsl/include)
 target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/eigen)
 target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/SafeInt)
+target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/flatbuffers/include)
 
 # Properties
 set_target_properties(winml_dll

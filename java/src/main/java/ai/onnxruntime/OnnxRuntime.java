@@ -37,6 +37,8 @@ final class OnnxRuntime {
 
   private static boolean loaded = false;
 
+  private static final boolean IS_ANDROID = isAndroid();
+
   /** The API handle. */
   static long ortApiHandle;
 
@@ -52,8 +54,10 @@ final class OnnxRuntime {
       detectedOS = "win";
     } else if (os.contains("nux")) {
       detectedOS = "linux";
-    } else {
+    } else if (IS_ANDROID) {
       detectedOS = "android";
+    } else {
+      throw new IllegalStateException("Unsupported os:" + os);
     }
     String detectedArch = null;
     String arch = System.getProperty("os.arch", "generic").toLowerCase(Locale.ENGLISH);
@@ -61,6 +65,8 @@ final class OnnxRuntime {
       detectedArch = "x64";
     } else if (arch.indexOf("x86") == 0) {
       detectedArch = "x86";
+    } else if (IS_ANDROID) {
+      detectedArch = arch;
     } else {
       throw new IllegalStateException("Unsupported arch:" + arch);
     }
@@ -76,14 +82,14 @@ final class OnnxRuntime {
     if (loaded) {
       return;
     }
-    Path tempDirectory = isAndroid() ? null : Files.createTempDirectory("onnxruntime-java");
+    Path tempDirectory = IS_ANDROID ? null : Files.createTempDirectory("onnxruntime-java");
     try {
       load(tempDirectory, ONNXRUNTIME_LIBRARY_NAME);
       load(tempDirectory, ONNXRUNTIME_JNI_LIBRARY_NAME);
       ortApiHandle = initialiseAPIBase(ORT_API_VERSION_3);
       loaded = true;
     } finally {
-      if (!isAndroid()) {
+      if (!IS_ANDROID) {
         cleanUp(tempDirectory.toFile());
       }
     }
@@ -129,7 +135,7 @@ final class OnnxRuntime {
    */
   private static void load(Path tempDirectory, String library) throws IOException {
     // On Android, we simply use System.loadLibrary
-    if (isAndroid()) {
+    if (IS_ANDROID) {
       System.loadLibrary("onnxruntime4j_jni");
       return;
     }

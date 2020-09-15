@@ -111,7 +111,8 @@ static Status SetEnableProfiling(SessionOptions& session_options,
 //--- end of local helpers ---
 //---------------------
 
-Status InferenceSessionUtils::ParseOrtConfigJsonInModelProto(const ONNX_NAMESPACE::ModelProto& model_proto) {
+namespace inference_session_utils {
+Status JsonConfigParser::ParseOrtConfigJsonInModelProto(const ONNX_NAMESPACE::ModelProto& model_proto) {
   if (is_model_checked_for_ort_config_json_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "The Model Proto has already been checked for the ORT config json.");
   }
@@ -121,22 +122,27 @@ Status InferenceSessionUtils::ParseOrtConfigJsonInModelProto(const ONNX_NAMESPAC
       LOGS(logger_, INFO)
           << "Found session/run/environment configuration in the model file to be used while running the model";
 
-      try {
+      auto status = Status::OK();
+      ORT_TRY {
         const auto& val = metadata_field.value();
         LOGS(logger_, INFO) << "ORT config json from the model: " << val;
 
         parsed_json_ = json::parse(val);
         // set the flag indicating that the model has the ORT config json.
         is_ort_config_json_available_ = true;
-      } catch (const std::exception& e) {
-        std::ostringstream message_stream;
-        message_stream << "Json stored in the `ort_config` key cannot be parsed. Error message: " << e.what();
-
-        std::string message = message_stream.str();
-
-        LOGS(logger_, ERROR) << message;
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, message);
       }
+      ORT_CATCH(const std::exception& e) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          std::ostringstream message_stream;
+          message_stream << "Json stored in the `ort_config` key cannot be parsed. Error message: " << e.what();
+
+          std::string message = message_stream.str();
+
+          LOGS(logger_, ERROR) << message;
+          status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, message);
+        });
+      }
+      ORT_RETURN_IF_ERROR(status);
 
       break;
     }
@@ -147,7 +153,7 @@ Status InferenceSessionUtils::ParseOrtConfigJsonInModelProto(const ONNX_NAMESPAC
   return Status::OK();
 }
 
-Status InferenceSessionUtils::ParseSessionOptionsFromModelProto(SessionOptions& session_options) {
+Status JsonConfigParser::ParseSessionOptionsFromModelProto(SessionOptions& session_options) {
   if (!is_model_checked_for_ort_config_json_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "The Model Proto hasn't been checked for the ORT config json.");
   }
@@ -216,11 +222,12 @@ Status InferenceSessionUtils::ParseSessionOptionsFromModelProto(SessionOptions& 
   return Status::OK();
 }
 
-Status InferenceSessionUtils::ParseRunOptionsFromModelProto(RunOptions& /*run_options*/) {
+Status JsonConfigParser::ParseRunOptionsFromModelProto(RunOptions& /*run_options*/) {
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                          "Parsing RunOptions from ModelProto is not supported yet");
 }
 
+}  // namespace inference_session_utils
 }  // namespace onnxruntime
 
 #endif  // !defined(ORT_MINIMAL_BUILD)

@@ -12,6 +12,7 @@
 #include <fstream>
 #include <sstream>
 #include <atomic>
+#include <mutex>
 #include <gtest/gtest.h>
 #include "test_allocator.h"
 #include "test_fixture.h"
@@ -439,6 +440,35 @@ TEST(CApiTest, create_session_without_session_option) {
 }
 #endif
 
+#ifdef REDUCED_OPS_BUILD
+TEST(ReducedOpsBuildTest, test_included_ops) {
+  // In reduce-ops build, test a model containing
+  // ops specified in reduced_ops_via_config.config
+  constexpr PATH_TYPE model_uri = TSTR("testdata/reduced_ops_via_config.onnx_model_with_included_ops");
+  std::vector<Input> inputs = {{"X", {3}, {-1.0f, 2.0f, -3.0f}}};
+  std::vector<int64_t> expected_dims_y = {1};
+  std::vector<float> expected_values_y = {0.75};
+  TestInference<PATH_TYPE, float>(*ort_env, model_uri, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
+}
+
+TEST(ReducedOpsBuildTest, test_excluded_ops) {
+  // In reduce-ops build, test a model containing
+  // ops not referred by reduced_ops_via_config.config
+  constexpr PATH_TYPE model_uri = TSTR("testdata/reduced_ops_via_config.onnx_model_with_excluded_ops");
+  std::vector<Input> inputs = {{"X", {3}, {-1.0f, 2.0f, -3.0f}},
+                               {"Y", {3}, {-1.0f, 2.0f, -3.0f}}};
+  std::vector<int64_t> expected_dims_z = {3};
+  std::vector<float> expected_values_z = {0.1f, 0.1f, 0.1f};
+  bool failed = false;
+  try {
+    TestInference<PATH_TYPE, float>(*ort_env, model_uri, inputs, "Z", expected_dims_z, expected_values_z, 0, nullptr, nullptr);
+  } catch (const Ort::Exception& e) {
+    failed = e.GetOrtErrorCode() == ORT_NOT_IMPLEMENTED;
+  }
+  ASSERT_EQ(failed, true);
+}
+#endif
+
 TEST(CApiTest, get_allocator_cpu) {
   Ort::SessionOptions session_options;
   Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CPU(session_options, 1));
@@ -852,7 +882,7 @@ TEST(CApiTest, TestSharedAllocatorUsingCreateAndRegisterAllocator) {
   std::unique_ptr<OrtMemoryInfo, decltype(api.ReleaseMemoryInfo)> rel_info(mem_info, api.ReleaseMemoryInfo);
   ASSERT_TRUE(api.CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &mem_info) == nullptr);
 
-  OrtArenaCfg arena_cfg{-1, -1, -1, -1};
+  OrtArenaCfg arena_cfg{0, -1, -1, -1};
   ASSERT_TRUE(api.CreateAndRegisterAllocator(env_ptr, mem_info, &arena_cfg) == nullptr);
 
   // test for duplicates
@@ -863,7 +893,7 @@ TEST(CApiTest, TestSharedAllocatorUsingCreateAndRegisterAllocator) {
 
   Ort::SessionOptions session_options;
   auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
-  session_options.AddConfigEntry(ORT_SESSION_OPTIONS_CONFIG_USE_ENV_ALLOCATORS, "1");
+  session_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
 
   // create session 1
   Ort::Session session1(*ort_env, MODEL_URI, session_options);

@@ -257,11 +257,20 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     getchar();
   }
 
-  try {
-    env = Ort::Env{logging_level, "Default"};
-  } catch (std::exception& ex) {
-    fprintf(stderr, "Error creating environment: %s \n", ex.what());
-    return -1;
+  {
+    bool failed = false;
+    ORT_TRY {
+      env = Ort::Env{logging_level, "Default"};
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        fprintf(stderr, "Error creating environment: %s \n", ex.what());
+        failed = true;
+      });
+    }
+
+    if (failed)
+      return -1;
   }
 
   std::vector<std::basic_string<PATH_CHAR_TYPE>> data_dirs;
@@ -549,6 +558,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"cast_BFLOAT16_to_FLOAT", "onnx generate bfloat tensor as uint16 type", {}},
       {"sequence_insert_at_back", "onnx currently not supporting loading segment", {}},
       {"sequence_insert_at_front", "onnx currently not supporting loading segment", {}},
+      {"if_seq", "NOT_IMPLEMENTED : Could not find an implementation for the node If(13)", {}},
+      {"loop13_seq", "NOT_IMPLEMENTED : Could not find an implementation for the node Loop(13)", {}},
   };
 
 #ifdef DISABLE_ML_OPS
@@ -921,12 +932,16 @@ int main(int argc, char* argv[]) {
 #endif
   Ort::Env env{nullptr};
   int retval = -1;
-  try {
+  ORT_TRY {
     retval = real_main(argc, argv, env);
-  } catch (std::exception& ex) {
-    fprintf(stderr, "%s\n", ex.what());
-    retval = -1;
   }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      fprintf(stderr, "%s\n", ex.what());
+      retval = -1;
+    });
+  }
+
   ::google::protobuf::ShutdownProtobufLibrary();
   return retval;
 }

@@ -12,7 +12,6 @@
 #include "core/framework/kernel_registry.h"
 #include "core/graph/model.h"
 #include "core/platform/env.h"
-#include "core/providers/dnnl/dnnl_provider_factory.h"
 #include "core/session/inference_session.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_apis.h"
@@ -30,6 +29,9 @@
 #include "onnx/common/stl_backports.h"
 #include "core/common/logging/logging.h"
 #include "core/common/cpuid_info.h"
+
+#include "core/providers/dnnl/dnnl_provider_factory.h"
+#include "core/providers/tensorrt/tensorrt_provider_factory.h"
 
 // The filename extension for a shared library is different per platform
 #ifdef _WIN32
@@ -51,18 +53,8 @@ namespace onnxruntime {
 
 ProviderHost* g_host{};
 
-struct Provider_OrtDevice_Impl : Provider_OrtDevice {
-  OrtDevice v_;
-};
-
-struct Provider_OrtMemoryInfo_Impl : Provider_OrtMemoryInfo {
-  Provider_OrtMemoryInfo_Impl(const char* name_, OrtAllocatorType type_, OrtDevice device_, int id_, OrtMemType mem_type_) : info_{onnxruntime::make_unique<OrtMemoryInfo>(name_, type_, device_, id_, mem_type_)} {}
-
-  std::unique_ptr<OrtMemoryInfo> info_;
-};
-
-struct Provider_IAllocator_Impl : Provider_IAllocator {
-  Provider_IAllocator_Impl(AllocatorPtr p) : p_{p} {}
+struct Provider_AllocatorPtr_Impl : Provider_IAllocator {
+  Provider_AllocatorPtr_Impl(AllocatorPtr p) : Provider_IAllocator{p->Info()}, p_{p} {}
 
   void* Alloc(size_t size) override { return p_->Alloc(size); }
   void Free(void* p) override { return p_->Free(p); }
@@ -70,13 +62,26 @@ struct Provider_IAllocator_Impl : Provider_IAllocator {
   AllocatorPtr p_;
 };
 
-struct Provider_IDeviceAllocator_Impl : Provider_IDeviceAllocator {
-  Provider_IDeviceAllocator_Impl(std::unique_ptr<IDeviceAllocator> p) : p_{std::move(p)} {}
+// This is really a IAllocator, but we wrap it with this class to make it into a Provider_IAllocator
+struct Provider_IAllocator_Impl : Provider_IAllocator {
+  Provider_IAllocator_Impl(std::unique_ptr<IAllocator> p) : Provider_IAllocator{p->Info()}, p_{std::move(p)} {}
 
   void* Alloc(size_t size) override { return p_->Alloc(size); }
   void Free(void* p) override { return p_->Free(p); }
 
-  std::unique_ptr<IDeviceAllocator> p_;
+  bool IsProviderInterface() const override { return false; }
+
+  std::unique_ptr<IAllocator> p_;
+};
+
+// This is really a Provider_IAllocator, but we wrap it with this class to make it into a IAllocator
+struct ProviderAllocator : IAllocator {
+  ProviderAllocator(std::shared_ptr<Provider_IAllocator> p) : IAllocator{p->memory_info_}, p_{std::move(p)} {}
+
+  void* Alloc(size_t size) override { return p_->Alloc(size); }
+  void Free(void* p) override { return p_->Free(p); }
+
+  std::shared_ptr<Provider_IAllocator> p_;
 };
 
 struct Provider_TensorShapeProto_Dimension_Iterator_Impl : Provider_TensorShapeProto_Dimension_Iterator {
@@ -184,7 +189,14 @@ struct Provider_IExecutionProvider_Router_Impl : Provider_IExecutionProvider_Rou
   }
 
   Provider_AllocatorPtr Provider_GetAllocator(int id, OrtMemType mem_type) const override {
-    return std::make_shared<Provider_IAllocator_Impl>(IExecutionProvider::GetAllocator(id, mem_type));
+    return std::make_shared<Provider_AllocatorPtr_Impl>(IExecutionProvider::GetAllocator(id, mem_type));
+  }
+
+  AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override {
+    auto allocator = outer_->Provider_GetAllocator(id, mem_type);
+    if (!allocator)
+      return nullptr;
+    return static_cast<Provider_AllocatorPtr_Impl*>(allocator.get())->p_;
   }
 
   std::unique_ptr<Provider_IDataTransfer> Provider_GetDataTransfer() const override {
@@ -196,7 +208,7 @@ struct Provider_IExecutionProvider_Router_Impl : Provider_IExecutionProvider_Rou
   }
 
   void Provider_InsertAllocator(Provider_AllocatorPtr allocator) override {
-    IExecutionProvider::InsertAllocator(static_cast<Provider_IAllocator_Impl*>(allocator.get())->p_);
+    IExecutionProvider::InsertAllocator(static_cast<Provider_AllocatorPtr_Impl*>(allocator.get())->p_);
   }
 
   const logging::Logger* GetLogger() const override { return IExecutionProvider::GetLogger(); }
@@ -211,26 +223,30 @@ struct ProviderHostImpl : ProviderHost {
     DataTypeImpl_GetTensorType_float = &DataTypeImpl::GetTensorType<float>;
   }
 
-  std::unique_ptr<Provider_OrtMemoryInfo> OrtMemoryInfo_Create(const char* name_, OrtAllocatorType type_, Provider_OrtDevice* device_, int id_, OrtMemType mem_type_) override {
-    return onnxruntime::make_unique<Provider_OrtMemoryInfo_Impl>(name_, type_, device_ ? static_cast<Provider_OrtDevice_Impl*>(device_)->v_ : OrtDevice(), id_, mem_type_);
-  }
-
-  Provider_AllocatorPtr CreateAllocator(const Provider_DeviceAllocatorRegistrationInfo& info,
-                                        OrtDevice::DeviceId device_id = 0,
-                                        bool use_arena = true) override {
-    DeviceAllocatorRegistrationInfo info_real{
-        info.mem_type, [&info](int value) {
-          return std::move(static_cast<Provider_IDeviceAllocator_Impl*>(&*info.factory(value))->p_);
+  Provider_AllocatorPtr CreateAllocator(const Provider_AllocatorCreationInfo& info) override {
+    AllocatorCreationInfo info_real{
+        [&info](int value) -> std::unique_ptr<IAllocator> {
+          auto allocator = info.factory(value);
+          // If the allocator is a provider interface, we need to wrap it with ProviderAllocator to turn it into an IAllocator
+          // Otherwise it's really a Provider_IAllocator_Impl, so we can just unwrap it to get back to the IAllocator inside
+          if (allocator->IsProviderInterface())
+            return onnxruntime::make_unique<ProviderAllocator>(std::move(allocator));
+          else
+            return std::move(static_cast<Provider_IAllocator_Impl*>(&*allocator)->p_);
         },
-        info.max_mem};
+        info.device_id,
+        info.use_arena,
+        info.arena_cfg};
 
-    return std::make_shared<Provider_IAllocator_Impl>(onnxruntime::CreateAllocator(info_real, device_id, use_arena));
+    // info_real will always return a unique_ptr to an IAllocator, which might be a native IAllocator or a provider interface wrapped by ProviderAllocator.
+    // Either way we wrap it in a Provider_IAllocator_Impl to be unwrapped by Provider_InsertAllocator
+    return std::make_shared<Provider_AllocatorPtr_Impl>(onnxruntime::CreateAllocator(info_real));
   }
 
-  std::unique_ptr<Provider_IDeviceAllocator> CreateCPUAllocator(
-      std::unique_ptr<Provider_OrtMemoryInfo> memory_info) override {
-    return onnxruntime::make_unique<Provider_IDeviceAllocator_Impl>(
-        onnxruntime::make_unique<CPUAllocator>(*static_cast<Provider_OrtMemoryInfo_Impl*>(memory_info.get())->info_));
+  std::unique_ptr<Provider_IAllocator> CreateCPUAllocator(
+      const OrtMemoryInfo& memory_info) override {
+    return onnxruntime::make_unique<Provider_IAllocator_Impl>(
+        onnxruntime::make_unique<CPUAllocator>(memory_info));
   };
 
   std::unique_ptr<Provider_IExecutionProvider_Router> Create_IExecutionProvider_Router(
@@ -239,12 +255,12 @@ struct ProviderHostImpl : ProviderHost {
   };
 
 #ifdef USE_TENSORRT
-  std::unique_ptr<Provider_IDeviceAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) override {
-    return onnxruntime::make_unique<Provider_IDeviceAllocator_Impl>(onnxruntime::make_unique<CUDAAllocator>(device_id, name));
+  std::unique_ptr<Provider_IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) override {
+    return onnxruntime::make_unique<Provider_IAllocator_Impl>(onnxruntime::make_unique<CUDAAllocator>(device_id, name));
   }
 
-  std::unique_ptr<Provider_IDeviceAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) override {
-    return onnxruntime::make_unique<Provider_IDeviceAllocator_Impl>(onnxruntime::make_unique<CUDAPinnedAllocator>(device_id, name));
+  std::unique_ptr<Provider_IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) override {
+    return onnxruntime::make_unique<Provider_IAllocator_Impl>(onnxruntime::make_unique<CUDAPinnedAllocator>(device_id, name));
   }
 
   std::unique_ptr<Provider_IDataTransfer> CreateGPUDataTransfer() override {
@@ -276,7 +292,7 @@ struct ProviderHostImpl : ProviderHost {
   }
 
   void* HeapAllocate(size_t size) override { return new uint8_t[size]; }
-  void HeapFree(void* p) override { delete reinterpret_cast<uint8_t*>(p); }
+  void HeapFree(void* p) override { delete[] reinterpret_cast<uint8_t*>(p); }
 
   bool CPU_HasAVX2() override {
     return CPUIDInfo::GetCPUIDInfo().HasAVX2();
@@ -584,7 +600,13 @@ struct ProviderHostImpl : ProviderHost {
   // Provider_Tensor
   float* Provider_Tensor__MutableData_float(Provider_Tensor* p) override { return reinterpret_cast<Tensor*>(p)->MutableData<float>(); }
   const float* Provider_Tensor__Data_float(const Provider_Tensor* p) override { return reinterpret_cast<const Tensor*>(p)->Data<float>(); }
+
+  void* Provider_Tensor__MutableDataRaw(Provider_Tensor* p) noexcept override { return reinterpret_cast<Tensor*>(p)->MutableDataRaw(); }
+  const void* Provider_Tensor__DataRaw(const Provider_Tensor* p) const noexcept override { return reinterpret_cast<const Tensor*>(p)->DataRaw(); }
+
   const TensorShape& Provider_Tensor__Shape(const Provider_Tensor* p) override { return reinterpret_cast<const Tensor*>(p)->Shape(); }
+  size_t Provider_Tensor__SizeInBytes(const Provider_Tensor* p) override { return reinterpret_cast<const Tensor*>(p)->SizeInBytes(); }
+  const OrtMemoryInfo& Provider_Tensor__Location(const Provider_Tensor* p) override { return reinterpret_cast<const Tensor*>(p)->Location(); }
 
 } provider_host_;
 
@@ -661,22 +683,6 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(i
   static ProviderLibrary library(LIBRARY_PREFIX "onnxruntime_providers_dnnl" LIBRARY_EXTENSION);
   if (!library.provider_)
     return nullptr;
-
-#if defined(_WIN32) && !defined(_OPENMP)
-  {
-    // We crash when unloading DNNL on Windows when OpenMP also unloads (As there are threads
-    // still running code inside the openmp runtime DLL if OMP_WAIT_POLICY is set to ACTIVE).
-    // To avoid this, we pin the OpenMP DLL so that it unloads as late as possible.
-    HMODULE handle{};
-#ifdef _DEBUG
-    constexpr const char* dll_name = "vcomp140d.dll";
-#else
-    constexpr const char* dll_name = "vcomp140.dll";
-#endif
-    ::GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_PIN, dll_name, &handle);
-    assert(handle);  // It should exist
-  }
-#endif
 
   //return std::make_shared<onnxruntime::MkldnnProviderFactory>(device_id);
   //TODO: This is apparently a bug. The constructor parameter is create-arena-flag, not the device-id

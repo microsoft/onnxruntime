@@ -370,6 +370,8 @@ class SymbolicShapeInference:
         symbolic_shape_inference = SymbolicShapeInference(self.int_max_, self.auto_merge_, self.guess_output_rank_, self.verbose_)
         all_shapes_inferred = False
         symbolic_shape_inference._preprocess(self.tmp_mp_)
+        # note that after _preprocess, Constant node will be converted to initializer and should be appended to subgraph.initializer
+        subgraph.initializer.extend([i for i in symbolic_shape_inference.out_mp_.graph.initializer if i.name not in subgraph_implicit_input and i.name not in subgraph_inputs])
         symbolic_shape_inference.suggested_merge_ = self.suggested_merge_.copy()
         while symbolic_shape_inference.run_:
             all_shapes_inferred = symbolic_shape_inference._infer_impl(self.tmp_mp_, self.sympy_data_.copy())

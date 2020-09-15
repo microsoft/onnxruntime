@@ -233,4 +233,6 @@ ORT_API_STATUS_IMPL(TensorAt, _Inout_ OrtValue* value, size_t* location_values, 
 ORT_API_STATUS_IMPL(CreateAndRegisterAllocator, _Inout_ OrtEnv* env, _In_ const OrtMemoryInfo* mem_info, _In_ const OrtArenaCfg* arena_cfg);
 ORT_API_STATUS_IMPL(CreateCustomEnv, OrtLoggingFunction logging_function, _In_opt_ void* logger_param, OrtLoggingLevel default_warning_level, _In_ const char* logid, _In_ const struct OrtThreadingOptions* tp_options, _Outptr_ OrtEnv** out)
 ORT_ALL_ARGS_NONNULL;
+
+ORT_API_STATUS_IMPL(SetLanguageProjection, _In_ const OrtEnv* ort_env, _In_ OrtLanguageProjection projection);
 }  // namespace OrtApis

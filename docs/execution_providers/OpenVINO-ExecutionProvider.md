@@ -2,37 +2,91 @@
 
 OpenVINO Execution Provider enables deep learning inference on Intel CPUs, Intel integrated GPUs and Intel<sup>®</sup> Movidius<sup>TM</sup> Vision Processing Units (VPUs). Please refer to [this](https://software.intel.com/en-us/openvino-toolkit/hardware) page for details on the Intel hardware supported.
 
-## Build
+### Build
 For build instructions, please see the [BUILD page](../../BUILD.md#openvino).
 
-## Onnxruntime Graph Optimization level
+## Runtime configuration options
+---
+
+OpenVINO EP can be configured with certain options at runtime that control the behavior of the EP. These options can be set as key-value pairs as below:-
+
+### Python API
+Key-Value pairs for config options can be set using the Session.set_providers API as follows:-
+
+```
+session = onnxruntime.InferenceSession(<path_to_model_file>, options)
+session.set_providers(['OpenVINOExecutionProviders'], [{Key1 : Value1, Key2 : Value2, ...}])
+```
+*Note that this causes the InferenceSession to be re-initialized, which may cause model recompilation and hardware re-initialization*
+
+### C/C++ API
+All the options (key-value pairs) need to be concantenated into a string as shown below and passed to OrtSessionOptionsAppendExecutionProviderEx_OpenVINO() API as shown below:-
+
+```
+std::string settings_str;
+settings_str.append("Key1|Value1\n");
+settings_str.append("Key2|Value2\n");
+settings_str.append("Key3|Value3\n");
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProviderEx_OpenVINO(sf, settings_str));
+```
+
+### Available configuration options
+The following table lists all the available configuratoin optoins and the Key-Value pairs to set them:-
+
+| **Key** | **Key type** | **Allowable Values** | **Value type** | **Description** |
+| --- | --- | --- | --- | --- | --- |
+| device_type | string | CPU_FP32, GPU_FP32, GPU_FP16, MYRIAD_FP16, VAD-M_FP16, VAD-M_FP32 | string | Overrides the accelerator hardware type and precision with these values at runtime. If this option is not explicitly set, default hardware and precision specified during build time is used. |
+| device_id   | string | Any valid OpenVINO device ID | string | Selects a particular hardware device for inference. The list of valid OpenVINO device ID's available on a platform can be obtained either by Python API (`onnxruntime.capi._pybind_state.get_available_openvino_device_ids()`) or by [OpenVINO C/C++ API](https://docs.openvinotoolkit.org/latest/classInferenceEngine_1_1Core.html#acb212aa879e1234f51b845d2befae41c). If this option is not explicitly set, an arbitrary free device will be automatically selected by OpenVINO runtime.|
+| enable_vpu_fast_recompile | string | True/False | boolean | This option is only available for MYRIAD_FP16 VPU devices. During initialization of the VPU device with compiled model, Fast-compile may be optionally enabled to speeds up the model's compilation to VPU device specific format. This in-turn speeds up model initialization time. However, enabling this option may slowdown inference due to some of the optimizations not being fully applied, so caution is to be exercised while enabling this option. |
+
+## Other configuration settings
+### Onnxruntime Graph Optimization level
 OpenVINO backend performs both hardware dependent as well as independent optimizations to the graph to infer it with on the target hardware with best possible performance. In most of the cases it has been observed that passing in the graph from the input model as is would lead to best possible optimizations by OpenVINO. For this reason, it is advised to turn off high level optimizations performed by ONNX Runtime before handing the graph over to OpenVINO backend. This can be done using Session options as shown below:-
 
-1. Python API
+### Python API
 ```
 options = onnxruntime.SessionOptions()
 options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
 sess = onnxruntime.InferenceSession(<path_to_model_file>, options)
 ```
 
-2. C++ API
+### C/C++ API
 ```
 SessionOptions::SetGraphOptimizationLevel(ORT_DISABLE_ALL);
 ```
 
-## Dynamic device selection
+### Deprecated: Dynamic device type selection
+**Note: This API has been deprecated. Please use the Key-Value mechanism mentioned above to set the 'device-type' option.**
 When ONNX Runtime is built with OpenVINO Execution Provider, a target hardware option needs to be provided. This build time option becomes the default target harware the EP schedules inference on. However, this target may be overriden at runtime to schedule inference on a different hardware as shown below.
 
 Note. This dynamic hardware selection is optional. The EP falls back to the build-time default selection if no dynamic hardware option value is specified.
-1. Python API
+
+### Python API
 ```
 import onnxruntime
 onnxruntime.capi._pybind_state.set_openvino_device("<harware_option>")
 # Create session after this
 ```
-2. C/C++ API
+*This property persists and gets applied to new sessions until it is explicity unset. To unset, assign a null string ("").*
+
+### C/C++ API
+
+Append the settings string "device_type|<hardware_option>\n" to the EP settings string. Example shown below for the CPU_FP32 option:
 ```
-Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, "<hardware_option>"));
+std::string settings_str;
+...
+settings_str.append("device_type|CPU_FP32\n");
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProviderEx_OpenVINO(sf, settings_str));
+```
+
+
+### C/C++ API
+Append the settings string "device_id|<device_id>\n" to the EP settings string, where <device_id> is the unique identifier of the hardware device.
+```
+std::string settings_str;
+...
+settings_str.append("device_id|<device_id>\n");
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProviderEx_OpenVINO(sf, settings_str));
 ```
 
 ## ONNX Layers supported using OpenVINO
@@ -176,35 +230,4 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO Execut
 
 ## CSharp API
 
-To use csharp api for openvino execution provider create a custom nuget package. Two nuget packages will be created
-Microsoft.ML.OnnxRuntime.Managed and Microsoft.ML.OnnxRuntime.Openvino.
-
-1. Windows
-
-Build a custom nuget package for windows.
-```
-.\build.bat --config Debug --build --use_openvino $Device --build_csharp
-msbuild csharp\OnnxRuntime.CSharp.proj /p:OrtPackageId=Microsoft.ML.OnnxRuntime.Openvino /p:Configuration=Debug /t:CreatePackage
-```
-The msbuild log will show the paths of the nuget packages created. 
-
-2. Linux
-
-We currently do not have a process to build directly in Linux. But we can
-copy shared library <ORT linux repo>/build/Linux/<config>/libonnxruntime.so
-to onnxruntime source repository in windows and execute the same commands 
-above to get custom nuget package for linux. Two nuget packages will be 
-created Microsoft.ML.OnnxRuntime.Managed and Microsoft.ML.OnnxRuntime.Openvino.
-
-On Linux Machine
-```
-./build.sh --config Debug --build_shared_lib --use_openvino $Device 
-```
-
-On Windows Machine
-```
-cp libonnxruntime.so onnxruntime/ 
-.\build.bat --config Debug --build --use_openvino $Device --build_csharp
-msbuild csharp\OnnxRuntime.CSharp.proj /p:OrtPackageId=Microsoft.ML.OnnxRuntime.Openvino /p:Configuration=Debug /t:CreatePackage
-```
-The msbuild log will show the path of the nuget packages created. 
+To use csharp api for openvino execution provider create a custom nuget package. Follow the instructions [here](../../BUILD.md##build-nuget-packages) to install prerequisites for nuget creation. Once prerequisites are installed follow the instructions to [build openvino](../../BUILD.md#openvino) and add an extra flag `--build_nuget` to create nuget packages. Two nuget packages will be created Microsoft.ML.OnnxRuntime.Managed and Microsoft.ML.OnnxRuntime.Openvino.

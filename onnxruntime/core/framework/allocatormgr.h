@@ -6,38 +6,32 @@
 #include "core/common/common.h"
 #include "core/framework/arena.h"
 #include "core/framework/bfc_arena.h"
+#include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
 
-using DeviceAllocatorFactory = std::function<std::unique_ptr<IDeviceAllocator>(OrtDevice::DeviceId)>;
+using AllocatorFactory = std::function<std::unique_ptr<IAllocator>(OrtDevice::DeviceId)>;
 
-// TODO why does DeviceAllocatorRegistrationInfo have arena related configs?
-// TODO even if it should, they should be inside their own struct (OrtArenaCfg) as opposed to
-// littering them as individual members of DeviceAllocatorRegistrationInfo
-struct DeviceAllocatorRegistrationInfo {
-  DeviceAllocatorRegistrationInfo(OrtMemType ort_mem_type,
-                                  DeviceAllocatorFactory alloc_factory,
-                                  size_t mem,
-                                  ArenaExtendStrategy strategy = BFCArena::DEFAULT_ARENA_EXTEND_STRATEGY,
-                                  int initial_chunk_size_bytes0 = BFCArena::DEFAULT_INITIAL_CHUNK_SIZE_BYTES,
-                                  int max_dead_bytes_per_chunk0 = BFCArena::DEFAULT_MAX_DEAD_BYTES_PER_CHUNK)
-      : mem_type(ort_mem_type),
-        factory(alloc_factory),
-        max_mem(mem),
-        arena_extend_strategy(strategy),
-        initial_chunk_size_bytes(initial_chunk_size_bytes0),
-        max_dead_bytes_per_chunk(max_dead_bytes_per_chunk0) {
+struct AllocatorCreationInfo {
+  AllocatorCreationInfo(AllocatorFactory device_alloc_factory0,
+                        OrtDevice::DeviceId device_id0 = 0,
+                        bool use_arena0 = true,
+                        OrtArenaCfg arena_cfg0 = {0, -1, -1, -1})
+      : device_alloc_factory(device_alloc_factory0),
+        device_id(device_id0),
+        use_arena(use_arena0),
+        arena_cfg(arena_cfg0) {
   }
 
-  OrtMemType mem_type;
-  DeviceAllocatorFactory factory;
-  size_t max_mem;
-  ArenaExtendStrategy arena_extend_strategy;
-  int initial_chunk_size_bytes;
-  int max_dead_bytes_per_chunk;
+  AllocatorFactory device_alloc_factory;
+  OrtDevice::DeviceId device_id;
+  bool use_arena;
+  OrtArenaCfg arena_cfg;
 };
 
-AllocatorPtr CreateAllocator(const DeviceAllocatorRegistrationInfo& info, OrtDevice::DeviceId device_id = 0,
-                             bool use_arena = true);
+// Returns an allocator based on the creation info provided.
+// Returns nullptr if an invalid value of info.arena_cfg.arena_extend_strategy is supplied.
+// Valid values can be found in onnxruntime_c_api.h.
+AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info);
 
 }  // namespace onnxruntime

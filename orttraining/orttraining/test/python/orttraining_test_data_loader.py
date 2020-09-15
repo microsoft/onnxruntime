@@ -39,7 +39,7 @@ def floats_tensor(shape, scale=1.0, rng=None, name=None):
 
 
 class OrtTestDataset(Dataset):
-    def __init__(self, input_desc, seq_len, device):
+    def __init__(self, input_desc, seq_len, dataset_len, device):
         import copy
         self.input_desc_ = copy.deepcopy(input_desc)
         for input_desc in self.input_desc_:
@@ -50,10 +50,11 @@ class OrtTestDataset(Dataset):
                 elif axis != 'batch':
                     shape_ = input_desc.shape_[i]
             input_desc.shape_ = shape_
+        self.dataset_len_ = dataset_len
         self.device_ = device
 
     def __len__(self):
-        return 100
+        return self.dataset_len_
 
     def __getitem__(self, item):
         input_batch = []
@@ -62,8 +63,8 @@ class OrtTestDataset(Dataset):
             input_batch.append(input_sample)
         return input_batch
 
-def create_ort_test_dataloader(input_desc, batch_size, seq_len, device):
-    dataset = OrtTestDataset(input_desc, seq_len, device)
+def create_ort_test_dataloader(input_desc, batch_size, seq_len, dataset_len, device):
+    dataset = OrtTestDataset(input_desc, seq_len, dataset_len, device)
     return DataLoader(dataset, batch_size=batch_size)
 
 class BatchArgsOption(Enum):

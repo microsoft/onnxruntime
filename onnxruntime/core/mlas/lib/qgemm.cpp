@@ -2099,7 +2099,11 @@ Return Value:
         PackedK = MLAS_GEMM_U8U8_KERNEL_AVX2::PackedK;
         StrideK = MLAS_GEMM_U8U8_KERNEL_AVX2::PackedStrides.K;
     } else {
+#ifdef MLAS_NO_EXCEPTION
+        abort();
+#else
         throw std::runtime_error("packing unavailable");
+#endif
     }
 
     //

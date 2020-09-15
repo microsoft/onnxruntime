@@ -64,7 +64,10 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 2. Run the Docker image
 
   ```
-  docker run -it onnxruntime-cuda
+  docker run --gpus all -it onnxruntime-cuda
+  or
+  nvidia-docker run -it onnxruntime-cuda
+
   ```
 
 ## nGraph

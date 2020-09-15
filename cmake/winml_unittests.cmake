@@ -53,6 +53,7 @@ function(add_winml_test)
     add_dependencies(${_UT_TARGET} ${_UT_DEPENDS})
   endif()
   target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest winml_google_test_lib ${onnxruntime_EXTERNAL_LIBRARIES} winml_lib_common onnxruntime windowsapp.lib)
+  target_compile_options(${_UT_TARGET} PRIVATE /wd5205)  # workaround cppwinrt SDK bug https://github.com/microsoft/cppwinrt/issues/584
 
   add_test(NAME ${_UT_TARGET}
     COMMAND ${_UT_TARGET}
@@ -243,7 +244,7 @@ target_include_directories(winml_test_adapter PRIVATE ${winml_lib_common_dir}/in
 target_include_directories(winml_test_adapter PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})
 target_include_directories(winml_test_adapter PRIVATE ${ONNXRUNTIME_ROOT})
 
-onnxruntime_add_include_to_target(winml_test_adapter onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
+onnxruntime_add_include_to_target(winml_test_adapter onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf flatbuffers)
 target_include_directories(winml_test_adapter PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS})
 add_dependencies(winml_test_adapter ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(winml_test_adapter PRIVATE ${winml_adapter_dir})

@@ -14,7 +14,7 @@ inline void ThrowOnError(const OrtApi& ort, OrtStatus* status) {
     std::string error_message = ort.GetErrorMessage(status);
     OrtErrorCode error_code = ort.GetErrorCode(status);
     ort.ReleaseStatus(status);
-    throw Ort::Exception(std::move(error_message), error_code);
+    ORT_CXX_API_THROW(std::move(error_message), error_code);
   }
 }
 
@@ -301,6 +301,19 @@ inline Env::Env(const OrtThreadingOptions* tp_options, OrtLoggingLevel default_l
 inline Env::Env(const OrtThreadingOptions* tp_options, OrtLoggingFunction logging_function, void* logger_param,
                 OrtLoggingLevel default_logging_level, _In_ const char* logid) {
   ThrowOnError(GetApi().CreateCustomEnv(logging_function, logger_param, default_logging_level, logid, tp_options, &p_));
+inline Env::Env(OrtLoggingLevel default_warning_level, _In_ const char* logid) {
+  ThrowOnError(GetApi().CreateEnv(default_warning_level, logid, &p_));
+  ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_CPLUSPLUS));
+}
+
+inline Env::Env(OrtLoggingLevel default_warning_level, const char* logid, OrtLoggingFunction logging_function, void* logger_param) {
+  ThrowOnError(GetApi().CreateEnvWithCustomLogger(logging_function, logger_param, default_warning_level, logid, &p_));
+  ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_CPLUSPLUS));
+}
+
+inline Env::Env(const OrtThreadingOptions* tp_options, OrtLoggingLevel default_warning_level, _In_ const char* logid) {
+  ThrowOnError(GetApi().CreateEnvWithGlobalThreadPools(default_warning_level, logid, tp_options, &p_));
+  ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_CPLUSPLUS));
 }
 
 inline Env& Env::EnableTelemetryEvents() {
@@ -625,6 +638,36 @@ inline Unowned<TensorTypeAndShapeInfo> TypeInfo::GetTensorTypeAndShapeInfo() con
   const OrtTensorTypeAndShapeInfo* out;
   ThrowOnError(GetApi().CastTypeInfoToTensorInfo(p_, &out));
   return Unowned<TensorTypeAndShapeInfo>(const_cast<OrtTensorTypeAndShapeInfo*>(out));
+}
+
+inline Unowned<SequenceTypeInfo> TypeInfo::GetSequenceTypeInfo() const {
+  const OrtSequenceTypeInfo* out;
+  ThrowOnError(GetApi().CastTypeInfoToSequenceTypeInfo(p_, &out));
+  return Unowned<SequenceTypeInfo>{const_cast<OrtSequenceTypeInfo*>(out)};
+}
+
+inline TypeInfo SequenceTypeInfo::GetSequenceElementType() const {
+  OrtTypeInfo* output;
+  ThrowOnError(GetApi().GetSequenceElementType(p_, &output));
+  return TypeInfo{output};
+}
+
+inline Unowned<MapTypeInfo> TypeInfo::GetMapTypeInfo() const {
+  const OrtMapTypeInfo* out;
+  ThrowOnError(GetApi().CastTypeInfoToMapTypeInfo(p_, &out));
+  return Unowned<MapTypeInfo>{const_cast<OrtMapTypeInfo*>(out)};
+}
+
+inline ONNXTensorElementDataType MapTypeInfo::GetMapKeyType() const {
+  ONNXTensorElementDataType out;
+  ThrowOnError(GetApi().GetMapKeyType(p_, &out));
+  return out;
+}
+
+inline TypeInfo MapTypeInfo::GetMapValueType() const {
+  OrtTypeInfo* output;
+  ThrowOnError(GetApi().GetMapValueType(p_, &output));
+  return TypeInfo{output};
 }
 
 inline ONNXType TypeInfo::GetONNXType() const {
