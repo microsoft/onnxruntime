@@ -668,7 +668,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithStartProfile) {
   }
 }
 
-TEST(InferenceSessionTests, CheckRunProfilerWithStartTimeNs) {
+TEST(InferenceSessionTests, CheckRunProfilerStartTime) {
   // Test whether the InferenceSession can access the profiler's start time
   SessionOptions so;
 
@@ -681,7 +681,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithStartTimeNs) {
   ASSERT_STATUS_OK(session_object.Initialize());
 
   uint64_t before_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
-      std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+      std::chrono::high_resolution_clock::now().time_since_epoch()).count(); // get current time
   session_object.StartProfiling("onnxruntime_profile_start");
   uint64_t profiling_start_time = session_object.GetProfiling().GetStartTime();
   uint64_t after_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(

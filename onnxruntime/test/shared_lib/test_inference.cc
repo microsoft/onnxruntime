@@ -781,7 +781,7 @@ TEST(CApiTest, get_profiling_start_time) {
 #endif
 
   uint64_t before_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
-      std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+      std::chrono::high_resolution_clock::now().time_since_epoch()).count(); // get current time
   Ort::Session session_1(*ort_env, MODEL_WITH_CUSTOM_MODEL_METADATA, session_options);
   uint64_t profiling_start_time = session_1.GetProfilingStartTimeNs();
   uint64_t after_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
