@@ -6,8 +6,7 @@
 #include <stdint.h>
 
 #include "core/common/status.h"
-
-enum ONNXTensorElementDataType;
+#include "core/session/onnxruntime_c_api.h"
 
 namespace onnx {
 class TensorProto;
