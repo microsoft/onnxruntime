@@ -1126,7 +1126,7 @@ def run_training_python_frontend_e2e_tests(cwd):
     import torch
     ngpus = torch.cuda.device_count()
     if ngpus > 1:
-        log.debug('RUN: mpirun -n -x NCCL_DEBUG=WARN {} {} orttraining_run_glue.py'.format(ngpus, sys.executable))
+        log.debug('RUN: mpirun -n -x NCCL_DEBUG=INFO {} {} orttraining_run_glue.py'.format(ngpus, sys.executable))
         run_subprocess(['mpirun', '-n', str(ngpus), sys.executable, 'orttraining_run_glue.py'], cwd=cwd)
 
     # with orttraining_run_glue.py.
