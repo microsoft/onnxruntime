@@ -37,8 +37,8 @@ def optimize_model(model_path: Path):
     sess_option.optimized_model_filepath = opt_model_path.as_posix()
     sess_option.graph_optimization_level = GraphOptimizationLevel.ORT_ENABLE_BASIC
     _ = InferenceSession(model_path.as_posix(), sess_option)
-    optimized_model = onnx.load(opt_model_path.as_posix())
-    return optimized_model
+    optimized_model_path = opt_model_path.as_posix()
+    return optimized_model_path
 
 
 def quantize(model,
@@ -131,7 +131,8 @@ def quantize_static(model_input,
                     activation_type=QuantType.QUInt8,
                     weight_type=QuantType.QUInt8,
                     nodes_to_quantize=[],
-                    nodes_to_exclude=[]):
+                    nodes_to_exclude=[],
+                    use_external_data_format=False):
     '''
         Given an onnx model and calibration data reader, create a quantized onnx model and save it into a file
     :param model_input: file path of model to quantize
@@ -170,7 +171,7 @@ def quantize_static(model_input,
                                          nodes_to_exclude)
 
     quantizer = ONNXQuantizer(
-        onnx.load(model_input),
+        model_input,
         per_channel,
         reduce_range,
         mode,
@@ -183,8 +184,8 @@ def quantize_static(model_input,
         op_types_to_quantize)
 
     quantizer.quantize_model()
-    onnx.save_model(quantizer.model.model, model_output)
-
+    quantizer.model.save_model_to_file(model_output, use_external_data_format)
+   
 
 def quantize_dynamic(model_input: Path,
                      model_output: Path,
@@ -194,7 +195,8 @@ def quantize_dynamic(model_input: Path,
                      activation_type=QuantType.QUInt8,
                      weight_type=QuantType.QUInt8,
                      nodes_to_quantize=[],
-                     nodes_to_exclude=[]):
+                     nodes_to_exclude=[],
+                     use_external_data_format=False):
     '''
         Given an onnx model, create a quantized onnx model and save it into a file
     :param model_input: file path of model to quantize
@@ -223,13 +225,13 @@ def quantize_dynamic(model_input: Path,
     mode = QuantizationMode.IntegerOps
 
     #optimize the original model
-    optimized_model = optimize_model(Path(model_input))
+    optimized_model_path = optimize_model(Path(model_input))
 
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(IntegerOpsRegistry.keys())
 
     quantizer = ONNXQuantizer(
-        optimized_model,
+        optimized_model_path,
         per_channel,
         reduce_range,
         mode,
@@ -242,7 +244,7 @@ def quantize_dynamic(model_input: Path,
         op_types_to_quantize)
 
     quantizer.quantize_model()
-    onnx.save_model(quantizer.model.model, model_output)
+    quantizer.model.save_model_to_file(model_output, use_external_data_format)
 
 
 def quantize_qat(model_input: Path,
@@ -280,13 +282,13 @@ def quantize_qat(model_input: Path,
     mode = QuantizationMode.IntegerOps
 
     #optimize the original model
-    optimized_model = optimize_model(Path(model_input))
+    optimized_model_path = optimize_model(Path(model_input))
 
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(IntegerOpsRegistry.keys())
 
     quantizer = ONNXQuantizer(
-        optimized_model,
+        optimized_model_path,
         per_channel,
         reduce_range,
         mode,

@@ -1,5 +1,6 @@
 import onnx
 from .quant_utils import find_by_name
+from pathlib import Path
 
 
 class ONNXModel:
@@ -125,3 +126,13 @@ class ONNXModel:
                 if node_input == initializer.name:
                     nodes.append(node)
         return nodes
+
+    def save_model_to_file(self, output_path, use_external_data_format=False):
+        '''
+        Save model to external data, which is needed for model size > 2GB
+        '''
+        if use_external_data_format:
+            onnx.external_data_helper.convert_model_to_external_data(self.model,
+                                                                    all_tensors_to_one_file=True,
+                                                                    location=Path(output_path).name + ".data")
+        onnx.save_model(self.model, output_path)

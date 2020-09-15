@@ -53,8 +53,8 @@ class ONNXCalibrater:
         :return: augmented ONNX model
         '''
 
+        onnx.shape_inference.infer_shapes(self.model_path)
         model = onnx.load(self.model_path)
-        model = onnx.shape_inference.infer_shapes(model)
         value_infos = {vi.name: vi for vi in model.graph.value_info}
         value_infos.update({ot.name: ot for ot in model.graph.output})
 
