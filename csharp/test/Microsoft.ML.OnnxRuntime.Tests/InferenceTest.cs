@@ -1852,7 +1852,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var ortAllocationInput = allocator.Allocate((uint)dataBuffer.Length * sizeof(float));
             unsafe
             {
-                float* p = (float*)ortAllocationInput.Pointer;
+                float* p = (float*)ortAllocationInput.DangerousGetHandle();
                 for (int i = 0; i < dataBuffer.Length; ++i)
                 {
                     *p++ = dataBuffer[i];
@@ -1860,7 +1860,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
             var dataBufferNumBytes = (uint)dataBuffer.Length * sizeof(float);
             var sharedInitializer = OrtValue.CreateTensorValueWithData(ortCpuMemInfo, Tensors.TensorElementType.Float,
-            dims, ortAllocationInput.Pointer, dataBufferNumBytes);
+            dims, ortAllocationInput.DangerousGetHandle(), dataBufferNumBytes);
 
             SessionOptions options = new SessionOptions();
             options.AddInitializer("W", sharedInitializer);
