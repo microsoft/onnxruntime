@@ -2,25 +2,25 @@
 // Licensed under the MIT License.
 
 #include <fstream>
-#include <limits>
 #include <list>
-#include <map>
-#include <memory>
 #include <unordered_set>
-#include <unordered_map>
-#include <utility>
 #include "core/providers/shared_library/provider_api.h"
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/common/safeint.h"
 
 #include "tensorrt_execution_provider.h"
-#include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
+#include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
-#include "gpu_data_transfer.h"
+#include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
+#include "cuda_runtime_api.h"
 #include "gsl/gsl"
 #include <experimental/filesystem>
-#include "cuda_allocator.h"
+#include <unordered_map>
+#include <utility>
+#include <limits>
+#include <map>
+#include <memory>
 
 #define CUDA_RETURN_IF_ERROR(expr)               \
   ORT_RETURN_IF_ERROR(CUDA_CALL(expr)            \
@@ -68,6 +68,33 @@ struct ShutdownProtobuf {
 } g_protobuf;
 
 namespace onnxruntime {
+
+namespace cuda {
+template <>
+void Impl_Cast(
+    const int64_t* input_data, int32_t* output_data,
+    size_t count) {
+  return g_host->cuda__Impl_Cast(input_data, output_data, count);
+}
+
+template <>
+void Impl_Cast(
+    const int32_t* input_data, int64_t* output_data,
+    size_t count) {
+  return g_host->cuda__Impl_Cast(input_data, output_data, count);
+}
+
+}  // namespace cuda
+
+template <>
+bool CudaCall<cudaError, false>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg) {
+  return g_host->CudaCall_false(retCode, exprString, libName, successCode, msg);
+}
+
+template <>
+bool CudaCall<cudaError, true>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg) {
+  return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg);
+}
 
 constexpr const char* TRT = "Tensorrt";
 constexpr const char* TRT_PINNED = "TensorrtPinned";
@@ -131,7 +158,7 @@ KernelRegistryAndStatus GetTensorrtKernelRegistry() {
 }
 
 std::shared_ptr<Provider_KernelRegistry> TensorrtExecutionProvider::Provider_GetKernelRegistry() const {
-  static KernelRegistryAndStatus k = GetTensorrtKernelRegistry();
+  static KernelRegistryAndStatus k = onnxruntime::GetTensorrtKernelRegistry();
   // throw if the registry failed to initialize
   ORT_THROW_IF_ERROR(k.st);
   return k.kernel_registry;
@@ -148,12 +175,12 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
 
   Provider_AllocatorCreationInfo default_memory_info(
-      [](int id) { return onnxruntime::make_unique<CUDAAllocator>(id, TRT); }, device_id_);
+      [](int id) { return Provider_CreateCUDAAllocator(id, TRT); }, device_id_);
   allocator_ = CreateAllocator(default_memory_info);
   Provider_InsertAllocator(allocator_);
 
   Provider_AllocatorCreationInfo pinned_allocator_info(
-      [](int) { return onnxruntime::make_unique<CUDAPinnedAllocator>(0, TRT_PINNED); }, device_id_);
+      [](int) { return Provider_CreateCUDAPinnedAllocator(0, TRT_PINNED); }, device_id_);
   Provider_InsertAllocator(CreateAllocator(pinned_allocator_info));
 
   // Get environment variables
@@ -209,7 +236,7 @@ Provider_AllocatorPtr TensorrtExecutionProvider::Provider_GetAllocator(int id, O
 }
 
 std::unique_ptr<onnxruntime::Provider_IDataTransfer> TensorrtExecutionProvider::Provider_GetDataTransfer() const {
-  return onnxruntime::make_unique<GPUDataTransfer>();
+  return onnxruntime::Provider_CreateGPUDataTransfer();
 }
 
 // Convert GraphViewer graph to GraphProto
@@ -1345,5 +1372,4 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
 
   return Status::OK();
 }
-
 }  // namespace onnxruntime
