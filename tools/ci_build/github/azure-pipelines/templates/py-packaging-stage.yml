@@ -435,7 +435,7 @@ stages:
       pool: 'Win-GPU-2019'
       timeoutInMinutes:  120
       variables:
-        CUDA_VERSION: '10.1'
+        CUDA_VERSION: '10.2'
         buildArch: x64
         EnvSetupScript: setup_env_cuda.bat
         GDN_CODESIGN_TARGETDIRECTORY: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
@@ -499,7 +499,7 @@ stages:
             --parallel
             --use_cuda --cuda_version=$(CUDA_VERSION)
             --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)"
-            --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows10-x64-v7.6.5.32\cuda"
+            --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows10-x64-v8.0.3.33\cuda"
             $(TelemetryOption)
           workingDirectory: '$(Build.BinariesDirectory)'
 
