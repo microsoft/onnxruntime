@@ -67,7 +67,7 @@ public:
         ReleaseBuffer();
     }
 
-    T* GetBuffer(size_t Elements)
+    T* GetBuffer(size_t Elements, bool ZeroFill = false)
     {
         //
         // Check if the internal buffer needs to be reallocated.
@@ -125,20 +125,27 @@ public:
         T* GuardAddress = _GuardAddress;
         T* buffer = GuardAddress - Elements;
 
-        const int MinimumFillValue = -23;
-        const int MaximumFillValue = 23;
+        if (ZeroFill) {
 
-        int FillValue = MinimumFillValue;
-        T* FillAddress = buffer;
+            std::fill_n(buffer, Elements, T(0));
 
-        while (FillAddress < GuardAddress) {
+        } else {
 
-            *FillAddress++ = (T)FillValue;
+            const int MinimumFillValue = -23;
+            const int MaximumFillValue = 23;
 
-            FillValue++;
+            int FillValue = MinimumFillValue;
+            T* FillAddress = buffer;
 
-            if (FillValue > MaximumFillValue) {
-                FillValue = MinimumFillValue;
+            while (FillAddress < GuardAddress) {
+
+                *FillAddress++ = (T)FillValue;
+
+                FillValue++;
+
+                if (FillValue > MaximumFillValue) {
+                    FillValue = MinimumFillValue;
+                }
             }
         }
 
@@ -206,8 +213,67 @@ public:
     }
 };
 
+template<typename T, bool Packed>
+class MlasFgemmTestBase;
+
 template<typename T>
-class MlasFgemmTest : public MlasTestBase
+class MlasFgemmTestBase<T, false> : public MlasTestBase
+{
+public:
+    void
+    TestGemm(
+        CBLAS_TRANSPOSE TransA,
+        CBLAS_TRANSPOSE TransB,
+        size_t M,
+        size_t N,
+        size_t K,
+        float alpha,
+        const T* A,
+        size_t lda,
+        const T* B,
+        size_t ldb,
+        float beta,
+        T* C,
+        size_t ldc
+        )
+    {
+        MlasGemm(TransA, TransB, M, N, K, T(alpha), A, lda, B, ldb, T(beta), C, ldc, threadpool);
+    }
+};
+
+template<typename T>
+class MlasFgemmTestBase<T, true> : public MlasTestBase
+{
+public:
+    void
+    TestGemm(
+        CBLAS_TRANSPOSE TransA,
+        CBLAS_TRANSPOSE TransB,
+        size_t M,
+        size_t N,
+        size_t K,
+        float alpha,
+        const T* A,
+        size_t lda,
+        const T* B,
+        size_t ldb,
+        float beta,
+        T* C,
+        size_t ldc
+        )
+    {
+        size_t PackedBSize = MlasGemmPackBSize(N, K);
+        void* PackedB = BufferBPacked.GetBuffer(PackedBSize, true);
+        MlasGemmPackB(TransB, N, K, B, ldb, PackedB);
+        MlasGemm(TransA, M, N, K, T(alpha), A, lda, PackedB, T(beta), C, ldc, threadpool);
+    }
+
+private:
+    MatrixGuardBuffer<uint8_t> BufferBPacked;
+};
+
+template<typename T, bool Packed>
+class MlasFgemmTest : public MlasFgemmTestBase<T, Packed>
 {
 private:
     void
@@ -251,7 +317,7 @@ private:
         std::fill_n(C, M * N, -0.5f);
         std::fill_n(CReference, M * N, -0.5f);
 
-        MlasGemm(TransA, TransB, M, N, K, T(alpha), A, lda, B, ldb, T(beta), C, ldc, threadpool);
+        this->TestGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
         ReferenceGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, CReference, ldc);
 
         for (size_t f = 0; f < M * N; f++) {
@@ -392,6 +458,9 @@ public:
         for (size_t b = 256; b < 320; b += 32) {
             Test(b, b, b, 1.0f, 0.0f);
         }
+
+        Test(128, 3072, 768, 1.0f, 0.0f);
+        Test(128, 768, 3072, 1.0f, 0.0f);
     }
 
     void
@@ -2705,10 +2774,12 @@ RunThreadedTests(
     )
 {
     printf("SGEMM tests.\n");
-    onnxruntime::make_unique<MlasFgemmTest<float>>()->ExecuteShort();
+    onnxruntime::make_unique<MlasFgemmTest<float, false>>()->ExecuteShort();
+    printf("SGEMM packed tests.\n");
+    onnxruntime::make_unique<MlasFgemmTest<float, true>>()->ExecuteShort();
 #ifdef MLAS_HAS_DGEMM
     printf("DGEMM tests.\n");
-    onnxruntime::make_unique<MlasFgemmTest<double>>()->ExecuteShort();
+    onnxruntime::make_unique<MlasFgemmTest<double, false>>()->ExecuteShort();
 #endif
 
 #ifdef MLAS_HAS_QGEMM_U8X8
