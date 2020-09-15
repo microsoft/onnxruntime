@@ -467,6 +467,16 @@
             },
             "comments": "MurmurHash3"
          }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "87c2d9f351250b5eeaccbdc3303ff19311bd83b0",
+               "repositoryUrl": "https://github.com/leetal/ios-cmake.git"
+            },
+            "comments": "ios.toolchain.cmake was modified and included in cmake/external"
+         }
       }
    ],
    "Version": 1

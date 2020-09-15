@@ -65,6 +65,3 @@
 [submodule "cmake/external/onnx-tensorrt"]
 	path = cmake/external/onnx-tensorrt
 	url = https://github.com/onnx/onnx-tensorrt.git
-[submodule "cmake/external/ios-cmake"]
-	path = cmake/external/ios-cmake
-	url = https://github.com/leetal/ios-cmake.git

@@ -207,7 +207,7 @@ def parse_arguments():
     parser.add_argument("--ios", action='store_true', help="build for ios")
     parser.add_argument(
         "--ios_platform", default="SIMULATOR64",
-        choices=["SIMULATOR64", "OS64", "OS64COMBINED"],
+        choices=["SIMULATOR64", "OS64"],
         help="Specify the target iOS platform")
     parser.add_argument(
         "--use_xcode", action='store_true',
@@ -752,7 +752,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                         val for val, cond in zip(arg_names, needed_args)
                         if not cond))
             cmake_args += [
-                "-DCMAKE_TOOLCHAIN_FILE=../cmake/external/ios-cmake/ios.toolchain.cmake",
+                "-DCMAKE_TOOLCHAIN_FILE=../cmake/external/ios.toolchain.cmake",
                 "-Donnxruntime_BUILD_SHARED_LIB=ON",
                 "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
                 "-DPLATFORM=" + args.ios_platform,
@@ -761,8 +761,12 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 # we do not need protoc binary for ios cross build
                 "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF"
             ]
+
+            # Disable code signing for output binaries, ff the code signing development team id is not provided
             if args.xcode_code_signing_team_id:
                 cmake_args += ["-DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=" + args.xcode_code_signing_team_id]
+            else:
+                cmake_args += ["-DDISABLE_XCODE_CODE_SIGNING=ON"]
         else:
             # We are cross comppiling on linux
             needed_args = [
