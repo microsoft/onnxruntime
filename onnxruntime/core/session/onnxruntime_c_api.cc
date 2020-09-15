@@ -113,7 +113,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithGlobalThreadPools, OrtLoggingLevel def
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CreateCustomEnv, OrtLoggingFunction logging_function, _In_opt_ void* logger_param,
+ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithCustomLoggerAndGlobalThreadPools, OrtLoggingFunction logging_function, _In_opt_ void* logger_param,
                     OrtLoggingLevel default_logging_level, _In_ const char* logid, _In_ const struct OrtThreadingOptions* tp_options,
                     _Outptr_ OrtEnv** out) {
   API_IMPL_BEGIN
@@ -1993,8 +1993,8 @@ static constexpr OrtApi ort_api_1_to_5 = {
     &OrtApis::ClearBoundOutputs,
     &OrtApis::TensorAt,
     &OrtApis::CreateAndRegisterAllocator,
-    &OrtApis::CreateCustomEnv,
     &OrtApis::SetLanguageProjection,
+    &OrtApis::CreateEnvWithCustomLoggerAndGlobalThreadPools,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

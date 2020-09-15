@@ -1020,6 +1020,12 @@ struct OrtApi {
   */
   ORT_API2_STATUS(CreateAndRegisterAllocator, _Inout_ OrtEnv* env, _In_ const OrtMemoryInfo* mem_info,
                   _In_ const OrtArenaCfg* arena_cfg);
+  
+  /**
+   * Set the language projection for collecting telemetry data when Env is created
+   * \param projection the source projected language.
+  */
+  ORT_API2_STATUS(SetLanguageProjection, _In_ const OrtEnv* ort_env, _In_ OrtLanguageProjection projection);
 
   /*
   * Creates a custom environment with global threadpools and logger that will be shared across sessions.
@@ -1028,13 +1034,8 @@ struct OrtApi {
   * 
   * \param out should be freed by `OrtReleaseEnv` after use
   */
-  ORT_API2_STATUS(CreateCustomEnv, OrtLoggingFunction logging_function, _In_opt_ void* logger_param, OrtLoggingLevel default_logging_level,
+  ORT_API2_STATUS(CreateEnvWithCustomLoggerAndGlobalThreadPools, OrtLoggingFunction logging_function, _In_opt_ void* logger_param, OrtLoggingLevel default_logging_level,
                   _In_ const char* logid, _In_ const struct OrtThreadingOptions* tp_options, _Outptr_ OrtEnv** out);
-  /**
-   * Set the language projection for collecting telemetry data when Env is created
-   * \param projection the source projected language.
-  */
-  ORT_API2_STATUS(SetLanguageProjection, _In_ const OrtEnv* ort_env, _In_ OrtLanguageProjection projection);
 
 };
 
