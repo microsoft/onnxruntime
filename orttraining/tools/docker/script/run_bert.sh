@@ -29,17 +29,16 @@ warmup_mode=Poly
 effective_batch_size=$((ngpu * batch_size * grad_acc))
 time_now=$(date +%m%d%H%M)
 
-HOME_DIR=/work
+HOME_DIR=/workspace
 ORT_DIR=${HOME_DIR}/github/onnxruntime
-BERT_DIR=${HOME_DIR}/bert
 commit=$(git -C ${ORT_DIR} rev-parse HEAD | cut -c1-8)
 
 if [ ${model_size} == "large" ]; then
-  model_dir=${BERT_DIR}/model/bert-large-uncased_L_24_H_1024_A_16_V_30528_S_512_Dp_0.1_optimized_layer_norm_opset12
+  model_dir=${HOME_DIR}/model/bert-large-uncased_L_24_H_1024_A_16_V_30528_S_512_Dp_0.1_optimized_layer_norm_opset12
 elif [ ${model_size} == "base" ]; then
-  model_dir=${BERT_DIR}/model/bert-base-uncased_L_12_H_768_A_12_V_30528_S_512_Dp_0.1_optimized_layer_norm_opset12
+  model_dir=${HOME_DIR}/model/bert-base-uncased_L_12_H_768_A_12_V_30528_S_512_Dp_0.1_optimized_layer_norm_opset12
 elif [ ${model_size} == "tiny" ]; then
-  model_dir=${BERT_DIR}/model/bert-tiny-uncased_L_3_H_128_A_2_V_30528_S_512_Dp_0.1_optimized_layer_norm_opset12
+  model_dir=${HOME_DIR}/model/bert-tiny-uncased_L_3_H_128_A_2_V_30528_S_512_Dp_0.1_optimized_layer_norm_opset12
 else
   echo "model_size is not large, base or tiny"
   exit 1
