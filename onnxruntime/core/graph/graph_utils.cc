@@ -752,61 +752,6 @@ bool FindPath(Graph& graph, const Node& node, bool is_input_edge, const std::vec
   return true;
 }
 
-/* bool RemoveNodesWithOneOutputBottomUpHelper(Graph& graph, std::queue<const Node*>& q, std::unordered_set<NodeIndex>& nodes_to_reconsider) {
-  std::vector<NodeIndex> nodes_to_remove;
-
-  // From the current node, remove nodes bottom-up util it reaches a node with multiple outputs/graph output.
-  while (q.size() != 0) {
-    const Node& cur_node = *(q.front());
-    q.pop();
-    // Each eligible node in the subgraph must have less than one output edge and no output should be
-    // the graph output
-    if (cur_node.GetOutputEdgesCount() > 1 || !graph.GetNodeOutputsInGraphOutputs(cur_node).empty()) {
-      nodes_to_reconsider.insert(cur_node.Index());
-      continue;
-    }
-    nodes_to_remove.push_back(cur_node.Index());
-    // push the parents of current node to the queue.
-    for (unsigned int i = 0; i < cur_node.InputDefs().size(); ++i) {
-      const std::string& input_name = GetNodeInputName(cur_node, i);
-      if (IsInitializer(graph, input_name, true) || IsGraphInput(graph, cur_node.InputDefs()[i])) {
-        // skip initializers and graph inputs
-        continue;
-      }
-      q.push(GetInputNode(cur_node, i));
-    }
-  }
-  if (nodes_to_remove.size() <= 0) {
-    // Nothing to remove
-    return false;
-  }
-  // Remove nodes that are not used anymore.
-  for (const auto& node_index : nodes_to_remove) {
-    Node* node = graph.GetNode(node_index);
-    RemoveNodeOutputEdges(graph, *node);
-    graph.RemoveNode(node->Index());
-  }
-  return true;
-}
-
-bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node) {
-  std::queue<const Node*> q;
-  std::unordered_set<NodeIndex> nodes_to_reconsider;
-
-  int count = 0;
-
-  q.push(&start_node);
-  while (RemoveNodesWithOneOutputBottomUpHelper(graph, q, nodes_to_reconsider)) {
-    for (const NodeIndex node_to_reconsider : nodes_to_reconsider) {
-      q.push(graph.GetNode(node_to_reconsider));
-    }
-    nodes_to_reconsider.clear();
-    count++;
-  }
-
-  return (count > 0);
-} */
-
 bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node, bool force) {
   std::queue<const Node*> q;
   std::unordered_set<NodeIndex> removed_nodes;
@@ -838,14 +783,17 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node, bool
         q.push(child_node);
       }
     }
+
     if (force || cur_node.GetOutputEdgesCount() == 0) {
       Node* cur_node_p = graph.GetNode(cur_node.Index());
       RemoveNodeOutputEdges(graph, *cur_node_p);
       graph.RemoveNode(cur_node_p->Index());
+
       removed_nodes.insert(cur_node.Index());
       force = false;
     }
   }
+
   if (removed_nodes.size() == 0) {
     // Nothing to remove
     return false;
