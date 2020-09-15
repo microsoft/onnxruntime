@@ -155,9 +155,10 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
     std::vector<std::unique_ptr<ComputeCapability>> capabilities =
         provider->GetCapability(graph_viewer, kernel_registry_mgr_.GetKernelRegistriesByProviderType(provider->Type()));
 
-    // Excludce the subgraph that is prefered to be place in CPU
+    // For CUDA EP, exclude the subgraph that is prefered to be placed in CPU
     // These are usually shape related computation subgraphs
-    if (provider->Type() != kCpuExecutionProvider) {
+    // Following logic can be extended for other EPs
+    if (provider->Type() == kCudaExecutionProvider) {
       std::vector<std::unique_ptr<ComputeCapability>> cpu_capabilities =
           GetCpuPreferedCapability(graph_viewer, provider, capabilities);
 
@@ -271,11 +272,11 @@ GraphPartitioner::GetCpuPreferedCapability(const onnxruntime::GraphViewer& graph
   }
 
   // If return false, n1 will be output first; If return true, n2 will be output first
-  auto comp = [&](const NodeIndex n1, const NodeIndex n2) {
+  auto greater_order_comp = [&](const NodeIndex n1, const NodeIndex n2) {
     return node_id_to_order_map[n1] > node_id_to_order_map[n2];
   };
 
-  std::priority_queue<NodeIndex, std::vector<NodeIndex>, decltype(comp)> candidates(comp);
+  std::priority_queue<NodeIndex, std::vector<NodeIndex>, decltype(greater_order_comp)> candidates(greater_order_comp);
   std::unordered_set<NodeIndex> visited;
 
   std::unordered_set<const NodeArg*> cpu_output_args;
@@ -306,13 +307,14 @@ GraphPartitioner::GetCpuPreferedCapability(const onnxruntime::GraphViewer& graph
             auto consumer_nodes = graph.GetConsumerNodes(node_arg.Name());
             for (auto& consumer_node : consumer_nodes) {
               candidates.push(consumer_node->Index());
-              std::cout << "Canditiate for CPU nodes: " << consumer_node->Name() << "\n";
+              LOGS_DEFAULT(INFO) << "Canditiate for fallback CPU execution: " << consumer_node->Name();
             }
           }
           return Status::OK();
         }));
   }
 
+  const std::vector<const NodeArg*>& graph_inputs = graph.GetInputs();
   std::unordered_set<NodeIndex> cpu_nodes;
   // The algo below is trying to identity a subgraph that only depends on cpu tensors.
   // Usually it is a subgraph that doing shape calculation based on a GPU tensor, then reshape it back.
@@ -328,28 +330,41 @@ GraphPartitioner::GetCpuPreferedCapability(const onnxruntime::GraphViewer& graph
 
     if (provider_nodes.find(cur) == provider_nodes.end())
       continue;
+
     auto* node = graph.GetNode(cur);
+    // skip placing current node on CPU if no kernel is found
+    if (!KernelRegistryManager::HasImplementationOf(kernel_registry_mgr_, *node, kCpuExecutionProvider))
+      continue;
 
     const KernelCreateInfo* kernel_info;
     Status st = provider->GetKernelRegistry()->TryFindKernel(*node, provider->Type(), &kernel_info);
 
-    bool cause_unworthy_copy = false;
+    bool place_in_cpu = true;
     for (size_t i = 0; i < node->InputDefs().size(); ++i) {
       auto* input = node->InputDefs()[i];
-      if ((cpu_output_args.find(input) != cpu_output_args.end() && !kernel_info->kernel_def->IsInputOnCpu(i)) ||
-          IsSmallInitializer(graph, input)) {
-        cause_unworthy_copy = true;
-      } else {
-        cause_unworthy_copy = false;
+
+      // allow placing on CPU if it's a small initializer or graph input
+      if (IsSmallInitializer(graph, input) ||
+          std::find(graph_inputs.begin(), graph_inputs.end(), input) != graph_inputs.end()) {
+        continue;
+      }
+
+      // the input is not a CPU tensor
+      if (cpu_output_args.find(input) == cpu_output_args.end()) {
+        place_in_cpu = false;
+        break;
+      }
+
+      // input is a CPU tensor, but it's intended to be consumed as CPU input by the target EP
+      if (kernel_info->kernel_def->IsInputOnCpu(i)) {
+        place_in_cpu = false;
         break;
       }
     }
 
-    if (cause_unworthy_copy) {
+    if (place_in_cpu) {
       cpu_nodes.insert(cur);
-      auto* cpu_node = graph.GetNode(cur);
-
-      std::cout << "Warning: " << cpu_node->Name() << " is placed on CPU.\n";
+      LOGS_DEFAULT(WARNING) << "Force fallback to CPU execution for node: " << node->Name();
       for (auto* output : node->OutputDefs()) {
         cpu_output_args.insert(output);
       }
