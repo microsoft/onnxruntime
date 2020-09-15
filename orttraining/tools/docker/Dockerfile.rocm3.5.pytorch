@@ -35,9 +35,9 @@ RUN cd /usr/local && \
     wget -q -O - https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz | tar zxf -
 ENV PATH=/usr/local/cmake-${CMAKE_VERSION}-Linux-x86_64/bin:${PATH}
 
-ENV WORK_DIR=/work
-RUN mkdir -p $WORK_DIR
-WORKDIR $WORK_DIR
+ENV WORKSPACE_DIR=/workspace
+RUN mkdir -p $WORKSPACE_DIR
+WORKDIR $WORKSPACE_DIR
 
 # Infiniband setup
 ENV MOFED_VERSION=5.0-2.1.8.0
@@ -59,14 +59,14 @@ RUN pip3 install --no-cache-dir wheel tqdm boto3 requests six ipdb h5py html2tex
         numpy==${NUMPY_VERSION} \
         onnx=="${ONNX_VERSION}"
 
-ENV GITHUB_DIR=$WORK_DIR/github
+ENV GITHUB_DIR=$WORKSPACE_DIR/github
 RUN mkdir -p $GITHUB_DIR
 
 # UCX
 WORKDIR $GITHUB_DIR
 RUN apt-get -y update && apt-get -y --no-install-recommends install libnuma-dev
 ARG UCX_VERSION=1.9.0-rc3
-ENV UCX_DIR=$WORK_DIR/ucx-$UCX_VERSION
+ENV UCX_DIR=$WORKSPACE_DIR/ucx-$UCX_VERSION
 RUN git clone https://github.com/openucx/ucx.git \
   && cd ucx \
   && git checkout v$UCX_VERSION \
@@ -83,7 +83,7 @@ RUN git clone https://github.com/openucx/ucx.git \
 WORKDIR $GITHUB_DIR
 ARG OPENMPI_BASEVERSION=4.0
 ARG OPENMPI_VERSION=${OPENMPI_BASEVERSION}.5
-ENV OPENMPI_DIR=$WORK_DIR/openmpi-${OPENMPI_VERSION}
+ENV OPENMPI_DIR=$WORKSPACE_DIR/openmpi-${OPENMPI_VERSION}
 RUN git clone --recursive https://github.com/open-mpi/ompi.git \
   && cd ompi \
   && git checkout v$OPENMPI_VERSION \
@@ -100,6 +100,12 @@ RUN git clone --recursive https://github.com/open-mpi/ompi.git \
 
 ENV PATH=$OPENMPI_DIR/bin:${PATH}
 ENV LD_LIBRARY_PATH=$OPENMPI_DIR/lib:${LD_LIBRARY_PATH}
+
+# Create a wrapper for OpenMPI to allow running as root by default
+RUN mv $OPENMPI_DIR/bin/mpirun $OPENMPI_DIR/bin/mpirun.real && \
+    echo '#!/bin/bash' > $OPENMPI_DIR/bin/mpirun && \
+    echo 'mpirun.real --allow-run-as-root "$@"' >> $OPENMPI_DIR/bin/mpirun && \
+    chmod a+x $OPENMPI_DIR/bin/mpirun
 
 # install mpi4py (be sure to link existing /opt/openmpi-xxx)
 RUN CC=mpicc MPICC=mpicc pip install mpi4py --no-binary mpi4py
@@ -130,6 +136,20 @@ RUN git clone --recursive -b wezhan/amdgpu https://github.com/microsoft/onnxrunt
   && pip3 install $ORT_DIR/build/Release/dist/*.whl \
   && ldconfig
 
+# ONNX Runtime Training Examples
+WORKDIR $GITHUB_DIR
+RUN git clone -b wezhan/amdgpu https://github.com/microsoft/onnxruntime-training-examples.git \
+  && cd onnxruntime-training-examples \
+  && git clone --no-checkout https://github.com/NVIDIA/DeepLearningExamples.git \
+  && cd DeepLearningExamples \
+  && git checkout cf54b787 \
+  && cd .. \
+  && mv DeepLearningExamples/PyTorch/LanguageModeling/BERT/ ${WORKSPACE_DIR} \
+  && rm -rf DeepLearningExamples \
+  && cp -r ./nvidia-bert/ort_addon/* ${WORKSPACE_DIR}/BERT
+
+ENV BERT_DIR=${WORKSPACE_DIR}/BERT
+
 # Enable ssh access without password needed
 RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/g' /etc/ssh/sshd_config
 RUN sed -i 's/#StrictModes yes/StrictModes no/g' /etc/ssh/sshd_config
@@ -140,16 +160,13 @@ RUN sed -i 's/#PermitEmptyPasswords no/PermitEmptyPasswords yes/g' /etc/ssh/sshd
 ENTRYPOINT service ssh restart && /bin/bash
 
 # Add model and scripts
-ENV BERT_DIR=$WORK_DIR/bert
-RUN mkdir -p $BERT_DIR
+ADD model $WORKSPACE_DIR/model
+ADD script $WORKSPACE_DIR/script
+RUN chmod a+x $WORKSPACE_DIR/script/run_bert.sh
 
-ADD model $BERT_DIR/model
-ADD script $BERT_DIR/script
-RUN chmod a+x $BERT_DIR/script/run_bert.sh
-
-ADD lib $BERT_DIR/lib
-ENV LD_PERLOAD=$BERT_DIR/lib/libpsl.so
+ADD lib $WORKSPACE_DIR/lib
+ENV LD_PERLOAD=$WORKSPACE_DIR/lib/libpsl.so
 
 ENV LOG_DIR=/data/wezhan/logs
 
-WORKDIR $BERT_DIR/script
+WORKDIR $WORKSPACE_DIR/script

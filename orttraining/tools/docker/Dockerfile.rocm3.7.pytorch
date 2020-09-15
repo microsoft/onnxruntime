@@ -131,7 +131,7 @@ RUN git clone --recursive -b wezhan/amdgpu https://github.com/microsoft/onnxrunt
 
 # ONNX Runtime Training Examples
 WORKDIR $GITHUB_DIR
-RUN git clone https://github.com/microsoft/onnxruntime-training-examples.git \
+RUN git clone -b wezhan/amdgpu https://github.com/microsoft/onnxruntime-training-examples.git \
   && cd onnxruntime-training-examples \
   && git clone --no-checkout https://github.com/NVIDIA/DeepLearningExamples.git \
   && cd DeepLearningExamples \
