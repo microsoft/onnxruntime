@@ -2,7 +2,7 @@ parameters:
   DoEsrp: 'false'
   PackageName: 'Microsoft.ML.OnnxRuntime.Gpu'
 
-#jobs:
+jobs:
 #- template: ../../templates/win-ci-2019.yml
 #  parameters:
 #    AgentPool : 'Win-GPU-2019'
@@ -122,9 +122,7 @@ parameters:
     clean: all
   pool: 'Win-GPU-2019'
   dependsOn:
-  - Windows_CI_GPU_CUDA_Dev
   - Windows_CI_GPU_DML_Dev
-  - Windows_CI_GPU_DML_Dev_x86
   - Linux_CI_GPU_Dev
   condition: succeeded()
   steps:
