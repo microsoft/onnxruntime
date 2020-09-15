@@ -656,7 +656,7 @@ static Status CopySparseData(size_t n_sparse_elements,
     // calculate sum of inner dimension elements for each dimension.
     // e.g. if shape {2,3,4}, the result should be {3*4, 4, 1}
     multipliers[rank - 1] = 1;
-    for (int64_t r = static_cast<int64_t>(rank) - 2; r >= 0; --r) {
+    for (int32_t r = static_cast<int32_t>(rank) - 2; r >= 0; --r) {
       multipliers[r] = static_cast<size_t>(dims[r + 1]) * multipliers[r + 1];
     }
 

@@ -27,6 +27,9 @@ class HeapBuffer {
   }
   void AddDeleter(const OrtCallback& d);
 
+  HeapBuffer(const HeapBuffer&) = delete;
+  HeapBuffer& operator=(const HeapBuffer&) = delete;
+
  private:
   std::vector<OrtCallback> deleters_;
   std::vector<void*> buffers_;
