@@ -756,12 +756,13 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 "-Donnxruntime_BUILD_SHARED_LIB=ON",
                 "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
                 "-DPLATFORM=" + args.ios_platform,
+                "-DENABLE_BITCODE=FALSE",
                 "-DDEPLOYMENT_TARGET=" + args.apple_deploy_target,
                 # we do not need protoc binary for ios cross build
                 "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF"
             ]
 
-            # Disable code signing for output binaries, if the code signing development team id is not provided
+            # Code sign the binaries, if the code signing development team id is provided
             if args.xcode_code_signing_team_id:
                 cmake_args += ["-DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=" + args.xcode_code_signing_team_id]
             else:
