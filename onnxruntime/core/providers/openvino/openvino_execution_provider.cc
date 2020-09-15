@@ -41,6 +41,8 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   result = openvino_ep::GetCapability_2020_2(graph_viewer, info_.device_id_);
 #elif defined OPENVINO_2020_4
   result = openvino_ep::GetCapability_2020_4(graph_viewer, info_.device_id_);
+#elif defined OPENVINO_2021_1
+  result = openvino_ep::GetCapability_2021_1(graph_viewer, info_.device_id_);
 #endif
 
   return result;

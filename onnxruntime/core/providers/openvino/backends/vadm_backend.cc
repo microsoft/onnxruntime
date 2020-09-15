@@ -16,7 +16,7 @@
 #include "../contexts.h"
 #include "../backend_utils.h"
 #include "vadm_backend.h"
-#include <vpu/hddl_plugin_config.hpp>
+#include <vpu/hddl_config.hpp>
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -49,7 +49,7 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
 
   ie_cnn_network_ = CreateCNNNetwork(model_proto, subgraph_context_, const_outputs_map_);
 
-  SetIODefs(model_proto, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_);
+  SetIODefs(model_proto, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_, subgraph_context_.device_id);
   std::map<std::string, std::string> config;
 
 #if defined(OPENVINO_2020_4)
@@ -66,7 +66,7 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   if(global_context_.is_wholly_supported_graph && subgraph_context_.enable_batching){
     for(int j = 0; j < 8; j++){
       InferenceEngine::ExecutableNetwork exe_network;
-      config[VPU_HDDL_CONFIG_KEY(DEVICE_TAG)] = global_context_.deviceTags[j];
+      config[InferenceEngine::HDDL_DEVICE_TAG] = global_context_.deviceTags[j];
       try {
         exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, "HDDL", config);
       } catch (InferenceEngine::details::InferenceEngineException e) {
@@ -95,7 +95,7 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   else {
     i = GetFirstAvailableDevice(global_context);
     LOGS_DEFAULT(INFO) << log_tag << "Device Tag is: " << i;
-    config[VPU_HDDL_CONFIG_KEY(DEVICE_TAG)] = global_context_.deviceTags[i];
+    config[InferenceEngine::HDDL_DEVICE_TAG] = global_context_.deviceTags[i];
     InferenceEngine::ExecutableNetwork exe_network;
     try {
       exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, "HDDL", config);
