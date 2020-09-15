@@ -771,10 +771,10 @@ const T* Value::GetTensorData() const {
 }
 
 template <typename T>
-inline T Value::At(const std::initializer_list<int64_t>& location) {
+inline T& Value::At(std::vector<int64_t> location) {
+  static_assert(!std::is_same<T, std::string>::value, "this api does not support std::string");
   T* out;
-  std::vector<int64_t> location_ = location;
-  ThrowOnError(GetApi().TensorAt(p_, location_.data(), location_.size(), (void**)&out));
+  ThrowOnError(GetApi().TensorAt(p_, location.data(), location.size(), (void**)&out));
   return *out;
 }
 
