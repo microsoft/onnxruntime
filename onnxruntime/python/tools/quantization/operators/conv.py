@@ -4,7 +4,7 @@ from ..quant_utils import find_by_name, get_mul_node, QuantizedValue, QuantizedV
 from onnx import onnx_pb as onnx_proto
 
 
-class ConInteger(QuantOperatorBase):
+class ConvInteger(QuantOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
@@ -66,7 +66,7 @@ class ConInteger(QuantOperatorBase):
         self.quantizer.new_nodes += nodes
 
 
-class QLinearCov(QuantOperatorBase):
+class QLinearConv(QuantOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
