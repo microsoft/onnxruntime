@@ -87,30 +87,30 @@ static bool IsNeighborNodeExpectedTypes(Node::NodeConstIterator start, const Nod
   return start == end;
 }
 
-static void RemoveWithSharedNodeInTop(Graph& graph, const std::vector<NodeIndex>& nodes_to_remove) {
-  std::unordered_set<NodeIndex> nodes_to_remove_set(nodes_to_remove.begin(), nodes_to_remove.end());
-
-  for (const NodeIndex index : nodes_to_remove) {
-    Node* node = graph.GetNode(index);
-    int child_node_to_remove_count = 0;
-    int child_node_to_stay_count = 0;
-    for (Node::NodeConstIterator it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
-      std::unordered_set<NodeIndex>::const_iterator got = nodes_to_remove_set.find((*it).Index());
-      if (got == nodes_to_remove_set.end()) {
-        child_node_to_stay_count++;
-      }
-      if (got != nodes_to_remove_set.end()) {
-        child_node_to_remove_count++;
-      }
-    }
-    // The node is shared by other graph
-    if (child_node_to_stay_count > 0 && child_node_to_remove_count > 0) {
-      continue;
-    }
-    graph_utils::RemoveNodeOutputEdges(graph, *node);
-    graph.RemoveNode(node->Index());
-  }
-}
+//static void RemoveWithSharedNodeInTop(Graph& graph, const std::vector<NodeIndex>& nodes_to_remove) {
+//  std::unordered_set<NodeIndex> nodes_to_remove_set(nodes_to_remove.begin(), nodes_to_remove.end());
+//
+//  for (const NodeIndex index : nodes_to_remove) {
+//    Node* node = graph.GetNode(index);
+//    int child_node_to_remove_count = 0;
+//    int child_node_to_stay_count = 0;
+//    for (Node::NodeConstIterator it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
+//      std::unordered_set<NodeIndex>::const_iterator got = nodes_to_remove_set.find((*it).Index());
+//      if (got == nodes_to_remove_set.end()) {
+//        child_node_to_stay_count++;
+//      }
+//      if (got != nodes_to_remove_set.end()) {
+//        child_node_to_remove_count++;
+//      }
+//    }
+//    // The node is shared by other graph
+//    if (child_node_to_stay_count > 0 && child_node_to_remove_count > 0) {
+//      continue;
+//    }
+//    graph_utils::RemoveNodeOutputEdges(graph, *node);
+//    graph.RemoveNode(node->Index());
+//  }
+//}
 
 /** Match subgraph like the following:
             (input_ids)
@@ -468,6 +468,7 @@ static bool MatchPositionEmbeddingSubgraph(
     }
   }
 
+  subgraph_node_indices.clear();
   subgraph_node_indices.push_back(position_gather_node.Index());
   return true;
 }
@@ -728,6 +729,10 @@ static bool FuseSubGraph(Graph& graph,
   CreateEmbedLayernormNode(graph, input_ids, segment_ids, word_embedding, position_embedding, segment_embedding,
                            layer_norm_node);
 
+  if (!nodes_to_remove.empty())
+    graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *graph.GetNode(nodes_to_remove[0]));
+  nodes_to_remove.clear();
+
   nodes_to_remove.push_back(word_gather_node.Index());
   nodes_to_remove.push_back(segment_gather_node.Index());
   nodes_to_remove.push_back(add_node.Index());
@@ -735,7 +740,11 @@ static bool FuseSubGraph(Graph& graph,
   nodes_to_remove.push_back(layer_norm_add_node.Index());
   nodes_to_remove.push_back(layer_norm_node.Index());
 
-  RemoveWithSharedNodeInTop(graph, nodes_to_remove);
+  for (const NodeIndex index : nodes_to_remove) {
+    Node* node = graph.GetNode(index);
+    graph_utils::RemoveNodeOutputEdges(graph, *node);
+    graph.RemoveNode(node->Index());
+  }
 
   return true;
 }
@@ -815,12 +824,19 @@ static bool FuseSubGraphDistilBert(Graph& graph,
   CreateEmbedLayernormNode(graph, input_ids, nullptr, word_embedding, position_embedding, nullptr,
                            layer_norm_node);
 
+  graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *graph.GetNode(nodes_to_remove[0]));
+  nodes_to_remove.clear();
+
   nodes_to_remove.push_back(word_gather_node.Index());
   nodes_to_remove.push_back(add_node.Index());
 
   nodes_to_remove.push_back(layer_norm_node.Index());
 
-  RemoveWithSharedNodeInTop(graph, nodes_to_remove);
+  for (const NodeIndex index : nodes_to_remove) {
+    Node* node = graph.GetNode(index);
+    graph_utils::RemoveNodeOutputEdges(graph, *node);
+    graph.RemoveNode(node->Index());
+  }
 
   return true;
 }
