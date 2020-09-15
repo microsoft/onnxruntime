@@ -36,7 +36,7 @@ void AccumulateTimeSpec(TIME_SPEC* base, const TIME_SPEC* start, const TIME_SPEC
 
 //Return the interval in seconds.
 //If the function fails, the return value is zero
-double TimeSpecToSeconds(TIME_SPEC* value);
+double TimeSpecToSeconds(const TIME_SPEC* value);
 
 /// \brief An interface used by the onnxruntime implementation to
 /// access timer related operations.
