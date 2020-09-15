@@ -6,7 +6,6 @@
 #include "reduction_utils.cuh"
 
 #define NUM_ELEMENTS_PER_THREAD 4
-#define NUM_THREADS_PER_WARP 32
 #define NUM_WARPS_PER_BLOCK 8
 #define MAX_NUM_BLOCKS 256
 
@@ -16,8 +15,8 @@ namespace onnxruntime {
 namespace hip {
 
 std::pair<int, int> compute_block_size(int size) {
-  int x = NUM_THREADS_PER_WARP;
-  int y = std::min(NUM_WARPS_PER_BLOCK, std::max(1, size / (NUM_ELEMENTS_PER_THREAD * NUM_THREADS_PER_WARP)));
+  int x = GPU_WARP_SIZE;
+  int y = std::min(NUM_WARPS_PER_BLOCK, std::max(1, size / (NUM_ELEMENTS_PER_THREAD * GPU_WARP_SIZE)));
   return std::make_pair(x, y);
 }
 
@@ -43,11 +42,11 @@ __global__ void reduce_all_kernel(const int size, const TIn * data, TOut* output
 
   // Warp-level indexes:
   // Warp index of thread.
-  const int wid_in_block = tid_in_block / NUM_THREADS_PER_WARP;
+  const int wid_in_block = tid_in_block / GPU_WARP_SIZE;
   // Lane index of thread.
-  const int lid_in_block = tid_in_block % NUM_THREADS_PER_WARP;
+  const int lid_in_block = tid_in_block % GPU_WARP_SIZE;
   // Warp count per block.
-  const int num_warps_in_block = num_threads_in_block / NUM_THREADS_PER_WARP;
+  const int num_warps_in_block = num_threads_in_block / GPU_WARP_SIZE;
 
   // Grid-level indexes:
   // Linear index of block in grid.
@@ -89,8 +88,8 @@ __global__ void reduce_all_kernel(const int size, const TIn * data, TOut* output
   // reduction, each block holds num_warps_in_block values in the shared memory.
   TOut value_ = value;
 #pragma unroll
-  for (int stride = NUM_THREADS_PER_WARP / 2; stride > 0; stride /= 2) {
-   value_ += __shfl_down(value_, stride);
+  for (int stride = GPU_WARP_SIZE / 2; stride > 0; stride /= 2) {
+    value_ += WARP_SHFL_DOWN(value_, stride);
   }
 
   // Return early if only one warp is used for reduction.
@@ -203,7 +202,7 @@ void call_reduce_all_kernel(const TIn *data, TOut *output, int size, TOut *buffe
     hipMemset(buffer + num_blocks, 0, sizeof(int));
   }
 
-  const int shared_mem_size = sizeof(TOut) * block_size.first * block_size.second / NUM_THREADS_PER_WARP;
+  const int shared_mem_size = sizeof(TOut) * block_size.first * block_size.second / GPU_WARP_SIZE;
   hipLaunchKernelGGL((reduce_all_kernel<TIn, TOut, TOp, TFinalOp, DivideResultBySize>), dim3(grid), dim3(block), shared_mem_size, 0, size, data, output, buffer);
 }
 
@@ -277,10 +276,9 @@ __global__ void reduce_matrix_rows_kernel(const TIn *input, TOut *output, int m,
 
   for (int col = tid_x_in_grid; col < n; col += x_grid_stride) {
     shared_memory[tid_in_block] = TBuf(0.0f);
-
+    TBuf sum = TBuf(0.0f);
     // This loops load multiple blockDim.y-by-blockDim.x sub-tensors from the input.
     for (int row = tid_y_in_grid; row < m; row += y_grid_stride) {
-      TBuf sum = 0.0f;
       // Thread-level reduction. Each thread loads y_load_count_per_thread values
       // and aggregrate them.
 #pragma unroll(y_load_count_per_thread)
@@ -291,9 +289,9 @@ __global__ void reduce_matrix_rows_kernel(const TIn *input, TOut *output, int m,
           sum += TBuf(input[row_final * n + col_final]);
         }
       }
-      // Write thread-level reduction result into shared memory.
-      shared_memory[tid_in_block] += sum;
     }
+    // Write thread-level reduction result into shared memory.
+    shared_memory[tid_in_block] = sum;
 
     // Wait all threads to finish their thread-level reductions.
     __syncthreads();
@@ -311,9 +309,6 @@ __global__ void reduce_matrix_rows_kernel(const TIn *input, TOut *output, int m,
     if (threadIdx.y == 0) {
       atomic_add(output + col, TOut(shared_memory[threadIdx.x]));
     }
-
-    // Make sure all values in shared memory have been written into the output memory.
-    __syncthreads();
   }
 }
 
@@ -324,10 +319,9 @@ template<typename TIn, typename TOut, typename TBuf>
 void call_reduce_matrix_rows(const TIn *input, TOut *output, int m, int n) {
   constexpr int max_num_threads_in_block = 512;
   constexpr int max_num_blocks_in_grid = 512;
-  constexpr int warp_size = 32;
   constexpr int load_count_per_thread = 4;
 
-  const int block_x_dim = least_pow2_bound(std::max(1, std::min(n, warp_size)));
+  const int block_x_dim = least_pow2_bound(std::max(1, std::min(n, GPU_WARP_SIZE)));
   const int block_y_dim = least_pow2_bound(std::max(1, std::min(max_num_threads_in_block / block_x_dim, m / load_count_per_thread)));
   const int grid_x_dim = std::max(1, std::min(n / block_x_dim, max_num_blocks_in_grid));
   const int grid_y_dim = std::max(1, std::min(max_num_blocks_in_grid / grid_x_dim, m / block_y_dim / 4));
