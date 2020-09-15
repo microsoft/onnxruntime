@@ -1,6 +1,6 @@
 import onnx
 from .base_operator import QuantOperatorBase
-from ..quant_utils import _find_by_name, _get_mul_node, QuantizedValue, QuantizedValueType
+from ..quant_utils import find_by_name, get_mul_node, QuantizedValue, QuantizedValueType
 from onnx import onnx_pb as onnx_proto
 '''
     Used when quantize mode is QuantizationMode.IntegerOps.
@@ -16,7 +16,7 @@ class MatMulInteger(QuantOperatorBase):
         assert (node.op_type == "MatMul")
 
         (quantized_input_names, zero_point_names, scale_names, nodes) = \
-            self.quantizer._quantize_inputs(node, [0, 1])
+            self.quantizer.quantize_inputs(node, [0, 1])
 
         matmul_integer_output = node.output[0] + "_quantized"
         matmul_integer_name = node.name + "_quant" if node.name != "" else ""
@@ -36,9 +36,9 @@ class MatMulInteger(QuantOperatorBase):
         scales_mul_op = matmul_integer_name + "_scales_mul" if matmul_integer_name != "" else scale_names[
             0] + "_" + scale_names[1] + "_mul"
 
-        scales_mul_node = _find_by_name(scales_mul_op, self.quantizer.new_nodes)
+        scales_mul_node = find_by_name(scales_mul_op, self.quantizer.new_nodes)
         if scales_mul_node is None:
-            scales_mul_node = _get_mul_node(scale_names, scales_mul_op + ":0", scales_mul_op)
+            scales_mul_node = get_mul_node(scale_names, scales_mul_op + ":0", scales_mul_op)
             nodes.append(scales_mul_node)
 
         scales_mul_op_output = scales_mul_node.output[0]
@@ -48,7 +48,7 @@ class MatMulInteger(QuantOperatorBase):
         output_scale_mul_op = ""
         if matmul_integer_name != "":
             output_scale_mul_op = matmul_integer_name + "_output_scale_mul"
-        nodes.append(_get_mul_node([cast_op_output, scales_mul_op_output], node.output[0], output_scale_mul_op))
+        nodes.append(get_mul_node([cast_op_output, scales_mul_op_output], node.output[0], output_scale_mul_op))
         self.quantizer.new_nodes += nodes
 
 
@@ -66,7 +66,7 @@ class QLinearMatMul(QuantOperatorBase):
         assert (node.op_type == "MatMul")
 
         (quantized_input_names, zero_point_names, scale_names, nodes) = \
-            self.quantizer._quantize_inputs(node, [0, 1])
+            self.quantizer.quantize_inputs(node, [0, 1])
 
         data_found, output_scale_name, output_zp_name, _, _ = \
             self.quantizer._get_quantization_params(node.output[0])

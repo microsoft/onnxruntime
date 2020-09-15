@@ -545,7 +545,7 @@ common::Status Model::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                       flatbuffers::Offset<fbs::Model>& fbs_model) const {
   auto producer_name = builder.CreateString(model_proto_.producer_name());
   auto producer_version = builder.CreateString(model_proto_.producer_version());
-  auto domain = builder.CreateString(model_proto_.domain());
+  auto domain = builder.CreateSharedString(model_proto_.domain());
   auto doc_string = builder.CreateString(model_proto_.doc_string());
 
   std::vector<flatbuffers::Offset<fbs::OperatorSetId>> op_set_ids_vec;
@@ -583,6 +583,7 @@ common::Status Model::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 Model::Model() : model_path_{} {
 }
 
+#if defined(ENABLE_ORT_FORMAT_LOAD)
 common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
                                         const logging::Logger& logger,
                                         std::unique_ptr<Model>& model) {
@@ -629,5 +630,6 @@ common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
 
   return Status::OK();
 }
+#endif
 
 }  // namespace onnxruntime

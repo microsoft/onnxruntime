@@ -40,12 +40,12 @@ class BaseModelInfo : public TestModelInfo {
   const std::string& GetOutputName(size_t i) const override { return output_value_info_[i].name(); }
 };
 
+#if !defined(ORT_MINIMAL_BUILD)
 class OnnxModelInfo : public BaseModelInfo {
  public:
   OnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url);
 };
-
-#if defined(ORT_MINIMAL_BUILD)
+#else
 class OrtModelInfo : public BaseModelInfo {
  public:
   OrtModelInfo(_In_ const PATH_CHAR_TYPE* model_url);
