@@ -25,6 +25,8 @@ QLinearOpsRegistry = {
     "Mul": QLinearBinaryOp,
     "Relu": QLinearActivation,
     "Clip": QLinearActivation,
+    "LeakyRelu" : QLinearActivation,
+    "Sigmoid" : QLinearActivation,
     "MaxPool": QMaxPool,
 }
 QLinearOpsRegistry.update(CommonOpsRegistry)

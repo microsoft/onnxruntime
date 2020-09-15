@@ -1,6 +1,6 @@
 import onnx
 from .base_operator import QuantOperatorBase
-from ..quant_utils import _attribute_to_kwarg, ms_domain
+from ..quant_utils import attribute_to_kwarg, ms_domain
 from onnx import onnx_pb as onnx_proto
 '''
     Quantize Attention
@@ -21,7 +21,7 @@ class AttentionQuant(QuantOperatorBase):
         assert (node.op_type == "Attention")
 
         (quantized_input_names, zero_point_names, scale_names, nodes) = \
-            self.quantizer._quantize_inputs(node, [0, 1])
+            self.quantizer.quantize_inputs(node, [0, 1])
 
         qattention_name = "" if node.name == "" else node.name + "_quant"
 
@@ -35,7 +35,7 @@ class AttentionQuant(QuantOperatorBase):
 
         kwargs = {}
         for attribute in node.attribute:
-            kwargs.update(_attribute_to_kwarg(attribute))
+            kwargs.update(attribute_to_kwarg(attribute))
         kwargs["domain"] = ms_domain
         qattention_node = onnx.helper.make_node("QAttention", inputs, node.output, qattention_name, **kwargs)
         nodes.append(qattention_node)
