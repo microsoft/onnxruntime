@@ -124,7 +124,7 @@ class ONNXQuantizer:
             print(
                 "Warning: The original model opset version is {}, which does not support node fusions. Please update the model to opset >= 11 for better performance."
                 .format(opset_version))
-            return
+            return 10
 
         if opset_version < 10:
             print(
