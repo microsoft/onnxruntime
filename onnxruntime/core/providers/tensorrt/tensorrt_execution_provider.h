@@ -2,14 +2,6 @@
 // Licensed under the MIT License.
 
 #pragma once
-
-#ifdef _WIN32
-#pragma warning(disable : 4244)  // '=': conversion from '_Ty2' to '_Ty', possible loss of data
-#pragma warning(disable : 4267)  // 'initializing': conversion from '<type1>' to '<type2>', possible loss of data
-#pragma warning(disable : 4996)  // 'gmtime': This function or variable may be unsafe. Consider using gmtime_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
-#pragma warning(disable : 4456)  // declaration of 'i' hides previous local declaration
-#endif
-
 #include <ctime>
 #include "NvInfer.h"
 #include "NvOnnxParser.h"
