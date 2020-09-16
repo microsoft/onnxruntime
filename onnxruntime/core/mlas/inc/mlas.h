@@ -132,6 +132,23 @@ void
 MLASCALL
 MlasGemm(
     CBLAS_TRANSPOSE TransA,
+    size_t M,
+    size_t N,
+    size_t K,
+    float alpha,
+    const float* A,
+    size_t lda,
+    const void* PackedB,
+    float beta,
+    float* C,
+    size_t ldc,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+void
+MLASCALL
+MlasGemm(
+    CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t M,
     size_t N,
@@ -224,6 +241,24 @@ MlasGemm(
 //
 // Buffer packing routines.
 //
+
+size_t
+MLASCALL
+MlasGemmPackBSize(
+    size_t N,
+    size_t K
+    );
+
+void
+MLASCALL
+MlasGemmPackB(
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const float* B,
+    size_t ldb,
+    void* PackedB
+    );
 
 size_t
 MLASCALL
