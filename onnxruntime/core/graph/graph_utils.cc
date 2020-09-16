@@ -753,19 +753,20 @@ bool FindPath(Graph& graph, const Node& node, bool is_input_edge, const std::vec
 }
 
 bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node, bool force) {
-  std::queue<const Node*> q;
+  std::queue<NodeIndex> q;
   std::unordered_set<NodeIndex> removed_nodes;
-  q.push(&start_node);
+  q.push(start_node.Index());
   // From the current node, remove nodes bottom-up util it reaches a node with multiple outputs/graph output.
   while (q.size() != 0) {
-    const Node& cur_node = *(q.front());
+    NodeIndex cur_node_index = q.front();
     q.pop();
 
-    if (removed_nodes.find(cur_node.Index()) != removed_nodes.end()) {
+    if (removed_nodes.find(cur_node_index) != removed_nodes.end()) {
       continue;
     }
     // Each eligible node in the subgraph must have less than one output edge and no output should be
     // the graph output
+    const Node& cur_node = *graph.GetNode(cur_node_index);
     if (cur_node.GetOutputEdgesCount() > 1 || !graph.GetNodeOutputsInGraphOutputs(cur_node).empty()) {
       continue;
     }
@@ -777,19 +778,16 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node, bool
         // skip initializers and graph inputs
         continue;
       }
-      const Node* child_node = GetInputNode(cur_node, i);
-      std::unordered_set<NodeIndex>::const_iterator it = removed_nodes.find(child_node->Index());
-      if (it == removed_nodes.end()) {
-        q.push(child_node);
-      }
+      const Node* parent_node = GetInputNode(cur_node, i);
+      q.push(parent_node->Index());
     }
 
     if (force || cur_node.GetOutputEdgesCount() == 0) {
-      Node* cur_node_p = graph.GetNode(cur_node.Index());
+      Node* cur_node_p = graph.GetNode(cur_node_index);
       RemoveNodeOutputEdges(graph, *cur_node_p);
-      graph.RemoveNode(cur_node_p->Index());
+      graph.RemoveNode(cur_node_index);
 
-      removed_nodes.insert(cur_node.Index());
+      removed_nodes.insert(cur_node_index);
       force = false;
     }
   }
