@@ -75,6 +75,7 @@ class TrainingSession : public InferenceSession {
       // Whether to use FP16 initializers.
       bool use_fp16_initializers{};
       ONNX_NAMESPACE::TensorProto_DataType fp16_type{ONNX_NAMESPACE::TensorProto_DataType_FLOAT16};
+      bool layernorm_stash_as_fp32{true};
     };
     // The mixed precision configuration.
     // If not provided, mixed precision is disabled.
@@ -423,7 +424,8 @@ class TrainingSession : public InferenceSession {
   common::Status EnableMixedPrecision(const std::unordered_set<std::string>& weights_to_train,
                                       bool use_fp16_initializer,
                                       std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_fp16_node_arg,
-                                      ONNX_NAMESPACE::TensorProto_DataType fp16_type);
+                                      ONNX_NAMESPACE::TensorProto_DataType fp16_type,
+                                      bool layernorm_stash_as_fp32);
 
   /** Discover all trainable initializers by reverse DFS starting from a given tensor (for example, the loss value)
   @param immutable_weights do not include initializers matching an (op_type, input_index, value) entry from this table

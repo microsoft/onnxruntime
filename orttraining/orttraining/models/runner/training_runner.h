@@ -111,6 +111,7 @@ class TrainingRunner {
     bool use_fp16_moments = false;
     bool use_fp16_initializer = true;
     bool allreduce_in_fp16 = false;
+    bool layernorm_stash_as_fp32 = true;
 
     // Tensorboard configuration.
     PathString log_dir;  // Path to write Tensorboard events to.

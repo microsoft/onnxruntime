@@ -603,7 +603,8 @@ Status TransformGraphForMixedPrecision(Graph& graph,
                                        const std::unordered_set<std::string>& weights_to_train,
                                        bool use_fp16_initializer,
                                        std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_fp16_node_arg,
-                                       ONNX_NAMESPACE::TensorProto_DataType fp16_type) {
+                                       ONNX_NAMESPACE::TensorProto_DataType fp16_type,
+                                       bool layernorm_stash_as_fp32) {
   //only fp16 and bfloat16 supported
   ORT_ENFORCE(fp16_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 || fp16_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16);
   // Stag 0: Initialize loss subgraph.
@@ -673,6 +674,13 @@ Status TransformGraphForMixedPrecision(Graph& graph,
     Initializer initializer(*tensor_proto, graph.ModelPath());
     ONNX_NAMESPACE::TensorProto weight_tensor_proto = fp16_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ? initializer.ToFP16(kv.first) : initializer.ToBFloat16(kv.first);
     graph.AddInitializedTensor(weight_tensor_proto);
+  }
+
+  //set layernorm stash type
+  for (auto& node : graph.Nodes()){
+    if (node.OpType().compare("LayerNormalizaiton")){
+      node.AddAttribute("stash_type",  static_cast<int64_t>(layernorm_stash_as_fp32 ? ONNX_NAMESPACE::TensorProto_DataType_FLOAT : fp16_type));
+    }
   }
 
   // Handle pipeline case

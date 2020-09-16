@@ -115,6 +115,7 @@ Status TrainingRunner::Initialize() {
     mp.use_fp16_initializers = params_.use_fp16_initializer;
     if (params_.use_bfloat16)
       mp.fp16_type = ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
+    mp.layernorm_stash_as_fp32 = params_.layernorm_stash_as_fp32;
     config.mixed_precision_config = mp;
   }
 

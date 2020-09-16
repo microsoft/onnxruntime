@@ -262,7 +262,11 @@ Status TrainingSession::ConfigureForTraining(
   if (is_mixed_precision_enabled_) {
     const auto& mixed_precision_config = config.mixed_precision_config.value();
     ORT_RETURN_IF_ERROR(EnableMixedPrecision(
-        weight_names_to_train, mixed_precision_config.use_fp16_initializers, fp32_weight_name_to_fp16_node_arg, mixed_precision_config.fp16_type));
+        weight_names_to_train, 
+        mixed_precision_config.use_fp16_initializers, 
+        fp32_weight_name_to_fp16_node_arg, 
+        mixed_precision_config.fp16_type,
+        mixed_precision_config.layernorm_stash_as_fp32));
   }
 
   if (config.pipeline_config.has_value()) {
@@ -647,9 +651,10 @@ Status TrainingSession::EnableMixedPrecision(
     const std::unordered_set<std::string>& weights_to_train,
     bool use_fp16_initializer,
     std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_fp16_node_arg,
-    ONNX_NAMESPACE::TensorProto_DataType fp16_type) {
+    ONNX_NAMESPACE::TensorProto_DataType fp16_type,
+    bool layernorm_stash_as_fp32) {
   ORT_RETURN_IF_ERROR(TransformGraphForMixedPrecision(
-      model_->MainGraph(), weights_to_train, use_fp16_initializer, fp32_weight_name_to_fp16_node_arg, fp16_type));
+      model_->MainGraph(), weights_to_train, use_fp16_initializer, fp32_weight_name_to_fp16_node_arg, fp16_type, layernorm_stash_as_fp32));
   std::unordered_set<std::string> fp16_weight_initializer_names{};
   std::transform(
       fp32_weight_name_to_fp16_node_arg.cbegin(), fp32_weight_name_to_fp16_node_arg.cend(),
