@@ -83,7 +83,7 @@ Status BiasSoftmaxFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     if (p == add_node.OutputNodesEnd()) {
       continue;
     }
-    Node& softmax_node = const_cast<Node&>(*p);
+    Node& softmax_node = *graph.GetNode(p->Index());
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(softmax_node, "Softmax", {1, 11}) ||
         softmax_node.GetExecutionProviderType() != add_node.GetExecutionProviderType()) {
       continue;
@@ -105,9 +105,9 @@ Status BiasSoftmaxFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
 
        Then
            mask shape  = [ a0 ... a(B-1) 1    1    ...   1    ak a(k+1) ... a(N-1) ] 
-       with rank = N and B < k, OR
+       with rank = N and B <= k, OR
            mask shape  = [                   ...    1    1    ak a(k+1) ... a(N-1) ] 
-       with rank = N-k.
+       with rank = N - k + <number of 1's>.
 
        The mask will be repeated every aB*a(B+1)...*a(k-1) input batches.
        (If input and mask shape match, B = k and no broadcast occurs.)
@@ -198,10 +198,13 @@ Status BiasSoftmaxFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     std::vector<NodeArg*> fused_inputs{input, mask};
     VLOGF(logger, 1, "Fusing subgraph into BiasSoftmax node.\n");
 
+    std::string fused_desc = 
+      "fused " + add_node.Name() + " and " + softmax_node.Name() + " into softmax(input + bias)";
+
     std::string op_type = "BiasSoftmax";
     Node& fused_node = graph.AddNode(graph.GenerateNodeName(op_type),
                                     op_type,
-                                    "fused softmax(input + bias)",
+                                    fused_desc,
                                     fused_inputs,
                                     {},
                                     {},
