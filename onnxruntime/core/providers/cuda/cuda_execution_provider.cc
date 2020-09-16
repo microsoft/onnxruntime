@@ -7,6 +7,7 @@
 #include "cuda_allocator.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/compute_capability.h"
+#include "core/framework/fallback_cpu_capability.h"
 #include "core/framework/memcpy.h"
 #include "core/graph/graph_utils.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
@@ -1863,6 +1864,13 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
     }
   }
+
+  // For CUDA EP, exclude the subgraph that is prefered to be placed in CPU
+  // These are usually shape related computation subgraphs
+  // Following logic can be extended for other EPs
+  std::vector<std::unique_ptr<ComputeCapability>> cpu_capabilities =
+      GetCpuPreferedCapability(graph, *this, results);
+
   return result;
 }
 
