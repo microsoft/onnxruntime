@@ -23,7 +23,7 @@ template <typename T, typename ScaleT>
 Status Scale<T, ScaleT>::Compute(OpKernelContext* context) const {
   const Tensor* scale_tensor = context->Input<Tensor>(1);
   ORT_ENFORCE(scale_tensor->Shape().Size() == 1, "Scale input should have a single value.");
-  const float scale_value = *scale_tensor->Data<ScaleT>();
+  const float scale_value = static_cast<float>(*scale_tensor->Data<ScaleT>());
   ORT_ENFORCE(scale_value != 0.0f, "Scale value must not be 0.");
   const T inverse_scale_value = static_cast<T>(1.0f / scale_value);
 
