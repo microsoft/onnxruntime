@@ -1727,27 +1727,45 @@ ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char** ptr,
   return NULL;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::TensorAt, _Inout_ OrtValue* value, size_t* location_values, size_t location_values_count,
+ORT_API_STATUS_IMPL(OrtApis::TensorAt, _Inout_ OrtValue* value, const int64_t* location_values, size_t location_values_count,
                     _Outptr_ void** out) {
   TENSOR_READWRITE_API_BEGIN
-  //TODO: test if it's a string tensor
-  if (location_values_count != tensor->Shape().NumDimensions())
+
+  if(tensor->IsDataTypeString()) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "this API does not support strings");
+  }
+
+  const auto& tensor_shape = tensor->Shape();
+  const auto num_dimensions = tensor_shape.NumDimensions();
+  if (location_values_count != num_dimensions) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "location dimensions do not match shape size");
-  std::vector<size_t> location(location_values_count);
+  }
+
   for (size_t i = 0; i < location_values_count; i++) {
-    if (location_values[i] >= (size_t)tensor->Shape()[i])
+    if (location_values[i] >= tensor_shape[i] || location_values[i] < 0) {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "invalid location range");
-    location[i] = location_values[i];
+    }
   }
-  // data has row-major format
-  size_t offset = 0;
-  for (size_t i = 1; i <= tensor->Shape().NumDimensions(); i++) {
-    size_t sum = 1;
-    for (size_t j = i + 1; j <= tensor->Shape().NumDimensions(); j++) sum *= (size_t)tensor->Shape()[j - 1];
-    offset += location[i - 1] * sum;
+
+  // compute strides
+  // TensorPitches p;
+  std::vector<int64_t> strides(num_dimensions);
+  {
+    int64_t stride = 1;
+    for (size_t dim = num_dimensions; dim > 0; --dim) {
+      strides[dim - 1] = stride;
+      stride *= tensor_shape[dim - 1];
+    }
   }
-  auto data = ((char*)tensor->MutableDataRaw()) + (tensor->DataType()->Size() * offset);
-  *out = (void*)data;
+
+  // For Scalers the offset would always be zero
+  int64_t offset = 0;
+  for (size_t i = 0; i < num_dimensions; i++) {
+    offset += location_values[i] * strides[i];
+  }
+
+  auto data = reinterpret_cast<char*>(tensor->MutableDataRaw()) + tensor->DataType()->Size() * offset;
+  *out = data;
   return nullptr;
   API_IMPL_END
 }
@@ -1758,6 +1776,15 @@ ORT_API_STATUS_IMPL(OrtApis::SetLanguageProjection, _In_ const OrtEnv* ort_env, 
   // note telemetry is controlled via the platform Env object, not the OrtEnv object instance
   const Env& env = Env::Default();
   env.GetTelemetryProvider().SetLanguageProjection(static_cast<uint32_t>(projection));
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionGetProfilingStartTimeNs, _In_ const OrtSession* sess, _Outptr_ uint64_t* out) {
+  API_IMPL_BEGIN
+  const auto* session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
+  auto profiling_start_time = session->GetProfiling().GetStartTime();
+  *out = static_cast<uint64_t>(profiling_start_time);
   return nullptr;
   API_IMPL_END
 }
@@ -1983,6 +2010,7 @@ static constexpr OrtApi ort_api_1_to_5 = {
     &OrtApis::TensorAt,
     &OrtApis::CreateAndRegisterAllocator,
     &OrtApis::SetLanguageProjection,
+    &OrtApis::SessionGetProfilingStartTimeNs,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

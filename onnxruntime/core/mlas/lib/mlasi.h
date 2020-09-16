@@ -139,6 +139,8 @@ Abstract:
 
 #define MLAS_SGEMM_STRIDEN                          128
 #define MLAS_SGEMM_STRIDEK                          128
+#define MLAS_SGEMM_PACKED_STRIDEN                   128
+#define MLAS_SGEMM_PACKED_STRIDEK                   256
 #define MLAS_DGEMM_STRIDEN                          64
 #define MLAS_DGEMM_STRIDEK                          128
 

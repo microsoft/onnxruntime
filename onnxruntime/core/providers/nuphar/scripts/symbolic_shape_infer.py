@@ -34,7 +34,8 @@ def handle_negative_axis(axis, rank):
     assert axis < rank and axis >= -rank
     return axis if axis >= 0 else rank + axis
 
-def get_opset(mp, domain=['', 'onnx', 'ai.onnx']):
+def get_opset(mp, domain=None):
+    domain = domain or ['', 'onnx', 'ai.onnx']
     if type(domain) != list:
         domain = [domain]
     for opset in mp.opset_import:
@@ -1128,8 +1129,8 @@ class SymbolicShapeInference:
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(new_vi)
 
-    def _infer_impl(self, in_mp, start_sympy_data={}):
-        self.sympy_data_ = start_sympy_data
+    def _infer_impl(self, in_mp, start_sympy_data=None):
+        self.sympy_data_ = start_sympy_data or {}
         self.out_mp_.graph.ClearField('value_info')
         self._apply_suggested_merge(graph_input_only=True)
         self.input_symbols_ = set()
