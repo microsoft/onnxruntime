@@ -274,7 +274,7 @@ struct ProviderHostImpl : ProviderHost {
     return onnxruntime::make_unique<Provider_IAllocator_Impl>(onnxruntime::make_unique<CUDAPinnedAllocator>(device_id, name));
   }
 
-  std::unique_ptr<Provider_IDataTransfer> CreateGPUDataTransfer() override { return make_unique<GPUDataTransfer>(); }
+  std::unique_ptr<Provider_IDataTransfer> CreateGPUDataTransfer() override { return onnxruntime::make_unique<GPUDataTransfer>(); }
 
   void cuda__Impl_Cast(const int64_t* input_data, int32_t* output_data, size_t count) override {
     return cuda::Impl_Cast(input_data, output_data, count);
@@ -397,7 +397,7 @@ struct ProviderHostImpl : ProviderHost {
   const Provider_ValueInfoProto& Provider_ValueInfoProtos__operator_array(const Provider_ValueInfoProtos* p, int index) override { return (*p)[index]; }
 
   // Provider_ComputeCapability
-  std::unique_ptr<Provider_ComputeCapability> Provider_ComputeCapability__construct(std::unique_ptr<Provider_IndexedSubGraph> t_sub_graph) override { return make_unique<ComputeCapability>(std::move(t_sub_graph)); }
+  std::unique_ptr<Provider_ComputeCapability> Provider_ComputeCapability__construct(std::unique_ptr<Provider_IndexedSubGraph> t_sub_graph) override { return onnxruntime::make_unique<ComputeCapability>(std::move(t_sub_graph)); }
   void Provider_ComputeCapability__operator_delete(Provider_ComputeCapability* p) override { delete p; }
   std::unique_ptr<Provider_IndexedSubGraph>& Provider_ComputeCapability__SubGraph(Provider_ComputeCapability* p) override { return p->sub_graph; }
 
@@ -408,7 +408,7 @@ struct ProviderHostImpl : ProviderHost {
   void Provider_IDataTransfer__operator_delete(Provider_IDataTransfer* p) override { delete p; }
 
   // Provider_IndexedSubGraph_MetaDef
-  std::unique_ptr<Provider_IndexedSubGraph_MetaDef> Provider_IndexedSubGraph_MetaDef__construct() override { return make_unique<IndexedSubGraph::MetaDef>(); }
+  std::unique_ptr<Provider_IndexedSubGraph_MetaDef> Provider_IndexedSubGraph_MetaDef__construct() override { return onnxruntime::make_unique<IndexedSubGraph::MetaDef>(); }
   void Provider_IndexedSubGraph_MetaDef__operator_delete(Provider_IndexedSubGraph_MetaDef* p) override { delete p; }
 
   std::string& Provider_IndexedSubGraph_MetaDef__name(Provider_IndexedSubGraph_MetaDef* p) override { return p->name; }
@@ -421,7 +421,7 @@ struct ProviderHostImpl : ProviderHost {
   std::string& Provider_IndexedSubGraph_MetaDef__doc_string(Provider_IndexedSubGraph_MetaDef* p) override { return p->doc_string; }
 
   // Provider_IndexedSubGraph
-  std::unique_ptr<Provider_IndexedSubGraph> Provider_IndexedSubGraph__construct() override { return make_unique<IndexedSubGraph>(); }
+  std::unique_ptr<Provider_IndexedSubGraph> Provider_IndexedSubGraph__construct() override { return onnxruntime::make_unique<IndexedSubGraph>(); }
   void Provider_IndexedSubGraph__operator_delete(Provider_IndexedSubGraph* p) override { delete p; }
 
   std::vector<onnxruntime::NodeIndex>& Provider_IndexedSubGraph__Nodes(Provider_IndexedSubGraph* p) override { return p->nodes; }
@@ -433,7 +433,7 @@ struct ProviderHostImpl : ProviderHost {
   void Provider_KernelDef__operator_delete(Provider_KernelDef* p) override { delete p; }
 
   // Provider_KernelDefBuilder
-  std::unique_ptr<Provider_KernelDefBuilder> Provider_KernelDefBuilder__construct() override { return make_unique<KernelDefBuilder>(); }
+  std::unique_ptr<Provider_KernelDefBuilder> Provider_KernelDefBuilder__construct() override { return onnxruntime::make_unique<KernelDefBuilder>(); }
   void Provider_KernelDefBuilder__operator_delete(Provider_KernelDefBuilder* p) override { delete p; }
 
   void Provider_KernelDefBuilder__SetName(Provider_KernelDefBuilder* p, const char* op_name) override { p->SetName(op_name); }
@@ -497,7 +497,7 @@ struct ProviderHostImpl : ProviderHost {
   const Provider_TypeProto* Provider_NodeArg__TypeAsProto(const Provider_NodeArg* p) noexcept override { return p->TypeAsProto(); }
 
   // Provider_NodeAttributes
-  std::unique_ptr<Provider_NodeAttributes> Provider_NodeAttributes__construct() override { return make_unique<NodeAttributes>(); }
+  std::unique_ptr<Provider_NodeAttributes> Provider_NodeAttributes__construct() override { return onnxruntime::make_unique<NodeAttributes>(); }
   void Provider_NodeAttributes__operator_delete(Provider_NodeAttributes* p) noexcept override { delete p; }
   size_t Provider_NodeAttributes__size(const Provider_NodeAttributes* p) override { return p->size(); }
   void Provider_NodeAttributes__clear(Provider_NodeAttributes* p) noexcept override { return p->clear(); }
@@ -518,11 +518,11 @@ struct ProviderHostImpl : ProviderHost {
   // Provider_Model
   void Provider_Model__operator_delete(Provider_Model* p) override { delete p; }
   Provider_Graph& Provider_Model__MainGraph(Provider_Model* p) override { return p->MainGraph(); }
-  std::unique_ptr<Provider_ModelProto> Provider_Model__ToProto(Provider_Model* p) override { return make_unique<ONNX_NAMESPACE::ModelProto>(p->ToProto()); }
+  std::unique_ptr<Provider_ModelProto> Provider_Model__ToProto(Provider_Model* p) override { return onnxruntime::make_unique<ONNX_NAMESPACE::ModelProto>(p->ToProto()); }
 
   // Provider_Graph
-  std::unique_ptr<Provider_GraphViewer> Provider_Graph__CreateGraphViewer(const Provider_Graph* p) override { return make_unique<GraphViewer>(*p); }
-  std::unique_ptr<Provider_GraphProto> Provider_Graph__ToGraphProto(const Provider_Graph* p) override { return make_unique<ONNX_NAMESPACE::GraphProto>(p->ToGraphProto()); }
+  std::unique_ptr<Provider_GraphViewer> Provider_Graph__CreateGraphViewer(const Provider_Graph* p) override { return onnxruntime::make_unique<GraphViewer>(*p); }
+  std::unique_ptr<Provider_GraphProto> Provider_Graph__ToGraphProto(const Provider_Graph* p) override { return onnxruntime::make_unique<ONNX_NAMESPACE::GraphProto>(p->ToGraphProto()); }
 
   Provider_NodeArg& Provider_Graph__GetOrCreateNodeArg(Provider_Graph* p, const std::string& name, const Provider_TypeProto* p_arg_type) override { return p->GetOrCreateNodeArg(name, p_arg_type); }
 
@@ -541,9 +541,9 @@ struct ProviderHostImpl : ProviderHost {
   // Provider_GraphViewer
   void Provider_GraphViewer__operator_delete(Provider_GraphViewer* p) override { delete p; }
   std::unique_ptr<Provider_Model> Provider_GraphViewer__CreateModel(const Provider_GraphViewer* graph_viewer, const logging::Logger& logger) override {
-    return make_unique<Model>(graph_viewer->Name(), true, ModelMetaData(), PathString(),
-                              IOnnxRuntimeOpSchemaRegistryList(), graph_viewer->DomainToVersionMap(),
-                              std::vector<ONNX_NAMESPACE::FunctionProto>(), logger);
+    return onnxruntime::make_unique<Model>(graph_viewer->Name(), true, ModelMetaData(), PathString(),
+                                           IOnnxRuntimeOpSchemaRegistryList(), graph_viewer->DomainToVersionMap(),
+                                           std::vector<ONNX_NAMESPACE::FunctionProto>(), logger);
   }
 
   const std::string& Provider_GraphViewer__Name(const Provider_GraphViewer* p) noexcept override { return p->Name(); }
