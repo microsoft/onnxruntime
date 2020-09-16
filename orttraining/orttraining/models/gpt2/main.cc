@@ -152,12 +152,12 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
     }
 
     params.use_mixed_precision = flags["use_mixed_precision"].as<bool>();
-    params.allreduce_in_fp16 = flags["allreduce_in_fp16"].as<bool>() && params.use_mixed_precision;
+    params.allreduce_in_mixed_precision_type = flags["allreduce_in_fp16"].as<bool>() && params.use_mixed_precision;
     if (params.use_mixed_precision) {
       printf("Mixed precision training is enabled.\n");
     }
-    if (params.allreduce_in_fp16) {
-      printf("Performing AllReduce in fp16 \n");
+    if (params.allreduce_in_mixed_precision_type) {
+      printf("Performing AllReduce in mixed precision type \n");
     } else {
       printf("Performing AllReduce in fp32 \n");
     }
@@ -175,13 +175,13 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
       }
     }
 
-    params.use_fp16_moments = flags["use_fp16_moments"].as<bool>();
-    if (params.use_fp16_moments) {
-      printf("Using fp16 version of moments.\n");
+    params.use_mixed_precision_moments = flags["use_fp16_moments"].as<bool>();
+    if (params.use_mixed_precision_moments) {
+      printf("Using mixed precision version of moments.\n");
     }
-    params.use_fp16_initializer = flags["use_fp16_initializer"].as<bool>();
-    if (params.use_mixed_precision && params.use_fp16_initializer) {
-      printf("FP16 initializer is enabled.\n");
+    params.use_mixed_precision_initializer = flags["use_fp16_initializer"].as<bool>();
+    if (params.use_mixed_precision && params.use_mixed_precision_initializer) {
+      printf("Mixed precision initializer is enabled.\n");
     }
 
     std::string warmup_mode = flags["warmup_mode"].as<std::string>();

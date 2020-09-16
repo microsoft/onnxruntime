@@ -126,7 +126,7 @@ Status GradientGraphBuilder::CheckNodeArgsReachable(const NodeSet& reachable_nod
   return Status::OK();
 }
 
-Status GradientGraphBuilder::Build() {
+Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_initializer_names_to_preserve) {
   auto opt_ret = graph_transformation_mgr_.ApplyTransformers(*graph_, TransformerLevel::Level2, logger_);
   ORT_RETURN_IF_ERROR(opt_ret);
 
@@ -231,7 +231,7 @@ Status GradientGraphBuilder::Build() {
     }
   }
 
-  return GraphAugmenter::AugmentGraph(*graph_, gradient_graph_defs);
+  return GraphAugmenter::AugmentGraph(*graph_, gradient_graph_defs, p_initializer_names_to_preserve);
 }
 
 }  // namespace training

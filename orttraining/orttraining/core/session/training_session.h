@@ -72,9 +72,17 @@ class TrainingSession : public InferenceSession {
     DistributedConfiguration distributed_config{};
 
     struct MixedPrecisionConfiguration {
-      // Whether to use FP16 initializers.
-      bool use_fp16_initializers{};
-      ONNX_NAMESPACE::TensorProto_DataType fp16_type{ONNX_NAMESPACE::TensorProto_DataType_FLOAT16};
+      // Whether to use mixed precision initializers.
+      bool use_mixed_precision_initializers{};
+      MixedPrecisionDataType mixed_precision_type{MixedPrecisionDataType::FP16};
+
+      ONNX_NAMESPACE::TensorProto_DataType TensorProtoDataType() const {
+        switch (mixed_precision_type) {
+          case MixedPrecisionDataType::FP16: return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+          case MixedPrecisionDataType::BF16: return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
+          default: return ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+        }  
+      }
     };
     // The mixed precision configuration.
     // If not provided, mixed precision is disabled.
@@ -123,10 +131,10 @@ class TrainingSession : public InferenceSession {
       std::function<std::unordered_map<std::string, float>(const std::string&)> weight_attributes_generator{};
       std::function<std::unordered_map<std::string, int64_t>(const std::string&)> weight_int_attributes_generator{};
 
-      // Whether to use FP16 moments.
-      bool use_fp16_moments{};
-      // Whether to use FP16 for the all reduce.
-      bool do_all_reduce_in_fp16{};
+      // Whether to use mixed precision moments.
+      bool use_mixed_precision_moments{};
+      // Whether to use mixed precision type for the all reduce.
+      bool do_all_reduce_in_mixed_precision_type{};
       // Whether to use NCCL.
       bool use_nccl{};
       // Whether to partition the optimizer state.
@@ -417,13 +425,12 @@ class TrainingSession : public InferenceSession {
 
   /** Enable mixed precision training
   @param weights_to_train a set of weights to be training.
-  @param use_fp16_initializer specify whether fp16 initialier is created.
-  @param fp32_weight_name_to_fp16_node_arg the map between weights and FP16 weights.
+  @param mixed_precision_config The mixed precision configuration.
+  @param fp32_weight_name_to_mixed_precision_node_arg the map between weights and mixed precision weights.
   */
   common::Status EnableMixedPrecision(const std::unordered_set<std::string>& weights_to_train,
-                                      bool use_fp16_initializer,
-                                      std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_fp16_node_arg,
-                                      ONNX_NAMESPACE::TensorProto_DataType fp16_type);
+                                      const TrainingConfiguration::MixedPrecisionConfiguration& mixed_precision_config,
+                                      std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_mixed_precision_node_arg);
 
   /** Discover all trainable initializers by reverse DFS starting from a given tensor (for example, the loss value)
   @param immutable_weights do not include initializers matching an (op_type, input_index, value) entry from this table
@@ -455,7 +462,7 @@ class TrainingSession : public InferenceSession {
   std::unordered_set<std::string> weights_to_train_;
   // names of additional initializers to be included in checkpoints
   std::unordered_set<std::string> opt_state_initializer_names_;
-  std::unordered_set<std::string> fp16_weight_initializer_names_;
+  std::unordered_set<std::string> mixed_precision_weight_initializer_names_;
 
   bool is_mixed_precision_enabled_;
   optional<std::string> external_loss_name_;
