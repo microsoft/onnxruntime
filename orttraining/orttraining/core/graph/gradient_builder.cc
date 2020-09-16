@@ -1313,7 +1313,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetLayerNormalizationGradient) {
 IMPLEMENT_GRADIENT_BUILDER(GetT5LayerNormalizationGradient) {
   return std::vector<NodeDef>{
       NodeDef(OpDef{"T5LayerNormalizationGrad", kMSDomain, 1},
-              {GO(0), I(0), I(1), O(2)},
+              {GO(0), I(0), I(1), O(1)},
               {GI(0), GI(1)},
               {SrcNodeAttributes()})};
 }

@@ -284,6 +284,10 @@ Status TrainingSession::ConfigureForTraining(
                                  << weight_names_stream.str();
   }
 
+  if (IsRootNode(config)) {
+    Save("before_grad_builder.onnx", SaveOption::NO_RELOAD);
+  }
+
   ORT_RETURN_IF_ERROR(BuildGradientGraph(
       weight_names_to_train, loss_name, config.gradient_graph_config, *session_logger_));
 
