@@ -20,6 +20,9 @@
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/graph/optimizer_graph_builder.h"
 #include "orttraining/models/runner/training_util.h"
+#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#include "orttraining/training_ops/cuda/communication/nccl_service.h"
+#endif
 #include "single_include/nlohmann/json.hpp"
 #include "test/perftest/utils.h"
 
@@ -109,9 +112,10 @@ Status TrainingRunner::Initialize() {
 
   if (params_.use_mixed_precision) {
     TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mp{};
-    mp.use_fp16_initializers = params_.use_fp16_initializer;
-    if (params_.use_bfloat16)
-      mp.fp16_type = ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
+    mp.use_mixed_precision_initializers = params_.use_mixed_precision_initializer;
+    if (params_.use_bfloat16) {
+      mp.mixed_precision_type = MixedPrecisionDataType::BF16;
+    }
     config.mixed_precision_config = mp;
   }
 
@@ -134,8 +138,8 @@ Status TrainingRunner::Initialize() {
     opt.learning_rate_input_name = params_.lr_params.feed_name;
     opt.weight_attributes_generator = params_.optimizer_attributes;
     opt.weight_int_attributes_generator = params_.optimizer_int_attributes;
-    opt.use_fp16_moments = params_.use_fp16_moments;
-    opt.do_all_reduce_in_fp16 = params_.allreduce_in_fp16;
+    opt.use_mixed_precision_moments = params_.use_mixed_precision_moments;
+    opt.do_all_reduce_in_mixed_precision_type = params_.allreduce_in_mixed_precision_type;
     opt.use_nccl = params_.use_nccl;
     opt.deepspeed_zero = params_.deepspeed_zero;
     opt.adasum_reduction_type = params_.GetAdasumReductionType();
@@ -705,6 +709,31 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
   auto end_to_end_start = std::chrono::high_resolution_clock::now();
   bool end_to_end_measurement_started = false;
 
+#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+  // Create communication plan.
+  auto& nccl_service = cuda::NcclService::GetInstance();
+
+  nccl_service.PlanStart();
+  for (auto& slot : pipeline_schedule_.GetSchedule(pipeline_context_.pipeline_stage_id)) {
+    if (!slot.HasCommute()) {
+      continue;
+    }
+    nccl_service.PlanNewGroupStart();
+    for (auto& task : slot.GetTasks()) {
+      if (task.type == pipeline::PipelineTask::Type::Send) {
+        nccl_service.PlanSend(task.peer_rank);
+      } else if (task.type == pipeline::PipelineTask::Type::Recv) {
+        nccl_service.PlanRecv(task.peer_rank);
+      }
+    }
+    nccl_service.PlanNewGroupEnd();
+  }
+  nccl_service.PlanEnd();
+
+  // Launch NCCL service to execute the plan.
+  nccl_service.Launch();
+#endif
+
   auto all_steps_time_start = std::chrono::high_resolution_clock::now();
   while (step_ < params_.num_train_steps) {
     for (size_t shard_it = 0; shard_it < num_shards_to_visit; ++shard_it) {
@@ -754,6 +783,9 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
                                           fetch_names,
                                           fetches));
           RunWithUpdate(feed_names, fetch_names, feeds, fetches);
+#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+          nccl_service.Reset();
+#endif
         } else {
           ORT_RETURN_IF_ERROR(PrepareFeedNamesAndFeeds(GradientAccumulateStep,
                                                        training_data_loader,
@@ -876,6 +908,9 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
             << "Average Step Time: " << all_steps_duration_seconds.count() / (step_ - step_start) << " Second\n"
             << "Average Step Throughput: " << params_.batch_size * (step_ - step_start) / (all_steps_duration_seconds.count()) << " Examples / Second\n";
 
+#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+  nccl_service.Terminate();
+#endif
   return Status::OK();
 }
 

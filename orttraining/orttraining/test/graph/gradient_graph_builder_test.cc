@@ -1252,7 +1252,7 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_bert_tiny) {
   pipe.cut_list.emplace_back(cut1);
 
   TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mixed_precision_config{};
-  mixed_precision_config.use_fp16_initializers = true;
+  mixed_precision_config.use_mixed_precision_initializers = true;
 
   // 2 test variations - full precision and mixed precision
   const std::vector<bool> test_with_fp32{true, false};
@@ -1347,7 +1347,7 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_MLP) {
   pipe.cut_list.emplace_back(cut1);
 
   TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mixed_precision_config{};
-  mixed_precision_config.use_fp16_initializers = true;
+  mixed_precision_config.use_mixed_precision_initializers = true;
 
   // 2 test variations - full precision and mixed precision
   const std::vector<bool> test_with_fp32{true, false};
@@ -1394,8 +1394,7 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_MLP) {
 }
 
 Status RunOnlinePartition(const std::vector<TrainingSession::TrainingConfiguration::CutInfo>& cut_list,
-                          int pipeline_stage_size,
-                          std::set<int> status_check_stages = {}) {
+                          int pipeline_stage_size) {
   auto model_uri = ORIGINAL_MODEL_PATH;
 
   TrainingSession::TrainingConfiguration::PipelineConfiguration pipe{};
@@ -1421,12 +1420,8 @@ Status RunOnlinePartition(const std::vector<TrainingSession::TrainingConfigurati
     config.model_with_training_graph_path = output_file;
 
     PathString backprop_model_file;
-    if (status_check_stages.count(i) > 0) {
-      auto status = BuildBackPropGraph(model_uri, config, backprop_model_file);
-      EXPECT_FALSE(status.IsOK());
-    } else {
-      EXPECT_THROW(BuildBackPropGraph(model_uri, config, backprop_model_file), OnnxRuntimeException);
-    }
+    auto status = BuildBackPropGraph(model_uri, config, backprop_model_file);
+    EXPECT_FALSE(status.IsOK());
   }
   return Status::OK();
 }
@@ -1436,17 +1431,17 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_Invalid_Input) {
   using CutInfo = TrainingSession::TrainingConfiguration::CutInfo;
 
   // Test with invalid cut edge
-  TrainingSession::TrainingConfiguration::CutInfo invalid_cut_edge = {TrainingSession::TrainingConfiguration::CutEdge("3")};
-  ASSERT_STATUS_OK(RunOnlinePartition(std::vector<TrainingSession::TrainingConfiguration::CutInfo>{invalid_cut_edge}, 2 /* pipeline_stage_size */));
+  CutInfo invalid_cut_edge = {CutEdge("3")};
+  ASSERT_STATUS_OK(RunOnlinePartition(std::vector<CutInfo>{invalid_cut_edge}, 2 /* pipeline_stage_size */));
 
   // Test mis-matched cut list with stage size
-  TrainingSession::TrainingConfiguration::CutInfo cut_edge = {TrainingSession::TrainingConfiguration::CutEdge("T3")};
-  ASSERT_STATUS_OK(RunOnlinePartition(std::vector<TrainingSession::TrainingConfiguration::CutInfo>{cut_edge}, 3 /* pipeline_stage_size */));
+  CutInfo cut_edge = {CutEdge("T3")};
+  ASSERT_STATUS_OK(RunOnlinePartition(std::vector<CutInfo>{cut_edge}, 3 /* pipeline_stage_size */));
 
   // Test unordered cut_info list
   CutInfo cut0 = {CutEdge("T3")};
   CutInfo cut1 = {CutEdge("T6")};
-  ASSERT_STATUS_OK(RunOnlinePartition(std::vector<CutInfo>{cut1, cut0}, 3 /* pipeline_stage_size */, {0, 2} /* status_check_stages */));
+  ASSERT_STATUS_OK(RunOnlinePartition(std::vector<CutInfo>{cut1, cut0}, 3 /* pipeline_stage_size */));
 }
 
 // verify pipeline config can load and gradient graph can construct.
@@ -1641,6 +1636,9 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
             "MeanSquaredError_reduce_mean_Grad/Scaled_Grad",
             "MeanSquaredError_reduce_mean_Grad/Shaped_X",
             "MeanSquaredError_diff_square_grad",
+            "MeanSquaredError_pow_Grad/Sub_I1",
+            "MeanSquaredError_pow_Grad/Pow_I0",
+            "MeanSquaredError_pow_Grad/Mul_Pow_I0_I1",
             "MeanSquaredError_diff_grad",
             "predictions_grad",
             "B3_grad",

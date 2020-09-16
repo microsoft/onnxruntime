@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(ORT_MINIMAL_BUILD)
+
 #include "core/framework/data_types.h"
 #include "core/framework/sparse_tensor.h"
 
@@ -31,3 +33,5 @@ SparseTensor::SparseTensor(MLDataType elt_type,
       shape_(shape) {}
 
 }  // namespace onnxruntime
+
+#endif  // !defined(ORT_MINIMAL_BUILD)

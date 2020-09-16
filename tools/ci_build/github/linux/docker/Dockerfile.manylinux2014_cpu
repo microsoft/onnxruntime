@@ -1,4 +1,4 @@
-FROM quay.io/pypa/manylinux2010_x86_64:latest
+FROM quay.io/pypa/manylinux2014_x86_64:latest
 
 ADD manylinux /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/install_centos.sh && /tmp/scripts/install_deps.sh  && rm -rf /tmp/scripts

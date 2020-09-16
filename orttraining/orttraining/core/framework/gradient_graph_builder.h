@@ -82,7 +82,7 @@ class GradientGraphBuilder {
                        const GradientGraphConfiguration& gradient_graph_config,
                        const logging::Logger& logger);
 
-  Status Build();
+  Status Build(const std::unordered_set<std::string>* p_initializer_names_to_preserve = nullptr);
 
  private:
   std::unordered_set<const NodeArg*> y_node_args_;
