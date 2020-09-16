@@ -770,6 +770,27 @@ TEST(CApiTest, end_profiling) {
   ASSERT_TRUE(std::string(profile_file) == std::string());
 }
 
+TEST(CApiTest, get_profiling_start_time) {
+  // Test whether the C_API can access the profiler's start time
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  Ort::SessionOptions session_options;
+#ifdef _WIN32
+  session_options.EnableProfiling(L"profile_prefix");
+#else
+  session_options.EnableProfiling("profile_prefix");
+#endif
+
+  uint64_t before_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::high_resolution_clock::now().time_since_epoch()).count(); // get current time
+  Ort::Session session_1(*ort_env, MODEL_WITH_CUSTOM_MODEL_METADATA, session_options);
+  uint64_t profiling_start_time = session_1.GetProfilingStartTimeNs();
+  uint64_t after_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+      
+  // the profiler's start time needs to be between before_time and after_time
+  ASSERT_TRUE(before_start_time <= profiling_start_time && profiling_start_time <= after_start_time);  
+}
+
 TEST(CApiTest, model_metadata) {
   auto allocator = onnxruntime::make_unique<MockedOrtAllocator>();
   // The following all tap into the c++ APIs which internally wrap over C APIs
