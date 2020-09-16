@@ -26,17 +26,15 @@ bool IsSmallInitializer(const onnxruntime::GraphViewer& graph, const NodeArg* ar
 }
 
 /**
-  Returns a list of compute capabilities that are prefered on CPU. 
+  Returns a list of nodes that are prefered on CPU. 
   They are commonly shape-related computation subgraphs.
   @param graph Graph viewer 
   @param provider The targe execution provider
-  @param capabilities Capabilities returned by target EP's GetCapacity() function
+  @param tentative_nodes Nodes that are tentative to be placed on on target EP
   */
-std::vector<std::unique_ptr<ComputeCapability>>
-GetCpuPreferedCapability(const onnxruntime::GraphViewer& graph,
-                         const std::unique_ptr<IExecutionProvider>& provider,
-                         const KernelRegistryManager& kernel_registry_mgr,
-                         const std::vector<std::unique_ptr<ComputeCapability>>& capabilities) {
+std::unordered_set<NodeIndex> GetCpuPreferedNodes(const onnxruntime::GraphViewer& graph,
+                                                  const IExecutionProvider* provider,
+                                                  const std::vector<NodeIndex>& tentative_nodes) {
   const std::vector<NodeIndex>& ordered_nodes = graph.GetNodesInTopologicalOrder();
   std::vector<size_t> node_id_to_order_map(graph.MaxNodeIndex());
   for (size_t id = 0; id < ordered_nodes.size(); ++id) {
@@ -55,15 +53,9 @@ GetCpuPreferedCapability(const onnxruntime::GraphViewer& graph,
   std::unordered_set<const NodeArg*> cpu_output_args;
   std::unordered_set<NodeIndex> provider_nodes;
 
-  for (auto& capability : capabilities) {
-    const IndexedSubGraph* indexed_sub_graph = capability->sub_graph.get();
-    if (indexed_sub_graph->GetMetaDef() != nullptr) {
-      continue;
-    }
-    // The <provider> can run a single node in the <graph> if not using meta-defs.
-    ORT_ENFORCE(1 == indexed_sub_graph->nodes.size());
+  KernelRegistryManager& kernel_registry_mgr = KernelRegistryManager::Instance();
 
-    const NodeIndex node_id = indexed_sub_graph->nodes[0];
+  for (auto& node_id : tentative_nodes) {
     provider_nodes.insert(node_id);
     const Node* node = graph.GetNode(node_id);
 
@@ -154,13 +146,7 @@ GetCpuPreferedCapability(const onnxruntime::GraphViewer& graph,
     }
   }
 
-  std::vector<std::unique_ptr<ComputeCapability>> result;
-  for (auto index : cpu_nodes) {
-    std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
-    sub_graph->nodes.push_back(index);
-    result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
-  }
-  return result;
+  return cpu_nodes;
 }
 #endif
 

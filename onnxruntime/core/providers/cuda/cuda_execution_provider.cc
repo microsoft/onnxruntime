@@ -1805,8 +1805,7 @@ std::unique_ptr<onnxruntime::IDataTransfer> CUDAExecutionProvider::GetDataTransf
 std::vector<std::unique_ptr<ComputeCapability>>
 CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                      const std::vector<const KernelRegistry*>& kernel_registries) const {
-  std::vector<std::unique_ptr<ComputeCapability>> result;
-
+  std::vector<NodeIndex> candidates;
   for (auto& node_index : graph.GetNodesInTopologicalOrder()) {
     const auto* p_node = graph.GetNode(node_index);
     if (p_node == nullptr)
@@ -1859,18 +1858,24 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
         LOGS_DEFAULT(WARNING) << "CUDA kernel not supported. Fallback to CPU execution provider for Op type: " << node.OpType() << " node name: " << node.Name();
       }
     } else {
-      std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
-      sub_graph->nodes.push_back(node.Index());
-      result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
+      candidates.push_back(node.Index());
     }
   }
 
   // For CUDA EP, exclude the subgraph that is prefered to be placed in CPU
   // These are usually shape related computation subgraphs
   // Following logic can be extended for other EPs
-  std::vector<std::unique_ptr<ComputeCapability>> cpu_capabilities =
-      GetCpuPreferedCapability(graph, *this, results);
+  std::unordered_set<NodeIndex> cpu_nodes = GetCpuPreferedNodes(graph, this, candidates);
 
+  std::vector<std::unique_ptr<ComputeCapability>> result;
+  for (auto& node_index : candidates) {
+    if (cpu_nodes.count(node_index) > 0)
+      continue;
+
+    std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
+    sub_graph->nodes.push_back(node_index);
+    result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
+  }
   return result;
 }
 
