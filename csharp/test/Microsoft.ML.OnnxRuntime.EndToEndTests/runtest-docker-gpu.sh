@@ -27,6 +27,6 @@ docker run --gpus all --rm \
         -e "PackageName=$PackageName" \
         -e "RunTestCsharp=$RunTestCsharp" \
         -e "RunTestNative=$RunTestNative" \
-        onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecuda102build:ch2q \
+        onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimegpubuild:ch35 \
         /bin/bash /onnxruntime_src/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh \
         /home/onnxruntimedev/$NUGET_REPO_DIRNAME /onnxruntime_src /home/onnxruntimedev $CurrentOnnxRuntimeVersion
