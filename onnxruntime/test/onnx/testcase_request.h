@@ -37,6 +37,8 @@ class TestCaseRequestContext {
   /// <summary>
   /// Runs data tests on the model sequentially (concurrent_runs < 2)
   ///  and repeats them (repeat_count > 1) or concurrently (never repeats)
+  /// repeat_count is ignored if concurrent_runs > 1 and a test case has more than
+  /// one data task to run.
   /// </summary>
   /// <param name="tpool">ThreadPool</param>
   /// <param name="c">TestCase</param>
@@ -70,11 +72,15 @@ class TestCaseRequestContext {
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(TestCaseRequestContext);
 
+  /// The lifespan of objects of the class is managed within the
+  /// the class so the __dtor should really be private. However, on one
+  /// occasion we use std:uniue_ptr to instantiate it so need public __dtor
+  /// The impact is mitigated by the fact that __Ctor is still private.
   ~TestCaseRequestContext() = default;
 
  private:
 
-  TestCaseRequestContext(const Callback& cb, PThreadPool tp, const ITestCase& c, Ort::Env& env,
+  TestCaseRequestContext(const Callback& cb, PThreadPool tp, const ITestCase& test_case, Ort::Env& env,
                          const Ort::SessionOptions& session_opts);
 
   void SetupSession();
@@ -95,7 +101,7 @@ class TestCaseRequestContext {
 
   Callback cb_;
   PThreadPool tp_;
-  const ITestCase& c_;
+  const ITestCase& test_case_;
   Ort::Env& env_;
   Ort::SessionOptions session_opts_;
   Ort::Session session_;

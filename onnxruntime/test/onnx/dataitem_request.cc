@@ -29,7 +29,7 @@ std::pair<EXECUTE_RESULT, TIME_SPEC> DataTaskRequestContext::Run(const ITestCase
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
       result = std::make_pair(EXECUTE_RESULT::WITH_EXCEPTION, ctx.GetTimeSpent());
-      LOGS_DEFAULT(ERROR) << ctx.c_.GetTestCaseName() << ":" << ex.what();
+      LOGS_DEFAULT(ERROR) << ctx.test_case_.GetTestCaseName() << ":" << ex.what();
     });
   }
   return result;
@@ -54,7 +54,7 @@ void DataTaskRequestContext::RunAsync() {
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
       result = std::make_pair(EXECUTE_RESULT::WITH_EXCEPTION, spent_time_);
-      LOGS_DEFAULT(ERROR) << c_.GetTestCaseName() << ":" << ex.what();
+      LOGS_DEFAULT(ERROR) << test_case_.GetTestCaseName() << ":" << ex.what();
     });
   }
 
@@ -66,7 +66,7 @@ void DataTaskRequestContext::RunAsync() {
 std::pair<EXECUTE_RESULT, TIME_SPEC> DataTaskRequestContext::RunImpl() {
   onnxruntime::test::HeapBuffer holder;
   std::unordered_map<std::string, Ort::Value> feeds;
-  c_.LoadTestData(task_id_, holder, feeds, true);
+  test_case_.LoadTestData(task_id_, holder, feeds, true);
 
   std::vector<const char*> input_names(feeds.size());
   std::vector<OrtValue*> input_values;
@@ -115,12 +115,12 @@ std::pair<EXECUTE_RESULT, TIME_SPEC> DataTaskRequestContext::RunImpl() {
   double relative_per_sample_tolerance;
   bool post_procesing;
   Status status;
-  c_.GetPerSampleTolerance(&per_sample_tolerance);
-  c_.GetRelativePerSampleTolerance(&relative_per_sample_tolerance);
-  c_.GetPostProcessing(&post_procesing);
+  test_case_.GetPerSampleTolerance(&per_sample_tolerance);
+  test_case_.GetRelativePerSampleTolerance(&relative_per_sample_tolerance);
+  test_case_.GetPostProcessing(&post_procesing);
 
   std::unordered_map<std::string, Ort::Value> expected_output_values;
-  c_.LoadTestData(task_id_, holder, expected_output_values, false);
+  test_case_.LoadTestData(task_id_, holder, expected_output_values, false);
 
   std::unordered_map<std::string, OrtValue*> name_fetch_output_map;
   std::unordered_map<std::string, const ONNX_NAMESPACE::ValueInfoProto*> name_output_value_info_proto;
@@ -128,7 +128,7 @@ std::pair<EXECUTE_RESULT, TIME_SPEC> DataTaskRequestContext::RunImpl() {
   for (auto& output_name : output_names) {
     // p_fetches is filled in the order of output_names.
     name_fetch_output_map[output_name] = output_values[i];  // Automatic cast
-    const ONNX_NAMESPACE::ValueInfoProto* infoProto = c_.GetOutputInfoFromModel(i);
+    const ONNX_NAMESPACE::ValueInfoProto* infoProto = test_case_.GetOutputInfoFromModel(i);
     if (infoProto != nullptr) {
       name_output_value_info_proto.insert(std::make_pair(infoProto->name(), infoProto));
     }
@@ -190,7 +190,7 @@ std::pair<EXECUTE_RESULT, TIME_SPEC> DataTaskRequestContext::RunImpl() {
     }
 
     if (compare_result != COMPARE_RESULT::SUCCESS && !ret.second.empty()) {
-      LOGS_DEFAULT(ERROR) << c_.GetTestCaseName() << ":output=" << output_name << ":" << ret.second;
+      LOGS_DEFAULT(ERROR) << test_case_.GetTestCaseName() << ":output=" << output_name << ":" << ret.second;
     }
     if (compare_result != COMPARE_RESULT::SUCCESS) {
       break;

@@ -57,6 +57,7 @@ class TestCaseDriver {
     on_test_case_complete_ = f.GetCallable<&TestCaseDriver::OnTestCaseComplete>();
   }
 
+  /// This makes the __Dtor private because the lifespan is managed by the class itself
   ~TestCaseDriver() = default;
 
   void RunModelsAsync(size_t parallel_models);

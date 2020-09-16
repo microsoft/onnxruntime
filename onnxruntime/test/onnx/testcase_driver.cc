@@ -38,13 +38,12 @@ void TestCaseDriver::RunModelsAsync(size_t parallel_models) {
   const auto total_models = tests.size();
   for (size_t i = 0; i < parallel_models; ++i) {
     auto next_to_run = tests_started_.fetch_add(1, std::memory_order_relaxed);
-    if (next_to_run < total_models) {
-      tests_inprogress_.fetch_add(1, std::memory_order_relaxed);
-      TestCaseRequestContext::Request(on_test_case_complete_, env_.GetThreadPool(), *tests[next_to_run],
-        env_.Env(), env_.GetSessionOptions(), concurrent_runs_);
-    } else {
+    if (next_to_run >= total_models) {
       break;
     }
+    tests_inprogress_.fetch_add(1, std::memory_order_relaxed);
+    TestCaseRequestContext::Request(on_test_case_complete_, env_.GetThreadPool(), *tests[next_to_run],
+      env_.Env(), env_.GetSessionOptions(), concurrent_runs_);
   }
   // This thread is not on a threadpool so we are not using it
   // to run anything. Just wait.

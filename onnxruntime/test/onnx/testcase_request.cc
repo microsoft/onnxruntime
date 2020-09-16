@@ -13,11 +13,11 @@
 namespace onnxruntime {
 namespace test {
 
-TestCaseRequestContext::TestCaseRequestContext(const Callback& cb, PThreadPool tp, const ITestCase& c, Ort::Env& env,
+TestCaseRequestContext::TestCaseRequestContext(const Callback& cb, PThreadPool tp, const ITestCase& test_case, Ort::Env& env,
                        const Ort::SessionOptions& session_opts)
     : cb_(cb),
       tp_(tp),
-      c_(c),
+      test_case_(test_case),
       env_(env),
       session_opts_(session_opts.Clone()),
       session_(nullptr),
@@ -25,16 +25,16 @@ TestCaseRequestContext::TestCaseRequestContext(const Callback& cb, PThreadPool t
       result_(),
       data_tasks_started_(0),
       data_tasks_inprogress_(0) {
-  result_ = std::make_shared<TestCaseResult>(c_.GetDataCount(), EXECUTE_RESULT::NOT_SET, c.GetTestCaseName());
+  result_ = std::make_shared<TestCaseResult>(test_case_.GetDataCount(), EXECUTE_RESULT::NOT_SET, test_case_.GetTestCaseName());
   SetTimeSpecToZero(&test_case_time_);
   CallableFactory<TestCaseRequestContext, void, size_t, EXECUTE_RESULT, const TIME_SPEC&> f(this);
   on_data_task_cb_ = f.GetCallable<&TestCaseRequestContext::OnDataTaskComplete>();
 }
 
 void TestCaseRequestContext::SetupSession() {
-  const auto* test_case_name = c_.GetTestCaseName().c_str();
+  const auto* test_case_name = test_case_.GetTestCaseName().c_str();
   session_opts_.SetLogId(test_case_name);
-  Ort::Session session{env_, c_.GetModelUrl(), session_opts_};
+  Ort::Session session{env_, test_case_.GetModelUrl(), session_opts_};
   LOGF_DEFAULT(INFO, "testing %s\n", test_case_name);
   session_ = std::move(session);
 }
@@ -82,7 +82,7 @@ void TestCaseRequestContext::Request(const Callback& cb, PThreadPool tpool,
 
 void TestCaseRequestContext::RunAsync(size_t concurrent_runs) {
   assert(concurrent_runs > 0);
-  concurrent_runs = std::min(concurrent_runs, c_.GetDataCount());
+  concurrent_runs = std::min(concurrent_runs, test_case_.GetDataCount());
 
   SetupSession();
 
@@ -94,15 +94,14 @@ void TestCaseRequestContext::RunAsync(size_t concurrent_runs) {
 
   for (size_t i = 1; i < concurrent_runs; ++i) {
     auto next_to_run = data_tasks_started_.fetch_add(1, std::memory_order_relaxed);
-    if (next_to_run < c_.GetDataCount()) {
-      data_tasks_inprogress_.fetch_add(1, std::memory_order_relaxed);
-      DataTaskRequestContext::Request(on_data_task_cb_, tp_, c_, session_, &allocator_, next_to_run);
-    } else {
+    if (next_to_run >= test_case_.GetDataCount()) {
       break;
     }
+    data_tasks_inprogress_.fetch_add(1, std::memory_order_relaxed);
+    DataTaskRequestContext::Request(on_data_task_cb_, tp_, test_case_, session_, &allocator_, next_to_run);
   }
   // This runs in this thread and we should invoke the callback for it.
-  auto result = DataTaskRequestContext::Run(c_, session_, &allocator_, this_task_id);
+  auto result = DataTaskRequestContext::Run(test_case_, session_, &allocator_, this_task_id);
   OnDataTaskComplete(this_task_id, result.first, result.second);
 }
 
@@ -113,9 +112,9 @@ void TestCaseRequestContext::OnDataTaskComplete(size_t task_id, EXECUTE_RESULT r
   result_->SetResult(task_id, result);
 
   auto next_to_run = data_tasks_started_.fetch_add(1, std::memory_order_relaxed);
-  if (next_to_run < c_.GetDataCount()) {
+  if (next_to_run < test_case_.GetDataCount()) {
     data_tasks_inprogress_.fetch_add(1, std::memory_order_relaxed);
-    DataTaskRequestContext::Request(on_data_task_cb_, tp_, c_, session_, &allocator_, next_to_run);
+    DataTaskRequestContext::Request(on_data_task_cb_, tp_, test_case_, session_, &allocator_, next_to_run);
   }
 
   auto before_we_done = data_tasks_inprogress_.fetch_sub(1, std::memory_order_acq_rel);
@@ -144,10 +143,10 @@ void TestCaseRequestContext::RunSequentially(size_t repeat_count) {
   TIME_SPEC zero;
   SetTimeSpecToZero(&zero);
 
-  const size_t data_count = c_.GetDataCount();
+  const size_t data_count = test_case_.GetDataCount();
   for (size_t idx_repeat = 0; idx_repeat < repeat_count; ++idx_repeat) {
     for (size_t idx_data = 0; idx_data != data_count; ++idx_data) {
-      auto result = DataTaskRequestContext::Run(c_, session_, &allocator_, idx_data);
+      auto result = DataTaskRequestContext::Run(test_case_, session_, &allocator_, idx_data);
       result_->SetResult(idx_data, result.first);
       AccumulateTimeSpec(&test_case_time_, &zero, &result.second);
     }
@@ -164,12 +163,12 @@ void TestCaseRequestContext::Wait() const {
 
 void TestCaseRequestContext::CalculateAndLogStats() const {
   result_->SetSpentTime(test_case_time_);
-  const auto& test_case_name = c_.GetTestCaseName();
+  const auto& test_case_name = test_case_.GetTestCaseName();
   const std::vector<EXECUTE_RESULT>& er = result_->GetExcutionResult();
   for (size_t i = 0; i != er.size(); ++i) {
     EXECUTE_RESULT r = er[i];
     if (r == EXECUTE_RESULT::SUCCESS) continue;
-    std::string s = c_.GetDatasetDebugInfoString(i);
+    std::string s = test_case_.GetDatasetDebugInfoString(i);
     switch (r) {
       case EXECUTE_RESULT::RESULT_DIFFERS:
         LOGF_DEFAULT(ERROR, "%s: result differs. Dataset:%s\n", test_case_name.c_str(), s.c_str());

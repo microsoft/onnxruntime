@@ -11,10 +11,10 @@ namespace test {
 
 /// <summary>
 /// This class serves as a callable entity that can be used
-/// either in a threadpool or as a callback fro async operations. It supports both
+/// either in a threadpool or as a callback for async operations. It supports both
 /// plain functions as well as member functions and provides type
 /// erasure functionality. Unlike std::function, it
-/// does do any memory allocations and it is cheap to copy.
+/// does NOT do any memory allocations and it is cheap to copy.
 /// </summary>
 /// 
 /// <example>

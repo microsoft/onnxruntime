@@ -16,7 +16,6 @@ namespace Ort {
 struct Session;
 }
 
-// Class that allows to run a single TestCase either sync or async.
 namespace onnxruntime {
 namespace concurrency {
 class ThreadPool;
@@ -59,6 +58,10 @@ class DataTaskRequestContext {
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(DataTaskRequestContext);
 
+  /// The lifespan of objects of the class is managed within the
+  /// the class so the __dtor should really be private. However, on one
+  /// occasion we use std:uniue_ptr to instantiate it so need public __dtor
+  /// The impact is mitigated by the fact that __Ctor is still private.
   ~DataTaskRequestContext() = default;
 
   const TIME_SPEC& GetTimeSpent() const {
@@ -67,10 +70,10 @@ class DataTaskRequestContext {
 
  private:
   DataTaskRequestContext(const Callback& cb,
-                         const ITestCase& c, ::Ort::Session& session,
+                         const ITestCase& test_case, ::Ort::Session& session,
                          OrtAllocator* allocator, size_t task_id)
       : cb_(cb),
-        c_(c),
+        test_case_(test_case),
         session_(session),
         default_allocator_(allocator),
         task_id_(task_id) {
@@ -81,7 +84,7 @@ class DataTaskRequestContext {
   std::pair<EXECUTE_RESULT, TIME_SPEC> RunImpl();
 
   Callback cb_;
-  const ITestCase& c_;
+  const ITestCase& test_case_;
   Ort::Session& session_;
   OrtAllocator* default_allocator_;
   size_t task_id_;
