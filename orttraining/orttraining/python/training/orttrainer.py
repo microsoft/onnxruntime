@@ -285,19 +285,19 @@ class ORTTrainer(object):
         with open(path, "wb") as f:
             f.write(self._onnx_model.SerializeToString())
 
-    def _debug_model_export(self, input):
+    def _check_model_export(self, input):
         from onnx import helper, TensorProto, numpy_helper
         import numpy as np
         from numpy.testing import assert_allclose
         import _test_helpers
         onnx_model_copy = copy.deepcopy(self._onnx_model)
-        
+
         # Mute the dropout nodes
         dropout_nodes = [n for n in onnx_model_copy.graph.node if n.op_type == 'Dropout']
         for node in dropout_nodes:
             ratio_node = [n for n in onnx_model_copy.graph.node if node.input[1] in n.output][0]
             training_mode_node = [n for n in onnx_model_copy.graph.node if node.input[2] in n.output][0]
-            
+
             training_mode_node.attribute.pop()
             ratio_node.attribute.pop()
             new_training_mode_arr = np.array(False, dtype=bool)
@@ -310,14 +310,19 @@ class ORTTrainer(object):
             ratio_node.attribute[0].type = 4
             training_mode_node.attribute[0].name = "value"
             ratio_node.attribute[0].name = "value"
-            
+
         _inference_sess = ort.InferenceSession(onnx_model_copy.SerializeToString())
         inf_inputs = {}
         for i, input_elem in enumerate(input):
             inf_inputs[_inference_sess.get_inputs()[i].name] = input_elem.cpu().numpy()
         _inference_outs = _inference_sess.run(None, inf_inputs)
         for torch_item, ort_item in zip(self.torch_sample_outputs, _inference_outs):
-            assert_allclose(torch_item, ort_item, rtol=1e-2, atol=1e-6)
+            assert_allclose(torch_item, ort_item, rtol=1e-2, atol=1e-6,
+                            err_msg="Mismatch between outputs of PyTorch model and exported ONNX model. "
+                                    "Note that different backends may exhibit small computational differences."
+                                    "If this is within acceptable margin, or if there is random generator "
+                                    "in the model causing inevitable mismatch, you can proceed training by "
+                                    "setting the flag debug.check_model_export to False.")
 
     def train_step(self, *args, **kwargs):
         r"""Train step method
@@ -337,10 +342,10 @@ class ORTTrainer(object):
         if self._onnx_model is None:
             sample_input = self._prepare_model_input(self.model_desc.inputs, None, None, *args, **kwargs)
             self._init_onnx_model(sample_input)
-            
+
             # Debug Model Export if indicated
             if self.options.debug.check_model_export:
-                self._debug_model_export(sample_input)
+                self._check_model_export(sample_input)
 
 
         # Prepare inputs+lr and output descriptions
