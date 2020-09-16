@@ -220,6 +220,9 @@ def parse_arguments():
         help="Specify the minimum version of the target platform "
         "(e.g. macOS or iOS)"
         "This is only supported on macOS")
+    parser.add_argument(
+        "--ios_disable_bitcode", action='store_true',
+        help="Disable bitcode for iOS")
     # The two parameters below are required for experimental iOS Cross Build on Linux
     parser.add_argument(
         "--ios_sysroot", default="",
@@ -227,7 +230,6 @@ def parse_arguments():
     parser.add_argument(
         "--ios_toolchain_dir", default="",
         help="Path to ios toolchain binaries")
-
     # Arguments needed by CI
     parser.add_argument(
         "--cmake_path", default="cmake", help="Path to the CMake program.")
@@ -756,7 +758,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 "-Donnxruntime_BUILD_SHARED_LIB=ON",
                 "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
                 "-DPLATFORM=" + args.ios_platform,
-                "-DENABLE_BITCODE=FALSE",
+                "-DENABLE_BITCODE=" + ("OFF" if args.ios_disable_bitcode else "ON"),
                 "-DDEPLOYMENT_TARGET=" + args.apple_deploy_target,
                 # we do not need protoc binary for ios cross build
                 "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF"

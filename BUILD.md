@@ -1060,7 +1060,7 @@ Android NNAPI Execution Provider can be built using building commands in [Androi
    Specify the minimum version of the target platform (iOS) on which the target binaries are to be deployed.
 * Code Signing
 
-   If the development team ID which has a valid code signing certificate is provided, Xcode will code sign the onnxruntime library in the building process, otherwise, the onnxruntime will be built without code signing. It may be required or desired to code sign the library for iOS devices. For more information, see [Code Signing](https://developer.apple.com/support/code-signing/).
+   If the development team ID which has a valid code signing certificate is specified, Xcode will code sign the onnxruntime library during the building process, otherwise, the onnxruntime library will be built without code signing. It may be required or desired to code sign the library for iOS devices. For more information, see [Code Signing](https://developer.apple.com/support/code-signing/).
 
 #### Build Instructions
 Run one of the following build scripts from the ONNX Runtime repository root,
