@@ -25,7 +25,7 @@
 #endif
 
 namespace onnxruntime {
-// These Provider types are really just internal types, so when we #define PROVIDER_BRIDGE_ORT so that only these definitions are seen by provider_interfaces.h
+// These Provider types are really just internal types, so we #define PROVIDER_BRIDGE_ORT so that only these definitions are seen by provider_interfaces.h
 // Users of provider_interfaces.h (through provider_api.h) will see the wrappers that call through the provider shared interface which is implemented by this file
 using Provider_AttributeProto = ONNX_NAMESPACE::AttributeProto;
 using Provider_GraphProto = ONNX_NAMESPACE::GraphProto;
