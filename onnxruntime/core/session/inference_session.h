@@ -568,7 +568,7 @@ class InferenceSession {
   // If true, use the per session ones, or else the global threadpools.
   bool use_per_session_threads_;
 
-  KernelRegistryManager kernel_registry_manager_;
+  KernelRegistryManager& kernel_registry_manager_;
 
 #if !defined(ORT_MINIMAL_BUILD)
   std::list<std::shared_ptr<onnxruntime::IOnnxRuntimeOpSchemaCollection>> custom_schema_registries_;

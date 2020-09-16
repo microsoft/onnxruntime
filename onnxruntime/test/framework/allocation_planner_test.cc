@@ -249,7 +249,7 @@ class PlannerTest : public ::testing::Test {
     }
 
     auto cpu_execution_provider = onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
-    KernelRegistryManager kernel_registry_manager;
+    KernelRegistryManager& kernel_registry_manager = KernelRegistryManager::Instance();
     kernel_registry_manager.RegisterKernelRegistry(reg);
     auto status = kernel_registry_manager.RegisterKernels(execution_providers_);
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();

@@ -79,7 +79,7 @@ TEST_P(SessionStateAddGetKernelTest, AddGetKernelTest) {
   size_t orig_num_outputs = p_kernel->Node().OutputDefs().size();
   std::cout << "node_idx: " << node.Index() << std::endl;
 
-  KernelRegistryManager kernel_registry_manager;
+  KernelRegistryManager& kernel_registry_manager = KernelRegistryManager::Instance();
   status = kernel_registry_manager.RegisterKernels(execution_providers);
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
   node.SetExecutionProviderType(kCpuExecutionProvider);
@@ -129,7 +129,7 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
       execution_providers.Add(onnxruntime::kCpuExecutionProvider, onnxruntime::make_unique<CPUExecutionProvider>(epi));
   ASSERT_TRUE(status.IsOK()) << status;
 
-  KernelRegistryManager krm;
+  KernelRegistryManager& krm = KernelRegistryManager::Instance();
   status = krm.RegisterKernels(execution_providers);
   ASSERT_TRUE(status.IsOK()) << status;
 
@@ -247,7 +247,7 @@ TEST_P(SessionStatePrepackingTest, PrePackingTest) {
                              DefaultLoggingManager().DefaultLogger(),
                              profiler);
 
-  KernelRegistryManager kernel_registry_manager;
+  KernelRegistryManager& kernel_registry_manager = KernelRegistryManager::Instance();
   status = kernel_registry_manager.RegisterKernels(execution_providers);
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
   std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();

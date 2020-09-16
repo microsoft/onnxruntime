@@ -31,8 +31,8 @@ Status KernelRegistryManager::RegisterKernels(const ExecutionProviders& executio
   for (auto& provider : execution_providers) {
     auto iter = provider_type_to_registry_.find(provider->Type());
     if (iter != provider_type_to_registry_.end()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "found duplicated provider ", provider->Type(),
-                             " in KernelRegistryManager");
+      // execution provider has been registered already
+      return Status::OK();
     }
 
     auto registry = provider->GetKernelRegistry();
