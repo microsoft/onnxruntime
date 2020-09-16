@@ -194,7 +194,10 @@ def parse_arguments():
     parser.add_argument(
         "--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
     parser.add_argument("--android", action='store_true', help='Build for Android')
-    parser.add_argument("--android_abi", type=str, default='arm64-v8a', help='')
+    parser.add_argument(
+        "--android_abi", default="arm64-v8a",
+        choices=["armeabi-v7a", "arm64-v8a", "x86", "x86_64"],
+        help="Specify the target Android Application Binary Interface (ABI)")
     parser.add_argument("--android_api", type=int, default=27, help='Android API Level, e.g. 21')
     parser.add_argument("--android_sdk_path", type=str, help='Path to the Android SDK')
     parser.add_argument("--android_ndk_path", default="", help="Path to the Android NDK")
@@ -222,9 +225,8 @@ def parse_arguments():
         "--use_xcode", action='store_true',
         help="Use Xcode as cmake generator, this is only supported on MacOS.")
     parser.add_argument(
-        "--osx_arch", type=str,
-        help="Specify the Target specific architectures for macOS and iOS"
-        "This is only supported on MacOS")
+        "--osx_arch", default="arm64", choices=["arm64", "x86_64"],
+        help="Specify the Target specific architectures for macOS and iOS, This is only supported on MacOS")
     parser.add_argument(
         "--apple_deploy_target", type=str,
         help="Specify the minimum version of the target platform "
@@ -741,7 +743,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             needed_args = [
                 args.use_xcode,
                 args.ios_sysroot,
-                args.osx_arch,
                 args.apple_deploy_target,
             ]
             arg_names = [
@@ -749,8 +750,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 "<need use xcode to cross build iOS on MacOS>",
                 "--ios_sysroot          " +
                 "<the location or name of the macOS platform SDK>",
-                "--osx_arch             " +
-                "<the Target specific architectures for iOS>",
                 "--apple_deploy_target  " +
                 "<the minimum version of the target platform>",
             ]
