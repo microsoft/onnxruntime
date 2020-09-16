@@ -680,8 +680,8 @@ TEST(CApiTest, access_tensor_data_elements) {
   Ort::Value tensor = Ort::Value::CreateTensor<float>(info, values.data(), values.size(), shape.data(), shape.size());
 
   float expected_value = 0;
-  for (size_t row = 0; row < (size_t)shape[0]; row++) {
-    for (size_t col = 0; col < (size_t)shape[1]; col++) {
+  for (int64_t row = 0; row < shape[0]; row++) {
+    for (int64_t col = 0; col < shape[1]; col++) {
       ASSERT_EQ(expected_value++, tensor.At<float>({row, col}));
     }
   }
