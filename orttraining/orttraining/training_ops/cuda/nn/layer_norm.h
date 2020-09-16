@@ -15,7 +15,7 @@ class LayerNorm final : public CudaKernel {
   double epsilon_;
 };
 
-template <typename T, typename U>
+template <typename T, typename U, bool t5_layer_norm>
 class LayerNormGrad final : public CudaKernel {
  public:
   LayerNormGrad(const OpKernelInfo& op_kernel_info);

@@ -2012,7 +2012,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
 
     if (!node.Op()) {
       {
-        auto status = Status::OK(); 
+        auto status = Status::OK();
         ORT_TRY {
           checker::check_node(node_proto, ctx, lsc);
         }

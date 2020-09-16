@@ -41,7 +41,7 @@ void HostApplyLayerNorm(
     const T* gamma,
     const T* beta);
 
-template <typename T, typename U>
+template <typename T, typename U, bool t5_layer_norm>
 void HostLayerNormGradient(
     const cudaDeviceProp& prop,
     const T* dout,
