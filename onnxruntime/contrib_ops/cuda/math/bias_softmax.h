@@ -21,10 +21,8 @@ struct AccumulateType<double> { using type = double; };
 template <typename T>
 using AccType = typename AccumulateType<T>::type;
 
-using namespace onnxruntime::cuda;
-
 template <typename input_t, typename output_t, typename acc_t>
-void dispatch_bias_softmax_forward(
+void DispatchBiasSoftmaxForward(
   output_t* output, 
   const input_t* input, 
   const input_t* input_bias, 
@@ -34,7 +32,7 @@ void dispatch_bias_softmax_forward(
   int bias_repeat_count);
 
 template <typename T>
-void dispatch_bias_softmax_softward_via_dnn_library(
+void DispatchBiasSoftMaxForwardViaDnnLibrary(
   cudnnHandle_t cudaDnnHandle,
   int element_count,
   int batch_count,
@@ -47,7 +45,7 @@ void dispatch_bias_softmax_softward_via_dnn_library(
   T* Y_data);
 
 template <typename T>
-class BiasSoftmax final : public CudaKernel {
+class BiasSoftmax final : public onnxruntime::cuda::CudaKernel {
  public:
   BiasSoftmax(const OpKernelInfo& info) : CudaKernel{info} {
     info.GetAttrOrDefault("softmax_axis", &softmax_axis_, static_cast<int64_t>(1));

@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "contrib_ops/cuda/math/bias_softmax.h"
+
+#include <limits>
+
 #include "core/providers/common.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cudnn_common.h"
@@ -8,13 +12,12 @@
 #include "core/providers/cuda/math/softmax_impl.cuh"
 #include "core/providers/cuda/cu_inc/binary_elementwise_impl.cuh"
 #include "core/providers/cuda/math/binary_elementwise_ops_impl_functors.cuh"
-#include "bias_softmax.h"
-
-#include <limits>
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+using namespace onnxruntime::cuda;
 
 // Duplicated softmax_impl.cu here
 // So far attempt to use shared kernel with additional template resulted in lost performance
@@ -25,10 +28,10 @@ namespace cuda {
 // Here element_count = seq_len and bias_broadcast_size_per_batch = num_heads * seq_len
 
 // The softmax + additive mask fusion follows NVIDIA apex's additive_masked_softmax_warp_forward
-// see https://github.com/NVIDIA/apex/blob/master/apex/contrib/csrc/multihead_attn/softmax.h
+// see https://github.com/NVIDIA/apex/blob/4ef930c1c884fdca5f472ab2ce7cb9b505d26c1a/apex/contrib/csrc/multihead_attn/softmax.h
 
 template <typename input_t, typename output_t, typename acc_t, int log2_elements>
-__global__ void bias_softmax_warp_forward(
+__global__ void BiasSoftmaxWarpForward(
   output_t* output, 
   const input_t* input, 
   const input_t* input_bias,
@@ -120,7 +123,7 @@ __global__ void bias_softmax_warp_forward(
 }
 
 template <typename input_t, typename output_t, typename acc_t>
-void dispatch_bias_softmax_forward(
+void DispatchBiasSoftmaxForward(
   output_t* output, 
   const input_t* input, 
   const input_t* input_bias, 
@@ -151,47 +154,47 @@ void dispatch_bias_softmax_forward(
     // Launch code would be more elegant if C++ supported FOR CONSTEXPR
     switch (log2_elements) {
       case 0:  // 1
-        bias_softmax_warp_forward<input_t, output_t, acc_t, 0>
+        BiasSoftmaxWarpForward<input_t, output_t, acc_t, 0>
             <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
         break;
       case 1:  // 2
-        bias_softmax_warp_forward<input_t, output_t, acc_t, 1>
+        BiasSoftmaxWarpForward<input_t, output_t, acc_t, 1>
             <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
         break;
       case 2:  // 4
-        bias_softmax_warp_forward<input_t, output_t, acc_t, 2>
+        BiasSoftmaxWarpForward<input_t, output_t, acc_t, 2>
             <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
         break;
       case 3:  // 8
-        bias_softmax_warp_forward<input_t, output_t, acc_t, 3>
+        BiasSoftmaxWarpForward<input_t, output_t, acc_t, 3>
             <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
         break;
       case 4:  // 16
-        bias_softmax_warp_forward<input_t, output_t, acc_t, 4>
+        BiasSoftmaxWarpForward<input_t, output_t, acc_t, 4>
             <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
         break;
       case 5:  // 32
-        bias_softmax_warp_forward<input_t, output_t, acc_t, 5>
+        BiasSoftmaxWarpForward<input_t, output_t, acc_t, 5>
             <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
         break;
       case 6:  // 64
-        bias_softmax_warp_forward<input_t, output_t, acc_t, 6>
+        BiasSoftmaxWarpForward<input_t, output_t, acc_t, 6>
             <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
         break;
       case 7:  // 128
-        bias_softmax_warp_forward<input_t, output_t, acc_t, 7>
+        BiasSoftmaxWarpForward<input_t, output_t, acc_t, 7>
             <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
         break;
       case 8:  // 256
-        bias_softmax_warp_forward<input_t, output_t, acc_t, 8>
+        BiasSoftmaxWarpForward<input_t, output_t, acc_t, 8>
             <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
         break;
       case 9:  // 512
-        bias_softmax_warp_forward<input_t, output_t, acc_t, 9>
+        BiasSoftmaxWarpForward<input_t, output_t, acc_t, 9>
             <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
         break;
       case 10:  // 1024
-        bias_softmax_warp_forward<input_t, output_t, acc_t, 10>
+        BiasSoftmaxWarpForward<input_t, output_t, acc_t, 10>
             <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
         break;
       default:
@@ -201,7 +204,7 @@ void dispatch_bias_softmax_forward(
 }
 
 #define SPECIALIZED_BIAS_SOFTMAX_IMPL(input_t, output_t, acc_t) \
-template void dispatch_bias_softmax_forward<input_t, output_t, acc_t>( \
+template void DispatchBiasSoftmaxForward<input_t, output_t, acc_t>( \
   output_t* output, \
   const input_t* input, \
   const input_t* input_bias, \
@@ -217,7 +220,7 @@ SPECIALIZED_BIAS_SOFTMAX_IMPL(double, double, double)
 // For large element count we fall back to explicit Add kernel + CUDA DNN library
 // note: This is an unhappy path! There is no performance benefit for the fusion.
 template <typename T>
-void dispatch_bias_softmax_softward_via_dnn_library(
+void DispatchBiasSoftMaxForwardViaDnnLibrary(
   cudnnHandle_t cudaDnnHandle,
   int element_count,
   int batch_count,
@@ -293,7 +296,7 @@ void dispatch_bias_softmax_softward_via_dnn_library(
 }
 
 #define SPECIALIZED_BIAS_SOFTMAX_IMPL_VIA_DNN(input_t) \
-template void dispatch_bias_softmax_softward_via_dnn_library<input_t>( \
+template void DispatchBiasSoftMaxForwardViaDnnLibrary<input_t>( \
   cudnnHandle_t cudaDnnHandle, \
   int element_count, \
   int batch_count, \

@@ -1,16 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/optimizer/bias_softmax_fusion.h"
+
 #include "core/common/logging/logging.h"
 #include "core/providers/common.h"
 #include "core/optimizer/initializer.h"
-#include "core/optimizer/bias_softmax_fusion.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/utils.h"
 #include <deque>
-
-#define ILOGF(format_str, ...) \
-  LOGF_DEFAULT(INFO, format_str, ##__VA_ARGS__)
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
@@ -31,14 +29,14 @@ bool operator!=(const ONNX_NAMESPACE::TensorShapeProto_Dimension& lhs, int value
   return !(lhs == value);
 }
 
-void select_input_on_lhs_condition(bool lhs_condition, Node& add_node, NodeArg** input, NodeArg** mask) {
+void select_input_on_lhs_condition(bool lhs_condition, Node& add_node, NodeArg*& input, NodeArg*& mask) {
   if (lhs_condition) {
-    *input = add_node.MutableInputDefs()[0];
-    *mask = add_node.MutableInputDefs()[1];
+    input = add_node.MutableInputDefs()[0];
+    mask = add_node.MutableInputDefs()[1];
   }
   else {
-    *input = add_node.MutableInputDefs()[1];
-    *mask = add_node.MutableInputDefs()[0];
+    input = add_node.MutableInputDefs()[1];
+    mask = add_node.MutableInputDefs()[0];
   }
 }
 
@@ -164,7 +162,7 @@ Status BiasSoftmaxFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       }
 
       // use B dimension to distinguish input and mask
-      select_input_on_lhs_condition(input1->Shape()->dim(B) != 1, add_node, &input, &mask);
+      select_input_on_lhs_condition(input1->Shape()->dim(B) != 1, add_node, input, mask);
 
       // confirm mask dimensions are ones on broadcast axes B to (k-1)
       for (int i = B; i < k; i++) {
@@ -179,7 +177,7 @@ Status BiasSoftmaxFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     else { 
 
       B = 0;
-      select_input_on_lhs_condition(N1 > N2, add_node, &input, &mask);
+      select_input_on_lhs_condition(N1 > N2, add_node, input, mask);
 
       // confirm any mask dimensions are ones before softmax axis
       int mask_rank = mask->Shape()->dim_size();
@@ -198,7 +196,7 @@ Status BiasSoftmaxFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     // coalesce subgraph nodes into fused node
     // -----------------------------------------------------------------------
     std::vector<NodeArg*> fused_inputs{input, mask};
-    ILOGF("Fusing subgraph into BiasSoftmax node.\n");
+    VLOGF(logger, 1, "Fusing subgraph into BiasSoftmax node.\n");
 
     std::string op_type = "BiasSoftmax";
     Node& fused_node = graph.AddNode(graph.GenerateNodeName(op_type),
