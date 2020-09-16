@@ -4,7 +4,17 @@
 #include "core/providers/cpu/nn/pool.h"
 #include "core/framework/data_types_internal.h"
 #include "core/platform/threadpool.h"
+#include "core/platform/EigenNonBlockingThreadPool.h"
+#include "core/platform/ort_mutex.h"
 #include "pool_functors.h"
+#include <iostream>
+#include <future>
+#include <vector>
+#include <list>
+#include <iterator>
+#include <ctime>
+
+using namespace std;
 
 using namespace ::onnxruntime::common;
 
@@ -148,12 +158,20 @@ Status MaxPoolV8::ComputeImpl(OpKernelContext* context) const {
     need_dilation |= n > 1;
   }
 
+  /*
+  time_t mlas_start = clock();
   // MLAS implementation currently supports only floats
   if (std::is_same<T, float>::value) {
     if (OpKernel::Node().OutputDefs().size() == 1 && pool_attrs_.storage_order == 0 && !need_dilation) {
-      return PoolBase::Compute(context, MlasMaximumPooling);
+      // cout << "MaxPool on Mlas" << endl;
+      // return PoolBase::Compute(context, MlasMaximumPooling);
+      auto ret = PoolBase::Compute(context, MlasMaximumPooling);
+      cout << "Mlas cost " << clock() - mlas_start << endl;
+      return ret;
     }
   }
+*/
+  // cout << "MaxPool go regular" << endl;
 
   const auto* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
@@ -183,6 +201,14 @@ Status MaxPoolV8::ComputeImpl(OpKernelContext* context) const {
 
   switch (kernel_shape.size()) {
     case 1: {
+      
+      /*
+      cout << "1d x shape: ";
+      for (auto& d: x_shape.GetDims()) {
+        cout << d << " ";
+      }
+      cout << endl;
+
       int64_t x_step = height;
       int64_t y_step = pooled_height;
       const int64_t dilation_h = pool_attrs_.dilations[0];
@@ -190,10 +216,96 @@ Status MaxPoolV8::ComputeImpl(OpKernelContext* context) const {
       RunLoop<MaxPool1DTask<T>>(tp, total_channels,
                                 {X_data, Y_data, I_data, x_step, y_step, dilation_h, pooled_height, stride_h(),
                                  height, kernel_shape, pads});
+      */
+      
+      //using max_pool_future = std::future<void>;
+      //using max_pool_future_ptr = std::unique_ptr<max_pool_future>;
+      //using max_pool_future_ptrs = std::list<max_pool_future_ptr>;
+
+      //max_pool_future_ptrs futures;
+      //const int64_t dilation_h = pool_attrs_.dilations[0];
+      // onnxruntime::Barrier b(x_shape[0] * x_shape[1] * output_dims[2]);
+      // time_t st = clock();
+      //auto stride_h_val = stride_h();
+      //auto pad_0 = pads[0];
+      for (int64_t batch = 0; batch < x_shape[0]; ++batch) {
+        for (int64_t channel = 0; channel < x_shape[1]; ++channel) {
+          for (int64_t output_height = 0; output_height < output_dims[2]; ++output_height) {
+            auto output_offset = batch * x_shape[1] * output_dims[2] +
+                                 channel * output_dims[2] +
+                                 output_height;
+            Y_data[output_offset] = (T)0;
+            if (I_data) {
+              I_data[output_offset] = 0;
+            }
+
+            /*
+            if (futures.size() >= 20) {
+              for (auto& future: futures) {
+                future->get();
+              }
+              futures.clear();
+            }
+            //std::function<void()> fn = [=, &b] () {
+            std::function<void()> fn = [batch, channel, output_height, &x_shape,
+                                        &output_dims, &kernel_shape, &X_data, &Y_data, &I_data,
+                                        &stride_h_val, &pad_0, &dilation_h, &height] () {
+              auto output_offset = batch * x_shape[1] * output_dims[2] +
+                                   channel * output_dims[2] +
+                                   output_height;
+              auto x_offset = batch * x_shape[1] * x_shape[2] + channel * x_shape[2];
+              auto x_d = X_data + x_offset;
+              auto hstart = output_height * stride_h_val - pad_0;
+              auto hend = hstart + kernel_shape[0] * dilation_h;
+              auto Yh = std::numeric_limits<T>::lowest();
+              int64_t h_index = -1;
+              for (int64_t h = hstart; h < hend; h += dilation_h) {
+                if (math::is_a_ge_zero_and_a_lt_b(h, height)) {
+                  if (x_d[h] > Yh) {
+                    Yh = x_d[h];
+                    h_index = h;
+                  }//if
+                }//if
+              }//for
+              Y_data[output_offset] = Yh;
+              if (I_data) {
+                I_data[output_offset] = x_offset + h_index;
+              }
+              // b.Notify();
+            };*/
+/*
+            if (tp) {
+              // cout << "using tp" << endl;
+              tp->Schedule(fn);
+            } else {
+              // cout << "using futures" << endl;
+              futures.push_back(std::async(fn));
+            }
+*/
+//          futures.push_back(std::make_unique<max_pool_future>(std::async(std::launch::async, fn)));
+          }//for
+        }//for
+      }//for
+/*
+      for (auto& future: futures) {
+        future->get();
+      }
+*/
+//    b.Wait();
+      //cout << "Mine cost " << clock() - st << endl;
       break;
     }
 
     case 2: {
+
+      /*
+      cout << "2d x shape: ";
+      for (auto& d: x_shape.GetDims()) {
+        cout << d << " ";
+      }
+      cout << endl;
+       */
+
       int64_t x_step = height * width;
       int64_t y_step = pooled_height * pooled_width;
       const int64_t dilation_h = pool_attrs_.dilations[0];
@@ -205,6 +317,13 @@ Status MaxPoolV8::ComputeImpl(OpKernelContext* context) const {
       break;
     }
     case 3: {
+/*
+      cout << "3d x shape: ";
+      for (auto& d: x_shape.GetDims()) {
+        cout << d << " ";
+      }
+      cout << endl;
+*/
       int64_t x_step = height * width * depth;
       int64_t y_step = pooled_height * pooled_width * pooled_depth;
       const int64_t dilation_h = pool_attrs_.dilations[0];

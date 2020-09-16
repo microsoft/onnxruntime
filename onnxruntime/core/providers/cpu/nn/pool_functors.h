@@ -4,6 +4,8 @@
 
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/nn/pool_base.h"
+#include <iostream>
+
 namespace onnxruntime {
 
 template <typename T, typename PoolType>
@@ -211,6 +213,7 @@ struct MaxPool1DTask final {
 #ifdef _OPENMP
 #pragma omp parallel for
 #endif
+    //std::cout << "1D per thread tasks:" << end - begin << std::endl;
     for (int64_t c = begin; c < end; ++c) {
       operator()(c);
     }
@@ -267,6 +270,7 @@ struct MaxPool2DTask final {
 #ifdef _OPENMP
 #pragma omp parallel for
 #endif
+    //std::cout << "2D per thread tasks:" << end - begin << std::endl;
     for (int64_t c = begin; c < end; ++c) {
       operator()(c);
     }
@@ -336,6 +340,7 @@ struct MaxPool3DTask {
 #ifdef _OPENMP
 #pragma omp parallel for
 #endif
+    //std::cout << "3D per thread tasks:" << end - begin << std::endl;
     for (int64_t c = begin; c < end; ++c) {
       operator()(c);
     }
