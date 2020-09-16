@@ -19,12 +19,13 @@ FROM nvidia/cuda:10.2-cudnn7-devel-ubuntu18.04 as builder
 # set location for builds
 WORKDIR /stage
 
-# install curl and git
+# install curl, git, ssh (required by MPI when running ORT tests)
 RUN apt-get -y update &&\
     apt-get -y --no-install-recommends install \
         curl \
         git \
         language-pack-en \
+        openssh-client \
         unattended-upgrades
 
 # update existing packages to minimize security vulnerabilities
