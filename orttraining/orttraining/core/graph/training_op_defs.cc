@@ -1878,6 +1878,24 @@ Return true if all elements are true and false otherwise.
         }
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Scale)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Scale")
+      .Input(0, "input", "Input tensor.", "T")
+      .Input(1, "scale", "Scale scalar tensor.", "ScaleT")
+      .Output(0, "output", "Output tensor which is input tensor devided by scale.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)"},
+          "Constrain input types to float tensors.")
+      .TypeConstraint(
+          "ScaleT",
+          {"tensor(float16)", "tensor(float)", "tensor(int64)"},
+          "Constrain scale types to float and int64 tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(View)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("View. The output tensors are views of the input, according to the shapes provided.")
