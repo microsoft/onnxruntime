@@ -1637,6 +1637,10 @@ std::string InferenceSession::EndProfiling() {
   return std::string();
 }
 
+const profiling::Profiler& InferenceSession::GetProfiling() const {
+  return session_profiler_;
+}
+
 AllocatorPtr InferenceSession::GetAllocator(const OrtMemoryInfo& mem_info) const {
   return session_state_->GetAllocator(mem_info);
 }
