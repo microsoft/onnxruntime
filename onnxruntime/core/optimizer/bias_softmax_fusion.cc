@@ -40,81 +40,83 @@ void select_input_on_lhs_condition(bool lhs_condition, Node& add_node, NodeArg*&
   }
 }
 
-Status BiasSoftmaxFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
-  GraphViewer graph_viewer(graph);
-  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+// pattern match on dropout(softmax(input + mask)) subgraph
+bool TryBiasSoftmaxSubgraphMatch(Graph& graph, Node& start, Node*& add, Node*& softmax) {
 
-  // only support CUDA execution provider
-  auto& cep = GetCompatibleExecutionProviders();
-  if (cep.size() > 0 && cep.find(kCudaExecutionProvider) == cep.end())
-    return Status::OK();
-
-  for (auto node_index : node_topology_list) {
-    auto* node_ptr = graph.GetNode(node_index);
-    if (nullptr == node_ptr)
-      continue;  // node was removed
-
-    auto& node = *node_ptr;
-
-    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
-
-    // pattern match on dropout(softmax(input + mask)) subgraph
-    // -----------------------------------------------------------------------
+    Node& node = start; 
+    add = softmax = nullptr;
 
     // check node is add and has single output
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7}) ||
         !graph_utils::IsSupportedProvider(node, {kCudaExecutionProvider}) ||
         !optimizer_utils::CheckOutputEdges(graph, node, 1)) {
-      continue;
+      return false;
     }
 
     // check shape information is not available for both add inputs
-    auto& add_node = node;
+    Node& add_node = node;
     NodeArg* input1 = add_node.MutableInputDefs()[0];
     NodeArg* input2 = add_node.MutableInputDefs()[1];
     const TensorShapeProto* S1 = input1->Shape();
     const TensorShapeProto* S2 = input2->Shape();
     if (S1 == nullptr || S2 == nullptr || S1->dim_size() < 1 || S2->dim_size() < 1) {
-      continue;
+      return false;
     }
 
     // check add is only consumed by softmax with matching exec provider
     auto p = add_node.OutputNodesBegin();
     if (p == add_node.OutputNodesEnd()) {
-      continue;
+      return false;
     }
     Node& softmax_node = *graph.GetNode(p->Index());
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(softmax_node, "Softmax", {1, 11}) ||
         softmax_node.GetExecutionProviderType() != add_node.GetExecutionProviderType()) {
-      continue;
+      return false;
     }
 
     // can't perform conversion if output is graph output
     if (!graph.GetNodeOutputsInGraphOutputs(add_node).empty()) {
-      continue;
+      return false;
     }
+
+    // pattern match succeeded
+    add = &add_node; 
+    softmax = &softmax_node;
+    return true;
+}
+
+bool TrySelectInputAndBiasWithAlignment(
+  Node& add_node, 
+  Node& softmax_node, 
+  NodeArg *&input, 
+  NodeArg *&mask,
+  int& broadcast_axis,
+  int& softmax_axis) {
 
     // check mask can broadcast across input batches with simple division
     // -----------------------------------------------------------------------
 
     /* Here we check input and mask dimensions are as expected:
 
-       Let 
-           input shape = [ a0 ... a(B-1) aB a(B+1) ... a(k-1) ak a(k+1) ... a(N-1) ] 
-       with rank = N and softmax axis = k and to be determined broadcast axis = B.
+        Let 
+            input shape = [ a0 ... a(B-1) aB a(B+1) ... a(k-1) ak a(k+1) ... a(N-1) ] 
+        with rank = N and softmax axis = k and to be determined broadcast axis = B.
 
-       Then
-           mask shape  = [ a0 ... a(B-1) 1    1    ...   1    ak a(k+1) ... a(N-1) ] 
-       with rank = N and B <= k, OR
-           mask shape  = [                   ...    1    1    ak a(k+1) ... a(N-1) ] 
-       with rank = N - k + <number of 1's>.
+        Then
+            mask shape  = [ a0 ... a(B-1) 1    1    ...   1    ak a(k+1) ... a(N-1) ] 
+        with rank = N and B <= k, OR
+            mask shape  = [                   ...    1    1    ak a(k+1) ... a(N-1) ] 
+        with rank = N - k + <number of 1's>.
 
-       The mask will be repeated every aB*a(B+1)...*a(k-1) input batches.
-       (If input and mask shape match, B = k and no broadcast occurs.)
+        The mask will be repeated every aB*a(B+1)...*a(k-1) input batches.
+        (If input and mask shape match, B = k and no broadcast occurs.)
 
-       In the BERT case scores shape = [batch_size, num_heads, seq_length, seq_length]
-             and sequence mask shape = [batch_size,     1,         1,      seq_length]
+        In the BERT case scores shape = [batch_size, num_heads, seq_length, seq_length]
+              and sequence mask shape = [batch_size,     1,         1,      seq_length]
     */
+
+    NodeArg* input1 = add_node.MutableInputDefs()[0];
+    NodeArg* input2 = add_node.MutableInputDefs()[1];
 
     // confirm all dimensions starting from softmax axis match for input and mask
     bool singlebatch_shape_matches = true;
@@ -132,7 +134,7 @@ Status BiasSoftmaxFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     int singlebatch_rank = std::max({N1-k, N2-k});
 
     if (singlebatch_rank > N1 || singlebatch_rank > N2) {
-      continue;
+      return false;
     }
     for (int i = 1; i <= singlebatch_rank; i++) {
       if (input1->Shape()->dim(N1-i) != input2->Shape()->dim(N2-i)) {
@@ -142,7 +144,7 @@ Status BiasSoftmaxFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     }
 
     if (!singlebatch_shape_matches) {
-      continue;
+      return false;
     }
 
     // identify broadcast dimensions (i.e. B to k-1 in expression above)
@@ -150,7 +152,6 @@ Status BiasSoftmaxFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     bool mask_can_simple_broadcast = true;
 
     int B;
-    NodeArg *input, *mask;
 
      // case 1: mask rank == input rank
     if (N1 == N2) {
@@ -190,13 +191,25 @@ Status BiasSoftmaxFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     }
 
     if (!mask_can_simple_broadcast) {
-      continue;
+      return false;
     }
 
-    // coalesce subgraph nodes into fused node
-    // -----------------------------------------------------------------------
+    broadcast_axis = B;
+    softmax_axis = k;
+    return true;
+}
+
+// coalesce subgraph nodes into fused node
+void FuseBiasSoftmaxSubgraph(
+  Graph& graph, 
+  Node& add_node, 
+  Node& softmax_node, 
+  NodeArg *input, 
+  NodeArg *mask,
+  int broadcast_axis,
+  int softmax_axis) {
+
     std::vector<NodeArg*> fused_inputs{input, mask};
-    VLOGF(logger, 1, "Fusing subgraph into BiasSoftmax node.\n");
 
     std::string fused_desc = 
       "fused " + add_node.Name() + " and " + softmax_node.Name() + " into softmax(input + bias)";
@@ -212,16 +225,49 @@ Status BiasSoftmaxFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
 
     // add softmax axis and broadcast axis (to simplify runtime logic)
     // recall broadcast along axes B ... (k-1)
-    fused_node.AddAttribute("softmax_axis", (int64_t)k);
-    fused_node.AddAttribute("broadcast_axis", (int64_t)B);
+    fused_node.AddAttribute("softmax_axis", static_cast<int64_t>(softmax_axis));
+    fused_node.AddAttribute("broadcast_axis", static_cast<int64_t>(broadcast_axis));
 
     // finalize node fusion (e.g. remove old nodes and shift outputs)
     fused_node.SetExecutionProviderType(add_node.GetExecutionProviderType());
     graph_utils::FinalizeNodeFusion(graph, {add_node, softmax_node}, fused_node);
+}
 
+Status BiasSoftmaxFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
+  GraphViewer graph_viewer(graph);
+  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+
+  // only support CUDA execution provider
+  auto& cep = GetCompatibleExecutionProviders();
+  if (cep.size() > 0 && cep.find(kCudaExecutionProvider) == cep.end())
+    return Status::OK();
+
+  for (auto node_index : node_topology_list) {
+    auto* node_ptr = graph.GetNode(node_index);
+    if (nullptr == node_ptr)
+      continue;  // node was removed
+
+    auto& node = *node_ptr;
+    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
+
+    Node *add_node, *softmax_node;
+    if (!TryBiasSoftmaxSubgraphMatch(graph, node, add_node, softmax_node)) {
+      continue;
+    }
+
+    NodeArg *input, *mask;
+    int broadcast_axis, softmax_axis;
+    if (!TrySelectInputAndBiasWithAlignment(*add_node, *softmax_node, input, mask, broadcast_axis, softmax_axis)) {
+      continue;
+    }
+
+    FuseBiasSoftmaxSubgraph(graph, *add_node, *softmax_node, input, mask, broadcast_axis, softmax_axis);
     modified = true;
+
+    VLOGF(logger, 1, "Fused Add + Softmax into BiasSoftmax node.\n");
   }
 
   return Status::OK();
 }
+
 }  // namespace onnxruntime
