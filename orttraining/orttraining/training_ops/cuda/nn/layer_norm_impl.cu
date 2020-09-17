@@ -407,7 +407,8 @@ __device__ void cuLoadWriteStridedInputs(
     const U* __restrict__ invvar) {
   int i1 = i1_block + thr_load_row_off;
   if (i1 < i1_end) {
-    U curr_mean = (use_mean || !t5_layer_norm) ? mean[i1] : U(0);
+    U curr_mean = (use_mean && !t5_layer_norm) ? mean[i1] : U(0);
+    //U curr_mean = U(0);
     U curr_invvar = use_mean ? invvar[i1] : U(0);
     for (int k = 0; k < blockDim.y; ++k) {
       int i2 = i2_off + k;
@@ -421,8 +422,8 @@ __device__ void cuLoadWriteStridedInputs(
           warp_buf2[write_idx] = curr_dout * (curr_input - curr_mean) * curr_invvar;
         } else {
           U curr_gamma = static_cast<U>(gamma[i2]);
-          U curr_beta = static_cast<U>(beta[i2]);
-          U curr_output = static_cast<U>(output[load_idx]);
+          U curr_beta = beta != nullptr ? static_cast<U>(beta[i2]) : U(0);
+          U curr_output = output != nullptr ? static_cast<U>(output[load_idx]) : U(0);
           warp_buf2[write_idx] = curr_dout * (curr_output - curr_beta) / curr_gamma;
         }
       } else {
@@ -459,7 +460,8 @@ __device__ void cuLoadAddStridedInputs(
     const U* __restrict__ invvar) {
   int i1 = i1_block + thr_load_row_off;
   if (i1 < i1_end) {
-    U curr_mean = (use_mean || !t5_layer_norm) ? mean[i1] : U(0);
+    U curr_mean = (use_mean && !t5_layer_norm) ? mean[i1] : U(0);
+    //U curr_mean = U(0);
     U curr_invvar = use_mean ? invvar[i1] : U(0);
     for (int k = 0; k < blockDim.y; ++k) {
       int i2 = i2_off + k;
@@ -473,8 +475,8 @@ __device__ void cuLoadAddStridedInputs(
           warp_buf2[write_idx] += curr_dout * (curr_input - curr_mean) * curr_invvar;
         } else {
           U curr_gamma = static_cast<U>(gamma[i2]);
-          U curr_beta = static_cast<U>(beta[i2]);
-          U curr_output = static_cast<U>(output[load_idx]);
+          U curr_beta = beta != nullptr ? static_cast<U>(beta[i2]) : U(0);
+          U curr_output = output != nullptr ? static_cast<U>(output[load_idx]) : U(0);
           warp_buf2[write_idx] += curr_dout * (curr_output - curr_beta) / curr_gamma;
         }
       }
@@ -616,11 +618,16 @@ __global__ void cuComputeGradInput(
   for (int i1 = blockIdx.y; i1 < n1; i1 += gridDim.y) {
     U sum_loss1 = U(0);
     U sum_loss2 = U(0);
-    const U c_mean = (use_mean || !t5_layer_norm) ? mean[i1] : U(0);
+    const U c_mean = (use_mean && !t5_layer_norm) ? mean[i1] : U(0);
+    //const U c_mean = U(0);
     const U c_invvar = invvar[i1];
+    //const U c_invvar = 0;
     const T* k_input = use_mean ? input + i1 * n2 : nullptr;
+    //const T* k_input =  nullptr;
     const T* k_output = use_mean ? nullptr: output + i1 * n2;
+    //const T* k_output = nullptr;
     const T* k_dout = dout + i1 * n2;
+    //const T* k_dout = nullptr;
     const int numx = blockDim.x * blockDim.y;
     const int thrx = threadIdx.x + threadIdx.y * blockDim.x;
     if (gamma != NULL) {
@@ -675,7 +682,7 @@ __global__ void cuComputeGradInput(
           sum_loss2 += c_loss * c_output;
         }
       }
-    }
+    } 
     // intra-warp reductions
     for (int mask = blockDim.x / 2; mask > 0; mask /= 2) {
       sum_loss1 += WARP_SHFL_XOR(sum_loss1, mask);
@@ -775,9 +782,9 @@ void HostLayerNormGradient(
   const int nshared2_a = 2 * sizeof(U) * threads2.y * threads2.y * (threads2.x + 1);
   const int nshared2_b = threads2.x * threads2.y * sizeof(U);
   const int nshared2 = nshared2_a > nshared2_b ? nshared2_a : nshared2_b;
-
-  if (mean == nullptr) {
-    cuComputePartGradGammaBeta<T, U, false, t5_layer_norm><<<blocks2, threads2, nshared2, 0>>>(
+  if (mean == nullptr && !t5_layer_norm) {
+    // use_mean == false, t5_layer_norm == false -> Inverted Layer Norm
+    cuComputePartGradGammaBeta<T, U, false, false><<<blocks2, threads2, nshared2, 0>>>(
       dout,
       input,
       output,
@@ -789,6 +796,8 @@ void HostLayerNormGradient(
       part_grad_gamma,
       part_grad_beta);
   } else {
+    // use_mean == true, t5_layer_norm == false -> Layer Norm
+    // use_mean == true, t5_layer_norm == true -> T5 Layer Norm
     cuComputePartGradGammaBeta<T, U, true, t5_layer_norm><<<blocks2, threads2, nshared2, 0>>>(
       dout,
       input,
@@ -801,7 +810,6 @@ void HostLayerNormGradient(
       part_grad_gamma,
       part_grad_beta);
   }
-
   const dim3 threads3(warp_size, 8, 1);
   const dim3 blocks3((n2 + threads2.x - 1) / threads2.x, 1, 1);
   const int nshared3 = threads3.x * threads3.y * sizeof(U);
@@ -812,15 +820,31 @@ void HostLayerNormGradient(
       n1, n2,
       grad_gamma,
       grad_beta);
-
   // compute grad_input
   const uint64_t maxGridY = prop.maxGridSize[1];
   const dim3 blocks1(1, std::min((uint64_t)n1, maxGridY), 1);
   const dim3 threads1(warp_size, 4, 1);
   int nshared =
       threads1.y > 1 ? threads1.y * threads1.x * sizeof(U) : 0;
-  if (mean == nullptr) {
-    cuComputeGradInput<T, U, false, t5_layer_norm><<<blocks1, threads1, nshared, 0>>>(
+  std::cout << "dout: " << dout << std::endl;
+  std::cout << "input: " << input << std::endl;
+  std::cout << "output: " << output << std::endl;
+  std::cout << "gamma: " << gamma << std::endl;
+  std::cout << "beta: " << beta << std::endl;
+  std::cout << "mean: " << mean << std::endl;
+  //std::cout << *mean << std::endl;
+  //std::cout << typeid(mean).name() << std::endl;
+  std::cout << "invvar: " << invvar << std::endl;
+  //std::cout << *invvar << std::endl;
+  std::cout << "n1: " << n1 << std::endl;
+  std::cout << "n2: " << n2 << std::endl;
+  std::cout << "grad_input: " << grad_input << std::endl;
+  // std::cout << "blocks1: " << blocks1 << std::endl;
+  // std::cout << "threads1: " << threads1 << std::endl;
+  // std::cout << "nshared: " << nshared << std::endl;
+  if (mean == nullptr && !t5_layer_norm) {
+    std::cout << "wrong branch" << std::endl;
+    cuComputeGradInput<T, U, false, false><<<blocks1, threads1, nshared, 0>>>(
       dout,
       input,
       output,
@@ -831,6 +855,7 @@ void HostLayerNormGradient(
       n1, n2,
       grad_input);
   } else {
+    std::cout << "right branch" << std::endl;
     cuComputeGradInput<T, U, true, t5_layer_norm><<<blocks1, threads1, nshared, 0>>>(
         dout,
         input,
