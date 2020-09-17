@@ -98,11 +98,11 @@ apt-get update && apt-get install -y --no-install-recommends $PACKAGE_LIST
 locale-gen en_US.UTF-8
 update-locale LANG=en_US.UTF-8
 
-echo "Installing nccl2"
-mkdir -p /tmp/nccl2
-aria2c -q -d /tmp/nccl2 https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1804/x86_64/nvidia-machine-learning-repo-ubuntu1804_1.0.0-1_amd64.deb
-dpkg -i /tmp/nccl2/nvidia-machine-learning-repo-ubuntu1804_1.0.0-1_amd64.deb
-apt update
+# echo "Installing nccl2"
+# mkdir -p /tmp/nccl2
+# aria2c -q -d /tmp/nccl2 https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1804/x86_64/nvidia-machine-learning-repo-ubuntu1804_1.0.0-1_amd64.deb
+# dpkg -i /tmp/nccl2/nvidia-machine-learning-repo-ubuntu1804_1.0.0-1_amd64.deb
+# apt update
 
 echo "Installing dotnet-sdk"
 if [ "$SYS_LONG_BIT" = "64" ]; then
