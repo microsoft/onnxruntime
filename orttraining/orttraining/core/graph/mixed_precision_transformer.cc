@@ -155,6 +155,17 @@ static Status CastNodeArg(onnxruntime::Graph& graph,
     return Status::OK();
   }
 
+  // If the producer is a Cast(to:float) node, and all consumers are mixed precision inputs, we can change
+  // the "to" attribute to mixed precision type of this Cast node directly. Otherwise, we still need to add
+  // a new Cast(to:elem_type) node for mixed precision inputs, and keep those fp32 inputs consuming the old node.
+  if (elem_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT && fp32_inputs.empty()) {
+    Node* producer_node = graph.GetMutableProducerNode(arg->Name());
+    if (producer_node != nullptr && producer_node->OpType() == "Cast") {
+      producer_node->AddAttribute("to", ONNX_NAMESPACE::MakeAttribute("to", int64_t(elem_type)));
+      return Status::OK();
+    }
+  }
+
   // Create output arg of Cast
   ONNX_NAMESPACE::TypeProto type_proto;
   type_proto.mutable_tensor_type()->set_elem_type(elem_type);
