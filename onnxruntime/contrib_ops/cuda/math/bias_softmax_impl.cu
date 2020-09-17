@@ -4,6 +4,7 @@
 #include "contrib_ops/cuda/math/bias_softmax.h"
 
 #include <limits>
+#include <algorithm>
 
 #include "core/providers/common.h"
 #include "core/providers/cuda/cuda_common.h"
@@ -43,7 +44,7 @@ __global__ void BiasSoftmaxWarpForward(
   // "WARP" refers to cooperative threads and might not equal 32 threads of GPU warp
   // thread block is (WARP_SIZE, 128/WARP_SIZE)
   constexpr int next_power_of_two = 1 << log2_elements;
-  constexpr int WARP_SIZE = (next_power_of_two < GPU_WARP_SIZE) ? next_power_of_two : GPU_WARP_SIZE;
+  constexpr int WARP_SIZE = std::min(next_power_of_two, GPU_WARP_SIZE);
   constexpr int WARP_ITERATIONS = next_power_of_two / WARP_SIZE;
   constexpr int WARP_BATCH = (next_power_of_two <= 128) ? 2 : 1;
 
@@ -150,7 +151,7 @@ void DispatchBiasSoftmaxForwardImpl(
       const int next_power_of_two = 1 << log2_elements;
   
       // This value must match the WARP_SIZE constexpr value computed inside softmax_warp_forward.
-      int warp_size = (next_power_of_two < GPU_WARP_SIZE) ? next_power_of_two : GPU_WARP_SIZE;
+      int warp_size = std::min(next_power_of_two, GPU_WARP_SIZE);
   
       // This value must match the WARP_BATCH constexpr value computed inside softmax_warp_forward.
       int batches_per_warp = (next_power_of_two <= 128) ? 2 : 1;
@@ -288,7 +289,7 @@ void DispatchBiasSoftMaxForwardViaDnnLibraryImpl(
     fdm_H, 
     fdm_C,
     Y_data,
-    OP_Add<CudaT, CudaT>(),
+    OP_Add<CudaT, CudaT, CudaT>(),
     (size_t)X_shape.Size()
   );
   

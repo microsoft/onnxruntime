@@ -3,24 +3,20 @@
 
 #include "core/optimizer/bias_softmax_fusion.h"
 
-#include "core/common/logging/logging.h"
-#include "core/providers/common.h"
-#include "core/optimizer/initializer.h"
-#include "core/graph/graph_utils.h"
-#include "core/optimizer/utils.h"
 #include <deque>
+
+#include "core/common/logging/logging.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/optimizer/initializer.h"
+#include "core/optimizer/utils.h"
+#include "core/providers/common.h"
+#include "core/graph/graph_utils.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
 // helper to check dimensions match on concrete or symbolic value
-bool operator!=(
-  const ONNX_NAMESPACE::TensorShapeProto_Dimension& lhs,
-  const ONNX_NAMESPACE::TensorShapeProto_Dimension& rhs) {
-    return !(lhs == rhs);
-} 
-
 bool operator==(const ONNX_NAMESPACE::TensorShapeProto_Dimension& lhs, int value) {
   return utils::HasDimValue(lhs) && lhs.dim_value() == value;
 }
