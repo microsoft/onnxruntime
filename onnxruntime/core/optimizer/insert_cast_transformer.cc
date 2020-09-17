@@ -78,6 +78,30 @@ Status ForceSingleNodeCPUFloat16ToFloat32(onnxruntime::Graph& graph) {
   return Status::OK();
 }
 
+enum TypeGroup {
+  Unknown = -1,
+  Bool = 0,
+  Integer = 1,
+  Float = 2,
+};
+
+TypeGroup GetTypeGroup(DataType type) {
+  if (*type == "tensor(bool)") {
+    return Bool;
+  }
+
+  if (*type == "tensor(int16)" || *type == "tensor(int32)" || *type == "tensor(int64)" || *type == "tensor(int8)" ||
+      *type == "tensor(uint16)" || *type == "tensor(uint32)" || *type == "tensor(uint64)" || *type == "tensor(uint8)") {
+    return Integer;
+  }
+  
+  if (*type == "tensor(bfloat16)" || *type == "tensor(double)" || *type == "tensor(float)" || "tensor(float16)") {
+    return Float;
+  }
+
+  return Unknown;
+}
+
 /** Transformer to remove duplicate Cast nodes. */
 class RemoveDuplicateCastTransformer : public GraphTransformer {
  public:
@@ -95,30 +119,33 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
       bool removed = false;
       if (node.OpType() == "Cast") {
         std::vector<std::reference_wrapper<Node>> nodes_to_remove;
+        std::vector<std::reference_wrapper<Node>> cast_nodes_to_keep;
 
         // if cast's next node is also cast and next cast's output type equal to cast's input type
         // remove those two cast.
-        // boolean is an exception case for this optimization
+        // Any Cast that changing the value is an exception case for this optimization.
         auto src_type = node.InputDefs()[0]->Type();
         auto dst_type = node.OutputDefs()[0]->Type();
-        if (*src_type == "tensor(bool)" || *dst_type == "tensor(bool)")
+        TypeGroup src_type_group = GetTypeGroup(src_type);
+        TypeGroup dst_type_group = GetTypeGroup(dst_type);
+        if (src_type_group == Unknown || dst_type_group == Unknown || src_type_group > dst_type_group) {
           continue;
+        }
 
         size_t num_children = node.GetOutputEdgesCount();
 
         for (auto it = node.OutputNodesBegin(); it != node.OutputNodesEnd(); ++it) {
           const Node& output_node(*it);
           if (output_node.OpType() == "Cast") {
-            // Skip this child node if this child node's output is also an output of the graph
-            if (graph_outputs.find(output_node.OutputDefs()[0]) != graph_outputs.end()) {
-              continue;
-            }
-
             auto src_type1 = output_node.InputDefs()[0]->Type();
             auto dst_type1 = output_node.OutputDefs()[0]->Type();
-            if (src_type == dst_type1 && src_type1 == dst_type) {
+            // Cannot remove node if it's output is also an output of the graph
+            if (graph_outputs.find(output_node.OutputDefs()[0]) == graph_outputs.end() &&
+                src_type == dst_type1 && src_type1 == dst_type) {
               // get a mutable reference to the output node and save it
               nodes_to_remove.push_back(*graph.GetNode(output_node.Index()));
+            } else {
+              cast_nodes_to_keep.push_back(*graph.GetNode(output_node.Index()));
             }
           }
         }
@@ -162,13 +189,19 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
           }
 
           modified = true;
+        }
 
-          // if we removed all the child nodes and we're not providing graph output we can remove this node
-          if (num_children > 0 && nodes_to_remove.size() == num_children &&
-              graph_outputs.find(node.OutputDefs()[0]) == graph_outputs.end()) {
-            graph.RemoveNode(node.Index());
-            removed = true;
+        // If all the child nodes are either removed or another Cast node and we're not providing graph output,
+        // we can remove this node. Connect those remaining child Cast nodes to current Cast node's input.
+        if (num_children > 0 && nodes_to_remove.size() + cast_nodes_to_keep.size() == num_children &&
+            graph_outputs.find(node.OutputDefs()[0]) == graph_outputs.end()) {
+          for (auto& n : cast_nodes_to_keep) {
+            Node& cast_node_to_keep = n;
+            graph.SetNodeArgType(*cast_node_to_keep.MutableInputDefs()[0], *node.InputDefs()[0]->TypeAsProto());
           }
+          
+          removed = graph_utils::RemoveNode(graph, node);
+          modified = true;
         }
       }
 
