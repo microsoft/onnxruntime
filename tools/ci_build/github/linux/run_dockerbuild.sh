@@ -107,8 +107,10 @@ fi
 
 if [ $BUILD_DEVICE = "cpu" ] || [ $BUILD_DEVICE = "ngraph" ] || [ $BUILD_DEVICE = "openvino" ] || [ $BUILD_DEVICE = "nnapi" ] || [ $BUILD_DEVICE = "arm" ]; then
     RUNTIME=
-else
+elif [[ $BUILD_EXTR_PAR = *--enable_training_python_frontend_e2e_tests* ]]; then
     RUNTIME="--gpus all --shm-size=1024m"
+else
+    RUNTIME="--gpus all"
 fi
 
 DOCKER_RUN_PARAMETER="--name onnxruntime-$BUILD_DEVICE \
