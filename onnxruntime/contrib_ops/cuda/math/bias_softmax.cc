@@ -35,7 +35,7 @@ Status BiasSoftmax::ComputeInternal(OpKernelContext* ctx) const {
   const int64_t broadcast_axis = HandleNegativeAxis(broadcast_axis_, X_shape.NumDimensions());
   const int broadcast_size = N/static_cast<int>(X_shape.SizeToDimension(broadcast_axis));
 
-  const int elem_size = X->DataType()->Size();
+  const size_t elem_size = X->DataType()->Size();
   if (D <= 1024 && D*elem_size <= 4096) {
     // expect thread blocks can fill SM at high occupancy without overflowing registers
     utils::MLTypeCallDispatcher<DispatchBiasSoftmaxForward, double, float, MLFloat16> 
