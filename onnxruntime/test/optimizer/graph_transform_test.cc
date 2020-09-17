@@ -2306,7 +2306,7 @@ struct BiasSoftmaxFusionTester {
   }
 
   void TestFusionOccurs(int expected_broadcast_axis) {
-    ASSERT_TRUE(model_load_.IsOK());
+    ASSERT_STATUS_OK(model_load_);
 
     int expected_softmax_axis = 1;
     GetAxis("Softmax", "axis", &expected_softmax_axis);
@@ -2328,7 +2328,7 @@ struct BiasSoftmaxFusionTester {
   }
 
   void TestNoFusionOccurs() {
-    ASSERT_TRUE(model_load_.IsOK());
+    ASSERT_STATUS_OK(model_load_);
     auto ret = graph_transformation_mgr.ApplyTransformers(p_model->MainGraph(), TransformerLevel::Level2, *logger_);
     ASSERT_TRUE(ret.IsOK());
     std::map<std::string, int> op_to_count = CountOpsInGraph(p_model->MainGraph());

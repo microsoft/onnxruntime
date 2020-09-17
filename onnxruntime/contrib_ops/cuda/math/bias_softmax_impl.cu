@@ -144,75 +144,74 @@ void DispatchBiasSoftmaxForwardImpl(
     const auto* input_bias = reinterpret_cast<const CudaT*>(input_bias_tensor->template Data<T>());
     auto* output = reinterpret_cast<CudaT*>(output_tensor->template MutableData<T>());
   
-    if (element_count == 0) {
+    if (element_count == 0)
       return;
-    } else {
-      int log2_elements = log2_ceil(element_count);
-      const int next_power_of_two = 1 << log2_elements;
-  
-      // This value must match the WARP_SIZE constexpr value computed inside softmax_warp_forward.
-      int warp_size = std::min(next_power_of_two, GPU_WARP_SIZE);
-  
-      // This value must match the WARP_BATCH constexpr value computed inside softmax_warp_forward.
-      int batches_per_warp = (next_power_of_two <= 128) ? 2 : 1;
-  
-      // use 128 threads per block to maximimize gpu utilization
-      constexpr int threads_per_block = 128;
-  
-      int warps_per_block = (threads_per_block / warp_size);
-      int batches_per_block = warps_per_block * batches_per_warp;
-      int blocks = (batch_count + batches_per_block - 1) / batches_per_block;
-      dim3 threads(warp_size, warps_per_block, 1);
-  
-      // Launch code would be more elegant if C++ supported FOR CONSTEXPR
-      switch (log2_elements) {
-        case 0:  // 1
-          BiasSoftmaxWarpForward<input_t, output_t, acc_t, 0>
-              <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
-          break;
-        case 1:  // 2
-          BiasSoftmaxWarpForward<input_t, output_t, acc_t, 1>
-              <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
-          break;
-        case 2:  // 4
-          BiasSoftmaxWarpForward<input_t, output_t, acc_t, 2>
-              <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
-          break;
-        case 3:  // 8
-          BiasSoftmaxWarpForward<input_t, output_t, acc_t, 3>
-              <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
-          break;
-        case 4:  // 16
-          BiasSoftmaxWarpForward<input_t, output_t, acc_t, 4>
-              <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
-          break;
-        case 5:  // 32
-          BiasSoftmaxWarpForward<input_t, output_t, acc_t, 5>
-              <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
-          break;
-        case 6:  // 64
-          BiasSoftmaxWarpForward<input_t, output_t, acc_t, 6>
-              <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
-          break;
-        case 7:  // 128
-          BiasSoftmaxWarpForward<input_t, output_t, acc_t, 7>
-              <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
-          break;
-        case 8:  // 256
-          BiasSoftmaxWarpForward<input_t, output_t, acc_t, 8>
-              <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
-          break;
-        case 9:  // 512
-          BiasSoftmaxWarpForward<input_t, output_t, acc_t, 9>
-              <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
-          break;
-        case 10:  // 1024
-          BiasSoftmaxWarpForward<input_t, output_t, acc_t, 10>
-              <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
-          break;
-        default:
-          break;
-      }
+
+    int log2_elements = log2_ceil(element_count);
+    const int next_power_of_two = 1 << log2_elements;
+
+    // This value must match the WARP_SIZE constexpr value computed inside softmax_warp_forward.
+    int warp_size = std::min(next_power_of_two, GPU_WARP_SIZE);
+
+    // This value must match the WARP_BATCH constexpr value computed inside softmax_warp_forward.
+    int batches_per_warp = (next_power_of_two <= 128) ? 2 : 1;
+
+    // use 128 threads per block to maximize gpu utilization
+    constexpr int threads_per_block = 128;
+
+    int warps_per_block = (threads_per_block / warp_size);
+    int batches_per_block = warps_per_block * batches_per_warp;
+    int blocks = (batch_count + batches_per_block - 1) / batches_per_block;
+    dim3 threads(warp_size, warps_per_block, 1);
+
+    // Launch code would be more elegant if C++ supported FOR CONSTEXPR
+    switch (log2_elements) {
+      case 0:  // 1
+        BiasSoftmaxWarpForward<input_t, output_t, acc_t, 0>
+            <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
+        break;
+      case 1:  // 2
+        BiasSoftmaxWarpForward<input_t, output_t, acc_t, 1>
+            <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
+        break;
+      case 2:  // 4
+        BiasSoftmaxWarpForward<input_t, output_t, acc_t, 2>
+            <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
+        break;
+      case 3:  // 8
+        BiasSoftmaxWarpForward<input_t, output_t, acc_t, 3>
+            <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
+        break;
+      case 4:  // 16
+        BiasSoftmaxWarpForward<input_t, output_t, acc_t, 4>
+            <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
+        break;
+      case 5:  // 32
+        BiasSoftmaxWarpForward<input_t, output_t, acc_t, 5>
+            <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
+        break;
+      case 6:  // 64
+        BiasSoftmaxWarpForward<input_t, output_t, acc_t, 6>
+            <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
+        break;
+      case 7:  // 128
+        BiasSoftmaxWarpForward<input_t, output_t, acc_t, 7>
+            <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
+        break;
+      case 8:  // 256
+        BiasSoftmaxWarpForward<input_t, output_t, acc_t, 8>
+            <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
+        break;
+      case 9:  // 512
+        BiasSoftmaxWarpForward<input_t, output_t, acc_t, 9>
+            <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
+        break;
+      case 10:  // 1024
+        BiasSoftmaxWarpForward<input_t, output_t, acc_t, 10>
+            <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
+        break;
+      default:
+        break;
     }
 }
 
