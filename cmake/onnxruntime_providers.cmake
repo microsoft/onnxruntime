@@ -689,7 +689,7 @@ if (onnxruntime_USE_DML)
   target_add_dml(onnxruntime_providers_dml)
   target_link_libraries(onnxruntime_providers_dml PRIVATE d3d12.lib dxgi.lib)
 
-  if (onnxruntime_BUILD_FOR_WINDOWS_STORE)
+  if (WINDOWS_STORE)
     target_link_libraries(onnxruntime_providers_dml PRIVATE dloadhelper.lib)
   else()
     target_link_libraries(onnxruntime_providers_dml PRIVATE delayimp.lib)

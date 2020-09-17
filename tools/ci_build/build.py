@@ -570,7 +570,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "OFF" if args.skip_winml_tests else "ON"),
         "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
         "-Donnxruntime_DEV_MODE=" + (
-            "OFF" if args.use_acl or args.use_armnn or
+            "OFF" if args.use_acl or args.use_armnn or args.use_winml or
             (args.ios and is_macOS()) else "ON"),
         "-DPYTHON_EXECUTABLE=" + sys.executable,
         "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
@@ -638,7 +638,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "ON" if args.enable_language_interop_ops else "OFF"),
         "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
         "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml else "OFF"),
-        "-Donnxruntime_BUILD_FOR_WINDOWS_STORE=" + ("ON" if args.enable_windows_store else "OFF"),
         "-Donnxruntime_USE_TELEMETRY=" + (
             "ON" if args.use_telemetry else "OFF"),
         "-Donnxruntime_ENABLE_LTO=" + ("ON" if args.enable_lto else "OFF"),
@@ -1676,10 +1675,12 @@ def main():
                 cmake_extra_args = [
                     '-A', 'x64', '-T', toolset, '-G', args.cmake_generator
                 ]
-            if args.enable_wcos:
+            if args.enable_windows_store:
                 cmake_extra_args.append(
                     '-DCMAKE_TOOLCHAIN_FILE=' + os.path.join(
-                        source_dir, 'cmake', 'wcos_toolchain.cmake'))
+                        source_dir, 'cmake', 'store_toolchain.cmake'))
+            if args.enable_wcos:
+                cmake_extra_args.append('-DCMAKE_USER_MAKE_RULES_OVERRIDE=wcos_rules_override.cmake')
         elif args.cmake_generator is not None and not (is_macOS() and args.use_xcode):
             cmake_extra_args += ['-G', args.cmake_generator]
         elif is_macOS() and args.use_xcode:

@@ -112,9 +112,10 @@ Status TrainingRunner::Initialize() {
 
   if (params_.use_mixed_precision) {
     TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mp{};
-    mp.use_fp16_initializers = params_.use_fp16_initializer;
-    if (params_.use_bfloat16)
-      mp.fp16_type = ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
+    mp.use_mixed_precision_initializers = params_.use_mixed_precision_initializer;
+    if (params_.use_bfloat16) {
+      mp.mixed_precision_type = MixedPrecisionDataType::BF16;
+    }
     config.mixed_precision_config = mp;
   }
 
@@ -137,8 +138,8 @@ Status TrainingRunner::Initialize() {
     opt.learning_rate_input_name = params_.lr_params.feed_name;
     opt.weight_attributes_generator = params_.optimizer_attributes;
     opt.weight_int_attributes_generator = params_.optimizer_int_attributes;
-    opt.use_fp16_moments = params_.use_fp16_moments;
-    opt.do_all_reduce_in_fp16 = params_.allreduce_in_fp16;
+    opt.use_mixed_precision_moments = params_.use_mixed_precision_moments;
+    opt.do_all_reduce_in_mixed_precision_type = params_.allreduce_in_mixed_precision_type;
     opt.use_nccl = params_.use_nccl;
     opt.deepspeed_zero = params_.deepspeed_zero;
     opt.adasum_reduction_type = params_.GetAdasumReductionType();

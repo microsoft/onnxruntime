@@ -117,8 +117,8 @@ Status LambOptimizerBuilder::Build(
   }
 
   // Each iteration handles the associated inputs and outputs of a weight tensor.
-  // Associated inputs: [w, g, m1, m2, w_fp16].
-  // Associated outputs: [w_new, g_new, m1_new, m2_new, w_fp16_new].
+  // Associated inputs: [w, g, m1, m2, w_mixed_precision].
+  // Associated outputs: [w_new, g_new, m1_new, m2_new, w_mixed_precision_new].
   for (size_t i = 0; i < weight_argdefs.size(); ++i) {
     const std::string& weight_name = weight_argdefs[i].name;
     const std::string& weight_new_name = weight_name + "_Lamb_out";
@@ -128,11 +128,11 @@ Status LambOptimizerBuilder::Build(
     const auto& attrs = opt_configs[i].attributes;
     const auto& int_attrs = opt_configs[i].int_attributes;
 
-    // Return either the input gradient/weight/fp16-weight or updated gradient/weight/fp16-weight.
+    // Return either the input gradient/weight/mixed-precision-weight or updated gradient/weight/mixed-precision-weight.
     ArgDef output_gradient_argdef = gradient_argdefs[i];
     ArgDef output_weight_argdef = weight_argdefs[i];
-    if (opt_configs[i].fp16_weight_arg != nullptr)
-      output_weight_argdef = ArgDef(opt_configs[i].fp16_weight_arg->Name(), opt_configs[i].fp16_weight_arg->TypeAsProto());
+    if (opt_configs[i].mixed_precision_weight_arg != nullptr)
+      output_weight_argdef = ArgDef(opt_configs[i].mixed_precision_weight_arg->Name(), opt_configs[i].mixed_precision_weight_arg->TypeAsProto());
 
     // In distributed training, some weights may not be updated by all ranks.
     if (opt_configs[i].enabled) {
@@ -213,7 +213,7 @@ Status LambOptimizerBuilder::Build(
         // Construct type of momentum tensor.
         TensorProto moment_tensor_proto;
         TypeProto* moment_type_proto = graph_defs.CopyTypeProto(weight_argdefs[i]);
-        if (opt_configs[i].use_fp16_moments) {
+        if (opt_configs[i].use_mixed_precision_moments) {
           moment_tensor_proto = CreateTensorProto<MLFloat16>(gradient_moment_name, MLFloat16(math::floatToHalf(0.f)), weight_dims);
           moment_type_proto->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16);
         } else {
@@ -228,14 +228,14 @@ Status LambOptimizerBuilder::Build(
         output_argdefs.emplace_back(ArgDef(gradient_moment_name + "_Out", moment_type_proto));
       }
 
-      // w_fp16 & w_fp16_new
-      if (opt_configs[i].update_weight && opt_configs[i].fp16_weight_arg != nullptr) {
+      // w_mixed_precision & w_mixed_precision_new
+      if (opt_configs[i].update_weight && opt_configs[i].mixed_precision_weight_arg != nullptr) {
         input_argdefs.emplace_back(ArgDef(
-          opt_configs[i].fp16_weight_arg->Name(),
-          opt_configs[i].fp16_weight_arg->TypeAsProto()));
+          opt_configs[i].mixed_precision_weight_arg->Name(),
+          opt_configs[i].mixed_precision_weight_arg->TypeAsProto()));
         output_weight_argdef = ArgDef(
-          opt_configs[i].fp16_weight_arg->Name() + "_Lamb_out",
-          opt_configs[i].fp16_weight_arg->TypeAsProto());
+          opt_configs[i].mixed_precision_weight_arg->Name() + "_Lamb_out",
+          opt_configs[i].mixed_precision_weight_arg->TypeAsProto());
         output_argdefs.push_back(output_weight_argdef);
       } else {
         input_argdefs.emplace_back(ArgDef());

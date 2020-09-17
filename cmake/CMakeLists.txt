@@ -1287,7 +1287,7 @@ else()
 endif()
 
 if (WIN32)
-  if (onnxruntime_BUILD_FOR_WINDOWS_STORE)
+  if (WINDOWS_STORE)
     # Setting WINAPI_FAMILY, WINVER and _WIN32_WINNT restrict the APIs exposed in Windows headers to those available
     # in store or desktop, and that support at least the version of Windows specified
     # add_compile_definitions(WINAPI_FAMILY=2)
@@ -1365,10 +1365,7 @@ if (onnxruntime_BUILD_CSHARP)
   include(onnxruntime_csharp.cmake)
 endif()
 
-if (onnxruntime_BUILD_FOR_WINDOWS_STORE)
-  set_target_properties(onnxruntime PROPERTIES VS_GLOBAL_AppContainerApplication true)
-  set_target_properties(winml_dll PROPERTIES VS_GLOBAL_AppContainerApplication true)
-
+if (WINDOWS_STORE)
   target_link_options(onnxruntime PRIVATE /DYNAMICBASE /NXCOMPAT /APPCONTAINER)
   target_link_options(winml_dll PRIVATE /DYNAMICBASE /NXCOMPAT /APPCONTAINER)
 
