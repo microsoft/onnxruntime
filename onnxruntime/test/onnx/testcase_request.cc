@@ -119,10 +119,10 @@ void TestCaseRequestContext::OnDataTaskComplete(size_t task_id, EXECUTE_RESULT r
 
   auto before_we_done = data_tasks_inprogress_.fetch_sub(1, std::memory_order_acq_rel);
   assert(before_we_done > 0);
-  LOGF_DEFAULT(INFO, "Finishing: %s data_task: %d before_we_done: %llu\n",
+  LOGF_DEFAULT(ERROR, "Finishing: %s data_task: %llu before_we_done: %llu\n",
     test_case_.GetTestCaseName().c_str(),
-    static_cast<int>(task_id),
-    static_cast<uint64_t>(before_we_done));
+               static_cast<long long unsigned int>(task_id),
+               static_cast<long long unsigned int>(before_we_done));
   if (before_we_done == 1U) {
     CalculateAndLogStats();
     if (cb_) {

@@ -79,8 +79,8 @@ void TestCaseDriver::OnTestCaseComplete(std::shared_ptr<TestCaseResult> result) 
   }
 
   auto before_we_done = tests_inprogress_.fetch_sub(1, std::memory_order_acq_rel);
-  LOGF_DEFAULT(INFO, "Finishing test_case before_we_done: %llu\n",
-               static_cast<uint64_t>(before_we_done));
+  LOGF_DEFAULT(ERROR, "Finishing test_case before_we_done: %llu\n",
+               static_cast<long long unsigned int>(before_we_done));
   assert(before_we_done > 0);
   if (before_we_done == 1U) {
     std::lock_guard<std::mutex> g(mut_);
