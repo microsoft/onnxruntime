@@ -136,6 +136,12 @@ else # ubuntu18.04
         #TODO: the old one(/usr/bin/pip3) should be uninstalled first. Because the one will be
         #put at /usr/local/. Then there will be two pips.
         /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall pip==19.0.3
+
+        echo "Installing nccl2"
+        mget https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1804/x86_64/nvidia-machine-learning-repo-ubuntu1804_1.0.0-1_amd64.deb
+        sudo dpkg -i nvidia-machine-learning-repo-ubuntu1804_1.0.0-1_amd64.deb
+        sudo apt update
+
     fi
 fi
 
