@@ -49,13 +49,7 @@ class TestCaseDriver {
   ORT_DISALLOW_ASSIGNMENT(TestCaseDriver);
 
  private:
-  TestCaseDriver(const TestEnv& env, size_t concurrent_runs)
-      : env_(env),
-        concurrent_runs_(concurrent_runs) {
-    results_.reserve(env.GetTests().size());
-    CallableFactory<TestCaseDriver, void, std::shared_ptr<TestCaseResult>> f(this);
-    on_test_case_complete_ = f.GetCallable<&TestCaseDriver::OnTestCaseComplete>();
-  }
+  TestCaseDriver(const TestEnv& env, size_t concurrent_runs);
 
   /// This makes the __Dtor private because the lifespan is managed by the class itself
   ~TestCaseDriver() = default;

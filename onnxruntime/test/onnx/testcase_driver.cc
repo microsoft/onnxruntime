@@ -11,6 +11,18 @@
 namespace onnxruntime {
 namespace test {
 
+TestCaseDriver::TestCaseDriver(const TestEnv& env, size_t concurrent_runs)
+    : env_(env),
+      concurrent_runs_(concurrent_runs),
+      tests_started_(0),
+      tests_inprogress_(0),
+      finished_(false) {
+  results_.reserve(env.GetTests().size());
+  CallableFactory<TestCaseDriver, void, std::shared_ptr<TestCaseResult>> f(this);
+  on_test_case_complete_ = f.GetCallable<&TestCaseDriver::OnTestCaseComplete>();
+}
+
+
 std::vector<std::shared_ptr<TestCaseResult>> TestCaseDriver::Run(const TestEnv& env, size_t concurrent_runs, size_t repeat_count) {
   std::vector<std::shared_ptr<TestCaseResult>> results;
   for (const auto& c : env.GetTests()) {
@@ -67,6 +79,7 @@ void TestCaseDriver::OnTestCaseComplete(std::shared_ptr<TestCaseResult> result) 
   }
 
   auto before_we_done = tests_inprogress_.fetch_sub(1, std::memory_order_acq_rel);
+  assert(before_we_done > 0);
   if (before_we_done == 1U) {
     std::lock_guard<std::mutex> g(mut_);
     finished_ = true;
