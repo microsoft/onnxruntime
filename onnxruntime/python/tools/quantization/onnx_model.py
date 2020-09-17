@@ -1,5 +1,5 @@
 import onnx
-from quant_utils import find_by_name
+from .quant_utils import find_by_name
 from pathlib import Path
 
 
