@@ -93,7 +93,7 @@ class ONNXQuantizer:
         self.op_types_to_quantize = op_types_to_quantize
         self.new_nodes = []
 
-        self.check_opset_version()
+        self.opset_version = self.check_opset_version()
 
         if not self.mode in quantization_modes:
             raise ValueError('unsupported quantization mode {}'.format(self.mode))
@@ -124,7 +124,7 @@ class ONNXQuantizer:
             print(
                 "Warning: The original model opset version is {}, which does not support node fusions. Please update the model to opset >= 11 for better performance."
                 .format(opset_version))
-            return
+            return 10
 
         if opset_version < 10:
             print(
@@ -132,8 +132,10 @@ class ONNXQuantizer:
                 .format(opset_version))
             self.model.model.opset_import.remove(ai_onnx_domain[0])
             self.model.model.opset_import.extend([onnx.helper.make_opsetid("", 11)])
+            opset_version = 11
         
         self.fuse_dynamic_quant = True
+        return opset_version
 
     def replace_gemm_with_matmul(self):
         nodes_to_remove = []
