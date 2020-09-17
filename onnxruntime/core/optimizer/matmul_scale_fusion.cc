@@ -15,6 +15,20 @@
 namespace onnxruntime {
 
 namespace {
+
+// TransposeScaleMatMul supports limited data types.
+static std::vector<std::string> supported_data_types{"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"};
+
+static bool IsSupportedDataType(const Node& node) {
+  for (const auto& input_arg : node.InputDefs()) {
+    if (std::find(supported_data_types.begin(), supported_data_types.end(),
+                  *(input_arg->Type())) == supported_data_types.end()) {
+      return false;
+    }
+  }
+  return true;
+}
+
 template <typename T>
 struct ExtractScalarAsFloatDispatchTarget {
   Status operator()(const ONNX_NAMESPACE::TensorProto& tensor_proto, float& scalar_float) {
@@ -43,7 +57,7 @@ optional<float> GetScalarConstantInitializer(const Graph& graph, const NodeArg& 
     return {};
   }
 
-  float scalar=0.f;
+  float scalar = 0.f;
   utils::MLTypeCallDispatcherRet<
       Status, ExtractScalarAsFloatDispatchTarget,
       uint32_t, uint64_t, int32_t, int64_t, MLFloat16, float, double, BFloat16>
@@ -170,8 +184,9 @@ std::vector<ScaleMergeInfo> GetOutputNodeMerges(
 Status ProcessNode(
     Graph& graph, Node& node, bool& modified,
     const std::unordered_set<std::string>& excluded_initializer_names) {
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", {9, 13}) &&
-      !graph_utils::IsSupportedOptypeVersionAndDomain(node, "TransposeScaleMatMul", {1}, kMSDomain)) {
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", {9, 13}) ||
+      !graph_utils::IsSupportedOptypeVersionAndDomain(node, "TransposeScaleMatMul", {1}, kMSDomain) ||
+      !IsSupportedDataType(node)) {
     return Status::OK();
   }
 
