@@ -95,7 +95,7 @@ TypeGroup GetTypeGroup(DataType type) {
     return Integer;
   }
   
-  if (*type == "tensor(bfloat16)" || *type == "tensor(double)" || *type == "tensor(float)" || "tensor(float16)") {
+  if (*type == "tensor(bfloat16)" || *type == "tensor(double)" || *type == "tensor(float)" || *type == "tensor(float16)") {
     return Float;
   }
 
