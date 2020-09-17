@@ -65,7 +65,11 @@ class ONNXCalibrater:
             if should_be_calibrate:
                 tensors_to_calibrate.update(node.input)
                 tensors_to_calibrate.update(node.output)
-                
+
+            for tensor in tensors_to_calibrate:
+                if tensor in model.graph.initializer:
+                    tensors_to_calibrate.remove(tensor)
+
         for tensor in tensors_to_calibrate:
             # Adding ReduceMin nodes
             reduce_min_name = tensor + '_ReduceMin'

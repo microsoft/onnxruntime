@@ -1,5 +1,5 @@
 import onnx
-from .quant_utils import find_by_name
+from quant_utils import find_by_name
 from pathlib import Path
 
 
@@ -133,6 +133,6 @@ class ONNXModel:
         '''
         if use_external_data_format:
             onnx.external_data_helper.convert_model_to_external_data(self.model,
-                                                                    all_tensors_to_one_file=True,
-                                                                    location=Path(output_path).name + ".data")
+                                                                     all_tensors_to_one_file=True,
+                                                                     location=Path(output_path).name + ".data")
         onnx.save_model(self.model, output_path)
