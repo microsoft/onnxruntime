@@ -2,13 +2,22 @@
 // Licensed under the MIT License.
 
 #include "core/common/common.h"
+#include "core/providers/hip/hip_common.h"
 #include "core/providers/cpu/tensor/slice.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "core/providers/hip/hip_common.h"
-#include "core/providers/hip/shared_inc/hip_utils.h"
 
 namespace onnxruntime {
 namespace hip {
+
+namespace SliceHip {
+
+Status Impl(const void* input_data,
+            const TensorShape& input_shape,
+            void* output_data,
+            SliceOp::PrepareForComputeMetadata& prepare_metadata,
+            size_t element_size);
+
+}  // namespace SliceHip
 
 template <bool dynamic>
 class Slice : public HipKernel, public SliceBase {
@@ -23,10 +32,10 @@ class Slice : public HipKernel, public SliceBase {
                                 std::vector<int64_t>& input_ends, std::vector<int64_t>& input_axes,
                                 std::vector<int64_t>& input_steps) const;
 
-  virtual Status CallSliceImp(size_t element_size, size_t dimension_count, const int64_t* starts_buffer,
-                              const int64_t* steps_buffer, const int64_t* input_strides,
-                              const fast_divmod* output_strides, OpKernelContext* ctx,
-                              TensorShape output_shape) const;
+  virtual Status CallSliceImp(size_t element_size, size_t dimension_count, const TArray<int64_t>& starts_buffer,
+                              const TArray<int64_t>& steps_buffer, const TArray<int64_t>& input_strides,
+                              const TArray<fast_divmod>& output_strides, OpKernelContext* ctx,
+                              const TensorShape& output_shape) const;
 };
 }  // namespace hip
 }  // namespace onnxruntime

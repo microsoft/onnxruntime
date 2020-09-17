@@ -32,6 +32,7 @@ Status SoftMaxComputeHelper(
   }
 
   std::vector<int64_t> dims({N, 1, 1, D});  // miopen expects 4D shape in NCHW format
+
   const auto alpha = Consts<HipT>::One;
   const auto beta = Consts<HipT>::Zero;
   MiopenTensor input_tensor;
@@ -70,6 +71,22 @@ SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16)
       T,                                                                        \
       kHipExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Softmax<T>);                                                              \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
+      LogSoftmax,                                                               \
+      kOnnxDomain,                                                              \
+      1, 10,                                                                    \
+      T,                                                                        \
+      kHipExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Softmax<T>);                                                              \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
+      LogSoftmax,                                                               \
+      kOnnxDomain,                                                              \
+      11,                                                                       \
+      T,                                                                        \
+      kHipExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Softmax<T>);
 
 template <typename T>
@@ -82,7 +99,12 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (input_shape.Size() == 0)
     return Status::OK();
 
-  return SoftMaxComputeHelper<T, false>(X_data, input_shape, Y_data, MiopenHandle(), axis_);
+  if (log_softmax_) {
+    return SoftMaxComputeHelper<T, true>(X_data, input_shape, Y_data, MiopenHandle(), axis_);
+  }
+  else {
+    return SoftMaxComputeHelper<T, false>(X_data, input_shape, Y_data, MiopenHandle(), axis_);
+  }
 }
 
 #define SPECIALIZED_COMPUTE(T) \

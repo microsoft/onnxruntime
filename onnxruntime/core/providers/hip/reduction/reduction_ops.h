@@ -10,7 +10,7 @@
 namespace onnxruntime {
 namespace hip {
 
-enum HipReduceTensorType {
+enum miopenReduceTensorOp_t {
   MIOPEN_REDUCE_TENSOR_MAX,
   MIOPEN_REDUCE_TENSOR_MIN,
   MIOPEN_REDUCE_TENSOR_NORM1,
@@ -19,6 +19,34 @@ enum HipReduceTensorType {
   MIOPEN_REDUCE_TENSOR_MUL,
   MIOPEN_REDUCE_TENSOR_ADD
 };
+
+// Holds some metadata that will be used during actual reduction op compute time
+struct PrepareReduceMetadata {
+  int64_t input_count;
+  int64_t output_count;
+  // This holds the output dims without any reduced dims squeezed (even if keep_dims == 1)
+  std::vector<int64_t> output_dims;
+  // This holds the output dims with with reduced dims squeezed (if keep_dims == 1)
+  std::vector<int64_t> squeezed_output_dims;
+  std::vector<int64_t> input_dims_miopen;
+  std::vector<int64_t> output_dims_miopen;
+  int64_t rank;
+  int64_t stride;
+  bool contiguous_axes;
+};
+
+Status PrepareForReduce(const Tensor* X,
+                        bool keepdims,
+                        const std::vector<int64_t>& axes,
+                        PrepareReduceMetadata& prepare_reduce_metadata,
+                        const TensorShape* input_shape_override = nullptr);
+
+template <typename T>
+Status ReduceComputeCore(const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
+                         /*out*/ Tensor& output, miopenReduceTensorOp_t miopen_reduce_op,
+                         const std::vector<int64_t>& axes,
+                         bool calculate_log, bool calculate_sqt, bool log_sum_exp, bool fast_reduction,
+                         const TensorShape* input_shape_override = nullptr);
 
 template <bool allow_multi_axes>
 class ReduceKernel : public HipKernel, public ReduceKernelBase<allow_multi_axes> {
@@ -34,7 +62,11 @@ class ReduceKernel : public HipKernel, public ReduceKernelBase<allow_multi_axes>
         fast_reduction_(false) {}
 
   template <typename T>
-  Status ComputeImpl(OpKernelContext* ctx, HipReduceTensorType reduce_type) const;
+  Status ComputeImpl(OpKernelContext* ctx, miopenReduceTensorOp_t miopen_reduce_op) const;
+
+  // Used by ReduceSumTraining which will have axes as input
+  template <typename T>
+  Status ComputeImplEx(OpKernelContext* ctx, miopenReduceTensorOp_t miopen_reduce_op) const;
 
   template <typename T, typename OutT>
   Status ReduceKernelShared(
@@ -42,11 +74,12 @@ class ReduceKernel : public HipKernel, public ReduceKernelBase<allow_multi_axes>
       const TensorShape& input_shape,
       OutT* Y,
       const TensorShape& output_shape,
-      HipReduceTensorType reduce_type,
+      miopenReduceTensorOp_t miopen_reduce_op,
       std::vector<int64_t> output_dims) const;
 
   using ReduceKernelBase<allow_multi_axes>::axes_;
   using ReduceKernelBase<allow_multi_axes>::keepdims_;
+  using ReduceKernelBase<allow_multi_axes>::noop_with_empty_axes_;
 
   bool calculate_log_;
   bool calculate_sqt_;

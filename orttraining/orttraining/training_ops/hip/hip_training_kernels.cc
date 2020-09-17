@@ -12,6 +12,13 @@ namespace hip {
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, View);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, Group);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, SGDOptimizer);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, ReduceSumTraining);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, double, ReduceSumTraining);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, int32_t, ReduceSumTraining);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, ReduceSumTraining);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, SplitTraining);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, ConcatTraining);
+
 // Adam
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float_int64_t_float_float_float_float, AdamOptimizer);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16_int64_t_float_MLFloat16_float_float, AdamOptimizer);
@@ -49,6 +56,9 @@ class ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, SoftmaxGrad);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, double, SoftmaxGrad);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, SoftmaxGrad);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, LogSoftmaxGrad);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, double, LogSoftmaxGrad);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, LogSoftmaxGrad);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, BatchNormalizationGrad);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, double, BatchNormalizationGrad);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, GatherGrad);
@@ -74,6 +84,10 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1,
 
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, BiasGeluGrad_dX);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, BiasFastGeluGrad_dX);
+
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, ReluGrad);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, double, ReluGrad);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, ReluGrad);
 
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, IsFinite);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, IsFinite);
@@ -124,7 +138,12 @@ Status RegisterHipTrainingKernels(KernelRegistry& kernel_registry) {
     BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, View)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, Group)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, SGDOptimizer)>,
-
+    // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, ReduceSumTraining)>,
+    // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, double, ReduceSumTraining)>,
+    // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, int32_t, ReduceSumTraining)>,
+    // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, ReduceSumTraining)>,
+    BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, SplitTraining)>,
+    BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, ConcatTraining)>,
     // Adam
     BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float_int64_t_float_float_float_float, AdamOptimizer)>,
     // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16_int64_t_float_MLFloat16_float_float, AdamOptimizer)>,
@@ -171,6 +190,9 @@ Status RegisterHipTrainingKernels(KernelRegistry& kernel_registry) {
     BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, SoftmaxGrad)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, double, SoftmaxGrad)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, SoftmaxGrad)>,
+    BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, LogSoftmaxGrad)>,
+    BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, double, LogSoftmaxGrad)>,
+    BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, LogSoftmaxGrad)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 12, float, int64_t, SoftmaxCrossEntropyLoss)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, int64_t, SoftmaxCrossEntropyLossGrad)>,
     // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, BatchNormalizationGrad)>,
@@ -187,6 +209,9 @@ Status RegisterHipTrainingKernels(KernelRegistry& kernel_registry) {
     BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, FastGeluGrad)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, BiasGeluGrad_dX)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, BiasFastGeluGrad_dX)>,
+    BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, ReluGrad)>,
+    BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, double, ReluGrad)>,
+    BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, ReluGrad)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, IsFinite)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, IsFinite)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, double, IsFinite)>,

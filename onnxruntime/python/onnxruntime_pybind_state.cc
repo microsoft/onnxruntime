@@ -546,7 +546,7 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
     } else if (type == kHipExecutionProvider) {
 #ifdef USE_HIP
 
-      auto it = provider_options_map.find(type);
+      // auto it = provider_options_map.find(type);
       // if (it != provider_options_map.end()) {
       //   onnxruntime::CudaProviderOptions cuda_provider_options;
       //   UpdateCudaProviderOptions(sess, cuda_provider_options, it->second);

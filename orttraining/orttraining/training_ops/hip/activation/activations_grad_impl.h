@@ -9,10 +9,12 @@ namespace hip {
 
 typedef onnxruntime::hip::CtxNull CtxGeluGrad;
 typedef onnxruntime::hip::CtxNull CtxFastGeluGrad;
+typedef onnxruntime::hip::CtxNull CtxReluGrad;
 
 #define ACTIVATION_GRAD_OPS() \
   ACTIVATION_GRAD_OP_NAME(GeluGrad) \
-  ACTIVATION_GRAD_OP_NAME(FastGeluGrad)
+  ACTIVATION_GRAD_OP_NAME(FastGeluGrad) \
+  ACTIVATION_GRAD_OP_NAME(ReluGrad)
 
 #define BINARY_ELEMENTWISE_IMPL_DECLARATION(name) \
   template <typename T>                           \

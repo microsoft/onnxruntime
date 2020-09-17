@@ -900,7 +900,7 @@ if (onnxruntime_USE_HIP)
     endif()
   endif()
 
-  onnxruntime_add_include_to_target(onnxruntime_providers_hip onnxruntime_common onnxruntime_framework onnx)
+  onnxruntime_add_include_to_target(onnxruntime_providers_hip onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf flatbuffers)
   add_dependencies(onnxruntime_providers_hip ${onnxruntime_EXTERNAL_DEPENDENCIES})
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/hip  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_hip PROPERTIES LINKER_LANGUAGE CXX)

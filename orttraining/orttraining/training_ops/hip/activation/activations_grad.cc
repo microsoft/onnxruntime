@@ -45,6 +45,7 @@ namespace hip {
 
 ACTIVATION_GRAD_OP_HFD(GeluGrad, 1, kMSDomain);
 ACTIVATION_GRAD_OP_HFD(FastGeluGrad, 1, kMSDomain);
+ACTIVATION_GRAD_OP_HFD(ReluGrad, 1, kMSDomain);
 
 }  //namespace hip
 }  // namespace onnxruntime

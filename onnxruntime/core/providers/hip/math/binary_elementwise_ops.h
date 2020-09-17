@@ -267,7 +267,7 @@ class CompareFunction : public BinaryElementwise<ShouldBroadcast> {
                               const fast_divmod* fdm_output_strides,
                               const fast_divmod& fdm_H,
                               const fast_divmod& fdm_C,
-                              HipT* output_data,
+                              bool* output_data,
                               size_t count);
 
   Status CompareMethod(OpKernelContext* context, ImplCompare Impl_Compare) const;
