@@ -8,6 +8,9 @@
 
 set -e
 
+# Clear the previous build
+rm -rf /build/Debug
+
 # We need copy the related test files to a separated folder since the --include_ops_by_model will search the testdata folder recursively
 # and include many unnecessary ops, minimal build UT currently uses .ort format models converted from the models we copied below,
 # which will be used as the input of --include_ops_by_model to have ops to be included for the minimal build UT.
