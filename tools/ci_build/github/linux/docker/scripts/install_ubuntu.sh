@@ -99,8 +99,9 @@ locale-gen en_US.UTF-8
 update-locale LANG=en_US.UTF-8
 
 echo "Installing nccl2"
-mget https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1804/x86_64/nvidia-machine-learning-repo-ubuntu1804_1.0.0-1_amd64.deb
-dpkg -i nvidia-machine-learning-repo-ubuntu1804_1.0.0-1_amd64.deb
+mkdir -p /tmp/nccl2
+aria2c -q -d /tmp/nccl2 https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1804/x86_64/nvidia-machine-learning-repo-ubuntu1804_1.0.0-1_amd64.deb
+dpkg -i /tmp/nccl2/nvidia-machine-learning-repo-ubuntu1804_1.0.0-1_amd64.deb
 apt update
 
 echo "Installing dotnet-sdk"
