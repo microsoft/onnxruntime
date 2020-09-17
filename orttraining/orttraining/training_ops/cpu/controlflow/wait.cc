@@ -14,9 +14,6 @@ void wait_event_in_tensor(const Tensor& event_id_tensor) {
   if (event_id != -1) {
     // Wait the event to be recorded by a RecordEvent operator.
     OrtEventPool::GetInstance().WaitEvent(event_id);
-    // BUGBUG: seems this would cause hang when a event is being waited more than once
-    // Destory the recorded event.
-    OrtEventPool::GetInstance().ResetEvent(event_id);
   }
 }
 

@@ -5,7 +5,7 @@
 #include <type_traits>
 
 namespace onnxruntime {
-BFCArena::BFCArena(std::unique_ptr<IDeviceAllocator> resource_allocator,
+BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
                    size_t total_memory,
                    ArenaExtendStrategy arena_extend_strategy,
                    int initial_chunk_size_bytes,
@@ -85,19 +85,22 @@ Status BFCArena::Extend(size_t rounded_bytes) {
 
   auto safe_alloc = [this](size_t alloc_bytes) {
     void* new_mem = nullptr;
-    try {
+    ORT_TRY {
       new_mem = device_allocator_->Alloc(alloc_bytes);
-    } catch (const std::bad_alloc&) {
+    }
+    ORT_CATCH(const std::bad_alloc&) {
       // attempted allocation can throw std::bad_alloc. we want to treat this the same as if it returned nullptr
       // so swallow the exception
-    } catch (const OnnxRuntimeException& ort_exception) {
+    }
+    ORT_CATCH(const OnnxRuntimeException& ort_exception) {
       // swallow if exception is our throw from a failed cudaMalloc call.
       // re-throw otherwise.
-      if (std::string(ort_exception.what()).find("cudaMalloc") == std::string::npos) {
-        throw;
-      }
+      ORT_HANDLE_EXCEPTION([&ort_exception]() {
+        if (std::string(ort_exception.what()).find("cudaMalloc") == std::string::npos) {
+          ORT_RETHROW;
+        }
+      });
     }
-
     return new_mem;
   };
 

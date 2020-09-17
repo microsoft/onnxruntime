@@ -19,13 +19,34 @@ namespace onnxruntime {
 constexpr const char* OpenVINO = "OpenVINO";
 
 OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kOpenVINOExecutionProvider}, info_(info) {
-  DeviceAllocatorRegistrationInfo device_info(
-      {OrtMemTypeDefault,
-       [](int) {
-         return std::make_unique<CPUAllocator>(OrtMemoryInfo(OpenVINO, OrtDeviceAllocator));
-       },
-       std::numeric_limits<size_t>::max()});
+    : IExecutionProvider{onnxruntime::kOpenVINOExecutionProvider} {
+
+  openvino_ep::BackendManager::GetGlobalContext().device_type = info.device_type_;
+  openvino_ep::BackendManager::GetGlobalContext().precision_str = info.precision_;
+  openvino_ep::BackendManager::GetGlobalContext().enable_vpu_fast_compile = info.enable_vpu_fast_compile_;
+  if(info.device_id_ != "") {
+    bool device_found = false;
+    auto available_devices = openvino_ep::BackendManager::GetGlobalContext().ie_core.GetAvailableDevices();
+    for(auto device : available_devices) {
+      if(device == info.device_id_) {
+        device_found = true;
+        break;
+      }
+    }
+    if(!device_found) {
+      std::string err_msg = std::string("Device not found : ") + info.device_id_ + "\nChoose one of:\n";
+      for(auto device : available_devices) {
+        err_msg = err_msg + device + "\n";
+      }
+      ORT_THROW(err_msg);
+    }
+  }
+  openvino_ep::BackendManager::GetGlobalContext().device_id = info.device_id_;
+
+  AllocatorCreationInfo device_info(
+      [](int) {
+        return std::make_unique<CPUAllocator>(OrtMemoryInfo(OpenVINO, OrtDeviceAllocator));
+      });
 
   InsertAllocator(CreateAllocator(device_info));
 }
@@ -38,9 +59,11 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
 #if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
-  result = openvino_ep::GetCapability_2020_2(graph_viewer, info_.device_id_);
+  result = openvino_ep::GetCapability_2020_2(graph_viewer,
+                          openvino_ep::BackendManager::GetGlobalContext().device_type);
 #elif defined OPENVINO_2020_4
-  result = openvino_ep::GetCapability_2020_4(graph_viewer, info_.device_id_);
+  result = openvino_ep::GetCapability_2020_4(graph_viewer,
+                          openvino_ep::BackendManager::GetGlobalContext().device_type);
 #endif
 
   return result;
@@ -51,7 +74,7 @@ common::Status OpenVINOExecutionProvider::Compile(
     std::vector<NodeComputeInfo>& node_compute_funcs) {
   for (const auto& fused_node : fused_nodes) {
     NodeComputeInfo compute_info;
-    std::shared_ptr<openvino_ep::BackendManager> backend_manager = std::make_shared<openvino_ep::BackendManager>(fused_node, *GetLogger(), info_.device_id_, info_.precision_);
+    std::shared_ptr<openvino_ep::BackendManager> backend_manager = std::make_shared<openvino_ep::BackendManager>(fused_node, *GetLogger());
 
     compute_info.create_state_func =
         [backend_manager](ComputeContext* context, FunctionState* state) {

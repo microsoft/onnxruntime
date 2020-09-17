@@ -47,7 +47,7 @@ class NodeArg {
   /** Gets the data type. */
   ONNX_NAMESPACE::DataType Type() const noexcept;
 
-  /** Gets the TypeProto 
+  /** Gets the TypeProto
   @returns TypeProto if type is set. nullptr otherwise. */
   const ONNX_NAMESPACE::TypeProto* TypeAsProto() const noexcept;
 
@@ -65,28 +65,28 @@ class NodeArg {
   as the shape information is stored as part of TypeProto. */
   void SetShape(const ONNX_NAMESPACE::TensorShapeProto& shape);
 
-  /** Clears shape info. 
+  /** Clears shape info.
   @remarks If there is a mismatch during shape inferencing that can't be resolved the shape info may be removed. */
   void ClearShape();
 
   /** Validate and merge type [and shape] info from input_type.
-  @param strict If true, the shape update will fail if there are incompatible values. 
+  @param strict If true, the shape update will fail if there are incompatible values.
                 If false, will be lenient and merge only shape info that can be validly processed.
   @param override_types If true, resolve the two inputs or two outputs type when different
   @returns Success unless there is existing type or shape info that can't be successfully updated. */
   common::Status UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& input_type, bool strict, bool override_types, const logging::Logger& logger);
 
   /** Validate and merge type [and shape] info from node_arg.
-  @param strict If true, the shape update will fail if there are incompatible values. 
+  @param strict If true, the shape update will fail if there are incompatible values.
                 If false, will be lenient and merge only shape info that can be validly processed.
   @param override_types If true, resolve the two inputs or two outputs type when different
   @returns Success unless there is existing type or shape info that can't be successfully updated. */
   common::Status UpdateTypeAndShape(const NodeArg& node_arg, bool strict, bool override_types, const logging::Logger& logger);
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
   /** Gets this NodeArg as a ValueInfoProto. */
   const NodeArgInfo& ToProto() const noexcept { return node_arg_info_; }
-
-#endif  // !defined(ORT_MINIMAL_BUILD)
 
   /** Gets a flag indicating whether this NodeArg exists or not.
   Optional inputs are allowed in ONNX and an empty #Name represents a non-existent input argument. */
@@ -95,6 +95,8 @@ class NodeArg {
  private:
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(NodeArg);
   friend class Graph;
+
+  NodeArg(NodeArgInfo&& node_arg_info);
 
 #if !defined(ORT_MINIMAL_BUILD)
   void SetType(ONNX_NAMESPACE::DataType p_type);

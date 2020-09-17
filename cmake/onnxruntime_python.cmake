@@ -147,6 +147,7 @@ set_target_properties(onnxruntime_pybind11_state PROPERTIES FOLDER "ONNXRuntime"
 if(onnxruntime_ENABLE_LTO)
   set_target_properties(onnxruntime_pybind11_state PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
   set_target_properties(onnxruntime_pybind11_state PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
+  set_target_properties(onnxruntime_pybind11_state PROPERTIES INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL TRUE)
 endif()
 if (MSVC)
   set_target_properties(onnxruntime_pybind11_state PROPERTIES SUFFIX ".pyd")
@@ -171,16 +172,16 @@ endif()
 
 if (onnxruntime_ENABLE_TRAINING)
   file(GLOB onnxruntime_python_capi_training_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/python/training/*.py"
+    "${ORTTRAINING_SOURCE_DIR}/python/deprecated/*.py"
   )
   file(GLOB onnxruntime_python_root_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/python/experimental/*.py"
+    "${ORTTRAINING_SOURCE_DIR}/python/training/*.py"
   )
   file(GLOB onnxruntime_python_amp_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/python/experimental/amp/*.py"
+    "${ORTTRAINING_SOURCE_DIR}/python/training/amp/*.py"
   )
   file(GLOB onnxruntime_python_optim_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/python/experimental/optim/*.py"
+    "${ORTTRAINING_SOURCE_DIR}/python/training/optim/*.py"
   )
   file(GLOB onnxruntime_python_train_tools_srcs CONFIGURE_DEPENDS
     "${REPO_ROOT}/tools/python/register_custom_ops_pytorch_exporter.py"
@@ -204,8 +205,14 @@ file(GLOB onnxruntime_python_tools_featurizers_src CONFIGURE_DEPENDS
 file(GLOB onnxruntime_python_quantization_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/quantization/*.py"
 )
-list(REMOVE_ITEM onnxruntime_python_quantization_src
-  "${ONNXRUNTIME_ROOT}/python/tools/quantization/test_calibrate.py")
+file(GLOB onnxruntime_python_quantization_operators_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/tools/quantization/operators/*.py"
+)
+file(GLOB onnxruntime_python_transformers_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/tools/transformers/*.py"
+)
+list(REMOVE_ITEM onnxruntime_python_transformers_src
+  "${ONNXRUNTIME_ROOT}/python/tools/transformers/test_optimizer.py")
 file(GLOB onnxruntime_python_datasets_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/datasets/*.py"
 )
@@ -224,7 +231,9 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/datasets
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/tools
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/tools/featurizer_ops
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/transformers
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/quantization
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/quantization/operators
   COMMAND ${CMAKE_COMMAND} -E copy
       ${ONNXRUNTIME_ROOT}/__init__.py
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/
@@ -268,6 +277,12 @@ add_custom_command(
       ${onnxruntime_python_quantization_src}
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/quantization/
   COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_quantization_operators_src}
+      $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/quantization/operators/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_transformers_src}
+      $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/transformers/
+  COMMAND ${CMAKE_COMMAND} -E copy
       ${REPO_ROOT}/VERSION_NUMBER
       $<TARGET_FILE_DIR:${test_data_target}>
 )
@@ -275,21 +290,24 @@ add_custom_command(
 if (onnxruntime_ENABLE_TRAINING)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/amp
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/optim
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/training
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/training/amp
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/training/optim
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_capi_training_srcs}
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/training/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_root_srcs}
-        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/training/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_amp_srcs}
-        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/amp/
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/training/amp/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_optim_srcs}
-        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/optim/
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/training/optim/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_train_tools_srcs}
-        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/experimental/
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/training/
   )
 endif()
 
@@ -369,6 +387,15 @@ if (onnxruntime_USE_NUPHAR)
     COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_nuphar_python_srcs}
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/nuphar/
+  )
+endif()
+
+if (onnxruntime_USE_DML)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}/${DML_SHARED_LIB}
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
   )
 endif()
 

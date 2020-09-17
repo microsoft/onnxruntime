@@ -14,7 +14,7 @@ inline void ThrowOnError(const OrtApi& ort, OrtStatus* status) {
     std::string error_message = ort.GetErrorMessage(status);
     OrtErrorCode error_code = ort.GetErrorCode(status);
     ort.ReleaseStatus(status);
-    throw Ort::Exception(std::move(error_message), error_code);
+    ORT_CXX_API_THROW(std::move(error_message), error_code);
   }
 }
 
@@ -288,14 +288,17 @@ inline void IoBinding::ClearBoundOutputs() {
 
 inline Env::Env(OrtLoggingLevel default_warning_level, _In_ const char* logid) {
   ThrowOnError(GetApi().CreateEnv(default_warning_level, logid, &p_));
+  ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_CPLUSPLUS));
 }
 
 inline Env::Env(OrtLoggingLevel default_warning_level, const char* logid, OrtLoggingFunction logging_function, void* logger_param) {
   ThrowOnError(GetApi().CreateEnvWithCustomLogger(logging_function, logger_param, default_warning_level, logid, &p_));
+  ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_CPLUSPLUS));
 }
 
 inline Env::Env(const OrtThreadingOptions* tp_options, OrtLoggingLevel default_warning_level, _In_ const char* logid) {
   ThrowOnError(GetApi().CreateEnvWithGlobalThreadPools(default_warning_level, logid, tp_options, &p_));
+  ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_CPLUSPLUS));
 }
 
 inline Env& Env::EnableTelemetryEvents() {
@@ -518,6 +521,12 @@ inline char* Session::EndProfiling(OrtAllocator* allocator) const {
   return out;
 }
 
+inline uint64_t Session::GetProfilingStartTimeNs() const {
+  uint64_t out;
+  ThrowOnError(GetApi().SessionGetProfilingStartTimeNs(p_, &out));
+  return out;  
+}
+
 inline ModelMetadata Session::GetModelMetadata() const {
   OrtModelMetadata* out;
   ThrowOnError(GetApi().SessionGetModelMetadata(p_, &out));
@@ -620,6 +629,36 @@ inline Unowned<TensorTypeAndShapeInfo> TypeInfo::GetTensorTypeAndShapeInfo() con
   const OrtTensorTypeAndShapeInfo* out;
   ThrowOnError(GetApi().CastTypeInfoToTensorInfo(p_, &out));
   return Unowned<TensorTypeAndShapeInfo>(const_cast<OrtTensorTypeAndShapeInfo*>(out));
+}
+
+inline Unowned<SequenceTypeInfo> TypeInfo::GetSequenceTypeInfo() const {
+  const OrtSequenceTypeInfo* out;
+  ThrowOnError(GetApi().CastTypeInfoToSequenceTypeInfo(p_, &out));
+  return Unowned<SequenceTypeInfo>{const_cast<OrtSequenceTypeInfo*>(out)};
+}
+
+inline TypeInfo SequenceTypeInfo::GetSequenceElementType() const {
+  OrtTypeInfo* output;
+  ThrowOnError(GetApi().GetSequenceElementType(p_, &output));
+  return TypeInfo{output};
+}
+
+inline Unowned<MapTypeInfo> TypeInfo::GetMapTypeInfo() const {
+  const OrtMapTypeInfo* out;
+  ThrowOnError(GetApi().CastTypeInfoToMapTypeInfo(p_, &out));
+  return Unowned<MapTypeInfo>{const_cast<OrtMapTypeInfo*>(out)};
+}
+
+inline ONNXTensorElementDataType MapTypeInfo::GetMapKeyType() const {
+  ONNXTensorElementDataType out;
+  ThrowOnError(GetApi().GetMapKeyType(p_, &out));
+  return out;
+}
+
+inline TypeInfo MapTypeInfo::GetMapValueType() const {
+  OrtTypeInfo* output;
+  ThrowOnError(GetApi().GetMapValueType(p_, &output));
+  return TypeInfo{output};
 }
 
 inline ONNXType TypeInfo::GetONNXType() const {
@@ -738,10 +777,10 @@ const T* Value::GetTensorData() const {
 }
 
 template <typename T>
-inline T Value::At(const std::initializer_list<size_t>& location) {
+inline T& Value::At(const std::vector<int64_t>& location) {
+  static_assert(!std::is_same<T, std::string>::value, "this api does not support std::string");
   T* out;
-  std::vector<size_t> location_ = location;
-  ThrowOnError(GetApi().TensorAt(p_, location_.data(), location_.size(), (void**)&out));
+  ThrowOnError(GetApi().TensorAt(p_, location.data(), location.size(), (void**)&out));
   return *out;
 }
 

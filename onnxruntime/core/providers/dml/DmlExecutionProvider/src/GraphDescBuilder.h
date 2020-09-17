@@ -41,7 +41,8 @@ namespace Dml
 
         GraphDesc BuildGraphDesc(
             const onnxruntime::OpKernelInfo& kernelInfo,
-            gsl::span<const uint8_t> isConstGpuGraphInput,
+            const uint8_t* isConstGpuGraphInput,
+            const size_t isConstGpuGraphInputCount,
             std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap,
             const onnxruntime::Graph& graph,
             const onnxruntime::ConstPointerContainer<std::vector<onnxruntime::NodeArg*>>& fusedNodeInputDefs,

@@ -395,6 +395,10 @@ TEST(GradientCheckerTest, SinGrad) {
   UnaryOpGradientTest("Sin");
 }
 
+TEST(GradientCheckerTest, NegGrad) {
+  UnaryOpGradientTest("Neg");
+}
+
 TEST(GradientCheckerTest, LogGrad) {
   TensorShape shape({2,5,6});
 

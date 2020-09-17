@@ -13,6 +13,7 @@
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/profiler.h"
+#include "core/flatbuffers/ort.fbs.h"
 #include "core/framework/allocation_planner.h"
 #include "core/framework/callback.h"
 #include "core/framework/data_transfer_manager.h"
@@ -52,7 +53,7 @@ struct MemoryPatternGroup;
  *   for(...) // copy initializers from GraphProto format in Graph to OrtValue format in SessionState
         s.AddInitializedTensor(...);
  *   s.CleanInitializedTensorsFromGraph(); // remove GraphProto instances from Graph if not needed
- * 
+ *
  *   s.CreateGraphInfo();
  *   s.CreateKernels(...);
  * Then you can use:
@@ -252,11 +253,19 @@ class SessionState {
 #if !defined(ORT_MINIMAL_BUILD)
   void UpdateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue_idxs);
   const std::unordered_set<NodeIndex>* GetToBeExecutedNodes(const std::vector<int>& fetch_mlvalue_idxs) const;
+  Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
+                         flatbuffers::Offset<onnxruntime::experimental::fbs::SessionState>& fbs_session_state) const;
+#endif
+
+#if defined(ENABLE_ORT_FORMAT_LOAD)
+  Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::SessionState& fbs_session_state,
+                           const KernelRegistryManager& kernel_registry_manager);
 #endif
 
   Status FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                               KernelRegistryManager& kernel_registry_manager,
                               const SessionOptions& session_options = {},
+                              const onnxruntime::experimental::fbs::SessionState* serialized_session_state = nullptr,
                               bool remove_initializers = true);
 
  private:

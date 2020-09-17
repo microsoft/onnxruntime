@@ -1763,7 +1763,6 @@ TEST_F(GraphTransformationTests, AttentionFusionInt32Test) {
   EXPECT_EQ(op_to_count["Transpose"], 0);
   EXPECT_EQ(op_to_count["Reshape"], 0);
   EXPECT_EQ(op_to_count["Cast"], 0);
-  EXPECT_EQ(op_to_count["ReduceSum"], 1);
   EXPECT_EQ(op_to_count["Attention"], 1);
 
   ValidateAttention(graph);
@@ -1787,7 +1786,6 @@ TEST_F(GraphTransformationTests, AttentionFusionInt64Test) {
   EXPECT_EQ(op_to_count["Transpose"], 0);
   EXPECT_EQ(op_to_count["Reshape"], 0);
   EXPECT_EQ(op_to_count["Cast"], 1);  // Cast for int64 mask to int32
-  EXPECT_EQ(op_to_count["ReduceSum"], 1);
   EXPECT_EQ(op_to_count["Attention"], 1);
 
   ValidateAttention(graph);
@@ -1814,7 +1812,6 @@ TEST_F(GraphTransformationTests, AttentionFusionFloat32Test) {
   EXPECT_EQ(op_to_count["Div"], 0);
   EXPECT_EQ(op_to_count["Sub"], 0);
   EXPECT_EQ(op_to_count["Unsqueeze"], 0);
-  EXPECT_EQ(op_to_count["ReduceSum"], 1);
   EXPECT_EQ(op_to_count["Attention"], 1);
 
   ValidateAttention(graph);
@@ -1872,6 +1869,28 @@ TEST_F(GraphTransformationTests, AttentionFusionGPTTest) {
   EXPECT_EQ(op_to_count["Transpose"], 0);
   EXPECT_EQ(op_to_count["Softmax"], 0);
   EXPECT_EQ(op_to_count["Attention"], 1);
+}
+
+TEST_F(GraphTransformationTests, AttentionFusionDistilBertTest) {
+  auto model_uri = MODEL_FOLDER "fusion/attention_distilbert.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<AttentionFusion>(), TransformerLevel::Level2);
+  auto ret1 = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
+  ASSERT_TRUE(ret1.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["ReduceSum"], 0);
+  EXPECT_EQ(op_to_count["Attention"], 1);
+  EXPECT_EQ(op_to_count["Gather"], 0);
+  EXPECT_EQ(op_to_count["Unsqueeze"], 0);
+  EXPECT_EQ(op_to_count["Concat"], 0);
+  EXPECT_EQ(op_to_count["Transpose"], 0);
+  EXPECT_EQ(op_to_count["Softmax"], 0);
+  EXPECT_EQ(op_to_count["Shape"], 0);
 }
 
 TEST_F(GraphTransformationTests, GeluFusionTest) {
@@ -2549,7 +2568,7 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat1) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Gather"] == 0);
   ASSERT_TRUE(op_to_count["Add"] == 0);
-  ASSERT_TRUE(op_to_count["ReduceSum"] == 0);
+  ASSERT_TRUE(op_to_count["ReduceSum"] == 1);
   ASSERT_TRUE(op_to_count["Attention"] == 1);
   ASSERT_TRUE(op_to_count["SkipLayerNormalization"] == 0);
   ASSERT_TRUE(op_to_count["EmbedLayerNormalization"] == 1);
@@ -2576,7 +2595,7 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat2) {
   ASSERT_TRUE(op_to_count["Transpose"] == 0);
   ASSERT_TRUE(op_to_count["Squeeze"] == 0);
   ASSERT_TRUE(op_to_count["Add"] == 0);
-  ASSERT_TRUE(op_to_count["ReduceSum"] == 0);
+  ASSERT_TRUE(op_to_count["ReduceSum"] == 1);
   ASSERT_TRUE(op_to_count["Attention"] == 1);
   ASSERT_TRUE(op_to_count["SkipLayerNormalization"] == 0);
   ASSERT_TRUE(op_to_count["EmbedLayerNormalization"] == 1);
@@ -2600,7 +2619,7 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat3) {
   EXPECT_EQ(op_to_count["Unsqueeze"], 0);
   EXPECT_EQ(op_to_count["LayerNormalization"], 0);
   EXPECT_EQ(op_to_count["SkipLayerNormalization"], 0);
-  EXPECT_EQ(op_to_count["ReduceSum"], 0);
+  EXPECT_EQ(op_to_count["ReduceSum"], 1);
   EXPECT_EQ(op_to_count["MatMul"], 1);
   EXPECT_EQ(op_to_count["Add"], 2);
   EXPECT_EQ(op_to_count["Cast"], 3);
@@ -2626,7 +2645,7 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat3NoCast) {
   EXPECT_EQ(op_to_count["Unsqueeze"], 0);
   EXPECT_EQ(op_to_count["LayerNormalization"], 0);
   EXPECT_EQ(op_to_count["SkipLayerNormalization"], 0);
-  EXPECT_EQ(op_to_count["ReduceSum"], 0);
+  EXPECT_EQ(op_to_count["ReduceSum"], 1);
   EXPECT_EQ(op_to_count["MatMul"], 1);
   EXPECT_EQ(op_to_count["Add"], 2);
   EXPECT_EQ(op_to_count["Cast"], 3);
@@ -2656,7 +2675,7 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat4) {
   ASSERT_TRUE(op_to_count["Transpose"] == 0);
   ASSERT_TRUE(op_to_count["Squeeze"] == 0);
   ASSERT_TRUE(op_to_count["Add"] == 0);
-  ASSERT_TRUE(op_to_count["ReduceSum"] == 0);
+  ASSERT_TRUE(op_to_count["ReduceSum"] == 1);
   ASSERT_TRUE(op_to_count["Attention"] == 1);
   ASSERT_TRUE(op_to_count["SkipLayerNormalization"] == 0);
   ASSERT_TRUE(op_to_count["EmbedLayerNormalization"] == 1);
@@ -2677,7 +2696,7 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat5) {
   EXPECT_EQ(op_to_count["Gather"], 0);
   EXPECT_EQ(op_to_count["LayerNormalization"], 0);
   EXPECT_EQ(op_to_count["SkipLayerNormalization"], 0);
-  EXPECT_EQ(op_to_count["ReduceSum"], 0);
+  EXPECT_EQ(op_to_count["ReduceSum"], 1);
   EXPECT_EQ(op_to_count["MatMul"], 1);
   EXPECT_EQ(op_to_count["Add"], 2);
   EXPECT_EQ(op_to_count["Cast"], 3);
@@ -2725,12 +2744,64 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat6) {
   EXPECT_EQ(op_to_count["Where"], 0);
   EXPECT_EQ(op_to_count["LayerNormalization"], 0);
   EXPECT_EQ(op_to_count["SkipLayerNormalization"], 0);
-  EXPECT_EQ(op_to_count["ReduceSum"], 0);
+  EXPECT_EQ(op_to_count["ReduceSum"], 1);
   EXPECT_EQ(op_to_count["MatMul"], 1);
   EXPECT_EQ(op_to_count["Add"], 2);
   EXPECT_EQ(op_to_count["Cast"], 3);
   EXPECT_EQ(op_to_count["Attention"], 1);
   EXPECT_EQ(op_to_count["EmbedLayerNormalization"], 1);
+}
+
+static void TestEmbedLayerNormFusionDistilBert(const std::basic_string<ORTCHAR_T>& model_uri,
+                                               std::map<std::string, int>& op_to_count,
+                                               logging::Logger* logger) {
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<EmbedLayerNormFusion>(), TransformerLevel::Level2);
+  auto ret1 = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger);
+  ASSERT_TRUE(ret1.IsOK());
+
+  op_to_count = CountOpsInGraph(graph);
+}
+
+//DistilBert
+TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat7) {
+  std::map<std::string, int> op_to_count;
+  TestEmbedLayerNormFusionDistilBert(MODEL_FOLDER "fusion/embed_layer_norm_format7.onnx", op_to_count, logger_.get());
+  EXPECT_EQ(op_to_count["EmbedLayerNormalization"], 1);
+  EXPECT_EQ(op_to_count["Attention"], 1);
+  EXPECT_EQ(op_to_count["Cast"], 2);
+  EXPECT_EQ(op_to_count["Shape"], 0);
+  EXPECT_EQ(op_to_count["Gather"], 0);
+  EXPECT_EQ(op_to_count["Unsqueeze"], 0);
+  EXPECT_EQ(op_to_count["ReduceSum"], 1);
+}
+
+TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat8) {
+  std::map<std::string, int> op_to_count;
+  TestEmbedLayerNormFusionDistilBert(MODEL_FOLDER "fusion/embed_layer_norm_format8.onnx", op_to_count, logger_.get());
+  EXPECT_EQ(op_to_count["EmbedLayerNormalization"], 1);
+  EXPECT_EQ(op_to_count["Attention"], 1);
+  EXPECT_EQ(op_to_count["Cast"], 2);
+  EXPECT_EQ(op_to_count["Shape"], 0);
+  EXPECT_EQ(op_to_count["Gather"], 0);
+  EXPECT_EQ(op_to_count["Unsqueeze"], 0);
+  EXPECT_EQ(op_to_count["ReduceSum"], 1);
+}
+
+TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat9) {
+  std::map<std::string, int> op_to_count;
+  TestEmbedLayerNormFusionDistilBert(MODEL_FOLDER "fusion/embed_layer_norm_format9.onnx", op_to_count, logger_.get());
+  EXPECT_EQ(op_to_count["EmbedLayerNormalization"], 1);
+  EXPECT_EQ(op_to_count["Attention"], 1);
+  EXPECT_EQ(op_to_count["Cast"], 2);
+  EXPECT_EQ(op_to_count["Shape"], 0);
+  EXPECT_EQ(op_to_count["Gather"], 2);
+  EXPECT_EQ(op_to_count["Unsqueeze"], 2);
+  EXPECT_EQ(op_to_count["ReduceSum"], 1);
 }
 
 TEST_F(GraphTransformationTests, EmbedLayerNormFusionMultiple) {
@@ -2751,7 +2822,7 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionMultiple) {
   EXPECT_EQ(op_to_count["Unsqueeze"], 0);
   EXPECT_EQ(op_to_count["LayerNormalization"], 0);
   EXPECT_EQ(op_to_count["SkipLayerNormalization"], 0);
-  EXPECT_EQ(op_to_count["ReduceSum"], 0);
+  EXPECT_EQ(op_to_count["ReduceSum"], 2);
   EXPECT_EQ(op_to_count["MatMul"], 2);
   EXPECT_EQ(op_to_count["Add"], 5);
   EXPECT_EQ(op_to_count["Cast"], 6);

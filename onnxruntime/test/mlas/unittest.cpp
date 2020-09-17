@@ -67,7 +67,7 @@ public:
         ReleaseBuffer();
     }
 
-    T* GetBuffer(size_t Elements)
+    T* GetBuffer(size_t Elements, bool ZeroFill = false)
     {
         //
         // Check if the internal buffer needs to be reallocated.
@@ -96,7 +96,7 @@ public:
 #endif
 
             if (_BaseBuffer == nullptr) {
-                throw std::bad_alloc();
+                ORT_THROW_EX(std::bad_alloc);
             }
 
             //
@@ -106,11 +106,11 @@ public:
 
 #if defined(_WIN32)
             if (VirtualAlloc(_BaseBuffer, BytesToAllocate, MEM_COMMIT, PAGE_READWRITE) == nullptr) {
-                throw std::bad_alloc();
+                ORT_THROW_EX(std::bad_alloc);
             }
 #else
             if (mprotect(_BaseBuffer, BytesToAllocate, PROT_READ | PROT_WRITE) != 0) {
-                throw std::bad_alloc();
+                ORT_THROW_EX(std::bad_alloc);
             }
 #endif
 
@@ -125,20 +125,27 @@ public:
         T* GuardAddress = _GuardAddress;
         T* buffer = GuardAddress - Elements;
 
-        const int MinimumFillValue = -23;
-        const int MaximumFillValue = 23;
+        if (ZeroFill) {
 
-        int FillValue = MinimumFillValue;
-        T* FillAddress = buffer;
+            std::fill_n(buffer, Elements, T(0));
 
-        while (FillAddress < GuardAddress) {
+        } else {
 
-            *FillAddress++ = (T)FillValue;
+            const int MinimumFillValue = -23;
+            const int MaximumFillValue = 23;
 
-            FillValue++;
+            int FillValue = MinimumFillValue;
+            T* FillAddress = buffer;
 
-            if (FillValue > MaximumFillValue) {
-                FillValue = MinimumFillValue;
+            while (FillAddress < GuardAddress) {
+
+                *FillAddress++ = (T)FillValue;
+
+                FillValue++;
+
+                if (FillValue > MaximumFillValue) {
+                    FillValue = MinimumFillValue;
+                }
             }
         }
 
@@ -206,8 +213,67 @@ public:
     }
 };
 
+template<typename T, bool Packed>
+class MlasFgemmTestBase;
+
 template<typename T>
-class MlasFgemmTest : public MlasTestBase
+class MlasFgemmTestBase<T, false> : public MlasTestBase
+{
+public:
+    void
+    TestGemm(
+        CBLAS_TRANSPOSE TransA,
+        CBLAS_TRANSPOSE TransB,
+        size_t M,
+        size_t N,
+        size_t K,
+        float alpha,
+        const T* A,
+        size_t lda,
+        const T* B,
+        size_t ldb,
+        float beta,
+        T* C,
+        size_t ldc
+        )
+    {
+        MlasGemm(TransA, TransB, M, N, K, T(alpha), A, lda, B, ldb, T(beta), C, ldc, threadpool);
+    }
+};
+
+template<typename T>
+class MlasFgemmTestBase<T, true> : public MlasTestBase
+{
+public:
+    void
+    TestGemm(
+        CBLAS_TRANSPOSE TransA,
+        CBLAS_TRANSPOSE TransB,
+        size_t M,
+        size_t N,
+        size_t K,
+        float alpha,
+        const T* A,
+        size_t lda,
+        const T* B,
+        size_t ldb,
+        float beta,
+        T* C,
+        size_t ldc
+        )
+    {
+        size_t PackedBSize = MlasGemmPackBSize(N, K);
+        void* PackedB = BufferBPacked.GetBuffer(PackedBSize, true);
+        MlasGemmPackB(TransB, N, K, B, ldb, PackedB);
+        MlasGemm(TransA, M, N, K, T(alpha), A, lda, PackedB, T(beta), C, ldc, threadpool);
+    }
+
+private:
+    MatrixGuardBuffer<uint8_t> BufferBPacked;
+};
+
+template<typename T, bool Packed>
+class MlasFgemmTest : public MlasFgemmTestBase<T, Packed>
 {
 private:
     void
@@ -251,7 +317,7 @@ private:
         std::fill_n(C, M * N, -0.5f);
         std::fill_n(CReference, M * N, -0.5f);
 
-        MlasGemm(TransA, TransB, M, N, K, T(alpha), A, lda, B, ldb, T(beta), C, ldc, threadpool);
+        this->TestGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
         ReferenceGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, CReference, ldc);
 
         for (size_t f = 0; f < M * N; f++) {
@@ -392,6 +458,9 @@ public:
         for (size_t b = 256; b < 320; b += 32) {
             Test(b, b, b, 1.0f, 0.0f);
         }
+
+        Test(128, 3072, 768, 1.0f, 0.0f);
+        Test(128, 768, 3072, 1.0f, 0.0f);
     }
 
     void
@@ -2495,9 +2564,25 @@ public:
     }
 };
 
-class MlasQLinearAddTest : public MlasTestBase
+class MlasQLinearBinaryOpTest : public MlasTestBase
 {
+public:
+    typedef void (MLASCALL *QLinearBinaryOpS8)(
+                const int8_t* InputA, float ScaleA, int32_t ZeroPointA,
+                const int8_t* InputB, float ScaleB, int32_t ZeroPointB,
+                float ScaleC, int32_t ZeroPointC, int8_t* OutputC,
+                size_t N, bool IsScalarB);
+    typedef void (MLASCALL *QLinearBinaryOpU8)(
+                const uint8_t* InputA, float ScaleA, int32_t ZeroPointA,
+                const uint8_t* InputB, float ScaleB, int32_t ZeroPointB,
+                float ScaleC, int32_t ZeroPointC, uint8_t* OutputC,
+                size_t N, bool IsScalarB);
+
 private:
+    std::function<float(float, float)> ScalarOp;
+    std::string ScalarOpName;
+    QLinearBinaryOpS8 QLinearS8Op;
+    QLinearBinaryOpU8 QLinearU8Op;
     MatrixGuardBuffer<uint8_t> BufferInputA;
     MatrixGuardBuffer<uint8_t> BufferInputB;
     MatrixGuardBuffer<uint8_t> BufferOutput;
@@ -2505,7 +2590,7 @@ private:
 
     template <typename T>
     T
-    QLinearAddScalar(
+    QLinearBinaryScalar(
         T a,
         float ScaleA,
         int32_t ZeroPointA,
@@ -2516,23 +2601,28 @@ private:
         int32_t ZeroPointC
         )
     {
-
         constexpr int qmax = std::numeric_limits<T>::max();
         constexpr int qmin = std::numeric_limits<T>::min();
 
         float ValueA = ScaleA * (static_cast<int>(a) - ZeroPointA);
         float ValueB = ScaleB * (static_cast<int>(b) - ZeroPointB);
-        float ValueC = std::nearbyintf((ValueA + ValueB) / ScaleC) + ZeroPointC;
+        float ValueC = std::nearbyintf(ScalarOp(ValueA, ValueB) / ScaleC) + ZeroPointC;
         int qc = static_cast<int>(ValueC);
         qc = std::min(qc, qmax);
         qc = std::max(qc, qmin);
         return static_cast<T>(qc);
     }
 
-    template <typename T, bool IsScalarB>
+    template <typename T>
     void
     Test(
+        void (MLASCALL *QLinearBinaryOp)(
+                const T* InputA, float ScaleA, int32_t ZeroPointA,
+                const T* InputB, float ScaleB, int32_t ZeroPointB,
+                float ScaleC, int32_t ZeroPointC, T* OutputC,
+                size_t N, bool IsScalarB),
         size_t N,
+        bool IsScalarB,
         float ScaleA,
         int32_t ZeroPointA,
         float ScaleB,
@@ -2559,17 +2649,18 @@ private:
             if (!IsScalarB) {
                 InputB[n] = static_cast<T>(distribution(generator));
             }
-            OutputReference[n] = QLinearAddScalar(InputA[n], ScaleA, ZeroPointA, InputB[IsScalarB ? 0 : n], ScaleB, ZeroPointB, ScaleC, ZeroPointC);
+            OutputReference[n] = QLinearBinaryScalar(InputA[n], ScaleA, ZeroPointA, InputB[IsScalarB ? 0 : n], ScaleB, ZeroPointB, ScaleC, ZeroPointC);
         }
 
-        MlasQLinearAdd(InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, N, IsScalarB);
+        QLinearBinaryOp(InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, N, IsScalarB);
 
         for (size_t n = 0; n < N; n++) {
             int diff = (int)OutputC[n] - (int)OutputReference[n];
             if (diff < -1 || diff > 1) {
-                printf("Test IsScalarB=%d difference @%u of %u, %d(%f,%d) + %d(%f,%d) => %d(%f,%d) (expecting %d)\n",
+                printf("Test IsScalarB=%d difference @%u of %u, %d(%f,%d) %s %d(%f,%d) => %d(%f,%d) (expecting %d)\n",
                         int(IsScalarB), static_cast<unsigned>(n), static_cast<unsigned>(N),
                         static_cast<int>(InputA[n]), ScaleA, ZeroPointA,
+                        ScalarOpName.c_str(),
                         static_cast<int>(InputB[IsScalarB ? 0 : n]), ScaleB, ZeroPointB,
                         static_cast<int>(OutputC[n]), ScaleC, ZeroPointC,
                         static_cast<int>(OutputReference[n]));
@@ -2578,54 +2669,49 @@ private:
     }
 
 public:
+    explicit MlasQLinearBinaryOpTest(
+        std::function<float(float, float)> P_ScalarOp,
+        const std::string& P_ScalarOpName,
+        QLinearBinaryOpS8 P_QLinearS8Op,
+        QLinearBinaryOpU8 P_QLinearU8Op
+        )
+        : ScalarOp(P_ScalarOp),
+          ScalarOpName(P_ScalarOpName),
+          QLinearS8Op(P_QLinearS8Op),
+          QLinearU8Op(P_QLinearU8Op)
+    {
+    }
+
     void
     ExecuteShort(
         void
         ) override
     {
-        // uint8_t test
         static const uint8_t zero_points[] = { 0, 18, 75, 128, 157, 231, 255 };
+        static const float c_scales[] = { 18.0f, 90.0f };
+
+        const int8_t* s_zero_points = (const int8_t*)(&zero_points[0]);
         for (size_t a = 0; a < _countof(zero_points); a++) {
-            uint8_t offa = zero_points[a];
-
             for (size_t b = 0; b < _countof(zero_points); b++) {
-                uint8_t offb = zero_points[b];
-
                 for (size_t c = 0; c < _countof(zero_points); c++) {
-                    uint8_t offc = zero_points[c];
+                    for (size_t s = 0; s < _countof(c_scales); s++) {
+                        for (size_t n = 1; n < 128; n++) {
+                            // u8, vector + vector
+                            Test<uint8_t>(QLinearU8Op, n, false, 10.f, zero_points[a], 10.f, zero_points[b], c_scales[s], zero_points[c]);
 
-                    for (size_t n = 1; n < 128; n++) {
-                        // vector + vector
-                        Test<uint8_t, false>(n, 10.f, offa, 10.f, offb, 20.f, offc);
+                            // u8, vector + scalar
+                            Test<uint8_t>(QLinearU8Op, n, true, 10.f, zero_points[a], 10.f, zero_points[b], c_scales[s], zero_points[c]);
 
-                        // vector + scalar
-                        Test<uint8_t, true>(n, 10.f, offa, 10.f, offb, 20.f, offc);
+                            // s8, vector + vector
+                            Test<int8_t>(QLinearS8Op, n, false, 10.f, s_zero_points[a], 10.f, s_zero_points[b], c_scales[s], s_zero_points[c]);
+
+                            // s8, vector + scalar
+                            Test<int8_t>(QLinearS8Op, n, true, 10.f, s_zero_points[a], 10.f, s_zero_points[b], c_scales[s], s_zero_points[c]);
+                        }
                     }
                 }
             }
         }
-
-        static const int8_t szero_points[] = { -128, -110, -53, 0, 29, 103, 127 };
-        for (size_t a = 0; a < _countof(zero_points); a++) {
-            int8_t offa = szero_points[a];
-
-            for (size_t b = 0; b < _countof(zero_points); b++) {
-                int8_t offb = szero_points[b];
-
-                for (size_t c = 0; c < _countof(zero_points); c++) {
-                    int8_t offc = szero_points[c];
-
-                    for (size_t n = 1; n < 128; n++) {
-                        // vector + vector
-                        Test<int8_t, false>(n, 10.f, offa, 10.f, offb, 20.f, offc);
-
-                        // vector + scalar
-                        Test<int8_t, true>(n, 10.f, offa, 10.f, offb, 20.f, offc);
-                    }
-                }
-            }
-        }
-
     }
 };
 
@@ -2688,10 +2774,12 @@ RunThreadedTests(
     )
 {
     printf("SGEMM tests.\n");
-    onnxruntime::make_unique<MlasFgemmTest<float>>()->ExecuteShort();
+    onnxruntime::make_unique<MlasFgemmTest<float, false>>()->ExecuteShort();
+    printf("SGEMM packed tests.\n");
+    onnxruntime::make_unique<MlasFgemmTest<float, true>>()->ExecuteShort();
 #ifdef MLAS_HAS_DGEMM
     printf("DGEMM tests.\n");
-    onnxruntime::make_unique<MlasFgemmTest<double>>()->ExecuteShort();
+    onnxruntime::make_unique<MlasFgemmTest<double, false>>()->ExecuteShort();
 #endif
 
 #ifdef MLAS_HAS_QGEMM_U8X8
@@ -2787,7 +2875,12 @@ main(
     }
 
     printf("QLinearAdd tests.\n");
-    onnxruntime::make_unique<MlasQLinearAddTest>()->ExecuteShort();
+    onnxruntime::make_unique<MlasQLinearBinaryOpTest>(
+        [](float a, float b) { return a + b; }, "+", MlasQLinearAdd<int8_t>, MlasQLinearAdd<uint8_t>)->ExecuteShort();
+
+    printf("QLinearMul tests.\n");
+    onnxruntime::make_unique<MlasQLinearBinaryOpTest>(
+        [] (float a, float b) { return a * b; }, "*", MlasQLinearMul<int8_t>, MlasQLinearMul<uint8_t>)->ExecuteShort();
 
     printf("Done.\n");
 
