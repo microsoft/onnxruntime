@@ -678,7 +678,7 @@ Status TransformGraphForMixedPrecision(Graph& graph,
 
   //set layernorm stash type
   for (auto& node : graph.Nodes()){
-    if (node.OpType().compare("LayerNormalizaiton")){
+    if (!node.OpType().compare("LayerNormalization")){
       node.AddAttribute("stash_type",  static_cast<int64_t>(layernorm_stash_as_fp32 ? ONNX_NAMESPACE::TensorProto_DataType_FLOAT : fp16_type));
     }
   }
