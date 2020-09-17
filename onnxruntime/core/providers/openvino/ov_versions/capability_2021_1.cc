@@ -193,16 +193,16 @@ bool IsOpSupported(std::string name, std::string device) {
 }
 
 // Returns true only if op is in a mode that is not currently supported
-static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer& graph_viewer) {
+static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer& graph_viewer, const std::string& device_id) {
   const auto& optype = node->OpType();
 
   const auto& initializers = graph_viewer.GetAllInitializedTensors();
 
   if (optype == "MaxPool") {
     //MaxPool "indices" output is not currently supported.
-    if (node->OutputDefs().size() > 1) {
+    /*if (node->OutputDefs().size() > 1) {
       return true;
-    }
+    }*/
 
     const auto& attributes = node->GetAttributes();
     //auto pad null value is not supported
@@ -210,12 +210,12 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     if (auto_attr->second.s() == "") {
       return true;
     }
-    // ceil_mode and dilations attrs are not supported in nGraph
+    /* ceil_mode and dilations attrs are not supported in nGraph
     const auto ceil_attr = attributes.find("ceil_mode");
     // default value of ceil_mode (0) is supported.
     if (ceil_attr != attributes.end() && ceil_attr->second.i() != 0) {
       return true;
-    }
+    }*/
 
     if (attributes.find("dilations") != attributes.end()) {
       return true;
@@ -434,7 +434,13 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       return true;
     } else
       return false;
-} 
+  } else if(optype == "Gather") {
+    const auto &indices_arg = node->InputDefs()[1];
+    if(device_id == "GPU") {
+      if (indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64)
+        return true;
+    }
+  }
 
   //Op doesn't fall into known any of unsupported modes.
   return false;
@@ -596,7 +602,7 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
   }
 
   //Check 3a
-  if (domain == kOnnxDomain && IsUnsupportedOpMode(node, graph_viewer)) {
+  if (domain == kOnnxDomain && IsUnsupportedOpMode(node, graph_viewer, device_id)) {
 #ifndef NDEBUG
     if (openvino_ep::backend_utils::IsDebugEnabled()) {
       std::cout << "Failed in unsupported op mode" << std::endl;
