@@ -4,7 +4,6 @@
 #include "contrib_ops/cuda/math/bias_softmax.h"
 
 #include "core/providers/common.h"
-#include "core/providers/cuda/cudnn_common.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -12,26 +11,22 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;
 
-#define REGISTER_KERNEL_TYPED(T)                                                \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      BiasSoftmax,                                                              \
-      kMSDomain,                                                                \
-      1,                                                                        \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      BiasSoftmax<T>);                                                              
+ONNX_OPERATOR_KERNEL_EX(                                                             \
+    BiasSoftmax,                                                                     \
+    kMSDomain,                                                                       \
+    1,                                                                               \
+    kCudaExecutionProvider,                                                          \
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()), \
+    BiasSoftmax);                                                              
 
-template <typename T>
-Status BiasSoftmax<T>::ComputeInternal(OpKernelContext* ctx) const {
+Status BiasSoftmax::ComputeInternal(OpKernelContext* ctx) const {
 
-  typedef typename ToCudaType<T>::MappedType CudaT;
-
-  const auto* X_data = reinterpret_cast<const CudaT*>(ctx->Input<Tensor>(0)->template Data<T>());
   const TensorShape& X_shape{ctx->Input<Tensor>(0)->Shape()};
-  const auto* B_data = reinterpret_cast<const CudaT*>(ctx->Input<Tensor>(1)->template Data<T>());
   const TensorShape& B_shape{ctx->Input<Tensor>(1)->Shape()};
-  auto* Y_data = reinterpret_cast<CudaT*>(ctx->Output(0, X_shape)->template MutableData<T>());
+
+  const Tensor* X = ctx->Input<Tensor>(0);
+  const Tensor* B = ctx->Input<Tensor>(1);
+  Tensor* Y = ctx->Output(0, X_shape);
 
   const int64_t softmax_axis = HandleNegativeAxis(softmax_axis_, X_shape.NumDimensions());
   const int N = static_cast<int>(X_shape.SizeToDimension(softmax_axis));
@@ -40,28 +35,71 @@ Status BiasSoftmax<T>::ComputeInternal(OpKernelContext* ctx) const {
   const int64_t broadcast_axis = HandleNegativeAxis(broadcast_axis_, X_shape.NumDimensions());
   const int broadcast_size = N/static_cast<int>(X_shape.SizeToDimension(broadcast_axis));
 
-  if (D <= 1024 && D*sizeof(T) <= 4096) {
-
+  const int elem_size = X->DataType()->Size();
+  if (D <= 1024 && D*elem_size <= 4096) {
     // expect thread blocks can fill SM at high occupancy without overflowing registers
-    DispatchBiasSoftmaxForward<CudaT, CudaT, AccType<T>>(Y_data, X_data, B_data, D, N, D, broadcast_size);
+    utils::MLTypeCallDispatcher<DispatchBiasSoftmaxForward, double, float, MLFloat16> 
+      t_disp(X->GetElementType());
+    t_disp.Invoke(Y, X, B, D, N, D, broadcast_size);
   }
   else {
-
     // need to fallback to add kernel + CUDA DNN library softmax call :/
-    DispatchBiasSoftMaxForwardViaDnnLibrary<CudaT>(
-      CudnnHandle(), D, N, broadcast_axis, softmax_axis, X_shape, X_data, B_shape, B_data, Y_data);
+    utils::MLTypeCallDispatcher<DispatchBiasSoftMaxForwardViaDnnLibrary, double, float, MLFloat16> 
+      t_disp(X->GetElementType());
+    t_disp.Invoke(CudnnHandle(), D, N, broadcast_axis, softmax_axis, X_shape, X, B_shape, B, Y);
   }
 
   return Status::OK();
 }
 
-#define SPECIALIZED_COMPUTE(T) \
-  REGISTER_KERNEL_TYPED(T)     \
-  template Status BiasSoftmax<T>::ComputeInternal(OpKernelContext* ctx) const;
+template <typename T>
+struct DispatchBiasSoftmaxForward {
+  void operator()(
+    Tensor* output, 
+    const Tensor* input, 
+    const Tensor* input_bias, 
+    int element_count, 
+    int batch_count, 
+    int batch_stride, 
+    int bias_broadcast_size_per_batch) {
+    DispatchBiasSoftmaxForwardImpl<T>(
+      output, 
+      input, 
+      input_bias, 
+      element_count, 
+      batch_count, 
+      batch_stride, 
+      bias_broadcast_size_per_batch);
+  }
+};
 
-SPECIALIZED_COMPUTE(float)
-SPECIALIZED_COMPUTE(double)
-SPECIALIZED_COMPUTE(MLFloat16)
+template <typename T>
+struct DispatchBiasSoftMaxForwardViaDnnLibrary {
+  void operator()(
+    cudnnHandle_t cudaDnnHandle,
+    int element_count,
+    int batch_count,
+    int broadcast_axis,
+    int softmax_axis,
+    const onnxruntime::TensorShape& X_shape,
+    const onnxruntime::Tensor* X,
+    const onnxruntime::TensorShape& B_shape,
+    const onnxruntime::Tensor* B,
+    onnxruntime::Tensor* Y
+  ) {
+  DispatchBiasSoftMaxForwardViaDnnLibraryImpl<T>(
+    cudaDnnHandle,
+    element_count,
+    batch_count,
+    broadcast_axis,
+    softmax_axis,
+    X_shape,
+    X,
+    B_shape,
+    B, 
+    Y);
+  }
+};
 
 }  // namespace cuda
 }  // namespace contrib

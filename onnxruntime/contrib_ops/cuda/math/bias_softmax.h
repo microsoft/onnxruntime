@@ -21,30 +21,35 @@ struct AccumulateType<double> { using type = double; };
 template <typename T>
 using AccType = typename AccumulateType<T>::type;
 
-template <typename input_t, typename output_t, typename acc_t>
-void DispatchBiasSoftmaxForward(
-  output_t* output, 
-  const input_t* input, 
-  const input_t* input_bias, 
-  int element_count, 
-  int batch_count, 
-  int batch_stride, 
-  int bias_repeat_count);
+template <typename T> 
+struct DispatchBiasSoftmaxForward;
 
 template <typename T>
-void DispatchBiasSoftMaxForwardViaDnnLibrary(
-  cudnnHandle_t cudaDnnHandle,
-  int element_count,
-  int batch_count,
-  int broadcast_axis,
-  int softmax_axis,
-  const TensorShape& X_shape,
-  const T* X_data,
-  const TensorShape& B_shape,
-  const T* B_data,
-  T* Y_data);
+void DispatchBiasSoftmaxForwardImpl(
+    Tensor* output_tensor, 
+    const Tensor* input_tensor, 
+    const Tensor* input_bias_tensor, 
+    int element_count, 
+    int batch_count, 
+    int batch_stride, 
+    int bias_broadcast_size_per_batch);
+
+template <typename T> 
+struct DispatchBiasSoftMaxForwardViaDnnLibrary;
 
 template <typename T>
+void DispatchBiasSoftMaxForwardViaDnnLibraryImpl(
+    cudnnHandle_t cudaDnnHandle,
+    int element_count,
+    int batch_count,
+    int broadcast_axis,
+    int softmax_axis,
+    const onnxruntime::TensorShape& X_shape,
+    const onnxruntime::Tensor* X,
+    const onnxruntime::TensorShape& B_shape,
+    const onnxruntime::Tensor* B,
+    onnxruntime::Tensor* Y);
+
 class BiasSoftmax final : public onnxruntime::cuda::CudaKernel {
  public:
   BiasSoftmax(const OpKernelInfo& info) : CudaKernel{info} {
