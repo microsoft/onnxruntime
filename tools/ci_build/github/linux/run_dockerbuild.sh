@@ -108,7 +108,7 @@ fi
 if [ $BUILD_DEVICE = "cpu" ] || [ $BUILD_DEVICE = "ngraph" ] || [ $BUILD_DEVICE = "openvino" ] || [ $BUILD_DEVICE = "nnapi" ] || [ $BUILD_DEVICE = "arm" ]; then
     RUNTIME=
 else
-    RUNTIME="--gpus all"
+    RUNTIME="--gpus all --shm-size=1024m"
 fi
 
 DOCKER_RUN_PARAMETER="--name onnxruntime-$BUILD_DEVICE \
@@ -116,8 +116,7 @@ DOCKER_RUN_PARAMETER="--name onnxruntime-$BUILD_DEVICE \
                       --volume $BUILD_DIR:/build \
                       --volume /data/models:/build/models:ro \
                       --volume $HOME/.cache/onnxruntime:/home/onnxruntimedev/.cache/onnxruntime \
-                      --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-                      --net=host"
+                      --volume $HOME/.onnx:/home/onnxruntimedev/.onnx"
 if [ $BUILD_DEVICE = "openvino" ] && [[ $BUILD_EXTR_PAR == *"--use_openvino GPU_FP"* ]]; then
     DOCKER_RUN_PARAMETER="$DOCKER_RUN_PARAMETER --device /dev/dri:/dev/dri"
 fi
