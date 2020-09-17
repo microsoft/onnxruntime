@@ -39,5 +39,8 @@ find /home/onnxruntimedev/.test_data/ort_minimal_e2e_test_data -type f -name "*.
 # Delete all the .onnx files, because the minimal build tests will not work on onnx files
 find /home/onnxruntimedev/.test_data/ort_minimal_e2e_test_data -type f -name "*.onnx" -delete
 
+# Uninstall the ORT python wheel
+/opt/python/cp37-cp37m/bin/python3 -m pip uninstall -y onnxruntime
+
 # Clear the build
 rm -rf /build/Debug
