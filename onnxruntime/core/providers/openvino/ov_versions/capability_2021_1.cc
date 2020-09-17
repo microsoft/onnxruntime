@@ -204,8 +204,13 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       return true;
     }
 
-    // ceil_mode and dilations attrs are not supported in nGraph
     const auto& attributes = node->GetAttributes();
+    //auto pad null value is not supported
+    const auto auto_attr = attributes.find("auto_pad");
+    if (auto_attr->second.s() == "") {
+      return true;
+    }
+    // ceil_mode and dilations attrs are not supported in nGraph
     const auto ceil_attr = attributes.find("ceil_mode");
     // default value of ceil_mode (0) is supported.
     if (ceil_attr != attributes.end() && ceil_attr->second.i() != 0) {
@@ -242,10 +247,10 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
   } else if (optype == "Conv" || optype == "ConvTranspose") {
     if (GetInputCount(node, initializers) > 1)
       return true;
-  //} //else if (optype == "TopK") {
-    // TopK opset 10 is currently not supported.
-    // K as input is currently not suppported.
-    //return node->InputDefs().size() > 1;
+    auto attributes = node->GetAttributes();
+    if (attributes["auto_pad"].s() == "") {
+      return true;
+    }
   } else if (optype == "ReduceMin") {
     //Only FP32, INT32 and U8 data types are supported
     const bool data_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
@@ -327,6 +332,11 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
   } else if (optype == "AveragePool") {
     // ceil_mode attribute is not supported in nGraph
     const auto& attributes = node->GetAttributes();
+    //auto pad null value is not supported
+    const auto auto_attr = attributes.find("auto_pad");
+    if (auto_attr->second.s() == "") {
+      return true;
+    }
     const auto ceil_attr = attributes.find("ceil_mode");
     // default value of ceil_mode (0) is supported.
     if (ceil_attr != attributes.end() && ceil_attr->second.i() != 0) {
@@ -424,7 +434,8 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       return true;
     } else
       return false;
-  }  
+} 
+
   //Op doesn't fall into known any of unsupported modes.
   return false;
 }
