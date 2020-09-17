@@ -379,7 +379,7 @@ if __name__ == "__main__":
         parser.print_help()
         sys.exit(-1)
 
-    if not ort_root:
+    if not ort_root and not args.write_combined_config_to:
         log.info('ort_root was not specified. Inferring ORT root from location of this script.')
 
     if not args.write_combined_config_to:
