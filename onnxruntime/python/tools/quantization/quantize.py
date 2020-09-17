@@ -12,7 +12,6 @@ from pathlib import Path
 import numpy as np
 
 from onnx import onnx_pb as onnx_proto
-from onnx import shape_inference
 from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
 
 from .quant_utils import QuantizationMode, QuantizedValueType, QuantizedInitializer, QuantizedValue, quantization_modes
