@@ -935,8 +935,131 @@ function commandMessage(key) {
         
         "windows,Javascript,X64,DefaultCPU":
             "npm install onnxruntime",
-    
 
+        "android,C,X86,DefaultCPU":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Android' target='_blank'>here</a>",
+        
+        "android,C++,X86,DefaultCPU":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Android' target='_blank'>here</a>",
+        
+        "android,Java,X86,DefaultCPU":
+            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Android' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+        
+        "android,C,ARM64,DefaultCPU":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Android' target='_blank'>here</a>",
+        
+        "android,C++,ARM64,DefaultCPU":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Android' target='_blank'>here</a>",
+        
+        "android,Java,ARM64,DefaultCPU":
+            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Android' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+        
+        "android,C,X86,NNAPI":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Android-NNAPI-Execution-Provider' target='_blank'>here</a>",
+        
+        "android,C++,X86,NNAPI":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Android-NNAPI-Execution-Provider' target='_blank'>here</a>",
+        
+        "android,Java,X86,NNAPI":
+            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Android-NNAPI-Execution-Provider' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+        
+        "android,C,ARM64,NNAPI":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Android-NNAPI-Execution-Provider' target='_blank'>here</a>",
+        
+        "android,C++,ARM64,NNAPI":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Android-NNAPI-Execution-Provider' target='_blank'>here</a>",
+        
+        "android,Java,ARM64,NNAPI":
+            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Android-NNAPI-Execution-Provider' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+        
+        "ios,C,ARM64,DefaultCPU":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#iOS' target='_blank'>here</a>",
+        
+        "ios,C++,ARM64,DefaultCPU":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#iOS' target='_blank'>here</a>",
+        
+        "windows,Python(3.5-3.7),X86,VitisAI":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Vitis-AI' target='_blank'>here</a>",
+        
+        "windows,C,X86,VitisAI":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Vitis-AI' target='_blank'>here</a>",
+        
+        "windows,C++,X86,VitisAI":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Vitis-AI' target='_blank'>here</a>",
+        
+        "linux,Python(3.5-3.7),X86,VitisAI":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Vitis-AI' target='_blank'>here</a>",
+        
+        "linux,C,X86,VitisAI":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Vitis-AI' target='_blank'>here</a>",
+        
+        "linux,C++,X86,VitisAI":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Vitis-AI' target='_blank'>here</a>",
+        
+        "windows,Python(3.5-3.7),X86,MIGraphX":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#AMD-MIGraphX' target='_blank'>here</a>",
+        
+        "windows,C,X86,MIGraphX":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#AMD-MIGraphX' target='_blank'>here</a>",
+        
+        "windows,C++,X86,MIGraphX":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#AMD-MIGraphX' target='_blank'>here</a>",
+        
+        "linux,Python(3.5-3.7),X86,MIGraphX":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#AMD-MIGraphX' target='_blank'>here</a>",
+        
+        "linux,C,X86,MIGraphX":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#AMD-MIGraphX' target='_blank'>here</a>",
+        
+        "linux,C++,X86,MIGraphX":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#AMD-MIGraphX' target='_blank'>here</a>",
+        
+        "linux,Python(3.5-3.7),ARM64,ACL":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#ARM-Compute-Library' target='_blank'>here</a>",
+        
+        "linux,C,ARM64,ACL":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#ARM-Compute-Library' target='_blank'>here</a>",
+        
+        "linux,C++,ARM64,ACL":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#ARM-Compute-Library' target='_blank'>here</a>",
+        
+        "linux,Python(3.5-3.7),ARM32,ACL":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#ARM-Compute-Library' target='_blank'>here</a>",
+        
+        "linux,C,ARM32,ACL":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#ARM-Compute-Library' target='_blank'>here</a>",
+        
+        "linux,C++,ARM32,ACL":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#ARM-Compute-Library' target='_blank'>here</a>",
+        
+        "linux,Python(3.5-3.7),ARM64,ArmNN":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#ArmNN' target='_blank'>here</a>",
+        
+        "linux,C,ARM64,ArmNN":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#ArmNN' target='_blank'>here</a>",
+        
+        "linux,C++,ARM64,ArmNN":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#ArmNN' target='_blank'>here</a>",
+        
+        "linux,Python(3.5-3.7),ARM32,ArmNN":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#ArmNN' target='_blank'>here</a>",
+        
+        "linux,C,ARM32,ArmNN":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#ArmNN' target='_blank'>here</a>",
+        
+        "linux,C++,ARM32,ArmNN":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#ArmNN' target='_blank'>here</a>",
+        
+        "linux,Python(3.5-3.7),ARM64,RockchipNPU":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#RKNPU' target='_blank'>here</a>",
+        
+        "linux,C,ARM64,RockchipNPU":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#RKNPU' target='_blank'>here</a>",
+        
+        "linux,C++,ARM64,RockchipNPU":
+            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#RKNPU' target='_blank'>here</a>",
+        
+        
     };
 
     if (!object.hasOwnProperty(key)) {

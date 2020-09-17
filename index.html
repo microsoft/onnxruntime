@@ -153,7 +153,7 @@
 											<div class="row r-wrap mb-1 mb-md-0 mr-0">
 												<div class="col-md-3 r-heading">
 													<h3 id="selectOS"><abbr title="Operating System">OS</abbr></h3>
-													<p id="decriptionOS" class="sr-only"><abbr>OS</abbr> list contains three items</p>
+													<p id="decriptionOS" class="sr-only"><abbr>OS</abbr> list contains five items</p>
 												</div>
 												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="listbox-1" aria-labelledby="selectOS" aria-describedby="decriptionOS">
 													<div class="row os">
@@ -166,7 +166,13 @@
 														<div class="col-lg-2dot4 col r-option version" role="option" tabindex="-1" aria-selected="false" id="mac">
 															<span>Mac</span>
 														</div>
-														
+														<div class="col-lg-2dot4 col r-option version" role="option" tabindex="-1" aria-selected="false" id="android">
+															<span>Android (Preview)</span>
+														</div>
+														<div class="col-lg-2dot4 col r-option version" role="option" tabindex="-1" aria-selected="false" id="ios">
+															<span>iOS (Preview)</span>
+														</div>
+								
 													</div>
 												</div>
 											</div>
@@ -174,7 +180,7 @@
 											<div class="row r-wrap mb-1 mb-md-0 mr-0">
 												<div class="col-md-3 r-heading">
 													<h3 id="selectLanguage">API</h3>
-													<p id="decriptionLanguage" class="sr-only">API list contains five items</p>
+													<p id="decriptionLanguage" class="sr-only">API list contains seven items</p>
 												</div>
 												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="listbox-2" aria-labelledby="selectLanguage" aria-describedby="decriptionLanguage">
 													<div class="row language">
@@ -194,7 +200,7 @@
 											<div class="row r-wrap mb-1 mb-md-0 mr-0">
 												<div class="col-md-3 r-heading ">
 													<h3 id="selectArchitecture" class="align-self-center">Architecture</h3>
-													<p id="decriptionArchitecture" class="sr-only">Architecture list contains five items</p>
+													<p id="decriptionArchitecture" class="sr-only">Architecture list contains four items</p>
 												</div>
 												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="listbox-3" aria-labelledby="selectArchitecture" aria-describedby="decriptionArchitecture">
 													<div class="row architecture">
@@ -213,33 +219,39 @@
 											<div class="row r-wrap mb-1 mb-md-0 mr-0">
 												<div class="col-md-3 r-heading">
 													<h3 id="selectHardwareAcceleration">Hardware Acceleration</h3>
-													<p id="decriptionHardwareAcceleration" class="sr-only">Hardware Acceleration list contains nine items</p>
+													<p id="decriptionHardwareAcceleration" class="sr-only">Hardware Acceleration list contains fourteen items</p>
 												</div>
 												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="listbox-4" aria-labelledby="selectHardwareAcceleration" aria-describedby="decriptionHardwareAcceleration">
 													<div class="row hardwareAcceleration">
 														<div class="col-lg-2dot5 col r-option version selected" role="option" tabindex="0" aria-selected="true" id="DefaultCPU">
 															<span>Default&nbsp; <abbr>CPU</abbr></span></div>
+														<div class="col-lg-2dot5 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="ACL">
+															<span>ACL (Preview)</span></div>	
+														<div class="col-lg-2dot5 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="ArmNN">
+															<span>ArmNN (Preview)</span></div>	
 														<div class="col-lg-2dot5 col r-option version" role="option" tabindex="-1" aria-selected="false" id="CUDA">
-															<span><abbr>CUDA</abbr></span>
-														</div>
+															<span><abbr>CUDA</abbr></span></div>
+														<div class="col-lg-2dot5 col r-option version" role="option" tabindex="-1" aria-selected="false" id="DirectML">
+															<span>Direct<abbr>ML</abbr></span></div>
+														<div class="col-lg-2dot4 col r-option version" role="option" tabindex="-1" aria-selected="false" id="DNNL">
+															<span><abbr>DNNL</abbr></span></div>
+														<div class="col-lg-2dot4 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="MKL-ML">
+															<span><abbr>MKL-ML</abbr></span></div>
+														<div class="col-lg-2dot4 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="MIGraphX">
+															<span>MIGraphX (Preview)</span></div>
+														<div class="col-lg-2dot4 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="NNAPI">
+															<span>NNAPI (Preview)</span></div>	
+														<div class="col-lg-2dot5 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="NUPHAR">
+															<span><abbr>NUPHAR (Preview)</abbr></span></div>
+														<div class="col-lg-2dot5 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="OpenVINO">
+															<span>OpenVINO</span></div>
+														<div class="col-lg-2dot5 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="RockchipNPU">
+															<span>Rockchip NPU (Preview)</span></div>	
 														<div class="col-lg-2dot5 col r-option version" role="option" tabindex="-1" aria-selected="false" id="TensorRT">
 															<span>Tensor<abbr>RT</abbr></span></div>
-														<div class="col-lg-2dot5 col r-option version" role="option" tabindex="-1" aria-selected="false" id="DirectML">
-															<span>Direct<abbr>ML</abbr></span>
+														<div class="col-lg-2dot5 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="VitisAI">
+															<span>Vitis AI (Preview)</span></div>	
 														</div>
-														<div class="col-lg-2dot5 col r-option version" role="option" tabindex="-1" aria-selected="false" id="DNNL">
-															<span><abbr>DNNL</abbr></span>
-														</div>
-														<div class="col-lg-2dot4 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="MKL-ML">
-															<span><abbr>MKL-ML</abbr></span>
-														</div>
-														<div class="col-lg-2dot4 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="nGraph">
-															<span>nGraph</span></div>
-														<div class="col-lg-2dot4 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="NUPHAR">
-															<span><abbr>NUPHAR</abbr></span></div>
-														<div class="col-lg-2dot4 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="OpenVINO">
-															<span>OpenVINO</span></div>
-													</div>
 												</div>
 											</div>
 			
