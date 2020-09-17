@@ -64,6 +64,7 @@ __global__ void BiasSoftmaxWarpForward(
 
   // load from global memory and apply bias (likely an additive mask)
   acc_t elements[WARP_BATCH][WARP_ITERATIONS];
+  #pragma unroll
   for (int i = 0; i < WARP_BATCH; ++i) {
 
     // the bias has assumed shape [batch_size, element_count] 
@@ -71,6 +72,7 @@ __global__ void BiasSoftmaxWarpForward(
     int bias_offset = (first_batch + i)/bias_broadcast_count_per_batch * batch_stride + local_idx; 
 
     int batch_element_count = (i >= local_batches) ? 0 : element_count;
+    #pragma unroll
     for (int it = 0; it < WARP_ITERATIONS; ++it) {
       int element_index = local_idx + it * WARP_SIZE;
       if (element_index < batch_element_count) {
