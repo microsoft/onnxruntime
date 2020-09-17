@@ -381,13 +381,8 @@ Status CompareFunction<T, HipT>::CompareMethod(OpKernelContext* context, ImplCom
       prepare.fdm_output_strides.GpuPtr(),
       prepare.fdm_H,
       prepare.fdm_C,
-      reinterpret_cast<HipT*>(output_buffer.get()),
-      prepare.output_tensor->Shape().Size());
-
-  Impl_Cast<HipT, ToHipType<bool>::MappedType>(
-      reinterpret_cast<HipT*>(output_buffer.get()),
       reinterpret_cast<ToHipType<bool>::MappedType*>(prepare.output_tensor->template MutableData<bool>()),
-      output_size);
+      prepare.output_tensor->Shape().Size());
 
   return Status::OK();
 }
@@ -396,14 +391,14 @@ Status CompareFunction<T, HipT>::CompareMethod(OpKernelContext* context, ImplCom
 //for other elementwise ops
 template <typename T>
 Status Greater<T>::ComputeInternal(OpKernelContext* context) const {
-  this->CompareMethod(context, &Impl_Greater);
+  this->CompareMethod(context, &ImplT2_Greater);
 
   return Status::OK();
 }
 
 template <typename T>
 Status Equal<T>::ComputeInternal(OpKernelContext* context) const {
-  this->CompareMethod(context, &Impl_Equal);
+  this->CompareMethod(context, &ImplT2_Equal);
 
   return Status::OK();
 }
@@ -412,7 +407,7 @@ Status Equal<T>::ComputeInternal(OpKernelContext* context) const {
 //for other elementwise ops
 template <typename T>
 Status Less<T>::ComputeInternal(OpKernelContext* context) const {
-  this->CompareMethod(context, &Impl_Less);
+  this->CompareMethod(context, &ImplT2_Less);
 
   return Status::OK();
 }

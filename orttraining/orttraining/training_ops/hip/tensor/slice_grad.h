@@ -15,9 +15,9 @@ class SliceGrad final : public Slice<true> {
   void FillInputVectors(OpKernelContext* ctx, std::vector<int64_t>& input_starts, std::vector<int64_t>& input_ends,
                         std::vector<int64_t>& input_axes, std::vector<int64_t>& input_steps) const override;
 
-  Status CallSliceImp(size_t element_size, size_t dimension_count, const int64_t* starts_buffer,
-                      const int64_t* steps_buffer, const int64_t* input_strides,
-                      const fast_divmod* output_strides, OpKernelContext* ctx, TensorShape output_shape)
+  Status CallSliceImp(size_t element_size, size_t dimension_count, const TArray<int64_t>& starts_buffer,
+                      const TArray<int64_t>& steps_buffer, const TArray<int64_t>& input_strides,
+                      const TArray<fast_divmod>& output_strides, OpKernelContext* ctx, const TensorShape& output_shape)
       const override;
 };
 }  // namespace hip

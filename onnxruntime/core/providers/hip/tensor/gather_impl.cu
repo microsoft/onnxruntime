@@ -8,13 +8,30 @@
 namespace onnxruntime {
 namespace hip {
 
-template <typename T, typename Tin>
+__host__ __device__ inline int64_t GetIndexValue(const void* index_data, size_t index_element_size, size_t offset) {
+  switch (index_element_size) {
+    case sizeof(int32_t):
+      return *(reinterpret_cast<const int32_t*>(index_data) + offset);
+      break;
+    case sizeof(int64_t):
+      return *(reinterpret_cast<const int64_t*>(index_data) + offset);
+      break;
+    default:
+      break;
+  }
+  // What is a sensible thing to do here?
+  assert(false);
+  return std::numeric_limits<int64_t>::max();
+}
+
+template <typename T>
 __global__ void _GatherKernel(
     const int64_t input_block_size,
     const int64_t indices_max,
     const fast_divmod output_block_size,
     const fast_divmod block_size,
-    const Tin* indices_data,
+    const void* indices_data,
+    const size_t index_element_size,
     const T* input_data,
     T* output_data,
     const HIP_LONG N) {
@@ -24,7 +41,7 @@ __global__ void _GatherKernel(
   output_block_size.divmod(id, input_block_index, block_offset);
   int indices_index, offset;
   block_size.divmod(block_offset, indices_index, offset);
-  int64_t idx = indices_data[indices_index];
+  int64_t idx = GetIndexValue(indices_data, index_element_size, indices_index);
   idx = idx < 0 ? idx + indices_max : idx;
   if (idx < 0 || idx >= indices_max) {
     output_data[id] = 0;
@@ -35,41 +52,54 @@ __global__ void _GatherKernel(
   output_data[id] = input_data[input_index];
 }
 
-template <typename T, typename Tin>
 void GatherImpl(
     const int64_t input_block_size,
     const int64_t indices_max,
     const fast_divmod& output_block_size,
     const fast_divmod& block_size,
-    const Tin* indices_data,
-    const T* input_data,
-    T* output_data,
+    const void* indices_data,
+    size_t index_element_size,
+    const void* input_data,
+    size_t element_size,
+    void* output_data,
     const size_t N) {
+
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
-  hipLaunchKernelGGL(HIP_KERNEL_NAME(_GatherKernel<T, Tin>), dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
-      input_block_size, indices_max, output_block_size, block_size, indices_data, input_data, output_data, (HIP_LONG)N);
+
+  switch (element_size) {
+    case sizeof(int8_t): {
+      using HipType = typename ToHipType<int8_t>::MappedType;
+      hipLaunchKernelGGL(_GatherKernel, dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
+          input_block_size, indices_max, output_block_size, block_size, indices_data, index_element_size,
+          reinterpret_cast<const HipType*>(input_data), reinterpret_cast<HipType*>(output_data), (HIP_LONG)N);
+
+    } break;
+    case sizeof(int16_t): {
+      using HipType = typename ToHipType<int16_t>::MappedType;
+      hipLaunchKernelGGL(_GatherKernel, dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
+          input_block_size, indices_max, output_block_size, block_size, indices_data, index_element_size,
+          reinterpret_cast<const HipType*>(input_data), reinterpret_cast<HipType*>(output_data), (HIP_LONG)N);
+
+    } break;
+    case sizeof(int32_t): {
+      using HipType = typename ToHipType<int32_t>::MappedType;
+      hipLaunchKernelGGL(_GatherKernel, dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
+          input_block_size, indices_max, output_block_size, block_size, indices_data, index_element_size,
+          reinterpret_cast<const HipType*>(input_data), reinterpret_cast<HipType*>(output_data), (HIP_LONG)N);
+
+    } break;
+    case sizeof(int64_t): {
+      using HipType = typename ToHipType<int64_t>::MappedType;
+      hipLaunchKernelGGL(_GatherKernel, dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
+          input_block_size, indices_max, output_block_size, block_size, indices_data, index_element_size,
+          reinterpret_cast<const HipType*>(input_data), reinterpret_cast<HipType*>(output_data), (HIP_LONG)N);
+
+    } break;
+
+    default:
+      ORT_THROW("Unsupported element size by the Gather HIP kernel");
+  }
 }
-
-#define SPECIALIZED_IMPL(T)                                                                                               \
-  template void GatherImpl<T, int32_t>(const int64_t input_block_size, const int64_t indices_max,                         \
-                                       const fast_divmod& output_block_size, const fast_divmod& block_size,               \
-                                       const int32_t* indices_data, const T* input_data, T* output_data, const size_t N); \
-  template void GatherImpl<T, int64_t>(const int64_t input_block_size, const int64_t indices_max,                         \
-                                       const fast_divmod& output_block_size, const fast_divmod& block_size,               \
-                                       const int64_t* indices_data, const T* input_data, T* output_data, const size_t N);
-
-SPECIALIZED_IMPL(int8_t)
-SPECIALIZED_IMPL(int16_t)
-SPECIALIZED_IMPL(int32_t)
-SPECIALIZED_IMPL(int64_t)
-SPECIALIZED_IMPL(uint8_t)
-SPECIALIZED_IMPL(uint16_t)
-SPECIALIZED_IMPL(uint32_t)
-SPECIALIZED_IMPL(uint64_t)
-SPECIALIZED_IMPL(half)
-SPECIALIZED_IMPL(float)
-SPECIALIZED_IMPL(double)
-SPECIALIZED_IMPL(bool)
 
 }  // namespace hip
 }  // namespace onnxruntime
