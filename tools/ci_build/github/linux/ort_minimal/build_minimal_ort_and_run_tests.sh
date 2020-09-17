@@ -32,6 +32,3 @@ cp /onnxruntime_src/onnxruntime/test/testdata/ort_github_issue_4031.onnx /home/o
 
 # Run the e2e test cases
 /build/Debug/onnx_test_runner /home/onnxruntimedev/.test_data/ort_minimal_e2e_test_data
-
-# Clear the build
-rm -rf /build/Debug
