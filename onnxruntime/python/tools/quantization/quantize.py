@@ -253,7 +253,8 @@ def quantize_qat(model_input: Path,
                  activation_type=QuantType.QUInt8,
                  weight_type=QuantType.QUInt8,
                  nodes_to_quantize=[],
-                 nodes_to_exclude=[]):
+                 nodes_to_exclude=[],
+                 use_external_data_format=False):
     '''
         Given a quantize-aware traning onnx model, create a quantized onnx model and save it into a file
     :param model_input: file path of model to quantize
@@ -273,6 +274,7 @@ def quantize_qat(model_input: Path,
     :param nodes_to_exclude:
         List of nodes names to exclude. The nodes in this list will be excluded from quantization
         when it is not None.
+    :parma use_external_data_format: option used for large size (>2GB) model. Set to False by default. 
     '''
 
     input_qType = onnx_proto.TensorProto.INT8 if activation_type == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
@@ -299,4 +301,4 @@ def quantize_qat(model_input: Path,
         op_types_to_quantize)
 
     quantizer.quantize_model()
-    onnx.save_model(quantizer.model.model, model_output)
+    quantizer.model.save_model_to_file(model_output, use_external_data_format)

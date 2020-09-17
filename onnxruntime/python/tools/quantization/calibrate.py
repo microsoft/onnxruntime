@@ -63,12 +63,9 @@ class ONNXCalibrater:
             should_be_calibrate = ((node.op_type in self.calibrate_op_types) and
                                    (node.name not in self.black_nodes)) or (node.name in self.white_nodes)
             if should_be_calibrate:
-                for input_tensor_name in node.input:
-                    tensors_to_calibrate.add(input_tensor_name)
-
-                for output_tensor_name in node.output:
-                    tensors_to_calibrate.add(output_tensor_name)
-
+                tensors_to_calibrate.update(node.input)
+                tensors_to_calibrate.update(node.output)
+                
         for tensor in tensors_to_calibrate:
             # Adding ReduceMin nodes
             reduce_min_name = tensor + '_ReduceMin'
