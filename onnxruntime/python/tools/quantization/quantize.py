@@ -131,7 +131,8 @@ def quantize_static(model_input,
                     activation_type=QuantType.QUInt8,
                     weight_type=QuantType.QUInt8,
                     nodes_to_quantize=[],
-                    nodes_to_exclude=[]):
+                    nodes_to_exclude=[],
+                    use_external_data_format=False):
     '''
         Given an onnx model and calibration data reader, create a quantized onnx model and save it into a file
     :param model_input: file path of model to quantize
@@ -154,6 +155,7 @@ def quantize_static(model_input,
     :param nodes_to_exclude:
         List of nodes names to exclude. The nodes in this list will be excluded from quantization
         when it is not None.
+    :parma use_external_data_format: option used for large size (>2GB) model. Set to False by default. 
     '''
 
     if activation_type != QuantType.QUInt8:
@@ -183,7 +185,7 @@ def quantize_static(model_input,
         op_types_to_quantize)
 
     quantizer.quantize_model()
-    onnx.save_model(quantizer.model.model, model_output)
+    quantizer.model.save_model_to_file(model_output, use_external_data_format)
 
 
 def quantize_dynamic(model_input: Path,
@@ -194,7 +196,8 @@ def quantize_dynamic(model_input: Path,
                      activation_type=QuantType.QUInt8,
                      weight_type=QuantType.QUInt8,
                      nodes_to_quantize=[],
-                     nodes_to_exclude=[]):
+                     nodes_to_exclude=[],
+                     use_external_data_format=False):
     '''
         Given an onnx model, create a quantized onnx model and save it into a file
     :param model_input: file path of model to quantize
@@ -216,20 +219,18 @@ def quantize_dynamic(model_input: Path,
     :param nodes_to_exclude:
         List of nodes names to exclude. The nodes in this list will be excluded from quantization
         when it is not None.
+    :parma use_external_data_format: option used for large size (>2GB) model. Set to False by default. 
     '''
 
     input_qType = onnx_proto.TensorProto.INT8 if activation_type == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
     weight_qType = onnx_proto.TensorProto.INT8 if weight_type == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
     mode = QuantizationMode.IntegerOps
 
-    #optimize the original model
-    optimized_model = optimize_model(Path(model_input))
-
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(IntegerOpsRegistry.keys())
 
     quantizer = ONNXQuantizer(
-        optimized_model,
+        onnx.load(model_input),
         per_channel,
         reduce_range,
         mode,
@@ -242,7 +243,7 @@ def quantize_dynamic(model_input: Path,
         op_types_to_quantize)
 
     quantizer.quantize_model()
-    onnx.save_model(quantizer.model.model, model_output)
+    quantizer.model.save_model_to_file(model_output, use_external_data_format)
 
 
 def quantize_qat(model_input: Path,
