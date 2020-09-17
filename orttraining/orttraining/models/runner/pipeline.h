@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#pragma once
+
+#include <functional>
 #include <iostream>
 #include <vector>
 #include <cstdint>
@@ -36,6 +39,7 @@ struct PipelineTask {
   bool IsForward() const { return pass == Pass::Forward; }
   bool IsBackward() const { return pass == Pass::Backward; }
   bool IsCompute() const { return type == Type::Compute; }
+  bool IsCommute() const { return type == Type::Send || type == Type::Recv; }
   bool IsSendTo(const int dst_rank) const {
     if (type != Type::Send) {
       return false;
@@ -83,30 +87,33 @@ class PipelineSlot {
 
   bool IsEmpty() const { return tasks_.empty(); };
   size_t NumActions() const { return tasks_.size(); }
+
   bool HasCompute() const {
-    for (auto& task : tasks_) {
-      if (task.IsCompute())
-        return true;
-    }
-    return false;
+    return std::any_of(
+        tasks_.begin(), tasks_.end(), [&](const PipelineTask& task) {
+          return task.IsCompute();
+        });
+  }
+
+  bool HasCommute() const {
+    return std::any_of(
+        tasks_.begin(), tasks_.end(), [&](const PipelineTask& task) {
+          return task.IsCommute();
+        });
   }
 
   bool HasRendTo(const int stage) const {
-    for (auto& task : tasks_) {
-      if (task.IsSendTo(stage)) {
-        return true;
-      }
-    }
-    return false;
+    return std::any_of(
+        tasks_.begin(), tasks_.end(), [&](const PipelineTask& task) {
+          return task.IsSendTo(stage);
+        });
   }
 
   bool HasRecvFrom(const int stage) const {
-    for (auto& task : tasks_) {
-      if (task.IsRecvFrom(stage)) {
-        return true;
-      }
-    }
-    return false;
+    return std::any_of(
+        tasks_.begin(), tasks_.end(), [&](const PipelineTask& task) {
+          return task.IsRecvFrom(stage);
+        });
   }
 
   PipelineTask& operator[](int index);
@@ -122,15 +129,11 @@ class PipelineSlot {
   void SetRecordedEvent(const std::vector<int> event);
   std::vector<int> GetRecordedEvent() const;
 
+  std::vector<PipelineTask> GetTasks() { return tasks_; }
+
  private:
   // Actions which can be executed in parallel in this time slot.
   std::vector<PipelineTask> tasks_;
-
-  // For MPI PipeDream schedule, it's used to support Wait -> Recv -> Wait -> Compute -> Record -> Send -> Record.
-  // Since Send, Recv, and Compute are stored in the same slot, each slot contains two waited events and two recorded events.
-  //
-  // For NCCL PipDream schedule, it's used to support Wait -> Recv -> Record -> Wait -> Compute -> Record -> Wait -> Send -> Record.
-
   // Events waited by this slot.
   std::vector<int> waited_events_;
   // Events recorded by this slot.
@@ -140,32 +143,44 @@ class PipelineSlot {
 class PipelineScheduler {
  public:
   PipelineScheduler(const int num_batches, const int num_stages);
+  // Number of time steps.
   size_t GetScheduleSize() const { return compute_commute_table_.size(); }
+  // Number of stages.
   size_t GetStageSize() const { return num_stages_; }
-  // APIs to get NCCL event for
-  // Wait -> Recv -> Record -> Wait -> Compute -> Record -> Wait -> Send -> Record.
-  int GetForwardComputeWaitedEvent(const int batch_id, const int stage_id) const;
-  int GetForwardComputeRecordedEvent(const int batch_id, const int stage_id) const;
-  int GetBackwardComputeWaitedEvent(const int batch_id, const int stage_id) const;
-  int GetBackwardComputeRecordedEvent(const int batch_id, const int stage_id) const;
-  int GetForwardSendWaitedEvent(const int batch_id, const int stage_id) const;
-  int GetForwardSendRecordedEvent(const int batch_id, const int stage_id) const;
-  int GetBackwardSendWaitedEvent(const int batch_id, const int stage_id) const;
-  int GetBackwardSendRecordedEvent(const int batch_id, const int stage_id) const;
+  std::vector<PipelineSlot> GetSchedule(const int stage_id) const {
+    std::vector<PipelineSlot> commute_slots;
+    for (int t = 0; static_cast<size_t>(t) < GetScheduleSize(); ++t) {
+      auto& slot = compute_commute_table_[t][stage_id];
+      if (!slot.HasCommute()) {
+        continue;
+      }
+      commute_slots.push_back(slot);
+    }
+    return commute_slots;
+  }
+
+  // APIs to get events for the following pattern.
+  //   Wait -> Recv -> Record -> Wait -> Compute -> Record -> Wait -> Send -> Record.
+  // If no event exists, -1 may be returned.
+  //
+  // Forward Recv.
   int GetForwardRecvWaitedEvent(const int batch_id, const int stage_id) const;
   int GetForwardRecvRecordedEvent(const int batch_id, const int stage_id) const;
+  // Forward Compute.
+  int GetForwardComputeWaitedEvent(const int batch_id, const int stage_id) const;
+  int GetForwardComputeRecordedEvent(const int batch_id, const int stage_id) const;
+  // Forward Send.
+  int GetForwardSendWaitedEvent(const int batch_id, const int stage_id) const;
+  int GetForwardSendRecordedEvent(const int batch_id, const int stage_id) const;
+  // Backward Recv.
   int GetBackwardRecvWaitedEvent(const int batch_id, const int stage_id) const;
   int GetBackwardRecvRecordedEvent(const int batch_id, const int stage_id) const;
-  // APIs to get MPI event event for
-  // Wait -> Recv -> Wait -> Compute -> Record -> Send -> Record.
-  int GetForwardWaitedEventBeforeRecv(const int batch_id, const int stage_id) const;
-  int GetForwardWaitedEventAfterRecv(const int batch_id, const int stage_id) const;
-  int GetForwardRecordedEventBeforeSend(const int batch_id, const int stage_id) const;
-  int GetForwardRecordedEventAfterSend(const int batch_id, const int stage_id) const;
-  int GetBackwardWaitedEventBeforeRecv(const int batch_id, const int stage_id) const;
-  int GetBackwardWaitedEventAfterRecv(const int batch_id, const int stage_id) const;
-  int GetBackwardRecordedEventBeforeSend(const int batch_id, const int stage_id) const;
-  int GetBackwardRecordedEventAfterSend(const int batch_id, const int stage_id) const;
+  // Backward Compute.
+  int GetBackwardComputeWaitedEvent(const int batch_id, const int stage_id) const;
+  int GetBackwardComputeRecordedEvent(const int batch_id, const int stage_id) const;
+  // Backward Send.
+  int GetBackwardSendWaitedEvent(const int batch_id, const int stage_id) const;
+  int GetBackwardSendRecordedEvent(const int batch_id, const int stage_id) const;
   // Visualization of this object.
   friend std::ostream& operator<<(std::ostream& stream, PipelineScheduler const& schedule);
 
@@ -189,9 +204,6 @@ class PipelineScheduler {
   std::vector<int> TryGetEvent(const bool is_waited_event, const int batch_id, const int stage_id, const PipelineTask::Pass pass, const PipelineTask::Type type, bool& is_found) const;
   // Wrapper over TryGetEvent. It returns -1 when the specified action is not found.
   int GetEventOrDefault(const bool is_waited_event, const int batch_id, const int stage_id, const PipelineTask::Pass pass, const PipelineTask::Type type) const;
-
-  std::vector<int> TryGetComputeEvent(const int batch_id, const int stage_id, const PipelineTask::Pass pass, const PipelineTask::Type type, bool& is_found) const;
-  int GetComputeEventOrDefault(const bool is_waited_event, const int batch_id, const int stage_id, const PipelineTask::Pass pass, const PipelineTask::Type type) const;
 
   // Compute-only pipeline schedule as a 2-D table. table_[i][j] is the computation happening in
   // the i-th time slot at the j-th stage. For example, PipeDream schedule may have
@@ -227,6 +239,70 @@ struct PipelineWorkerPool {
   std::vector<PipelineWorkerState> worker_states;
 };
 
+// Structure to store special tensors' names for pipeline parallel.
+struct PipelineTensorNames {
+  // Event ops' inputs and outputs related to forward Recv.
+  std::string forward_recv_waited_event_name;
+  std::string forward_recv_wait_output_name;
+  std::string forward_recv_recorded_event_name;
+  std::string forward_recv_record_output_name;
+  // Event ops' inputs and outputs related to forward Send.
+  std::string forward_send_waited_event_name;
+  std::string forward_send_wait_output_name;
+  std::string forward_send_recorded_event_name;
+  std::string forward_send_record_output_name;
+  // Event ops' inputs and outputs related to backward Recv.
+  std::string backward_recv_waited_event_name;
+  std::string backward_recv_wait_output_name;
+  std::string backward_recv_recorded_event_name;
+  std::string backward_recv_record_output_name;
+  // Event ops' inputs and outputs related to backward Send.
+  std::string backward_send_waited_event_name;
+  std::string backward_send_wait_output_name;
+  std::string backward_send_recorded_event_name;
+  std::string backward_send_record_output_name;
+  // Event ops' inputs and outputs related to forward Compute.
+  std::string forward_compute_waited_event_name;
+  std::string forward_compute_wait_output_name;
+  std::string forward_compute_recorded_event_name;
+  std::string forward_compute_record_output_name;
+  // Event ops' inputs and outputs related to backward Compute.
+  std::string backward_compute_waited_event_name;
+  std::string backward_compute_wait_output_name;
+  std::string backward_compute_recorded_event_name;
+  std::string backward_compute_record_output_name;
+
+  void ForEachEventName(std::function<void(std::string)> fun) {
+    fun(forward_recv_waited_event_name);
+    fun(forward_recv_recorded_event_name);
+    fun(forward_send_waited_event_name);
+    fun(forward_send_recorded_event_name);
+    fun(backward_recv_waited_event_name);
+    fun(backward_recv_recorded_event_name);
+    fun(backward_send_waited_event_name);
+    fun(backward_send_recorded_event_name);
+    fun(forward_compute_waited_event_name);
+    fun(forward_compute_recorded_event_name);
+    fun(backward_compute_waited_event_name);
+    fun(backward_compute_recorded_event_name);
+  }
+
+  void ForEachOutputName(std::function<void(std::string)> fun) {
+    fun(forward_recv_wait_output_name);
+    fun(forward_recv_record_output_name);
+    fun(forward_send_wait_output_name);
+    fun(forward_send_record_output_name);
+    fun(backward_recv_wait_output_name);
+    fun(backward_recv_record_output_name);
+    fun(backward_send_wait_output_name);
+    fun(backward_send_record_output_name);
+    fun(forward_compute_wait_output_name);
+    fun(forward_compute_record_output_name);
+    fun(backward_compute_wait_output_name);
+    fun(backward_compute_record_output_name);
+  }
+};
+
 struct PipelineContext {
   // Id of stage handled by this process. Currently, it matches the MPI's rank.
   int pipeline_stage_id;
@@ -235,24 +311,10 @@ struct PipelineContext {
   // Only the last step among num_gradient_accumulation_steps steps may call
   // optimizer to update the model.
   int num_pipeline_batches;
-
-  // Name of scheduling event in graph's input list.
-  // If an event name is an empty string, it means no event
-  // should be waited or recorded.
-  std::string forward_waited_event_name;
-  std::string forward_waited_event_after_recv_name;
-  std::string forward_recorded_event_before_send_name;
-  std::string forward_recorded_event_name;
-  std::string backward_waited_event_name;
-  std::string backward_waited_event_after_recv_name;
-  std::string backward_recorded_event_before_send_name;
-  std::string backward_recorded_event_name;
-
-  std::string forward_wait_output_name;
-  std::string forward_record_output_name;
-  std::string backward_wait_output_name;
-  std::string backward_record_output_name;
-
+  // Names of scheduling event in graph's input list and
+  // names of event ops' outputs. If an event name is an
+  // empty string, it means no event should be waited or recorded.
+  PipelineTensorNames pipeline_tensor_names;
   // Allowed feed names.
   // It stands for inputs of a graph partition at this stage.
   std::vector<std::string> feed_names;

@@ -21,6 +21,7 @@ namespace Microsoft.ML.OnnxRuntime
         private SessionOptions _builtInSessionOptions = null;
         private RunOptions _builtInRunOptions = null;
         private ModelMetadata _modelMetadata = null;
+        private bool _disposed = false;
 
         #region Public API
 
@@ -902,27 +903,43 @@ namespace Microsoft.ML.OnnxRuntime
 
         #endregion
 
-        #region IDisposable/ no finalizers needed
+        #region IDisposable
+
+        /// <summary>
+        /// Finalizer. to cleanup session in case it runs
+        /// and the user forgets to Dispose() of the session
+        /// </summary>
+        ~InferenceSession()
+        {
+            Dispose(false);
+        }
 
         public void Dispose()
         {
-            GC.SuppressFinalize(this);
             Dispose(true);
+            GC.SuppressFinalize(this);
         }
 
         protected virtual void Dispose(bool disposing)
         {
+            if(_disposed)
+            {
+                return;
+            }
+
             if (disposing)
             {
                 // cleanup managed resources
                 if (_builtInSessionOptions != null)
                 {
                     _builtInSessionOptions.Dispose();
+                    _builtInSessionOptions = null;
                 }
 
                 if (_builtInRunOptions != null)
                 {
                     _builtInRunOptions.Dispose();
+                    _builtInRunOptions = null;
                 }
             }
 
@@ -930,11 +947,12 @@ namespace Microsoft.ML.OnnxRuntime
             if (_nativeHandle != IntPtr.Zero)
             {
                 NativeMethods.OrtReleaseSession(_nativeHandle);
+                _nativeHandle = IntPtr.Zero;
             }
+            _disposed = true;
         }
 
         #endregion
-
     }
 
 

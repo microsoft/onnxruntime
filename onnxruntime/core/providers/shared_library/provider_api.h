@@ -16,6 +16,9 @@
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
 #include "core/session/onnxruntime_c_api.h"
+#include "core/framework/ortdevice.h"
+#include "core/framework/ortmemoryinfo.h"
+#include "core/framework/tensor_shape.h"
 #include "provider_interfaces.h"
 
 namespace ONNX_NAMESPACE {
@@ -104,63 +107,13 @@ class DataTypeImpl {
   static const std::vector<MLDataType>& AllFixedSizeTensorTypes();
 };
 
-class TensorShape : private std::vector<int64_t> {
- public:
-  TensorShape() = default;
-
-  TensorShape(const TensorShape& /*other*/) = default;
-  TensorShape& operator=(const TensorShape& /*other*/) = default;
-
-  TensorShape(TensorShape&& /*other*/) = default;
-  TensorShape& operator=(TensorShape&& /*other*/) = default;
-
-  TensorShape(const std::vector<int64_t>& dims) : std::vector<int64_t>{dims} {}
-  TensorShape(std::vector<int64_t>&& dims) : std::vector<int64_t>{dims} {}
-  TensorShape(const std::initializer_list<int64_t>& dims) : std::vector<int64_t>{dims} {}
-
-  TensorShape(const int64_t* dimension_sizes, size_t dimension_count);
-  TensorShape(const std::vector<int64_t>& dims, size_t start, size_t end);
-
-  using std::vector<int64_t>::operator[];
-
-  size_t NumDimensions() const noexcept {
-    return size();
-  }
-
-  const std::vector<int64_t>& GetDims() const { return *this; }
-
-  int64_t Size() const;
-
-  /**
-     Return a new TensorShape of the dimensions from dimstart to dimend.
-  */
-  TensorShape Slice(size_t dimstart, size_t dimend) const;
-
-  /**
-     Return a new TensorShape of the dimensions from dimstart to end.
-  */
-  TensorShape Slice(size_t dimstart) const;
-
-  /**
-     output dimensions nicely formatted
-  */
-  std::string ToString() const;
-
-  /**
-     Calculate size between start and end.
-     Assumes start and end are between 0 and this->NumDimensions(), inclusive, and that
-     start < end.
-  */
-  int64_t SizeHelper(size_t start, size_t end) const;
-};
-
 template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
 
-std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCPUAllocator(std::unique_ptr<Provider_OrtMemoryInfo> memory_info);
-std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCUDAAllocator(int16_t device_id, const char* name);
-std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
-Provider_AllocatorPtr CreateAllocator(const Provider_DeviceAllocatorRegistrationInfo& info, int16_t device_id = 0, bool use_arena = true);
+std::unique_ptr<Provider_IAllocator> Provider_CreateCPUAllocator(const OrtMemoryInfo& memory_info);
+std::unique_ptr<Provider_IAllocator> Provider_CreateCUDAAllocator(int16_t device_id, const char* name);
+std::unique_ptr<Provider_IAllocator> Provider_CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
+Provider_AllocatorPtr CreateAllocator(const Provider_AllocatorCreationInfo& info);
 
 std::unique_ptr<Provider_IDataTransfer> Provider_CreateGPUDataTransfer();
 

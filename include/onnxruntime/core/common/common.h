@@ -40,6 +40,10 @@
 #include <mimalloc.h>
 #endif
 
+#ifdef ORT_NO_EXCEPTIONS
+#include <iostream>
+#endif
+
 namespace onnxruntime {
 
 using TimePoint = std::chrono::high_resolution_clock::time_point;
@@ -95,6 +99,70 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 #define ORT_WHERE_WITH_STACK \
   ::onnxruntime::CodeLocation(__FILE__, __LINE__, __PRETTY_FUNCTION__, ::onnxruntime::GetStackTrace())
 
+#ifdef ORT_NO_EXCEPTIONS
+
+#define ORT_TRY if (true)
+#define ORT_CATCH(x) else if (false)
+#define ORT_RETHROW
+
+// In order to ignore the catch statement when a specific exception (not ... ) is caught and referred
+// in the body of the catch statements, it is necessary to wrap the body of the catch statement into
+// a lambda function. otherwise the exception referred will be undefined and cause build break
+#define ORT_HANDLE_EXCEPTION(func)
+
+// TODO, consider changing the output of the error message from std::cerr to logging when the
+// exceptions are disabled, since using std::cerr might increase binary size, and std::cerr output
+// might not be easily accesible on some systems such as mobile
+
+// Throw an exception with optional message.
+// NOTE: The arguments get streamed into a string via ostringstream::operator<<
+// DO NOT use a printf format string, as that will not work as you expect.
+#define ORT_THROW(...)                                                                       \
+  do {                                                                                       \
+    std::cerr << ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK,                   \
+                                                     ::onnxruntime::MakeString(__VA_ARGS__)) \
+                     .what()                                                                 \
+              << std::endl;                                                                  \
+    abort();                                                                                 \
+  } while (false)
+
+// Just in order to mark things as not implemented. Do not use in final code.
+#define ORT_NOT_IMPLEMENTED(...)                                                                \
+  do {                                                                                          \
+    std::cerr << ::onnxruntime::NotImplementedException(::onnxruntime::MakeString(__VA_ARGS__)) \
+                     .what()                                                                    \
+              << std::endl;                                                                     \
+    abort();                                                                                    \
+  } while (false)
+
+// Check condition.
+// NOTE: The arguments get streamed into a string via ostringstream::operator<<
+// DO NOT use a printf format string, as that will not work as you expect.
+#define ORT_ENFORCE(condition, ...)                                                            \
+  do {                                                                                         \
+    if (!(condition)) {                                                                        \
+      std::cerr << ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK, #condition,       \
+                                                       ::onnxruntime::MakeString(__VA_ARGS__)) \
+                       .what()                                                                 \
+                << std::endl;                                                                  \
+      abort();                                                                                 \
+    }                                                                                          \
+  } while (false)
+
+#define ORT_THROW_EX(ex, ...)                                                              \
+  do {                                                                                     \
+    std::cerr << #ex << "(" << ::onnxruntime::MakeString(__VA_ARGS__) << ")" << std::endl; \
+    abort();                                                                               \
+  } while (false)
+
+#else
+
+#define ORT_TRY try
+#define ORT_CATCH(x) catch (x)
+#define ORT_RETHROW throw;
+
+#define ORT_HANDLE_EXCEPTION(func) func()
+
 // Throw an exception with optional message.
 // NOTE: The arguments get streamed into a string via ostringstream::operator<<
 // DO NOT use a printf format string, as that will not work as you expect.
@@ -112,6 +180,11 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
   if (!(condition))                                                           \
   throw ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK, #condition, \
                                             ::onnxruntime::MakeString(__VA_ARGS__))
+
+#define ORT_THROW_EX(ex, ...) \
+  throw ex(__VA_ARGS__)
+
+#endif
 
 #define ORT_MAKE_STATUS(category, code, ...)                     \
   ::onnxruntime::common::Status(::onnxruntime::common::category, \
@@ -241,12 +314,5 @@ inline std::wstring ToWideString(const std::wstring& s) { return s; }
 #else
 inline std::string ToWideString(const std::string& s) { return s; }
 #endif
-
-// from http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2014/n3876.pdf
-template <class T>
-inline void HashCombine(std::uint64_t& seed, const T& v) {
-  std::hash<T> hasher;
-  seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-}
 
 }  // namespace onnxruntime

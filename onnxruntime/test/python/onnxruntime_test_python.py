@@ -7,8 +7,8 @@ import os
 import numpy as np
 import onnxruntime as onnxrt
 import threading
+import sys
 from helper import get_name
-
 
 class TestInferenceSession(unittest.TestCase):
 
@@ -85,19 +85,6 @@ class TestInferenceSession(unittest.TestCase):
                 options = sess.get_provider_options()
                 self.assertEqual(options['CUDAExecutionProvider']['cuda_mem_limit'], ori_mem_limit)
 
-                option['cuda_mem_limit'] = -1024
-                with self.assertRaises(RuntimeError):
-                    sess.set_providers(['CUDAExecutionProvider'], [option])
-
-                option['cuda_mem_limit'] = 1024.1024
-                with self.assertRaises(RuntimeError):
-                    sess.set_providers(['CUDAExecutionProvider'], [option])
-
-                option['cuda_mem_limit'] = 'wrong_value'
-                with self.assertRaises(RuntimeError):
-                    sess.set_providers(['CUDAExecutionProvider'], [option])
-
-
                 # test get/set of "arena_extend_strategy" configuration.
                 options = sess.get_provider_options()
                 self.assertTrue('CUDAExecutionProvider' in options)
@@ -109,7 +96,26 @@ class TestInferenceSession(unittest.TestCase):
                     options = sess.get_provider_options()
                     self.assertEqual(options['CUDAExecutionProvider']['arena_extend_strategy'], strategy)
 
+                #
+                # Note: Tests that throw an exception leave an empty session due to how set_providers currently works,
+                #       so run them last. Each set_providers call will attempt to re-create a session, so it's
+                #       fine for a test that fails to run immediately after another one that fails.
+                #       Alternatively a valid call to set_providers could be used to recreate the underlying session
+                #       after a failed call.
+                #
                 option['arena_extend_strategy'] = 'wrong_value'
+                with self.assertRaises(RuntimeError):
+                    sess.set_providers(['CUDAExecutionProvider'], [option])
+
+                option['cuda_mem_limit'] = -1024
+                with self.assertRaises(RuntimeError):
+                    sess.set_providers(['CUDAExecutionProvider'], [option])
+
+                option['cuda_mem_limit'] = 1024.1024
+                with self.assertRaises(RuntimeError):
+                    sess.set_providers(['CUDAExecutionProvider'], [option])
+
+                option['cuda_mem_limit'] = 'wrong_value'
                 with self.assertRaises(RuntimeError):
                     sess.set_providers(['CUDAExecutionProvider'], [option])
 
@@ -272,20 +278,28 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_allclose(output_expected, rescontiguous[0], rtol=1e-05, atol=1e-08)
 
     def testRunModelMultipleThreads(self):
-        so = onnxrt.SessionOptions()
-        so.log_verbosity_level = 1
-        so.logid = "MultiThreadsTest"
-        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so)
-        ro1 = onnxrt.RunOptions()
-        ro1.logid = "thread1"
-        t1 = threading.Thread(target=self.run_model, args=(sess, ro1))
-        ro2 = onnxrt.RunOptions()
-        ro2.logid = "thread2"
-        t2 = threading.Thread(target=self.run_model, args=(sess, ro2))
-        t1.start()
-        t2.start()
-        t1.join()
-        t2.join()
+        available_providers = onnxrt.get_available_providers()
+
+        # Skip this test for a "pure" DML onnxruntime python wheel. We keep this test enabled for instances where both DML and CUDA
+        # EPs are available (Windows GPU CI pipeline has this config) - this test will pass because CUDA has higher precendence than DML
+        # and the nodes are assigned to only the CUDA EP (which supports this test)
+        if ('DmlExecutionProvider' in available_providers and not 'CUDAExecutionProvider' in available_providers):
+            print("Skipping testRunModelMultipleThreads as the DML EP does not support calling Run() on different threads using the same session object ")
+        else:
+            so = onnxrt.SessionOptions()
+            so.log_verbosity_level = 1
+            so.logid = "MultiThreadsTest"
+            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so)
+            ro1 = onnxrt.RunOptions()
+            ro1.logid = "thread1"
+            t1 = threading.Thread(target=self.run_model, args=(sess, ro1))
+            ro2 = onnxrt.RunOptions()
+            ro2.logid = "thread2"
+            t2 = threading.Thread(target=self.run_model, args=(sess, ro2))
+            t1.start()
+            t2.start()
+            t1.join()
+            t2.join()
 
     def testListAsInput(self):
         sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
@@ -649,6 +663,55 @@ class TestInferenceSession(unittest.TestCase):
             so.get_session_config_entry(invalide_key)
         self.assertTrue(
             'SessionOptions does not have configuration with key: ' + invalide_key in str(context.exception))
+
+    def testRegisterCustomOpsLibrary(self):
+        if sys.platform.startswith("win"):
+            shared_library = 'custom_op_library.dll'
+            if not os.path.exists(shared_library):
+                raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
+
+        elif sys.platform.startswith("darwin"):
+            shared_library = 'libcustom_op_library.dylib'
+            if not os.path.exists(shared_library):
+                raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
+
+        else:
+            shared_library = './libcustom_op_library.so'
+            if not os.path.exists(shared_library):
+                raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
+
+        this = os.path.dirname(__file__)
+        custom_op_model = os.path.join(this, "testdata", "custom_op_library", "custom_op_test.onnx")
+        if not os.path.exists(custom_op_model):
+            raise FileNotFoundError("Unable to find '{0}'".format(custom_op_model))
+
+        so1 = onnxrt.SessionOptions()
+        so1.register_custom_ops_library(shared_library)
+
+        # Model loading successfully indicates that the custom op node could be resolved successfully
+        sess1 = onnxrt.InferenceSession(custom_op_model, so1)
+        #Run with input data
+        input_name_0 = sess1.get_inputs()[0].name
+        input_name_1 = sess1.get_inputs()[1].name
+        output_name = sess1.get_outputs()[0].name
+        input_0 = np.ones((3,5)).astype(np.float32)
+        input_1 = np.zeros((3,5)).astype(np.float32)
+        res = sess1.run([output_name], {input_name_0: input_0, input_name_1: input_1})
+        output_expected = np.ones((3,5)).astype(np.float32)
+        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+
+        # Create an alias of SessionOptions instance
+        # We will use this alias to construct another InferenceSession
+        so2 = so1
+
+        # Model loading successfully indicates that the custom op node could be resolved successfully
+        sess2 = onnxrt.InferenceSession(custom_op_model, so2)
+
+        # Create another SessionOptions instance with the same shared library referenced
+        so3 = onnxrt.SessionOptions()
+        so3.register_custom_ops_library(shared_library)
+        sess3 = onnxrt.InferenceSession(custom_op_model, so3)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -5,6 +5,7 @@
 
 #include <winmeta.h>  // winmeta needed for TraceLoggingKeyword
 #include <TraceLoggingProvider.h>
+#include <TraceloggingConfig.h>
 #include <evntrace.h>
 #include <MemoryBuffer.h>
 
@@ -14,6 +15,7 @@
 
 #include "inc/ImageConversionHelpers.h"
 #include "LearningModelDevice.h"
+#include "EventTimer.h"
 
 using namespace Microsoft::WRL;
 using namespace Windows::Graphics::DirectX::Direct3D11;
@@ -23,45 +25,97 @@ using namespace _winml;
 class GPUTensorToDX12TextureTelemetryEvent {
  public:
   GPUTensorToDX12TextureTelemetryEvent(const ImageTensorDescription& tensorDesc) {
+    runtime_session_id_ = telemetry_helper.GetRuntimeSessionId();
     TraceLoggingWrite(
         winml_trace_logging_provider,
-        "GPUTensorToDX12Texture",
+        "GPUTensorToDX12TextureStart",
         TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
-        TraceLoggingOpcode(EVENT_TRACE_TYPE_START),
         TraceLoggingHexInt32(tensorDesc.channelType, "Type"),
         TraceLoggingInt64(tensorDesc.sizes[2], "Height"),
-        TraceLoggingInt64(tensorDesc.sizes[3], "Width"));
+        TraceLoggingInt64(tensorDesc.sizes[3], "Width"),
+        TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
+        TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+        TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+        TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
   }
   ~GPUTensorToDX12TextureTelemetryEvent() {
     TraceLoggingWrite(
         winml_trace_logging_provider,
-        "GPUTensorToDX12Texture",
+        "GPUTensorToDX12TextureStop",
         TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
-        TraceLoggingOpcode(EVENT_TRACE_TYPE_STOP),
-        TraceLoggingHexInt32(S_OK, "HRESULT"));
+        TraceLoggingHexInt32(S_OK, "HRESULT"),
+        TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
+        TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+        TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+        TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
   }
+
+private:
+  int runtime_session_id_;
+};
+
+class ConvertGPUTensorToSoftwareBitmapTelemetryEvent {
+ public:
+  ConvertGPUTensorToSoftwareBitmapTelemetryEvent(const ImageTensorDescription& tensorDesc) {
+    runtime_session_id_ = telemetry_helper.GetRuntimeSessionId();
+    TraceLoggingWrite(
+        winml_trace_logging_provider,
+        "ConvertGPUTensorToSoftwareBitmapStart",
+        TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
+        TraceLoggingHexInt32(tensorDesc.channelType, "Type"),
+        TraceLoggingInt64(tensorDesc.sizes[2], "Height"),
+        TraceLoggingInt64(tensorDesc.sizes[3], "Width"),
+        TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
+        TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+        TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+        TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
+  }
+  ~ConvertGPUTensorToSoftwareBitmapTelemetryEvent() {
+    TraceLoggingWrite(
+        winml_trace_logging_provider,
+        "ConvertGPUTensorToSoftwareBitmapStop",
+        TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
+        TraceLoggingHexInt32(S_OK, "HRESULT"),
+        TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
+        TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+        TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+        TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
+  }
+
+private:
+  int runtime_session_id_;
 };
 
 class ConvertCPUTensorToVideoFrameWithSoftwareBitmapTelemetryEvent {
  public:
   ConvertCPUTensorToVideoFrameWithSoftwareBitmapTelemetryEvent(const ImageTensorDescription& tensorDesc) {
+    runtime_session_id_ = telemetry_helper.GetRuntimeSessionId();
     TraceLoggingWrite(
         winml_trace_logging_provider,
-        "ConvertCPUTensorToVideoFrameWithSoftwareBitmap",
+        "ConvertCPUTensorToVideoFrameWithSoftwareBitmapStart",
         TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
-        TraceLoggingOpcode(EVENT_TRACE_TYPE_START),
         TraceLoggingHexInt32(tensorDesc.channelType, "Type"),
         TraceLoggingInt64(tensorDesc.sizes[2], "Height"),
-        TraceLoggingInt64(tensorDesc.sizes[3], "Width"));
+        TraceLoggingInt64(tensorDesc.sizes[3], "Width"),
+        TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
+        TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+        TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+        TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
   }
   ~ConvertCPUTensorToVideoFrameWithSoftwareBitmapTelemetryEvent() {
     TraceLoggingWrite(
         winml_trace_logging_provider,
-        "ConvertCPUTensorToVideoFrameWithSoftwareBitmap",
+        "ConvertCPUTensorToVideoFrameWithSoftwareBitmapStop",
         TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
-        TraceLoggingOpcode(EVENT_TRACE_TYPE_STOP),
-        TraceLoggingHexInt32(S_OK, "HRESULT"));
+        TraceLoggingHexInt32(S_OK, "HRESULT"),
+        TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
+        TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+        TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+        TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
   }
+
+private:
+  int runtime_session_id_;
 };
 
 void TensorToVideoFrameConverter::DX12TensorToVideoFrame(
@@ -345,7 +399,12 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToDX12Texture(
   CD3DX12_RECT scissorRect(0, 0, (LONG)outputDesc.Width, outputDesc.Height);
   ComPtr<ID3D12Device> spDx12Device = device_cache.GetD3D12Device();
 
-  GPUTensorToDX12TextureTelemetryEvent telemetrylogger(tensorDesc);
+  // we're inside a lock from the caller of this function, so it's ok to use this static
+  static EventTimer eventTimer;
+  std::optional<GPUTensorToDX12TextureTelemetryEvent> telemetryLogger;
+  if (eventTimer.Start()) {
+    telemetryLogger.emplace(tensorDesc);
+  }
 
   WINML_THROW_HR_IF_FALSE_MSG(
       E_INVALIDARG,
@@ -490,7 +549,12 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToSoftwareBitmap(
   assert(pInputTensor != nullptr);
   assert(softwareBitmap != nullptr);
 
-  GPUTensorToDX12TextureTelemetryEvent telemetrylogger(tensorDesc);
+  // we're inside a lock from the caller of this function, so it's ok to use this static
+  static EventTimer eventTimer;
+  std::optional<ConvertGPUTensorToSoftwareBitmapTelemetryEvent> telemetryLogger;
+  if (eventTimer.Start()) {
+    telemetryLogger.emplace(tensorDesc);
+  }
 
   uint32_t tensorElementSize = tensorDesc.dataType == kImageTensorDataTypeFloat32 ? 4 : 2;
   uint32_t singleVideoFramebufferSize = static_cast<uint32_t>(tensorDesc.sizes[1] * tensorDesc.sizes[2] * tensorDesc.sizes[3] * tensorElementSize);
@@ -569,7 +633,13 @@ void TensorToVideoFrameConverter::ConvertCPUTensorToSoftwareBitmap(
     _In_ void* pCPUTensor,
     _In_ const ImageTensorDescription& tensorDesc,
     _Inout_ wgi::SoftwareBitmap& softwareBitmap) {
-  ConvertCPUTensorToVideoFrameWithSoftwareBitmapTelemetryEvent telemetrylogger(tensorDesc);
+
+  // we're inside a lock from the caller of this function, so it's ok to use this static
+  static EventTimer eventTimer;
+  std::optional<ConvertCPUTensorToVideoFrameWithSoftwareBitmapTelemetryEvent> telemetryLogger;
+  if (eventTimer.Start()) {
+    telemetryLogger.emplace(tensorDesc);
+  }
 
   auto height = softwareBitmap.PixelHeight();
   auto width = softwareBitmap.PixelWidth();

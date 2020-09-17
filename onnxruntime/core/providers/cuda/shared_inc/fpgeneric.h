@@ -27,7 +27,17 @@ inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle,
                                        const float* B, int ldb,
                                        const float* beta,
                                        float* C, int ldc,
-                                       const cudaDeviceProp& /*prop*/) {
+                                       const cudaDeviceProp& prop) {
+#ifdef ENABLE_TRAINING
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+  onnxruntime::cuda::CublasMathModeSetter math_mode_setter(prop, handle, CUBLAS_TF32_TENSOR_OP_MATH);
+#else
+  ORT_UNUSED_PARAMETER(prop);
+#endif
+#else
+  ORT_UNUSED_PARAMETER(prop);
+#endif
+
   return cublasSgemm(handle,
                      transa,
                      transb,
@@ -111,7 +121,16 @@ inline cublasStatus_t cublasGemmBatchedHelper(cublasHandle_t handle,
                                               const float* beta,
                                               float* Carray[], int ldc,
                                               int batch_count,
-                                              const cudaDeviceProp& /*prop*/) {
+                                              const cudaDeviceProp& prop) {
+#ifdef ENABLE_TRAINING
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+  onnxruntime::cuda::CublasMathModeSetter math_mode_setter(prop, handle, CUBLAS_TF32_TENSOR_OP_MATH);
+#else
+  ORT_UNUSED_PARAMETER(prop);
+#endif
+#else
+  ORT_UNUSED_PARAMETER(prop);
+#endif
   return cublasSgemmBatched(handle,
                             transa,
                             transb,
@@ -157,6 +176,7 @@ inline cublasStatus_t cublasGemmBatchedHelper(cublasHandle_t handle,
                                               int batch_count,
                                               const cudaDeviceProp& prop) {
   onnxruntime::cuda::CublasMathModeSetter math_mode_setter(prop, handle, CUBLAS_TENSOR_OP_MATH);
+
 #ifdef ENABLE_TRAINING
   float h_a = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(alpha));
   float h_b = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(beta));
@@ -203,7 +223,17 @@ inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
                                                      float* C, int ldc,
                                                      long long int strideC,
                                                      int batch_count,
-                                                     const cudaDeviceProp& /*prop*/) {
+                                                     const cudaDeviceProp& prop) {
+#ifdef ENABLE_TRAINING
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+  onnxruntime::cuda::CublasMathModeSetter math_mode_setter(prop, handle, CUBLAS_TF32_TENSOR_OP_MATH);
+#else
+  ORT_UNUSED_PARAMETER(prop);
+#endif
+#else
+  ORT_UNUSED_PARAMETER(prop);
+#endif
+
   return cublasSgemmStridedBatched(handle,
                                    transa,
                                    transb,
@@ -257,6 +287,7 @@ inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
                                                      int batch_count,
                                                      const cudaDeviceProp& prop) {
   onnxruntime::cuda::CublasMathModeSetter math_mode_setter(prop, handle, CUBLAS_TENSOR_OP_MATH);
+
 #ifdef ENABLE_TRAINING
   float h_a = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(alpha));
   float h_b = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(beta));

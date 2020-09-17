@@ -131,5 +131,13 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Concat<float>);
 
+ONNX_OPERATOR_KERNEL_EX(
+    Concat,
+    kOnnxDomain,
+    11,
+    kAclExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Concat<float>);
+
 }  // namespace acl
 }  // namespace onnxruntime

@@ -75,7 +75,7 @@ namespace onnxruntime {
 struct CustomOpKernel : OpKernel {
   CustomOpKernel(const OpKernelInfo& info, OrtCustomOp& op) : OpKernel(info), op_(op) {
     if (op_.version > ORT_API_VERSION)
-      throw std::invalid_argument("Unsupported version '" + std::to_string(op_.version) + "' in custom op '" + op.GetName(&op));
+      ORT_THROW("Unsupported version '" + std::to_string(op_.version) + "' in custom op '" + op.GetName(&op));
     op_kernel_ = op_.CreateKernel(&op_, OrtGetApiBase()->GetApi(op_.version), reinterpret_cast<OrtKernelInfo*>(const_cast<OpKernelInfo*>(&info)));
   }
 
@@ -98,8 +98,18 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
   output = std::make_shared<CustomRegistry>();
 
   for (auto& domain : op_domains) {
-    if (domain->domain_[0])
-      ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(domain->domain_, 1, 1000);
+    // Domain is not empty - add it to the DomainToVersion ONNX map
+    // If domain is empty, it is assumed to be part of the ONNX domain
+    if (domain->domain_[0]) {
+      // Add it to the DomainToVersion ONNX map if it doesn't already exist
+      // For example, two sessions using the same session_options should not add the same custom op domain to the version map twice
+      auto& domain_to_version_range_instance = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
+      const auto& domain_to_version_map = domain_to_version_range_instance.Map();
+
+      if (domain_to_version_map.find(domain->domain_) == domain_to_version_map.end()) {
+        domain_to_version_range_instance.AddDomainToVersion(domain->domain_, 1, 1000);
+      }
+    }
 
     std::vector<ONNX_NAMESPACE::OpSchema> schemas_list;
 

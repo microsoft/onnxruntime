@@ -58,7 +58,12 @@ bool IsInitializerWithExpectedValue(const Graph& graph, const NodeArg& input_arg
   const auto data_type = tensor_proto->data_type();
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     const float* val = init_const.data<float>();
-    if (std::isnan(val[0]) || std::isinf(val[0])) return false;
+    if (std::isnan(val[0]) || std::isinf(val[0])) {
+      if (std::isinf(val[0]) && std::isinf(expected_value) && (std::signbit(val[0]) == std::signbit(expected_value))) {
+        return true;
+      }
+      return false;
+    }
 
     float diff = std::abs(val[0] - expected_value);
     if (diff > (atol + rtol * std::abs(expected_value))) {
@@ -127,6 +132,14 @@ bool IsAttributeWithExpectedValue(const Node& node, const std::string& attr_name
   const auto* attr_proto = graph_utils::GetNodeAttribute(node, attr_name);
   if ((nullptr != attr_proto) && attr_proto->has_i()) {
     return attr_proto->i() == expected_value;
+  }
+  return false;
+}
+
+bool IsAttributeWithExpectedValue(const Node& node, const std::string& attr_name, float expected_value, float eps) {
+  const auto* attr_proto = graph_utils::GetNodeAttribute(node, attr_name);
+  if ((nullptr != attr_proto) && attr_proto->has_f()) {
+    return std::abs(attr_proto->f() - expected_value) < eps;
   }
   return false;
 }
@@ -262,7 +275,6 @@ bool IsSupportedDataType(const Node& node, const std::vector<std::string>& suppo
   return true;
 }
 
-
 bool CheckOutputEdges(const Graph& graph, const Node& node, size_t expected_output_edges) {
   if (!graph.GetNodeOutputsInGraphOutputs(node).empty()) {
     return false;
@@ -276,8 +288,8 @@ bool CheckOutputEdges(const Graph& graph, const Node& node, size_t expected_outp
 // We could also allow other known domains (kMSDomain, kMSNchwcDomain, kMSFeaturizersDomain),
 // as long as we verify which of their operations are non-deterministic and add them in the map below.
 static const std::unordered_map<std::string, std::unordered_set<std::string>> kNonDeterministicOps =
-{
-  {kOnnxDomain, {"RandomUniform", "RandomNormal", "RandomUniformLike", "RandomNormalLike", "Multinomial"}},
+    {
+        {kOnnxDomain, {"RandomUniform", "RandomNormal", "RandomUniformLike", "RandomNormalLike", "Multinomial"}},
 };
 
 bool IsOperationDeterministic(const std::string& domain, const std::string& op) {
