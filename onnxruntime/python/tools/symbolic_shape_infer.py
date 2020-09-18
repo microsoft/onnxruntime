@@ -92,6 +92,7 @@ class SymbolicShapeInference:
             'Gather'                : self._infer_Gather,
             'GatherElements'        : self._infer_GatherElements,
             'GatherND'              : self._infer_GatherND,
+            'Gelu'                  : self._pass_on_shape_and_type,
             'If'                    : self._infer_If,
             'Loop'                  : self._infer_Loop,
             'MatMul'                : self._infer_MatMul,
@@ -114,6 +115,7 @@ class SymbolicShapeInference:
             'Shape'                 : self._infer_Shape,
             'Size'                  : self._infer_Size,
             'Slice'                 : self._infer_Slice,
+            'SoftmaxCrossEntropyLoss':self._infer_SoftmaxCrossEntropyLoss,
             'Split'                 : self._infer_Split,
             'SplitToSequence'       : self._infer_SplitToSequence,
             'Squeeze'               : self._infer_Squeeze,
@@ -1010,6 +1012,16 @@ class SymbolicShapeInference:
             if type(input_sympy_data) == list or (type(input_sympy_data) == np.array and len(input_sympy_data.shape) == 1):
                 self.sympy_data_[node.output[0]] = input_sympy_data[starts[0]:ends[0]]
 
+    def _infer_SoftmaxCrossEntropyLoss(self, node):
+        vi = self.known_vi_[node.output[0]]
+        elem_type = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+        vi.type.tensor_type.elem_type = elem_type
+
+        if len(node.output) > 1:
+            data_shape = self._get_shape(node, 0)
+            vi = self.known_vi_[node.output[1]]
+            vi.CopyFrom(helper.make_tensor_value_info(vi.name, elem_type, data_shape))
+
     def _infer_Split_Common(self, node, make_value_info_func):
         input_sympy_shape = self._get_sympy_shape(node, 0)
         axis = handle_negative_axis(get_attribute(node, 'axis', 0), len(input_sympy_shape))
@@ -1258,7 +1270,7 @@ class SymbolicShapeInference:
         if output_model:
             onnx.save(symbolic_shape_inference.out_mp_, output_model)
         if not all_shapes_inferred:
-            sys.exit(1)
+            raise Exception("Incomplete symbolic shape inference")
 
 def parse_arguments():
   parser = argparse.ArgumentParser()
