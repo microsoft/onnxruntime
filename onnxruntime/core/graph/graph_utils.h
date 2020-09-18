@@ -253,6 +253,7 @@ bool FindPath(Graph& graph, const Node& node, bool is_input_edge, const std::vec
 /**
  * Remove nodes with only one output edge using bottom-up bfs traversal.
  * @param node: The node to start with.
+ * @param force: Forcely remove the started node, default to true.
  * @returns true if there is one or more node(s) removed by this function. Otherwise return false.
 */
 bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& node, bool force = true);
