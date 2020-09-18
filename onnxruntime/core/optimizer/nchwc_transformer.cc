@@ -465,7 +465,11 @@ void NchwcTransformerImpl::TransformPool(Node& node) {
 
   const size_t nchwc_block_size = MlasNchwcGetBlockSize();
 
-  auto* input_shape = input_defs[0]->Shape();
+  const auto* input_type = input_defs[0]->TypeAsProto();
+  if ((input_type == nullptr) || (input_type->tensor_type().elem_type() != TensorProto_DataType_FLOAT)) {
+    return;
+  }
+  const auto* input_shape = input_defs[0]->Shape();
   if ((input_shape == nullptr) || (input_shape->dim_size() != 4)) {
     return;
   }
@@ -847,7 +851,7 @@ void NchwcTransformerImpl::TransformResize(Node& node) {
   }
 
   NodeArg* scales_arg;
-  if (node.Op()->SinceVersion() >= 11) {
+  if (node.SinceVersion() >= 11) {
     // Bail out if Resize has the optional "sizes" tensor.
     if (input_defs.size() == 3) {
       scales_arg = input_defs[2];
@@ -927,9 +931,7 @@ void NchwcTransformerImpl::Transform(Node& node) {
       graph_utils::IsSupportedOptypeVersionAndDomain(node, "FusedConv", {1}, kMSDomain)) {
     TransformConv(node);
   } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", {1, 8, 10, 11, 12}) ||
-             graph_utils::IsSupportedOptypeVersionAndDomain(node, "AveragePool", {1, 7, 10, 11}) ||
-             graph_utils::IsSupportedOptypeVersionAndDomain(node, "GlobalMaxPool", {1}) ||
-             graph_utils::IsSupportedOptypeVersionAndDomain(node, "GlobalAveragePool", {1})) {
+             graph_utils::IsSupportedOptypeVersionAndDomain(node, "AveragePool", {1, 7, 10, 11})) {
     TransformPool(node);
   } else if (node.GetInputEdgesCount() == 0 && node.InputDefs().size() != 0) {
     // The following transforms only run when the input edge count has already
@@ -937,24 +939,28 @@ void NchwcTransformerImpl::Transform(Node& node) {
     // node may already have all inputs converted to NCHWc format and is not
     // needed for correct operation. This avoids doing extra string checks for
     // nodes unrelated to this transformer.
-    if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7}) ||
-        graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sum", {6, 8})) {
+    if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7, 13}) ||
+        graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sum", {6, 8, 13})) {
       TransformBinary(node, true);
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Mul", {7})) {
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Mul", {7, 13})) {
       TransformBinary(node, false);
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Concat", {4, 11})) {
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Concat", {4, 11, 13})) {
       TransformConcat(node);
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6}) ||
-               graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sigmoid", {6}) ||
-               graph_utils::IsSupportedOptypeVersionAndDomain(node, "Tanh", {6})) {
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6, 13}) ||
+               graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sigmoid", {6, 13}) ||
+               graph_utils::IsSupportedOptypeVersionAndDomain(node, "Tanh", {6, 13})) {
       TransformActivation(node);
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "BatchNormalization", {7, 9})) {
       TransformBatchNormalization(node);
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Transpose", {1})) {
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Transpose", {1, 13})) {
       TransformTranspose(node);
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Upsample", {9}) ||
-               graph_utils::IsSupportedOptypeVersionAndDomain(node, "Resize", {10, 11})) {
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Upsample", {9, 13}) ||
+               graph_utils::IsSupportedOptypeVersionAndDomain(node, "Resize", {10, 11, 13})) {
       TransformResize(node);
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "GlobalMaxPool", {1}) ||
+               graph_utils::IsSupportedOptypeVersionAndDomain(node, "GlobalAveragePool", {1})) {
+      // Convert these pooling types only if the input is already in NCHWc format.
+      TransformPool(node);
     }
   }
 

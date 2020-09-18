@@ -7,9 +7,7 @@
 #endif
 
 #include "core/graph/graph_viewer.h"
-
 #include "core/graph/graph_utils.h"
-
 #include <queue>
 
 namespace onnxruntime {
@@ -161,7 +159,7 @@ bool GraphViewer::IsSubgraph() const {
 }
 
 bool GraphViewer::IsConstantInitializer(const std::string& name, bool check_outer_scope) const {
-  return graph_utils::IsConstantInitializer(*graph_, name, check_outer_scope);
+  return graph_->GetConstantInitializer(name, check_outer_scope) != nullptr;
 }
 
 }  // namespace onnxruntime

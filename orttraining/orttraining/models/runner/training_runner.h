@@ -10,7 +10,7 @@
 #include "core/framework/ml_value.h"
 #include "core/providers/providers.h"
 #include "orttraining/core/framework/checkpoint_registry.h"
-#include "orttraining/core/framework/mpi_setup.h"
+#include "orttraining/core/framework/mpi_context.h"
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/models/runner/data_loader.h"
@@ -27,6 +27,10 @@ class TrainingRunner {
     PathString model_with_training_graph_path;   // To save the model after adding loss func and backward graph.
     PathString model_actual_running_graph_path;  // To save the model with the actual running graph after transformations.
     PathString model_gist_encode_path;           // To save the model with gist encoding.
+    PathString pipeline_partitioned_model_path;  // To save the model after pipeline partition. Note: in the pipeline case,
+                                                 // different ranks may resident in the same node. This could lead to a
+                                                 // potential write conflict. It is user's responsibility to make sure
+                                                 // different rank is passed in with different pipeline_partitioned_model_path value.
 
     PathString train_data_dir;
     PathString test_data_dir;
@@ -95,7 +99,6 @@ class TrainingRunner {
     bool use_gist = false;
     // Whether we collect execution profile trace during this run.
     bool use_profiler = false;
-    MPIContext mpi_context;
     bool skip_evaluation = false;
     bool dump_fetches = false;
     bool dump_convergence_metrics = false;
@@ -103,10 +106,12 @@ class TrainingRunner {
     VectorString fetch_names;
 
     bool use_mixed_precision = false;
+    bool use_bfloat16 = false;
     float loss_scale = 1.0f;
-    bool use_fp16_moments = false;
-    bool use_fp16_initializer = true;
-    bool allreduce_in_fp16 = false;
+    bool use_mixed_precision_moments = false;
+    bool use_mixed_precision_initializer = true;
+    bool allreduce_in_mixed_precision_type = false;
+    bool layernorm_stash_as_fp32 = true;
 
     // Tensorboard configuration.
     PathString log_dir;  // Path to write Tensorboard events to.
@@ -119,7 +124,7 @@ class TrainingRunner {
     float cuda_mem_limit_in_gb = -1.0f;
 
     bool EnableTensorboard() const {
-      return !is_perf_test && !log_dir.empty() && mpi_context.world_rank == 0;
+      return !is_perf_test && !log_dir.empty() && MPIContext::GetInstance().GetWorldRank() == 0;
     }
 
     bool UseCuda() const {

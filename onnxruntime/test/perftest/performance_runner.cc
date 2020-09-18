@@ -232,7 +232,18 @@ Status PerformanceRunner::ForkJoinRepeat() {
 
 static std::unique_ptr<TestModelInfo> CreateModelInfo(const PerformanceTestConfig& performance_test_config_) {
   if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("ort")) == 0) {
-    return TestModelInfo::LoadOnnxModel(performance_test_config_.model_info.model_file_path.c_str());
+    const auto& file_path = performance_test_config_.model_info.model_file_path;
+#if !defined(ORT_MINIMAL_BUILD)
+    if (HasExtensionOf(file_path, ORT_TSTR("onnx"))) {
+      return TestModelInfo::LoadOnnxModel(performance_test_config_.model_info.model_file_path.c_str());
+    }
+#else
+    if (HasExtensionOf(file_path, ORT_TSTR("ort"))) {
+      return TestModelInfo::LoadOrtModel(performance_test_config_.model_info.model_file_path.c_str());
+    }
+#endif
+
+    ORT_NOT_IMPLEMENTED(ToMBString(file_path), " is not supported");
   }
 
   if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("tf")) == 0) {
@@ -297,7 +308,7 @@ bool PerformanceRunner::Initialize() {
     return false;
   }
   for (size_t test_data_id = 0; test_data_id != test_data_count; ++test_data_id) {
-    std::unordered_map<std::string, OrtValue*> feeds;
+    std::unordered_map<std::string, Ort::Value> feeds;
     test_case_->LoadTestData(test_data_id /* id */, b_, feeds, true);
     // Discard the names in feeds
     int input_count = test_model_info->GetInputCount();
@@ -308,7 +319,7 @@ bool PerformanceRunner::Initialize() {
                   << test_case_->GetTestCaseName() << std::endl;
         return false;
       }
-      session_->PreLoadTestData(test_data_id, static_cast<size_t>(i), iter->second);
+      session_->PreLoadTestData(test_data_id, static_cast<size_t>(i), std::move(iter->second));
     }
   }
 

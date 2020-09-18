@@ -10,7 +10,6 @@
 
 #include "core/common/common.h"
 #include "core/util/math.h"
-#include "test/providers/provider_test_utils.h"
 #include "test/util/include/test_random_seed.h"
 
 namespace onnxruntime {

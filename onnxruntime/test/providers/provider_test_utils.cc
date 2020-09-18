@@ -7,6 +7,7 @@
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/session/inference_session.h"
+#include "core/graph/model_load_utils.h"
 #include "gmock/gmock.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
@@ -91,11 +92,12 @@ void Check<double>(const OpTester::Data& expected_data,
 #endif
 
   for (int i = 0; i < size; ++i) {
-    if (std::isinf(expected[i])) {  // Test infinity for equality
-      EXPECT_EQ(expected[i], output[i]) << "i:" << i;
-    } else if (std::isnan(expected[i])) {
-      EXPECT_TRUE(std::isnan(output[i])) << "Expected output " << i
-                                         << " to be NaN";
+    // NOTE: Check isnan first to work around MSVC linker bug when /LTCG:incremental is specified.
+    // If the isinf check is first the isnan check and branch gets omitted
+    if (std::isnan(expected[i])) {
+      EXPECT_TRUE(std::isnan(output[i])) << "Expected NaN. i:" << i << ", provider_type: " << provider_type;
+    } else if (std::isinf(expected[i])) {  // Test infinity for equality
+      EXPECT_EQ(expected[i], output[i]) << "Expected infinity. i:" << i << ", provider_type: " << provider_type;
     } else {
       if (!has_abs_err && !has_rel_err) {
         // the default for existing tests
@@ -142,11 +144,12 @@ void InternalNumericalCheck(const OpTester::Data& expected_data,
 #endif
 
   for (int i = 0; i < size; ++i) {
-    if (std::isinf(expected[i])) {  // Test infinity for equality
-      EXPECT_EQ(expected[i], output[i]) << "i:" << i;
-    } else if (std::isnan(expected[i])) {
-      EXPECT_TRUE(std::isnan(output[i])) << "Expected output " << i
-                                         << " to be NaN";
+    // NOTE: Check isnan first to work around MSVC linker bug when /LTCG:incremental is specified.
+    // If the isinf check is first the isnan check and branch gets omitted
+    if (std::isnan(expected[i])) {
+      EXPECT_TRUE(std::isnan(output[i])) << "Expected NaN. i:" << i << ", provider_type: " << provider_type;
+    } else if (std::isinf(expected[i])) {  // Test infinity for equality
+      EXPECT_EQ(expected[i], output[i]) << "Expected infinity. i:" << i << ", provider_type: " << provider_type;
     } else {
       if (!has_abs_err && !has_rel_err) {
         // the default for existing tests
@@ -355,7 +358,11 @@ void CheckDispatch(MLDataType type, const OpTester::Data& expected_data,
 
 void Check(const OpTester::Data& expected_data, OrtValue& ort_value,
            const std::string& provider_type) {
-  CheckDispatch<VectorMapStringToFloat, VectorMapInt64ToFloat, TensorSeq>(
+  CheckDispatch<
+#if !defined(DISABLE_ML_OPS)
+      VectorMapStringToFloat, VectorMapInt64ToFloat,
+#endif
+      TensorSeq>(
       expected_data.data_.Type(), expected_data, ort_value, provider_type);
 }
 
@@ -647,6 +654,7 @@ void OpTester::Run(
   so.session_logid = op_;
   so.session_log_verbosity_level = 1;
   so.execution_mode = execution_mode;
+  so.use_deterministic_compute = use_determinism_;
   so.graph_optimization_level = TransformerLevel::Default;  // 'Default' == off
   Run(so, expect_result, expected_failure_string, excluded_provider_types,
       run_options, execution_providers, custom_output_verifier, options);
@@ -668,10 +676,26 @@ void OpTester::Run(
     const CustomOutputVerifierFn& custom_output_verifier,
     const Graph::ResolveOptions& options) {
   std::string cur_provider = "not set";
-  try {
+  ORT_TRY {
 #ifndef NDEBUG
     run_called_ = true;
 #endif
+
+    static bool allow_released_onnx_opset_only =
+        model_load_utils::IsAllowReleasedONNXOpsetsOnlySet();
+    if (allow_released_onnx_opset_only) {
+      auto& onnx_released_versions =
+          ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().LastReleaseVersionMap();
+      auto it = onnx_released_versions.find(domain_);
+      if (it != onnx_released_versions.end() && opset_version_ > it->second) {
+        LOGS_DEFAULT(WARNING) << "Encountered model with opset version greater than released onnx opset version. "
+                              << "Skipping this test. To run this test set environment variable ALLOW_RELEASED_ONNX_OPSET_ONLY to \"0\". "
+                              << "Opset version of current model is " << opset_version_
+                              << ", the latest released onnx opset version is " << it->second << ".";
+        GTEST_SKIP();
+      }
+    }
+
     fetches_.clear();
     bool cache_enabled = cached_model_ != nullptr;
     auto p_model = !cache_enabled ? BuildGraph() : cached_model_;
@@ -682,10 +706,13 @@ void OpTester::Run(
       if (add_shape_to_tensor_data_ &&
           expect_result == ExpectResult::kExpectFailure) {
         // capture possible exceptions from shape inference for invalid testcase
-        try {
+        ORT_TRY {
           status = graph.Resolve(options);
-        } catch (const std::exception& ex) {
-          status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
+        }
+        ORT_CATCH(const std::exception& ex) {
+          ORT_HANDLE_EXCEPTION([&]() {
+            status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
+          });
         }
       } else {
         status = graph.Resolve(options);
@@ -849,10 +876,13 @@ void OpTester::Run(
       EXPECT_TRUE(has_run)
           << "No registered execution providers were able to run the model.";
     }
-  } catch (const std::exception& ex) {
-    std::cerr << ex.what() << "\nProvider:" << cur_provider << "\n";
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      std::cerr << ex.what() << "\nProvider:" << cur_provider << "\n";
+    });
     // rethrow as some tests for error handling expect this
-    throw;
+    ORT_RETHROW;
   }
 }
 
@@ -880,7 +910,11 @@ void OpTester::AddReferenceOutputs(const std::string& model_path) {
                  [](const onnxruntime::NodeArg* node_arg) -> std::string { return node_arg->Name(); });
 
   NameMLValMap feeds;
-  FillFeeds(feeds);
+  for (size_t i = 0; i < input_data_.size(); ++i) {
+    if (input_data_[i].def_.Exists()) {
+      feeds[input_data_[i].def_.Name()] = input_data_[i].data_;
+    }
+  }
 
   std::vector<MLValue> subgraph_fetches;
   ASSERT_TRUE((status = subgraph_session_object.Run(run_options, feeds, output_names, &subgraph_fetches)).IsOK()) << status;

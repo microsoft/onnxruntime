@@ -45,7 +45,7 @@ Status QAttention<T, int8_t>::CheckInputs(const Tensor* input,
                                           const Tensor* bias,
                                           const Tensor* input_scale_tensor,
                                           const Tensor* weight_scale_tensor,
-                                          const Tensor* mask_index,
+                                          const Tensor*& mask_index,
                                           const Tensor* i_zp_tensor,
                                           const Tensor* w_zp_tensor,
                                           const Tensor* past_tensor) const {
@@ -55,12 +55,12 @@ Status QAttention<T, int8_t>::CheckInputs(const Tensor* input,
   //   Input 2 - bias              : (3 * hidden_size)
   //   Input 3 - input_scale       : scalar
   //   Input 4 - weight_scale      : scalar
-  //   Input 5 - mask_index        : (batch_size)
+  //   Input 5 - mask_index        : nullptr, (batch_size), (2 * batch_size), (batch_size, 1), (1, 1) or (batch_size, past_sequence_length + sequence_length)
   //   Input 6 - input_zero_point  : scalar
   //   Input 7 - weight_zero_point : scalar
   //   Output                      : (batch_size, sequence_length, hidden_size)
 
-  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input, weights, bias, mask_index, past_tensor));
+  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input->Shape(), weights->Shape(), bias->Shape(), mask_index, past_tensor));
 
   ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(input_scale_tensor),
                     "input scale must be a scalar or 1D tensor of size 1");
@@ -171,6 +171,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length, past_sequence_length);
   auto temp_buffer = GetScratchBuffer<void>(workSpaceSize);
   if (!LaunchAttentionKernel(
+          GetDeviceProp(),
           reinterpret_cast<const CudaT*>(gemm_buffer.get()),
           nullptr == mask_index ? nullptr : mask_index->template Data<int>(),
           nullptr == mask_index ? nullptr : &(mask_index->Shape().GetDims()),

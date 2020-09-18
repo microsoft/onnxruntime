@@ -246,7 +246,7 @@ Status ModelBuilder::RegisterInitializers() {
         // TODO: support other type
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "The initializer of graph doesn't have valid type, name: ",
-                               name, " type: ", std::to_string(tensor.data_type()));
+                               name, " type: ", tensor.data_type());
         break;
     }
 
@@ -338,7 +338,7 @@ Status ModelBuilder::RegisterModelInputs() {
             // We current do not support uint8 input if it is not a quantized input
             return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                    "The input of graph doesn't have valid type, name: ", input_name,
-                                   " type: ", std::to_string(type_proto->tensor_type().elem_type()));
+                                   " type: ", type_proto->tensor_type().elem_type());
           }
 
           // TODO, verify the scale and zero point match if there are multiple op using same input
@@ -350,7 +350,7 @@ Status ModelBuilder::RegisterModelInputs() {
           // TODO: support other type
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                  "The input of graph doesn't have valid type, name: ", input_name,
-                                 " type: ", std::to_string(type_proto->tensor_type().elem_type()));
+                                 " type: ", type_proto->tensor_type().elem_type());
         }
       }
     }
@@ -372,14 +372,15 @@ Status ModelBuilder::RegisterModelOutputs() {
     const auto& output_name = node_arg->Name();
 
     if (!Contains(operands_, output_name)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The output of graph is not registered ", output_name);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "The output of graph is not registered [", output_name, "]");
     }
 
     std::string nnapi_output_name = output_name;
     if (IsOperandNHWC(output_name)) {
       // We need to transpose the output still in nhwc back to nchw
       nnapi_output_name = GetUniqueName(output_name + "_nhwc_to_nchw");
-      TransposeNHWCToNCHW(*this, output_name, nnapi_output_name);
+      ORT_RETURN_IF_ERROR(TransposeNHWCToNCHW(*this, output_name, nnapi_output_name));
     }
 
     output_index_vec_.push_back(operand_indices_[nnapi_output_name]);
@@ -470,7 +471,7 @@ Status ModelBuilder::AddOperations() {
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_viewer_.GetNode(node_indices[i]));
     if (auto* op_builder = GetOpBuilder(*node)) {
-      op_builder->AddToModelBuilder(*this, *node);
+      ORT_RETURN_IF_ERROR(op_builder->AddToModelBuilder(*this, *node));
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Node [", node->Name(), "], type [", node->OpType(), "] is not supported");

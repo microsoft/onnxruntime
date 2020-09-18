@@ -9,7 +9,7 @@ import torch
 import torch.nn
 import torch.onnx
 import onnxruntime as ort
-import onnxruntime.capi.postprocess as postprocess
+from ..training import postprocess
 from distutils.version import LooseVersion
 import warnings
 
@@ -199,6 +199,45 @@ def dtype_torch_to_numpy(torch_dtype):
     else:
         raise Exception("Torch type to numpy type mapping unavailable for: " + str(torch_dtype))
 
+class model_loss_cls(torch.nn.Module):
+    def __init__(self, model, loss_fn):
+        super(model_loss_cls, self).__init__()
+        self.model_ = model
+        self.loss_fn_ = loss_fn
+
+    def forward(self, *inputs):
+        # here we assume input can be unpacked into input and label
+        input, label = inputs[:-1], inputs[-1]
+        preds = self.model_(*input)
+        return self.loss_fn_(preds, label), preds
+
+class WrapModel(torch.nn.Module):
+    def __init__(self, model, loss_fn, input_names):
+        super(WrapModel, self).__init__()
+        self.model_ = model
+        self.loss_fn_ = loss_fn
+        self.input_names_ = input_names
+
+    def forward(self, *inputs):
+        import inspect
+        # *inputs is given by torch trace. It is in the order of input_names.
+        # model_ takes input in a order (which can be obtained via inspect.signature(model.forward)) different than input_names.
+        sig = inspect.signature(self.model_.forward)
+        ordered_list_keys = list(sig.parameters.keys())
+
+        input_dict = {}
+        for key in sig.parameters.keys():
+            if key in self.input_names_:
+                input_dict[key] = inputs[self.input_names_.index(key)]
+
+        model_out = self.model_(**input_dict)
+        if self.loss_fn_ is None:
+            return model_out
+
+        label = inputs[-1]
+        preds = model_out
+        return self.loss_fn_(preds, label), preds
+
 def wrap_for_input_match(model, loss_fn, input_names):
     import inspect
     sig = inspect.signature(model.forward)
@@ -210,18 +249,6 @@ def wrap_for_input_match(model, loss_fn, input_names):
 
         # label shall be the second input to loss_fn.
         ordered_list_keys = [*ordered_list_keys, list(sig_loss.parameters.keys())[1]]
-
-    class model_loss_cls(torch.nn.Module):
-        def __init__(self, model, loss_fn):
-            super(model_loss_cls, self).__init__()
-            self.model_ = model
-            self.loss_fn_ = loss_fn
-
-        def forward(self, *inputs):
-            # here we assume input can be unpacked into input and label
-            input, label = inputs[:-1], inputs[-1]
-            preds = self.model_(*input)
-            return self.loss_fn_(preds, label), preds
 
     # name match is needed only when input_names are a subset
     # of expected inputs (inputs to model and loss_fn combined).
@@ -248,37 +275,11 @@ def wrap_for_input_match(model, loss_fn, input_names):
     if match:
         return model_loss_cls(model, loss_fn) if loss_fn else model
 
-    class WrapModel(torch.nn.Module):
-        def __init__(self, model, loss_fn, input_names):
-            super(WrapModel, self).__init__()
-            self.model_ = model
-            self.loss_fn_ = loss_fn
-            self.input_names_ = input_names
-
-        def forward(self, *inputs):
-            # *inputs is given by torch trace. It is in the order of input_names.
-            # model_ takes input in a order (which can be obtained via inspect.signature(model.forward)) different than input_names.
-            sig = inspect.signature(self.model_.forward)
-            ordered_list_keys = list(sig.parameters.keys())
-
-            input_dict = {}
-            for key in sig.parameters.keys():
-                if key in self.input_names_:
-                    input_dict[key] = inputs[self.input_names_.index(key)]
-
-            model_out = self.model_(**input_dict)
-            if self.loss_fn_ is None:
-                return model_out
-
-            label = inputs[-1]
-            preds = model_out
-            return self.loss_fn_(preds, label), preds
-
     model = WrapModel(model, loss_fn, input_names)
 
     return model
 
-def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, opset_version=DEFAULT_OPSET_VERSION, _enable_internal_postprocess=True):
+def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, opset_version=DEFAULT_OPSET_VERSION):
     # example: {input0:{0:'batch'}, input1:{0:'batch'}}
     dynamic_axes = {}
     for input in model_desc.inputs_:
@@ -316,7 +317,12 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
 
     model.eval()
     with torch.no_grad():
-        sample_outputs = model(*sample_inputs)
+        import copy
+        # Deepcopy inputs, since input values may change after model run.
+        sample_inputs_copy = copy.deepcopy(sample_inputs)
+        # Deepcopy model, in case model is stateful and changes after model run.
+        model_copy = copy.deepcopy(model)
+        sample_outputs = model_copy(*sample_inputs_copy)
     if isinstance(sample_outputs, torch.Tensor):
         sample_outputs = [sample_outputs]
     for sample_output, output_desc in zip(sample_outputs, model_desc.outputs_):
@@ -336,7 +342,15 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
     if LooseVersion(torch.__version__) >= LooseVersion('1.6.0'):
         other_export_options['training'] = torch.onnx.TrainingMode.TRAINING
 
-    torch.onnx._export(model, tuple(sample_inputs), f,
+    # Deepcopy inputs, since input values may change after model run.
+    import copy
+    sample_inputs_copy = copy.deepcopy(sample_inputs)
+
+    # Enable contrib ops export from PyTorch
+    from onnxruntime.training import register_custom_ops_pytorch_exporter
+    register_custom_ops_pytorch_exporter.register_custom_op()
+
+    torch.onnx._export(model, tuple(sample_inputs_copy), f,
                        input_names=input_names,
                        output_names=output_names,
                        opset_version=opset_version,
@@ -349,26 +363,16 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
     onnx_model = onnx.load_model_from_string(f.getvalue())
 
     # Remove 'model_.' prefix introduced by model wrapper for initializers.
-    replace_name_dict = {}
-    for n in onnx_model.graph.initializer:
-        if n.name.startswith('model_.'):
-            replace_name_dict[n.name] = n.name[len('model_.'):]
-            n.name = replace_name_dict[n.name]
-    for n in onnx_model.graph.node:
-        for i, name in enumerate(n.input):
-            if name in replace_name_dict:
-                n.input[i] = replace_name_dict[name]
-
-    # onnx model initializer may contain non-trainable registered buffers that are not part
-    # of pytorch model named parameteres.
-    named_parameters = model.model_.named_parameters() if hasattr(model, 'model_') else model.named_parameters()
-    assert set([n for n, t in named_parameters]).issubset(
-        set([n.name for n in onnx_model.graph.initializer])), \
-        "Initializer names do not match between PyTorch model and ONNX model, " \
-        "please report a bug to ONNX Runtime."
-
-    if _enable_internal_postprocess:
-        onnx_model = postprocess.run_postprocess(onnx_model)
+    if isinstance(model, WrapModel) or isinstance(model, model_loss_cls):
+        replace_name_dict = {}
+        for n in onnx_model.graph.initializer:
+            if n.name.startswith('model_.'):
+                replace_name_dict[n.name] = n.name[len('model_.'):]
+                n.name = replace_name_dict[n.name]
+        for n in onnx_model.graph.node:
+            for i, name in enumerate(n.input):
+                if name in replace_name_dict:
+                    n.input[i] = replace_name_dict[name]
 
     return onnx_model
 
@@ -463,11 +467,11 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
 
     return session, train_io_binding, eval_io_binding, output_name, torch_params, output_types
 
-def save_checkpoint(model, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", checkpoint_state_dict=None):
+def save_checkpoint(model, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", checkpoint_state_dict=None, include_optimizer_state=True):
     if checkpoint_state_dict==None:
-        checkpoint_state_dict={'model': model.state_dict()}
+        checkpoint_state_dict={'model': model.state_dict(include_optimizer_state)}
     else:
-        checkpoint_state_dict.update({'model': model.state_dict()})
+        checkpoint_state_dict.update({'model': model.state_dict(include_optimizer_state)})
 
     assert os.path.exists(checkpoint_dir), "ERROR: Checkpoint directory doesn't exist: {}".format(checkpoint_dir)
 
@@ -574,9 +578,6 @@ class ORTTrainer():
             gradient_accumulation_steps: number of training steps to accumulate
                gradients before averaging and applying them.
                Defaults to 1.
-            postprocess_model: a callable to postprocess the ONNX model that is
-               converted from PyTorch.
-               Defaults to None.
             world_rank: rank id used for distributed training.
                Defaults to 0.
             world_size: number of ranks participating in distributed training.
@@ -612,15 +613,26 @@ class ORTTrainer():
 
         self.torch_model_ = None
         self.onnx_model_ = None
+        self._enable_internal_postprocess = _enable_internal_postprocess
+        self._extra_postprocess = _extra_postprocess
+
         if isinstance(model, torch.nn.Module):
             self.torch_model_ = model
             self.loss_fn_ = loss_fn
+            self._torch_state_dict_keys = list(model.state_dict().keys())
         else:
+            self._torch_state_dict_keys = []
             self.onnx_model_ = model
             if loss_fn is not None:
                 warnings.warn("loss_fn is not used when creating ORTTrainer because an ONNX model is provided.")
             # TODO: accept loss_fn as an onnx model. build self.onnx_model_ with model and loss_fn
             self.loss_fn_ = None
+
+            if self._enable_internal_postprocess:
+                postprocess.run_postprocess(self.onnx_model_)
+
+            if self._extra_postprocess:
+                self._extra_postprocess(self.onnx_model_)
 
         self.model_desc_ = model_desc
         self.input_desc_with_lr = [*self.model_desc_.inputs_, learning_rate_description]
@@ -628,8 +640,6 @@ class ORTTrainer():
         self.world_rank = world_rank
         self.world_size = world_size
         self.use_mixed_precision = use_mixed_precision
-
-        self.original_model_state_keys = list(model.state_dict().keys()) if hasattr(model, 'state_dict') else []
 
         self.session = None
         self.device_ = device
@@ -643,7 +653,6 @@ class ORTTrainer():
         # we use self.global_step_ to count optimizations being performed.
         # it is used to calculate learning rate if self.get_lr_this_step_ is provided.
         self.global_step_ = global_step
-        self._extra_postprocess = _extra_postprocess
         self.get_lr_this_step_ = get_lr_this_step
         self.loss_scaler_ = loss_scaler
 
@@ -658,7 +667,6 @@ class ORTTrainer():
         self.frozen_weights_ = frozen_weights
         self.opset_version_ = _opset_version
         self.state_dict_ = None
-        self._enable_internal_postprocess = _enable_internal_postprocess
         self._use_deterministic_compute = _use_deterministic_compute
         self.use_invertible_layernorm_grad = use_invertible_layernorm_grad
 
@@ -671,12 +679,6 @@ class ORTTrainer():
     def _init_session(self):
         if self.onnx_model_ is None:
             return
-
-        if self._enable_internal_postprocess:
-            self._onnx_model_ = postprocess.run_postprocess(self.onnx_model_)
-
-        if self._extra_postprocess:
-            self._extra_postprocess(self.onnx_model_)
 
         self._verify_fully_optimized_model(self.onnx_model_)
         self.session, self.train_io_binding, self.eval_io_binding, self.output_name, _, self.output_types = \
@@ -735,7 +737,13 @@ class ORTTrainer():
             torch_buffers = list(dict(self.torch_model_.named_buffers()).keys())
             self.frozen_weights_ = self.frozen_weights_ + torch_buffers
             self.onnx_model_ = convert_model_loss_fn_to_onnx(
-                self.torch_model_, self.loss_fn_, self.model_desc_, torch.device('cpu'), inputs, opset_version=self.opset_version_, _enable_internal_postprocess=self._enable_internal_postprocess)
+                self.torch_model_, self.loss_fn_, self.model_desc_, torch.device('cpu'), inputs, opset_version=self.opset_version_)
+
+            if self._enable_internal_postprocess:
+                postprocess.run_postprocess(self.onnx_model_)
+
+            if self._extra_postprocess:
+                self._extra_postprocess(self.onnx_model_)
 
         self._init_session()
 
@@ -758,7 +766,7 @@ class ORTTrainer():
             del self.onnx_model_.graph.initializer[w_i]
         self.onnx_model_.graph.initializer.extend(new_weights)
 
-    def state_dict(self):
+    def state_dict(self, include_optimizer_state=True):
         if not self.session:
             warnings.warn("ONNXRuntime training session is not initialized yet. "
                           "Please run train_step or eval_step at least once before calling state_dict().")
@@ -776,10 +784,9 @@ class ORTTrainer():
                 torch_state[n.name] = torch.from_numpy(numpy_helper.to_array(n))
 
         # Need to remove redundant initializers and name suffices to map back to original torch state names
-        torch_state_to_return = {key: torch_state[key] for key in self.original_model_state_keys if key in torch_state} \
-                                if self.original_model_state_keys \
-                                else torch_state
-        return torch_state_to_return
+        if not include_optimizer_state and self._torch_state_dict_keys:
+            return {key: torch_state[key] for key in self._torch_state_dict_keys if key in torch_state}
+        return torch_state
 
     def load_state_dict(self, state_dict, strict=False):
         # Note: It may happen ONNX model has not yet been initialized

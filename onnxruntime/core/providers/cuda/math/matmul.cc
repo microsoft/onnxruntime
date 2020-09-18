@@ -19,10 +19,19 @@ namespace cuda {
       KernelDefBuilder()                                          \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       MatMul<T>);                                                 \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
+      MatMul,                                                     \
+      kOnnxDomain,                                                \
+      9, 12,                                                       \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      KernelDefBuilder()                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      MatMul<T>);                                                 \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       MatMul,                                                     \
       kOnnxDomain,                                                \
-      9,                                                          \
+      13,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       KernelDefBuilder()                                          \
@@ -143,7 +152,8 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
                                                           reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
                                                           ldc,
                                                           stride_C,
-                                                          static_cast<int>(batch_count)));
+                                                          static_cast<int>(batch_count),
+                                                          device_prop));
 
     return Status::OK();
   }
@@ -175,7 +185,8 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
       &zero,
       output_arrays.GpuPtr(),
       ldc,
-      static_cast<int>(helper.OutputOffsets().size())));
+      static_cast<int>(helper.OutputOffsets().size()),
+      device_prop));
 
   return Status::OK();
 }

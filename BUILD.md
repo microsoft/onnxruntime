@@ -16,7 +16,7 @@
     * [Intel DNNL/MKL-ML](#DNNL-and-MKLML)
     * [Intel nGraph](#nGraph)
     * [Intel OpenVINO](#openvino)
-    * [Android NNAPI](#Android-NNAPI)
+    * [Android NNAPI](#Android-NNAPI-Execution-Provider)
     * [Nuphar Model Compiler](#Nuphar)
     * [DirectML](#DirectML)
     * [ARM Compute Library](#ARM-Compute-Library)
@@ -32,6 +32,7 @@
     * [x86](#x86)
     * [ARM](#ARM)
     * [Android](#Android)
+    * [iOS](#iOS)
 
 **[Training](#Training)**
 
@@ -124,7 +125,7 @@ GCC 4.x and below are not supported.
 |API|Command|Additional details|
 |-----------|-----------|-----------|
 |**Python**|--build_wheel||
-|**C# and C packages**|--build_csharp||
+|**C# and C packages**|--build_nuget|Builds C# bindings and creates nuget package. Currently supported on Windows and Linux only. Implies `--build_shared_lib` <br> Detailed instructions can be found [below](./BUILD.md#build-nuget-packages).|
 |**WindowsML**|--use_winml<br>--use_dml<br>--build_shared_lib|WindowsML depends on DirectML and the OnnxRuntime shared library|
 |**Java**|--build_java|Creates an onnxruntime4j.jar in the build directory, implies `--build_shared_lib`<br>Compiling the Java API requires [gradle](https://gradle.org) v6.1+ to be installed in addition to the usual requirements.|
 |**Node.js**|--build_nodejs|Build Node.js binding. Implies `--build_shared_lib`|
@@ -136,6 +137,26 @@ Read more about ONNX Runtime Server [here](./docs/ONNX_Runtime_Server_Usage.md).
 
 Build instructions are [here](./docs/Server.md)
 
+## Build Nuget packages
+Currently only supported on Windows and Linux.
+### Prerequisites
+* dotnet is required for building csharp bindings and creating managed nuget package. Follow the instructions [here](https://dotnet.microsoft.com/download) to download dotnet. Tested with versions 2.1 and 3.1.
+* nuget.exe. Follow the instructions [here](https://docs.microsoft.com/en-us/nuget/install-nuget-client-tools#nugetexe-cli) to download nuget
+  * On Windows, downloading nuget is straightforward and simply following the instructions above should work.
+  * On Linux, nuget relies on Mono runtime and therefore this needs to be setup too. Above link has all the information to setup Mono and nuget. The instructions can directly be found [here](https://www.mono-project.com/docs/getting-started/install/). In some cases it is required to run `sudo apt-get install mono-complete` after installing mono.
+
+### Build Instructions
+#### Windows
+```
+.\build.bat --build_nuget
+```
+
+#### Linux
+```
+./build.sh --build_nuget
+```
+Nuget packages are created under <native_build_dir>\nuget-artifacts
+
 ---
 
 ## Execution Providers
@@ -145,8 +166,8 @@ Build instructions are [here](./docs/Server.md)
 * Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn)
   * ONNX Runtime is built and tested with CUDA 10.1 and cuDNN 7.6 using the Visual Studio 2019 14.12 toolset (i.e. Visual Studio 2019 v16.5).
     ONNX Runtime can also be built with CUDA versions from 9.1 up to 10.1, and cuDNN versions from 7.1 up to 7.4.
-  * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home parameter`
-  * The path to the cuDNN installation (include the `cuda` folder in the path) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home parameter`. The cuDNN path should contain `bin`, `include` and `lib` directories.
+  * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home` parameter
+  * The path to the cuDNN installation (include the `cuda` folder in the path) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home` parameter. The cuDNN path should contain `bin`, `include` and `lib` directories.
   * The path to the cuDNN bin directory must be added to the PATH environment variable so that cudnn64_7.dll is found.
 
 #### Build Instructions
@@ -188,12 +209,12 @@ See more information on the TensorRT Execution Provider [here](./docs/execution_
 #### Prerequisites
 * Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn)
    * The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 10.2 and cuDNN 7.6.5.
-   * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home parameter`. The CUDA path should contain `bin`, `include` and `lib` directories.
+   * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home` parameter. The CUDA path should contain `bin`, `include` and `lib` directories.
    * The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
-   * The path to the cuDNN installation (path to folder that contains libcudnn.so) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home parameter`.
+   * The path to the cuDNN installation (path to folder that contains libcudnn.so) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home` parameter.
  * Install [TensorRT](https://developer.nvidia.com/nvidia-tensorrt-download)
    * The TensorRT execution provider for ONNX Runtime is built on TensorRT 7.x and is tested with TensorRT 7.0.0.11.
-   * The path to TensorRT installation must be provided via the `--tensorrt_home parameter`.
+   * The path to TensorRT installation must be provided via the `--tensorrt_home` parameter.
 
 #### Build Instructions
 ##### Windows
@@ -213,16 +234,45 @@ Dockerfile instructions are available [here](./dockerfiles#tensorrt)
 
 #### NVIDIA Jetson TX1/TX2/Nano/Xavier
 
-1. Indicate CUDA compiler, or add its location to the PATH.
-Cmake can't automatically find the correct nvcc if it's not in the PATH.
-```
-export CUDACXX="/usr/local/cuda/bin/nvcc"
-```
-or:
-```
-export PATH="/usr/local/cuda/bin:${PATH}"
-```
-2. Follow instructions in [Docker README](./dockerfiles/README.md) to build the wheel file. 
+These instructions are for JetPack SDK 4.4.
+
+1. Clone the ONNX Runtime repo on the Jetson host
+
+    ```bash
+    git clone --recursive https://github.com/microsoft/onnxruntime
+    ```
+
+2. Specify the CUDA compiler, or add its location to the PATH.
+
+   Cmake can't automatically find the correct nvcc if it's not in the PATH.
+
+    ```bash
+    export CUDACXX="/usr/local/cuda/bin/nvcc"
+
+    ```
+
+    or:
+
+    ```bash
+    export PATH="/usr/local/cuda/bin:${PATH}"
+    ```
+
+3. Install the ONNX Runtime build dependencies on the Jetpack 4.4 host:
+
+    ```bash
+    sudo apt install -y --no-install-recommends \
+      build-essential software-properties-common cmake libopenblas-dev \
+      libpython3.6-dev python3-pip python3-dev
+    ```
+
+4. Build the ONNX Runtime Python wheel:
+
+    ```bash
+    ./build.sh --update --config Release --build --build_wheel \
+    --use_cuda --cuda_home /usr/local/cuda --cudnn_home /usr/lib/aarch64-linux-gnu
+    ```
+
+    Note: You may add --use_tensorrt and --tensorrt_home options if you wish to use NVIDIA TensorRT (support is experimental), as well as any other options supported by build.sh script.
 
 ---
 
@@ -269,20 +319,20 @@ See more information on the nGraph Execution Provider [here](./docs/execution_pr
 See more information on the OpenVINO Execution Provider [here](./docs/execution_providers/OpenVINO-ExecutionProvider.md).
 
 #### Prerequisites
-1. Install the Intel<sup>®</sup> Distribution of OpenVINO<sup>TM</sup> Toolkit **Release 2020.3** for the appropriate OS and target hardware :
+1. Install the Intel<sup>®</sup> Distribution of OpenVINO<sup>TM</sup> Toolkit **Release 2020.4** for the appropriate OS and target hardware :
    * [Linux - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-linux)
    * [Linux - FPGA](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-linux-fpga)
    * [Windows - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-windows).
 
-   Follow [documentation](https://docs.openvinotoolkit.org/2020.3/index.html) for detailed instructions.
+   Follow [documentation](https://docs.openvinotoolkit.org/2020.4/index.html) for detailed instructions.
 
-  *Although 2020.3 LTS is the recommended OpenVINO version, [OpenVINO 2020.2](https://docs.openvinotoolkit.org/2020.2/index.html) is also additionally supported.*
+  *2020.4 is the recommended OpenVINO version. [OpenVINO 2020.2](https://docs.openvinotoolkit.org/2020.2/index.html) is minimal OpenVINO version requirement.*
 
 2. Configure the target hardware with specific follow on instructions:
-   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvinotoolkit.org/2020.3/_docs_install_guides_installing_openvino_windows.html#Install-GPU), [Linux](https://docs.openvinotoolkit.org/2020.3/_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
-   * To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow this getting started guide: [Linux](https://docs.openvinotoolkit.org/2020.3/_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
-   * To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow this configuration guide: [Windows](https://docs.openvinotoolkit.org/2020.3/_docs_install_guides_installing_openvino_windows.html#hddl-myriad), [Linux](https://docs.openvinotoolkit.org/2020.3/_docs_install_guides_installing_openvino_linux.html#install-VPU. Follow steps 3 and 4 to complete the configuration.
-   * To configure Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA, please follow this configuration guide: [Linux](https://docs.openvinotoolkit.org/2020.3/_docs_install_guides_installing_openvino_linux_fpga.html)
+   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvinotoolkit.org/2020.4/openvino_docs_install_guides_installing_openvino_windows.html#Install-GPU), [Linux](https://docs.openvinotoolkit.org/2020.4/openvino_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
+   * To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow this getting started guide: [Linux](https://docs.openvinotoolkit.org/2020.4/openvino_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
+   * To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow this configuration guide: [Windows](https://docs.openvinotoolkit.org/2020.4/openvino_docs_install_guides_installing_openvino_windows.html#hddl-myriad), [Linux](https://docs.openvinotoolkit.org/2020.4/openvino_docs_install_guides_installing_openvino_linux.html#install-VPU). Follow steps 3 and 4 to complete the configuration.
+   * To configure Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA, please follow this configuration guide: [Linux](https://docs.openvinotoolkit.org/2020.4/openvino_docs_install_guides_installing_openvino_linux_fpga.html)
 
 3. Initialize the OpenVINO environment by running the setupvars script as shown below:
    * For Linux run:
@@ -391,14 +441,14 @@ index 7dfa97c..6d99e71 100644
 #### Build Instructions
 ##### Windows
 ```
-.\build.bat --use_tvm --use_llvm --llvm_path=\llvm\install\path\lib\cmake\llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
+.\build.bat --llvm_path=\llvm\install\path\lib\cmake\llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
 ```
 
 * These instructions build the release flavor. The Debug build of LLVM would be needed to build with the Debug flavor of ONNX Runtime.
 
 ##### Linux:
 ```
-./build.sh --use_tvm --use_llvm --llvm_path=/llvm/install/path/lib/cmake/llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
+./build.sh --llvm_path=/llvm/install/path/lib/cmake/llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
 ```
 
 Dockerfile instructions are available [here](./dockerfiles#nuphar).
@@ -438,7 +488,7 @@ alias cmake="/usr/bin/cmake -DCMAKE_TOOLCHAIN_FILE=$OECORE_NATIVE_SYSROOT/usr/sh
 cmake ../onnxruntime-arm-upstream/cmake -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc -Donnxruntime_RUN_ONNX_TESTS=OFF -Donnxruntime_GENERATE_TEST_REPORTS=ON -Donnxruntime_DEV_MODE=ON -DPYTHON_EXECUTABLE=/usr/bin/python3 -Donnxruntime_USE_CUDA=OFF -Donnxruntime_USE_NSYNC=OFF -Donnxruntime_CUDNN_HOME= -Donnxruntime_USE_JEMALLOC=OFF -Donnxruntime_ENABLE_PYTHON=OFF -Donnxruntime_BUILD_CSHARP=OFF -Donnxruntime_BUILD_SHARED_LIB=ON -Donnxruntime_USE_EIGEN_FOR_BLAS=ON -Donnxruntime_USE_OPENBLAS=OFF -Donnxruntime_USE_ACL=ON -Donnxruntime_USE_DNNL=OFF -Donnxruntime_USE_MKLML=OFF -Donnxruntime_USE_OPENMP=ON -Donnxruntime_USE_TVM=OFF -Donnxruntime_USE_LLVM=OFF -Donnxruntime_ENABLE_MICROSOFT_INTERNAL=OFF -Donnxruntime_USE_BRAINSLICE=OFF -Donnxruntime_USE_NUPHAR=OFF -Donnxruntime_USE_EIGEN_THREADPOOL=OFF -Donnxruntime_BUILD_UNIT_TESTS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
 ```
 The ```-Donnxruntime_USE_ACL=ON``` option will use, by default, the 19.05 version of the Arm Compute Library. To set the right version you can use:
-```-Donnxruntime_USE_ACL_1902=ON```, ```-Donnxruntime_USE_ACL_1905=ON``` or ```-Donnxruntime_USE_ACL_1908=ON```;
+```-Donnxruntime_USE_ACL_1902=ON```, ```-Donnxruntime_USE_ACL_1905=ON```, ```-Donnxruntime_USE_ACL_1908=ON``` or ```-Donnxruntime_USE_ACL_2002=ON```;
 
 2. Build ONNX Runtime library, test and performance application:
 ```
@@ -555,7 +605,7 @@ The Vitis-AI execution provider is only supported on Linux.
 .\build.bat --use_openmp
 ```
 
-##### Linux
+##### Linux/Mac OS X
 ```
 ./build.sh --use_openmp
 
@@ -586,26 +636,35 @@ The Vitis-AI execution provider is only supported on Linux.
 OnnxRuntime supports build options for enabling debugging of intermediate tensor shapes and data.
 
 #### Build Instructions
-Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUT to one of the values below.
+Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUT to build with this enabled.
 
 **Linux**
 ```
-./build.sh --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=VALUE
+./build.sh --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1
 ```
 
 **Windows**
 ```
-.\build.bat --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=VALUE
+.\build.bat --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1
 ```
 
-Values:
-* **0**: Disables this functionality if previously enabled; alternatively, delete CMakeCache.txt instead of setting this to 0
-* **1**: Dump tensor input/output shapes for all nodes to stdout
-* **2**: Dump tensor input/output shapes and output data for all nodes to stdout
+#### Configuration
+The debug dump behavior can be controlled with several environment variables.
+See [onnxruntime/core/framework/debug_node_inputs_outputs_utils.h](./onnxruntime/core/framework/debug_node_inputs_outputs_utils.h) for details.
 
+##### Examples
 
+To specify that node output data should be dumped (to stdout by default), set this environment variable:
+```
+ORT_DEBUG_NODE_IO_DUMP_OUTPUT_DATA=1
+```
 
-
+To specify that node output data should be dumped to files for nodes with name "Foo" or "Bar", set these environment variables:
+```
+ORT_DEBUG_NODE_IO_DUMP_OUTPUT_DATA=1
+ORT_DEBUG_NODE_IO_NODE_NAME_FILTER="Foo;Bar"
+ORT_DEBUG_NODE_IO_DUMP_DATA_TO_FILES=1
+```
 
 ---
 
@@ -837,10 +896,10 @@ pip3 install numpy
 # Build the latest cmake
 mkdir /code
 cd /code
-wget https://cmake.org/files/v3.13/cmake-3.13.5.tar.gz;
-tar zxf cmake-3.13.5.tar.gz
+wget https://cmake.org/files/v3.13/cmake-3.16.1.tar.gz;
+tar zxf cmake-3.16.1.tar.gz
 
-cd /code/cmake-3.13.5
+cd /code/cmake-3.16.1
 ./configure --system-curl
 make
 sudo make install
@@ -976,6 +1035,51 @@ If you want to use NNAPI Execution Provider on Android, see [NNAPI Execution Pro
 
 Android NNAPI Execution Provider can be built using building commands in [Android Build instructions](#android-build-instructions) with `--use_nnapi`
 
+---
+
+### iOS
+
+#### Prerequisites
+* A Mac computer with latest macOS
+* Xcode, https://developer.apple.com/xcode/
+* CMake, https://cmake.org/download/
+* Python 3, https://www.python.org/downloads/mac-osx/
+
+#### General Info:
+* iOS Platforms
+
+   The following two platforms are supported
+   * iOS device (iPhone, iPad) with arm64 architecture
+   * iOS simulator with x86_64 architecture
+
+   armv7, armv7s and i386 architectures are not currently supported.
+
+   tvOS and watchOS platforms are not currently supported.
+* apple_deploy_target
+
+   Specify the minimum version of the target platform (iOS) on which the target binaries are to be deployed.
+* Code Signing
+
+   If the development team ID which has a valid code signing certificate is specified, Xcode will code sign the onnxruntime library in the building process, otherwise, the onnxruntime will be built without code signing. It may be required or desired to code sign the library for iOS devices. For more information, see [Code Signing](https://developer.apple.com/support/code-signing/).
+
+#### Build Instructions
+Run one of the following build scripts from the ONNX Runtime repository root,
+##### Cross build for iOS simulator
+```
+./build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
+           --ios --ios_sysroot iphonesimulator --osx_arch x86_64 --apple_deploy_target <minimal iOS version>
+```
+##### Cross build for iOS device
+```
+./build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
+           --ios --ios_sysroot iphoneos --osx_arch arm64 --apple_deploy_target <minimal iOS version>
+```
+##### Cross build for iOS device and code sign the library
+```
+./build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
+           --ios --ios_sysroot iphoneos --osx_arch arm64 --apple_deploy_target <minimal iOS version> \
+           --xcode_code_signing_team_id <Your Apple developmemt team ID>
+```
 ---
 
 ### AMD MIGraphX

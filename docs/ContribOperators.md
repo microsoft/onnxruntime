@@ -3,17 +3,15 @@
             [def files](/onnxruntime/core/graph/contrib_ops/contrib_defs.cc) via [this script](/tools/python/gen_doc.py).
             Do not modify directly and instead edit operator definitions.*
 
-* ai.onnx.training
-  * <a href="#ai.onnx.training.Adagrad">ai.onnx.training.Adagrad</a>
-  * <a href="#ai.onnx.training.Gradient">ai.onnx.training.Gradient</a>
-  * <a href="#ai.onnx.training.GraphCall">ai.onnx.training.GraphCall</a>
-  * <a href="#ai.onnx.training.Momentum">ai.onnx.training.Momentum</a>
 * com.microsoft
   * <a href="#com.microsoft.AttnLSTM">com.microsoft.AttnLSTM</a>
   * <a href="#com.microsoft.CDist">com.microsoft.CDist</a>
+  * <a href="#com.microsoft.ComplexMul">com.microsoft.ComplexMul</a>
+  * <a href="#com.microsoft.ComplexMulConj">com.microsoft.ComplexMulConj</a>
   * <a href="#com.microsoft.ConvTransposeWithDynamicPads">com.microsoft.ConvTransposeWithDynamicPads</a>
   * <a href="#com.microsoft.CropAndResize">com.microsoft.CropAndResize</a>
   * <a href="#com.microsoft.DequantizeLinear">com.microsoft.DequantizeLinear</a>
+  * <a href="#com.microsoft.DynamicQuantizeMatMul">com.microsoft.DynamicQuantizeMatMul</a>
   * <a href="#com.microsoft.ExpandDims">com.microsoft.ExpandDims</a>
   * <a href="#com.microsoft.FusedConv">com.microsoft.FusedConv</a>
   * <a href="#com.microsoft.FusedGemm">com.microsoft.FusedGemm</a>
@@ -26,6 +24,7 @@
   * <a href="#com.microsoft.Pad">com.microsoft.Pad</a>
   * <a href="#com.microsoft.QLinearAdd">com.microsoft.QLinearAdd</a>
   * <a href="#com.microsoft.QLinearAveragePool">com.microsoft.QLinearAveragePool</a>
+  * <a href="#com.microsoft.QLinearLeakyRelu">com.microsoft.QLinearLeakyRelu</a>
   * <a href="#com.microsoft.QLinearMul">com.microsoft.QLinearMul</a>
   * <a href="#com.microsoft.QLinearReduceMean">com.microsoft.QLinearReduceMean</a>
   * <a href="#com.microsoft.QuantizeLinear">com.microsoft.QuantizeLinear</a>
@@ -41,7 +40,10 @@
   * <sub>experimental</sub> <a href="#com.microsoft.EmbedLayerNormalization">com.microsoft.EmbedLayerNormalization</a>
   * <sub>experimental</sub> <a href="#com.microsoft.FastGelu">com.microsoft.FastGelu</a>
   * <sub>experimental</sub> <a href="#com.microsoft.Gelu">com.microsoft.Gelu</a>
+  * <sub>experimental</sub> <a href="#com.microsoft.Inverse">com.microsoft.Inverse</a>
+  * <sub>experimental</sub> <a href="#com.microsoft.QAttention">com.microsoft.QAttention</a>
   * <sub>experimental</sub> <a href="#com.microsoft.SkipLayerNormalization">com.microsoft.SkipLayerNormalization</a>
+  * <sub>experimental</sub> <a href="#com.microsoft.TransposeMatMul">com.microsoft.TransposeMatMul</a>
 * com.microsoft.nchwc
   * <a href="#com.microsoft.nchwc.AveragePool">com.microsoft.nchwc.AveragePool</a>
   * <a href="#com.microsoft.nchwc.Conv">com.microsoft.nchwc.Conv</a>
@@ -51,504 +53,6 @@
   * <a href="#com.microsoft.nchwc.ReorderInput">com.microsoft.nchwc.ReorderInput</a>
   * <a href="#com.microsoft.nchwc.ReorderOutput">com.microsoft.nchwc.ReorderOutput</a>
   * <a href="#com.microsoft.nchwc.Upsample">com.microsoft.nchwc.Upsample</a>
-
-## ai.onnx.training
-### <a name="ai.onnx.training.Adagrad"></a><a name="ai.onnx.training.adagrad">**ai.onnx.training.Adagrad**</a>
-
-  Compute one iteration of ADAGRAD, a stochastic gradient based optimization
-      algorithm. This operator can conduct the optimization of multiple tensor variables.
-  
-      Let's define the behavior of this operator. As you can imagine, ADAGRAD requires
-      some parameters:
-       
-       - The initial learning-rate "R".
-       - The update count "T". That is, the number of training iterations conducted.
-       - A L2-norm regularization coefficient "norm_coefficient".
-       - A learning-rate decay factor "decay_factor".
-       - A small constant "epsilon" to avoid dividing-by-zero. 
-  
-      At each ADAGRAD iteration, the optimized tensors are moved along a direction
-      computed based on their estimated gradient and accumulated squared gradient. Assume
-      that only a single tensor "X" is updated by this operator. We need the value of "X",
-      its gradient "G", and its accumulated squared gradient "H". Therefore, variables in
-      this operator's input list are sequentially "R", "T", "X", "G", and "H". Other
-      parameters are given as attributes because they are usually constants. Also, the
-      corresponding output tensors are the new value of "X" (called "X_new"), and then
-      the new accumulated squared gradient (called "H_new"). Those outputs are computed
-      from the given inputs following the pseudo code below.
-  
-      Let "+", "-", "*", and "/" are all element-wise arithmetic operations with
-      numpy-style broadcasting support. The pseudo code to compute those outputs is:
-  
-        // Compute a scalar learning-rate factor. At the first update of X, T is generally
-        // 0 (0-based update index) or 1 (1-based update index).
-        r = R / (1 + T * decay_factor);
-  
-        // Add gradient of 0.5 * norm_coefficient * ||X||_2^2, where ||X||_2 is the 2-norm.
-        G_regularized = norm_coefficient * X + G;
-  
-        // Compute new accumulated squared gradient.
-        H_new = H + G_regularized * G_regularized;
-  
-        // Compute the adaptive part of per-coordinate learning rate. Note that Sqrt(...)
-        // computes element-wise square-root.
-        H_adaptive = Sqrt(H_new) + epsilon
-  
-        // Compute the new value of "X".
-        X_new = X - r * G_regularized / H_adaptive;
-  
-      If one assign this operators to optimize multiple inputs, for example, "X_1" and "X_2", the same
-      pseudo code may be extended to handle all tensors jointly. More specifically, we can view "X" as a
-      concatenation of "X_1" and "X_2" (of course, their gradient and accumulate gradient should
-      be concatenated too) and then just reuse the entire pseudo code.
-  
-      Note that ADAGRAD was first proposed in http://jmlr.org/papers/volume12/duchi11a/duchi11a.pdf.
-      In that reference paper, this operator is a special case of the Figure 1's composite mirror
-      descent update.
-
-#### Version
-
-This version of the operator has been available since version 1 of the 'ai.onnx.training' operator set.
-
-#### Attributes
-
-<dl>
-<dt><tt>decay_factor</tt> : float</dt>
-<dd>The decay factor of learning rate after one update.The effective learning rate is computed by r = R / (1 + T * decay_factor). Default to 0 so that increasing update counts doesn't reduce the learning rate.</dd>
-<dt><tt>epsilon</tt> : float</dt>
-<dd>Small scalar to avoid dividing by zero.</dd>
-<dt><tt>norm_coefficient</tt> : float</dt>
-<dd>Regularization coefficient in 0.5 * norm_coefficient * ||X||_2^2. Default to 0, which means no regularization.</dd>
-</dl>
-
-#### Inputs (3 - &#8734;)
-
-<dl>
-<dt><tt>R</tt> : T1</dt>
-<dd>The initial learning rate.</dd>
-<dt><tt>T</tt> : T2</dt>
-<dd>The update count of "X". It should be a scalar.</dd>
-<dt><tt>inputs</tt> (variadic, heterogeneous) : T3</dt>
-<dd>The current values of optimized tensors, followed by their respective gradients, followed by their respective accumulated squared gradients.For example, if two tensor "X_1" and "X_2" are optimized, The input list would be ["X_1", "X_2", gradient of "X_1", gradient of "X_2", accumulated squared gradient of "X_1", accumulated squared gradient of "X_2"].</dd>
-</dl>
-
-#### Outputs (1 - &#8734;)
-
-<dl>
-<dt><tt>outputs</tt> (variadic, heterogeneous) : T3</dt>
-<dd>Updated values of optimized tensors, followed by their updated values of accumulated squared gradients. For example, if two tensor "X_1" and "X_2" are optimized, the output list would be [new value of "X_1," new value of "X_2" new accumulated squared gradient of "X_1", new accumulated squared gradient of "X_2"].</dd>
-</dl>
-
-#### Type Constraints
-
-<dl>
-<dt><tt>T1</tt> : tensor(float), tensor(double)</dt>
-<dd>Constrain input types to float scalars.</dd>
-<dt><tt>T2</tt> : tensor(int64)</dt>
-<dd>Constrain input types to 64-bit integer scalars.</dd>
-<dt><tt>T3</tt> : tensor(float), tensor(double)</dt>
-<dd>Constrain input and output types to float tensors.</dd>
-</dl>
-
-
-### <a name="ai.onnx.training.Gradient"></a><a name="ai.onnx.training.gradient">**ai.onnx.training.Gradient**</a>
-
-  Gradient operator computes the partial derivatives of a specific tensor w.r.t.
-  some other tensors. This operator is widely used in gradient-based training
-  algorithms. To illustrate its use, let's consider a computation graph,
-  
-  ```
-  X -----.
-         |
-         v
-  W --> Conv --> H --> Gemm --> Y
-                        ^
-                        |
-                        Z
-  ```
-  
-  , where W and Z are trainable tensors. Note that operators' attributes are
-  omitted for the sake of simplicity. Let dY/dW (dY/dZ) be the gradient of
-  Y with respect to W (Z). The user can compute gradient by inserting Gradient
-  operator to form another graph shown below.
-  
-  ```
-  W --> Conv --> H --> Gemm --> Y
-  |      ^              ^
-  |      |              |
-  |      X              Z
-  |      |              |
-  |      |   .----------'
-  |      |   |  (W/Z/X is the 1st/2nd/3rd input of Gradient as shown in
-  |      |   |   "xs" followed by "zs")
-  |      v   v
-  '---> Gradient(xs=["W", "Z"], zs=["X"], y="Y")
-         |   |
-         |   '-----------------------------------> dY/dW (1st output of Gradient)
-         |
-         '---------------------------------------> dY/dZ (2nd output of Gradient)
-  ```
-  
-  By definition, the tensor "y" is a function of independent variables in "xs"
-  and "zs". Since we only compute the gradient of "y" w.r.t. the differentiable
-  variables in "xs", this Gradient only outputs dY/dW and dY/dZ. Note that "H"
-  cannot appear in "xs" and "zs". The reason is that "H" can be determined by
-  tensors "W" and "X" and therefore "H" is not an independent variable.
-  
-  All outputs are optional. If needed, for example, user can assign an empty
-  string to the 1st output name of that Gradient to skip the generation of dY/dW.
-  Note that the concept of optional outputs can also be found in ONNX's RNN, GRU,
-  and LSTM.
-  
-  Gradient operator can compute derivative against intermediate tensors. For
-  example, the gradient of Y with respect to H can be done via
-  
-  ```
-  W --> Conv --> H --> Gemm --> Y
-         ^       |      ^
-         |       |      |
-         X       |      Z
-         .-------'      |
-         |   .----------'
-         |   | (H/Z is the 1st/2nd input of Gradient as shown in "xs")
-         v   v
-        Gradient(xs=["H", "Z"], y="Y")
-         |   |
-         |   '-----------------------------------> dY/dH (1st output of Gradient)
-         |
-         '---------------------------------------> dY/dZ (2nd output of Gradient)
-  ```
-  
-  It is possible to represent high-order differentiation using Gradient operators.
-  For example, given the following linear model:
-  
-  ```
-  W --> Gemm --> Y --> Loss --> O
-         ^              ^
-         |              |
-         X              L
-  ```
-  
-  To compute the 2nd order derivative of O with respect to W (denoted by
-  d^2O/dW^2), one can do
-  
-  ```
-  W --> Gemm --> Y --> Loss --> O
-  |      ^              ^
-  |      |              |
-  |      X .------------L
-  |      | |            |
-  |      | |            v
-  +------+-+> Gradient(xs=["X", "W"], zs=["L"], y="O") ---> dO/dX (1st output of Gradient)
-  |      | |    |
-  |      | |    '---> dO/dW (2nd output of Gradient)
-  |      v v
-  '---> Gradient(xs=["X", "W"], zs=["L"], y="dO/dW") ---> d(dO/dW)dX (1st output of
-         |                                                  Gradient)
-         |
-         |
-         '---> d^2O/dW^2 (2nd output of Gradient)
-  ```
-  
-  The tensors named in attributes "xs", "zs", and "y" define the differentiated
-  computation graph, and the inputs to Gradient node define the values at
-  which the gradient is computed. We can feed different tensors to the identified
-  graph. For example, one can compute the gradient of Y with respect to H at 
-  a specific value of H, H_1, by providing that value as an input to the Gradient
-  node.
-  
-  ```
-  W --> Conv --> H --> Gemm --> Y
-         ^              ^
-         |              |
-         X              Z
-  
-            Z_1 (2nd input of Gradient)
-             |
-             v
-  H_1 --> Gradient(xs=["H", "Z"], y="Y") ---> dY/dH when H = H_1 and Y = Y_1.
-             |
-             '------------------------------> dY/dZ (2nd output of Gradient)
-  ```
-  
-  When the inputs of Gradient are the tensors named in "xs" and "zs", the
-  computation can be optimized. More specifically, intermediate variables in
-  forward pass can be reused if the gradient is computed via reverse-mode
-  auto-differentiation.
-  
-
-#### Version
-
-This version of the operator has been available since version 1 of the 'ai.onnx.training' operator set.
-
-#### Attributes
-
-<dl>
-<dt><tt>xs</tt> : list of strings (required)</dt>
-<dd>Input tensor names of the differentiated sub-graph. It contains only the necessary differentiated inputs of a (sub-)graph. Variables (usually called intermediate variables) that can be generated from inputs cannot be included in this attribute.</dd>
-<dt><tt>y</tt> : string (required)</dt>
-<dd>The targeted tensor. It can be viewed as the output of the differentiated function. The attribute "xs" and attribute "zs" are the minimal independent variable set that determines the value of "y".</dd>
-<dt><tt>zs</tt> : list of strings</dt>
-<dd>Input tensor names of the differentiated sub-graph. It contains only the necessary non-differentiated inputs of a (sub-)graph. Variables (usually called intermediate variables) that can be generated from inputs cannot be included in this attribute.</dd>
-</dl>
-
-#### Inputs (1 - &#8734;)
-
-<dl>
-<dt><tt>Inputs</tt> (variadic, heterogeneous) : T1</dt>
-<dd>The values fed into graph identified by the attributes. The i-th input is the value of the i-th tensor specified in the concatenated list of the attribute "xs" and the attribute  "zs". For example, if xs=["A", "B"] and zs=["C"], the first input is used as the value of symbol "A" and the 3rd input is substituted for all the occurrences of "C".</dd>
-</dl>
-
-#### Outputs (1 - &#8734;)
-
-<dl>
-<dt><tt>Outputs</tt> (variadic, heterogeneous) : T2</dt>
-<dd>The gradient of the tensor specified by the attribute "y" with respect to each of tensors specified in the attribute "xs". The i-th output is the gradient of "y" with respect to the i-th tensor specified in the attribute "xs".</dd>
-</dl>
-
-#### Type Constraints
-
-<dl>
-<dt><tt>T1</tt> : tensor(uint8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(int8), tensor(int16), tensor(int32), tensor(int64), tensor(float16), tensor(float), tensor(double), tensor(string), tensor(bool), tensor(complex64), tensor(complex128)</dt>
-<dd>Allow outputs to be any kind of tensor.</dd>
-<dt><tt>T2</tt> : tensor(float16), tensor(float), tensor(double)</dt>
-<dd>Allow inputs to be any kind of floating-point tensor.</dd>
-</dl>
-
-
-### <a name="ai.onnx.training.GraphCall"></a><a name="ai.onnx.training.graphcall">**ai.onnx.training.GraphCall**</a>
-
-  The GraphCall operator invokes a graph inside TrainingInfoProto's
-  algorithm field. The GraphCall inputs and outputs are bound to those of
-  invoked graph by position. If a graph input has an initializer, that input
-  is considered optional. All graph outputs are optional.
-  
-  Below Python syntax is used for describing dictionary and list.
-  
-  Assume that ModelProto's graph field has
-  - name: "MyInferenceGraph"
-  - input: ["X", "W", "Z"]
-  - initializer: [W]
-  - output: ["Y"]
-  
-  as visualized below for inference.
-  
-  ```
-  X -----.
-         |
-         v
-  W --> Conv --> H --> Gemm --> Y
-                        ^
-                        |
-                        Z
-  ```
-  
-  Assume that the training algorithm contains
-  
-  - inputs: ["X_1", "Z_1", "C"]
-  - initializer: [T]
-  - outputs: ["W_new"]
-  
-  with a dictionary
-  
-  - update_binding: {"W": "W_new", "T": "T_new"}
-  
-  Inside the training algorithm graph, one can invoke the inference
-  graph via adding a GraphCall node with
-  
-  - inputs: ["X_1", "W", Z_1"]
-  - outputs: ["Y_1"]
-  - an attribute graph_name="MyInferenceGraph",
-  
-  The initializers, "W" and "T" in this case, in update_binding
-  are considered globally-visible and mutable variables, which
-  can be used as inputs of operators in the training graph.
-  
-  An example training algorithm graph may look like
-  
-  ```
-  .-------- W (a global and mutable variable from
-  |         |  the inference graph)
-  |         |
-  |   .-----'-----------.
-  |   |                 |
-  |   |                 v
-  |   | .-- X_1 --> GraphCall(graph_name="MyInferenceGraph")
-  |   | |            |  |
-  |   | |            |  |
-  |   | |   Z_1 -----'  |
-  |   | |    |          V
-  |   | |    |         Y_1 ---> Loss ---> O
-  |   | |    |                    ^
-  |   | |    |                    |
-  |   | `--. |                    C
-  |   |    | |                    |
-  |   |    | |   .----------------'
-  |   |    | |   |
-  |   |    v v   v
-  |   `--> Gradient(xs=["W"], zs=["X_1", "Z_1", "C"], y="O")
-  |        |
-  |        v
-  |      dO_dW (gradient of W)      1 (a scalar one)
-  |        |                        |
-  |        V                        v
-  |       Div <--- T ------------> Add ---> T_new
-  |        |    (T is the number of training iterations.
-  |        |     T is also globally visible and mutable.)
-  |        v
-  `-----> Sub ----> W_new
-  ```
-  
-  where Loss is a dummy node which computes the minimized objective function.
-  
-  The variable "W" is an optional input in the called graph.
-  If the user omits it, the input list of GraphCall becomes ["X_1", "", "Z_1"].
-  In this case, from the view of computation graph, the Conv operator invoked by
-  GraphCall's may be still connected the global "W" variable and therefore the
-  structure of the computation graph is unchanged.
-
-#### Version
-
-This version of the operator has been available since version 1 of the 'ai.onnx.training' operator set.
-
-#### Attributes
-
-<dl>
-<dt><tt>graph_name</tt> : string (required)</dt>
-<dd>The invoked graph's name. The only allowed value is the name of the inference graph, which is stored in "ModelProto.graph.name" in the ONNX model format.</dd>
-</dl>
-
-#### Inputs (1 - &#8734;)
-
-<dl>
-<dt><tt>Inputs</tt> (variadic, heterogeneous) : T</dt>
-<dd>Inputs fed to the invoked graph. The i-th input here goes to the i-th input of the invoked graph. To omit an optional input in this field, the user can drop it or use an empty string.</dd>
-</dl>
-
-#### Outputs (1 - &#8734;)
-
-<dl>
-<dt><tt>Outputs</tt> (variadic, heterogeneous) : T</dt>
-<dd>The outputs generated by the called graph. Its i-th value is bound to the i-th output of the called graph. Similar to the inputs, all outputs are optional.</dd>
-</dl>
-
-#### Type Constraints
-
-<dl>
-<dt><tt>T</tt> : tensor(uint8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(int8), tensor(int16), tensor(int32), tensor(int64), tensor(float16), tensor(float), tensor(double), tensor(string), tensor(bool), tensor(complex64), tensor(complex128)</dt>
-<dd>Allow inputs and outputs to be any kind of tensor.</dd>
-</dl>
-
-
-### <a name="ai.onnx.training.Momentum"></a><a name="ai.onnx.training.momentum">**ai.onnx.training.Momentum**</a>
-
-  Compute one iteration of stochastic gradient update with momentum.
-      This operator can conduct the optimization of multiple tensor variables.
-  
-      Let's define the behavior of this operator. As you can imagine, SG with momentum requires
-      several parameters:
-       
-       - The learning-rate "R".
-       - The update count "T". That is, the number of conducted training iterations. It should
-         be zero in the first training iteration.
-       - A L2-norm regularization coefficient "norm_coefficient".
-       - A decay coefficient of previous accumulated gradient (i.e., momentum) "alpha".
-       - The scaling coefficient of current gradient "beta".
-       - An attribute to choose either standard momentum or Nesterov's momentum "mode" should
-         be used.
-  
-      For the sake of simplicity, assume that there is only one tensor (called "X") to be optimized.
-      Other necessary inputs are "X"'s gradient (called "G") and "X"'s momentum (called "V"). This
-      Momentum operator maps all these inputs to the new value of "X" (called "X_new") and its new
-      momentum (called "V_new").
-      
-      This operator supports two different momentum algorithms. Set the attribute "mode" to
-      "nesterov" if Nesterov's momentum is desired. Otherwise, set the attribute "model" to
-      "standard" to use standard momentum. Computation details are described subsequently.
-  
-      Let "+", "-", "*", and "/" are all element-wise operations with numpy-style broadcasting.
-  
-      Pseudo code for SG with standard momentum:
-  
-        // Add gradient of 0.5 * norm_coefficient * ||X||^2, where ||X|| is the sum of squared
-        // values of all elements in X.
-        G_regularized = norm_coefficient * X + G
-  
-        // In the first training iteration, beta should always be 1.
-        beta_adjusted = T > 0 ? beta : 1
-  
-        // Compute the current momentum based on previous momentum and the current gradient.
-        V_new = alpha * V + beta_adjusted * G_regularized
-  
-        // Update X.
-        X_new = X - R * V_new
-  
-      Pseudo code for SG with Nesterov's momentum:
-  
-        // Add gradient of 0.5 * norm_coefficient * ||X||^2, where ||X|| is the sum of squared
-        // values of all elements in X.
-        G_regularized = norm_coefficient * X + G;
-  
-        // In the first training iteration, beta should always be 1.
-        beta_adjusted = T > 0 ? beta : 1
-  
-        // Compute the current momentum based on previous momentum and the current gradient.
-        V_new = alpha * V + beta_adjusted * G_regularized;
-  
-        // Compute final update direction and then update X.
-        X_new = X - R * (G_regularized + alpha * V_new)
-  
-      If one assign this operators to optimize multiple inputs, for example, "X_1" and "X_2". The same
-      pseudo code would be extended to handle all tensors jointly. More specifically, we can view "X" as a
-      concatenation of "X_1" and "X_2" (of course, their gradient and accumulate gradient should
-      be concatenated too) and then our pseudo code becomes applicable.
-
-#### Version
-
-This version of the operator has been available since version 1 of the 'ai.onnx.training' operator set.
-
-#### Attributes
-
-<dl>
-<dt><tt>alpha</tt> : float (required)</dt>
-<dd>The decay factor of momentum. It should be a scalar.</dd>
-<dt><tt>beta</tt> : float (required)</dt>
-<dd>The coefficient of gradient in computing new momentum. It should be a scalar.</dd>
-<dt><tt>mode</tt> : string (required)</dt>
-<dd>Its value should be either "nesterov" or "standard". The value "nesterov" leads to the use of Nesterov's momentum while "standard" invokes stochastic gradient method using standard momentum</dd>
-<dt><tt>norm_coefficient</tt> : float (required)</dt>
-<dd>Coefficient of 0.5 * norm_coefficient * ||X||^2.</dd>
-</dl>
-
-#### Inputs (3 - &#8734;)
-
-<dl>
-<dt><tt>R</tt> : T1</dt>
-<dd>The learning rate.</dd>
-<dt><tt>T</tt> : T2</dt>
-<dd>Update count of "X". It should be a scalar.</dd>
-<dt><tt>inputs</tt> (variadic, heterogeneous) : T3</dt>
-<dd>It sequentially contains the current values of optimized tensors, then their gradient tensors, and finally their momentum tensors. For example, if two tensors "X_1" and "X_2" are optimized, The expected input list would be ["X_1", "X_2", gradient of "X_1", gradient of "X_2", momentum of "X_1", momentum of "X_2"].</dd>
-</dl>
-
-#### Outputs (1 - &#8734;)
-
-<dl>
-<dt><tt>outputs</tt> (variadic, heterogeneous) : T3</dt>
-<dd>It sequentially contains the new values of optimized tensors and then the new values of their momentum tensors. For example, if two tensors "X_1" and "X_2" are optimized, the output list would be [new value of "X_1," new value of "X_2" new momentum of "X_1", new momentum of "X_2"].</dd>
-</dl>
-
-#### Type Constraints
-
-<dl>
-<dt><tt>T1</tt> : tensor(float), tensor(double)</dt>
-<dd>Constrain input types to float scalars.</dd>
-<dt><tt>T2</tt> : tensor(int64)</dt>
-<dd>Constrain input types to 64-bit integer scalars.</dd>
-<dt><tt>T3</tt> : tensor(float), tensor(double)</dt>
-<dd>Constrain input types to float tensors.</dd>
-</dl>
-
 
 ## com.microsoft
 ### <a name="com.microsoft.AttnLSTM"></a><a name="com.microsoft.attnlstm">**com.microsoft.AttnLSTM**</a>
@@ -797,6 +301,66 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.ComplexMul"></a><a name="com.microsoft.complexmul">**com.microsoft.ComplexMul**</a>
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>A</tt> : T</dt>
+<dd>input_0</dd>
+<dt><tt>B</tt> : T</dt>
+<dd>input_1</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>C</tt> : T</dt>
+<dd>output tensor</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(double), tensor(float16)</dt>
+<dd>Constrain input and output types to float or half tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.ComplexMulConj"></a><a name="com.microsoft.complexmulconj">**com.microsoft.ComplexMulConj**</a>
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>A</tt> : T</dt>
+<dd>input_0</dd>
+<dt><tt>B</tt> : T</dt>
+<dd>input_1</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>C</tt> : T</dt>
+<dd>output tensor</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(double), tensor(float16)</dt>
+<dd>Constrain input and output types to float or half tensors.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.ConvTransposeWithDynamicPads"></a><a name="com.microsoft.convtransposewithdynamicpads">**com.microsoft.ConvTransposeWithDynamicPads**</a>
 
 #### Version
@@ -945,6 +509,42 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.DynamicQuantizeMatMul"></a><a name="com.microsoft.dynamicquantizematmul">**com.microsoft.DynamicQuantizeMatMul**</a>
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs (3 - 4)
+
+<dl>
+<dt><tt>A</tt> : T1</dt>
+<dd>N-dimensional matrix A</dd>
+<dt><tt>B</tt> : T2</dt>
+<dd>N-dimensional matrix B</dd>
+<dt><tt>b_scale</tt> : T1</dt>
+<dd>Scale of quantized input 'B'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-column quantization. If it's a 1-D tensor, its number of elements should be equal to the number of columns of input 'B'.</dd>
+<dt><tt>b_zero_point</tt> (optional) : T2</dt>
+<dd>Zero point tensor for input 'B'. It's optional and default value is 0.  It could be a scalar or a 1-D tensor, which means a per-tensor or per-column quantization. If it's a 1-D tensor, its number of elements should be equal to the number of columns of input 'B'.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T1</dt>
+<dd>Matrix multiply results from A * B</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T1</tt> : tensor(float)</dt>
+<dd>Constrain input A, b_scale and output Y data type as float tensor.</dd>
+<dt><tt>T2</tt> : tensor(int8), tensor(uint8)</dt>
+<dd>Constrain input B data type to 8-bit integer tensor.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.ExpandDims"></a><a name="com.microsoft.expanddims">**com.microsoft.ExpandDims**</a>
 
   ExpandDims echo operator.
@@ -1047,12 +647,16 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>activation</tt> : string</dt>
 <dd></dd>
+<dt><tt>activation_alpha</tt> : float</dt>
+<dd></dd>
+<dt><tt>activation_beta</tt> : float</dt>
+<dd></dd>
+<dt><tt>activation_gamma</tt> : float</dt>
+<dd></dd>
 <dt><tt>alpha</tt> : float</dt>
 <dd>Scalar multiplier for the product of input tensors A * B.</dd>
 <dt><tt>beta</tt> : float</dt>
 <dd>Scalar multiplier for input tensor C.</dd>
-<dt><tt>leaky_relu_alpha</tt> : float</dt>
-<dd></dd>
 <dt><tt>transA</tt> : int</dt>
 <dd>Whether A should be transposed</dd>
 <dt><tt>transB</tt> : int</dt>
@@ -1338,7 +942,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T1</tt> : tensor(uint32), tensor(int32), tensor(string)</dt>
+<dt><tt>T1</tt> : tensor(uint32), tensor(int32), tensor(uint64), tensor(int64), tensor(float), tensor(double), tensor(string)</dt>
 <dd>Constrain input type to unsigned or signed 32-bit integer tensor, or string tensor. It should be utf-8 encoded if using unicode.</dd>
 <dt><tt>T2</tt> : tensor(uint32), tensor(int32)</dt>
 <dd>Constrain output type to unsigned and signed 32-bit integer tensor.</dd>
@@ -1524,6 +1128,53 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>Y</tt> : T</dt>
 <dd>Output data tensor from average or max pooling across the input tensor. Dimensions will vary based on various kernel, stride, and pad sizes. Floor value of the dimension is used</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(uint8), tensor(int8)</dt>
+<dd>Constrain input and output types to 8 bit tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.QLinearLeakyRelu"></a><a name="com.microsoft.qlinearleakyrelu">**com.microsoft.QLinearLeakyRelu**</a>
+
+  QLinearLeakyRelu takes quantized input data (Tensor), an argument alpha, and quantize parameter for output,
+  and produces one output data (Tensor<T>) where the function `f(x) = quantize(alpha * dequantize(x)) for dequantize(x) < 0`,
+  `f(x) = quantize(dequantize(x)) for dequantize(x) >= 0`, is applied to the data tensor elementwise.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>alpha</tt> : float</dt>
+<dd>Coefficient of leakage.</dd>
+</dl>
+
+#### Inputs (4 - 5)
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>Input tensor</dd>
+<dt><tt>X_scale</tt> : tensor(float)</dt>
+<dd>Input X's scale. It's a scalar, which means a per-tensor/layer quantization.</dd>
+<dt><tt>X_zero_point</tt> (optional) : T</dt>
+<dd>Input X's zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.</dd>
+<dt><tt>Y_scale</tt> : tensor(float)</dt>
+<dd>Output Y's scale. It's a scalar, which means a per-tensor/layer quantization.</dd>
+<dt><tt>Y_zero_point</tt> (optional) : T</dt>
+<dd>Output Y's zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Output tensor</dd>
 </dl>
 
 #### Type Constraints
@@ -2002,9 +1653,13 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <sub>experimental</sub> <a name="com.microsoft.Attention"></a><a name="com.microsoft.attention">**com.microsoft.Attention**</a>
 
-  Multi-Head Self Attention that can be either unidirectional (like GPT2) or bidirectional (like BERT).
-  The mask_index input is optional. Unidirectional and mask_index input are mutually exclusive. When unidirectional is 1, the
-  mask_index shall not be provided.
+  Multi-Head Self Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
+  The mask_index input is optional. Besides raw attention mask with shape (batch_size, past_sequence_length + sequence_length),
+  we also support other two formats: When input has right-side padding, mask_index is one dimension with shape (batch_size),
+  where value of each element is the end position, or valid length of actual sequence excluding padding. When input has 
+  left-side padding, mask_index has shape (2 * batch_size), where the values are the exclusive end positions followed by 
+  the inclusive start positions. When unidirectional is 1, and each token only attend to previous tokens. For GPT-2, both past
+  and present state are optional. Present state could appear in output even when past state is not in input.
 
 #### Version
 
@@ -2018,7 +1673,7 @@ No versioning maintained for experimental ops.
 <dd>Whether every token can only attend to previous tokens. Default value is 0.</dd>
 </dl>
 
-#### Inputs (3 - 4)
+#### Inputs (3 - 5)
 
 <dl>
 <dt><tt>input</tt> : T</dt>
@@ -2028,14 +1683,18 @@ No versioning maintained for experimental ops.
 <dt><tt>bias</tt> : T</dt>
 <dd>1D input tensor with shape (3 * hidden_size)</dd>
 <dt><tt>mask_index</tt> (optional) : M</dt>
-<dd>Attention mask index with shape (batch_size).</dd>
+<dd>Attention mask with shape (batch_size, past_sequence_length + sequence_length), or index with shape (batch_size) or (2 * batch_size).</dd>
+<dt><tt>past</tt> (optional) : T</dt>
+<dd>past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).</dd>
 </dl>
 
-#### Outputs
+#### Outputs (1 - 2)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
-<dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dd>3D output tensor with shape (batch_size, append_length, hidden_size)</dd>
+<dt><tt>present</tt> (optional) : T</dt>
+<dd>present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)</dd>
 </dl>
 
 #### Type Constraints
@@ -2091,6 +1750,13 @@ No versioning maintained for experimental ops.
 #### Version
 
 No versioning maintained for experimental ops.
+#### Attributes
+
+<dl>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>The epsilon value to use to avoid division by zero.</dd>
+</dl>
+
 #### Inputs (7 - 8)
 
 <dl>
@@ -2133,7 +1799,7 @@ No versioning maintained for experimental ops.
 
 ### <sub>experimental</sub> <a name="com.microsoft.FastGelu"></a><a name="com.microsoft.fastgelu">**com.microsoft.FastGelu**</a>
 
-  GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.035677*X*X*X))) with an optional input of bias that will be added to X before GELU.
+  GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.035677*X*X*X)) with an optional input of bias that will be added to X before GELU.
 
 #### Version
 
@@ -2195,6 +1861,95 @@ No versioning maintained for experimental ops.
 </dl>
 
 
+### <sub>experimental</sub> <a name="com.microsoft.Inverse"></a><a name="com.microsoft.inverse">**com.microsoft.Inverse**</a>
+
+#### Version
+
+No versioning maintained for experimental ops.
+#### Inputs
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>Input tensor. Every matrix in the batch must be invertible.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Output tensor of the same type and shape as the input tensor.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
+### <sub>experimental</sub> <a name="com.microsoft.QAttention"></a><a name="com.microsoft.qattention">**com.microsoft.QAttention**</a>
+
+  Quantization of Multi-Head Self Attention.
+
+#### Version
+
+No versioning maintained for experimental ops.
+#### Attributes
+
+<dl>
+<dt><tt>num_heads</tt> : int (required)</dt>
+<dd>Number of attention heads</dd>
+<dt><tt>unidirectional</tt> : int</dt>
+<dd>Whether every token can only attend to previous tokens. Default value is 0.</dd>
+</dl>
+
+#### Inputs (5 - 9)
+
+<dl>
+<dt><tt>input</tt> : T1</dt>
+<dd>3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size</dd>
+<dt><tt>weight</tt> : T2</dt>
+<dd>2D input tensor with shape (hidden_size, 3 * hidden_size)</dd>
+<dt><tt>bias</tt> : T3</dt>
+<dd>1D input tensor with shape (3 * hidden_size)</dd>
+<dt><tt>input_scale</tt> : T3</dt>
+<dd>scale of quantized input tensor. It's a scalar, which means a per-tensor/layer quantization.</dd>
+<dt><tt>weight_scale</tt> : T3</dt>
+<dd>scale of weight scale. It's a scalar, which means a per-tensor/layer quantization.</dd>
+<dt><tt>mask_index</tt> (optional) : T4</dt>
+<dd>Attention mask index with shape (batch_size)</dd>
+<dt><tt>input_zero_point</tt> (optional) : T1</dt>
+<dd>zero point of quantized input tensor.It's a scalar, which means a per-tensor/layer quantization.</dd>
+<dt><tt>weight_zero_point</tt> (optional) : T2</dt>
+<dd>zero point of quantized weight tensor. It's a scalar, which means a per-tensor/layer quantization.</dd>
+<dt><tt>past</tt> (optional) : T3</dt>
+<dd>past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).</dd>
+</dl>
+
+#### Outputs (1 - 2)
+
+<dl>
+<dt><tt>output</tt> : T3</dt>
+<dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dt><tt>present</tt> (optional) : T3</dt>
+<dd>present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T1</tt> : tensor(int8), tensor(uint8)</dt>
+<dd>Constrain input and output types to int8 tensors.</dd>
+<dt><tt>T2</tt> : tensor(int8), tensor(uint8)</dt>
+<dd>Constrain input and output types to int8 tensors.</dd>
+<dt><tt>T3</tt> : tensor(float), tensor(float16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>T4</tt> : tensor(int32)</dt>
+<dd>Constrain mask index to integer types</dd>
+</dl>
+
+
 ### <sub>experimental</sub> <a name="com.microsoft.SkipLayerNormalization"></a><a name="com.microsoft.skiplayernormalization">**com.microsoft.SkipLayerNormalization**</a>
 
   Skip and Layer Normalization Fusion
@@ -2202,6 +1957,13 @@ No versioning maintained for experimental ops.
 #### Version
 
 No versioning maintained for experimental ops.
+#### Attributes
+
+<dl>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>The epsilon value to use to avoid division by zero.</dd>
+</dl>
+
 #### Inputs (4 - 5)
 
 <dl>
@@ -2235,6 +1997,46 @@ No versioning maintained for experimental ops.
 <dd>Constrain input and output types to float or half tensors.</dd>
 <dt><tt>U</tt> : tensor(float)</dt>
 <dd>Constrain mean and inv_std_var to float tensors.</dd>
+</dl>
+
+
+### <sub>experimental</sub> <a name="com.microsoft.TransposeMatMul"></a><a name="com.microsoft.transposematmul">**com.microsoft.TransposeMatMul**</a>
+
+  Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html
+
+#### Version
+
+No versioning maintained for experimental ops.
+#### Attributes
+
+<dl>
+<dt><tt>transA</tt> : int</dt>
+<dd>Whether A should be transposed on the last two dimensions before doing multiplication</dd>
+<dt><tt>transB</tt> : int</dt>
+<dd>Whether B should be transposed on the last two dimensions before doing multiplication</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>A</tt> : T</dt>
+<dd>N-dimensional matrix A</dd>
+<dt><tt>B</tt> : T</dt>
+<dd>N-dimensional matrix B</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Matrix multiply results</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
 </dl>
 
 
