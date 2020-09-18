@@ -103,12 +103,13 @@ TEST(TransformerTest, MemcpyTransformerTest) {
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 
+  KernelRegistryManager kernel_registry_manager;
   ExecutionProviders execution_providers;
   execution_providers.Add(onnxruntime::kCudaExecutionProvider,
                           onnxruntime::make_unique<CUDAExecutionProvider>(CUDAExecutionProviderInfo()));
   execution_providers.Add(onnxruntime::kCpuExecutionProvider,
                           onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo()));
-  KernelRegistryManager& test_registry_manager = KernelRegistryManager::Instance();
+  KernelRegistryManager test_registry_manager;
   ASSERT_STATUS_OK(test_registry_manager.RegisterKernels(execution_providers));
 
   MemcpyTransformer transformer({onnxruntime::kCudaExecutionProvider}, test_registry_manager);
@@ -158,12 +159,13 @@ TEST(TransformerTest, MemcpyTransformerTestCudaFirst) {
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 
+  KernelRegistryManager kernel_registry_manager;
   ExecutionProviders execution_providers;
   execution_providers.Add(onnxruntime::kCudaExecutionProvider,
                           onnxruntime::make_unique<CUDAExecutionProvider>(CUDAExecutionProviderInfo()));
   execution_providers.Add(onnxruntime::kCpuExecutionProvider,
                           onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo()));
-  KernelRegistryManager& test_registry_manager = KernelRegistryManager::Instance();
+  KernelRegistryManager test_registry_manager;
   ASSERT_STATUS_OK(test_registry_manager.RegisterKernels(execution_providers));
 
   MemcpyTransformer transformer({onnxruntime::kCudaExecutionProvider}, test_registry_manager);
@@ -272,12 +274,13 @@ TEST(TransformerTest, TestCopyNodeInsertionInitializerInSubgraph) {
 
   ASSERT_STATUS_OK(graph.Resolve());
 
+  KernelRegistryManager kernel_registry_manager;
   ExecutionProviders execution_providers;
   execution_providers.Add(onnxruntime::kCudaExecutionProvider,
                           onnxruntime::make_unique<CUDAExecutionProvider>(CUDAExecutionProviderInfo()));
   execution_providers.Add(onnxruntime::kCpuExecutionProvider,
                           onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo()));
-  KernelRegistryManager& test_registry_manager = KernelRegistryManager::Instance();
+  KernelRegistryManager test_registry_manager;
   ASSERT_STATUS_OK(test_registry_manager.RegisterKernels(execution_providers));
 
   MemcpyTransformer transformer({onnxruntime::kCudaExecutionProvider}, test_registry_manager);

@@ -49,7 +49,7 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   auto xp_typ = cpu_xp->Type();
   ExecutionProviders execution_providers;
   execution_providers.Add(xp_typ, std::move(cpu_xp));
-  KernelRegistryManager& kernel_registry_manager = KernelRegistryManager::Instance();
+  KernelRegistryManager kernel_registry_manager;
   ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
 
   DataTransferManager dtm;
@@ -126,7 +126,7 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
   auto cpu_xp = CreateCPUExecutionProvider();
   auto xp_typ = cpu_xp->Type();
 
-  KernelRegistryManager& kernel_registry_manager = KernelRegistryManager::Instance();
+  KernelRegistryManager kernel_registry_manager;
   ExecutionProviders execution_providers;
   execution_providers.Add(xp_typ, std::move(cpu_xp));
   ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
@@ -182,7 +182,7 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
 
   ASSERT_STATUS_OK(graph.Resolve());
 
-  KernelRegistryManager& kernel_registry_manager = KernelRegistryManager::Instance();
+  KernelRegistryManager kernel_registry_manager;
 
   ExecutionProviders execution_providers;
   execution_providers.Add(xp_type, std::move(cpu_xp));

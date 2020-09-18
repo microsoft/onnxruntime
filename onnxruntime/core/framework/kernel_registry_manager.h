@@ -27,10 +27,7 @@ class SessionState;
 // This class is not thread safe.
 class KernelRegistryManager {
  public:
-  static KernelRegistryManager& Instance() {
-    static KernelRegistryManager krm;
-    return krm;
-  }
+  KernelRegistryManager() = default;
 
   // Register kernels from providers
   Status RegisterKernels(const ExecutionProviders& execution_providers) ORT_MUST_USE_RESULT;
@@ -82,11 +79,9 @@ class KernelRegistryManager {
                                          const SessionState& session_state,
                                          const KernelCreateInfo& kernel_create_info) const ORT_MUST_USE_RESULT;
 
- private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(KernelRegistryManager);
 
-  KernelRegistryManager() = default;
-
+ private:
   // key is provider type. Each kernel registry in this collection only belongs to one specific provider
   std::unordered_map<std::string, std::shared_ptr<KernelRegistry>> provider_type_to_registry_;
   // Each kernel registry may contain kernels from many different providers.

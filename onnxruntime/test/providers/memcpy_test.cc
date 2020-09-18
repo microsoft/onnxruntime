@@ -33,7 +33,7 @@ TEST(MemcpyTest, copy1) {
                                     onnxruntime::make_unique<CPUExecutionProvider>(epi));
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
 
-  KernelRegistryManager& kernel_registry_manager = KernelRegistryManager::Instance();
+  KernelRegistryManager kernel_registry_manager;
   ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
 
   ONNX_NAMESPACE::ModelProto mp;
