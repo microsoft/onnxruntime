@@ -868,7 +868,7 @@ class ONNXQuantizer:
         # Find if this input is already quantized
         if weight_name in self.quantized_value_map:
             quantized_value = self.quantized_value_map[weight_name]
-            return (quantized_value.zp_name, quantized_value.q_name, quantized_value.scale_name)
+            return (quantized_value.q_name, quantized_value.zp_name, quantized_value.scale_name)
         else:
             initializer = find_by_name(weight_name, self.model.initializer())
             if initializer is None:
