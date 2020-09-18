@@ -852,6 +852,13 @@ public class InferenceTest {
         options.setLoggerId("monkeys");
         options.setSessionLogLevel(OrtLoggingLevel.ORT_LOGGING_LEVEL_FATAL);
         options.setSessionLogVerbosityLevel(5);
+        options.addConfigEntry("key", "value");
+        try {
+          options.addConfigEntry("", "invalid key");
+          fail("Add config entry with empty key should have failed");
+        } catch (OrtException e) {
+          assertTrue(e.getMessage().contains("Config key is empty"));
+        }
         try (OrtSession session = env.createSession(modelPath, options)) {
           String inputName = session.getInputNames().iterator().next();
           Map<String, OnnxTensor> container = new HashMap<>();

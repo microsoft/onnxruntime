@@ -676,6 +676,18 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
+     * Set a single session configuration entry as a pair of strings.
+     *
+     * @param configKey The config key string.
+     * @param configValue The config value string.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void addConfigEntry(String configKey, String configValue) throws OrtException {
+      checkClosed();
+      addConfigEntry(OnnxRuntime.ortApiHandle, nativeHandle, configKey, configValue);
+    }
+
+    /**
      * Add CUDA as an execution backend, using device 0.
      *
      * @throws OrtException If there was an error in native code.
@@ -843,6 +855,9 @@ public class OrtSession implements AutoCloseable {
     private native void closeCustomLibraries(long[] nativeHandle);
 
     private native void closeOptions(long apiHandle, long nativeHandle);
+
+    private native void addConfigEntry(long apiHandle, long nativeHandle, String configKey, String configValue)
+        throws OrtException;
 
     /*
      * To use additional providers, you must build ORT with the extra providers enabled. Then call one of these
