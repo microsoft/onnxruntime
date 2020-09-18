@@ -18,6 +18,7 @@
 #include "hip_allocator.h"
 #include "gpu_data_transfer.h"
 #include <fstream>
+#include <algorithm>
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4244 4245)
@@ -147,6 +148,7 @@ static bool IsTypeSupported(const NodeArg* node_arg) {
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT32:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT64:
+    case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL:
       return true;
     default:
       return false;
@@ -189,6 +191,8 @@ static bool get_migraphx_type(ONNXTensorElementDataType type,
       break;
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT64:
       mgx_type = migraphx_shape_uint64_type;
+    case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL:
+      mgx_type = migraphx_shape_bool_type;
       break;
     default:
       LOGS_DEFAULT(WARNING) << "MiGraphx: unsupported data type " << type << ", fallback to CPU";
@@ -199,164 +203,89 @@ static bool get_migraphx_type(ONNXTensorElementDataType type,
   return true;
 }
 
-static bool can_eval_concat(const Node* concat, const InitializedTensorSet& initializers, const logging::Logger& logger) {
-  if (concat == nullptr) return true;
-  const auto concat_args = concat->InputDefs();
+static bool can_eval_shape_general(const Graph& graph, const Node* node, const logging::Logger& logger)
+{
+  if (node == nullptr)
+  {
+    return false;
+  }
 
-  // scenario 1
-  if (concat_args.size() == 1) {
-    std::vector<graph_utils::EdgeEndToMatch> parent_path_1{
-        {0, 0, "Unsqueeze", {1, 11}, kOnnxDomain},
-        {0, 0, "Mul", {1, 6, 7}, kOnnxDomain},
-        {0, 0, "Gather", {1, 11}, kOnnxDomain},
-        {0, 0, "Shape", {1}, kOnnxDomain}};
-    std::vector<const Node::EdgeEnd*> edges;
-    bool b_found = graph_utils::FindPath(*concat, true, parent_path_1, edges, logger);
-    if (b_found) {
-      const Node& mul = edges[1]->GetNode();
-      const auto* arg_1 = mul.InputDefs()[1];
-      bool const_flag = (initializers.find(arg_1->Name()) != initializers.end());
-      if (const_flag) {
-        const Node& gather = edges[2]->GetNode();
-        const auto* arg_index = gather.InputDefs()[1];
-        if (initializers.find(arg_index->Name()) != initializers.end()) {
-          return true;
-        }
-      }
-    }
-  } else if (concat_args.size() >= 2) {
-    int arg_size = static_cast<int>(concat_args.size());
-    for (int i = 0; i < arg_size; ++i) {
-      auto arg = concat_args[i];
-      // is not an initializer
-      if (initializers.find(arg->Name()) == initializers.end()) {
-        // then check whether can do constant folding for it
-        std::vector<graph_utils::EdgeEndToMatch> parent_path{
-            {0, i, "Unsqueeze", {1, 11}, kOnnxDomain},
-            {0, 0, "Gather", {1, 11}, kOnnxDomain},
-            {0, 0, "Shape", {1}, kOnnxDomain}};
-        std::vector<const Node::EdgeEnd*> edges;
-        bool b_found = graph_utils::FindPath(*concat, true, parent_path, edges, logger);
-        if (!b_found) {
-          return false;
-        }
-
-        const Node& gather = edges[1]->GetNode();
-        const auto* arg_index = gather.InputDefs()[1];
-        if (initializers.find(arg_index->Name()) == initializers.end()) {
-          return false;
-        }
-      }
-    }
-
+  if (node->OpType() == "Shape")
+  {
     return true;
   }
 
-  return false;
+  auto inputs = node->InputDefs();
+  for (std::size_t i = 0; i < inputs.size(); ++i)
+  {
+    const std::string& input_name = graph_utils::GetNodeInputName(*node, i);
+    // If it is an initializer, it can be constant folded
+    if (graph_utils::IsInitializer(graph, input_name, true))
+    {
+      continue;
+    }
+    
+    // Input for sure cannot be constant folded
+    if (graph_utils::IsGraphInput(graph, inputs[i]))
+    {
+      return false;
+    }
+
+    // get the corresponding input node
+    auto input_node = graph_utils::GetInputNode(*node, i);
+    if (input_node == nullptr)
+    {
+      return false;
+    }
+
+    // shape node, it is OK
+    if (input_node->OpType() == "Shape")
+    {
+      continue;
+    }
+
+    if (can_eval_shape_general(graph, input_node, logger))
+    {
+      continue;
+    }
+
+    return false;
+  }
+
+  return true;
 }
 
-static bool can_eval_cast(const Node* cast, const InitializedTensorSet& initializers, const logging::Logger& logger) {
-  std::vector<graph_utils::EdgeEndToMatch> parent_path = {
-      {0, 0, "Concat", {1, 4, 11}, kOnnxDomain},
-      {0, 0, "Unsqueeze", {1}, kOnnxDomain},
-      {0, 0, "Cast", {1, 6, 9}, kOnnxDomain},
-      {0, 0, "Squeeze", {1, 11}, kOnnxDomain},
-      {0, 0, "Slice", {1, 10, 11}, kOnnxDomain},
-      {0, 0, "Cast", {1, 6, 9}, kOnnxDomain},
-      {0, 0, "Shape", {1}, kOnnxDomain}};
-  std::vector<const Node::EdgeEnd*> edges;
-  if (graph_utils::FindPath(*cast, true, parent_path, edges, logger)) {
-    const Node& concat = edges[1]->GetNode();
-    const Node& slice = edges[5]->GetNode();
-    const auto& concat_args = concat.InputDefs();
-    bool const_flag = true;
-    for (std::size_t i = 1; i < concat_args.size(); i++) {
-      const_flag &= (initializers.find(concat_args[i]->Name()) != initializers.end());
+static bool can_eval_node_argument(const Graph& graph, const Node* node, std::vector<std::size_t> indices, const logging::Logger& logger)
+{
+  for (auto& arg_index : indices)
+  {
+    const std::string& input_name = graph_utils::GetNodeInputName(*node, arg_index);
+    // an initializer itself is a constant
+    if (graph_utils::IsInitializer(graph, input_name, true))
+    {
+      continue;
     }
-    if (const_flag) {
-      const auto& slice_args = slice.InputDefs();
-      for (std::size_t i = 1; i < slice_args.size(); ++i) {
-        const_flag &= (initializers.find(slice_args[i]->Name()) != initializers.end());
-      }
+      
+    // Input cannot be constant folded
+    auto inputs = node->InputDefs();
+    if (graph_utils::IsGraphInput(graph, inputs[arg_index]))
+    {
+      return false;
     }
 
-    if (const_flag) {
-      return true;
+    auto input_node = graph_utils::GetInputNode(*node, arg_index);
+    if (!can_eval_shape_general(graph, input_node, logger))
+    {
+      return false;
     }
   }
 
-  return false;
+  return true;
 }
 
-static bool can_eval_input_shape(const Node* node, const InitializedTensorSet& initializers, const logging::Logger& logger) {
-  // scenario 1: [Root] --> Shape --> Cast --> Cast
-  std::vector<graph_utils::EdgeEndToMatch> parent_path{
-      {0, 1, "Cast", {1, 6, 9}, kOnnxDomain},
-      {0, 0, "Cast", {1, 6, 9}, kOnnxDomain},
-      {0, 0, "Shape", {1}, kOnnxDomain}};
-
-  std::vector<const Node::EdgeEnd*> edges;
-  if (graph_utils::FindPath(*node, true, parent_path, edges, logger)) {
-    return true;
-  }
-
-  // scenario 2:
-  const Node* concat = graph_utils::GetInputNode(*node, 1);
-  if (concat and concat->OpType() == "Concat") {
-    if (can_eval_concat(concat, initializers, logger)) {
-      return true;
-    }
-  }
-
-  // scenario 3:
-  const Node* cast = graph_utils::GetInputNode(*node, 1);
-  if (cast and cast->OpType() == "Cast") {
-    if (can_eval_cast(cast, initializers, logger)) {
-      return true;
-    }
-  }
-
-  // scenario 4:
-  std::vector<graph_utils::EdgeEndToMatch> parent_path_4 = {
-      {0, 1, "Cast", {1, 6, 9}, kOnnxDomain},
-      {0, 0, "Concat", {1, 4, 11}, kOnnxDomain},
-      {0, 0, "Unsqueeze", {1}, kOnnxDomain},
-      {0, 0, "Mul", {1, 6, 7}, kOnnxDomain},
-      {0, 0, "Cast", {1, 6, 9}, kOnnxDomain},
-      {0, 0, "Squeeze", {1, 11}, kOnnxDomain},
-      {0, 0, "Slice", {1, 10, 11}, kOnnxDomain},
-      {0, 0, "Cast", {1, 6, 9}, kOnnxDomain},
-      {0, 0, "Shape", {1}, kOnnxDomain}};
-  if (graph_utils::FindPath(*node, true, parent_path_4, edges, logger)) {
-    const Node& concat = edges[1]->GetNode();
-    const Node& mul = edges[3]->GetNode();
-    const Node& slice = edges[6]->GetNode();
-    const auto& concat_args = concat.InputDefs();
-    bool const_flag = true;
-    for (std::size_t i = 1; i < concat_args.size(); i++) {
-      const_flag &= (initializers.find(concat_args[i]->Name()) != initializers.end());
-    }
-    if (const_flag) {
-      const auto& mul_args = mul.InputDefs();
-      const_flag &= (initializers.find(mul_args[1]->Name()) != initializers.end());
-    }
-    if (const_flag) {
-      const auto& slice_args = slice.InputDefs();
-      for (std::size_t i = 1; i < slice_args.size(); ++i) {
-        const_flag &= (initializers.find(slice_args[i]->Name()) != initializers.end());
-      }
-    }
-    if (const_flag) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer& graph_viewer, const logging::Logger& logger) {
+static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, const Node* node, const logging::Logger& logger) {
   const auto& optype = node->OpType();
-  const auto& initializers = graph_viewer.GetAllInitializedTensors();
+  // const auto& initializers = graph_viewer.GetAllInitializedTensors();
   if (optype == "ArgMax" or optype == "ArgMin") {
     const auto& attributes = node->GetAttributes();
     // we do not support select_last_index = 1 for now
@@ -364,54 +293,11 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     if (sli_attr != attributes.end() && sli_attr->second.i() != 0) {
       return true;
     }
-  } else if (optype == "AveragePool") {
-    // ceil_mode attribute is not supported in MIGraphX
-    const auto& attributes = node->GetAttributes();
-    const auto ceil_attr = attributes.find("ceil_mode");
-    // default value of ceil_mode (0) is supported.
-    if (ceil_attr != attributes.end() && ceil_attr->second.i() != 0) {
-      return true;
-    }
-  } else if (optype == "BatchNormalization") {
-    // input can only have 4 dims
-    const auto input_shape = node->InputDefs()[0]->Shape();
-    if (input_shape != nullptr and input_shape->dim_size() != 4) {
-      return true;
-    }
-  } else if (optype == "Clip") {
-    auto args = node->InputDefs();
-    if (args.size() >= 3) {
-      if (initializers.find(args[2]->Name()) == initializers.end())
-        return true;
-    }
-    if (args.size() >= 2) {
-      if (initializers.find(args[1]->Name()) == initializers.end())
-        return true;
-    }
-  } else if (optype == "Conv") {
-    // input can only have 4 dims
-    const auto input_shape = node->InputDefs()[0]->Shape();
-    if (input_shape != nullptr and input_shape->dim_size() != 4) {
-      return true;
-    }
   } else if (optype == "ConstantOfShape") {
-    const auto shape_arg = node->InputDefs()[0];
-    if (initializers.find(shape_arg->Name()) != initializers.end()) {
-      return false;
+    if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {0}, logger))
+    {
+      return true;
     }
-    const Node* shape_node = graph_utils::GetInputNode(*node, 0);
-    if (shape_node and shape_node->OpType() == "Shape") {
-      return false;
-    } else if (shape_node and shape_node->OpType() == "Concat") {
-      if (can_eval_concat(shape_node, initializers, logger)) {
-        return false;
-      }
-    } else if (shape_node and shape_node->OpType() == "Cast") {
-      if (can_eval_cast(shape_node, initializers, logger)) {
-        return false;
-      }
-    }
-    return true;
   } else if (optype == "ConvInteger") {
     if (node->InputDefs()[0]->Shape()->dim_size() != 4) {
       return true;
@@ -433,8 +319,10 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     }
   } else if (optype == "Expand") {
     // MIGraphX only supports constant shape input values
-    const auto& shape_input = node->InputDefs()[1];
-    return !graph_viewer.IsConstantInitializer(shape_input->Name(), true);
+    if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger))
+    {
+      return true;
+    }
   } else if (optype == "Pow") {
     // we do not have a implementation to support different types of
     // the input data
@@ -460,12 +348,6 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
 
     // ceil_mode and dilations attrs are not supported in MIGraphX
     const auto& attributes = node->GetAttributes();
-    const auto ceil_attr = attributes.find("ceil_mode");
-    // default value of ceil_mode (0) is supported.
-    if (ceil_attr != attributes.end() and ceil_attr->second.i() != 0) {
-      return true;
-    }
-
     auto dila_attr = attributes.find("dilations");
     if (dila_attr != attributes.end()) {
       auto dilas = dila_attr->second.ints();
@@ -506,15 +388,22 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     if (input_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
       return true;
     }
+  } else if (optype == "NonZero") {
+    if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {0}, logger))
+    {
+      return true;
+    }
   } else if (optype == "OneHot") {
-    const auto& arg_depth = node->InputDefs()[1];
-    return (initializers.find(arg_depth->Name()) == initializers.end());
+    if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger))
+    {
+      return true;
+    }
   } else if (optype == "Pad") {
     const auto& args = node->InputDefs();
     // if pad size is not constant, migraphx cannot support
     if (args.size() >= 2) {
-      const auto& shape_arg = node->InputDefs()[1];
-      if (initializers.find(shape_arg->Name()) == initializers.end()) {
+      if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger))
+      {
         return true;
       }
     }
@@ -534,64 +423,43 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     // input value only applied to constant mode
     if (mode == "constant") {
       if (args.size() == 3) {
-        const auto& val_arg = node->InputDefs()[2];
-        if (initializers.find(val_arg->Name()) == initializers.end()) {
+        if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {2}, logger))
+        {
           return true;
         }
       }
     }
   } else if (optype == "Range") {
-    const auto& args = node->InputDefs();
-    if (!std::all_of(args.begin(), args.end(), [&](auto arg) {
-          return (initializers.find(arg->Name()) != initializers.end());
-        })) {
+    auto arg_num = node->InputDefs().size();
+    std::vector<std::size_t> vec(arg_num);
+    std::iota(vec.begin(), vec.end(), 0);
+    if (!can_eval_node_argument(graph_viewer.GetGraph(), node, vec, logger))
+    {
       return true;
     }
   } else if (optype == "Reshape") {
     const auto& args = node->InputDefs();
     if (args.size() == 2) {
-      const auto& shape_arg = args[1];
-      if (initializers.find(shape_arg->Name()) != initializers.end()) {
+      if (can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger))
+      {
         return false;
       }
-
-      if (can_eval_input_shape(node, initializers, logger)) {
-        return false;
-      }
-
-      const Node* shape_node = graph_utils::GetInputNode(*node, 0);
-      if (shape_node and shape_node->OpType() == "Concat") {
-        if (can_eval_concat(shape_node, initializers, logger)) {
-          return false;
-        }
-      }
+      return true;
     }
-    return true;
   } else if (optype == "Slice") {
     // MIGraphX does not properly handle the situation where any
     // value of the "starts" attribute is higher than a corresponding
     // value in the "ends"
-    const auto& args = node->InputDefs();
-    if (args.size() == 5) {
+    auto arg_num = node->InputDefs().size();
+    std::vector<std::size_t> vec(arg_num);
+    std::iota(vec.begin(), vec.end(), 0);
+    vec.erase(vec.begin());
+    if (!can_eval_node_argument(graph_viewer.GetGraph(), node, vec, logger))
+    {
       return true;
     }
 
     const auto& attributes = node->GetAttributes();
-    if (args.size() >= 4) {
-      if (initializers.find(args[3]->Name()) == initializers.end())
-        return true;
-    }
-
-    if (args.size() >= 3) {
-      if (initializers.find(args[2]->Name()) == initializers.end())
-        return true;
-    }
-
-    if (args.size() >= 2) {
-      if (initializers.find(args[1]->Name()) == initializers.end())
-        return true;
-    }
-
     if (attributes.count("starts") > 0 and attributes.count("ends") > 0) {
       const auto& starts = attributes.find("starts")->second.ints();
       const auto& ends = attributes.find("ends")->second.ints();
@@ -622,12 +490,89 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       }
     }
   } else if (optype == "Tile") {
-    const auto& args = node->InputDefs();
-    return (initializers.find(args[1]->Name()) == initializers.end());
+    if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger))
+    {
+      return true;
+    }
   }
 
   //Op doesn't fall into known any of unsupported modes.
   return false;
+}
+
+void SubgraphPostProcessing(const onnxruntime::GraphViewer& graph_viewer, std::vector<std::vector<NodeIndex>>& clusters)
+{
+  // If the number of nodes in the graph is less than 5, do nothing
+  // this is to deal with onnx unit tests
+  if (graph_viewer.NumberOfNodes() <= 5)
+  {
+    return;
+  }
+
+  // Then check whether a subgraph should fallback to CPU
+  // 1. Check whether a subgraph contains a RNN operator
+  std::unordered_set<std::string> rnn_names = {"RNN", "GRU", "LSTM"};
+  std::unordered_set<std::string> op_names = {"AveragePool", "Conv", "Gemm", "LRN", "MatMul", "MaxPool"};
+
+  auto it = std::remove_if(clusters.begin(), clusters.end(), [&](auto git) {
+    // if 6 operators or more
+    if (git.size() > 5)
+    {
+      return false;
+    }
+
+    // rnn operators, run on GPU
+    if (std::any_of(git.begin(), git.end(), [&](auto nid) {
+      const auto& node = graph_viewer.GetNode(nid);
+      const auto& op_type = node->OpType();
+      return (rnn_names.count(op_type) > 0);
+    }))
+    {
+      return false;
+    }
+
+    // check operators gemm, matmul, convolution, lrn.
+    if (std::any_of(git.begin(), git.end(), [&](auto nid) {
+      const auto& node = graph_viewer.GetNode(nid);
+      const auto& op_type = node->OpType();
+      if (op_names.count(op_type) > 0)
+      {
+        // check number of elements in input
+        auto inputs = node->InputDefs();
+        if (std::any_of(inputs.begin(), inputs.end(), [&](auto& arg) {
+          const auto& arg_s = arg->Shape();
+          if (arg_s == nullptr) return false;
+          auto tensor_dims = arg_s->dim();
+          std::vector<std::size_t> dims;
+          std::transform(tensor_dims.begin(),
+                        tensor_dims.end(),
+                        std::back_inserter(dims),
+                        [&](auto&& d) -> std::size_t {
+                          if (d.has_dim_value()) {
+                            return d.dim_value();
+                          } else {
+                            return 1;
+                          }
+                        });
+          return (std::accumulate(dims.begin(), dims.end(), 1, std::multiplies<std::size_t>{}) > 300);
+        }))
+        {
+          return false;
+        }
+
+        return true;
+      }
+
+      return false;
+    }))
+    {
+      return false;
+    }
+    
+    return true;
+  });
+
+  clusters.erase(it, clusters.end());
 }
 
 static bool IsNodeSupported(const std::set<std::string>& op_set,
@@ -661,7 +606,7 @@ static bool IsNodeSupported(const std::set<std::string>& op_set,
   }
 
   // check that some modes might not be supported in migraphx for some operators
-  if (domain == kOnnxDomain && IsUnsupportedOpMode(node, graph_viewer, logger)) {
+  if (domain == kOnnxDomain && IsUnsupportedOpMode(graph_viewer, node, logger)) {
     // not supported, then check the constant folding capability of migraphx
     // to see whether it is supported
     return false;
@@ -694,19 +639,21 @@ static std::vector<NodeIndex>
 GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                           /*out*/ std::unordered_set<std::string>& mgx_required_initializers,
                           const logging::Logger& logger) {
-  static std::set<std::string> mgx_supported_ops = {"Abs", "Acos", "Acosh", "Add", "ArgMax", "ArgMin",
-                                                    "Asin", "Asinh", "Atan", "Atanh", "AveragePool", "BatchNormalization", "Cast", "Ceil", "Clip",
-                                                    "Concat", "Constant", "ConstantFill", "ConstantOfShape", "Conv", "Cos", "Cosh", "Div", "Dropout",
-                                                    "Elu", "Erf", "Exp", "Expand", "Flatten", "Floor", "GRU", "Gather", "GatherElements", "Gemm",
-                                                    "GlobalAveragePool", "GlobalMaxPool", "Identity", "ImageScaler", "InstanceNormalization", "LRN",
-                                                    "LSTM", "LeakyRelu", "Log", "LogSoftmax", "MatMul", "Max", "MaxPool", "Min", "Mul", "Neg",
-                                                    "OneHot", "Pad", "Pow", "PRelu",
-                                                    "RNN", "Range", "Reciprocal", "ReduceL1", "ReduceL2", "ReduceLogSum", "ReduceLogSumExp", "ReduceMax",
-                                                    "ReduceMean", "ReduceMin", "ReduceProd", "ReduceSum", "ReduceSumSquare", "Relu", "Reshape",
-                                                    "Round", "Shape", "Sigmoid", "Sign", "Sin", "Sinh", "Slice", "Softmax", "Split", "Sqrt", "Squeeze",
-                                                    "Sub", "Sum", "Tan", "Tanh", "Tile", "Transpose", "Unsqueeze"};
+  static std::set<std::string> mgx_supported_ops = {"Abs", "Acos", "Acosh", "Add", "ArgMax", "ArgMin", 
+      "Asin", "Asinh", "Atan", "Atanh", "AveragePool", "BatchNormalization", "Cast", "Ceil", "Clip", 
+      "Concat", "Constant", "ConstantFill", "ConstantOfShape", "Conv", "Cos", "Cosh", 
+      "Div", "Dropout", "Elu", "Equal", "Erf", "Exp", "Expand", "Flatten", "Floor", "GRU", "Gather", 
+      "GatherElements", "Gemm", "GlobalAveragePool", "GlobalMaxPool", "Identity", "ImageScaler", 
+      "InstanceNormalization", "LRN", "LSTM", "LeakyRelu", "Log", "LogSoftmax", "MatMul", "Max", 
+      "MaxPool", "Min", "Mul", "Neg", "NonZero", "OneHot", "Pad", "Pow", "PRelu",
+      "RNN", "Range", "Reciprocal", "ReduceL1", "ReduceL2", "ReduceLogSum", "ReduceLogSumExp", "ReduceMax", 
+      "ReduceMean", "ReduceMin", "ReduceProd", "ReduceSum", "ReduceSumSquare", "Relu", "Reshape", 
+      "Round", "Shape", "Sigmoid", "Sign", "Sin", "Sinh", "Slice", "Softmax", "Split", "Sqrt", "Squeeze", 
+      "Sub", "Sum", "Tan", "Tanh", "Tile", "Transpose", "Unsqueeze", "Where"};
   std::vector<NodeIndex> unsupported_nodes_idx;
   for (const auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
+    // auto node = graph_viewer.GetNode(node_idx);
+    // print_node_info(node);
     if (IsNodeSupported(mgx_supported_ops, graph_viewer, node_idx, logger)) {
       // Collect inputs that are initializers
       graph_viewer.GetNode(node_idx)->ForEachDef([&mgx_required_initializers, &graph_viewer](const onnxruntime::NodeArg& node_arg, bool is_input) {
@@ -894,11 +841,7 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   // Example weights, reshape shape etc.
   std::unordered_set<std::string> mgx_required_initializers;
   const auto unsupported_nodes = GetUnsupportedNodeIndices(graph_viewer, mgx_required_initializers, *GetLogger());
-  // Too many unsupported operators, fallback to run on CPU
-  if (unsupported_nodes.size() >= 6) {
-    return result;
-  }
-
+  
   //If all ops are supported, no partitioning is required. Short-circuit and avoid splitting.
   if (unsupported_nodes.empty()) {
     std::vector<std::string> inputs;
@@ -926,7 +869,18 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     AppendNodesToSubGraph(graph_viewer.GetNodesInTopologicalOrder(), inputs, outputs, result);
 
   } else {  // unsupported_nodes_idx.empty()
-    const auto mgx_clusters = GetPartitionedSubgraphs(graph_viewer.GetNodesInTopologicalOrder(), unsupported_nodes);
+    // migraphx cannot handle Loop, If, and SoftmaxCrossEntropyLoss for now,
+    // so if a model contain any of these operators, fall back to CPU
+    std::unordered_set<std::string> vec_ops = {"If", "Loop", "SoftmaxCrossEntropyLoss"};
+    if (std::any_of(unsupported_nodes.begin(), unsupported_nodes.end(), [&](auto i) {
+      return (vec_ops.count(graph_viewer.GetNode(i)->OpType()) > 0);
+    })) {
+      return result;
+    }
+
+    auto mgx_clusters = GetPartitionedSubgraphs(graph_viewer.GetNodesInTopologicalOrder(), unsupported_nodes);
+    // check whether a subgrap should fallback to CPU
+    SubgraphPostProcessing(graph_viewer, mgx_clusters);
 
     for (const auto& this_cluster : mgx_clusters) {
       std::vector<std::string> cluster_inputs, cluster_outputs;
@@ -1015,7 +969,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
                                           std::vector<NodeComputeInfo>& node_compute_funcs) {
   migraphx::onnx_options options;
   bool no_input_shape = false;
-  // std::size_t fused_node_idx = 0;
+
   for (const auto& fused_node : fused_nodes) {
     // map parameter input name to index
     std::unordered_map<std::string, std::size_t> input_name_index;
@@ -1029,6 +983,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
     onnx::ModelProto model_proto = GetModelProtoFromFusedNode(fused_node, *GetLogger());
     std::string onnx_string_buffer;
     model_proto.SerializeToString(&onnx_string_buffer);
+
     std::vector<std::string> input_names, output_names;
     no_input_shape = no_input_shape or get_input_output_names(onnx_string_buffer, input_names, output_names);
 
@@ -1041,8 +996,8 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
       if (fp16_enable_) {
         migraphx::quantize_fp16(prog);
       }
-      prog.compile(t_);
 
+      prog.compile(t_);
       auto prog_output_shapes = prog.get_output_shapes();
       for (std::size_t i = 0; i < output_names.size(); ++i) {
         auto out_len = prog_output_shapes[i].lengths();
