@@ -304,7 +304,6 @@ if (onnxruntime_USE_TENSORRT OR onnxruntime_USE_DNNL)
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_shared_cc_srcs})
   add_library(onnxruntime_providers_shared SHARED ${onnxruntime_providers_shared_cc_srcs})
-  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/shared  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_shared PROPERTIES FOLDER "ONNXRuntime")
   set_target_properties(onnxruntime_providers_shared PROPERTIES LINKER_LANGUAGE CXX)
 
