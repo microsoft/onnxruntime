@@ -1211,7 +1211,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             run_subprocess([sys.executable, 'onnxruntime_test_python.py'], cwd=cwd, dll_path=dll_path)
 
             if args.enable_symbolic_shape_infer_tests:
-                run_subprocess([sys.executable, 'onnxruntime_test_python_symbolic_shape_infer.py'], cwd=cwd, dll_path=dll_path)
+                run_subprocess([sys.executable, 'onnxruntime_test_python_symbolic_shape_infer.py'],
+                               cwd=cwd, dll_path=dll_path)
 
             # For CUDA enabled builds test IOBinding feature
             # Limit testing to Windows non-ARM builds for now
