@@ -111,6 +111,10 @@ def parse_arguments():
     parser.add_argument("--path_to_protoc_exe", help="Path to protoc exe.")
     parser.add_argument(
         "--fuzz_testing", action='store_true', help="Enable Fuzz testing of the onnxruntime.")
+    parser.add_argument(
+        "--enable_symbolic_shape_infer_tests", action='store_true',
+        help="""When running the Test phase, run symbolic shape inference against
+        available test data directories.""")
 
     # generate documentaiton
     parser.add_argument(
@@ -1205,6 +1209,10 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 cwd = os.path.join(cwd, config)
 
             run_subprocess([sys.executable, 'onnxruntime_test_python.py'], cwd=cwd, dll_path=dll_path)
+
+            if args.enable_symbolic_shape_infer_tests:
+                run_subprocess([sys.executable, 'onnxruntime_test_python_symbolic_shape_infer.py'],
+                               cwd=cwd, dll_path=dll_path)
 
             # For CUDA enabled builds test IOBinding feature
             # Limit testing to Windows non-ARM builds for now
