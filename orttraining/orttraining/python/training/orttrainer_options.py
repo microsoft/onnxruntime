@@ -451,6 +451,10 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
             'invertible_layer_norm_gradient' : {
                 'type': 'boolean',
                 'default': False
+            },
+            'run_symbolic_shape_infer' : {
+                'type': 'boolean',
+                'default': False
             }
         }
     },
