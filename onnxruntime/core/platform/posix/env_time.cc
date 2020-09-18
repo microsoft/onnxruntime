@@ -51,7 +51,11 @@ void SetTimeSpecToZero(TIME_SPEC* value) {
   memset(value, 0, sizeof(TIME_SPEC));
 }
 
-void AccumulateTimeSpec(TIME_SPEC* base, TIME_SPEC* y, TIME_SPEC* x) {
+void AccumulateTimeSpec(TIME_SPEC* base, const TIME_SPEC* p_y, const TIME_SPEC* p_x) {
+  TIME_SPEC y_l = *p_y;
+  TIME_SPEC x_l = *p_x;
+  TIME_SPEC* y = &y_l;
+  TIME_SPEC* x = &x_l;
   /* Perform the carry for the later subtraction by updating y. */
   if (x->tv_nsec < y->tv_nsec) {
     long nsec = (y->tv_nsec - x->tv_nsec) / 1000000000 + 1;
@@ -76,7 +80,7 @@ void AccumulateTimeSpec(TIME_SPEC* base, TIME_SPEC* y, TIME_SPEC* x) {
 
 //Return the interval in seconds.
 //If the function fails, the return value is zero
-double TimeSpecToSeconds(TIME_SPEC* value) {
+double TimeSpecToSeconds(const TIME_SPEC* value) {
   return value->tv_sec + value->tv_nsec / static_cast<double>(1000000000);
 }
 
