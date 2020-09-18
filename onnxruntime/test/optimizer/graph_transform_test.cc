@@ -2310,9 +2310,9 @@ struct BiasSoftmaxFusionTester {
     int expected_softmax_axis = 1;
     GetAxis("Softmax", "axis", &expected_softmax_axis);
 
-    auto ret = graph_transformation_mgr_.ApplyTransformers(p_model->MainGraph(), TransformerLevel::Level2, *logger_);
+    auto ret = graph_transformation_mgr_.ApplyTransformers(p_model_->MainGraph(), TransformerLevel::Level2, *logger_);
     ASSERT_STATUS_OK(ret);
-    std::map<std::string, int> op_to_count = CountOpsInGraph(p_model->MainGraph());
+    std::map<std::string, int> op_to_count = CountOpsInGraph(p_model_->MainGraph());
 
     ASSERT_EQ(op_to_count["Add"], 0);
     ASSERT_EQ(op_to_count["Softmax"], 0);
@@ -2329,10 +2329,10 @@ struct BiasSoftmaxFusionTester {
   void TestNoFusionOccurs() {
     ASSERT_STATUS_OK(model_load_);
 
-    auto ret = graph_transformation_mgr_.ApplyTransformers(p_model->MainGraph(), TransformerLevel::Level2, *logger_);
+    auto ret = graph_transformation_mgr_.ApplyTransformers(p_model_->MainGraph(), TransformerLevel::Level2, *logger_);
     ASSERT_STATUS_OK(ret);
 
-    std::map<std::string, int> op_to_count = CountOpsInGraph(p_model->MainGraph());
+    std::map<std::string, int> op_to_count = CountOpsInGraph(p_model_->MainGraph());
     ASSERT_EQ(op_to_count["Add"], 1);
     ASSERT_EQ(op_to_count["Softmax"], 1);
     ASSERT_EQ(op_to_count["BiasSoftmax"], 0);
