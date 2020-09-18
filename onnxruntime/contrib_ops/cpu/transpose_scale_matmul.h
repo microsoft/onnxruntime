@@ -4,19 +4,20 @@
 #pragma once
 
 #include "core/framework/op_kernel.h"
+#include "core/providers/cpu/math/matmul.h"
+
 
 namespace onnxruntime {
 namespace contrib {
 
-class TransposeScaleMatMul final : public OpKernel {
+template <typename T>
+class TransposeScaleMatMul final : public MatMul<T> {
  public:
-  TransposeScaleMatMul(const OpKernelInfo& info);
-
-  Status Compute(OpKernelContext* context) const override;
-
- private:
-  float alpha_attr_;
-  int64_t trans_a_attr_, trans_b_attr_;
+  TransposeScaleMatMul(const OpKernelInfo& info) : MatMul<T>(info) {
+    ORT_THROW_IF_ERROR(info.GetAttr("alpha", &alpha_attr_));
+    ORT_THROW_IF_ERROR(info.GetAttr("transA", &trans_a_attr_));
+    ORT_THROW_IF_ERROR(info.GetAttr("transB", &trans_b_attr_));
+  }
 };
 
 }  // namespace contrib

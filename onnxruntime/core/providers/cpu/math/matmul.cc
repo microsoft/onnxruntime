@@ -1,38 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/op_kernel.h"
+#include "core/providers/cpu/math/matmul.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
-
-template <typename T>
-class MatMul final : public OpKernel {
- public:
-  MatMul(const OpKernelInfo& info) : OpKernel(info) {}
-
-  Status Compute(OpKernelContext* context) const override;
-};
-
-#if !defined(USE_MKLML_FOR_BLAS)
-
-template <>
-class MatMul<float> final : public OpKernel {
- public:
-  MatMul(const OpKernelInfo& info) : OpKernel(info) {}
-
-  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override;
-  Status Compute(OpKernelContext* context) const override;
-
- private:
-  TensorShape b_shape_;
-  BufferUniquePtr packed_b_;
-};
-
-#endif
 
 ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     MatMul,
@@ -153,8 +128,14 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
   const Tensor* a = ctx->Input<Tensor>(0);
   const Tensor* b = packed_b_ ? nullptr : ctx->Input<Tensor>(1);
 
+  // match CUDA kernel implementation, ignore transpose for vectors
+  const bool trans_a = trans_a_attr_ && a->Shape().NumDimensions() != 1;
+  const bool trans_b = trans_b_attr_ &&
+                       (b == nullptr ? b_shape_.NumDimensions() != 1
+                                     : b->Shape().NumDimensions() != 1);
+
   MatMulComputeHelper helper;
-  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b ? b->Shape() : b_shape_));
+  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b ? b->Shape() : b_shape_, trans_a, trans_b));
   Tensor* y = ctx->Output(0, helper.OutputShape());
 
   // Bail out early if the output is going to be empty
@@ -169,25 +150,30 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
   size_t max_len = helper.OutputOffsets().size();
   for (size_t i = 0; i < max_len; i++) {
     if (packed_b_) {
-      MlasGemm(CblasNoTrans,
-               static_cast<size_t>(helper.M()),
-               static_cast<size_t>(helper.N()),
-               static_cast<size_t>(helper.K()),
-               1.0f,
-               a_data + helper.LeftOffsets()[i],
-               static_cast<size_t>(helper.K()),
-               packed_b_.get(),
-               0.0f,
-               y_data + helper.OutputOffsets()[i],
-               static_cast<size_t>(helper.N()),
-               thread_pool);
+      MlasGemm(
+          trans_a ? CblasTrans : CblasNoTrans,
+          static_cast<size_t>(helper.M()),
+          static_cast<size_t>(helper.N()),
+          static_cast<size_t>(helper.K()),
+          alpha_attr_,
+          a_data + helper.LeftOffsets()[i],
+          static_cast<size_t>(helper.K()),
+          packed_b_.get(),
+          0.0f,
+          y_data + helper.OutputOffsets()[i],
+          static_cast<size_t>(helper.N()),
+          thread_pool);
     } else {
-      math::MatMul(
-          static_cast<int>(helper.M()),
-          static_cast<int>(helper.N()),
-          static_cast<int>(helper.K()),
+      math::Gemm<float, concurrency::ThreadPool>(
+          trans_a ? CblasTrans : CblasNoTrans,
+          trans_b ? CblasTrans : CblasNoTrans,
+          helper.M(),
+          helper.N(),
+          helper.K(),
+          alpha_attr_,
           a_data + helper.LeftOffsets()[i],
           b_data + helper.RightOffsets()[i],
+          0.0f,
           y_data + helper.OutputOffsets()[i],
           thread_pool);
     }
