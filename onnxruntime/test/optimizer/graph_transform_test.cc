@@ -779,7 +779,7 @@ TEST_F(GraphTransformationTests, TransposeMatmulNoFusionOnInvalidPerm) {
   }
 }
 
-TEST_F(GraphTransformationTests, TransposeMatmulFusionFromTransposeScaleMatMul) {
+TEST_F(GraphTransformationTests, TransposeMatmulFusionFromTransposeMatMul) {
   auto model_uri = MODEL_FOLDER "fusion/transpose_matmul_2d_fusion_from_transpose_scale_matmul.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
