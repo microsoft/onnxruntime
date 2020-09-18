@@ -339,7 +339,7 @@ def _create_config_file_with_required_ops(required_operators, model_path, config
 
 def exclude_unused_ops(models_path, config_path, ort_root=None, use_cuda=True, output_config_path=None):
     '''Determine operators that are used, and either exclude them or create a configuration file that will.
-	Note that this called directly from build.py'''
+    Note that this called directly from build.py'''
 
     if not models_path and not config_path:
         log.error('Please specify model_path and/or config_path.')
@@ -390,9 +390,6 @@ if __name__ == "__main__":
         log.error('Please specify at least either model path or file path.')
         parser.print_help()
         sys.exit(-1)
-
-    if not ort_root:
-        log.info('ort_root was not specified. Inferring ORT root from location of this script.')
 
     exclude_unused_ops(models_path, config_path, ort_root, use_cuda=True,
                        output_config_path=args.write_combined_config_to)
