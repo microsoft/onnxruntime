@@ -134,7 +134,7 @@ template <typename T>
 void RunTransposeScaleMatMulTest(int32_t opset_version = 7, bool transa = false, bool transb = false, float alpha = 1.0f) {
   std::vector<T> common_input_vals{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
   for (auto t : GenerateSimpleTestCases<T>()) {
-    OpTester test("TransposeScaleMatMul", opset_version, onnxruntime::kMSDomain);
+    OpTester test("TransposeMatMul", opset_version, onnxruntime::kMSDomain);
 
     std::vector<int64_t> input0_dims(t.input0_dims);
     std::vector<T> input0_vals;

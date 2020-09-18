@@ -171,7 +171,7 @@ Status ProcessNode(
     Graph& graph, Node& node, bool& modified,
     const std::unordered_set<std::string>& excluded_initializer_names) {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", {9, 13}) &&
-      !graph_utils::IsSupportedOptypeVersionAndDomain(node, "TransposeScaleMatMul", {1}, kMSDomain)) {
+      !graph_utils::IsSupportedOptypeVersionAndDomain(node, "TransposeMatMul", {1}, kMSDomain)) {
     return Status::OK();
   }
 
@@ -185,7 +185,7 @@ Status ProcessNode(
   }
 
   NodeAttributes fused_node_attrs =
-      node.OpType() == "TransposeScaleMatMul" ? node.GetAttributes() : NodeAttributes{};
+      node.OpType() == "TransposeMatMul" ? node.GetAttributes() : NodeAttributes{};
 
   {
     ONNX_NAMESPACE::AttributeProto& alpha_attr = fused_node_attrs["alpha"];
@@ -220,7 +220,7 @@ Status ProcessNode(
 
   Node& matmul_scale_node = graph.AddNode(
       graph.GenerateNodeName(node.Name() + "_FusedMatMulAndScale"),
-      "TransposeScaleMatMul",
+      "TransposeMatMul",
       "Fused MatMul and Scale",
       fused_node_inputs,
       fused_node_outputs,

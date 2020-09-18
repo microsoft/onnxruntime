@@ -1778,11 +1778,10 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
 Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html
 )DOC";
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(TransposeScaleMatMul)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(TransposeMatMul)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("TransposeScaleMatMul")
+      .SetDoc("TransposeMatMul")
       .Input(0, "A", "N-dimensional matrix A", "T")
       .Input(1, "B", "N-dimensional matrix B", "T")
       .Attr(
