@@ -16,6 +16,7 @@
 #include "core/graph/model.h"
 #include "core/optimizer/attention_fusion.h"
 #include "core/optimizer/bias_gelu_fusion.h"
+#include "core/optimizer/bias_softmax_fusion.h"
 #include "core/optimizer/computation_reduction.h"
 #include "core/optimizer/cast_elimination.h"
 #include "core/optimizer/constant_folding.h"
@@ -2262,6 +2263,128 @@ TEST_F(GraphTransformationTests, FastGeluWithBiasUseGraphInputFusionTest2) {
   ASSERT_TRUE(op_to_count["Tanh"] == 0);
   ASSERT_TRUE(op_to_count["Mul"] == 0);
   ASSERT_TRUE(op_to_count["FastGelu"] == 1);
+}
+
+struct BiasSoftmaxFusionTester {
+  std::shared_ptr<Model> p_model_;
+  Status model_load_;
+  onnxruntime::logging::Logger* logger_;
+  onnxruntime::GraphTransformerManager graph_transformation_mgr_;
+
+  bool GetAxis(const std::string op_type, const std::string name, int* axis) {
+    for (auto& node : p_model_->MainGraph().Nodes()) {
+      if (node.OpType() == op_type) {
+        auto& softmax_attr = node.GetAttributes();
+        if (softmax_attr.find(name) != softmax_attr.end()) {
+          // found axis attribute
+          auto& axis_attr = softmax_attr.at(name);
+          *axis = (int)axis_attr.i();
+          return true;
+        }
+      }
+    }
+    // not found
+    return false;
+  }
+
+  BiasSoftmaxFusionTester(
+      const PathString& model_uri,
+      onnxruntime::logging::Logger* logger,
+      bool on_cuda_ = true) : logger_(logger), graph_transformation_mgr_{5} {
+    model_load_ = Model::Load(model_uri, p_model_, nullptr, *logger_);
+
+    // move to cuda since fusion only takes place in that case
+    if (on_cuda_) {
+      for (auto& node : p_model_->MainGraph().Nodes()) {
+        node.SetExecutionProviderType(kCudaExecutionProvider);
+      }
+    }
+
+    graph_transformation_mgr_.Register(
+        onnxruntime::make_unique<BiasSoftmaxFusion>(), TransformerLevel::Level2);
+  }
+
+  void TestFusionOccurs(int expected_broadcast_axis) {
+    ASSERT_STATUS_OK(model_load_);
+
+    int expected_softmax_axis = 1;
+    GetAxis("Softmax", "axis", &expected_softmax_axis);
+
+    auto ret = graph_transformation_mgr_.ApplyTransformers(p_model_->MainGraph(), TransformerLevel::Level2, *logger_);
+    ASSERT_STATUS_OK(ret);
+    std::map<std::string, int> op_to_count = CountOpsInGraph(p_model_->MainGraph());
+
+    ASSERT_EQ(op_to_count["Add"], 0);
+    ASSERT_EQ(op_to_count["Softmax"], 0);
+    ASSERT_EQ(op_to_count["BiasSoftmax"], 1);
+
+    int actual_softmax_axis, actual_broadcast_axis;
+    ASSERT_TRUE(GetAxis("BiasSoftmax", "softmax_axis", &actual_softmax_axis));
+    ASSERT_EQ(actual_softmax_axis, expected_softmax_axis);
+
+    ASSERT_TRUE(GetAxis("BiasSoftmax", "broadcast_axis", &actual_broadcast_axis));
+    ASSERT_EQ(actual_broadcast_axis, expected_broadcast_axis);
+  }
+
+  void TestNoFusionOccurs() {
+    ASSERT_STATUS_OK(model_load_);
+
+    auto ret = graph_transformation_mgr_.ApplyTransformers(p_model_->MainGraph(), TransformerLevel::Level2, *logger_);
+    ASSERT_STATUS_OK(ret);
+
+    std::map<std::string, int> op_to_count = CountOpsInGraph(p_model_->MainGraph());
+    ASSERT_EQ(op_to_count["Add"], 1);
+    ASSERT_EQ(op_to_count["Softmax"], 1);
+    ASSERT_EQ(op_to_count["BiasSoftmax"], 0);
+  }
+};
+
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_CudaOnly) {
+  auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_simple.onnx";
+  BiasSoftmaxFusionTester tester(model_uri, logger_.get(), false);
+  tester.TestNoFusionOccurs();
+}
+
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_Simple) {
+  auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_simple.onnx";
+  BiasSoftmaxFusionTester tester(model_uri, logger_.get());
+  tester.TestFusionOccurs(1);
+}
+
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_MiddleOnes) {
+  auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_middleones.onnx";
+  BiasSoftmaxFusionTester tester(model_uri, logger_.get());
+  tester.TestFusionOccurs(3);
+}
+
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_ReversedInputs) {
+  auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_middleones_reversed.onnx";
+  BiasSoftmaxFusionTester tester(model_uri, logger_.get());
+  tester.TestFusionOccurs(3);
+}
+
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_BadAxis) {
+  auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_middleones_badaxis.onnx";
+  BiasSoftmaxFusionTester tester(model_uri, logger_.get());
+  tester.TestNoFusionOccurs();
+}
+
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_AllLeadingOnes) {
+  auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_allleadingones.onnx";
+  BiasSoftmaxFusionTester tester(model_uri, logger_.get());
+  tester.TestFusionOccurs(0);
+}
+
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_SomeLeadingOnes) {
+  auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_someleadingones.onnx";
+  BiasSoftmaxFusionTester tester(model_uri, logger_.get());
+  tester.TestFusionOccurs(0);
+}
+
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_NoLeadingOnes) {
+  auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_noleadingones.onnx";
+  BiasSoftmaxFusionTester tester(model_uri, logger_.get());
+  tester.TestFusionOccurs(0);
 }
 
 TEST_F(GraphTransformationTests, LayerNormFusionTest) {
