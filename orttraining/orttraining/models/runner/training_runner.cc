@@ -116,6 +116,7 @@ Status TrainingRunner::Initialize() {
     if (params_.use_bfloat16) {
       mp.mixed_precision_type = MixedPrecisionDataType::BF16;
     }
+    mp.layernorm_stash_as_fp32 = params_.layernorm_stash_as_fp32;
     config.mixed_precision_config = mp;
   }
 

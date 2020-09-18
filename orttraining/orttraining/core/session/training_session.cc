@@ -662,7 +662,8 @@ Status TrainingSession::EnableMixedPrecision(
       weights_to_train,
       mixed_precision_config.use_mixed_precision_initializers,
       mixed_precision_config.TensorProtoDataType(),
-      fp32_weight_name_to_mixed_precision_node_arg));
+      fp32_weight_name_to_mixed_precision_node_arg,
+      mixed_precision_config.layernorm_stash_as_fp32));
 
   std::unordered_set<std::string> mixed_precision_weight_initializer_names{};
   std::transform(

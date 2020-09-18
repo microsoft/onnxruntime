@@ -2734,6 +2734,9 @@ Example 4:
       .Attr("epsilon",
             "The epsilon value to use to avoid division by zero.",
             AttributeProto::FLOAT, 1e-5f)
+      .Attr("stash_type",
+            "type used for stash mean/inv_std_var",
+            AttributeProto::INT, static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT))
       .AllowUncheckedAttributes()
       .Input(0, "X", "Input data tensor from the previous layer.", "T")
       .Input(1, "scale", "Scale tensor.", "T")
@@ -2747,11 +2750,20 @@ Example 4:
           "Constrain input and output types (except mean and inv_std_var) to float tensors.")
       .TypeConstraint(
           "U",
-          {"tensor(float)"},
+          {"tensor(float)", "tensor(bfloat16)"},
           "Constrain mean and inv_std_var to be float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        auto type = ctx.getAttribute("stash_type")->i();
+        if (ctx.getNumOutputs() > 1){
+          auto output_type = ctx.getOutputType(1);
+          output_type->mutable_tensor_type()->set_elem_type(static_cast<int32_t>(type));
+        }
+        if (ctx.getNumOutputs() > 2){
+          auto output_type = ctx.getOutputType(2);
+          output_type->mutable_tensor_type()->set_elem_type(static_cast<int32_t>(type));
+        }
         if (!hasNInputShapes(ctx, 1)) {
           return;
         }
