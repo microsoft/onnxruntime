@@ -83,7 +83,7 @@ class TestCaseRequestContext {
   TestCaseRequestContext(const Callback& cb, PThreadPool tp, const ITestCase& test_case, Ort::Env& env,
                          const Ort::SessionOptions& session_opts);
 
-  void SetupSession();
+  bool SetupSession();
 
   std::shared_ptr<TestCaseResult> GetResult() const {
     return result_;
@@ -96,6 +96,7 @@ class TestCaseRequestContext {
   void RunAsync(size_t concurrent_runs);
   // Callback for datatasks
   void OnDataTaskComplete(size_t task_id, EXECUTE_RESULT result, const TIME_SPEC& spent_time);
+  void OnTestCaseComplete();
 
   void CalculateAndLogStats() const;
 

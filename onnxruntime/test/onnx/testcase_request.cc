@@ -14,7 +14,7 @@ namespace onnxruntime {
 namespace test {
 
 TestCaseRequestContext::TestCaseRequestContext(const Callback& cb, PThreadPool tp, const ITestCase& test_case, Ort::Env& env,
-                       const Ort::SessionOptions& session_opts)
+                                               const Ort::SessionOptions& session_opts)
     : cb_(cb),
       tp_(tp),
       test_case_(test_case),
@@ -31,14 +31,23 @@ TestCaseRequestContext::TestCaseRequestContext(const Callback& cb, PThreadPool t
   on_data_task_cb_ = f.GetCallable<&TestCaseRequestContext::OnDataTaskComplete>();
 }
 
-void TestCaseRequestContext::SetupSession() {
-  const auto* test_case_name = test_case_.GetTestCaseName().c_str();
-  session_opts_.SetLogId(test_case_name);
-  Ort::Session session{env_, test_case_.GetModelUrl(), session_opts_};
-  LOGF_DEFAULT(INFO, "testing %s\n", test_case_name);
-  session_ = std::move(session);
+bool TestCaseRequestContext::SetupSession() {
+  ORT_TRY {
+    const auto* test_case_name = test_case_.GetTestCaseName().c_str();
+    session_opts_.SetLogId(test_case_name);
+    Ort::Session session{env_, test_case_.GetModelUrl(), session_opts_};
+    session_ = std::move(session);
+    LOGF_DEFAULT(INFO, "Testing %s\n", test_case_name);
+    return true;
+  }
+  ORT_CATCH(const Ort::Exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      LOGF_DEFAULT(ERROR, "Model %s failed to load:%s", test_case_.GetTestCaseName().c_str(), ex.what());
+      result_ = std::make_shared<TestCaseResult>(test_case_.GetDataCount(), EXECUTE_RESULT::NOT_SUPPORT, "");
+    });
+  }
+  return false;
 }
-
 
 std::shared_ptr<TestCaseResult> TestCaseRequestContext::Run(PThreadPool tpool,
                                                             const ITestCase& c, Ort::Env& env,
@@ -82,10 +91,12 @@ void TestCaseRequestContext::Request(const Callback& cb, PThreadPool tpool,
 
 void TestCaseRequestContext::RunAsync(size_t concurrent_runs) {
   assert(concurrent_runs > 0);
+
+  if (!SetupSession()) {
+    return OnTestCaseComplete();
+  }
+
   concurrent_runs = std::min(concurrent_runs, test_case_.GetDataCount());
-
-  SetupSession();
-
   // Reserve one refcount for this thread so the object does not get deleted when
   // several TestCases are run in parallel
   // by worker threads before this thread finishes. In exchange, we run one of the tasks.
@@ -119,30 +130,31 @@ void TestCaseRequestContext::OnDataTaskComplete(size_t task_id, EXECUTE_RESULT r
 
   auto before_we_done = data_tasks_inprogress_.fetch_sub(1, std::memory_order_acq_rel);
   assert(before_we_done > 0);
-  LOGF_DEFAULT(ERROR, "Finishing: %s data_task: %llu before_we_done: %llu\n",
-    test_case_.GetTestCaseName().c_str(),
-               static_cast<long long unsigned int>(task_id),
-               static_cast<long long unsigned int>(before_we_done));
   if (before_we_done == 1U) {
     CalculateAndLogStats();
-    if (cb_) {
-      std::unique_ptr<TestCaseRequestContext> self(this);
-      cb_.Invoke(std::move(result_));
-      // No member access beyond this point
-    } else {
-      std::lock_guard<std::mutex> g(mut_);
-      finished_ = true;
-      // We do not unlock here before notifying
-      // so the Waiting thread does not destroy us before
-      // we access cond_ in case it discovers finished_ is already true
-      cond_.notify_one();
-    }
+    OnTestCaseComplete();
+  }
+}
+
+void TestCaseRequestContext::OnTestCaseComplete() {
+  if (cb_) {
+    std::unique_ptr<TestCaseRequestContext> self(this);
+    cb_.Invoke(std::move(result_));
+    // No member access beyond this point
+  } else {
+    std::lock_guard<std::mutex> g(mut_);
+    finished_ = true;
+    // We do not unlock here before notifying
+    // so the Waiting thread does not destroy us before
+    // we access cond_ in case it discovers finished_ is already true
+    cond_.notify_one();
   }
 }
 
 void TestCaseRequestContext::RunSequentially(size_t repeat_count) {
-
-  SetupSession();
+  if (!SetupSession()) {
+    return;
+  }
 
   TIME_SPEC zero;
   SetTimeSpecToZero(&zero);
@@ -155,6 +167,7 @@ void TestCaseRequestContext::RunSequentially(size_t repeat_count) {
       AccumulateTimeSpec(&test_case_time_, &zero, &result.second);
     }
   }
+
   CalculateAndLogStats();
 }
 
@@ -195,7 +208,5 @@ void TestCaseRequestContext::CalculateAndLogStats() const {
     break;
   }
 }
-}
-}
-
-
+}  // namespace test
+}  // namespace onnxruntime
