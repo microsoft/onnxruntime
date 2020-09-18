@@ -14,13 +14,14 @@ namespace onnxruntime {
 namespace test {
 
 TestCaseRequestContext::TestCaseRequestContext(const Callback& cb, PThreadPool tp, const ITestCase& test_case, Ort::Env& env,
-                                               const Ort::SessionOptions& session_opts)
+                                               const Ort::SessionOptions& session_opts, size_t test_case_id)
     : cb_(cb),
       tp_(tp),
       test_case_(test_case),
       env_(env),
       session_opts_(session_opts.Clone()),
       session_(nullptr),
+      test_case_id_(test_case_id),
       allocator_(),
       result_(),
       data_tasks_started_(0),
@@ -58,8 +59,9 @@ std::shared_ptr<TestCaseResult> TestCaseRequestContext::Run(PThreadPool tpool,
     concurrent_runs = 1;
   }
 
+  // No callback, test_case_id is zero.
   Callback empty_cb;
-  TestCaseRequestContext ctx(empty_cb, tpool, c, env, session_opts);
+  TestCaseRequestContext ctx(empty_cb, tpool, c, env, session_opts, 0U);
 
   const size_t data_count = c.GetDataCount();
   if (concurrent_runs > 1 && data_count > 1) {
@@ -76,13 +78,14 @@ void TestCaseRequestContext::Request(const Callback& cb, PThreadPool tpool,
                                      const ITestCase& c,
                                      Ort::Env& env,
                                      const Ort::SessionOptions& session_opts,
+                                     size_t test_case_id,
                                      size_t concurrent_runs) {
   //temp hack. Because we have no resource control. We may not have enough memory to run this test in parallel
   if (c.GetTestCaseName() == "coreml_FNS-Candy_ImageNet") {
     concurrent_runs = 1;
   }
 
-  std::unique_ptr<TestCaseRequestContext> self(new TestCaseRequestContext(cb, tpool, c, env, session_opts));
+  std::unique_ptr<TestCaseRequestContext> self(new TestCaseRequestContext(cb, tpool, c, env, session_opts, test_case_id));
   CallableFactory<TestCaseRequestContext, void, size_t> f(self.get());
   auto runnable = f.GetCallable<&TestCaseRequestContext::RunAsync>();
   tpool->Schedule([runnable, concurrent_runs]() { runnable.Invoke(concurrent_runs); });
@@ -139,7 +142,7 @@ void TestCaseRequestContext::OnDataTaskComplete(size_t task_id, EXECUTE_RESULT r
 void TestCaseRequestContext::OnTestCaseComplete() {
   if (cb_) {
     std::unique_ptr<TestCaseRequestContext> self(this);
-    cb_.Invoke(std::move(result_));
+    cb_.Invoke(test_case_id_, std::move(result_));
     // No member access beyond this point
   } else {
     std::lock_guard<std::mutex> g(mut_);
