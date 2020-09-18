@@ -16,6 +16,8 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 using namespace onnxruntime;
 
+namespace {
+
 // helper to check dimensions match on concrete or symbolic value
 bool operator==(const ONNX_NAMESPACE::TensorShapeProto_Dimension& lhs, int value) {
   return utils::HasDimValue(lhs) && lhs.dim_value() == value;
@@ -213,6 +215,8 @@ void FuseBiasSoftmaxSubgraph(
   fused_node.SetExecutionProviderType(add_node.GetExecutionProviderType());
   graph_utils::FinalizeNodeFusion(graph, {add_node, softmax_node}, fused_node);
 }
+
+} // namespace anonymous
 
 namespace onnxruntime {
 

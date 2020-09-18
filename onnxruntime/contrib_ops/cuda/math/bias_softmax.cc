@@ -9,15 +9,32 @@ using namespace onnxruntime;
 using namespace onnxruntime::cuda;
 using namespace onnxruntime::contrib::cuda;
 
-template <typename T>
-struct DispatchBiasSoftmaxForward;
-
-template <typename T>
-struct DispatchBiasSoftMaxForwardViaDnnLibrary;
-
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+template <typename T>
+void DispatchBiasSoftmaxForwardImpl(
+    Tensor* output_tensor,
+    const Tensor* input_tensor,
+    const Tensor* input_bias_tensor,
+    int element_count,
+    int batch_count,
+    int batch_stride,
+    int bias_broadcast_size_per_batch);
+
+template <typename T>
+void DispatchBiasSoftMaxForwardViaDnnLibraryImpl(
+    cudnnHandle_t cudaDnnHandle,
+    int element_count,
+    int batch_count,
+    int broadcast_axis,
+    int softmax_axis,
+    const onnxruntime::TensorShape& X_shape,
+    const onnxruntime::Tensor* X,
+    const onnxruntime::TensorShape& B_shape,
+    const onnxruntime::Tensor* B,
+    onnxruntime::Tensor* Y);
 
 ONNX_OPERATOR_KERNEL_EX(
     BiasSoftmax,
@@ -58,13 +75,8 @@ Status BiasSoftmax::ComputeInternal(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-}  // namespace cuda
-}  // namespace contrib
-}  // namespace onnxruntime
-
 template <typename T>
-struct DispatchBiasSoftmaxForward {
-  void operator()(
+void DispatchBiasSoftmaxForward<T>::operator()(
       Tensor* output,
       const Tensor* input,
       const Tensor* input_bias,
@@ -80,12 +92,10 @@ struct DispatchBiasSoftmaxForward {
         batch_count,
         batch_stride,
         bias_broadcast_size_per_batch);
-  }
-};
+}
 
 template <typename T>
-struct DispatchBiasSoftMaxForwardViaDnnLibrary {
-  void operator()(
+void DispatchBiasSoftMaxForwardViaDnnLibrary<T>::operator()(
       cudnnHandle_t cudaDnnHandle,
       int element_count,
       int batch_count,
@@ -107,5 +117,8 @@ struct DispatchBiasSoftMaxForwardViaDnnLibrary {
         B_shape,
         B,
         Y);
-  }
-};
+}
+
+}  // namespace cuda
+}  // namespace contrib
+}  // namespace onnxruntime

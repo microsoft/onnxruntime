@@ -17,16 +17,20 @@
 using namespace onnxruntime;
 using namespace onnxruntime::cuda;
 
+namespace {
+
 template <typename T>
 struct AccumulateType {};
 template <>
-struct AccumulateType<float> { using type = float; };
-template <>
 struct AccumulateType<MLFloat16> { using type = float; };
+template <>
+struct AccumulateType<float> { using type = float; };
 template <>
 struct AccumulateType<double> { using type = double; };
 template <typename T>
 using AccType = typename AccumulateType<T>::type;
+
+} // namespace anonymous
 
 namespace onnxruntime {
 namespace contrib {

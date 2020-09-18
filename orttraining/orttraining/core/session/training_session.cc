@@ -154,7 +154,9 @@ Status TrainingSession::ConfigureForTraining(
                                          config.distributed_config.horizontal_parallel_size,
                                          config.distributed_config.pipeline_parallel_size});
 
-  const int32_t pipeline_stage_id = config.pipeline_config.has_value() ? DistributedRunContext::RankInGroup(WorkerGroupType::ModelParallel) : -1;
+  const int32_t pipeline_stage_id = config.pipeline_config.has_value() ?
+                              DistributedRunContext::RankInGroup(WorkerGroupType::ModelParallel) :
+                              -1;
 
   if (config.pipeline_config.has_value() && config.pipeline_config.value().do_partition) {
     // Apply online pipeline partition to graph obj. This needs to be done first before any graph
@@ -468,7 +470,8 @@ static Status BuildGradientGraphInternal(Graph& graph,
   // in this case, the original weigth names need to be kept when resolve graph in GradientGraphBuilder::Build.
   GradientGraphBuilder grad_graph_builder(&graph,
                                           {loss_function_output_name},
-                                          p_mixed_precision_node_arg_names_to_train != nullptr ? *p_mixed_precision_node_arg_names_to_train : node_arg_names_to_train,
+                                          p_mixed_precision_node_arg_names_to_train != nullptr ?
+                                              *p_mixed_precision_node_arg_names_to_train : node_arg_names_to_train,
                                           loss_function_output_name,
                                           gradient_graph_config,
                                           logger);
@@ -666,7 +669,8 @@ Status TrainingSession::EnableMixedPrecision(
       weights_to_train.cbegin(), weights_to_train.cend(),
       std::inserter(mixed_precision_weight_initializer_names, mixed_precision_weight_initializer_names.begin()),
       [&fp32_weight_name_to_mixed_precision_node_arg](const std::string& name) {
-        return fp32_weight_name_to_mixed_precision_node_arg.find(name) != fp32_weight_name_to_mixed_precision_node_arg.end() ? fp32_weight_name_to_mixed_precision_node_arg[name]->Name() : name;
+        return fp32_weight_name_to_mixed_precision_node_arg.find(name) != fp32_weight_name_to_mixed_precision_node_arg.end() ?
+               fp32_weight_name_to_mixed_precision_node_arg[name]->Name() : name;
       });
   mixed_precision_weight_initializer_names_ = std::move(mixed_precision_weight_initializer_names);
 
@@ -684,7 +688,8 @@ Status TrainingSession::BuildGradientGraph(const std::unordered_set<std::string>
   ORT_RETURN_IF_ERROR(BuildGradientGraphInternal(model_->MainGraph(),
                                                  loss_function_output_name,
                                                  weights_to_train_,
-                                                 mixed_precision_weight_initializer_names_.empty() ? nullptr : &mixed_precision_weight_initializer_names_,
+                                                 mixed_precision_weight_initializer_names_.empty() ?
+                                                     nullptr : &mixed_precision_weight_initializer_names_,
                                                  gradient_graph_config_,
                                                  logger));
 
@@ -803,7 +808,8 @@ Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveO
     ORT_RETURN_IF_ERROR(BuildGradientGraphInternal(new_model->MainGraph(),
                                                    actual_loss_name,
                                                    weights_to_train_,
-                                                   mixed_precision_weight_initializer_names_.empty() ? nullptr : &mixed_precision_weight_initializer_names_,
+                                                   mixed_precision_weight_initializer_names_.empty() ?
+                                                       nullptr : &mixed_precision_weight_initializer_names_,
                                                    gradient_graph_config_,
                                                    *session_logger_));
 
