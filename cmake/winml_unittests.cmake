@@ -152,6 +152,7 @@ file(GLOB winml_test_common_src CONFIGURE_DEPENDS
     "${WINML_TEST_SRC_DIR}/common/*.h"
     "${WINML_TEST_SRC_DIR}/common/*.cpp")
 add_library(winml_test_common STATIC ${winml_test_common_src})
+target_compile_options(winml_test_common PRIVATE /wd5205)  # workaround cppwinrt SDK bug https://github.com/microsoft/cppwinrt/issues/584
 add_dependencies(winml_test_common
   onnx
   winml_api

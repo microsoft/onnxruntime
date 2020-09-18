@@ -582,7 +582,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "OFF" if args.skip_winml_tests else "ON"),
         "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
         "-Donnxruntime_DEV_MODE=" + (
-            "OFF" if args.use_acl or args.use_armnn or args.use_winml or
+            "OFF" if args.use_acl or args.use_armnn or
             (args.ios and is_macOS()) else "ON"),
         "-DPYTHON_EXECUTABLE=" + sys.executable,
         "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
