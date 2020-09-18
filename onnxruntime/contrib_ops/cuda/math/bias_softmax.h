@@ -9,33 +9,16 @@
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
-  
-template <typename T>
-struct AccumulateType {};
-template <>
-struct AccumulateType<float> { using type = float; };
-template <>
-struct AccumulateType<MLFloat16> { using type = float; };
-template <>
-struct AccumulateType<double> { using type = double; };
-template <typename T>
-using AccType = typename AccumulateType<T>::type;
-
-template <typename T> 
-struct DispatchBiasSoftmaxForward;
 
 template <typename T>
 void DispatchBiasSoftmaxForwardImpl(
-    Tensor* output_tensor, 
-    const Tensor* input_tensor, 
-    const Tensor* input_bias_tensor, 
-    int element_count, 
-    int batch_count, 
-    int batch_stride, 
+    Tensor* output_tensor,
+    const Tensor* input_tensor,
+    const Tensor* input_bias_tensor,
+    int element_count,
+    int batch_count,
+    int batch_stride,
     int bias_broadcast_size_per_batch);
-
-template <typename T> 
-struct DispatchBiasSoftMaxForwardViaDnnLibrary;
 
 template <typename T>
 void DispatchBiasSoftMaxForwardViaDnnLibraryImpl(

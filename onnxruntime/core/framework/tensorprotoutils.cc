@@ -79,8 +79,8 @@ bool operator==(const ONNX_NAMESPACE::TensorShapeProto_Dimension& l,
 
 bool operator!=(const ONNX_NAMESPACE::TensorShapeProto_Dimension& l,
                 const ONNX_NAMESPACE::TensorShapeProto_Dimension& r) {
-    return !(l == r);
-} 
+  return !(l == r);
+}
 
 }  // namespace ONNX_NAMESPACE
 

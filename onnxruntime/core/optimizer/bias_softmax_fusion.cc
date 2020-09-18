@@ -14,7 +14,7 @@
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
-namespace onnxruntime {
+using namespace onnxruntime;
 
 // helper to check dimensions match on concrete or symbolic value
 bool operator==(const ONNX_NAMESPACE::TensorShapeProto_Dimension& lhs, int value) {
@@ -29,8 +29,7 @@ void select_input_on_lhs_condition(bool lhs_condition, Node& add_node, NodeArg*&
   if (lhs_condition) {
     input = add_node.MutableInputDefs()[0];
     mask = add_node.MutableInputDefs()[1];
-  }
-  else {
+  } else {
     input = add_node.MutableInputDefs()[1];
     mask = add_node.MutableInputDefs()[0];
   }
@@ -38,61 +37,50 @@ void select_input_on_lhs_condition(bool lhs_condition, Node& add_node, NodeArg*&
 
 // pattern match on dropout(softmax(input + mask)) subgraph
 bool TryBiasSoftmaxSubgraphMatch(Graph& graph, Node& start, Node*& add, Node*& softmax) {
+  Node& node = start;
+  add = softmax = nullptr;
 
-    Node& node = start; 
-    add = softmax = nullptr;
+  // check node is add and has single output
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7}) ||
+      !graph_utils::IsSupportedProvider(node, {kCudaExecutionProvider}) ||
+      !optimizer_utils::CheckOutputEdges(graph, node, 1)) {
+    return false;
+  }
 
-    // check node is add and has single output
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7}) ||
-        !graph_utils::IsSupportedProvider(node, {kCudaExecutionProvider}) ||
-        !optimizer_utils::CheckOutputEdges(graph, node, 1)) {
-      return false;
-    }
+  // check shape information is not available for both add inputs
+  Node& add_node = node;
+  NodeArg* input1 = add_node.MutableInputDefs()[0];
+  NodeArg* input2 = add_node.MutableInputDefs()[1];
+  const TensorShapeProto* S1 = input1->Shape();
+  const TensorShapeProto* S2 = input2->Shape();
+  if (S1 == nullptr || S2 == nullptr || S1->dim_size() < 1 || S2->dim_size() < 1) {
+    return false;
+  }
 
-    // check shape information is not available for both add inputs
-    Node& add_node = node;
-    NodeArg* input1 = add_node.MutableInputDefs()[0];
-    NodeArg* input2 = add_node.MutableInputDefs()[1];
-    const TensorShapeProto* S1 = input1->Shape();
-    const TensorShapeProto* S2 = input2->Shape();
-    if (S1 == nullptr || S2 == nullptr || S1->dim_size() < 1 || S2->dim_size() < 1) {
-      return false;
-    }
+  // check add is only consumed by softmax with matching exec provider
+  Node& softmax_node = *graph.GetNode(add_node.OutputNodesBegin()->Index());
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(softmax_node, "Softmax", {1, 11}) ||
+      softmax_node.GetExecutionProviderType() != add_node.GetExecutionProviderType()) {
+    return false;
+  }
 
-    // check add is only consumed by softmax with matching exec provider
-    auto p = add_node.OutputNodesBegin();
-    if (p == add_node.OutputNodesEnd()) {
-      return false;
-    }
-    Node& softmax_node = *graph.GetNode(p->Index());
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(softmax_node, "Softmax", {1, 11}) ||
-        softmax_node.GetExecutionProviderType() != add_node.GetExecutionProviderType()) {
-      return false;
-    }
-
-    // can't perform conversion if output is graph output
-    if (!graph.GetNodeOutputsInGraphOutputs(add_node).empty()) {
-      return false;
-    }
-
-    // pattern match succeeded
-    add = &add_node; 
-    softmax = &softmax_node;
-    return true;
+  // pattern match succeeded
+  add = &add_node;
+  softmax = &softmax_node;
+  return true;
 }
 
 bool TrySelectInputAndBiasWithAlignment(
-  Node& add_node, 
-  Node& softmax_node, 
-  NodeArg *&input, 
-  NodeArg *&mask,
-  int& broadcast_axis,
-  int& softmax_axis) {
+    Node& add_node,
+    Node& softmax_node,
+    NodeArg*& input,
+    NodeArg*& mask,
+    int& broadcast_axis,
+    int& softmax_axis) {
+  // check mask can broadcast across input batches with simple division
+  // -----------------------------------------------------------------------
 
-    // check mask can broadcast across input batches with simple division
-    // -----------------------------------------------------------------------
-
-    /* Here we check input and mask dimensions are as expected:
+  /* Here we check input and mask dimensions are as expected:
 
         Let 
             input shape = [ a0 ... a(B-1) aB a(B+1) ... a(k-1) ak a(k+1) ... a(N-1) ] 
@@ -111,123 +99,122 @@ bool TrySelectInputAndBiasWithAlignment(
               and sequence mask shape = [batch_size,     1,         1,      seq_length]
     */
 
-    NodeArg* input1 = add_node.MutableInputDefs()[0];
-    NodeArg* input2 = add_node.MutableInputDefs()[1];
+  NodeArg* input1 = add_node.MutableInputDefs()[0];
+  NodeArg* input2 = add_node.MutableInputDefs()[1];
 
-    // confirm all dimensions starting from softmax axis match for input and mask
-    bool singlebatch_shape_matches = true;
+  // confirm all dimensions starting from softmax axis match for input and mask
+  bool singlebatch_shape_matches = true;
 
-    int axis = 1;
-    auto& softmax_attr = softmax_node.GetAttributes();
-    if (softmax_attr.find("axis") != softmax_attr.end()) {
-      auto& axis_attr = softmax_attr.at("axis");
-      axis = utils::HasInt(axis_attr)? (int)axis_attr.i() : 1;
+  int axis = 1;
+  auto& softmax_attr = softmax_node.GetAttributes();
+  if (softmax_attr.find("axis") != softmax_attr.end()) {
+    auto& axis_attr = softmax_attr.at("axis");
+    axis = utils::HasInt(axis_attr) ? (int)axis_attr.i() : 1;
+  }
+
+  int N1 = input1->Shape()->dim_size();
+  int N2 = input2->Shape()->dim_size();
+  int k = (int)HandleNegativeAxis(axis, std::max({N1, N2}));
+  int singlebatch_rank = std::max({N1 - k, N2 - k});
+
+  if (singlebatch_rank > N1 || singlebatch_rank > N2) {
+    return false;
+  }
+  for (int i = 1; i <= singlebatch_rank; i++) {
+    if (input1->Shape()->dim(N1 - i) != input2->Shape()->dim(N2 - i)) {
+      singlebatch_shape_matches = false;
+      break;
+    }
+  }
+
+  if (!singlebatch_shape_matches) {
+    return false;
+  }
+
+  // identify broadcast dimensions (i.e. B to k-1 in expression above)
+  // also distinguish between input and mask in this process
+  bool mask_can_simple_broadcast = true;
+
+  int B;
+
+  // case 1: mask rank == input rank
+  if (N1 == N2) {
+    // discover B (first axis where shapes don't match)
+    B = 0;
+    while (B < k && input1->Shape()->dim(B) == input2->Shape()->dim(B)) {
+      B++;
     }
 
-    int N1 = input1->Shape()->dim_size();
-    int N2 = input2->Shape()->dim_size();
-    int k = (int)HandleNegativeAxis(axis, std::max({N1, N2}));
-    int singlebatch_rank = std::max({N1-k, N2-k});
+    // use B dimension to distinguish input and mask
+    select_input_on_lhs_condition(input1->Shape()->dim(B) != 1, add_node, input, mask);
 
-    if (singlebatch_rank > N1 || singlebatch_rank > N2) {
-      return false;
-    }
-    for (int i = 1; i <= singlebatch_rank; i++) {
-      if (input1->Shape()->dim(N1-i) != input2->Shape()->dim(N2-i)) {
-        singlebatch_shape_matches = false;
+    // confirm mask dimensions are ones on broadcast axes B to (k-1)
+    for (int i = B; i < k; i++) {
+      if (mask->Shape()->dim(i) != 1) {
+        mask_can_simple_broadcast = false;
         break;
       }
     }
+  }
 
-    if (!singlebatch_shape_matches) {
-      return false;
-    }
+  // case 2: mask rank < input rank
+  else {
+    B = 0;
+    select_input_on_lhs_condition(N1 > N2, add_node, input, mask);
 
-    // identify broadcast dimensions (i.e. B to k-1 in expression above)
-    // also distinguish between input and mask in this process
-    bool mask_can_simple_broadcast = true;
-
-    int B;
-
-     // case 1: mask rank == input rank
-    if (N1 == N2) {
-
-      // discover B (first axis where shapes don't match)
-      B = 0;
-      while (B < k && input1->Shape()->dim(B) == input2->Shape()->dim(B)) {
-        B++;
-      }
-
-      // use B dimension to distinguish input and mask
-      select_input_on_lhs_condition(input1->Shape()->dim(B) != 1, add_node, input, mask);
-
-      // confirm mask dimensions are ones on broadcast axes B to (k-1)
-      for (int i = B; i < k; i++) {
-        if (mask->Shape()->dim(i) != 1) {
-          mask_can_simple_broadcast = false;
-          break;
-        }
+    // confirm any mask dimensions are ones before softmax axis
+    int mask_rank = mask->Shape()->dim_size();
+    for (int i = 0; i < mask_rank - singlebatch_rank; i++) {
+      if (mask->Shape()->dim(i) != 1) {
+        mask_can_simple_broadcast = false;
+        break;
       }
     }
+  }
 
-    // case 2: mask rank < input rank
-    else { 
+  if (!mask_can_simple_broadcast) {
+    return false;
+  }
 
-      B = 0;
-      select_input_on_lhs_condition(N1 > N2, add_node, input, mask);
-
-      // confirm any mask dimensions are ones before softmax axis
-      int mask_rank = mask->Shape()->dim_size();
-      for (int i = 0; i < mask_rank - singlebatch_rank; i++) {
-        if (mask->Shape()->dim(i) != 1) {
-          mask_can_simple_broadcast = false;
-          break;
-        }
-      }
-    }
-
-    if (!mask_can_simple_broadcast) {
-      return false;
-    }
-
-    broadcast_axis = B;
-    softmax_axis = k;
-    return true;
+  broadcast_axis = B;
+  softmax_axis = k;
+  return true;
 }
 
 // coalesce subgraph nodes into fused node
 void FuseBiasSoftmaxSubgraph(
-  Graph& graph, 
-  Node& add_node, 
-  Node& softmax_node, 
-  NodeArg *input, 
-  NodeArg *mask,
-  int broadcast_axis,
-  int softmax_axis) {
+    Graph& graph,
+    Node& add_node,
+    Node& softmax_node,
+    NodeArg* input,
+    NodeArg* mask,
+    int broadcast_axis,
+    int softmax_axis) {
+  std::vector<NodeArg*> fused_inputs{input, mask};
 
-    std::vector<NodeArg*> fused_inputs{input, mask};
-
-    std::string fused_desc = 
+  std::string fused_desc =
       "fused " + add_node.Name() + " and " + softmax_node.Name() + " into softmax(input + bias)";
 
-    std::string op_type = "BiasSoftmax";
-    Node& fused_node = graph.AddNode(graph.GenerateNodeName(op_type),
-                                    op_type,
-                                    fused_desc,
-                                    fused_inputs,
-                                    {},
-                                    {},
-                                    kMSDomain);
+  std::string op_type = "BiasSoftmax";
+  Node& fused_node = graph.AddNode(graph.GenerateNodeName(op_type),
+                                   op_type,
+                                   fused_desc,
+                                   fused_inputs,
+                                   {},
+                                   {},
+                                   kMSDomain);
 
-    // add softmax axis and broadcast axis (to simplify runtime logic)
-    // recall broadcast along axes B ... (k-1)
-    fused_node.AddAttribute("softmax_axis", static_cast<int64_t>(softmax_axis));
-    fused_node.AddAttribute("broadcast_axis", static_cast<int64_t>(broadcast_axis));
+  // add softmax axis and broadcast axis (to simplify runtime logic)
+  // recall broadcast along axes B ... (k-1)
+  fused_node.AddAttribute("softmax_axis", static_cast<int64_t>(softmax_axis));
+  fused_node.AddAttribute("broadcast_axis", static_cast<int64_t>(broadcast_axis));
 
-    // finalize node fusion (e.g. remove old nodes and shift outputs)
-    fused_node.SetExecutionProviderType(add_node.GetExecutionProviderType());
-    graph_utils::FinalizeNodeFusion(graph, {add_node, softmax_node}, fused_node);
+  // finalize node fusion (e.g. remove old nodes and shift outputs)
+  fused_node.SetExecutionProviderType(add_node.GetExecutionProviderType());
+  graph_utils::FinalizeNodeFusion(graph, {add_node, softmax_node}, fused_node);
 }
+
+namespace onnxruntime {
 
 Status BiasSoftmaxFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);

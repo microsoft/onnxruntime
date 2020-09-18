@@ -14,11 +14,23 @@
 #include "core/providers/cuda/cu_inc/binary_elementwise_impl.cuh"
 #include "core/providers/cuda/math/binary_elementwise_ops_impl_functors.cuh"
 
+using namespace onnxruntime;
+using namespace onnxruntime::cuda;
+
+template <typename T>
+struct AccumulateType {};
+template <>
+struct AccumulateType<float> { using type = float; };
+template <>
+struct AccumulateType<MLFloat16> { using type = float; };
+template <>
+struct AccumulateType<double> { using type = double; };
+template <typename T>
+using AccType = typename AccumulateType<T>::type;
+
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
-
-using namespace onnxruntime::cuda;
 
 // Duplicated softmax_impl.cu here
 // So far attempt to use shared kernel with additional template resulted in lost performance

@@ -2266,13 +2266,13 @@ TEST_F(GraphTransformationTests, FastGeluWithBiasUseGraphInputFusionTest2) {
 }
 
 struct BiasSoftmaxFusionTester {
-  std::shared_ptr<Model> p_model;
+  std::shared_ptr<Model> p_model_;
   Status model_load_;
   onnxruntime::logging::Logger* logger_;
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
+  onnxruntime::GraphTransformerManager graph_transformation_mgr_;
 
-  bool GetAxis(const std::string op_type, const std::string name, int *axis) {
-    for (auto& node : p_model->MainGraph().Nodes()) {
+  bool GetAxis(const std::string op_type, const std::string name, int* axis) {
+    for (auto& node : p_model_->MainGraph().Nodes()) {
       if (node.OpType() == op_type) {
         auto& softmax_attr = node.GetAttributes();
         if (softmax_attr.find(name) != softmax_attr.end()) {
@@ -2281,28 +2281,27 @@ struct BiasSoftmaxFusionTester {
           *axis = (int)axis_attr.i();
           return true;
         }
-      }    
+      }
     }
     // not found
     return false;
   }
 
   BiasSoftmaxFusionTester(
-    const PathString& model_uri, 
-    onnxruntime::logging::Logger* logger,
-    bool on_cuda_ = true
-  ) : logger_(logger), graph_transformation_mgr{5} {
-    model_load_ = Model::Load(model_uri, p_model, nullptr, *logger_);
+      const PathString& model_uri,
+      onnxruntime::logging::Logger* logger,
+      bool on_cuda_ = true) : logger_(logger), graph_transformation_mgr_{5} {
+    model_load_ = Model::Load(model_uri, p_model_, nullptr, *logger_);
 
     // move to cuda since fusion only takes place in that case
     if (on_cuda_) {
-      for (auto& node : p_model->MainGraph().Nodes()) {
+      for (auto& node : p_model_->MainGraph().Nodes()) {
         node.SetExecutionProviderType(kCudaExecutionProvider);
       }
     }
 
-    graph_transformation_mgr.Register(
-      onnxruntime::make_unique<BiasSoftmaxFusion>(), TransformerLevel::Level2);
+    graph_transformation_mgr_.Register(
+        onnxruntime::make_unique<BiasSoftmaxFusion>(), TransformerLevel::Level2);
   }
 
   void TestFusionOccurs(int expected_broadcast_axis) {
@@ -2311,30 +2310,32 @@ struct BiasSoftmaxFusionTester {
     int expected_softmax_axis = 1;
     GetAxis("Softmax", "axis", &expected_softmax_axis);
 
-    auto ret = graph_transformation_mgr.ApplyTransformers(p_model->MainGraph(), TransformerLevel::Level2, *logger_);
-    ASSERT_TRUE(ret.IsOK());
+    auto ret = graph_transformation_mgr_.ApplyTransformers(p_model->MainGraph(), TransformerLevel::Level2, *logger_);
+    ASSERT_STATUS_OK(ret);
     std::map<std::string, int> op_to_count = CountOpsInGraph(p_model->MainGraph());
-    
-    ASSERT_TRUE(op_to_count["Add"] == 0);
-    ASSERT_TRUE(op_to_count["Softmax"] == 0);
-    ASSERT_TRUE(op_to_count["BiasSoftmax"] == 1);
+
+    ASSERT_EQ(op_to_count["Add"], 0);
+    ASSERT_EQ(op_to_count["Softmax"], 0);
+    ASSERT_EQ(op_to_count["BiasSoftmax"], 1);
 
     int actual_softmax_axis, actual_broadcast_axis;
     ASSERT_TRUE(GetAxis("BiasSoftmax", "softmax_axis", &actual_softmax_axis));
-    ASSERT_TRUE(actual_softmax_axis == expected_softmax_axis);
+    ASSERT_EQ(actual_softmax_axis, expected_softmax_axis);
 
     ASSERT_TRUE(GetAxis("BiasSoftmax", "broadcast_axis", &actual_broadcast_axis));
-    ASSERT_TRUE(actual_broadcast_axis == expected_broadcast_axis);
+    ASSERT_EQ(actual_broadcast_axis, expected_broadcast_axis);
   }
 
   void TestNoFusionOccurs() {
     ASSERT_STATUS_OK(model_load_);
-    auto ret = graph_transformation_mgr.ApplyTransformers(p_model->MainGraph(), TransformerLevel::Level2, *logger_);
-    ASSERT_TRUE(ret.IsOK());
+
+    auto ret = graph_transformation_mgr_.ApplyTransformers(p_model->MainGraph(), TransformerLevel::Level2, *logger_);
+    ASSERT_STATUS_OK(ret);
+
     std::map<std::string, int> op_to_count = CountOpsInGraph(p_model->MainGraph());
-    ASSERT_TRUE(op_to_count["Add"] == 1);
-    ASSERT_TRUE(op_to_count["Softmax"] == 1);
-    ASSERT_TRUE(op_to_count["BiasSoftmax"] == 0);
+    ASSERT_EQ(op_to_count["Add"], 1);
+    ASSERT_EQ(op_to_count["Softmax"], 1);
+    ASSERT_EQ(op_to_count["BiasSoftmax"], 0);
   }
 };
 

@@ -179,8 +179,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
     return transformers;
   }
 
-  // Some transformers have side-effect like result is not exactly same.
-  // These transformers could only be enabled by custom transformer list.
+// Some transformers have side-effect like result is not exactly same.
+// These transformers could only be enabled by custom transformer list.
 #ifndef DISABLE_CONTRIB_OPS
   if (level == TransformerLevel::Level2) {
     std::unordered_set<std::string> cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};
