@@ -213,10 +213,7 @@ def modelclass_dispatcher(model_name, custom_model_class):
 
 def load_pretrained_model(model_name, config, cache_dir, custom_model_class, if_tf_model=False):
     model_class_name = modelclass_dispatcher(model_name, custom_model_class)
-    
-    if model_class_name == "GPT2ModelNoPastState":
-        return GPT2ModelNoPastState.from_pretrained(model_name, config=config, cache_dir=cache_dir)
-    
+
     if model_class_name == "GPT2ModelNoPastState":
         if is_tf_model:
             raise NotImplementedError("TFGPT2ModelNoPastState is currently not supported.")
