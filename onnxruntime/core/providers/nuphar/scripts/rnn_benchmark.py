@@ -116,7 +116,7 @@ def perf_test(rnn_type, num_threads, input_dim, hidden_dim, bidirectional, layer
     with ScopedSetNumThreads(num_threads) as scoped_set_num_threads:
         # run Scan model converted from original in Nuphar
         from .model_editor import convert_to_scan_model
-        from .symbolic_shape_infer import SymbolicShapeInference
+        from ..tools.symbolic_shape_infer import SymbolicShapeInference
         scan_model_name = os.path.splitext(model_name)[0] + '_scan.onnx'
         convert_to_scan_model(model_name, scan_model_name)
         # note that symbolic shape inference is needed because model has symbolic batch dim, thus init_state is ConstantOfShape

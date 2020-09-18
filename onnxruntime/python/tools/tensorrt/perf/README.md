@@ -154,7 +154,5 @@ The output of running benchmark:
 
 ```
 ## Dependencies
-- This test script uses following script to infer shape in the model for TensorRT execution provider. 
-https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/providers/nuphar/scripts/symbolic_shape_infer.py
 - When inferencing model using CUDA float16, this script following script to convert nodes in model graph from float32 to float16. It also modifies the converting script a little bit to better cover more model graph conversion.
 https://github.com/microsoft/onnxconverter-common/blob/master/onnxconverter_common/float16.py
