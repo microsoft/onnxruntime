@@ -68,10 +68,10 @@ def convert(model_path: str):
 def parse_args():
     parser = argparse.ArgumentParser(
         os.path.basename(__file__),
-        description='''Convert the ONNX format model/s in the provided directory to ORT format models. 
+        description='''Convert the ONNX format model/s in the provided directory to ORT format models.
         All files with a `.onnx` extension will be processed. For each one, an ORT format model will be created in the
         same directory. A configuration file will also be created called `required_operators.config`, and will contain
-        the list of required operators for all converted models. 
+        the list of required operators for all converted models.
         This configuration file should be used as input to the minimal build'''
     )
 
