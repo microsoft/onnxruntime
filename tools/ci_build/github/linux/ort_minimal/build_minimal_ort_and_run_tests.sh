@@ -28,7 +28,7 @@ cp /onnxruntime_src/onnxruntime/test/testdata/ort_github_issue_4031.onnx /home/o
     --minimal_build \
     --disable_ml_ops \
     --include_ops_by_model /home/onnxruntimedev/.test_data/models_to_exclude/ \
-    --include_ops_by_config /home/onnxruntimedev/.test_data/included_ops_config.txt
+    --include_ops_by_config /home/onnxruntimedev/.test_data/ort_minimal_e2e_test_data/required_operators.config
 
 # Run the e2e test cases
 /build/Debug/onnx_test_runner /home/onnxruntimedev/.test_data/ort_minimal_e2e_test_data
