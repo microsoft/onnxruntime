@@ -2758,11 +2758,11 @@ Example 4:
         auto type = ctx.getAttribute("stash_type")->i();
         if (ctx.getNumOutputs() > 1){
           auto output_type = ctx.getOutputType(1);
-          output_type->mutable_tensor_type()->set_elem_type(type);
+          output_type->mutable_tensor_type()->set_elem_type(static_cast<int32_t>(type));
         }
         if (ctx.getNumOutputs() > 2){
           auto output_type = ctx.getOutputType(2);
-          output_type->mutable_tensor_type()->set_elem_type(type);
+          output_type->mutable_tensor_type()->set_elem_type(static_cast<int32_t>(type));
         }
         if (!hasNInputShapes(ctx, 1)) {
           return;
