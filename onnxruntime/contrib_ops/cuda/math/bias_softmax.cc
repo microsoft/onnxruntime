@@ -28,11 +28,11 @@ Status BiasSoftmax::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* B = ctx->Input<Tensor>(1);
   Tensor* Y = ctx->Output(0, X_shape);
 
-  const int64_t softmax_axis = HandleNegativeAxis(softmax_axis_, X_shape.NumDimensions());
+  const int softmax_axis = static_cast<int>(HandleNegativeAxis(softmax_axis_, X_shape.NumDimensions()));
   const int N = static_cast<int>(X_shape.SizeToDimension(softmax_axis));
   const int D = static_cast<int>(X_shape.SizeFromDimension(softmax_axis));
 
-  const int64_t broadcast_axis = HandleNegativeAxis(broadcast_axis_, X_shape.NumDimensions());
+  const int broadcast_axis = static_cast<int>(HandleNegativeAxis(broadcast_axis_, X_shape.NumDimensions()));
   const int broadcast_size = N/static_cast<int>(X_shape.SizeToDimension(broadcast_axis));
 
   const size_t elem_size = X->DataType()->Size();

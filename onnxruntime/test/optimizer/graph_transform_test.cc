@@ -2288,7 +2288,7 @@ struct BiasSoftmaxFusionTester {
   }
 
   BiasSoftmaxFusionTester(
-    std::string model_uri, 
+    const PathString& model_uri, 
     onnxruntime::logging::Logger* logger,
     bool on_cuda_ = true
   ) : logger_(logger), graph_transformation_mgr{5} {
