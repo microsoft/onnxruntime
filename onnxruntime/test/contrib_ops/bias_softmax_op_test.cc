@@ -20,8 +20,8 @@ namespace test {
 class BiasSoftmaxTester {
 
   std::vector<int64_t> in_shape_;
-  int broadcast_axis_;
-  int softmax_axis_;
+  int64_t broadcast_axis_;
+  int64_t softmax_axis_;
   bool use_float16_;
 
   std::vector<float> in_data_;
@@ -30,16 +30,16 @@ class BiasSoftmaxTester {
   std::vector<float> out_data_;
   std::vector<int64_t> out_shape_;
 
-  int nelements_;
-  int nbatches_;
-  int broadcast_size_;
+  int64_t nelements_;
+  int64_t nbatches_;
+  int64_t broadcast_size_;
 
 public:
   BiasSoftmaxTester(
       std::vector<int64_t> in_shape,
       std::vector<int64_t> bias_shape,
-      int broadcast_axis, 
-      int softmax_axis, 
+      int64_t broadcast_axis, 
+      int64_t softmax_axis, 
       bool use_float16) :
     in_shape_(in_shape), 
     broadcast_axis_(broadcast_axis), 
@@ -50,7 +50,7 @@ public:
     // auto-set bias shape if not provided
     if (bias_shape.size() == 0) {
       bias_shape_ = in_shape_;
-      for (int i = broadcast_axis; i < softmax_axis; i++)
+      for (int64_t i = broadcast_axis; i < softmax_axis; i++)
         bias_shape_[i] = 1;
     }
 
@@ -58,20 +58,20 @@ public:
     nelements_ = std::accumulate(
       in_shape_.cbegin() + softmax_axis_, 
       in_shape_.cend(), 
-      1, std::multiplies<int>());
+      1, std::multiplies<int64_t>());
 
     // input batches
     nbatches_ = std::accumulate(
       in_shape_.cbegin(), 
       in_shape_.cbegin() + softmax_axis, 
-      1, std::multiplies<int>());
+      1, std::multiplies<int64_t>());
 
     // bias broadcast repeat count
     // broadcast is along dimensions [broadcast_axis, softmax_axis)
     broadcast_size_ = std::accumulate(
       in_shape_.cbegin() + broadcast_axis_, 
       in_shape_.cbegin() + softmax_axis_, 
-      1, std::multiplies<int>());
+      1, std::multiplies<int64_t>());
 
     FillInputs();
     ComputeInternal();
@@ -83,20 +83,20 @@ public:
 
     // Need to keep enough output values above OpTester threshold of 0.005
     // (Recall softmax normalizes outputs to sum to 1.000)
-    auto allow_fill = [n=nelements_](int i) { 
+    auto allow_fill = [n=nelements_](int64_t i) { 
       return i < 50 || i >= n-50; 
     };
 
     size_t len = nelements_ * nbatches_;
     in_data_.resize(len);
-    for (int b = 0; b < nbatches_; b++)
-    for (int i = 0; i < nelements_; i++)
+    for (int64_t b = 0; b < nbatches_; b++)
+    for (int64_t i = 0; i < nelements_; i++)
       in_data_[i] = allow_fill(i)? -5.0f + 10.0f*((float)rand()/(RAND_MAX)) : -10000.0f;
     
     len = nelements_ * nbatches_ / broadcast_size_;
     bias_data_.resize(len);
-    for (int b = 0; b < nbatches_ / broadcast_size_; b++)
-    for (int i = 0; i < nelements_; i++)
+    for (int64_t b = 0; b < nbatches_ / broadcast_size_; b++)
+    for (int64_t i = 0; i < nelements_; i++)
       bias_data_[i] = allow_fill(i)? -5.0f + 10.0f*((float)rand()/(RAND_MAX)) : 0.0f;
   }
 
@@ -106,15 +106,15 @@ public:
     out_shape_ = in_shape_;
 
     // for every batch in input
-    int B = nbatches_, N = nelements_;
-    for (int batch = 0; batch < B; batch++) {
+    int64_t B = nbatches_, N = nelements_;
+    for (int64_t batch = 0; batch < B; batch++) {
 
       // offset to batch in input and bias
-      int b = batch * N;
-      int c = batch / broadcast_size_ * N;
+      int64_t b = batch * N;
+      int64_t c = batch / broadcast_size_ * N;
 
       // add bias to input
-      for (int i = 0; i < N; i++) {
+      for (int64_t i = 0; i < N; i++) {
         out_data_[b + i] = in_data_[b + i] + bias_data_[c + i];
       }
 
@@ -142,8 +142,8 @@ public:
     if (HasCudaEnvironment(min_cuda_architecture)) {
 
       OpTester tester("BiasSoftmax", 1, onnxruntime::kMSDomain);
-      tester.AddAttribute<int64_t>("softmax_axis", (int64_t)softmax_axis_);
-      tester.AddAttribute<int64_t>("broadcast_axis", (int64_t)broadcast_axis_);
+      tester.AddAttribute<int64_t>("softmax_axis", softmax_axis_);
+      tester.AddAttribute<int64_t>("broadcast_axis", broadcast_axis_);
 
       if (use_float16_) {
         tester.AddInput<MLFloat16>("data", in_shape_, ToFloat16(in_data_));
