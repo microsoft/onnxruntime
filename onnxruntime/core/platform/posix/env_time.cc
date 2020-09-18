@@ -54,12 +54,12 @@ void SetTimeSpecToZero(TIME_SPEC* value) {
 void AccumulateTimeSpec(TIME_SPEC* base, TIME_SPEC* y, TIME_SPEC* x) {
   /* Perform the carry for the later subtraction by updating y. */
   if (x->tv_nsec < y->tv_nsec) {
-    int nsec = (y->tv_nsec - x->tv_nsec) / 1000000000 + 1;
+    long nsec = (y->tv_nsec - x->tv_nsec) / 1000000000 + 1;
     y->tv_nsec -= 1000000000 * nsec;
     y->tv_sec += nsec;
   }
   if (x->tv_nsec - y->tv_nsec > 1000000000) {
-    int nsec = (x->tv_nsec - y->tv_nsec) / 1000000000;
+    long nsec = (x->tv_nsec - y->tv_nsec) / 1000000000;
     y->tv_nsec += 1000000000 * nsec;
     y->tv_sec -= nsec;
   }

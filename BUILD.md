@@ -1060,19 +1060,25 @@ Android NNAPI Execution Provider can be built using building commands in [Androi
    Specify the minimum version of the target platform (iOS) on which the target binaries are to be deployed.
 * Code Signing
 
-   The onnxruntime library is not code signed, it may be required or desired to code sign the library for iOS devices. For more information, see [Code Signing](https://developer.apple.com/support/code-signing/).
+   If the development team ID which has a valid code signing certificate is specified, Xcode will code sign the onnxruntime library in the building process, otherwise, the onnxruntime will be built without code signing. It may be required or desired to code sign the library for iOS devices. For more information, see [Code Signing](https://developer.apple.com/support/code-signing/).
 
 #### Build Instructions
 Run one of the following build scripts from the ONNX Runtime repository root,
-##### Cross build for iOS device
-```
-/build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
-           --ios --ios_sysroot iphoneos --osx_arch arm64 --apple_deploy_target <minimal iOS version>
-```
 ##### Cross build for iOS simulator
 ```
-/build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
+./build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
            --ios --ios_sysroot iphonesimulator --osx_arch x86_64 --apple_deploy_target <minimal iOS version>
+```
+##### Cross build for iOS device
+```
+./build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
+           --ios --ios_sysroot iphoneos --osx_arch arm64 --apple_deploy_target <minimal iOS version>
+```
+##### Cross build for iOS device and code sign the library
+```
+./build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
+           --ios --ios_sysroot iphoneos --osx_arch arm64 --apple_deploy_target <minimal iOS version> \
+           --xcode_code_signing_team_id <Your Apple developmemt team ID>
 ```
 ---
 

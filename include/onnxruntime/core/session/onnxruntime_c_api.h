@@ -1009,7 +1009,7 @@ struct OrtApi {
    * This function only works for numeric tensors.
    * This is a no-copy method whose pointer is only valid until the backing OrtValue is free'd.
    */
-  ORT_API2_STATUS(TensorAt, _Inout_ OrtValue* value, size_t* location_values, size_t location_values_count, _Outptr_ void** out);
+  ORT_API2_STATUS(TensorAt, _Inout_ OrtValue* value, const int64_t* location_values, size_t location_values_count, _Outptr_ void** out);
 
   /**
    * Creates an allocator instance and registers it with the env to enable
@@ -1034,6 +1034,23 @@ struct OrtApi {
    */
   ORT_API2_STATUS(SessionGetProfilingStartTimeNs, _In_ const OrtSession* sess, _Outptr_ uint64_t* out);
 
+  /**
+ * Use this API to configure the global thread pool options to be used in the call to CreateEnvWithGlobalThreadPools.
+ * A value of 0 means ORT will pick the default.
+ * A value of 1 means the invoking thread will be used; no threads will be created in the thread pool.
+ */
+  ORT_API2_STATUS(SetGlobalIntraOpNumThreads, _Inout_ OrtThreadingOptions* tp_options, int intra_op_num_threads);
+  ORT_API2_STATUS(SetGlobalInterOpNumThreads, _Inout_ OrtThreadingOptions* tp_options, int inter_op_num_threads);
+
+  /**
+   * Use this API to configure the global thread pool options to be used in the call to CreateEnvWithGlobalThreadPools.
+   * Allow spinning of thread pools when their queues are empty. This API will set the value for both
+   * inter_op and intra_op threadpools.
+   * \param allow_spinning valid values are 1 and 0.
+   * 1: threadpool will spin to wait for queue to become non-empty, 0: it won't spin.
+   * Prefer a value of 0 if your CPU usage is very high.
+   */
+  ORT_API2_STATUS(SetGlobalSpinControl, _Inout_ OrtThreadingOptions* tp_options, int allow_spinning);
 };
 
 /*

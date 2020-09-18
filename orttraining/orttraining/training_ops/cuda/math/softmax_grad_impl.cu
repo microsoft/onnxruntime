@@ -77,15 +77,28 @@ __global__ void softmax_warp_backward(output_t* gradInput, const input_t* grad, 
   }
 
   acc_t sum[WARP_BATCH];
-#pragma unroll
-  for (int i = 0; i < WARP_BATCH; ++i) {
-    sum[i] = grad_output_reg[i][0];
-#pragma unroll
-    for (int it = 1; it < WARP_ITERATIONS; ++it) {
-      sum[i] += grad_output_reg[i][it];
+  if (!is_log_softmax) {
+    #pragma unroll
+    for (int i = 0; i < WARP_BATCH; ++i) {
+      sum[i] = grad_output_reg[i][0];
+      #pragma unroll
+      for (int it = 1; it < WARP_ITERATIONS; ++it) {
+        sum[i] += grad_output_reg[i][it];
+      }
     }
+    warp_reduce<acc_t, WARP_BATCH, WARP_SIZE, Add>(sum);
   }
-  warp_reduce<acc_t, WARP_BATCH, WARP_SIZE, Add>(sum);
+  else {
+    #pragma unroll
+    for (int i = 0; i < WARP_BATCH; ++i) {
+      sum[i] = grad_reg[i][0];
+      #pragma unroll
+      for (int it = 1; it < WARP_ITERATIONS; ++it) {
+        sum[i] += grad_reg[i][it];
+      }
+    }
+    warp_reduce<acc_t, WARP_BATCH, WARP_SIZE, Add>(sum);
+  }
 
 // store result
 #pragma unroll

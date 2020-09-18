@@ -45,6 +45,25 @@ TensorProto ToTensor<onnxruntime::MLFloat16>(const std::vector<onnxruntime::MLFl
   return t;
 }
 
+template <>
+TensorProto ToTensor<onnxruntime::BFloat16>(const onnxruntime::BFloat16& value) {
+  TensorProto t;
+  t.set_data_type(TensorProto_DataType_BFLOAT16);
+  t.add_int32_data(value.val);
+  return t;
+}
+
+template <>
+TensorProto ToTensor<onnxruntime::BFloat16>(const std::vector<onnxruntime::BFloat16>& values) {
+  TensorProto t;
+  t.clear_int32_data();
+  t.set_data_type(TensorProto_DataType_BFLOAT16);
+  for (const onnxruntime::BFloat16& val : values) {
+    t.add_int32_data(val.val);
+  }
+  return t;
+}
+
 bool operator==(const ONNX_NAMESPACE::TensorShapeProto_Dimension& l,
                 const ONNX_NAMESPACE::TensorShapeProto_Dimension& r) {
   if (l.has_dim_value()) {
