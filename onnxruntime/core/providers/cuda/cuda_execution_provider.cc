@@ -60,7 +60,6 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
   CUDA_CALL_THROW(cudaSetDevice(device_id));
   CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
   CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
-  CURAND_CALL_THROW(curandCreateGenerator(&curand_generator_, CURAND_RNG_PSEUDO_DEFAULT));
 
   AllocatorCreationInfo default_memory_info(
       [](OrtDevice::DeviceId id) {
@@ -90,12 +89,6 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
     CUDNN_CALL(cudnnDestroy(cudnn_handle_));
   } catch (const std::exception& ex) {
     LOGS_DEFAULT(ERROR) << "cudnnDestroy threw:" << ex.what();
-  }
-
-  try {
-    CURAND_CALL_THROW(curandDestroyGenerator(curand_generator_));
-  } catch (const std::exception& ex) {
-    LOGS_DEFAULT(ERROR) << "curandDestroyGenerator threw:" << ex.what();
   }
 }
 
