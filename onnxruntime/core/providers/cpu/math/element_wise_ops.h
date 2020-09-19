@@ -630,11 +630,13 @@ struct Broadcaster {
 struct InputBroadcaster {
   InputBroadcaster(const Tensor& input0, const Tensor& input1)
       : input_tensor0_(input0),
-        input_tensor1_(&input1) {
+        input_tensor1_(&input1),
+        input_tensor1_shape_(input1.Shape()) {
   }
 
   InputBroadcaster(const Tensor& input0, const TensorShape& input1_shape)
       : input_tensor0_(input0),
+        input_tensor1_(nullptr),
         input_tensor1_shape_(input1_shape) {
   }
 
@@ -697,7 +699,7 @@ struct InputBroadcaster {
   const Tensor& input_tensor0_;
   // need to support use case where input1 is just the shape for Expand op
   const Tensor* input_tensor1_{nullptr};
-  const TensorShape& input_tensor1_shape_{input_tensor1_->Shape()};
+  const TensorShape& input_tensor1_shape_;
   const size_t input0_element_size_{input_tensor0_.DataType()->Size()};
   const size_t input1_element_size_{input_tensor1_ ? input_tensor1_->DataType()->Size() : 0};
   const void* input0_bytes_{input_tensor0_.DataRaw()};
