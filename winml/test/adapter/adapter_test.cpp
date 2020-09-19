@@ -105,13 +105,13 @@ static void ModelGetVersion() {
 static void ModelGetInputCount() {
   size_t input_count;
   winml_adapter_api->ModelGetInputCount(squeezenet_model, &input_count);
-  WINML_EXPECT_EQUAL(input_count, 1);
+  WINML_EXPECT_EQUAL(input_count, 1u);
 }
 
 static void ModelGetOutputCount() {
   size_t output_count;
   winml_adapter_api->ModelGetOutputCount(squeezenet_model, &output_count);
-  WINML_EXPECT_EQUAL(output_count, 1);
+  WINML_EXPECT_EQUAL(output_count, 1u);
 }
 
 static void ModelGetInputName() {
@@ -163,7 +163,7 @@ static void ModelGetInputTypeInfo() {
 
   size_t dim_count;
   ort_api->GetDimensionsCount(tensor_info, &dim_count);
-  WINML_EXPECT_EQUAL(dim_count, 4);
+  WINML_EXPECT_EQUAL(dim_count, 4u);
 
   int64_t dim_values[4]; 
   ort_api->GetDimensions(tensor_info, dim_values, 4);
@@ -192,7 +192,7 @@ static void ModelGetOutputTypeInfo() {
 
   size_t dim_count;
   ort_api->GetDimensionsCount(tensor_info, &dim_count);
-  WINML_EXPECT_EQUAL(dim_count, 4);
+  WINML_EXPECT_EQUAL(dim_count, 4u);
 
   int64_t dim_values[4];
   ort_api->GetDimensions(tensor_info, dim_values, 4);
@@ -207,7 +207,7 @@ static void ModelGetOutputTypeInfo() {
 static void ModelGetMetadataCount() {
   size_t metadata_count;
   winml_adapter_api->ModelGetMetadataCount(metadata_model, &metadata_count);
-  WINML_EXPECT_EQUAL(metadata_count, 2);
+  WINML_EXPECT_EQUAL(metadata_count, 2u);
 }
 
 static void ModelGetMetadata() {
@@ -218,15 +218,15 @@ static void ModelGetMetadata() {
 
   winml_adapter_api->ModelGetMetadata(metadata_model, 0, &metadata_key, &metadata_key_len, &metadata_value, &metadata_value_len);
   WINML_EXPECT_EQUAL(std::string(metadata_key), "thisisalongkey");
-  WINML_EXPECT_EQUAL(metadata_key_len, 14);
+  WINML_EXPECT_EQUAL(metadata_key_len, 14u);
   WINML_EXPECT_EQUAL(std::string(metadata_value), "thisisalongvalue");
-  WINML_EXPECT_EQUAL(metadata_value_len, 16);
+  WINML_EXPECT_EQUAL(metadata_value_len, 16u);
 
   winml_adapter_api->ModelGetMetadata(metadata_model, 1, &metadata_key, &metadata_key_len, &metadata_value, &metadata_value_len);
   WINML_EXPECT_EQUAL(std::string(metadata_key), "key2");
-  WINML_EXPECT_EQUAL(metadata_key_len, 4);
+  WINML_EXPECT_EQUAL(metadata_key_len, 4u);
   WINML_EXPECT_EQUAL(std::string(metadata_value), "val2");
-  WINML_EXPECT_EQUAL(metadata_value_len, 4);
+  WINML_EXPECT_EQUAL(metadata_value_len, 4u);
 }
 
 static void ModelEnsureNoFloat16() {
