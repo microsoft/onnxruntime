@@ -4,6 +4,10 @@
 
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/nn/pool_base.h"
+#include <deque>
+#include <iostream>
+#include <functional>
+
 namespace onnxruntime {
 
 template <typename T, typename PoolType>
@@ -210,11 +214,108 @@ struct MaxPool1DTask final {
   void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
 #ifdef _OPENMP
 #pragma omp parallel for
-#endif
     for (int64_t c = begin; c < end; ++c) {
-      operator()(c);
+      std::unique_ptr<T[]> que_ptr{new T[kernel_shape[0]]};
+#else
+    std::unique_ptr<T[]> que_ptr{new T[kernel_shape[0]]};
+    for (int64_t c = begin; c < end; ++c) {
+#endif
+      operator()(c, que_ptr);
     }
   }
+
+  void operator()(std::ptrdiff_t c, std::unique_ptr<T[]>& que_ptr) const {
+    const T* x_d = X_data + c * x_step;
+    T* y_d = Y_data + c * y_step;
+    int64_t* i_d = I_data ? I_data + c * y_step : nullptr;
+
+    if (stride_h == dilation_h && !i_d) {
+      //std::cout << "in optimized maxpool" << std::endl;
+      auto que = que_ptr.get();
+      auto end = que + kernel_shape[0] - 1;
+      auto tail = que;
+      auto head = que;
+      int64_t cnt = 0;
+
+      T padding = std::numeric_limits<T>::lowest();
+      int64_t global_indice = 0;
+      int64_t global_end = 2 * pads[0] + height;
+      int64_t first_end = dilation_h * kernel_shape[0] - 1;
+
+      for (; global_indice < first_end; global_indice += dilation_h) {
+        auto x_indice = global_indice - pads[0];
+        if (x_indice < 0) {
+          *tail++ = padding;
+          ++cnt;
+        } else {
+          auto back = tail == que ? end : tail - 1;
+          while (cnt > 0) {
+            if (*x_d > *back) {
+               tail = back;
+               back = tail == que ? end : tail - 1;
+               --cnt; 
+            } else {
+              break;
+            }
+          }//while
+          *tail = *x_d;
+          tail = tail == end ? que : tail + 1;
+          ++cnt;
+          x_d += dilation_h; 
+        }//else
+      }//for
+      
+      for (int64_t pool_start = 0; global_indice < global_end;
+           pool_start += dilation_h, global_indice += dilation_h) {
+
+        auto x_indice = global_indice - pads[0];
+        if (x_indice >= pads[0] + height) {
+          *y_d = *head;
+          break;
+        } else {
+          auto back = tail == que ? end : tail - 1;
+          while (cnt > 0) {
+            if (*x_d > *back) {
+               tail = back;
+               back = tail == que ? end : tail - 1;
+               --cnt;
+            } else {
+              break;
+            }
+          }//while
+          *tail = *x_d;
+          tail = tail == end ? que : tail + 1;
+          ++cnt;
+          x_d += dilation_h; 
+          *y_d++ = *head;
+          if (*head == x_d[pool_start]) {
+            head = head == end ? que : head + 1;
+            --cnt;
+          }//if
+        } //else
+      } //for
+    } else {
+      for (int64_t ph = 0; ph < pooled_height; ++ph) {
+        int64_t hstart = ph * stride_h - pads[0];
+        int64_t hend = hstart + kernel_shape[0] * dilation_h;
+        T Yh = std::numeric_limits<T>::lowest();
+        int64_t h_index = -1;
+        for (int64_t h = hstart; h < hend; h += dilation_h) {
+          if (math::is_a_ge_zero_and_a_lt_b(h, height)) {
+            if (x_d[h] > Yh) {
+              Yh = x_d[h];
+              h_index = h;
+            }
+          }
+        }
+        y_d[ph] = Yh;
+        if (i_d != nullptr)
+          i_d[ph] = c * x_step + h_index;
+      }//for
+    }//else
+  }
+
+/*
   void operator()(std::ptrdiff_t c) const {
     const T* x_d = X_data + c * x_step;
     T* y_d = Y_data + c * y_step;
@@ -237,6 +338,88 @@ struct MaxPool1DTask final {
         i_d[ph] = c * x_step + h_index;
     }
   }
+
+  using SaveMaxFunctor = std::function<void(T,int64_t,int64_t)>;
+
+  void operator()(std::ptrdiff_t c) const {
+    const T* x_d = X_data + c * x_step;
+    T* y_d = Y_data + c * y_step;
+    int64_t* i_d = I_data ? I_data + c * y_step : nullptr;
+    std::unordered_set<int64_t> filled;
+
+    SaveMaxFunctor save_max_functor = [this, &filled, c, y_d, i_d] (T max_value, int64_t max_indice, int64_t x_indice) {
+      if (x_indice % stride_h == 0) {
+        auto y_indice = x_indice / stride_h;
+        filled.insert(y_indice);
+        y_d[y_indice] = max_value;
+        //std::cout << "save y data at " << y_indice << std::endl;
+        if (i_d) {
+          i_d[y_indice] = c * x_step + max_indice;
+        }//if
+      }//if
+    };//save_max_functor
+    
+    for (int64_t ph = 0; ph < pooled_height; ++ph) {
+      if (filled.find(ph) == filled.end()) {
+        MaxPool1DVector(x_d, ph * stride_h, height, dilation_h, pads[0], kernel_shape[0], save_max_functor);
+      }
+    }
+  }
+
+  static void MaxPool1DVector(const T* from_vector, int64_t start_at, int64_t len, int64_t dilation,
+                              int64_t pads, int64_t pool_size, SaveMaxFunctor& save_max_fn)
+  {
+    struct Value {
+      T value;
+      int64_t indice;
+      bool operator == (const Value& V) const { return V.value == value && V.indice == indice; }
+      bool operator > (const Value& V) const { return value > V.value; }
+    };
+
+    std::deque<Value> values;
+    std::deque<Value> maxes;
+
+    auto enqueue = [&] (Value& value) {
+      values.push_back(value);
+      while (!maxes.empty() && value > maxes.back()) {
+        maxes.pop_back();
+      }
+      maxes.push_back(value);
+      if (values.size() == static_cast<size_t>(pool_size)) {
+        auto max_indice = maxes.front().indice - pads;
+        save_max_fn(maxes.front().value,
+                    max_indice < 0 || max_indice >= len ? len : max_indice,
+                    values.front().indice);
+        auto popped_value = values.front();
+        values.pop_front();
+        if (popped_value == maxes.front()) {
+          maxes.pop_front();
+        }//if
+      }//if
+    };//update_deque
+
+    int64_t global_indice = start_at;
+    auto padding = std::numeric_limits<T>::lowest();
+
+    for (int32_t indice = start_at; indice < pads; indice += dilation) {
+      Value value = {padding, global_indice};
+      enqueue(value);
+      global_indice += dilation;
+    }//for
+
+    for (auto indice = global_indice - pads; indice < len; indice += dilation) {
+      Value value = {from_vector[indice], global_indice};
+      enqueue(value);
+      global_indice += dilation;
+    }//for 
+
+    for (int32_t indice = global_indice - pads - len; indice < pads; indice += dilation) {
+      Value value = {padding, global_indice};
+      enqueue(value);
+      global_indice += dilation;
+    }//for
+  }//MaxPoolVector
+*/
 };
 
 template <typename T>
