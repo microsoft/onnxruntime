@@ -5,6 +5,7 @@
 
 #include "core/mlas/inc/mlas.h"
 #include "core/optimizer/bias_gelu_fusion.h"
+#include "core/optimizer/bias_softmax_fusion.h"
 #include "core/optimizer/cast_elimination.h"
 #include "core/optimizer/computation_reduction.h"
 #include "core/optimizer/constant_folding.h"
@@ -167,6 +168,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(onnxruntime::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));
       transformers.emplace_back(onnxruntime::make_unique<MatmulTransposeFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<BiasDropoutFusion>(cpu_cuda_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<BiasSoftmaxFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<MatMulScaleFusion>(l1_execution_providers, weights_to_train));
 
       rule_transformer = optimizer_utils::GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable, l1_execution_providers);

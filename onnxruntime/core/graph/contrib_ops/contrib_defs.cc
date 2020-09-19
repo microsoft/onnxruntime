@@ -2734,6 +2734,9 @@ Example 4:
       .Attr("epsilon",
             "The epsilon value to use to avoid division by zero.",
             AttributeProto::FLOAT, 1e-5f)
+      .Attr("stash_type",
+            "type used for stash mean/inv_std_var",
+            AttributeProto::INT, static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT))
       .AllowUncheckedAttributes()
       .Input(0, "X", "Input data tensor from the previous layer.", "T")
       .Input(1, "scale", "Scale tensor.", "T")
@@ -2747,11 +2750,20 @@ Example 4:
           "Constrain input and output types (except mean and inv_std_var) to float tensors.")
       .TypeConstraint(
           "U",
-          {"tensor(float)"},
+          {"tensor(float)", "tensor(bfloat16)"},
           "Constrain mean and inv_std_var to be float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        auto type = ctx.getAttribute("stash_type")->i();
+        if (ctx.getNumOutputs() > 1){
+          auto output_type = ctx.getOutputType(1);
+          output_type->mutable_tensor_type()->set_elem_type(static_cast<int32_t>(type));
+        }
+        if (ctx.getNumOutputs() > 2){
+          auto output_type = ctx.getOutputType(2);
+          output_type->mutable_tensor_type()->set_elem_type(static_cast<int32_t>(type));
+        }
         if (!hasNInputShapes(ctx, 1)) {
           return;
         }
@@ -2946,6 +2958,24 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
           propagateShapeFromInputToOutput(ctx, 0, 0);
         }
       });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BiasSoftmax)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc(
+          "Y = softmax(scores + bias)) with simple broadcast on bias. "
+          "Intended to specialize softmax(scores + additive_mask) commonly found in transformer models.")
+      .Attr("softmax_axis", "apply softmax to elements for dimensions softmax_axis or higher", AttributeProto::INT, static_cast<int64_t>(1))
+      .Attr("broadcast_axis", "broadcast bias across input for dimensions broadcast_axis to softmax_axis-1", AttributeProto::INT, static_cast<int64_t>(1))
+      .Input(0, "data", "The input data as Tensor.", "T")
+      .Input(1, "bias", "The bias (or mask) as Tensor.", "T")
+      .Output(0, "output", "The output.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   RegisterBertSchemas();
 }

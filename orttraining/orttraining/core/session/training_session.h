@@ -76,6 +76,8 @@ class TrainingSession : public InferenceSession {
       bool use_mixed_precision_initializers{};
       MixedPrecisionDataType mixed_precision_type{MixedPrecisionDataType::FP16};
 
+      bool layernorm_stash_as_fp32{true};
+      
       ONNX_NAMESPACE::TensorProto_DataType TensorProtoDataType() const {
         switch (mixed_precision_type) {
           case MixedPrecisionDataType::FP16: return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
