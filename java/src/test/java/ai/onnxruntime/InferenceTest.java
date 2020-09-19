@@ -858,6 +858,7 @@ public class InferenceTest {
           fail("Add config entry with empty key should have failed");
         } catch (OrtException e) {
           assertTrue(e.getMessage().contains("Config key is empty"));
+          assertEquals(OrtException.OrtErrorCode.ORT_INVALID_ARGUMENT, e.getCode());
         }
         try (OrtSession session = env.createSession(modelPath, options)) {
           String inputName = session.getInputNames().iterator().next();
