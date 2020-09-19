@@ -43,7 +43,7 @@ optional<float> GetScalarConstantInitializer(const Graph& graph, const NodeArg& 
     return {};
   }
 
-  float scalar=0.f;
+  float scalar{};
   utils::MLTypeCallDispatcherRet<
       Status, ExtractScalarAsFloatDispatchTarget,
       uint32_t, uint64_t, int32_t, int64_t, MLFloat16, float, double, BFloat16>
@@ -167,11 +167,31 @@ std::vector<ScaleMergeInfo> GetOutputNodeMerges(
   return output_node_merges;
 }
 
+bool IsMatMulInputTypeSupported(const Node& node) {
+  // if no matching key is present, any data type is allowed
+  static const std::map<std::string, std::vector<std::string>> k_supported_data_types{
+      {kCudaExecutionProvider, {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"}},
+      {kCpuExecutionProvider, {"tensor(float)"}},
+  };
+
+  const auto it = k_supported_data_types.find(node.GetExecutionProviderType());
+  return it == k_supported_data_types.end() || optimizer_utils::IsSupportedDataType(node, it->second);
+}
+
 Status ProcessNode(
     Graph& graph, Node& node, bool& modified,
-    const std::unordered_set<std::string>& excluded_initializer_names) {
+    const std::unordered_set<std::string>& excluded_initializer_names,
+    const std::unordered_set<std::string>& compatible_execution_providers) {
+  if (!graph_utils::IsSupportedProvider(node, compatible_execution_providers)) {
+    return Status::OK();
+  }
+
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", {9, 13}) &&
       !graph_utils::IsSupportedOptypeVersionAndDomain(node, "TransposeMatMul", {1}, kMSDomain)) {
+    return Status::OK();
+  }
+
+  if (!IsMatMulInputTypeSupported(node)) {
     return Status::OK();
   }
 
@@ -273,7 +293,8 @@ Status MatMulScaleFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
 
     ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level, logger));
 
-    ORT_RETURN_IF_ERROR(ProcessNode(graph, *node, modified, excluded_initializer_names_));
+    ORT_RETURN_IF_ERROR(ProcessNode(
+        graph, *node, modified, excluded_initializer_names_, GetCompatibleExecutionProviders()));
   }
 
   return Status::OK();

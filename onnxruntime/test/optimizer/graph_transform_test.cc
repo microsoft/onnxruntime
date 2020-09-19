@@ -2997,10 +2997,12 @@ TEST_F(GraphTransformationTests, ComputationReductionTransformer_GatherND_E2E) {
 #endif
 
 #ifndef DISABLE_CONTRIB_OPS
-template <typename GraphTransformationCheckFn>
+template <typename GraphTransformationCheckFn, typename GraphPreprocessFn>
 static void TestMatMulScaleFusion(
     const PathString& model_path, const Logger& logger,
-    GraphTransformationCheckFn graph_transformation_check,
+    GraphPreprocessFn graph_preprocess_fn,
+    GraphTransformationCheckFn graph_transformation_check_fn,
+    const std::unordered_set<std::string>& compatible_execution_providers = {},
     const std::unordered_set<std::string>& excluded_initializer_names = {}) {
   SCOPED_TRACE(ORT_TSTR("model path: ") + model_path);
 
@@ -3008,17 +3010,31 @@ static void TestMatMulScaleFusion(
   ASSERT_STATUS_OK(Model::Load(model_path, model, nullptr, logger));
   Graph& graph = model->MainGraph();
 
+  graph_preprocess_fn(graph);
+
   auto original_op_counts = CountOpsInGraph(graph);
 
   onnxruntime::GraphTransformerManager graph_transformer_manager{5};
   ASSERT_STATUS_OK(graph_transformer_manager.Register(
-      make_unique<MatMulScaleFusion>(std::unordered_set<std::string>{}, excluded_initializer_names),
+      make_unique<MatMulScaleFusion>(compatible_execution_providers, excluded_initializer_names),
       TransformerLevel::Level2));
   ASSERT_STATUS_OK(graph_transformer_manager.ApplyTransformers(graph, TransformerLevel::Level2, logger));
 
   auto transformed_op_counts = CountOpsInGraph(graph);
 
-  graph_transformation_check(graph, original_op_counts, transformed_op_counts);
+  graph_transformation_check_fn(graph, original_op_counts, transformed_op_counts);
+}
+
+template <typename GraphTransformationCheckFn>
+static void TestMatMulScaleFusion(
+    const PathString& model_path, const Logger& logger,
+    GraphTransformationCheckFn graph_transformation_check,
+    const std::unordered_set<std::string>& compatible_execution_providers = {},
+    const std::unordered_set<std::string>& excluded_initializer_names = {}) {
+  TestMatMulScaleFusion(
+      model_path, logger,
+      [](Graph&) {}, graph_transformation_check,
+      compatible_execution_providers, excluded_initializer_names);
 }
 
 TEST_F(GraphTransformationTests, MatMulScaleFusionFusableModels) {
@@ -3098,7 +3114,40 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionExcludedInitializerName) {
          const std::map<std::string, int>& transformed_op_counts) {
         EXPECT_EQ(original_op_counts, transformed_op_counts);
       },
+      {},
       {"scale"});
+}
+
+TEST_F(GraphTransformationTests, MatMulScaleFusionIncompatibleExecutionProvider) {
+  TestMatMulScaleFusion(
+      MODEL_FOLDER "fusion/matmul_scale_in0.onnx", *logger_,
+      [](Graph& graph) {
+        for (auto& node : graph.Nodes()) {
+          node.SetExecutionProviderType(kCudaExecutionProvider);
+        }
+      },
+      [](const Graph&,
+         const std::map<std::string, int>& original_op_counts,
+         const std::map<std::string, int>& transformed_op_counts) {
+        EXPECT_EQ(original_op_counts, transformed_op_counts);
+      },
+      {kCpuExecutionProvider});
+}
+
+TEST_F(GraphTransformationTests, MatMulScaleFusionUnsupportedInputType) {
+  TestMatMulScaleFusion(
+      MODEL_FOLDER "fusion/matmul_scale_int32.onnx", *logger_,
+      [](Graph& graph) {
+        for (auto& node : graph.Nodes()) {
+          node.SetExecutionProviderType(kCpuExecutionProvider);
+        }
+      },
+      [](const Graph&,
+         const std::map<std::string, int>& original_op_counts,
+         const std::map<std::string, int>& transformed_op_counts) {
+        EXPECT_EQ(original_op_counts, transformed_op_counts);
+      },
+      {kCpuExecutionProvider});
 }
 #endif
 
