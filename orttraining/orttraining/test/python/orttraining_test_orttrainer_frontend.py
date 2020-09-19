@@ -98,6 +98,7 @@ def testORTTrainerOptionsDefaultValues(test_input):
             'frozen_weights': [],
             'grad_norm_clip': True,
             'invertible_layer_norm_gradient': False,
+            'run_symbolic_shape_infer': False
         },
         'debug': {
             'deterministic_compute': False,
@@ -1290,3 +1291,44 @@ def testLossScalerLegacyAndExperimentalRandomAllFinite():
         assert_allclose(new_loss_scale, old_loss_scale)
         out.append(new_loss_scale)
         assert new_loss_scale > 1e-7
+
+@pytest.mark.parametrize("seed,device,gradient_accumulation_steps,total_steps", [
+    (0, 'cuda', 1, 12),
+])
+def testORTTrainerRunSymbolicShapeInfer(model_params):
+    # Common data
+    torch.set_printoptions(precision=10)
+
+    # Setup without symbolic shape inference
+    torch.manual_seed(seed)
+    set_seed(seed)
+    options = orttrainer.ORTTrainerOptions({'device' : {'id' : device},
+                                            'batch' : {'gradient_accumulation_steps' : gradient_accumulation_steps},
+                                            'debug' : {'deterministic_compute' : True}})
+    model, model_desc, my_loss, batcher_fn, train_data, _, _ = _load_pytorch_transformer_model(device)
+    optim_config = optim.LambConfig(lr=0.001)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
+    # Training loop
+    expected_loss = []
+    for i in range(total_steps):
+        data, targets = batcher_fn(train_data, i)
+        loss, _ = trainer.train_step(data, targets)
+        expected_loss.append(loss.cpu())
+
+    # Setup with symbolic shape inference
+    torch.manual_seed(seed)
+    set_seed(seed)
+    options.utils.run_symbolic_shape_infer = True
+    model, model_desc, my_loss, batcher_fn, train_data, _, _ = _load_pytorch_transformer_model(device)
+    optim_config = optim.LambConfig(lr=0.001)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
+    # Training loop
+    actual_loss = []
+    for i in range(total_steps):
+        data, targets = batcher_fn(train_data, i)
+        loss, _ = legacy_trainer.train_step(data, targets, torch.tensor([optim_config.lr]))
+        actual_loss.append(loss.cpu())
+
+    # Compare results from symbolic shape inference
+    _test_helpers.assert_model_outputs(expected_loss, actual_loss)
+

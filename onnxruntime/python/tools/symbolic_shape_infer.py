@@ -1255,22 +1255,20 @@ class SymbolicShapeInference:
                 output.CopyFrom(self.known_vi_[output.name])
 
     @staticmethod
-    def infer_shapes(input_model, output_model, int_max=2**31 - 1, auto_merge=False, guess_output_rank=False, verbose=0):
-        in_mp = onnx.load(input_model)
+    def infer_shapes(in_mp, int_max=2**31 - 1, auto_merge=False, guess_output_rank=False, verbose=0):
         onnx_opset = get_opset(in_mp)
         if not onnx_opset or onnx_opset < 7:
             print('Only support models of onnx opset 7 and above.')
-            return
+            return None
         symbolic_shape_inference = SymbolicShapeInference(int_max, auto_merge, guess_output_rank, verbose)
         all_shapes_inferred = False
         symbolic_shape_inference._preprocess(in_mp)
         while symbolic_shape_inference.run_:
             all_shapes_inferred = symbolic_shape_inference._infer_impl(in_mp)
         symbolic_shape_inference._update_output_from_vi()
-        if output_model:
-            onnx.save(symbolic_shape_inference.out_mp_, output_model)
         if not all_shapes_inferred:
             raise Exception("Incomplete symbolic shape inference")
+        return symbolic_shape_inference.out_mp_
 
 def parse_arguments():
   parser = argparse.ArgumentParser()
@@ -1288,5 +1286,7 @@ if __name__ == '__main__':
     if args.output:
         print('output model ' + args.output)
     print('Doing symbolic shape inference...')
-    out_mp = SymbolicShapeInference.infer_shapes(args.input, args.output, args.int_max, args.auto_merge, args.guess_output_rank, args.verbose)
-    print('Done!')
+    out_mp = SymbolicShapeInference.infer_shapes(onnx.load(args.input), args.int_max, args.auto_merge, args.guess_output_rank, args.verbose)
+    if args.output and out_mp:
+        onnx.save(out_mp, args.output)
+        print('Done!')

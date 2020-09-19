@@ -11,8 +11,6 @@ from . import _utils, amp, checkpoint, optim, postprocess, ORTTrainerOptions
 from .model_desc_validation import _ORTTrainerModelDesc
 
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
-import tempfile
-import shutil
 
 class TrainStepInfo(object):
     r"""Private class used to store runtime information from current train step.
@@ -676,13 +674,7 @@ class ORTTrainer(object):
             return
 
         if self.options.utils.run_symbolic_shape_infer:
-            model_dir = tempfile.mkdtemp()
-            model_path = os.path.join(model_dir, 'model.onnx')
-            onnx.save(self._onnx_model, model_path)
-            syminf_model_path = os.path.join(model_dir, 'model_syminf.onnx')
-            SymbolicShapeInference.infer_shapes(model_path, syminf_model_path, auto_merge=True)
-            self._onnx_model = onnx.load(syminf_model_path)
-            shutil.rmtree(model_dir)
+            self._onnx_model = SymbolicShapeInference.infer_shapes(self._onnx_model, auto_merge=True, guess_output_rank=True)
 
         # Create training session used by train_step
         self._create_ort_training_session()
