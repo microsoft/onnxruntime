@@ -135,6 +135,8 @@ struct OrtStatus {
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/cuda_provider_options.h"
+#include "core/providers/cuda/cuda_allocator.h"
+
 OrtDevice::DeviceId cuda_device_id = 0;
 size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
 onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
@@ -257,11 +259,17 @@ void CustomOpLibrary::UnloadLibrary() {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 template <typename T>
-void AddNonTensor(const OrtValue& val, std::vector<py::object>& pyobjs, const DataTransferManager* /*data_transfer_manager*/) {
+void AddNonTensor(const OrtValue& val, std::vector<py::object>& pyobjs,
+                  const DataTransferManager* /*data_transfer_manager*/,
+                  const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* /*mem_cpy_to_host_functions*/) {
   pyobjs.push_back(py::cast(val.Get<T>()));
 }
 
-void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj, const DataTransferManager* data_transfer_manager) {
+// In all cases, we may not have access to a DataTransferManager, hence the user may specify functions that
+// pretty much does what a DataTransferManager does - copy data from device(s) to the host
+void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj,
+                        const DataTransferManager* data_transfer_manager,
+                        const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
   std::vector<npy_intp> npy_dims;
   const TensorShape& shape = rtensor.Shape();
 
@@ -279,19 +287,38 @@ void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj, const DataTransf
 
   if (numpy_type != NPY_OBJECT) {
     //if it is not cpu tensor, need to copy to host
-    if (rtensor.Location().device.Type() != OrtDevice::CPU) {
-      if (!data_transfer_manager)
-        throw std::runtime_error("GetPyObjFromTensor: data transfer manager is needed to convert non-CPU tensor to numpy array");
+    auto device_type = rtensor.Location().device.Type();
+    if (device_type != OrtDevice::CPU) {
+      if (!data_transfer_manager && !mem_cpy_to_host_functions)
+        throw std::runtime_error(
+            "GetPyObjFromTensor: Either data transfer manager or a "
+            "function to copy data to the host is needed to convert non-CPU tensor to numpy array");
       static const OrtMemoryInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
-      std::vector<char> tensor_data_buffer{};
-      tensor_data_buffer.resize(rtensor.SizeInBytes());
-      ORT_THROW_IF_ERROR(CopyTensorDataToByteSpan(
-          *data_transfer_manager, rtensor, cpu_alloc_info, gsl::make_span(tensor_data_buffer)));
-      memcpy(outPtr, tensor_data_buffer.data(), dtype->Size() * shape.Size());
+
+      // Prefer DataTransferManager if available
+      if (data_transfer_manager) {
+        auto span = gsl::make_span<char>(reinterpret_cast<char*>(outPtr), dtype->Size() * shape.Size());
+        ORT_THROW_IF_ERROR(CopyTensorDataToByteSpan(
+            *data_transfer_manager, rtensor, cpu_alloc_info, span));
+      } else {
+        auto mem_cpy_to_host = mem_cpy_to_host_functions->find(device_type);
+
+        ORT_ENFORCE(mem_cpy_to_host != mem_cpy_to_host_functions->end(),
+                    "Unable to locate a function that can copy data to the host from the device");
+
+        ORT_ENFORCE(mem_cpy_to_host->second != 0,
+                    "No function that can copy data to the host from the device provided");
+
+        mem_cpy_to_host->second(outPtr, rtensor.DataRaw(), dtype->Size() * shape.Size());
+      }
+
     } else
       memcpy(outPtr, rtensor.DataRaw(dtype), dtype->Size() * shape.Size());
   } else {
     // Handle string type.
+    //if it is not cpu tensor, need to copy to host
+    ORT_ENFORCE(rtensor.Location().device.Type() == OrtDevice::CPU,
+                "Copying string tensors located on another device to the host is currently not supported");
     py::object* outObj = static_cast<py::object*>(outPtr);
     const std::string* src = rtensor.template Data<std::string>();
     for (int i = 0; i < rtensor.Shape().Size(); i++, src++) {
@@ -314,49 +341,53 @@ static const char* GetDeviceName(const OrtDevice& device) {
 }
 
 template <>
-void AddNonTensor<TensorSeq>(const OrtValue& val, std::vector<py::object>& pyobjs, const DataTransferManager* data_transfer_manager) {
+void AddNonTensor<TensorSeq>(const OrtValue& val, std::vector<py::object>& pyobjs,
+                             const DataTransferManager* data_transfer_manager,
+                             const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
   const auto& seq_tensors = val.Get<TensorSeq>();
   py::list py_list;
   for (const auto& rtensor : seq_tensors) {
     py::object obj;
-    GetPyObjFromTensor(rtensor, obj, data_transfer_manager);
+    GetPyObjFromTensor(rtensor, obj, data_transfer_manager, mem_cpy_to_host_functions);
     py_list.append(obj);
   }
   pyobjs.push_back(py_list);
 }
 
-void AddNonTensorAsPyObj(const OrtValue& val, std::vector<py::object>& pyobjs, const DataTransferManager* data_transfer_manager) {
+void AddNonTensorAsPyObj(const OrtValue& val, std::vector<py::object>& pyobjs,
+                         const DataTransferManager* data_transfer_manager,
+                         const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
   // Should be in sync with core/framework/datatypes.h
   auto val_type = val.Type();
   if (val_type->IsTensorSequenceType()) {
-    AddNonTensor<TensorSeq>(val, pyobjs, data_transfer_manager);
+    AddNonTensor<TensorSeq>(val, pyobjs, data_transfer_manager, mem_cpy_to_host_functions);
   } else {
 #if !defined(DISABLE_ML_OPS)
     utils::ContainerChecker c_checker(val_type);
     if (c_checker.IsMap()) {
       if (c_checker.IsMapOf<std::string, std::string>()) {
-        AddNonTensor<MapStringToString>(val, pyobjs, data_transfer_manager);
+        AddNonTensor<MapStringToString>(val, pyobjs, data_transfer_manager, mem_cpy_to_host_functions);
       } else if (c_checker.IsMapOf<std::string, int64_t>()) {
-        AddNonTensor<MapStringToInt64>(val, pyobjs, data_transfer_manager);
+        AddNonTensor<MapStringToInt64>(val, pyobjs, data_transfer_manager, mem_cpy_to_host_functions);
       } else if (c_checker.IsMapOf<std::string, float>()) {
-        AddNonTensor<MapStringToFloat>(val, pyobjs, data_transfer_manager);
+        AddNonTensor<MapStringToFloat>(val, pyobjs, data_transfer_manager, mem_cpy_to_host_functions);
       } else if (c_checker.IsMapOf<std::string, double>()) {
-        AddNonTensor<MapStringToDouble>(val, pyobjs, data_transfer_manager);
+        AddNonTensor<MapStringToDouble>(val, pyobjs, data_transfer_manager, mem_cpy_to_host_functions);
       } else if (c_checker.IsMapOf<int64_t, std::string>()) {
-        AddNonTensor<MapInt64ToString>(val, pyobjs, data_transfer_manager);
+        AddNonTensor<MapInt64ToString>(val, pyobjs, data_transfer_manager, mem_cpy_to_host_functions);
       } else if (c_checker.IsMapOf<int64_t, int64_t>()) {
-        AddNonTensor<MapInt64ToInt64>(val, pyobjs, data_transfer_manager);
+        AddNonTensor<MapInt64ToInt64>(val, pyobjs, data_transfer_manager, mem_cpy_to_host_functions);
       } else if (c_checker.IsMapOf<int64_t, float>()) {
-        AddNonTensor<MapInt64ToFloat>(val, pyobjs, data_transfer_manager);
+        AddNonTensor<MapInt64ToFloat>(val, pyobjs, data_transfer_manager, mem_cpy_to_host_functions);
       } else if (c_checker.IsMapOf<int64_t, double>()) {
-        AddNonTensor<MapInt64ToDouble>(val, pyobjs, data_transfer_manager);
+        AddNonTensor<MapInt64ToDouble>(val, pyobjs, data_transfer_manager, mem_cpy_to_host_functions);
       }
 
     } else {
       if (c_checker.IsSequenceOf<std::map<std::string, float>>()) {
-        AddNonTensor<VectorMapStringToFloat>(val, pyobjs, data_transfer_manager);
+        AddNonTensor<VectorMapStringToFloat>(val, pyobjs, data_transfer_manager, mem_cpy_to_host_functions);
       } else if (c_checker.IsSequenceOf<std::map<int64_t, float>>()) {
-        AddNonTensor<VectorMapInt64ToFloat>(val, pyobjs, data_transfer_manager);
+        AddNonTensor<VectorMapInt64ToFloat>(val, pyobjs, data_transfer_manager, mem_cpy_to_host_functions);
       } else {
         throw std::runtime_error("Output is a non-tensor type which is not supported.");
       }
@@ -367,10 +398,12 @@ void AddNonTensorAsPyObj(const OrtValue& val, std::vector<py::object>& pyobjs, c
   }
 }
 
-void AddTensorAsPyObj(const OrtValue& val, std::vector<py::object>& pyobjs, const DataTransferManager* data_transfer_manager) {
+void AddTensorAsPyObj(const OrtValue& val, std::vector<py::object>& pyobjs,
+                      const DataTransferManager* data_transfer_manager,
+                      const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
   const Tensor& rtensor = val.Get<Tensor>();
   py::object obj;
-  GetPyObjFromTensor(rtensor, obj, data_transfer_manager);
+  GetPyObjFromTensor(rtensor, obj, data_transfer_manager, mem_cpy_to_host_functions);
   pyobjs.push_back(obj);
 }
 
@@ -423,17 +456,17 @@ bool IsPositiveInteger(const std::string& s) {
   return true;
 }
 
-bool IsCudaDeviceIdValid(InferenceSession* sess, int id) {
+bool IsCudaDeviceIdValid(const onnxruntime::logging::Logger& logger, int id) {
   int num_devices = 0;
   CUDA_CALL_THROW(cudaGetDeviceCount(&num_devices));
 
   if (0 == num_devices) {
-    LOGS(*(sess->GetLogger()), WARNING) << "your system does not have a CUDA capable device.";
+    LOGS(logger, WARNING) << "your system does not have a CUDA capable device.";
     return false;
   }
 
   if (id < 0 || id >= num_devices) {
-    LOGS(*(sess->GetLogger()), WARNING) << "cuda_device=" << id << " is invalid, must choose device ID between 0 and " << num_devices - 1;
+    LOGS(logger, WARNING) << "cuda_device=" << id << " is invalid, must choose device ID between 0 and " << num_devices - 1;
     return false;
   }
 
@@ -454,7 +487,7 @@ void UpdateCudaProviderOptions(InferenceSession* sess, onnxruntime::CudaProvider
       throw std::runtime_error("Please provide device id with integer.");
     }
 
-    if (!IsCudaDeviceIdValid(sess, device_id)) {
+    if (!IsCudaDeviceIdValid(*sess->GetLogger(), device_id)) {
       throw std::runtime_error("Please provide available device id.");
     }
     options.device_id = device_id;
@@ -503,6 +536,48 @@ void UpdateCudaProviderOptions(InferenceSession* sess, onnxruntime::CudaProvider
     LOGS(*(sess->GetLogger()), INFO) << "cuda arean extend strategy is set to " << it->second;
   }
 }
+
+AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id) {
+  // Current approach is not thread-safe, but there are some bigger infra pieces to put together in order to make
+  // multi-threaded CUDA allocation work we need to maintain a per-thread CUDA allocator
+  static std::unordered_map<OrtDevice::DeviceId, AllocatorPtr> id_to_allocator_map;
+
+  if (id_to_allocator_map.find(id) == id_to_allocator_map.end()) {
+    // Use arena-based allocator
+    AllocatorCreationInfo default_memory_info(
+        [](OrtDevice::DeviceId id) {
+          return onnxruntime::make_unique<CUDAAllocator>(id, CUDA);
+        },
+        id,
+        true,
+        {cuda_mem_limit,
+         static_cast<int>(arena_extend_strategy),
+         -1, -1});
+
+    auto allocator = CreateAllocator(default_memory_info);
+
+    id_to_allocator_map.insert({id, allocator});
+  }
+
+  return id_to_allocator_map[id];
+}
+
+void CpuToCudaMemCpy(void* dst, const void* src, size_t num_bytes) {
+  CUDA_CALL_THROW(cudaMemcpy(dst, src, num_bytes, cudaMemcpyHostToDevice));
+}
+
+void CudaToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
+  CUDA_CALL_THROW(cudaMemcpy(dst, src, num_bytes, cudaMemcpyDeviceToHost));
+}
+
+const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCudaToHostMemCpyFunction() {
+  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
+      {OrtDevice::GPU, CudaToCpuMemCpy},
+  };
+
+  return &map;
+}
+
 #endif
 
 /*
@@ -905,14 +980,166 @@ void addObjectMethods(py::module& m, Environment& env) {
       .def_static("cuda", []() { return OrtDevice::GPU; })
       .def_static("default_memory", []() { return OrtDevice::MemType::DEFAULT; });
 
-  py::class_<SessionIOBinding> binding(m, "SessionIOBinding");
-  binding
+  py::class_<OrtValue> ortvalue_binding(m, "OrtValue");
+  // TODO: Expose more metadata methods to query the type, shape, device of an OrtValue
+  ortvalue_binding
+      // Factory method to create an OrtValue (Tensor) from the given Numpy object
+      // The Tensor allocates and manages its own memory (on the specified device) and copies data from the Numpy data buffer
+      .def_static("tensor_from_numpy", [](py::object& array_on_cpu, OrtDevice& device) {
+        auto ml_value = onnxruntime::make_unique<OrtValue>();
+
+        // The tensor's memory is allocated on the CPU
+        if (GetDeviceName(device) == CPU) {
+          // InputDeflist is null because OrtValue creation is not tied to a specific model
+          // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
+
+          CreateGenericMLValue(nullptr, GetAllocator(), "", array_on_cpu, ml_value.get(), true, false);
+        } else if (GetDeviceName(device) == CUDA) {
+      // The tensor's memory is allocated on CUDA
+
+#ifdef USE_CUDA
+          if (!IsCudaDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
+            throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
+          }
+
+          // InputDeflist is null because OrtValue creation is not tied to a specific model
+          // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
+          // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in CUDA
+          CreateGenericMLValue(nullptr, GetCudaAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToCudaMemCpy);
+
+#else
+      throw std::runtime_error(
+          "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
+          "Please use the CUDA package of OnnxRuntime to use this feature.");
+#endif
+        } else {
+          throw std::runtime_error("Unsupported device: Cannot place the OrtValue on this device");
+        }
+
+        return ml_value;
+      })
+
+      // Factory method to create an OrtValue (Tensor) from the given shape and element type with memory on the specified device
+      // The memory is left uninitialized
+      .def_static("tensor_from_shape_and_type", [](std::vector<int64_t>& shape, py::object& element_type, OrtDevice& device) {
+        PyArray_Descr* dtype;
+        if (!PyArray_DescrConverter(element_type.ptr(), &dtype))
+          throw std::runtime_error("Not a valid numpy type");
+        int type_num = dtype->type_num;
+        Py_DECREF(dtype);
+
+        auto ml_value = onnxruntime::make_unique<OrtValue>();
+
+        std::unique_ptr<Tensor> tensor;
+        // The tensor's memory is allocated on the CPU
+        if (GetDeviceName(device) == CPU) {
+          tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, GetAllocator());
+        } else if (GetDeviceName(device) == CUDA) {
+      // The tensor's memory is allocated on CUDA
+#ifdef USE_CUDA
+          if (!IsCudaDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
+            throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
+          }
+
+          tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, GetCudaAllocator(device.Id()));
+#else
+      throw std::runtime_error(
+          "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
+          "Please use the CUDA package of OnnxRuntime to use this feature.");
+#endif
+        } else {
+          throw std::runtime_error("Unsupported device: Cannot place the OrtValue on this device");
+        }
+
+        auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+        ml_value->Init(tensor.release(),
+                       ml_tensor,
+                       ml_tensor->GetDeleteFunc());
+
+        return ml_value;
+      })
+      .def("data_ptr", [](OrtValue* ort_value) -> int64_t {
+        // TODO: Assumes that the OrtValue is a Tensor, make this generic to handle non-Tensors
+        ORT_ENFORCE(ort_value->IsTensor(), "Only OrtValues that are Tensors are currently supported");
+
+        auto* tensor = ort_value->GetMutable<Tensor>();
+
+        if (tensor->Shape().Size() == 0) {
+          return 0;
+        }
+
+        // Should cover x86 and x64 platforms
+        return reinterpret_cast<int64_t>(tensor->MutableDataRaw());
+      })
+      .def("device_name", [](OrtValue* ort_value) -> std::string {
+        // TODO: Assumes that the OrtValue is a Tensor, make this generic to handle non-Tensors
+        ORT_ENFORCE(ort_value->IsTensor(), "Only OrtValues that are Tensors are currently supported");
+
+        std::string device_name = std::string(GetDeviceName(ort_value->Get<Tensor>().Location().device));
+
+        // Normalize to lower case as in python - we seem to prefer all lower case for device names
+        std::transform(device_name.begin(), device_name.end(), device_name.begin(),
+                       [](char ch) {
+                         if (ch >= 'A' && ch <= 'Z')
+                           return ch += ('a' - 'A');
+                         else
+                           return ch;
+                       });
+
+        return device_name;
+      })
+      .def("shape", [](OrtValue* ort_value) -> py::list {
+        // TODO: Assumes that the OrtValue is a Tensor, make this generic to handle non-Tensors
+        ORT_ENFORCE(ort_value->IsTensor(), "Only OrtValues that are Tensors are currently supported");
+
+        py::list shape_arr;
+        const auto& dims = ort_value->Get<Tensor>().Shape().GetDims();
+
+        for (auto dim : dims) {
+          // For sequence tensors - we would append a list of dims to the outermost list
+          // For now only tensors are supported in OrtValue
+          shape_arr.append(dim);
+        }
+
+        return shape_arr;
+      })
+      .def("data_type", [](OrtValue* ort_value) -> std::string {
+        // TODO: Assumes that the OrtValue is a Tensor, make this generic to handle non-Tensors
+        ORT_ENFORCE(ort_value->IsTensor(), "Only OrtValues that are Tensors are currently supported");
+
+        return DataTypeImpl::ToString(ort_value->Get<Tensor>().DataType());
+      })
+      .def("is_tensor", [](OrtValue* ort_value) -> bool {
+        return ort_value->IsTensor();
+      })
+      .def("numpy", [](OrtValue* ort_value) -> py::object {
+        ORT_ENFORCE(ort_value->IsTensor(), "Only OrtValues that are Tensors are convertible to Numpy objects");
+
+        py::object obj;
+
+#ifdef USE_CUDA
+        GetPyObjFromTensor(ort_value->Get<Tensor>(), obj, nullptr, GetCudaToHostMemCpyFunction());
+#else
+    GetPyObjFromTensor(ort_value->Get<Tensor>(), obj, nullptr, nullptr);
+#endif
+        return obj;
+      })
+      .def("get_native_handle", [](OrtValue* ort_value) -> OrtValue {
+        // This isn't exposed in python - this is the only way I could get a (copy of) the underlying
+        // native OrtValue from a pybind OrtValue object which is to be used in `CreateGenericMLValue()` to create
+        // an ortValue directly from a pybind object which is an OrtValue coming in from the Python world.
+        // TODO: Explore if there is a cleaner way to achieve this
+        return *ort_value;
+      });
+
+  py::class_<SessionIOBinding> session_io_binding(m, "SessionIOBinding");
+  session_io_binding
       .def(py::init([](PyInferenceSession* sess) {
         auto sess_io_binding = onnxruntime::make_unique<SessionIOBinding>(sess->GetSessionHandle());
         return sess_io_binding;
       }))
-      .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, py::object arr_on_cpu) -> void {
-        OrtValue mlvalue;
+      .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, py::object& arr_on_cpu) -> void {
+        OrtValue ml_value;
 
         InferenceSession* sess = io_binding->GetInferenceSession();
         auto px = sess->GetModelInputs();
@@ -920,7 +1147,7 @@ void addObjectMethods(py::module& m, Environment& env) {
           throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
         }
 
-        //Check if input is sequence of tensors
+        // Check if input is sequence of tensors
         onnx::TypeProto type_proto;
         const auto& def_list = *px.second;
         auto ret_it = std::find_if(std::begin(def_list), std::end(def_list),
@@ -942,12 +1169,14 @@ void addObjectMethods(py::module& m, Environment& env) {
           throw std::runtime_error("Cannot bind input to dictionary type of values");
         }
 
-        CreateGenericMLValue(px.second, GetAllocator(), name, arr_on_cpu, &mlvalue);
-        auto status = io_binding->Get()->BindInput(name, mlvalue);
+        CreateGenericMLValue(px.second, GetAllocator(), name, arr_on_cpu, &ml_value);
+        auto status = io_binding->Get()->BindInput(name, ml_value);
         if (!status.IsOK())
           throw std::runtime_error("Error when bind input: " + status.ErrorMessage());
       })
-      .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, py::object element_type, std::vector<int64_t> shape, int64_t data_ptr) -> void {
+      .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, py::object& element_type, std::vector<int64_t>& shape, int64_t data_ptr) -> void {
+        ORT_ENFORCE(data_ptr != 0, "Pointer to data memory is not valid");
+
         PyArray_Descr* dtype;
         if (!PyArray_DescrConverter(element_type.ptr(), &dtype))
           throw std::runtime_error("Not a valid numpy type");
@@ -955,17 +1184,19 @@ void addObjectMethods(py::module& m, Environment& env) {
         Py_DECREF(dtype);
 
         OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device);
-        std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, (void*)data_ptr, info);
-        OrtValue mlvalue;
+        std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, reinterpret_cast<void*>(data_ptr), info);
+        OrtValue ml_value;
 
-        mlvalue.Init(p_tensor.release(),
-                     DataTypeImpl::GetType<Tensor>(),
-                     DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
-        auto status = io_binding->Get()->BindInput(name, mlvalue);
+        ml_value.Init(p_tensor.release(),
+                      DataTypeImpl::GetType<Tensor>(),
+                      DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+        auto status = io_binding->Get()->BindInput(name, ml_value);
         if (!status.IsOK())
           throw std::runtime_error("Error when bind input: " + status.ErrorMessage());
       })
-      .def("bind_output", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, py::object element_type, std::vector<int64_t> shape, int64_t data_ptr) -> void {
+      .def("bind_output", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, py::object& element_type, std::vector<int64_t>& shape, int64_t data_ptr) -> void {
+        ORT_ENFORCE(data_ptr != 0, "Pointer to data memory is not valid");
+
         PyArray_Descr* dtype;
         if (!PyArray_DescrConverter(element_type.ptr(), &dtype))
           throw std::runtime_error("Not a valid numpy type");
@@ -974,13 +1205,13 @@ void addObjectMethods(py::module& m, Environment& env) {
 
         OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device);
 
-        std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, (void*)data_ptr, info);
-        OrtValue mlvalue;
-        mlvalue.Init(p_tensor.release(),
-                     DataTypeImpl::GetType<Tensor>(),
-                     DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+        std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, reinterpret_cast<void*>(data_ptr), info);
+        OrtValue ml_value;
+        ml_value.Init(p_tensor.release(),
+                      DataTypeImpl::GetType<Tensor>(),
+                      DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
 
-        auto status = io_binding->Get()->BindOutput(name, mlvalue);
+        auto status = io_binding->Get()->BindOutput(name, ml_value);
         if (!status.IsOK())
           throw std::runtime_error("Error when bind output: " + status.ErrorMessage());
       })
@@ -995,15 +1226,18 @@ void addObjectMethods(py::module& m, Environment& env) {
       .def("clear_binding_outputs", [](SessionIOBinding* io_binding) -> void {
         io_binding->Get()->ClearOutputs();
       })
+      .def("get_outputs", [](SessionIOBinding* io_binding) -> std::vector<OrtValue>& {
+        return io_binding->Get()->GetOutputs();
+      })
       .def("copy_outputs_to_cpu", [](SessionIOBinding* io_binding) -> std::vector<py::object> {
         const std::vector<OrtValue>& outputs = io_binding->Get()->GetOutputs();
         std::vector<py::object> rfetch;
         rfetch.reserve(outputs.size());
         for (const auto& _ : outputs) {
           if (_.IsTensor()) {
-            AddTensorAsPyObj(_, rfetch, &io_binding->GetInferenceSession()->GetDataTransferManager());
+            AddTensorAsPyObj(_, rfetch, &io_binding->GetInferenceSession()->GetDataTransferManager(), nullptr);
           } else {
-            AddNonTensorAsPyObj(_, rfetch, &io_binding->GetInferenceSession()->GetDataTransferManager());
+            AddNonTensorAsPyObj(_, rfetch, &io_binding->GetInferenceSession()->GetDataTransferManager(), nullptr);
           }
         }
         return rfetch;
@@ -1332,9 +1566,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
              rfetch.reserve(fetches.size());
              for (auto _ : fetches) {
                if (_.IsTensor()) {
-                 AddTensorAsPyObj(_, rfetch, nullptr);
+                 AddTensorAsPyObj(_, rfetch, nullptr, nullptr);
                } else {
-                 AddNonTensorAsPyObj(_, rfetch, nullptr);
+                 AddNonTensorAsPyObj(_, rfetch, nullptr, nullptr);
                }
              }
              return rfetch;

@@ -704,6 +704,25 @@ class TestInferenceSession(unittest.TestCase):
         so3.register_custom_ops_library(shared_library)
         sess3 = onnxrt.InferenceSession(custom_op_model, so3)
 
+    def testOrtValue(self):
+        numpy_arr = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+
+        ortvalue1 = onnxrt.OrtValue.tensor_from_numpy(numpy_arr)
+        self.assertEqual(ortvalue1.device_name(), "cpu")
+        self.assertEqual(ortvalue1.shape(), [3, 2])
+        self.assertEqual(ortvalue1.data_type(), "tensor(float)")
+        self.assertEqual(ortvalue1.is_tensor(), True)
+        self.assertTrue(np.array_equal(ortvalue1.numpy(), numpy_arr))
+
+        if 'CUDAExecutionProvider' in onnxrt.get_available_providers():
+            ortvalue2 = onnxrt.OrtValue.tensor_from_numpy(numpy_arr, 'cuda', 0)
+            self.assertEqual(ortvalue2.device_name(), "cuda")
+            self.assertEqual(ortvalue2.shape(), [3, 2])
+            self.assertEqual(ortvalue2.data_type(), "tensor(float)")
+            self.assertEqual(ortvalue1.is_tensor(), True)
+            self.assertTrue(np.array_equal(ortvalue1.numpy(), numpy_arr))
+
+        #TODO: Pass OrtValue to Run()
 
 if __name__ == '__main__':
     unittest.main()
