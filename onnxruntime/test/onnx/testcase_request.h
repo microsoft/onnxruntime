@@ -32,7 +32,7 @@ namespace test {
 /// </summary>
 class TestCaseRequestContext {
  public:
-  using Callback = Callable<void, std::shared_ptr<TestCaseResult>>;
+  using Callback = Callable<void, size_t, std::shared_ptr<TestCaseResult>>;
 
   /// <summary>
   /// Runs data tests on the model sequentially (concurrent_runs < 2)
@@ -64,7 +64,7 @@ class TestCaseRequestContext {
   /// <param name="concurrent_runs"></param>
   static void Request(const Callback& cb, PThreadPool tpool, const ITestCase& c,
                       Ort::Env& env, const Ort::SessionOptions& sf,
-                      size_t concurrent_runs);
+                      size_t test_case_id, size_t concurrent_runs);
 
   const TIME_SPEC& GetTimeSpend() const {
     return test_case_time_;
@@ -81,7 +81,7 @@ class TestCaseRequestContext {
  private:
 
   TestCaseRequestContext(const Callback& cb, PThreadPool tp, const ITestCase& test_case, Ort::Env& env,
-                         const Ort::SessionOptions& session_opts);
+                         const Ort::SessionOptions& session_opts, size_t test_case_id);
 
   bool SetupSession();
 
@@ -106,6 +106,7 @@ class TestCaseRequestContext {
   Ort::Env& env_;
   Ort::SessionOptions session_opts_;
   Ort::Session session_;
+  size_t test_case_id_;
   MockedOrtAllocator allocator_;
   std::shared_ptr<TestCaseResult> result_;
   TIME_SPEC test_case_time_;

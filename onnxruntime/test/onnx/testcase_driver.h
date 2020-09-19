@@ -62,7 +62,7 @@ class TestCaseDriver {
     return std::move(results_);
   }
 
-  void OnTestCaseComplete(std::shared_ptr<TestCaseResult>);
+  void OnTestCaseComplete(size_t, std::shared_ptr<TestCaseResult>);
 
   const TestEnv& env_;
   size_t concurrent_runs_;
