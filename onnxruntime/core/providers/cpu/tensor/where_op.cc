@@ -199,7 +199,7 @@ static std::unique_ptr<Tensor> UntypedSelect(OpKernelContext& context, bool targ
 
   BroadcastLooper(broadcast_helper, functors);
 
-  return std::move(selection_tensor);
+  return selection_tensor;
 }
 
 static void UntypedMerge(OpKernelContext& context,
