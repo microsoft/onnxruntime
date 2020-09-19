@@ -856,7 +856,8 @@ public class OrtSession implements AutoCloseable {
 
     private native void closeOptions(long apiHandle, long nativeHandle);
 
-    private native void addConfigEntry(long apiHandle, long nativeHandle, String configKey, String configValue)
+    private native void addConfigEntry(
+        long apiHandle, long nativeHandle, String configKey, String configValue)
         throws OrtException;
 
     /*
