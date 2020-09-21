@@ -211,19 +211,16 @@ def modelclass_dispatcher(model_name, custom_model_class):
     return "AutoModel"
 
 
-def load_pretrained_model(model_name, config, cache_dir, custom_model_class, if_tf_model=False):
+def load_pretrained_model(model_name, config, cache_dir, custom_model_class, is_tf_model=False):
     model_class_name = modelclass_dispatcher(model_name, custom_model_class)
-    
-    if model_class_name == "GPT2ModelNoPastState":
-        return GPT2ModelNoPastState.from_pretrained(model_name, config=config, cache_dir=cache_dir)
-    
+
     if model_class_name == "GPT2ModelNoPastState":
         if is_tf_model:
             raise NotImplementedError("TFGPT2ModelNoPastState is currently not supported.")
         else:
             return GPT2ModelNoPastState.from_pretrained(model_name, config=config, cache_dir=cache_dir)
 
-    if if_tf_model:
+    if is_tf_model:
         model_class_name = 'TF' + model_class_name
 
     transformers_module = __import__("transformers", fromlist=[model_class_name])
@@ -329,7 +326,7 @@ def export_onnx_model_from_tf(model_name, opset_version, use_external_data_forma
 
     config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
 
-    model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir, custom_model_class=model_class, if_tf_model=True)
+    model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir, custom_model_class=model_class, is_tf_model=True)
 
     model._saved_model_inputs_spec = None
 

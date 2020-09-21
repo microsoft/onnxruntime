@@ -2799,7 +2799,7 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat9) {
   EXPECT_EQ(op_to_count["EmbedLayerNormalization"], 1);
   EXPECT_EQ(op_to_count["Attention"], 1);
   EXPECT_EQ(op_to_count["Cast"], 2);
-  EXPECT_EQ(op_to_count["Shape"], 0);
+  EXPECT_EQ(op_to_count["Shape"], 1);
   EXPECT_EQ(op_to_count["Gather"], 2);
   EXPECT_EQ(op_to_count["Unsqueeze"], 2);
   EXPECT_EQ(op_to_count["ReduceSum"], 1);
