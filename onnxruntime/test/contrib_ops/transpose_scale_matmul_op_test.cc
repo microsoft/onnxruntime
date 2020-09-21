@@ -131,7 +131,7 @@ void ProcessInputs(const std::vector<int64_t>& input_dims, const std::vector<T>&
 }
 
 template <typename T>
-void RunTransposeScaleMatMulTest(int32_t opset_version = 7, bool transa = false, bool transb = false, float alpha = 1.0f, bool is_b_constant = false) {
+void RunTransposeMatMulTest(int32_t opset_version = 7, bool transa = false, bool transb = false, float alpha = 1.0f, bool is_b_constant = false) {
   std::vector<T> common_input_vals{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
   for (auto t : GenerateSimpleTestCases<T>()) {
     OpTester test("TransposeMatMul", opset_version, onnxruntime::kMSDomain);
