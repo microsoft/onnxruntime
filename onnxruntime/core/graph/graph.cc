@@ -492,12 +492,13 @@ Status Node::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   }
 
   auto GetNodeArgsOrtFormat = [&builder](const std::vector<NodeArg*>& src) {
-    std::vector<std::string> node_args(src.size());
+    std::vector<flatbuffers::Offset<flatbuffers::String>> node_args(src.size());
     std::transform(src.cbegin(), src.cend(), node_args.begin(),
-                   [](const NodeArg* nodearg) {
-                     return nodearg->Name();
+                   [&builder](const NodeArg* nodearg) {
+                     // NodeArg's name will be used by multiple places, create shared string
+                     return builder.CreateSharedString(nodearg->Name());
                    });
-    return builder.CreateVectorOfStrings(node_args);
+    return builder.CreateVector(node_args);
   };
 
   auto name = builder.CreateString(name_);
@@ -566,6 +567,7 @@ flatbuffers::Offset<fbs::NodeEdge> Node::SaveEdgesToOrtFormat(flatbuffers::FlatB
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
+#if defined(ENABLE_ORT_FORMAT_LOAD)
 Status Node::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Node& fbs_node, Graph& graph,
                                const logging::Logger& logger, std::unique_ptr<Node>& node) {
   node.reset(new Node(fbs_node.index(), graph));
@@ -659,6 +661,7 @@ Status Node::LoadEdgesFromOrtFormat(const onnxruntime::experimental::fbs::NodeEd
 
   return Status::OK();
 }
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD)
 void Node::Init(const std::string& name,
@@ -2704,10 +2707,12 @@ std::string Graph::GenerateNodeArgName(const std::string& base_name) {
 
 static flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
 SaveInputsOutputsToOrtFormat(flatbuffers::FlatBufferBuilder& builder, const std::vector<const NodeArg*>& src) {
-  std::vector<std::string> vec(src.size());
+  std::vector<flatbuffers::Offset<flatbuffers::String>> vec(src.size());
   std::transform(src.cbegin(), src.cend(), vec.begin(),
-                 [](const NodeArg* entry) { return entry->Name(); });
-  return builder.CreateVectorOfStrings(vec);
+                 [&builder](const NodeArg* entry) {
+                   return builder.CreateSharedString(entry->Name());
+                 });
+  return builder.CreateVector(vec);
 }
 
 common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
@@ -3383,6 +3388,7 @@ std::ostream& operator<<(std::ostream& out, const Graph& graph) {
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
+#if defined(ENABLE_ORT_FORMAT_LOAD)
 Status Graph::LoadFromOrtFormat(
     const onnxruntime::experimental::fbs::Graph& fbs_graph,
     const Model& owning_model,
@@ -3525,5 +3531,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Gr
 
   return Status::OK();
 }
+
+#endif  // defined(ENABLE_ORT_FORMAT_LOAD)
 
 }  // namespace onnxruntime

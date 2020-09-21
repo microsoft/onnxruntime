@@ -680,8 +680,8 @@ TEST(CApiTest, access_tensor_data_elements) {
   Ort::Value tensor = Ort::Value::CreateTensor<float>(info, values.data(), values.size(), shape.data(), shape.size());
 
   float expected_value = 0;
-  for (size_t row = 0; row < (size_t)shape[0]; row++) {
-    for (size_t col = 0; col < (size_t)shape[1]; col++) {
+  for (int64_t row = 0; row < shape[0]; row++) {
+    for (int64_t col = 0; col < shape[1]; col++) {
       ASSERT_EQ(expected_value++, tensor.At<float>({row, col}));
     }
   }
@@ -725,8 +725,7 @@ TEST(CApiTest, override_initializer) {
   ort_inputs.push_back(std::move(f11_input_tensor));
 
   std::vector<const char*> input_names = {"Label", "F2", "F1"};
-
-  const char* const output_names[] = {"Label0", "F20", "F11"};
+  const char* output_names[] = {"Label0", "F20", "F11"};
   std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, input_names.data(),
                                                     ort_inputs.data(), ort_inputs.size(),
                                                     output_names, countof(output_names));
@@ -768,6 +767,27 @@ TEST(CApiTest, end_profiling) {
   profile_file = session_2.EndProfiling(allocator.get());
 
   ASSERT_TRUE(std::string(profile_file) == std::string());
+}
+
+TEST(CApiTest, get_profiling_start_time) {
+  // Test whether the C_API can access the profiler's start time
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  Ort::SessionOptions session_options;
+#ifdef _WIN32
+  session_options.EnableProfiling(L"profile_prefix");
+#else
+  session_options.EnableProfiling("profile_prefix");
+#endif
+
+  uint64_t before_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::high_resolution_clock::now().time_since_epoch()).count(); // get current time
+  Ort::Session session_1(*ort_env, MODEL_WITH_CUSTOM_MODEL_METADATA, session_options);
+  uint64_t profiling_start_time = session_1.GetProfilingStartTimeNs();
+  uint64_t after_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+      
+  // the profiler's start time needs to be between before_time and after_time
+  ASSERT_TRUE(before_start_time <= profiling_start_time && profiling_start_time <= after_start_time);  
 }
 
 TEST(CApiTest, model_metadata) {

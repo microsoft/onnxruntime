@@ -54,8 +54,6 @@ class ONNXCalibrater:
         '''
 
         model = onnx.load(self.model_path)
-        model = onnx.shape_inference.infer_shapes(model)
-        value_infos = {vi.name: vi for vi in model.graph.value_info}
 
         added_nodes = []
         added_outputs = []
@@ -65,18 +63,12 @@ class ONNXCalibrater:
             should_be_calibrate = ((node.op_type in self.calibrate_op_types) and
                                    (node.name not in self.black_nodes)) or (node.name in self.white_nodes)
             if should_be_calibrate:
-                for input_tensor_name in node.input:
-                    if input_tensor_name in value_infos.keys():
-                        vi = value_infos[input_tensor_name]
-                        if vi.type.HasField('tensor_type') and vi.type.tensor_type.elem_type == TensorProto.FLOAT and (
-                                input_tensor_name not in model.graph.initializer):
-                            tensors_to_calibrate.add(input_tensor_name)
+                tensors_to_calibrate.update(node.input)
+                tensors_to_calibrate.update(node.output)
 
-                for output_tensor_name in node.output:
-                    if output_tensor_name in value_infos.keys():
-                        vi = value_infos[output_tensor_name]
-                        if vi.type.HasField('tensor_type') and vi.type.tensor_type.elem_type == TensorProto.FLOAT:
-                            tensors_to_calibrate.add(output_tensor_name)
+            for tensor in tensors_to_calibrate:
+                if tensor in model.graph.initializer:
+                    tensors_to_calibrate.remove(tensor)
 
         for tensor in tensors_to_calibrate:
             # Adding ReduceMin nodes
@@ -125,7 +117,7 @@ class ONNXCalibrater:
             intermediate_outputs.append(session.run(None, inputs))
         node_output_names = [session.get_outputs()[i].name for i in range(len(intermediate_outputs[0]))]
         output_dicts_list = [
-            dict(zip(node_output_names, intermediate_outputs[i])) for i in range(self.data_reader.datasize)
+            dict(zip(node_output_names, intermediate_output)) for intermediate_output in intermediate_outputs
         ]
 
         #number of outputs in original model
@@ -167,7 +159,7 @@ class ONNXCalibrater:
                 else:
                     self.input_name_to_nodes[input_name].append(node)
 
-    def calculate_scale_zeropoint(self, node, next_node, rmin, rmax):
+    def calculate_scale_zeropoint(self, next_node, rmin, rmax):
 
         zp_and_scale = []
         # adjust rmin and rmax such that 0 is included in the range. This is required
@@ -178,16 +170,17 @@ class ONNXCalibrater:
         # We update the output range min and max when next node is clip or relu
         # With this technique we can remove these 2 ops and
         # reduce the output range which in turn helps to improve accuracy
-        if next_node.op_type == 'Clip':
-            clip_min = next_node.attribute[0].f
-            clip_max = next_node.attribute[1].f
-            if rmin < clip_min:
-                rmin = clip_min
-            if rmax > clip_max:
-                rmax = clip_max
-        if next_node.op_type == 'Relu':
-            if rmin < 0:
-                rmin = 0
+        if next_node:
+            if next_node.op_type == 'Clip':
+                clip_min = next_node.attribute[0].f
+                clip_max = next_node.attribute[1].f
+                if rmin < clip_min:
+                    rmin = clip_min
+                if rmax > clip_max:
+                    rmax = clip_max
+            elif next_node.op_type == 'Relu':
+                if rmin < 0:
+                    rmin = 0
 
         scale = np.float32((rmax - rmin) / 255 if rmin != rmax else 1)
         initial_zero_point = (0 - rmin) / scale
@@ -227,16 +220,15 @@ class ONNXCalibrater:
 
         self._get_input_name_to_nodes(model)
 
-        for node in model.graph.node:
-            for node_output_name in node.output:
-                if node_output_name in self.input_name_to_nodes:
-                    children = self.input_name_to_nodes[node_output_name]
-                    for child in children:
-                        if node_output_name in quantization_thresholds:
-                            node_thresholds = quantization_thresholds[node_output_name]
-                            node_params = self.calculate_scale_zeropoint(node, child, node_thresholds[0],
-                                                                         node_thresholds[1])
-                            quantization_params[node_output_name] = node_params
+        for tensor_name in quantization_thresholds.keys():
+            child = None
+            if tensor_name in self.input_name_to_nodes:
+                children = self.input_name_to_nodes[tensor_name]
+                if (len(children) == 1):
+                    child = children[0]
+            node_thresholds = quantization_thresholds[tensor_name]
+            node_params = self.calculate_scale_zeropoint(child, node_thresholds[0], node_thresholds[1])
+            quantization_params[tensor_name] = node_params
 
         return quantization_params
 

@@ -12,11 +12,10 @@ from pathlib import Path
 import numpy as np
 
 from onnx import onnx_pb as onnx_proto
-from onnx import shape_inference
 from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
 
 from .quant_utils import QuantizationMode, QuantizedValueType, QuantizedInitializer, QuantizedValue, quantization_modes
-from .quant_utils import _find_by_name, _get_elem_index, _get_mul_node, _generate_identified_filename, _attribute_to_kwarg
+from .quant_utils import find_by_name, get_elem_index, get_mul_node, generate_identified_filename, attribute_to_kwarg
 from .quant_utils import QuantType
 
 from .registry import CreateOpQuantizer, CreateDefaultOpQuantizer, QLinearOpsRegistry, IntegerOpsRegistry
@@ -32,7 +31,7 @@ def optimize_model(model_path: Path):
         parameter model_path: path to the original onnx model
         return: optimized onnx model
     '''
-    opt_model_path = _generate_identified_filename(model_path, "-opt")
+    opt_model_path = generate_identified_filename(model_path, "-opt")
     sess_option = SessionOptions()
     sess_option.optimized_model_filepath = opt_model_path.as_posix()
     sess_option.graph_optimization_level = GraphOptimizationLevel.ORT_ENABLE_BASIC
@@ -46,6 +45,7 @@ def quantize(model,
              nbits=8,
              quantization_mode=QuantizationMode.IntegerOps,
              static=False,
+             force_fusions=False,
              symmetric_activation=False,
              symmetric_weight=False,
              quantization_params=None,
@@ -102,7 +102,7 @@ def quantize(model,
     '''
     print("Warning: onnxruntime.quantization.quantize is deprecated.\n\
          Please use quantize_static for static quantization, quantize_dynamic for dynamic quantization.")
-    if nbits == 8:
+    if nbits == 8 or nbits == 7:
         input_qType = onnx_proto.TensorProto.INT8 if symmetric_activation else onnx_proto.TensorProto.UINT8
         weight_qType = onnx_proto.TensorProto.INT8 if symmetric_weight else onnx_proto.TensorProto.UINT8
         mode = quantization_mode
@@ -112,13 +112,13 @@ def quantize(model,
         if not op_types_to_quantize or len(op_types_to_quantize) == 0:
             op_types_to_quantize = list(QLinearOpsRegistry.keys()) if static else list(IntegerOpsRegistry.keys())
 
-        quantizer = ONNXQuantizer(copy_model, per_channel, mode, static, weight_qType, input_qType, quantization_params,
+        quantizer = ONNXQuantizer(copy_model, per_channel, nbits == 7, mode, static, weight_qType, input_qType, quantization_params,
                                   nodes_to_quantize, nodes_to_exclude, op_types_to_quantize)
 
         quantizer.quantize_model()
         return quantizer.model.model
     else:
-        raise ValueError('Only 8 bit quantization is currently supported')
+        raise ValueError('Only 8 and 7 bit quantization is currently supported')
 
 
 def quantize_static(model_input,
@@ -126,10 +126,12 @@ def quantize_static(model_input,
                     calibration_data_reader: CalibrationDataReader,
                     op_types_to_quantize=[],
                     per_channel=False,
+                    reduce_range=False,
                     activation_type=QuantType.QUInt8,
                     weight_type=QuantType.QUInt8,
                     nodes_to_quantize=[],
-                    nodes_to_exclude=[]):
+                    nodes_to_exclude=[],
+                    use_external_data_format=False):
     '''
         Given an onnx model and calibration data reader, create a quantized onnx model and save it into a file
     :param model_input: file path of model to quantize
@@ -138,6 +140,7 @@ def quantize_static(model_input,
     :param op_types_to_quantize: specify the types of operators to quantize, like ['Conv'] to quantize Conv only. It quantizes all supported operators by default.
     :param op_types: operators to quantize
     :param per_channel: quantize weights per channel
+    :param reduce_range: quantize weights with 7-bits. It may improve the accuracy for some models running on non-VNNI machine, especially for per-channel mode
     :param activation_type: quantization data type of activation
     :param weight_type: quantization data type of weight
     :param nodes_to_quantize:
@@ -151,10 +154,11 @@ def quantize_static(model_input,
     :param nodes_to_exclude:
         List of nodes names to exclude. The nodes in this list will be excluded from quantization
         when it is not None.
+    :parma use_external_data_format: option used for large size (>2GB) model. Set to False by default. 
     '''
 
-    if activation_type != QuantType.QUInt8 or weight_type != QuantType.QUInt8:
-        raise ValueError("Static quantization only support uint8 now.")
+    if activation_type != QuantType.QUInt8:
+        raise ValueError("Static quantization only support uint8 for activation now.")
 
     input_qType = onnx_proto.TensorProto.INT8 if activation_type == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
     weight_qType = onnx_proto.TensorProto.INT8 if weight_type == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
@@ -169,6 +173,7 @@ def quantize_static(model_input,
     quantizer = ONNXQuantizer(
         onnx.load(model_input),
         per_channel,
+        reduce_range,
         mode,
         True,  # static
         weight_qType,
@@ -179,23 +184,26 @@ def quantize_static(model_input,
         op_types_to_quantize)
 
     quantizer.quantize_model()
-    onnx.save_model(quantizer.model.model, model_output)
+    quantizer.model.save_model_to_file(model_output, use_external_data_format)
 
 
 def quantize_dynamic(model_input: Path,
                      model_output: Path,
                      op_types_to_quantize=[],
                      per_channel=False,
+                     reduce_range=False,
                      activation_type=QuantType.QUInt8,
                      weight_type=QuantType.QUInt8,
                      nodes_to_quantize=[],
-                     nodes_to_exclude=[]):
+                     nodes_to_exclude=[],
+                     use_external_data_format=False):
     '''
         Given an onnx model, create a quantized onnx model and save it into a file
     :param model_input: file path of model to quantize
     :param model_output: file path of quantized model
-    :param op_types_to_quantize: specify the types of operators to quantize, like ['Conv'] to quantize Conv only. It quantizes all supported operators by default.
+    :param op_types_to_quantize: specify the types of operators to quantize, like ['Conv'] to quantize Conv only. It quantizes all supported operators by default
     :param per_channel: quantize weights per channel
+    :param reduce_range: quantize weights with 7-bits. It may improve the accuracy for some models running on non-VNNI machine, especially for per-channel mode
     :param nbits: number of bits to represent quantized data. Currently only supporting 8-bit types
     :param activation_type: quantization data type of activation
     :param weight_type: quantization data type of weight
@@ -210,21 +218,20 @@ def quantize_dynamic(model_input: Path,
     :param nodes_to_exclude:
         List of nodes names to exclude. The nodes in this list will be excluded from quantization
         when it is not None.
+    :parma use_external_data_format: option used for large size (>2GB) model. Set to False by default. 
     '''
 
     input_qType = onnx_proto.TensorProto.INT8 if activation_type == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
     weight_qType = onnx_proto.TensorProto.INT8 if weight_type == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
     mode = QuantizationMode.IntegerOps
 
-    #optimize the original model
-    optimized_model = optimize_model(Path(model_input))
-
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(IntegerOpsRegistry.keys())
 
     quantizer = ONNXQuantizer(
-        optimized_model,
+        onnx.load(model_input),
         per_channel,
+        reduce_range,
         mode,
         False,  #static
         weight_qType,
@@ -235,23 +242,26 @@ def quantize_dynamic(model_input: Path,
         op_types_to_quantize)
 
     quantizer.quantize_model()
-    onnx.save_model(quantizer.model.model, model_output)
+    quantizer.model.save_model_to_file(model_output, use_external_data_format)
 
 
 def quantize_qat(model_input: Path,
                  model_output: Path,
                  op_types_to_quantize=[],
                  per_channel=False,
+                 reduce_range=False,
                  activation_type=QuantType.QUInt8,
                  weight_type=QuantType.QUInt8,
                  nodes_to_quantize=[],
-                 nodes_to_exclude=[]):
+                 nodes_to_exclude=[],
+                 use_external_data_format=False):
     '''
         Given a quantize-aware traning onnx model, create a quantized onnx model and save it into a file
     :param model_input: file path of model to quantize
     :param model_output: file path of quantized model
-    :param op_types_to_quantize: specify the types of operators to quantize, like ['Conv'] to quantize Conv only. It quantizes all supported operators by default.
+    :param op_types_to_quantize: specify the types of operators to quantize, like ['Conv'] to quantize Conv only. It quantizes all supported operators by default
     :param per_channel: quantize weights per channel
+    :param reduce_range: quantize weights with 7-bits. It may improve the accuracy for some models running on non-VNNI machine, especially for per-channel mode
     :param activation_type: quantization data type of activation
     :param nodes_to_quantize:
         List of nodes names to quantize. When this list is not None only the nodes in this list
@@ -264,6 +274,7 @@ def quantize_qat(model_input: Path,
     :param nodes_to_exclude:
         List of nodes names to exclude. The nodes in this list will be excluded from quantization
         when it is not None.
+    :parma use_external_data_format: option used for large size (>2GB) model. Set to False by default. 
     '''
 
     input_qType = onnx_proto.TensorProto.INT8 if activation_type == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
@@ -279,6 +290,7 @@ def quantize_qat(model_input: Path,
     quantizer = ONNXQuantizer(
         optimized_model,
         per_channel,
+        reduce_range,
         mode,
         False,  #static
         weight_qType,
@@ -289,4 +301,4 @@ def quantize_qat(model_input: Path,
         op_types_to_quantize)
 
     quantizer.quantize_model()
-    onnx.save_model(quantizer.model.model, model_output)
+    quantizer.model.save_model_to_file(model_output, use_external_data_format)

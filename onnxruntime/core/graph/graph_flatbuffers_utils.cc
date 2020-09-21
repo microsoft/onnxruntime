@@ -124,7 +124,7 @@ static Status SaveTypeInfoOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 Status SaveValueInfoOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                               const ValueInfoProto& value_info_proto,
                               flatbuffers::Offset<fbs::ValueInfo>& fbs_value_info) {
-  auto name = builder.CreateString(value_info_proto.name());
+  auto name = builder.CreateSharedString(value_info_proto.name());
   auto doc_string = builder.CreateString(value_info_proto.doc_string());
   flatbuffers::Offset<fbs::TypeInfo> type_info = 0;  // 0 indicates null
   if (value_info_proto.has_type()) {
@@ -268,6 +268,8 @@ Status SaveAttributeOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 
 #undef GET_FBS_ATTR
 #undef GET_DATA_VEC
+
+#if defined(ENABLE_ORT_FORMAT_LOAD)
 
 static Status LoadTypeInfoOrtFormat(const fbs::TypeInfo& fbs_type_info,
                                     TypeProto& type_proto) ORT_MUST_USE_RESULT;
@@ -483,6 +485,8 @@ Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
 
   return Status::OK();
 }
+
+#endif  // defined(ENABLE_ORT_FORMAT_LOAD)
 
 }  // namespace utils
 }  // namespace experimental

@@ -1,5 +1,6 @@
 import onnx
-from .quant_utils import _find_by_name
+from .quant_utils import find_by_name
+from pathlib import Path
 
 
 class ONNXModel:
@@ -37,7 +38,7 @@ class ONNXModel:
         self.model.graph.node.extend(nodes_to_add)
 
     def add_initializer(self, tensor):
-        if _find_by_name(tensor.name, self.model.graph.initializer) is None:
+        if find_by_name(tensor.name, self.model.graph.initializer) is None:
             self.model.graph.initializer.extend([tensor])
 
     def get_initializer(self, name):
@@ -112,7 +113,7 @@ class ONNXModel:
         '''
         graph_nodes_list = list(graph.node)  #deep copy
         graph_nodes_list.extend(new_nodes_list)
-        node = _find_by_name(node_name, graph_nodes_list)
+        node = find_by_name(node_name, graph_nodes_list)
         return node
 
     def find_nodes_by_initializer(self, graph, initializer):
@@ -125,3 +126,13 @@ class ONNXModel:
                 if node_input == initializer.name:
                     nodes.append(node)
         return nodes
+    
+     def save_model_to_file(self, output_path, use_external_data_format=False):
+        '''
+        Save model to external data, which is needed for model size > 2GB
+        '''
+        if use_external_data_format:
+            onnx.external_data_helper.convert_model_to_external_data(self.model,
+                                                                     all_tensors_to_one_file=True,
+                                                                     location=Path(output_path).name + ".data")
+        onnx.save_model(self.model, output_path)
