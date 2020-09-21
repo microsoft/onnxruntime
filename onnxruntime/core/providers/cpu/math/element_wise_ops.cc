@@ -216,11 +216,6 @@ ONNX_CPU_OPERATOR_KERNEL(
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
     Xor);
 
-static void UntypedBroadcastTwo(OpKernelContext& context, const ProcessBroadcastSpanFuncs& funcs,
-                                void* user_data = nullptr);
-static void UntypedBroadcastTwo(OpKernelContext& context, const ProcessBroadcastSpanFuncs& funcs, double unit_cost,
-                                void* user_data = nullptr);
-
 using AllocateTensorFunc = std::unique_ptr<Tensor> (*)(const TensorAllocator& tensor_allocator,
                                                        const TensorShape& shape);
 
@@ -1444,7 +1439,7 @@ Status Mod::Compute(OpKernelContext* context) const {
 // Type specific logic is plugged in via the functions in ProcessBroadcastSpanFuncs.
 // Optional user_data can be provided, and will be available to the ProcessSpanFunc implementations
 // via BroadcastHelper.GetUserData().
-static void UntypedBroadcastTwo(OpKernelContext& context, const ProcessBroadcastSpanFuncs& funcs, void* user_data) {
+void UntypedBroadcastTwo(OpKernelContext& context, const ProcessBroadcastSpanFuncs& funcs, void* user_data) {
   InputBroadcaster input_broadcaster(*context.Input<Tensor>(0), *context.Input<Tensor>(1));
   OutputBroadcaster output_broadcaster(input_broadcaster.GetSpanSize(),
                                        *context.Output(0, input_broadcaster.GetOutputShape()));
@@ -1456,8 +1451,8 @@ static void UntypedBroadcastTwo(OpKernelContext& context, const ProcessBroadcast
 // Variant of UntypedBroadcastTwo that will parallelize.
 // Operator usage is the same as the parallelization is opaque to the operator.
 // unit_cost must be a valid cost value.
-static void UntypedBroadcastTwo(OpKernelContext& context, const ProcessBroadcastSpanFuncs& funcs, double unit_cost,
-                                void* user_data) {
+void UntypedBroadcastTwo(OpKernelContext& context, const ProcessBroadcastSpanFuncs& funcs, double unit_cost,
+                         void* user_data) {
   const Tensor& input0_tensor = *context.Input<Tensor>(0);
   const Tensor& input1_tensor = *context.Input<Tensor>(1);
   InputBroadcaster input_broadcaster(input0_tensor, input1_tensor);

@@ -904,6 +904,21 @@ static void ParallelizeSingleSpan(TBroadcastHelper& helper, const ProcessBroadca
   }
 }
 
+// Broadcast two inputs with no parallelization.
+//
+// This function is type agnostic, and uses function pointers instead of std::function, to minimize binary size.
+// Type specific logic is plugged in via the functions in ProcessBroadcastSpanFuncs.
+// Optional user_data can be provided, and will be available to the ProcessSpanFunc implementations
+// via BroadcastHelper.GetUserData().
+void UntypedBroadcastTwo(OpKernelContext& context, const ProcessBroadcastSpanFuncs& funcs, void* user_data = nullptr);
+
+// Broadcast two inputs with parallelization.
+//
+// Operator usage is the same as the parallelization is opaque to the operator.
+// unit_cost must be a valid cost value.
+void UntypedBroadcastTwo(OpKernelContext& context, const ProcessBroadcastSpanFuncs& funcs, double unit_cost,
+                         void* user_data = nullptr);
+
 // Helper to provide the looping logic with optimization for parallelizing within a single span if the
 // TBroadcastHelper instance was setup to enable that.
 template <typename TBroadcastHelper>
