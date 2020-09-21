@@ -153,7 +153,6 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
     std::vector<Node*> nodes_need_compile;
     std::vector<std::unique_ptr<ComputeCapability>> capabilities =
         provider->GetCapability(graph_viewer, kernel_registry_mgr_.GetKernelRegistriesByProviderType(provider->Type()));
-
     for (auto& capability : capabilities) {
       Node* n = PlaceNode(graph, std::move(capability->sub_graph), kernel_registry_mgr_, provider->Type(), count);
       if (n != nullptr) {
@@ -198,9 +197,9 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
       if (nullptr == node_func) {
         continue;
       }
-      nodes_need_inline.push_back(&node);
+      nodes_need_inline.push_back(&node);      
     }
-  }
+  }  
 
   for (auto* node : nodes_need_inline) {
     // If the node has a functionbody with no kernel and cannot be inlined

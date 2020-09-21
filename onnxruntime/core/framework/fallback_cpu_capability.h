@@ -10,9 +10,10 @@ using namespace ONNX_NAMESPACE::Utils;
 
 namespace onnxruntime {
 
+namespace {
 const int64_t Small_Initializer_Threshold = 100;
 
-bool IsSmallInitializer(const onnxruntime::GraphViewer& graph, const NodeArg* arg) {
+bool IsSmallInitializerWithSingleConsumer(const onnxruntime::GraphViewer& graph, const NodeArg* arg) {
   const ONNX_NAMESPACE::TensorProto* initializer_tensor;
   if (!graph.GetInitializedTensor(arg->Name(), initializer_tensor))
     return false;
@@ -20,8 +21,10 @@ bool IsSmallInitializer(const onnxruntime::GraphViewer& graph, const NodeArg* ar
   for (auto& dim : initializer_tensor->dims()) {
     size *= dim;
   }
-  return size <= Small_Initializer_Threshold;
+  return size <= Small_Initializer_Threshold &&
+         graph.GetConsumerNodes(arg->Name()).size() == 1;
 }
+}  // namespace
 
 /**
   Returns a list of nodes that are prefered on CPU. 
@@ -52,6 +55,7 @@ std::unordered_set<NodeIndex> GetCpuPreferedNodes(const onnxruntime::GraphViewer
 
   std::unordered_set<const NodeArg*> cpu_output_args;
   std::unordered_set<NodeIndex> provider_nodes;
+  std::unordered_map<NodeIndex, const KernelCreateInfo*> node_to_kernel;
 
   for (auto& node_id : tentative_nodes) {
     provider_nodes.insert(node_id);
@@ -65,6 +69,7 @@ std::unordered_set<NodeIndex> GetCpuPreferedNodes(const onnxruntime::GraphViewer
     }
     // at least one registry has a target provider's kernel for this node
     ORT_ENFORCE(kernel_info != nullptr);
+    node_to_kernel.insert({node_id, kernel_info});
 
     // first, find all the direct consumer of cpu tensors.
     ORT_THROW_IF_ERROR(node->ForEachWithIndex(
@@ -87,7 +92,7 @@ std::unordered_set<NodeIndex> GetCpuPreferedNodes(const onnxruntime::GraphViewer
   // The algo below is trying to identity a subgraph that only depends on cpu tensors.
   // Usually it is a subgraph that doing shape calculation based on a GPU tensor, then reshape it back.
   // The detail:
-  // for each candidate, if one of its input is a cpu tensor and the cuda kernel doesn't mark it as cpu input,
+  // for each candidate, if one of its input is a cpu tensor and the Non-CPU kernel doesn't mark it as cpu input,
   // force the node to CPU to avoid memory cpu and add its output to the small cpu tensors.
   while (!candidates.empty()) {
     NodeIndex cur = candidates.top();
@@ -100,14 +105,6 @@ std::unordered_set<NodeIndex> GetCpuPreferedNodes(const onnxruntime::GraphViewer
       continue;
 
     auto* node = graph.GetNode(cur);
-
-    const KernelCreateInfo* kernel_info;
-    for (auto registry : kernel_registries) {
-      auto st = registry->TryFindKernel(*node, provider_type, &kernel_info);
-      if (st.IsOK())
-        break;
-    }
-
     bool place_in_cpu = true;
     for (size_t i = 0; i < node->InputDefs().size(); ++i) {
       auto* input = node->InputDefs()[i];
@@ -120,7 +117,7 @@ std::unordered_set<NodeIndex> GetCpuPreferedNodes(const onnxruntime::GraphViewer
       }
 
       // allow placing on CPU if it's a small initializer or graph input
-      if (IsSmallInitializer(graph, input) ||
+      if (IsSmallInitializerWithSingleConsumer(graph, input) ||
           std::find(graph_inputs.begin(), graph_inputs.end(), input) != graph_inputs.end()) {
         continue;
       }
@@ -132,7 +129,7 @@ std::unordered_set<NodeIndex> GetCpuPreferedNodes(const onnxruntime::GraphViewer
       }
 
       // input is a CPU tensor, but it's intended to be consumed as CPU input by the target EP
-      if (kernel_info->kernel_def->IsInputOnCpu(i)) {
+      if (node_to_kernel[cur]->kernel_def->IsInputOnCpu(i)) {
         place_in_cpu = false;
         break;
       }

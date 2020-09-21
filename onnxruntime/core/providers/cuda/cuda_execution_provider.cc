@@ -1862,7 +1862,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     }
   }
 
-  // For CUDA EP, exclude the subgraph that is prefered to be placed in CPU
+  // For CUDA EP, exclude the subgraph that is preferred to be placed in CPU
   // These are usually shape related computation subgraphs
   // Following logic can be extended for other EPs
   std::unordered_set<NodeIndex> cpu_nodes = GetCpuPreferedNodes(graph, Type(), kernel_registries, candidates);
