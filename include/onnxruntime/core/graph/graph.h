@@ -97,7 +97,7 @@ class Node {
 
   /** Gets the Node's exection priority. 
   @remarks Lower value means higher priority  */
-  int Priority() const noexcept;
+  int Priority() const noexcept { return priority_; };
 
   /** Sets the execution priority of a node.
   @remarks Lower value means higher priority  */
