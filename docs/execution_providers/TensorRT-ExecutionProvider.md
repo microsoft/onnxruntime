@@ -67,7 +67,12 @@ ORT_TENSORRT_MIN_SUBGRAPH_SIZE: minimum node size in a subgraph after partitioni
 
 ORT_TENSORRT_FP16_ENABLE: Enable FP16 mode in TensorRT
 
-ORT_TENSORRT_ENGINE_CACHE_ENABLE: Enable TensorRT engine caching. The purpose of using engine caching is to save engine build time in the cases that TensorRT may take long time to optimize and build engine. Engine will be cached after it's built at the first time so that next time when inference session is created the engine can be loaded directly from cache. Note each engine is created for specific settings such as precision (FP32/FP16/INT8 etc), workspace, profiles etc, and specific GPUs and it's not portable, so it's essential to make sure those settings are not changing, otherwise the engines need to be rebuilt and cached again. Also please clean up any old engine cache files (.engine) before enabling the feature for new models. Right now engine caching is only available for static shape models (subgraphs). For dynamic shape cases, since the engine is dynamically created at run-time it's hard to reuse it from previous run without knowing the profile the engine was created from. Dyanmic shape engine caching will be addressed in the future.
+ORT_TENSORRT_ENGINE_CACHE_ENABLE: Enable TensorRT engine caching. The purpose of using engine caching is to save engine build time in the cases that TensorRT may take long time to optimize and build engine. Engine will be cached after it's built at the first time so that next time when inference session is created the engine can be loaded directly from cache. Note each engine is created for specific settings such as precision (FP32/FP16/INT8 etc), workspace, profiles etc, and specific GPUs and it's not portable, so it's essential to make sure those settings are not changing, otherwise the engines need to be rebuilt and cached again. 
+### Warning: Please clean up any old engine cache files (.engine) if any of the following changes:
+* Model changes (if there are any changes to the model topology, opset version etc.)
+* ORT version changes (i.e. moving from ORT version 1.4 to 1.5)
+* TensorRT version changes (i.e. moving from TensorRT 7.0 to 7.1)
+* Hardware changes. (Engine files are not portable and optimized for specific Nvidia hardware)
 
 ORT_TENSORRT_ENGINE_CACHE_PATH: Specify path for TensorRT engine files if ORT_TENSORRT_ENGINE_CACHE_ENABLE is 1
 
@@ -90,6 +95,8 @@ export ORT_TENSORRT_FP16_ENABLE=1
 
 ### Enable TensorRT engine caching
 export ORT_TENSORRT_ENGINE_CACHE_ENABLE=1
+* Please Note warning above. This feature is experimental. Engine cache files must be invalidated if there are any changes to the model, ORT version, TensorRT version or if the
+underlying hardware changes. Engine files are not portable across devices.
 
 ### Specify TensorRT engine cache path
 export ORT_TENSORRT_ENGINE_CACHE_PATH="cache"
