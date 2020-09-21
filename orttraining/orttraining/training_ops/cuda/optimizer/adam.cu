@@ -255,5 +255,17 @@ SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, half, float, half)
 SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, half, half, half)
 SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, half, float, half)
 
+#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, float, float, nv_bfloat16)
+SPECIALIZED_AdamOptimizerImpl(nv_bfloat16, int64_t, float, nv_bfloat16, float, float, nv_bfloat16)
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, nv_bfloat16, float, float, nv_bfloat16)
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, nv_bfloat16, nv_bfloat16, nv_bfloat16)
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, nv_bfloat16, float, nv_bfloat16)
+SPECIALIZED_AdamOptimizerImpl(nv_bfloat16, int64_t, float, nv_bfloat16, nv_bfloat16, nv_bfloat16, nv_bfloat16)
+SPECIALIZED_AdamOptimizerImpl(nv_bfloat16, int64_t, float, nv_bfloat16, nv_bfloat16, float, nv_bfloat16)
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, nv_bfloat16, nv_bfloat16, nv_bfloat16, nv_bfloat16)
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, nv_bfloat16, nv_bfloat16, float, nv_bfloat16)
+#endif
+
 }  // namespace cuda
 }  // namespace onnxruntime
