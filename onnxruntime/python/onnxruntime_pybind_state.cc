@@ -585,8 +585,8 @@ const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCudaToHostMemCpy
  *
  * (note: currently only cuda EP supports this feature and rest of EPs use default options)
  */
-void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::string>& provider_types,
-                                ProviderOptionsMap& provider_options_map) {
+static void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::string>& provider_types,
+                                       ProviderOptionsMap& provider_options_map) {
   PYBIND_UNREFERENCED_PARAMETER(provider_options_map);
 
   for (const std::string& type : provider_types) {
@@ -723,6 +723,38 @@ void InitializeSession(InferenceSession* sess, const std::vector<std::string>& p
     RegisterExecutionProviders(sess, provider_types, provider_options_map);
   }
   OrtPybindThrowIfError(sess->Initialize());
+}
+
+bool CheckIfTensor(const InputDefList& def_list,
+                   const std::string& name,
+                   /*out*/ onnx::TypeProto& type_proto) {
+  auto ret_it = std::find_if(std::begin(def_list), std::end(def_list),
+                             [&name](const NodeArg* node_arg) { return name == node_arg->Name(); });
+  if (ret_it == std::end(def_list)) {
+    throw std::runtime_error("Failed to find NodeArg with name: " + name + " in the def list");
+  }
+
+  const auto* temp = (*ret_it)->TypeAsProto();
+  if (!temp) {
+    throw std::runtime_error("Corresponding type_proto is null");
+  } else {
+    type_proto = *temp;
+  }
+
+  return type_proto.has_tensor_type();
+}
+
+bool IsNumericNumpyType(int npy_type) {
+  return npy_type != NPY_STRING && npy_type != NPY_UNICODE && npy_type != NPY_VOID && npy_type != NPY_OBJECT;
+}
+
+bool IsNumericNumpyArray(py::object& py_object) {
+  if (PyObjectCheck_Array(py_object.ptr())) {
+    int npy_type = PyArray_TYPE(reinterpret_cast<PyArrayObject*>(py_object.ptr()));
+    return IsNumericNumpyType(npy_type);
+  }
+
+  return false;
 }
 
 void addGlobalMethods(py::module& m, const Environment& env) {
@@ -986,6 +1018,10 @@ void addObjectMethods(py::module& m, Environment& env) {
       // Factory method to create an OrtValue (Tensor) from the given Numpy object
       // The Tensor allocates and manages its own memory (on the specified device) and copies data from the Numpy data buffer
       .def_static("tensor_from_numpy", [](py::object& array_on_cpu, OrtDevice& device) {
+        if (!IsNumericNumpyArray(array_on_cpu)) {
+          throw std::runtime_error("Creation of OrtValues is currently only supported from non-string numpy arrays");
+        }
+
         auto ml_value = onnxruntime::make_unique<OrtValue>();
 
         // The tensor's memory is allocated on the CPU
@@ -1008,9 +1044,9 @@ void addObjectMethods(py::module& m, Environment& env) {
           CreateGenericMLValue(nullptr, GetCudaAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToCudaMemCpy);
 
 #else
-      throw std::runtime_error(
-          "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
-          "Please use the CUDA package of OnnxRuntime to use this feature.");
+        throw std::runtime_error(
+            "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
+            "Please use the CUDA package of OnnxRuntime to use this feature.");
 #endif
         } else {
           throw std::runtime_error("Unsupported device: Cannot place the OrtValue on this device");
@@ -1023,10 +1059,16 @@ void addObjectMethods(py::module& m, Environment& env) {
       // The memory is left uninitialized
       .def_static("tensor_from_shape_and_type", [](std::vector<int64_t>& shape, py::object& element_type, OrtDevice& device) {
         PyArray_Descr* dtype;
-        if (!PyArray_DescrConverter(element_type.ptr(), &dtype))
+        if (!PyArray_DescrConverter(element_type.ptr(), &dtype)) {
           throw std::runtime_error("Not a valid numpy type");
+        }
+
         int type_num = dtype->type_num;
         Py_DECREF(dtype);
+
+        if (!IsNumericNumpyType(type_num)) {
+          throw std::runtime_error("Creation of OrtValues is currently only supported from non-string numpy arrays");
+        }
 
         auto ml_value = onnxruntime::make_unique<OrtValue>();
 
@@ -1043,9 +1085,9 @@ void addObjectMethods(py::module& m, Environment& env) {
 
           tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, GetCudaAllocator(device.Id()));
 #else
-      throw std::runtime_error(
-          "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
-          "Please use the CUDA package of OnnxRuntime to use this feature.");
+        throw std::runtime_error(
+            "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
+            "Please use the CUDA package of OnnxRuntime to use this feature.");
 #endif
         } else {
           throw std::runtime_error("Unsupported device: Cannot place the OrtValue on this device");
@@ -1075,18 +1117,7 @@ void addObjectMethods(py::module& m, Environment& env) {
         // TODO: Assumes that the OrtValue is a Tensor, make this generic to handle non-Tensors
         ORT_ENFORCE(ort_value->IsTensor(), "Only OrtValues that are Tensors are currently supported");
 
-        std::string device_name = std::string(GetDeviceName(ort_value->Get<Tensor>().Location().device));
-
-        // Normalize to lower case as in python - we seem to prefer all lower case for device names
-        std::transform(device_name.begin(), device_name.end(), device_name.begin(),
-                       [](char ch) {
-                         if (ch >= 'A' && ch <= 'Z')
-                           return ch += ('a' - 'A');
-                         else
-                           return ch;
-                       });
-
-        return device_name;
+        return std::string(GetDeviceName(ort_value->Get<Tensor>().Location().device));
       })
       .def("shape", [](OrtValue* ort_value) -> py::list {
         // TODO: Assumes that the OrtValue is a Tensor, make this generic to handle non-Tensors
@@ -1120,16 +1151,9 @@ void addObjectMethods(py::module& m, Environment& env) {
 #ifdef USE_CUDA
         GetPyObjFromTensor(ort_value->Get<Tensor>(), obj, nullptr, GetCudaToHostMemCpyFunction());
 #else
-    GetPyObjFromTensor(ort_value->Get<Tensor>(), obj, nullptr, nullptr);
+      GetPyObjFromTensor(ort_value->Get<Tensor>(), obj, nullptr, nullptr);
 #endif
         return obj;
-      })
-      .def("get_native_handle", [](OrtValue* ort_value) -> OrtValue {
-        // This isn't exposed in python - this is the only way I could get a (copy of) the underlying
-        // native OrtValue from a pybind OrtValue object which is to be used in `CreateGenericMLValue()` to create
-        // an ortValue directly from a pybind object which is an OrtValue coming in from the Python world.
-        // TODO: Explore if there is a cleaner way to achieve this
-        return *ort_value;
       });
 
   py::class_<SessionIOBinding> session_io_binding(m, "SessionIOBinding");
@@ -1139,86 +1163,106 @@ void addObjectMethods(py::module& m, Environment& env) {
         return sess_io_binding;
       }))
       .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, py::object& arr_on_cpu) -> void {
-        OrtValue ml_value;
-
         InferenceSession* sess = io_binding->GetInferenceSession();
         auto px = sess->GetModelInputs();
         if (!px.first.IsOK() || !px.second) {
           throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
         }
 
-        // Check if input is sequence of tensors
-        onnx::TypeProto type_proto;
+        // For now, limit binding support to only non-string Tensors
+        // TODO: Support non-tensors
         const auto& def_list = *px.second;
-        auto ret_it = std::find_if(std::begin(def_list), std::end(def_list),
-                                   [&name](const NodeArg* node_arg) { return name == node_arg->Name(); });
-        if (ret_it == std::end(def_list)) {
-          throw std::runtime_error("Failed to find input with name: " + name + " in the model input def list");
-        }
-        const auto* temp = (*ret_it)->TypeAsProto();
-        if (!temp) {
-          throw std::runtime_error("Corresponding type_proto is null");
-        } else {
-          type_proto = *temp;
-        }
-        if (type_proto.has_sequence_type()) {
-          throw std::runtime_error("Cannot bind input to sequence of tensors");
+        onnx::TypeProto type_proto;
+        if (!CheckIfTensor(def_list, name, type_proto)) {
+          throw std::runtime_error("Only binding Tensors is currently supported");
         }
 
-        if (PyDict_Check(arr_on_cpu.ptr())) {
-          throw std::runtime_error("Cannot bind input to dictionary type of values");
+        ORT_ENFORCE(type_proto.tensor_type().has_elem_type());
+        if (type_proto.tensor_type().elem_type() == onnx::TensorProto::STRING) {
+          throw std::runtime_error("Only binding non-string Tensors is currently supported");
         }
 
-        CreateGenericMLValue(px.second, GetAllocator(), name, arr_on_cpu, &ml_value);
+        OrtValue ml_value;
+        // Set the parameter `parse_numpy_only` to `true` (we only support Tensors)
+        CreateGenericMLValue(px.second, GetAllocator(), name, arr_on_cpu, &ml_value, true);
+
         auto status = io_binding->Get()->BindInput(name, ml_value);
-        if (!status.IsOK())
+        if (!status.IsOK()) {
           throw std::runtime_error("Error when bind input: " + status.ErrorMessage());
+        }
       })
       .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, py::object& element_type, std::vector<int64_t>& shape, int64_t data_ptr) -> void {
         ORT_ENFORCE(data_ptr != 0, "Pointer to data memory is not valid");
 
         PyArray_Descr* dtype;
-        if (!PyArray_DescrConverter(element_type.ptr(), &dtype))
+        if (!PyArray_DescrConverter(element_type.ptr(), &dtype)) {
           throw std::runtime_error("Not a valid numpy type");
+        }
         int type_num = dtype->type_num;
         Py_DECREF(dtype);
 
         OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device);
-        std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, reinterpret_cast<void*>(data_ptr), info);
-        OrtValue ml_value;
+        std::unique_ptr<Tensor> p_tensor =
+            onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, reinterpret_cast<void*>(data_ptr), info);
 
+        OrtValue ml_value;
         ml_value.Init(p_tensor.release(),
                       DataTypeImpl::GetType<Tensor>(),
                       DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+
         auto status = io_binding->Get()->BindInput(name, ml_value);
-        if (!status.IsOK())
-          throw std::runtime_error("Error when bind input: " + status.ErrorMessage());
+        if (!status.IsOK()) {
+          throw std::runtime_error("Error when binding input: " + status.ErrorMessage());
+        }
       })
       .def("bind_output", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, py::object& element_type, std::vector<int64_t>& shape, int64_t data_ptr) -> void {
         ORT_ENFORCE(data_ptr != 0, "Pointer to data memory is not valid");
 
+        InferenceSession* sess = io_binding->GetInferenceSession();
+        auto px = sess->GetModelOutputs();
+        if (!px.first.IsOK() || !px.second) {
+          throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
+        }
+
+        // For now, limit binding support to only non-string Tensors
+        // TODO: Support non-tensors
+        const auto& def_list = *px.second;
+        onnx::TypeProto type_proto;
+        if (!CheckIfTensor(def_list, name, type_proto)) {
+          throw std::runtime_error("Only binding Tensors is currently supported");
+        }
+
+        ORT_ENFORCE(type_proto.tensor_type().has_elem_type());
+        if (type_proto.tensor_type().elem_type() == onnx::TensorProto::STRING) {
+          throw std::runtime_error("Only binding non-string Tensors is currently supported");
+        }
+
         PyArray_Descr* dtype;
-        if (!PyArray_DescrConverter(element_type.ptr(), &dtype))
+        if (!PyArray_DescrConverter(element_type.ptr(), &dtype)) {
           throw std::runtime_error("Not a valid numpy type");
+        }
         int type_num = dtype->type_num;
         Py_DECREF(dtype);
 
         OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device);
 
         std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, reinterpret_cast<void*>(data_ptr), info);
+
         OrtValue ml_value;
         ml_value.Init(p_tensor.release(),
                       DataTypeImpl::GetType<Tensor>(),
                       DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
 
         auto status = io_binding->Get()->BindOutput(name, ml_value);
-        if (!status.IsOK())
-          throw std::runtime_error("Error when bind output: " + status.ErrorMessage());
+        if (!status.IsOK()) {
+          throw std::runtime_error("Error when binding output: " + status.ErrorMessage());
+        }
       })
       .def("bind_output", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device) -> void {
         auto status = io_binding->Get()->BindOutput(name, device);
-        if (!status.IsOK())
-          throw std::runtime_error("Error when bind output: " + status.ErrorMessage());
+        if (!status.IsOK()) {
+          throw std::runtime_error("Error when binding output: " + status.ErrorMessage());
+        }
       })
       .def("clear_binding_inputs", [](SessionIOBinding* io_binding) -> void {
         io_binding->Get()->ClearInputs();

@@ -363,7 +363,7 @@ class OrtValue:
         '''
         Returns the name of the device where the OrtValue's data buffer resides e.g. cpu, cuda
         '''
-        return self._ortvalue.device_name()
+        return self._ortvalue.device_name().lower()
 
     def shape(self):
         '''
