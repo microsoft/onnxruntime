@@ -430,7 +430,8 @@ Status MegatronTransformer::TransformT5MLP(Graph& graph, bool& modified, int gra
     }
     // LOGS_DEFAULT(WARNING) << " T5MLP " << node.Name() << " Transpose2 ";
     nodes_to_clear_shape.insert(nodes_to_clear_shape.end(), {&node, second_op, &relu_node, &dropout_node,
-                                                             &matmul2_node, &dropout2_node, transpose_op});
+                                                             &matmul2_node, transpose_op});
+                                                            //  &matmul2_node, &dropout2_node, transpose_op});
 
     auto dense_wi_weight_arg = second_op->MutableInputDefs()[0];
     NodeArg& dense_wi_weight_partition_arg = PartitionWeightByRow(graph, *dense_wi_weight_arg);
@@ -456,6 +457,147 @@ Status MegatronTransformer::TransformT5MLP(Graph& graph, bool& modified, int gra
                                      mlp_f_input_defs,
                                      {&mlp_f_out_arg}, {}, kMSDomain);
     LOGS_DEFAULT(WARNING) << "T5MLP " << node.Name() << " is Partitioned ";
+    counter++;
+    mlp_f_node.SetExecutionProviderType(node.GetExecutionProviderType());
+    const Node::EdgeEnd* edge = graph_utils::GetInputEdge(node, 0);
+    if (nullptr == edge) {  // handle input/initializer
+      graph_utils::ReplaceNodeInput(node, 0, *(mlp_f_node.MutableOutputDefs()[0]));
+    } else {
+      auto input_node = const_cast<Node*>(&edge->GetNode());
+      graph_utils::ReplaceDownstreamNodeInput(graph, *input_node, edge->GetSrcArgIndex(), mlp_f_node, 0);
+    }
+
+    const std::vector<NodeArg*> mlp_g_input_defs{matmul2_node.MutableOutputDefs()[0]};
+    auto mlp_g_type_info = *matmul2_node.MutableOutputDefs()[0]->TypeAsProto();
+    auto& mlp_g_out_arg = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("MLP_MegatronG_Output"), &mlp_g_type_info);
+    Node& mlp_g_node = graph.AddNode(graph.GenerateNodeName("MLP_MegatronG"),
+                                     "MegatronG",
+                                     "MLP MegatronG",
+                                     mlp_g_input_defs,
+                                     {&mlp_g_out_arg}, {}, kMSDomain);
+    mlp_g_node.AddAttribute("group_type", static_cast<int64_t>(training::WorkerGroupType::HorizontalParallel));
+    mlp_g_node.SetExecutionProviderType(node.GetExecutionProviderType());
+    graph_utils::ReplaceDownstreamNodeInput(graph, matmul2_node, 0, mlp_g_node, 0);
+    modified = true;
+  }
+
+  return Status::OK();
+}
+
+/*
+DenseWeight -- Transpose \
+               MatMul -- BiasGelu -- Dropout -- MatMul -- Add -- Dropout
+*/
+Status MegatronTransformer::TransformBARTMLP(Graph& graph, bool& modified, int graph_level,
+                                           const logging::Logger& logger,
+                                           std::vector<Node*>& nodes_to_clear_shape,
+                                           std::unordered_set<Node*>& self_attention_dropout_nodes, int32_t& counter) const {
+  GraphViewer graph_viewer(graph);
+  LOGS_DEFAULT(WARNING) << "BARTMLP Enter TransformBARTMLP";
+  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+  for (auto node_index : node_topology_list) {
+    auto& node = *graph.GetNode(node_index);
+    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
+
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", {9}) ||
+        !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) ||
+        node.GetOutputEdgesCount() != 1) {
+      continue;
+    }
+    // LOGS_DEFAULT(WARNING) << " BARTMLP " << node.Name() << " MatMul ";
+    Node* second_op = const_cast<Node*>(graph.GetProducerNode(node.MutableInputDefs()[1]->Name()));
+    Node* first_op = const_cast<Node*>(graph.GetProducerNode(node.MutableInputDefs()[0]->Name()));
+    if (node.GetInputEdgesCount() > 0) {
+      if (second_op == nullptr) {
+        LOGS_DEFAULT(WARNING) << " BARTMLP " << node.Name() << "'s second input is nullptr";
+        break;
+      }
+      if (first_op != nullptr && first_op->OpType().compare("MegatronF") == 0) {
+        continue;
+      }
+
+      if (second_op->OpType().compare("Transpose") != 0) {
+        continue;
+      }
+    } else {
+      continue;
+    }
+    // LOGS_DEFAULT(WARNING) << " BARTMLP " << node.Name() << " Transpose ";
+    // todo check tranpose is only 2-dim transpose
+
+    Node* biasgelu_node_ptr = graph.GetNode(node.OutputNodesBegin()->Index());
+    Node& biasgelu_node = *biasgelu_node_ptr;
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(biasgelu_node, "BiasGelu", {1}, kMSDomain) ||
+        biasgelu_node.GetExecutionProviderType() != node.GetExecutionProviderType() ||
+        biasgelu_node.GetOutputEdgesCount() != 1) {
+      continue;
+    }
+    // LOGS_DEFAULT(WARNING) << " BARTMLP " << node.Name() << " Relu ";
+    Node& dropout_node = *graph.GetNode(biasgelu_node.OutputNodesBegin()->Index());
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(dropout_node, "Dropout", {12}) ||
+        dropout_node.GetExecutionProviderType() != node.GetExecutionProviderType() ||
+        dropout_node.GetOutputEdgesCount() != 1) {
+      continue;
+    }
+    // LOGS_DEFAULT(WARNING) << " BARTMLP " << node.Name() << " Dropout ";
+    Node& matmul2_node = *graph.GetNode(dropout_node.OutputNodesBegin()->Index());
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(matmul2_node, "MatMul", {9}) ||
+        matmul2_node.GetExecutionProviderType() != node.GetExecutionProviderType() ||
+        matmul2_node.GetOutputEdgesCount() != 1) {
+      continue;
+    }
+    // LOGS_DEFAULT(WARNING) << " BARTMLP " << node.Name() << " MatMul2 ";
+    Node& add_node = *graph.GetNode(matmul2_node.OutputNodesBegin()->Index());
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(add_node, "Add", {7}) ||
+        add_node.GetExecutionProviderType() != node.GetExecutionProviderType() ||
+        add_node.GetOutputEdgesCount() != 1) {
+      continue;
+    }
+    // LOGS_DEFAULT(WARNING) << " BARTMLP " << node.Name() << " Add "
+    Node& dropout2_node = *graph.GetNode(add_node.OutputNodesBegin()->Index());
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(dropout2_node, "Dropout", {12}) ||
+        dropout2_node.GetExecutionProviderType() != node.GetExecutionProviderType() ||
+        dropout2_node.GetOutputEdgesCount() != 1) {
+      continue;
+    }
+    // LOGS_DEFAULT(WARNING) << " BARTMLP " << node.Name() << " Dropout2 ";
+    Node* transpose_op = const_cast<Node*>(graph.GetProducerNode(matmul2_node.MutableInputDefs()[1]->Name()));
+    if (transpose_op->OpType().compare("Transpose") != 0) {
+      continue;
+    }
+    // LOGS_DEFAULT(WARNING) << " BARTMLP " << node.Name() << " Transpose2 ";
+    nodes_to_clear_shape.insert(nodes_to_clear_shape.end(), {&node, second_op, &biasgelu_node, &dropout_node,
+                                                             &matmul2_node, transpose_op});
+
+    auto dense_wi_weight_arg = second_op->MutableInputDefs()[0];
+    NodeArg& dense_wi_weight_partition_arg = PartitionWeightByRow(graph, *dense_wi_weight_arg);
+
+    //since the bias doesnt get transposed, partitioning by col
+    auto dense_wi_bias_arg = biasgelu_node.MutableInputDefs()[1];
+    NodeArg& dense_wi_bias_partition_arg = PartitionWeightByColumn(graph, *dense_wi_bias_arg);
+
+    // LOGS_DEFAULT(WARNING) << " BARTMLP " << node.Name() << " Partion 1 ";
+    auto dense_wo_weight_arg = transpose_op->MutableInputDefs()[0];
+    NodeArg& dense_wo_weight_partition_arg = PartitionWeightByColumn(graph, *dense_wo_weight_arg);
+
+    // LOGS_DEFAULT(WARNING) << " BARTMLP " << node.Name() << " Partion 2 " << transpose_op->MutableInputDefs()[0]->Name();
+    //LOGS_DEFAULT(WARNING) << dense_wo_weight_partition_arg.Name() << "dd" << second_op->MutableInputDefs()[0]->Name()
+    //                      << "," << dense_wi_weight_partition_arg.Name();
+    graph_utils::ReplaceNodeInput(*second_op, 0, dense_wi_weight_partition_arg);
+    graph_utils::ReplaceNodeInput(biasgelu_node, 1, dense_wi_bias_partition_arg);
+    graph_utils::ReplaceNodeInput(*transpose_op, 0, dense_wo_weight_partition_arg);
+
+    self_attention_dropout_nodes.insert(&dropout_node);
+
+    const std::vector<NodeArg*> mlp_f_input_defs{node.MutableInputDefs()[0]};
+    auto mlp_f_type_info = *node.MutableInputDefs()[0]->TypeAsProto();
+    auto& mlp_f_out_arg = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("MLP_MegatronF_Output"), &mlp_f_type_info);
+    Node& mlp_f_node = graph.AddNode(graph.GenerateNodeName("MLP_MegatronF"),
+                                     "MegatronF",
+                                     "MLP MegatronF",
+                                     mlp_f_input_defs,
+                                     {&mlp_f_out_arg}, {}, kMSDomain);
+    LOGS_DEFAULT(WARNING) << "BARTMLP " << node.Name() << " is Partitioned ";
     counter++;
     mlp_f_node.SetExecutionProviderType(node.GetExecutionProviderType());
     const Node::EdgeEnd* edge = graph_utils::GetInputEdge(node, 0);
@@ -1137,6 +1279,7 @@ Status MegatronTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_le
 
   ORT_ENFORCE(TransformMLP(graph, modified, graph_level, logger, nodes_to_clear_shape).IsOK());
   ORT_ENFORCE(TransformT5MLP(graph, modified, graph_level, logger, nodes_to_clear_shape, self_attention_dropout_nodes, partitioned_t5_mlp_count_).IsOK());
+  ORT_ENFORCE(TransformBARTMLP(graph, modified, graph_level, logger, nodes_to_clear_shape, self_attention_dropout_nodes, partitioned_t5_mlp_count_).IsOK());
   ORT_ENFORCE(TransformSelfAttention(graph, modified, graph_level, logger, nodes_to_clear_shape, self_attention_dropout_nodes).IsOK());
   ORT_ENFORCE(TransformT5SelfAttention(graph, modified, graph_level, logger, nodes_to_clear_shape, self_attention_dropout_nodes, partitioned_t5_attention_count_).IsOK());
   ORT_ENFORCE(TransformDropout(graph, modified, graph_level, logger, self_attention_dropout_nodes, dropout_changed_).IsOK());

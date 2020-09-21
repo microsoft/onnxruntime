@@ -760,6 +760,117 @@ TEST_F(GraphTransformationTests, MegatronT5MLPPartitionCorrectnessTest) {
   }
 }
 
+TEST_F(GraphTransformationTests, MegatronBARTMLPPartitionCorrectnessTest) {
+  auto model_uri = MODEL_FOLDER "model_parallel/bart_mlp_megatron_basic_test.onnx";
+  float scale = 1.f;
+  float mean = 0.f;
+  float seed = 123.f;
+
+  std::default_random_engine generator{gsl::narrow_cast<uint32_t>(seed)};
+  std::normal_distribution<float> distribution{mean, scale};
+
+  std::vector<int64_t> dims_X = {8, 16, 4};
+  std::vector<float> values_X(TensorShape(dims_X).Size());
+  std::for_each(values_X.begin(), values_X.end(),
+                [&generator, &distribution](float& value) { value = distribution(generator); });
+
+  std::vector<OrtValue> expected_ort_values;
+  {
+    SessionOptions so;
+    so.session_logid = "RawGraphRun";
+
+    InferenceSession session_object{so, GetEnvironment()};
+    std::unique_ptr<IExecutionProvider> execution_provider = DefaultCudaExecutionProvider();
+    EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+
+    Status st;
+    ASSERT_TRUE((st = session_object.Load(model_uri)).IsOK()) << st;
+    ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st;
+
+    OrtValue ml_value;
+    CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_X, values_X, &ml_value);
+    NameMLValMap feeds;
+    feeds.insert(std::make_pair("input", ml_value));
+
+    // prepare outputs
+    std::vector<std::string> output_names;
+    output_names.push_back("output");
+
+    // Now run
+    RunOptions run_options;
+    run_options.training_mode = true;
+    st = session_object.Run(run_options, feeds, output_names, &expected_ort_values);
+
+    EXPECT_TRUE(st.IsOK());
+  }
+
+  const int total_rank = 4;
+  std::vector<Graph*> graphs;
+  std::vector<std::shared_ptr<Model>> p_models(total_rank);
+  for (auto i = 0; i < total_rank; i++) {
+    auto ret = Model::Load(model_uri, p_models[i], nullptr, *logger_);
+    std::cout << ret.ErrorMessage() << std::endl;
+    ASSERT_TRUE(ret.IsOK());
+    Graph& graph = p_models[i]->MainGraph();
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+    std::unordered_map<std::string, std::string> updated_weight_names;
+    std::unordered_set<std::string> weights_to_train;
+    graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(i, total_rank, updated_weight_names, weights_to_train), TransformerLevel::Level1);
+    ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
+    ASSERT_TRUE(ret.IsOK());
+    graphs.push_back(&graph);
+    auto model_uri2 = "bart_mlp_megatron_basic_test_partition_rank" + std::to_string(i) + ".onnx";
+    Model::Save(*p_models[i], model_uri2);
+  }
+
+  std::cout << "===============================================" << std::endl;
+  onnxruntime::Model combine_model("combine_graph", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}, {kMSDomain, 1}}, {}, *logger_);
+  auto& combine_graph = combine_model.MainGraph();
+  auto ret = horizontal_parallel_test_utils::MergeGraphsOnAllWorkers(graphs, combine_graph);
+  ORT_ENFORCE(ret.IsOK());
+  auto model_uri2 = "bart_mlp_megatron_basic_test_partition_combine.onnx";
+  Model::Save(combine_model, model_uri2);
+
+  std::vector<OrtValue> actual_ort_values;
+  {
+    SessionOptions so;
+    so.session_logid = "SplitThenCombineRun";
+
+    InferenceSession session_object{so, GetEnvironment()};
+    std::unique_ptr<IExecutionProvider> execution_provider = DefaultCudaExecutionProvider();
+    EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+
+    Status st;
+    ASSERT_TRUE((st = session_object.Load(model_uri2)).IsOK()) << st;
+    ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st;
+
+    OrtValue ml_value;
+    CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_X, values_X, &ml_value);
+    NameMLValMap feeds;
+    feeds.insert(std::make_pair("input", ml_value));
+
+    // prepare outputs
+    std::vector<std::string> output_names;
+    for (auto i = 0; i < total_rank; i++) {
+      output_names.push_back("output_rank_" + std::to_string(i));
+    }
+
+    // Now run
+    RunOptions run_options;
+    run_options.training_mode = true;
+    st = session_object.Run(run_options, feeds, output_names, &actual_ort_values);
+
+    EXPECT_TRUE(st.IsOK());
+  }
+
+  auto& expected_val = expected_ort_values[0].Get<Tensor>();
+  for (auto i = 0; i < total_rank; i++) {
+    auto& actual_val = actual_ort_values[i].Get<Tensor>();
+    horizontal_parallel_test_utils::VerifyOutputs(expected_val, actual_val, true);
+    horizontal_parallel_test_utils::VerifyOutputs(expected_val, actual_val, false);
+  }
+}
+
 TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionCorrectnessTest) {
   auto model_uri = MODEL_FOLDER "model_parallel/self_attention_megatron_basic_test.onnx";
   const int total_rank = 2;  // The test graph is too small to partition to 4, so use 2 instead here.
@@ -776,6 +887,8 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionCorrectnessTest) 
     ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
     ASSERT_TRUE(ret.IsOK());
     graphs.push_back(&graph);
+    auto model_uri2 = "self_attention_megatron_basic_test_partition_rank" + std::to_string(i) + ".onnx";
+    Model::Save(*p_models[i], model_uri2);
   }
 
   // Dropout seed checking.
@@ -910,6 +1023,8 @@ TEST_F(GraphTransformationTests, MegatronT5SelfAttentionPartitionCorrectnessTest
     ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
     ASSERT_TRUE(ret.IsOK());
     graphs.push_back(&graph);
+    auto model_uri2 = "t5_self_attention_megatron_basic_test_partition_rank" + std::to_string(i) + ".onnx";
+    Model::Save(*p_models[i], model_uri2);
   }
 
   // // Dropout seed checking.
