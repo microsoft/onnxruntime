@@ -144,7 +144,7 @@ class PlannerImpl {
   struct OrtValueInfo {
     const onnxruntime::NodeArg* p_def_site;  // the (unique) NodeArg corresponding to the MLValue
     int usecount = 0;                        // static reference-count
-    OrtValueIndex reused_buffer_index;       // index of original buffer to reuse
+    OrtValueIndex reused_buffer_index = -1;  // index of original buffer to reuse
   };
 
   // ort_value_info_ is indexed by an OrtValueIndex
@@ -176,6 +176,12 @@ class PlannerImpl {
     return ort_value_info_[n].usecount;
   }
   int& UseCount(const OrtValueName& name) { return UseCount(Index(name)); }
+
+  int DecrementUseCount(OrtValueIndex n) {
+    int& use_count = --UseCount(n);
+    assert(use_count >= 0);
+    return use_count;
+  }
 
   OrtValueIndex& Buffer(OrtValueIndex n) {
     ORT_ENFORCE(n >= 0 && static_cast<size_t>(n) < ort_value_info_.size());
@@ -643,7 +649,8 @@ class PlannerImpl {
         if (node_input->Exists()) {
           auto& sym = node_input->Name();
           auto original = Buffer(Index(sym));
-          if (0 == --UseCount(original))
+          // The index will be -1 if it's an initializer that was removed as part of an optimization
+          if ((original != -1) && (0 == DecrementUseCount(original)))
             freelist_.push_front(FreeBufferInfo(original, program_counter));
         }
       }
@@ -652,7 +659,8 @@ class PlannerImpl {
         if (node_input->Exists()) {
           auto& sym = node_input->Name();
           auto original = Buffer(Index(sym));
-          if (0 == --UseCount(original))
+          // The index will be -1 if it's an initializer that was removed as part of an optimization
+          if ((original != -1) && (0 == DecrementUseCount(original)))
             freelist_.push_front(FreeBufferInfo(original, program_counter));
         }
       }
@@ -662,7 +670,7 @@ class PlannerImpl {
         if (node_output->Exists()) {
           auto& sym = node_output->Name();
           auto original = Buffer(Index(sym));
-          if (0 == --UseCount(original))
+          if (0 == DecrementUseCount(original))
             freelist_.push_front(FreeBufferInfo(original, program_counter));
         }
       }
