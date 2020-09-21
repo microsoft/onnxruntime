@@ -11,7 +11,7 @@ namespace onnxruntime {
 namespace contrib {
 
 template <typename T>
-class TransposeScaleMatMul final : public MatMul<T> {
+class TransposeScaleMatMul final : public MatMul<float> {
  public:
   TransposeScaleMatMul(const OpKernelInfo& info) : MatMul<T>(info) {
     ORT_THROW_IF_ERROR(info.GetAttr("alpha", &alpha_attr_));

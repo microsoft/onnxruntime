@@ -8,7 +8,7 @@
 namespace onnxruntime {
 
 template <typename T>
-class MatMul final : public OpKernel {
+class MatMul : public OpKernel {
  public:
   MatMul(const OpKernelInfo& info) : OpKernel(info) {}
 
@@ -18,7 +18,7 @@ class MatMul final : public OpKernel {
 #if !defined(USE_MKLML_FOR_BLAS)
 
 template <>
-class MatMul<float> final : public OpKernel {
+class MatMul<float> : public OpKernel {
  public:
   MatMul(const OpKernelInfo& info) : OpKernel(info) {
     info.GetAttrOrDefault<int64_t>("transA", &trans_a_attr_, 0);
@@ -32,6 +32,26 @@ class MatMul<float> final : public OpKernel {
  private:
   TensorShape b_shape_;
   BufferUniquePtr packed_b_;
+
+ protected:
+  // For fused matmul (TransposeScaleMatMul)
+  float alpha_attr_;
+  int64_t trans_a_attr_;
+  int64_t trans_b_attr_;
+};
+
+#else
+
+template <>
+class MatMul<float> : public OpKernel {
+ public:
+  MatMul(const OpKernelInfo& info) : OpKernel(info) {
+    info.GetAttrOrDefault<int64_t>("transA", &trans_a_attr_, 0);
+    info.GetAttrOrDefault<int64_t>("transB", &trans_b_attr_, 0);
+    info.GetAttrOrDefault<float>("alpha", &alpha_attr_, 1.0);
+  }
+
+  Status Compute(OpKernelContext* context) const override;
 
  protected:
   // For fused matmul (TransposeScaleMatMul)

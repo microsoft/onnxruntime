@@ -131,7 +131,7 @@ void ProcessInputs(const std::vector<int64_t>& input_dims, const std::vector<T>&
 }
 
 template <typename T>
-void RunTransposeScaleMatMulTest(int32_t opset_version = 7, bool transa = false, bool transb = false, float alpha = 1.0f) {
+void RunTransposeScaleMatMulTest(int32_t opset_version = 7, bool transa = false, bool transb = false, float alpha = 1.0f, bool is_b_constant = false) {
   std::vector<T> common_input_vals{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
   for (auto t : GenerateSimpleTestCases<T>()) {
     OpTester test("TransposeScaleMatMul", opset_version, onnxruntime::kMSDomain);
@@ -146,7 +146,7 @@ void RunTransposeScaleMatMulTest(int32_t opset_version = 7, bool transa = false,
 
     test.AddInput<T>("A", input0_dims, input0_vals);
 
-    test.AddInput<T>("B", input1_dims, input1_vals);
+    test.AddInput<T>("B", input1_dims, input1_vals, is_b_constant);
 
     test.AddAttribute("transA", (int64_t)transa);
     test.AddAttribute("transB", (int64_t)transb);
@@ -181,16 +181,25 @@ TEST(TransposeMatMulOpTest, FloatTypeTransposeA) {
 
 TEST(TransposeMatMulOpTest, FloatTypeTransposeB) {
   RunTransposeScaleMatMulTest<float>(1, false, true);
+  // b is constant. This tests weight packing logic
+  RunTransposeScaleMatMulTest<float>(1, false, true, 1.0f, true);
 }
 
 TEST(TransposeMatMulOpTest, FloatTypeTransposeAB) {
   RunTransposeScaleMatMulTest<float>(1, true, true);
+  // b is constant. This tests weight packing logic
+  RunTransposeScaleMatMulTest<float>(1, true, true, 1.0f, true);
 }
 
 TEST(TransposeMatMulOpTest, FloatTypeScale) {
   RunTransposeScaleMatMulTest<float>(1, false, false, 0.5f);
   RunTransposeScaleMatMulTest<float>(1, true, false, 2.0f);
   RunTransposeScaleMatMulTest<float>(1, true, true, 4.0f);
+
+  // now run tests with b constant.
+  RunTransposeScaleMatMulTest<float>(1, false, false, 0.5f, true);
+  RunTransposeScaleMatMulTest<float>(1, true, false, 2.0f, true);
+  RunTransposeScaleMatMulTest<float>(1, true, true, 4.0f, true);
 }
 
 }  // namespace transpose_matmul
