@@ -2,7 +2,7 @@ jobs:
 - job: CodeCoverage
   workspace:
     clean: all
-  timeoutInMinutes:  120
+  timeoutInMinutes:  150
   variables:
     skipComponentGovernanceDetection: true
   pool: 'Linux-CPU'
