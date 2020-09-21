@@ -1774,15 +1774,14 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
         ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 1);
       });
 
-  static const char* TransposeScaleMatMul_doc = R"DOC(
+  static const char* TransposeMatMul_doc = R"DOC(
 Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html
 )DOC";
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(TransposeScaleMatMul)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(TransposeMatMul)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("TransposeScaleMatMul")
+      .SetDoc("TransposeMatMul")
       .Input(0, "A", "N-dimensional matrix A", "T")
       .Input(1, "B", "N-dimensional matrix B", "T")
       .Attr(
@@ -1805,7 +1804,7 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
-      .SetDoc(TransposeScaleMatMul_doc)
+      .SetDoc(TransposeMatMul_doc)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
         auto transAAttr = ctx.getAttribute("transA");
