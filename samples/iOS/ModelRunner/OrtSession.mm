@@ -72,6 +72,8 @@ static std::string run_nlp(Ort::Session* session) {
     auto end = std::chrono::high_resolution_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
     
+    input_tensor.release();
+    output_tensor.release();
     delete input;
     delete result;
     
@@ -96,8 +98,11 @@ static std::string run_nlp(Ort::Session* session) {
 #pragma mark - NSObject
 
 - (void)dealloc {
-//   TfLiteInterpreterDelete(_interpreter);
-//   TfLiteXNNPackDelegateDelete(_xnnpack_delegate);
+    if (_pOrtApiSession != nullptr) {
+        _pOrtApiSession->release();
+        delete _pOrtApiSession;
+        _pOrtApiSession = nullptr;
+    }
 }
 
 #pragma mark - Public
@@ -108,6 +113,7 @@ static std::unique_ptr<Ort::Env> ort_env;
 
     self = [super init];
     if (_pOrtApiSession != nullptr) {
+        _pOrtApiSession->release();
         delete _pOrtApiSession;
         _pOrtApiSession = nullptr;
     }

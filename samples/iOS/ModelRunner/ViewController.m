@@ -26,7 +26,7 @@ static NSString *const kModelNameMobileNet = @"mobilenetv2-7";
 
 static NSString *const kModelNameQuantized = @"mobilenetv2-7";
 
-static NSString *const kModelNameNLP = @"office_tc";
+static NSString *const kModelNameNLP = @"nlp";
 
 /** Model resource type. */
 static NSString *const kModelType = @"ort";
@@ -153,65 +153,6 @@ static NSArray *arrModelPaths;
       NSString *resultMsg = [weakSelf.runtime run:data mname:@"mobilenet" error:&error];
     [weakSelf updateResultsText:resultMsg];
 
-//    NSArray<NSNumber *> *shape = @[@2];
-//    NSError *error;
-//
-//    if (![weakSelf.runtime resizeInputTensorAtIndex:0 toShape:shape error:&error]) {
-//      [weakSelf updateResultsText:[NSString stringWithFormat:kInvokeRuntimeError,
-//                                                             error.localizedDescription]];
-//      return;
-//    }
-//
-//    if (![weakSelf.runtime allocateTensorsWithError:&error]) {
-//      [weakSelf updateResultsText:[NSString stringWithFormat:kInvokeRuntimeError,
-//                                                             error.localizedDescription]];
-//      return;
-//    }
-//
-//    TFLTensor *inputTensor = [weakSelf.runtime inputTensorAtIndex:0 error:&error];
-//    if (inputTensor == nil || error != nil) {
-//      [weakSelf updateResultsText:[NSString stringWithFormat:kInvokeRuntimeError,
-//                                                             error.localizedDescription]];
-//      return;
-//    }
-//
-//    NSMutableData *inputData = [NSMutableData dataWithCapacity:0];
-//    float one = 1.f;
-//    float three = 3.f;
-//    [inputData appendBytes:&one length:sizeof(float)];
-//    [inputData appendBytes:&three length:sizeof(float)];
-//    if (![inputTensor copyData:inputData error:&error]) {
-//      [weakSelf updateResultsText:[NSString stringWithFormat:kInvokeRuntimeError,
-//                                                             error.localizedDescription]];
-//      return;
-//    }
-//
-//    if (![weakSelf.runtime invokeWithError:&error]) {
-//      [weakSelf updateResultsText:[NSString stringWithFormat:kInvokeRuntimeError,
-//                                                             error.localizedDescription]];
-//      return;
-//    }
-//
-//    TFLTensor *outputTensor = [weakSelf.runtime outputTensorAtIndex:0 error:&error];
-//    if (outputTensor == nil || error != nil) {
-//      [weakSelf updateResultsText:[NSString stringWithFormat:kInvokeRuntimeError,
-//                                                             error.localizedDescription]];
-//      return;
-//    }
-//
-//    NSData *outputData = [outputTensor dataWithError:&error];
-//    if (outputData == nil || error != nil) {
-//      [weakSelf updateResultsText:[NSString stringWithFormat:kInvokeRuntimeError,
-//                                                             error.localizedDescription]];
-//      return;
-//    }
-//    float output[2U];
-//    [outputData getBytes:output length:(sizeof(float) * 2U)];
-//
-  //  [weakSelf
-  //      updateResultsText:[NSString stringWithFormat:@"Performing 2 add operations:\n\nInput = "
-  //                                                   @"[%.1f, %.1f]\n\nOutput = [%.1f, %.1f]",
-  //                                                   one, three, output[0], output[1]]];
   });
 }
 
@@ -222,79 +163,6 @@ static NSArray *arrModelPaths;
       [weakSelf updateResultsText:kNilRuntimeError];
       return;
     }
-
-//    NSArray<NSNumber *> *shape = @[@2];
-//    NSError *error;
-//
-//    if (![weakSelf.runtime resizeInputTensorAtIndex:0 toShape:shape error:&error]) {
-//      [weakSelf updateResultsText:[NSString stringWithFormat:kInvokeRuntimeError,
-//                                                             error.localizedDescription]];
-//      return;
-//    }
-//
-//    if (![weakSelf.runtime allocateTensorsWithError:&error]) {
-//      [weakSelf updateResultsText:[NSString stringWithFormat:kInvokeRuntimeError,
-//                                                             error.localizedDescription]];
-//      return;
-//    }
-//
-//    TFLTensor *inputTensor = [weakSelf.runtime inputTensorAtIndex:0 error:&error];
-//    if (inputTensor == nil || error != nil) {
-//      [weakSelf updateResultsText:[NSString stringWithFormat:kInvokeRuntimeError,
-//                                                             error.localizedDescription]];
-//      return;
-//    }
-//
-//    NSMutableData *inputData = [NSMutableData dataWithCapacity:0];
-//    uint8_t one = 1U;
-//    uint8_t three = 3U;
-//    [inputData appendBytes:&one length:sizeof(uint8_t)];
-//    [inputData appendBytes:&three length:sizeof(uint8_t)];
-//    if (![inputTensor copyData:inputData error:&error]) {
-//      [weakSelf updateResultsText:[NSString stringWithFormat:kInvokeRuntimeError,
-//                                                             error.localizedDescription]];
-//      return;
-//    }
-//
-//    if (![weakSelf.runtime invokeWithError:&error]) {
-//      [weakSelf updateResultsText:[NSString stringWithFormat:kInvokeRuntimeError,
-//                                                             error.localizedDescription]];
-//      return;
-//    }
-//
-//    TFLTensor *outputTensor = [weakSelf.runtime outputTensorAtIndex:0 error:&error];
-//    if (outputTensor == nil || error != nil) {
-//      [weakSelf updateResultsText:[NSString stringWithFormat:kInvokeRuntimeError,
-//                                                             error.localizedDescription]];
-//      return;
-//    }
-//
-//    TFLQuantizationParameters *params = outputTensor.quantizationParameters;
-//    if (params == nil) {
-//      [weakSelf updateResultsText:
-//                    [NSString stringWithFormat:kInvokeRuntimeError,
-//                                               @"Missing qualitization parameters in the output"]];
-//      return;
-//    }
-//
-//    NSData *outputData = [outputTensor dataWithError:&error];
-//    if (outputData == nil || error != nil) {
-//      [weakSelf updateResultsText:[NSString stringWithFormat:kInvokeRuntimeError,
-//                                                             error.localizedDescription]];
-//      return;
-//    }
-//    uint8_t output[2U];
-//    [outputData getBytes:output length:(sizeof(uint8_t) * 2U)];
-//    float dequantized[2U];
-//    dequantized[0] = params.scale * (output[0] - params.zeroPoint);
-//    dequantized[1] = params.scale * (output[1] - params.zeroPoint);
-//
-//    [weakSelf updateResultsText:
-//                  [NSString stringWithFormat:@"Performing 2 add operations on quantized input:\n\n"
-//                                             @"Input = [%d, %d]\n\nQuantized Output = [%d, %d]\n\n"
-//                                             @"Dequantized Output = [%f, %f]",
-//                                             one, three, output[0], output[1], dequantized[0],
-//                                             dequantized[1]]];
   });
 }
 
