@@ -252,6 +252,10 @@ template void reduce_square_sum<float, float>(
     const float* data, float* output, int size, float* buffer);
 template void reduce_square_sum<double, double>(
     const double* data, double* output, int size, double* buffer);
+#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+template void reduce_square_sum<nv_bfloat16, float>(
+  const nv_bfloat16* data, float* output, int size, float* buffer);
+#endif
 
 template void reduce_l2_norm<half, float>(
     const half* data, float* output, int size, float* buffer);

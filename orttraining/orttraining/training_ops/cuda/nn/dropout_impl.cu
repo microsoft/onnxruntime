@@ -71,6 +71,9 @@ void DropoutGradientKernelImpl(
 SPECIALIZED_DROPOUT_GRAD_IMPL(float)
 SPECIALIZED_DROPOUT_GRAD_IMPL(double)
 SPECIALIZED_DROPOUT_GRAD_IMPL(half)
+#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+SPECIALIZED_DROPOUT_GRAD_IMPL(nv_bfloat16)
+#endif
 
 constexpr int UNROLL = 4;
 
@@ -168,7 +171,9 @@ void BiasDropoutKernelImpl(
 SPECIALIZED_BIAS_DROPOUT_IMPL(float)
 SPECIALIZED_BIAS_DROPOUT_IMPL(double)
 SPECIALIZED_BIAS_DROPOUT_IMPL(half)
-
+#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+SPECIALIZED_BIAS_DROPOUT_IMPL(nv_bfloat16)
+#endif
 
 }  // namespace cuda
 }  // namespace onnxruntime

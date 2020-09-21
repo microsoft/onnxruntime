@@ -57,6 +57,31 @@ Status SoftMaxGradComputeHelper(
   return Status::OK();
 }
 
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+template <bool is_log_softmax>
+Status SoftMaxGradComputeHelper(
+    const BFloat16* dY,
+    const TensorShape& input_shape,
+    const BFloat16* Y,
+    BFloat16* dX,
+    int64_t axis) {
+  typedef typename ToCudaType<BFloat16>::MappedType CudaT;
+
+  const int64_t normalized_axis = HandleNegativeAxis(axis, input_shape.NumDimensions());
+
+  int64_t N = input_shape.SizeToDimension(normalized_axis);
+  int64_t D = input_shape.SizeFromDimension(normalized_axis);
+  std::vector<int64_t> dims({N, 1, 1, D});  // cudnn expects 4D shape in NCHW format
+
+  auto dY_data = reinterpret_cast<const CudaT*>(dY);
+  auto Y_data = reinterpret_cast<const CudaT*>(Y);
+  auto dX_data = reinterpret_cast<CudaT*>(dX);
+
+  // cudnnSoftmaxForward/Backward doesn't support BFloat16.
+  dispatch_softmax_backward<CudaT, CudaT, AccType<BFloat16>, is_log_softmax>(dX_data, dY_data, Y_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
+  return Status::OK();
+}
+#endif
 
 #define REGISTER_GRADIENT_KERNEL_TYPED(T)                                       \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
@@ -96,6 +121,27 @@ Status SoftmaxGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
   }
 }
 
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+template <>
+Status SoftmaxGrad<BFloat16>::ComputeInternal(OpKernelContext* ctx) const {
+  const Tensor* dY = ctx->Input<Tensor>(0);
+  const TensorShape& input_shape{dY->Shape()};
+  const Tensor* Y = ctx->Input<Tensor>(1);
+  Tensor* dX = ctx->Output(0, input_shape);
+
+  const BFloat16* dY_data = dY->template Data<BFloat16>();
+  const BFloat16* Y_data = Y->template Data<BFloat16>();
+  BFloat16* dX_data = dX->template MutableData<BFloat16>();
+
+  if (log_softmax_) {
+    return SoftMaxGradComputeHelper<true>(dY_data, input_shape, Y_data, dX_data, axis_);
+  }
+  else {
+    return SoftMaxGradComputeHelper<false>(dY_data, input_shape, Y_data, dX_data, axis_);
+  }
+}
+#endif
+
 #define SPECIALIZED_GRADIENT(T)     \
   REGISTER_GRADIENT_KERNEL_TYPED(T) \
   template Status SoftmaxGrad<T>::ComputeInternal(OpKernelContext* ctx) const;
@@ -103,6 +149,9 @@ Status SoftmaxGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
 SPECIALIZED_GRADIENT(float)
 SPECIALIZED_GRADIENT(double)
 SPECIALIZED_GRADIENT(MLFloat16)
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+SPECIALIZED_GRADIENT(BFloat16)
+#endif
 
 }  // namespace cuda
 }  // namespace onnxruntime

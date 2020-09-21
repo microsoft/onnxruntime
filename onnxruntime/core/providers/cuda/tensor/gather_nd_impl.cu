@@ -110,6 +110,9 @@ SPECIALIZED_IMPL(int64_t)
 SPECIALIZED_IMPL(half)
 SPECIALIZED_IMPL(double)
 #endif
+#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+SPECIALIZED_IMPL(nv_bfloat16)
+#endif
 
 }  // namespace cuda
 }  // namespace onnxruntime

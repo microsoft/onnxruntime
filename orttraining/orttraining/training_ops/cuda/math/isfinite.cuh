@@ -22,5 +22,12 @@ __device__ __forceinline__ bool _IsFiniteScalar(const half value) {
 #endif
 }
 
+#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+template<>
+__device__ __forceinline__ bool _IsFiniteScalar(const nv_bfloat16 value) {
+  return isfinite(float(value));
+}
+#endif
+
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -79,6 +79,11 @@ Status DispatchToGatherGradImpl(
   } else if (utils::IsPrimitiveDataType<MLFloat16>(t_data_type)) {
     return DispatchToGatherGradImplByTin<MLFloat16>(
         tin_data_type, cuda_kernel, num_weights, stride, num_inputs, param_itrs, grad, indices, output);
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+  } else if (utils::IsPrimitiveDataType<BFloat16>(t_data_type)) {
+    return DispatchToGatherGradImplByTin<BFloat16>(
+        tin_data_type, cuda_kernel, num_weights, stride, num_inputs, param_itrs, grad, indices, output);
+#endif
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GatherGrad unsupported T type: ", t_data_type);

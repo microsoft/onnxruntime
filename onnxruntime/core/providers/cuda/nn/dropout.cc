@@ -25,8 +25,18 @@ ONNX_OPERATOR_KERNEL_EX(
     13,
     kCudaExecutionProvider,
     KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())
-        .TypeConstraint("T1", DataTypeImpl::AllIEEEFloatTensorTypes())
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                              DataTypeImpl::GetTensorType<double>(),
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+                              DataTypeImpl::GetTensorType<BFloat16>(),
+#endif
+                              DataTypeImpl::GetTensorType<MLFloat16>()})
+        .TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),
+                              DataTypeImpl::GetTensorType<double>(),
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+                              DataTypeImpl::GetTensorType<BFloat16>(),
+#endif
+                              DataTypeImpl::GetTensorType<MLFloat16>()})
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())
         .InputMemoryType<OrtMemTypeCPUInput>(1)
         .InputMemoryType<OrtMemTypeCPUInput>(2),

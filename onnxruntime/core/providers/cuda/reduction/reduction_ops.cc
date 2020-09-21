@@ -872,6 +872,86 @@ Status ReduceKernel<true>::ComputeImpl<uint8_t, CUDNN_REDUCE_TENSOR_NO_INDICES>(
   return Status::OK();
 }
 
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+template <>
+template <>
+Status ReduceKernel<true>::ComputeImpl<BFloat16, CUDNN_REDUCE_TENSOR_NO_INDICES>(OpKernelContext* ctx, cudnnReduceTensorOp_t cudnn_reduce_op) const {
+  typedef typename ToCudaType<BFloat16>::MappedType CudaT;
+
+  const Tensor* X = ctx->Input<Tensor>(0);
+
+  PrepareReduceMetadata prepare_reduce_metadata;
+
+  ORT_RETURN_IF_ERROR(PrepareForReduce(X,
+                                       keepdims_,
+                                       axes_,
+                                       prepare_reduce_metadata));
+
+  Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);
+
+  int64_t input_count = prepare_reduce_metadata.input_count;
+  int64_t output_count = prepare_reduce_metadata.output_count;
+  std::vector<int64_t>& input_dims_cudnn = prepare_reduce_metadata.input_dims_cudnn;
+  std::vector<int64_t>& output_dims_cudnn = prepare_reduce_metadata.output_dims_cudnn;
+
+  // special case when there is a dim value of 0 in the shape.
+  if (input_count == 0) {
+    assert(Y->Shape().Size() == 0);
+    return Status::OK();
+  }
+
+  // cudnnReduceTensor for ReduceSum has issue if input and output has same size, we just need to copy the data for this case
+  if (input_count == output_count) {
+    if (Y->template MutableData<BFloat16>() != X->template Data<BFloat16>()) {
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->template MutableData<BFloat16>(), X->template Data<BFloat16>(), input_count * sizeof(BFloat16), cudaMemcpyDeviceToDevice));
+    }
+    return Status::OK();
+  }
+
+  // This reduction keep adding values to this buffer. If a non-zero value, say 1000, is here, the sum will start with 1000.
+  // Therefore zeroing out the memory is required
+  CUDA_RETURN_IF_ERROR(cudaMemset(Y->MutableDataRaw(), 0, Y->SizeInBytes()));
+
+  size_t indices_bytes = 0;
+  size_t workspace_bytes = 0;
+  CudnnTensor input_tensor;
+  CudnnTensor output_tensor;
+  CudnnReduceDescriptor reduce_desc;
+
+  cudnnDataType_t cudnn_type_X = CUDNN_DATA_FLOAT;
+  IAllocatorUniquePtr<float> temp_X = GetScratchBuffer<float>(input_count);
+  Impl_Cast<CudaT, float>(reinterpret_cast<const CudaT*>(X->template Data<BFloat16>()), temp_X.get(), X->Shape().Size());
+
+  ORT_RETURN_IF_ERROR(reduce_desc.Set(cudnn_reduce_op, cudnn_type_X, CUDNN_REDUCE_TENSOR_FLATTENED_INDICES));
+  ORT_RETURN_IF_ERROR(input_tensor.Set(input_dims_cudnn, cudnn_type_X));
+  ORT_RETURN_IF_ERROR(output_tensor.Set(output_dims_cudnn, cudnn_type_X));
+  CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(CudnnHandle(), reduce_desc, input_tensor, output_tensor, &indices_bytes));
+  CUDNN_RETURN_IF_ERROR(cudnnGetReductionWorkspaceSize(CudnnHandle(), reduce_desc, input_tensor, output_tensor, &workspace_bytes));
+  IAllocatorUniquePtr<uint32_t> indices_cuda = GetScratchBuffer<uint32_t>(indices_bytes);
+  IAllocatorUniquePtr<CudaT> workspace_cuda = GetScratchBuffer<CudaT>(workspace_bytes);
+
+  const auto one = Consts<float>::One;
+  const auto zero = Consts<float>::Zero;
+  auto temp_Y = GetScratchBuffer<float>(output_count);
+  CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(CudnnHandle(),
+                                          reduce_desc,
+                                          indices_cuda.get(),
+                                          indices_bytes,
+                                          workspace_cuda.get(),
+                                          workspace_bytes,
+                                          &one,
+                                          input_tensor,
+                                          temp_X.get(),
+                                          &zero,
+                                          output_tensor,
+                                          temp_Y.get()));
+
+  Impl_Cast<float, CudaT>(temp_Y.get(), reinterpret_cast<CudaT*>(Y->template MutableData<BFloat16>()), output_count);
+
+  return Status::OK();
+}
+#endif
+
 namespace ReductionOps {
 
 template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices>
@@ -920,8 +1000,15 @@ template Tensor ReduceCompute<double, CUDNN_REDUCE_TENSOR_NO_INDICES>(
 
 }  // namespace ReductionOps
 
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+#define REGISTER_KERNEL_TYPED_BF16(name) REGISTER_KERNEL_TYPED(name, BFloat16)
+#else
+#define REGISTER_KERNEL_TYPED_BF16(name)
+#endif
+
 #define REGISTER_KERNEL_HFD(name)        \
   REGISTER_KERNEL_TYPED(name, MLFloat16) \
+  REGISTER_KERNEL_TYPED_BF16(name)       \
   REGISTER_KERNEL_TYPED(name, float)     \
   REGISTER_KERNEL_TYPED(name, double)
 
