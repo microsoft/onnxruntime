@@ -70,7 +70,8 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createTensorFromBuffer
     ONNXTensorElementDataType onnxType = convertToONNXDataFormat(onnxTypeJava);
 
     // Extract the buffer
-    void* bufferArr = (*jniEnv)->GetDirectBufferAddress(jniEnv,buffer);
+    char* bufferArr = (char*)(*jniEnv)->GetDirectBufferAddress(jniEnv,buffer);
+    // Increment by bufferPos bytes
     bufferArr = bufferArr + bufferPos;
 
     // Extract the shape information
