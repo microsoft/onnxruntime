@@ -308,7 +308,7 @@ bool PerformanceRunner::Initialize() {
     return false;
   }
   for (size_t test_data_id = 0; test_data_id != test_data_count; ++test_data_id) {
-    std::unordered_map<std::string, OrtValue*> feeds;
+    std::unordered_map<std::string, Ort::Value> feeds;
     test_case_->LoadTestData(test_data_id /* id */, b_, feeds, true);
     // Discard the names in feeds
     int input_count = test_model_info->GetInputCount();
@@ -319,7 +319,7 @@ bool PerformanceRunner::Initialize() {
                   << test_case_->GetTestCaseName() << std::endl;
         return false;
       }
-      session_->PreLoadTestData(test_data_id, static_cast<size_t>(i), iter->second);
+      session_->PreLoadTestData(test_data_id, static_cast<size_t>(i), std::move(iter->second));
     }
   }
 

@@ -111,6 +111,10 @@ def parse_arguments():
     parser.add_argument("--path_to_protoc_exe", help="Path to protoc exe.")
     parser.add_argument(
         "--fuzz_testing", action='store_true', help="Enable Fuzz testing of the onnxruntime.")
+    parser.add_argument(
+        "--enable_symbolic_shape_infer_tests", action='store_true',
+        help="""When running the Test phase, run symbolic shape inference against
+        available test data directories.""")
 
     # generate documentaiton
     parser.add_argument(
@@ -194,12 +198,18 @@ def parse_arguments():
     parser.add_argument(
         "--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
     parser.add_argument("--android", action='store_true', help='Build for Android')
-    parser.add_argument("--android_abi", type=str, default='arm64-v8a', help='')
+    parser.add_argument(
+        "--android_abi", default="arm64-v8a",
+        choices=["armeabi-v7a", "arm64-v8a", "x86", "x86_64"],
+        help="Specify the target Android Application Binary Interface (ABI)")
     parser.add_argument("--android_api", type=int, default=27, help='Android API Level, e.g. 21')
     parser.add_argument("--android_sdk_path", type=str, help='Path to the Android SDK')
     parser.add_argument("--android_ndk_path", default="", help="Path to the Android NDK")
     parser.add_argument("--android_cpp_shared", action="store_true",
                         help="Build with shared libc++ instead of the default static libc++.")
+    parser.add_argument("--test_binary_size", action="store_true",
+                        help="If enabled, build will fail when the built binary size is larger than the threshold. "
+                        "This only applies to Android Minimal build for now.")
 
     parser.add_argument("--ios", action='store_true', help="build for ios")
     parser.add_argument(
@@ -213,12 +223,14 @@ def parse_arguments():
         help="Path to ios toolchain file, "
         "or cmake/onnxruntime_ios.toolchain.cmake will be used")
     parser.add_argument(
+        "--xcode_code_signing_team_id", default="",
+        help="The development team ID used for code signing in Xcode")
+    parser.add_argument(
         "--use_xcode", action='store_true',
         help="Use Xcode as cmake generator, this is only supported on MacOS.")
     parser.add_argument(
-        "--osx_arch", type=str,
-        help="Specify the Target specific architectures for macOS and iOS"
-        "This is only supported on MacOS")
+        "--osx_arch", default="arm64", choices=["arm64", "x86_64"],
+        help="Specify the Target specific architectures for macOS and iOS, This is only supported on MacOS")
     parser.add_argument(
         "--apple_deploy_target", type=str,
         help="Specify the minimum version of the target platform "
@@ -570,7 +582,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "OFF" if args.skip_winml_tests else "ON"),
         "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
         "-Donnxruntime_DEV_MODE=" + (
-            "OFF" if args.use_acl or args.use_armnn or args.use_winml or
+            "OFF" if args.use_acl or args.use_armnn or
             (args.ios and is_macOS()) else "ON"),
         "-DPYTHON_EXECUTABLE=" + sys.executable,
         "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
@@ -734,7 +746,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             needed_args = [
                 args.use_xcode,
                 args.ios_sysroot,
-                args.osx_arch,
                 args.apple_deploy_target,
             ]
             arg_names = [
@@ -742,8 +753,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 "<need use xcode to cross build iOS on MacOS>",
                 "--ios_sysroot          " +
                 "<the location or name of the macOS platform SDK>",
-                "--osx_arch             " +
-                "<the Target specific architectures for iOS>",
                 "--apple_deploy_target  " +
                 "<the minimum version of the target platform>",
             ]
@@ -766,6 +775,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                     args.ios_toolchain_file if args.ios_toolchain_file
                     else "../cmake/onnxruntime_ios.toolchain.cmake")
             ]
+            # Code sign the binaries, if the code signing development team id is provided
+            if args.xcode_code_signing_team_id:
+                cmake_args += ["-DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=" + args.xcode_code_signing_team_id]
         else:
             # We are cross comppiling on linux
             needed_args = [
@@ -1032,6 +1044,38 @@ def adb_shell(*args, **kwargs):
     return run_subprocess(['adb', 'shell', *args], **kwargs)
 
 
+def run_android_tests(args, source_dir, config, cwd):
+    if args.android_abi == 'x86_64':
+        run_subprocess(os.path.join(
+            source_dir, 'tools', 'ci_build', 'github', 'android',
+            'start_android_emulator.sh'))
+        adb_push('testdata', '/data/local/tmp/', cwd=cwd)
+        adb_push(
+            os.path.join(source_dir, 'cmake', 'external', 'onnx', 'onnx', 'backend', 'test'),
+            '/data/local/tmp/', cwd=cwd)
+        adb_push('onnxruntime_test_all', '/data/local/tmp/', cwd=cwd)
+        adb_push('onnx_test_runner', '/data/local/tmp/', cwd=cwd)
+        adb_shell(
+            'cd /data/local/tmp && /data/local/tmp/onnxruntime_test_all')
+        if args.use_nnapi:
+            adb_shell(
+                'cd /data/local/tmp && /data/local/tmp/onnx_test_runner -e nnapi /data/local/tmp/test')  # noqa
+        else:
+            adb_shell(
+                'cd /data/local/tmp && /data/local/tmp/onnx_test_runner /data/local/tmp/test')  # noqa
+    elif args.android_abi == 'arm64-v8a':
+        # For Android arm64 abi we are only verify the size of the binary generated by minimal build config
+        # Will fail the build if the shared_lib size is larger than the threshold
+        if args.minimal_build and config == 'MinSizeRel' and args.build_shared_lib and args.test_binary_size:
+            # set current size limit to 1100KB
+            bin_size_threshold = 1100000
+            bin_actual_size = os.path.getsize(os.path.join(cwd, 'libonnxruntime.so'))
+            log.info('Android arm64 minsizerel libonnxruntime.so size [' + str(bin_actual_size) + 'B]')
+            if bin_actual_size > bin_size_threshold:
+                raise BuildError('Android arm64 minsizerel libonnxruntime.so size [' + str(bin_actual_size) +
+                                 'B] is bigger than threshold [' + str(bin_size_threshold) + 'B]')
+
+
 def run_training_python_frontend_tests(cwd):
     run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer.py'], cwd=cwd)
     run_subprocess([sys.executable, 'onnxruntime_test_training_unit_tests.py'], cwd=cwd)
@@ -1107,35 +1151,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             continue
 
         if args.android:
-            if args.android_abi == 'x86_64':
-                run_subprocess(os.path.join(
-                    source_dir, 'tools', 'ci_build', 'github', 'android',
-                    'start_android_emulator.sh'))
-                adb_push('testdata', '/data/local/tmp/', cwd=cwd)
-                adb_push(
-                    os.path.join(source_dir, 'cmake', 'external', 'onnx', 'onnx', 'backend', 'test'),
-                    '/data/local/tmp/', cwd=cwd)
-                adb_push('onnxruntime_test_all', '/data/local/tmp/', cwd=cwd)
-                adb_push('onnx_test_runner', '/data/local/tmp/', cwd=cwd)
-                adb_shell(
-                    'cd /data/local/tmp && /data/local/tmp/onnxruntime_test_all')
-                if args.use_nnapi:
-                    adb_shell(
-                        'cd /data/local/tmp && /data/local/tmp/onnx_test_runner -e nnapi /data/local/tmp/test')  # noqa
-                else:
-                    adb_shell(
-                        'cd /data/local/tmp && /data/local/tmp/onnx_test_runner /data/local/tmp/test')  # noqa
-            elif args.android_abi == 'arm64-v8a':
-                # For Android arm64 abi we are only verify the size of the binary generated by minimal build config
-                # Will fail the build if the shared_lib size is larger than the threshold
-                if args.minimal_build and config == 'MinSizeRel' and args.build_shared_lib:
-                    # set current size limit to 1100KB
-                    bin_size_threshold = 1100000
-                    bin_actual_size = os.path.getsize(os.path.join(cwd, 'libonnxruntime.so'))
-                    log.info('Android arm64 minsizerel libonnxruntime.so size [' + str(bin_actual_size) + 'B]')
-                    if bin_actual_size > bin_size_threshold:
-                        raise BuildError('Android arm64 minsizerel libonnxruntime.so size [' + str(bin_actual_size) +
-                                         'B] is bigger than threshold [' + str(bin_size_threshold) + 'B]')
+            run_android_tests(args, source_dir, config, cwd)
             continue
         dll_path_list = []
         if args.use_nuphar:
@@ -1193,6 +1209,10 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 cwd = os.path.join(cwd, config)
 
             run_subprocess([sys.executable, 'onnxruntime_test_python.py'], cwd=cwd, dll_path=dll_path)
+
+            if args.enable_symbolic_shape_infer_tests:
+                run_subprocess([sys.executable, 'onnxruntime_test_python_symbolic_shape_infer.py'],
+                               cwd=cwd, dll_path=dll_path)
 
             # For CUDA enabled builds test IOBinding feature
             # Limit testing to Windows non-ARM builds for now

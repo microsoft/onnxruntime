@@ -725,8 +725,7 @@ TEST(CApiTest, override_initializer) {
   ort_inputs.push_back(std::move(f11_input_tensor));
 
   std::vector<const char*> input_names = {"Label", "F2", "F1"};
-
-  const char* const output_names[] = {"Label0", "F20", "F11"};
+  const char* output_names[] = {"Label0", "F20", "F11"};
   std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, input_names.data(),
                                                     ort_inputs.data(), ort_inputs.size(),
                                                     output_names, countof(output_names));

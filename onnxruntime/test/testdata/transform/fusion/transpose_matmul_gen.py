@@ -32,10 +32,10 @@ def gen_from_transpose_scale_matmul(model_path):
             ["input_0"],
             ["transposed_input_0"]),
         helper.make_node(
-            "TransposeScaleMatMul",
+            "TransposeMatMul",
             ["transposed_input_0", "input_1"],
             ["output"],
-            "TransposeScaleMatMul",
+            "TransposeMatMul",
             "",
             msdomain.domain,
             alpha=3.0, transA=1)

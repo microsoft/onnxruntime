@@ -6,14 +6,13 @@
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/math/matmul.h"
 
-
 namespace onnxruntime {
 namespace contrib {
 
 template <typename T>
-class TransposeScaleMatMul final : public MatMul<float> {
+class TransposeMatMul final : public MatMul<float> {
  public:
-  TransposeScaleMatMul(const OpKernelInfo& info) : MatMul<T>(info) {
+  TransposeMatMul(const OpKernelInfo& info) : MatMul<T>(info) {
     ORT_THROW_IF_ERROR(info.GetAttr("alpha", &alpha_attr_));
     ORT_THROW_IF_ERROR(info.GetAttr("transA", &trans_a_attr_));
     ORT_THROW_IF_ERROR(info.GetAttr("transB", &trans_b_attr_));

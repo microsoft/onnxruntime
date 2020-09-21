@@ -1731,7 +1731,7 @@ ORT_API_STATUS_IMPL(OrtApis::TensorAt, _Inout_ OrtValue* value, const int64_t* l
                     _Outptr_ void** out) {
   TENSOR_READWRITE_API_BEGIN
 
-  if(tensor->IsDataTypeString()) {
+  if (tensor->IsDataTypeString()) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "this API does not support strings");
   }
 
@@ -2011,6 +2011,9 @@ static constexpr OrtApi ort_api_1_to_5 = {
     &OrtApis::CreateAndRegisterAllocator,
     &OrtApis::SetLanguageProjection,
     &OrtApis::SessionGetProfilingStartTimeNs,
+    &OrtApis::SetGlobalIntraOpNumThreads,
+    &OrtApis::SetGlobalInterOpNumThreads,
+    &OrtApis::SetGlobalSpinControl,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

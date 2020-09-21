@@ -7,12 +7,12 @@ namespace onnxruntime {
 namespace contrib {
 
 ONNX_OPERATOR_KERNEL_EX(
-    TransposeScaleMatMul,
+    TransposeMatMul,
     kMSDomain,
     1,
     kCpuExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    TransposeScaleMatMul<float>);
+    TransposeMatMul<float>);
 
 }  // namespace contrib
 }  // namespace onnxruntime
