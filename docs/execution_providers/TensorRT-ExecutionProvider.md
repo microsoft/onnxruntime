@@ -99,4 +99,4 @@ export ORT_TENSORRT_ENGINE_CACHE_ENABLE=1
 underlying hardware changes. Engine files are not portable across devices.
 
 ### Specify TensorRT engine cache path
-export ORT_TENSORRT_ENGINE_CACHE_PATH="cache"
+export ORT_TENSORRT_ENGINE_CACHE_PATH="/path/to/cache"
