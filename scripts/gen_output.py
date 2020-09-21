@@ -14,6 +14,14 @@
 # limitations under the License.
 # ==============================================================================
 
+
+#It only works with TF1.x, because the export_inference_graph.py script depends on tensorflow.contrib.
+#deps: 
+#1. /data/testdata/tf_checkpoints
+#2. /data/tmp
+#3. /data/os/tf_models(https://github.com/tensorflow/models#v1.13.0)
+
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -108,13 +116,13 @@ if __name__ == "__main__":
        has_text_model_file=True
     else:
       graph_only_model_file='/data/tmp/graph_only.pb.pb'
-      export_args = [sys.executable, '/home/chasun/os/models/research/slim/export_inference_graph.py', '--image_size=%s' % input_height,'--alsologtostderr', '--model_name='+model_name,
+      export_args = [sys.executable, '/data/os/tf_models/research/slim/export_inference_graph.py', '--image_size=%s' % input_height,'--alsologtostderr', '--model_name='+model_name,
                  '--output_file='+graph_only_model_file]
       if model_name.startswith('resnet_v1') or model_name.startswith('vgg'):
         export_args.append('--labels_offset=1')
       subprocess.run(export_args, check=True)
     model_file = '/data/tmp/frozen_graph.pb'
-    freeze_args = ['freeze_graph', '--input_graph='+graph_only_model_file,
+    freeze_args = [sys.executable,'-m','tensorflow.python.tools.freeze_graph', '--input_graph='+graph_only_model_file,
                   '--input_checkpoint=%s.ckpt' % os.path.join(tf_checkpoint_dir, model_name),    
                   '--output_graph=' + model_file,
                   '--output_node_names='+output_name]
@@ -149,7 +157,7 @@ if __name__ == "__main__":
 
     print('load graph into tensorflow')
     graph = load_tensorflow_graph(model_file)
-    image_folder = '/home/chasun/src/imagnet_validation_data'
+    image_folder = '/onnxruntime_src/imagenet'
     input_operation = graph.get_operation_by_name("import/" + input_name)
     output_operation = graph.get_operation_by_name("import/" + output_name)
     config = tf.ConfigProto()
