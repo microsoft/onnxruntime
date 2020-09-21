@@ -164,8 +164,8 @@ Nuget packages are created under <native_build_dir>\nuget-artifacts
 ### CUDA
 #### Prerequisites
 * Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn)
-  * ONNX Runtime is built and tested with CUDA 10.1 and cuDNN 7.6 using the Visual Studio 2019 14.12 toolset (i.e. Visual Studio 2019 v16.5).
-    ONNX Runtime can also be built with CUDA versions from 9.1 up to 10.1, and cuDNN versions from 7.1 up to 7.4.
+  * ONNX Runtime is built and tested with CUDA 10.2 and cuDNN 8.0.3 using Visual Studio 2019 version 16.7.
+    ONNX Runtime can also be built with CUDA versions from 10.1 up to 11.0, and cuDNN versions from 7.6 up to 8.0.
   * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home` parameter
   * The path to the cuDNN installation (include the `cuda` folder in the path) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home` parameter. The cuDNN path should contain `bin`, `include` and `lib` directories.
   * The path to the cuDNN bin directory must be added to the PATH environment variable so that cudnn64_7.dll is found.
