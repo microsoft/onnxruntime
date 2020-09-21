@@ -1986,8 +1986,6 @@ static constexpr OrtApi ort_api_1_to_6 = {
     &OrtApis::ReleaseAvailableProviders,
     // End of Version 4 - DO NOT MODIFY ABOVE (see above text for more information)
 
-    // Version 5 - In development, feel free to add/remove/rearrange here
-
     &OrtApis::GetStringTensorElementLength,
     &OrtApis::GetStringTensorElement,
     &OrtApis::FillStringTensorElement,
@@ -2014,6 +2012,9 @@ static constexpr OrtApi ort_api_1_to_6 = {
     &OrtApis::SetGlobalIntraOpNumThreads,
     &OrtApis::SetGlobalInterOpNumThreads,
     &OrtApis::SetGlobalSpinControl,
+    // End of Version 5 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    // Version 6 - In development, feel free to add/remove/rearrange here
     &OrtApis::AddInitializer,
 };
 
