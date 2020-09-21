@@ -1109,19 +1109,13 @@ Dockerfile instructions are available [here](./dockerfiles#migraphx)
 
 The default NVIDIA GPU build requires CUDA runtime libraries installed on the system:
 
-* CUDA 10.1
-* cuDNN 7.6.2
-* NCCL v2.4.8 (download v2.4.8 from the Legacy downloads page)
-* OpenMPI 4.0.0.0
-```
-wget https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.0.tar.gz
-tar zxf openmpi-4.0.0.tar.gz
-cd openmpi-4.0.0
-./configure --enable-orterun-prefix-by-default
-make -j $(nproc) all
-sudo make install
-sudo ldconfig
-```
+* CUDA 10.2
+* cuDNN 7.6.5
+* NCCL v2.7.8
+* OpenMPI 4.0.4
+
+The official dependency versions are specified in [Dockerfile.training](./dockerfiles/Dockerfile.training).
+
 ## Build instructions
 
 1. Checkout this code repo with `git clone https://github.com/microsoft/onnxruntime`
