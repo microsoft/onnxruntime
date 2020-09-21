@@ -233,13 +233,16 @@ const auto k_hfd_datatypes =
       KernelDefBuilder().TypeConstraint("T", datatypes),                                   \
       impl_class)
 
-REGISTER_KERNEL(Sum, SumOp, 8, k_hfd_datatypes)
+REGISTER_KERNEL(Sum, SumOp, 13, k_hfd_datatypes)
+REGISTER_VERSIONED_KERNEL(Sum, SumOp, 8, 12, k_hfd_datatypes)
 REGISTER_VERSIONED_KERNEL(Sum, SumOp, 6, 7, k_hfd_datatypes)
 
-REGISTER_KERNEL(Min, MinOp, 12, k_uzilhfd_datatypes)
+REGISTER_KERNEL(Min, MinOp, 13, k_uzilhfd_datatypes)
+REGISTER_VERSIONED_KERNEL(Min, MinOp, 12, 12, k_uzilhfd_datatypes)
 REGISTER_VERSIONED_KERNEL(Min, MinOp, 6, 11, k_hfd_datatypes)
 
-REGISTER_KERNEL(Max, MaxOp, 12, k_uzilhfd_datatypes)
+REGISTER_KERNEL(Max, MaxOp, 13, k_uzilhfd_datatypes)
+REGISTER_VERSIONED_KERNEL(Max, MaxOp, 12, 12, k_uzilhfd_datatypes)
 REGISTER_VERSIONED_KERNEL(Max, MaxOp, 6, 11, k_hfd_datatypes)
 
 #undef REGISTER_VERSIONED_KERNEL

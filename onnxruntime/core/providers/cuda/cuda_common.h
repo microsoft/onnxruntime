@@ -170,10 +170,6 @@ class CudaKernel : public OpKernel {
   }
 
  protected:
-  inline curandGenerator_t CurandGenerator() const {
-    return provider_->PerThreadCurandGenerator();
-  }
-
   template <typename T>
   inline const T* GetConstOnes(size_t count) const {
     return provider_->template GetConstOnes<T>(count);
@@ -226,15 +222,21 @@ inline bool CalculateFdmStrides(gsl::span<fast_divmod> p, const std::vector<int6
 class CublasMathModeSetter {
  public:
   CublasMathModeSetter(const cudaDeviceProp& prop,cublasHandle_t handle, cublasMath_t mode) : prop_(prop), handle_(handle) {
-    if (prop_.major >= 7) {
-      cublasGetMathMode(handle, &mode_);
+    cublasGetMathMode(handle, &mode_);
+#if defined(CUDA_VERSION) && CUDA_VERSION < 11000
+    if (prop.major >= 7 && mode == CUBLAS_TENSOR_OP_MATH) {
       cublasSetMathMode(handle, mode);
     }
-  }
-  ~CublasMathModeSetter() {
-    if (prop_.major >= 7) {
-      cublasSetMathMode(handle_, mode_);
+#endif
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+    if (prop.major >= 8 && mode == CUBLAS_TF32_TENSOR_OP_MATH) {
+      cublasSetMathMode(handle, mode);
     }
+#endif
+  }
+
+  ~CublasMathModeSetter() {
+    cublasSetMathMode(handle_, mode_);
   }
 
  private:

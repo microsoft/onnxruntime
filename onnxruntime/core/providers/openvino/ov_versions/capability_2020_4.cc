@@ -426,7 +426,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
   return false;
 }
 
-static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer, const std::string& device_id) {
+static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer, const std::string& device_type) {
   const auto* type_proto = node_arg->TypeAsProto();
   if (!type_proto) {
     return false;
@@ -466,7 +466,7 @@ static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer, const 
     };
     auto dtype = type_proto->tensor_type().elem_type();
 
-    if (device_id == "CPU" || device_id == "MYRIAD" || device_id == "HDDL") {
+    if (device_type == "CPU" || device_type == "MYRIAD" || device_type == "HDDL") {
       if (supported_types_cpu.find(dtype) != supported_types_cpu.end())
         return true;
       else {
@@ -477,7 +477,7 @@ static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer, const 
 #endif
         return false;
       }
-    } else if (device_id == "GPU") {
+    } else if (device_type == "GPU") {
       if (supported_types_gpu.find(dtype) != supported_types_gpu.end())
         return true;
       else {
@@ -495,7 +495,7 @@ static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer, const 
 
 static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& op_map,
                             const onnxruntime::GraphViewer& graph_viewer,
-                            const NodeIndex node_idx, std::string& device_id) {
+                            const NodeIndex node_idx, std::string& device_type) {
   const auto& node = graph_viewer.GetNode(node_idx);
   const auto& optype = node->OpType();
 
@@ -517,7 +517,7 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
   */
 
   //Check 0
-  if (!IsOpSupported(optype, device_id)) {
+  if (!IsOpSupported(optype, device_type)) {
 #ifndef NDEBUG
     if (openvino_ep::backend_utils::IsDebugEnabled()) {
       std::cout << "Node is not in the supported ops list" << std::endl;
@@ -529,13 +529,13 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
   //Check 1
   bool are_types_supported = true;
 
-  node->ForEachDef([&are_types_supported, &graph_viewer, &device_id](const onnxruntime::NodeArg& node_arg, bool is_input) {
+  node->ForEachDef([&are_types_supported, &graph_viewer, &device_type](const onnxruntime::NodeArg& node_arg, bool is_input) {
     bool is_initializer = false;
     if (is_input) {
       if (graph_viewer.IsConstantInitializer(node_arg.Name(), true))
         is_initializer = true;
     }
-    are_types_supported &= IsTypeSupported(&node_arg, is_initializer, device_id);
+    are_types_supported &= IsTypeSupported(&node_arg, is_initializer, device_type);
   });
 
   if (!are_types_supported) {
@@ -545,7 +545,7 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
   //Check 2
 
   bool has_unsupported_dimension = false;
-  node->ForEachDef([&has_unsupported_dimension, &graph_viewer, &device_id, &optype](const onnxruntime::NodeArg& node_arg, bool is_input) {
+  node->ForEachDef([&has_unsupported_dimension, &graph_viewer, &device_type, &optype](const onnxruntime::NodeArg& node_arg, bool is_input) {
     if (is_input) {
       if (graph_viewer.IsConstantInitializer(node_arg.Name(), true))
         return;
@@ -624,7 +624,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer, std::string device, /
 
 
 std::vector<std::unique_ptr<ComputeCapability>>
-GetCapability_2020_4(const onnxruntime::GraphViewer& graph_viewer, std::string device_id) {
+GetCapability_2020_4(const onnxruntime::GraphViewer& graph_viewer, std::string device_type) {
 
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
@@ -643,7 +643,7 @@ GetCapability_2020_4(const onnxruntime::GraphViewer& graph_viewer, std::string d
   // This is a list of initializers that nGraph considers as constants. Example weights, reshape shape etc.
   std::unordered_set<std::string> ng_required_initializers;
 
-  const auto unsupported_nodes = GetUnsupportedNodeIndices(graph_viewer, device_id, ng_required_initializers);
+  const auto unsupported_nodes = GetUnsupportedNodeIndices(graph_viewer, device_type, ng_required_initializers);
   #ifndef NDEBUG
     if(openvino_ep::backend_utils::IsDebugEnabled()){
       std::cout << "No of unsupported nodes " << unsupported_nodes.size() << std::endl;
@@ -702,7 +702,7 @@ GetCapability_2020_4(const onnxruntime::GraphViewer& graph_viewer, std::string d
     auto connected_clusters = GetConnectedClusters(graph_viewer, ng_clusters);
 
     //Myriad plugin can only load 10 subgraphs
-    if (device_id == "MYRIAD" && connected_clusters.size() > 10) {
+    if (device_type == "MYRIAD" && connected_clusters.size() > 10) {
       std::sort(connected_clusters.begin(), connected_clusters.end(),
                 [](const std::vector<NodeIndex>& v1, const std::vector<NodeIndex>& v2) -> bool {
                   return v1.size() > v2.size();
@@ -711,7 +711,7 @@ GetCapability_2020_4(const onnxruntime::GraphViewer& graph_viewer, std::string d
     int no_of_clusters = 0;
 
     for (auto this_cluster : connected_clusters) {
-      if (device_id == "MYRIAD" && no_of_clusters == 10) {
+      if (device_type == "MYRIAD" && no_of_clusters == 10) {
         break;
       }
       std::vector<std::string> cluster_graph_inputs, cluster_inputs, const_inputs, cluster_outputs;
@@ -744,7 +744,7 @@ GetCapability_2020_4(const onnxruntime::GraphViewer& graph_viewer, std::string d
             node->OpType() == "Cast" || node->OpType() == "Concat" || node->OpType() == "Gather"
             || node->OpType() == "Div" || node->OpType() == "Sub"){
 
-            if((node->OpType() == "Div" || node->OpType() == "Sub") && device_id != "MYRIAD")
+            if((node->OpType() == "Div" || node->OpType() == "Sub") && device_type != "MYRIAD")
               continue;
             for (const auto& input : node->InputDefs()) {
               auto input_name = input->Name();
@@ -769,7 +769,7 @@ GetCapability_2020_4(const onnxruntime::GraphViewer& graph_viewer, std::string d
           const bool is_data_int32 = input->Type()->find("int32") != std::string::npos;
           auto it = find(cluster_graph_inputs.begin(), cluster_graph_inputs.end(), input_name);
           if(it != cluster_graph_inputs.end()){
-            if(device_id == "MYRIAD" && is_data_int32){
+            if(device_type == "MYRIAD" && is_data_int32){
               omit_subgraph = true;
               break;
             }

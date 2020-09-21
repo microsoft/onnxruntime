@@ -5,11 +5,13 @@
 
 #include <vector>
 #include <string>
+#include "core/util/math.h"
 #include "core/graph/graph.h"
 #include "orttraining/core/graph/graph_augmenter.h"
 #include "orttraining/core/graph/gradient_config.h"
 #include "orttraining/core/graph/recompute_graph_utils.h"
 #include "onnx/defs/attr_proto_util.h"
+#include "onnx/defs/tensor_proto_util.h"
 
 namespace onnxruntime {
 namespace training {
@@ -125,6 +127,16 @@ class GradientBuilderBase {
     return node_->OutputDefs()[i]->TypeAsProto();
   }
 
+  // Element type of i-th input of forward op.
+  int IElemType(const size_t i) const {
+    return IType(i)->tensor_type().elem_type();
+  }
+
+  // Element type of i-th output of forward op.
+  int OElemType(const size_t i) const {
+    return OType(i)->tensor_type().elem_type();
+  }
+
   int GetSrcNodeInputSize() const {
     ORT_ENFORCE(node_ != nullptr);
     return (int)node_->InputDefs().size();
@@ -159,12 +171,24 @@ class GradientBuilderBase {
     return node_->OpType();
   }
 
-  static NodeDef ConstantValueNode(const std::vector<int64_t>& values, const std::string& arg_name) {
-    ONNX_NAMESPACE::TensorProto t_proto;
+  template <typename T>
+  static NodeDef ConstantVectorNode(const std::vector<T>& values, const std::string& arg_name) {
+    auto t_proto = ONNX_NAMESPACE::ToTensor<T>(values);
     t_proto.add_dims(values.size());
-    t_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-    for (auto value : values) {
-      t_proto.add_int64_data(value);
+
+    return NodeDef("Constant",
+                   {},
+                   {ArgDef(arg_name, nullptr)},
+                   {ONNX_NAMESPACE::MakeAttribute("value", t_proto)});
+  }
+
+  template <typename T>
+  static NodeDef ConstantScalarNode(T value, std::vector<int64_t> shape, const std::string& arg_name) {
+    ORT_ENFORCE(shape.size() == 0 || (shape.size() == 1 && shape[0] == 1));
+
+    auto t_proto = ONNX_NAMESPACE::ToTensor<T>(value);
+    for (auto dim : shape) {
+      t_proto.add_dims(dim);
     }
 
     return NodeDef("Constant",
@@ -173,24 +197,29 @@ class GradientBuilderBase {
                    {ONNX_NAMESPACE::MakeAttribute("value", t_proto)});
   }
 
-  static NodeDef ConstantValueNode(float value, const std::string& arg_name) {
-    ONNX_NAMESPACE::TensorProto t_proto;
-    t_proto.add_dims(1);
-    t_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-    t_proto.add_float_data(value);
-
-    return NodeDef("Constant",
-                   {},
-                   {ArgDef(arg_name, nullptr)},
-                   {ONNX_NAMESPACE::MakeAttribute("value", t_proto)});
+  // We only support FP32, FP16 and BF16 for these constant nodes for now.
+  static NodeDef ConstantScalarNode(float value, const std::string& arg_name, int elem_type) {
+    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+      return ConstantScalarNode(MLFloat16(math::floatToHalf(value)), {1}, arg_name);
+    }
+    
+    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) {
+      return ConstantScalarNode(BFloat16(value), {1}, arg_name);
+    }
+    
+    return ConstantScalarNode(value, {1}, arg_name);
   }
 
-  static NodeDef ZeroConstantNode() {
-    return ConstantValueNode(0.0f, "ZeroConstant");
+  static NodeDef ZeroConstantNode(int elem_type) {
+    return ConstantScalarNode(0.0f, "ZeroConstant", elem_type);
   }
 
-  static NodeDef OneConstantNode() {
-    return ConstantValueNode(1.0f, "OneConstant");
+  static NodeDef HalfConstantNode(int elem_type) {
+    return ConstantScalarNode(0.5f, "HalfConstant", elem_type);
+  }
+
+  static NodeDef OneConstantNode(int elem_type) {
+    return ConstantScalarNode(1.0f, "OneConstant", elem_type);
   }
 
   void HandleBroadcasting(const ArgDef& input_grad,
@@ -232,7 +261,7 @@ class GradientBuilderBase {
 
   // contains set of input arg names of node_ which requires gradient
   std::unordered_set<std::string> gradient_outputs_;
-  
+
   const logging::Logger& logger_;
 };
 

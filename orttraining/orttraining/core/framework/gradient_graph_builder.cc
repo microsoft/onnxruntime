@@ -91,7 +91,8 @@ NodeSet GradientGraphBuilder::ReverseBFS(const NodeSet& nodes) {
     for (auto edge_it = n->InputEdgesBegin(); edge_it != n->InputEdgesEnd(); ++edge_it) {
       auto it = STOP_GRADIENT_EDGES.find(n->OpType());
       if (it != STOP_GRADIENT_EDGES.end() && it->second.count(edge_it->GetDstArgIndex())) {
-        LOGS(logger_, WARNING) << "Skip building gradient for node: " << edge_it->GetNode().Name() ;
+        LOGS(logger_, WARNING) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
+                               << " of node: " << n->Name();
         continue;
       }
 
@@ -125,7 +126,7 @@ Status GradientGraphBuilder::CheckNodeArgsReachable(const NodeSet& reachable_nod
   return Status::OK();
 }
 
-Status GradientGraphBuilder::Build() {
+Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_initializer_names_to_preserve) {
   auto opt_ret = graph_transformation_mgr_.ApplyTransformers(*graph_, TransformerLevel::Level2, logger_);
   ORT_RETURN_IF_ERROR(opt_ret);
 
@@ -158,6 +159,13 @@ Status GradientGraphBuilder::Build() {
       const Node& next_node = edge_it->GetNode();
 
       if (reachable_nodes.find(&next_node) == reachable_nodes.end()) continue;
+
+      auto it = STOP_GRADIENT_EDGES.find(next_node.OpType());
+      if (it != STOP_GRADIENT_EDGES.end() && it->second.count(edge_it->GetDstArgIndex())) {
+        LOGS(logger_, WARNING) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
+                               << " of node: " << next_node.Name();
+        continue;
+      }
 
       const NodeArg* node_arg = node->OutputDefs()[edge_it->GetSrcArgIndex()];
       string grad_node_arg_name = GradientBuilderBase::GradientName(node_arg->Name());
@@ -223,7 +231,7 @@ Status GradientGraphBuilder::Build() {
     }
   }
 
-  return GraphAugmenter::AugmentGraph(*graph_, gradient_graph_defs);
+  return GraphAugmenter::AugmentGraph(*graph_, gradient_graph_defs, p_initializer_names_to_preserve);
 }
 
 }  // namespace training

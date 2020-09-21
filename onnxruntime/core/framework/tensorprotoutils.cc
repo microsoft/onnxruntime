@@ -45,6 +45,25 @@ TensorProto ToTensor<onnxruntime::MLFloat16>(const std::vector<onnxruntime::MLFl
   return t;
 }
 
+template <>
+TensorProto ToTensor<onnxruntime::BFloat16>(const onnxruntime::BFloat16& value) {
+  TensorProto t;
+  t.set_data_type(TensorProto_DataType_BFLOAT16);
+  t.add_int32_data(value.val);
+  return t;
+}
+
+template <>
+TensorProto ToTensor<onnxruntime::BFloat16>(const std::vector<onnxruntime::BFloat16>& values) {
+  TensorProto t;
+  t.clear_int32_data();
+  t.set_data_type(TensorProto_DataType_BFLOAT16);
+  for (const onnxruntime::BFloat16& val : values) {
+    t.add_int32_data(val.val);
+  }
+  return t;
+}
+
 bool operator==(const ONNX_NAMESPACE::TensorShapeProto_Dimension& l,
                 const ONNX_NAMESPACE::TensorShapeProto_Dimension& r) {
   if (l.has_dim_value()) {
@@ -57,6 +76,12 @@ bool operator==(const ONNX_NAMESPACE::TensorShapeProto_Dimension& l,
 
   return false;
 }
+
+bool operator!=(const ONNX_NAMESPACE::TensorShapeProto_Dimension& l,
+                const ONNX_NAMESPACE::TensorShapeProto_Dimension& r) {
+  return !(l == r);
+}
+
 }  // namespace ONNX_NAMESPACE
 
 namespace {
@@ -303,17 +328,22 @@ struct UnInitializeParam {
 
 ORT_API_STATUS_IMPL(OrtInitializeBufferForTensor, _In_opt_ void* input, size_t input_len,
                     enum ONNXTensorElementDataType type) {
-  try {
+  OrtStatus* status = nullptr;
+  ORT_TRY {
     if (type != ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING || input == nullptr) return nullptr;
     size_t tensor_size = input_len / sizeof(std::string);
     std::string* ptr = reinterpret_cast<std::string*>(input);
     for (size_t i = 0, n = tensor_size; i < n; ++i) {
       new (ptr + i) std::string();
     }
-  } catch (const std::exception& ex) {
-    return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
   }
-  return nullptr;
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+    });
+  }
+
+  return status;
 }
 
 ORT_API(void, OrtUninitializeBuffer, _In_opt_ void* input, size_t input_len, enum ONNXTensorElementDataType type) {
@@ -607,11 +637,13 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
       *tensor.mutable_string_data() = constant_attribute.strings();
       break;
     }
+#if !defined(ORT_MINIMAL_BUILD)
     case AttributeProto_AttributeType_SPARSE_TENSOR: {
       auto& s = constant_attribute.sparse_tensor();
       ORT_RETURN_IF_ERROR(SparseTensorProtoToDenseTensorProto(s, tensor));
       break;
     }
+#endif
     default:
       ORT_THROW("Unsupported attribute value type of ", constant_attribute.type(),
                 " in 'Constant' node '", node.name(), "'");
@@ -675,6 +707,7 @@ static Status CopySparseData(size_t n_sparse_elements,
   return status;
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseTensorProto& sparse,
                                                    ONNX_NAMESPACE::TensorProto& dense) {
   Status status = Status::OK();
@@ -800,9 +833,55 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
 
   return status;
 }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 template common::Status GetSizeInBytesFromTensorProto<256>(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                                            size_t* out);
 template common::Status GetSizeInBytesFromTensorProto<0>(const ONNX_NAMESPACE::TensorProto& tensor_proto, size_t* out);
+
+#define CASE_UNPACK(TYPE, ELEMENT_TYPE, DATA_SIZE)                              \
+  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##TYPE: {     \
+    size_t element_count = 0;                                                   \
+    if (initializer.has_raw_data()) {                                           \
+      tensor_byte_size = initializer.raw_data().size();                         \
+      element_count = tensor_byte_size / sizeof(ELEMENT_TYPE);                  \
+    } else {                                                                    \
+      element_count = initializer.DATA_SIZE();                                  \
+      tensor_byte_size = element_count * sizeof(ELEMENT_TYPE);                  \
+    }                                                                           \
+    unpacked_tensor.reset(new uint8_t[tensor_byte_size]);                       \
+    return onnxruntime::utils::UnpackTensor(                                    \
+        initializer,                                                            \
+        initializer.has_raw_data() ? initializer.raw_data().data() : nullptr,   \
+        initializer.has_raw_data() ? initializer.raw_data().size() : 0,         \
+        reinterpret_cast<ELEMENT_TYPE*>(unpacked_tensor.get()), element_count); \
+    break;                                                                      \
+  }
+
+Status UnpackInitializerData(const onnx::TensorProto& initializer,
+                             std::unique_ptr<uint8_t[]>& unpacked_tensor,
+                             size_t& tensor_byte_size) {
+  switch (initializer.data_type()) {
+    CASE_UNPACK(FLOAT, float, float_data_size);
+    CASE_UNPACK(DOUBLE, double, double_data_size);
+    CASE_UNPACK(BOOL, bool, int32_data_size);
+    CASE_UNPACK(INT8, int8_t, int32_data_size);
+    CASE_UNPACK(INT16, int16_t, int32_data_size);
+    CASE_UNPACK(INT32, int32_t, int32_data_size);
+    CASE_UNPACK(INT64, int64_t, int64_data_size);
+    CASE_UNPACK(UINT8, uint8_t, int32_data_size);
+    CASE_UNPACK(UINT16, uint16_t, int32_data_size);
+    CASE_UNPACK(UINT32, uint32_t, uint64_data_size);
+    CASE_UNPACK(UINT64, uint64_t, uint64_data_size);
+    CASE_UNPACK(FLOAT16, onnxruntime::MLFloat16, int32_data_size);
+    CASE_UNPACK(BFLOAT16, onnxruntime::BFloat16, int32_data_size);
+    default:
+      break;
+  }
+  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                         "Unsupported type: ", initializer.data_type());
+}
+#undef CASE_UNPACK
+
 }  // namespace utils
 }  // namespace onnxruntime

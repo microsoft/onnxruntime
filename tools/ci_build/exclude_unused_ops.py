@@ -3,6 +3,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import sys
 import os
 import argparse
 import shutil
@@ -14,6 +15,8 @@ from logger import log
 domain_map = {'': 'kOnnxDomain',
               'ai.onnx': 'kOnnxDomain',
               'ai.onnx.ml': 'kMLDomain',
+              'ai.onnx.training': 'ai.onnx.training',  # we don't have a constant for the training domains currently
+              'ai.onnx.preview.training': 'ai.onnx.preview.training',
               'com.microsoft': 'kMSDomain',
               'com.microsoft.nchwc': 'kMSNchwcDomain',
               'com.microsoft.mlfeaturizers': 'kMSFeaturizersDomain',
@@ -22,28 +25,33 @@ domain_map = {'': 'kOnnxDomain',
               'com.xilinx': 'kVitisAIDomain'}
 
 
-def map_domain(domain):
+def _map_domain(domain):
 
     if domain in domain_map:
         return domain_map[domain]
 
+    log.warning("Attempt to map unknown domain of {}".format(domain))
     return 'UnknownDomain'
 
 
-def extract_ops_from_file(file_path, referred_ops):
-    '''extract ops from file of format: domain;opset;op1,op2...'''
+def _extract_ops_from_config(file_path, required_ops):
+    '''extract ops from config file of format: domain;opset;op1,op2...'''
 
     if not file_path:
-        return referred_ops
+        return required_ops
 
     if not os.path.isfile(file_path):
-        log.warning('File {} does not exist'.format(file_path))
-        return referred_ops
+        # exit. to continue may result in unexpectedly disabling all kernels.
+        log.error('Configuration file {} does not exist'.format(file_path))
+        sys.exit(-1)
 
     with open(file_path, 'r') as file_to_read:
 
         for stripped_line in [line.strip() for line in
                               file_to_read.readlines()]:
+
+            if not stripped_line:  # skip empty lines
+                continue
 
             if stripped_line.startswith("#"):  # skip comments
                 continue
@@ -51,38 +59,44 @@ def extract_ops_from_file(file_path, referred_ops):
             raw_domain, raw_opset, raw_ops =\
                 [segment.strip() for segment in stripped_line.split(';')]
 
-            domain = map_domain(raw_domain)
+            domain = _map_domain(raw_domain)
             opset = int(raw_opset)
             operators = set([raw_op.strip() for raw_op in raw_ops.split(',')])
 
-            if domain not in referred_ops:
-                referred_ops[domain] = {opset: operators}
+            if domain not in required_ops:
+                required_ops[domain] = {opset: operators}
 
-            elif opset not in referred_ops[domain]:
-                referred_ops[domain][opset] = operators
+            elif opset not in required_ops[domain]:
+                required_ops[domain][opset] = operators
 
             else:
-                referred_ops[domain][opset].update(operators)
+                required_ops[domain][opset].update(operators)
 
-    return referred_ops  # end of extract_ops_from_file(...)
+    return required_ops  # end of extract_ops_from_file(...)
 
 
-def extract_ops_from_model(model_path, referred_ops):
+def _extract_ops_from_model(model_path, required_ops):
     '''extract ops from models under model_path and return a diction'''
 
     if not model_path:
-        return referred_ops
+        return required_ops
 
     if not os.path.isdir(model_path):
-        log.warning('Directory {} does not exist'.format(model_path))
-        return referred_ops
+        # exit. to continue may result in unexpectedly disabling all kernels.
+        log.error('Directory containing models {} does not exist'.format(model_path))
+        sys.exit(-1)
 
     def extract_ops_from_graph(graph, operators, domain_opset_map):
         '''extract ops from graph and all subgraphs'''
 
         for operator in graph.node:
 
-            mapped_domain = map_domain(operator.domain)
+            mapped_domain = _map_domain(operator.domain)
+
+            if mapped_domain not in operators or\
+               mapped_domain not in domain_opset_map:
+                continue
+
             operators[mapped_domain][domain_opset_map[mapped_domain]].add(operator.op_type)
 
             for attr in operator.attribute:
@@ -99,33 +113,26 @@ def extract_ops_from_model(model_path, referred_ops):
                 model = onnx.load(model_path)
                 domain_opset_map = {}
 
+                if len(model.opset_import) == 0:
+                    continue
+
                 for opset in model.opset_import:
 
-                    mapped_domain = map_domain(opset.domain)
+                    mapped_domain = _map_domain(opset.domain)
                     domain_opset_map[mapped_domain] = opset.version
 
-                    if mapped_domain not in referred_ops:
-                        referred_ops[mapped_domain] = {opset.version: set()}
+                    if mapped_domain not in required_ops:
+                        required_ops[mapped_domain] = {opset.version: set()}
 
-                    elif opset.version not in referred_ops[mapped_domain]:
-                        referred_ops[mapped_domain][opset.version] = set()
+                    elif opset.version not in required_ops[mapped_domain]:
+                        required_ops[mapped_domain][opset.version] = set()
 
-                extract_ops_from_graph(model.graph, referred_ops, domain_opset_map)
+                extract_ops_from_graph(model.graph, required_ops, domain_opset_map)
 
-    return referred_ops  # end of extract_ops_from_model(...)
-
-
-def exclude_unused_ops(model_path, file_path, provider_paths):
-    '''rewrite multiple provider files'''
-
-    operators = extract_ops_from_file(file_path, extract_ops_from_model(model_path, {}))
-    for provider_path in provider_paths:
-        exclude_unused_ops_in_provider(operators, provider_path)
-
-    # end of disable_ops_in_providers(...)
+    return required_ops  # end of extract_ops_from_model(...)
 
 
-def exclude_unused_ops_in_provider(operators, provider_path):
+def _exclude_unused_ops_in_provider(operators, provider_path):
     '''rewrite provider file to exclude unused ops'''
 
     if not os.path.isfile(provider_path):
@@ -272,7 +279,14 @@ def exclude_unused_ops_in_provider(operators, provider_path):
     # end of rewrite_cpu_provider(...)
 
 
-def get_provider_path(ort_root='', use_cuda=False):
+def _exclude_unused_ops_in_providers(required_operators, provider_paths):
+    '''rewrite multiple provider files'''
+
+    for provider_path in provider_paths:
+        _exclude_unused_ops_in_provider(required_operators, provider_path)
+
+
+def _get_provider_paths(ort_root=None, use_cuda=False):
     '''return paths to cpu and cuda providers'''
 
     if not ort_root:
@@ -290,36 +304,92 @@ def get_provider_path(ort_root='', use_cuda=False):
     return provider_paths  # end of get_provider_paths
 
 
+def _create_config_file_with_required_ops(required_operators, model_path, config_path, output_file):
+
+    directory, filename = os.path.split(output_file)
+    if not filename:
+        log.error("Invalid path to write final config to. {}".format(output_file))
+        sys.exit(-1)
+
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
+    with open(output_file, 'w') as out:
+        model_path_info = '--model_path {} '.format(model_path) if model_path else ''
+        config_path_info = '--config_path {}'.format(config_path) if config_path else ''
+        out.write("# Generated from {}{}\n".format(model_path_info, config_path_info))
+
+        for domain in sorted(required_operators.keys()):
+            if domain == 'UnknownDomain':
+                continue
+
+            # reverse the mapping of the domain. entry must exist given we created the required_operators dictionary.
+            # also need to handle ai.onnx being special-cased as an empty string
+            orig_domain = [key for (key, value) in domain_map.items() if value == domain][0]
+            if not orig_domain:
+                orig_domain = 'ai.onnx'
+
+            for opset in sorted(required_operators[domain].keys()):
+                ops = required_operators[domain][opset]
+                if ops:
+                    out.write("{};{};{}\n".format(orig_domain, opset, ','.join(sorted(ops))))
+
+    log.info("Wrote set of required operators to {}".format(output_file))
+
+
+def exclude_unused_ops(models_path, config_path, ort_root=None, use_cuda=True, output_config_path=None):
+    '''Determine operators that are used, and either exclude them or create a configuration file that will.
+    Note that this called directly from build.py'''
+
+    if not models_path and not config_path:
+        log.error('Please specify model_path and/or config_path.')
+        sys.exit(-1)
+
+    if not ort_root and not output_config_path:
+        log.info('ort_root was not specified. Inferring ONNX Runtime repository root from location of this script.')
+
+    required_ops = _extract_ops_from_config(config_path, _extract_ops_from_model(models_path, {}))
+
+    if not output_config_path:
+        _exclude_unused_ops_in_providers(required_ops, _get_provider_paths(ort_root, use_cuda))
+    else:
+        _create_config_file_with_required_ops(required_ops, models_path, config_path, output_config_path)
+
+
 if __name__ == "__main__":
 
-    PARSER = argparse.ArgumentParser(
-        description="provider rewriter",
-        usage="""
-        --model_path <path to model(s) folder>
-        --file_path <path to file whose line formated like 'domain;opset;op1,op2...'>
-        --ort_root <path to ort root with current as default>
-        """)
+    parser = argparse.ArgumentParser(
+        description="Script to exclude unused operator kernels by disabling their registration in ONNXRuntime."
+                    "See /docs/Reduced_Operator_Kernel_build.md for more information",
+        usage="Provide model_path, config_path, or both, to disable kernel registration of unused kernels.")
 
-    PARSER.add_argument(
-        "--model_path", type=str, help="path to model(s) folder")
+    parser.add_argument(
+        "--model_path", type=str, help="Path to folder containing one or more ONNX models")
 
-    PARSER.add_argument(
-        "--file_path", type=str, help="path to file of ops")
+    parser.add_argument(
+        "--config_path", type=str, help="Path to configuration file with format of 'domain;opset;op1,op2...'")
 
-    PARSER.add_argument(
-        "--ort_root", type=str, help="path to ort root with current as default")
+    parser.add_argument(
+        "--ort_root", type=str, help="Path to ONNXRuntime repository root. "
+                                     "Inferred from the location of this script if not provided.")
 
-    ARGS = PARSER.parse_args()
+    parser.add_argument(
+        "--write_combined_config_to", type=str,
+        help="Optional path to create a configuration file with the combined set of required kernels "
+             "from processing --model_path and/or --config_path. If provided, a configuration file will be created "
+             "and NO updates will be made to the kernel registrations."
+    )
 
-    model_path = os.path.abspath(ARGS.model_path) if ARGS.model_path else ''
-    file_path = os.path.abspath(ARGS.file_path) if ARGS.file_path else ''
-    ort_root = os.path.abspath(ARGS.ort_root) if ARGS.ort_root else ''
+    args = parser.parse_args()
 
-    if not model_path and not file_path:
-        log.warning('Please specify at least either model path or file path.')
+    models_path = os.path.abspath(args.model_path) if args.model_path else ''
+    config_path = os.path.abspath(args.config_path) if args.config_path else ''
+    ort_root = os.path.abspath(args.ort_root) if args.ort_root else ''
 
-    if not ort_root:
-        log.info('ort root not specified, taking current as root')
+    if not models_path and not config_path:
+        log.error('Please specify at least either model path or file path.')
+        parser.print_help()
+        sys.exit(-1)
 
-    exclude_unused_ops(model_path, file_path,
-                       get_provider_path(ort_root, use_cuda=True))
+    exclude_unused_ops(models_path, config_path, ort_root, use_cuda=True,
+                       output_config_path=args.write_combined_config_to)

@@ -28,25 +28,21 @@ constexpr const char* DNNL_CPU = "DnnlCpu";
 
 DNNLExecutionProvider::DNNLExecutionProvider(const DNNLExecutionProviderInfo& info)
     : Provider_IExecutionProvider{onnxruntime::kDnnlExecutionProvider} {
-  Provider_DeviceAllocatorRegistrationInfo default_memory_info(
-      {OrtMemTypeDefault,
-       [](int) {
-         return onnxruntime::Provider_CreateCPUAllocator(
-             onnxruntime::Provider_OrtMemoryInfo::Create(DNNL, OrtAllocatorType::OrtDeviceAllocator));
-       },
-       std::numeric_limits<size_t>::max()});
+  Provider_AllocatorCreationInfo default_memory_info(
+      {[](int) {
+        return onnxruntime::Provider_CreateCPUAllocator(OrtMemoryInfo(DNNL, OrtAllocatorType::OrtDeviceAllocator));
+      }},
+      0, info.create_arena);
 
-  Provider_DeviceAllocatorRegistrationInfo cpu_memory_info(
-      {OrtMemTypeCPUOutput,
-       [](int) {
-         return onnxruntime::Provider_CreateCPUAllocator(
-             onnxruntime::Provider_OrtMemoryInfo::Create(DNNL_CPU, OrtAllocatorType::OrtDeviceAllocator, nullptr, 0,
-                                                         OrtMemTypeCPUOutput));
-       },
-       std::numeric_limits<size_t>::max()});
+  Provider_AllocatorCreationInfo cpu_memory_info(
+      {[](int) {
+        return onnxruntime::Provider_CreateCPUAllocator(OrtMemoryInfo(DNNL_CPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0,
+                                                                      OrtMemTypeCPUOutput));
+      }},
+      0, info.create_arena);
 
-  Provider_InsertAllocator(CreateAllocator(default_memory_info, 0, info.create_arena));
-  Provider_InsertAllocator(CreateAllocator(cpu_memory_info, 0, info.create_arena));
+  Provider_InsertAllocator(CreateAllocator(default_memory_info));
+  Provider_InsertAllocator(CreateAllocator(cpu_memory_info));
 }  // namespace onnxruntime
 
 DNNLExecutionProvider::~DNNLExecutionProvider() {

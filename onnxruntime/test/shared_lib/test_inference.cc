@@ -12,10 +12,10 @@
 #include <fstream>
 #include <sstream>
 #include <atomic>
+#include <mutex>
 #include <gtest/gtest.h>
 #include "test_allocator.h"
 #include "test_fixture.h"
-#include "onnx_protobuf.h"
 
 struct Input {
   const char* name = nullptr;
@@ -440,6 +440,35 @@ TEST(CApiTest, create_session_without_session_option) {
 }
 #endif
 
+#ifdef REDUCED_OPS_BUILD
+TEST(ReducedOpsBuildTest, test_included_ops) {
+  // In reduce-ops build, test a model containing
+  // ops specified in reduced_ops_via_config.config
+  constexpr PATH_TYPE model_uri = TSTR("testdata/reduced_ops_via_config.onnx_model_with_included_ops");
+  std::vector<Input> inputs = {{"X", {3}, {-1.0f, 2.0f, -3.0f}}};
+  std::vector<int64_t> expected_dims_y = {1};
+  std::vector<float> expected_values_y = {0.75};
+  TestInference<PATH_TYPE, float>(*ort_env, model_uri, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
+}
+
+TEST(ReducedOpsBuildTest, test_excluded_ops) {
+  // In reduce-ops build, test a model containing
+  // ops not referred by reduced_ops_via_config.config
+  constexpr PATH_TYPE model_uri = TSTR("testdata/reduced_ops_via_config.onnx_model_with_excluded_ops");
+  std::vector<Input> inputs = {{"X", {3}, {-1.0f, 2.0f, -3.0f}},
+                               {"Y", {3}, {-1.0f, 2.0f, -3.0f}}};
+  std::vector<int64_t> expected_dims_z = {3};
+  std::vector<float> expected_values_z = {0.1f, 0.1f, 0.1f};
+  bool failed = false;
+  try {
+    TestInference<PATH_TYPE, float>(*ort_env, model_uri, inputs, "Z", expected_dims_z, expected_values_z, 0, nullptr, nullptr);
+  } catch (const Ort::Exception& e) {
+    failed = e.GetOrtErrorCode() == ORT_NOT_IMPLEMENTED;
+  }
+  ASSERT_EQ(failed, true);
+}
+#endif
+
 TEST(CApiTest, get_allocator_cpu) {
   Ort::SessionOptions session_options;
   Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CPU(session_options, 1));
@@ -651,8 +680,8 @@ TEST(CApiTest, access_tensor_data_elements) {
   Ort::Value tensor = Ort::Value::CreateTensor<float>(info, values.data(), values.size(), shape.data(), shape.size());
 
   float expected_value = 0;
-  for (size_t row = 0; row < (size_t)shape[0]; row++) {
-    for (size_t col = 0; col < (size_t)shape[1]; col++) {
+  for (int64_t row = 0; row < shape[0]; row++) {
+    for (int64_t col = 0; col < shape[1]; col++) {
       ASSERT_EQ(expected_value++, tensor.At<float>({row, col}));
     }
   }
@@ -696,8 +725,7 @@ TEST(CApiTest, override_initializer) {
   ort_inputs.push_back(std::move(f11_input_tensor));
 
   std::vector<const char*> input_names = {"Label", "F2", "F1"};
-
-  const char* const output_names[] = {"Label0", "F20", "F11"};
+  const char* output_names[] = {"Label0", "F20", "F11"};
   std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, input_names.data(),
                                                     ort_inputs.data(), ort_inputs.size(),
                                                     output_names, countof(output_names));
@@ -741,6 +769,27 @@ TEST(CApiTest, end_profiling) {
   ASSERT_TRUE(std::string(profile_file) == std::string());
 }
 
+TEST(CApiTest, get_profiling_start_time) {
+  // Test whether the C_API can access the profiler's start time
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  Ort::SessionOptions session_options;
+#ifdef _WIN32
+  session_options.EnableProfiling(L"profile_prefix");
+#else
+  session_options.EnableProfiling("profile_prefix");
+#endif
+
+  uint64_t before_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::high_resolution_clock::now().time_since_epoch()).count(); // get current time
+  Ort::Session session_1(*ort_env, MODEL_WITH_CUSTOM_MODEL_METADATA, session_options);
+  uint64_t profiling_start_time = session_1.GetProfilingStartTimeNs();
+  uint64_t after_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+      
+  // the profiler's start time needs to be between before_time and after_time
+  ASSERT_TRUE(before_start_time <= profiling_start_time && profiling_start_time <= after_start_time);  
+}
+
 TEST(CApiTest, model_metadata) {
   auto allocator = onnxruntime::make_unique<MockedOrtAllocator>();
   // The following all tap into the c++ APIs which internally wrap over C APIs
@@ -774,19 +823,24 @@ TEST(CApiTest, model_metadata) {
 
     int64_t num_keys_in_custom_metadata_map;
     char** custom_metadata_map_keys = model_metadata.GetCustomMetadataMapKeys(allocator.get(), num_keys_in_custom_metadata_map);
-    ASSERT_TRUE(num_keys_in_custom_metadata_map == 1);
-    ASSERT_TRUE(strcmp(custom_metadata_map_keys[0], "ort_config") == 0);
+    ASSERT_TRUE(num_keys_in_custom_metadata_map == 2);
+
     allocator.get()->Free(custom_metadata_map_keys[0]);
+    allocator.get()->Free(custom_metadata_map_keys[1]);
     allocator.get()->Free(custom_metadata_map_keys);
 
-    char* lookup_value = model_metadata.LookupCustomMetadataMap("ort_config", allocator.get());
-    ASSERT_TRUE(strcmp(lookup_value,
+    char* lookup_value_1 = model_metadata.LookupCustomMetadataMap("ort_config", allocator.get());
+    ASSERT_TRUE(strcmp(lookup_value_1,
                        "{\"session_options\": {\"inter_op_num_threads\": 5, \"intra_op_num_threads\": 2, \"graph_optimization_level\": 99, \"enable_profiling\": 1}}") == 0);
-    allocator.get()->Free(lookup_value);
+    allocator.get()->Free(lookup_value_1);
+
+    char* lookup_value_2 = model_metadata.LookupCustomMetadataMap("dummy_key", allocator.get());
+    ASSERT_TRUE(strcmp(lookup_value_2, "dummy_value") == 0);
+    allocator.get()->Free(lookup_value_2);
 
     // key doesn't exist in custom metadata map
-    lookup_value = model_metadata.LookupCustomMetadataMap("key_doesnt_exist", allocator.get());
-    ASSERT_TRUE(lookup_value == nullptr);
+    char* lookup_value_3 = model_metadata.LookupCustomMetadataMap("key_doesnt_exist", allocator.get());
+    ASSERT_TRUE(lookup_value_3 == nullptr);
   }
 
   // The following section tests a model with some missing metadata info
@@ -848,7 +902,7 @@ TEST(CApiTest, TestSharedAllocatorUsingCreateAndRegisterAllocator) {
   std::unique_ptr<OrtMemoryInfo, decltype(api.ReleaseMemoryInfo)> rel_info(mem_info, api.ReleaseMemoryInfo);
   ASSERT_TRUE(api.CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &mem_info) == nullptr);
 
-  OrtArenaCfg arena_cfg{-1, -1, -1, -1};
+  OrtArenaCfg arena_cfg{0, -1, -1, -1};
   ASSERT_TRUE(api.CreateAndRegisterAllocator(env_ptr, mem_info, &arena_cfg) == nullptr);
 
   // test for duplicates
@@ -859,7 +913,7 @@ TEST(CApiTest, TestSharedAllocatorUsingCreateAndRegisterAllocator) {
 
   Ort::SessionOptions session_options;
   auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
-  session_options.AddConfigEntry(ORT_SESSION_OPTIONS_CONFIG_USE_ENV_ALLOCATORS, "1");
+  session_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
 
   // create session 1
   Ort::Session session1(*ort_env, MODEL_URI, session_options);

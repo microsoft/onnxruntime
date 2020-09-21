@@ -84,12 +84,30 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 Assert.Throws<OnnxRuntimeException>(() => { opt.GraphOptimizationLevel = (GraphOptimizationLevel)10; });
 
+                opt.AddSessionConfigEntry("key", "value");
+
+                var ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AddSessionConfigEntry("", "invalid key"); });
+                Assert.Contains("[ErrorCode:InvalidArgument] Config key is empty", ex.Message);
+
                 opt.AppendExecutionProvider_CPU(1);
 #if USE_DNNL
                 opt.AppendExecutionProvider_Dnnl(0);
 #endif
 #if USE_CUDA
                 opt.AppendExecutionProvider_CUDA(0);
+#endif
+#if USE_DML
+                // Explicitly set dll probe path so that the (potentially) stale system DirectML.dll 
+                // doesn't get loaded by the test process when it is eventually delay loaded by onnruntime.dll
+                // The managed tests binary path already contains the right DirectML.dll, so use that
+
+                var directml_dll_path = AppDomain.CurrentDomain.BaseDirectory;
+                SetDllDirectory(directml_dll_path);
+                opt.AppendExecutionProvider_DML(0);
+
+                // Restore the default dll search order
+                SetDllDirectory(null);
+
 #endif
 #if USE_NGRAPH
                 opt.AppendExecutionProvider_NGraph("CPU");  //TODO: this API should be refined
@@ -110,6 +128,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             }
         }
+
+        // Use to set dll probe path so that the right dll(s) is loaded by the test process
+        // Invoke only to specify Windows specific EPs' dll locations explicitly
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+
+        [return: MarshalAs(UnmanagedType.Bool)]
+        static extern bool SetDllDirectory(string lpPathName);
 
         [Fact]
         public void TestRunOptions()
@@ -597,6 +622,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             if (System.Environment.Is64BitProcess == false)
             {
                 skipModels["test_vgg19"] = "Get preallocated buffer for initializer conv4_4_b_0 failed";
+                skipModels["GPT2_LM_HEAD"] = "System out of memory";
+                skipModels["GPT2"] = "System out of memory";
                 skipModels["tf_pnasnet_large"] = "Get preallocated buffer for initializer ConvBnFusion_BN_B_cell_5/comb_iter_1/left/bn_sep_7x7_1/beta:0_203 failed";
                 skipModels["tf_nasnet_large"] = "Get preallocated buffer for initializer ConvBnFusion_BN_B_cell_11/beginning_bn/beta:0_331 failed";
                 skipModels["test_zfnet512"] = "System out of memory";
@@ -1564,6 +1591,36 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
         [Fact]
+        private void TestModelMetadata()
+        {
+
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "model_with_valid_ort_config_json.onnx");
+
+            using (var session = new InferenceSession(modelPath))
+            {
+                var modelMetadata = session.ModelMetadata;
+
+                Assert.Equal(1, modelMetadata.Version);
+
+                Assert.Equal("Hari", modelMetadata.ProducerName);
+
+                Assert.Equal("matmul test", modelMetadata.GraphName);
+
+                Assert.Equal("", modelMetadata.Domain);
+
+                Assert.Equal("This is a test model with a valid ORT config Json", modelMetadata.Description);
+
+                Assert.Equal(2, modelMetadata.CustomMetadataMap.Keys.Count);
+                Assert.Equal("dummy_value", modelMetadata.CustomMetadataMap["dummy_key"]);
+                Assert.Equal("{\"session_options\": {\"inter_op_num_threads\": 5, \"intra_op_num_threads\": 2, \"graph_optimization_level\": 99, \"enable_profiling\": 1}}",
+                              modelMetadata.CustomMetadataMap["ort_config"]);
+
+
+
+            }
+        }
+
+        [Fact]
         private void TestModelSerialization()
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
@@ -1581,10 +1638,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+        // TestGpu() will test the CUDA EP on CUDA enabled builds and 
+        // the DML EP on DML enabled builds
         [GpuFact]
         private void TestGpu()
         {
-            var gpu = Environment.GetEnvironmentVariable("TESTONGPU");
             var tuple = OpenSessionSqueezeNet(0); // run on deviceID 0
             float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");
 
@@ -1799,6 +1857,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #endif
 #if USE_CUDA
             ,"OrtSessionOptionsAppendExecutionProvider_CUDA"
+#endif
+#if USE_DML
+            ,"OrtSessionOptionsAppendExecutionProvider_DML"
 #endif
 #if USE_NGRAPH
             ,"OrtSessionOptionsAppendExecutionProvider_NGraph"
@@ -2072,15 +2133,37 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             return NamedOnnxValue.CreateFromTensor<T>(name, dt);
         }
 
-        internal static Tuple<InferenceSession, float[], DenseTensor<float>, float[]> OpenSessionSqueezeNet(int? cudaDeviceId = null)
+        internal static Tuple<InferenceSession, float[], DenseTensor<float>, float[]> OpenSessionSqueezeNet(int? deviceId = null)
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
-#if USE_CUDA
-            using (var option = (cudaDeviceId.HasValue) ?
-                SessionOptions.MakeSessionOptionWithCudaProvider(cudaDeviceId.Value) :
+#if USE_DML
+            // Explicitly set dll probe path so that the (potentially) stale system DirectML.dll 
+            // doesn't get loaded by the test process when it is eventually delay loaded by onnruntime.dll
+            // The managed tests binary path already contains the right DirectML.dll, so use that
+
+            var directml_dll_path = AppDomain.CurrentDomain.BaseDirectory;
+            SetDllDirectory(directml_dll_path);
+
+            using (var option = new SessionOptions())
+            {
+                if (!deviceId.HasValue)
+                {
+                    option.AppendExecutionProvider_CPU(1);
+                }
+
+                else
+                {
+                    option.AppendExecutionProvider_DML(deviceId.Value);
+                }
+
+                 // Restore the default dll search order
+                SetDllDirectory(null);
+#elif USE_CUDA
+            using (var option = (deviceId.HasValue) ?
+                SessionOptions.MakeSessionOptionWithCudaProvider(deviceId.Value) :
                 new SessionOptions())
             {
-                if(!cudaDeviceId.HasValue)
+                if(!deviceId.HasValue)
                 {
                     option.AppendExecutionProvider_CPU(1);
                 }
@@ -2089,7 +2172,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             {
                 option.AppendExecutionProvider_CPU(1);
 #endif
-                var session = (cudaDeviceId.HasValue)
+                var session = (deviceId.HasValue)
                     ? new InferenceSession(modelPath, option)
                     : new InferenceSession(modelPath);
                 float[] inputData = LoadTensorFromFile(@"bench.in");

@@ -51,14 +51,8 @@ void operator delete(void* p, size_t /*size*/) { return onnxruntime::g_host->Hea
 
 namespace onnxruntime {
 
-Provider_AllocatorPtr CreateAllocator(const Provider_DeviceAllocatorRegistrationInfo& info, int16_t device_id,
-                                      bool use_arena) {
-  return g_host->CreateAllocator(info, device_id, use_arena);
-}
-
-std::unique_ptr<Provider_OrtMemoryInfo> Provider_OrtMemoryInfo::Create(
-    const char* name_, OrtAllocatorType type_, Provider_OrtDevice* device_, int id_, OrtMemType mem_type_) {
-  return g_host->OrtMemoryInfo_Create(name_, type_, device_, id_, mem_type_);
+Provider_AllocatorPtr CreateAllocator(const Provider_AllocatorCreationInfo& info) {
+  return g_host->CreateAllocator(info);
 }
 
 template <>
@@ -144,20 +138,20 @@ bool CPUIDInfo::HasAVX512f() const {
   return g_host->CPU_HasAVX512f();
 }
 
-Provider_AllocatorPtr CreateAllocator(Provider_DeviceAllocatorRegistrationInfo info, int16_t device_id) {
-  return g_host->CreateAllocator(info, device_id);
+Provider_AllocatorPtr CreateAllocator(Provider_AllocatorCreationInfo info) {
+  return g_host->CreateAllocator(info);
 }
 
-std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCPUAllocator(std::unique_ptr<Provider_OrtMemoryInfo> info) {
-  return g_host->CreateCPUAllocator(std::move(info));
+std::unique_ptr<Provider_IAllocator> Provider_CreateCPUAllocator(const OrtMemoryInfo& info) {
+  return g_host->CreateCPUAllocator(info);
 }
 
 #ifdef USE_TENSORRT
-std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCUDAAllocator(int16_t device_id, const char* name) {
+std::unique_ptr<Provider_IAllocator> Provider_CreateCUDAAllocator(int16_t device_id, const char* name) {
   return g_host->CreateCUDAAllocator(device_id, name);
 }
 
-std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCUDAPinnedAllocator(int16_t device_id, const char* name) {
+std::unique_ptr<Provider_IAllocator> Provider_CreateCUDAPinnedAllocator(int16_t device_id, const char* name) {
   return g_host->CreateCUDAPinnedAllocator(device_id, name);
 }
 

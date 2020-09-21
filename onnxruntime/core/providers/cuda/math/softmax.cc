@@ -26,7 +26,7 @@ Status SoftMaxComputeHelper(
 
   // cudnnSoftmaxForward/Backward is not optimal implementation.
   // TODO: remove cudnn path completely in the future.
-  if (D == input_shape[normalized_axis] && D <= 1024 && D * sizeof(T) <= 4096) {
+  if (D <= 1024 && D * sizeof(T) <= 4096) {
     dispatch_softmax_forward<CudaT, CudaT, AccType<T>, is_log_softmax>(Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
     return Status::OK();
   }
@@ -65,10 +65,18 @@ SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16)
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Softmax<T>);                                                              \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
+      Softmax,                                                                  \
+      kOnnxDomain,                                                              \
+      11, 12,                                                                    \
+      T,                                                                        \
+      kCudaExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Softmax<T>);                                                              \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       Softmax,                                                                  \
       kOnnxDomain,                                                              \
-      11,                                                                       \
+      13,                                                                       \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
@@ -81,10 +89,18 @@ SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16)
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Softmax<T>);                                                              \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
+      LogSoftmax,                                                               \
+      kOnnxDomain,                                                              \
+      11, 12,                                                                    \
+      T,                                                                        \
+      kCudaExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Softmax<T>);                                                              \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       LogSoftmax,                                                               \
       kOnnxDomain,                                                              \
-      11,                                                                       \
+      13,                                                                       \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \

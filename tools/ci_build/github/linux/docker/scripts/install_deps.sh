@@ -80,17 +80,17 @@ if [[ $SYS_LONG_BIT = "64" && "$GLIBC_VERSION" -gt "9" ]]; then
   tar --strip 1 -xf /tmp/azcopy/azcopy.tar.gz -C /tmp/azcopy
   cp /tmp/azcopy/azcopy /usr/bin
   echo "Installing cmake"
-  GetFile https://github.com/Kitware/CMake/releases/download/v3.16.1/cmake-3.16.1-Linux-x86_64.tar.gz /tmp/src/cmake-3.16.1-Linux-x86_64.tar.gz
-  tar -zxf /tmp/src/cmake-3.16.1-Linux-x86_64.tar.gz --strip=1 -C /usr
+  GetFile https://github.com/Kitware/CMake/releases/download/v3.18.2/cmake-3.18.2-Linux-x86_64.tar.gz /tmp/src/cmake-3.18.2-Linux-x86_64.tar.gz
+  tar -zxf /tmp/src/cmake-3.18.2-Linux-x86_64.tar.gz --strip=1 -C /usr
   echo "Installing Node.js"
   GetFile https://nodejs.org/dist/v12.16.3/node-v12.16.3-linux-x64.tar.xz /tmp/src/node-v12.16.3-linux-x64.tar.xz
   tar -xf /tmp/src/node-v12.16.3-linux-x64.tar.xz --strip=1 -C /usr
 else
   echo "Installing cmake"
-  GetFile https://github.com/Kitware/CMake/releases/download/v3.16.1/cmake-3.16.1.tar.gz /tmp/src/cmake-3.16.1.tar.gz
-  tar -xf /tmp/src/cmake-3.16.1.tar.gz -C /tmp/src
+  GetFile https://github.com/Kitware/CMake/releases/download/v3.18.2/cmake-3.18.2.tar.gz /tmp/src/cmake-3.18.2.tar.gz
+  tar -xf /tmp/src/cmake-3.18.2.tar.gz -C /tmp/src
   pushd .
-  cd /tmp/src/cmake-3.16.1
+  cd /tmp/src/cmake-3.18.2
   ./bootstrap --prefix=/usr --parallel=$(getconf _NPROCESSORS_ONLN) --system-bzip2 --system-curl --system-zlib --system-expat
   make -j$(getconf _NPROCESSORS_ONLN)
   make install
@@ -105,12 +105,9 @@ mv /tmp/src/gradle-6.3 /usr/local/gradle
 
 #Don't update 'wheel' to the latest version. see: https://github.com/pypa/auditwheel/issues/102
 ${PYTHON_EXE} -m pip install -r ${0/%install_deps\.sh/requirements\.txt}
-if [ $DEVICE_TYPE = "Normal" ]; then
-    ${PYTHON_EXE} -m pip install sympy==1.1.1
-elif [ $DEVICE_TYPE = "gpu" ]; then
-    ${PYTHON_EXE} -m pip install sympy==1.1.1
+if [ $DEVICE_TYPE = "gpu" ]; then
     if [[ $BUILD_EXTR_PAR = *--enable_training* ]]; then
-      ${PYTHON_EXE} -m pip install --upgrade --pre torch==1.6.0.dev20200610 torchvision==0.7.0.dev20200610 -f https://download.pytorch.org/whl/nightly/cu101/torch_nightly.html
+      ${PYTHON_EXE} -m pip install --upgrade --pre torch==1.6.0.dev20200610 torchvision==0.7.0.dev20200610 torchtext==0.6.0.dev20200610 -f https://download.pytorch.org/whl/nightly/cu101/torch_nightly.html
       ${PYTHON_EXE} -m pip install  transformers==v2.10.0
       # transformers requires sklearn
       ${PYTHON_EXE} -m pip install sklearn
@@ -128,7 +125,7 @@ elif [ $DEVICE_TYPE = "gpu" ]; then
     fi
 fi
 
-
 cd /
 rm -rf /tmp/src
-
+rm -rf /usr/include/google
+rm -rf /usr/$LIBDIR/libproto*

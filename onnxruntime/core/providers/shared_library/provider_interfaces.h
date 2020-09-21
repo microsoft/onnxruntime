@@ -25,7 +25,8 @@ using DataType = const std::string*;
 
 namespace onnxruntime {
 
-// onnx Protobuf types
+// onnx Protobuf types (all of these are actually just Provider_<type> -> ONNX_NAMESPACE::<type>)
+#ifndef PROVIDER_BRIDGE_ORT
 struct Provider_AttributeProto;
 struct Provider_GraphProto;
 struct Provider_ModelProto;
@@ -39,16 +40,15 @@ struct Provider_TypeProto_Tensor;
 struct Provider_TypeProto;
 struct Provider_ValueInfoProto;
 struct Provider_ValueInfoProtos;
+#endif
 
-// OnnxRuntime Types
-struct ProviderHost;
+// OnnxRuntime Types (all of these are actually just Provider_<type> -> <type>)
+#ifndef PROVIDER_BRIDGE_ORT
 struct Provider_ComputeCapability;
 struct Provider_DataTransferManager;
 struct Provider_IDataTransfer;
-struct Provider_IExecutionProvider;
 struct Provider_IndexedSubGraph;
 struct Provider_IndexedSubGraph_MetaDef;
-struct Provider_KernelCreateInfo;
 struct Provider_KernelDef;
 struct Provider_KernelDefBuilder;
 struct Provider_KernelRegistry;
@@ -59,10 +59,15 @@ struct Provider_Model;
 struct Provider_Node;
 struct Provider_NodeArg;
 struct Provider_NodeAttributes;
-struct Provider_OpKernel_Base;
 struct Provider_OpKernelContext;
 struct Provider_OpKernelInfo;
 struct Provider_Tensor;
+#endif
+
+struct Provider_IExecutionProvider;
+struct Provider_KernelCreateInfo;
+struct Provider_OpKernel_Base;
+struct ProviderHost;
 class TensorShape;
 
 template <typename T, typename TResult>
@@ -106,25 +111,18 @@ struct Provider_IExecutionProviderFactory {
 class DataTypeImpl;
 using MLDataType = const DataTypeImpl*;
 
-struct Provider_OrtDevice {
-  virtual ~Provider_OrtDevice() {}
-};
-
-struct Provider_OrtMemoryInfo {
-  static std::unique_ptr<Provider_OrtMemoryInfo> Create(const char* name_, OrtAllocatorType type_, Provider_OrtDevice* device_ = nullptr, int id_ = 0, OrtMemType mem_type_ = OrtMemTypeDefault);
-  virtual ~Provider_OrtMemoryInfo() {}
-
-  void operator=(const Provider_OrtMemoryInfo&) = delete;
-};
-
 template <typename T>
 using Provider_IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
 
 struct Provider_IAllocator {
+  Provider_IAllocator(const OrtMemoryInfo& info) : memory_info_{info} {}
   virtual ~Provider_IAllocator() {}
 
   virtual void* Alloc(size_t size) = 0;
   virtual void Free(void* p) = 0;
+  const OrtMemoryInfo& Info() const { return memory_info_; };
+
+  virtual bool IsProviderInterface() const { return true; }
 
   template <typename T>
   static Provider_IAllocatorUniquePtr<T> MakeUniquePtr(std::shared_ptr<Provider_IAllocator> allocator, size_t count_or_bytes) {
@@ -142,20 +140,31 @@ struct Provider_IAllocator {
         [=](T* ptr) { allocator->Free(ptr); }};         // capture IAllocator so it's always valid, and use as deleter
   }
 
-  Provider_IAllocator() = default;
+  const OrtMemoryInfo memory_info_;
+
   Provider_IAllocator(const Provider_IAllocator&) = delete;
   void operator=(const Provider_IAllocator&) = delete;
 };
 
-struct Provider_IDeviceAllocator : Provider_IAllocator {};
-
 using Provider_AllocatorPtr = std::shared_ptr<Provider_IAllocator>;
-using Provider_DeviceAllocatorFactory = std::function<std::unique_ptr<Provider_IDeviceAllocator>(int)>;
+using Provider_AllocatorFactory = std::function<std::unique_ptr<Provider_IAllocator>(int)>;
 
-struct Provider_DeviceAllocatorRegistrationInfo {
-  OrtMemType mem_type;
-  Provider_DeviceAllocatorFactory factory;
-  size_t max_mem;
+using DeviceId = int16_t;
+struct Provider_AllocatorCreationInfo {
+  Provider_AllocatorCreationInfo(Provider_AllocatorFactory device_alloc_factory0,
+                                 DeviceId device_id0 = 0,
+                                 bool use_arena0 = true,
+                                 OrtArenaCfg arena_cfg0 = {0, -1, -1, -1})
+      : factory(device_alloc_factory0),
+        device_id(device_id0),
+        use_arena(use_arena0),
+        arena_cfg(arena_cfg0) {
+  }
+
+  Provider_AllocatorFactory factory;
+  DeviceId device_id;
+  bool use_arena;
+  OrtArenaCfg arena_cfg;
 };
 
 struct Provider_OpKernel {
@@ -173,7 +182,7 @@ using Provider_NodeArgInfo = Provider_ValueInfoProto;
 // We can't just reinterpret_cast this one, since it's an unordered_map of object BY VALUE (can't do anything by value on the real types)
 //using Provider_NodeAttributes = std::unordered_map<std::string, ONNX_NAMESPACE::Provider_AttributeProto_Copyable>;
 
-using Provider_InitializedTensorSet = std::unordered_map<std::string, const ONNX_NAMESPACE::Provider_TensorProto*>;
+using Provider_InitializedTensorSet = std::unordered_map<std::string, const Provider_TensorProto*>;
 
 struct Provider_Node__NodeIterator {
   virtual ~Provider_Node__NodeIterator() {}
@@ -261,17 +270,15 @@ struct Provider {
 // calls the virtual function (which will lead to infinite recursion in the bridge). There is no known way to get the non virtual member
 // function pointer implementation in this case.
 struct ProviderHost {
-  virtual Provider_AllocatorPtr CreateAllocator(const Provider_DeviceAllocatorRegistrationInfo& info,
-                                                int16_t device_id = 0, bool use_arena = true) = 0;
+  virtual Provider_AllocatorPtr CreateAllocator(const Provider_AllocatorCreationInfo& info) = 0;
 
   virtual logging::Logger* LoggingManager_GetDefaultLogger() = 0;
 
-  virtual std::unique_ptr<Provider_OrtMemoryInfo> OrtMemoryInfo_Create(const char* name_, OrtAllocatorType type_, Provider_OrtDevice* device_, int id_, OrtMemType mem_type_) = 0;
-  virtual std::unique_ptr<Provider_IDeviceAllocator> CreateCPUAllocator(std::unique_ptr<Provider_OrtMemoryInfo> memory_info) = 0;
+  virtual std::unique_ptr<Provider_IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info) = 0;
 
 #ifdef USE_TENSORRT
-  virtual std::unique_ptr<Provider_IDeviceAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) = 0;
-  virtual std::unique_ptr<Provider_IDeviceAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) = 0;
+  virtual std::unique_ptr<Provider_IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) = 0;
+  virtual std::unique_ptr<Provider_IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) = 0;
   virtual std::unique_ptr<Provider_IDataTransfer> CreateGPUDataTransfer() = 0;
 
   virtual void cuda__Impl_Cast(const int64_t* input_data, int32_t* output_data, size_t count) = 0;
@@ -464,7 +471,7 @@ struct ProviderHost {
   virtual ONNX_NAMESPACE::DataType Provider_NodeArg__Type(const Provider_NodeArg* p) noexcept = 0;
   virtual const Provider_NodeArgInfo& Provider_NodeArg__ToProto(const Provider_NodeArg* p) noexcept = 0;
   virtual bool Provider_NodeArg__Exists(const Provider_NodeArg* p) const noexcept = 0;
-  virtual const ONNX_NAMESPACE::Provider_TypeProto* Provider_NodeArg__TypeAsProto(const Provider_NodeArg* p) noexcept = 0;
+  virtual const Provider_TypeProto* Provider_NodeArg__TypeAsProto(const Provider_NodeArg* p) noexcept = 0;
 
   // Provider_NodeAttributes
   virtual std::unique_ptr<Provider_NodeAttributes> Provider_NodeAttributes__construct() = 0;
@@ -541,10 +548,18 @@ struct ProviderHost {
   // Provider_Tensor
   virtual float* Provider_Tensor__MutableData_float(Provider_Tensor* p) = 0;
   virtual const float* Provider_Tensor__Data_float(const Provider_Tensor* p) = 0;
+
+  virtual void* Provider_Tensor__MutableDataRaw(Provider_Tensor* p) noexcept = 0;
+  virtual const void* Provider_Tensor__DataRaw(const Provider_Tensor* p) const noexcept = 0;
+
   virtual const TensorShape& Provider_Tensor__Shape(const Provider_Tensor* p) = 0;
+  virtual size_t Provider_Tensor__SizeInBytes(const Provider_Tensor* p) = 0;
+  virtual const OrtMemoryInfo& Provider_Tensor__Location(const Provider_Tensor* p) = 0;
 };
 
 extern ProviderHost* g_host;
+
+#ifndef PROVIDER_BRIDGE_ORT
 
 struct Provider_TypeProto_Tensor {
   int32_t elem_type() const { return g_host->Provider_TypeProto_Tensor__elem_type(this); }
@@ -601,8 +616,8 @@ struct Provider_ModelProto {
   bool SerializeToString(std::string& string) const { return g_host->Provider_ModelProto__SerializeToString(this, string); }
   bool SerializeToOstream(std::ostream& output) const { return g_host->Provider_ModelProto__SerializeToOstream(this, output); }
 
-  const ONNX_NAMESPACE::Provider_GraphProto& graph() const { return g_host->Provider_ModelProto__graph(this); }
-  ONNX_NAMESPACE::Provider_GraphProto* mutable_graph() { return g_host->Provider_ModelProto__mutable_graph(this); }
+  const Provider_GraphProto& graph() const { return g_host->Provider_ModelProto__graph(this); }
+  Provider_GraphProto* mutable_graph() { return g_host->Provider_ModelProto__mutable_graph(this); }
 
   void set_ir_version(int64_t value) { return g_host->Provider_ModelProto__set_ir_version(this, value); }
 
@@ -733,6 +748,7 @@ struct Provider_KernelDef {
   Provider_KernelDef(const Provider_KernelDef*) = delete;
   void operator=(const Provider_KernelDef&) = delete;
 };
+#endif
 
 using Provider_KernelCreateFn = std::function<Provider_OpKernel*(const Provider_OpKernelInfo& info)>;
 using Provider_KernelCreatePtrFn = std::add_pointer<Provider_OpKernel*(const Provider_OpKernelInfo& info)>::type;
@@ -753,6 +769,7 @@ struct Provider_KernelCreateInfo {
 
 using Provider_BuildKernelCreateInfoFn = Provider_KernelCreateInfo (*)();
 
+#ifndef PROVIDER_BRIDGE_ORT
 struct Provider_KernelDefBuilder {
   static std::unique_ptr<Provider_KernelDefBuilder> Create() { return g_host->Provider_KernelDefBuilder__construct(); }
   static void operator delete(void* p) { g_host->Provider_KernelDefBuilder__operator_delete(reinterpret_cast<Provider_KernelDefBuilder*>(p)); }
@@ -964,6 +981,7 @@ struct Provider_GraphViewer {
   Provider_GraphViewer(const Provider_GraphViewer&) = delete;
   void operator=(const Provider_GraphViewer&) = delete;
 };
+#endif
 
 struct Provider_OpKernel_Base {
   const Provider_OpKernelInfo& GetInfo() const { return g_host->Provider_OpKernel_Base__GetInfo(this); }
@@ -971,6 +989,7 @@ struct Provider_OpKernel_Base {
   PROVIDER_DISALLOW_ALL(Provider_OpKernel_Base)
 };
 
+#ifndef PROVIDER_BRIDGE_ORT
 struct Provider_OpKernelContext {
   const Provider_Tensor* Input_Tensor(int index) const { return g_host->Provider_OpKernelContext__Input_Tensor(this, index); }
 
@@ -1020,7 +1039,12 @@ struct Provider_Tensor {
   template <typename T>
   const T* Data() const;
 
+  void* MutableDataRaw() noexcept { return g_host->Provider_Tensor__MutableDataRaw(this); }
+  const void* DataRaw() const noexcept { return g_host->Provider_Tensor__DataRaw(this); }
+
   const TensorShape& Shape() const { return g_host->Provider_Tensor__Shape(this); }
+  size_t SizeInBytes() const { return g_host->Provider_Tensor__SizeInBytes(this); }
+  const OrtMemoryInfo& Location() const { return g_host->Provider_Tensor__Location(this); }
 
   PROVIDER_DISALLOW_ALL(Provider_Tensor)
 };
@@ -1030,5 +1054,6 @@ inline float* Provider_Tensor::MutableData<float>() { return MutableData_float()
 
 template <>
 inline const float* Provider_Tensor::Data<float>() const { return Data_float(); }
+#endif
 
 }  // namespace onnxruntime
