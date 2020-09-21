@@ -426,7 +426,7 @@ def get_config_build_dir(build_dir, config):
 
 def run_subprocess(args, cwd=None, capture=False, dll_path=None,
                    shell=False, env={}):
-    log.debug("Running subprocess in '{0}'\n{1}".format(
+    log.info("Running subprocess in '{0}'\n{1}".format(
         cwd or os.getcwd(), args))
     my_env = os.environ.copy()
     if dll_path:

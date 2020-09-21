@@ -43,9 +43,8 @@
 
 std::unique_ptr<Ort::Env> ort_env;
 
-int main(int argc, char** argv) {
+int _main(int argc, char** argv) {
   int status = 0;
-
 
   ORT_TRY {
     ::testing::InitGoogleTest(&argc, argv);
