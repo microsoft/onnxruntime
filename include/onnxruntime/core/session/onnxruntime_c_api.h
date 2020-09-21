@@ -7,6 +7,7 @@
 #include <string.h>
 #include "onnxruntime_session_options_config_keys.h"
 
+
 // This value is used in structures passed to ORT so that a newer version of ORT will still work with them
 #define ORT_API_VERSION 5
 
@@ -258,6 +259,19 @@ typedef enum OrtMemType {
   OrtMemTypeCPU = OrtMemTypeCPUOutput,  // temporary CPU accessible memory allocated by non-CPU execution provider, i.e. CUDA_PINNED
   OrtMemTypeDefault = 0,                // the default allocator for execution provider
 } OrtMemType;
+
+typedef enum OrtCudnnConvAlgoSearch {
+  EXHAUSTIVE,   // expensive exhaustive benchmarking using cudnnFindConvolutionForwardAlgorithmEx
+  HEURISTIC,    // lightweight heuristic based search using cudnnGetConvolutionForwardAlgorithm_v7
+  DEFAULT,      // default algorithm using CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM
+} CudnnConvAlgoSearch;
+
+typedef struct OrtCUDAProviderOptions {
+  int device_id;  // cuda device with id=0 as default device.
+  OrtCudnnConvAlgoSearch cudnn_conv_algo_search;  // cudnn conv algo search option
+  size_t cuda_mem_limit;   //  default cuda memory limitation to maximum finite value of size_t.
+  int OrtArenaCfg::arena_extend_strategy;    // default area extend strategy to KNextPowerOfTwo.
+} OrtCUDAProviderOptions;
 
 struct OrtApi;
 typedef struct OrtApi OrtApi;
@@ -868,6 +882,9 @@ struct OrtApi {
    */
   ORT_API2_STATUS(ReleaseAvailableProviders, _In_ char** ptr,
                   _In_ int providers_length);
+
+  ORT_API2_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA,
+                  _In_ OrtSessionOptions* options, _In_ OrtCUDAProviderOptions* cuda_options);
 
   /**
      * \param value - A tensor created from OrtCreateTensor... function.

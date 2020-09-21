@@ -33,6 +33,7 @@
 #include "abi_session_options_impl.h"
 #include "core/framework/TensorSeq.h"
 #include "core/platform/ort_mutex.h"
+#include "core/providers/cuda/cuda_provider_factory.h"
 
 using namespace onnxruntime::logging;
 using onnxruntime::BFloat16;

@@ -42,7 +42,7 @@ std::unique_ptr<IExecutionProvider> CUDAProviderFactory::CreateProvider() {
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
-                                                                               int cudnn_conv_algo_search = 0,
+                                                                               OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE,
                                                                                size_t cuda_mem_limit = std::numeric_limits<size_t>::max(),
                                                                                ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo) {
   return std::make_shared<onnxruntime::CUDAProviderFactory>(device_id, cuda_mem_limit, arena_extend_strategy, cudnn_conv_algo_search);
@@ -51,14 +51,19 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(O
 }  // namespace onnxruntime
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, int device_id){
-  return OrtSessionOptionsAppendExecutionProvider_CUDA_CONV_ALGO(options, device_id, 0);
+  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_CUDA(device_id));
+  return nullptr;
 }
-
-//conv_algo parameter:
-//      0: expensive exhaustive benchmarking using cudnnFindConvolutionForwardAlgorithmEx
-//      1: lightweight heuristic based search using cudnnGetConvolutionForwardAlgorithm_v7
-//      2: default algorithm using CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM
+/*
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CUDA_CONV_ALGO, _In_ OrtSessionOptions* options, int device_id, int conv_algo) {
-  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_CUDA(static_cast<OrtDevice::DeviceId>(device_id), conv_algo));
+  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_CUDA(static_cast<OrtDevice::DeviceId>(device_id)));
+  return nullptr;
+}*/
+
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CUDA2,
+                    _In_ OrtSessionOptions* options, _In_ OrtCUDAProviderOptions* cuda_options) {
+  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_CUDA(static_cast<OrtDevice::DeviceId>(cuda_options->device_id),
+                                            cuda_options->cudnn_conv_algo_search, cuda_options->cuda_mem_limit, 
+                                            static_cast<onnxruntime::ArenaExtendStrategy>(cuda_options->arena_extend_strategy)));
   return nullptr;
 }
