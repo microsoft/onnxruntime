@@ -2,16 +2,14 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/common/common.h"
-#include "core/framework/kernel_registry_manager.h"
 #include "core/graph/graph_viewer.h"
-// #include "core/framework/op_kernel.h"
-// #include "core/framework/fuse_nodes_funcs.h"
+#include "onnx/defs/data_type_utils.h"
 #include <queue>
+
+using namespace ONNX_NAMESPACE::Utils;
 
 namespace onnxruntime {
 
-#if !defined(ORT_MINIMAL_BUILD)
 const int64_t Small_Initializer_Threshold = 100;
 
 bool IsSmallInitializer(const onnxruntime::GraphViewer& graph, const NodeArg* arg) {
@@ -29,11 +27,13 @@ bool IsSmallInitializer(const onnxruntime::GraphViewer& graph, const NodeArg* ar
   Returns a list of nodes that are prefered on CPU. 
   They are commonly shape-related computation subgraphs.
   @param graph Graph viewer 
-  @param provider The targe execution provider
+  @param provider_type The targe execution provider type
+  @param kernel_registries Kernel registies for the target EP
   @param tentative_nodes Nodes that are tentative to be placed on on target EP
   */
 std::unordered_set<NodeIndex> GetCpuPreferedNodes(const onnxruntime::GraphViewer& graph,
-                                                  const IExecutionProvider* provider,
+                                                  const std::string& provider_type,
+                                                  const std::vector<const KernelRegistry*>& kernel_registries,
                                                   const std::vector<NodeIndex>& tentative_nodes) {
   const std::vector<NodeIndex>& ordered_nodes = graph.GetNodesInTopologicalOrder();
   std::vector<size_t> node_id_to_order_map(graph.MaxNodeIndex());
@@ -53,21 +53,17 @@ std::unordered_set<NodeIndex> GetCpuPreferedNodes(const onnxruntime::GraphViewer
   std::unordered_set<const NodeArg*> cpu_output_args;
   std::unordered_set<NodeIndex> provider_nodes;
 
-  KernelRegistryManager& kernel_registry_mgr = KernelRegistryManager::Instance();
-
   for (auto& node_id : tentative_nodes) {
     provider_nodes.insert(node_id);
     const Node* node = graph.GetNode(node_id);
 
     const KernelCreateInfo* kernel_info = nullptr;
-    std::vector<const KernelRegistry*> kernel_registries =
-        kernel_registry_mgr.GetKernelRegistriesByProviderType(provider->Type());
     for (auto registry : kernel_registries) {
-      auto st = registry->TryFindKernel(*node, provider->Type(), &kernel_info);
+      auto st = registry->TryFindKernel(*node, provider_type, &kernel_info);
       if (st.IsOK())
         break;
     }
-    // at least one registry has a CUDA kernel for this node
+    // at least one registry has a target provider's kernel for this node
     ORT_ENFORCE(kernel_info != nullptr);
 
     // first, find all the direct consumer of cpu tensors.
@@ -104,16 +100,24 @@ std::unordered_set<NodeIndex> GetCpuPreferedNodes(const onnxruntime::GraphViewer
       continue;
 
     auto* node = graph.GetNode(cur);
-    // skip placing current node on CPU if no kernel is found
-    if (!KernelRegistryManager::HasImplementationOf(kernel_registry_mgr, *node, kCpuExecutionProvider))
-      continue;
 
     const KernelCreateInfo* kernel_info;
-    Status st = provider->GetKernelRegistry()->TryFindKernel(*node, provider->Type(), &kernel_info);
+    for (auto registry : kernel_registries) {
+      auto st = registry->TryFindKernel(*node, provider_type, &kernel_info);
+      if (st.IsOK())
+        break;
+    }
 
     bool place_in_cpu = true;
     for (size_t i = 0; i < node->InputDefs().size(); ++i) {
       auto* input = node->InputDefs()[i];
+
+      // skip placing on CPU if the data typs is float16 or bfloat16
+      if (input->Type() == DataTypeUtils::ToType("float16") ||
+          input->Type() == DataTypeUtils::ToType("bfloat16")) {
+        place_in_cpu = false;
+        break;
+      }
 
       // allow placing on CPU if it's a small initializer or graph input
       if (IsSmallInitializer(graph, input) ||
@@ -148,6 +152,5 @@ std::unordered_set<NodeIndex> GetCpuPreferedNodes(const onnxruntime::GraphViewer
 
   return cpu_nodes;
 }
-#endif
 
 }  // namespace onnxruntime
