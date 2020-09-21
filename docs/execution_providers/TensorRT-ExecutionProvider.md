@@ -68,12 +68,11 @@ There are several environment variables for TensorRT execution provider.
 * ORT_TENSORRT_FP16_ENABLE: Enable FP16 mode in TensorRT
 
 * ORT_TENSORRT_ENGINE_CACHE_ENABLE: Enable TensorRT engine caching. The purpose of using engine caching is to save engine build time in the cases that TensorRT may take long time to optimize and build engine. Engine will be cached after it's built at the first time so that next time when inference session is created the engine can be loaded directly from cache. Note each engine is created for specific settings such as precision (FP32/FP16/INT8 etc), workspace, profiles etc, and specific GPUs and it's not portable, so it's essential to make sure those settings are not changing, otherwise the engines need to be rebuilt and cached again.
-
 **Warning: Please clean up any old engine cache files (.engine) if any of the following changes:**
-1. Model changes (if there are any changes to the model topology, opset version etc.)
-2. ORT version changes (i.e. moving from ORT version 1.4 to 1.5)
-3. TensorRT version changes (i.e. moving from TensorRT 7.0 to 7.1)
-4. Hardware changes. (Engine files are not portable and optimized for specific Nvidia hardware)
+  - Model changes (if there are any changes to the model topology, opset version etc.)
+  - ORT version changes (i.e. moving from ORT version 1.4 to 1.5)
+  - TensorRT version changes (i.e. moving from TensorRT 7.0 to 7.1)
+  - Hardware changes. (Engine files are not portable and optimized for specific Nvidia hardware)
 
 * ORT_TENSORRT_ENGINE_CACHE_PATH: Specify path for TensorRT engine files if ORT_TENSORRT_ENGINE_CACHE_ENABLE is 1
 
