@@ -852,7 +852,10 @@ public class InferenceTest {
         options.setLoggerId("monkeys");
         options.setSessionLogLevel(OrtLoggingLevel.ORT_LOGGING_LEVEL_FATAL);
         options.setSessionLogVerbosityLevel(5);
+        Map<String, String> configEntries = options.getConfigEntries();
+        assertTrue(configEntries.isEmpty());
         options.addConfigEntry("key", "value");
+        assertEquals("value", configEntries.get("key"));
         try {
           options.addConfigEntry("", "invalid key");
           fail("Add config entry with empty key should have failed");

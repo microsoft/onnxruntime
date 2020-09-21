@@ -7,6 +7,7 @@ package ai.onnxruntime;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -495,12 +496,15 @@ public class OrtSession implements AutoCloseable {
 
     private final List<Long> customLibraryHandles;
 
+    private Map<String, String> configEntries;
+
     private boolean closed = false;
 
     /** Create an empty session options. */
     public SessionOptions() {
       nativeHandle = createOptions(OnnxRuntime.ortApiHandle);
       customLibraryHandles = new ArrayList<>();
+      configEntries = new LinkedHashMap<String, String>();
     }
 
     /** Closes the session options, releasing any memory acquired. */
@@ -676,7 +680,7 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
-     * Set a single session configuration entry as a pair of strings.
+     * Adds a single session configuration entry as a pair of strings.
      *
      * @param configKey The config key string.
      * @param configValue The config value string.
@@ -685,6 +689,13 @@ public class OrtSession implements AutoCloseable {
     public void addConfigEntry(String configKey, String configValue) throws OrtException {
       checkClosed();
       addConfigEntry(OnnxRuntime.ortApiHandle, nativeHandle, configKey, configValue);
+      configEntries.put(configKey, configValue);
+    }
+
+    /** Returns an unmodifiable map contains all session configuration entries. */
+    public Map<String, String> getConfigEntries() {
+      checkClosed();
+      return Collections.unmodifiableMap(configEntries);
     }
 
     /**
