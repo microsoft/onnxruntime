@@ -450,6 +450,11 @@ inline SessionOptions& SessionOptions::AddConfigEntry(const char* config_key, co
   return *this;
 }
 
+inline SessionOptions& SessionOptions::AddInitializer(const char* name, const OrtValue* ort_val) {
+  ThrowOnError(GetApi().AddInitializer(p_, name, ort_val));
+  return *this;
+}
+
 inline Session::Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options) {
   ThrowOnError(GetApi().CreateSession(env, model_path, options, &p_));
 }
@@ -927,4 +932,7 @@ inline std::vector<std::string> GetAvailableProviders() {
   ThrowOnError(api.ReleaseAvailableProviders(providers, len));
   return available_providers;
 }
+
+SessionOptions& AddInitializer(const char* name, const OrtValue* ort_val);
+
 }  // namespace Ort
