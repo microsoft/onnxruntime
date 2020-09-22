@@ -264,7 +264,7 @@ def run_tensorflow(use_gpu, model_names, model_class, precision, batch_sizes, se
     for model_name in model_names:
         config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
 
-        model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir, custom_model_class=model_class, if_tf_model=True)
+        model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir, custom_model_class=model_class, is_tf_model=True)
 
         tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
 

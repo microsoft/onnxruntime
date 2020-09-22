@@ -7,6 +7,7 @@
     <OutputPath>bin\$(Configuration)\</OutputPath>
     <PackageName Condition="'$(PackageName)' == ''">Microsoft.ML.OnnxRuntime</PackageName>
     <IsLinuxBuild Condition="'$(IsLinuxBuild)' == ''">false</IsLinuxBuild>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(IsLinuxBuild)'=='true'">

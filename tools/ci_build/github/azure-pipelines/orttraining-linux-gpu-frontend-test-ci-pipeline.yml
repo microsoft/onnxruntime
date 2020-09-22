@@ -7,12 +7,12 @@ jobs:
 - job: Onnxruntime_Linux_GPU_Training_FrontEnd
 
   timeoutInMinutes: 240
-  
+
   steps:
   - checkout: self
     clean: true
     submodules: recursive
-  
+
   - template: templates/set-test-data-variables-step.yml
 
   - task: CmdLine@2
@@ -37,6 +37,7 @@ jobs:
       --skip_onnx_tests
       --build_wheel
       --enable_training_python_frontend_e2e_tests
+      --enable_training_pipeline_e2e_tests
       "
     displayName: 'Build and run frontend tests'
 

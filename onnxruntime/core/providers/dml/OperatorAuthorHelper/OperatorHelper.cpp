@@ -742,8 +742,8 @@ namespace OperatorHelper
         // Determine the number of output dimensions.
         ML_CHECK_VALID_ARGUMENT(inputDimensions.size() >= 1);
         ML_CHECK_VALID_ARGUMENT(indicesDimensions.size() >= 1);
-        ML_CHECK_VALID_ARGUMENT(inputDimensions.size() > batchCount);
-        ML_CHECK_VALID_ARGUMENT(indicesDimensions.size() > batchCount);
+        ML_CHECK_VALID_ARGUMENT(static_cast<int64_t>(inputDimensions.size()) > static_cast<int64_t>(batchCount));
+        ML_CHECK_VALID_ARGUMENT(static_cast<int64_t>(indicesDimensions.size()) > static_cast<int64_t>(batchCount));
         const uint32_t numberOfCoordinatesPerIndex = indicesDimensions.back();
         ML_CHECK_VALID_ARGUMENT(inputDimensions.size() >= batchCount + numberOfCoordinatesPerIndex);
         const uint32_t numberOfOutputDimensionsFromInput = static_cast<uint32_t>(inputDimensions.size()) - batchCount - numberOfCoordinatesPerIndex;

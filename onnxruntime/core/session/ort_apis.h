@@ -237,4 +237,6 @@ ORT_API_STATUS_IMPL(SessionGetProfilingStartTimeNs, _In_ const OrtSession* sess,
 ORT_API_STATUS_IMPL(SetGlobalIntraOpNumThreads, _Inout_ OrtThreadingOptions* tp_options, int intra_op_num_threads);
 ORT_API_STATUS_IMPL(SetGlobalInterOpNumThreads, _Inout_ OrtThreadingOptions* tp_options, int inter_op_num_threads);
 ORT_API_STATUS_IMPL(SetGlobalSpinControl, _Inout_ OrtThreadingOptions* tp_options, int allow_spinning);
+ORT_API_STATUS_IMPL(AddInitializer, _Inout_ OrtSessionOptions* options, _In_ const char* name,
+                    _In_ const OrtValue* val);
 }  // namespace OrtApis
