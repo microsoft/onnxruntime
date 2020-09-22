@@ -692,7 +692,7 @@ public class OrtSession implements AutoCloseable {
       configEntries.put(configKey, configValue);
     }
 
-    /** Returns an unmodifiable map contains all session configuration entries. */
+    /** Returns an unmodifiable view of the map contains all session configuration entries. */
     public Map<String, String> getConfigEntries() {
       checkClosed();
       return Collections.unmodifiableMap(configEntries);
