@@ -22,7 +22,7 @@ namespace contrib {
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       LayerNormGrad<T, false>);                                   \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      T5LayerNormalizationGrad,                                   \
+      SimplifiedLayerNormalizationGrad,                                   \
       kMSDomain,                                                  \
       1,                                                          \
       T,                                                          \
@@ -45,14 +45,14 @@ REGISTER_KERNEL_TYPED(double)
 
 #undef REGISTER_KERNEL_TYPED
 
-template <typename T, bool t5_layer_norm>
-LayerNormGrad<T, t5_layer_norm>::LayerNormGrad(const OpKernelInfo& op_kernel_info)
+template <typename T, bool simplified>
+LayerNormGrad<T, simplified>::LayerNormGrad(const OpKernelInfo& op_kernel_info)
     : OpKernel{op_kernel_info} {
   ORT_ENFORCE(op_kernel_info.GetAttr("axis", &axis_).IsOK());
 }
 
-template <typename T, bool t5_layer_norm>
-Status LayerNormGrad<T, t5_layer_norm>::Compute(OpKernelContext* op_kernel_context) const {
+template <typename T, bool simplified>
+Status LayerNormGrad<T, simplified>::Compute(OpKernelContext* op_kernel_context) const {
   int input_index = 0;
   const Tensor* Y_grad = op_kernel_context->Input<Tensor>(input_index++);
   const Tensor* X = op_kernel_context->Input<Tensor>(input_index++);
@@ -67,7 +67,7 @@ Status LayerNormGrad<T, t5_layer_norm>::Compute(OpKernelContext* op_kernel_conte
   //const Tensor* mean =  std::vector<float>(N, float(0));
   //std::vector<T> mean(N, T(0));
   const Tensor* mean;
-  if (!t5_layer_norm) {
+  if (!simplified) {
     mean = op_kernel_context->Input<Tensor>(input_index++);
   }
   const Tensor* inv_std_var = op_kernel_context->Input<Tensor>(input_index);
@@ -76,20 +76,20 @@ Status LayerNormGrad<T, t5_layer_norm>::Compute(OpKernelContext* op_kernel_conte
 
   Tensor* X_grad = op_kernel_context->Output(0, X_shape);
   Tensor* scale_grad = op_kernel_context->Output(1, scale_shape);
-  Tensor* bias_grad = (!t5_layer_norm) ? op_kernel_context->Output(2, scale_shape) : nullptr;
+  Tensor* bias_grad = (!simplified) ? op_kernel_context->Output(2, scale_shape) : nullptr;
 
   // Note: Eigen has column-major storage order by default
   ConstEigenArrayMap<T> Y_grad_arr{Y_grad->Data<T>(), M, N};
   ConstEigenArrayMap<T> X_arr{X->Data<T>(), M, N};
   ConstEigenVectorArrayMap<T> scale_vec{scale->Data<T>(), M};
-  ConstEigenVectorArrayMap<float> mean_vec{t5_layer_norm ? nullptr : mean->Data<float>(), N};
-  //ConstEigenVectorArrayMap<float> mean_vec{t5_layer_norm ? std::vector<float>(N, float(0)) : mean->Data<float>(), N};
+  ConstEigenVectorArrayMap<float> mean_vec{simplified ? nullptr : mean->Data<float>(), N};
+  //ConstEigenVectorArrayMap<float> mean_vec{simplified ? std::vector<float>(N, float(0)) : mean->Data<float>(), N};
   //ConstEigenVectorArrayMap<float> mean_vec{mean->Data<float>(), N};
   ConstEigenVectorArrayMap<float> inv_std_var_vec{inv_std_var->Data<float>(), N};
 
   EigenArrayMap<T> X_grad_arr{X_grad->MutableData<T>(), M, N};
   EigenVectorArrayMap<T> scale_grad_vec{scale_grad->MutableData<T>(), M};
-  EigenVectorArrayMap<T> bias_grad_vec = (!t5_layer_norm) ? EigenVectorArrayMap<T>{bias_grad->MutableData<T>(), M} : EigenVectorArrayMap<T>{nullptr, 0};
+  EigenVectorArrayMap<T> bias_grad_vec = (!simplified) ? EigenVectorArrayMap<T>{bias_grad->MutableData<T>(), M} : EigenVectorArrayMap<T>{nullptr, 0};
 
   using Array = Eigen::ArrayXX<T>;
   using RowVector = Eigen::Array<T, 1, Eigen::Dynamic>;
@@ -104,7 +104,7 @@ Status LayerNormGrad<T, t5_layer_norm>::Compute(OpKernelContext* op_kernel_conte
   // C = Y_grad * scale * inv_std_var * X * inv_std_var
   // A, B, and C are M x N
   Array X_mean_difference_over_std_var;
-  if (t5_layer_norm) {
+  if (simplified) {
     X_mean_difference_over_std_var =
       X_arr.rowwise() * inv_std_var_vec.cast<T>().transpose();
   } else {
@@ -125,7 +125,7 @@ Status LayerNormGrad<T, t5_layer_norm>::Compute(OpKernelContext* op_kernel_conte
   //        = B - mean_B - (X - mean(X)) * inv_std_var * mean_c
   X_grad_arr = B.rowwise() - mean_B - X_mean_difference_over_std_var.rowwise() * mean_C;
 
-  if (!t5_layer_norm) {
+  if (!simplified) {
     // bias_grad = sum(Y_grad)
     bias_grad_vec = Y_grad_arr.rowwise().sum();
   }

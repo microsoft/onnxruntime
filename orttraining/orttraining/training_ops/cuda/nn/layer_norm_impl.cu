@@ -30,7 +30,7 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;
 
-template <typename U, bool t5_layer_norm>
+template <typename U, bool simplified>
 __device__ void cuWelfordOnlineSum(
     const U curr,
     U& mu,
@@ -40,7 +40,7 @@ __device__ void cuWelfordOnlineSum(
   U delta = curr - mu;
   U lmean = mu + delta / count;
   mu = lmean;
-  if (t5_layer_norm) {
+  if (simplified) {
     sigma2 = sigma2 + curr * curr;
   } else {
     U delta2 = curr - lmean;
@@ -48,7 +48,7 @@ __device__ void cuWelfordOnlineSum(
   }
 }
 
-template <typename U, bool t5_layer_norm>
+template <typename U, bool simplified>
 __device__ void cuChanOnlineSum(
     const U muB,
     const U sigma2B,
@@ -65,7 +65,7 @@ __device__ void cuChanOnlineSum(
     nA = nA / nX;
     nB = nB / nX;
     mu = nA * mu + nB * muB;
-    if (t5_layer_norm) {
+    if (simplified) {
       sigma2 = sigma2 + sigma2B;
     } else {
       sigma2 = sigma2 + sigma2B + delta * delta * nA * nB * nX;
@@ -77,7 +77,7 @@ __device__ void cuChanOnlineSum(
   }
 }
 
-template <typename T, typename U, bool t5_layer_norm>
+template <typename T, typename U, bool simplified>
 __device__ void cuWelfordMuSigma2(
     const T* __restrict__ vals,
     const int n1,
@@ -106,12 +106,12 @@ __device__ void cuWelfordMuSigma2(
     for (; l + 3 < n2; l += 4 * numx) {
       for (int k = 0; k < 4; ++k) {
         U curr = static_cast<U>(lvals[l + k]);
-        cuWelfordOnlineSum<U, t5_layer_norm>(curr, mu, sigma2, count);
+        cuWelfordOnlineSum<U, simplified>(curr, mu, sigma2, count);
       }
     }
     for (; l < n2; ++l) {
       U curr = static_cast<U>(lvals[l]);
-      cuWelfordOnlineSum<U, t5_layer_norm>(curr, mu, sigma2, count);
+      cuWelfordOnlineSum<U, simplified>(curr, mu, sigma2, count);
     }
     // intra-warp reductions
     for (int l = 0; l <= 4; ++l) {
@@ -119,7 +119,7 @@ __device__ void cuWelfordMuSigma2(
       U muB = WARP_SHFL(mu, srcLaneB);
       U countB = WARP_SHFL(count, srcLaneB);
       U sigma2B = WARP_SHFL(sigma2, srcLaneB);
-      cuChanOnlineSum<U, t5_layer_norm>(muB, sigma2B, countB, mu, sigma2, count);
+      cuChanOnlineSum<U, simplified>(muB, sigma2B, countB, mu, sigma2, count);
     }
     // threadIdx.x == 0 has correct values for each warp
     // inter-warp reductions
@@ -140,7 +140,7 @@ __device__ void cuWelfordMuSigma2(
           U muB = ubuf[2 * threadIdx.y];
           U sigma2B = ubuf[2 * threadIdx.y + 1];
           U countB = ibuf[threadIdx.y];
-          cuChanOnlineSum<U, t5_layer_norm>(muB, sigma2B, countB, mu, sigma2, count);
+          cuChanOnlineSum<U, simplified>(muB, sigma2B, countB, mu, sigma2, count);
         }
         __syncthreads();
       }
@@ -160,7 +160,7 @@ __device__ void cuWelfordMuSigma2(
   }
 }
 
-template <bool t5_layer_norm>
+template <bool simplified>
 __device__ void cuWelfordMuSigma2(
     const half* __restrict__ vals,
     const int n1,
@@ -191,7 +191,7 @@ __device__ void cuWelfordMuSigma2(
       // first thread consumes first point
       if (thrx == 0) {
         float curr = static_cast<float>(lvals[0]);
-        cuWelfordOnlineSum<float, t5_layer_norm>(curr, mu, sigma2, count);
+        cuWelfordOnlineSum<float, simplified>(curr, mu, sigma2, count);
       }
       ++l;
     }
@@ -199,13 +199,13 @@ __device__ void cuWelfordMuSigma2(
     for (; l + 7 < n2; l += 8 * numx) {
       for (int k = 0; k < 8; k += 2) {
         float2 curr = __half22float2(*((__half2*)(lvals + l + k)));
-        cuWelfordOnlineSum<float, t5_layer_norm>(static_cast<float>(curr.x), mu, sigma2, count);
-        cuWelfordOnlineSum<float, t5_layer_norm>(static_cast<float>(curr.y), mu, sigma2, count);
+        cuWelfordOnlineSum<float, simplified>(static_cast<float>(curr.x), mu, sigma2, count);
+        cuWelfordOnlineSum<float, simplified>(static_cast<float>(curr.y), mu, sigma2, count);
       }
     }
     for (; l < n2; ++l) {
       float curr = static_cast<float>(lvals[l]);
-      cuWelfordOnlineSum<float, t5_layer_norm>(curr, mu, sigma2, count);
+      cuWelfordOnlineSum<float, simplified>(curr, mu, sigma2, count);
     }
     // intra-warp reductions
     for (int l = 0; l <= 4; ++l) {
@@ -213,7 +213,7 @@ __device__ void cuWelfordMuSigma2(
       float muB = WARP_SHFL(mu, srcLaneB);
       float countB = WARP_SHFL(count, srcLaneB);
       float sigma2B = WARP_SHFL(sigma2, srcLaneB);
-      cuChanOnlineSum<float, t5_layer_norm>(muB, sigma2B, countB, mu, sigma2, count);
+      cuChanOnlineSum<float, simplified>(muB, sigma2B, countB, mu, sigma2, count);
     }
     // threadIdx.x == 0 has correct values for each warp
     // inter-warp reductions
@@ -234,7 +234,7 @@ __device__ void cuWelfordMuSigma2(
           float muB = ubuf[2 * threadIdx.y];
           float sigma2B = ubuf[2 * threadIdx.y + 1];
           float countB = ibuf[threadIdx.y];
-          cuChanOnlineSum<float, t5_layer_norm>(muB, sigma2B, countB, mu, sigma2, count);
+          cuChanOnlineSum<float, simplified>(muB, sigma2B, countB, mu, sigma2, count);
         }
         __syncthreads();
       }
@@ -302,7 +302,7 @@ struct SharedMemory<double> {
 };
 }  // namespace
 
-template <typename T, typename U, bool t5_layer_norm>
+template <typename T, typename U, bool simplified>
 __global__ void cuApplyLayerNorm(
     T* __restrict__ output_vals,
     U* __restrict__ mean,
@@ -321,7 +321,7 @@ __global__ void cuApplyLayerNorm(
     SharedMemory<U> shared;
     U* buf = shared.getPointer();
     U mu, sigma2;
-    cuWelfordMuSigma2<T, U, t5_layer_norm>(vals, n1, n2, i1, mu, sigma2, buf);
+    cuWelfordMuSigma2<T, U, simplified>(vals, n1, n2, i1, mu, sigma2, buf);
     const T* lvals = vals + i1 * n2;
     T* ovals = output_vals + i1 * n2;
     U c_invvar = rsqrt(sigma2 + epsilon);
@@ -332,7 +332,7 @@ __global__ void cuApplyLayerNorm(
       T gamma_i = (gamma != NULL) ? gamma[i]: (T)0;
       //beta is nullptr for t5 layer norm
       T beta_i = (beta != NULL) ? beta[i] : (T) 0;
-      if (t5_layer_norm) {
+      if (simplified) {
         ovals[i] = gamma_i * static_cast<T>(c_invvar * curr) + beta_i;
       } else {
         ovals[i] = gamma_i * static_cast<T>(c_invvar * (curr - mu)) + beta_i;
@@ -345,7 +345,7 @@ __global__ void cuApplyLayerNorm(
   }
 }
 
-template <typename T, typename U, bool t5_layer_norm>
+template <typename T, typename U, bool simplified>
 void HostApplyLayerNorm(
     const cudaDeviceProp& prop,
     T* output,
@@ -365,7 +365,7 @@ void HostApplyLayerNorm(
   const dim3 blocks(1, std::min((uint64_t)n1, maxGridY), 1);
   int nshared =
       threads.y > 1 ? threads.y * sizeof(U) + (threads.y / 2) * sizeof(U) : 0;
-  cuApplyLayerNorm<T, U, t5_layer_norm><<<blocks, threads, nshared, 0>>>(
+  cuApplyLayerNorm<T, U, simplified><<<blocks, threads, nshared, 0>>>(
       output,
       mean,
       invvar,
@@ -375,8 +375,8 @@ void HostApplyLayerNorm(
       gamma, beta);
 }
 
-#define LAYERNORM_LINEAR_IMPL(T, U, t5_layer_norm)                             \
-  template void HostApplyLayerNorm<T, U, t5_layer_norm>(const cudaDeviceProp& prop, T* output, U* mean, U* invvar, const T* input, int64_t n1, int64_t n2, \
+#define LAYERNORM_LINEAR_IMPL(T, U, simplified)                             \
+  template void HostApplyLayerNorm<T, U, simplified>(const cudaDeviceProp& prop, T* output, U* mean, U* invvar, const T* input, int64_t n1, int64_t n2, \
                                    double epsilon, const T* gamma, const T* beta);
 
 LAYERNORM_LINEAR_IMPL(float, float, true)
@@ -387,7 +387,7 @@ LAYERNORM_LINEAR_IMPL(half, float, false)
 LAYERNORM_LINEAR_IMPL(double, double, false)
 //LAYERNORM_LINEAR_IMPL(half, half)
 
-template <typename T, typename U, bool use_mean, bool t5_layer_norm>
+template <typename T, typename U, bool use_mean, bool simplified>
 __device__ void cuLoadWriteStridedInputs(
     const int i1_block,
     const int thr_load_row_off,
@@ -407,7 +407,7 @@ __device__ void cuLoadWriteStridedInputs(
     const U* __restrict__ invvar) {
   int i1 = i1_block + thr_load_row_off;
   if (i1 < i1_end) {
-    U curr_mean = (use_mean && !t5_layer_norm) ? mean[i1] : U(0);
+    U curr_mean = (use_mean && !simplified) ? mean[i1] : U(0);
     //U curr_mean = U(0);
     U curr_invvar = use_mean ? invvar[i1] : U(0);
     for (int k = 0; k < blockDim.y; ++k) {
@@ -440,7 +440,7 @@ __device__ void cuLoadWriteStridedInputs(
   }
 }
 
-template <typename T, typename U, bool use_mean, bool t5_layer_norm>
+template <typename T, typename U, bool use_mean, bool simplified>
 __device__ void cuLoadAddStridedInputs(
     const int i1_block,
     const int thr_load_row_off,
@@ -460,7 +460,7 @@ __device__ void cuLoadAddStridedInputs(
     const U* __restrict__ invvar) {
   int i1 = i1_block + thr_load_row_off;
   if (i1 < i1_end) {
-    U curr_mean = (use_mean && !t5_layer_norm) ? mean[i1] : U(0);
+    U curr_mean = (use_mean && !simplified) ? mean[i1] : U(0);
     //U curr_mean = U(0);
     U curr_invvar = use_mean ? invvar[i1] : U(0);
     for (int k = 0; k < blockDim.y; ++k) {
@@ -484,7 +484,7 @@ __device__ void cuLoadAddStridedInputs(
   }
 }
 
-template <typename T, typename U, bool use_mean, bool t5_layer_norm>
+template <typename T, typename U, bool use_mean, bool simplified>
 __global__ void cuComputePartGradGammaBeta(
     const T* __restrict__ dout,
     const T* __restrict__ input,
@@ -512,9 +512,9 @@ __global__ void cuComputePartGradGammaBeta(
   U* warp_buf2 = warp_buf1 + blockDim.y * blockDim.y * row_stride;
   // compute partial sums from strided inputs
   // do this to increase number of loads in flight
-  cuLoadWriteStridedInputs<T, U, use_mean, t5_layer_norm>(i1_beg, thr_load_row_off, thr_load_col_off, i2_off, row_stride, warp_buf1, warp_buf2, input, output, dout, i1_end, n2, gamma, beta, mean, invvar);
+  cuLoadWriteStridedInputs<T, U, use_mean, simplified>(i1_beg, thr_load_row_off, thr_load_col_off, i2_off, row_stride, warp_buf1, warp_buf2, input, output, dout, i1_end, n2, gamma, beta, mean, invvar);
   for (int i1_block = i1_beg + blockDim.y * blockDim.y; i1_block < i1_end; i1_block += blockDim.y * blockDim.y) {
-    cuLoadAddStridedInputs<T, U, use_mean, t5_layer_norm>(i1_block, thr_load_row_off, thr_load_col_off, i2_off, row_stride, warp_buf1, warp_buf2, input, output, dout, i1_end, n2, gamma, beta, mean, invvar);
+    cuLoadAddStridedInputs<T, U, use_mean, simplified>(i1_block, thr_load_row_off, thr_load_col_off, i2_off, row_stride, warp_buf1, warp_buf2, input, output, dout, i1_end, n2, gamma, beta, mean, invvar);
   }
   __syncthreads();
   // inter-warp reductions
@@ -553,7 +553,7 @@ __global__ void cuComputePartGradGammaBeta(
   }
 }
 
-template <typename T, typename U, bool t5_layer_norm>
+template <typename T, typename U, bool simplified>
 __global__ void cuComputeGradGammaBeta(
     const U* part_grad_gamma,
     const U* part_grad_beta,
@@ -598,14 +598,14 @@ __global__ void cuComputeGradGammaBeta(
     // write out fully summed gradients
     if (threadIdx.y == 0) {
       grad_gamma[i2] = sum_gamma;
-      if (!t5_layer_norm) {
+      if (!simplified) {
         grad_beta[i2] = sum_beta;
       }
     }
   }
 }
 
-template <typename T, typename U, bool use_mean, bool t5_layer_norm>
+template <typename T, typename U, bool use_mean, bool simplified>
 __global__ void cuComputeGradInput(
     const T* __restrict__ dout,
     const T* __restrict__ input,
@@ -620,7 +620,7 @@ __global__ void cuComputeGradInput(
   for (int i1 = blockIdx.y; i1 < n1; i1 += gridDim.y) {
     U sum_loss1 = U(0);
     U sum_loss2 = U(0);
-    const U c_mean = (use_mean && !t5_layer_norm) ? mean[i1] : U(0);
+    const U c_mean = (use_mean && !simplified) ? mean[i1] : U(0);
     const U c_invvar = invvar[i1];
     const T* k_input = use_mean ? input + i1 * n2 : nullptr;
     const T* k_output = use_mean ? nullptr: output + i1 * n2;
@@ -753,7 +753,7 @@ __global__ void cuComputeGradInput(
   }
 }
 
-template <typename T, typename U, bool t5_layer_norm>
+template <typename T, typename U, bool simplified>
 void HostLayerNormGradient(
   const cudaDeviceProp& prop,
   const T* dout,
@@ -779,8 +779,8 @@ void HostLayerNormGradient(
   const int nshared2_a = 2 * sizeof(U) * threads2.y * threads2.y * (threads2.x + 1);
   const int nshared2_b = threads2.x * threads2.y * sizeof(U);
   const int nshared2 = nshared2_a > nshared2_b ? nshared2_a : nshared2_b;
-  if (mean == nullptr && !t5_layer_norm) {
-    // use_mean == false, t5_layer_norm == false -> Inverted Layer Norm
+  if (mean == nullptr && !simplified) {
+    // use_mean == false, simplified == false -> Inverted Layer Norm
     cuComputePartGradGammaBeta<T, U, false, false><<<blocks2, threads2, nshared2, 0>>>(
       dout,
       input,
@@ -793,9 +793,9 @@ void HostLayerNormGradient(
       part_grad_gamma,
       part_grad_beta);
   } else {
-    // use_mean == true, t5_layer_norm == false -> Layer Norm
-    // use_mean == true, t5_layer_norm == true -> T5 Layer Norm
-    cuComputePartGradGammaBeta<T, U, true, t5_layer_norm><<<blocks2, threads2, nshared2, 0>>>(
+    // use_mean == true, simplified == false -> Layer Norm
+    // use_mean == true, simplified == true -> Simplified Layer Norm
+    cuComputePartGradGammaBeta<T, U, true, simplified><<<blocks2, threads2, nshared2, 0>>>(
       dout,
       input,
       output,
@@ -810,7 +810,7 @@ void HostLayerNormGradient(
   const dim3 threads3(warp_size, 8, 1);
   const dim3 blocks3((n2 + threads2.x - 1) / threads2.x, 1, 1);
   const int nshared3 = threads3.x * threads3.y * sizeof(U);
-  cuComputeGradGammaBeta<T, U, t5_layer_norm><<<blocks3, threads3, nshared3, 0>>>(
+  cuComputeGradGammaBeta<T, U, simplified><<<blocks3, threads3, nshared3, 0>>>(
       part_grad_gamma,
       part_grad_beta,
       part_size,
@@ -823,7 +823,7 @@ void HostLayerNormGradient(
   const dim3 threads1(warp_size, 4, 1);
   int nshared =
       threads1.y > 1 ? threads1.y * threads1.x * sizeof(U) : 0;
-  if (mean == nullptr && !t5_layer_norm) {
+  if (mean == nullptr && !simplified) {
     cuComputeGradInput<T, U, false, false><<<blocks1, threads1, nshared, 0>>>(
       dout,
       input,
@@ -835,7 +835,7 @@ void HostLayerNormGradient(
       n1, n2,
       grad_input);
   } else {
-    cuComputeGradInput<T, U, true, t5_layer_norm><<<blocks1, threads1, nshared, 0>>>(
+    cuComputeGradInput<T, U, true, simplified><<<blocks1, threads1, nshared, 0>>>(
         dout,
         input,
         output,
@@ -848,8 +848,8 @@ void HostLayerNormGradient(
   }
 }
 
-#define LAYERNORMGRAD_IMPL(T, U, t5_layer_norm)                                                                                                              \
-  template void HostLayerNormGradient<T, U, t5_layer_norm>(const cudaDeviceProp& prop, const T* dout, const T* input, const T* output,                             \
+#define LAYERNORMGRAD_IMPL(T, U, simplified)                                                                                                              \
+  template void HostLayerNormGradient<T, U, simplified>(const cudaDeviceProp& prop, const T* dout, const T* input, const T* output,                             \
                                       const T* gamma, const T* beta, const U* mean, const U* invvar, int64_t n1, int64_t n2,                  \
                                       T* grad_input, T* grad_gamma, T* grad_beta, U* part_grad_gamma, U* part_grad_beta, const int part_size);
 

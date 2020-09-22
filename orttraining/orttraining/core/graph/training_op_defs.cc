@@ -1700,11 +1700,11 @@ Example 4:
           {"tensor(float)"},
           "Constrain mean and inv_std_var to float tensors.");
   
-    ONNX_CONTRIB_OPERATOR_SCHEMA(T5LayerNormalizationGrad)
+    ONNX_CONTRIB_OPERATOR_SCHEMA(SimplifiedLayerNormalizationGrad)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("T5LayerNormalizationGrad")
+      .SetDoc("SimplifiedLayerNormalizationGrad")
       .Attr("axis",
             "The first normalization dimension: normalization will be performed along dimensions axis : rank(inputs).",
             AttributeProto::INT, static_cast<int64_t>(-1))

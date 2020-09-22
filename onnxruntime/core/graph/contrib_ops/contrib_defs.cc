@@ -2750,11 +2750,11 @@ Example 4:
         }
       });
 
-    ONNX_CONTRIB_OPERATOR_SCHEMA(T5LayerNormalization)
+    ONNX_CONTRIB_OPERATOR_SCHEMA(SimplifiedLayerNormalization)
       .SetDomain(kOnnxDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("T5LayerNormalization")
+      .SetDoc("SimplifiedLayerNormalization")
       .Attr("axis",
             "The first normalization dimension: normalization will be performed along dimensions axis : rank(inputs).",
             AttributeProto::INT, static_cast<int64_t>(-1))

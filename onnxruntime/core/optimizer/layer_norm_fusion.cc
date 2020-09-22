@@ -338,7 +338,7 @@ X --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul
 |                                              |
 +----------------------------------------------+
 */
-Status LayerNormT5Fusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
+Status LayerNormSimplifiedFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   std::vector<std::reference_wrapper<Node>> nodes_to_remove;
@@ -468,8 +468,8 @@ Status LayerNormT5Fusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     }
 
     const std::vector<NodeArg*> layer_norm_input_defs{pow_node.MutableInputDefs()[0], scale};
-    Node& layer_norm_node = graph.AddNode(graph.GenerateNodeName("T5LayerNormalization"),
-                                          "T5LayerNormalization",
+    Node& layer_norm_node = graph.AddNode(graph.GenerateNodeName("SimplifiedLayerNormalization"),
+                                          "SimplifiedLayerNormalization",
                                           "fused LayerNorm subgraphs ",
                                           layer_norm_input_defs,
                                           {}, {}, kOnnxDomain);

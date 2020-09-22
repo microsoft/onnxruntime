@@ -6,7 +6,7 @@ from enum import Enum
 
 
 def GenerateModel(model_name):
-    nodes = [  # T5LayerNorm subgraph
+    nodes = [  # SimplifiedLayerNorm subgraph
         helper.make_node("Pow", ["A", "pow_in_2"], ["pow_out"], "pow"),
         helper.make_node("ReduceMean", ["pow_out"], ["rd2_out"], "reduce", axes=[-1], keepdims=1),
         helper.make_node("Add", ["rd2_out", "const_e12"], ["add1_out"], "add"),
@@ -23,7 +23,7 @@ def GenerateModel(model_name):
 
     graph = helper.make_graph(
         nodes,
-        "T5LayerNorm",  #name
+        "SimplifiedLayerNorm",  #name
         [  # inputs
             helper.make_tensor_value_info('A', TensorProto.FLOAT, [16, 32, 4]),
         ],

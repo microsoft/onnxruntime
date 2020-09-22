@@ -11,7 +11,7 @@ namespace test {
 constexpr auto k_epsilon_default = 1e-5f;
 constexpr auto k_random_data_min = -10.0f;
 constexpr auto k_random_data_max = 10.0f;
-const std::string T5_LAYER_NORM_GRAD_OP = "T5LayerNormalizationGrad";
+const std::string T5_LAYER_NORM_GRAD_OP = "SimplifiedLayerNormalizationGrad";
 const std::string LAYER_NORM_GRAD_OP = "LayerNormalizationGrad";
 
 // The dimensions are split at the specified axis into N (before, exclusive) and M (after, inclusive).
@@ -108,23 +108,23 @@ TEST(CudaKernelTest, LayerNormGrad_LargeSizeTensor) {
   TestLayerNormGrad(X_dims, LAYER_NORM_GRAD_OP, -1, 5e-3);
 }
 
-TEST(CudaKernelTest, T5LayerNormGrad_SmallSizeTensor) {
+TEST(CudaKernelTest, SimplifiedLayerNormGrad_SmallSizeTensor) {
   const std::vector<int64_t> X_dims{4, 20, 128};
   TestLayerNormGrad(X_dims, T5_LAYER_NORM_GRAD_OP);
 }
 
-TEST(CudaKernelTest, T5LayerNormGrad_SmallSizeTensor_IntermediateAxis) {
+TEST(CudaKernelTest, SimplifiedLayerNormGrad_SmallSizeTensor_IntermediateAxis) {
   const std::vector<int64_t> X_dims{4, 20, 16, 8};
   const int64_t axis = -2;
   TestLayerNormGrad(X_dims, T5_LAYER_NORM_GRAD_OP, axis);
 }
 
-TEST(CudaKernelTest, T5LayerNormGrad_MidSizeTensor) {
+TEST(CudaKernelTest, SimplifiedLayerNormGrad_MidSizeTensor) {
   const std::vector<int64_t> X_dims{8, 80, 768};
   TestLayerNormGrad(X_dims, T5_LAYER_NORM_GRAD_OP);
 }
 
-TEST(CudaKernelTest, T5LayerNormGrad_LargeSizeTensor) {
+TEST(CudaKernelTest, SimplifiedLayerNormGrad_LargeSizeTensor) {
   const std::vector<int64_t> X_dims{16, 512, 1024};
   TestLayerNormGrad(X_dims, T5_LAYER_NORM_GRAD_OP, -1, 5e-3);
 }

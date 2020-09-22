@@ -10,7 +10,7 @@ namespace test {
 constexpr auto k_epsilon_default = 1e-5f;
 constexpr auto k_random_data_min = -10.0f;
 constexpr auto k_random_data_max = 10.0f;
-const std::string T5_LAYER_NORM_OP = "T5LayerNormalization";
+const std::string T5_LAYER_NORM_OP = "SimplifiedLayerNormalization";
 const std::string LAYER_NORM_OP = "LayerNormalization";
 
 // The dimensions are split at the specified axis into N (before, exclusive) and M (after, inclusive).
@@ -95,23 +95,23 @@ TEST(CudaKernelTest, LayerNorm_LargeSizeTensor) {
   TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default);
 }
 
-TEST(CudaKernelTest, T5LayerNorm_SmallSizeTensor) {
+TEST(CudaKernelTest, SimplifiedLayerNorm_SmallSizeTensor) {
   const std::vector<int64_t> X_dims{4, 20, 128};
   TestLayerNorm(X_dims, T5_LAYER_NORM_OP, k_epsilon_default);
 }
 
-TEST(CudaKernelTest, T5LayerNorm_SmallSizeTensor_IntermediateAxis) {
+TEST(CudaKernelTest, SimplifiedLayerNorm_SmallSizeTensor_IntermediateAxis) {
   const std::vector<int64_t> X_dims{4, 20, 8, 16};
   const int64_t axis = -2;
   TestLayerNorm(X_dims, T5_LAYER_NORM_OP, k_epsilon_default, axis);
 }
 
-TEST(CudaKernelTest, T5LayerNorm_MidSizeTensor) {
+TEST(CudaKernelTest, SimplifiedLayerNorm_MidSizeTensor) {
   std::vector<int64_t> X_dims{8, 80, 768};
   TestLayerNorm(X_dims, T5_LAYER_NORM_OP, k_epsilon_default);
 }
 
-TEST(CudaKernelTest, T5LayerNorm_LargeSizeTensor) {
+TEST(CudaKernelTest, SimplifiedLayerNorm_LargeSizeTensor) {
   std::vector<int64_t> X_dims{16, 512, 1024};
   TestLayerNorm(X_dims, T5_LAYER_NORM_OP, k_epsilon_default);
 }
