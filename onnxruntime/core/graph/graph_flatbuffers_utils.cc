@@ -292,7 +292,7 @@ Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor,
     ORT_RETURN_IF(nullptr == fbs_str_data, "Missing string data for initializer. Invalid ORT format model.");
     auto mutable_str_data = initializer.mutable_string_data();
     mutable_str_data->Reserve(fbs_str_data->size());
-    for (const auto& fbs_str : *fbs_str_data) {
+    for (const auto* fbs_str : *fbs_str_data) {
       mutable_str_data->Add(fbs_str->str());
     }
   } else {
