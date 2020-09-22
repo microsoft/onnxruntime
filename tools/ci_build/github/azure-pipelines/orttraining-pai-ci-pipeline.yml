@@ -8,6 +8,9 @@ variables:
 - group: pai-variables
 
 steps:
+- checkout: self
+  clean: true
+
 - script: |-
     python3 -m pip install -r tools/ci_build/github/pai/requirements.txt
   displayName: 'Install requirements'
