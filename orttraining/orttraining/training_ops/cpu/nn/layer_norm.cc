@@ -111,7 +111,6 @@ Status LayerNormGrad<T, t5_layer_norm>::Compute(OpKernelContext* op_kernel_conte
     X_mean_difference_over_std_var =
       (X_arr.rowwise() - mean_vec.cast<T>().transpose()).rowwise() * inv_std_var_vec.cast<T>().transpose();
   }
-  std::cout << "cpu layer norm" << std::endl;
   Array A = Y_grad_arr * X_mean_difference_over_std_var;
   Array B = (Y_grad_arr.colwise() * scale_vec).rowwise() * inv_std_var_vec.cast<T>().transpose();
   Array C = B * X_mean_difference_over_std_var;

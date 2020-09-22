@@ -553,7 +553,7 @@ __global__ void cuComputePartGradGammaBeta(
   }
 }
 
-template <typename T, typename U>
+template <typename T, typename U, bool t5_layer_norm>
 __global__ void cuComputeGradGammaBeta(
     const U* part_grad_gamma,
     const U* part_grad_beta,
@@ -598,7 +598,9 @@ __global__ void cuComputeGradGammaBeta(
     // write out fully summed gradients
     if (threadIdx.y == 0) {
       grad_gamma[i2] = sum_gamma;
-      grad_beta[i2] = sum_beta;
+      if (!t5_layer_norm) {
+        grad_beta[i2] = sum_beta;
+      }
     }
   }
 }
@@ -619,15 +621,10 @@ __global__ void cuComputeGradInput(
     U sum_loss1 = U(0);
     U sum_loss2 = U(0);
     const U c_mean = (use_mean && !t5_layer_norm) ? mean[i1] : U(0);
-    //const U c_mean = U(0);
     const U c_invvar = invvar[i1];
-    //const U c_invvar = 0;
     const T* k_input = use_mean ? input + i1 * n2 : nullptr;
-    //const T* k_input =  nullptr;
     const T* k_output = use_mean ? nullptr: output + i1 * n2;
-    //const T* k_output = nullptr;
     const T* k_dout = dout + i1 * n2;
-    //const T* k_dout = nullptr;
     const int numx = blockDim.x * blockDim.y;
     const int thrx = threadIdx.x + threadIdx.y * blockDim.x;
     if (gamma != NULL) {
@@ -813,7 +810,7 @@ void HostLayerNormGradient(
   const dim3 threads3(warp_size, 8, 1);
   const dim3 blocks3((n2 + threads2.x - 1) / threads2.x, 1, 1);
   const int nshared3 = threads3.x * threads3.y * sizeof(U);
-  cuComputeGradGammaBeta<<<blocks3, threads3, nshared3, 0>>>(
+  cuComputeGradGammaBeta<T, U, t5_layer_norm><<<blocks3, threads3, nshared3, 0>>>(
       part_grad_gamma,
       part_grad_beta,
       part_size,
@@ -826,24 +823,7 @@ void HostLayerNormGradient(
   const dim3 threads1(warp_size, 4, 1);
   int nshared =
       threads1.y > 1 ? threads1.y * threads1.x * sizeof(U) : 0;
-  std::cout << "dout: " << dout << std::endl;
-  std::cout << "input: " << input << std::endl;
-  std::cout << "output: " << output << std::endl;
-  std::cout << "gamma: " << gamma << std::endl;
-  std::cout << "beta: " << beta << std::endl;
-  std::cout << "mean: " << mean << std::endl;
-  //std::cout << *mean << std::endl;
-  //std::cout << typeid(mean).name() << std::endl;
-  std::cout << "invvar: " << invvar << std::endl;
-  //std::cout << *invvar << std::endl;
-  std::cout << "n1: " << n1 << std::endl;
-  std::cout << "n2: " << n2 << std::endl;
-  std::cout << "grad_input: " << grad_input << std::endl;
-  // std::cout << "blocks1: " << blocks1 << std::endl;
-  // std::cout << "threads1: " << threads1 << std::endl;
-  // std::cout << "nshared: " << nshared << std::endl;
   if (mean == nullptr && !t5_layer_norm) {
-    std::cout << "wrong branch" << std::endl;
     cuComputeGradInput<T, U, false, false><<<blocks1, threads1, nshared, 0>>>(
       dout,
       input,
@@ -855,7 +835,6 @@ void HostLayerNormGradient(
       n1, n2,
       grad_input);
   } else {
-    std::cout << "right branch" << std::endl;
     cuComputeGradInput<T, U, true, t5_layer_norm><<<blocks1, threads1, nshared, 0>>>(
         dout,
         input,

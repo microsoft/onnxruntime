@@ -59,7 +59,11 @@ static void TestLayerNormGrad(
     EigenRowVectorArrayMap inv_std_var{inv_std_var_data.data(), N};
 
     mean = X.colwise().mean();
-    inv_std_var = ((X.colwise().squaredNorm() / X.rows()) - mean.square() + k_epsilon_default).rsqrt();
+    if (op.compare(T5_LAYER_NORM_GRAD_OP) != 0) {
+      inv_std_var = ((X.colwise().squaredNorm() / X.rows()) - mean.square() + k_epsilon_default).rsqrt();
+    } else {
+      inv_std_var = ((X.colwise().squaredNorm() / X.rows()) + k_epsilon_default).rsqrt();
+    }
   }
 
   test.AddInput("Y_grad", n_x_m_dims, Y_grad_data);
