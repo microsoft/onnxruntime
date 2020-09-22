@@ -13,7 +13,7 @@ from onnxruntime.capi.ort_trainer import IODescription as Legacy_IODescription,\
                                          ModelDescription as Legacy_ModelDescription,\
                                          LossScaler as Legacy_LossScaler,\
                                          ORTTrainer as Legacy_ORTTrainer
-from onnxruntime.experimental import _utils, amp, checkpoint, optim, orttrainer, TrainStepInfo,\
+from onnxruntime.training import _utils, amp, checkpoint, optim, orttrainer, TrainStepInfo,\
                                       model_desc_validation as md_val,\
                                       orttrainer_options as orttrainer_options
 import _test_commons,_test_helpers
@@ -100,7 +100,8 @@ def testORTTrainerOptionsDefaultValues(test_input):
             'invertible_layer_norm_gradient': False,
         },
         'debug': {
-            'deterministic_compute': False
+            'deterministic_compute': False,
+            'check_model_export': False
         },
         '_internal_use': {
             'enable_internal_postprocess': True,

@@ -285,6 +285,7 @@ struct Session : Base<OrtSession> {
   char* GetOutputName(size_t index, OrtAllocator* allocator) const;
   char* GetOverridableInitializerName(size_t index, OrtAllocator* allocator) const;
   char* EndProfiling(OrtAllocator* allocator) const;
+  uint64_t GetProfilingStartTimeNs() const;
   ModelMetadata GetModelMetadata() const;
 
   TypeInfo GetInputTypeInfo(size_t index) const;
@@ -370,7 +371,7 @@ struct Value : Base<OrtValue> {
   const T* GetTensorData() const;
 
   template <typename T>
-  T At(const std::initializer_list<size_t>& location);
+  T& At(const std::vector<int64_t>& location);
 
   TypeInfo GetTypeInfo() const;
   TensorTypeAndShapeInfo GetTensorTypeAndShapeInfo() const;

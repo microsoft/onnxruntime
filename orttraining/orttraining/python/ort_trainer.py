@@ -9,7 +9,7 @@ import torch
 import torch.nn
 import torch.onnx
 import onnxruntime as ort
-from ..experimental import postprocess
+from ..training import postprocess
 from distutils.version import LooseVersion
 import warnings
 
@@ -347,7 +347,7 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
     sample_inputs_copy = copy.deepcopy(sample_inputs)
 
     # Enable contrib ops export from PyTorch
-    from onnxruntime.experimental import register_custom_ops_pytorch_exporter
+    from onnxruntime.training import register_custom_ops_pytorch_exporter
     register_custom_ops_pytorch_exporter.register_custom_op()
 
     torch.onnx._export(model, tuple(sample_inputs_copy), f,

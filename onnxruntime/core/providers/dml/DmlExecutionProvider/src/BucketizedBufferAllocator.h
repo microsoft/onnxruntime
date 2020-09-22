@@ -9,7 +9,7 @@
 namespace Dml
 {
     
-    class CPUAllocator : public onnxruntime::IDeviceAllocator
+    class CPUAllocator : public onnxruntime::IAllocator
     {
     public:
         explicit CPUAllocator(OrtMemType memType);

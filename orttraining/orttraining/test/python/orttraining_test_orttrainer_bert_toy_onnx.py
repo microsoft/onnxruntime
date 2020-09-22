@@ -13,7 +13,7 @@ from onnxruntime.capi.ort_trainer import IODescription as Legacy_IODescription,\
                                          ModelDescription as Legacy_ModelDescription,\
                                          LossScaler as Legacy_LossScaler,\
                                          ORTTrainer as Legacy_ORTTrainer
-from onnxruntime.experimental import _utils, amp, checkpoint, optim, orttrainer, TrainStepInfo,\
+from onnxruntime.training import _utils, amp, checkpoint, optim, orttrainer, TrainStepInfo,\
                                       model_desc_validation as md_val,\
                                       orttrainer_options as orttrainer_options
 

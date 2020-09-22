@@ -521,6 +521,12 @@ inline char* Session::EndProfiling(OrtAllocator* allocator) const {
   return out;
 }
 
+inline uint64_t Session::GetProfilingStartTimeNs() const {
+  uint64_t out;
+  ThrowOnError(GetApi().SessionGetProfilingStartTimeNs(p_, &out));
+  return out;  
+}
+
 inline ModelMetadata Session::GetModelMetadata() const {
   OrtModelMetadata* out;
   ThrowOnError(GetApi().SessionGetModelMetadata(p_, &out));
@@ -771,10 +777,10 @@ const T* Value::GetTensorData() const {
 }
 
 template <typename T>
-inline T Value::At(const std::initializer_list<size_t>& location) {
+inline T& Value::At(const std::vector<int64_t>& location) {
+  static_assert(!std::is_same<T, std::string>::value, "this api does not support std::string");
   T* out;
-  std::vector<size_t> location_ = location;
-  ThrowOnError(GetApi().TensorAt(p_, location_.data(), location_.size(), (void**)&out));
+  ThrowOnError(GetApi().TensorAt(p_, location.data(), location.size(), (void**)&out));
   return *out;
 }
 

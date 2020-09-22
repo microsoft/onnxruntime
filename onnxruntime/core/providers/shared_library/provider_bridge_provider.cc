@@ -142,9 +142,23 @@ Provider_AllocatorPtr CreateAllocator(Provider_AllocatorCreationInfo info) {
   return g_host->CreateAllocator(info);
 }
 
-std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCPUAllocator(const OrtMemoryInfo& info) {
+std::unique_ptr<Provider_IAllocator> Provider_CreateCPUAllocator(const OrtMemoryInfo& info) {
   return g_host->CreateCPUAllocator(info);
 }
+
+#ifdef USE_TENSORRT
+std::unique_ptr<Provider_IAllocator> Provider_CreateCUDAAllocator(int16_t device_id, const char* name) {
+  return g_host->CreateCUDAAllocator(device_id, name);
+}
+
+std::unique_ptr<Provider_IAllocator> Provider_CreateCUDAPinnedAllocator(int16_t device_id, const char* name) {
+  return g_host->CreateCUDAPinnedAllocator(device_id, name);
+}
+
+std::unique_ptr<Provider_IDataTransfer> Provider_CreateGPUDataTransfer() {
+  return g_host->CreateGPUDataTransfer();
+}
+#endif
 
 std::string GetEnvironmentVar(const std::string& var_name) {
   return g_host->GetEnvironmentVar(var_name);
