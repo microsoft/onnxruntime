@@ -137,6 +137,34 @@ class TestIOBinding(unittest.TestCase):
         # Validate results (by copying results to CPU by creating a Numpy object)
         self.assertTrue(np.array_equal(self.create_expected_output_alternate(), ort_outputs[0].numpy()))
 
+    def test_bind_input_and_bind_output_with_ortvalues(self):
+        session = onnxruntime.InferenceSession(get_name("mul_1.onnx"))
+        io_binding = session.io_binding()
+        
+        # Bind ortvalue as input
+        input_ortvalue = self.create_ortvalue_input_on_gpu()
+        io_binding.bind_ortvalue_input('X', input_ortvalue)
+
+        # Bind ortvalue as output
+        output_ortvalue = self.create_uninitialized_ortvalue_input_on_gpu()
+        io_binding.bind_ortvalue_output('Y', output_ortvalue)
+
+        # Invoke Run
+        session.run_with_iobinding(io_binding)
+
+        # Inspect contents of output_ortvalue and make sure that it has the right contents
+        self.assertTrue(np.array_equal(self.create_expected_output(), output_ortvalue.numpy()))
+
+        # Bind another ortvalue as input
+        input_ortvalue_2 = self.create_ortvalue_alternate_input_on_gpu()
+        io_binding.bind_ortvalue_input('X', input_ortvalue_2)
+
+        # Invoke Run
+        session.run_with_iobinding(io_binding)
+
+        # Inspect contents of output_ortvalue and make sure that it has the right contents
+        self.assertTrue(np.array_equal(self.create_expected_output_alternate(), output_ortvalue.numpy()))
+
 
 if __name__ == '__main__':
     unittest.main()

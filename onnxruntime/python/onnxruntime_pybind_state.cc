@@ -1100,11 +1100,11 @@ void addObjectMethods(py::module& m, Environment& env) {
 
         return ml_value;
       })
-      .def("data_ptr", [](OrtValue* ort_value) -> int64_t {
+      .def("data_ptr", [](OrtValue* ml_value) -> int64_t {
         // TODO: Assumes that the OrtValue is a Tensor, make this generic to handle non-Tensors
-        ORT_ENFORCE(ort_value->IsTensor(), "Only OrtValues that are Tensors are currently supported");
+        ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are currently supported");
 
-        auto* tensor = ort_value->GetMutable<Tensor>();
+        auto* tensor = ml_value->GetMutable<Tensor>();
 
         if (tensor->Shape().Size() == 0) {
           return 0;
@@ -1113,18 +1113,18 @@ void addObjectMethods(py::module& m, Environment& env) {
         // Should cover x86 and x64 platforms
         return reinterpret_cast<int64_t>(tensor->MutableDataRaw());
       })
-      .def("device_name", [](OrtValue* ort_value) -> std::string {
+      .def("device_name", [](OrtValue* ml_value) -> std::string {
         // TODO: Assumes that the OrtValue is a Tensor, make this generic to handle non-Tensors
-        ORT_ENFORCE(ort_value->IsTensor(), "Only OrtValues that are Tensors are currently supported");
+        ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are currently supported");
 
-        return std::string(GetDeviceName(ort_value->Get<Tensor>().Location().device));
+        return std::string(GetDeviceName(ml_value->Get<Tensor>().Location().device));
       })
-      .def("shape", [](OrtValue* ort_value) -> py::list {
+      .def("shape", [](OrtValue* ml_value) -> py::list {
         // TODO: Assumes that the OrtValue is a Tensor, make this generic to handle non-Tensors
-        ORT_ENFORCE(ort_value->IsTensor(), "Only OrtValues that are Tensors are currently supported");
+        ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are currently supported");
 
         py::list shape_arr;
-        const auto& dims = ort_value->Get<Tensor>().Shape().GetDims();
+        const auto& dims = ml_value->Get<Tensor>().Shape().GetDims();
 
         for (auto dim : dims) {
           // For sequence tensors - we would append a list of dims to the outermost list
@@ -1134,24 +1134,24 @@ void addObjectMethods(py::module& m, Environment& env) {
 
         return shape_arr;
       })
-      .def("data_type", [](OrtValue* ort_value) -> std::string {
+      .def("data_type", [](OrtValue* ml_value) -> std::string {
         // TODO: Assumes that the OrtValue is a Tensor, make this generic to handle non-Tensors
-        ORT_ENFORCE(ort_value->IsTensor(), "Only OrtValues that are Tensors are currently supported");
+        ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are currently supported");
 
-        return DataTypeImpl::ToString(ort_value->Get<Tensor>().DataType());
+        return DataTypeImpl::ToString(ml_value->Get<Tensor>().DataType());
       })
-      .def("is_tensor", [](OrtValue* ort_value) -> bool {
-        return ort_value->IsTensor();
+      .def("is_tensor", [](OrtValue* ml_value) -> bool {
+        return ml_value->IsTensor();
       })
-      .def("numpy", [](OrtValue* ort_value) -> py::object {
-        ORT_ENFORCE(ort_value->IsTensor(), "Only OrtValues that are Tensors are convertible to Numpy objects");
+      .def("numpy", [](OrtValue* ml_value) -> py::object {
+        ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are convertible to Numpy objects");
 
         py::object obj;
 
 #ifdef USE_CUDA
-        GetPyObjFromTensor(ort_value->Get<Tensor>(), obj, nullptr, GetCudaToHostMemCpyFunction());
+        GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetCudaToHostMemCpyFunction());
 #else
-      GetPyObjFromTensor(ort_value->Get<Tensor>(), obj, nullptr, nullptr);
+      GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, nullptr);
 #endif
         return obj;
       });
@@ -1215,6 +1215,12 @@ void addObjectMethods(py::module& m, Environment& env) {
           throw std::runtime_error("Error when binding input: " + status.ErrorMessage());
         }
       })
+      .def("bind_ortvalue_input", [](SessionIOBinding* io_binding, const std::string& name, OrtValue* ml_value) -> void {
+        auto status = io_binding->Get()->BindInput(name, *ml_value);
+        if (!status.IsOK()) {
+          throw std::runtime_error("Error when binding input: " + status.ErrorMessage());
+        }
+      })
       .def("bind_output", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, py::object& element_type, std::vector<int64_t>& shape, int64_t data_ptr) -> void {
         ORT_ENFORCE(data_ptr != 0, "Pointer to data memory is not valid");
 
@@ -1260,6 +1266,12 @@ void addObjectMethods(py::module& m, Environment& env) {
       })
       .def("bind_output", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device) -> void {
         auto status = io_binding->Get()->BindOutput(name, device);
+        if (!status.IsOK()) {
+          throw std::runtime_error("Error when binding output: " + status.ErrorMessage());
+        }
+      })
+      .def("bind_ortvalue_output", [](SessionIOBinding* io_binding, const std::string& name, OrtValue* ml_value) -> void {
+        auto status = io_binding->Get()->BindOutput(name, *ml_value);
         if (!status.IsOK()) {
           throw std::runtime_error("Error when binding output: " + status.ErrorMessage());
         }

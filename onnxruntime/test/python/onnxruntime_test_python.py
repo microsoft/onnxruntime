@@ -738,7 +738,7 @@ class TestInferenceSession(unittest.TestCase):
             test_session_with_ortvalue_input(ortvalue2)
 
             # The constructed OrtValue should still be valid after being used in a session
-            self.assertTrue(np.array_equal(ortvalue1.numpy(), numpy_arr_input))
+            self.assertTrue(np.array_equal(ortvalue2.numpy(), numpy_arr_input))
 
 
 if __name__ == '__main__':

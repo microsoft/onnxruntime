@@ -267,6 +267,13 @@ class IOBinding:
                                                device_id),
                                    element_type, shape, buffer_ptr)
 
+    def bind_ortvalue_input(self, name, ortvalue):
+        '''
+        :param name: input name
+        :param ortvalue: OrtValue instance to bind
+        '''
+        self._iobinding.bind_ortvalue_input(name, ortvalue._ortvalue)
+
     def bind_output(self, name, device_type='cpu', device_id=0, element_type=None, shape=None, buffer_ptr=None):
         '''
         :param name: output name
@@ -294,6 +301,13 @@ class IOBinding:
                                         C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(),
                                                     device_id),
                                         element_type, shape, buffer_ptr)
+
+    def bind_ortvalue_output(self, name, ortvalue):
+        '''
+        :param name: output name
+        :param ortvalue: OrtValue instance to bind
+        '''
+        self._iobinding.bind_ortvalue_output(name, ortvalue._ortvalue)
 
     def get_outputs(self):
         '''
@@ -333,6 +347,7 @@ class OrtValue:
     def tensor_from_numpy(numpy_obj, device_type='cpu', device_id=0):
         '''
         Factory method to construct an OrtValue (which holds a Tensor) from a given Numpy object
+        A copy of the data in the Numpy object is held by the OrtValue
         :param numpy_obj: The Numpy object to construct the Tensor from
         :param device_type: e.g. cpu, cuda, cpu by default
         :param device_id: device id, e.g. 0
