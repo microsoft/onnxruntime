@@ -4,10 +4,10 @@ type: job
 jobRetryCount: 0
 prerequisites:
   - type: dockerimage
-    uri: edchtest.azurecr.io/ort_rocm3.5
+    uri: onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimepaibuild:rocm3.5-latest
     name: docker_image_0
     auth:
-      username: edchtest
+      username: <% $secrets.docker_user_0 %>
       password: <% $secrets.docker_password_0 %>
       registryuri: edchtest.azurecr.io
 taskRoles:
@@ -38,6 +38,7 @@ taskRoles:
         --update
         --build --parallel 8
 secrets:
+  docker_user_0: "@@docker_user@@"
   docker_password_0: "@@docker_password@@"
 defaults:
   virtualCluster: rocm
