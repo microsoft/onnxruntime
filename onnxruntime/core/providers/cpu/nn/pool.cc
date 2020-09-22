@@ -150,6 +150,8 @@ Status MaxPoolV8::ComputeImpl(OpKernelContext* context) const {
     need_dilation |= n > 1;
   }
 
+  std::cout << "calling into before" << std::endl;
+
   // MLAS implementation currently supports only floats
   if (std::is_same<T, float>::value) {
     if (OpKernel::Node().OutputDefs().size() == 1 && pool_attrs_.storage_order == 0 && !need_dilation) {
@@ -237,8 +239,9 @@ Status MaxPoolV8::ComputeImplOptimized(OpKernelContext* context) const {
   const auto& dilations = pool_attrs_.dilations;
   const auto& pool_size = pool_attrs_.kernel_shape;
 
-  if (pool_attrs_.storage_order != 0 || 
-      dilations[0] != stride_h() ||
+  //if (pool_attrs_.storage_order != 0 ||
+  //if (pool_attrs_.auto_pad != AutoPadType::NOTSET ||
+  if (dilations[0] != stride_h() ||
       pool_size.size() > 1 && dilations[1] != stride_w() ||
       pool_size.size() > 2 && dilations[2] != stride_d() ||
       context->Output(1, output_dims)) {
@@ -249,39 +252,45 @@ Status MaxPoolV8::ComputeImplOptimized(OpKernelContext* context) const {
   Tensor* Y = context->Output(0, output_dims);
   auto* Y_data = Y->template MutableData<T>();
   auto tp = context->GetOperatorThreadPool();
-  auto batch = x_shape[0];
-  auto chanl = x_shape[1];
+  auto channels = x_shape[0] * x_shape[1];
 
   switch (pool_size.size()) {
     case 1: {
       std::cout << "calling into optimized 1D" << std::endl;
       RunLoop<MaxPool1DTaskOpt<T>>(tp,
-                                   batch * chanl,
+                                   channels,
                                    {X_data, Y_data,
                                     x_shape[2], output_dims[2],
-                                    pads[0], stride_h(), pool_size[0]});
+                                    pads[0], pads[1], stride_h(), pool_size[0]});
       break;
     }
     case 2: {
       std::cout << "calling into optimized 2D" << std::endl;
       RunLoop<MaxPool2DTaskOpt<T>>(tp,
-                                   batch * chanl,
+                                   channels,
                                    {X_data, Y_data,
                                     x_shape[2], x_shape[3],
                                     output_dims[2], output_dims[3],
-                                    pads[0], pads[1],
+                                    pads[0], pads[2], pads[1], pads[3],
                                     stride_h(), stride_w(),
                                     pool_size[0], pool_size[1]});
+      /*
+      std::cout << "x shape: " << x_shape[2] << ", " << x_shape[3] << std::endl;
+      std::cout << "output dims: " << output_dims[2] << ", " << output_dims[3] << std::endl;
+      std::cout << "pads: " << pads[0] << ", " << pads[2] << ", " << pads[1] << ", " << pads[3] << std::endl;
+      std::cout << "strides: " << stride_h() << ", " << stride_w() << std::endl;
+      std::cout << "pool_size: " << pool_size[0] << ", " << pool_size[1] << std::endl;
+      */
       break;
     }
     case 3: {
       std::cout << "calling into optimized 3D" << std::endl;
       RunLoop<MaxPool3DTaskOpt<T>>(tp,
-                                   batch * chanl,
+                                   channels,
                                    {X_data, Y_data,
                                     x_shape[2], x_shape[3], x_shape[4],
                                     output_dims[2], output_dims[3], output_dims[4],
-                                    pads[0], pads[1], pads[2],
+                                    pads[0], pads[3], pads[1], pads[4], pads[2], pads[5],
                                     stride_h(), stride_w(), stride_d(),
                                     pool_size[0], pool_size[1], pool_size[2]});
       break;

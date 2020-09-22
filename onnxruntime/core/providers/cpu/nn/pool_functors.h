@@ -420,25 +420,26 @@ bool Equal(const T& a, const T& b) {
 template<typename T>
 void MaxPoolOpt(const T* x,
                 const T* x_end,
-                int x_gap, //x_next = x + x_gap
-                int dilation,
-                int pads,
-                int pool_size,
-                T* y, int y_gap, //y_next = y + y_gap 
+                int64_t x_gap, //x_next = x + x_gap
+                int64_t dilation,
+                int64_t pad_front,
+                int64_t pad_back,
+                int64_t pool_size,
+                T* y, int64_t y_gap, //y_next = y + y_gap 
                 T* que) { //que of size pool_size
 
   T padding = std::numeric_limits<T>::lowest();
   T* head = que;
   T* tail = head;
-  int cnt = 0; //num of elems in que
-  int x_step = x_gap * dilation;
+  int64_t cnt = 0; //num of elems in que
+  int64_t x_step = x_gap * dilation;
   T* back = que + pool_size - 1;
-  const T* x_i = x - pads * x_gap;
+  const T* x_i = x - pad_front * x_gap;
   const T* last_x_i = x_i;
-  const T* x_end_with_pads = x_end + pads * x_gap;
+  const T* x_end_with_pads = x_end + pad_back * x_gap;
 
   //init queue with first pool_size elems
-  for (int32_t i = 0; i < pool_size; i++, x_i += x_step) {
+  for (int64_t i = 0; i < pool_size; i++, x_i += x_step) {
     if (x_i < x) {
       *tail = padding;
       tail = tail == back ? que : tail + 1;
@@ -474,7 +475,7 @@ void MaxPoolOpt(const T* x,
     *y = *head;
     //dequeue
     if (((last_x_i < x || last_x_i >= x_end) && Equal(*head, padding)) ||
-        Equal(*head, *last_x_i)) {
+        (last_x_i >= x && last_x_i < x_end && Equal(*head, *last_x_i))) {
       head = head == back ? que : head + 1;
       --cnt;
     }
@@ -517,14 +518,15 @@ struct MaxPool1DTaskOpt {
 
   const T* X_data;
   T* Y_data;
-  int64_t height;
-  int64_t pooled_height;
-  int64_t pads;
+  int64_t x_h;
+  int64_t y_h;
+  int64_t pad_front;
+  int64_t pad_back;
   int64_t dilation;
   int64_t pool_size;
 
   TensorOpCost Cost() {
-    auto loop_count = static_cast<double>(height);
+    auto loop_count = static_cast<double>(x_h);
     return TensorOpCost{loop_count, loop_count, loop_count};
   }
 
@@ -544,10 +546,10 @@ struct MaxPool1DTaskOpt {
   }//operator
 
   void operator()(std::ptrdiff_t c, std::unique_ptr<T[]>& que_ptr) const {
-    MaxPoolOpt(X_data + c * height,
-               X_data + (c + 1) * height, 1,
-               dilation, pads, pool_size,
-               Y_data + c * pooled_height, 1,
+    MaxPoolOpt(X_data + c * x_h,
+               X_data + (c + 1) * x_h, 1,
+               dilation, pad_front, pad_back, pool_size,
+               Y_data + c * y_h, 1,
                que_ptr.get());
   }
 };
@@ -557,19 +559,21 @@ struct MaxPool2DTaskOpt {
 
   const T* X_data;
   T* Y_data;
-  int64_t height;
-  int64_t width;
-  int64_t pooled_height;
-  int64_t pooled_width;
-  int64_t pads_h;
-  int64_t pads_w;
+  int64_t x_h;
+  int64_t x_w;
+  int64_t y_h;
+  int64_t y_w;
+  int64_t pad_h_front;
+  int64_t pad_h_back;
+  int64_t pad_w_front;
+  int64_t pad_w_back;
   int64_t dilation_h;
   int64_t dilation_w;
-  int64_t pool_size_h;
-  int64_t pool_size_w;
+  int64_t pool_h;
+  int64_t pool_w;
 
   TensorOpCost Cost() {
-    auto loop_count = static_cast<double>(height * width);
+    auto loop_count = static_cast<double>(x_h * x_w);
     return TensorOpCost{loop_count, loop_count, loop_count};
   }
 
@@ -577,13 +581,13 @@ struct MaxPool2DTaskOpt {
 #ifdef _OPENMP
 #pragma omp parallel for
     for (int64_t c = begin; c < end; ++c) {
-      std::unique_ptr<T[]> que_ptr{new T[std::max(pool_size_h, pool_size_w)]};
-      std::unique_ptr<T[]> y_temp{new T[height * pooled_width]};
+      std::unique_ptr<T[]> que_ptr{new T[std::max(pool_h, pool_w)]};
+      std::unique_ptr<T[]> y_temp{new T[x_h * y_w]};
       operator()(c, que_ptr, y_temp);
     }//for
 #else
-    std::unique_ptr<T[]> que_ptr{new T[std::max(pool_size_h, pool_size_w)]};
-    std::unique_ptr<T[]> y_temp{new T[height * pooled_width]};
+    std::unique_ptr<T[]> que_ptr{new T[std::max(pool_h, pool_w)]};
+    std::unique_ptr<T[]> y_temp{new T[x_h * y_w]};
     for (int64_t c = begin; c < end; ++c) {
       operator()(c, que_ptr, y_temp);
     }//for
@@ -592,21 +596,21 @@ struct MaxPool2DTaskOpt {
 
   void operator()(std::ptrdiff_t c, std::unique_ptr<T[]>& que_ptr, std::unique_ptr<T[]>& y_temp) const {
 
-    auto x = X_data + c * height * width;
-    auto y = Y_data + c * pooled_height * pooled_width;
+    auto x = X_data + c * x_h * x_w;
+    auto y = Y_data + c * y_h * y_w;
     //reduce width
-    for (int h_i = 0; h_i < height; ++h_i) {
-      MaxPoolOpt(x + h_i * width,
-                 x + (h_i + 1) * width,
-                 1, dilation_w, pads_w, pool_size_w,
-                 y_temp.get() + h_i * pooled_width, 1, que_ptr.get());
+    for (int h_i = 0; h_i < x_h; ++h_i) {
+      MaxPoolOpt(x + h_i * x_w,
+                 x + (h_i + 1) * x_w,
+                 1, dilation_w, pad_w_front, pad_w_back, pool_w,
+                 y_temp.get() + h_i * y_w, 1, que_ptr.get());
     }
     //reduce height
-    for (int w_i = 0; w_i < pooled_width; ++w_i) {
+    for (int w_i = 0; w_i < y_w; ++w_i) {
       MaxPoolOpt(y_temp.get() + w_i,
-                 y_temp.get() + w_i + height * pooled_width,
-                 pooled_width, dilation_h, pads_h, pool_size_h,
-                 y + w_i, pooled_width, que_ptr.get());
+                 y_temp.get() + w_i + x_h * y_w,
+                 y_w, dilation_h, pad_h_front, pad_h_back,
+                 pool_h, y + w_i, y_w, que_ptr.get());
     }
   }
 };
@@ -616,24 +620,27 @@ struct MaxPool3DTaskOpt {
 
   const T* X_data;
   T* Y_data;
-  int64_t height;
-  int64_t width;
-  int64_t depth;
-  int64_t pooled_height;
-  int64_t pooled_width;
-  int64_t pooled_depth;
-  int64_t pads_h;
-  int64_t pads_w;
-  int64_t pads_d;
+  int64_t x_h;
+  int64_t x_w;
+  int64_t x_d;
+  int64_t y_h;
+  int64_t y_w;
+  int64_t y_d;
+  int64_t pad_h_front;
+  int64_t pad_h_back;
+  int64_t pad_w_front;
+  int64_t pad_w_back;
+  int64_t pad_d_front;
+  int64_t pad_d_back;
   int64_t dilation_h;
   int64_t dilation_w;
   int64_t dilation_d;
-  int64_t pool_size_h;
-  int64_t pool_size_w;
-  int64_t pool_size_d;
+  int64_t pool_h;
+  int64_t pool_w;
+  int64_t pool_d;
 
   TensorOpCost Cost() {
-    auto loop_count = static_cast<double>(height * width * depth);
+    auto loop_count = static_cast<double>(x_h * x_w * x_d);
     return TensorOpCost{loop_count, loop_count, loop_count};
   }
 
@@ -641,15 +648,15 @@ struct MaxPool3DTaskOpt {
 #ifdef _OPENMP
 #pragma omp parallel for
     for (int64_t c = begin; c < end; ++c) {
-      std::unique_ptr<T[]> que_ptr{new T[std::max(pool_size_h, std::max(pool_size_w, pool_size_d))]};
-      std::unique_ptr<T[]> y_temp_1{new T[height * width * pooled_depth]};
-      std::unique_ptr<T[]> y_temp_2{new T[height * pooled_width * pooled_depth]};
+      std::unique_ptr<T[]> que_ptr{new T[std::max(pool_h, std::max(pool_w, pool_d))]};
+      std::unique_ptr<T[]> y_temp_1{new T[x_h * x_w * y_d]};
+      std::unique_ptr<T[]> y_temp_2{new T[x_h * y_w * y_d]};
       operator()(c, que_ptr, y_temp_1, y_temp_2);
     }//for
 #else
-    std::unique_ptr<T[]> que_ptr{new T[std::max(pool_size_h, std::max(pool_size_w, pool_size_d))]};
-    std::unique_ptr<T[]> y_temp_1{new T[height * width * pooled_depth]};
-    std::unique_ptr<T[]> y_temp_2{new T[height * pooled_width * pooled_depth]};
+    std::unique_ptr<T[]> que_ptr{new T[std::max(pool_h, std::max(pool_w, pool_d))]};
+    std::unique_ptr<T[]> y_temp_1{new T[x_h * x_w * y_d]};
+    std::unique_ptr<T[]> y_temp_2{new T[x_h * y_w * y_d]};
     for (int64_t c = begin; c < end; ++c) {
       operator()(c, que_ptr, y_temp_1, y_temp_2);
     }//for
@@ -661,37 +668,35 @@ struct MaxPool3DTaskOpt {
                   std::unique_ptr<T[]>& y_temp_1,
                   std::unique_ptr<T[]>& y_temp_2) const {
 
-    auto x = X_data + c * height * width * depth;
-    auto y = Y_data + c * pooled_height * pooled_width * pooled_depth;
+    auto x = X_data + c * x_h * x_w * x_d;
+    auto y = Y_data + c * y_h * y_w * y_d;
     //reduce depth
-    for (int h_i = 0; h_i < height; h_i++) {
-      for (int w_i = 0; w_i < width; w_i++) {
-        MaxPoolOpt(x + h_i * width * depth + w_i * depth,
-                   x + h_i * width * depth + w_i * depth + depth,
-                   1, dilation_d, pads_d, pool_size_d,
-                   y_temp_1.get() + h_i * width * pooled_depth + w_i * pooled_depth,
-                   1, que_ptr.get());
+    for (int h_i = 0; h_i < x_h; h_i++) {
+      for (int w_i = 0; w_i < x_w; w_i++) {
+        MaxPoolOpt(x + h_i * x_w * x_d + w_i * x_d,
+                   x + h_i * x_w * x_d + w_i * x_d + x_d,
+                   1, dilation_d, pad_d_front, pad_d_back, pool_d,
+                   y_temp_1.get() + h_i * x_w * y_d + w_i * y_d, 1, que_ptr.get());
       }
     }
     //reduce width
-    for (int h_i = 0; h_i < height; h_i++) {
-      for (int d_i = 0; d_i < pooled_depth; d_i++) {
-        MaxPoolOpt(y_temp_1.get() + h_i * width * depth + d_i,
-                   y_temp_1.get() + (h_i + 1) * width * depth + d_i,
-                   pooled_depth, dilation_w, pads_w, pool_size_w,
-                   y_temp_2.get() + h_i * pooled_width * pooled_depth + d_i,
-                   pooled_depth, que_ptr.get());
+    for (int h_i = 0; h_i < x_h; h_i++) {
+      for (int d_i = 0; d_i < y_d; d_i++) {
+        MaxPoolOpt(y_temp_1.get() + h_i * x_w * y_d + d_i,
+                   y_temp_1.get() + (h_i + 1) * x_w * y_d + d_i,
+                   y_d, dilation_w, pad_w_front, pad_w_back, pool_w,
+                   y_temp_2.get() + h_i * y_w * y_d + d_i, y_d, que_ptr.get());
       }
     }
     //reduce height
-    for (int w_i = 0; w_i < pooled_width; w_i++) {
-      for (int d_i = 0; d_i < pooled_depth; d_i++) {
-        MaxPoolOpt(y_temp_2.get() + w_i * pooled_depth + d_i,
-                   y_temp_2.get() + height * pooled_width * pooled_depth + w_i * pooled_depth + d_i,
-                   pooled_width * pooled_depth, dilation_h, pads_h, pool_size_h,
-                   y + w_i * pooled_depth + d_i, pooled_width * pooled_depth, que_ptr.get());
+    for (int w_i = 0; w_i < y_w; w_i++) {
+      for (int d_i = 0; d_i < y_d; d_i++) {
+        MaxPoolOpt(y_temp_2.get() + w_i * y_d + d_i,
+                   y_temp_2.get() + x_h * y_w * y_d + w_i * y_d + d_i,
+                   y_w * y_d, dilation_h, pad_h_front, pad_h_back, pool_h,
+                   y + w_i * y_d + d_i, y_w * y_d, que_ptr.get());
       }
-    }
+    }//for
   }
 };
 
