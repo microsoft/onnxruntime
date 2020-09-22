@@ -353,7 +353,7 @@ class OrtValue:
         :param device_type: e.g. cpu, cuda, cpu by default
         :param device_id: device id, e.g. 0
         '''
-        return OrtValue(C.OrtValue.tensor_from_numpy(numpy_obj, C.OrtDevice(get_ort_device_type(device_type), 
+        return OrtValue(C.OrtValue.tensor_from_numpy(numpy_obj, C.OrtDevice(get_ort_device_type(device_type),
                         C.OrtDevice.default_memory(), device_id)))
 
     @staticmethod
@@ -368,7 +368,7 @@ class OrtValue:
         if shape is None or element_type is None:
             raise ValueError("`element_type` and `shape` are to be provided if pre-allocated memory is provided")
 
-        return OrtValue(C.OrtValue.tensor_from_shape_and_type(shape, element_type, 
+        return OrtValue(C.OrtValue.tensor_from_shape_and_type(shape, element_type,
                         C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(), device_id)))
 
     def data_ptr(self):
