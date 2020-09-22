@@ -16,7 +16,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Windows.CsWinRT" Version="0.1.0-prerelease.200629.3" targetFramework="net46" />
+    <PackageReference Include="Microsoft.Windows.CsWinRT" Version="0.1.0-prerelease.200902.3" targetFramework="net46" />
     <PackageReference Include="Microsoft.Windows.SDK.NET" Version="10.0.18362.3-preview" />
   </ItemGroup>
 
