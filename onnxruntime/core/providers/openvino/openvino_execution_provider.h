@@ -15,63 +15,62 @@ namespace onnxruntime {
 
 // Information needed to construct OpenVINO execution providers.
 struct OpenVINOExecutionProviderInfo {
-  std::string device_id_;
+  std::string device_type_;
   std::string precision_;
+  bool enable_vpu_fast_compile_;
+  std::string device_id_;
 
-  explicit OpenVINOExecutionProviderInfo(std::string dev_id) {
-    if (dev_id == "") {
+  explicit OpenVINOExecutionProviderInfo(std::string dev_type, bool enable_vpu_fast_compile, std::string dev_id)
+            : enable_vpu_fast_compile_(enable_vpu_fast_compile), device_id_(dev_id) {
+
+    if (dev_type == "") {
       LOGS_DEFAULT(INFO) << "[OpenVINO-EP]"
                          << "No runtime device selection option provided.";
-#ifdef OPENVINO_CONFIG_CPU_FP32
-      device_id_ = "CPU";
+      #if defined OPENVINO_CONFIG_CPU_FP32
+      device_type_ = "CPU";
       precision_ = "FP32";
-#endif
-#ifdef OPENVINO_CONFIG_GPU_FP32
-      device_id_ = "GPU";
+      #elif defined OPENVINO_CONFIG_GPU_FP32
+      device_type_ = "GPU";
       precision_ = "FP32";
-#endif
-#ifdef OPENVINO_CONFIG_GPU_FP16
-      device_id_ = "GPU";
+      #elif defined OPENVINO_CONFIG_GPU_FP16
+      device_type_ = "GPU";
       precision_ = "FP16";
-#endif
-#ifdef OPENVINO_CONFIG_MYRIAD
-      device_id_ = "MYRIAD";
+      #elif defined OPENVINO_CONFIG_MYRIAD
+      device_type_ = "MYRIAD";
       precision_ = "FP16";
-#endif
-#ifdef OPENVINO_CONFIG_VAD_M
-      device_id_ = "HDDL";
+      #elif defined OPENVINO_CONFIG_VAD_M
+      device_type_ = "HDDL";
       precision_ = "FP16";
-#endif
-#ifdef OPENVINO_CONFIG_VAD_F
-      device_id_ = "HETERO:FPGA,CPU";
+      #elif defined OPENVINO_CONFIG_VAD_F
+      device_type_ = "HETERO:FPGA,CPU";
       precision_ = "FP32";
-#endif
-    } else if (dev_id == "CPU_FP32") {
-      device_id_ = "CPU";
+      #endif
+    } else if (dev_type == "CPU_FP32") {
+      device_type_ = "CPU";
       precision_ = "FP32";
-    } else if (dev_id == "GPU_FP32") {
-      device_id_ = "GPU";
+    } else if (dev_type == "GPU_FP32") {
+      device_type_ = "GPU";
       precision_ = "FP32";
-    } else if (dev_id == "GPU_FP16") {
-      device_id_ = "GPU";
+    } else if (dev_type == "GPU_FP16") {
+      device_type_ = "GPU";
       precision_ = "FP16";
-    } else if (dev_id == "MYRIAD_FP16") {
-      device_id_ = "MYRIAD";
+    } else if (dev_type == "MYRIAD_FP16") {
+      device_type_ = "MYRIAD";
       precision_ = "FP16";
-    } else if (dev_id == "VAD-M_FP16") {
-      device_id_ = "HDDL";
+    } else if (dev_type == "VAD-M_FP16") {
+      device_type_ = "HDDL";
       precision_ = "FP16";
-    } else if (dev_id == "VAD-F_FP32") {
-      device_id_ = "HETERO:FPGA,CPU";
+    } else if (dev_type == "VAD-F_FP32") {
+      device_type_ = "HETERO:FPGA,CPU";
       precision_ = "FP32";
     } else {
-      ORT_THROW("Invalid device string: " + dev_id);
+      ORT_THROW("Invalid device string: " + dev_type);
     }
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP]"
-                       << "Choosing Device: " << device_id_ << " , Precision: " << precision_;
+                       << "Choosing Device: " << device_type_ << " , Precision: " << precision_;
   }
   OpenVINOExecutionProviderInfo() {
-    OpenVINOExecutionProviderInfo("");
+    OpenVINOExecutionProviderInfo("", false, "");
   }
 };
 
@@ -102,8 +101,6 @@ class OpenVINOExecutionProvider : public IExecutionProvider {
   const void* GetExecutionHandle() const noexcept override {
     return nullptr;
   }
- private:
-  OpenVINOExecutionProviderInfo info_;
 };
 
 }  // namespace onnxruntime

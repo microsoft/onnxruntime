@@ -6,7 +6,7 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cuda/cuda_common.h"
-#include "contrib_ops/cpu/bert/attention.h"
+#include "contrib_ops/cpu/bert/attention_base.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -34,7 +34,7 @@ class QAttention<T, int8_t> final : public CudaKernel, public AttentionBase {
                      const Tensor* bias,
                      const Tensor* input_scale_tensor,
                      const Tensor* weight_scale_tensor,
-                     const Tensor* mask_index,
+                     const Tensor*& mask_index,
                      const Tensor* i_zp_tensor,
                      const Tensor* w_zp_tensor,
                      const Tensor* past_tensor) const;

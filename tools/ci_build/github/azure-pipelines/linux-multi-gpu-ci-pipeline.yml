@@ -27,7 +27,7 @@ jobs:
           --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
-          onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecpubuild:chp \
+          onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimegpubuild:ch35 \
             /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build --cmake_generator Ninja \
               --config Debug Release \
@@ -35,7 +35,7 @@ jobs:
               --build_shared_lib \
               --parallel \
               --build_wheel \
-              --enable_onnx_tests --use_cuda --cuda_version=10.1 --cuda_home=/usr/local/cuda-10.1 --cudnn_home=/usr/local/cuda-10.1 \
+              --enable_onnx_tests --use_cuda --cuda_version=10.2 --cuda_home=/usr/local/cuda-10.2 --cudnn_home=/usr/local/cuda-10.2 \
               --enable_pybind --build_java --build_nodejs --enable_multi_device_test \
               --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp37-cp37m/include/python3.7m PYTHON_LIBRARY=/usr/lib64/librt.so
       workingDirectory: $(Build.SourcesDirectory)

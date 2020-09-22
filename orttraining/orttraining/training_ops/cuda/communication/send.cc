@@ -5,6 +5,7 @@
 
 #include "orttraining/training_ops/cuda/communication/send.h"
 #include "orttraining/training_ops/cuda/communication/common.h"
+#include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #include "core/profile/profile.h"
 #include "core/profile/context.h"
 #include "core/providers/cuda/cuda_common.h"
@@ -99,13 +100,22 @@ void Send::SendData(
   memcpyRange.Begin();
 #endif
 
+#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+  IAllocatorUniquePtr<char> buffer = GetScratchBuffer<char>(aggregated_aligned_tensor_bytes);
+#else
   IAllocatorUniquePtr<char> buffer = AllocateBufferOnCPUPinned<char>(
       aggregated_aligned_tensor_bytes);
+#endif
 
   for (int i = 0; i < num_tensors; ++i) {
     const Tensor* tensor = ctx->Input<Tensor>(i + 2);
+#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+    CUDA_CALL(cudaMemcpy(buffer.get() + tensor_offsets_in_bytes[i], tensor->DataRaw(),
+                         tensor_sizes_in_bytes[i], cudaMemcpyDeviceToDevice));
+#else
     CUDA_CALL(cudaMemcpy(buffer.get() + tensor_offsets_in_bytes[i], tensor->DataRaw(),
                          tensor_sizes_in_bytes[i], cudaMemcpyDeviceToHost));
+#endif
   }
 
 #ifdef ENABLE_NVTX_PROFILE
@@ -127,9 +137,14 @@ void Send::SendData(
                        dst,
                        static_cast<int>(tag_)};
 
+#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+  auto& nccl_service = cuda::NcclService::GetInstance();
+  nccl_service.SubmitSendAndWait(info_data.buffer, info_data.size, info_data.rank);
+#else
   MPI_CHECK(MPI_Send(
       info_data.buffer, info_data.size, MPI_CHAR,
       info_data.rank, info_data.tag, MPI_COMM_WORLD));
+#endif
 
 #ifdef ENABLE_NVTX_PROFILE
   // End of major communication tasks.

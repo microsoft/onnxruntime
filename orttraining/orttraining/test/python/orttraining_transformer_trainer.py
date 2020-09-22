@@ -24,10 +24,10 @@ import onnxruntime
 from orttraining_test_bert_postprocess import postprocess_model
 from onnxruntime.capi.ort_trainer import ORTTrainer, LossScaler, ModelDescription, IODescription
 
-from onnxruntime.experimental import _utils, amp, optim, orttrainer, TrainStepInfo,\
+from onnxruntime.training import _utils, amp, optim, orttrainer, TrainStepInfo,\
                                       model_desc_validation as md_val,\
                                       orttrainer_options as orttrainer_options
-from onnxruntime.experimental.optim import LinearWarmupLRScheduler, _LRScheduler
+from onnxruntime.training.optim import LinearWarmupLRScheduler, _LRScheduler
 
 try:
     from torch.utils.tensorboard import SummaryWriter

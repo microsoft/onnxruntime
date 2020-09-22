@@ -15,6 +15,15 @@
 #include "core/session/inference_session.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_apis.h"
+
+#ifdef USE_TENSORRT
+#include "core/providers/tensorrt/tensorrt_provider_factory.h"
+#include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/gpu_data_transfer.h"
+#include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
+#include "core/providers/cuda/cuda_common.h"
+#endif
+
 #define PROVIDER_BRIDGE_ORT
 #include "core/providers/shared_library/provider_interfaces.h"
 #include "onnx/common/stl_backports.h"
@@ -44,8 +53,8 @@ namespace onnxruntime {
 
 ProviderHost* g_host{};
 
-struct Provider_IAllocator_Impl : Provider_IAllocator {
-  Provider_IAllocator_Impl(AllocatorPtr p) : Provider_IAllocator{p->Info()}, p_{p} {}
+struct Provider_AllocatorPtr_Impl : Provider_IAllocator {
+  Provider_AllocatorPtr_Impl(AllocatorPtr p) : Provider_IAllocator{p->Info()}, p_{p} {}
 
   void* Alloc(size_t size) override { return p_->Alloc(size); }
   void Free(void* p) override { return p_->Free(p); }
@@ -53,41 +62,26 @@ struct Provider_IAllocator_Impl : Provider_IAllocator {
   AllocatorPtr p_;
 };
 
-// This is really a IDeviceAllocator, but we wrap it with this class to make it into a Provider_IDeviceAllocator
-struct Provider_IDeviceAllocator_Impl : Provider_IDeviceAllocator {
-  Provider_IDeviceAllocator_Impl(std::unique_ptr<IDeviceAllocator> p) : Provider_IDeviceAllocator{p->Info()}, p_{std::move(p)} {}
+// This is really a IAllocator, but we wrap it with this class to make it into a Provider_IAllocator
+struct Provider_IAllocator_Impl : Provider_IAllocator {
+  Provider_IAllocator_Impl(std::unique_ptr<IAllocator> p) : Provider_IAllocator{p->Info()}, p_{std::move(p)} {}
 
   void* Alloc(size_t size) override { return p_->Alloc(size); }
   void Free(void* p) override { return p_->Free(p); }
-
-  FencePtr CreateFence(const Provider_SessionState* session_state) override { return p_->CreateFence(reinterpret_cast<const SessionState*>(session_state)); }
 
   bool IsProviderInterface() const override { return false; }
 
-  std::unique_ptr<IDeviceAllocator> p_;
+  std::unique_ptr<IAllocator> p_;
 };
 
-// This is really a Provider_IDeviceAllocator, but we wrap it with this class to make it into a IDeviceAllocator
-struct ProviderAllocator : IDeviceAllocator {
-  ProviderAllocator(std::shared_ptr<Provider_IDeviceAllocator> p) : IDeviceAllocator{p->memory_info_}, p_{std::move(p)} {}
+// This is really a Provider_IAllocator, but we wrap it with this class to make it into a IAllocator
+struct ProviderAllocator : IAllocator {
+  ProviderAllocator(std::shared_ptr<Provider_IAllocator> p) : IAllocator{p->memory_info_}, p_{std::move(p)} {}
 
   void* Alloc(size_t size) override { return p_->Alloc(size); }
   void Free(void* p) override { return p_->Free(p); }
 
-  FencePtr CreateFence(const SessionState* session_state) override { return p_->CreateFence(reinterpret_cast<const Provider_SessionState*>(session_state)); }
-
-  std::shared_ptr<Provider_IDeviceAllocator> p_;
-};
-
-struct IDataTransfer_Wrapper : IDataTransfer {
-  IDataTransfer_Wrapper(std::unique_ptr<Provider_IDataTransfer> p) : p_{std::move(p)} {}
-
-  bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override { return p_->CanCopy(src_device, dst_device); }
-  common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override { return p_->CopyTensor(*reinterpret_cast<const Provider_Tensor*>(&src), *reinterpret_cast<Provider_Tensor*>(&dst), exec_queue_id); }
-
-  bool IsProviderInterface() const override { return true; }
-
-  std::unique_ptr<Provider_IDataTransfer> p_;
+  std::shared_ptr<Provider_IAllocator> p_;
 };
 
 struct Provider_TensorShapeProto_Dimension_Iterator_Impl : Provider_TensorShapeProto_Dimension_Iterator {
@@ -195,14 +189,14 @@ struct Provider_IExecutionProvider_Router_Impl : Provider_IExecutionProvider_Rou
   }
 
   Provider_AllocatorPtr Provider_GetAllocator(int id, OrtMemType mem_type) const override {
-    return std::make_shared<Provider_IAllocator_Impl>(IExecutionProvider::GetAllocator(id, mem_type));
+    return std::make_shared<Provider_AllocatorPtr_Impl>(IExecutionProvider::GetAllocator(id, mem_type));
   }
 
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override {
     auto allocator = outer_->Provider_GetAllocator(id, mem_type);
     if (!allocator)
       return nullptr;
-    return static_cast<Provider_IAllocator_Impl*>(allocator.get())->p_;
+    return static_cast<Provider_AllocatorPtr_Impl*>(allocator.get())->p_;
   }
 
   std::unique_ptr<Provider_IDataTransfer> Provider_GetDataTransfer() const override {
@@ -210,15 +204,11 @@ struct Provider_IExecutionProvider_Router_Impl : Provider_IExecutionProvider_Rou
   }
 
   std::unique_ptr<IDataTransfer> GetDataTransfer() const override {
-    auto internal = outer_->Provider_GetDataTransfer();
-    if (internal)
-      return onnxruntime::make_unique<IDataTransfer_Wrapper>(std::move(internal));
-    else
-      return nullptr;
+    return std::unique_ptr<IDataTransfer>(reinterpret_cast<IDataTransfer*>(outer_->Provider_GetDataTransfer().release()));
   }
 
   void Provider_InsertAllocator(Provider_AllocatorPtr allocator) override {
-    IExecutionProvider::InsertAllocator(static_cast<Provider_IAllocator_Impl*>(allocator.get())->p_);
+    IExecutionProvider::InsertAllocator(static_cast<Provider_AllocatorPtr_Impl*>(allocator.get())->p_);
   }
 
   const logging::Logger* GetLogger() const override { return IExecutionProvider::GetLogger(); }
@@ -235,14 +225,14 @@ struct ProviderHostImpl : ProviderHost {
 
   Provider_AllocatorPtr CreateAllocator(const Provider_AllocatorCreationInfo& info) override {
     AllocatorCreationInfo info_real{
-        [&info](int value) -> std::unique_ptr<IDeviceAllocator> {
+        [&info](int value) -> std::unique_ptr<IAllocator> {
           auto allocator = info.factory(value);
-          // If the allocator is a provider interface, we need to wrap it with ProviderAllocator to turn it into an IDeviceAllocator
-          // Otherwise it's really a Provider_IDeviceAllocator_Impl, so we can just unwrap it to get back to the IDeviceAllocator inside
+          // If the allocator is a provider interface, we need to wrap it with ProviderAllocator to turn it into an IAllocator
+          // Otherwise it's really a Provider_IAllocator_Impl, so we can just unwrap it to get back to the IAllocator inside
           if (allocator->IsProviderInterface())
             return onnxruntime::make_unique<ProviderAllocator>(std::move(allocator));
           else
-            return std::move(static_cast<Provider_IDeviceAllocator_Impl*>(&*allocator)->p_);
+            return std::move(static_cast<Provider_IAllocator_Impl*>(&*allocator)->p_);
         },
         info.device_id,
         info.use_arena,
@@ -250,12 +240,12 @@ struct ProviderHostImpl : ProviderHost {
 
     // info_real will always return a unique_ptr to an IAllocator, which might be a native IAllocator or a provider interface wrapped by ProviderAllocator.
     // Either way we wrap it in a Provider_IAllocator_Impl to be unwrapped by Provider_InsertAllocator
-    return std::make_shared<Provider_IAllocator_Impl>(onnxruntime::CreateAllocator(info_real));
+    return std::make_shared<Provider_AllocatorPtr_Impl>(onnxruntime::CreateAllocator(info_real));
   }
 
-  std::unique_ptr<Provider_IDeviceAllocator> CreateCPUAllocator(
+  std::unique_ptr<Provider_IAllocator> CreateCPUAllocator(
       const OrtMemoryInfo& memory_info) override {
-    return onnxruntime::make_unique<Provider_IDeviceAllocator_Impl>(
+    return onnxruntime::make_unique<Provider_IAllocator_Impl>(
         onnxruntime::make_unique<CPUAllocator>(memory_info));
   };
 
@@ -263,6 +253,31 @@ struct ProviderHostImpl : ProviderHost {
       Provider_IExecutionProvider* outer, const std::string& type) override {
     return onnxruntime::make_unique<Provider_IExecutionProvider_Router_Impl>(outer, type);
   };
+
+#ifdef USE_TENSORRT
+  std::unique_ptr<Provider_IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) override {
+    return onnxruntime::make_unique<Provider_IAllocator_Impl>(onnxruntime::make_unique<CUDAAllocator>(device_id, name));
+  }
+
+  std::unique_ptr<Provider_IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) override {
+    return onnxruntime::make_unique<Provider_IAllocator_Impl>(onnxruntime::make_unique<CUDAPinnedAllocator>(device_id, name));
+  }
+
+  std::unique_ptr<Provider_IDataTransfer> CreateGPUDataTransfer() override {
+    return std::unique_ptr<Provider_IDataTransfer>(reinterpret_cast<Provider_IDataTransfer*>(new GPUDataTransfer()));
+  }
+
+  void cuda__Impl_Cast(const int64_t* input_data, int32_t* output_data, size_t count) override {
+    return cuda::Impl_Cast(input_data, output_data, count);
+  }
+
+  void cuda__Impl_Cast(const int32_t* input_data, int64_t* output_data, size_t count) override {
+    return cuda::Impl_Cast(input_data, output_data, count);
+  }
+
+  bool CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return CudaCall<cudaError, false>(cudaError(retCode), exprString, libName, cudaError(successCode), msg); }
+  bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return CudaCall<cudaError, true>(cudaError(retCode), exprString, libName, cudaError(successCode), msg); }
+#endif
 
   std::string GetEnvironmentVar(const std::string& var_name) override {
     return Env::Default().GetEnvironmentVar(var_name);
@@ -379,12 +394,9 @@ struct ProviderHostImpl : ProviderHost {
 
   // Provider_DataTransferManager
   Status Provider_DataTransferManager__CopyTensor(const Provider_DataTransferManager* p, const Provider_Tensor& src, Provider_Tensor& dst, int exec_queue_id) override { return reinterpret_cast<const DataTransferManager*>(p)->CopyTensor(*reinterpret_cast<const Tensor*>(&src), *reinterpret_cast<Tensor*>(&dst), exec_queue_id); }
-  const Provider_IDataTransfer* Provider_DataTransferManager__GetProviderDataTransfer(const Provider_DataTransferManager* p, const OrtDevice& src_device, const OrtDevice& dst_device) override {
-    auto* data_transfer = reinterpret_cast<const DataTransferManager*>(p)->GetDataTransfer(src_device, dst_device);
-    if (data_transfer->IsProviderInterface())
-      return reinterpret_cast<const IDataTransfer_Wrapper*>(data_transfer)->p_.get();
-    return nullptr;
-  }
+
+  // Provider_IDataTransfer
+  void Provider_IDataTransfer__operator_delete(Provider_IDataTransfer* p) override { delete reinterpret_cast<Provider_IDataTransfer*>(p); }
 
   // Provider_IndexedSubGraph_MetaDef
   std::unique_ptr<Provider_IndexedSubGraph_MetaDef> Provider_IndexedSubGraph_MetaDef__construct() override { return std::unique_ptr<Provider_IndexedSubGraph_MetaDef>(reinterpret_cast<Provider_IndexedSubGraph_MetaDef*>(new IndexedSubGraph::MetaDef())); }
@@ -584,9 +596,6 @@ struct ProviderHostImpl : ProviderHost {
 
   const Provider_DataTransferManager& Provider_OpKernelInfo__GetDataTransferManager(const Provider_OpKernelInfo* p) noexcept override { return *reinterpret_cast<const Provider_DataTransferManager*>(&reinterpret_cast<const OpKernelInfo*>(p)->GetDataTransferManager()); }
   int Provider_OpKernelInfo__GetKernelDef_ExecQueueId(const Provider_OpKernelInfo* p) noexcept override { return reinterpret_cast<const OpKernelInfo*>(p)->GetKernelDef().ExecQueueId(); }
-
-  // Provider_SessionState
-  const Provider_DataTransferManager& Provider_SessionState__GetDataTransferManager(const Provider_SessionState* p) override { return *reinterpret_cast<const Provider_DataTransferManager*>(&reinterpret_cast<const SessionState*>(p)->GetDataTransferMgr()); }
 
   // Provider_Tensor
   float* Provider_Tensor__MutableData_float(Provider_Tensor* p) override { return reinterpret_cast<Tensor*>(p)->MutableData<float>(); }

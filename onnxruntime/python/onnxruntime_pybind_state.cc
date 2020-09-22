@@ -23,6 +23,10 @@
 #include "core/session/abi_session_options_impl.h"
 #include "core/platform/env.h"
 
+#if USE_OPENVINO
+#include <inference_engine.hpp>
+#endif
+
 struct OrtStatus {
   OrtErrorCode code;
   char msg[1];  // a null-terminated string
@@ -150,7 +154,7 @@ onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExten
 #endif
 #ifdef USE_OPENVINO
 #include "core/providers/openvino/openvino_provider_factory.h"
-std::string openvino_device;
+std::string openvino_device_type;
 #endif
 #ifdef USE_NUPHAR
 #include "core/providers/nuphar/nuphar_provider_factory.h"
@@ -180,7 +184,9 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensor
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device_type, 
+                                                                                    bool enable_vpu_fast_compile,
+                                                                                    const char* device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char* backend_type, int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
@@ -556,8 +562,33 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
 #endif
     } else if (type == kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device.c_str()));
-      openvino_device.clear();
+      bool enable_vpu_fast_compile = false;
+      std::string openvino_device_id;
+      auto it = provider_options_map.find(type);
+      if(it != provider_options_map.end()) {
+        for(auto option : it->second) {
+          if(option.first == "device_type") openvino_device_type = option.second;
+          else if (option.first == "enable_vpu_fast_compile") {
+            if(option.second == "True") {
+              enable_vpu_fast_compile = true;
+            } else if (option.second == "False") {
+              enable_vpu_fast_compile = false;
+            } else {
+              ORT_THROW("Invalid value passed for enable_vpu_fast_compile: ", option.second);
+            }
+
+          }
+          else if (option.first == "device_id")  openvino_device_id = option.second;
+          else {
+            ORT_THROW("Invalid OpenVINO EP option: ", option.first);
+          }
+        }
+      }
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device_type.c_str(),
+                                                                                            enable_vpu_fast_compile,
+                                                                                            openvino_device_id.c_str()));
+      // Reset global variables config to avoid it being accidentally passed on to the next session
+      openvino_device_type.clear();
 #endif
     } else if (type == kNupharExecutionProvider) {
 #if USE_NUPHAR
@@ -687,13 +718,22 @@ void addGlobalMethods(py::module& m, const Environment& env) {
 
 #ifdef USE_OPENVINO
   m.def(
-      "set_openvino_device", [](const std::string& device) { openvino_device = device; },
-      "Set the prefered OpenVINO device(s) to be used. If left unset, all available devices will be used.");
+      "get_available_openvino_device_ids", []() -> std::vector<std::string> {
+        InferenceEngine::Core ie_core;
+        return ie_core.GetAvailableDevices();
+      },
+      "Lists all OpenVINO device ids available.");
+/*
+* The following APIs to set config options are deprecated. Use Session.set_providers() instead.
+*/
+  m.def(
+      "set_openvino_device", [](const std::string& device_type) { openvino_device_type = device_type; },
+      "Set the prefered OpenVINO device type to be used. If left unset, the device type selected during build time will be used.");
   m.def(
       "get_openvino_device", []() -> std::string {
-        return openvino_device;
+        return openvino_device_type;
       },
-      "");
+      "Gets the dynamically selected OpenVINO device type for inference.");
 #endif
 
 #ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
@@ -718,7 +758,7 @@ void addGlobalMethods(py::module& m, const Environment& env) {
             onnxruntime::CreateExecutionProviderFactory_NGraph("CPU"),
 #endif
 #ifdef USE_OPENVINO
-            onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device),
+            onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device_type, false, "");
 #endif
 #ifdef USE_TENSORRT
             onnxruntime::CreateExecutionProviderFactory_Tensorrt(0),
