@@ -62,14 +62,20 @@ The default Windows CMake Generator is Visual Studio 2017, but you can also use 
 ```
 ./build.sh --config RelWithDebInfo --build_shared_lib --parallel
 ```
+##### macOS
 By default, ORT is configured to be built for a minimum target macOS version of 10.12.
 The shared library in the release Nuget(s) and the Python wheel may be installed on macOS versions of 10.12+.
 
-##### Bulid using Xcode 12 for x86_64 macOS
-```
-./build.sh --config RelWithDebInfo --build_shared_lib --parallel --use_xcode \
-           --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=x86_64
-```
+If you would like to use [Xcode](https://developer.apple.com/xcode/) to build the onnxruntime for x86_64 macOS, use
+* With Xcode 11
+   ```
+   ./build.sh --config RelWithDebInfo --build_shared_lib --parallel --use_xcode
+   ```
+* With Xcode 12
+   ```
+   ./build.sh --config RelWithDebInfo --build_shared_lib --parallel --use_xcode \
+              --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=x86_64
+   ```
 
 #### Notes
 
