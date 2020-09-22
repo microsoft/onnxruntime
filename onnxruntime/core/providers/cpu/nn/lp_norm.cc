@@ -26,9 +26,12 @@ void DoNormalizeP2(
     auto base = (i / sf) * sf * m + (i % sf);
     ConstStridedVec xVec(xData + base, 1, m, InnerStride(sf));
     auto norm = xVec.template lpNorm<2>();
+    StridedVec yVec(yData + base, 1, m, InnerStride(sf));
     if (norm != 0) {
-      StridedVec yVec(yData + base, 1, m, InnerStride(sf));
       yVec = xVec / norm;
+    } else {
+      // norm is zero, so set the result to zero
+      yVec.setZero();
     }
   }
 };
@@ -45,7 +48,12 @@ void DoNormalizeP1(
     auto norm = xVec.template lpNorm<1>();
     if (norm != 0) {
       StridedVec yVec(yData + base, 1, m, InnerStride(sf));
-      yVec = xVec / norm;
+      if (norm != 0) {
+        yVec = xVec / norm;
+      } else {
+        // norm is zero - set the result to zero
+        yVec.setZero();
+      }
     }
   }
 };
