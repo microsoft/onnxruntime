@@ -781,6 +781,9 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node) {
         continue;
       }
       const Node* parent_node = GetInputNode(cur_node, i);
+      if (nullptr == parent_node) {
+        continue;
+      }
       q.push(parent_node->Index());
     }
 
