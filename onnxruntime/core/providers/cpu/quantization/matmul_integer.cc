@@ -62,8 +62,6 @@ Status MatMulInteger::Compute(OpKernelContext* ctx) const {
   }
 
   const auto* a_data = a->template Data<uint8_t>();
-  const auto* b_data = static_cast<const uint8_t*>(b->DataRaw());
-  const bool b_is_signed = b->IsDataType<int8_t>();
   auto* y_data = y->template MutableData<int32_t>();
 
   for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
@@ -84,6 +82,8 @@ Status MatMulInteger::Compute(OpKernelContext* ctx) const {
       continue;
     }
 #endif
+    const auto* b_data = static_cast<const uint8_t*>(b->DataRaw());
+    const bool b_is_signed = b->IsDataType<int8_t>();
     QGemm(static_cast<int>(helper.M()),
           static_cast<int>(helper.N()),
           static_cast<int>(helper.K()),

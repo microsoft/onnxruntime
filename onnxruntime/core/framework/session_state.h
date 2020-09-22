@@ -268,6 +268,14 @@ class SessionState {
                               const onnxruntime::experimental::fbs::SessionState* serialized_session_state = nullptr,
                               bool remove_initializers = true);
 
+  std::unordered_map<int, OrtValue>& ConstantInitializerTensor() {
+    return constant_initialized_tensors_;
+  }
+
+  SessionState* Parent() {
+    return parent_;
+  }
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
@@ -410,7 +418,6 @@ class SessionState {
   std::map<std::vector<int>, std::unordered_set<NodeIndex>> to_be_executed_nodes_;
 #endif
 
-#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   SessionState* parent_ = nullptr;
   //Assign each graph in each session an unique id.
   int graph_id_ = 0;
@@ -421,7 +428,6 @@ class SessionState {
     while (p->parent_ != nullptr) p = p->parent_;
     graph_id_ = p->next_graph_id_++;
   }
-#endif
 };
 
 }  // namespace onnxruntime

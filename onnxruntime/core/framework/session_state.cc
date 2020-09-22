@@ -250,19 +250,25 @@ Status SessionState::PrepackInitializedConstantTensors() {
     for (auto& input_def : node.InputDefs()) {
       if (input_def->Exists()) {
         const std::string& input_name = input_def->Name();
-        int ort_value_idx;
-        ORT_RETURN_IF_ERROR(ort_value_name_idx_map_.GetIdx(input_name, ort_value_idx));
-        if (constant_initialized_tensors_.count(ort_value_idx) &&
-            constant_initialized_tensors_[ort_value_idx].IsTensor()) {
-          bool is_packed = false;
-          const Tensor& const_initialized_tensor = constant_initialized_tensors_[ort_value_idx].Get<Tensor>();
-          ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx, is_packed));
-          if (is_packed && node_arg_use_count.count(input_name) && --node_arg_use_count[input_name] == 0) {
-            // release the constant intialized tensor
-            initialized_tensors_.erase(ort_value_idx);
-            constant_initialized_tensors_.erase(ort_value_idx);
+        SessionState* st = this;
+        do {
+          int ort_value_idx;
+          if (st->GetOrtValueNameIdxMap().GetIdx(input_name, ort_value_idx).IsOK()) {
+            std::unordered_map<int, OrtValue>& constant_initialized_tensors = st->ConstantInitializerTensor();
+            if (constant_initialized_tensors.count(ort_value_idx) &&
+                constant_initialized_tensors[ort_value_idx].IsTensor()) {
+              bool is_packed = false;
+              const Tensor& const_initialized_tensor = constant_initialized_tensors[ort_value_idx].Get<Tensor>();
+              ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx, is_packed));
+              if (is_packed && node_arg_use_count.count(input_name) && --node_arg_use_count[input_name] == 0) {
+                // release the constant intialized tensor
+                initialized_tensors_.erase(ort_value_idx);
+                constant_initialized_tensors.erase(ort_value_idx);
+              }
+            }
           }
-        }
+          st = st->Parent();
+        } while (st);
       }
       input_idx++;
     }
@@ -566,10 +572,10 @@ void SessionState::AddSubgraphSessionState(onnxruntime::NodeIndex index, const s
     ORT_ENFORCE(existing_entries.find(attribute_name) == existing_entries.cend(), "Entry exists in node ", index,
                 " for attribute ", attribute_name);
   }
-#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
+
   session_state->parent_ = this;
   GenerateGraphId();
-#endif
+
   subgraph_session_states_[index].insert(std::make_pair(attribute_name, std::move(session_state)));
 }
 
