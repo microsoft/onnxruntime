@@ -217,7 +217,7 @@ Status TrainingRunner::Initialize() {
     pipeline_context_.pipeline_tensor_names = config_result.pipeline_config_result.value().pipeline_tensor_names;
 
     // Create a local function to append non-empty name to fetch_names list.
-    auto append_non_empty_name = [&] (const std::string& name) {
+    auto append_non_empty_name = [&](const std::string& name) {
       if (!name.empty()) {
         fetch_names.push_back(name);
       }
@@ -280,7 +280,6 @@ Status TrainingRunner::Initialize() {
 Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_data_loader,
                            const MapStringToString& mapped_dimensions) {
   if (MPIContext::GetInstance().GetWorldRank() == 0 && !params_.model_actual_running_graph_path.empty()) {
-
     session_.Save(params_.model_actual_running_graph_path, TrainingSession::SaveOption::NO_RELOAD);
   }
 
@@ -469,7 +468,7 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const SessionMode mode,
     // TODO: create a list of must-to-fetch tensors and pass it to all graph transformer.
     if (params_.pipeline_parallel_size > 1) {
       // Create a local function to append non-empty name to fetch_names list.
-      auto append_non_empty_name = [&] (const std::string& name) {
+      auto append_non_empty_name = [&](const std::string& name) {
         if (!name.empty()) {
           fetch_names.push_back(name);
         }

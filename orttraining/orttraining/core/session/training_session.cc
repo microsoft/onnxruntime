@@ -217,11 +217,6 @@ Status TrainingSession::ConfigureForTraining(
     config_result.mixed_precision_config_result = mp_result;
   }
 
-  // if (IsRootNode(config) && config.model_with_loss_function_path.has_value()) {
-  //   ORT_IGNORE_RETURN_VALUE(Save(
-  //       config.model_with_loss_function_path.value(), SaveOption::NO_RELOAD));
-  // }
-
   // We need to get trainable weights to prevent constant folding from them. This works well if trainable weights are passed from config.
   // For case we use GetTrainableModelInitializers to get trainable weights such as C++ frontend, it may get more initializers
   // than trainable weights here as it's before transformers. So the constant folding may miss some nodes we actually can fold.
