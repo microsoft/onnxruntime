@@ -18,7 +18,7 @@
 #include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/computation_reduction.h"
 #include "core/optimizer/cast_elimination.h"
-#include "core/optimizer/concat_slice_fusion.h"
+#include "core/optimizer/concat_slice_elimination.h"
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/conv_activation_fusion.h"
 #include "core/optimizer/conv_add_fusion.h"
@@ -1600,17 +1600,18 @@ TEST_F(GraphTransformationTests, ReshapeFusionDistilBertTest) {
 }
 
 // Test Reshape Fusion with 2 constant initializers for Concat inputs.
-TEST_F(GraphTransformationTests, ConcatSliceFusionTest) {
+TEST_F(GraphTransformationTests, ConcatSliceEliminationTest) {
   auto model_uri = MODEL_FOLDER "concat_slice_basic_test.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<ConcatSliceFusion>(), TransformerLevel::Level1);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<ConcatSliceElimination>(), TransformerLevel::Level1);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
   ASSERT_TRUE(ret.IsOK());
 
+  Model::Save(*p_model, "concat_slice_transformed.onnx");
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Concat"] == 0);
   ASSERT_TRUE(op_to_count["Slice"] == 0);

@@ -7,7 +7,7 @@
 #include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/cast_elimination.h"
 #include "core/optimizer/computation_reduction.h"
-#include "core/optimizer/concat_slice_fusion.h"
+#include "core/optimizer/concat_slice_elimination.h"
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/conv_activation_fusion.h"
 #include "core/optimizer/conv_add_fusion.h"
@@ -97,7 +97,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       }
       transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(execution_provider, weights_to_train, compatible_eps));
       transformers.emplace_back(onnxruntime::make_unique<ReshapeFusion>(compatible_eps));
-      transformers.emplace_back(onnxruntime::make_unique<ConcatSliceFusion>(compatible_eps));
+      transformers.emplace_back(onnxruntime::make_unique<ConcatSliceElimination>(compatible_eps));
       auto horizontal_parallel_size = training::DistributedRunContext::GroupSize(training::WorkerGroupType::HorizontalParallel);
       if (horizontal_parallel_size > 1) {
         LOGS_DEFAULT(WARNING) << horizontal_parallel_size << "-way horizontal model parallel is enabled";

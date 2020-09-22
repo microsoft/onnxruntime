@@ -3,14 +3,14 @@
 
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
-#include "core/optimizer/concat_slice_fusion.h"
+#include "core/optimizer/concat_slice_elimination.h"
 #include "core/optimizer/utils.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
 
-Status ConcatSliceFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
+Status ConcatSliceElimination::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -28,7 +28,7 @@ Status ConcatSliceFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       continue;
     }
 
-    if (ConcatSliceFusion::Fuse_Subgraph(concat, graph, logger)) {
+    if (ConcatSliceElimination::Fuse_Subgraph(concat, graph, logger)) {
       fused_count++;
       LOGS(logger, INFO) << "Fused concat node: " << concat.OutputDefs()[0]->Name();
       modified = true;
@@ -143,44 +143,30 @@ static bool GetSliceInfo(const Graph& graph,
 }
 
 /**
-Apply Reshape Fusion. The following are subgraphs before and after fusion:
-(a[] and b[] are int64[] constant initializers; Concat may have any number of arguments,
-each of which is a constant initializer or a Shape->Gather->Unsqueeze chain with the
-index corresponding to the index of the argument, or a custom subgraph in which nodes
-have only one output edge. Note the resulting shape value should contain no more than one
-value of -1.
+Apply Concat Slice Elimination transform. This transform removes the redundant
+Concat + Slice pattern in the application of the attention bias.
 
-Before fusion:
-   [Sub-graph    Root]
-    |        /                  \
-    |    Shape                   Shape
-    |       |                      |
-    |    Gather(indices=0)  a[]   Gather(indices=2)  b[] or subgraph
-    |       \              /             /             /
-    |   Unsqueeze         /        Unsqueeze          /
-    |         \          /  ___________/             /
-    |          \        /  / _______________________/
-    |           \      /  / /
-     \            Concat
-      \          /
-         Reshape
+Before transform:
+q_bias              -- >Slice [0, q] ---> Add_q  
+      \            | 
+k_bias-- Concat --> -->Slice [q, q+k]---> Add_k
+      /            | 
+v_bias              -->Slice [q+k, :]---> Add_v
 
-After fusion:
-    [Sub-graph Root]   (Constant Initializer)
-                  \         [0, a, 0, b]
-                   \        /
-                    Reshape
+After transform:
+q_bias ---> Add_q  
+      
+k_bias ---> Add_k
+
+v_bias ---> Add_v
+
 */
-bool ConcatSliceFusion::Fuse_Subgraph(Node& concat, Graph& graph, const logging::Logger& logger) {
+bool ConcatSliceElimination::Fuse_Subgraph(Node& concat, Graph& graph, const logging::Logger& logger) {
   // The root could be either a graph input or a node so use node arg to compare.
-  // std::vector<NodeArg*>& concat_inputs = concat.MutableInputDefs();
-  NodeArg& q_bias = *(concat.MutableInputDefs()[0]);
-  NodeArg& k_bias = *(concat.MutableInputDefs()[1]);
-  NodeArg& v_bias = *(concat.MutableInputDefs()[2]);
-  // std::vector<const NodeArg&> ordered_bias = ;
-  // ordered_bias.push_back(q_bias);
-  // ordered_bias.push_back(k_bias);
-  // ordered_bias.push_back(v_bias);
+  std::vector<NodeArg*>& concat_inputs = concat.MutableInputDefs();
+  NodeArg& q_bias = *(concat_inputs[0]);
+  NodeArg& k_bias = *(concat_inputs[1]);
+  NodeArg& v_bias = *(concat_inputs[2]);
 
   bool is_valid = graph_utils::IsInitializer(graph, q_bias.Name(), true) &&
                   graph_utils::IsInitializer(graph, k_bias.Name(), true) &&
@@ -202,7 +188,6 @@ bool ConcatSliceFusion::Fuse_Subgraph(Node& concat, Graph& graph, const logging:
   int64_t q_bias_len, k_bias_len;
   q_bias_len = get_initializer_size(q_bias.Name());
   k_bias_len = get_initializer_size(k_bias.Name());
-  // v_bias_len = get_initializer_size(v_bias.Name());
 
   std::vector<onnxruntime::Node*> node_consumers = graph.GetMutableConsumerNodes(concat.MutableOutputDefs()[0]->Name());
   if (node_consumers.size() != 3) return false;
@@ -232,13 +217,7 @@ bool ConcatSliceFusion::Fuse_Subgraph(Node& concat, Graph& graph, const logging:
       return false;
     }
     graph_utils::RemoveNodeOutputEdges(graph, *slice_node);
-    if (replace_cnt == 0){
-      graph_utils::ReplaceNodeInput(add_node, 1, q_bias);
-    } else if (replace_cnt == 1){
-      graph_utils::ReplaceNodeInput(add_node, 1, k_bias);
-    } else if (replace_cnt == 2){
-      graph_utils::ReplaceNodeInput(add_node, 1, v_bias);
-    }      
+    graph_utils::ReplaceNodeInput(add_node, 1, *(concat_inputs[replace_cnt]));
     replace_cnt++;
   }
   if (replace_cnt == 3) {
