@@ -756,7 +756,7 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node) {
   std::queue<NodeIndex> q;
   std::unordered_set<NodeIndex> removed_nodes;
 
-  NodeIndex start_node_index = start_node.Index()
+  NodeIndex start_node_index = start_node.Index();
   q.push(start_node_index);
 
   // From the current node, remove nodes bottom-up util it reaches a node with multiple outputs/graph output.
@@ -794,7 +794,6 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node) {
       graph.RemoveNode(cur_node_index);
 
       removed_nodes.insert(cur_node_index);
-      is_start_node = false;
     }
   }
 
