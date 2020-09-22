@@ -171,7 +171,7 @@ TEST(FusedMatMulOpTest, FloatTypeNoTranspose) {
 
 #ifdef USE_CUDA  // double support only implemented in CUDA kernel
 TEST(TransposeMatMulOpTest, DoubleTypeNoTranspose) {
-  RunTransposeMatMulTest<double>("TransposeMatMul", 1);
+  RunFusedMatMulTest<double>("TransposeMatMul", 1);
 }
 
 TEST(FusedMatMulOpTest, DoubleTypeNoTranspose) {
