@@ -585,8 +585,8 @@ const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCudaToHostMemCpy
  *
  * (note: currently only cuda EP supports this feature and rest of EPs use default options)
  */
-static void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::string>& provider_types,
-                                       ProviderOptionsMap& provider_options_map) {
+void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::string>& provider_types,
+                                ProviderOptionsMap& provider_options_map) {
   PYBIND_UNREFERENCED_PARAMETER(provider_options_map);
 
   for (const std::string& type : provider_types) {
@@ -1013,7 +1013,6 @@ void addObjectMethods(py::module& m, Environment& env) {
       .def_static("default_memory", []() { return OrtDevice::MemType::DEFAULT; });
 
   py::class_<OrtValue> ortvalue_binding(m, "OrtValue");
-  // TODO: Expose more metadata methods to query the type, shape, device of an OrtValue
   ortvalue_binding
       // Factory method to create an OrtValue (Tensor) from the given Numpy object
       // The Tensor allocates and manages its own memory (on the specified device) and copies data from the Numpy data buffer
