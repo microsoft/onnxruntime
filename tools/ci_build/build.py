@@ -1546,7 +1546,10 @@ def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
             cmd_args += ['-T', 'host=x64']
     elif is_macOS():
         if args.use_xcode:
-            cmd_args += ['-G', 'Xcode']
+            cmd_args += [
+                '-G', 'Xcode',
+                '-DCMAKE_OSX_ARCHITECTURES=x86_64'
+            ]
 
     run_subprocess(cmd_args, cwd=protoc_build_dir)
     # Build step
