@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <ProjectName>Microsoft.AI.MachineLearning.Interop</ProjectName>
-    <TargetFramework>net5.0</TargetFramework>
+    <TargetFramework>netstandard2.0</TargetFramework>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     
     <Platform>Any CPU</Platform>
@@ -12,7 +12,7 @@
     <BuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</BuildOutputDir>
     <WindowsAIInteropOutputDir>$(BuildOutputDir)\Microsoft.AI.MachineLearning.Interop</WindowsAIInteropOutputDir>
     <OutputPath>$(WindowsAIInteropOutputDir)</OutputPath>
-    <LangVersion>9.0</LangVersion>
+    <LangVersion>7.3</LangVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -34,7 +34,7 @@
     </ItemGroup>
 
     <PropertyGroup>
-      <CsWinRTCommand>$(CsWinRTPath)cswinrt.exe -verbose -in local -in @(WindowsAIsWinMDs->'"%(FullPath)"', ' ') -out "$(ProjectDir)Generated Files" -include Microsoft.AI.MachineLearning</CsWinRTCommand>
+      <CsWinRTCommand>$(CsWinRTPath)cswinrt.exe -verbose -in local -in @(WindowsAIsWinMDs->'"%(FullPath)"', ' ') -out "$(ProjectDir)Generated Files" -include Microsoft.AI.MachineLearning -target netstandard2.0</CsWinRTCommand>
     </PropertyGroup>
 
     <Message Text="Generating $(ProjectName) CS projection sources with command:" />
