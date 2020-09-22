@@ -15,9 +15,17 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Concat,
                                   Concat);
 
 // opset 11 explicitly support negative axis
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Concat,
+                                  kOnnxDomain,
+                                  11, 12,
+                                  kHipExecutionProvider,
+                                  KernelDefBuilder()
+                                      .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+                                  Concat);
+
 ONNX_OPERATOR_KERNEL_EX(Concat,
                         kOnnxDomain,
-                        11,
+                        13,
                         kHipExecutionProvider,
                         KernelDefBuilder()
                             .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),

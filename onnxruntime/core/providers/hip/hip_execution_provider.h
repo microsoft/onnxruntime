@@ -52,9 +52,6 @@ class HIPExecutionProvider : public IExecutionProvider {
   miopenHandle_t PerThreadMiopenHandle() {
     return GetPerThreadContext().MiopenHandle();
   }
-  hiprandGenerator_t PerThreadHiprandGenerator() {
-    return GetPerThreadContext().HiprandGenerator();
-  }
 
   template <typename T>
   const T* GetConstOnes(size_t count) {
@@ -109,10 +106,6 @@ class HIPExecutionProvider : public IExecutionProvider {
       return miopen_handle_;
     }
 
-    hiprandGenerator_t HiprandGenerator() const {
-      return hiprand_generator_;
-    }
-
     hipEvent_t& GetCurrentDeferredReleaseEvent() {
       return current_deferred_release_event_;
     }
@@ -146,7 +139,6 @@ class HIPExecutionProvider : public IExecutionProvider {
    private:
     hipblasHandle_t hipblas_handle_ = nullptr;
     miopenHandle_t miopen_handle_ = nullptr;
-    hiprandGenerator_t hiprand_generator_ = nullptr;
 
     // deferred release for temporary CPU pinned memory used in hipMemcpyAsync
     // note that hipEvent will be assigned at OnRunEnd() when PerThreadContext destory

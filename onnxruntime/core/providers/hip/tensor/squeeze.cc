@@ -17,10 +17,20 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Squeeze);
 
 // explicit support for negative axis.
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Squeeze,
+    kOnnxDomain,
+    11, 12,
+    kHipExecutionProvider,
+    KernelDefBuilder()
+        .Alias(0, 0)
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+    Squeeze);
+
 ONNX_OPERATOR_KERNEL_EX(
     Squeeze,
     kOnnxDomain,
-    11,
+    13,
     kHipExecutionProvider,
     KernelDefBuilder()
         .Alias(0, 0)

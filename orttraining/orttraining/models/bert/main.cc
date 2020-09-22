@@ -572,8 +572,10 @@ void setup_training_params(BertParameters& params) {
 #endif
 
 #ifdef USE_HIP
-  OrtDevice::DeviceId device_id = static_cast<OrtDevice::DeviceId>(params.mpi_context.local_rank);
+  OrtDevice::DeviceId device_id = static_cast<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
   size_t hip_mem_limit = std::numeric_limits<size_t>::max();
+  // if (params.cuda_mem_limit_in_gb > 0)
+  //   hip_mem_limit = static_cast<size_t>(params.cuda_mem_limit_in_gb * 1024 * 1024 * 1024);
   params.providers.emplace(kHipExecutionProvider, CreateExecutionProviderFactory_HIP(device_id, hip_mem_limit));
   params.input_allocator = std::make_shared<HIPPinnedAllocator>(device_id, CUDA_PINNED);
 #endif

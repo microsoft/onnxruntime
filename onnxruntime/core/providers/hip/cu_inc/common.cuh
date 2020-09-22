@@ -123,7 +123,8 @@ __device__ __inline__ half2 _Tanh(half2 a) {
 // Capture permutations of int32/64/float/double
 template <typename T, typename T1>
 __device__ __inline__ T _Pow(T a, T1 b) {
-  return static_cast<T>(pow(static_cast<double>(a), static_cast<double>(b)));
+  // TODO: error: no matching conversion for static_cast from '__half' to 'double'
+  // return static_cast<T>(pow(static_cast<double>(a), static_cast<double>(b)));
 }
 
 template <>

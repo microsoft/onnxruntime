@@ -32,6 +32,7 @@ Status SoftMaxComputeHelper(
   }
 
   std::vector<int64_t> dims({N, 1, 1, D});  // miopen expects 4D shape in NCHW format
+
   const auto alpha = Consts<HipT>::One;
   const auto beta = Consts<HipT>::Zero;
   MiopenTensor input_tensor;
@@ -43,6 +44,7 @@ Status SoftMaxComputeHelper(
   } else {
     MIOPEN_RETURN_IF_ERROR(miopenSoftmaxForward_V2(handle, &alpha, input_tensor, X_data, &beta, output_tensor, Y_data, MIOPEN_SOFTMAX_ACCURATE, MIOPEN_SOFTMAX_MODE_INSTANCE));
   }
+
   return Status::OK();
 }
 
@@ -63,10 +65,42 @@ SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16)
       kHipExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Softmax<T>);                                                              \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
+      Softmax,                                                                  \
+      kOnnxDomain,                                                              \
+      11, 12,                                                                    \
+      T,                                                                        \
+      kHipExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Softmax<T>);                                                              \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       Softmax,                                                                  \
       kOnnxDomain,                                                              \
-      11,                                                                       \
+      13,                                                                       \
+      T,                                                                        \
+      kHipExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Softmax<T>);                                                              \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
+      LogSoftmax,                                                               \
+      kOnnxDomain,                                                              \
+      1, 10,                                                                    \
+      T,                                                                        \
+      kHipExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Softmax<T>);                                                              \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
+      LogSoftmax,                                                               \
+      kOnnxDomain,                                                              \
+      11, 12,                                                                    \
+      T,                                                                        \
+      kHipExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Softmax<T>);                                                              \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
+      LogSoftmax,                                                               \
+      kOnnxDomain,                                                              \
+      13,                                                                       \
       T,                                                                        \
       kHipExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
@@ -82,7 +116,12 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (input_shape.Size() == 0)
     return Status::OK();
 
-  return SoftMaxComputeHelper<T, false>(X_data, input_shape, Y_data, MiopenHandle(), axis_);
+  if (log_softmax_) {
+    return SoftMaxComputeHelper<T, true>(X_data, input_shape, Y_data, MiopenHandle(), axis_);
+  }
+  else {
+    return SoftMaxComputeHelper<T, false>(X_data, input_shape, Y_data, MiopenHandle(), axis_);
+  }
 }
 
 #define SPECIALIZED_COMPUTE(T) \

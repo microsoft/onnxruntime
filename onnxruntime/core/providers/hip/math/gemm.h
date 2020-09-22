@@ -7,7 +7,6 @@
 
 namespace onnxruntime {
 namespace hip {
-
 template <typename T>
 class Gemm final : public HipKernel {
   using Base = HipKernel;
@@ -33,6 +32,5 @@ class Gemm final : public HipKernel {
   float alpha_;
   float beta_;
 };
-
 }  // namespace hip
 }  // namespace onnxruntime

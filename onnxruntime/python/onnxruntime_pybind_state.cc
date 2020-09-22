@@ -142,6 +142,8 @@ struct OrtStatus {
 #include "core/providers/cuda/cuda_provider_options.h"
 #elif USE_HIP
 #include "core/providers/hip/hip_provider_factory.h"
+// #include "core/providers/hip/shared_inc/hip_call.h"
+// #include "core/providers/hip/hip_provider_options.h"
 #endif
 OrtDevice::DeviceId cuda_device_id = 0;
 size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
@@ -519,6 +521,114 @@ void UpdateCudaProviderOptions(InferenceSession* sess, onnxruntime::CudaProvider
 }
 #endif
 
+#if 0 //def USE_HIP
+
+/*
+ * Validate a string that is positive integer or zero.
+ *
+ * (-1234, 43.21, +43.21 ... are not valid,
+ *  1234, +4321, 12 ... are valid)
+ */
+bool IsPositiveInteger(const std::string& s) {
+  if (s.length() == 0) {
+    return false;
+  }
+
+  for (size_t i = 0; i < s.length(); i++) {
+    if (i == 0 && s[i] == '+' && s.length() > 1) {
+      continue;
+    }
+
+    if (!isdigit(s[i])) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool IsHipDeviceIdValid(InferenceSession* sess, int id) {
+  int num_devices = 0;
+  HIP_CALL_THROW(hipGetDeviceCount(&num_devices));
+
+  if (0 == num_devices) {
+    LOGS(*(sess->GetLogger()), WARNING) << "your system does not have a HIP capable device.";
+    return false;
+  }
+
+  if (id < 0 || id >= num_devices) {
+    LOGS(*(sess->GetLogger()), WARNING) << "hip_device=" << id << " is invalid, must choose device ID between 0 and " << num_devices - 1;
+    return false;
+  }
+
+  return true;
+}
+
+void UpdateHipProviderOptions(InferenceSession* sess, onnxruntime::HipProviderOptions& options,
+                               std::unordered_map<std::string, std::string> options_map) {
+  std::unordered_map<std::string, std::string>::iterator it;
+
+  it = options_map.find("device_id");
+  if (it != options_map.end()) {
+    OrtDevice::DeviceId device_id;
+    try {
+      int id = std::stoi(it->second);
+      device_id = static_cast<int8_t>(id);
+    } catch (...) {
+      throw std::runtime_error("Please provide device id with integer.");
+    }
+
+    if (!IsHipDeviceIdValid(sess, device_id)) {
+      throw std::runtime_error("Please provide available device id.");
+    }
+    options.device_id = device_id;
+    LOGS(*(sess->GetLogger()), INFO) << "hip device id is set to " << device_id;
+  }
+
+  it = options_map.find("hip_mem_limit");
+  if (it != options_map.end()) {
+    // The reason to check whether the string is positive integer upfront is that
+    // when calling stoull(), if the minus sign was part of the input sequence,
+    // the numeric value calculated from the sequence of digits is negated.
+    // In other words, it will cause wraparound.
+    // So, we rule out negative integer string beforehand.
+    if (!IsPositiveInteger(it->second)) {
+      throw std::runtime_error("Please provide hip memory limitation size with positive integer.");
+    }
+
+    size_t size;
+    try {
+#if (defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__))
+      size = std::stoull(it->second, nullptr, 0);
+#else
+      size = std::stoul(it->second, nullptr, 0);
+#endif
+    } catch (...) {
+      throw std::runtime_error("Please provide hip memory limitation size with positive integer and within range.");
+    }
+
+    options.hip_mem_limit = size;
+    LOGS(*(sess->GetLogger()), INFO) << "hip memory limitation is set to " << size;
+  }
+
+  it = options_map.find("arena_extend_strategy");
+  if (it != options_map.end()) {
+    onnxruntime::ArenaExtendStrategy strategy;
+
+    if (it->second.compare("kNextPowerOfTwo") == 0) {
+      strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
+    } else if (it->second.compare("kSameAsRequested") == 0) {
+      strategy = onnxruntime::ArenaExtendStrategy::kSameAsRequested;
+    } else {
+      throw std::runtime_error("Please provide proper hip arena extend strategy.");
+    }
+
+    options.arena_extend_strategy = strategy;
+    LOGS(*(sess->GetLogger()), INFO) << "hip arean extend strategy is set to " << it->second;
+  }
+}
+#endif
+
 /*
  * Register execution provider with options.
  *
@@ -563,13 +673,13 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
 #ifdef USE_HIP
     auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
-      onnxruntime::CudaProviderOptions cuda_provider_options;
-      UpdateCudaProviderOptions(sess, cuda_provider_options, it->second);
+      // onnxruntime::HipProviderOptions cuda_provider_options;
+      // UpdateHipProviderOptions(sess, cuda_provider_options, it->second);
 
-      RegisterExecutionProvider(
-          sess, *onnxruntime::CreateExecutionProviderFactory_HIP(cuda_provider_options.device_id,
-                                                                  cuda_provider_options.cuda_mem_limit,
-                                                                  cuda_provider_options.arena_extend_strategy));
+      // RegisterExecutionProvider(
+      //     sess, *onnxruntime::CreateExecutionProviderFactory_HIP(cuda_provider_options.device_id,
+      //                                                             cuda_provider_options.hip_mem_limit,
+      //                                                             cuda_provider_options.arena_extend_strategy));
     } else {
       RegisterExecutionProvider(
           sess, *onnxruntime::CreateExecutionProviderFactory_HIP(cuda_device_id,

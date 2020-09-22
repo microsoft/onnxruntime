@@ -73,13 +73,15 @@ Status SoftmaxCrossEntropy<T>::ComputeInternal(OpKernelContext* ctx) const {
   std::vector<int64_t> output_dims(2, 1);
   Tensor* Y = ctx->Output(0, TensorShape({}));
   // Sum((label * log(softmax)) using Reduction
-  return ReduceKernelShared<T, T>(
+  ReduceKernelShared<T, T>(
       temp_X.get(),
       logit_reshape,
       Y->template MutableData<T>(),
       TensorShape({}),
       MIOPEN_REDUCE_TENSOR_ADD,
       output_dims);
+
+  return Status::OK();
 }
 
 template <typename T>
@@ -209,13 +211,15 @@ Status SparseSoftmaxCrossEntropy<T, Tin>::ComputeInternal(OpKernelContext* ctx) 
 
   // ReduceSum on loss_per_sample
   // std::vector<int64_t> output_dims(1, 1);
-  // return ReduceKernelShared<T, T>(
+  // ReduceKernelShared<T, T>(
   //     tmp_loss_sample.get(),
   //     label_reshape,
   //     total_loss_data,
   //     TensorShape({}),
   //     MIOPEN_REDUCE_TENSOR_ADD,
   //     output_dims);
+
+  // return Status::OK();
 }
 
 template <typename T, typename Tin>

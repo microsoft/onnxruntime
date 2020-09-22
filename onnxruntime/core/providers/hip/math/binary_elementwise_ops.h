@@ -14,7 +14,7 @@ struct BinaryElementwisePreparation {
   const Tensor* lhs_tensor = nullptr;
   const Tensor* rhs_tensor = nullptr;
   Tensor* output_tensor = nullptr;
-  int32_t output_rank_or_simple_broadcast = 0; // for no_broadcast|left_scalar|right_scalar cases, output_rank uses SimpleBroadcast enums
+  int32_t output_rank_or_simple_broadcast = 0;  // for no_broadcast|left_scalar|right_scalar cases, output_rank uses SimpleBroadcast enums
 
   HipKernel::HipAsyncBuffer<int64_t> lhs_padded_strides;  // for lhs shape == output shape, this is nullptr
   HipKernel::HipAsyncBuffer<int64_t> rhs_padded_strides;  // for rhs shape == output shape, this is nullptr
@@ -25,8 +25,8 @@ struct BinaryElementwisePreparation {
   fast_divmod fdm_C;
 
   BinaryElementwisePreparation(const HipKernel* op_kernel) : lhs_padded_strides(op_kernel),
-                                                              rhs_padded_strides(op_kernel),
-                                                              fdm_output_strides(op_kernel) {}
+                                                             rhs_padded_strides(op_kernel),
+                                                             fdm_output_strides(op_kernel) {}
 
   Status CopyToGpu() {
     ORT_RETURN_IF_ERROR(lhs_padded_strides.CopyToGpu());
@@ -51,8 +51,8 @@ struct BinaryElementwisePreparation {
     // early return if one operand is scalar
     if (lhs_shape.Size() == 1 || rhs_shape.Size() == 1) {
       output_rank_or_simple_broadcast = static_cast<int32_t>(lhs_shape.Size() == 1
-                                                                ? SimpleBroadcast::LeftScalar
-                                                                : SimpleBroadcast::RightScalar);
+                                                                 ? SimpleBroadcast::LeftScalar
+                                                                 : SimpleBroadcast::RightScalar);
       return Status::OK();
     }
 
@@ -82,36 +82,6 @@ struct BinaryElementwisePreparation {
     }
 
     output_rank_or_simple_broadcast = out_rank;
-
-    // if (lhs_shape != output_shape) {
-    //   TensorPitches original_lhs_padded_strides(lhs_shape.GetDims(), out_rank);
-    //   lhs_padded_strides.size_ = gsl::narrow_cast<int32_t>(out_rank);
-    //   auto offset = out_rank - lhs_rank;
-    //   for (auto i = offset; i < out_rank; ++i) {
-    //     // the stride for broadcast dimension is kept as 0
-    //     if (lhs_shape.GetDims()[i - offset] != 1) {
-    //       lhs_padded_strides[i] = original_lhs_padded_strides[i];
-    //     }
-    //   }
-    // }
-
-    // if (rhs_shape != output_shape) {
-    //   TensorPitches original_rhs_padded_strides(rhs_shape.GetDims(), out_rank);
-    //   rhs_padded_strides.size_ = gsl::narrow_cast<int32_t>(out_rank);
-    //   auto offset = out_rank - rhs_rank;
-    //   for (auto i = offset; i < out_rank; ++i) {
-    //     // the stride for broadcast dimension is kept as 0
-    //     if (rhs_shape.GetDims()[i - offset] != 1) {
-    //       rhs_padded_strides[i] = original_rhs_padded_strides[i];
-    //     }
-    //   }
-    // }
-
-    // TensorPitches original_output_strides(output_shape.GetDims());
-    // fdm_output_strides.size_ = gsl::narrow_cast<int32_t>(out_rank);
-    // for (auto i = 0; i < out_rank; ++i) {
-    //   fdm_output_strides[i] = fast_divmod(gsl::narrow_cast<int>(original_output_strides[i]));
-    // }
 
     if (lhs_shape != output_shape) {
       TensorPitches original_lhs_padded_strides(lhs_shape.GetDims(), out_rank);
@@ -267,7 +237,7 @@ class CompareFunction : public BinaryElementwise<ShouldBroadcast> {
                               const fast_divmod* fdm_output_strides,
                               const fast_divmod& fdm_H,
                               const fast_divmod& fdm_C,
-                              HipT* output_data,
+                              bool* output_data,
                               size_t count);
 
   Status CompareMethod(OpKernelContext* context, ImplCompare Impl_Compare) const;

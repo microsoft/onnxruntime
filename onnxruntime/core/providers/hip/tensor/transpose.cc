@@ -9,9 +9,17 @@
 namespace onnxruntime {
 namespace hip {
 
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Transpose,
+                        kOnnxDomain,
+                        1, 12,
+                        kHipExecutionProvider,
+                        KernelDefBuilder()
+                            .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+                        Transpose);
+
 ONNX_OPERATOR_KERNEL_EX(Transpose,
                         kOnnxDomain,
-                        1,
+                        13,
                         kHipExecutionProvider,
                         KernelDefBuilder()
                             .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),

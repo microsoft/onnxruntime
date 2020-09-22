@@ -78,15 +78,28 @@ __global__ void softmax_warp_backward(output_t* gradInput, const input_t* grad, 
   }
 
   acc_t sum[WARP_BATCH];
-#pragma unroll
-  for (int i = 0; i < WARP_BATCH; ++i) {
-    sum[i] = grad_output_reg[i][0];
-#pragma unroll
-    for (int it = 1; it < WARP_ITERATIONS; ++it) {
-      sum[i] += grad_output_reg[i][it];
+  if (!is_log_softmax) {
+    #pragma unroll
+    for (int i = 0; i < WARP_BATCH; ++i) {
+      sum[i] = grad_output_reg[i][0];
+      #pragma unroll
+      for (int it = 1; it < WARP_ITERATIONS; ++it) {
+        sum[i] += grad_output_reg[i][it];
+      }
     }
+    warp_reduce<acc_t, WARP_BATCH, WARP_SIZE, Add>(sum);
   }
-  warp_reduce<acc_t, WARP_BATCH, WARP_SIZE, Add>(sum);
+  else {
+    #pragma unroll
+    for (int i = 0; i < WARP_BATCH; ++i) {
+      sum[i] = grad_reg[i][0];
+      #pragma unroll
+      for (int it = 1; it < WARP_ITERATIONS; ++it) {
+        sum[i] += grad_reg[i][it];
+      }
+    }
+    warp_reduce<acc_t, WARP_BATCH, WARP_SIZE, Add>(sum);
+  }
 
 // store result
 #pragma unroll
@@ -171,7 +184,8 @@ void dispatch_softmax_backward(output_t* grad_input, const input_t* grad, const 
 }
 
 #define SPECIALIZED_SOFTMAX_GRAD_IMPL(input_t, output_t, acc_t) \
-template void dispatch_softmax_backward<input_t, output_t, acc_t, false>(input_t * grad_input, const output_t* grad, const output_t* output, int softmax_elements, int softmax_elements_stride, int batch_count);
+template void dispatch_softmax_backward<input_t, output_t, acc_t, false>(input_t * grad_input, const output_t* grad, const output_t* output, int softmax_elements, int softmax_elements_stride, int batch_count); \
+template void dispatch_softmax_backward<input_t, output_t, acc_t, true>(input_t * grad_input, const output_t* grad, const output_t* output, int softmax_elements, int softmax_elements_stride, int batch_count);
 
 SPECIALIZED_SOFTMAX_GRAD_IMPL(float, float, float)
 SPECIALIZED_SOFTMAX_GRAD_IMPL(half, half, float)

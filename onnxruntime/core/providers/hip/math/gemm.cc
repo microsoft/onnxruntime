@@ -3,6 +3,7 @@
 
 #include "gemm.h"
 #include "core/providers/cpu/math/gemm_helper.h"
+#include "core/providers/hip/hip_common.h"
 #include "core/providers/hip/shared_inc/fpgeneric.h"
 
 namespace onnxruntime {
@@ -29,10 +30,20 @@ namespace hip {
       KernelDefBuilder()                                          \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Gemm<T>);                                                   \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       Gemm,                                                       \
       kOnnxDomain,                                                \
       11,                                                         \
+      12,                                                         \
+      T,                                                          \
+      kHipExecutionProvider,                                     \
+      KernelDefBuilder()                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Gemm<T>);                                                   \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      Gemm,                                                       \
+      kOnnxDomain,                                                \
+      13,                                                         \
       T,                                                          \
       kHipExecutionProvider,                                     \
       KernelDefBuilder()                                          \
@@ -59,7 +70,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
   int M = gsl::narrow_cast<int>(helper.M());
   int N = gsl::narrow_cast<int>(helper.N());
   int K = gsl::narrow_cast<int>(helper.K());
-  auto* Y = ctx->Output(0, TensorShape(std::vector<int64_t>{M, N}));
+  auto* Y = ctx->Output(0, {M, N});
   HipT* out_data = reinterpret_cast<HipT*>(Y->template MutableData<T>());
 
   HipT one = ToHipType<T>::FromFloat(1.0f);
@@ -69,7 +80,6 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (beta_ != 0 && B != nullptr) {
     auto& b_shape = B->Shape();
     const HipT* b_data = reinterpret_cast<const HipT*>(B->template Data<T>());
-
     if (b_shape.Size() == 1) {
       // if B is (), (1,) or (1, 1), broadcast the scalar
       HIPBLAS_RETURN_IF_ERROR(hipblasCopyHelper(

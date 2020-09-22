@@ -23,7 +23,7 @@ namespace hip {
   template <>                                                                                                    \
   Status x<T>::ComputeInternal(OpKernelContext* context) const {                                                 \
     BinaryElementwisePreparation prepare(this);                                                                  \
-    Prepare(context, &prepare);                                                                                  \
+    ORT_RETURN_IF_ERROR(Prepare(context, &prepare));                                                             \
     HipAsyncBuffer<Ctx##x> func_ctx(this, MakeFuncCtx(), 1);                                                    \
     if (!std::is_same<CtxNull, Ctx##x>::value) ORT_RETURN_IF_ERROR(func_ctx.CopyToGpu());                        \
     Impl_##x<typename ToHipType<T>::MappedType>(                                                                \
@@ -45,6 +45,7 @@ namespace hip {
 
 ACTIVATION_GRAD_OP_HFD(GeluGrad, 1, kMSDomain);
 ACTIVATION_GRAD_OP_HFD(FastGeluGrad, 1, kMSDomain);
+ACTIVATION_GRAD_OP_HFD(ReluGrad, 1, kMSDomain);
 
 }  //namespace hip
 }  // namespace onnxruntime

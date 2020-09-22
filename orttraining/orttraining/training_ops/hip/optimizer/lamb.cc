@@ -18,9 +18,9 @@ std::vector<std::pair<int, int>> GenerateLambExtraAliasMapping() {
   constexpr int output_index_bias = 1;
   // Count of extra I/O groups. One group corresponds to a weight update.
   constexpr int group_count = 1024;
-  // length of [w, g, m1, m2, w_fp16].
+  // length of [w, g, m1, m2, w_mixed_precision].
   constexpr int input_stride = 5;
-  // length of [w_new, g_new, m1_new, m2_new, w_fp16_new].
+  // length of [w_new, g_new, m1_new, m2_new, w_mixed_precision_new].
   constexpr int output_stride = 5;
 
   std::vector<std::pair<int, int>> alias_pairs{};
@@ -35,7 +35,7 @@ std::vector<std::pair<int, int>> GenerateLambExtraAliasMapping() {
     alias_pairs.emplace_back(std::make_pair(input + 2, output + 2));
     // m2 --> m2_new
     alias_pairs.emplace_back(std::make_pair(input + 3, output + 3));
-    // w_fp16 --> w_fp16_new
+    // w_mixed_precision --> w_mixed_precision_new
     alias_pairs.emplace_back(std::make_pair(input + 4, output + 4));
   }
 
@@ -46,46 +46,46 @@ std::vector<std::pair<int, int>> GenerateLambExtraAliasMapping() {
 }
 
 // TODO: Once Schema is checked in to onnx lets fix this to match that
-#define REGISTER_LAMB_KERNEL_TYPED(T1, T2, T3, T4, T_GRAD_NORM)                       \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                      \
-      LambOptimizer,                                                                  \
-      kMSDomain,                                                                    \
-      1,                                                                              \
-      T1##_##T2##_##T3##_##T4##_##T_GRAD_NORM,                                        \
-      kHipExecutionProvider,                                                         \
-      KernelDefBuilder()                                                              \
-          .Alias(GenerateLambExtraAliasMapping())                                     \
-          .InputMemoryType<OrtMemTypeCPUInput>(0)  /* Keep do_update in CPU */        \
-          .InputMemoryType<OrtMemTypeCPUInput>(4)  /* Keep iteration_count in CPU */  \
-          .OutputMemoryType<OrtMemTypeCPUOutput>(0)  /* Keep iteration_count in CPU */ \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())                    \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())                    \
-          .TypeConstraint("T3", DataTypeImpl::GetTensorType<T3>())                    \
-          .TypeConstraint("T4", DataTypeImpl::GetTensorType<T4>())                    \
-          .TypeConstraint("T_FP16", DataTypeImpl::GetTensorType<MLFloat16>())         \
-          .TypeConstraint("T_GRAD_NORM", DataTypeImpl::GetTensorType<T_GRAD_NORM>()), \
-      LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>);
+#define REGISTER_LAMB_KERNEL_TYPED(T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP)                   \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                        \
+      LambOptimizer,                                                                                    \
+      kMSDomain,                                                                                        \
+      1,                                                                                                \
+      T1##_##T2##_##T3##_##T4##_##T_GRAD_NORM##_##T_MIXED_PRECISION_FP,                                 \
+      kHipExecutionProvider,                                                                           \
+      KernelDefBuilder()                                                                                \
+          .Alias(GenerateLambExtraAliasMapping())                                                       \
+          .InputMemoryType<OrtMemTypeCPUInput>(0)  /* Keep do_update in CPU */                          \
+          .InputMemoryType<OrtMemTypeCPUInput>(4)  /* Keep iteration_count in CPU */                    \
+          .OutputMemoryType<OrtMemTypeCPUOutput>(0)  /* Keep iteration_count in CPU */                  \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())                                      \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())                                      \
+          .TypeConstraint("T3", DataTypeImpl::GetTensorType<T3>())                                      \
+          .TypeConstraint("T4", DataTypeImpl::GetTensorType<T4>())                                      \
+          .TypeConstraint("T_MIXED_PRECISION_FP", DataTypeImpl::GetTensorType<T_MIXED_PRECISION_FP>())  \
+          .TypeConstraint("T_GRAD_NORM", DataTypeImpl::GetTensorType<T_GRAD_NORM>()),                   \
+      LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>);
 
-REGISTER_LAMB_KERNEL_TYPED(float, float, MLFloat16, float, MLFloat16)
-REGISTER_LAMB_KERNEL_TYPED(float, float, MLFloat16, float, float)
-REGISTER_LAMB_KERNEL_TYPED(float, float, float, float, float)
-REGISTER_LAMB_KERNEL_TYPED(double, double, double, double, double)
-// REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, MLFloat16, MLFloat16)
-// REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, MLFloat16, float)
-REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, float, MLFloat16)
-REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, float, float)
+REGISTER_LAMB_KERNEL_TYPED(float, float, MLFloat16, float, MLFloat16, MLFloat16)
+REGISTER_LAMB_KERNEL_TYPED(float, float, MLFloat16, float, float, MLFloat16)
+REGISTER_LAMB_KERNEL_TYPED(float, float, float, float, float, MLFloat16)
+REGISTER_LAMB_KERNEL_TYPED(double, double, double, double, double, MLFloat16)
+// REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, MLFloat16, MLFloat16, MLFloat16)
+// REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, MLFloat16, float, MLFloat16)
+REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, float, MLFloat16, MLFloat16)
+REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, float, float, MLFloat16)
 
 void check_inputs_and_outputs(
     const Tensor* w,
     const Tensor* g,
     const Tensor* m1,
     const Tensor* m2,
-    const Tensor* w_fp16,
+    const Tensor* w_mixed_precision,
     const Tensor* w_new,
     const Tensor* g_new,
     const Tensor* m1_new,
     const Tensor* m2_new,
-    const Tensor* w_fp16_new) {
+    const Tensor* w_mixed_precision_new) {
   // Throw if we have incomplete input or output lists.
   ORT_ENFORCE(w, "Weight tensor should not be null.");
   ORT_ENFORCE(g, "gradient tensor should not be null.");
@@ -100,11 +100,11 @@ void check_inputs_and_outputs(
     ORT_ENFORCE(w->Shape() == w_new->Shape());
   if (g_new)
     ORT_ENFORCE(g->Shape() == g_new->Shape());
-  if (w_fp16 && w_fp16_new)
-    ORT_ENFORCE(w_fp16->Shape() == w_fp16_new->Shape());
+  if (w_mixed_precision && w_mixed_precision_new)
+    ORT_ENFORCE(w_mixed_precision->Shape() == w_mixed_precision_new->Shape());
 }
 
-template <typename TWeight, typename TGradient, typename TMomentum>
+template <typename TWeight, typename TGradient, typename TMomentum, typename TMixedPrecision>
 Status copy_inputs_to_outputs(
     OpKernelContext* ctx,
     const int non_grouped_input_count,
@@ -128,21 +128,21 @@ Status copy_inputs_to_outputs(
     const Tensor& g = *ctx->Input<Tensor>(input_start_index + 1);
     const Tensor& m1 = *ctx->Input<Tensor>(input_start_index + 2);
     const Tensor& m2 = *ctx->Input<Tensor>(input_start_index + 3);
-    const Tensor* w_fp16 = ctx->Input<Tensor>(input_start_index + 4);
+    const Tensor* w_mixed_precision = ctx->Input<Tensor>(input_start_index + 4);
     const int output_start_index = non_grouped_output_count + group_index * output_group_size;
     Tensor* w_new = ctx->Output(output_start_index, w.Shape());
     Tensor* g_new = ctx->Output(output_start_index + 1, g.Shape());
     Tensor& m1_new = *ctx->Output(output_start_index + 2, m1.Shape());
     Tensor& m2_new = *ctx->Output(output_start_index + 3, m2.Shape());
-    Tensor* w_fp16_new = w_fp16 != nullptr ? ctx->Output(output_start_index + 4, w_fp16->Shape()) : nullptr;
+    Tensor* w_mixed_precision_new = w_mixed_precision != nullptr ? ctx->Output(output_start_index + 4, w_mixed_precision->Shape()) : nullptr;
 
     // TODO: temporary hack until View is improved (it doesn't work with Alias)
     if (w_new != nullptr)
       w_new->SetByteOffset(w.ByteOffset());
     if (g_new != nullptr)
       g_new->SetByteOffset(g.ByteOffset());
-    if (w_fp16_new != nullptr)
-      w_fp16_new->SetByteOffset(w_fp16->ByteOffset());
+    if (w_mixed_precision_new != nullptr)
+      w_mixed_precision_new->SetByteOffset(w_mixed_precision->ByteOffset());
 
     if (w_new) {
       ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TWeight>(w, *w_new));
@@ -153,8 +153,8 @@ Status copy_inputs_to_outputs(
     ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TMomentum>(m1, m1_new));
     ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TMomentum>(m2, m2_new));
 
-    if (w_fp16_new) {
-      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<MLFloat16>(*w_fp16, *w_fp16_new));
+    if (w_mixed_precision_new) {
+      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TMixedPrecision>(*w_mixed_precision, *w_mixed_precision_new));
     }
   }
 
@@ -196,7 +196,7 @@ Status launch_lamb_compute_direction(
   ORT_ENFORCE(group_count == static_cast<int>(epsilons.size()));
 
   constexpr int tensor_count_per_group = 6;
-  // const int max_tensor_size = compute_max_tensor_size_per_launch<tensor_count_per_group>(4);
+  //const int max_tensor_size = compute_max_tensor_size_per_launch<tensor_count_per_group>(4);
   const int max_tensor_size = 0;
   // Bucketize tensor groups by the associated optimizer configuration.
   // If two tensor groups use different "alpha", they should be put into two distinct buckets.
@@ -290,7 +290,7 @@ Status launch_lamb_reduction(
   // If two tensor groups use different "alpha", they should be put into two distinct buckets.
   std::vector<std::vector<void*>> buckets;
   std::vector<int> tensor_sizes_in_buckets;
-  // const int max_tensor_size = compute_max_tensor_size_per_launch<tensor_count_per_group>(4);
+  //const int max_tensor_size = compute_max_tensor_size_per_launch<tensor_count_per_group>(4);
   const int max_tensor_size = 0;
   for (int i = 0; i < group_count; ++i) {
     if (tensor_sizes[i] > max_tensor_size) {
@@ -338,7 +338,7 @@ Status launch_lamb_reduction(
   return Status::OK();
 }
 
-template <typename HipT1, typename HipT2, typename HipT3>
+template <typename HipT1, typename HipT2, typename HipT3, typename HipT_MIXED_PRECISION_FP>
 Status launch_lamb_update(
     const int group_count,
     const HipT1* eta,
@@ -351,7 +351,7 @@ Status launch_lamb_update(
     std::vector<HipT3*>& p_ds,
     /* output */ std::vector<HipT2*>& p_w_news,
     /* output */ std::vector<HipT3*>& p_g_news,
-    /* output */ std::vector<half*>& p_w_fp16_news) {
+    /* output */ std::vector<HipT_MIXED_PRECISION_FP*>& p_w_mixed_precision_news) {
   ORT_ENFORCE(group_count == static_cast<int>(tensor_sizes.size()));
 
   ORT_ENFORCE(group_count == static_cast<int>(p_w_norms.size()));
@@ -360,7 +360,7 @@ Status launch_lamb_update(
   ORT_ENFORCE(group_count == static_cast<int>(p_ds.size()));
   ORT_ENFORCE(group_count == static_cast<int>(p_w_news.size()));
   ORT_ENFORCE(group_count == static_cast<int>(p_g_news.size()));
-  ORT_ENFORCE(group_count == static_cast<int>(p_w_fp16_news.size()));
+  ORT_ENFORCE(group_count == static_cast<int>(p_w_mixed_precision_news.size()));
 
   constexpr int tensor_count_per_group = 7;
 
@@ -368,7 +368,7 @@ Status launch_lamb_update(
   // If two tensor groups use different "alpha", they should be put into two distinct buckets.
   std::vector<std::vector<void*>> buckets;
   std::vector<int> tensor_sizes_in_bucket;
-  // const int max_tensor_size = compute_max_tensor_size_per_launch<tensor_count_per_group>(4);
+  //const int max_tensor_size = compute_max_tensor_size_per_launch<tensor_count_per_group>(4);
   const int max_tensor_size = 0;
   for (int i = 0; i < group_count; ++i) {
     if (tensor_sizes[i] > max_tensor_size) {
@@ -382,7 +382,7 @@ Status launch_lamb_update(
           p_ds[i],
           p_w_news[i],
           p_g_news[i],
-          p_w_fp16_news[i],
+          p_w_mixed_precision_news[i],
           tensor_sizes[i]);
     } else {
       std::vector<void*> ptrs(tensor_count_per_group);
@@ -392,7 +392,7 @@ Status launch_lamb_update(
       ptrs[3] = p_ds[i];                       // direction
       ptrs[4] = p_w_news[i];                   // new weight tensor
       ptrs[5] = p_g_news[i];                   // new gradient tensor
-      ptrs[6] = p_w_fp16_news[i];              // new half-precision weight tensor
+      ptrs[6] = p_w_mixed_precision_news[i];   // new half-precision weight tensor
       buckets.push_back(ptrs);
       tensor_sizes_in_bucket.push_back(tensor_sizes[i]);
     }
@@ -409,7 +409,7 @@ Status launch_lamb_update(
   // Only launch multi-tensor function if we have at least one tensor in the buckets.
   if (tensor_sizes_in_bucket.size() > 0 && buckets.size() > 0) {
     typedef LambMultiTensorUpdateFunctor<
-      HipT1, HipT2, HipT3> LambStage2;
+      HipT1, HipT2, HipT3, HipT_MIXED_PRECISION_FP> LambStage2;
     LambStage2 lamb_stage2;
 
     launch_multi_tensor_functor<
@@ -427,8 +427,8 @@ Status launch_lamb_update(
   return Status::OK();
 }
 
-template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD_NORM>
-Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelContext* ctx) const {
+template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD_NORM, typename T_MIXED_PRECISION_FP>
+Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::ComputeInternal(OpKernelContext* ctx) const {
   // HipT* are types used to invoke HIP-based functions. It, for example, maps
   // MLFloat16 in ONNXRuntime to half in HIP.
   typedef typename ToHipType<T1>::MappedType HipT1;
@@ -436,6 +436,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
   typedef typename ToHipType<T3>::MappedType HipT3;
   typedef typename ToHipType<T4>::MappedType HipT4;
   typedef typename ToHipType<T_GRAD_NORM>::MappedType HipT_GRAD_NORM;
+  typedef typename ToHipType<T_MIXED_PRECISION_FP>::MappedType HipT_MIXED_PRECISION_FP;
 
   constexpr int non_grouped_input_count = 5;
   constexpr int input_group_size = 5;
@@ -457,22 +458,22 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
       "Expect at least ", minimal_output_count, " outputs but got ",
       ctx->OutputCount());
 
-  // In addition to the first non_grouped_input_count inputs, all inputs are repeated sequence of [w, g, m1, m2, w_fp16].
+  // In addition to the first non_grouped_input_count inputs, all inputs are repeated sequence of [w, g, m1, m2, w_mixed_precision].
   ORT_ENFORCE(
       grouped_input_tensor_count % input_group_size == 0,
       "Input count must be ", non_grouped_input_count, " + ", input_group_size,
       " x (number of weights to optimize).");
-  // Outputs are repeated sequence of [w_new, g_new, m1_new, m2_new, w_fp16_new].
+  // Outputs are repeated sequence of [w_new, g_new, m1_new, m2_new, w_mixed_precision_new].
   ORT_ENFORCE(
       grouped_output_tensor_count % output_group_size == 0,
       "Output count must be ", non_grouped_output_count, " + ", output_group_size,
       " x (number of weights to optimize).");
-  // Number of repeated [w, g, m1, m2, w_fp16]'s should match number of repeated [w_new, g_new, m1_new, m2_new, w_fp16_new].
+  // Number of repeated [w, g, m1, m2, w_mixed_precision]'s should match number of repeated [w_new, g_new, m1_new, m2_new, w_mixed_precision_new].
   ORT_ENFORCE(
       grouped_input_tensor_count / input_group_size == grouped_output_tensor_count / output_group_size,
       "Input and output tensor counts are not aligned. Please check LambOptimizer's input and output lists.");
 
-  // Number of [w, g, m1, m2, (w_fp16)] (or [w_new, m1_new, m2_new, (w_fp16_new)]).
+  // Number of [w, g, m1, m2, (w_mixed_precision)] (or [w_new, m1_new, m2_new, (w_mixed_precision_new)]).
   const int group_count = (grouped_input_tensor_count + input_group_size - 1) / input_group_size;
 
   // At least we need one group of alpha, beta, lambda, ..., for processing one group.
@@ -486,7 +487,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
     auto update_signal_tensor = ctx->Input<Tensor>(0);
     auto update_signal = *update_signal_tensor->template Data<bool>();
     if (!update_signal) {
-      return copy_inputs_to_outputs<T2, T3, T4>(
+      return copy_inputs_to_outputs<T2, T3, T4, T_MIXED_PRECISION_FP>(
           ctx,
           non_grouped_input_count,
           non_grouped_output_count,
@@ -555,7 +556,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
   std::vector<const HipT3*> p_gs(group_count);
   std::vector<const HipT4*> p_m1s(group_count);
   std::vector<const HipT4*> p_m2s(group_count);
-  std::vector<const half*> p_w_fp16s(group_count);
+  std::vector<const HipT_MIXED_PRECISION_FP*> p_w_mixed_precisions(group_count);
   // ds' is an mutable version of gs' because we want to reuse
   // gs' memory to store the update direction to avoid allocating a model-scale buffer.
   std::vector<HipT3*> p_ds(group_count);
@@ -567,7 +568,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
   std::vector<HipT3*> p_g_news(group_count);
   std::vector<HipT4*> p_m1_news(group_count);
   std::vector<HipT4*> p_m2_news(group_count);
-  std::vector<half*> p_w_fp16_news(group_count);
+  std::vector<HipT_MIXED_PRECISION_FP*> p_w_mixed_precision_news(group_count);
   // The i-th element in following array is the size of
   // the i-th updated weight tensor and other related tensors.
   std::vector<int> tensor_sizes(group_count);
@@ -579,7 +580,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
     const Tensor* g = ctx->Input<Tensor>(input_start_index + 1);
     const Tensor* m1 = ctx->Input<Tensor>(input_start_index + 2);
     const Tensor* m2 = ctx->Input<Tensor>(input_start_index + 3);
-    const Tensor* w_fp16 = ctx->Input<Tensor>(input_start_index + 4);
+    const Tensor* w_mixed_precision = ctx->Input<Tensor>(input_start_index + 4);
 
     // Prepare used outputs tensors for this group.
     const int output_start_index = non_grouped_output_count + group_index * output_group_size;
@@ -587,17 +588,17 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
     Tensor* g_new = ctx->Output(output_start_index + 1, g->Shape());
     Tensor* m1_new = ctx->Output(output_start_index + 2, m1->Shape());
     Tensor* m2_new = ctx->Output(output_start_index + 3, m2->Shape());
-    Tensor* w_fp16_new = w_fp16 != nullptr ? ctx->Output(output_start_index + 4, w_fp16->Shape()) : nullptr;
+    Tensor* w_mixed_precision_new = w_mixed_precision != nullptr ? ctx->Output(output_start_index + 4, w_mixed_precision->Shape()) : nullptr;
 
     // TODO: temporary hack until View is improved (it doesn't work with Alias)
     if (w_new != nullptr)
       w_new->SetByteOffset(w->ByteOffset());
     if (g_new != nullptr)
       g_new->SetByteOffset(g->ByteOffset());
-    if (w_fp16_new != nullptr)
-      w_fp16_new->SetByteOffset(w_fp16->ByteOffset());
+    if (w_mixed_precision_new != nullptr)
+      w_mixed_precision_new->SetByteOffset(w_mixed_precision->ByteOffset());
 
-    check_inputs_and_outputs(w, g, m1, m2, w_fp16, w_new, g_new, m1_new, m2_new, w_fp16_new);
+    check_inputs_and_outputs(w, g, m1, m2, w_mixed_precision, w_new, g_new, m1_new, m2_new, w_mixed_precision_new);
 
     // We should throw for preventing overflow in reduction APIs.
     // The index in HIP system is 32-bit integer.
@@ -611,7 +612,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
     p_gs[group_index] = reinterpret_cast<const HipT3*>(g->template Data<T3>());
     p_m1s[group_index] = reinterpret_cast<const HipT4*>(m1->template Data<T4>());
     p_m2s[group_index] = reinterpret_cast<const HipT4*>(m2->template Data<T4>());
-    p_w_fp16s[group_index] = w_fp16 != nullptr ? reinterpret_cast<const half*>(w_fp16->template Data<MLFloat16>()) : nullptr;
+    p_w_mixed_precisions[group_index] = w_mixed_precision != nullptr ? reinterpret_cast<const HipT_MIXED_PRECISION_FP*>(w_mixed_precision->template Data<T_MIXED_PRECISION_FP>()) : nullptr;
 
     // The following cast is for reusing gradient tensor g to store update direction d.
     p_ds[group_index] = const_cast<HipT3*>(reinterpret_cast<const HipT3*>(g->template Data<T3>()));
@@ -625,7 +626,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
     p_g_news[group_index] = g_new != nullptr ? reinterpret_cast<HipT3*>(g_new->template MutableData<T3>()) : nullptr;
     p_m1_news[group_index] = reinterpret_cast<HipT4*>(m1_new->template MutableData<T4>());
     p_m2_news[group_index] = reinterpret_cast<HipT4*>(m2_new->template MutableData<T4>());
-    p_w_fp16_news[group_index] = w_fp16_new != nullptr ? reinterpret_cast<half*>(w_fp16_new->template MutableData<MLFloat16>()) : nullptr;
+    p_w_mixed_precision_news[group_index] = w_mixed_precision_new != nullptr ? reinterpret_cast<HipT_MIXED_PRECISION_FP*>(w_mixed_precision_new->template MutableData<T_MIXED_PRECISION_FP>()) : nullptr;
   }
 
 
@@ -662,7 +663,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
       p_ds,
       p_w_news,
       p_g_news,
-      p_w_fp16_news);
+      p_w_mixed_precision_news);
 
   if (step_tensor) {
     Tensor* step_tensor_new = ctx->Output(0, step_tensor->Shape());
