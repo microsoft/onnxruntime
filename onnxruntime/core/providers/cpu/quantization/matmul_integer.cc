@@ -1,17 +1,20 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "matmul_quant_prepack_base.h"
+
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/qmath.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/providers/common.h"
 
 namespace onnxruntime {
 
-class MatMulInteger final : public OpKernel {
+class MatMulInteger final : public MatMulQuantPrepackBase {
  public:
-  MatMulInteger(const OpKernelInfo& info) : OpKernel(info) {}
+  MatMulInteger(const OpKernelInfo& info) : MatMulQuantPrepackBase(info) {}
 
   Status Compute(OpKernelContext* context) const override;
 };
@@ -32,10 +35,10 @@ Status MatMulInteger::Compute(OpKernelContext* ctx) const {
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
 
   const auto* a = ctx->Input<Tensor>(0);
-  const auto* b = ctx->Input<Tensor>(1);
+  const Tensor* b = packed_b_ ? nullptr : ctx->Input<Tensor>(1);
 
   MatMulComputeHelper helper;
-  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b->Shape()));
+  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), packed_b_ ? b_shape_ : b->Shape()));
   Tensor* y = ctx->Output(0, helper.OutputShape());
 
   // Bail out early if the output is going to be empty
@@ -64,6 +67,23 @@ Status MatMulInteger::Compute(OpKernelContext* ctx) const {
   auto* y_data = y->template MutableData<int32_t>();
 
   for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
+#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
+    if (packed_b_) {
+      MlasGemm(static_cast<size_t>(helper.M()),
+               static_cast<size_t>(helper.N()),
+               static_cast<size_t>(helper.K()),
+               a_data + helper.LeftOffsets()[i],
+               static_cast<size_t>(helper.K()),
+               a_offset,
+               packed_b_.get(),
+               b_offset,
+               b_is_signed_,
+               y_data + helper.OutputOffsets()[i],
+               static_cast<size_t>(helper.N()),
+               thread_pool);
+      continue;
+    }
+#endif
     QGemm(static_cast<int>(helper.M()),
           static_cast<int>(helper.N()),
           static_cast<int>(helper.K()),
