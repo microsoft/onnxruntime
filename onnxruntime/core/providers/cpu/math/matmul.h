@@ -34,7 +34,7 @@ class MatMul<float> : public OpKernel {
   BufferUniquePtr packed_b_;
 
  protected:
-  // For fused matmul (TransposeScaleMatMul)
+  // For FusedMatMul and TransposeMatMul contrib ops
   float alpha_attr_;
   int64_t trans_a_attr_;
   int64_t trans_b_attr_;
@@ -54,7 +54,7 @@ class MatMul<float> : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
  protected:
-  // For fused matmul (TransposeScaleMatMul)
+  // For FusedMatMul and TransposeMatMul contrib ops
   float alpha_attr_;
   int64_t trans_a_attr_;
   int64_t trans_b_attr_;

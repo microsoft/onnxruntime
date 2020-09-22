@@ -135,15 +135,14 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
 
   const Tensor* a = ctx->Input<Tensor>(0);
   const Tensor* b = packed_b_ ? nullptr : ctx->Input<Tensor>(1);
+  const auto& b_shape = b ? b->Shape() : b_shape_;
 
   // match CUDA kernel implementation, ignore transpose for vectors
   const bool trans_a = trans_a_attr_ && a->Shape().NumDimensions() != 1;
-  const bool trans_b = trans_b_attr_ &&
-                       (b == nullptr ? b_shape_.NumDimensions() != 1
-                                     : b->Shape().NumDimensions() != 1);
+  const bool trans_b = trans_b_attr_ && b_shape.NumDimensions() != 1;
 
   MatMulComputeHelper helper;
-  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b ? b->Shape() : b_shape_, trans_a, trans_b));
+  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, trans_a, trans_b));
   Tensor* y = ctx->Output(0, helper.OutputShape());
 
   // Bail out early if the output is going to be empty

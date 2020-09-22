@@ -10,9 +10,9 @@ namespace onnxruntime {
 namespace contrib {
 
 template <typename T>
-class TransposeMatMul final : public MatMul<float> {
+class FusedMatMul final : public MatMul<float> {
  public:
-  TransposeMatMul(const OpKernelInfo& info) : MatMul<T>(info) {
+  FusedMatMul(const OpKernelInfo& info) : MatMul<T>(info) {
     ORT_THROW_IF_ERROR(info.GetAttr("alpha", &alpha_attr_));
     ORT_THROW_IF_ERROR(info.GetAttr("transA", &trans_a_attr_));
     ORT_THROW_IF_ERROR(info.GetAttr("transB", &trans_b_attr_));
