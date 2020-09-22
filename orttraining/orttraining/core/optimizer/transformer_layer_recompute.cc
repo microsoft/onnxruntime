@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
+#include "orttraining/core/optimizer/dropout_recompute.h"
 #include "orttraining/core/graph/recompute_graph_utils.h"
-
 #include "core/common/common.h"
 
 #include <deque>
@@ -114,33 +114,14 @@ void TransformerLayerRecompute::InsertRecomputeNodes(Graph& graph, const std::ve
     Node* node = graph.GetNode(n->Index());
 
     if (node->OpType() == "Dropout") {
-      std::vector<NodeArg*> recomputed_inputs;
-      NodeArg* input = node->MutableInputDefs()[0];
+      const NodeArg* input = node->InputDefs()[0];
       const Node* p_node = graph.GetProducerNode(input->Name());
 
-      if (initializers.find(input->Name()) != initializers.end() ||
-          std::find(nodes.begin(), nodes.end(), p_node) == nodes.end()) {
-        recomputed_inputs.push_back(input);
-      } else {
-        auto& recomputed_input = graph.GetOrCreateNodeArg(graph_utils::RecomputeName(input->Name()),
-                                                          input->TypeAsProto());
-        recomputed_inputs.push_back(&recomputed_input);
-      }
-      recomputed_inputs.push_back(node->MutableOutputDefs()[1]);
-      recomputed_inputs.push_back(node->MutableInputDefs()[1]);
-      recomputed_inputs.push_back(node->MutableInputDefs()[2]);
+      bool use_original_input =
+          initializers.find(input->Name()) != initializers.end() ||
+          std::find(nodes.begin(), nodes.end(), p_node) == nodes.end();
 
-      const auto& output = node->OutputDefs()[0];
-      auto& recomputed_output = graph.GetOrCreateNodeArg(graph_utils::RecomputeName(output->Name()),
-                                                         output->TypeAsProto());
-
-      Node& recompute_node = graph.AddNode(node->Name() + "_recompute",
-                                           "DropoutGrad",
-                                           "Recompute of " + node->Name(),
-                                           recomputed_inputs,
-                                           {&recomputed_output},
-                                           {},
-                                           kMSDomain);
+      Node& recompute_node = InsertDropoutRecompute(graph, *node, use_original_input);
       recompute_node.SetPriority(priority);
       continue;
     }
