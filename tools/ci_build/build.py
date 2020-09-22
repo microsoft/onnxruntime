@@ -1547,6 +1547,12 @@ def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
     elif is_macOS():
         if args.use_xcode:
             cmd_args += ['-G', 'Xcode']
+            # CMake < 3.18 has a bug setting system arch to arm64 (if not specified) for Xcode 12,
+            # protoc for host should be built using host architecture
+            # Explicitly specify the CMAKE_OSX_ARCHITECTURES for x86_64 Mac.
+            import platform
+            if platform.machine() == 'x86_64':
+                cmd_args += ['-DCMAKE_OSX_ARCHITECTURES=x86_64']
 
     run_subprocess(cmd_args, cwd=protoc_build_dir)
     # Build step
