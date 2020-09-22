@@ -12,7 +12,7 @@
     <BuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</BuildOutputDir>
     <WindowsAIInteropOutputDir>$(BuildOutputDir)\Microsoft.AI.MachineLearning.Interop</WindowsAIInteropOutputDir>
     <OutputPath>$(WindowsAIInteropOutputDir)</OutputPath>
-    <LangVersion>7.3</LangVersion>
+    <LangVersion>preview</LangVersion>
   </PropertyGroup>
 
   <ItemGroup>
