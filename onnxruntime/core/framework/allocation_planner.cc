@@ -144,6 +144,12 @@ class PlannerImpl {
   struct OrtValueInfo {
     const onnxruntime::NodeArg* p_def_site;  // the (unique) NodeArg corresponding to the MLValue
     int usecount = 0;                        // static reference-count
+
+    // This is initialized to -1 to ensure that if ProcessDef is somehow not called, planning
+    // will fail more cleanly.  This is also used as a temporary workaround to detect the
+    // case that the DML provider has removed initilizers from the graph during partitioning. 
+    // Removing of initilizers is a temporary measure needed to limit the number of copies of 
+    // tensors in GPU memory.
     OrtValueIndex reused_buffer_index = -1;  // index of original buffer to reuse
   };
 
@@ -649,7 +655,8 @@ class PlannerImpl {
         if (node_input->Exists()) {
           auto& sym = node_input->Name();
           auto original = Buffer(Index(sym));
-          // The index will be -1 if it's an initializer that was removed as part of an optimization
+          // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
+          // See comments in the OrtValueInfo definition.
           if ((original != -1) && (0 == DecrementUseCount(original)))
             freelist_.push_front(FreeBufferInfo(original, program_counter));
         }
@@ -659,7 +666,8 @@ class PlannerImpl {
         if (node_input->Exists()) {
           auto& sym = node_input->Name();
           auto original = Buffer(Index(sym));
-          // The index will be -1 if it's an initializer that was removed as part of an optimization
+          // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
+          // See comments in the OrtValueInfo definition.
           if ((original != -1) && (0 == DecrementUseCount(original)))
             freelist_.push_front(FreeBufferInfo(original, program_counter));
         }
