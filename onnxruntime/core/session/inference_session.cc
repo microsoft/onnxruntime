@@ -1577,7 +1577,7 @@ common::Status InferenceSession::Initialize() {
     return std::make_pair(common::Status::OK(), &output_def_list_);
   }
 
-  common::Status InferenceSession::NewIOBinding(std::unique_ptr<IOBinding> * io_binding) {
+  common::Status InferenceSession::NewIOBinding(std::unique_ptr<IOBinding>* io_binding) {
     {
       std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
       if (!is_inited_) {
@@ -1598,7 +1598,7 @@ common::Status InferenceSession::Initialize() {
                &io_binding.GetOutputs(), &io_binding.GetOutputsDeviceInfo());
   }
 
-  common::Status InferenceSession::Run(IOBinding & io_binding) {
+  common::Status InferenceSession::Run(IOBinding& io_binding) {
     RunOptions run_options;
     return Run(run_options, io_binding);
   }
@@ -1647,7 +1647,7 @@ common::Status InferenceSession::Initialize() {
 
 #if !defined(ORT_MINIMAL_BUILD)
   // assumes model has already been loaded before
-  common::Status InferenceSession::DoPostLoadProcessing(onnxruntime::Model & model) {
+  common::Status InferenceSession::DoPostLoadProcessing(onnxruntime::Model& model) {
     // TODO add other post load processing here
     common::Status status = SaveModelMetadata(model);
     return status;
@@ -1752,7 +1752,7 @@ common::Status InferenceSession::Initialize() {
     return *run_logger;
   }
 
-  void InferenceSession::InitLogger(logging::LoggingManager * logging_manager) {
+  void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
     // create logger for session, using provided logging manager if possible
     if (logging_manager != nullptr) {
       logging::Severity severity = logging::Severity::kWARNING;
@@ -1777,7 +1777,7 @@ common::Status InferenceSession::Initialize() {
 #if !defined(ORT_MINIMAL_BUILD)
 
   // Registers all the predefined transformers with transformer manager
-  void InferenceSession::AddPredefinedTransformers(GraphTransformerManager & transformer_manager,
+  void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
                                                    TransformerLevel graph_optimization_level,
                                                    const std::vector<std::string>& custom_list) {
     auto add_transformers = [&](TransformerLevel level) {
@@ -1805,7 +1805,7 @@ common::Status InferenceSession::Initialize() {
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-  common::Status InferenceSession::WaitForNotification(Notification * p_executor_done, int64_t timeout_in_ms) {
+  common::Status InferenceSession::WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms) {
     if (timeout_in_ms > 0) {
       ORT_NOT_IMPLEMENTED(__FUNCTION__, "timeout_in_ms >0 is not supported");  // TODO
     }
@@ -1814,7 +1814,7 @@ common::Status InferenceSession::Initialize() {
     return Status::OK();
   }
 
-  SessionIOBinding::SessionIOBinding(InferenceSession * session) : sess_(session) {
+  SessionIOBinding::SessionIOBinding(InferenceSession* session) : sess_(session) {
     ORT_ENFORCE(session->NewIOBinding(&binding_).IsOK());
   }
 

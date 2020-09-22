@@ -63,53 +63,46 @@ Status TransformerLayerRecompute::IdentifyTransformerLayerEdges(
   return Status::OK();
 }
 
+namespace {
+
 typedef std::set<const Node*, NodeCompare> NodeSet;
+
+NodeSet BFSFrom(const std::vector<const Node*>& start_nodes, bool reverse) {
+  NodeSet visited(start_nodes.begin(), start_nodes.end());
+  std::deque<const Node*> queue(start_nodes.begin(), start_nodes.end());
+  while (!queue.empty()) {
+    const Node* n = queue.front();
+    queue.pop_front();
+
+    auto begin = reverse ? n->InputNodesBegin() : n->OutputNodesBegin();
+    auto end = reverse ? n->InputNodesEnd() : n->OutputNodesEnd();
+
+    for (auto node_it = begin; node_it != end; ++node_it) {
+      const Node& node = *node_it;
+      if (visited.find(&node) == visited.end()) {
+        queue.push_back(&node);
+        visited.insert(&node);
+      }
+    }
+  }
+  return visited;
+}
+}  // namespace
 
 std::vector<const Node*> TransformerLayerRecompute::NodesBetweenEdges(const Graph& graph, const NodeArg* start, const NodeArg* end) const {
   // Forward BFS from the start node
   std::vector<const Node*> start_nodes = graph.GetConsumerNodes(start->Name());
-  NodeSet fw_visited(start_nodes.begin(), start_nodes.end());
-  std::deque<const Node*> fw_queue(start_nodes.begin(), start_nodes.end());
-  while (!fw_queue.empty()) {
-    const Node* n = fw_queue.front();
-    fw_queue.pop_front();
-
-    for (auto node_it = n->OutputNodesBegin(); node_it != n->OutputNodesEnd(); ++node_it) {
-      const Node& node = *node_it;
-      if (fw_visited.find(&node) == fw_visited.end()) {
-        fw_queue.push_back(&node);
-        fw_visited.insert(&node);
-      }
-    }
-  }
+  NodeSet fw_visited = BFSFrom(start_nodes, /*reverse*/ false);
 
   // Reverse BFS from the end node
   const Node* end_node = graph.GetProducerNode(end->Name());
-  // exclued the end_node from the bw_visited set, since end edge is preserved
-  NodeSet bw_visited;
-  std::deque<const Node*> bw_queue{end_node};
-
-  while (!bw_queue.empty()) {
-    const Node* n = bw_queue.front();
-    bw_queue.pop_front();
-
-    for (auto node_it = n->InputNodesBegin(); node_it != n->InputNodesEnd(); ++node_it) {
-      const Node& node = *node_it;
-      if (bw_visited.find(&node) == bw_visited.end()) {
-        bw_queue.push_back(&node);
-        bw_visited.insert(&node);
-      }
-    }
-  }
+  NodeSet bw_visited = BFSFrom({end_node}, /*reverse*/ true);
 
   // Join fw_visited and bw_visited
-  // TODO: consider usig std::set_intersection
   std::vector<const Node*> intersect_nodes;
-  for (const Node* n : fw_visited) {
-    if (bw_visited.find(n) != bw_visited.end()) {
-      intersect_nodes.push_back(n);
-    }
-  }
+  std::set_intersection(fw_visited.begin(), fw_visited.end(),
+                        bw_visited.begin(), bw_visited.end(),
+                        std::back_inserter(intersect_nodes), NodeCompare());
 
   return intersect_nodes;
 }
