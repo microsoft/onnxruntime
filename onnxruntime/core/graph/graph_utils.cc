@@ -755,9 +755,10 @@ bool FindPath(Graph& graph, const Node& node, bool is_input_edge, const std::vec
 bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node) {
   std::queue<NodeIndex> q;
   std::unordered_set<NodeIndex> removed_nodes;
-  q.push(start_node.Index());
 
-  bool is_start_node(true);
+  NodeIndex start_node_index = start_node.Index()
+  q.push(start_node_index);
+
   // From the current node, remove nodes bottom-up util it reaches a node with multiple outputs/graph output.
   while (!q.empty()) {
     NodeIndex cur_node_index = q.front();
@@ -787,7 +788,7 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node) {
       q.push(parent_node->Index());
     }
 
-    if (is_start_node || cur_node.GetOutputEdgesCount() == 0) {
+    if (cur_node_index == start_node_index || cur_node.GetOutputEdgesCount() == 0) {
       Node* cur_node_p = graph.GetNode(cur_node_index);
       RemoveNodeOutputEdges(graph, *cur_node_p);
       graph.RemoveNode(cur_node_index);
