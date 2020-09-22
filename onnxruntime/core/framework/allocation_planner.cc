@@ -148,7 +148,7 @@ class PlannerImpl {
     // This is initialized to -1 to ensure that if ProcessDef is somehow not called, planning
     // will fail more cleanly.  This is also used as a temporary workaround to detect the
     // case that the DML provider has removed initilizers from the graph during partitioning. 
-    // Removing of initilizers is a temporary measure needed to limit the number of copies of 
+    // Removing initializers is a temporary measure needed to limit the number of copies of 
     // tensors in GPU memory.
     OrtValueIndex reused_buffer_index = -1;  // index of original buffer to reuse
   };
