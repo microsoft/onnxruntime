@@ -19,9 +19,9 @@ int real_main(int argc, TCHAR* argv[]) {
   session.AddHandler(OrtProviderGuid, OrtEventHandler, &context);
   session.InitializeEtlFile(argv[1], nullptr);
   ULONG status = ProcessTrace(&session.traceHandle_, 1, 0, 0);
-  if (status != ERROR_SUCCESS && status != ERROR_CANCELLED) {    
+  if (status != ERROR_SUCCESS && status != ERROR_CANCELLED) {
     std::cout << "OpenTrace failed with " << status << std::endl;
-	session.Finalize();
+    session.Finalize();
     return -1;
   }
   session.Finalize();
@@ -57,11 +57,18 @@ int real_main(int argc, TCHAR* argv[]) {
 
 int _tmain(int argc, TCHAR* argv[]) {
   int retval = -1;
-  try {
+#ifndef ORT_NO_EXCEPTIONS
+  try
+#endif
+  {
     retval = real_main(argc, argv);
-  } catch (std::exception& ex) {
+  }
+#ifndef ORT_NO_EXCEPTIONS
+  catch (std::exception& ex) {
     fprintf(stderr, "%s\n", ex.what());
     retval = -1;
   }
+#endif
+
   return retval;
 }

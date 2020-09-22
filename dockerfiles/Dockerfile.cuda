@@ -4,15 +4,16 @@
 # --------------------------------------------------------------
 # Dockerfile to run ONNXRuntime with CUDA, CUDNN integration
 
-# nVidia cuda 10.1 Base Image
-FROM nvidia/cuda:10.1-cudnn7-devel
+# nVidia cuda 10.2 Base Image
+FROM nvidia/cuda:10.2-cudnn8-devel
 MAINTAINER Vinitra Swamy "viswamy@microsoft.com"
 
 ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
 ARG ONNXRUNTIME_BRANCH=master
 
 RUN apt-get update &&\
-    apt-get install -y sudo git bash
+    apt-get install -y sudo git bash unattended-upgrades
+RUN unattended-upgrade
 
 WORKDIR /code
 ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/code/cmake-3.14.3-Linux-x86_64/bin:/opt/miniconda/bin:${PATH}

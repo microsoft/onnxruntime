@@ -3,8 +3,6 @@
 
 #pragma once
 #include <ctime>
-#include "core/common/logging/logging.h"
-#include "core/framework/op_kernel.h"
 #include "NvInfer.h"
 #include "NvOnnxParser.h"
 #include "core/platform/ort_mutex.h"
@@ -64,11 +62,6 @@ struct TensorrtExecutionProviderInfo {
 
 // Information to construct kernel function state.
 struct TensorrtFuncState {
-  bool engine_cache_enable;
-  std::string engine_path;
-  nvinfer1::IRuntime* runtime = nullptr;
-  bool engine_decryption_enable;
-  std::string engine_decryption_lib_path;
   AllocateFunc test_allocate_func = nullptr;
   DestroyFunc test_release_func = nullptr;
   AllocatorHandle allocator = nullptr;
@@ -83,28 +76,33 @@ struct TensorrtFuncState {
   OrtMutex* tensorrt_mu_ptr = nullptr;
   bool* fp16_enable_ptr = nullptr;
   size_t* max_workspace_size_ptr = nullptr;
-  const char* name;
+  std::string trt_node_name_with_precision;
+  bool engine_cache_enable;
+  std::string engine_cache_path;
+  nvinfer1::IRuntime* runtime = nullptr;
+  bool engine_decryption_enable;
+  std::string engine_decryption_lib_path;
 };
 
 // Logical device representation.
-class TensorrtExecutionProvider : public IExecutionProvider {
+class TensorrtExecutionProvider : public Provider_IExecutionProvider {
  public:
   explicit TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info);
   virtual ~TensorrtExecutionProvider();
 
-  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
-  std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
+  virtual std::shared_ptr<Provider_KernelRegistry> Provider_GetKernelRegistry() const override;
+  std::unique_ptr<Provider_IDataTransfer> Provider_GetDataTransfer() const override;
 
-  std::vector<std::unique_ptr<ComputeCapability>>
-  GetCapability(const onnxruntime::GraphViewer& graph,
-                const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override;
+  std::vector<std::unique_ptr<Provider_ComputeCapability>>
+  Provider_GetCapability(const Provider_GraphViewer& graph,
+                         const std::vector<const Provider_KernelRegistry*>& /*kernel_registries*/) const override;
 
   int GetDeviceId() const { return device_id_; }
 
-  common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
-                         std::vector<NodeComputeInfo>& node_compute_funcs) override;
+  common::Status Provider_Compile(const std::vector<Provider_Node*>& fused_nodes,
+                                  std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
-  AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
+  Provider_AllocatorPtr Provider_GetAllocator(int id, OrtMemType mem_type) const override;
 
  private:
   size_t max_workspace_size_ = 1 << 30;  // 1GB
@@ -130,8 +128,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>>> input_shape_ranges_;
 
   /**Get IndexedSubGraph based on node list of the subgraph*/
-  std::unique_ptr<IndexedSubGraph> GetSubGraph(SubGraph_t graph_nodes_index, int& kernels_index,
-                                               const onnxruntime::GraphViewer& graph) const;
+  std::unique_ptr<Provider_IndexedSubGraph> GetSubGraph(SubGraph_t graph_nodes_index, int& kernels_index,
+                                                        const onnxruntime::Provider_GraphViewer& graph) const;
 
   /**
   Get TensorRT supported node lists by calling Onnx-TensorRT parser recursively. Since each time the parser
@@ -141,11 +139,11 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   other execution provider.
   */
   SubGraphCollection_t GetSupportedList(SubGraphCollection_t supported_nodes_list, int iterations, const int max_iterations,
-                                        const onnxruntime::GraphViewer& graph, bool* early_termination) const;
+                                        const onnxruntime::Provider_GraphViewer& graph, bool* early_termination) const;
 
-  void RemoveTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const onnxruntime::GraphViewer& graph) const;
+  void RemoveTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const onnxruntime::Provider_GraphViewer& graph) const;
 
-  AllocatorPtr allocator_;
+  Provider_AllocatorPtr allocator_;
 };
 
 }  // namespace onnxruntime

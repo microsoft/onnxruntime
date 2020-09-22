@@ -9,7 +9,7 @@ namespace onnxruntime {
 namespace training {
 
 GradientDef GetGradientForOp(const GradientGraphConfiguration& gradient_graph_config,
-                             const Graph* graph,
+                             Graph* graph,
                              const Node* node,
                              const std::unordered_set<std::string>& output_args_need_grad,
                              const std::unordered_set<std::string>& input_args_need_grad,
@@ -60,6 +60,7 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("Sub", GetAddSubGradient);
   REGISTER_GRADIENT_BUILDER("Mul", GetMulGradient);
   REGISTER_GRADIENT_BUILDER("Div", GetDivGradient);
+  REGISTER_GRADIENT_BUILDER("Neg", GetNegGradient);
   REGISTER_GRADIENT_BUILDER("Concat", GetConcatGradient);
   REGISTER_GRADIENT_BUILDER("ConcatTraining", GetConcatTrainingGradient);
   REGISTER_GRADIENT_BUILDER("Reshape", GetReshapeGradient);

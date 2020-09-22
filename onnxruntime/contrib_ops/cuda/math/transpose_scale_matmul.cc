@@ -9,7 +9,7 @@ namespace cuda {
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      TransposeScaleMatMul,                                       \
+      TransposeMatMul,                                       \
       kMSDomain,                                                  \
       1,                                                          \
       T,                                                          \

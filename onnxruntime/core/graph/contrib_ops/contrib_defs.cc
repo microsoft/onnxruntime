@@ -7,8 +7,8 @@
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/contrib_ops/nchwc_schema_defs.h"
 #include "core/graph/contrib_ops/range_schema_defs.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/graph/op.h"
-#include "onnx/defs/schema.h"
 #include "onnx/defs/shape_inference.h"
 #include "onnx/defs/tensor_proto_util.h"
 #include "core/mlas/inc/mlas.h"
@@ -524,7 +524,7 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
       .Input(0, "X", "input tensor", "T")
       .Input(1, "bias", "bias tensor", "T", OpSchema::Optional)
       .Output(0, "Y", "output tensor", "T")
-      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
+      .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float or half tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SkipLayerNormalization)
@@ -1774,15 +1774,14 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
         ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 1);
       });
 
-  static const char* TransposeScaleMatMul_doc = R"DOC(
+  static const char* TransposeMatMul_doc = R"DOC(
 Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html
 )DOC";
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(TransposeScaleMatMul)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(TransposeMatMul)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("TransposeScaleMatMul")
+      .SetDoc("TransposeMatMul")
       .Input(0, "A", "N-dimensional matrix A", "T")
       .Input(1, "B", "N-dimensional matrix B", "T")
       .Attr(
@@ -1803,9 +1802,9 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
       .Output(0, "Y", "Matrix multiply results", "T")
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
-      .SetDoc(TransposeScaleMatMul_doc)
+      .SetDoc(TransposeMatMul_doc)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
         auto transAAttr = ctx.getAttribute("transA");
@@ -2272,6 +2271,35 @@ and produces one output data (Tensor<T>) where the function `f(x) = quantize(alp
           "Constrain input and output types to 8 bit tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
+  const char* QLinearSigmoidDoc_ver1 = R"DOC(
+QLinearSigmoid takes quantized input data (Tensor), and quantize parameter for output, and produces one output data 
+(Tensor<T>) where the function `f(x) = quantize(Sigmoid(dequantize(x)))`, is applied to the data tensor elementwise.
+Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))` )DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearSigmoid)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(QLinearSigmoidDoc_ver1)
+      .Input(0, "X", "Input tensor", "T")
+      .Input(1, "X_scale",
+             "Input X's scale. It's a scalar, which means a per-tensor/layer quantization.",
+             "tensor(float)")
+      .Input(2, "X_zero_point",
+             "Input X's zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
+             "T", OpSchema::Optional)
+      .Input(3, "Y_scale",
+             "Output Y's scale. It's a scalar, which means a per-tensor/layer quantization.",
+             "tensor(float)")
+      .Input(4, "Y_zero_point",
+             "Output Y's zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
+             "T", OpSchema::Optional)
+      .Output(0, "Y", "Output tensor", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(uint8)", "tensor(int8)"},
+          "Constrain input and output types to 8 bit tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(MurmurHash3)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -2705,6 +2733,9 @@ Example 4:
       .Attr("epsilon",
             "The epsilon value to use to avoid division by zero.",
             AttributeProto::FLOAT, 1e-5f)
+      .Attr("stash_type",
+            "type used for stash mean/inv_std_var",
+            AttributeProto::INT, static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT))
       .AllowUncheckedAttributes()
       .Input(0, "X", "Input data tensor from the previous layer.", "T")
       .Input(1, "scale", "Scale tensor.", "T")
@@ -2714,15 +2745,24 @@ Example 4:
       .Output(2, "inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation.", "U", OpSchema::Optional)
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types (except mean and inv_std_var) to float tensors.")
       .TypeConstraint(
           "U",
-          {"tensor(float)"},
+          {"tensor(float)", "tensor(bfloat16)"},
           "Constrain mean and inv_std_var to be float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        auto type = ctx.getAttribute("stash_type")->i();
+        if (ctx.getNumOutputs() > 1){
+          auto output_type = ctx.getOutputType(1);
+          output_type->mutable_tensor_type()->set_elem_type(static_cast<int32_t>(type));
+        }
+        if (ctx.getNumOutputs() > 2){
+          auto output_type = ctx.getOutputType(2);
+          output_type->mutable_tensor_type()->set_elem_type(static_cast<int32_t>(type));
+        }
         if (!hasNInputShapes(ctx, 1)) {
           return;
         }
@@ -2771,7 +2811,7 @@ inputs by their magnitude, rather than gates inputs by their sign as in ReLUs.)D
       .Output(0, "Y", "The output.", "T")
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
@@ -2847,6 +2887,94 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
           propagateShapeFromInputToOutput(ctx, 0, 0);
         }
       });
+
+  static const char* Trilu_ver1_doc = R"DOC(
+      Returns the upper or lower triangular part of a 2-D matrix, or batches of 2-D matrices. If the attribute "upper" is set to true,
+      the upper triangular matrix is retained. Lower triangular matrix is retained otherwise. Default value for upper is true.
+      Trilu takes one input tensor of shape [*, N, M], where * is zero or more batch dimensions. The upper triangular part consists
+      of the elements on and above the given diagonal (k). The lower triangular part consists of elements on and below the diagonal.
+      All other elements in the matrix are set to zero.
+      If k = 0, the triangular part on and above/below the main diagonal is retained.
+      If upper is set to true, a positive k retains the upper triangular matrix excluding k diagonals above
+      the main diagonal. A negative k value includes as many diagonals below the main diagonal.
+      If upper is set to false, a positive k retains the lower triangular matrix including k diagonals above
+      the main diagonal. A negative k value excludes as many diagonals below the main diagonal.
+      )DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Trilu)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(Trilu_ver1_doc)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .Attr("upper",
+            "Boolean. Indicates whether upper or lower part of matrix is retained. Default is true.",
+            AttributeProto::INT,
+            static_cast<int64_t>(1))
+      .Input(
+          0,
+          "X",
+          "Input tensor of rank 2 or higher.",
+          "T")
+      .Input(
+          1,
+          "k",
+          "A 0-D tensor containing a single value corresponding to the number diagonals above or the main diagonal to exclude or include."
+          "Default value is 0 if it's not specified.",
+          "tensor(int64)",
+          OpSchema::Optional)
+      .Output(
+          0,
+          "Y",
+          "Output tensor of the same type and shape as the input tensor.",
+          "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)",
+           "tensor(float)",
+           "tensor(double)",
+           "tensor(bfloat16)",
+           "tensor(uint8)",
+           "tensor(uint16)",
+           "tensor(uint32)",
+           "tensor(uint64)",
+           "tensor(int8)",
+           "tensor(int16)",
+           "tensor(int32)",
+           "tensor(int64)",
+           "tensor(bool)"},
+          "Constrain input and output types to all numeric tensors and bool tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        using namespace ONNX_NAMESPACE;
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+        if (hasInputShape(ctx, 0)) {
+          const TensorShapeProto& input_shape =
+              ctx.getInputType(0)->tensor_type().shape();
+          const int rank = static_cast<int>(input_shape.dim_size());
+          if (rank < 2) {
+            fail_shape_inference("Input rank must be >= 2.")
+          }
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+        }
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BiasSoftmax)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc(
+          "Y = softmax(scores + bias)) with simple broadcast on bias. "
+          "Intended to specialize softmax(scores + additive_mask) commonly found in transformer models.")
+      .Attr("softmax_axis", "apply softmax to elements for dimensions softmax_axis or higher", AttributeProto::INT, static_cast<int64_t>(1))
+      .Attr("broadcast_axis", "broadcast bias across input for dimensions broadcast_axis to softmax_axis-1", AttributeProto::INT, static_cast<int64_t>(1))
+      .Input(0, "data", "The input data as Tensor.", "T")
+      .Input(1, "bias", "The bias (or mask) as Tensor.", "T")
+      .Output(0, "output", "The output.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   RegisterBertSchemas();
 }

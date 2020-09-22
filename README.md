@@ -5,6 +5,8 @@
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/Linux%20CPU%20CI%20Pipeline?label=Linux+CPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=11)
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/Linux%20GPU%20CI%20Pipeline?label=Linux+GPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=12)
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/MacOS%20CI%20Pipeline?label=MacOS+CPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=13)
+[![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/orttraining-linux-ci-pipeline?label=Linux+CPU+Training)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=86)
+[![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/orttraining-linux-gpu-ci-pipeline?label=Linux+GPU+Training)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=84)
 
 **ONNX Runtime** is a cross-platform **inferencing and training accelerator** compatible with many popular ML/DNN frameworks, including PyTorch, TensorFlow/Keras, scikit-learn, and more. **[aka.ms/onnxruntime](https://aka.ms/onnxruntime)**
 
@@ -106,6 +108,7 @@ The following are required for usage of the official published packages.
     * For Windows, **OpenMP** support comes as part of VC runtime. It is also available as redist packages:
       [vc_redist.x64.exe](https://aka.ms/vs/16/release/vc_redist.x64.exe) and [vc_redist.x86.exe](https://aka.ms/vs/16/release/vc_redist.x86.exe)
     * For Linux, the system must have **libgomp.so.1** which can be installed using `apt-get install libgomp1`.
+    * For Mac OS X, the system must have **libomp.dylib** which can be installed using `brew install libomp`.
 
 * Default GPU (CUDA)
   * The default GPU build requires CUDA runtime libraries being installed on the system:
@@ -127,12 +130,12 @@ For production scenarios, it's strongly recommended to build only from an [offic
 
 |API|Supported Versions|Samples|
 |---|---|---|
-[Python](https://aka.ms/onnxruntime-python)| 3.5, 3.6, 3.7<br>[Python Dev Notes](./docs/Python_Dev_Notes.md)| [Samples](./samples#python)|
+[Python](https://aka.ms/onnxruntime-python)| 3.5, 3.6, 3.7, 3.8 (3.8 excludes Win GPU and Linux ARM)<br>[Python Dev Notes](./docs/Python_Dev_Notes.md)| [Samples](./samples#python)|
 |[C#](docs/CSharp_API.md)| | [Samples](./samples#C)|
 |[C++](./include/onnxruntime/core/session/onnxruntime_cxx_api.h)| |[Samples](./samples#CC)|
 |[C](docs/C_API.md)| | [Samples](./samples#CC)|
 |[WinRT](docs/WinRT_API.md) | [Windows.AI.MachineLearning](https://docs.microsoft.com/en-us/windows/ai/windows-ml/api-reference)| [Samples](https://github.com/microsoft/windows-Machine-Learning)|
-|[Java](docs/Java_API.md)|8-13|[Samples](./samples#Java)| 
+|[Java](docs/Java_API.md)|8+|[Samples](./samples#Java)| 
 [Ruby](https://github.com/ankane/onnxruntime) (external project)| 2.4-2.7| [Samples](https://ankane.org/tensorflow-ruby)|
 |[Javascript (node.js)](./nodejs) |12.x | [Samples](./nodejs/examples/README.md) |
 

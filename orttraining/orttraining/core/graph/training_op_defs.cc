@@ -178,7 +178,7 @@ OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
           static_cast<int64_t>(1))
       .TypeConstraint(
           "T1",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input types to float scalars.")
       .TypeConstraint(
           "T2",
@@ -186,19 +186,19 @@ OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
           "Constrain input types to float tensors.")
       .TypeConstraint(
           "T3",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input types to float tensors.")
       .TypeConstraint(
           "T4",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input types to float tensors.")
       .TypeConstraint(
-          "T_FP16",
-          {"tensor(float16)"},
-          "Constrain input types to float16 tensors.")
+          "T_MIXED_PRECISION_FP",
+          {"tensor(float16)", "tensor(bfloat16)"},
+          "Constrain input types to float16 or bfloat16 tensors.")
       .TypeConstraint(
           "T_GRAD_NORM",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input types to float tensors.")
       .TypeConstraint(
           "T_BOOL",
@@ -275,17 +275,17 @@ OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
        "gradients",
        "moment1",
        "moment2",
-       "fp16_weights"},
+       "mixed_precision_weights"},
       {"weights to optimize.",
        "gradients computed in this iteration.",
        "exponentially averaged historical gradients.",
        "exponentially averaged historical squared gradients.",
-       "FP16 weights to optimize."},
+       "FP16 or BF16 weights to optimize."},
       {"T2",
        "T3",
        "T4",
        "T4",
-       "T_FP16"},
+       "T_MIXED_PRECISION_FP"},
       OpSchema::Optional);
 
   op_schema
@@ -304,17 +304,17 @@ OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
        "new_gradients",
        "new_moment_1",
        "new_moment_2",
-       "new_fp16_weights"},
+       "new_mixed_precision_weights"},
       {"New weights",
        "New gradients",
        "New averaged gradients",
        "New averaged squared gradients",
-       "New FP16 weights"},
+       "New FP16 or BF16 weights"},
       {"T2",
        "T3",
        "T4",
        "T4",
-       "T_FP16"},
+       "T_MIXED_PRECISION_FP"},
       OpSchema::Optional);
 
   return op_schema;
@@ -322,13 +322,14 @@ OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
 
 void RegisterTrainingOpSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA(ReluGrad)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Input(0, "dY", "Gradient of output Y", "T")
       .Input(1, "X", "Input tensor", "T")
       .Output(0, "dX", "Gradient of input X", "T")
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput);
 
@@ -347,7 +348,7 @@ void RegisterTrainingOpSchemas() {
           static_cast<int64_t>(1))
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput);
 
@@ -445,7 +446,7 @@ void RegisterTrainingOpSchemas() {
           "Constrain input shape to integer tensors.")
       .TypeConstraint(
           "T",
-          OpSchema::all_tensor_types(),
+          OpSchema::all_tensor_types_with_bfloat(),
           "Constrain input and output types to float tensors.")
       .TypeConstraint(
           "Tind",
@@ -499,7 +500,7 @@ void RegisterTrainingOpSchemas() {
       .Output(1, "dB", "Gradient of divisor", "T", OpSchema::Optional)
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to numeric tensors.");
 
   //TODO: Move this to the right location. Its only here for quick experimentation.
@@ -514,7 +515,7 @@ void RegisterTrainingOpSchemas() {
       .Output(1, "NG", "Updated gradients(s)", "T", OpSchema::Optional)
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
       .TypeConstraint(
           "L",
@@ -550,9 +551,9 @@ void RegisterTrainingOpSchemas() {
           "T4")
       .Input(
           6,
-          "fp16_weights",
-          "FP16 weights to optimize.",
-          "T_FP16",
+          "mixed_precision_weights",
+          "FP16 or BFloat16 weights to optimize.",
+          "T_MIXED_PRECISION_FP",
           OpSchema::Optional)
       .Input(
           7,
@@ -601,9 +602,9 @@ void RegisterTrainingOpSchemas() {
           OpSchema::Optional)
       .Output(
           5,
-          "new_fp16_weights",
-          "New FP16 weights",
-          "T_FP16",
+          "new_mixed_precision_weights",
+          "New FP16 or BFloat16 weights",
+          "T_MIXED_PRECISION_FP",
           OpSchema::Optional)
       .Attr(
           "alpha",
@@ -642,7 +643,7 @@ void RegisterTrainingOpSchemas() {
           static_cast<int64_t>(0))
       .TypeConstraint(
           "T1",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain learning rate to float")
       .TypeConstraint(
           "T2",
@@ -654,19 +655,19 @@ void RegisterTrainingOpSchemas() {
           "Constrain input types to float tensors.")
       .TypeConstraint(
           "T4",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input types to float tensors.")
       .TypeConstraint(
           "T_GRAD",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input types to float tensors.")
       .TypeConstraint(
-          "T_FP16",
-          {"tensor(float16)"},
-          "Constrain input types to float16 tensors.")
+          "T_MIXED_PRECISION_FP",
+          {"tensor(float16)", "tensor(bfloat16)"},
+          "Constrain input types to float16 or bfloat16 tensors.")
       .TypeConstraint(
           "T_GRAD_NORM",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input types to float tensors.")
       .TypeConstraint(
           "T_BOOL",
@@ -685,11 +686,11 @@ void RegisterTrainingOpSchemas() {
       .Output(0, "new_sum", "updated result of accumulator", "T")
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
       .TypeConstraint(
           "T_GRAD",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
       .TypeConstraint(
           "T_BOOL",
@@ -708,7 +709,7 @@ void RegisterTrainingOpSchemas() {
       .Output(0, "zero_gradient", "reset the gradient", "T1")
       .TypeConstraint(
           "T1",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output gradient types to float tensors.")
       .TypeConstraint(
           "T2",
@@ -732,7 +733,7 @@ void RegisterTrainingOpSchemas() {
       .Output(0, "output", "Tensor of rank q-1+r-indices[-1].", "T")
       .TypeConstraint(
           "T",
-          OpSchema::all_tensor_types(),
+          OpSchema::all_tensor_types_with_bfloat(),
           "Constrain input and output types to any tensor type.")
       .TypeConstraint(
           "Tind",
@@ -804,7 +805,7 @@ Example 4:
       .Output(0, "output", "Tensor graident of the input.", "T")
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to any tensor type.")
       .TypeConstraint(
           "Tind",
@@ -835,7 +836,7 @@ Example 4:
       .Output(1, "log_prob", "logsoftmax(logits)", "T", OpSchema::Optional)
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain to float, float16 and double tensors.")
       .SetDoc(R"DOC(SoftmaxCrossEntropy)DOC");
 
@@ -852,7 +853,7 @@ Example 4:
       .Output(0, "d_logits", "gradient of logits", "T")
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain to float, float16 and double tensors.")
       .SetDoc(R"DOC(SoftmaxCrossEntropyGrad)DOC");
 
@@ -952,7 +953,7 @@ Example 4:
       .Output(0, "Y", "loss.", "T")
       .Output(1, "log_prob", "logsoftmax(logits)", "T", OpSchema::Optional)
       .TypeConstraint("T",
-                      {"tensor(float16)", "tensor(float)", "tensor(double)"},
+                      {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
                       "Constrain to float, float16 and double tensors.")
       .TypeConstraint("Tind",
                       {"tensor(int32)", "tensor(int64)"},
@@ -994,7 +995,7 @@ Example 4:
       .Input(3, "weight", "weight for each sample. The shape is the same as label's", "T", OpSchema::Optional)
       .Output(0, "d_logits", "gradient of logits", "T")
       .TypeConstraint("T",
-                      {"tensor(float16)", "tensor(float)", "tensor(double)"},
+                      {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
                       "Constrain to float, float16 and double tensors.")
       .TypeConstraint("Tind",
                       {"tensor(int32)", "tensor(int64)"},
@@ -1023,7 +1024,7 @@ Example 4:
       .Input(3, "weight", "weight for each sample. The shape is 1-D tensor.", "T", OpSchema::Optional)
       .Output(0, "d_logits", "gradient of logits", "T")
       .TypeConstraint("T",
-                      {"tensor(float16)", "tensor(float)", "tensor(double)"},
+                      {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
                       "Constrain to float, float16 and double tensors.")
       .TypeConstraint("Tind",
                       {"tensor(int32)", "tensor(int64)"},
@@ -1327,11 +1328,11 @@ Example 4:
       .Output(1, "mask", "The output mask.", "T2", OpSchema::Optional)
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
       .TypeConstraint(
           "T1",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input 'ratio' types to float tensors.")
       .TypeConstraint(
           "T2",
@@ -1365,7 +1366,7 @@ Example 4:
       .Output(0, "dx", "Gradient of the input.", "T")
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
       .TypeConstraint(
           "T1",
@@ -1403,11 +1404,11 @@ Example 4:
       .Output(0, "dx", "Gradient of the input.", "T")
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
       .TypeConstraint(
           "T1",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input 'ratio' types to float tensors.")
       .TypeConstraint(
           "T2",
@@ -1482,67 +1483,6 @@ Example 4:
            {{"X_1"}, "Cos", {"X"}},
            {{"dX"}, "Mul", {"X_1", "dY"}}}));
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(TanhGrad)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("Gradient function for Tanh")
-      .AllowUncheckedAttributes()
-      .Input(0, "X", "Input tensor", "T")
-      .Input(1, "dY", "Tanh output's grad", "T")
-      .Output(0, "dX", "Tanh input's grad", "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to all numeric tensors.")
-      .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
-          {// nodes: {outputs, op, inputs, attributes}
-           ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("One", 1.0f),
-           {{"Squared_output"}, "Mul", {"X", "X"}},
-           {{"Tanh_Grad"}, "Sub", {"One", "Squared_output"}},
-           {{"dX"}, "Mul", {"dY", "Tanh_Grad"}}}));
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(SqrtGrad)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("Gradient function for Sqrt")
-      .AllowUncheckedAttributes()
-      .Input(0, "X", "Input tensor", "T")
-      .Input(1, "dY", "Sqrt output's grad", "T")
-      .Output(0, "dX", "Sqrt input's grad", "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to all numeric tensors.")
-      .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
-          {// nodes: {outputs, op, inputs, attributes}
-           ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("One_half", 0.5f),
-           {{"Sqrt_Grad"}, "Div", {"One_half", "X"}},
-           {{"dX"}, "Mul", {"dY", "Sqrt_Grad"}}}));
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(ErfGrad)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("Gradient function for Erf")
-      .AllowUncheckedAttributes()
-      .Input(0, "X", "Input tensor", "T")
-      .Input(1, "dY", "Erf output's grad", "T")
-      .Output(0, "dX", "Erf input's grad", "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to all numeric tensors.")
-      .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
-          {// nodes: {outputs, op, inputs, attributes}
-           ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("Two_sqrt_pi", static_cast<float>(M_2_SQRTPI)),
-           {{"Square_x"}, "Mul", {"X", "X"}},
-           {{"Neg_Square_x"}, "Neg", {"Square_x"}},
-           {{"Exp_Neg_Square_x"}, "Exp", {"Neg_Square_x"}},
-           {{"Erf_Grad"}, "Mul", {"Two_sqrt_pi", "Exp_Neg_Square_x"}},
-           {{"dX"}, "Mul", {"dY", "Erf_Grad"}}}));
-
   ONNX_CONTRIB_OPERATOR_SCHEMA(ReshapeGrad)
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)
@@ -1554,34 +1494,12 @@ Example 4:
       .Output(0, "dX", "REshape input's grad", "T")
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to all numeric tensors.")
       .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
           {// nodes: {outputs, op, inputs, attributes}
            {{"x_shape"}, "Shape", {"X"}},
            {{"dX"}, "Reshape", {"dY", "x_shape"}}}));
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(PowGrad)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("Gradient function for Pow")
-      .AllowUncheckedAttributes()
-      .Input(0, "dY", "Reshape output's grad", "T")
-      .Input(1, "X", "Input tensor", "T")
-      .Input(2, "Exponent", "Input tensor", "T")
-      .Output(0, "dX", "Pow input's grad", "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to all numeric tensors.")
-      .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
-          {// nodes: {outputs, op, inputs, attributes}
-           ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("One", 1.0f),
-           {{"p_minus_one"}, "Sub", {"Exponent", "One"}},
-           {{"X_Pow_p_minus_one"}, "Pow", {"X", "p_minus_one"}},
-           {{"a_X_Pow_p_minus_one"}, "Mul", {"X_Pow_p_minus_one", "Exponent"}},
-           {{"dX"}, "Mul", {"a_X_Pow_p_minus_one", "dY"}}}));
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SummaryScalar)
       .SetDomain(kMSDomain)
@@ -1593,7 +1511,7 @@ Example 4:
       .Output(0, "summary", "The serialized Tensorboard Summary.", "S")
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bool)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bool)", "tensor(bfloat16)"},
           "Constrain input type to float and bool tensors.")
       .TypeConstraint(
           "S",
@@ -1614,7 +1532,7 @@ Example 4:
       .Output(0, "summary", "The serialized Tensorboard Summary.", "S")
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input type to float tensors.")
       .TypeConstraint(
           "S",
@@ -1669,7 +1587,7 @@ Example 4:
       .Output(0, "dX", "Gradient of the input.", "T")
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
@@ -1692,11 +1610,11 @@ Example 4:
       .Output(2, "bias_grad", "Gradient of the bias.", "T")
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types (except mean and inv_std_var) to float tensors.")
       .TypeConstraint(
           "U",
-          {"tensor(float)"},
+          {"tensor(float)", "tensor(bfloat16)"},
           "Constrain mean and inv_std_var to float tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(InvertibleLayerNormalizationGrad)
@@ -1742,7 +1660,7 @@ Example 4:
       .Output(2, "bias_grad", "Gradient of the bias", "T")
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Group)
@@ -1751,7 +1669,7 @@ Example 4:
       .SetDoc("if all the inputs are available, the output will be true")
       .Input(0, "input_tensors", "list of dependency tensors", "T", OpSchema::Variadic, false)
       .Output(0, "done", "all the dependency tensors are ready", "B")
-      .TypeConstraint("T", OpSchema::all_tensor_types(), "All Tensor types")
+      .TypeConstraint("T", OpSchema::all_tensor_types_with_bfloat(), "All Tensor types")
       .TypeConstraint("B", {"tensor(bool)"}, "Only bool")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
@@ -1765,7 +1683,7 @@ Example 4:
       .SinceVersion(1)
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
       .TypeConstraint(
           "T1",
@@ -1789,7 +1707,7 @@ Example 4:
       .SinceVersion(1)
       .TypeConstraint(
           "V",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
       .TypeConstraint(
           "T",
@@ -1891,7 +1809,7 @@ Return true if all elements are true and false otherwise.
               OpSchema::Variadic)
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ReduceAllL2)
@@ -2049,7 +1967,7 @@ Return true if all elements are true and false otherwise.
           "Constrain input shape to integer tensors.")
       .TypeConstraint(
           "T",
-          OpSchema::all_tensor_types(),
+          OpSchema::all_tensor_types_with_bfloat(),
           "Constrain input and output types to float tensors.")
       .TypeConstraint(
           "Tind",
@@ -2067,7 +1985,7 @@ Return true if all elements are true and false otherwise.
       .Output(0, "dX", "Gradient of the input.", "T")
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 

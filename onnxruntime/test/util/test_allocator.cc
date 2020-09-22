@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/common.h"
 #include "test_allocator.h"
 
 MockedOrtAllocator::MockedOrtAllocator() {
@@ -40,5 +41,5 @@ const OrtMemoryInfo* MockedOrtAllocator::Info() const {
 
 void MockedOrtAllocator::LeakCheck() {
   if (memory_inuse.load())
-    throw std::runtime_error("memory leak!!!");
+    ORT_THROW("memory leak!!!");
 }

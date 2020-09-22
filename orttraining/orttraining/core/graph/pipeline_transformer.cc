@@ -5,6 +5,7 @@
 #include <queue>
 
 #include "core/graph/graph_utils.h"
+#include "orttraining/core/framework/distributed_run_context.h"
 
 using namespace onnxruntime::common;
 using namespace onnxruntime::graph_utils;
@@ -43,34 +44,6 @@ void AddNewNodeArg(Graph& graph,
   new_names.push_back(new_node_arg.Name());
   new_node_args.push_back(&new_node_arg);
 }
-
-// Gradient graph can contain some dangling leaf nodes. This function collects
-// their first output using the returned vector.
-std::vector<NodeArg*> FindBackwardLeafNodes(Graph& graph) {
-  // leaf_node_args[i] is the i-th leaf node's first output in the backward
-  // pass.
-  std::vector<NodeArg*> leaf_node_args;
-  for (auto& node : graph.Nodes()) {
-    if (!IsBackward(node)) {
-      // only check backward node
-      continue;
-    }
-    bool find_consumer_nodes = false;
-    std::vector<NodeArg*>& outputs = node.MutableOutputDefs();
-    for (auto& output : outputs) {
-      std::vector<const Node*> consumer_nodes = graph.GetConsumerNodes(output->Name());
-      if (consumer_nodes.size() > 0) {
-        find_consumer_nodes = true;
-        break;
-      }
-    }
-    if (!find_consumer_nodes && outputs.size() > 0) {
-      leaf_node_args.push_back(outputs[0]);
-    }
-  }
-
-  return leaf_node_args;
-};
 
 // This function converts tensor NodeArg to a boolean scalar so that last
 // backward RecordEvent doesn't block the early release of large gradient
@@ -129,13 +102,13 @@ std::vector<NodeArg*> CreateMirrorNodeArgs(
 
 // Create a node with input schema [event, input1, input2, ..., inputN] and
 // output schema [input1, input2, ..., inputN]
-Node& CreateBottleneckNode(Graph& graph,
-                           const std::string& op_type,
-                           const std::string& op_name,
-                           const std::string& description,
-                           NodeArg* event,
-                           std::vector<NodeArg*> input_node_args,
-                           std::vector<NodeArg*> output_node_args) {
+Node& CreateEventNode(Graph& graph,
+                      const std::string& op_type,
+                      const std::string& op_name,
+                      const std::string& description,
+                      NodeArg* event,
+                      std::vector<NodeArg*> input_node_args,
+                      std::vector<NodeArg*> output_node_args) {
   const auto name = graph.GenerateNodeName(op_name);
   if (event) {
     input_node_args.insert(input_node_args.begin(), event);
@@ -149,197 +122,6 @@ Node& CreateBottleneckNode(Graph& graph,
       output_node_args,
       nullptr /* assume all bottleneck node have no attributes */,
       kMSDomain);
-}
-
-Node* AddBackwardRecord(Graph& graph,
-                        Node* backward_send,
-                        std::vector<std::string>& new_input_names,
-                        std::vector<std::string>& new_output_names,
-                        std::string& event_id_tensor_name,
-                        std::string& output_tensor_name) {
-  std::vector<NodeArg*> input_args;
-  AddNewNodeArg(graph, "backward_recorded_event_id", ONNX_NAMESPACE::TensorProto_DataType_INT64,
-                input_args, new_input_names);
-  std::vector<NodeArg*> output_args{};
-
-  if (backward_send) {
-    // if we have send op in backward pass (at the end of the graph), we make sure the RecordEvent happens
-    // after that send by adding Send's outputs to RecordEvent's input list.
-    input_args.insert(std::end(input_args),
-                      std::begin(backward_send->MutableOutputDefs()),
-                      std::end(backward_send->MutableOutputDefs()));
-  }
-
-  // Find all leaf nodes' frist inputs. They are used togehter as control edges
-  // to determine if backward pass is finished.
-  auto backward_leaf_node_args = FindBackwardLeafNodes(graph);
-
-  // For each leaf tensor in the backward pass, we use "Group" operator to
-  // convert it to a boolean scalar so that the original leaf's memory can be
-  // released earlier.
-
-  // TODO: use full list instead of the first element after changining
-  // topological sort to depth-first from inputs.
-  std::vector<NodeArg*> sub_backward_leaf_node_args{backward_leaf_node_args[0]};
-  ConvertTensorToBoolSignal(graph, sub_backward_leaf_node_args, input_args);
-
-  // Optimizer will be added after applying pipeline transformer. To support partial graph evaluation,
-  // the added Record backward op will have its first passthrough input as output.
-  ORT_ENFORCE(input_args.size() >= 2, "RecordEvent backward op at least have two inputs.");
-
-  // RecordEvent doesn't have optional input, so it cannot be nullptr.
-  assert(input_args[1]);
-  auto& new_output = CreateNodeArg(graph, *input_args[1]);  // the first input is signal, not passing through
-  output_args.push_back(&new_output);
-  new_output_names.push_back(new_output.Name());
-
-  Node* record_node = &CreateBottleneckNode(
-      graph, "RecordEvent", "backward_record", "Backward pass", nullptr,
-      input_args, output_args);
-
-  // First input argument is the recorded event ID tensor.
-  event_id_tensor_name = input_args.front()->Name();
-  // Use first output as output singnal. It will be fetched outside to make sure
-  // event operator is computed.
-  output_tensor_name = output_args.front()->Name();
-
-  return record_node;
-}
-
-Node* AddForwardWait(Graph& graph,
-                     Node* /* forward_recv */,
-                     std::vector<std::string>& new_input_names,
-                     std::string& forward_waited_event_name,
-                     std::string& output_tensor_name) {
-  // Append old_input to input_args and return its pass-through value. Note that
-  // input_args and output_args are Wait's inputs and outputs, respectively.
-  auto update_wait_input_output = [&](NodeArg* old_input,
-                                      std::vector<NodeArg*>& input_args,
-                                      std::vector<NodeArg*>& output_args) -> NodeArg& {
-    assert(old_input);
-    input_args.push_back(old_input);
-
-    auto& wait_output = CreateNodeArg(graph, *old_input);
-    output_args.push_back(&wait_output);
-
-    return wait_output;
-  };
-
-  std::vector<NodeArg*> input_args;
-  std::vector<NodeArg*> output_args;
-  AddNewNodeArg(graph, "forward_waited_event_id", ONNX_NAMESPACE::TensorProto_DataType_INT64,
-                input_args, new_input_names);
-  const std::vector<const NodeArg*>& graph_inputs = graph.GetInputsIncludingInitializers();
-
-  if (graph_inputs.size() == 0) {
-    ORT_THROW("Graph ", graph.Name(), " doesn't have any inputs.");
-  }
-
-  for (auto& input_arg : graph_inputs) {
-    NodeArg* mutable_input = graph.GetNodeArg(input_arg->Name());
-    auto& wait_output = update_wait_input_output(mutable_input, input_args, output_args);
-    std::vector<Node*> nodes = graph.GetMutableConsumerNodes(input_arg->Name());
-    for (auto& consumer_node : nodes) {
-      for (auto& i : consumer_node->MutableInputDefs()) {
-        if (i->Name() == input_arg->Name()) {
-          // if the node is fed by input, re-direct it to be fed by WaitEvent's output.
-          i = &wait_output;
-        }
-      }
-    }
-  }
-
-  Node* wait_node = &CreateBottleneckNode(
-      graph, "WaitEvent", "backward_record", "", nullptr,
-      input_args, output_args);
-
-  forward_waited_event_name = input_args.front()->Name();
-  output_tensor_name = output_args.front()->Name();
-
-  return wait_node;
-}
-
-// If the input "graph" is the last pipeline stage, this function don't add any
-// event operators.
-Status AddOrSkipForwardRecordBackwardWait(Graph& graph,
-                                          Node* forward_send,
-                                          Node* backward_recv,
-                                          std::vector<std::string>& new_input_names,
-                                          std::string& forward_recorded_event_name,
-                                          std::string& backward_waited_event_name,
-                                          std::string& forward_output_name,
-                                          std::string& backward_output_name) {
-  if (!forward_send != !backward_recv) {
-    ORT_THROW(
-        "Graph requires either having both send forward node "
-        "and recv backward node, or none of them. Currently the graph "
-        "has send forward: ",
-        forward_send, " and recv backward: ", backward_recv);
-  }
-
-  if (!forward_send && !backward_recv) {
-    // Last partition doesn't have send forwrad and recv backward. No insert
-    // needed.
-    return Status::OK();
-  }
-
-  // if we have a send forward op followed by a recv backward op, insert
-  // WaitEvent and RecordEvent in between.
-  Node* record_node = nullptr;
-  Node* wait_node = nullptr;
-
-  // Insert RecordEvent
-  {
-    std::vector<NodeArg*> input_args;
-    std::vector<NodeArg*> output_args;
-    AddNewNodeArg(graph, "forward_recorded_event_id", ONNX_NAMESPACE::TensorProto_DataType_INT64,
-                  input_args, new_input_names);
-
-    // Add send forward op's output as record op's input and output
-    for (auto& output : forward_send->MutableOutputDefs()) {
-      // send doesn't have optional output, so the node cannot be nullptr.
-      assert(output);
-      auto& new_output = CreateNodeArg(graph, *output);
-      output_args.push_back(&new_output);
-      input_args.push_back(output);
-    }
-
-    record_node = &CreateBottleneckNode(
-        graph, "RecordEvent", "forward_record", "", nullptr,
-        input_args, output_args);
-
-    forward_recorded_event_name = record_node->InputDefs()[0]->Name();
-    forward_output_name = record_node->OutputDefs()[0]->Name();
-  }
-
-  // Insert WaitEvent
-  {
-    std::vector<NodeArg*> input_args;
-    std::vector<NodeArg*> output_args;
-    AddNewNodeArg(graph, "backward_waited_event_id", ONNX_NAMESPACE::TensorProto_DataType_INT64,
-                  input_args, new_input_names);
-
-    input_args.insert(std::end(input_args),
-                      std::begin(record_node->MutableOutputDefs()),
-                      std::end(record_node->MutableOutputDefs()));
-
-    auto& input = backward_recv->MutableInputDefs()[0];
-
-    // recv node doesn't have optional input, so the node cannot be nullptr.
-    assert(input);
-    auto& new_output = CreateNodeArg(graph, *input);
-    output_args.push_back(&new_output);
-    input = &new_output;
-
-    wait_node = &CreateBottleneckNode(
-        graph, "WaitEvent", "backward_wait", "Backward pass", nullptr,
-        input_args, output_args);
-
-    backward_waited_event_name = wait_node->InputDefs()[0]->Name();
-    backward_output_name = wait_node->OutputDefs()[0]->Name();
-  }
-
-  return Status::OK();
 }
 
 // Replace node_args[i] with new_node_args[i] for all inputs in nodes.
@@ -370,17 +152,22 @@ void ReplaceNodeArgs(std::vector<Node*>& nodes,
   ReplaceNodeArgs(nodes, node_args, new_node_args);
 }
 
-std::string AddEventBeforeNode(
-    Graph& graph,
-    Node* node,
-    const std::string& event_op_type,
-    const std::string& event_op_name,
-    const std::string& event_id_name) {
-  if (!node) {
-    // No event operator is be inserted, so we don't have its input event name.
-    return "";
-  }
-
+// Create an event operator topologically before the input operator "node".
+// All inputs of "node" would be re-wired to the passing-through outputs of the new event operator.
+// That is,
+//   upstream node -> node -> downstream node
+// may become
+//   upstream node -> event node (WaitEvent or RecordEvent) -> node -> downstream node
+Node& PrependEventNode(
+    Graph& graph,                                // Graph which contains "node" and the new event operator.
+    Node* node,                                  // The anchor to prepend the new event operator.
+    const std::string& event_op_type,            // Type of the new event operator, for example, "WaitEvent" or "RecordEvent".
+    const std::string& event_op_name,            // Name's seed of the new event operator, for example, "WaitEvent" or "RecordEvent".
+    const std::string& event_id_name,            // Name's seed of the event tensor consumed by the new event operator.
+    std::vector<std::string>& new_input_names,   // Values to be added to input list of the transformed graph. Those values can be fed.
+    std::vector<std::string>& new_output_names,  // Values to be added to output list of the transformed graph. Those values can be fatched.
+    std::string& new_event_name,                 // Actual event name.
+    std::string& new_output_name) {              // First output of the created event operator.
   // Inputs of "node" should be detached.
   // "node" should consume outputs of the added event operator.
   std::vector<NodeArg*> node_args = node->MutableInputDefs();
@@ -397,29 +184,42 @@ std::string AddEventBeforeNode(
   // Create node_arg for event ID.
   auto event_node_arg = &CreateTypedNodeArg(graph, ONNX_NAMESPACE::TensorProto_DataType_INT64, event_id_name);
 
-  // Create node which produces new_node_args from event ID and node_args.
-  CreateBottleneckNode(graph,
-                       event_op_type,
-                       event_op_name,
-                       "",
-                       event_node_arg,
-                       node_args,
-                       new_node_args);
+  // Let outer scope to know the newly-added event tensor name so that TrainingRunner can pass
+  // event value in. We also returns the first output generated by this event operator so that
+  // TrainingRunner can fetch that value to always run this event operator.
+  new_event_name = event_node_arg->Name();
+  new_output_name = new_node_args[0]->Name();
 
-  return event_node_arg->Name();
+  // Allow outer scope to feed to and fetch from this event operator.
+  new_input_names.push_back(new_event_name);
+  new_output_names.push_back(new_output_name);
+
+  // Create node which produces new_node_args from event ID and node_args.
+  return CreateEventNode(graph,
+                         event_op_type,
+                         event_op_name,
+                         "",
+                         event_node_arg,
+                         node_args,
+                         new_node_args);
 }
 
-std::string AddEventAfterNode(
-    Graph& graph,
-    Node* node,
-    const std::string& event_op_type,
-    const std::string& event_op_name,
-    const std::string& event_id_name) {
-  if (!node) {
-    // No event operator is be inserted, so we don't have its input event name.
-    return "";
-  }
-
+// Create an event operator topologically after the input operator "node".
+// All cunsumers of "node" would be re-wired to the passing-through outputs of the new event operator.
+// That is,
+//   upstream node -> node -> downstream node
+// may become
+//   upstream node -> node -> event node (WaitEvent or RecordEvent) -> downstream node
+Node& AppendEventNode(
+    Graph& graph,                                // Graph which contains "node" and the new event operator.
+    Node* node,                                  // The anchor to appended the new event operator.
+    const std::string& event_op_type,            // Type of the new event operator, for example, "WaitEvent" or "RecordEvent".
+    const std::string& event_op_name_seed,       // Name's seed of the new event operator, for example, "WaitEvent" or "RecordEvent".
+    const std::string& event_id_name_seed,       // Name's seed of the event tensor consumed by the new event operator.
+    std::vector<std::string>& new_input_names,   // Values to be added to input list of the transformed graph. Those values can be fed.
+    std::vector<std::string>& new_output_names,  // Values to be added to output list of the transformed graph. Those values can be fatched.
+    std::string& new_event_name,                 // Actual event name.
+    std::string& new_output_name) {              // First output of the created event operator.
   // Outputs of "node" should be detached from its consumers.
   // Consumers of "node" should consume outputs of the added event operator.
   std::vector<NodeArg*> node_args = node->MutableOutputDefs();
@@ -437,86 +237,37 @@ std::string AddEventAfterNode(
   }
 
   // Create node_arg for event ID.
-  auto event_node_arg = &CreateTypedNodeArg(graph, ONNX_NAMESPACE::TensorProto_DataType_INT64, event_id_name);
+  auto event_node_arg = &CreateTypedNodeArg(graph, ONNX_NAMESPACE::TensorProto_DataType_INT64, event_id_name_seed);
+
+  // Let outer scope to know the newly-added event tensor name so that TrainingRunner can pass
+  // event value in. We also returns the first output generated by this event operator so that
+  // TrainingRunner can fetch that value to always run this event operator.
+  new_event_name = event_node_arg->Name();
+  new_output_name = new_node_args[0]->Name();
+
+  // Allow outer scope to feed to and fetch from this event operator.
+  new_input_names.push_back(new_event_name);
+  new_output_names.push_back(new_output_name);
 
   // Create node which produces new_node_args from event ID and node_args.
-  CreateBottleneckNode(graph,
-                       event_op_type,
-                       event_op_name,
-                       "",
-                       event_node_arg,
-                       node_args,
-                       new_node_args);
-
-  return event_node_arg->Name();
+  return CreateEventNode(graph,
+                         event_op_type,
+                         event_op_name_seed,
+                         "",
+                         event_node_arg,
+                         node_args,
+                         new_node_args);
 }
 
-Status AddForwardWaitAfterRecv(
-    Graph& graph,
-    Node* comm_node,
-    std::vector<std::string>& new_input_names,
-    std::string& event_name) {
-  event_name = AddEventAfterNode(
-      graph, comm_node,
-      "WaitEvent", "forward_wait_after_recv",
-      "forward_wait_after_recv_event_id");
-  if (event_name.empty()) {
-    return Status::OK();
-  } else {
-    new_input_names.push_back(event_name);
-    return Status::OK();
-  }
-}
+Status ResolveForTraining(Graph& graph, const std::unordered_set<std::string>& weights_to_train) {
+  Graph::ResolveOptions options;
+  // Reserve the training weights. In mixed precision case, without this field,
+  // the original fp32 initializers could be removed due to not being used
+  // at this point. But we still need to preserve them because later when optimizer is
+  // is constructed, the isolated fp32 initializers will be inputs for optimizer.
+  options.initializer_names_to_preserve = &weights_to_train;
 
-Status AddForwardRecordBeforeSend(
-    Graph& graph,
-    Node* comm_node,
-    std::vector<std::string>& new_input_names,
-    std::string& event_name) {
-  event_name = AddEventBeforeNode(
-      graph, comm_node,
-      "RecordEvent", "forward_record_before_send",
-      "forward_record_before_send_event_id");
-  if (event_name.empty()) {
-    return Status::OK();
-  } else {
-    new_input_names.push_back(event_name);
-    return Status::OK();
-  }
-}
-
-Status AddBackwardWaitAfterRecv(
-    Graph& graph,
-    Node* comm_node,
-    std::vector<std::string>& new_input_names,
-    std::string& event_name) {
-  event_name = AddEventAfterNode(
-      graph, comm_node,
-      "WaitEvent", "backward_wait_after_recv",
-      "backward_wait_after_recv_event_id");
-  if (event_name.empty()) {
-    return Status::OK();
-  } else {
-    new_input_names.push_back(event_name);
-    return Status::OK();
-  }
-}
-
-Status AddBackwardRecordBeforeSend(
-    Graph& graph,
-    Node* comm_node,
-    std::vector<std::string>& new_input_names,
-    std::string& event_name) {
-  event_name = AddEventBeforeNode(
-      graph, comm_node,
-      "RecordEvent", "backward_record_before_send",
-      "backward_record_before_send_event_id");
-  if (event_name.empty()) {
-    return Status::OK();
-  } else {
-    new_input_names.push_back(event_name);
-    return Status::OK();
-  }
+  return graph.Resolve(options);
 }
 
 Status SetInputsOutputsAndResolve(Graph& graph,
@@ -548,18 +299,44 @@ Status SetInputsOutputsAndResolve(Graph& graph,
   graph.SetGraphResolveNeeded();
   graph.SetGraphProtoSyncNeeded();
 
-  Graph::ResolveOptions options;
-  // Reserve the training weights. In mixed precision case, without this field,
-  // the original fp32 initializers could be removed due to not being used
-  // at this point. But we still need to preserve them because later when optimizer is
-  // is constructed, the isolated fp32 initializers will be inputs for optimizer.
-  options.initializer_names_to_preserve = &weights_to_train;
-
-  return graph.Resolve(options);
+  return ResolveForTraining(graph, weights_to_train);
 }
 
-// This function inserts WaitEvent's and RecordEvent's to the input graph for
-// controlling synchronization between (batch, pipeline stage)-pairs.
+void FindPipelineLandmarks(
+    Graph& graph,
+    Node** forward_recv,
+    Node** forward_send,
+    Node** backward_recv,
+    Node** backward_send,
+    Node** first_node,
+    Node** last_node) {
+  GraphViewer graph_viewer(graph);
+  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+
+  for (auto idx : node_topology_list) {
+    auto node = graph.GetNode(idx);
+    if (node->OpType() == "Send") {
+      if (IsBackward(*node)) {
+        *backward_send = node;
+      } else {
+        *forward_send = node;
+      }
+    } else if (node->OpType() == "Recv") {
+      if (IsBackward(*node)) {
+        *backward_recv = node;
+      } else {
+        *forward_recv = node;
+      }
+    }
+  }
+
+  *first_node = graph.GetNode(node_topology_list.front());
+  *last_node = graph.GetNode(node_topology_list.back());
+}
+
+// This function inserts WaitEvent's (or Wait's for short) and RecordEvent's
+// (or Record's for short) to the input graph for controlling synchronization
+// between (batch, pipeline stage)-pairs.
 //
 // The input graph is a pipeline's stage, which contains some Send's and Recv's.
 //
@@ -579,114 +356,66 @@ Status SetInputsOutputsAndResolve(Graph& graph,
 // This function inserts some event operators and those patterns become
 //
 //  1. First stage:
-//   Wait ---------> Wait -> FW -> Record -> Send -> Record ->
-//   Wait -> Recv -> Wait -> BW -> Record ---------> Record
+//                             Wait -> FW -> Record -> Wait -> Send -> Record ->
+//   Wait -> Recv -> Record -> Wait -> BW -> Record
 //  2. Middle stage:
-//   Wait -> Recv -> Wait -> FW -> Record -> Send -> Record ->
-//   Wait -> Recv -> Wait -> BW -> Record -> Send -> Record
+//   Wait -> Recv -> Record -> Wait -> FW -> Record -> Wait -> Send -> Record ->
+//   Wait -> Recv -> Record -> Wait -> BW -> Record -> Wait -> Send -> Record
 //  3. Last stage:
-//   Wait -> Recv -> Wait -> FW ----------------------------->
-//   ----------------------> BW -> Record -> Send -> Record
+//   Wait -> Recv -> Record -> Wait -> FW ->
+//                                     BW -> Record -> Wait -> Send -> Record
+//
+// Each Recv, Send, FW, and BW, are surrounded by one Wait and one Record. Wait marks
+// the beginning of the surrounded task and Record signals the end of that task.
 //
 // To explain the meaning of those operators, we take the middle stage's pattern
 // as an example:
 //
-//   Wait-0 -> Recv -> Wait-1 -> FW -> Record-0 -> Send -> Record-1 ->
-//   Wait-2 -> Recv -> Wait-3 -> BW -> Record-2 -> Send -> Record-3
+//   Wait-0 -> Recv -> Record-1 -> Wait-2 -> FW -> Record-3 -> Wait-4 -> Send -> Record-5 ->
+//   Wait-6 -> Recv -> Record-7 -> Wait-8 -> BW -> Record-9 -> Wait-10 -> Send -> Record-11
 //
 // Their meanings are listed below.
 //
-//   Wait-0: Wait until we can start reciving forward data.
-//   Wait-1: Wait until we can start forward pass.
-//   Record-0: Tell others that forward pass is done.
-//   Record-1: Tell others that forward result has been passed to another stage.
-//   Wait-2: Wait until we can start reciving backward data.
-//   Wait-3: Wait until we can start backward bass.
-//   Record-2: Tell others that backward pass is done.
-//   Record-3: Tell others that backward result has been passed to another stage.
+//   Wait-0: Wait until we can start forward Recv.
+//   Record-1: Tell others that forward Recv is done.
+//
+//   Wait-2: Wait until we can start forward pass.
+//   Record-3: Tell others that forward computation is done.
+//
+//   Wait-4: Wait until we can start forward Send.
+//   Record-5: Tell others that forward Send is done.
+//
+//   Wait-6: Wait until we can start backward Recv.
+//   Record-7: Tell others that backward Recv is done.
+//
+//   Wait-8: Wait until we can start backward pass.
+//   Record-9: Tell others that backward computation is done.
+//
+//   Wait-10: Wait until we can start backward Send.
+//   Record-11: Tell others that backward Send is done.
 Status TransformGraphForPipeline(
     Graph& graph,
     const std::unordered_set<std::string>& weights_to_train,
-    std::string& forward_waited_event_name,
-    std::string& forward_recorded_event_name,
-    std::string& backward_waited_event_name,
-    std::string& backward_recorded_event_name,
-    std::string& forward_wait_output_name,
-    std::string& forward_record_output_name,
-    std::string& backward_wait_output_name,
-    std::string& backward_record_output_name,
-    std::string& forward_waited_event_after_recv_name,
-    std::string& forward_recorded_event_before_send_name,
-    std::string& backward_waited_event_after_recv_name,
-    std::string& backward_recorded_event_before_send_name) {
-  // Declare nodes according to their topological order.
-  Node* forward_wait{nullptr};
-  Node* forward_send{nullptr};
+    pipeline::PipelineTensorNames& pipeline_tensor_names) {
+  // Begin node of forward pass.
   Node* forward_recv{nullptr};
+  // End node of forward pass.
+  Node* forward_send{nullptr};
+  // Begin node of backward pass.
   Node* backward_recv{nullptr};
+  // End node of backward pass.
   Node* backward_send{nullptr};
-  Node* backward_record{nullptr};
-  for (auto& node : graph.Nodes()) {
-    if (node.OpType() == "Send") {
-      if (IsBackward(node)) {
-        backward_send = &node;
-      } else {
-        forward_send = &node;
-      }
-    } else if (node.OpType() == "Recv") {
-      if (IsBackward(node)) {
-        backward_recv = &node;
-      } else {
-        forward_recv = &node;
-      }
-    }
-  }
 
-  // Names to added into this graph's input list.
-  // Their values may be provides as "feeds" when calling session.Run(...).
-  std::vector<std::string> new_input_names;
-  // Names to added into this graph's output list.
-  // Their values may be returned as "fetches" when calling session.Run(...).
-  std::vector<std::string> new_output_names;
+  // First node in graph topology.
+  Node* first_node{nullptr};
+  // Last node in graph topology.
+  Node* last_node{nullptr};
 
-  backward_record = AddBackwardRecord(
-      graph,
-      backward_send,
-      new_input_names,
-      new_output_names,
-      backward_recorded_event_name,
-      backward_record_output_name);
-  forward_wait = AddForwardWait(
-      graph,
-      forward_recv,
-      new_input_names,
-      forward_waited_event_name,
-      forward_wait_output_name);
-  ORT_RETURN_IF_ERROR(AddOrSkipForwardRecordBackwardWait(
-      graph,
-      forward_send,
-      backward_recv,
-      new_input_names,
-      forward_recorded_event_name,
-      backward_waited_event_name,
-      forward_record_output_name,
-      backward_wait_output_name));
+  // Find begin/end for Send, Recv, and computation in forward and backward.
+  // If there is no Recv in forward/backward, the first forward/backward node is used.
+  // If there is no Send in forward/backward, the last forward/backward node is used.
+  FindPipelineLandmarks(graph, &forward_recv, &forward_send, &backward_recv, &backward_send, &first_node, &last_node);
 
-  // Different stages have different patterns of Send & Recv.
-  // For different patterns, we add different WaitEvent and Record.
-  //
-  // After applying all transformations above, the current patterns
-  // are listed below.
-  //
-  // 1. First stage:
-  //  Wait -----------------> FW -> --------> Send -> Record ->
-  //  Wait -> Recv ---------> BW -> ----------------> Record
-  // 2. Middle stage:
-  //  Wait -> Recv -> Wait -> FW -> Record -> Send -> Record ->
-  //  Wait -> Recv -> Wait -> BW -> Record -> Send -> Record
-  // 3. Last stage:
-  //  Wait -> Recv ---------> FW ----------------------------->
-  //  ----------------------> BW -----------> Send -> Record
   const bool is_first_stage = !forward_recv && forward_send && backward_recv && !backward_send;
   const bool is_middle_stage = forward_recv && forward_send && backward_recv && backward_send;
   const bool is_last_stage = forward_recv && !forward_send && !backward_recv && backward_send;
@@ -700,90 +429,196 @@ Status TransformGraphForPipeline(
                     "Is middle stage? ", is_middle_stage, ". ",
                     "Is last stage? ", is_last_stage, ".");
 
-  // Now, we add Wait's in parentheses shown below.
-  // 1. First stage:
-  //  Wait ---------> (Wait) -> FW -> Record -> Send -> Record ->
-  //  Wait -> Recv -> Wait -> BW -> Record ---------> Record
-  // 2. Middle stage:
-  //  Wait -> Recv -> (Wait) -> FW -> Record -> Send -> Record ->
-  //  Wait -> Recv -> Wait -> BW -> Record -> Send -> Record
-  // 3. Last stage:
-  //  Wait -> Recv -> (Wait) -> FW ----------------------------->
-  //  ----------------------> BW -> Record -> Send -> Record
-  if (is_first_stage) {
-    // If first stage, insert after forward WaitEvent.
-    ORT_RETURN_IF_ERROR(AddForwardWaitAfterRecv(
-        graph,
-        forward_wait,
-        new_input_names,
-        forward_waited_event_after_recv_name));
-  } else if (is_middle_stage || is_last_stage) {
-    // If middle stage or last stage, insert after forward Recv.
-    ORT_RETURN_IF_ERROR(AddForwardWaitAfterRecv(
-        graph,
-        forward_recv,
-        new_input_names,
-        forward_waited_event_after_recv_name));
+  // For first and middle stages.
+  Node* forward_send_wait{nullptr};
+  Node* forward_send_record{nullptr};
+  // For middle and last stages.
+  Node* forward_recv_wait{nullptr};
+  Node* forward_recv_record{nullptr};
+  // For middle and last stages.
+  Node* backward_send_wait{nullptr};
+  Node* backward_send_record{nullptr};
+  // For first and middle stages.
+  Node* backward_recv_wait{nullptr};
+  Node* backward_recv_record{nullptr};
+  // For all stages.
+  Node* forward_compute_wait{nullptr};
+  // For first and middle stages.
+  Node* forward_compute_record{nullptr};
+  // For first and middle stages.
+  Node* backward_compute_wait{nullptr};
+  // For all stages.
+  Node* backward_compute_record{nullptr};
+
+  // Names to added into this graph's input list.
+  // Their values may be provides as "feeds" when calling session.Run(...).
+  std::vector<std::string> new_input_names;
+  // Names to added into this graph's output list.
+  // Their values may be returned as "fetches" when calling session.Run(...).
+  std::vector<std::string> new_output_names;
+
+  // Forward Recv
+  if (is_middle_stage || is_last_stage) {
+    // Insert Wait before Forward-Recv and all nodes.
+    forward_recv_wait = &PrependEventNode(
+        graph, forward_recv,
+        "WaitEvent", "wait_forward_recv", "forward_recv_event_1",
+        new_input_names, new_output_names,
+        pipeline_tensor_names.forward_recv_waited_event_name,
+        pipeline_tensor_names.forward_recv_wait_output_name);
+    ORT_ENFORCE(forward_recv_wait);
+    ResolveForTraining(graph, weights_to_train);
+
+    // Insert Record after Forward-Recv.
+    forward_recv_record = &AppendEventNode(
+        graph, forward_recv,
+        "RecordEvent", "record_forward_recv", "forward_recv_event_2",
+        new_input_names, new_output_names,
+        pipeline_tensor_names.forward_recv_recorded_event_name,
+        pipeline_tensor_names.forward_recv_record_output_name);
+    ORT_ENFORCE(forward_recv_record);
+    ResolveForTraining(graph, weights_to_train);
   }
 
-  // Now, we add Record's in parentheses shown below.
-  // 1. First stage:
-  //  Wait ---------> Wait -> FW -> (Record) -> Send -> Record ->
-  //  Wait -> Recv -> Wait -> BW -> Record ---------> Record
-  // 2. Middle stage:
-  //  Wait -> Recv -> Wait -> FW -> (Record) -> Send -> Record ->
-  //  Wait -> Recv -> Wait -> BW -> Record -> Send -> Record
-  // 3. Last stage (no change):
-  //  Wait -> Recv -> Wait -> FW ----------------------------->
-  //  ----------------------> BW -> Record -> Send -> Record
+  // Forward Send
   if (is_first_stage || is_middle_stage) {
-    ORT_RETURN_IF_ERROR(AddForwardRecordBeforeSend(
-        graph,
-        forward_send,
-        new_input_names,
-        forward_recorded_event_before_send_name));
+    // Insert Wait before Forward-Send.
+    forward_send_wait = &PrependEventNode(
+        graph, forward_send,
+        "WaitEvent", "wait_forward_send", "forward_send_event_1",
+        new_input_names, new_output_names,
+        pipeline_tensor_names.forward_send_waited_event_name,
+        pipeline_tensor_names.forward_send_wait_output_name);
+    ORT_ENFORCE(forward_send_wait);
+    ResolveForTraining(graph, weights_to_train);
+
+    // Insert Record after Forward-Send.
+    forward_send_record = &AppendEventNode(
+        graph, forward_send,
+        "RecordEvent", "record_forward_send", "forward_send_event_2",
+        new_input_names, new_output_names,
+        pipeline_tensor_names.forward_send_recorded_event_name,
+        pipeline_tensor_names.forward_send_record_output_name);
+    ORT_ENFORCE(forward_send_record);
+    ResolveForTraining(graph, weights_to_train);
   }
 
-  // Now, we add Wait's in parentheses shown below.
-  // 1. First stage:
-  //  Wait ---------> Wait -> FW -> Record -> Send -> Record ->
-  //  Wait -> Recv -> (Wait) -> BW -> Record ---------> Record
-  // 2. Middle stage:
-  //  Wait -> Recv -> Wait -> FW -> Record -> Send -> Record ->
-  //  Wait -> Recv -> (Wait) -> BW -> Record -> Send -> Record
-  // 3. Last stage (no change):
-  //  Wait -> Recv -> Wait -> FW ----------------------------->
-  //  ----------------------> BW -> Record -> Send -> Record
+  // Backward Recv
   if (is_first_stage || is_middle_stage) {
-    ORT_RETURN_IF_ERROR(AddBackwardWaitAfterRecv(
-        graph,
-        backward_recv,
-        new_input_names,
-        backward_waited_event_after_recv_name));
+    // Insert Wait before Backward-Recv.
+    backward_recv_wait = &PrependEventNode(
+        graph, backward_recv,
+        "WaitEvent", "wait_backward_recv", "backward_recv_event_1",
+        new_input_names, new_output_names,
+        pipeline_tensor_names.backward_recv_waited_event_name,
+        pipeline_tensor_names.backward_recv_wait_output_name);
+    ORT_ENFORCE(backward_recv_wait);
+    ResolveForTraining(graph, weights_to_train);
+
+    // Insert Record after Forward-Recv.
+    backward_recv_record = &AppendEventNode(
+        graph, backward_recv,
+        "RecordEvent", "record_backward_recv", "backward_recv_event_2",
+        new_input_names, new_output_names,
+        pipeline_tensor_names.backward_recv_recorded_event_name,
+        pipeline_tensor_names.backward_recv_record_output_name);
+    ORT_ENFORCE(backward_recv_record);
+    ResolveForTraining(graph, weights_to_train);
   }
 
-  // Now, we add Record's in parentheses shown below.
-  // 1. First stage is:
-  //  Wait ---------> Wait -> FW -> Record -> Send -> Record ->
-  //  Wait -> Recv -> Wait -> BW -> (Record) ---------> Record
-  // 2. Middle stage is:
-  //  Wait -> Recv -> Wait -> FW -> Record -> Send -> Record ->
-  //  Wait -> Recv -> Wait -> BW -> (Record) -> Send -> Record
-  // 3. Final pattern of last stage is:
-  //  Wait -> Recv -> Wait -> FW ----------------------------->
-  //  ----------------------> BW -> (Record) -> Send -> Record
+  // Backward Send
+  if (is_middle_stage || is_last_stage) {
+    // Insert Wait before Backward-Send.
+    backward_send_wait = &PrependEventNode(
+        graph, backward_send,
+        "WaitEvent", "wait_backward_send", "backward_send_event_1",
+        new_input_names, new_output_names,
+        pipeline_tensor_names.backward_send_waited_event_name,
+        pipeline_tensor_names.backward_send_wait_output_name);
+    ORT_ENFORCE(backward_send_wait);
+    ResolveForTraining(graph, weights_to_train);
+
+    // Insert Record after Backward-Send and all nodes.
+    backward_send_record = &AppendEventNode(
+        graph, backward_send,
+        "RecordEvent", "record_backward_send", "backward_send_event_2",
+        new_input_names, new_output_names,
+        pipeline_tensor_names.backward_send_recorded_event_name,
+        pipeline_tensor_names.backward_send_record_output_name);
+    ORT_ENFORCE(backward_send_record);
+    ResolveForTraining(graph, weights_to_train);
+  }
+
+  // Forward-Compute Wait.
   if (is_first_stage) {
-    ORT_RETURN_IF_ERROR(AddBackwardRecordBeforeSend(
-        graph,
-        backward_record,
-        new_input_names,
-        backward_recorded_event_before_send_name));
-  } else if (is_middle_stage || is_last_stage) {
-    ORT_RETURN_IF_ERROR(AddBackwardRecordBeforeSend(
-        graph,
-        backward_send,
-        new_input_names,
-        backward_recorded_event_before_send_name));
+    // Insert one Wait before all nodes.
+    forward_compute_wait = &PrependEventNode(
+        graph, first_node,
+        "WaitEvent", "wait_forward_compute", "forward_compute_event_1",
+        new_input_names, new_output_names,
+        pipeline_tensor_names.forward_compute_waited_event_name,
+        pipeline_tensor_names.forward_compute_wait_output_name);
+    ORT_ENFORCE(forward_compute_wait);
+    ResolveForTraining(graph, weights_to_train);
+  } else {
+    // Insert one Wait after Forward-Recv Record.
+    forward_compute_wait = &AppendEventNode(
+        graph, forward_recv_record,
+        "WaitEvent", "wait_forward_compute", "forward_compute_event_1",
+        new_input_names, new_output_names,
+        pipeline_tensor_names.forward_compute_waited_event_name,
+        pipeline_tensor_names.forward_compute_wait_output_name);
+    ORT_ENFORCE(forward_compute_wait);
+    ResolveForTraining(graph, weights_to_train);
+  }
+
+  // Forward-Compute Record
+  if (is_first_stage || is_middle_stage) {
+    // Insert one Record before Forward-Send Wait.
+    forward_compute_record = &PrependEventNode(
+        graph, forward_send_wait,
+        "RecordEvent", "record_forward_compute", "forward_compute_event_2",
+        new_input_names, new_output_names,
+        pipeline_tensor_names.forward_compute_recorded_event_name,
+        pipeline_tensor_names.forward_compute_record_output_name);
+    ORT_ENFORCE(forward_compute_record);
+    ResolveForTraining(graph, weights_to_train);
+  }
+
+  // Backward-Compute Wait.
+  if (is_first_stage || is_middle_stage) {
+    // Insert one Wait after Backward-Recv Record
+    backward_compute_wait = &AppendEventNode(
+        graph, backward_recv_record,
+        "WaitEvent", "wait_backward_compute", "backward_compute_event_1",
+        new_input_names, new_output_names,
+        pipeline_tensor_names.backward_compute_waited_event_name,
+        pipeline_tensor_names.backward_compute_wait_output_name);
+    ORT_ENFORCE(backward_compute_wait);
+    ResolveForTraining(graph, weights_to_train);
+  }
+
+  // Backward-Compute Record.
+  if (is_first_stage) {
+    // Insert one Record after all nodes.
+    backward_compute_record = &AppendEventNode(
+        graph, last_node,
+        "RecordEvent", "record_backward_compute", "backward_compute_event_2",
+        new_input_names, new_output_names,
+        pipeline_tensor_names.backward_compute_recorded_event_name,
+        pipeline_tensor_names.backward_compute_record_output_name);
+    ORT_ENFORCE(backward_compute_record);
+    ResolveForTraining(graph, weights_to_train);
+  } else {
+    // Insert one Record before Backward-Send Wait.
+    backward_compute_record = &PrependEventNode(
+        graph, backward_send_wait,
+        "RecordEvent", "record_backward_compute", "backward_compute_event_2",
+        new_input_names, new_output_names,
+        pipeline_tensor_names.backward_compute_recorded_event_name,
+        pipeline_tensor_names.backward_compute_record_output_name);
+    ORT_ENFORCE(backward_compute_record);
+    ResolveForTraining(graph, weights_to_train);
   }
 
   ORT_RETURN_IF_ERROR(SetInputsOutputsAndResolve(graph, weights_to_train, new_input_names, new_output_names));
@@ -794,12 +629,12 @@ Status TransformGraphForPipeline(
 // It may create a NodeArg so that other Node can references its value.
 // It also cerates an initializer to store its value.
 template <typename T>
-void AddNewScalarNodeArgAndInitializer(Graph& graph,
-                                       const std::string& op_name,
-                                       onnx::TensorProto_DataType type,
-                                       T data,
-                                       std::vector<NodeArg*>& new_node_args,
-                                       std::vector<std::string>& new_names) {
+Status AddNewScalarNodeArgAndInitializer(Graph& graph,
+                                         const std::string& op_name,
+                                         onnx::TensorProto_DataType type,
+                                         T data,
+                                         std::vector<NodeArg*>& new_node_args,
+                                         std::vector<std::string>& new_names) {
   AddNewNodeArg(graph, op_name, type, new_node_args, new_names);
 
   ONNX_NAMESPACE::TensorProto proto_data;
@@ -814,9 +649,10 @@ void AddNewScalarNodeArgAndInitializer(Graph& graph,
       proto_data.add_int64_data(static_cast<int64_t>(data));
       break;
     default:
-      ORT_THROW("pipeline partition unsupported 'type' value: ", type);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "pipeline partition unsupported 'type' value: ", type);
   }
   graph.AddInitializedTensor(proto_data);
+  return Status::OK();
 }
 
 // Given a node, this function finds all its connected nodes (consumer nodes and producer nodes) and
@@ -825,10 +661,9 @@ Status FindAllConnectedNodes(Graph& graph,
                              Node* node,
                              std::vector<Node*>& connected_nodes,
                              std::set<NodeArg*>& connected_inputs,
-                             std::set<NodeArg*>& connected_outputs
-                             ) {
+                             std::set<NodeArg*>& connected_outputs) {
   assert(node);
-  ORT_THROW_IF_ERROR(node->ForEachMutableWithIndex(
+  ORT_RETURN_IF_ERROR(node->ForEachMutableWithIndex(
       node->MutableInputDefs(),
       [&](NodeArg& node_arg, size_t /*index*/) {
         if (graph.IsInputsIncludingInitializers(&node_arg) || graph.IsInitializedTensor(node_arg.Name())) {
@@ -847,7 +682,7 @@ Status FindAllConnectedNodes(Graph& graph,
         return Status::OK();
       }));
 
-  ORT_THROW_IF_ERROR(node->ForEachMutableWithIndex(
+  ORT_RETURN_IF_ERROR(node->ForEachMutableWithIndex(
       node->MutableOutputDefs(),
       [&](NodeArg& node_arg, size_t /*index*/) {
         if (!graph.IsOutput(&node_arg)) {
@@ -917,7 +752,7 @@ common::Status AddPassthroughInitializer(Graph& graph,
     recv_nodes[i]->MutableOutputDefs().push_back(current_node_arg);
 
     // update the consumer node's input if the node's group is not in the first partition
-    if (i > from_stage && node_groups[node_group_index].stage_id == (i + 1)) {
+    if (node_groups[node_group_index].stage_id == (i + 1)) {
       for (auto node : node_groups[node_group_index].nodes) {
         for (auto& input_node : node->MutableInputDefs()) {
           if (input_node == initializer) {
@@ -930,18 +765,20 @@ common::Status AddPassthroughInitializer(Graph& graph,
     }
   }
 
-  ORT_ENFORCE(node_group_index == node_groups.size(), "Not all nodes are updated with new initializer.");
+  ORT_ENFORCE(node_group_index == node_groups.size(),
+              "Not all nodes are updated with new initializer. Updated: ", node_group_index,
+              ", expected: ", node_groups.size());
 
   return Status::OK();
 }
 
 // Traverse the graph to find out all connected elements in the graph from start_node. The traverse treats the graph as an
 // undirected graph.
-void TraverseGraphWithConnectedElement(Graph& graph,
-                                       Node* start_node,
-                                       std::set<Node*>& visited_nodes,
-                                       std::set<NodeArg*>& visited_inputs,
-                                       std::set<NodeArg*>& visited_outputs) {
+Status TraverseGraphWithConnectedElement(Graph& graph,
+                                         Node* start_node,
+                                         std::set<Node*>& visited_nodes,
+                                         std::set<NodeArg*>& visited_inputs,
+                                         std::set<NodeArg*>& visited_outputs) {
   assert(start_node);
   visited_nodes.clear();
   visited_inputs.clear();
@@ -955,7 +792,7 @@ void TraverseGraphWithConnectedElement(Graph& graph,
     node_queue.pop();
     if (visited_nodes.insert(node).second) {
       std::vector<Node*> connected_nodes;
-      ORT_THROW_IF_ERROR(FindAllConnectedNodes(graph, node, connected_nodes, visited_inputs, visited_outputs));
+      ORT_RETURN_IF_ERROR(FindAllConnectedNodes(graph, node, connected_nodes, visited_inputs, visited_outputs));
 
       for (auto n : connected_nodes) {
         ORT_ENFORCE(n != nullptr, "Found nullptr in searching for connected nodes");
@@ -963,6 +800,7 @@ void TraverseGraphWithConnectedElement(Graph& graph,
       }
     }
   }
+  return Status::OK();
 }
 
 // If an initializer is shared across partitions, instead of creating a separate all_reduce op to
@@ -987,23 +825,23 @@ common::Status HandleSharedInitializer(Graph& graph,
     // forward pass. When not in last stage, traverse start from send node; otherwise start with the recv node as
     // send node doesn't exist in last partition's forward pass.
     Node* traverse_start_node = stage < send_nodes.size() ? send_nodes[stage] : recv_nodes.back();
-    TraverseGraphWithConnectedElement(graph,
-                                      traverse_start_node,
-                                      visited_nodes,
-                                      visited_inputs,
-                                      visited_outputs);
+    ORT_RETURN_IF_ERROR(TraverseGraphWithConnectedElement(graph,
+                                                          traverse_start_node,
+                                                          visited_nodes,
+                                                          visited_inputs,
+                                                          visited_outputs));
 
     for (const auto input : visited_inputs) {
       // If the node is an input instead of an initializer, continue
-      if (!graph.IsInitializedTensor(input->Name())){
+      if (!graph.IsInitializedTensor(input->Name())) {
         continue;
       }
 
       // group all consumer nodes that shares the same input initializer in visited_consumer_nodes
       std::vector<Node*> consumer_nodes = graph.GetMutableConsumerNodes(input->Name());
       std::vector<Node*> visited_consumer_nodes;
-      for(auto consumer_node : consumer_nodes){
-        if (visited_nodes.count(consumer_node) != 0){
+      for (auto consumer_node : consumer_nodes) {
+        if (visited_nodes.count(consumer_node) != 0) {
           visited_consumer_nodes.push_back(consumer_node);
         }
       }
@@ -1061,6 +899,14 @@ common::Status SplitGraph(Graph& graph,
   //    newly inserted send's input. Also, to keep this on going for any following cut, we create an updated_node_arg_v2,
   //    and update updated_node_args with updated_node_args[original_node_arg] = updated_node_arg_v2
   std::map<NodeArg*, NodeArg*> updated_node_args;
+
+  // Retrieve all ranks in this particular pipeline group that the current rank belongs to.
+  // We will use this data to figure out, for each inserted send/recv pair, what's the corresponding
+  // source and destination rank.
+  // Noted: currently assume each stage has the same number of data parallel size. Variable data parallel
+  // size between different pipeline stages is not supported.
+  auto ranks = DistributedRunContext::GetRanks(WorkerGroupType::ModelParallel);
+
   for (size_t index = 0; index < split_edge_groups.size(); ++index) {
     // each entry in split_edge_groups represents a partition cut. Each cut can contain the split of
     // several edges.
@@ -1074,31 +920,32 @@ common::Status SplitGraph(Graph& graph,
 
     auto cut_index_str = std::to_string(index);
     // add input node_arg and initializer for send/recv
-    AddNewScalarNodeArgAndInitializer<bool>(graph,
-                                            "send_input_signal" + cut_index_str,
-                                            ONNX_NAMESPACE::TensorProto_DataType_BOOL,
-                                            true, /* initializer data */
-                                            send_input_args,
-                                            new_input_names);
-    AddNewScalarNodeArgAndInitializer<bool>(graph,
-                                            "recv_input_signal" + cut_index_str,
-                                            ONNX_NAMESPACE::TensorProto_DataType_BOOL,
-                                            true, /* initializer data */
-                                            recv_input_args,
-                                            new_input_names);
+    ORT_RETURN_IF_ERROR(AddNewScalarNodeArgAndInitializer<bool>(graph,
+                                                                "send_input_signal" + cut_index_str,
+                                                                ONNX_NAMESPACE::TensorProto_DataType_BOOL,
+                                                                true, /* initializer data */
+                                                                send_input_args,
+                                                                new_input_names));
+    ORT_RETURN_IF_ERROR(AddNewScalarNodeArgAndInitializer<bool>(graph,
+                                                                "recv_input_signal" + cut_index_str,
+                                                                ONNX_NAMESPACE::TensorProto_DataType_BOOL,
+                                                                true, /* initializer data */
+                                                                recv_input_args,
+                                                                new_input_names));
 
-    AddNewScalarNodeArgAndInitializer<size_t>(graph,
-                                              "send_dst_rank" + cut_index_str,
-                                              ONNX_NAMESPACE::TensorProto_DataType_INT64,
-                                              index + 1, /* initializer data */
-                                              send_input_args,
-                                              new_input_names);
-    AddNewScalarNodeArgAndInitializer<size_t>(graph,
-                                              "recv_src_rank" + cut_index_str,
-                                              ONNX_NAMESPACE::TensorProto_DataType_INT64,
-                                              index, /* initializer data */
-                                              recv_input_args,
-                                              new_input_names);
+    ORT_RETURN_IF_ERROR(AddNewScalarNodeArgAndInitializer<size_t>(graph,
+                                                                  "send_dst_rank" + cut_index_str,
+                                                                  ONNX_NAMESPACE::TensorProto_DataType_INT64,
+                                                                  ranks[index + 1], /* initializer data */
+                                                                  send_input_args,
+                                                                  new_input_names));
+    ORT_RETURN_IF_ERROR(AddNewScalarNodeArgAndInitializer<size_t>(graph,
+                                                                  "recv_src_rank" + cut_index_str,
+                                                                  ONNX_NAMESPACE::TensorProto_DataType_INT64,
+                                                                  ranks[index], /* initializer data */
+                                                                  recv_input_args,
+                                                                  new_input_names));
+
     // add output node_arg for send/recv
     AddNewNodeArg(graph, "send_output_signal" + cut_index_str, ONNX_NAMESPACE::TensorProto_DataType_BOOL,
                   send_output_args, new_output_names);
@@ -1121,7 +968,8 @@ common::Status SplitGraph(Graph& graph,
       // find node whose output contains id.node_arg_name
       auto producer_node = graph.GetMutableProducerNode(id.node_arg_name);
       if (!producer_node) {
-        ORT_THROW("Cannot find producer node of node_arg with name: ", id.node_arg_name, ". Wrong cutting infomation.");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cannot find producer node of node_arg with name: ", id.node_arg_name,
+                               ". Wrong cutting infomation.");
       }
 
       // once we find out the producer node for id.node_arg_name, find which output index that leads
@@ -1137,8 +985,8 @@ common::Status SplitGraph(Graph& graph,
           });
 
       if (upstream_nodes_output_index < 0) {
-        ORT_THROW("Node with name: ", producer_node->Name(),
-                  " doesn't have an output node_arg with name ", id.node_arg_name);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node with name: ", producer_node->Name(),
+                               " doesn't have an output node_arg with name ", id.node_arg_name);
       }
 
       size_t idx = static_cast<size_t>(upstream_nodes_output_index);
@@ -1234,8 +1082,8 @@ common::Status GenerateSubgraph(Graph& graph, Node* start_node) {
   std::set<NodeArg*> visited_outputs;
 
   // BFS graph traverse
-  TraverseGraphWithConnectedElement(graph, start_node,
-                                    visited_nodes, visited_inputs, visited_outputs);
+  ORT_RETURN_IF_ERROR(TraverseGraphWithConnectedElement(graph, start_node,
+                                                        visited_nodes, visited_inputs, visited_outputs));
 
   std::set<NodeIndex> visited_node_index;
   for (auto n : visited_nodes) {
@@ -1255,7 +1103,7 @@ common::Status GenerateSubgraph(Graph& graph, Node* start_node) {
   // If the following line is uncommented, middle and last pipeline stages may
   // have unresolved symbolic shapes. The reason is that some symbolic shapes
   // are defined for the original inputs, if original inputs are removed, we
-  // loss the hit to resolve symbolic shapes. For example, if an original
+  // lose the hint to resolve symbolic shapes. For example, if an original
   // input's shape is [batch, sequence, 1024], that input should be provided as
   // a feed to all pipeline stages. Otherwise, we don't know the actual values
   // of "batch" and "sequence".
@@ -1278,10 +1126,10 @@ Status ApplyPipelinePartitionToMainGraph(
   size_t split_count = cut_info.size();
 
   if (num_pipeline_stage != split_count + 1) {
-    ORT_THROW("Wrong pipeline partition cutting info. Total pipeline stage number is ",
-              num_pipeline_stage,
-              ", cut info length is: ",
-              split_count);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Wrong pipeline partition cutting info. Total pipeline stage number is ",
+                           num_pipeline_stage,
+                           ", cut info length is: ",
+                           split_count);
   }
 
   std::vector<Node *> send_nodes, recv_nodes;
@@ -1293,8 +1141,8 @@ Status ApplyPipelinePartitionToMainGraph(
   ORT_RETURN_IF_ERROR(SplitGraph(graph, cut_info, send_nodes, recv_nodes));
 
   if (send_nodes.size() != split_count || recv_nodes.size() != split_count) {
-    ORT_THROW("Split error: not all cut has Send and Recv inserted. Send node count: ",
-              send_nodes.size(), ", Recv node count: ", recv_nodes.size(), ", split count: ", split_count);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Split error: not all cut has Send and Recv inserted. Send node count: ",
+                           send_nodes.size(), ", Recv node count: ", recv_nodes.size(), ", split count: ", split_count);
   }
 
   // Check to see if there are any initializers that is being shared between different partitions. If there
@@ -1319,25 +1167,24 @@ Status ApplyPipelinePartitionToMainGraph(
     }
   }
 
-  if (pipeline_stage_id == 0){
+  if (pipeline_stage_id == 0) {
     // For the first stage, there should be no recv node, and the send node contained in graph should match the first
     // send_node inserted during split.
-    ORT_ENFORCE(recv_node == nullptr, "Error: first stage contains Recv node in forward pass.");
-    ORT_ENFORCE(send_node == send_nodes[0],
+    ORT_RETURN_IF_NOT(recv_node == nullptr, "Error: first stage contains Recv node in forward pass.");
+    ORT_RETURN_IF_NOT(send_node == send_nodes[0],
                 "Error: first stage doesn't contain the right Send node. Possibly CutInfo data is wrong.");
-  }
-  else if (pipeline_stage_id == split_count){
+  } else if (pipeline_stage_id == split_count) {
     // For the last stage, there should be no send node, and the recv node contained in graph should match the last
     // recv_node inserted during split.
-    ORT_ENFORCE(recv_node == recv_nodes.back(),
+    ORT_RETURN_IF_NOT(recv_node == recv_nodes.back(),
                 "Error: last stage doesn't contain the right Recv node. Possibly CutInfo data is wrong.");
-    ORT_ENFORCE(send_node == nullptr, "Error: last stage contains Send node in forward pass.");
+    ORT_RETURN_IF_NOT(send_node == nullptr, "Error: last stage contains Send node in forward pass.");
   } else {
     // For stages in the middle, i-th stage should contain recv node that matches the (i-1)-th inserted recv node, and the i-th
     // inserted send node.
-    ORT_ENFORCE(recv_node == recv_nodes[pipeline_stage_id - 1],
+    ORT_RETURN_IF_NOT(recv_node == recv_nodes[pipeline_stage_id - 1],
                 "Error: stage ", pipeline_stage_id, " doesn't contain the right Recv node. Possibly CutInfo data is wrong.");
-    ORT_ENFORCE(send_node == send_nodes[pipeline_stage_id],
+    ORT_RETURN_IF_NOT(send_node == send_nodes[pipeline_stage_id],
                 "Error: stage ", pipeline_stage_id, " doesn't contain the right Send node. Possibly CutInfo data is wrong.");
   }
 

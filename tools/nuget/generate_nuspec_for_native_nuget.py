@@ -20,8 +20,13 @@ def parse_arguments():
     parser.add_argument("--packages_path", required=True, help="Nuget packages output directory.")
     parser.add_argument("--sources_path", required=True, help="OnnxRuntime source code root.")
     parser.add_argument("--commit_id", required=True, help="The last commit id included in this package.")
+    parser.add_argument("--is_store_build", default=False, type=lambda x: x.lower() == 'true',
+                        help="Build for the Microsoft Store")
     parser.add_argument("--is_release_build", required=False, default=None, type=str,
                         help="Flag indicating if the build is a release build. Accepted values: true/false.")
+    parser.add_argument("--execution_provider", required=False, default='None', type=str,
+                        choices=['dnnl', 'openvino', 'tensorrt', 'None'],
+                        help="The selected execution provider for this build.")
 
     return parser.parse_args()
 
@@ -165,8 +170,44 @@ def generate_files(list, args):
 
     includes_cuda = is_cuda_gpu_package or is_cpu_package  # Why does the CPU package ship the cuda provider headers?
     includes_winml = is_windowsai_package
-    includes_directml = (is_dml_package or is_windowsai_package) and (args.target_architecture == 'x64'
-                                                                      or args.target_architecture == 'x86')
+    includes_directml = (is_dml_package or is_windowsai_package) and not args.is_store_build and (
+        args.target_architecture == 'x64' or args.target_architecture == 'x86')
+
+    is_windows_build = is_windows()
+
+    nuget_dependencies = {}
+
+    if is_windows_build:
+        nuget_dependencies = {'mklml': 'mklml.dll',
+                              'openmp': 'libiomp5md.dll',
+                              'dnnl': 'dnnl.dll',
+                              'tvm': 'tvm.dll',
+                              'providers_shared_lib': 'onnxruntime_providers_shared.dll',
+                              'dnnl_ep_shared_lib': 'onnxruntime_providers_dnnl.dll',
+                              'tensorrt_ep_shared_lib': 'onnxruntime_providers_tensorrt.dll',
+                              'onnxruntime_perf_test': 'onnxruntime_perf_test.exe',
+                              'onnx_test_runner': 'onnx_test_runner.exe'}
+
+        copy_command = "copy"
+        runtimes_target = '" target="runtimes\\win-'
+    else:
+        nuget_dependencies = {'mklml': 'libmklml_intel.so',
+                              'mklml_1': 'libmklml_gnu.so',
+                              'openmp': 'libiomp5.so',
+                              'dnnl': 'libdnnl.so.1',
+                              'tvm': 'libtvm.so.0.5.1',
+                              'providers_shared_lib': 'libonnxruntime_providers_shared.so',
+                              'dnnl_ep_shared_lib': 'libonnxruntime_providers_dnnl.so',
+                              'tensorrt_ep_shared_lib': 'libonnxruntime_providers_tensorrt.so',
+                              'onnxruntime_perf_test': 'onnxruntime_perf_test',
+                              'onnx_test_runner': 'onnx_test_runner'}
+
+        copy_command = "cp"
+        runtimes_target = '" target="runtimes\\linux-'
+
+    runtimes = '{}{}\\{}"'.format(runtimes_target,
+                                  args.target_architecture,
+                                  'uap' if args.is_store_build else 'native')
 
     # Process headers
     files_list.append('<file src=' + '"' + os.path.join(args.sources_path,
@@ -181,6 +222,24 @@ def generate_files(list, args):
         files_list.append('<file src=' + '"' +
                           os.path.join(args.sources_path,
                                        'include\\onnxruntime\\core\\providers\\cuda\\cuda_provider_factory.h') +
+                          '" target="build\\native\\include" />')
+
+    if args.execution_provider == 'openvino':
+        files_list.append('<file src=' + '"' +
+                          os.path.join(args.sources_path,
+                                       'include\\onnxruntime\\core\\providers\\openvino\\openvino_provider_factory.h') +
+                          '" target="build\\native\\include" />')
+
+    if args.execution_provider == 'tensorrt':
+        files_list.append('<file src=' + '"' +
+                          os.path.join(args.sources_path,
+                                       'include\\onnxruntime\\core\\providers\\tensorrt\\tensorrt_provider_factory.h') +
+                          '" target="build\\native\\include" />')
+
+    if args.execution_provider == 'dnnl':
+        files_list.append('<file src=' + '"' +
+                          os.path.join(args.sources_path,
+                                       'include\\onnxruntime\\core\\providers\\dnnl\\dnnl_provider_factory.h') +
                           '" target="build\\native\\include" />')
 
     if includes_directml:
@@ -207,7 +266,7 @@ def generate_files(list, args):
         # Process microsoft.ai.machinelearning.winmd
         files_list.append('<file src=' + '"' + os.path.join(args.ort_build_path, args.build_config,
                                                             'microsoft.ai.machinelearning.winmd') +
-                          '" target="lib\\uap10.0\\Microsoft.AI.MachineLearning.winmd" />')
+                          '" target="lib\\uap\\Microsoft.AI.MachineLearning.winmd" />')
         interop_dll = 'Microsoft.AI.MachineLearning.Interop\\netstandard2.0\\Microsoft.AI.MachineLearning.Interop.dll'
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, interop_dll) +
                           '" target="lib\\netstandard2.0\\Microsoft.AI.MachineLearning.Interop.dll" />')
@@ -217,84 +276,116 @@ def generate_files(list, args):
 
     # Process runtimes
     # Process onnxruntime import lib, dll, and pdb
-    files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.lib') +
-                      '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
-    files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.dll') +
-                      '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
-    files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.pdb') +
-                      '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
+    if is_windows_build:
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.lib') +
+                          runtimes + ' />')
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.dll') +
+                          runtimes + ' />')
+        if os.path.exists(os.path.join(args.native_build_path, 'onnxruntime.pdb')):
+            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.pdb') +
+                              runtimes + ' />')
+    else:
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'nuget-staging/usr/local/lib',
+                          'libonnxruntime.so') + '" target="runtimes\\linux-' + args.target_architecture +
+                          '\\native" />')
 
     if includes_directml:
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.dll') +
-                          '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
+                          runtimes + ' />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.pdb') +
-                          '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
-        files_list.append('<file src=' + '"' + os.path.join(args.packages_path, 'DirectML.2.1.0\\LICENSE.txt') +
+                          runtimes + ' />')
+        files_list.append('<file src=' + '"' + os.path.join(args.packages_path, 'DirectML.3.0.0\\LICENSE.txt') +
                           '" target="DirectML_LICENSE.txt" />')
 
     if includes_winml:
         # Process microsoft.ai.machinelearning import lib, dll, and pdb
         files_list.append('<file src=' + '"' +
                           os.path.join(args.native_build_path, 'microsoft.ai.machinelearning.lib') +
-                          '" target="runtimes\\win-' + args.target_architecture +
-                          '\\native\\Microsoft.AI.MachineLearning.lib" />')
+                          runtimes_target + args.target_architecture + '\\' +
+                          ('uap' if args.is_store_build else 'native') +
+                          '\\Microsoft.AI.MachineLearning.lib" />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                                                             'microsoft.ai.machinelearning.dll') +
-                          '" target="runtimes\\win-' + args.target_architecture +
-                          '\\native\\Microsoft.AI.MachineLearning.dll" />')
+                          runtimes_target + args.target_architecture + '\\' +
+                          ('uap' if args.is_store_build else 'native') +
+                          '\\Microsoft.AI.MachineLearning.dll" />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                                                             'microsoft.ai.machinelearning.pdb') +
-                          '" target="runtimes\\win-' + args.target_architecture +
-                          '\\native\\Microsoft.AI.MachineLearning.pdb" />')
+                          runtimes_target + args.target_architecture + '\\' +
+                          ('uap' if args.is_store_build else 'native') +
+                          '\\Microsoft.AI.MachineLearning.pdb" />')
+    # Process execution providers which are built as shared libs
+    if args.execution_provider == "tensorrt":
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
+                          nuget_dependencies['providers_shared_lib']) +
+                          runtimes_target + args.target_architecture + '\\native" />')
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
+                          nuget_dependencies['tensorrt_ep_shared_lib']) +
+                          runtimes_target + args.target_architecture + '\\native" />')
 
+    if args.execution_provider == "dnnl":
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
+                          nuget_dependencies['providers_shared_lib']) +
+                          runtimes_target + args.target_architecture + '\\native" />')
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
+                          nuget_dependencies['dnnl_ep_shared_lib']) +
+                          runtimes_target + args.target_architecture + '\\native" />')
+
+    # process all other library dependencies
     if is_cpu_package or is_cuda_gpu_package or is_dml_package or is_mklml_package:
-        # Process dnll.dll
-        if os.path.exists(os.path.join(args.native_build_path, 'dnnl.dll')):
-            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'dnnl.dll') +
-                              '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
+        # Process dnnl dependency
+        if os.path.exists(os.path.join(args.native_build_path, nuget_dependencies['dnnl'])):
+            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, nuget_dependencies['dnnl']) +
+                              runtimes + ' />')
 
-        # Process mklml.dll
-        if os.path.exists(os.path.join(args.native_build_path, 'mklml.dll')):
-            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'mklml.dll') +
-                              '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
+        # Process mklml dependency
+        if os.path.exists(os.path.join(args.native_build_path, nuget_dependencies['mklml'])):
+            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, nuget_dependencies['mklml']) +
+                              runtimes + ' />')
 
-        # Process libiomp5md.dll
-        if os.path.exists(os.path.join(args.native_build_path, 'libiomp5md.dll')):
-            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'libiomp5md.dll') +
-                              '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
+        if is_linux() and os.path.exists(os.path.join(args.native_build_path, nuget_dependencies['mklml_1'])):
+            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, nuget_dependencies['mklml_1']) +
+                              runtimes + ' />')
 
-        # Process tvm.dll
-        if os.path.exists(os.path.join(args.native_build_path, 'tvm.dll')):
-            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'tvm.dll') +
-                              '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
+        # Process libiomp5md dependency
+        if os.path.exists(os.path.join(args.native_build_path, nuget_dependencies['openmp'])):
+            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, nuget_dependencies['openmp']) +
+                              runtimes + ' />')
+
+        # Process tvm dependency
+        if os.path.exists(os.path.join(args.native_build_path, nuget_dependencies['tvm'])):
+            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, nuget_dependencies['tvm']) +
+                              runtimes + ' />')
 
         # Some tools to be packaged in nightly build only, should not be released
         # These are copied to the runtimes folder for convenience of loading with the dlls
         if args.is_release_build.lower() != 'true' and args.target_architecture == 'x64' and \
-                os.path.exists(os.path.join(args.native_build_path, 'onnxruntime_perf_test.exe')):
-            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime_perf_test.exe') +
-                              '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
+                os.path.exists(os.path.join(args.native_build_path, nuget_dependencies['onnxruntime_perf_test'])):
+            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
+                              nuget_dependencies['onnxruntime_perf_test']) +
+                              runtimes + ' />')
 
         if args.is_release_build.lower() != 'true' and args.target_architecture == 'x64' and \
-                os.path.exists(os.path.join(args.native_build_path, 'onnx_test_runner.exe')):
-            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnx_test_runner.exe') +
-                              '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
+                os.path.exists(os.path.join(args.native_build_path, nuget_dependencies['onnx_test_runner'])):
+            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
+                              nuget_dependencies['onnx_test_runner']) +
+                              runtimes + ' />')
 
     # Process props and targets files
     if is_windowsai_package:
         windowsai_src = 'Microsoft.AI.MachineLearning'
-        # Process native props
         windowsai_props = 'Microsoft.AI.MachineLearning.props'
-        windowsai_native_props = os.path.join(args.sources_path, 'csharp', 'src', windowsai_src, windowsai_props)
-        files_list.append('<file src=' + '"' + windowsai_native_props + '" target="build\\native" />')
-        # Process native targets
         windowsai_targets = 'Microsoft.AI.MachineLearning.targets'
-        windowsai_native_targets = os.path.join(args.sources_path, 'csharp', 'src', windowsai_src, windowsai_targets)
-        files_list.append('<file src=' + '"' + windowsai_native_targets + '" target="build\\native" />')
-        # Process native rules
+        windowsai_native_props = os.path.join(args.sources_path, 'csharp', 'src', windowsai_src, windowsai_props)
         windowsai_rules = 'Microsoft.AI.MachineLearning.Rules.Project.xml'
         windowsai_native_rules = os.path.join(args.sources_path, 'csharp', 'src', windowsai_src, windowsai_rules)
-        files_list.append('<file src=' + '"' + windowsai_native_rules + '" target="build\\native" />')
+        windowsai_native_targets = os.path.join(args.sources_path, 'csharp', 'src', windowsai_src, windowsai_targets)
+        build = 'build\\{}'.format('uap' if args.is_store_build else 'native')
+        files_list.append('<file src=' + '"' + windowsai_native_props + '" target="' + build + '" />')
+        # Process native targets
+        files_list.append('<file src=' + '"' + windowsai_native_targets + '" target="' + build + '" />')
+        # Process rules
+        files_list.append('<file src=' + '"' + windowsai_native_rules + '" target="' + build + '" />')
         # Process .net standard 2.0 targets
         interop_src = 'Microsoft.AI.MachineLearning.Interop'
         interop_targets = 'Microsoft.AI.MachineLearning.targets'
@@ -306,7 +397,7 @@ def generate_files(list, args):
         source_props = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'props.xml')
         target_props = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime',
                                     args.package_name + '.props')
-        os.system('copy ' + source_props + ' ' + target_props)
+        os.system(copy_command + ' ' + source_props + ' ' + target_props)
         files_list.append('<file src=' + '"' + target_props + '" target="build\\native" />')
         files_list.append('<file src=' + '"' + target_props + '" target="build\\netstandard1.1" />')
 
@@ -314,7 +405,7 @@ def generate_files(list, args):
         source_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'targets.xml')
         target_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime',
                                       args.package_name + '.targets')
-        os.system('copy ' + source_targets + ' ' + target_targets)
+        os.system(copy_command + ' ' + source_targets + ' ' + target_targets)
         files_list.append('<file src=' + '"' + target_targets + '" target="build\\native" />')
         files_list.append('<file src=' + '"' + target_targets + '" target="build\\netstandard1.1" />')
 
@@ -345,12 +436,31 @@ def is_windows():
     return sys.platform.startswith("win")
 
 
-def main():
-    if not is_windows():
-        raise Exception('Native Nuget generation is currently supported only on Windows')
+def is_linux():
+    return sys.platform.startswith("linux")
 
+
+def validate_platform():
+    if not(is_windows() or is_linux()):
+        raise Exception('Native Nuget generation is currently supported only on Windows and Linux')
+
+
+def validate_execution_provider(execution_provider):
+    if is_linux():
+        if not (execution_provider == 'None' or execution_provider == 'dnnl'
+                or execution_provider == 'tensorrt' or execution_provider == 'openvino'):
+            raise Exception('On Linux platform nuget generation is supported only '
+                            'for cpu|cuda|dnnl|tensorrt|openvino execution providers.')
+
+
+def main():
     # Parse arguments
     args = parse_arguments()
+
+    validate_platform()
+
+    validate_execution_provider(args.execution_provider)
+
     if (args.is_release_build.lower() != 'true' and args.is_release_build.lower() != 'false'):
         raise Exception('Only valid options for IsReleaseBuild are: true and false')
 
