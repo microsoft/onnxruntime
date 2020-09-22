@@ -9,7 +9,7 @@ prerequisites:
     auth:
       username: <% $secrets.docker_user_0 %>
       password: <% $secrets.docker_password_0 %>
-      registryuri: edchtest.azurecr.io
+      registryuri: onnxruntimeregistry.azurecr.io
 taskRoles:
   taskrole:
     instances: 1
