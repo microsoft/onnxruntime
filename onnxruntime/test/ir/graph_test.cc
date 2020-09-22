@@ -231,12 +231,12 @@ TEST_F(GraphTest, SimpleUnique) {
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
 }
-  
+
 TEST_F(GraphTest, UnusedValueInfoSerializes) {
   ModelProto m;
   m.set_ir_version(4);
   ImportOpset(m, "", 11);
-  GraphProto& g = *m.mutable_graph();   
+  GraphProto& g = *m.mutable_graph();
   NodeProto* node = g.add_node();
   *node->add_input() = "x";
   *node->add_output() = "sum";
@@ -633,9 +633,6 @@ TEST_F(GraphTest, GraphConstruction_CheckInputNodeOrderMaintained) {
   //                 node_5 (Merge)
   //                     |
 
-  std::unordered_map<std::string, std::pair<std::vector<NodeArg*>, std::vector<NodeArg*>>>
-      expected_node_name_to_input_output_args;
-
   TypeProto tensor_int32;
   tensor_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
   tensor_int32.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
@@ -655,29 +652,24 @@ TEST_F(GraphTest, GraphConstruction_CheckInputNodeOrderMaintained) {
 
   inputs.push_back(&input_arg1);
   outputs.push_back(&output_arg1);
-  expected_node_name_to_input_output_args["node_1"] = {inputs, outputs};
   graph.AddNode("node_1", "Identity_Fake", "node 1", inputs, outputs);
 
   inputs[0] = &input_arg2;
   outputs[0] = &output_arg2;
-  expected_node_name_to_input_output_args["node_2"] = {inputs, outputs};
   graph.AddNode("node_2", "Identity_Fake", "node 2", inputs, outputs);
 
   inputs[0] = &output_arg2;
   outputs[0] = &output_arg3;
-  expected_node_name_to_input_output_args["node_3"] = {inputs, outputs};
   graph.AddNode("node_3", "Identity_Fake", "node 3", inputs, outputs);
 
   inputs[0] = &output_arg1;
   outputs[0] = &output_arg4;
-  expected_node_name_to_input_output_args["node_4"] = {inputs, outputs};
   graph.AddNode("node_4", "Identity_Fake", "node 4", inputs, outputs);
 
   inputs.resize(2);
   inputs[0] = &output_arg4;
   inputs[1] = &output_arg3;
   outputs[0] = &output_arg5;
-  expected_node_name_to_input_output_args["node_5"] = {inputs, outputs};
   graph.AddNode("node_5", "Merge_Fake", "node 3", inputs, outputs);
 
   auto status = graph.Resolve();
@@ -696,6 +688,125 @@ TEST_F(GraphTest, GraphConstruction_CheckInputNodeOrderMaintained) {
     } else if (node->Name() == "node_2") {
       EXPECT_TRUE(seen1) << "node_1 should be before node_2 after the topological sort.";
       seen2 = true;
+    }
+  }
+}
+
+TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_CompressDecompress) {
+  Model model("graph_1", false, *logger_);
+  auto& graph = model.MainGraph();
+
+  /*
+                          |
+                  node_0 (Identity)
+                      /      \
+        node_1 (Identity)   compress (pri = -10)
+                    |         |
+        node_4 (Identity)  decompress (pri = 10)
+                      \       /
+                      node_5 (Merge)
+                          |                   
+  */
+
+  TypeProto tensor_int32;
+  tensor_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
+  tensor_int32.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  auto& input_arg0 = graph.GetOrCreateNodeArg("node_0_in_1", &tensor_int32);
+  auto& output_arg0 = graph.GetOrCreateNodeArg("node_0_out_1", &tensor_int32);
+  auto& output_arg1 = graph.GetOrCreateNodeArg("node_1_out_1", &tensor_int32);
+  auto& output_arg2 = graph.GetOrCreateNodeArg("node_2_out_1", &tensor_int32);
+  auto& output_arg3 = graph.GetOrCreateNodeArg("node_3_out_1", &tensor_int32);
+  auto& output_arg4 = graph.GetOrCreateNodeArg("node_4_out_1", &tensor_int32);
+  auto& output_arg5 = graph.GetOrCreateNodeArg("node_5_out_1", &tensor_int32);
+
+  graph.AddNode("node_0", "Identity_Fake", "node 0", {&input_arg0}, {&output_arg0});
+  graph.AddNode("node_1", "Identity_Fake", "node 1", {&output_arg0}, {&output_arg1});
+
+  auto& compress_node = graph.AddNode("compress", "Identity_Fake", "compress node", {&output_arg0}, {&output_arg2});
+  compress_node.SetPriority(-10);
+
+  auto& decompress_node = graph.AddNode("decompress", "Identity_Fake", "decompress node", {&output_arg2}, {&output_arg3});
+  decompress_node.SetPriority(10);
+
+  graph.AddNode("node_4", "Identity_Fake", "node 4", {&output_arg1}, {&output_arg4});
+  graph.AddNode("node_5", "Merge_Fake", "node 3", {&output_arg4, &output_arg3}, {&output_arg5});
+
+  auto status = graph.Resolve();
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  GraphViewer graph_viewer(graph);
+
+  // PRIORITY_BASED order
+  {
+    auto& order = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
+    const std::vector<std::string> expected_priority_based_order =
+        {"node_0", "compress", "node_1", "node_4", "decompress", "node_5"};
+    for (size_t i = 0; i < order.size(); ++i) {
+      auto node = graph.GetNode(order[i]);
+      EXPECT_TRUE(node->Name() == expected_priority_based_order[i]) << "Priority based execution order is wrong.";
+    }
+  }
+
+  // TOPOLOGICAL order
+  {
+    auto& order = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::TOPOLOGICAL);
+    const std::vector<std::string> expected_topological_order = {
+        "node_0", "node_1", "node_4", "compress", "decompress", "node_5"};
+    for (size_t i = 0; i < order.size(); ++i) {
+      auto node = graph.GetNode(order[i]);
+      EXPECT_TRUE(node->Name() == expected_topological_order[i]) << "Priority based execution order is wrong.";
+    }
+  }
+}
+
+TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_Recompute) {
+  Model model("graph_1", false, *logger_);
+  auto& graph = model.MainGraph();
+
+  /*
+                         |
+                  node_0 (Identity)
+                     /       \
+        node_1 (Identity)  recompute_node_1 (pri = 10)
+                    |         |
+        node_4 (Identity)     |
+                     \       /           
+               node_1_grad (Merge)
+                        |
+  */
+
+  TypeProto tensor_int32;
+  tensor_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
+  tensor_int32.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  auto& input_arg0 = graph.GetOrCreateNodeArg("node_0_in_1", &tensor_int32);
+  auto& output_arg0 = graph.GetOrCreateNodeArg("node_0_out_1", &tensor_int32);
+  auto& output_arg1 = graph.GetOrCreateNodeArg("node_1_out_1", &tensor_int32);
+  auto& output_arg2 = graph.GetOrCreateNodeArg("node_2_out_1", &tensor_int32);
+  auto& output_arg4 = graph.GetOrCreateNodeArg("node_4_out_1", &tensor_int32);
+  auto& output_arg5 = graph.GetOrCreateNodeArg("node_5_out_1", &tensor_int32);
+
+  graph.AddNode("node_0", "Identity_Fake", "node 0", {&input_arg0}, {&output_arg0});
+  graph.AddNode("node_1", "Identity_Fake", "node 1", {&output_arg0}, {&output_arg1});
+
+  auto& compress_node = graph.AddNode("recompute_node_1", "Identity_Fake", "recompute node 1", {&output_arg0}, {&output_arg2});
+  compress_node.SetPriority(10);
+
+  graph.AddNode("node_4", "Identity_Fake", "node 4", {&output_arg1}, {&output_arg4});
+  graph.AddNode("node_1_grad", "Merge_Fake", "node_1 gradient", {&output_arg4, &output_arg2}, {&output_arg5});
+
+  auto status = graph.Resolve();
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  GraphViewer graph_viewer(graph);
+
+  // PRIORITY_BASED order
+  {
+    auto& order = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
+    const std::vector<std::string> expected_priority_based_order =
+        {"node_0", "node_1", "node_4", "recompute_node_1", "node_1_grad"};
+    for (size_t i = 0; i < order.size(); ++i) {
+      auto node = graph.GetNode(order[i]);
+      EXPECT_TRUE(node->Name() == expected_priority_based_order[i]) << "Priority based execution order is wrong.";
     }
   }
 }
