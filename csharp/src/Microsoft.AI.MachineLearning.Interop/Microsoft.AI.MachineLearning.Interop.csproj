@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <ProjectName>Microsoft.AI.MachineLearning.Interop</ProjectName>
-    <TargetFramework>netstandard2.0</TargetFramework>
+    <TargetFramework>net5.0</TargetFramework>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     
     <Platform>Any CPU</Platform>
@@ -12,7 +12,7 @@
     <BuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</BuildOutputDir>
     <WindowsAIInteropOutputDir>$(BuildOutputDir)\Microsoft.AI.MachineLearning.Interop</WindowsAIInteropOutputDir>
     <OutputPath>$(WindowsAIInteropOutputDir)</OutputPath>
-    <LangVersion>preview</LangVersion>
+    <LangVersion>9.0</LangVersion>
   </PropertyGroup>
 
   <ItemGroup>
