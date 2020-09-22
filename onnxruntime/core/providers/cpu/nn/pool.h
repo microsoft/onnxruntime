@@ -35,7 +35,8 @@ class MaxPoolV8 : public OpKernel, public PoolBase {
  template <typename T>
   struct ComputeHelper {
     Status operator()(const MaxPoolV8* inst, OpKernelContext* context) const {
-      return inst->ComputeImpl<T>(context);
+      return inst->ComputeImplOptimized<T>(context) == Status::OK() ?
+        Status::OK() : inst->ComputeImpl<T>(context);
     }
   };
 
@@ -45,5 +46,7 @@ class MaxPoolV8 : public OpKernel, public PoolBase {
  private:
   template <typename T>
   Status ComputeImpl(OpKernelContext* context) const;
+  template <typename T>
+  Status ComputeImplOptimized(OpKernelContext* context) const;
 };
 }  // namespace onnxruntime
