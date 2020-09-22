@@ -1292,11 +1292,11 @@ def testLossScalerLegacyAndExperimentalRandomAllFinite():
         out.append(new_loss_scale)
         assert new_loss_scale > 1e-7
 
-@pytest.mark.parametrize("seed,device,steps", [
-    (0, 'cuda', 12),
-])
-def testORTTrainerRunSymbolicShapeInfer(seed,device,steps):
+def testORTTrainerRunSymbolicShapeInfer():
     # Common data
+    seed = 0
+    total_steps = 12
+    device = 'cuda'
     torch.set_printoptions(precision=10)
 
     # Setup without symbolic shape inference
@@ -1314,23 +1314,8 @@ def testORTTrainerRunSymbolicShapeInfer(seed,device,steps):
         loss, _ = trainer.train_step(data, targets)
         expected_loss.append(loss.cpu())
 
-    # Setup with symbolic shape inference in legacy API
-    torch.manual_seed(seed)
-    set_seed(seed)
-    model, (model_desc, lr_desc), _, _, _, _, _ = _load_pytorch_transformer_model(device)
-    legacy_trainer = Legacy_ORTTrainer(model, my_loss, model_desc, "LambOptimizer",
-                                       None, lr_desc, device=device,
-                                       run_symbolic_shape_infer=True,
-                                       _use_deterministic_compute=True)
-    # Training loop
-    legacy_loss = []
-    for i in range(total_steps):
-        data, targets = batcher_fn(train_data, i)
-        loss, _ = legacy_trainer.train_step(data, targets, torch.tensor([optim_config.lr]))
-        legacy_loss.append(loss.cpu())
-
     # Setup with symbolic shape inference
-    torch.manual_see(see)
+    torch.manual_seed(seed)
     set_seed(seed)
     model, model_desc, my_loss, batcher_fn, train_data, _, _ = _load_pytorch_transformer_model(device)
     optim_config = optim.LambConfig(lr=0.001)
@@ -1343,7 +1328,21 @@ def testORTTrainerRunSymbolicShapeInfer(seed,device,steps):
         loss, _ = trainer.train_step(data, targets)
         new_loss.append(loss.cpu())
 
-    # Compare losses
-    _test_helpers.assert_model_outputs(legacy_loss, expected_loss)
-    _test_helpers.assert_model_outputs(new_loss, expected_loss)
+    # Setup with symbolic shape inference in legacy API
+    torch.manual_seed(seed)
+    set_seed(seed)
+    model, (model_desc, lr_desc), _, _, _, _, _ = _load_pytorch_transformer_model(device, legacy_api=True)
+    legacy_trainer = Legacy_ORTTrainer(model, my_loss, model_desc, "LambOptimizer",
+                                       None, lr_desc, device=device,
+                                       run_symbolic_shape_infer=True,
+                                       _use_deterministic_compute=True)
+    # Training loop
+    legacy_loss = []
+    for i in range(total_steps):
+        data, targets = batcher_fn(train_data, i)
+        loss, _ = legacy_trainer.train_step(data, targets, torch.tensor([optim_config.lr]))
+        legacy_loss.append(loss.cpu())
 
+    # Compare losses
+    _test_helpers.assert_model_outputs(new_loss, expected_loss)
+    _test_helpers.assert_model_outputs(legacy_loss, expected_loss)
