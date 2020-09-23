@@ -439,27 +439,7 @@ public class OnnxTensor implements OnnxValue {
       throws OrtException {
     if ((!env.isClosed()) && (!allocator.isClosed())) {
       OnnxJavaType type = OnnxJavaType.FLOAT;
-      int bufferSize = data.capacity() * type.size;
-      FloatBuffer tmp;
-      if (data.isDirect()) {
-        tmp = data;
-      } else {
-        ByteBuffer buffer = ByteBuffer.allocateDirect(bufferSize).order(ByteOrder.nativeOrder());
-        tmp = buffer.asFloatBuffer();
-        tmp.put(data);
-      }
-      TensorInfo info = TensorInfo.constructFromBuffer(tmp, shape, type);
-      return new OnnxTensor(
-          createTensorFromBuffer(
-              OnnxRuntime.ortApiHandle,
-              allocator.handle,
-              tmp,
-              bufferSize,
-              shape,
-              info.onnxType.value),
-          allocator.handle,
-          info,
-          tmp);
+      return createTensor(type, allocator, data, shape);
     } else {
       throw new IllegalStateException("Trying to create an OnnxTensor on a closed OrtAllocator.");
     }
@@ -500,27 +480,7 @@ public class OnnxTensor implements OnnxValue {
       throws OrtException {
     if ((!env.isClosed()) && (!allocator.isClosed())) {
       OnnxJavaType type = OnnxJavaType.DOUBLE;
-      int bufferSize = data.capacity() * type.size;
-      DoubleBuffer tmp;
-      if (data.isDirect()) {
-        tmp = data;
-      } else {
-        ByteBuffer buffer = ByteBuffer.allocateDirect(bufferSize).order(ByteOrder.nativeOrder());
-        tmp = buffer.asDoubleBuffer();
-        tmp.put(data);
-      }
-      TensorInfo info = TensorInfo.constructFromBuffer(tmp, shape, type);
-      return new OnnxTensor(
-          createTensorFromBuffer(
-              OnnxRuntime.ortApiHandle,
-              allocator.handle,
-              tmp,
-              bufferSize,
-              shape,
-              info.onnxType.value),
-          allocator.handle,
-          info,
-          tmp);
+      return createTensor(type, allocator, data, shape);
     } else {
       throw new IllegalStateException("Trying to create an OnnxTensor on a closed OrtAllocator.");
     }
@@ -599,25 +559,7 @@ public class OnnxTensor implements OnnxValue {
       throws OrtException {
     if ((!env.isClosed()) && (!allocator.isClosed())) {
       int bufferSize = data.capacity();
-      ByteBuffer tmp;
-      if (data.isDirect()) {
-        tmp = data;
-      } else {
-        tmp = ByteBuffer.allocateDirect(bufferSize).order(ByteOrder.nativeOrder());
-        tmp.put(data);
-      }
-      TensorInfo info = TensorInfo.constructFromBuffer(tmp, shape, type);
-      return new OnnxTensor(
-          createTensorFromBuffer(
-              OnnxRuntime.ortApiHandle,
-              allocator.handle,
-              tmp,
-              bufferSize,
-              shape,
-              info.onnxType.value),
-          allocator.handle,
-          info,
-          tmp);
+      return createTensor(type, allocator, data, shape);
     } else {
       throw new IllegalStateException("Trying to create an OnnxTensor on a closed OrtAllocator.");
     }
@@ -658,27 +600,7 @@ public class OnnxTensor implements OnnxValue {
       throws OrtException {
     if ((!env.isClosed()) && (!allocator.isClosed())) {
       OnnxJavaType type = OnnxJavaType.INT16;
-      int bufferSize = data.capacity() * type.size;
-      ShortBuffer tmp;
-      if (data.isDirect()) {
-        tmp = data;
-      } else {
-        ByteBuffer buffer = ByteBuffer.allocateDirect(bufferSize).order(ByteOrder.nativeOrder());
-        tmp = buffer.asShortBuffer();
-        tmp.put(data);
-      }
-      TensorInfo info = TensorInfo.constructFromBuffer(tmp, shape, type);
-      return new OnnxTensor(
-          createTensorFromBuffer(
-              OnnxRuntime.ortApiHandle,
-              allocator.handle,
-              tmp,
-              bufferSize,
-              shape,
-              info.onnxType.value),
-          allocator.handle,
-          info,
-          tmp);
+      return createTensor(type, allocator, data, shape);
     } else {
       throw new IllegalStateException("Trying to create an OnnxTensor on a closed OrtAllocator.");
     }
@@ -719,27 +641,7 @@ public class OnnxTensor implements OnnxValue {
       throws OrtException {
     if ((!env.isClosed()) && (!allocator.isClosed())) {
       OnnxJavaType type = OnnxJavaType.INT32;
-      int bufferSize = data.capacity() * type.size;
-      IntBuffer tmp;
-      if (data.isDirect()) {
-        tmp = data;
-      } else {
-        ByteBuffer buffer = ByteBuffer.allocateDirect(bufferSize).order(ByteOrder.nativeOrder());
-        tmp = buffer.asIntBuffer();
-        tmp.put(data);
-      }
-      TensorInfo info = TensorInfo.constructFromBuffer(tmp, shape, type);
-      return new OnnxTensor(
-          createTensorFromBuffer(
-              OnnxRuntime.ortApiHandle,
-              allocator.handle,
-              tmp,
-              bufferSize,
-              shape,
-              info.onnxType.value),
-          allocator.handle,
-          info,
-          tmp);
+      return createTensor(type, allocator, data, shape);
     } else {
       throw new IllegalStateException("Trying to create an OnnxTensor on a closed OrtAllocator.");
     }
@@ -780,30 +682,89 @@ public class OnnxTensor implements OnnxValue {
       throws OrtException {
     if ((!env.isClosed()) && (!allocator.isClosed())) {
       OnnxJavaType type = OnnxJavaType.INT64;
-      int bufferSize = data.capacity() * type.size;
-      LongBuffer tmp;
-      if (data.isDirect()) {
-        tmp = data;
-      } else {
-        ByteBuffer buffer = ByteBuffer.allocateDirect(bufferSize).order(ByteOrder.nativeOrder());
-        tmp = buffer.asLongBuffer();
-        tmp.put(data);
-      }
-      TensorInfo info = TensorInfo.constructFromBuffer(tmp, shape, type);
-      return new OnnxTensor(
-          createTensorFromBuffer(
-              OnnxRuntime.ortApiHandle,
-              allocator.handle,
-              tmp,
-              bufferSize,
-              shape,
-              info.onnxType.value),
-          allocator.handle,
-          info,
-          tmp);
+      return createTensor(type, allocator, data, shape);
     } else {
       throw new IllegalStateException("Trying to create an OnnxTensor on a closed OrtAllocator.");
     }
+  }
+
+  /**
+   * Creates a tensor by wrapping the data in a direct byte buffer and passing it to JNI.
+   *
+   * <p>Throws IllegalStateException if the buffer is too large to create a direct byte buffer copy,
+   * which is more than approximately (Integer.MAX_VALUE - 5) / type.size elements.
+   *
+   * @param type The buffer type.
+   * @param allocator The OrtAllocator.
+   * @param data The data.
+   * @param shape The tensor shape.
+   * @return An OnnxTensor instance.
+   * @throws OrtException If the create call failed.
+   */
+  private static OnnxTensor createTensor(
+      OnnxJavaType type, OrtAllocator allocator, Buffer data, long[] shape) throws OrtException {
+    int bufferPos;
+    int bufferSize = data.remaining() * type.size;
+    if ((bufferSize < 0) || (bufferSize > ((Integer.MAX_VALUE / type.size) - 10))) {
+      // overflowed as we can't make a direct byte buffer of that size
+      throw new IllegalStateException(
+          "Cannot allocate a direct buffer of the requested size and type, size "
+              + data.remaining()
+              + ", type = "
+              + type);
+    }
+    Buffer tmp;
+    if (data.isDirect()) {
+      tmp = data;
+      bufferPos = data.position() * type.size;
+    } else {
+      // Copy the data to a new direct buffer, then restore the state of the input.
+      int origPosition = data.position();
+      ByteBuffer buffer = ByteBuffer.allocateDirect(bufferSize).order(ByteOrder.nativeOrder());
+      switch (type) {
+        case FLOAT:
+          tmp = buffer.asFloatBuffer().put((FloatBuffer) data);
+          break;
+        case DOUBLE:
+          tmp = buffer.asDoubleBuffer().put((DoubleBuffer) data);
+          break;
+        case INT8:
+          // buffer is already a ByteBuffer, no cast needed.
+          tmp = buffer.put((ByteBuffer) data);
+          break;
+        case INT16:
+          tmp = buffer.asShortBuffer().put((ShortBuffer) data);
+          break;
+        case INT32:
+          tmp = buffer.asIntBuffer().put((IntBuffer) data);
+          break;
+        case INT64:
+          tmp = buffer.asLongBuffer().put((LongBuffer) data);
+          break;
+        case BOOL:
+        case STRING:
+        case UNKNOWN:
+        default:
+          throw new IllegalStateException(
+              "Impossible to reach here, managed to cast a buffer as an incorrect type");
+      }
+      data.position(origPosition);
+      tmp.rewind();
+      bufferPos = 0;
+    }
+    TensorInfo info = TensorInfo.constructFromBuffer(tmp, shape, type);
+    return new OnnxTensor(
+        createTensorFromBuffer(
+            OnnxRuntime.ortApiHandle,
+            allocator.handle,
+            tmp,
+            bufferPos,
+            bufferSize,
+            shape,
+            info.onnxType.value),
+        allocator.handle,
+        info,
+        tmp);
   }
 
   private static native long createTensor(
@@ -814,6 +775,7 @@ public class OnnxTensor implements OnnxValue {
       long apiHandle,
       long allocatorHandle,
       Buffer data,
+      int bufferPos,
       long bufferSize,
       long[] shape,
       int onnxType)
