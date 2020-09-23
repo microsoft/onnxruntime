@@ -7,7 +7,7 @@ prerequisites:
     uri: onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimepaibuild:rocm3.5-latest
     name: docker_image_0
     auth:
-      username: <% $secrets.docker_user_0 %>
+      username: "@@docker_user@@"
       password: <% $secrets.docker_password_0 %>
       registryuri: onnxruntimeregistry.azurecr.io
 taskRoles:
@@ -38,7 +38,6 @@ taskRoles:
         --update
         --build --parallel 8
 secrets:
-  docker_user_0: "@@docker_user@@"
   docker_password_0: "@@docker_password@@"
 defaults:
   virtualCluster: rocm
