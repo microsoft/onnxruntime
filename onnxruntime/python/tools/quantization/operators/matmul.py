@@ -18,7 +18,7 @@ class MatMulInteger(QuantOperatorBase):
         (quantized_input_names, zero_point_names, scale_names, nodes) = \
             self.quantizer.quantize_inputs(node, [0, 1])
 
-        matmul_integer_output = node.output[0] + "_quantized"
+        matmul_integer_output = node.output[0] + "_output_quantized"
         matmul_integer_name = node.name + "_quant" if node.name != "" else ""
         matmul_integer_node = onnx.helper.make_node("MatMulInteger", quantized_input_names + zero_point_names,
                                                     [matmul_integer_output], matmul_integer_name)
