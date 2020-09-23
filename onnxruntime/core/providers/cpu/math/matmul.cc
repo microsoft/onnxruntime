@@ -1,38 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/op_kernel.h"
+#include "core/providers/cpu/math/matmul.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
-
-template <typename T>
-class MatMul final : public OpKernel {
- public:
-  MatMul(const OpKernelInfo& info) : OpKernel(info) {}
-
-  Status Compute(OpKernelContext* context) const override;
-};
-
-#if !defined(USE_MKLML_FOR_BLAS)
-
-template <>
-class MatMul<float> final : public OpKernel {
- public:
-  MatMul(const OpKernelInfo& info) : OpKernel(info) {}
-
-  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override;
-  Status Compute(OpKernelContext* context) const override;
-
- private:
-  TensorShape b_shape_;
-  BufferUniquePtr packed_b_;
-};
-
-#endif
 
 ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     MatMul,
@@ -117,7 +92,6 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
 }
 
 #if !defined(USE_MKLML_FOR_BLAS)
-
 Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, bool& is_packed) {
   is_packed = false;
 
@@ -130,8 +104,11 @@ Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, bool& is_pack
       return Status::OK();
     }
 
-    const size_t K = static_cast<size_t>(b_shape_[0]);
-    const size_t N = static_cast<size_t>(b_shape_[1]);
+    const bool trans_b = trans_b_attr_ && b_shape_.NumDimensions() != 1;
+    const size_t K = trans_b ? static_cast<size_t>(b_shape_[1])
+                             : static_cast<size_t>(b_shape_[0]);
+    const size_t N = trans_b ? static_cast<size_t>(b_shape_[0])
+                             : static_cast<size_t>(b_shape_[1]);
 
     const size_t packed_b_size = MlasGemmPackBSize(N, K);
     if (packed_b_size == 0) {
@@ -141,20 +118,31 @@ Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, bool& is_pack
     auto alloc = Info().GetAllocator(0, OrtMemTypeDefault);
     auto* packed_b_data = alloc->Alloc(packed_b_size);
     packed_b_ = BufferUniquePtr(packed_b_data, BufferDeleter(alloc));
-    MlasGemmPackB(CblasNoTrans, N, K, tensor.Data<float>(), N, packed_b_data);
+    MlasGemmPackB(trans_b ? CblasTrans : CblasNoTrans,
+                  N,
+                  K,
+                  tensor.Data<float>(),
+                  static_cast<int>(trans_b ? K : N),
+                  packed_b_data);
     is_packed = true;
   }
   return Status::OK();
 }
+#endif
 
 Status MatMul<float>::Compute(OpKernelContext* ctx) const {
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
 
   const Tensor* a = ctx->Input<Tensor>(0);
   const Tensor* b = packed_b_ ? nullptr : ctx->Input<Tensor>(1);
+  const auto& b_shape = b ? b->Shape() : b_shape_;
+
+  // match CUDA kernel implementation, ignore transpose for vectors
+  const bool trans_a = trans_a_attr_ && a->Shape().NumDimensions() != 1;
+  const bool trans_b = trans_b_attr_ && b_shape.NumDimensions() != 1;
 
   MatMulComputeHelper helper;
-  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b ? b->Shape() : b_shape_));
+  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, trans_a, trans_b));
   Tensor* y = ctx->Output(0, helper.OutputShape());
 
   // Bail out early if the output is going to be empty
@@ -168,34 +156,39 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
   // TODO: replace it with GemmBatch for performance, it's OK for now as GemmBatch unrolls as well
   size_t max_len = helper.OutputOffsets().size();
   for (size_t i = 0; i < max_len; i++) {
+#if !defined(USE_MKLML_FOR_BLAS)
     if (packed_b_) {
-      MlasGemm(CblasNoTrans,
-               static_cast<size_t>(helper.M()),
-               static_cast<size_t>(helper.N()),
-               static_cast<size_t>(helper.K()),
-               1.0f,
-               a_data + helper.LeftOffsets()[i],
-               static_cast<size_t>(helper.K()),
-               packed_b_.get(),
-               0.0f,
-               y_data + helper.OutputOffsets()[i],
-               static_cast<size_t>(helper.N()),
-               thread_pool);
-    } else {
-      math::MatMul(
-          static_cast<int>(helper.M()),
-          static_cast<int>(helper.N()),
-          static_cast<int>(helper.K()),
+      MlasGemm(
+          trans_a ? CblasTrans : CblasNoTrans,
+          static_cast<size_t>(helper.M()),
+          static_cast<size_t>(helper.N()),
+          static_cast<size_t>(helper.K()),
+          alpha_attr_,
           a_data + helper.LeftOffsets()[i],
-          b_data + helper.RightOffsets()[i],
+          static_cast<size_t>(trans_a ? helper.M() : helper.K()),
+          packed_b_.get(),
+          0.0f,
           y_data + helper.OutputOffsets()[i],
+          static_cast<size_t>(helper.N()),
           thread_pool);
+      continue;
     }
+#endif
+    math::Gemm<float, concurrency::ThreadPool>(
+        trans_a ? CblasTrans : CblasNoTrans,
+        trans_b ? CblasTrans : CblasNoTrans,
+        helper.M(),
+        helper.N(),
+        helper.K(),
+        alpha_attr_,
+        a_data + helper.LeftOffsets()[i],
+        b_data + helper.RightOffsets()[i],
+        0.0f,
+        y_data + helper.OutputOffsets()[i],
+        thread_pool);
   }
 
   return Status::OK();
 }
-
-#endif
 
 }  // namespace onnxruntime
