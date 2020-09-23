@@ -97,8 +97,8 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
     if ((!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", {9, 13}) &&
-         !graph_utils::IsSupportedOptypeVersionAndDomain(node, "FusedMatMul", {1, 13}, kMSDomain) &&
-         !graph_utils::IsSupportedOptypeVersionAndDomain(node, "TransposeMatMul", {1, 13}, kMSDomain)) ||
+         !graph_utils::IsSupportedOptypeVersionAndDomain(node, "FusedMatMul", {1}, kMSDomain) &&
+         !graph_utils::IsSupportedOptypeVersionAndDomain(node, "TransposeMatMul", {1}, kMSDomain)) ||
         !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders())) {
       continue;
     }

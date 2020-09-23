@@ -92,7 +92,6 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
 }
 
 #if !defined(USE_MKLML_FOR_BLAS)
-
 Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, bool& is_packed) {
   is_packed = false;
 
@@ -129,6 +128,7 @@ Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, bool& is_pack
   }
   return Status::OK();
 }
+#endif
 
 Status MatMul<float>::Compute(OpKernelContext* ctx) const {
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
@@ -156,6 +156,7 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
   // TODO: replace it with GemmBatch for performance, it's OK for now as GemmBatch unrolls as well
   size_t max_len = helper.OutputOffsets().size();
   for (size_t i = 0; i < max_len; i++) {
+#if !defined(USE_MKLML_FOR_BLAS)
     if (packed_b_) {
       MlasGemm(
           trans_a ? CblasTrans : CblasNoTrans,
@@ -170,52 +171,9 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
           y_data + helper.OutputOffsets()[i],
           static_cast<size_t>(helper.N()),
           thread_pool);
-    } else {
-      math::Gemm<float, concurrency::ThreadPool>(
-          trans_a ? CblasTrans : CblasNoTrans,
-          trans_b ? CblasTrans : CblasNoTrans,
-          helper.M(),
-          helper.N(),
-          helper.K(),
-          alpha_attr_,
-          a_data + helper.LeftOffsets()[i],
-          b_data + helper.RightOffsets()[i],
-          0.0f,
-          y_data + helper.OutputOffsets()[i],
-          thread_pool);
+      continue;
     }
-  }
-
-  return Status::OK();
-}
-
-#else
-
-Status MatMul<float>::Compute(OpKernelContext* ctx) const {
-  concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
-
-  const auto* a = ctx->Input<Tensor>(0);
-  const auto* b = ctx->Input<Tensor>(1);
-
-  // match CUDA kernel implementation, ignore transpose for vectors
-  const bool trans_a = trans_a_attr_ && a->Shape().NumDimensions() != 1;
-  const bool trans_b = trans_b_attr_ && b->Shape().NumDimensions() != 1;
-
-  MatMulComputeHelper helper;
-  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b->Shape(), trans_a, trans_b));
-  Tensor* y = ctx->Output(0, helper.OutputShape());
-
-  // Bail out early if the output is going to be empty
-  if (y->Shape().Size() == 0)
-    return Status::OK();
-
-  const auto* a_data = a->Data<float>();
-  const auto* b_data = b->Data<float>();
-  auto* y_data = y->MutableData<float>();
-
-  // TODO: replace it with GemmBatch for performance, it's OK for now as GemmBatch unrolls as well
-  size_t max_len = helper.OutputOffsets().size();
-  for (size_t i = 0; i < max_len; i++) {
+#endif
     math::Gemm<float, concurrency::ThreadPool>(
         trans_a ? CblasTrans : CblasNoTrans,
         trans_b ? CblasTrans : CblasNoTrans,
@@ -232,6 +190,5 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
 
   return Status::OK();
 }
-#endif
 
 }  // namespace onnxruntime
