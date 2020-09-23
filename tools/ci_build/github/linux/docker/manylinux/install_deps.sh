@@ -99,25 +99,8 @@ export ONNX_ML=1
 for PYTHON_EXE in "${PYTHON_EXES[@]}"
 do
   ${PYTHON_EXE} -m pip install -r ${0/%install_deps\.sh/requirements\.txt}
-  onnx_version="c443abd2acad2411103593600319ff81a676afbc"
-  onnx_tag="onnxtip"
-  GetFile https://github.com/onnx/onnx/archive/$onnx_version.tar.gz /tmp/src/$onnx_version.tar.gz
-  tar -xf /tmp/src/$onnx_version.tar.gz -C /tmp/src
-  cd /tmp/src/onnx-$onnx_version
-  if [ ! -d "third_party/pybind11/pybind11" ]; then
-    git clone https://github.com/pybind/pybind11.git third_party/pybind11
-  fi
-  # We need to make the adjustment only for CentOS6 OR we substitue this only for
-  # ${PYTHON_EXE} where we'd need to escape slashes
-  # Make sure we do not hit pyhon2 as on CentOS 6 it does not work
-  ESCAPED_PY=$(echo "${PYTHON_EXE}" | sed 's/\//\\\//g')
-  sed "1,1 s/\/usr\/bin\/env python/$ESCAPED_PY/" /tmp/src/onnx-$onnx_version/tools/protoc-gen-mypy.py > /tmp/src/onnx-$onnx_version/tools/repl_protoc-gen-mypy.py
-  chmod a+w /tmp/src/onnx-$onnx_version/tools/protoc-gen-mypy.py
-  mv /tmp/src/onnx-$onnx_version/tools/repl_protoc-gen-mypy.py /tmp/src/onnx-$onnx_version/tools/protoc-gen-mypy.py
-  mkdir -p /data/onnx/${onnx_tag}
-  ${PYTHON_EXE} -m pip install .
   cd /tmp  
-  ${PYTHON_EXE} -m onnx.backend.test.cmd_tools generate-data -o /data/onnx/$onnx_tag
+  ${PYTHON_EXE} -m onnx.backend.test.cmd_tools generate-data -o /data/onnx/onnxtip
 done
 
 cd /tmp/src

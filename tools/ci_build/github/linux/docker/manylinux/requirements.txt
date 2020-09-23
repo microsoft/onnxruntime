@@ -1,6 +1,8 @@
 numpy==1.16.6
 mypy
 pytest
-onnx==1.7.0
+setuptools>=41.4.0
+wheel
+git+http://github.com/onnx/onnx.git@c443abd2acad2411103593600319ff81a676afbc#egg=onnx
 protobuf
 sympy==1.1.1
