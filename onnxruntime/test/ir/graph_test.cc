@@ -724,10 +724,10 @@ TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_CompressDecompr
   graph.AddNode("node_1", "Identity_Fake", "node 1", {&output_arg0}, {&output_arg1});
 
   auto& compress_node = graph.AddNode("compress", "Identity_Fake", "compress node", {&output_arg0}, {&output_arg2});
-  compress_node.SetPriority(-10);
+  compress_node.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_HIGH));
 
   auto& decompress_node = graph.AddNode("decompress", "Identity_Fake", "decompress node", {&output_arg2}, {&output_arg3});
-  decompress_node.SetPriority(10);
+  decompress_node.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_LOW));
 
   graph.AddNode("node_4", "Identity_Fake", "node 4", {&output_arg1}, {&output_arg4});
   graph.AddNode("node_5", "Merge_Fake", "node 3", {&output_arg4, &output_arg3}, {&output_arg5});
@@ -790,7 +790,7 @@ TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_Recompute) {
   graph.AddNode("node_1", "Identity_Fake", "node 1", {&output_arg0}, {&output_arg1});
 
   auto& compress_node = graph.AddNode("recompute_node_1", "Identity_Fake", "recompute node 1", {&output_arg0}, {&output_arg2});
-  compress_node.SetPriority(10);
+  compress_node.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_LOW));
 
   graph.AddNode("node_4", "Identity_Fake", "node 4", {&output_arg1}, {&output_arg4});
   graph.AddNode("node_1_grad", "Merge_Fake", "node_1 gradient", {&output_arg4, &output_arg2}, {&output_arg5});

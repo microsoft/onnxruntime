@@ -32,7 +32,7 @@ Status GeluRecompute::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
                                        &node.GetAttributes(),
                                        node.Domain());
 
-  recompute_node.SetPriority(10);
+  recompute_node.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_LOW));
 
   rule_effect = RewriteRuleEffect::kModifiedRestOfGraph;
   return Status::OK();
@@ -50,7 +50,7 @@ bool AttentionDropoutRecompute::SatisfyCondition(const Graph& /*graph*/, const N
 
 Status AttentionDropoutRecompute::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& /*logger*/) const {
   Node& recompute_node = InsertDropoutRecompute(graph, node, /*use_original_input*/ true);
-  recompute_node.SetPriority(10);
+  recompute_node.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_LOW));
 
   rule_effect = RewriteRuleEffect::kModifiedRestOfGraph;
   return Status::OK();

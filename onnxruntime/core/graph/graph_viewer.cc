@@ -7,8 +7,6 @@
 #endif
 
 #include "core/graph/graph_viewer.h"
-#include "core/graph/graph_utils.h"
-#include <queue>
 
 namespace onnxruntime {
 

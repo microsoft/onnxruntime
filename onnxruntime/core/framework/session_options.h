@@ -22,6 +22,14 @@ enum class FreeDimensionOverrideType {
   Name = 2
 };
 
+enum class ExecutionPriority : int {
+  GLOBAL_HIGHT = -100,
+  LOCAL_HIGH = -10,
+  DEFAULT = 0,
+  LOCAL_LOW = 10,
+  GLOBAL_LOW = 100
+};
+
 struct FreeDimensionOverride {
   std::string dim_identifier;
   FreeDimensionOverrideType dim_identifer_type;

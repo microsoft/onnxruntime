@@ -167,6 +167,7 @@ Status TransformerLayerRecompute::ApplyImpl(Graph& graph, bool& modified, int /*
   ORT_RETURN_IF_ERROR(IdentifyTransformerLayerEdges(graph, start_end_edges, logger));
 
   // insert recompute nodes expect for the last transformer layer
+  // latter recompute layers have higher execution priorty
   for (size_t i = 0; i < start_end_edges.size() - 1; ++i) {
     std::vector<const Node*> nodes = NodesBetweenEdges(graph, start_end_edges[i].first, start_end_edges[i].second);
     InsertRecomputeNodes(graph, nodes, static_cast<int>(start_end_edges.size() - i));
