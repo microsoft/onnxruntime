@@ -781,7 +781,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             if args.xcode_code_signing_team_id:
                 cmake_args += ["-DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=" + args.xcode_code_signing_team_id]
         else:
-            # We are cross comppiling on linux
+            # TODO: the cross compiling on Linux is not officially supported by Apple
+            #   and is already broken with the latest codebase, so it should be removed.
+            # We are cross compiling on Linux
             needed_args = [
                 args.ios_sysroot,
                 args.arm64 or args.arm,
