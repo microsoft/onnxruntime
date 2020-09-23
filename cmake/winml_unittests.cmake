@@ -207,7 +207,9 @@ add_winml_test(
   LIBS winml_test_common ${winml_test_image_libs}
 )
 target_precompiled_header(winml_test_image testPch.h)
-
+if(onnxruntime_RUN_MODELTEST_IN_DEBUG_MODE)
+  target_compile_definitions(winml_test_image PUBLIC -DRUN_MODELTEST_IN_DEBUG_MODE)
+endif()
 target_delayload(winml_test_image d3d12.dll api-ms-win-core-file-l1-2-2.dll api-ms-win-core-synch-l1-2-1.dll)
 if (EXISTS ${dxcore_header})
   target_delayload(winml_test_image ext-ms-win-dxcore-l1-*.dll)
