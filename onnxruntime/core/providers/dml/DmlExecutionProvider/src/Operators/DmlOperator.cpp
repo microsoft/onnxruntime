@@ -336,6 +336,11 @@ namespace Dml
 
     ComPtr<IDMLCompiledOperator> DmlOperator::InitializeZeroInt64Tensor(uint64_t tensorSizeInBytes)
     {
+        if (tensorSizeInBytes == 0)
+        {
+            return nullptr; // No work to do.
+        }
+
         // This fun little solution uses DML's element-wise shader with XOR to zero the memory of the passed-in
         // tensor. This requires that the tensor's memory has been initialized (i.e. raw_mutable_data has been
         // called, and there is a size to the tensor). The tensor is XOR'd with itself to produce zeros,
