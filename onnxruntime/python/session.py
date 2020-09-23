@@ -218,7 +218,7 @@ class InferenceSession(Session):
         self._model_meta = self._sess.model_meta
         self._providers = self._sess.get_providers()
         self._provider_options = self._sess.get_provider_options()
-        self._profiling_start_time = self._sess.get_profiling_start_time()
+        self._profiling_start_time = self._sess.get_profiling_start_time
 
         # Tensorrt can fall back to CUDA. All others fall back to CPU.
         if 'TensorrtExecutionProvider' in C.get_available_providers():

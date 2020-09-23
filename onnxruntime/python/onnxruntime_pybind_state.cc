@@ -1383,9 +1383,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         return sess->GetSessionHandle()->EndProfiling();
       })
       .def_property_readonly("get_profiling_start_time", [](const PyInferenceSession* sess) -> const uint64_t{
-        auto res = sess->GetSessionHandle()->Getprofiling().GetStartTime();
-        OrtPybindThrowIfError(res.first);
-        return *(res.second);
+        return sess->GetSessionHandle()->GetProfiling().GetStartTime();
       })
       .def("get_providers", [](PyInferenceSession* sess) -> const std::vector<std::string>& {
         return sess->GetSessionHandle()->GetRegisteredProviderTypes();
