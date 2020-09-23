@@ -12,7 +12,6 @@ from pathlib import Path
 import numpy as np
 
 from onnx import onnx_pb as onnx_proto
-from onnx import shape_inference
 from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
 
 from .quant_utils import QuantizationMode, QuantizedValueType, QuantizedInitializer, QuantizedValue, quantization_modes
@@ -77,9 +76,7 @@ def _get_qrange_for_qType(qType, reduce_range=False):
 class ONNXQuantizer:
     def __init__(self, model, per_channel, reduce_range, mode, static, weight_qType, input_qType, quantization_params,
                  nodes_to_quantize, nodes_to_exclude, op_types_to_quantize):
-        onnx_model = shape_inference.infer_shapes(model)
-        self.model = ONNXModel(onnx_model)
-        self.value_infos = {vi.name: vi for vi in onnx_model.graph.value_info}
+        self.model = ONNXModel(model)
         self.per_channel = per_channel  # weight-pack per channel
         self.reduce_range = reduce_range
         self.mode = mode  # QuantizationMode.Value
@@ -293,17 +290,6 @@ class ONNXQuantizer:
     def is_input_a_weight(self, input_name):
         initializer = find_by_name(input_name, self.model.initializer())
         return initializer is not None
-
-    def _is_valid_quantize_value(self, value_name):
-        if value_name in self.value_infos:
-            value_info = self.value_infos[value_name]
-            return value_info.type.HasField(
-                'tensor_type') and value_info.type.tensor_type.elem_type == onnx_proto.TensorProto.FLOAT
-        return self._is_valid_initializer_value(value_name)
-
-    def _is_valid_initializer_value(self, value_name):
-        weight = find_by_name(value_name, self.model.initializer())
-        return weight is not None and weight.data_type == onnx_proto.TensorProto.FLOAT
 
     def _is_valid_quantize_weight(self, weight_name):
         weight = find_by_name(weight_name, self.model.initializer())
@@ -868,7 +854,7 @@ class ONNXQuantizer:
         # Find if this input is already quantized
         if weight_name in self.quantized_value_map:
             quantized_value = self.quantized_value_map[weight_name]
-            return (quantized_value.zp_name, quantized_value.q_name, quantized_value.scale_name)
+            return (quantized_value.q_name, quantized_value.zp_name, quantized_value.scale_name)
         else:
             initializer = find_by_name(weight_name, self.model.initializer())
             if initializer is None:

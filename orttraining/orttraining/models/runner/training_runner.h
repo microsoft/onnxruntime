@@ -111,6 +111,7 @@ class TrainingRunner {
     bool use_mixed_precision_moments = false;
     bool use_mixed_precision_initializer = true;
     bool allreduce_in_mixed_precision_type = false;
+    bool layernorm_stash_as_fp32 = true;
 
     // Tensorboard configuration.
     PathString log_dir;  // Path to write Tensorboard events to.

@@ -9,21 +9,21 @@ namespace onnxruntime {
 namespace contrib {
 
 ONNX_OPERATOR_KERNEL_EX(
-    TransposeScaleMatMul,
+    TransposeMatMul,
     kMSDomain,
     1,
     kCpuExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    TransposeScaleMatMul);
+    TransposeMatMul);
 
-TransposeScaleMatMul::TransposeScaleMatMul(const OpKernelInfo& info)
+TransposeMatMul::TransposeMatMul(const OpKernelInfo& info)
     : OpKernel{info} {
   ORT_THROW_IF_ERROR(info.GetAttr("alpha", &alpha_attr_));
   ORT_THROW_IF_ERROR(info.GetAttr("transA", &trans_a_attr_));
   ORT_THROW_IF_ERROR(info.GetAttr("transB", &trans_b_attr_));
 }
 
-Status TransposeScaleMatMul::Compute(OpKernelContext* context) const {
+Status TransposeMatMul::Compute(OpKernelContext* context) const {
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 
   const Tensor* A = context->Input<Tensor>(0);

@@ -1,0 +1,19 @@
+:Å
+ 
+input
+biasadd_outadd"Add
+0
+add_outoutputsoftmax"Softmax*
+axis Add_Softmax_FusionZ
+input
+
+d_1
+d_2Z
+bias
+
+d_1
+d_2b
+output
+
+d_1
+d_2B
