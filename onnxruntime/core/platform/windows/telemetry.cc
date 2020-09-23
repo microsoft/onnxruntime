@@ -102,9 +102,9 @@ void WindowsTelemetry::LogProcessInfo() const {
   // did we already log the process info?  we only need to log it once
   if (process_info_logged.exchange(true))
     return;
-  bool isRedist = false;
-#if WINML_ROOT_NS == Microsoft
-  isRedist = true;
+  bool isRedist = true;
+#if BUILD_INBOX
+  isRedist = false;
 #endif
   TraceLoggingWrite(telemetry_provider_handle,
                     "ProcessInfo",
