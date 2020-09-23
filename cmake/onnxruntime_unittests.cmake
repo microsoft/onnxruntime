@@ -397,7 +397,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${ONNXRUNTIME_INTEROP_TEST_LIBS}
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
-# These providers are shared libraries now, so aren't linked this way anymore:
+    # TENSORRT and DNNL are explicitly linked at runtime
     ${PROVIDERS_MIGRAPHX}
     ${PROVIDERS_NGRAPH}
     ${PROVIDERS_OPENVINO}
