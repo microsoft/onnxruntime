@@ -395,14 +395,12 @@ struct MaxPool3DTask {
   }
 };
 
-//////////////////////////////////////////////////////////////////////////
-
 template<typename T>
 T* FindLastLargerEqual(T* head, T* tail, const T* key) {
   assert (head && tail && key && head <= tail);
   //find first elem smaller than key in a descending vector
   while (head < tail) {
-    auto mid = head + (tail-head>>1);
+    auto mid = head + ((tail-head)>>1);
     if (*mid >= *key) {
       head = mid + 1;
     } else {

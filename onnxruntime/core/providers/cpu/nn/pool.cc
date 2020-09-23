@@ -236,7 +236,7 @@ Status MaxPoolV8::ComputeImplOptimized(OpKernelContext* context) const {
   const auto& pool_size = pool_attrs_.kernel_shape;
 
   if (dilations[0] != stride_h() ||
-      pool_size.size() > 1 && dilations[1] != stride_w() ||
+      pool_size.size() > 1 && dilations[1] != stride_w() || 
       pool_size.size() > 2 && dilations[2] != stride_d() ||
       context->Output(1, output_dims)) {
 
