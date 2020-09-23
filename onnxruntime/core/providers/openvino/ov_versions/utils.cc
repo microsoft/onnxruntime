@@ -53,6 +53,7 @@ bool IsOpSupportedOnlyInModel(std::string name){
     "Exp",
     "Pad",
     "Not",
+    "NonMaxSuppression"
   };
   return ops_supported_only_in_model.find(name) != ops_supported_only_in_model.end();
 }
