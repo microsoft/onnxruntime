@@ -201,8 +201,8 @@ namespace ImageTestHelper {
         // Copy from Cpu to GPU
         D3D12_SUBRESOURCE_DATA CPUData = {};
         CPUData.pData = reinterpret_cast<BYTE*>(pCPUTensor);
-        CPUData.RowPitch = bufferbytesize;
-        CPUData.SlicePitch = bufferbytesize;
+        CPUData.RowPitch = static_cast<LONG_PTR>(bufferbytesize);
+        CPUData.SlicePitch = static_cast<LONG_PTR>(bufferbytesize);
         UpdateSubresources(cmdList.get(), pGPUResource.get(), imageUploadHeap.get(), 0, 0, 1, &CPUData);
 
         // Close the command list and execute it to begin the initial GPU setup.

@@ -105,17 +105,14 @@ mv /tmp/src/gradle-6.3 /usr/local/gradle
 
 #Don't update 'wheel' to the latest version. see: https://github.com/pypa/auditwheel/issues/102
 ${PYTHON_EXE} -m pip install -r ${0/%install_deps\.sh/requirements\.txt}
-if [ $DEVICE_TYPE = "Normal" ]; then
-    ${PYTHON_EXE} -m pip install sympy==1.1.1
-elif [ $DEVICE_TYPE = "gpu" ]; then
-    ${PYTHON_EXE} -m pip install sympy==1.1.1
+if [ $DEVICE_TYPE = "gpu" ]; then
     if [[ $BUILD_EXTR_PAR = *--enable_training* ]]; then
       ${PYTHON_EXE} -m pip install --upgrade --pre torch==1.6.0.dev20200610 torchvision==0.7.0.dev20200610 torchtext==0.6.0.dev20200610 -f https://download.pytorch.org/whl/nightly/cu101/torch_nightly.html
       ${PYTHON_EXE} -m pip install  transformers==v2.10.0
       # transformers requires sklearn
       ${PYTHON_EXE} -m pip install sklearn
 
-      if [[ $BUILD_EXTR_PAR = *--enable_training_python_frontend_e2e_tests* ]]; then
+      if [[ $BUILD_EXTR_PAR = *--enable_training_python_frontend_e2e_tests* || $BUILD_EXTR_PAR = *enable_training_pipeline_e2e_tests* ]]; then
         echo "install openmpi"
         curl -fsSL https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.0.tar.gz -O
         tar zxf openmpi-4.0.0.tar.gz

@@ -262,7 +262,8 @@ void NcclService::Launch() {
       {
         std::lock_guard<std::mutex> guard(mutex_);
         // All tasks must be ready with a valid time.
-        if (time_ > schedule_.size() - 1 ||
+        if (schedule_.empty() ||
+            time_ > schedule_.size() - 1 ||
             !schedule_[time_].IsAllTasksEqueued() ||
             schedule_[time_].IsAllTasksFinished()) {
           continue;
@@ -337,7 +338,7 @@ void NcclService::Terminate() {
   WaitForLaunch();
   {
     std::unique_lock<std::mutex> lock(mutex_);
-    cv_.wait(lock, [this] { return total_time_ > 0 && time_ == 0; });
+    cv_.wait(lock, [this] { return schedule_.empty() || total_time_ > 0 && time_ == 0; });
   }
 
   is_running_ = false;

@@ -60,7 +60,6 @@ static std::unordered_map<std::string, std::unordered_set<size_t>>
         {"Where", {0}},
         {"Range", {0, 1, 2}},
         {"Tile", {1}},
-        {"NonZero", {0}},
         {"BroadcastGradientArgs", {0, 1}}};
 
 class GradientGraphBuilder {
@@ -82,7 +81,7 @@ class GradientGraphBuilder {
                        const GradientGraphConfiguration& gradient_graph_config,
                        const logging::Logger& logger);
 
-  Status Build();
+  Status Build(const std::unordered_set<std::string>* p_initializer_names_to_preserve = nullptr);
 
  private:
   std::unordered_set<const NodeArg*> y_node_args_;

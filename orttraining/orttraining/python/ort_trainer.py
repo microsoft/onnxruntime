@@ -16,6 +16,8 @@ import warnings
 from .checkpointing_utils import list_checkpoint_files, get_checkpoint_name, CombineZeroCheckpoint
 import onnxruntime.capi.pt_patch
 
+from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
+
 DEFAULT_OPSET_VERSION = 12
 
 class IODescription():
@@ -320,8 +322,14 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
         import copy
         # Deepcopy inputs, since input values may change after model run.
         sample_inputs_copy = copy.deepcopy(sample_inputs)
-        # Deepcopy model, in case model is stateful and changes after model run.
-        model_copy = copy.deepcopy(model)
+        try:
+            # Deepcopy model, in case model is stateful and changes after model run.
+            model_copy = copy.deepcopy(model)
+        except Exception:
+            model_copy = model
+            warnings.warn("This model cannot be deep copied (or pickled), which is a required step for stateful models to be properly exported to ONNX."
+                          " Compute will continue, but unexpected results may occur!")
+
         sample_outputs = model_copy(*sample_inputs_copy)
     if isinstance(sample_outputs, torch.Tensor):
         sample_outputs = [sample_outputs]
@@ -539,7 +547,7 @@ class ORTTrainer():
                  global_step=0, get_lr_this_step=None, loss_scaler=None, deepspeed_zero_stage=0,
                  enable_grad_norm_clip=True, frozen_weights=[], _opset_version=DEFAULT_OPSET_VERSION,
                  _enable_internal_postprocess=True, _extra_postprocess=None, _use_deterministic_compute=False,
-                 use_invertible_layernorm_grad=False):
+                 use_invertible_layernorm_grad=False, run_symbolic_shape_infer=False):
         super(ORTTrainer, self).__init__()
         """
         Initialize ORTTrainer.
@@ -607,6 +615,8 @@ class ORTTrainer():
                Defaults to None
             use_invertible_layernorm_grad: use invertible layernorm grad
                Defaults to False
+            run_symbolic_shape_infer: run symbolic shape inference
+               Defaults to False
         """
         warnings.warn('DISCLAIMER: This is an early version of an experimental training API and it is subject to change. DO NOT create production applications with it')
         self.is_train = True
@@ -669,6 +679,7 @@ class ORTTrainer():
         self.state_dict_ = None
         self._use_deterministic_compute = _use_deterministic_compute
         self.use_invertible_layernorm_grad = use_invertible_layernorm_grad
+        self.run_symbolic_shape_infer = run_symbolic_shape_infer
 
         # use this special string to workaround a corner case that external loss_scale is passed into train_step as kwargs.
         # see prepare_input_and_fetches for more details.
@@ -681,6 +692,10 @@ class ORTTrainer():
             return
 
         self._verify_fully_optimized_model(self.onnx_model_)
+
+        if self.run_symbolic_shape_infer:
+            self.onnx_model_ = SymbolicShapeInference.infer_shapes(self.onnx_model_, auto_merge=True, guess_output_rank=True)
+
         self.session, self.train_io_binding, self.eval_io_binding, self.output_name, _, self.output_types = \
             create_ort_training_session_with_optimizer(
                 self.onnx_model_, self.device_,

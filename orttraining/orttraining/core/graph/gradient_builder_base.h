@@ -5,6 +5,7 @@
 
 #include <vector>
 #include <string>
+#include "core/util/math.h"
 #include "core/graph/graph.h"
 #include "orttraining/core/graph/graph_augmenter.h"
 #include "orttraining/core/graph/gradient_config.h"
@@ -126,6 +127,16 @@ class GradientBuilderBase {
     return node_->OutputDefs()[i]->TypeAsProto();
   }
 
+  // Element type of i-th input of forward op.
+  int IElemType(const size_t i) const {
+    return IType(i)->tensor_type().elem_type();
+  }
+
+  // Element type of i-th output of forward op.
+  int OElemType(const size_t i) const {
+    return OType(i)->tensor_type().elem_type();
+  }
+
   int GetSrcNodeInputSize() const {
     ORT_ENFORCE(node_ != nullptr);
     return (int)node_->InputDefs().size();
@@ -186,12 +197,29 @@ class GradientBuilderBase {
                    {ONNX_NAMESPACE::MakeAttribute("value", t_proto)});
   }
 
-  static NodeDef ZeroConstantNode() {
-    return ConstantScalarNode(0.0f, {1}, "ZeroConstant");
+  // We only support FP32, FP16 and BF16 for these constant nodes for now.
+  static NodeDef ConstantScalarNode(float value, const std::string& arg_name, int elem_type) {
+    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+      return ConstantScalarNode(MLFloat16(math::floatToHalf(value)), {1}, arg_name);
+    }
+    
+    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) {
+      return ConstantScalarNode(BFloat16(value), {1}, arg_name);
+    }
+    
+    return ConstantScalarNode(value, {1}, arg_name);
   }
 
-  static NodeDef OneConstantNode() {
-    return ConstantScalarNode(1.0f, {1}, "OneConstant");
+  static NodeDef ZeroConstantNode(int elem_type) {
+    return ConstantScalarNode(0.0f, "ZeroConstant", elem_type);
+  }
+
+  static NodeDef HalfConstantNode(int elem_type) {
+    return ConstantScalarNode(0.5f, "HalfConstant", elem_type);
+  }
+
+  static NodeDef OneConstantNode(int elem_type) {
+    return ConstantScalarNode(1.0f, "OneConstant", elem_type);
   }
 
   void HandleBroadcasting(const ArgDef& input_grad,

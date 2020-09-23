@@ -7,7 +7,7 @@ from enum import Enum
 import numpy as np
 import onnx
 from .node_factory import NodeFactory, ensure_opset
-from .symbolic_shape_infer import SymbolicShapeInference, get_shape_from_type_proto
+from ..tools.symbolic_shape_infer import SymbolicShapeInference, get_shape_from_type_proto
 
 # trim outputs of LSTM/GRU/RNN if not used or outputed
 def trim_unused_outputs(node, graph):
@@ -831,5 +831,7 @@ if __name__ == '__main__':
     else:
         raise NotImplementedError('Unknown mode')
     print('Running symbolic shape inference on output model')
-    SymbolicShapeInference.infer_shapes(args.output, args.output, auto_merge=True)
+    mp = onnx.load(args.output)
+    mp = SymbolicShapeInference.infer_shapes(mp, auto_merge=True)
+    onnx.save(mp, args.output)
     print('Done!')
