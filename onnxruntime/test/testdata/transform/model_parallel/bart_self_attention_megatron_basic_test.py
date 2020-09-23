@@ -5,7 +5,7 @@ from onnx import numpy_helper
 import numpy as np
 import random
 
-batch = 3
+batch = 6
 hidden_size = 4
 attention_head = 2
 hidden_per_attention = 2
@@ -55,12 +55,12 @@ dropout_initializer = numpy_helper.from_array(dropout_np_vals, "ratio")
 dropout_mode_np_vals = np.array([True], dtype=np.bool).reshape(())
 dropout_mode_initializer = numpy_helper.from_array(dropout_mode_np_vals, "mode")
 
-shape_initializer3 = numpy_helper.from_array(np.array([input_len, batch*attention_head, hidden_per_attention], dtype=np.int64), 'concat_shape_3')
+shape_initializer3 = numpy_helper.from_array(np.array([input_len, batch, attention_head * hidden_per_attention], dtype=np.int64), 'concat_shape_3')
 
 dense_weight_np_vals = (0.01 * np.arange(hidden_size * hidden_size, dtype=np.float32)).reshape((hidden_size, hidden_size))
 dense_weight_initializer = numpy_helper.from_array(dense_weight_np_vals, 'encoder.layers.0.self_attn.out_proj.weight')
 
-dense_bias_np_vals = (0.01 * np.arange(hidden_size * hidden_size, dtype=np.float32)).reshape((hidden_size, hidden_size))
+dense_bias_np_vals = (0.01 * np.arange(hidden_size, dtype=np.float32))
 dense_bias_initializer = numpy_helper.from_array(dense_bias_np_vals, 'encoder.layers.0.self_attn.out_proj.bias')
 
 
@@ -98,7 +98,7 @@ where = helper.make_node('Where', ['unsqueeze_cond', inf_const_initializer.name,
 
 reshape_where = helper.make_node("Reshape", ['where', where_shape_initializer.name], ['reshape_where'], name='reshape_where')
 
-softmax = helper.make_node('Softmax', ['reshape_where'], ['softmax'], name='softmax', axis=3)
+softmax = helper.make_node('Softmax', ['reshape_where'], ['softmax'], name='softmax', axis=2)
 dropout1 = helper.make_node('Dropout', 
     ["softmax", dropout_initializer.name, dropout_mode_initializer.name], 
     ['dropout1', "dropout1_mask"], 

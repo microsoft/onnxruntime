@@ -783,6 +783,7 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node) {
   // Remove nodes that are not used anymore.
   for (const auto& node_index : nodes_to_remove) {
     Node* node = graph.GetNode(node_index);
+    std::cout<<"Removing node: " << node->Name() << "\n";
     RemoveNodeOutputEdges(graph, *node);
     graph.RemoveNode(node->Index());
   }

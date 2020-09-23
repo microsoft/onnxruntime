@@ -32,6 +32,7 @@ const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> opset_v1 = {1};
 const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> opset_v1_11 = {1, 11};
 const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> opset_v2_11 = {2, 11};
 const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> opset_v5 = {5};
+const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> opset_v1_6_7 = {1, 6, 7};
 const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> opset_v7 = {7};
 const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> opset_v9 = {9};
 const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> opset_v12 = {12};
@@ -41,11 +42,12 @@ const OpInfo reshape_info = OpInfo("Reshape", opset_v5);
 const OpInfo transpose_info = OpInfo("Transpose", opset_v1);
 const OpInfo matmul_info = OpInfo("MatMul", opset_v9);
 const OpInfo div_info = OpInfo("Div", opset_v7);
-const OpInfo mul_info = OpInfo("Mul", opset_v7);
+const OpInfo mul_info = OpInfo("Mul", opset_v1_6_7);
 const OpInfo sub_info = OpInfo("Sub", opset_v7);
 const OpInfo softmax_info = OpInfo("Softmax", opset_v1_11);
 const OpInfo trainable_dropout_info = OpInfo("TrainableDropout", opset_v9, kOnnxDomain);
 const OpInfo dropout_info = OpInfo("Dropout", opset_v12);
+const OpInfo where_info = OpInfo("Where", opset_v9);
 
 struct NodeInfo {
   NodeInfo(const std::vector<OpInfo>& op_infos,
@@ -60,6 +62,25 @@ struct NodeInfo {
 static bool IsExpectedOpAndProvider(const Node& node,
                                     const OpInfo& op_info,
                                     ProviderType provider_type) {
+  if(node.OpType() == "Mul"){
+    std::cout<<"Extra debug:"<< node.Name() <<"\n";
+    bool is_true = graph_utils::IsSupportedOptypeVersionAndDomain(node, op_info.op_type, op_info.supported_versions, op_info.domain);
+    if(!is_true){
+      std::cout<<"Mismatch in IsSupportedOptypeVersionAndDomain:\n";
+      return is_true;
+    }
+    is_true = node.GetExecutionProviderType() == provider_type;
+    if(!is_true){
+      std::cout<<"Mismatch in ExecutionProviderType:\n";
+      return is_true;
+    }
+    is_true = node.GetOutputEdgesCount() == op_info.output_count;
+    if(!is_true){
+      std::cout<<"Mismatch in IsSupportedOptypeVersionAndDomain:\n";
+      return is_true;
+    }
+    return true;    
+  }
   return graph_utils::IsSupportedOptypeVersionAndDomain(node, op_info.op_type, op_info.supported_versions, op_info.domain) &&
          node.GetExecutionProviderType() == provider_type &&
          node.GetOutputEdgesCount() == op_info.output_count;
@@ -90,10 +111,10 @@ static bool MatchLinearPattern(Graph& graph,
 
     sub_graph_node_ptrs.push_back(has_matched_op ? next_node_ptr : nullptr);
     if (has_matched_op) {
-      //LOGS_DEFAULT(WARNING) << "  MatchLinearPattern 2222" << next_node_ptr->Name();
+      LOGS_DEFAULT(WARNING) << "  MatchLinearPattern 2222" << next_node_ptr->Name();
       curr_node_ptr = next_node_ptr;
     } else if (node_info.required) {
-      //LOGS_DEFAULT(WARNING) << "  MatchLinearPattern 11111" << next_node_ptr->Name();
+      LOGS_DEFAULT(WARNING) << "  MatchLinearPattern 11111" << next_node_ptr->Name();
       return false;
     }
   }
@@ -1228,6 +1249,375 @@ Status MegatronTransformer::TransformT5SelfAttention(Graph& graph, bool& modifie
   return Status::OK();
 }
 
+Status MegatronTransformer::TransformBARTSelfAttention(Graph& graph, bool& modified, int graph_level,
+                                                     const logging::Logger& logger,
+                                                     std::vector<Node*>& nodes_to_clear_shape,
+                                                     std::unordered_set<Node*>& self_attention_dropout_nodes,
+                                                     int32_t& counter) const {
+  GraphViewer graph_viewer(graph);
+  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+  LOGS_DEFAULT(WARNING) << " Enter BART Attention ";
+  // Self attention sub-graph.
+  //
+  // MatMul->Add->Mul->Reshape->Transpose->MatMul->Reshape->Where->Reshape->Softmax->Dropout->MatMul->Transpose->Reshape->MatMul->Add->Droupout
+  // MatMul->Add->Reshape->Transpose-------> |                                                  |
+  // MatMul->Add->Reshape->Transpose----------------------------------------------------------> |
+  for (auto node_index : node_topology_list) {
+    auto& node = *graph.GetNode(node_index);
+    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
+
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", opset_v9) ||
+        !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) ||
+        node.GetOutputEdgesCount() != 1) {
+      continue;
+    }
+
+    Node* k_matmul_input_node_ptr = const_cast<Node*>(graph.GetProducerNode(node.MutableInputDefs()[0]->Name()));
+    if (k_matmul_input_node_ptr != nullptr && k_matmul_input_node_ptr->OpType().compare("MegatronF") == 0) {
+      continue;
+    }
+    std::vector<Node*> sub_graph_node_ptrs;
+    sub_graph_node_ptrs.push_back(&node);
+    ProviderType provider_type = node.GetExecutionProviderType();
+
+    std::vector<NodeInfo> linear_pattern = {
+        NodeInfo({add_info}),
+        NodeInfo({mul_info}),
+        NodeInfo({reshape_info}),
+        NodeInfo({transpose_info}),
+        NodeInfo({matmul_info}),  
+        NodeInfo({add_info}, false), // -13
+        NodeInfo({reshape_info}),
+        NodeInfo({where_info}),
+        NodeInfo({reshape_info}),
+        NodeInfo({softmax_info}),
+        NodeInfo({dropout_info}, false),  // -8
+        NodeInfo({matmul_info}),
+        NodeInfo({add_info}, false),
+        NodeInfo({transpose_info}),
+        NodeInfo({reshape_info}),
+        NodeInfo({matmul_info}), // -3
+        NodeInfo({add_info}),
+        NodeInfo({dropout_info}, false)};  // -1
+    if (!MatchLinearPattern(graph, &node, provider_type, linear_pattern, sub_graph_node_ptrs)) {
+      continue;
+    }
+    LOGS_DEFAULT(WARNING) << " BART Attention: linear pattern match. ";
+    // Get all useful nodes here as more vector push back below will change the index.
+    Node* q_biasadd_node_ptr = sub_graph_node_ptrs[sub_graph_node_ptrs.size() - 18];
+    Node& q_transpose_after_reshape_node = *sub_graph_node_ptrs[sub_graph_node_ptrs.size() - 15];
+    Node* qk_matmul_node_ptr = sub_graph_node_ptrs[sub_graph_node_ptrs.size() - 14];
+    Node* dropout_node_ptr = sub_graph_node_ptrs[sub_graph_node_ptrs.size() - 8];
+    Node* qkv_matmul_node_ptr = sub_graph_node_ptrs[sub_graph_node_ptrs.size() - 7];
+    Node& transpose_node1 = *sub_graph_node_ptrs[sub_graph_node_ptrs.size() - 5];
+    Node& dense_matmul_node = *sub_graph_node_ptrs[sub_graph_node_ptrs.size() - 3];
+
+    // Transpose node attribute checking.
+    if (!optimizer_utils::IsAttributeWithExpectedValues(q_transpose_after_reshape_node, "perm", {1LL, 0LL, 2LL}) ||
+        !optimizer_utils::IsAttributeWithExpectedValues(transpose_node1, "perm", {1LL, 0LL, 2LL})) {
+      continue;
+    }
+    LOGS_DEFAULT(WARNING) << " BART Attention: transpose attribute match. ";
+    //std::vector<Node*> transpose_node_ptrs;  // For the k and v matmul transpose nodes.
+    // std::vector<Node*> reshape_node_ptrs;  // To keep the reshape node that need to change the shape constant.
+    std::unordered_map<Node*, int64_t> reshape_node_ptrs;
+    reshape_node_ptrs[sub_graph_node_ptrs[sub_graph_node_ptrs.size() - 16]] = 1;
+    reshape_node_ptrs[sub_graph_node_ptrs[sub_graph_node_ptrs.size() - 12]] = 1; //dont need change
+    reshape_node_ptrs[sub_graph_node_ptrs[sub_graph_node_ptrs.size() - 10]] = 0; //dont need change
+    reshape_node_ptrs[sub_graph_node_ptrs[sub_graph_node_ptrs.size() - 4]] = 2;
+    // till now node should be k matmul operation
+
+    std::vector<Node*> weight_transpose_node_ptrs;
+    std::vector<Node*> bias_add_node_ptrs;
+
+    Node* q_transpose_ptr = const_cast<Node*>(graph.GetProducerNode(node.MutableInputDefs()[1]->Name()));
+    ORT_ENFORCE(q_transpose_ptr->OpType().compare("Transpose") == 0);
+    weight_transpose_node_ptrs.push_back(q_transpose_ptr);
+    sub_graph_node_ptrs.push_back(q_transpose_ptr);    
+    bias_add_node_ptrs.push_back(q_biasadd_node_ptr);
+
+    LOGS_DEFAULT(WARNING) << " BART Attention: q info done. ";
+
+    Node* k_transpose_ptr = const_cast<Node*>(graph.GetProducerNode(qk_matmul_node_ptr->MutableInputDefs()[1]->Name()));
+    ORT_ENFORCE(k_transpose_ptr->OpType().compare("Transpose") == 0);
+    sub_graph_node_ptrs.push_back(k_transpose_ptr);
+    Node* k_reshape = const_cast<Node*>(graph.GetProducerNode(k_transpose_ptr->MutableInputDefs()[0]->Name()));
+    reshape_node_ptrs[k_reshape]=1;
+    sub_graph_node_ptrs.push_back(k_reshape);
+    // specific to BART, there is a lingering transpose, need to debug but temp code:
+    // if(k_reshape->GetOutputEdgesCount() == 2)
+    // {
+    //   Node& tp0_ptr = graph.GetNode(k_reshape->OutputNodesBegin()->Index());
+    //   Node& tp1_ptr = graph.GetNode(k_reshape->OutputNodesEnd()->Index());
+    //   if(tp0.Name() == k_transpose_ptr->Name()){
+    //     sub_graph_node_ptrs.push_back(&tp1);
+    //     LOGS_DEFAULT(WARNING) << " BART Attention: removing shape of . "<< tp1.Name();
+    //   }
+    //   else if(tp1.Name() == k_transpose_ptr->Name()){
+    //     sub_graph_node_ptrs.push_back(&tp0);
+    //     LOGS_DEFAULT(WARNING) << " BART Attention: removing shape of . "<< tp0.Name();
+    //   }
+    // }
+    // Node* k_mul = const_cast<Node*>(graph.GetProducerNode(k_reshape->MutableInputDefs()[0]->Name()));
+    // sub_graph_node_ptrs.push_back(k_mul);
+    Node* k_add = const_cast<Node*>(graph.GetProducerNode(k_reshape->MutableInputDefs()[0]->Name()));
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(*k_add, "Add", {7})){
+      continue;
+    }
+    sub_graph_node_ptrs.push_back(k_add);
+    bias_add_node_ptrs.push_back(k_add);
+    Node* k_matmul = const_cast<Node*>(graph.GetProducerNode(k_add->MutableInputDefs()[0]->Name()));
+    sub_graph_node_ptrs.push_back(k_matmul);
+    Node* k_weight_transpose = const_cast<Node*>(graph.GetProducerNode(k_matmul->MutableInputDefs()[1]->Name()));
+    sub_graph_node_ptrs.push_back(k_weight_transpose);
+    weight_transpose_node_ptrs.push_back(k_weight_transpose);
+    LOGS_DEFAULT(WARNING) << " BART Attention: k info done. ";
+
+    Node* v_transpose_ptr = const_cast<Node*>(graph.GetProducerNode(qkv_matmul_node_ptr->MutableInputDefs()[1]->Name()));
+    ORT_ENFORCE(v_transpose_ptr != nullptr);
+    ORT_ENFORCE(v_transpose_ptr->OpType().compare("Transpose") == 0);
+    sub_graph_node_ptrs.push_back(v_transpose_ptr);
+    Node* v_reshape = const_cast<Node*>(graph.GetProducerNode(v_transpose_ptr->MutableInputDefs()[0]->Name()));
+    ORT_ENFORCE(v_reshape != nullptr);
+    reshape_node_ptrs[v_reshape]=1;
+    sub_graph_node_ptrs.push_back(v_reshape);
+    Node* v_add = const_cast<Node*>(graph.GetProducerNode(v_reshape->MutableInputDefs()[0]->Name()));
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(*v_add, "Add", {7})){
+      continue;
+    }
+    sub_graph_node_ptrs.push_back(v_add);
+    bias_add_node_ptrs.push_back(v_add);
+    ORT_ENFORCE(v_add != nullptr);
+    Node* v_matmul = const_cast<Node*>(graph.GetProducerNode(v_add->MutableInputDefs()[0]->Name()));
+    sub_graph_node_ptrs.push_back(v_matmul);
+    ORT_ENFORCE(v_matmul != nullptr);
+    Node* v_weight_transpose = const_cast<Node*>(graph.GetProducerNode(v_matmul->MutableInputDefs()[1]->Name()));
+    ORT_ENFORCE(v_weight_transpose != nullptr);
+    sub_graph_node_ptrs.push_back(v_weight_transpose);
+    weight_transpose_node_ptrs.push_back(v_weight_transpose);
+    LOGS_DEFAULT(WARNING) << " BART Attention: v info done. ";
+
+    // K and V matmul must have the same input
+    Node* q_matmul = &node;
+    ORT_ENFORCE(k_matmul->MutableInputDefs()[0]->Name() == v_matmul->MutableInputDefs()[0]->Name());
+
+    bool need_skip = false;
+    for (auto trans_ptr : weight_transpose_node_ptrs) {
+      const ONNX_NAMESPACE::TensorProto* tensor_proto;
+      if (!graph.GetInitializedTensor(trans_ptr->MutableInputDefs()[0]->Name(), tensor_proto)) {
+        LOGS_DEFAULT(WARNING) << " BART Attention Skipping now" << trans_ptr->MutableInputDefs()[0]->Name() << " " << trans_ptr->Name();
+        need_skip = true;
+        break;
+      }
+    }
+    if (need_skip) {
+      LOGS_DEFAULT(WARNING) << " BART Attention Skipp because transposes' inputs are not initializers" << node.Name();
+      continue;
+    }
+
+    // Check the constant value in the Reshape nodes.
+    bool is_reshape_valid = true;
+    for (auto x : reshape_node_ptrs) {
+      Node* node_ptr = x.first;
+      int64_t idx = x.second;
+      LOGS_DEFAULT(WARNING) << " BART Attention Transpose Check 565656565" << node_ptr->Name();
+      auto shape_arg = node_ptr->MutableInputDefs()[1];
+      const ONNX_NAMESPACE::TensorProto* tensor;
+      LOGS_DEFAULT(WARNING) << " BART Attention Transpose Check 6666" << node.Name();
+      if (!graph.GetInitializedTensor(shape_arg->Name(), tensor)) {
+        is_reshape_valid = false;
+        break;
+      }
+      LOGS_DEFAULT(WARNING) << " BART Attention Transpose Check 7777" << node.Name();
+      auto data_type = tensor->data_type();
+      if (data_type != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+        is_reshape_valid = false;
+        break;
+      }
+      LOGS_DEFAULT(WARNING) << " BART Attention Transpose Check 8888" << node.Name();
+      // The number of the values should be more than 2, and the 3rd value should be divisible by parallel size,
+      // i.e., the attention head number should be divisible by parallel size.
+      auto init_const = onnxruntime::make_unique<Initializer>(*tensor, graph.ModelPath());
+      if (init_const->size() <= idx) {
+        is_reshape_valid = false;
+        break;
+      }
+      LOGS_DEFAULT(WARNING) << " BART Attention Transpose Check 99999" << node.Name();
+      const int64_t* val = init_const->data<int64_t>();
+      // if (val[2] % horizontal_parallel_size_ != 0) {
+      if (val[idx] % horizontal_parallel_size_ != 0) {
+        LOGS_DEFAULT(WARNING) << "dim[" << idx << "]: " << val[idx]
+                              << " is not divisible by horizontal_parallel_size_ "
+                              << horizontal_parallel_size_ << ", not supported currently.";
+        is_reshape_valid = false;
+        break;
+      }
+      LOGS_DEFAULT(WARNING) << " BART Attention Transpose Check 10101010101" << node.Name();
+    }
+
+    if (!is_reshape_valid) {
+      LOGS_DEFAULT(WARNING) << " BART Attention:reshape invalid, exiting ";
+      continue;
+    }
+
+    
+    // Partition weights. If any of them fails, skip transforming this sub-graph.
+    for (auto trans_ptr : weight_transpose_node_ptrs) {
+      auto qkv_weight_arg = trans_ptr->MutableInputDefs()[0];
+      NodeArg& qkv_weight_partition_arg = PartitionWeightByRow(graph, *qkv_weight_arg);
+      graph_utils::ReplaceNodeInput(*trans_ptr, 0, qkv_weight_partition_arg);
+    }
+
+    // Partition bias. If any of them fails, skip transforming this sub-graph.
+    for (auto add_ptr : bias_add_node_ptrs) {
+      auto qkv_bias_arg = add_ptr->MutableInputDefs()[1];
+      NodeArg& qkv_bias_partition_arg = PartitionWeightByColumn(graph, *qkv_bias_arg);
+      graph_utils::ReplaceNodeInput(*add_ptr, 1, qkv_bias_partition_arg);
+    }
+
+    Node* last_transpose = const_cast<Node*>(graph.GetProducerNode(dense_matmul_node.MutableInputDefs()[1]->Name()));
+    auto dense_weight_arg = last_transpose->MutableInputDefs()[0];
+    NodeArg& dense_weight_partition_arg = PartitionWeightByColumn(graph, *dense_weight_arg);
+    graph_utils::ReplaceNodeInput(*last_transpose, 0, dense_weight_partition_arg);
+
+    //LOGS_DEFAULT(WARNING) << " BART Attention Reshape Check" << node.Name();
+    // Ready to transform the sub-graph when reach here.
+    // It's possible that the node vector contains nullptr due to some optinal node infos during linear pattern matching.
+    std::copy_if(sub_graph_node_ptrs.begin(), sub_graph_node_ptrs.end(),
+                 std::back_inserter(nodes_to_clear_shape),
+                 [](Node* node_ptr) { return node_ptr != nullptr; });
+
+    // Change the constant for the reshape nodes.
+    for (auto x : reshape_node_ptrs) {
+      Node* node_ptr = x.first;
+      int64_t idx = x.second;
+      auto shape_arg = node_ptr->MutableInputDefs()[1];
+      const ONNX_NAMESPACE::TensorProto* tensor;
+      graph.GetInitializedTensor(shape_arg->Name(), tensor);
+      auto data_type = tensor->data_type();
+      auto init_const = onnxruntime::make_unique<Initializer>(*tensor, graph.ModelPath());
+      const int64_t* val = init_const->data<int64_t>();
+      int64_t size = init_const->size();
+      ONNX_NAMESPACE::TensorProto tensor_partition;
+      tensor_partition.set_name(graph.GenerateNodeArgName("partition_" + shape_arg->Name()));
+      tensor_partition.set_data_type(data_type);
+      tensor_partition.add_dims(size);
+
+      std::vector<int64_t> val_partition;
+      val_partition.reserve(size);
+      val_partition.insert(val_partition.end(), val, val + size);
+      // val_partition[2] /= horizontal_parallel_size_;
+      val_partition[idx] /= horizontal_parallel_size_;
+      //LOGS_DEFAULT(WARNING) << "Replace Reshape node's shape " << shape_arg->Name() << " " << val_partition[0] << "," << val_partition[1] << "," << val_partition[2];
+      tensor_partition.set_raw_data(val_partition.data(), size * sizeof(int64_t));
+      NodeArg& node_arg_partition = graph_utils::AddInitializer(graph, tensor_partition);
+      graph_utils::ReplaceNodeInput(*node_ptr, 1, node_arg_partition);
+      graph.RemoveInitializedTensor(shape_arg->Name());
+    }
+
+    if (dropout_node_ptr != nullptr) {
+      self_attention_dropout_nodes.insert(dropout_node_ptr);
+    }
+
+    // Add MegatronF before the 1st MatMul and MegatronG before the last Add.
+
+    NodeArg* prev_input_node_ptr = k_matmul->MutableInputDefs()[0];
+    std::vector<Node*> new_consumer_nodes;
+    const auto& node_consumers = graph.GetConsumerNodes(prev_input_node_ptr->Name());
+    for (auto& n : node_consumers) {
+      if (n->Index() == k_matmul->Index() || n->Index() == v_matmul->Index() || n->Index() == q_matmul->Index()) {
+        continue;
+      }
+      new_consumer_nodes.emplace_back(const_cast<Node*>(n));
+    }
+
+    bool shared_same_input = k_matmul->MutableInputDefs()[0]->Name().compare(q_matmul->MutableInputDefs()[0]->Name()) == 0;
+
+    //then for q, and k&v will have different MegatronF node.
+    {
+      const std::vector<NodeArg*> sa_f_input_defs{prev_input_node_ptr};
+      auto sa_f_type_info = *prev_input_node_ptr->TypeAsProto();
+      auto& sa_f_out_arg = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(k_matmul->Name() + "BARTAttention_MegatronF_Output"), &sa_f_type_info);
+      Node& sa_f_node = graph.AddNode(graph.GenerateNodeName(k_matmul->Name() + "BARTAttention_MegatronF"),
+                                      "MegatronF",
+                                      k_matmul->Name() + "BARTAttention MegatronF",
+                                      sa_f_input_defs,
+                                      {&sa_f_out_arg}, {}, kMSDomain);
+      sa_f_node.SetExecutionProviderType(k_matmul->GetExecutionProviderType());
+      graph_utils::ReplaceNodeInput(*k_matmul, 0, *(sa_f_node.MutableOutputDefs()[0]));
+      graph_utils::ReplaceNodeInput(*v_matmul, 0, *(sa_f_node.MutableOutputDefs()[0]));
+      if (shared_same_input) {
+        graph_utils::ReplaceNodeInput(*q_matmul, 0, *(sa_f_node.MutableOutputDefs()[0]));
+      }
+      //     const Node::EdgeEnd* edge = graph_utils::GetInputEdge(node, 0);
+      // if (nullptr == edge) {  // handle input/initializer
+      //   graph_utils::ReplaceNodeInput(node, 0, *(sa_f_node.MutableOutputDefs()[0]));
+      // } else {
+      //   auto input_node = const_cast<Node*>(&edge->GetNode());
+      //   graph_utils::ReplaceDownstreamNodeInput(graph, *input_node, edge->GetDstArgIndex(), sa_f_node, 0);
+      // }
+      new_consumer_nodes.push_back(&sa_f_node);
+    }
+    graph.UpdateConsumerNodes(prev_input_node_ptr->Name(), new_consumer_nodes);
+    LOGS_DEFAULT(WARNING) << "BART Attention " << k_matmul->Name() << " Partitioned " << k_matmul->MutableInputDefs()[0]->Name();
+    counter++;
+    if (!shared_same_input) {
+      {
+        NodeArg* prev_input_node_ptr = q_matmul->MutableInputDefs()[0];
+        std::vector<Node*> new_consumer_nodes;
+        const auto& node_consumers = graph.GetConsumerNodes(prev_input_node_ptr->Name());
+        for (auto& n : node_consumers) {
+          if (n->Index() == k_matmul->Index() || n->Index() == v_matmul->Index() || n->Index() == q_matmul->Index()) {
+            continue;
+          }
+          new_consumer_nodes.emplace_back(const_cast<Node*>(n));
+        }
+
+        const std::vector<NodeArg*> sa_f_input_defs{q_matmul->MutableInputDefs()[0]};
+        auto sa_f_type_info = *q_matmul->MutableInputDefs()[0]->TypeAsProto();
+        auto& sa_f_out_arg = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(q_matmul->Name() + "BARTAttention_MegatronF_Output"), &sa_f_type_info);
+        Node& sa_f_node = graph.AddNode(graph.GenerateNodeName(q_matmul->Name() + "BARTAttention_MegatronF"),
+                                        "MegatronF",
+                                        q_matmul->Name() + "BARTAttention MegatronF",
+                                        sa_f_input_defs,
+                                        {&sa_f_out_arg}, {}, kMSDomain);
+        sa_f_node.SetExecutionProviderType(q_matmul->GetExecutionProviderType());
+
+        graph_utils::ReplaceNodeInput(*q_matmul, 0, *(sa_f_node.MutableOutputDefs()[0]));
+        // const Node::EdgeEnd* edge = graph_utils::GetInputEdge(*q_matmul, 0);
+        // if (nullptr == edge) {  // handle input/initializer
+        //   graph_utils::ReplaceNodeInput(*q_matmul, 0, *(sa_f_node.MutableOutputDefs()[0]));
+        // } else {
+        //   auto input_node = const_cast<Node*>(&edge->GetNode());
+        //   graph_utils::ReplaceDownstreamNodeInput(graph, *input_node, edge->GetDstArgIndex(), sa_f_node, 0);
+        // }
+        new_consumer_nodes.push_back(&sa_f_node);
+        graph.UpdateConsumerNodes(prev_input_node_ptr->Name(), new_consumer_nodes);
+        // todo: need update the consumer node for the input_node as well.
+      }
+    }
+
+    const std::vector<NodeArg*> sa_g_input_defs{dense_matmul_node.MutableOutputDefs()[0]};
+    auto sa_g_type_info = *dense_matmul_node.MutableOutputDefs()[0]->TypeAsProto();  // copy
+    //LOGS_DEFAULT(WARNING) << "%%%%%%%%%%%%%%%%%%%%%" << node.Name() << "dim 0: "
+    //                      << sa_g_type_info.tensor_type().shape().dim(0).dim_value() << ", dim 1:"
+    //                      << sa_g_type_info.tensor_type().shape().dim(1).dim_value();
+    auto& sa_g_out_arg = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("BARTAttention_MegatronG_Output"), &sa_g_type_info);
+    Node& sa_g_node = graph.AddNode(graph.GenerateNodeName(k_matmul->Name() + "BARTAttention_MegatronG"),
+                                    "MegatronG",
+                                    "BARTAttention MegatronG",
+                                    sa_g_input_defs,
+                                    {&sa_g_out_arg}, {}, kMSDomain);
+    sa_g_node.AddAttribute("group_type", static_cast<int64_t>(training::WorkerGroupType::HorizontalParallel));
+    sa_g_node.SetExecutionProviderType(k_matmul->GetExecutionProviderType());
+    graph_utils::ReplaceDownstreamNodeInput(graph, dense_matmul_node, 0, sa_g_node, 0);
+
+    modified = true;
+  }
+
+  return Status::OK();
+}
+
 Status MegatronTransformer::TransformDropout(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger,
                                              std::unordered_set<Node*>& self_attention_dropout_nodes, int32_t& counter) const {
   GraphViewer graph_viewer(graph);
@@ -1282,6 +1672,7 @@ Status MegatronTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_le
   ORT_ENFORCE(TransformBARTMLP(graph, modified, graph_level, logger, nodes_to_clear_shape, self_attention_dropout_nodes, partitioned_t5_mlp_count_).IsOK());
   ORT_ENFORCE(TransformSelfAttention(graph, modified, graph_level, logger, nodes_to_clear_shape, self_attention_dropout_nodes).IsOK());
   ORT_ENFORCE(TransformT5SelfAttention(graph, modified, graph_level, logger, nodes_to_clear_shape, self_attention_dropout_nodes, partitioned_t5_attention_count_).IsOK());
+  ORT_ENFORCE(TransformBARTSelfAttention(graph, modified, graph_level, logger, nodes_to_clear_shape, self_attention_dropout_nodes, partitioned_t5_attention_count_).IsOK());
   ORT_ENFORCE(TransformDropout(graph, modified, graph_level, logger, self_attention_dropout_nodes, dropout_changed_).IsOK());
 
   auto& graph_inputs = graph.GetInputs();
