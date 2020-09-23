@@ -345,7 +345,7 @@ def exclude_unused_ops(models_path, config_path, ort_root=None, use_cuda=True, o
         log.error('Please specify model_path and/or config_path.')
         sys.exit(-1)
 
-    if not ort_root:
+    if not ort_root and not output_config_path:
         log.info('ort_root was not specified. Inferring ONNX Runtime repository root from location of this script.')
 
     required_ops = _extract_ops_from_config(config_path, _extract_ops_from_model(models_path, {}))

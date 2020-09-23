@@ -1774,15 +1774,14 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
         ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 1);
       });
 
-  static const char* TransposeScaleMatMul_doc = R"DOC(
+  static const char* TransposeMatMul_doc = R"DOC(
 Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html
 )DOC";
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(TransposeScaleMatMul)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(TransposeMatMul)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("TransposeScaleMatMul")
+      .SetDoc("TransposeMatMul")
       .Input(0, "A", "N-dimensional matrix A", "T")
       .Input(1, "B", "N-dimensional matrix B", "T")
       .Attr(
@@ -1805,7 +1804,7 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
-      .SetDoc(TransposeScaleMatMul_doc)
+      .SetDoc(TransposeMatMul_doc)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
         auto transAAttr = ctx.getAttribute("transA");
@@ -2958,6 +2957,24 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
           propagateShapeFromInputToOutput(ctx, 0, 0);
         }
       });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BiasSoftmax)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc(
+          "Y = softmax(scores + bias)) with simple broadcast on bias. "
+          "Intended to specialize softmax(scores + additive_mask) commonly found in transformer models.")
+      .Attr("softmax_axis", "apply softmax to elements for dimensions softmax_axis or higher", AttributeProto::INT, static_cast<int64_t>(1))
+      .Attr("broadcast_axis", "broadcast bias across input for dimensions broadcast_axis to softmax_axis-1", AttributeProto::INT, static_cast<int64_t>(1))
+      .Input(0, "data", "The input data as Tensor.", "T")
+      .Input(1, "bias", "The bias (or mask) as Tensor.", "T")
+      .Output(0, "output", "The output.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   RegisterBertSchemas();
 }

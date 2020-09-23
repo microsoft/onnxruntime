@@ -24,7 +24,7 @@ def create_config_file(optimized_model_path, config_file_path):
 
 
 def convert(model_path: str):
-    models = glob.glob(os.path.join(model_path, '*.onnx'))
+    models = glob.glob(os.path.join(model_path, '**', '*.onnx'), recursive=True)
 
     if len(models) == 0:
         raise ValueError("No .onnx files were found in " + model_path)

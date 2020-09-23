@@ -52,6 +52,7 @@ static SessionOptions SESSION_OPTION = {
     true,                              //thread_pool_allow_spinning
     false,                             //use_deterministic_compute
     {},                                //session_configurations
+    {},                                // initializers_to_share_map
 };
 
 TrainingRunner::TrainingRunner(Parameters params, const Environment& env)
