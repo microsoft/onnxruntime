@@ -409,9 +409,9 @@ Status OptimizerGraphBuilder::BuildInternal(
     //gradient norm for bfloat is not ready yet. skip it to unblock the testing
     //will add it back when it is ready
     if (opt_graph_config_.fp16_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-    ORT_RETURN_IF_ERROR(AddGradientNorm(
-        nodearg_name_generator, gradient_argdefs, graph_defs, global_grad_norm_argdef));
-    optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
+      ORT_RETURN_IF_ERROR(AddGradientNorm(
+          nodearg_name_generator, gradient_argdefs, graph_defs, global_grad_norm_argdef));
+      optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
       ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
           nodearg_name_generator, {global_grad_norm_argdef}, graph_defs, global_grad_norm_finite_argdef));
       optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite] = global_grad_norm_finite_argdef.name;

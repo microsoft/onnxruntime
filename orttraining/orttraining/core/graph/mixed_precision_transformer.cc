@@ -108,20 +108,27 @@ static void GetConsumerNodeInputs(onnxruntime::Graph& graph,
     if (node_arg_slot == -1) {
       continue;
     }
-
+    int a = 1;
     auto it = fp32_node_args_by_op_type.find(node->OpType());
     if (it != fp32_node_args_by_op_type.cend() &&
         std::find(it->second.cbegin(), it->second.cend(), node_arg_slot) != it->second.cend()) {
       fp32_inputs.push_back({node, node_arg_slot});
     } else {
       auto it2 = fp32_node_args_by_node.find(node);
+
       if (it2 != fp32_node_args_by_node.cend() &&
           std::find(it2->second.cbegin(), it2->second.cend(), node_arg_slot) != it2->second.cend()) {
+        a = 32;
         fp32_inputs.push_back({node, node_arg_slot});
       } else {
+        a = 16;
         fp16_inputs.push_back({node, node_arg_slot});
       }
+      a++;
+      a--;
     }
+
+    std::cout << arg->Name() << "'s consumer node " << node->Name() << " handled " << a << std::endl;
   }
 }
 
@@ -433,9 +440,7 @@ Status TransformConstants(Graph& graph, ONNX_NAMESPACE::TensorProto_DataType fp1
     ORT_RETURN_IF_ERROR(
         CastNodeArg(graph,
                     stage1_fp32_node_args,
-                    p_loss_subgraph != nullptr ?
-                        p_loss_subgraph->GetFP32NodeArgs() :
-                        std::unordered_map<Node*, std::vector<int>>(),
+                    p_loss_subgraph != nullptr ? p_loss_subgraph->GetFP32NodeArgs() : std::unordered_map<Node*, std::vector<int>>(),
                     tensor,
                     fp16_type));
   }
@@ -447,7 +452,7 @@ Status TransformConstants(Graph& graph, ONNX_NAMESPACE::TensorProto_DataType fp1
 // as SparseSoftmaxCrossEntropy where FP32 precision is required.
 // Converts fp16 tensor --> Op --> fp16 tensor to
 // fp16 tensor --> Cast --> fp32 tensor --> Op --> fp32 tensor --> Cast --> fp16 tensor
-Status TransformStage2(Graph& graph, 
+Status TransformStage2(Graph& graph,
                        ONNX_NAMESPACE::TensorProto_DataType fp16_type,
                        const std::unordered_map<Node*, std::vector<int>>& loss_subgraph_fp32_node_args = {}) {
   // This pass does not require topological sort order: okay to visit nodes in any order.
@@ -638,6 +643,7 @@ Status TransformGraphForMixedPrecision(Graph& graph,
   for (const auto& kv : initialized_tensors) {
     NodeArg* input = graph.GetNodeArg(kv.first);
     if (input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+      std::cout << input->Name() << " handled 1" << std::endl;
       // If all consumers are from loss graph, don't convert it.
       if (!loss_subgraph.ContainsAllConsumers(graph, input->Name())) {
         if (use_fp16_initializer) {
@@ -646,14 +652,19 @@ Status TransformGraphForMixedPrecision(Graph& graph,
                                                                          loss_subgraph.GetFP32NodeArgs(),
                                                                          input,
                                                                          fp16_type);
+          std::cout << input->Name() << " handled 2" << std::endl;
           if (fp16_weight_arg != nullptr) {
             fp16_initializers.emplace_back(fp16_weight_arg->Name(), kv.second);
+            std::cout << input->Name() << " handled 22"
+                      << " " << fp16_weight_arg->Name() << std::endl;
             const auto it = weights_to_train.find(kv.first);
             if (it != weights_to_train.cend()) {
+              std::cout << input->Name() << " handled 23 " << fp16_weight_arg->Name() << std::endl;
               fp32_weight_name_to_fp16_node_arg_result[kv.first] = fp16_weight_arg;
             }
           }
         } else {
+          std::cout << input->Name() << " handled 3" << std::endl;
           ORT_RETURN_IF_ERROR(CastNodeArg(graph,
                                           stage1_fp32_node_args,
                                           loss_subgraph.GetFP32NodeArgs(),
@@ -667,14 +678,17 @@ Status TransformGraphForMixedPrecision(Graph& graph,
     }
   }
 
+  std::cout << "##############FP16 Initilizers to add########################" << std::endl;
   // Add new FP16 initializers to the graph
   for (const auto& kv : fp16_initializers) {
     const ONNX_NAMESPACE::TensorProto* tensor_proto = kv.second;
     Initializer initializer(*tensor_proto, graph.ModelPath());
+    std::cout << initializer.name() << std::endl;
     ONNX_NAMESPACE::TensorProto weight_tensor_proto = fp16_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ? initializer.ToFP16(kv.first) : initializer.ToBFloat16(kv.first);
     graph.AddInitializedTensor(weight_tensor_proto);
   }
 
+  std::cout << "#############FP16 initlizers ends ##############" << std::endl;
   // Handle pipeline case
   for (auto& node : graph.Nodes()) {
     // For send and recv node, if the tensor being sent or received is FP32, update its

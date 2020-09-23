@@ -419,7 +419,8 @@ class TrainingSession : public InferenceSession {
   common::Status BuildOptimizer(
       const OptimizerGraphConfig& opt_graph_config,
       const std::unordered_map<std::string, OptimizerNodeConfig>& opt_configs,
-      OptimizerOutputKeyMap<std::string>& opt_graph_outputs);
+      OptimizerOutputKeyMap<std::string>& opt_graph_outputs,
+      const std::unordered_set<std::string>& weights_to_train);
 
   /** Enable mixed precision training
   @param weights_to_train a set of weights to be training.

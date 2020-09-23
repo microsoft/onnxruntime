@@ -18,12 +18,12 @@ Status AdamOptimizerBuilder::Build(
     std::vector<ArgDef>& output_weight_argdefs,
     std::vector<ArgDef>& output_gradient_argdefs) const {
   return Build(weight_argdefs, gradient_argdefs,
-        gradient_norm_argdef, gradient_norm_finite_argdef,
-        opt_configs, graph_defs,
-        new_external_initializers, output_weight_argdefs,
-        output_gradient_argdefs,
-        // gradient clipping is disabled by default for Adam.
-        false /*enable_grad_clipping*/);
+               gradient_norm_argdef, gradient_norm_finite_argdef,
+               opt_configs, graph_defs,
+               new_external_initializers, output_weight_argdefs,
+               output_gradient_argdefs,
+               // gradient clipping is disabled by default for Adam.
+               false /*enable_grad_clipping*/);
 }
 
 Status AdamOptimizerBuilder::Build(
@@ -103,10 +103,10 @@ Status AdamOptimizerBuilder::Build(
       if (opt_configs[i].update_weight) {
         output_weight_argdef = ArgDef(weight_name + "_Adam_out", weight_type_proto);
         output_args.push_back(output_weight_argdef);  // w_new
-        output_args.push_back(ArgDef());  // g_new
+        output_args.push_back(ArgDef());              // g_new
       } else {
         output_gradient_argdef = ArgDef(gradient_name + "_Adam_out", gradient_type_proto);
-        output_args.push_back(ArgDef());  // w_new
+        output_args.push_back(ArgDef());                // w_new
         output_args.push_back(output_gradient_argdef);  // g_new
       }
 
