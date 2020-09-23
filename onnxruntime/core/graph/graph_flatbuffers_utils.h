@@ -2,10 +2,26 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <core/graph/graph.h>
+
+#include "flatbuffers/flatbuffers.h"
 
 namespace onnxruntime {
+
+class Graph;
+class Node;
+
+namespace logging {
+class Logger;
+}
+
 namespace experimental {
+
+namespace fbs {
+struct Attribute;
+struct Tensor;
+struct ValueInfo;
+}  // namespace fbs
+
 namespace utils {
 
 onnxruntime::common::Status SaveValueInfoOrtFormat(

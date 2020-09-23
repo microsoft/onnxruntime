@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "graph_flatbuffers_utils.h"
+#include <core/graph/graph.h>
+#include "core/flatbuffers/ort.fbs.h"
 #include "core/framework/tensorprotoutils.h"
+#include "graph_flatbuffers_utils.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;

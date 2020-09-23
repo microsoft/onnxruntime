@@ -1,12 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <memory>
+#include "core/common/logging/logging.h"
+#include "core/flatbuffers/ort.fbs.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_flatbuffers_utils.h"
 #include "core/graph/model.h"
 #include "core/graph/model_load_utils.h"
-#include <memory>
-#include "core/common/logging/logging.h"
 
 #ifdef _MSC_VER
 #pragma warning(push)

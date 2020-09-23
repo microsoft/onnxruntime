@@ -14,6 +14,7 @@
 
 #include "gsl/gsl"
 #include "core/common/logging/logging.h"
+#include "core/flatbuffers/ort.fbs.h"
 #include "core/framework/tensor_shape.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
