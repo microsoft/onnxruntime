@@ -7,3 +7,4 @@ wheel
 git+http://github.com/onnx/onnx.git@b71de776d2847b6e0fed54a888a8213a7812ad12#egg=onnx
 argparse
 sympy==1.1.1
+flake8
