@@ -58,7 +58,7 @@ GraphViewer::GraphViewer(const Graph& graph) {
 
   // Reverse the order of input vector, such that forward nodes are visted in ReverseDFS first
   // This results in an execution order that forward nodes is always ran before the backward nodes
-  std::reverse(leaf_nodes.begin(), leaf_nodes.end());
+  // std::reverse(leaf_nodes.begin(), leaf_nodes.end());
 
   graph.ReverseDFSFrom(
       leaf_nodes,
