@@ -240,7 +240,7 @@ Status MaxPoolV8::ComputeImplOptimized(OpKernelContext* context) const {
       pool_size.size() > 2 && dilations[2] != stride_d() ||
       context->Output(1, output_dims)) {
 
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Arguments not fit for optimized MaxPool.");
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Arguments are not optimizable.");
   }
 
   Tensor* Y = context->Output(0, output_dims);
@@ -280,7 +280,7 @@ Status MaxPoolV8::ComputeImplOptimized(OpKernelContext* context) const {
       break;
     }
     default:
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported pooling size : ");
+      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported pooling size.");
   }
   return Status::OK();
 }

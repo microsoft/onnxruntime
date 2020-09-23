@@ -397,7 +397,6 @@ struct MaxPool3DTask {
 
 template<typename T>
 T* FindLastLargerEqual(T* head, T* tail, const T* key) {
-  assert (head && tail && key && head <= tail);
   //find first elem smaller than key in a descending vector
   while (head < tail) {
     auto mid = head + ((tail-head)>>1);
@@ -408,11 +407,6 @@ T* FindLastLargerEqual(T* head, T* tail, const T* key) {
     }
   }
   return head - 1;
-}
-
-template<typename T>
-bool Equal(const T& a, const T& b) {
-    return static_cast<double>(std::fabs(a - b)) < std::numeric_limits<double>::epsilon();
 }
 
 template<typename T>
@@ -472,8 +466,8 @@ void MaxPoolOpt(const T* x,
     //save max
     *y = *head;
     //dequeue
-    if (((last_x_i < x || last_x_i >= x_end) && Equal(*head, padding)) ||
-        (last_x_i >= x && last_x_i < x_end && Equal(*head, *last_x_i))) {
+    if (((last_x_i < x || last_x_i >= x_end) && *head == padding) ||
+        (last_x_i >= x && last_x_i < x_end && *head == *last_x_i)) {
       head = head == back ? que : head + 1;
       --cnt;
     }
