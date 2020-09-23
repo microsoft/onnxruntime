@@ -1,5 +1,5 @@
 --pre
--f https://download.pytorch.org/whl/nightly/cu101/torch_nightly.html
+-f https://download.pytorch.org/whl/nightly/cu102/torch_nightly.html
 # transformers requires sklearn
 sklearn
 transformers==v2.10.0
