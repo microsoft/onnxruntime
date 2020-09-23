@@ -95,6 +95,7 @@ if ! [ -x "$(command -v protoc)" ]; then
 fi
 
 export ONNX_ML=1
+export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
 
 for PYTHON_EXE in "${PYTHON_EXES[@]}"
 do
