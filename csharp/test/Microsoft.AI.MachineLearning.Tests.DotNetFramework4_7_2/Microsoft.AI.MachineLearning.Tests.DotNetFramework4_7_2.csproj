@@ -62,7 +62,7 @@
       <HintPath>packages\Microsoft.AI.MachineLearning.1.4.0-dev-20200728-0957-6cb93ccb5\lib\netstandard2.0\Microsoft.AI.MachineLearning.Interop.dll</HintPath>
     </Reference>
     <Reference Include="Microsoft.Windows.SDK.NET, Version=10.0.18362.3, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>packages\Microsoft.Windows.SDK.NET.10.0.18362.3-preview\lib\netstandard2.0\Microsoft.Windows.SDK.NET.dll</HintPath>
+      <HintPath>packages\Microsoft.Windows.SDK.NET.10.0.18362.8-preview\lib\netstandard2.0\Microsoft.Windows.SDK.NET.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
