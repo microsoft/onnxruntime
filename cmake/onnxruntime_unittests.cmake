@@ -418,6 +418,7 @@ set(ONNXRUNTIME_TEST_LIBS
     onnxruntime_graph
     onnxruntime_common
     onnxruntime_mlas
+    onnxruntime_flatbuffers
 )
 
 if (onnxruntime_ENABLE_TRAINING)

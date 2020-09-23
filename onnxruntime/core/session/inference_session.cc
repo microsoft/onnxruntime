@@ -38,7 +38,7 @@
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
-#include "core/flatbuffers/ort.fbs.h"
+#include "core/flatbuffers/flatbuffers_utils.h"
 #ifdef USE_DML  // TODO: This is necessary for the workaround in TransformGraph
 #include "core/providers/dml/DmlExecutionProvider/src/GraphTransformer.h"
 #endif
@@ -576,7 +576,7 @@ common::Status InferenceSession::Load(const std::string& model_uri) {
   bool has_explicit_type = !model_type.empty();
 
   if ((has_explicit_type && model_type == "ORT") ||
-      (!has_explicit_type && inference_session_utils::IsOrtFormatModel(model_uri))) {
+      (!has_explicit_type && experimental::utils::IsOrtFormatModel(model_uri))) {
 #if defined(ENABLE_ORT_FORMAT_LOAD)
     return LoadOrtModel(model_uri);
 #else
@@ -603,7 +603,7 @@ common::Status InferenceSession::Load(const std::wstring& model_uri) {
   bool has_explicit_type = !model_type.empty();
 
   if ((has_explicit_type && model_type == "ORT") ||
-      (!has_explicit_type && inference_session_utils::IsOrtFormatModel(model_uri))) {
+      (!has_explicit_type && experimental::utils::IsOrtFormatModel(model_uri))) {
 #if defined(ENABLE_ORT_FORMAT_LOAD)
     return LoadOrtModel(model_uri);
 #else
@@ -631,7 +631,7 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
 
   if ((has_explicit_type && model_type == "ORT") ||
       (!has_explicit_type &&
-       inference_session_utils::IsOrtFormatModelBytes(model_data, model_data_len))) {
+       experimental::utils::IsOrtFormatModelBytes(model_data, model_data_len))) {
 #if defined(ENABLE_ORT_FORMAT_LOAD)
     return LoadOrtModel(model_data, model_data_len);
 #else
@@ -1146,7 +1146,7 @@ common::Status InferenceSession::Initialize() {
 
       if ((has_explicit_type && model_type == "ORT") ||
           (!has_explicit_type &&
-           inference_session_utils::IsOrtFormatModel(session_options_.optimized_model_filepath))) {
+           experimental::utils::IsOrtFormatModel(session_options_.optimized_model_filepath))) {
         ORT_RETURN_IF_ERROR_SESSIONID_(SaveToOrtFormat(session_options_.optimized_model_filepath));
       } else {
         ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(*model_, session_options_.optimized_model_filepath));
