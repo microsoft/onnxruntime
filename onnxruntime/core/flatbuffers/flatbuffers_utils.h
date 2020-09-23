@@ -9,9 +9,14 @@
 
 namespace flatbuffers {
 class FlatBufferBuilder;
+
 template <typename T>
 struct Offset;
+
 struct String;
+
+template <typename T>
+class Vector;
 }  // namespace flatbuffers
 
 namespace onnxruntime {
@@ -27,6 +32,7 @@ namespace experimental {
 
 namespace fbs {
 struct Attribute;
+struct OperatorSetId;
 struct Tensor;
 struct ValueInfo;
 }  // namespace fbs
@@ -67,6 +73,10 @@ onnxruntime::common::Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_att
                                                    std::unique_ptr<onnxruntime::Graph>& sub_graph,
                                                    Graph& graph, Node& node,
                                                    const logging::Logger& logger) ORT_MUST_USE_RESULT;
+
+onnxruntime::common::Status LoadOpsetImportOrtFormat(
+    const flatbuffers::Vector<flatbuffers::Offset<fbs::OperatorSetId>>* fbs_op_set_ids,
+    std::unordered_map<std::string, int>& domain_to_version) ORT_MUST_USE_RESULT;
 
 #endif
 

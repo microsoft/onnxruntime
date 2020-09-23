@@ -493,6 +493,29 @@ Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
   return Status::OK();
 }
 
+Status LoadOpsetImportOrtFormat(const flatbuffers::Vector<flatbuffers::Offset<fbs::OperatorSetId>>* fbs_op_set_ids,
+                                std::unordered_map<std::string, int>& domain_to_version) {
+  ORT_RETURN_IF(nullptr == fbs_op_set_ids, "Model must have opset imports. Invalid ORT format model.");
+
+  domain_to_version.clear();
+  for (const auto* fbs_op_set_id : *fbs_op_set_ids) {
+    ORT_RETURN_IF(nullptr == fbs_op_set_id, "opset id is null. Invalid ORT format model.");
+
+    const auto* fbs_domain = fbs_op_set_id->domain();
+    ORT_RETURN_IF(nullptr == fbs_domain, "opset import domain is null. Invalid ORT format model.");
+
+    std::string domain = fbs_domain->str();
+
+    // perform same aliasing that we do when loading an ONNX format model
+    if (domain == kOnnxDomainAlias) {
+      domain_to_version[kOnnxDomain] = gsl::narrow_cast<int>(fbs_op_set_id->version());
+    } else {
+      domain_to_version[domain] = gsl::narrow_cast<int>(fbs_op_set_id->version());
+    }
+  }
+  return Status::OK();
+}
+
 #endif  // defined(ENABLE_ORT_FORMAT_LOAD)
 
 bool IsOrtFormatModelBytes(const void* bytes, int num_bytes) {
