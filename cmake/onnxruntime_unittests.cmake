@@ -397,9 +397,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${ONNXRUNTIME_INTEROP_TEST_LIBS}
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
-# These providers are shared libraries now, so aren't linked this way anymore:
-    ${PROVIDERS_DNNL}
-    ${PROVIDERS_TENSORRT}
+    # TENSORRT and DNNL are explicitly linked at runtime
     ${PROVIDERS_MIGRAPHX}
     ${PROVIDERS_NGRAPH}
     ${PROVIDERS_OPENVINO}
@@ -433,7 +431,6 @@ if(onnxruntime_USE_TENSORRT)
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/tensorrt/*)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_tensorrt)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_tensorrt onnxruntime_providers_shared)
-  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_tensorrt)
 endif()
 
 if(onnxruntime_USE_NNAPI_BUILTIN)
