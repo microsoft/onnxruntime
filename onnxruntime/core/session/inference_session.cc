@@ -3,6 +3,8 @@
 
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
+#include <cuda.h>
+#include <cuda_runtime.h>
 
 #include <memory>
 #include <sstream>
@@ -1455,10 +1457,109 @@ Status InferenceSession::Run(const RunOptions& run_options,
     }
 #endif
 
-    // execute the graph
-    ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
-                                                 session_options_.execution_mode, run_options.terminate, run_logger,
-                                                 run_options.only_execute_path_to_fetches));
+    //ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
+    //                                            session_options_.execution_mode, run_options.terminate, run_logger,
+    //                                            run_options.only_execute_path_to_fetches));
+
+    for (size_t i = 0; i < p_fetches->size(); ++i) {
+      const Tensor& tensor = p_fetches->at(i).Get<Tensor>();
+      const TensorShape& shape = tensor.Shape();
+      std::cout << "[inference_session.cc] p_fetches[" << i << "], shape " << shape << std::endl;
+    }
+    const size_t pipeline_steps = 8;
+    for (size_t round = 0; round < pipeline_steps; ++round) {
+      // Create new feeds by splitting original feeds along a specifix axis.
+      std::vector<OrtValue> new_feeds;
+
+      std::cout << "[inference_session.cc] Round " << round << std::endl;
+      for (size_t i = 0; i < feeds.size(); ++i) {
+        if (i >= 3) {
+          new_feeds.push_back(feeds[i]);
+          const Tensor& old_tensor = feeds[i].Get<Tensor>();
+          const TensorShape& old_shape = old_tensor.Shape();
+          std::cout << "[inference_session.cc] Old shape " << i << ": " << old_shape << std::endl;
+          std::cout << "[inference_session.cc] Small shape " << i <<": " << old_shape << std::endl;
+          continue;
+        }
+        const Tensor& old_tensor = feeds[i].Get<Tensor>();
+        const OrtMemoryInfo old_location = old_tensor.Location();
+        const MLDataType old_type = old_tensor.DataType();
+        const TensorShape& old_shape = old_tensor.Shape();
+
+        OrtMemoryInfo cpu_location(onnxruntime::CPU, OrtDeviceAllocator);
+        AllocatorPtr cpu_allocator = GetAllocator(cpu_location);
+        auto cpu_tensor = onnxruntime::make_unique<Tensor>(old_type, old_shape, cpu_allocator);
+        auto tensor_type = DataTypeImpl::GetType<Tensor>();
+        OrtValue cpu_value{cpu_tensor.release(), tensor_type, tensor_type->GetDeleteFunc()};
+        session_state_->GetDataTransferMgr().CopyTensor(old_tensor, *cpu_value.GetMutable<Tensor>());
+        // new_feeds.push_back(cpu_value);
+        
+        std::vector<int64_t> dims = old_shape.GetDims();
+        std::vector<int64_t> small_dims;
+        small_dims.push_back(dims[0] / pipeline_steps);
+        for (size_t i_shape = 1; i_shape < dims.size(); ++i_shape) {
+          small_dims.push_back(dims[i_shape]);
+        }
+
+        TensorShape small_shape(small_dims);
+
+        std::cout << "[inference_session.cc] Old shape " << i << ": " << old_shape << std::endl;
+        std::cout << "[inference_session.cc] Small shape " << i <<": " << small_shape << std::endl;
+
+        auto small_cpu_tensor = onnxruntime::make_unique<Tensor>(old_type, small_shape, cpu_allocator);
+        OrtValue small_cpu_value{small_cpu_tensor.release(), tensor_type, tensor_type->GetDeleteFunc()};
+        auto cpu_ptr = cpu_value.Get<Tensor>().DataRaw();
+        auto small_cpu_ptr = small_cpu_value.GetMutable<Tensor>()->MutableDataRaw();
+        size_t bias =  round * old_type->Size() * small_shape.Size();
+        size_t copied_size = old_type->Size() * small_shape.Size();
+        memcpy(small_cpu_ptr, static_cast<const char*>(cpu_ptr) + bias, copied_size);
+
+        std::cout << "[inference_session.cc] old_location. name: " << old_location.name << ", id: " << old_location.id << std::endl;
+
+        int device; 
+        cudaGetDevice(&device); 	
+        std::cout << "[inference_session.cc] current GPU device " << device << std::endl;;
+        if (std::string(old_location.name) == std::string("Cuda")) {
+          // Get CPU tensor to be copied.
+          const Tensor& copied_tensor = small_cpu_value.Get<Tensor>();
+
+          // Create GPU tensor to capture CPU data.
+          AllocatorPtr allocator = GetAllocator(old_location);
+          auto small_tensor = onnxruntime::make_unique<Tensor>(old_type, small_shape, allocator);
+          OrtValue small_value{small_tensor.release(), tensor_type, tensor_type->GetDeleteFunc()}; 
+          Tensor* capturing_tensor = small_value.GetMutable<Tensor>();
+
+          if (device != old_location.id) {
+            cudaSetDevice(old_location.id);
+          }
+
+          cudaMemcpy(capturing_tensor->MutableDataRaw(), copied_tensor.DataRaw(), copied_size, cudaMemcpyHostToDevice);
+
+          if (device != old_location.id) {
+            cudaSetDevice(device);
+          }
+
+          new_feeds.push_back(small_value);
+        } else if (std::string(old_location.name) == std::string("Cpu")) {
+          const Tensor& copied_tensor = small_cpu_value.Get<Tensor>();
+
+          AllocatorPtr allocator = GetAllocator(old_location);
+          auto small_tensor = onnxruntime::make_unique<Tensor>(old_type, small_shape, allocator);
+          OrtValue small_value{small_tensor.release(), tensor_type, tensor_type->GetDeleteFunc()}; 
+          Tensor* capturing_tensor = small_value.GetMutable<Tensor>();
+
+          memcpy(capturing_tensor->MutableDataRaw(), copied_tensor.DataRaw(), copied_size);
+          new_feeds.push_back(small_value);
+        } else {
+          ORT_ENFORCE(false, "This shouldn't happen.");
+        }
+      }
+
+      // execute the graph
+      ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, new_feeds, *p_fetches,
+                                                  session_options_.execution_mode, run_options.terminate, run_logger,
+                                                  run_options.only_execute_path_to_fetches));
+    }
   }
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {

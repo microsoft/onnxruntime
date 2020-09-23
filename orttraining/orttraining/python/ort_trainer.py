@@ -289,7 +289,8 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs,
                                   opset_version=DEFAULT_OPSET_VERSION,
                                   use_external_data_format=False):
     # example: {input0:{0:'batch'}, input1:{0:'batch'}}
-    dynamic_axes = {}
+    #dynamic_axes = {}
+    dynamic_axes = {'src_tokens': {0: 'batch'}, 'prev_output_tokens': {0: 'batch'}, 'target': {0: 'batch_by_sequence'}}
     for input in model_desc.inputs_:
         symbolic_axis = {}
         for i, axis in enumerate(input.shape_):
@@ -359,6 +360,11 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs,
     # Deepcopy inputs, since input values may change after model run.
     import copy
     sample_inputs_copy = copy.deepcopy(sample_inputs)
+
+    steps = 8
+    batch_sizes = (int(sample_inputs_copy[0].shape[0] / steps), int(sample_inputs_copy[1].shape[0] / steps), int(sample_inputs_copy[2].shape[0] / steps))
+    print('Small batch sizes', batch_sizes)
+    sample_inputs_copy = (sample_inputs_copy[0][0: batch_sizes[0], :], sample_inputs_copy[1][0: batch_sizes[1], :], sample_inputs_copy[2][0: batch_sizes[2]])
 
     # Enable contrib ops export from PyTorch
     from onnxruntime.training import register_custom_ops_pytorch_exporter

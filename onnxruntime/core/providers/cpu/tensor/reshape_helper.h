@@ -17,6 +17,8 @@ class ReshapeHelper {
     ptrdiff_t unknown_dim = -1;
     int64_t size = 1;
     for (size_t i = 0; i < nDims; ++i) {
+      std::cout << "[reshape_helper.h] requested_shape[" << i << "]=" << requested_shape[i] << std::endl;
+      std::cout << "[reshape_helper.h] shape[" << i << "]=" << input_shape[i] << std::endl;
       ORT_ENFORCE(requested_shape[i] >= -1, "A dimension cannot be less than -1, got ", requested_shape[i]);
       if (requested_shape[i] == -1) {
         ORT_ENFORCE(unknown_dim == -1, "At most one dimension can be -1.");

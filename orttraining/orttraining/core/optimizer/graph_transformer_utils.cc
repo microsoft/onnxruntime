@@ -109,10 +109,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
     } break;
 
     case TransformerLevel::Level2: {
-      rule_transformer =
-          onnxruntime::make_unique<RuleBasedGraphTransformer>(optimizer_utils::GenerateRuleBasedTransformerName(level),
-                                                              compatible_eps);
-      rule_transformer->Register(onnxruntime::make_unique<ConcatReplacement>());
+      //rule_transformer =
+      //    onnxruntime::make_unique<RuleBasedGraphTransformer>(optimizer_utils::GenerateRuleBasedTransformerName(level),
+      //                                                        compatible_eps);
+      //rule_transformer->Register(onnxruntime::make_unique<ConcatReplacement>());
     } break;
 
     case TransformerLevel::Level3: {
