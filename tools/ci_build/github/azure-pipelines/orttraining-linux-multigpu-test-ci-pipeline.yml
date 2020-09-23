@@ -2,8 +2,8 @@ trigger: none
 
 jobs:
 - job: Onnxruntime_Linux_Multi_GPU_Test
-  #pool: Linux-Multi-GPU-V100
-  pool: ORT-Training-Frontend-Linux-MultiGPU
+  pool: Linux-Multi-GPU-V100
+  #pool: ORT-Training-Frontend-Linux-MultiGPU
 
   timeoutInMinutes: 0
 
