@@ -1,4 +1,4 @@
-FROM quay.io/pypa/manylinux2014_x86_64:latest
+FROM nvcr.io/nvidia/cuda:10.2-cudnn8-devel-centos7
 
 ADD manylinux /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/install_centos.sh && /tmp/scripts/install_deps.sh  && rm -rf /tmp/scripts

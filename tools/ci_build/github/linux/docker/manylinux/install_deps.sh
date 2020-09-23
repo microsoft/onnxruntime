@@ -35,7 +35,12 @@ function GetFile {
   return $?
 }
 
-PYTHON_EXES=("/opt/python/cp35-cp35m/bin/python3.5" "/opt/python/cp36-cp36m/bin/python3.6" "/opt/python/cp37-cp37m/bin/python3.7" "/opt/python/cp38-cp38/bin/python3.8")
+if [ ! -d "/opt/python/cp35-cp35m" ]; then
+  PYTHON_EXES=("/usr/bin/python3")
+else
+  PYTHON_EXES=("/opt/python/cp35-cp35m/bin/python3.5" "/opt/python/cp36-cp36m/bin/python3.6" "/opt/python/cp37-cp37m/bin/python3.7" "/opt/python/cp38-cp38/bin/python3.8")
+fi
+
 os_major_version=$(cat /etc/redhat-release | tr -dc '0-9.'|cut -d \. -f1)
 
 SYS_LONG_BIT=$(getconf LONG_BIT)
@@ -115,6 +120,13 @@ do
   ${PYTHON_EXE} -m onnx.backend.test.cmd_tools generate-data -o /data/onnx/$onnx_tag
 done
 
+cd /tmp/src
+GetFile 'https://sourceware.org/pub/valgrind/valgrind-3.16.1.tar.bz2' /tmp/src/valgrind-3.16.1.tar.bz2
+tar -jxvf valgrind-3.16.1.tar.bz2
+cd valgrind-3.16.1
+./configure --prefix=/usr --libdir=/usr/lib64 --enable-only64bit --enable-tls
+make -j$(getconf _NPROCESSORS_ONLN)
+make install
 
 cd /
 rm -rf /tmp/src
