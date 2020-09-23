@@ -18,7 +18,7 @@ python3 /onnxruntime_src/tools/ci_build/build.py \
     --enable_pybind
 
 # Install the ORT python wheel
-python3 -m pip install -U /build/Debug/dist/*
+python3 -m pip install /build/Debug/dist/*
 
 # Copy the test data to a separated folder
 cp -Rf /onnxruntime_src/onnxruntime/test/testdata/ort_minimal_e2e_test_data /home/onnxruntimedev/.test_data
