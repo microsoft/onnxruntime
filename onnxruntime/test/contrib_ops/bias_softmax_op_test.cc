@@ -85,13 +85,13 @@ class BiasSoftmaxTester {
     in_data_.resize(len);
     for (int64_t b = 0; b < nbatches_; b++)
       for (int64_t i = 0; i < nelements_; i++)
-        in_data_[i] = allow_fill(i) ? -5.0f + 10.0f * ((float)rand() / (RAND_MAX)) : -10000.0f;
+        in_data_[i] = allow_fill(i) ? -5.0f + 10.0f * ((float)rand() / float(RAND_MAX)) : -10000.0f;
 
     len = nelements_ * nbatches_ / broadcast_size_;
     bias_data_.resize(len);
     for (int64_t b = 0; b < nbatches_ / broadcast_size_; b++)
       for (int64_t i = 0; i < nelements_; i++)
-        bias_data_[i] = allow_fill(i) ? -5.0f + 10.0f * ((float)rand() / (RAND_MAX)) : 0.0f;
+        bias_data_[i] = allow_fill(i) ? -5.0f + 10.0f * ((float)rand() / float(RAND_MAX)) : 0.0f;
   }
 
   void ComputeInternal() {

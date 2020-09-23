@@ -248,6 +248,8 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& DisablePerSessionThreads();
 
   SessionOptions& AddConfigEntry(const char* config_key, const char* config_value);
+
+  SessionOptions& AddInitializer(const char* name, const OrtValue* ort_val);
 };
 
 struct ModelMetadata : Base<OrtModelMetadata> {
@@ -329,7 +331,6 @@ struct TypeInfo : Base<OrtTypeInfo> {
   Unowned<TensorTypeAndShapeInfo> GetTensorTypeAndShapeInfo() const;
   Unowned<SequenceTypeInfo> GetSequenceTypeInfo() const;
   Unowned<MapTypeInfo> GetMapTypeInfo() const;
-
 
   ONNXType GetONNXType() const;
 };

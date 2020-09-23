@@ -581,7 +581,7 @@ Status Node::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Node& fbs_n
           bool check_parent_graph = false) -> Status {
     ORT_RETURN_IF(nullptr == fbs_node_arg_names, "fbs_node_arg_names cannot be null");
     node_args.reserve(fbs_node_arg_names->size());
-    for (const auto& node_arg_name : *fbs_node_arg_names) {
+    for (const auto* node_arg_name : *fbs_node_arg_names) {
       ORT_RETURN_IF(nullptr == node_arg_name, "node_arg_name cannot be null");
       auto* node_arg = check_parent_graph ? graph_->GetNodeArgIncludingParentGraphs(node_arg_name->str())
                                           : graph_->GetNodeArg(node_arg_name->str());
