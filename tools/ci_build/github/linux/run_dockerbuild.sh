@@ -5,6 +5,8 @@ SCRIPT_DIR="$( dirname "${BASH_SOURCE[0]}" )"
 SOURCE_ROOT=$(realpath $SCRIPT_DIR/../../../../)
 CUDA_VER=cuda10.1-cudnn7.6
 YOCTO_VERSION="4.19"
+ALLOW_RELEASED_ONNX_OPSET_ONLY_ENV="ALLOW_RELEASED_ONNX_OPSET_ONLY="$ALLOW_RELEASED_ONNX_OPSET_ONLY
+echo "ALLOW_RELEASED_ONNX_OPSET_ONLY environment variable is set as "$ALLOW_RELEASED_ONNX_OPSET_ONLY_ENV
 
 while getopts c:o:d:r:p:x:a:v:y: parameter_Option
 do case "${parameter_Option}"
@@ -37,7 +39,7 @@ echo "bo=$BUILD_OS bd=$BUILD_DEVICE bdir=$BUILD_DIR pv=$PYTHON_VER bex=$BUILD_EX
 if id -Gnz | grep -zq "^docker$" ; then
     DOCKER_CMD=docker
 else
-    DOCKER_CMD="sudo docker"
+    DOCKER_CMD="sudo --preserve-env docker"
 fi
 
 cd $SCRIPT_DIR/docker
@@ -76,8 +78,8 @@ else
         fi
         $DOCKER_CMD build --pull -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg BUILD_EXTR_PAR="${BUILD_EXTR_PAR}" -f $DOCKER_FILE .
     elif [ $BUILD_DEVICE = "tensorrt" ]; then
-        # TensorRT container release 20.01
-        IMAGE="$BUILD_OS-cuda10.2-cudnn7.6-tensorrt7.0"
+        # TensorRT container release 20.07
+        IMAGE="$BUILD_OS-cuda11.0-cudnn8.0-tensorrt7.1"
         DOCKER_FILE=Dockerfile.ubuntu_tensorrt
         $DOCKER_CMD build --pull -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
     elif [ $BUILD_DEVICE = "openvino" ]; then
@@ -105,6 +107,8 @@ fi
 
 if [ $BUILD_DEVICE = "cpu" ] || [ $BUILD_DEVICE = "ngraph" ] || [ $BUILD_DEVICE = "openvino" ] || [ $BUILD_DEVICE = "nnapi" ] || [ $BUILD_DEVICE = "arm" ]; then
     RUNTIME=
+elif [[ $BUILD_EXTR_PAR = *--enable_training_python_frontend_e2e_tests* ]]; then
+     RUNTIME="--gpus all --shm-size=256m"
 else
     RUNTIME="--gpus all"
 fi
@@ -124,9 +128,15 @@ if [[ $BUILD_EXTR_PAR = *--enable_training_python_frontend_e2e_tests* ]]; then
     # DOCKER_RUN_PARAMETER="$DOCKER_RUN_PARAMETER -u0"
 fi
 
+if [[ $BUILD_EXTR_PAR = *--enable_training_pipeline_e2e_tests* ]]; then
+    DOCKER_RUN_PARAMETER="$DOCKER_RUN_PARAMETER --volume /bert_ort:/bert_ort \
+                                                --volume /bert_data:/bert_data"
+fi
+
 $DOCKER_CMD rm -f "onnxruntime-$BUILD_DEVICE" || true
 $DOCKER_CMD run $RUNTIME -h $HOSTNAME $DOCKER_RUN_PARAMETER \
     -e NIGHTLY_BUILD \
+    -e $ALLOW_RELEASED_ONNX_OPSET_ONLY_ENV \
     "onnxruntime-$IMAGE" \
     /bin/bash /onnxruntime_src/tools/ci_build/github/linux/run_build.sh \
     -d $BUILD_DEVICE -x "$BUILD_EXTR_PAR" -o $BUILD_OS -y $YOCTO_VERSION &

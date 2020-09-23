@@ -8,9 +8,12 @@
 
 #include "core/graph/graph_viewer.h"
 
-#include "core/graph/graph_utils.h"
-
 namespace onnxruntime {
+
+bool NodeCompare::operator()(const Node* n1, const Node* n2) const {
+  return n1->Index() < n2->Index();
+}
+
 GraphViewer::GraphViewer(const Graph& graph) {
   graph_ = &graph;
   std::vector<const Node*> leaf_nodes;
@@ -110,7 +113,7 @@ bool GraphViewer::IsSubgraph() const {
 }
 
 bool GraphViewer::IsConstantInitializer(const std::string& name, bool check_outer_scope) const {
-  return graph_utils::IsConstantInitializer(*graph_, name, check_outer_scope);
+  return graph_->GetConstantInitializer(name, check_outer_scope) != nullptr;
 }
 
 }  // namespace onnxruntime

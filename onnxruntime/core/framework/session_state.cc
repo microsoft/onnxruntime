@@ -7,13 +7,16 @@
 
 #include "core/common/logging/logging.h"
 #include "core/common/safeint.h"
+#include "core/framework/allocator.h"
 #include "core/framework/node_index_info.h"
 #include "core/framework/op_kernel.h"
-#include "core/framework/utils.h"
 #include "core/framework/ort_value_pattern_planner.h"
-#include "core/framework/allocator.h"
+#include "core/framework/session_state_utils.h"
+#include "core/framework/utils.h"
+#include "core/providers/cpu/controlflow/utils.h"
 
 using namespace ::onnxruntime::common;
+using namespace ::onnxruntime::experimental;
 
 namespace onnxruntime {
 
@@ -116,7 +119,35 @@ void SessionState::CreateGraphInfo() {
   LOGS(logger_, VERBOSE) << "Done saving OrtValue mappings.";
 }
 
-Status SessionState::CreateKernels(const KernelRegistryManager& custom_registry_manager) {
+#if !defined(ORT_MINIMAL_BUILD)
+Status SessionState::PopulateKernelCreateInfo(KernelRegistryManager& kernel_registry_manager) {
+  for (auto& node : graph_.Nodes()) {
+    const KernelCreateInfo* kci = nullptr;
+    ORT_RETURN_IF_ERROR(kernel_registry_manager.SearchKernelRegistry(node, &kci));
+    ORT_IGNORE_RETURN_VALUE(
+        kernel_create_info_map_.insert({node.Index(), gsl::not_null<const KernelCreateInfo*>(kci)}));
+  }
+
+  for (const auto& entry : subgraph_session_states_) {
+    for (const auto& name_to_subgraph_session_state : entry.second) {
+      SessionState& subgraph_session_state = *name_to_subgraph_session_state.second;
+      ORT_RETURN_IF_ERROR(subgraph_session_state.PopulateKernelCreateInfo(kernel_registry_manager));
+    }
+  }
+
+  return Status::OK();
+}
+#endif
+
+const KernelCreateInfo& SessionState::GetNodeKernelCreateInfo(NodeIndex node_index) const {
+  auto entry = kernel_create_info_map_.find(node_index);
+  // invalid node index or FinalizeSessionState should have been called. Either way it's an internal logic error
+  ORT_ENFORCE(entry != kernel_create_info_map_.cend());
+
+  return *entry->second;
+}
+
+Status SessionState::CreateKernels(const KernelRegistryManager& kernel_registry_manager) {
   const GraphNodes& nodes = graph_viewer_->Nodes();
   if (!nodes.empty()) {
     size_t max_nodeid = 0;
@@ -127,32 +158,20 @@ Status SessionState::CreateKernels(const KernelRegistryManager& custom_registry_
     session_kernels_.resize(max_nodeid + 1, nullptr);
     for (auto& node : graph_viewer_->Nodes()) {
       // construct and save the kernels
-      std::unique_ptr<OpKernel> op_kernel;
+      const KernelCreateInfo& kci = GetNodeKernelCreateInfo(node.Index());
+
+      // the execution provider was required to be valid to find the KernelCreateInfo so we don't need to check it here
       onnxruntime::ProviderType exec_provider_name = node.GetExecutionProviderType();
+      const IExecutionProvider& exec_provider = *execution_providers_.Get(exec_provider_name);
 
-      const IExecutionProvider* exec_provider = nullptr;
-      if (exec_provider_name.empty() || (exec_provider = execution_providers_.Get(exec_provider_name)) == nullptr) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Could not create kernel for node: ", node.Name(),
-                               " as there's no execution provider allocated.");
-      }
+      auto op_kernel = kernel_registry_manager.CreateKernel(node, exec_provider, *this, kci);
 
-      common::Status status = custom_registry_manager.CreateKernel(node, *exec_provider, *this, op_kernel);
-      if (!status.IsOK()) {
-        return common::Status(
-            status.Category(), status.Code(),
-            MakeString("Kernel creation failed for node: ", node.Name(), " with error: ", status.ErrorMessage()));
-      }
-      assert(session_kernels_[node.Index()] == nullptr);
       // assumes vector is already resize()'ed to the number of nodes in the graph
       session_kernels_[node.Index()] = op_kernel.release();
     }
   }
   node_index_info_ = onnxruntime::make_unique<NodeIndexInfo>(*graph_viewer_, ort_value_name_idx_map_);
   return Status::OK();
-}
-
-void SessionState::SetExecutionPlan(std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan) {
-  p_seq_exec_plan_ = std::move(p_seq_exec_plan);
 }
 
 const SequentialExecutionPlan* SessionState::GetExecutionPlan() const { return p_seq_exec_plan_.get(); }
@@ -214,6 +233,44 @@ void SessionState::CleanInitializedTensorsFromGraph() {
   graph_.CleanAllInitializedTensors();
 }
 
+Status SessionState::PrepackInitializedConstantTensors() {
+  // calculate the use count of each value
+  std::unordered_map<std::string, size_t> node_arg_use_count;
+  for (const auto& node : GetGraphViewer().Nodes()) {
+    node.ForEachDef([&](const onnxruntime::NodeArg& node_arg, bool is_input) {
+      if (is_input) {
+        node_arg_use_count[node_arg.Name()]++;
+      }
+    });
+  }
+
+  for (auto& node : GetGraphViewer().Nodes()) {
+    auto kernel = GetMutableKernel(node.Index());
+    int input_idx = 0;
+    for (auto& input_def : node.InputDefs()) {
+      if (input_def->Exists()) {
+        const std::string& input_name = input_def->Name();
+        int ort_value_idx;
+        ORT_RETURN_IF_ERROR(ort_value_name_idx_map_.GetIdx(input_name, ort_value_idx));
+        if (constant_initialized_tensors_.count(ort_value_idx) &&
+            constant_initialized_tensors_[ort_value_idx].IsTensor()) {
+          bool is_packed = false;
+          const Tensor& const_initialized_tensor = constant_initialized_tensors_[ort_value_idx].Get<Tensor>();
+          ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx, is_packed));
+          if (is_packed && node_arg_use_count.count(input_name) && --node_arg_use_count[input_name] == 0) {
+            // release the constant intialized tensor
+            initialized_tensors_.erase(ort_value_idx);
+            constant_initialized_tensors_.erase(ort_value_idx);
+          }
+        }
+      }
+      input_idx++;
+    }
+  }
+
+  return Status::OK();
+}
+
 static int64_t CalculateMemoryPatternsKey(const std::vector<std::reference_wrapper<const TensorShape>>& shapes) {
   int64_t key = 0;
   for (auto shape : shapes) {
@@ -252,11 +309,53 @@ Status ResolveDimParams(const GraphViewer& graph,
   }
   return Status::OK();
 }
+
+Status ResolveSizeAndShape(
+    const NodeArg* arg,
+    const std::unordered_map<std::string, int64_t>& symbolic_dimensions,
+    size_t& size,  // total number of elements. It's 0 if shape is unknown.
+    std::vector<int64_t>& resolved_shape) {
+  if (!arg->Shape()) {
+    // 0 means no shape information.
+    size = 0;
+    return Status::OK();
+  }
+
+  std::vector<int64_t> shape;
+
+  SafeInt<size_t> safe_size = 1;
+  for (auto& dim : arg->Shape()->dim()) {
+    if (dim.has_dim_param()) {
+      auto it = symbolic_dimensions.find(dim.dim_param());
+      if (it == symbolic_dimensions.end()) {
+        return Status(ONNXRUNTIME, FAIL, "Unknown symbolic dimension, " + dim.dim_param() + ", found in memory pattern compute.");
+      }
+      safe_size *= it->second;
+      shape.push_back(it->second);
+    } else if (dim.has_dim_value() && dim.dim_value() > 0) {
+      safe_size *= dim.dim_value();
+      shape.push_back(dim.dim_value());
+    } else {
+      // tensor shape is unknown.
+      safe_size = 0;
+    }
+  }
+
+  size = safe_size;
+
+  // Only assign shape if all symbolic dimensions are resolved.
+  if (size != 0) {
+    resolved_shape = std::move(shape);
+  }
+
+  return Status::OK();
+}
 }  // namespace
 
 Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_wrapper<const TensorShape>>& input_shape,
                                                const std::vector<int>& feed_mlvalue_idxs,
-                                               MemoryPatternGroup* output) const {
+                                               MemoryPatternGroup* output,
+                                               std::unordered_map<int, TensorShape>& resolved_shapes) const {
   std::map<std::string, TensorShape> feeds;
   for (size_t i = 0, end = feed_mlvalue_idxs.size(); i < end; ++i) {
     std::string name;
@@ -282,38 +381,27 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
       if (!ml_type->IsTensorType())
         continue;
       const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
+
+      auto* arg = node->OutputDefs()[i];
+      size_t size = 0;
+      std::vector<int64_t> resolved_shape;
+      ORT_RETURN_IF_ERROR(ResolveSizeAndShape(arg, map, size, resolved_shape));
+
+      // Store all valid resolved shapes. They will be queried in, for example,
+      // Recv operator to bypass the dependency of output shapes on inputs.
+      if (size != 0) {
+        resolved_shapes[ml_value_idx] = resolved_shape;
+      }
+
+      // Plan memory if conditions are met.
       if (exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate &&
-          ml_data_type != DataTypeImpl::GetType<std::string>()) {
-        //calculate size
-        auto* arg = node->OutputDefs()[i];
-        if (!arg->Shape())
-          continue;
-        size_t size = 0;
-        SafeInt<size_t> len = 1;
-        for (auto& dim : arg->Shape()->dim()) {
-          if (dim.has_dim_param()) {
-            auto it = map.find(dim.dim_param());
-            if (it == map.end()) {
-              return Status(ONNXRUNTIME, FAIL, "Unknown shape found in memory pattern compute");
-            }
-            len *= it->second;
-          } else if (dim.has_dim_value()) {
-            len *= dim.dim_value();
-          } else {
-            // tensor shape is unknown
-            len = 0;
-          }
-        }
-
-        // Skip planning for this tensor if shape is unknown
-        if (len == 0) {
-          continue;
-        }
-
-        if (!IAllocator::CalcMemSizeForArrayWithAlignment<64>(len, ml_data_type->Size(), &size)) {
+          ml_data_type != DataTypeImpl::GetType<std::string>() && size != 0) {
+        size_t aligned_size = 0;
+        if (!IAllocator::CalcMemSizeForArrayWithAlignment<64>(size, ml_data_type->Size(), &aligned_size)) {
           return Status(ONNXRUNTIME, FAIL, "Size overflow");
         }
-        mem_planner.TraceAllocation(ml_value_idx, size);
+
+        mem_planner.TraceAllocation(ml_value_idx, aligned_size);
       }
     }
     //release nodes
@@ -337,7 +425,8 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
 #endif
 
 const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(const std::vector<std::reference_wrapper<const TensorShape>>& input_shapes,
-                                                              const std::vector<int>& feed_mlvalue_idxs) const {
+                                                              const std::vector<int>& feed_mlvalue_idxs,
+                                                              std::unordered_map<int, TensorShape>& inferred_shapes) const {
   int64_t key = CalculateMemoryPatternsKey(input_shapes);
 
   std::lock_guard<OrtMutex> lock(mem_patterns_lock_);
@@ -345,10 +434,11 @@ const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(const std::vector<
   if (it == mem_patterns_.end()) {
 #ifdef ENABLE_TRAINING
     auto mem_patterns = onnxruntime::make_unique<MemoryPatternGroup>();
-    if (GeneratePatternGroupCache(input_shapes, feed_mlvalue_idxs, mem_patterns.get()).IsOK()) {
+    if (GeneratePatternGroupCache(input_shapes, feed_mlvalue_idxs, mem_patterns.get(), inferred_shapes).IsOK()) {
       key = CalculateMemoryPatternsKey(input_shapes);
       auto ptr = mem_patterns.get();
       mem_patterns_[key] = std::move(mem_patterns);
+      shape_patterns_[key] = inferred_shapes;
       return ptr;
     }
     return nullptr;
@@ -358,6 +448,7 @@ const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(const std::vector<
 #endif
   }
 
+  inferred_shapes = shape_patterns_[key];
   return it->second.get();
 }
 
@@ -504,15 +595,16 @@ const SessionState* SessionState::GetSubgraphSessionState(onnxruntime::NodeIndex
   return const_cast<SessionState*>(this)->GetMutableSubgraphSessionState(index, attribute_name);
 }
 
-void SessionState::RemoveSubgraphSessionState(onnxruntime::NodeIndex index) {
-  subgraph_session_states_.erase(index);
-}
-
 const NodeIndexInfo& SessionState::GetNodeIndexInfo() const {
   ORT_ENFORCE(node_index_info_, "SetGraphAndCreateKernels must be called prior to GetExecutionInfo.");
   return *node_index_info_;
 }
 
+static std::string GetSubGraphId(const NodeIndex node_idx, const std::string& attr_name) {
+  return std::to_string(node_idx) + "_" + attr_name;
+}
+
+#if !defined(ORT_MINIMAL_BUILD)
 void SessionState::UpdateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue_idxs) {
   std::vector<int> sorted_idxs = fetch_mlvalue_idxs;
   std::sort(sorted_idxs.begin(), sorted_idxs.end());
@@ -544,6 +636,279 @@ const std::unordered_set<NodeIndex>* SessionState::GetToBeExecutedNodes(
   std::sort(sorted_idxs.begin(), sorted_idxs.end());
   auto it = to_be_executed_nodes_.find(sorted_idxs);
   return (it != to_be_executed_nodes_.end()) ? &it->second : nullptr;
+}
+
+static Status GetSubGraphSessionStatesOrtFormat(
+    flatbuffers::FlatBufferBuilder& builder,
+    const std::unordered_map<NodeIndex, std::unordered_map<std::string, std::unique_ptr<SessionState>>>& subgraph_session_states,
+    std::vector<flatbuffers::Offset<fbs::SubGraphSessionState>>& fbs_subgraph_session_states) {
+  fbs_subgraph_session_states.clear();
+  for (const auto& pair : subgraph_session_states) {
+    const auto node_idx = pair.first;
+    const auto& session_states = pair.second;
+    for (const auto& name_to_subgraph_session_state : session_states) {
+      const std::string& attr_name = name_to_subgraph_session_state.first;
+      SessionState& subgraph_session_state = *name_to_subgraph_session_state.second;
+      auto graph_id = builder.CreateString(GetSubGraphId(node_idx, attr_name));
+      flatbuffers::Offset<fbs::SessionState> session_state;
+      ORT_RETURN_IF_ERROR(
+          subgraph_session_state.SaveToOrtFormat(builder, session_state));
+
+      fbs_subgraph_session_states.push_back(
+          fbs::CreateSubGraphSessionState(builder, graph_id, session_state));
+    }
+  }
+  return Status::OK();
+}
+
+Status SessionState::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
+                                     flatbuffers::Offset<fbs::SessionState>& fbs_session_state) const {
+  size_t size = kernel_create_info_map_.size();
+  std::vector<uint32_t> node_indices;
+  std::vector<uint64_t> kernel_def_hashes;
+  node_indices.reserve(size);
+  kernel_def_hashes.reserve(size);
+  for (const auto& kvp : kernel_create_info_map_) {
+    node_indices.push_back(gsl::narrow<uint32_t>(kvp.first));
+    kernel_def_hashes.push_back(kvp.second->kernel_def->GetHash());
+  }
+
+  auto kernels = fbs::CreateKernelCreateInfosDirect(builder, &node_indices, &kernel_def_hashes);
+
+  // Subgraph session states
+  std::vector<flatbuffers::Offset<fbs::SubGraphSessionState>> sub_graph_session_states;
+  ORT_RETURN_IF_ERROR(
+      GetSubGraphSessionStatesOrtFormat(builder, subgraph_session_states_, sub_graph_session_states));
+
+  fbs_session_state = fbs::CreateSessionStateDirect(builder, kernels, &sub_graph_session_states);
+  return Status::OK();
+}
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+Status SessionState::CreateSubgraphSessionState() {
+  for (auto& node : graph_.Nodes()) {
+    for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
+      const auto& ep = node.GetExecutionProviderType();
+      if (ep != kCpuExecutionProvider && ep != kCudaExecutionProvider) {
+        // SessionState is only used when ORT is executing the subgraph. If a non-ORT EP has taken the control flow
+        // node containing the subgraph it will create whatever state it needs internally.
+        continue;
+      }
+
+      auto& attr_name = entry.first;
+      Graph* subgraph = entry.second;
+      ORT_ENFORCE(subgraph, "Main Graph instance should have populated all subgraphs when being resolved.");
+
+      auto subgraph_session_state =
+          onnxruntime::make_unique<SessionState>(*subgraph, execution_providers_, enable_mem_pattern_,
+                                                 thread_pool_, inter_op_thread_pool_, data_transfer_mgr_,
+                                                 logger_, profiler_);
+
+      // Pass fused function manager to subgraph
+      subgraph_session_state->fused_funcs_mgr_.SetFusedFuncs(fused_funcs_mgr_);
+
+      // recurse
+      ORT_RETURN_IF_ERROR(subgraph_session_state->CreateSubgraphSessionState());
+
+      // add the subgraph SessionState instance to the parent graph SessionState so it can be retrieved
+      // by Compute() via OpKernelContextInternal.
+      AddSubgraphSessionState(node.Index(), attr_name, std::move(subgraph_session_state));
+    }
+  }
+
+  return Status::OK();
+}
+
+#if defined(ENABLE_ORT_FORMAT_LOAD)
+Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_state,
+                                       const KernelRegistryManager& kernel_registry_manager) {
+  const auto* fbs_kcis = fbs_session_state.kernels();
+  ORT_RETURN_IF(nullptr == fbs_kcis, "Kernel create info is null. Invalid ORT format model.");
+  auto* node_indices = fbs_kcis->node_indices();
+  auto* kernel_def_hashes = fbs_kcis->kernel_def_hashes();
+  ORT_RETURN_IF(nullptr == node_indices, "Kernel create info node indices are null. Invalid ORT format model.");
+  ORT_RETURN_IF(nullptr == kernel_def_hashes, "Kernel create info hashes are null. Invalid ORT format model.");
+  ORT_RETURN_IF_NOT(node_indices->size() == kernel_def_hashes->size(),
+                    "Size mismatch for kernel create info node indexes and hashes. Invalid ORT format model.",
+                    node_indices->size(), " != ", kernel_def_hashes->size());
+
+  for (flatbuffers::uoffset_t i = 0; i < node_indices->size(); i++) {
+    auto node_idx = node_indices->Get(i);
+    auto kernal_hash = kernel_def_hashes->Get(i);
+
+    const Node* node = graph_.GetNode(node_idx);
+    ORT_RETURN_IF(node == nullptr, "Can't find node with index ", node_idx, ". Invalid ORT format model.");
+
+    const KernelCreateInfo* kci = nullptr;
+    ORT_RETURN_IF_ERROR(kernel_registry_manager.SearchKernelRegistry(*node, kernal_hash, &kci));
+    kernel_create_info_map_.emplace(node_idx, gsl::not_null<const KernelCreateInfo*>(kci));
+  }
+
+  if (!subgraph_session_states_.empty()) {
+    auto* fbs_sub_graph_session_states = fbs_session_state.sub_graph_session_states();
+    ORT_RETURN_IF(nullptr == fbs_sub_graph_session_states,
+                  "SessionState for subgraphs is null. Invalid ORT format model.");
+
+    for (const auto& pair : subgraph_session_states_) {
+      const auto node_idx = pair.first;
+      const auto& session_states = pair.second;
+      for (const auto& name_to_subgraph_session_state : session_states) {
+        const std::string& attr_name = name_to_subgraph_session_state.first;
+        SessionState& subgraph_session_state = *name_to_subgraph_session_state.second;
+
+        // Use the graphid as the key to search the for the fbs::SubGraphSessionState
+        std::string key = GetSubGraphId(node_idx, attr_name);
+        auto* fbs_sub_graph_ss = fbs_sub_graph_session_states->LookupByKey(key.c_str());
+        ORT_RETURN_IF(nullptr == fbs_sub_graph_ss,
+                      "Subgraph SessionState entry for ", key, " is missing. Invalid ORT format model.");
+
+        auto* fbs_sub_session_state = fbs_sub_graph_ss->session_state();
+        ORT_RETURN_IF(nullptr == fbs_sub_session_state,
+                      "Subgraph SessionState for ", key, " is null. Invalid ORT format model.");
+        subgraph_session_state.LoadFromOrtFormat(*fbs_sub_session_state, kernel_registry_manager);
+      }
+    }
+  }
+
+  return Status::OK();
+}
+#endif
+
+Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
+                                          KernelRegistryManager& kernel_registry_manager,
+                                          const SessionOptions& session_options,
+                                          const onnxruntime::experimental::fbs::SessionState* serialized_session_state,
+                                          bool remove_initializers) {
+  // recursively create the subgraph session state instances and populate the kernel create info in them.
+  // it's simpler to handle the kernel create info recursively when deserializing,
+  // so also do it recursively when calling PopulateKernelCreateInfo for consistency.
+  ORT_RETURN_IF_ERROR(CreateSubgraphSessionState());
+
+  if (serialized_session_state) {
+#if defined(ENABLE_ORT_FORMAT_LOAD)
+    ORT_RETURN_IF_ERROR(LoadFromOrtFormat(*serialized_session_state, kernel_registry_manager));
+#else
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT,
+                  "ORT format model is not supported in this build.");
+#endif
+
+  } else {
+#if !defined(ORT_MINIMAL_BUILD)
+    ORT_RETURN_IF_ERROR(PopulateKernelCreateInfo(kernel_registry_manager));
+#else
+    ORT_UNUSED_PARAMETER(graph_location);
+    ORT_UNUSED_PARAMETER(kernel_registry_manager);
+    ORT_UNUSED_PARAMETER(session_options);
+    ORT_UNUSED_PARAMETER(remove_initializers);
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT,
+                  "Serialized session state must be provided from an ORT format model in this build.");
+#endif
+  }
+
+  return FinalizeSessionStateImpl(graph_location, kernel_registry_manager, nullptr, session_options,
+                                  remove_initializers);
+}
+
+Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
+                                              KernelRegistryManager& kernel_registry_manager,
+                                              _In_opt_ const Node* parent_node,
+                                              const SessionOptions& session_options,
+                                              bool remove_initializers) {
+  CreateGraphInfo();
+
+  // ignore any outer scope args we don't know about. this can happen if a node contains multiple subgraphs.
+  std::vector<const NodeArg*> valid_outer_scope_node_args;
+  if (parent_node) {
+    auto outer_scope_node_args = parent_node->ImplicitInputDefs();
+    valid_outer_scope_node_args.reserve(outer_scope_node_args.size());
+
+    std::for_each(outer_scope_node_args.cbegin(), outer_scope_node_args.cend(),
+                  [this, &valid_outer_scope_node_args](const NodeArg* node_arg) {
+                    int idx;
+                    if (ort_value_name_idx_map_.GetIdx(node_arg->Name(), idx).IsOK()) {
+                      valid_outer_scope_node_args.push_back(node_arg);
+                    };
+                  });
+  }
+
+  SequentialPlannerContext context(session_options.execution_mode);
+  ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
+                                                    execution_providers_, kernel_create_info_map_,
+                                                    ort_value_name_idx_map_, context, p_seq_exec_plan_));
+
+  // Uncomment the below to dump the allocation plan to std::cout
+  // LOGS(logger_, VERBOSE) << std::make_pair(p_seq_exec_plan_.get(), this);
+
+  std::unique_ptr<ITensorAllocator> tensor_allocator_(
+      ITensorAllocator::Create(enable_mem_pattern_, *p_seq_exec_plan_, *this, weights_buffers_));
+
+  // move initializers from TensorProto instances in Graph to OrtValue instances in SessionState
+  ORT_RETURN_IF_ERROR(
+      session_state_utils::SaveInitializedTensors(
+          Env::Default(), graph_location, *graph_viewer_,
+          execution_providers_.GetDefaultCpuMemoryInfo(),
+          ort_value_name_idx_map_, *tensor_allocator_,
+          [this](int idx, const OrtValue& value, const OrtCallback& d, bool constant) -> Status {
+            return AddInitializedTensor(idx, value, &d, constant);
+          },
+          logger_, data_transfer_mgr_, *p_seq_exec_plan_.get(), session_options));
+
+  // remove weights from the graph now to save memory but in many cases it won't save memory, if the tensor was
+  // preallocated with the some other tensors in a single 'allocate' call, which is very common.
+  // TODO: make it better
+  if (remove_initializers) {
+    CleanInitializedTensorsFromGraph();
+  }
+
+  ORT_RETURN_IF_ERROR(CreateKernels(kernel_registry_manager));
+
+  const auto disable_prepacking =
+      session_options.GetConfigOrDefault(kOrtSessionOptionsConfigDisablePrepacking, "0");
+
+  if (disable_prepacking != "1") {
+    ORT_RETURN_IF_ERROR(PrepackInitializedConstantTensors());
+  }
+
+  ORT_RETURN_IF_ERROR(
+      session_state_utils::SaveInputOutputNamesToNodeMapping(*graph_viewer_, *this, valid_outer_scope_node_args));
+
+  // Need to recurse into subgraph session state instances to finalize them and add the execution info
+
+  // Currently all subgraphs need to be executed using the sequential EP due to potential deadlock with the current
+  // parallel executor implementation
+  SessionOptions subgraph_session_options(session_options);
+  subgraph_session_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+
+  for (const auto& node_to_subgraph_ss : subgraph_session_states_) {
+    Node& node = *graph_.GetNode(node_to_subgraph_ss.first);
+
+    for (const auto& attr_subgraph_pair : node.GetAttributeNameToMutableSubgraphMap()) {
+      auto& attr_name = attr_subgraph_pair.first;
+      auto entry = node_to_subgraph_ss.second.find(attr_name);
+      // CreateSubgraphSessionState should ensure all these entries are created
+      ORT_ENFORCE(entry != node_to_subgraph_ss.second.cend(),
+                  "Missing session state for subgraph. Node:'", node.Name(),
+                  "' OpType:", node.OpType(), " Index:", node.Index(), " Attribute:", attr_name);
+
+      SessionState& subgraph_session_state = *entry->second;
+
+      // recurse
+      ORT_RETURN_IF_ERROR(subgraph_session_state.FinalizeSessionStateImpl(
+          graph_location, kernel_registry_manager, &node, subgraph_session_options, remove_initializers));
+
+      // setup all the info for handling the feeds and fetches used in subgraph execution
+      auto* p_op_kernel = GetMutableKernel(node.Index());
+      ORT_ENFORCE(p_op_kernel);
+
+      // Downcast is safe, since only control flow nodes have subgraphs
+      // (node.GetAttributeNameToMutableSubgraphMap() is non-empty)
+      auto& control_flow_kernel = static_cast<controlflow::IControlFlowKernel&>(*p_op_kernel);
+      ORT_RETURN_IF_ERROR(control_flow_kernel.SetupSubgraphExecutionInfo(*this, attr_name, subgraph_session_state));
+    }
+  }
+
+  return Status::OK();
 }
 
 }  // namespace onnxruntime

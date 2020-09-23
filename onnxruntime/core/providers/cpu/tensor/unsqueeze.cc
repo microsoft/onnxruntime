@@ -18,9 +18,18 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     Unsqueeze);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Unsqueeze,
     11,
+    12,
+    KernelDefBuilder()
+        .Alias(0, 0)
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+    Unsqueeze);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    Unsqueeze,
+    13,
     KernelDefBuilder()
         .Alias(0, 0)
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
@@ -58,6 +67,7 @@ Status UnsqueezeBase::PrepareCompute(OpKernelContext* ctx, Prepare& p) const {
 
   TensorShape output_shape(output_dims);
   p.output_tensor = ctx->Output(0, output_shape);
+  ORT_ENFORCE(nullptr != p.output_tensor);
   p.input_tensor = &input_tensor;
   return Status::OK();
 }
@@ -65,9 +75,7 @@ Status UnsqueezeBase::PrepareCompute(OpKernelContext* ctx, Prepare& p) const {
 Status Unsqueeze::Compute(OpKernelContext* ctx) const {
   Prepare p;
   ORT_RETURN_IF_ERROR(PrepareCompute(ctx, p));
-
   CopyCpuTensor(p.input_tensor, p.output_tensor);
-
   return Status::OK();
 }
 }  // namespace onnxruntime

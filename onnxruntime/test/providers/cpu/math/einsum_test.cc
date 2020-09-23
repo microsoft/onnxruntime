@@ -177,6 +177,16 @@ TEST(Einsum, ExplicitEinsumAsMatmul) {
   test.Run();
 }
 
+TEST(Einsum, ExplicitEinsumAsMatmulWithUpperCasedLabel) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  // 'K' != 'k' (and dim values differ too) and Einsum should handle be able to handle that
+  test.AddAttribute<std::string>("equation", "iK,Kk->ik");
+  test.AddInput<float>("x", {2, 1}, {1.f, 2.f});
+  test.AddInput<float>("y", {1, 2}, {1.f, 2.f});
+  test.AddOutput<float>("o", {2, 2}, {1.f, 2.f, 2.f, 4.f});
+  test.Run();
+}
+
 TEST(Einsum, ExplicitEinsumAsMatmul_Multi_Input) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", "ij,jk,kl->li");

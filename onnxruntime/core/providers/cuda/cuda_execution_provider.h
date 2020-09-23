@@ -52,9 +52,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
   cudnnHandle_t PerThreadCudnnHandle() {
     return GetPerThreadContext().CudnnHandle();
   }
-  curandGenerator_t PerThreadCurandGenerator() {
-    return GetPerThreadContext().CurandGenerator();
-  }
 
   template <typename T>
   const T* GetConstOnes(size_t count) {
@@ -80,6 +77,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   int GetDeviceId() const { return device_id_; }
   const cudaDeviceProp& GetDeviceProp() const { return device_prop_; };
+  void UpdateProviderOptionsInfo();
 
  private:
   OrtDevice::DeviceId device_id_;
@@ -106,10 +104,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
     cudnnHandle_t CudnnHandle() const {
       return cudnn_handle_;
-    }
-
-    curandGenerator_t CurandGenerator() const {
-      return curand_generator_;
     }
 
     cudaEvent_t& GetCurrentDeferredReleaseEvent() {
@@ -145,7 +139,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
    private:
     cublasHandle_t cublas_handle_ = nullptr;
     cudnnHandle_t cudnn_handle_ = nullptr;
-    curandGenerator_t curand_generator_ = nullptr;
 
     // deferred release for temporary CPU pinned memory used in cudaMemcpyAsync
     // note that cudaEvent will be assigned at OnRunEnd() when PerThreadContext destory

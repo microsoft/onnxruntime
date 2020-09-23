@@ -38,11 +38,14 @@ For a list of available dockerfiles and published images to help with getting st
 
 ## C#
 * [Inference Tutorial](../docs/CSharp_API.md#getting-started)
+* [ResNet50 v2 Tutorial](../csharp/sample/Microsoft.ML.OnnxRuntime.ResNet50v2Sample)
+* [Faster R-CNN Tutorial](../csharp/sample/Microsoft.ML.OnnxRuntime.FasterRcnnSample)
 
 ## C/C++
 * [C: SqueezeNet](../csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp)
+* [C++: model-explorer](./c_cxx/model-explorer) - single and batch processing
 * [C++: SqueezeNet](../csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/CXX_Api_Sample.cpp)
-* [C++:MNIST)](./c_cxx/MNIST)
+* [C++: MNIST](./c_cxx/MNIST)
 
 ## Java
 * [Inference Tutorial](../docs/Java_API.md#getting-started)
@@ -50,21 +53,7 @@ For a list of available dockerfiles and published images to help with getting st
 
 ## Node.js
 
-### Samples
-In each sample's implementation subdirectory, run
-```
-npm install
-node ./
-```
-* [Basic Usage](./nodejs/01_basic-usage/) - a demonstration of basic usage of ONNX Runtime Node.js binding.
-
-* [Create Tensor](./nodejs/02_create-tensor/) - a demonstration of basic usage of creating tensors.
-<!--
-* [Create Tensor (Advanced)](./nodejs/03_create-tensor-advanced/) - a demonstration of advanced usage of creating tensors.
--->
-
-* [Create InferenceSession](./nodejs/04_create-inference-session/) - shows how to create `InferenceSession` in different ways.
-
+* [Inference with Nodejs](./nodejs)
 
 ---
 

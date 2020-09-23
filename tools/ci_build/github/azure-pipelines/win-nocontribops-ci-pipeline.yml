@@ -77,9 +77,9 @@ jobs:
   - template: templates/set-test-data-variables-step.yml
 
   - task: NuGetToolInstaller@0
-    displayName: Use Nuget 4.9
+    displayName: Use Nuget 5.7.0
     inputs:
-      versionSpec: 4.9.4    
+      versionSpec: 5.7.0
 
   - task: DotNetCoreCLI@2
     displayName: 'Restore nuget packages'

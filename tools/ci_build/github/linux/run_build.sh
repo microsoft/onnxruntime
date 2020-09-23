@@ -23,7 +23,7 @@ if [ $BUILD_OS = "android" ]; then
     pushd /onnxruntime_src
     mkdir build-android && cd build-android
     if [ $BUILD_DEVICE = "nnapi" ]; then
-        cmake -DCMAKE_TOOLCHAIN_FILE=/android-ndk/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc -Donnxruntime_USE_NNAPI=ON ../cmake
+        cmake -DCMAKE_TOOLCHAIN_FILE=/android-ndk/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc -Donnxruntime_USE_NNAPI_BUILTIN=ON ../cmake
     else
         cmake -DCMAKE_TOOLCHAIN_FILE=/android-ndk/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc ../cmake
     fi
@@ -45,6 +45,12 @@ elif [ $BUILD_OS = "yocto" ]; then
     make -j$(nproc)
 else
     COMMON_BUILD_ARGS="--skip_submodule_sync --enable_onnx_tests --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest"
+    # For the nocontribops pipeline we don't need openmp as it is used by the Edge browser team and
+    # (going forward) the vscode team. Both these teams don't want their users to install any external dependency to use
+    # ORT.
+    if [[ $BUILD_EXTR_PAR != *--disable_contrib_ops* ]]; then
+        COMMON_BUILD_ARGS="${COMMON_BUILD_ARGS} --use_openmp "
+    fi
     if [ $BUILD_OS = "manylinux2010" ]; then
         # FindPython3 does not work on manylinux2010 image, define things manually
         # ask python where to find includes

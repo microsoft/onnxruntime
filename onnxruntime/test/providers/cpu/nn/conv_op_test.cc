@@ -24,6 +24,7 @@ void TestConvOp(const ConvOpAndTestAttributes& attributes,
                 const vector<vector<int64_t>>& input_shapes,
                 const std::initializer_list<float>& expected_output,
                 const vector<int64_t>& expected_output_shape,
+                bool weight_is_initializer = false,
                 OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                 const std::string& err_str = "",
                 int opset = 7) {
@@ -46,9 +47,11 @@ void TestConvOp(const ConvOpAndTestAttributes& attributes,
 
   ORT_ENFORCE(inputs.size() <= 3, "Our name array is only setup to handle 3 inputs");
   const char* szNames[] = {"X", "W", "B"};
-  for (size_t i = 0; i < inputs.size(); i++) {
-    test.AddInput<float>(szNames[i], input_shapes[i], inputs[i]);
-  }
+  test.AddInput<float>(szNames[0], input_shapes[0], inputs[0]);
+  test.AddInput<float>(szNames[1], input_shapes[1], inputs[1], weight_is_initializer);
+  if (inputs.size() == 3)
+    test.AddInput<float>(szNames[2], input_shapes[2], inputs[2]);
+
   test.AddOutput<float>("Y", expected_output_shape, expected_output);
 
   std::unordered_set<std::string> excluded_providers(attributes.excluded_providers);
@@ -197,8 +200,10 @@ TEST(ConvTest, Conv2D_1) {
   auto expected_vals = {-0.012311071157455444f, 0.02822777070105076f, -0.028432954102754593f, -0.037657227367162704f,
                         -0.04396762326359749f, 0.10081233829259872f, -0.10154513269662857f, -0.13448859751224518f};
 
-  attrs.excluded_providers.insert(kCudaExecutionProvider);  // asymmetric padding is not supported by cudnn
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+
+  // NNAPI EP requires weight to be an initializer
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
 TEST(ConvTest, Conv1D_Invalid_Input_Shape) {
@@ -216,7 +221,7 @@ TEST(ConvTest, Conv1D_Invalid_Input_Shape) {
   vector<int64_t> X_shape = {1, 1, 1};
   vector<int64_t> dummy_shape = {1, 1, 2};
   auto dummy_vals = {0.0f, 0.0f};
-  TestConvOp(attrs, {X, dummy_vals}, {X_shape, dummy_shape}, dummy_vals, dummy_shape,
+  TestConvOp(attrs, {X, dummy_vals}, {X_shape, dummy_shape}, dummy_vals, dummy_shape, false,
              OpTester::ExpectResult::kExpectFailure,
              "Node:node1 Output:Y [ShapeInferenceError] Can't merge shape info. "
              "Both source and target dimension have values but they differ. Source=0 Target=2 Dimension=2",
@@ -239,7 +244,7 @@ TEST(ConvTest, Conv2D_Invalid_Input_Shape) {
   vector<int64_t> dummy_shape = {2, 2, 1, 2};
   auto dummy_vals = {-0.0f, 0.0f, -0.0f, -0.0f,
                      -0.0f, 0.0f, -0.0f, -0.0f};
-  TestConvOp(attrs, {X, dummy_vals}, {X_shape, dummy_shape}, dummy_vals, dummy_shape,
+  TestConvOp(attrs, {X, dummy_vals}, {X_shape, dummy_shape}, dummy_vals, dummy_shape, false,
              OpTester::ExpectResult::kExpectFailure,
              "Node:node1 Output:Y [ShapeInferenceError] Can't merge shape info. "
              "Both source and target dimension have values but they differ. Source=1 Target=2 Dimension=0",
@@ -289,6 +294,9 @@ TEST(ConvTest, Conv2D_2) {
                         0.06516310572624207f, -0.015176207758486271f, 0.14682966470718384f, -0.02665453404188156f,
                         -0.18779225647449493f};
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+
+  // NNAPI EP requires weight to be an initializer
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
 TEST(ConvTest, Conv2D_Bias_1) {
@@ -312,6 +320,9 @@ TEST(ConvTest, Conv2D_Bias_1) {
   auto expected_vals = {13.0f, 17.0f, 25.0f, 29.0f, 11.0f, 15.0f, 23.0f, 27.0f};
 
   TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+
+  // NNAPI EP requires weight to be an initializer
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
 }
 
 // Conv48
@@ -360,9 +371,9 @@ TEST(ConvTest, Conv2D_Bias_2) {
   auto expected_vals = {-0.3419531583786011f, -0.6116723418235779f, -0.39677709341049194f, -0.7316848039627075f,
                         -0.5647197365760803f, 0.02788025140762329f, -0.30450713634490967f, -0.6786775588989258f};
 
-  attrs.excluded_providers.insert(kCudaExecutionProvider);  // asymmetric padding is not supported by cudnn
-
   TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
 }
 
 TEST(ConvTest, Conv2D_AutoPad1) {
@@ -390,6 +401,9 @@ TEST(ConvTest, Conv2D_AutoPad1) {
                         27.0f, 36.0f, 36.0f, 36.0f, 21.0f,
                         12.0f, 15.0f, 15.0f, 15.0f, 8.0f};
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+
+  // NNAPI EP requires weight to be an initializer
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
 TEST(ConvTest, Conv2D_AutoPad2) {
@@ -421,6 +435,9 @@ TEST(ConvTest, Conv2D_AutoPad2) {
                         12.0f, 24.0f, 12.0f, 24.0f, 12.0f,
                         5.0f, 10.0f, 5.0f, 10.0f, 5.0f};
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+
+  // NNAPI EP requires weight to be an initializer
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
 // Conv10
@@ -606,6 +623,9 @@ TEST(ConvTest, Conv2D_group) {
   auto expected_vals = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 18.0f, 20.0f, 22.0f, 24.0f, 26.0f, 28.0f, 30.0f, 32.0f, 34.0f};
 
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+
+  // NNAPI EP requires weight to be an initializer
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
 TEST(ConvTest, ConvDimWithZero) {
@@ -629,7 +649,32 @@ TEST(ConvTest, ConvDimWithZero) {
   attrs.excluded_providers.insert(kNGraphExecutionProvider);
   attrs.excluded_providers.insert(kAclExecutionProvider);
 
-  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, {}, out_shape, OpTester::ExpectResult::kExpectSuccess, "", 10);
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, {}, out_shape, false, OpTester::ExpectResult::kExpectSuccess, "", 10);
+}
+
+TEST(ConvTest, Conv1D_asymmetric_padding) {
+  ConvOpAndTestAttributes attrs = {
+      "",                     // auto_pad
+      vector<int64_t>{1},     // dilations
+      1,                      // group
+      vector<int64_t>{3},     // kernel_shape
+      vector<int64_t>{1, 0},  // pads
+      vector<int64_t>{1},     // strides
+      {}                      // excluded EPs
+  };
+
+  vector<float> X = {1.f, 2.f, 3.f};
+  vector<int64_t> X_shape = {1, 1, 3};
+  vector<float> W = {1.f, 1.f, 1.f};
+  vector<int64_t> W_shape = {1, 1, 3};
+  vector<float> B = {0.f};
+  vector<int64_t> B_shape = {1};
+  vector<int64_t> Y_shape = {1, 1, 2};
+  auto expected_vals = {3.f, 6.f};
+
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
 }
 
 }  // namespace test

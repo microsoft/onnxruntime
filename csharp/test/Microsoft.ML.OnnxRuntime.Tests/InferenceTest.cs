@@ -1,16 +1,19 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
-using System.IO;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
-using Microsoft.ML.OnnxRuntime.Tensors;
 using System.Threading.Tasks;
 using Xunit;
 using Xunit.Abstractions;
 
+// This runs in a separate package built from EndToEndTests
+// and for this reason it can not refer to non-public members
+// of Onnxruntime package
 namespace Microsoft.ML.OnnxRuntime.Tests
 {
     public class InferenceTest
@@ -44,7 +47,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.Equal(0, opt.InterOpNumThreads);
                 Assert.Equal(GraphOptimizationLevel.ORT_ENABLE_ALL, opt.GraphOptimizationLevel);
 
-                // try setting options 
+                // try setting options
                 opt.ExecutionMode = ExecutionMode.ORT_PARALLEL;
                 Assert.Equal(ExecutionMode.ORT_PARALLEL, opt.ExecutionMode);
 
@@ -81,12 +84,30 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 Assert.Throws<OnnxRuntimeException>(() => { opt.GraphOptimizationLevel = (GraphOptimizationLevel)10; });
 
+                opt.AddSessionConfigEntry("key", "value");
+
+                var ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AddSessionConfigEntry("", "invalid key"); });
+                Assert.Contains("[ErrorCode:InvalidArgument] Config key is empty", ex.Message);
+
                 opt.AppendExecutionProvider_CPU(1);
 #if USE_DNNL
                 opt.AppendExecutionProvider_Dnnl(0);
 #endif
 #if USE_CUDA
                 opt.AppendExecutionProvider_CUDA(0);
+#endif
+#if USE_DML
+                // Explicitly set dll probe path so that the (potentially) stale system DirectML.dll 
+                // doesn't get loaded by the test process when it is eventually delay loaded by onnruntime.dll
+                // The managed tests binary path already contains the right DirectML.dll, so use that
+
+                var directml_dll_path = AppDomain.CurrentDomain.BaseDirectory;
+                SetDllDirectory(directml_dll_path);
+                opt.AppendExecutionProvider_DML(0);
+
+                // Restore the default dll search order
+                SetDllDirectory(null);
+
 #endif
 #if USE_NGRAPH
                 opt.AppendExecutionProvider_NGraph("CPU");  //TODO: this API should be refined
@@ -107,6 +128,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             }
         }
+
+        // Use to set dll probe path so that the right dll(s) is loaded by the test process
+        // Invoke only to specify Windows specific EPs' dll locations explicitly
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+
+        [return: MarshalAs(UnmanagedType.Bool)]
+        static extern bool SetDllDirectory(string lpPathName);
 
         [Fact]
         public void TestRunOptions()
@@ -222,7 +250,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
 
                 // Run inference with pinned inputs and outputs created with in Run()
-                using (var pinnedInputs = new DisposableList<FixedBufferOnnxValue>())
+                using (var pinnedInputs = new DisposableListTest<FixedBufferOnnxValue>())
                 {
                     var inputNames = container.Select(i => i.Name).ToArray();
                     pinnedInputs.AddRange(container.Select(i => FixedBufferOnnxValue.CreateFromTensor(i.AsTensor<float>())));
@@ -240,6 +268,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     }
                 }
 
+
+                float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");
+                int[] expectedDimensions = { 1, 1000, 1, 1 };  // hardcoded for now for the test data
                 // Run inference with named inputs and named outputs
                 {
                     // correct pre-allocated outputs
@@ -248,11 +279,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         NamedOnnxValue.CreateFromTensor("softmaxout_1", new DenseTensor<float>(expectedOutputDimensions))
                     };
                     session.Run(container, expectedOutputValues);
-                    validateRunResultData(expectedOutputValues[0].AsTensor<float>());
+                    validateRunResultData(expectedOutputValues[0].AsTensor<float>(), expectedOutput, expectedDimensions);
                 }
 
                 // Run inference with pinned inputs and named outputs
-                using (var pinnedInputs = new DisposableList<FixedBufferOnnxValue>())
+                using (var pinnedInputs = new DisposableListTest<FixedBufferOnnxValue>())
                 {
                     var inputNames = container.Select(i => i.Name).ToArray();
                     pinnedInputs.AddRange(container.Select(i => FixedBufferOnnxValue.CreateFromTensor(i.AsTensor<float>())));
@@ -263,24 +294,24 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         NamedOnnxValue.CreateFromTensor("softmaxout_1", new DenseTensor<float>(expectedOutputDimensions))
                     };
                     session.Run(inputNames, pinnedInputs, expectedOutputValues);
-                    validateRunResultData(expectedOutputValues[0].AsTensor<float>());
+                    validateRunResultData(expectedOutputValues[0].AsTensor<float>(), expectedOutput, expectedDimensions);
                 }
 
                 // Run inference with named inputs and pinned outputs
                 {
                     // correct pre-allocated outputs
-                    using (var pinnedOutputs = new DisposableList<FixedBufferOnnxValue>())
+                    using (var pinnedOutputs = new DisposableListTest<FixedBufferOnnxValue>())
                     {
                         var outputTensor = new DenseTensor<float>(expectedOutputDimensions);
                         pinnedOutputs.Add(FixedBufferOnnxValue.CreateFromTensor(outputTensor));
                         session.Run(container, expectedOutputNames, pinnedOutputs);
-                        validateRunResultData(outputTensor);
+                        validateRunResultData(outputTensor, expectedOutput, expectedDimensions);
                     }
                 }
 
                 // Run inference with pinned inputs and pinned outputs
-                using (DisposableList<FixedBufferOnnxValue> pinnedInputs = new DisposableList<FixedBufferOnnxValue>(),
-                                                            pinnedOutputs = new DisposableList<FixedBufferOnnxValue>())
+                using (DisposableListTest<FixedBufferOnnxValue> pinnedInputs = new DisposableListTest<FixedBufferOnnxValue>(),
+                                                            pinnedOutputs = new DisposableListTest<FixedBufferOnnxValue>())
                 {
                     var inputNames = container.Select(i => i.Name).ToArray();
                     pinnedInputs.AddRange(container.Select(i => FixedBufferOnnxValue.CreateFromTensor(i.AsTensor<float>())));
@@ -289,7 +320,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     pinnedOutputs.Add(FixedBufferOnnxValue.CreateFromTensor(outputTensor));
 
                     session.Run(inputNames, pinnedInputs, expectedOutputNames, pinnedOutputs);
-                    validateRunResultData(outputTensor);
+                    validateRunResultData(outputTensor, expectedOutput, expectedDimensions);
                 }
             }
         }
@@ -343,15 +374,14 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.Equal(1, results.Count);
                 Assert.Equal("softmaxout_1", r.Name);
 
-                validateRunResultData(r.AsTensor<float>());
+                float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");
+                int[] expectedDimensions = { 1, 1000, 1, 1 };  // hardcoded for now for the test data
+                validateRunResultData(r.AsTensor<float>(), expectedOutput, expectedDimensions);
             }
         }
 
-        private void validateRunResultData(Tensor<float> resultTensor)
+        private void validateRunResultData(Tensor<float> resultTensor, float[] expectedOutput, int[] expectedDimensions)
         {
-            float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");
-
-            int[] expectedDimensions = { 1, 1000, 1, 1 };  // hardcoded for now for the test data
             Assert.Equal(expectedDimensions.Length, resultTensor.Rank);
 
             var resultDimensions = resultTensor.Dimensions;
@@ -425,7 +455,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var inputData = tuple.Item2;
             var tensor = tuple.Item3;
 
-            using (var inputs = new DisposableList<FixedBufferOnnxValue>())
+            using (var inputs = new DisposableListTest<FixedBufferOnnxValue>())
             {
                 inputs.Add(FixedBufferOnnxValue.CreateFromTensor(tensor));
                 var ex = Assert.Throws<ArgumentException>(() => session.Run(new string[0], inputs));
@@ -505,7 +535,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("data_0", inputTensor) };
             var outputTensor = new DenseTensor<float>((ReadOnlySpan<int>)new[] { 1, 1000, 1, 1 });
 
-            using (var outputs = new DisposableList<FixedBufferOnnxValue>())
+            using (var outputs = new DisposableListTest<FixedBufferOnnxValue>())
             {
                 var ex = Assert.Throws<ArgumentException>(() => session.Run(inputs, new string[] { "softmaxout_1" }, outputs));
                 Assert.StartsWith("Length of outputNames (1) must match that of outputValues (0).", ex.Message);
@@ -594,6 +624,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             if (System.Environment.Is64BitProcess == false)
             {
                 skipModels["test_vgg19"] = "Get preallocated buffer for initializer conv4_4_b_0 failed";
+                skipModels["GPT2_LM_HEAD"] = "System out of memory";
+                skipModels["GPT2"] = "System out of memory";
                 skipModels["tf_pnasnet_large"] = "Get preallocated buffer for initializer ConvBnFusion_BN_B_cell_5/comb_iter_1/left/bn_sep_7x7_1/beta:0_203 failed";
                 skipModels["tf_nasnet_large"] = "Get preallocated buffer for initializer ConvBnFusion_BN_B_cell_11/beginning_bn/beta:0_331 failed";
                 skipModels["test_zfnet512"] = "System out of memory";
@@ -1033,44 +1065,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         Assert.True(tensorOut.SequenceEqual(tensorIn));
                     }
                 }
-            }
-        }
-
-        [Fact]
-        private void TestReusingDisposedRunOutput()
-        {
-            // model takes 1x5 input of fixed type, echoes back
-            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_BOOL.pb");
-            using (var session = new InferenceSession(modelPath))
-            {
-                var container = new List<NamedOnnxValue>();
-                var tensorIn = new DenseTensor<bool>(new bool[] { true, false, true, false, true }, new int[] { 1, 5 });
-                var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
-                container.Add(nov);
-                var res1 = session.Run(container);
-
-                // Dispose the result tensor
-                res1.First().Dispose();
-
-                bool succeeded = false;
-
-                // Now try using the disposed output as input to another Run()
-                try
-                {
-                    // Run() should fail with a user friendly error message.
-                    session.Run(res1);
-                }
-
-                catch (ObjectDisposedException e)
-                {
-                    var errorString = "This instance of DisposableNamedOnnxValue has already been disposed";
-
-                    Assert.Contains(errorString, e.Message);
-
-                    succeeded = true;
-                }
-
-                Assert.True(succeeded);
             }
         }
 
@@ -1599,23 +1593,58 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
         [Fact]
+        private void TestModelMetadata()
+        {
+
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "model_with_valid_ort_config_json.onnx");
+
+            using (var session = new InferenceSession(modelPath))
+            {
+                var modelMetadata = session.ModelMetadata;
+
+                Assert.Equal(1, modelMetadata.Version);
+
+                Assert.Equal("Hari", modelMetadata.ProducerName);
+
+                Assert.Equal("matmul test", modelMetadata.GraphName);
+
+                Assert.Equal("", modelMetadata.Domain);
+
+                Assert.Equal("This is a test model with a valid ORT config Json", modelMetadata.Description);
+
+                Assert.Equal(2, modelMetadata.CustomMetadataMap.Keys.Count);
+                Assert.Equal("dummy_value", modelMetadata.CustomMetadataMap["dummy_key"]);
+                Assert.Equal("{\"session_options\": {\"inter_op_num_threads\": 5, \"intra_op_num_threads\": 2, \"graph_optimization_level\": 99, \"enable_profiling\": 1}}",
+                              modelMetadata.CustomMetadataMap["ort_config"]);
+
+
+
+            }
+        }
+
+        [Fact]
         private void TestModelSerialization()
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
             string modelOutputPath = Path.Combine(Directory.GetCurrentDirectory(), "optimized-squeezenet.onnx");
             // Set the optimized model file path to assert that no exception are thrown.
-            SessionOptions options = new SessionOptions();
-            options.OptimizedModelFilePath = modelOutputPath;
-            options.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_BASIC;
-            var session = new InferenceSession(modelPath, options);
-            Assert.NotNull(session);
-            Assert.True(File.Exists(modelOutputPath));
+            using (SessionOptions options = new SessionOptions())
+            {
+                options.OptimizedModelFilePath = modelOutputPath;
+                options.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_BASIC;
+                using (var session = new InferenceSession(modelPath, options))
+                {
+                    Assert.NotNull(session);
+                    Assert.True(File.Exists(modelOutputPath));
+                }
+            }
         }
 
+        // TestGpu() will test the CUDA EP on CUDA enabled builds and 
+        // the DML EP on DML enabled builds
         [GpuFact]
         private void TestGpu()
         {
-            var gpu = Environment.GetEnvironmentVariable("TESTONGPU");
             var tuple = OpenSessionSqueezeNet(0); // run on deviceID 0
             float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");
 
@@ -1653,6 +1682,229 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+        void TestCPUAllocatorInternal(InferenceSession session)
+        {
+            int device_id = 0;
+            using (var info_cpu = new OrtMemoryInfo(OrtMemoryInfo.allocatorCPU, OrtAllocatorType.ArenaAllocator, device_id, OrtMemType.Default))
+            {
+                Assert.Equal("Cpu", info_cpu.Name);
+                Assert.Equal(device_id, info_cpu.Id);
+                Assert.Equal(OrtAllocatorType.ArenaAllocator, info_cpu.GetAllocatorType());
+                Assert.Equal(OrtMemType.Default, info_cpu.GetMemoryType());
+
+                using (var allocator = new OrtAllocator(session, info_cpu))
+                {
+                    var alloc_info = allocator.Info;
+                    // Allocator type returned may be different on x86 so we don't compare.
+                    Assert.Equal(info_cpu.Name, alloc_info.Name);
+                    Assert.Equal(info_cpu.GetMemoryType(), alloc_info.GetMemoryType());
+                    Assert.Equal(info_cpu.Id, alloc_info.Id);
+
+                    uint size = 1024;
+                    OrtMemoryAllocation chunk = allocator.Allocate(size);
+                    Assert.Equal(chunk.Size, size);
+                    var chunk_info = chunk.Info;
+                    // Allocator type returned may be different on x86 so we don't compare.
+                    Assert.Equal(chunk_info.Name, alloc_info.Name);
+                    Assert.Equal(chunk_info.GetMemoryType(), alloc_info.GetMemoryType());
+                    Assert.Equal(chunk_info.Id, alloc_info.Id);
+                    chunk.Dispose();
+                    alloc_info.Dispose();
+                }
+            }
+        }
+
+#if USE_CUDA
+        void TestCUDAAllocatorInternal(InferenceSession session)
+        {
+            int device_id = 0;
+            using (var info_cuda = new OrtMemoryInfo(OrtMemoryInfo.allocatorCUDA, OrtAllocatorType.ArenaAllocator, device_id, OrtMemType.Default))
+            {
+                Assert.Equal("Cuda", info_cuda.Name);
+                Assert.Equal(device_id, info_cuda.Id);
+                Assert.Equal(OrtAllocatorType.ArenaAllocator, info_cuda.GetAllocatorType());
+                Assert.Equal(OrtMemType.Default, info_cuda.GetMemoryType());
+
+                using (var allocator = new OrtAllocator(session, info_cuda))
+                {
+                    var alloc_info = allocator.Info;
+                    Assert.True(info_cuda.Equals(alloc_info));
+
+                    uint size = 1024;
+                    OrtMemoryAllocation chunk = allocator.Allocate(size);
+                    Assert.Equal(chunk.Size, size);
+                    Assert.True(chunk.Info.Equals(alloc_info));
+                    chunk.Dispose();
+                    alloc_info.Dispose();
+                }
+            }
+        }
+#endif
+
+        [Fact]
+        private void TestAllocator()
+        {
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
+            using (SessionOptions options = new SessionOptions())
+            {
+                options.AppendExecutionProvider_CPU(1);
+#if USE_CUDA
+                options.AppendExecutionProvider_CUDA(0);
+#endif
+                using (var session = new InferenceSession(modelPath, options))
+                {
+                    TestCPUAllocatorInternal(session);
+#if USE_CUDA
+                    TestCUDAAllocatorInternal(session);
+#endif
+                }
+            }
+        }
+
+        [Fact]
+        private void TestIOBinding()
+        {
+            var inputName = "data_0";
+            var outputName = "softmaxout_1";
+            var allocator = OrtAllocator.DefaultInstance;
+            // From the model
+            using (var dispList = new DisposableListTest<IDisposable>())
+            {
+                var tuple = OpenSessionSqueezeNet();
+                var session = tuple.Item1;
+                var inputData = tuple.Item2;
+                var inputTensor = tuple.Item3;
+                var outputData = tuple.Item4;
+                dispList.Add(session);
+                var outputMeta = session.OutputMetadata;
+                var outputTensor = new DenseTensor<float>(outputData, outputMeta[outputName].Dimensions);
+
+                var ioBinding = session.CreateIoBinding();
+                dispList.Add(ioBinding);
+
+                var ortAllocationOutput = allocator.Allocate((uint)outputData.Length * sizeof(float));
+                dispList.Add(ortAllocationOutput);
+
+                // Test GetOutputNames, bind two output names
+                {
+                    var cyrName = "несуществующийВыход";
+                    var longShape = Array.ConvertAll<int, long>(outputMeta[outputName].Dimensions, i => i);
+                    ioBinding.BindOutput(outputName, Tensors.TensorElementType.Float, longShape, ortAllocationOutput);
+                    ioBinding.BindOutput(cyrName, Tensors.TensorElementType.Float, longShape, ortAllocationOutput);
+                    string[] outputs = ioBinding.GetOutputNames();
+                    Assert.Equal(2, outputs.Length);
+                    Assert.Equal(outputName, outputs[0]);
+                    Assert.Equal(cyrName, outputs[1]);
+                    ioBinding.ClearBoundOutputs();
+                }
+
+                // Test 1. Bind input to fixed, Bind Output to Fixed.
+                using (FixedBufferOnnxValue fixeInputBuffer = FixedBufferOnnxValue.CreateFromTensor(inputTensor),
+                      fixedOutputBuffer = FixedBufferOnnxValue.CreateFromTensor(outputTensor))
+                {
+                    ioBinding.BindInput(inputName, fixeInputBuffer);
+                    ioBinding.BindOutput(outputName, fixedOutputBuffer);
+                    using (var outputs = session.RunWithBindingAndNames(new RunOptions(), ioBinding))
+                    {
+                        Assert.Equal(1, outputs.Count);
+                        var output = outputs.First();
+                        Assert.Equal(outputName, output.Name);
+                        var tensor = output.AsTensor<float>();
+                        Assert.True(tensor.IsFixedSize);
+                        Assert.Equal(outputData, tensor.ToArray<float>(), new floatComparer());
+                    }
+                }
+
+                // Test 2. Bind input to preallocated buffer. Output to a device so the allocation would happen
+                // automatically
+                using (FixedBufferOnnxValue fixedInputBuffer = FixedBufferOnnxValue.CreateFromTensor(inputTensor))
+                {
+                    ioBinding.BindInput(inputName, fixedInputBuffer);
+                    ioBinding.BindOutputToDevice(outputName, allocator.Info);
+
+                    using (var outputs = session.RunWithBindingAndNames(new RunOptions(), ioBinding))
+                    {
+                        Assert.Equal(1, outputs.Count);
+                        var output = outputs.First();
+                        Assert.Equal(outputName, output.Name);
+                        var tensor = output.AsTensor<float>();
+                        Assert.True(tensor.IsFixedSize);
+                        Assert.Equal(outputData, tensor.ToArray<float>(), new floatComparer());
+                    }
+                }
+
+                // Rebinding would happen without these but we want run them.
+                ioBinding.ClearBoundInputs();
+                ioBinding.ClearBoundOutputs();
+            }
+        }
+
+        [Fact]
+        private void TestWeightSharingBetweenSessions()
+        {
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "mul_1.onnx");
+
+            // create initializer to share
+            var ortCpuMemInfo = OrtMemoryInfo.DefaultInstance;
+            var dims = new long[] { 3, 2 };
+            var dataBuffer = new float[] { 1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F };
+            var allocator = OrtAllocator.DefaultInstance;
+            var ortAllocationInput = allocator.Allocate((uint)dataBuffer.Length * sizeof(float));
+            unsafe
+            {
+                float* p = (float*)ortAllocationInput.DangerousGetHandle();
+                for (int i = 0; i < dataBuffer.Length; ++i)
+                {
+                    *p++ = dataBuffer[i];
+                }
+            }
+            var dataBufferNumBytes = (uint)dataBuffer.Length * sizeof(float);
+            var sharedInitializer = OrtValue.CreateTensorValueWithData(ortCpuMemInfo, Tensors.TensorElementType.Float,
+            dims, ortAllocationInput.DangerousGetHandle(), dataBufferNumBytes);
+
+            SessionOptions options = new SessionOptions();
+            options.AddInitializer("W", sharedInitializer);
+
+            float[] expectedOutput = { 1.0F, 4.0F, 9.0F, 16.0F, 25.0F, 36.0F };
+            int[] expectedDimensions = { 3, 2 };
+
+            using (var session = new InferenceSession(modelPath, options))
+            using (var session2 = new InferenceSession(modelPath, options))
+            {
+                var inputMeta = session.InputMetadata;
+                var container = new List<NamedOnnxValue>();
+
+                foreach (var name in inputMeta.Keys)
+                {
+                    Assert.Equal(typeof(float), inputMeta[name].ElementType);
+                    Assert.True(inputMeta[name].IsTensor);
+                    var tensor = new DenseTensor<float>(dataBuffer, inputMeta[name].Dimensions);
+                    container.Add(NamedOnnxValue.CreateFromTensor<float>(name, tensor));
+                }
+
+                ReadOnlySpan<int> expectedOutputDimensions = new int[] { 1, 1000, 1, 1 };
+                string[] expectedOutputNames = new string[] { "Y" };
+
+                // Run inference with named inputs and outputs created with in Run()
+                using (var results = session.Run(container))  // results is an IReadOnlyList<NamedOnnxValue> container
+                {
+                    foreach (var r in results)
+                    {
+                        validateRunResultData(r.AsTensor<float>(), expectedOutput, expectedDimensions);
+                    }
+                }
+
+                // Run inference with named inputs and outputs created with in Run()
+                using (var results2 = session2.Run(container))  // results is an IReadOnlyList<NamedOnnxValue> container
+                {
+                    foreach (var r in results2)
+                    {
+                        validateRunResultData(r.AsTensor<float>(), expectedOutput, expectedDimensions);
+                    }
+                }
+            }
+        }
+
         [DllImport("kernel32", SetLastError = true)]
         static extern IntPtr LoadLibrary(string lpFileName);
 
@@ -1673,6 +1925,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #endif
 #if USE_CUDA
             ,"OrtSessionOptionsAppendExecutionProvider_CUDA"
+#endif
+#if USE_DML
+            ,"OrtSessionOptionsAppendExecutionProvider_DML"
 #endif
 #if USE_NGRAPH
             ,"OrtSessionOptionsAppendExecutionProvider_NGraph"
@@ -1946,27 +2201,57 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             return NamedOnnxValue.CreateFromTensor<T>(name, dt);
         }
 
-        static Tuple<InferenceSession, float[], DenseTensor<float>, float[]> OpenSessionSqueezeNet(int? cudaDeviceId = null)
+        internal static Tuple<InferenceSession, float[], DenseTensor<float>, float[]> OpenSessionSqueezeNet(int? deviceId = null)
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
-            var option = new SessionOptions();
-#if USE_CUDA
-            if (cudaDeviceId.HasValue)
+#if USE_DML
+            // Explicitly set dll probe path so that the (potentially) stale system DirectML.dll 
+            // doesn't get loaded by the test process when it is eventually delay loaded by onnruntime.dll
+            // The managed tests binary path already contains the right DirectML.dll, so use that
+
+            var directml_dll_path = AppDomain.CurrentDomain.BaseDirectory;
+            SetDllDirectory(directml_dll_path);
+
+            using (var option = new SessionOptions())
             {
-                option = SessionOptions.MakeSessionOptionWithCudaProvider(cudaDeviceId.Value);
-            }
+                if (!deviceId.HasValue)
+                {
+                    option.AppendExecutionProvider_CPU(1);
+                }
+
+                else
+                {
+                    option.AppendExecutionProvider_DML(deviceId.Value);
+                }
+
+                 // Restore the default dll search order
+                SetDllDirectory(null);
+#elif USE_CUDA
+            using (var option = (deviceId.HasValue) ?
+                SessionOptions.MakeSessionOptionWithCudaProvider(deviceId.Value) :
+                new SessionOptions())
+            {
+                if(!deviceId.HasValue)
+                {
+                    option.AppendExecutionProvider_CPU(1);
+                }
+#else
+            using (var option = new SessionOptions())
+            {
+                option.AppendExecutionProvider_CPU(1);
 #endif
-            var session = (cudaDeviceId.HasValue)
-                ? new InferenceSession(modelPath, option)
-                : new InferenceSession(modelPath);
-            float[] inputData = LoadTensorFromFile(@"bench.in");
-            float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");
-            var inputMeta = session.InputMetadata;
-            var tensor = new DenseTensor<float>(inputData, inputMeta["data_0"].Dimensions);
-            return new Tuple<InferenceSession, float[], DenseTensor<float>, float[]>(session, inputData, tensor, expectedOutput);
+                var session = (deviceId.HasValue)
+                    ? new InferenceSession(modelPath, option)
+                    : new InferenceSession(modelPath);
+                float[] inputData = LoadTensorFromFile(@"bench.in");
+                float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");
+                var inputMeta = session.InputMetadata;
+                var tensor = new DenseTensor<float>(inputData, inputMeta["data_0"].Dimensions);
+                return new Tuple<InferenceSession, float[], DenseTensor<float>, float[]>(session, inputData, tensor, expectedOutput);
+            }
         }
 
-        class floatComparer : IEqualityComparer<float>
+        internal class floatComparer : IEqualityComparer<float>
         {
             private float atol = 1e-3f;
             private float rtol = 1.7e-2f;
@@ -2017,15 +2302,14 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
             }
         }
-
     }
 
-    // A Disposable list is a list of IDisposable objects. All elements will be disposed when the container is disposed.
-    internal class DisposableList<T> : List<T>, IDisposableReadOnlyCollection<T>
-    where T : IDisposable
+    // Copy of the class that is internal in the main package
+    internal class DisposableListTest<T> : List<T>, IDisposableReadOnlyCollection<T>
+        where T : IDisposable
     {
-        public DisposableList() { }
-        public DisposableList(int count) : base(count) { }
+        public DisposableListTest() { }
+        public DisposableListTest(int count) : base(count) { }
 
         #region IDisposable Support
         private bool disposedValue = false; // To detect redundant calls
@@ -2036,7 +2320,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             {
                 if (disposing)
                 {
-                    for (int i = 0; i < this.Count; i++)
+                    // Dispose in the reverse order.
+                    // Objects should typically be destroyed/disposed
+                    // in the reverse order of its creation
+                    // especially if the objects created later refer to the
+                    // objects created earlier. For homogeneous collections of objects
+                    // it would not matter.
+                    for (int i = this.Count - 1; i >= 0; --i)
                     {
                         this[i]?.Dispose();
                     }
@@ -2047,13 +2337,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        ~DisposableList()
-        {
-            Dispose(false);
-        }
-
+        // This code added to correctly implement the disposable pattern.
         public void Dispose()
         {
+            // Do not change this code. Put cleanup code in Dispose(bool disposing) above.
             Dispose(true);
             GC.SuppressFinalize(this);
         }

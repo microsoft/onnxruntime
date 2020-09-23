@@ -90,6 +90,19 @@ Status GatherNDBase::PrepareCompute(
   return Status::OK();
 }
 
+#define REGISTER_KERNEL_VERSIONED_TYPED_GATHER_ND(TIndex, startver, endver) \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                  \
+      GatherND,                                                             \
+      kOnnxDomain,                                                          \
+      startver,                                                             \
+      endver,                                                               \
+      TIndex,                                                               \
+      kCudaExecutionProvider,                                               \
+      KernelDefBuilder()                                                    \
+          .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())     \
+          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIndex>()),   \
+      GatherND<TIndex>);
+
 #define REGISTER_KERNEL_TYPED_GATHER_ND(TIndex, ver)                      \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                          \
       GatherND,                                                           \
@@ -98,7 +111,13 @@ Status GatherNDBase::PrepareCompute(
       TIndex,                                                             \
       kCudaExecutionProvider,                                             \
       KernelDefBuilder()                                                  \
-          .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())   \
+          .TypeConstraint("T",                                            \
+                          std::vector<MLDataType>{                        \
+                              DataTypeImpl::GetTensorType<float>(),       \
+                              DataTypeImpl::GetTensorType<double>(),      \
+                              DataTypeImpl::GetTensorType<MLFloat16>(),   \
+                              DataTypeImpl::GetTensorType<int64_t>(),     \
+                          })                                              \
           .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIndex>()), \
       GatherND<TIndex>);
 
@@ -106,7 +125,8 @@ Status GatherNDBase::PrepareCompute(
 #ifdef ENABLE_TRAINING
 REGISTER_KERNEL_TYPED_GATHER_ND(int64_t, 1)
 #endif
-REGISTER_KERNEL_TYPED_GATHER_ND(int64_t, 12)
+REGISTER_KERNEL_TYPED_GATHER_ND(int64_t, 13)
+REGISTER_KERNEL_VERSIONED_TYPED_GATHER_ND(int64_t, 12, 12)
 
 template <typename T>
 struct GatherNDComputeImpl {
@@ -161,7 +181,7 @@ Status GatherND<TIndex>::ComputeInternal(OpKernelContext* context) const {
 
   const void* const kernel_input_data = input_tensor->DataRaw();
   void* const kernel_output_data = output_tensor->MutableDataRaw();
-  utils::MLTypeCallDispatcher<GatherNDComputeImpl, float, MLFloat16, double>
+  utils::MLTypeCallDispatcher<GatherNDComputeImpl, float, MLFloat16, double, int64_t>
       t_disp(input_tensor->GetElementType());
   t_disp.Invoke(num_slices, slice_size, kernel_input_data, kernel_output_data, input_slice_offsets_buffer.get());
 

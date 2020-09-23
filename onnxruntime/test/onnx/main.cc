@@ -12,9 +12,8 @@
 #include <thread>
 #endif
 #include "TestResultStat.h"
+#include "TestCase.h"
 #include "testenv.h"
-#include "runner.h"
-#include "sync_api.h"
 #include "providers.h"
 #include <google/protobuf/stubs/common.h>
 #include "core/platform/path_lib.h"
@@ -39,6 +38,7 @@ void usage() {
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', 'ngraph', "
       "'openvino', 'nuphar', 'migraphx', 'acl' or 'armnn'. "
       "Default: 'cpu'.\n"
+      "\t-p: Pause after launch, can attach debugger and continue\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
       "\t-d [device_id]: Specifies the device id for multi-device (e.g. GPU). The value should > 0\n"
       "\t-o [optimization level]: Default is 99. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
@@ -106,18 +106,20 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   int device_id = 0;
   GraphOptimizationLevel graph_optimization_level = ORT_ENABLE_ALL;
   bool user_graph_optimization_level_set = false;
-  int verbosity_option_count = 0;
 
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_ERROR;
+  bool verbose_logging_required = false;
+
+  bool pause = false;
   {
     int ch;
-    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:xvo:d:"))) != -1) {
+    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:xvo:d:p"))) != -1) {
       switch (ch) {
         case 'A':
           enable_cpu_mem_arena = false;
           break;
         case 'v':
-          verbosity_option_count += 1;
+          verbose_logging_required = true;
           break;
         case 'c':
           concurrent_session_runs = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
@@ -181,6 +183,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
         case 'x':
           execution_mode = ExecutionMode::ORT_PARALLEL;
           break;
+        case 'p':
+          pause = true;
+          break;
         case 'o': {
           int tmp = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
           switch (tmp) {
@@ -225,10 +230,12 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
   }
 
-  // set log level based on number of verbosity options
-  logging_level =
-      static_cast<OrtLoggingLevel>(static_cast<int>(ORT_LOGGING_LEVEL_ERROR) -
-                                   std::min<int>(verbosity_option_count, static_cast<int>(ORT_LOGGING_LEVEL_ERROR)));
+  // TODO: Support specifying all valid levels of logging
+  // Currently the logging level is ORT_LOGGING_LEVEL_ERROR by default and
+  // if the user adds -v, the logging level is ORT_LOGGING_LEVEL_VERBOSE
+  if (verbose_logging_required) {
+    logging_level = ORT_LOGGING_LEVEL_VERBOSE;
+  }
 
   if (concurrent_session_runs > 1 && repeat_count > 1) {
     fprintf(stderr, "when you use '-r [repeat]', please set '-c' to 1\n");
@@ -243,11 +250,26 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     return -1;
   }
 
-  try {
-    env = Ort::Env{logging_level, "Default"};
-  } catch (std::exception& ex) {
-    fprintf(stderr, "Error creating environment: %s \n", ex.what());
-    return -1;
+  if (pause) {
+    printf("Enter to continue...\n");
+    fflush(stdout);
+    getchar();
+  }
+
+  {
+    bool failed = false;
+    ORT_TRY {
+      env = Ort::Env{logging_level, "Default"};
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        fprintf(stderr, "Error creating environment: %s \n", ex.what());
+        failed = true;
+      });
+    }
+
+    if (failed)
+      return -1;
   }
 
   std::vector<std::basic_string<PATH_CHAR_TYPE>> data_dirs;
@@ -344,7 +366,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #ifdef USE_NNAPI
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(sf));
 #else
-      fprintf(stderr, "DNNLibrary/NNAPI is not supported in this build");
+      fprintf(stderr, "NNAPI is not supported in this build");
       return -1;
 #endif
     }
@@ -458,7 +480,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
 
     std::vector<ITestCase*> tests;
-
     LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance,
               all_disabled_tests,
               [&owned_tests, &tests](std::unique_ptr<ITestCase> l) {
@@ -466,9 +487,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
                 owned_tests.push_back(std::move(l));
               });
 
-    TestEnv args(tests, stat, env, sf);
-    Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count),
-                         GetDefaultThreadPool(Env::Default()));
+    TestEnv test_env(env, sf, TestEnv::GetDefaultThreadPool(Env::Default()), std::move(tests), stat);
+    Status st = test_env.Run(p_models, concurrent_session_runs, repeat_count);
     if (!st.IsOK()) {
       fprintf(stderr, "%s\n", st.ErrorMessage().c_str());
       return -1;
@@ -531,6 +551,12 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"momentum", "not a registered function/op", {}},                 // Op not registered.
       {"momentum_multiple", "not a registered function/op", {}},        // Op not registered.
       {"nesterov_momentum", "not a registered function/op", {}},        // Op not registered.
+      {"cast_FLOAT_to_BFLOAT16", "onnx generate bfloat tensor as uint16 type", {}},
+      {"cast_BFLOAT16_to_FLOAT", "onnx generate bfloat tensor as uint16 type", {}},
+      {"sequence_insert_at_back", "onnx currently not supporting loading segment", {}},
+      {"sequence_insert_at_front", "onnx currently not supporting loading segment", {}},
+      {"if_seq", "NOT_IMPLEMENTED : Could not find an implementation for the node If(13)", {}},
+      {"loop13_seq", "NOT_IMPLEMENTED : Could not find an implementation for the node Loop(13)", {}},
   };
 
 #ifdef DISABLE_ML_OPS
@@ -726,6 +752,28 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"softmax_cross_entropy_sum_expanded", "Shape mismatch"});
     broken_tests.insert({"softmax_cross_entropy_sum_log_prob", "Shape mismatch"});
     broken_tests.insert({"softmax_cross_entropy_sum_log_prob_expanded", "Shape mismatch"});
+    broken_tests.insert({"nllloss_NCd1_ignore_index", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1_ignore_index_expanded", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1_mean_weight_negative_ignore_index", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1_mean_weight_negative_ignore_index_expanded", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1_weight", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1_weight_expanded", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1_weight_ignore_index", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1_weight_ignore_index_expanded", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1d2_no_weight_reduction_mean_ignore_index", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1d2_no_weight_reduction_mean_ignore_index_expanded", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1d2_with_weight_reduction_mean", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1d2_with_weight_reduction_mean_expanded", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1d2d3d4d5_mean_weight", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1d2d3d4d5_mean_weight_expanded", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1_ii", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1_ii_expanded", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1_mean_weight_negative_ii", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1_mean_weight_negative_ii_expanded", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1_weight_ii", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1_weight_ii_expanded", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1d2_no_weight_reduction_mean_ii", "wait for investigation"});
+    broken_tests.insert({"nllloss_NCd1d2_no_weight_reduction_mean_ii_expanded", "wait for investigation"});
   }
 
   if (enable_tensorrt) {
@@ -881,12 +929,16 @@ int main(int argc, char* argv[]) {
 #endif
   Ort::Env env{nullptr};
   int retval = -1;
-  try {
+  ORT_TRY {
     retval = real_main(argc, argv, env);
-  } catch (std::exception& ex) {
-    fprintf(stderr, "%s\n", ex.what());
-    retval = -1;
   }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      fprintf(stderr, "%s\n", ex.what());
+      retval = -1;
+    });
+  }
+
   ::google::protobuf::ShutdownProtobufLibrary();
   return retval;
 }

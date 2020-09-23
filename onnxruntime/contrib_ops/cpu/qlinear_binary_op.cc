@@ -118,21 +118,46 @@ Status QLinearAdd<T>::Compute(OpKernelContext* context) const {
       *context,
       [](gsl::span<T> output, const T& input0, gsl::span<const T> input1,
          float A_scale, float B_scale, float C_scale, T A_zero_point, T B_zero_point, T C_zero_point) {
-        MlasQLinearAdd(&input0, A_scale, A_zero_point,
-                       input1.data(), B_scale, B_zero_point,
-                       C_scale, C_zero_point, output.data(), 1, output.size());
+        MlasQLinearAdd(input1.data(), B_scale, B_zero_point,
+                       &input0, A_scale, A_zero_point,
+                       C_scale, C_zero_point, output.data(), output.size(), true);
       },
       [](gsl::span<T> output, gsl::span<const T> input0, const T& input1,
          float A_scale, float B_scale, float C_scale, T A_zero_point, T B_zero_point, T C_zero_point) {
         MlasQLinearAdd(input0.data(), A_scale, A_zero_point,
                        &input1, B_scale, B_zero_point,
-                       C_scale, C_zero_point, output.data(), output.size(), 1);
+                       C_scale, C_zero_point, output.data(), output.size(), true);
       },
       [](gsl::span<T> output, gsl::span<const T> input0, gsl::span<const T> input1,
          float A_scale, float B_scale, float C_scale, T A_zero_point, T B_zero_point, T C_zero_point) {
         MlasQLinearAdd(input0.data(), A_scale, A_zero_point,
                        input1.data(), B_scale, B_zero_point,
-                       C_scale, C_zero_point, output.data(), output.size(), output.size());
+                       C_scale, C_zero_point, output.data(), output.size(), false);
+      },
+      1.0);
+}
+
+template <typename T>
+Status QLinearMul<T>::Compute(OpKernelContext* context) const {
+  return QLinearBroadcastTwo<T>(
+      *context,
+      [](gsl::span<T> output, const T& input0, gsl::span<const T> input1,
+         float A_scale, float B_scale, float C_scale, T A_zero_point, T B_zero_point, T C_zero_point) {
+        MlasQLinearMul(input1.data(), B_scale, B_zero_point,
+                       &input0, A_scale, A_zero_point,
+                       C_scale, C_zero_point, output.data(), output.size(), true);
+      },
+      [](gsl::span<T> output, gsl::span<const T> input0, const T& input1,
+         float A_scale, float B_scale, float C_scale, T A_zero_point, T B_zero_point, T C_zero_point) {
+        MlasQLinearMul(input0.data(), A_scale, A_zero_point,
+                       &input1, B_scale, B_zero_point,
+                       C_scale, C_zero_point, output.data(), output.size(), true);
+      },
+      [](gsl::span<T> output, gsl::span<const T> input0, gsl::span<const T> input1,
+         float A_scale, float B_scale, float C_scale, T A_zero_point, T B_zero_point, T C_zero_point) {
+        MlasQLinearMul(input0.data(), A_scale, A_zero_point,
+                       input1.data(), B_scale, B_zero_point,
+                       C_scale, C_zero_point, output.data(), output.size(), false);
       },
       1.0);
 }
@@ -146,6 +171,8 @@ Status QLinearAdd<T>::Compute(OpKernelContext* context) const {
 
 REG_QLINEAR_ELEMENTWISE_TYPED_KERNEL(QLinearAdd, 1, int8_t, QLinearAdd);
 REG_QLINEAR_ELEMENTWISE_TYPED_KERNEL(QLinearAdd, 1, uint8_t, QLinearAdd);
+REG_QLINEAR_ELEMENTWISE_TYPED_KERNEL(QLinearMul, 1, int8_t, QLinearMul);
+REG_QLINEAR_ELEMENTWISE_TYPED_KERNEL(QLinearMul, 1, uint8_t, QLinearMul);
 
 }  // namespace contrib
 }  // namespace onnxruntime

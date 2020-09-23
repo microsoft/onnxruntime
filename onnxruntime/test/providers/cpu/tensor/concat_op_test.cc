@@ -62,7 +62,9 @@ TEST(ConcatOpTest, Concat1D_2) {
   test.AddInput<float>("input2", {2}, {2.0f, 3.0f});
   test.AddInput<float>("input3", {0}, {});
   test.AddOutput<float>("concat_result", {3}, {1.0f, 2.0f, 3.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT: no support for dynamic shape tensor
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider,  //TensorRT: no support for dynamic shape tensor
+            kNnapiExecutionProvider});   // NNAPI: concat does not support 0 size input
 }
 
 TEST(ConcatOpTest, Concat2D_1) {
@@ -104,7 +106,29 @@ TEST(ConcatOpTest, Concat2D_3) {
   test.AddInput<float>("input2", {1, 0}, {});
   test.AddInput<float>("input3", {1, 0}, {});
   test.AddOutput<float>("concat_result", {1, 0}, {});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT: no support for dynamic shape tensor
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider,  //TensorRT: no support for dynamic shape tensor
+            kNnapiExecutionProvider});   // NNAPI: concat does not support 0 size input
+}
+
+// Test Concat of tensors when one of them has dynamic shape
+// This is useful for testing EP's own shape inferencing, such as NNAPI EP
+TEST(ConcatOpTest, Concat2D_4) {
+  OpTester test("Concat");
+  test.AddAttribute("axis", int64_t{1});
+
+  std::vector<int64_t> dims{4, 1};
+  std::vector<std::string> dim_params{"batch", "seq"};
+  test.AddInput<float>("input1", dims, {11.0f, 21.0f, 31.0f, 41.0f});
+  test.AddInput<float>("input2", {4, 2}, {12.0f, 13.0f, 22.0f, 23.0f, 32.0f, 33.0f, 42.0f, 43.0f}, false, &dim_params);
+  test.AddInput<float>("input3", dims, {14.0f, 24.0f, 34.0f, 44.0f});
+  test.AddOutput<float>("concat_result", {4, 4},
+                        {11.0f, 12.0f, 13.0f, 14.0f,
+                         21.0f, 22.0f, 23.0f, 24.0f,
+                         31.0f, 32.0f, 33.0f, 34.0f,
+                         41.0f, 42.0f, 43.0f, 44.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider});  //TensorRT: no support for dynamic shape tensor
 }
 
 TEST(ConcatOpTest, Concat3D_1) {

@@ -13,9 +13,13 @@ jobs:
      --enable_onnx_tests
      --enable_training
      --skip_onnx_tests
-     --skip_submodule_sync    
+     --skip_submodule_sync
+     --use_openmp
     BuildArch: 'x64'
     EnvSetupScript: 'setup_env.bat'
     sln_platform: 'x64'
     BuildConfigurations: ['Debug', 'RelWithDebInfo']
     EnableLto: false
+    # Enable unreleased onnx opsets in CI builds
+    # This facilitates testing the implementation for the new opsets
+    AllowReleasedOpsetOnly: '0'

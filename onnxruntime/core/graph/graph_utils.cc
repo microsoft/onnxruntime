@@ -181,7 +181,7 @@ static void RemoveGraphEdges(Graph& graph, const std::vector<GraphEdge>& edges) 
 }
 
 /** Given a graph, a list of edges, and a NodeArg name, checks if each of the edges provides an implicit input
-    to a subgraph. If so, it checks if there is no clash of the given NodeArg name in each of the subgraphs. 
+    to a subgraph. If so, it checks if there is no clash of the given NodeArg name in each of the subgraphs.
     This is important when removing a node with this NodeArg as input. */
 static bool CanUpdateImplicitInputNameInSubgraphs(const Graph& graph,
                                                   const std::vector<GraphEdge>& output_edges,
@@ -294,11 +294,11 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
 }
 
 bool MatchesOpSinceVersion(const Node& node, const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions) {
-  return std::find(versions.begin(), versions.end(), node.Op()->SinceVersion()) != versions.end();
+  return std::find(versions.begin(), versions.end(), node.SinceVersion()) != versions.end();
 }
 
 bool MatchesOpSinceVersion(const Node& node, const std::vector<ONNX_NAMESPACE::OperatorSetVersion>& versions) {
-  return std::find(versions.begin(), versions.end(), node.Op()->SinceVersion()) != versions.end();
+  return std::find(versions.begin(), versions.end(), node.SinceVersion()) != versions.end();
 }
 
 bool MatchesOpSetDomain(const Node& node, const std::string& domain) {
@@ -321,7 +321,7 @@ const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const s
   return iter == attrs.end() ? nullptr : &iter->second;
 }
 
-/** Checks for nodes with >= 1 outputs, if only one of the outputs is input to downstream Operators. 
+/** Checks for nodes with >= 1 outputs, if only one of the outputs is input to downstream Operators.
 Returns the name of the single used output in output_name. */
 static bool IsOnlyOneOutputUsed(const Graph& graph, const Node& node, const std::string*& output_name) {
   const int unassigned = -1;
@@ -489,27 +489,7 @@ bool IsGraphInput(const Graph& graph, const NodeArg* input) {
 
 const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const Graph& graph, const std::string& initializer_name,
                                                           bool check_outer_scope) {
-  const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
-  if (graph.GetInitializedTensor(initializer_name, initializer)) {
-    if (graph.CanOverrideInitializer()) {
-      const auto& graph_inputs = graph.GetInputsIncludingInitializers();
-      bool is_constant = std::none_of(graph_inputs.cbegin(), graph_inputs.cend(),
-                                      [&initializer_name](const NodeArg* input) {
-                                        return input->Name() == initializer_name;
-                                      });
-
-      if (!is_constant) {
-        initializer = nullptr;
-      }
-    }
-  } else if (check_outer_scope && graph.IsSubgraph()) {
-    // make sure there's not a local value with the same name. if there is it shadows any initializer in outer scope.
-    if (graph.IsOuterScopeValue(initializer_name)) {
-      initializer = GetConstantInitializer(*graph.ParentGraph(), initializer_name, check_outer_scope);
-    }
-  }
-
-  return initializer;
+  return graph.GetConstantInitializer(initializer_name, check_outer_scope);
 }
 
 bool IsInitializer(const Graph& graph, const std::string& name, bool check_outer_scope) {
@@ -722,7 +702,8 @@ bool FindPath(const Node& node, bool is_input_edge, const std::vector<EdgeEndToM
     for (auto it = edges_begin; it != edges_end; ++it) {
 #ifndef NDEBUG
       LOGS(logger, VERBOSE) << "E:" << it->GetSrcArgIndex() << "," << it->GetDstArgIndex()
-                            << "," << it->GetNode().OpType() << "," << it->GetNode().Domain() << "," << it->GetNode().Op()->SinceVersion();
+                            << "," << it->GetNode().OpType() << "," << it->GetNode().Domain() << ","
+                            << it->GetNode().SinceVersion();
 #endif
       if (edge.dst_arg_index == it->GetDstArgIndex() &&
           edge.src_arg_index == it->GetSrcArgIndex() &&
@@ -772,19 +753,27 @@ bool FindPath(Graph& graph, const Node& node, bool is_input_edge, const std::vec
 }
 
 bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node) {
-  std::queue<const Node*> q;
-  std::vector<NodeIndex> nodes_to_remove;
-  q.push(&start_node);
+  std::queue<NodeIndex> q;
+  std::unordered_set<NodeIndex> removed_nodes;
+
+  NodeIndex start_node_index = start_node.Index();
+  q.push(start_node_index);
+
   // From the current node, remove nodes bottom-up util it reaches a node with multiple outputs/graph output.
-  while (q.size() != 0) {
-    const Node& cur_node = *(q.front());
+  while (!q.empty()) {
+    NodeIndex cur_node_index = q.front();
     q.pop();
+
+    if (removed_nodes.find(cur_node_index) != removed_nodes.end()) {
+      continue;
+    }
     // Each eligible node in the subgraph must have less than one output edge and no output should be
     // the graph output
+    const Node& cur_node = *graph.GetNode(cur_node_index);
     if (cur_node.GetOutputEdgesCount() > 1 || !graph.GetNodeOutputsInGraphOutputs(cur_node).empty()) {
       continue;
     }
-    nodes_to_remove.push_back(cur_node.Index());
+
     // push the parents of current node to the queue.
     for (unsigned int i = 0; i < cur_node.InputDefs().size(); ++i) {
       const std::string& input_name = GetNodeInputName(cur_node, i);
@@ -792,20 +781,33 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node) {
         // skip initializers and graph inputs
         continue;
       }
-      q.push(GetInputNode(cur_node, i));
+      const Node* parent_node = GetInputNode(cur_node, i);
+      if (nullptr == parent_node) {
+        continue;
+      }
+      q.push(parent_node->Index());
+    }
+
+    if (cur_node_index == start_node_index || cur_node.GetOutputEdgesCount() == 0) {
+      Node* cur_node_p = graph.GetNode(cur_node_index);
+      RemoveNodeOutputEdges(graph, *cur_node_p);
+      graph.RemoveNode(cur_node_index);
+
+      removed_nodes.insert(cur_node_index);
     }
   }
-  if (nodes_to_remove.size() <= 0) {
+
+  if (removed_nodes.size() == 0) {
     // Nothing to remove
     return false;
   }
-  // Remove nodes that are not used anymore.
-  for (const auto& node_index : nodes_to_remove) {
-    Node* node = graph.GetNode(node_index);
-    RemoveNodeOutputEdges(graph, *node);
-    graph.RemoveNode(node->Index());
-  }
+
   return true;
 }
+
+NodeArg& CreateNodeArg(Graph& graph, const NodeArg& base_arg) {
+  return graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(base_arg.Name()), base_arg.TypeAsProto());
+}
+
 }  // namespace graph_utils
 }  // namespace onnxruntime

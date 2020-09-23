@@ -18,8 +18,10 @@
 using onnxruntime::BFloat16;
 using onnxruntime::DataTypeImpl;
 using onnxruntime::MLFloat16;
-using onnxruntime::SparseTensor;
 using onnxruntime::Tensor;
+#if !defined(ORT_MINIMAL_BUILD)
+using onnxruntime::SparseTensor;
+#endif
 
 ORT_API_STATUS_IMPL(OrtApis::CreateTensorTypeAndShapeInfo, _Outptr_ OrtTensorTypeAndShapeInfo** out) {
   API_IMPL_BEGIN
@@ -193,8 +195,7 @@ OrtStatus* GetTensorShapeAndType(const onnxruntime::TensorShape& shape, const st
   return GetTensorShapeAndTypeHelper(type, shape, dim_params, out);
 }
 
-OrtStatus* OrtTensorTypeAndShapeInfo::Clone(OrtTensorTypeAndShapeInfo** out)
-{
+OrtStatus* OrtTensorTypeAndShapeInfo::Clone(OrtTensorTypeAndShapeInfo** out) {
   return GetTensorShapeAndTypeHelper(type, shape, &dim_params, out);
 }
 
@@ -202,22 +203,25 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorTypeAndShape, _In_ const OrtValue* v, _Out
   API_IMPL_BEGIN
   onnxruntime::MLDataType type = v->Type();
   ORT_ENFORCE(type != nullptr, "OrtValue is not a Tensor");
-  if (type->IsTensorType() || type->IsSparseTensorType()) {
-    const onnxruntime::TensorShape* shape = nullptr;
-    onnxruntime::MLDataType data_type = nullptr;
-    if (type->IsTensorType()) {
-      const Tensor& tensor = v->Get<onnxruntime::Tensor>();
-      shape = &tensor.Shape();
-      data_type = tensor.DataType();
-    } else {
-      const SparseTensor& tensor = v->Get<onnxruntime::SparseTensor>();
-      shape = &tensor.Shape();
-      data_type = tensor.Values().DataType();
-    }
-    return GetTensorShapeAndType(*shape, *data_type, out);
+  const onnxruntime::TensorShape* shape = nullptr;
+  onnxruntime::MLDataType data_type = nullptr;
+  if (type->IsTensorType()) {
+    const Tensor& tensor = v->Get<onnxruntime::Tensor>();
+    shape = &tensor.Shape();
+    data_type = tensor.DataType();
+  } else if (type->IsSparseTensorType()) {
+#if !defined(ORT_MINIMAL_BUILD)
+    const SparseTensor& tensor = v->Get<onnxruntime::SparseTensor>();
+    shape = &tensor.Shape();
+    data_type = tensor.Values().DataType();
+#else
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "SparseTensor is not supported in this build.");
+#endif
   } else {
     ORT_THROW("Argument is not a tensor");
   }
+  
+  return GetTensorShapeAndType(*shape, *data_type, out);
   API_IMPL_END
 }
 

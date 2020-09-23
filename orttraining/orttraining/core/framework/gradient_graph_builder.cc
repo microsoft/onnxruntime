@@ -6,6 +6,7 @@
 #include "core/graph/schema_registry.h"
 #include "orttraining/core/framework/gradient_graph_builder.h"
 #include "orttraining/core/graph/gradient_builder_registry.h"
+#include "orttraining/core/graph/gradient_config.h"
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
 #include "core/optimizer/gelu_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
@@ -21,11 +22,13 @@ using namespace common;
 GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
                                            const unordered_set<string>& y_node_arg_names,
                                            const unordered_set<string>& x_node_arg_names,
-                                           string loss_node_arg_name,
-                                           const bool set_gradient_as_graph_output)
+                                           const std::string& loss_node_arg_name,
+                                           const GradientGraphConfiguration& gradient_graph_config,
+                                           const logging::Logger& logger)
     : graph_(graph),
       loss_node_arg_name_(loss_node_arg_name),
-      set_gradient_as_graph_output_(set_gradient_as_graph_output) {
+      gradient_graph_config_(gradient_graph_config),
+      logger_(logger) {
   auto rule_based_graph_transformer =
       onnxruntime::make_unique<RuleBasedGraphTransformer>("pre_training_rule_based_graph_transformer");
   rule_based_graph_transformer->Register(make_unique<InsertMaxPoolOutput>());
@@ -88,7 +91,8 @@ NodeSet GradientGraphBuilder::ReverseBFS(const NodeSet& nodes) {
     for (auto edge_it = n->InputEdgesBegin(); edge_it != n->InputEdgesEnd(); ++edge_it) {
       auto it = STOP_GRADIENT_EDGES.find(n->OpType());
       if (it != STOP_GRADIENT_EDGES.end() && it->second.count(edge_it->GetDstArgIndex())) {
-        std::cout << "Skip building gradient for node: " << edge_it->GetNode().Name() << std::endl;
+        LOGS(logger_, WARNING) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
+                               << " of node: " << n->Name();
         continue;
       }
 
@@ -122,8 +126,8 @@ Status GradientGraphBuilder::CheckNodeArgsReachable(const NodeSet& reachable_nod
   return Status::OK();
 }
 
-Status GradientGraphBuilder::Build() {
-  auto opt_ret = graph_transformation_mgr_.ApplyTransformers(*graph_, TransformerLevel::Level2, logging::LoggingManager::DefaultLogger());
+Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_initializer_names_to_preserve) {
+  auto opt_ret = graph_transformation_mgr_.ApplyTransformers(*graph_, TransformerLevel::Level2, logger_);
   ORT_RETURN_IF_ERROR(opt_ret);
 
   GraphAugmenter::GraphDefs gradient_graph_defs;
@@ -156,6 +160,13 @@ Status GradientGraphBuilder::Build() {
 
       if (reachable_nodes.find(&next_node) == reachable_nodes.end()) continue;
 
+      auto it = STOP_GRADIENT_EDGES.find(next_node.OpType());
+      if (it != STOP_GRADIENT_EDGES.end() && it->second.count(edge_it->GetDstArgIndex())) {
+        LOGS(logger_, WARNING) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
+                               << " of node: " << next_node.Name();
+        continue;
+      }
+
       const NodeArg* node_arg = node->OutputDefs()[edge_it->GetSrcArgIndex()];
       string grad_node_arg_name = GradientBuilderBase::GradientName(node_arg->Name());
 
@@ -172,7 +183,6 @@ Status GradientGraphBuilder::Build() {
 
   // so far, visited are the minimum node in between
   // visited_node_args are the node_args involved
-
   for (auto node : visited) {
     //TODO: might not need two sets, the union of them might be enough
     unordered_set<string> input_args_need_grad, output_args_need_grad;
@@ -187,7 +197,7 @@ Status GradientGraphBuilder::Build() {
       }
     }
 
-    GradientDef node_defs = GetGradientForOp(node, output_args_need_grad, input_args_need_grad);
+    GradientDef node_defs = GetGradientForOp(gradient_graph_config_, graph_, node, output_args_need_grad, input_args_need_grad, logger_);
 
     // updates arg name if gradient accumulation is needed
     for (auto& op_def : node_defs) {
@@ -215,13 +225,13 @@ Status GradientGraphBuilder::Build() {
                  "AccumulateGrad_" + gradient_pair.first.name)});
   }
 
-  if (set_gradient_as_graph_output_) {
+  if (gradient_graph_config_.set_gradients_as_graph_outputs) {
     for (auto x_node_arg : x_node_args_) {
       gradient_graph_defs.AddGraphOutputs({GradientBuilderBase::GradientName(x_node_arg->Name())});
     }
   }
 
-  return GraphAugmenter::AugmentGraph(*graph_, gradient_graph_defs);
+  return GraphAugmenter::AugmentGraph(*graph_, gradient_graph_defs, p_initializer_names_to_preserve);
 }
 
 }  // namespace training

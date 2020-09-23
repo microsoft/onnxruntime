@@ -9,7 +9,7 @@ jobs:
     AgentPool : 'Win-CPU-2019'
     ArtifactName: 'drop-nuget'
     JobName: 'Windows_CI_Dev'
-    BuildCommand:  '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_winml --cmake_generator "Visual Studio 16 2019"'
+    BuildCommand:  '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_winml --cmake_generator "Visual Studio 16 2019"'
     BuildArch: 'x64'
     EnvSetupScript: 'setup_env.bat'
     sln_platform: 'x64'
@@ -29,7 +29,7 @@ jobs:
     AgentPool : 'Win-CPU-2019'
     ArtifactName: 'drop-win-x86-zip'
     JobName: 'Windows_CI_Dev_x86'
-    BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --x86 --use_telemetry --use_winml --cmake_generator "Visual Studio 16 2019"'
+    BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_shared_lib --enable_onnx_tests --enable_wcos --x86 --use_telemetry --use_winml --cmake_generator "Visual Studio 16 2019"'
     BuildArch: 'x86'
     EnvSetupScript: 'setup_env_x86.bat'
     sln_platform: 'Win32'
@@ -50,7 +50,7 @@ jobs:
     AgentPool : 'Win-CPU-2019'
     ArtifactName: 'drop-win-arm64-zip'
     JobName: 'Windows_CI_Dev_arm64'
-    BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --arm64 --use_telemetry --use_winml --cmake_generator "Visual Studio 16 2019"'
+    BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_shared_lib --enable_onnx_tests --enable_wcos --arm64 --use_telemetry --use_winml --cmake_generator "Visual Studio 16 2019"'
     BuildArch: 'x64'
     EnvSetupScript: 'setup_env.bat'
     sln_platform: 'arm64'
@@ -71,7 +71,7 @@ jobs:
     AgentPool : 'Win-CPU-2019'
     ArtifactName: 'drop-win-arm-zip'
     JobName: 'Windows_CI_Dev_arm'
-    BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --arm --use_telemetry --use_winml --cmake_generator "Visual Studio 16 2019"'
+    BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_shared_lib --enable_onnx_tests --enable_wcos --arm --use_telemetry --use_winml --cmake_generator "Visual Studio 16 2019"'
     BuildArch: 'x64'
     EnvSetupScript: 'setup_env.bat'
     sln_platform: 'arm'
@@ -90,20 +90,29 @@ jobs:
 - job: 'Linux_CI_Dev'
   workspace:
     clean: all
+  timeoutInMinutes: 120
   pool: $(AgentPoolLinux)
   steps:    
     - template: ../../templates/set-version-number-variables-step.yml
     - template: ../../templates/linux-set-variables-and-download.yml
+    - task: Docker@2
+      displayName: login
+      inputs:
+        containerRegistry: onnxruntimeregistry
+        command: login
+        addPipelineData: false
     - task: CmdLine@2
       inputs:
         script: |
-          sudo docker build --pull -t onnxruntime-centos6 --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=3.6 -f Dockerfile.centos6 .
-        workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
-    - task: CmdLine@2
-      inputs:
-        script: |
-          sudo --preserve-env docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro -e NIGHTLY_BUILD onnxruntime-centos6 /bin/bash -c "/usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --enable_onnx_tests && cd /build/Release && make install DESTDIR=/build/linux-x64"
+          mkdir -p $HOME/.onnx
+          docker run --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecpubuild:ch36 /bin/bash -c "/opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --enable_lto --skip_submodule_sync --parallel --build_shared_lib --use_openmp --enable_onnx_tests && cd /build/Release && make install DESTDIR=/build/linux-x64"
         workingDirectory: $(Build.SourcesDirectory)
+    - task: Docker@2
+      displayName: logout
+      inputs:
+        containerRegistry: onnxruntimeregistry
+        command: logout
+        addPipelineData: false
     - script: |
        set -e -x
        mv $(Build.BinariesDirectory)/linux-x64/usr/local/lib64 $(Build.BinariesDirectory)/linux-x64/linux-x64
@@ -128,7 +137,7 @@ jobs:
   parameters:
     AgentPool : $(AgentPoolMacOS)
     JobName: 'MacOS_CI_Dev'
-    BuildCommand: 'python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config RelWithDebInfo'
+    BuildCommand: 'python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --use_openmp --config RelWithDebInfo'
     DoNugetPack : 'true'
     NuPackScript: |
      set -e -x
@@ -216,6 +225,10 @@ jobs:
       artifactName: 'drop-signed-nuget'
       targetPath: '$(Build.ArtifactStagingDirectory)'
 
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+
 - template: test_all_os.yml
 
 - job: Publish_NuGet_Package_And_Report
@@ -223,6 +236,8 @@ jobs:
     clean: all
   variables:
   - group: Dashboard_MySQL_Secret
+  - name: GDN_CODESIGN_TARGETDIRECTORY
+    value: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
   pool: 'Win-CPU-2019'
   condition: and (succeeded(), and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master')))
   dependsOn:
@@ -305,3 +320,7 @@ jobs:
       command: 'push'
       packagesToPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.Managed.$(NuGetPackageVersionNumber).nupkg'
       publishVstsFeed: '2692857e-05ef-43b4-ba9c-ccf1c22c437c/7982ae20-ed19-4a35-a362-a96ac99897b7'
+
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()

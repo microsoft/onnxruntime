@@ -21,6 +21,18 @@ is as follows
    * Create env using ```CreateEnvWithGlobalThreadPools()```
    * Create session and call ```DisablePerSessionThreads()``` on the session options object
    * Call ```Run()``` as usual
+* **Share allocator(s) between sessions:** Allow multiple sessions in the same process to use the same allocator(s). This
+allocator is first registered in the env and then reused by all sessions that use the same env instance unless a session
+chooses to override this by setting ```session_state.use_env_allocators``` to "0". Usage of this feature is as follows
+   * Register an allocator created by ORT using the ```CreateAndRegisterAllocator``` API.
+   * Set ```session.use_env_allocators``` to "1" for each session that wants to use the env registered allocators.
+   * See test ```TestSharedAllocatorUsingCreateAndRegisterAllocator``` in
+     onnxruntime/test/shared_lib/test_inference.cc for an example.
+* **Share initializer(s) between sessions:**
+   * *Description*: This feature allows a user to share the same instance of an initializer across
+multiple sessions.
+   * *Scenario*: You've several models that use the same set of initializers except the last few layers of the model and you load these models in the same process. When every model (session) creates a separate instance of the same initializer, it leads to excessive and wasteful memory usage since in this case it's the same initializer. You want to optimize memory usage while having the flexibility to allocate the initializers (possibly even store them in shared memory). 
+   * *Example Usage*: Use the ```AddInitializer``` API to add a pre-allocated initializer to session options before calling ```CreateSession```. Use the same instance of session options to create several sessions allowing the initializer(s) to be shared between the sessions. See [C API sample usage (TestSharingOfInitializer)](../onnxruntime/test/shared_lib/test_inference.cc) and [C# API sample usage (TestWeightSharingBetweenSessions)](../csharp/test/Microsoft.ML.OnnxRuntime.Tests/InferenceTest.cs).
 
 ## Usage Overview
 

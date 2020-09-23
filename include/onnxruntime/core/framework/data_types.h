@@ -24,7 +24,8 @@ class TypeProto;
 namespace onnxruntime {
 /// Predefined registered types
 
-//maps
+#if !defined(DISABLE_ML_OPS)
+//maps (only used by ML ops)
 using MapStringToString = std::map<std::string, std::string>;
 using MapStringToInt64 = std::map<std::string, int64_t>;
 using MapStringToFloat = std::map<std::string, float>;
@@ -33,19 +34,24 @@ using MapInt64ToString = std::map<int64_t, std::string>;
 using MapInt64ToInt64 = std::map<int64_t, int64_t>;
 using MapInt64ToFloat = std::map<int64_t, float>;
 using MapInt64ToDouble = std::map<int64_t, double>;
+#endif
 
 //vectors/sequences
+#if !defined(DISABLE_ML_OPS)
 using VectorMapStringToFloat = std::vector<MapStringToFloat>;
 using VectorMapInt64ToFloat = std::vector<MapInt64ToFloat>;
+#endif
 using VectorString = std::vector<std::string>;
 using VectorInt64 = std::vector<int64_t>;
 
 class DataTypeImpl;
 class TensorTypeBase;
-class SparseTensorTypeBase;
 class SequenceTensorTypeBase;
 class NonTensorTypeBase;
 class PrimitiveDataTypeBase;
+#if !defined(ORT_MINIMAL_BUILD)
+class SparseTensorTypeBase;
+#endif
 
 // MLFloat16
 union MLFloat16 {
@@ -139,6 +145,10 @@ struct BFloat16 {
     }
     return result;
   }
+
+  operator float() const {
+    return ToFloat();
+  }
 };
 
 inline void BFloat16ToFloat(const BFloat16* blf, float* flt, size_t size) {
@@ -225,10 +235,12 @@ class DataTypeImpl {
     return nullptr;
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
   // Returns this if this is of sparse-tensor-type and null otherwise
   virtual const SparseTensorTypeBase* AsSparseTensorType() const {
     return nullptr;
   }
+#endif
 
   virtual const NonTensorTypeBase* AsNonTensorTypeBase() const {
     return nullptr;
@@ -251,9 +263,11 @@ class DataTypeImpl {
   template <typename elemT>
   static MLDataType GetSequenceTensorType();
 
+#if !defined(ORT_MINIMAL_BUILD)
   // Return the MLDataType for a concrete sparse tensor type.
   template <typename elemT>
   static MLDataType GetSparseTensorType();
+#endif
 
   /**
    * Convert an ONNX TypeProto to onnxruntime DataTypeImpl.
@@ -265,8 +279,10 @@ class DataTypeImpl {
   static MLDataType TypeFromProto(const ONNX_NAMESPACE::TypeProto& proto);
 
   static const TensorTypeBase* TensorTypeFromONNXEnum(int type);
-  static const SparseTensorTypeBase* SparseTensorTypeFromONNXEnum(int type);
   static const NonTensorTypeBase* SequenceTensorTypeFromONNXEnum(int type);
+#if !defined(ORT_MINIMAL_BUILD)
+  static const SparseTensorTypeBase* SparseTensorTypeFromONNXEnum(int type);
+#endif
 
   static const char* ToString(MLDataType type);
   // Registers ONNX_NAMESPACE::DataType (internalized string) with
@@ -389,6 +405,7 @@ struct IsTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, uint16_
                                               double, uint32_t, uint64_t, BFloat16> {
 };
 
+#if !defined(ORT_MINIMAL_BUILD)
 /// Use "IsSparseTensorContainedType<T>::value" to test if a type T
 /// is permitted as the element-type of a sparse-tensor.
 
@@ -397,6 +414,7 @@ struct IsSparseTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, u
                                                     int32_t, int64_t, bool, MLFloat16,
                                                     double, uint32_t, uint64_t, BFloat16> {
 };
+#endif
 
 /// This template's Get() returns a corresponding MLDataType
 /// It dispatches the call to either GetTensorType<>() or
@@ -418,6 +436,7 @@ struct GetMLDataType<T, false> {
   }
 };
 
+#if !defined(DISABLE_ML_OPS)
 /// MapTypes helper API
 /// K should always be one of the primitive data types
 /// V can be either a primitive type (in which case it is a tensor)
@@ -432,11 +451,16 @@ struct SetMapTypes {
     TensorElementTypeSetter<K>::SetMapKeyType(proto);
     MLDataType dt = GetMLDataType<V, IsTensorContainedType<V>::value>::Get();
     const auto* value_proto = dt->GetTypeProto();
+#ifdef ORT_NO_RTTI
+    ORT_ENFORCE(value_proto != nullptr, "expected a registered ONNX type");
+#else
     ORT_ENFORCE(value_proto != nullptr, typeid(V).name(),
                 " expected to be a registered ONNX type");
+#endif
     CopyMutableMapValue(*value_proto, proto);
   }
 };
+#endif
 
 /// Sequence helpers
 ///
@@ -449,8 +473,12 @@ struct SetSequenceType {
   static void Set(ONNX_NAMESPACE::TypeProto& proto) {
     MLDataType dt = GetMLDataType<T, IsTensorContainedType<T>::value>::Get();
     const auto* elem_proto = dt->GetTypeProto();
+#ifdef ORT_NO_RTTI
+    ORT_ENFORCE(elem_proto != nullptr, "expected a registered ONNX type");
+#else
     ORT_ENFORCE(elem_proto != nullptr, typeid(T).name(),
                 " expected to be a registered ONNX type");
+#endif
     CopyMutableSeqElement(*elem_proto, proto);
   }
 };
@@ -538,6 +566,7 @@ class TensorType : public TensorTypeBase {
   }
 };
 
+#if !defined(ORT_MINIMAL_BUILD)
 /// Common base-class for all sparse-tensors (with different element types).
 class SparseTensorTypeBase : public DataTypeImpl {
  public:
@@ -597,6 +626,7 @@ class SparseTensorType : public SparseTensorTypeBase {
     TensorElementTypeSetter<elemT>::SetSparseTensorElementType(mutable_type_proto());
   }
 };
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 /**
   * \brief Provide a specialization for your C++ Non-tensor type
@@ -701,6 +731,7 @@ class NonTensorType : public NonTensorTypeBase {
   NonTensorType() = default;
 };
 
+#if !defined(DISABLE_ML_OPS)
 /**
  * \brief MapType. Use this type to register
  * mapping types.
@@ -729,6 +760,7 @@ class MapType : public NonTensorType<CPPType> {
     SetMapTypes<typename CPPType::key_type, typename CPPType::mapped_type>::Set(this->mutable_type_proto());
   }
 };
+#endif
 
 /**
  * \brief SequenceType. Use to register sequence for non-tensor types.
@@ -945,6 +977,7 @@ class PrimitiveDataType : public PrimitiveDataTypeBase {
     return TensorType<ELEM_TYPE>::Type();               \
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
 #define ORT_REGISTER_SPARSE_TENSOR_TYPE(ELEM_TYPE)            \
   template <>                                                 \
   MLDataType SparseTensorType<ELEM_TYPE>::Type() {            \
@@ -955,7 +988,9 @@ class PrimitiveDataType : public PrimitiveDataTypeBase {
   MLDataType DataTypeImpl::GetSparseTensorType<ELEM_TYPE>() { \
     return SparseTensorType<ELEM_TYPE>::Type();               \
   }
+#endif
 
+#if !defined(DISABLE_ML_OPS)
 #define ORT_REGISTER_MAP(TYPE)               \
   template <>                                \
   MLDataType MapType<TYPE>::Type() {         \
@@ -966,6 +1001,7 @@ class PrimitiveDataType : public PrimitiveDataTypeBase {
   MLDataType DataTypeImpl::GetType<TYPE>() { \
     return MapType<TYPE>::Type();            \
   }
+#endif
 
 #define ORT_REGISTER_SEQ(TYPE)               \
   template <>                                \

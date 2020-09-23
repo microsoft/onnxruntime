@@ -22,13 +22,13 @@ template <typename T, typename PoolType>
 thread_local std::map<OpKernel*, armnn::NetworkId> Pool<T, PoolType>::poolLayers;
 
 template <typename T, typename PoolType>
-armnn::IRuntimePtr Pool<T, PoolType>::run = Pool<T, PoolType>::initRuntime();
+armnn::IRuntimePtr Pool<T, PoolType>::run = armnn::IRuntimePtr(nullptr, nullptr);
 
 template <typename T>
 thread_local std::map<OpKernel*, armnn::NetworkId> MaxPoolV8<T>::maxPoolLayers;
 
 template <typename T>
-armnn::IRuntimePtr MaxPoolV8<T>::run = MaxPoolV8<T>::initRuntime();
+armnn::IRuntimePtr MaxPoolV8<T>::run = armnn::IRuntimePtr(nullptr, nullptr);
 
 armnn::Pooling2dDescriptor createDescriptor(std::vector<int64_t> pads, std::vector<int64_t> strides, std::vector<int64_t> kernel_shape, armnn::PoolingAlgorithm pool_type, onnxruntime::PoolAttributes pool_attrs){
 
@@ -60,6 +60,10 @@ armnn::Pooling2dDescriptor createDescriptor(std::vector<int64_t> pads, std::vect
     armnnPads[3] = pads[2];
   }
 
+  LOGS_DEFAULT(VERBOSE) << "padding: {" << armnnPads[0] << "," << armnnPads[1] << "," << armnnPads[2] << "," << armnnPads[3] << "}";
+  LOGS_DEFAULT(VERBOSE) << "kernel shape: {" << armnnKernelShape[0] << "," << armnnKernelShape[1] << "}";
+  LOGS_DEFAULT(VERBOSE) << "strides: {" << armnnStrides[0] << "," << armnnStrides[1] << "}";
+
   armnn::Pooling2dDescriptor poolDescriptor;
   poolDescriptor.m_PoolType = pool_type;
   poolDescriptor.m_PadLeft = armnnPads[0];
@@ -72,8 +76,10 @@ armnn::Pooling2dDescriptor createDescriptor(std::vector<int64_t> pads, std::vect
   poolDescriptor.m_StrideY = armnnStrides[1];
   poolDescriptor.m_OutputShapeRounding = pool_attrs.ceil_mode ? armnn::OutputShapeRounding::Ceiling : armnn::OutputShapeRounding::Floor;
   poolDescriptor.m_PaddingMethod = armnn::PaddingMethod::Exclude;
-  if (pool_type == armnn::PoolingAlgorithm::Average && pool_attrs.count_include_pad)
+  if (pool_type == armnn::PoolingAlgorithm::Average && pool_attrs.count_include_pad) {
     poolDescriptor.m_PaddingMethod = armnn::PaddingMethod::IgnoreValue;
+    LOGS_DEFAULT(VERBOSE) << "PaddingMethod: IgnoreValue";
+  }
   poolDescriptor.m_DataLayout = armnn::DataLayout::NCHW;
 
   return poolDescriptor;
@@ -90,8 +96,14 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
   armnnDilations[0] = (dilations.size() == 2) ? dilations[1] : 1;
   armnnDilations[1] = (!dilations.empty()) ? dilations[0] : 1;
 
-  if ((X->Shape().NumDimensions() != PREF_DIM) ||
-      (armnnDilations[0] * armnnDilations[1] > 1)) {
+  if (X->Shape().NumDimensions() != PREF_DIM) {
+    LOGS_DEFAULT(WARNING) << "ArmNN does not have support for tensors with 4 or more dimensions; defaulting to cpu implementation";
+    Status s = onnxruntime::Pool<T, PoolType>::Compute(context);
+    return s;
+  }
+
+  if (armnnDilations[0] * armnnDilations[1] > 1) {
+    LOGS_DEFAULT(WARNING) << "ArmNN does not have support for dilation; defaulting to cpu implementation";
     Status s = onnxruntime::Pool<T, PoolType>::Compute(context);
     return s;
   }
@@ -120,10 +132,14 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
     armnn::PoolingAlgorithm pool_type;
     if (PoolBase::op_name_ == "GlobalAveragePool" || PoolBase::op_name_ == "AveragePool"){
       pool_type = armnn::PoolingAlgorithm::Average;
+      LOGS_DEFAULT(VERBOSE) << "AveragePool";
     } else if (PoolBase::op_name_ == "GlobalMaxPool" || PoolBase::op_name_ == "MaxPool"){
       pool_type = armnn::PoolingAlgorithm::Max;
-    } else
+      LOGS_DEFAULT(VERBOSE) << "MaxPool";
+    } else {
+      LOGS_DEFAULT(WARNING) << "Pooling operation not supported in ArmNN; defaulting to cpu implementation" << std::endl;
       return onnxruntime::Pool<T, PoolType>::Compute(context);
+    }
 
     armnn::NetworkId networkId;
 
@@ -152,6 +168,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
     armnn::IOptimizedNetworkPtr optNet = armnn::Optimize(*myNetwork, {armnn::Compute::CpuAcc}, Pool::run->GetDeviceSpec());
 
     if (optNet == nullptr) {
+        LOGS_DEFAULT(WARNING) << "Got invalid operation; defaulting to cpu implementation";
         return onnxruntime::Pool<T, PoolType>::Compute(context);
     }
 
@@ -242,6 +259,7 @@ Status MaxPoolV8<T>::Compute(OpKernelContext* context) const {
     armnn::IOptimizedNetworkPtr optNet = armnn::Optimize(*myNetwork, {armnn::Compute::CpuAcc}, MaxPoolV8::run->GetDeviceSpec());
 
     if (optNet == nullptr) {
+        LOGS_DEFAULT(WARNING) << "Got invalid operation; defaulting to cpu implementation";
         return onnxruntime::MaxPoolV8::Compute(context);
     }
 
@@ -304,6 +322,22 @@ ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                        
       kArmNNExecutionProvider,                                                      \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), \
       MaxPoolV8<float>);
+
+ONNX_OPERATOR_KERNEL_EX(
+    MaxPool,
+    kOnnxDomain,
+    12,
+    kArmNNExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    MaxPoolV8<float>);
+
+ONNX_OPERATOR_KERNEL_EX(
+    AveragePool,
+    kOnnxDomain,
+    11,
+    kArmNNExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Pool<float, AveragePool>);
 
 }  // namespace armnn_ep
 }  // namespace onnxruntime

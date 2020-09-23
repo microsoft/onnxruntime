@@ -477,6 +477,10 @@ class OpTester {
     return output_data_;
   }
 
+  void SetDeterminism(bool use_determinism) {
+    use_determinism_ = use_determinism;
+  }
+
  protected:
   virtual void AddNodes(onnxruntime::Graph& graph, std::vector<onnxruntime::NodeArg*>& graph_input_defs,
                         std::vector<onnxruntime::NodeArg*>& graph_output_defs,
@@ -517,7 +521,7 @@ class OpTester {
   void AddData(std::vector<Data>& data, const char* name, const std::vector<int64_t>& dims, const T* values,
                int64_t values_count, bool is_initializer = false, bool sort_output = false,
                const std::vector<std::string>* dim_params = nullptr) {
-    try {
+    ORT_TRY {
       TensorShape shape{dims};
       ORT_ENFORCE(shape.Size() == values_count, values_count, " input values doesn't match tensor size of ",
                   shape.Size());
@@ -541,7 +545,7 @@ class OpTester {
       value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
                  DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
       auto node_arg = NodeArg(name, &type_proto.proto);
-      if (dim_params && !(dim_params->empty())) {
+      if (dim_params && !(dim_params->empty()) && add_shape_to_tensor_data_) {
         // If dim_params presents, configure node_arg's dim value based on dim_params, which supports symbolic dim and dim broadcast.
         auto& dim_params_data = *dim_params;
         onnx::TensorShapeProto new_shape;
@@ -562,9 +566,12 @@ class OpTester {
       }
       data.push_back(Data(std::move(node_arg), std::move(value), optional<float>(), optional<float>(), sort_output));
       if (is_initializer) initializer_index_.push_back(data.size() - 1);
-    } catch (const std::exception& ex) {
-      std::cerr << "AddData for '" << name << "' threw: " << ex.what();
-      throw;
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        std::cerr << "AddData for '" << name << "' threw: " << ex.what();
+      });
+      ORT_RETHROW;
     }
   }
 
@@ -616,16 +623,22 @@ class OpTester {
   std::vector<std::shared_ptr<CustomRegistry>> custom_session_registries_;
 
   bool verify_output_;
+
+  bool use_determinism_ = false;
 };
 
 template <typename TException>
 void ExpectThrow(OpTester& test, const std::string& error_msg) {
-  try {
+  ORT_TRY {
     test.Run();
     // should throw and not reach this
     EXPECT_TRUE(false) << "Expected Run() to throw";
-  } catch (TException ex) {
-    EXPECT_THAT(ex.what(), testing::HasSubstr(error_msg));
+  }
+  ORT_CATCH(TException ex) {
+    ORT_UNUSED_PARAMETER(error_msg);
+    ORT_HANDLE_EXCEPTION([&]() {
+      EXPECT_THAT(ex.what(), testing::HasSubstr(error_msg));
+    });
   }
 }
 

@@ -8,44 +8,30 @@
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
-class IdGenerator {
- public:
-  int Next() {
-    return id++;
-  }
-
- private:
-  int id = 0;
-};
-
 bool InsertCastTransformer::NeedInsertCast(const onnxruntime::Node* node, const onnxruntime::NodeArg* input) const {
-  //If the node's input is float16 and currently the node is not assigned to any XP.
-  //we need insert a cast to float, and put the node on CPU for default behavior.
-  //TODO: a better check is to check does the CPU kernel with float exist or not.
+  // If the node's input is float16 and currently the node is not assigned to any XP.
+  // we need insert a cast to float, and put the node on CPU for default behavior.
+  // TODO: a better check is to check does the CPU kernel with float exist or not.
   return input->Type() != nullptr &&
          DataTypeImpl::TypeFromProto(*input->TypeAsProto()) == DataTypeImpl::GetTensorType<MLFloat16>() &&
          node->GetExecutionProviderType().empty();
 }
 
 onnxruntime::NodeArg* AddCastNode(onnxruntime::Graph& graph,
-                                  IdGenerator& id_generator,
                                   onnxruntime::NodeArg* old_arg,
                                   TypeProto* new_type,
                                   bool new_on_input,
                                   int64_t to_type,
                                   onnxruntime::ProviderType providerType) {
-  //insert cast op to cast input
-  int id = id_generator.Next();
+  // insert cast op to cast input
+  std::string node_name = graph.GenerateNodeName("Inserted_Cast");
 
-  char str[32];
-  snprintf(str, 32, "CastDef_%d", id);
-
-  auto* new_arg = &graph.GetOrCreateNodeArg(str, new_type);
+  auto* new_arg = &graph.GetOrCreateNodeArg(node_name, new_type);
 
   std::vector<onnxruntime::NodeArg*> input_defs = {new_on_input ? new_arg : old_arg};
   std::vector<onnxruntime::NodeArg*> output_defs = {new_on_input ? old_arg : new_arg};
 
-  auto& cast_node = graph.AddNode(str, "Cast", "cast node to cast from float16 to float32 on cpu", input_defs, output_defs);
+  auto& cast_node = graph.AddNode(node_name, "Cast", "cast node to cast from float16 to float32 on cpu", input_defs, output_defs);
   cast_node.AddAttribute("to", to_type);
   cast_node.SetExecutionProviderType(providerType);
   return new_arg;
@@ -84,7 +70,7 @@ Status ForceSingleNodeCPUFloat16ToFloat32(onnxruntime::Graph& graph) {
   }
 
   for (auto& node : graph.Nodes()) {
-    if (IsSingleInputNodeFloat16Node(node)) {
+    if (node.OpType() != "Cast" && IsSingleInputNodeFloat16Node(node)) {
       node.SetExecutionProviderType("");
     }
   }
@@ -205,8 +191,8 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
   TypeProto float_tensor_proto;
   float_16_tensor_proto.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT16);
   float_tensor_proto.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-  IdGenerator id_generator;
   std::map<onnxruntime::NodeArg*, onnxruntime::NodeArg*> input_def_updates;
+
   for (onnxruntime::NodeIndex i : order) {
     auto node = graph.GetNode(i);
     if (!node)
@@ -221,9 +207,8 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
         if (input_def_updates.count(src_arg)) {
           replacement_defs[src_arg] = input_def_updates[src_arg];
         } else {
-          //insert cast op to cast input
+          // insert cast op to cast input
           auto dst_arg = AddCastNode(graph,
-                                     id_generator,
                                      src_arg,
                                      &float_tensor_proto,
                                      false,
@@ -237,24 +222,43 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
       }
     }
 
-    if (casted && node->GetExecutionProviderType().empty()) {
-      //set current node to CPU execution provider
+    if (casted) {
+      // Set current node to run on the CPU execution provider
+      // Keep in mind that the EP will be empty because NeedInsertCast() already insures that
       node->SetExecutionProviderType(kCpuExecutionProvider);
+
+      // Some ONNX operators have an attribute `dtype` which define the output type for these operators
+      // (mostly Generator ops like RandomNormal, RandomNormalLike, EyeLike, etc.).
+      // Update that so that `dtype` is now Float. Otherwise there could be a mis-match between the actual
+      // type of the NodeArg and the ONNX inferred type of the NodeArg and Graph Resolve() will complain.
+      auto& attributes = node->GetMutableAttributes();
+      auto dtype_attribute = attributes.find("dtype");
+
+      if (dtype_attribute != attributes.end()) {
+        // Simple sanity check
+        ORT_ENFORCE(dtype_attribute->second.has_i(),
+                    "InsertCastTransformer works on the assumption that `dtype` attribute holds an integer.");
+
+        // Modify the dtype attribute (which defines the output type) to FLOAT if it is FLOAT16.
+        if (dtype_attribute->second.i() == TensorProto_DataType_FLOAT16) {
+          dtype_attribute->second.set_i(TensorProto_DataType_FLOAT);
+        }
+      }
     }
 
     auto& outputs = node->MutableOutputDefs();
     for (auto output : outputs) {
-      // todo: check is the kernel available
-      // here is based on the assumption that if we cast a cpu op's input from float16 to float
-      // then this cpu op's output will become float.
-      // not sure is it always correct...
+      // TODO 1: Check if the kernel available
+      // TODO 2: There is an inherent assumption that if we cast a cpu op's input from float16 to float
+      // then this cpu op's output will be float (if it was inferred to be float16 previously).
+      // Not sure if this is always true. Handle any corner case if it does exist.
+
       if (output->Type() &&
           DataTypeImpl::TypeFromProto(*output->TypeAsProto()) == DataTypeImpl::GetTensorType<MLFloat16>() &&
           casted) {
-        //insert cast op to cast output back to float16
+        // insert cast op to cast output back to float16
         auto dst_arg = output;
         auto src_arg = AddCastNode(graph,
-                                   id_generator,
                                    dst_arg,
                                    &float_tensor_proto,
                                    true,
@@ -263,7 +267,7 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
         replacement_defs[dst_arg] = src_arg;
       }
     }
-
+  
     node->ReplaceDefs(replacement_defs);
     modified = modified || casted;
 

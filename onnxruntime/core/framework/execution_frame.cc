@@ -73,6 +73,13 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(int index, const TensorShap
   return status;
 }
 
+bool IExecutionFrame::TryGetInferredShape(int /*index*/, TensorShape& /*shape*/) const {
+  // By default, there is not information about inferred shape, so this default
+  // implementation always returns false. The derived class of IExecutionFrame
+  // can override this function to provide, for example, activations' shape information.
+  return false;
+}
+
 AllocatorPtr IExecutionFrame::GetAllocator(const OrtMemoryInfo& info) const {
   return GetAllocatorImpl(info);
 }
@@ -235,7 +242,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
 
     //if there are some traditional ml value type in inputs disable the memory pattern optimization.
     if (all_tensors) {
-      mem_patterns_ = session_state.GetMemoryPatternGroup(input_shapes, feed_mlvalue_idxs);
+      mem_patterns_ = session_state.GetMemoryPatternGroup(input_shapes, feed_mlvalue_idxs, inferred_shapes_);
       // if no existing patterns, generate one in this executionframe
       if (!mem_patterns_) {
         planner_ = onnxruntime::make_unique<OrtValuePatternPlanner>(*session_state.GetExecutionPlan());
@@ -253,16 +260,17 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
             // due to that we can still run and use those blocks (inside the arena logic) instead of one large one.
             // it's less efficient (the arena will add some overhead to coalesce individual allocations
             // back into blocks on 'free'), but better than failing completely.
-            try {
-              // static_activation_memory_in_bytes_ is max virtual memory size the planner computes 
+            ORT_TRY {
               auto peak_size = mem_patterns_->patterns[i].PeakSize();
               // Planning of one memory type should only happen once.
               ORT_ENFORCE(
-                static_activation_memory_sizes_in_byte_.find(location.name) ==
-                static_activation_memory_sizes_in_byte_.end(),
-                "Memory type ",
-                location.name,
-                " should only appear once.");
+                  static_activation_memory_sizes_in_byte_.find(location.name) ==
+                      static_activation_memory_sizes_in_byte_.end(),
+                  "Memory type ",
+                  location.name,
+                  " should only appear once.");
+              // static_activation_memory_in_bytes_ is max virtual memory size the planner computes.
+              // Memory dynamically allocated when executing kernels is not recorded using this field.
               static_activation_memory_sizes_in_byte_[location.name] = peak_size;
               buffer = alloc->Alloc(peak_size);
               // handle allocator that doesn't throw
@@ -271,10 +279,12 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
                 LOGS(session_state_.Logger(), INFO) << "Allocation of memory pattern buffer for "
                                                     << location.ToString() << " returned nullptr";
               }
-
-            } catch (const OnnxRuntimeException& ex) {
-              LOGS(session_state_.Logger(), INFO) << "Allocation of memory pattern buffer for "
-                                                  << location.ToString() << " failed. Error:" << ex.what();
+            }
+            ORT_CATCH(const OnnxRuntimeException& ex) {
+              ORT_HANDLE_EXCEPTION([&]() {
+                LOGS(session_state_.Logger(), INFO) << "Allocation of memory pattern buffer for "
+                                                    << location.ToString() << " failed. Error:" << ex.what();
+              });
             }
 
             if (buffer != nullptr) {
@@ -326,7 +336,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
 
   // Lazily get the allocator only if needed.
   AllocatorPtr alloc = nullptr;
-  
+
   // create fence if needed
   if (create_fence) {
     ORT_ENFORCE(ort_value.Fence() == nullptr);
@@ -387,7 +397,13 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     TraceAllocate(ort_value_index, size);
   }
 
-  dynamic_activation_memory_sizes_in_byte_[location.name] += size;
+  {
+    // This code block is not thread-safe.
+    // Dynamic activation size would be accessed by multiple threads
+    // if parallel executor is used.
+    std::unique_lock<std::mutex> lock(mtx_);
+    dynamic_activation_memory_sizes_in_byte_[location.name] += size;
+  }
 
   return Status::OK();
 }
@@ -462,6 +478,7 @@ static Status AllocateTensorSequence(OrtValue& ort_value) {
   return Status::OK();
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 static Status AllocateSparseTensor(MLValue& mlvalue, const DataTypeImpl& ml_type, AllocatorPtr allocator,
                                    const TensorShape& shape, size_t nnz, bool create_fence,
                                    const SessionState& session_state) {
@@ -479,6 +496,7 @@ static Status AllocateSparseTensor(MLValue& mlvalue, const DataTypeImpl& ml_type
 
   return Status::OK();
 }
+#endif
 
 // This method is not thread safe!
 Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_value_index, const TensorShape* shape,
@@ -552,8 +570,13 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
 
     return Status::OK();
   } else if (ml_type->IsSparseTensorType()) {
+#if !defined(ORT_MINIMAL_BUILD)
     return AllocateSparseTensor(ort_value, *ml_type, GetAllocator(alloc_info),
                                 *shape, nnz, per_alloc_plan.create_fence_if_async, session_state_);
+#else
+    // Model load should have failed so this should be unreachable
+    ORT_THROW("SparseTensor is not supported in this build.");
+#endif
   } else if (ml_type->IsTensorSequenceType()) {
     return AllocateTensorSequence(ort_value);
   } else {
@@ -630,6 +653,27 @@ Status ExecutionFrame::GeneratePatterns(MemoryPatternGroup* out) const {
   }
 
   return planner_->GeneratePatterns(out);
+}
+
+bool ExecutionFrame::TryGetInferredShape(int index, TensorShape& shape) const {
+  // NodeArg index to OrtValue index.
+  int ort_value_idx = GetNodeIdxToMLValueIdx(index);
+
+  // Check if index is valid.
+  if (ort_value_idx == NodeIndexInfo::kInvalidEntry) {
+    return false;
+  }
+
+  // Search for inferred shape.
+  // If inferred shape is found, it's assigned to "shape" so that caller can use it.
+  auto it = inferred_shapes_.find(ort_value_idx);
+  if (it != inferred_shapes_.end()) {
+    shape = it->second;
+    return true;
+  }
+
+  // Tell the caller if the search is successful or not.
+  return false;
 }
 
 }  // namespace onnxruntime
