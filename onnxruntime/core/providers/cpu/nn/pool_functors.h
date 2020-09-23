@@ -529,18 +529,10 @@ struct MaxPool1DTaskOpt {
   }
 
   void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
-#ifdef _OPENMP
-#pragma omp parallel for
-    for (int64_t c = begin; c < end; ++c) {
-      std::unique_ptr<T[]> que_ptr{new T[pool_size]};
-      operator()(c, que_ptr);
-    }//for
-#else
     std::unique_ptr<T[]> que_ptr{new T[pool_size]};
     for (int64_t c = begin; c < end; ++c) {
       operator()(c, que_ptr);
     }//for
-#endif
   }//operator
 
   void operator()(std::ptrdiff_t c, std::unique_ptr<T[]>& que_ptr) const {
@@ -576,20 +568,11 @@ struct MaxPool2DTaskOpt {
   }
 
   void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
-#ifdef _OPENMP
-#pragma omp parallel for
-    for (int64_t c = begin; c < end; ++c) {
-      std::unique_ptr<T[]> que_ptr{new T[std::max(pool_h, pool_w)]};
-      std::unique_ptr<T[]> y_temp{new T[x_h * y_w]};
-      operator()(c, que_ptr, y_temp);
-    }//for
-#else
     std::unique_ptr<T[]> que_ptr{new T[std::max(pool_h, pool_w)]};
     std::unique_ptr<T[]> y_temp{new T[x_h * y_w]};
     for (int64_t c = begin; c < end; ++c) {
       operator()(c, que_ptr, y_temp);
     }//for
-#endif
   }//operator
 
   void operator()(std::ptrdiff_t c, std::unique_ptr<T[]>& que_ptr, std::unique_ptr<T[]>& y_temp) const {
@@ -643,22 +626,12 @@ struct MaxPool3DTaskOpt {
   }
 
   void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
-#ifdef _OPENMP
-#pragma omp parallel for
-    for (int64_t c = begin; c < end; ++c) {
-      std::unique_ptr<T[]> que_ptr{new T[std::max(pool_h, std::max(pool_w, pool_d))]};
-      std::unique_ptr<T[]> y_temp_1{new T[x_h * x_w * y_d]};
-      std::unique_ptr<T[]> y_temp_2{new T[x_h * y_w * y_d]};
-      operator()(c, que_ptr, y_temp_1, y_temp_2);
-    }//for
-#else
     std::unique_ptr<T[]> que_ptr{new T[std::max(pool_h, std::max(pool_w, pool_d))]};
     std::unique_ptr<T[]> y_temp_1{new T[x_h * x_w * y_d]};
     std::unique_ptr<T[]> y_temp_2{new T[x_h * y_w * y_d]};
     for (int64_t c = begin; c < end; ++c) {
       operator()(c, que_ptr, y_temp_1, y_temp_2);
     }//for
-#endif
   }//operator
 
   void operator()(std::ptrdiff_t c,
