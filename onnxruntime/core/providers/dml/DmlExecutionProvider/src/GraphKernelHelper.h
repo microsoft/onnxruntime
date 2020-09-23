@@ -39,7 +39,7 @@ namespace GraphKernelHelper
         const onnxruntime::ConstPointerContainer<std::vector<onnxruntime::NodeArg*>>& fusedNodeInputDefs,
         const std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap);
 
-    std::vector<std::vector<std::byte>> PopulateInputBindings(
+    void ProcessInputData(
         Dml::IExecutionProvider* provider,
         IWinmlExecutionProvider* winmlProvider,
         const std::vector<uint8_t>& inputsConstant,
@@ -51,6 +51,7 @@ namespace GraphKernelHelper
         _Out_ std::vector<ComPtr<ID3D12Resource>>& initInputResources,
         _Out_ std::vector<ComPtr<ID3D12Resource>>& nonOwnedGraphInputsFromInitializers,
         _Out_ std::vector<ComPtr<ID3D12Resource>>& initializeResourceRefs,
+        _Out_opt_ std::vector<std::vector<std::byte>>* inputRawData,
         _Inout_ std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap);
 
     void ConvertGraphDesc(
