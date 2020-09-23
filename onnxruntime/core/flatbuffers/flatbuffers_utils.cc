@@ -6,13 +6,13 @@
 #include <core/graph/graph.h>
 #include "core/framework/tensorprotoutils.h"
 
-namespace onnxruntime {
-namespace experimental {
-namespace utils {
-
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 using namespace ::onnxruntime::experimental;
+
+namespace onnxruntime {
+namespace experimental {
+namespace utils {
 
 bool IsOrtFormatModelBytes(const void* bytes, int num_bytes) {
   return num_bytes > 8 &&  // check buffer is large enough to contain identifier so we don't read random memory
@@ -155,6 +155,44 @@ Status SaveValueInfoOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   return Status::OK();
 }
 
+Status SaveInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
+                                const TensorProto& initializer,
+                                flatbuffers::Offset<fbs::Tensor>& fbs_tensor) {
+  auto name = builder.CreateString(initializer.name());
+  auto doc_string = builder.CreateString(initializer.doc_string());
+  std::vector<int64_t> dims_data(initializer.dims().size());
+  std::copy(initializer.dims().cbegin(), initializer.dims().cend(), dims_data.begin());
+  auto dims = builder.CreateVector(dims_data);
+  flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>> string_data;
+  flatbuffers::Offset<flatbuffers::Vector<uint8_t>> raw_data;
+
+  auto src_type = initializer.data_type();
+  bool has_string_data = src_type == ONNX_NAMESPACE::TensorProto_DataType_STRING;
+  if (has_string_data) {
+    std::vector<std::string> string_data_vec(initializer.string_data().size());
+    std::copy(initializer.string_data().cbegin(), initializer.string_data().cend(), string_data_vec.begin());
+    string_data = builder.CreateVectorOfStrings(string_data_vec);
+  } else {
+    std::unique_ptr<uint8_t[]> unpacked_tensor;
+    size_t tensor_byte_size = 0;
+    ORT_RETURN_IF_ERROR(
+        onnxruntime::utils::UnpackInitializerData(initializer, unpacked_tensor, tensor_byte_size));
+    raw_data = builder.CreateVector(unpacked_tensor.get(), tensor_byte_size);
+  }
+
+  fbs::TensorBuilder tb(builder);
+  tb.add_name(name);
+  tb.add_doc_string(doc_string);
+  tb.add_dims(dims);
+  tb.add_data_type(static_cast<fbs::TensorDataType>(src_type));
+  if (has_string_data)
+    tb.add_string_data(string_data);
+  else
+    tb.add_raw_data(raw_data);
+  fbs_tensor = tb.Finish();
+  return Status::OK();
+}
+
 #define GET_FBS_ATTR(BUILDER, TYPE, DATA_NAME, DATA) \
   fbs::AttributeBuilder attr_builder(BUILDER);       \
   attr_builder.add_name(name);                       \
@@ -235,44 +273,6 @@ Status SaveAttributeOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 
 #undef GET_FBS_ATTR
 #undef GET_DATA_VEC
-
-Status SaveInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
-                                const TensorProto& initializer,
-                                flatbuffers::Offset<fbs::Tensor>& fbs_tensor) {
-  auto name = builder.CreateString(initializer.name());
-  auto doc_string = builder.CreateString(initializer.doc_string());
-  std::vector<int64_t> dims_data(initializer.dims().size());
-  std::copy(initializer.dims().cbegin(), initializer.dims().cend(), dims_data.begin());
-  auto dims = builder.CreateVector(dims_data);
-  flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>> string_data;
-  flatbuffers::Offset<flatbuffers::Vector<uint8_t>> raw_data;
-
-  auto src_type = initializer.data_type();
-  bool has_string_data = src_type == ONNX_NAMESPACE::TensorProto_DataType_STRING;
-  if (has_string_data) {
-    std::vector<std::string> string_data_vec(initializer.string_data().size());
-    std::copy(initializer.string_data().cbegin(), initializer.string_data().cend(), string_data_vec.begin());
-    string_data = builder.CreateVectorOfStrings(string_data_vec);
-  } else {
-    std::unique_ptr<uint8_t[]> unpacked_tensor;
-    size_t tensor_byte_size = 0;
-    ORT_RETURN_IF_ERROR(
-        onnxruntime::utils::UnpackInitializerData(initializer, unpacked_tensor, tensor_byte_size));
-    raw_data = builder.CreateVector(unpacked_tensor.get(), tensor_byte_size);
-  }
-
-  fbs::TensorBuilder tb(builder);
-  tb.add_name(name);
-  tb.add_doc_string(doc_string);
-  tb.add_dims(dims);
-  tb.add_data_type(static_cast<fbs::TensorDataType>(src_type));
-  if (has_string_data)
-    tb.add_string_data(string_data);
-  else
-    tb.add_raw_data(raw_data);
-  fbs_tensor = tb.Finish();
-  return Status::OK();
-}
 
 #endif  // #if !defined(ORT_MINIMAL_BUILD)
 

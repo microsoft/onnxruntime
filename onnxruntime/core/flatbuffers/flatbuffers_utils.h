@@ -37,6 +37,10 @@ onnxruntime::common::Status SaveValueInfoOrtFormat(
     flatbuffers::FlatBufferBuilder& builder, const ONNX_NAMESPACE::ValueInfoProto& value_info_proto,
     flatbuffers::Offset<fbs::ValueInfo>& fbs_value_info) ORT_MUST_USE_RESULT;
 
+onnxruntime::common::Status SaveInitializerOrtFormat(
+    flatbuffers::FlatBufferBuilder& builder, const ONNX_NAMESPACE::TensorProto& initializer,
+    flatbuffers::Offset<fbs::Tensor>& fbs_tensor) ORT_MUST_USE_RESULT;
+
 // Convert a given AttributeProto into fbs::Attribute
 // Note, we current do not support graphs, and sparse_tensor(s)
 //       If the attribute type is a graph, we need to use the supplied graph,
@@ -44,10 +48,6 @@ onnxruntime::common::Status SaveValueInfoOrtFormat(
 onnxruntime::common::Status SaveAttributeOrtFormat(
     flatbuffers::FlatBufferBuilder& builder, const ONNX_NAMESPACE::AttributeProto& attr_proto,
     flatbuffers::Offset<fbs::Attribute>& fbs_attr, const onnxruntime::Graph* graph) ORT_MUST_USE_RESULT;
-
-onnxruntime::common::Status SaveInitializerOrtFormat(
-    flatbuffers::FlatBufferBuilder& builder, const ONNX_NAMESPACE::TensorProto& initializer,
-    flatbuffers::Offset<fbs::Tensor>& fbs_tensor) ORT_MUST_USE_RESULT;
 
 #if defined(ENABLE_ORT_FORMAT_LOAD)
 
@@ -70,6 +70,7 @@ onnxruntime::common::Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_att
 
 #endif
 
+// check if filename ends in .ort
 template <typename T>
 bool IsOrtFormatModel(const std::basic_string<T>& filename) {
   auto len = filename.size();
@@ -80,6 +81,7 @@ bool IsOrtFormatModel(const std::basic_string<T>& filename) {
          std::tolower(filename[len - 1]) == 't';
 }
 
+// check if bytes has the flatbuffer ORT identifier
 bool IsOrtFormatModelBytes(const void* bytes, int num_bytes);
 
 }  // namespace utils
