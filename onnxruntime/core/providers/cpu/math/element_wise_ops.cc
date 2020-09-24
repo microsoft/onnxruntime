@@ -3,6 +3,7 @@
 
 #include "core/framework/data_types_internal.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
+#include "core/providers/cpu/tensor/utils.h"
 #include <unsupported/Eigen/SpecialFunctions>
 #include "core/util/math.h"
 #include "core/mlas/inc/mlas.h"
@@ -18,7 +19,6 @@ void Exp<float>::operator()(std::ptrdiff_t first, std::ptrdiff_t last) const {
   MlasComputeExp(input + first, output_ptr, static_cast<size_t>(len));
 }
 }  // namespace functors
-
 
 #define REG_ELEMENTWISE_TYPED_KERNEL(OP_TYPE, VERSION, TYPE, KERNEL_CLASS)         \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                  \
@@ -216,118 +216,151 @@ ONNX_CPU_OPERATOR_KERNEL(
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
     Xor);
 
+using AllocateTensorFunc = std::unique_ptr<Tensor> (*)(const TensorAllocator& tensor_allocator,
+                                                       const TensorShape& shape);
+
+static void UntypedBroadcastVariadic(int input_count, OpKernelContext& context,
+                                     AllocateTensorFunc allocate_tensor,
+                                     const ProcessBroadcastSpanFuncs& funcs);
+
 template <typename T>
 Status Add<T>::Compute(OpKernelContext* context) const {
-  return BroadcastTwo<T, T>(
-      *context,
-      [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) { output = input0 + input1.array(); },
-      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1) { output = input0.array() + input1; },
-      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0 + input1; },
-      1.0f);
+  // BroadcastHelper received as argument may differ from 'helper' when parallelizing within a span
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<T>() = per_iter_bh.ScalarInput0<T>() + per_iter_bh.EigenInput1<T>().array();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>().array() + per_iter_bh.ScalarInput1<T>();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>() + per_iter_bh.EigenInput1<T>();
+      }};
+
+  UntypedBroadcastTwo(*context, funcs, 1.0f);
+  return Status::OK();
 }
 
 template <typename T>
 Status Sub<T>::Compute(OpKernelContext* context) const {
-  return BroadcastTwo<T, T>(
-      *context,
-      [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) { output = input0 - input1.array(); },
-      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1) { output = input0.array() - input1; },
-      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0 - input1; },
-      1.0f);
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<T>() = per_iter_bh.ScalarInput0<T>() - per_iter_bh.EigenInput1<T>().array();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>().array() - per_iter_bh.ScalarInput1<T>();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>() - per_iter_bh.EigenInput1<T>();
+      }};
+
+  UntypedBroadcastTwo(*context, funcs, 1.0);
+  return Status::OK();
 }
 
 template <typename T>
 Status Mul<T>::Compute(OpKernelContext* context) const {
-  return BroadcastTwo<T, T>(
-      *context,
-      [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) { output = input0 * input1.array(); },
-      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1) { output = input0.array() * input1; },
-      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0.cwiseProduct(input1); },
-      1.0f);
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<T>() = per_iter_bh.ScalarInput0<T>() * per_iter_bh.EigenInput1<T>().array();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>().array() * per_iter_bh.ScalarInput1<T>();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>().cwiseProduct(per_iter_bh.EigenInput1<T>());
+      }};
+
+  UntypedBroadcastTwo(*context, funcs, 1.0);
+  return Status::OK();
 }
 
 template <typename T>
 Status Div<T>::Compute(OpKernelContext* context) const {
-  return BroadcastTwo<T, T>(
-      *context,
-      [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) { output = input0 / input1.array(); },
-      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1) { output = input0.array() / input1; },
-      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0.cwiseQuotient(input1); },
-      1.0f);
-}
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<T>() = per_iter_bh.ScalarInput0<T>() / per_iter_bh.EigenInput1<T>().array();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>().array() / per_iter_bh.ScalarInput1<T>();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>().cwiseQuotient(per_iter_bh.EigenInput1<T>());
+      }};
 
+  UntypedBroadcastTwo(*context, funcs, 1.0);
+  return Status::OK();
+}
 
 namespace pow_internal {
 
 template <typename T, typename E>
-void PowImpl(OpKernelContext* context, const Tensor& X, const Tensor& Y) {
-  TBroadcaster<T, E> bc{X, Y};
-  Tensor* const output_tensor = context->Output(0, bc.GetOutputShape());
-  TBroadcastOutput<T> output{bc.GetSpanSize(), *output_tensor};
+void PowImpl(OpKernelContext& context) {
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        const T X = per_iter_bh.ScalarInput0<T>();
+        auto Y = per_iter_bh.SpanInput1<E>();
+        auto output = per_iter_bh.OutputSpan<T>();
 
-  // Scalar base
-  auto input0scalar = [](gsl::span<T> output, T X, gsl::span<const E> Y) {
-    std::transform(Y.cbegin(), Y.cend(), output.begin(),
-                   [X](E y) {
-                     return static_cast<T>(std::pow(X, y));
-                   });
-  };
-
-  // Scalar exponent switch to possibly available optimizations
-  std::function<void(gsl::span<T>, gsl::span<const T> X, E Y)> input1scalar =
-      [](gsl::span<T> output, gsl::span<const T> X, E Y) {
-        std::transform(X.cbegin(), X.cend(), output.begin(),
-                       [Y](T x) {
-                         return static_cast<T>(std::pow(x, Y));
+        std::transform(Y.cbegin(), Y.cend(), output.begin(),
+                       [X](E y) {
+                         return static_cast<T>(std::pow(X, y));
                        });
-      };
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        auto X = per_iter_bh.SpanInput0<T>();
+        const E Y = per_iter_bh.ScalarInput1<E>();
+        auto output = per_iter_bh.OutputSpan<T>();
 
-  if (Y.Shape().Size() == 1) {
-    auto exp = *Y.template Data<E>();
-    if (exp == E{2}) {
-      input1scalar = [](gsl::span<T> output, gsl::span<const T> X, E) {
-        std::transform(X.cbegin(), X.cend(), output.begin(),
-                       [](T x) {
-                         return static_cast<T>(x * x);
+        // optimize for X^2 and X^3
+        if (Y == 2) {
+          std::transform(X.cbegin(), X.cend(), output.begin(),
+                         [](T x) {
+                           return static_cast<T>(x * x);
+                         });
+
+        } else if (Y == 3) {
+          std::transform(X.cbegin(), X.cend(), output.begin(),
+                         [](T x) {
+                           return static_cast<T>(x * x * x);
+                         });
+        } else {
+          std::transform(X.cbegin(), X.cend(), output.begin(),
+                         [Y](T x) {
+                           return static_cast<T>(std::pow(x, Y));
+                         });
+        }
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        auto X = per_iter_bh.SpanInput0<T>();
+        auto Y = per_iter_bh.SpanInput1<E>();
+        auto output = per_iter_bh.OutputSpan<T>();
+
+        std::transform(X.cbegin(), X.cend(), Y.cbegin(), output.begin(),
+                       [](T x, E y) {
+                         return static_cast<T>(std::pow(x, y));
                        });
-      };
-    } else if (exp == E{3}) {
-      input1scalar = [](gsl::span<T> output, gsl::span<const T> X, E) {
-        std::transform(X.cbegin(), X.cend(), output.begin(),
-                       [](T x) {
-                         return static_cast<T>(x * x * x);
-                       });
-      };
-    }
-  }
+      }};
 
-  auto general = [](gsl::span<T> output, gsl::span<const T> X, gsl::span<const E> Y) {
-    std::transform(
-        X.cbegin(), X.cend(), Y.cbegin(), output.begin(),
-        [](T x, E y) {
-          return static_cast<T>(std::pow(x, y));
-        });
-  };
-
-  BroadcastLoopSpan(bc, output, input0scalar, input1scalar, general);
+  UntypedBroadcastTwo(context, funcs, 1.0);
 }
 
 template <typename B>
-Status DispatchOnBase(OpKernelContext* context, const Tensor& X, const Tensor& Y) {
+Status DispatchOnBase(OpKernelContext& context, const Tensor& Y) {
   namespace on = ONNX_NAMESPACE;
   Status s;
   switch (Y.GetElementType()) {
     case on::TensorProto_DataType_INT32:
-      PowImpl<B, int32_t>(context, X, Y);
+      PowImpl<B, int32_t>(context);
       break;
     case on::TensorProto_DataType_INT64:
-      PowImpl<B, int64_t>(context, X, Y);
+      PowImpl<B, int64_t>(context);
       break;
     case on::TensorProto_DataType_FLOAT:
-      PowImpl<B, float>(context, X, Y);
+      PowImpl<B, float>(context);
       break;
     case on::TensorProto_DataType_DOUBLE:
-      PowImpl<B, double>(context, X, Y);
+      PowImpl<B, double>(context);
       break;
     default:
       s = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported Y type: ",
@@ -350,16 +383,16 @@ Pow::Compute(OpKernelContext* context) const {
   // Switch on base type first
   switch (X.GetElementType()) {
     case on::TensorProto_DataType_INT32:
-      s = DispatchOnBase<int32_t>(context, X, Y);
+      s = DispatchOnBase<int32_t>(*context, Y);
       break;
     case on::TensorProto_DataType_INT64:
-      s = DispatchOnBase<int64_t>(context, X, Y);
+      s = DispatchOnBase<int64_t>(*context, Y);
       break;
     case on::TensorProto_DataType_FLOAT:
-      s = DispatchOnBase<float>(context, X, Y);
+      s = DispatchOnBase<float>(*context, Y);
       break;
     case on::TensorProto_DataType_DOUBLE:
-      s = DispatchOnBase<double>(context, X, Y);
+      s = DispatchOnBase<double>(*context, Y);
       break;
     default:
       s = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported X type: ",
@@ -395,11 +428,28 @@ Status Sum_6<float>::Compute(OpKernelContext* ctx) const {
 
 template <>
 Status Sum_8<float>::Compute(OpKernelContext* context) const {
-  return BroadcastVariadic<float, float>(
-      Node(), *context,
-      [](EigenVectorMap<float> output, float input0, ConstEigenVectorMap<float> input1) { output = input0 + input1.array(); },
-      [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, float input1) { output = input0.array() + input1; },
-      [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, ConstEigenVectorMap<float> input1) { output = input0 + input1; });
+  const auto typed_allocator = [](const TensorAllocator& tensor_allocator, const TensorShape& shape) {
+    return tensor_allocator.Allocate<float>(shape);
+  };
+
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<float>() =
+            per_iter_bh.ScalarInput0<float>() + per_iter_bh.EigenInput1<float>().array();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<float>() =
+            per_iter_bh.EigenInput0<float>().array() + per_iter_bh.ScalarInput1<float>();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<float>() =
+            per_iter_bh.EigenInput0<float>() + per_iter_bh.EigenInput1<float>();
+      }};
+
+  int input_count = Node().InputArgCount().front();
+  UntypedBroadcastVariadic(input_count, *context, typed_allocator, funcs);
+
+  return Status::OK();
 }
 
 template <>
@@ -422,19 +472,36 @@ Status Min_6<float>::Compute(OpKernelContext* ctx) const {
 
 template <typename T>
 struct Min_8::ComputeImpl {
-  Status operator()(const Min_8* inst, OpKernelContext* context) const {
-    return BroadcastVariadic<T, T>(
-        inst->Node(), *context,
-        [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) { output = input1.array().min(input0); },
-        [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1) { output = input0.array().min(input1); },
-        [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0.array().min(input1.array()); });
+  Status operator()(const Min_8& inst, OpKernelContext* context) const {
+    const auto typed_allocator = [](const TensorAllocator& tensor_allocator, const TensorShape& shape) {
+      return tensor_allocator.Allocate<T>(shape);
+    };
+
+    ProcessBroadcastSpanFuncs funcs{
+        [](BroadcastHelper& per_iter_bh) {
+          per_iter_bh.OutputEigen<T>() =
+              per_iter_bh.EigenInput1<T>().array().min(per_iter_bh.ScalarInput0<T>());
+        },
+        [](BroadcastHelper& per_iter_bh) {
+          per_iter_bh.OutputEigen<T>() =
+              per_iter_bh.EigenInput0<T>().array().min(per_iter_bh.ScalarInput1<T>());
+        },
+        [](BroadcastHelper& per_iter_bh) {
+          per_iter_bh.OutputEigen<T>() =
+              per_iter_bh.EigenInput0<T>().array().min(per_iter_bh.EigenInput1<T>().array());
+        }};
+
+    int input_count = inst.Node().InputArgCount().front();
+    UntypedBroadcastVariadic(input_count, *context, typed_allocator, funcs);
+
+    return Status::OK();
   }
 };
 
 Status Min_8::Compute(OpKernelContext* context) const {
   utils::MLTypeCallDispatcherRet<Status, ComputeImpl, float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t>
       t_disp(context->Input<Tensor>(0)->GetElementType());
-  return t_disp.Invoke(this, context);
+  return t_disp.Invoke(*this, context);
 }
 
 template <>
@@ -457,19 +524,36 @@ Status Max_6<float>::Compute(OpKernelContext* ctx) const {
 
 template <typename T>
 struct Max_8::ComputeImpl {
-  Status operator()(const Max_8* inst, OpKernelContext* context) const {
-    return BroadcastVariadic<T, T>(
-        inst->Node(), *context,
-        [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) { output = input1.array().max(input0); },
-        [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1) { output = input0.array().max(input1); },
-        [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0.array().max(input1.array()); });
+  Status operator()(const Max_8& inst, OpKernelContext* context) const {
+    const auto typed_allocator = [](const TensorAllocator& tensor_allocator, const TensorShape& shape) {
+      return tensor_allocator.Allocate<T>(shape);
+    };
+
+    ProcessBroadcastSpanFuncs funcs{
+        [](BroadcastHelper& per_iter_bh) {
+          per_iter_bh.OutputEigen<T>() =
+              per_iter_bh.EigenInput1<T>().array().max(per_iter_bh.ScalarInput0<T>());
+        },
+        [](BroadcastHelper& per_iter_bh) {
+          per_iter_bh.OutputEigen<T>() =
+              per_iter_bh.EigenInput0<T>().array().max(per_iter_bh.ScalarInput1<T>());
+        },
+        [](BroadcastHelper& per_iter_bh) {
+          per_iter_bh.OutputEigen<T>() =
+              per_iter_bh.EigenInput0<T>().array().max(per_iter_bh.EigenInput1<T>().array());
+        }};
+
+    int input_count = inst.Node().InputArgCount().front();
+    UntypedBroadcastVariadic(input_count, *context, typed_allocator, funcs);
+
+    return Status::OK();
   }
 };
 
 Status Max_8::Compute(OpKernelContext* context) const {
   utils::MLTypeCallDispatcherRet<Status, ComputeImpl, float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t>
       t_disp(context->Input<Tensor>(0)->GetElementType());
-  return t_disp.Invoke(this, context);
+  return t_disp.Invoke(*this, context);
 }
 
 Status Not::Compute(OpKernelContext* context) const {
@@ -482,92 +566,141 @@ Status Not::Compute(OpKernelContext* context) const {
 
 Status And::Compute(OpKernelContext* context) const {
   // The scalar cases are special cased, since 'X && true = X' and 'X && false = false'
-  return BroadcastTwo<bool, bool>(
-      *context,
-      [](EigenVectorMap<bool> output, bool input0, ConstEigenVectorMap<bool> input1) {
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        bool input0 = per_iter_bh.ScalarInput0<bool>();
+        auto output = per_iter_bh.OutputEigen<bool>();
         if (input0)
-          output = input1;
+          output = per_iter_bh.EigenInput1<bool>();
         else
           output.array() = false;
       },
-      [](EigenVectorMap<bool> output, ConstEigenVectorMap<bool> input0, bool input1) {
+      [](BroadcastHelper& per_iter_bh) {
+        bool input1 = per_iter_bh.ScalarInput1<bool>();
+        auto output = per_iter_bh.OutputEigen<bool>();
         if (input1)
-          output = input0;
+          output = per_iter_bh.EigenInput0<bool>();
         else
           output.array() = false;
       },
-      [](EigenVectorMap<bool> output, ConstEigenVectorMap<bool> input0, ConstEigenVectorMap<bool> input1) { output = input0.array() && input1.array(); },
-      1.0f);
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<bool>() =
+            per_iter_bh.EigenInput0<bool>().array() && per_iter_bh.EigenInput1<bool>().array();
+      }};
+
+  UntypedBroadcastTwo(*context, funcs, 1.0);
+  return Status::OK();
 }
 
 Status Or::Compute(OpKernelContext* context) const {
   // The scalar cases are special cased, since 'X || true = true' and 'X || false = X'
-  return BroadcastTwo<bool, bool>(
-      *context,
-      [](EigenVectorMap<bool> output, bool input0, ConstEigenVectorMap<bool> input1) {
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        bool input0 = per_iter_bh.ScalarInput0<bool>();
+        auto output = per_iter_bh.OutputEigen<bool>();
         if (input0)
           output.array() = true;
         else
-          output = input1;
+          output = per_iter_bh.EigenInput1<bool>();
       },
-      [](EigenVectorMap<bool> output, ConstEigenVectorMap<bool> input0, bool input1) {
+      [](BroadcastHelper& per_iter_bh) {
+        bool input1 = per_iter_bh.ScalarInput1<bool>();
+        auto output = per_iter_bh.OutputEigen<bool>();
         if (input1)
           output.array() = true;
         else
-          output = input0;
+          output = per_iter_bh.EigenInput0<bool>().array();
       },
-      [](EigenVectorMap<bool> output, ConstEigenVectorMap<bool> input0, ConstEigenVectorMap<bool> input1) { output = input0.array() || input1.array(); },
-      1.0f);
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<bool>() =
+            per_iter_bh.EigenInput0<bool>().array() || per_iter_bh.EigenInput1<bool>().array();
+      }};
+
+  UntypedBroadcastTwo(*context, funcs, 1.0);
+  return Status::OK();
 }
 
 Status Xor::Compute(OpKernelContext* context) const {
   // The scalar cases are special cased, since 'X ^ true = !X' and 'X ^ false = X'
-  return BroadcastTwo<bool, bool>(
-      *context,
-      [](EigenVectorMap<bool> output, bool input0, ConstEigenVectorMap<bool> input1) {
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        bool input0 = per_iter_bh.ScalarInput0<bool>();
+        auto input1 = per_iter_bh.EigenInput0<bool>();
+        auto output = per_iter_bh.OutputEigen<bool>();
         if (input0)
           output.array() = !input1.array();
         else
           output = input1;
       },
-      [](EigenVectorMap<bool> output, ConstEigenVectorMap<bool> input0, bool input1) {
+      [](BroadcastHelper& per_iter_bh) {
+        auto input0 = per_iter_bh.EigenInput0<bool>();
+        bool input1 = per_iter_bh.ScalarInput1<bool>();
+        auto output = per_iter_bh.OutputEigen<bool>();
         if (input1)
           output.array() = !input0.array();
         else
           output = input0;
       },
-      [](EigenVectorMap<bool> output, ConstEigenVectorMap<bool> input0, ConstEigenVectorMap<bool> input1) { output = input0.array() ^ input1.array(); },
-      1.0f);
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<bool>() =
+            per_iter_bh.EigenInput0<bool>().array() ^ per_iter_bh.EigenInput1<bool>().array();
+      }};
+
+  UntypedBroadcastTwo(*context, funcs, 1.0);
+  return Status::OK();
 }
 
 template <typename T>
 Status Equal<T>::Compute(OpKernelContext* context) const {
-  return BroadcastTwo<T, bool>(
-      *context,
-      [](EigenVectorMap<bool> output, T input0, ConstEigenVectorMap<T> input1) { output = input1.array() == input0; },
-      [](EigenVectorMap<bool> output, ConstEigenVectorMap<T> input0, T input1) { output = input0.array() == input1; },
-      [](EigenVectorMap<bool> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0.array() == input1.array(); },
-      1.0f);
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<bool>() = per_iter_bh.ScalarInput0<T>() == per_iter_bh.EigenInput1<T>().array();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<bool>() = per_iter_bh.EigenInput0<T>().array() == per_iter_bh.ScalarInput1<T>();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<bool>() =
+            per_iter_bh.EigenInput0<T>().array() == per_iter_bh.EigenInput1<T>().array();
+      }};
+
+  UntypedBroadcastTwo(*context, funcs, 1.0);
+  return Status::OK();
 }
 
 template <typename T>
 Status Less<T>::Compute(OpKernelContext* context) const {
-  return BroadcastTwo<T, bool>(
-      *context,
-      [](EigenVectorMap<bool> output, T input0, ConstEigenVectorMap<T> input1) { output = input1.array() > input0; },
-      [](EigenVectorMap<bool> output, ConstEigenVectorMap<T> input0, T input1) { output = input0.array() < input1; },
-      [](EigenVectorMap<bool> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0.array() < input1.array(); },
-      1.0f);
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<bool>() = per_iter_bh.EigenInput1<T>().array() > per_iter_bh.ScalarInput0<T>();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<bool>() = per_iter_bh.EigenInput0<T>().array() < per_iter_bh.ScalarInput1<T>();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<bool>() = per_iter_bh.EigenInput0<T>().array() < per_iter_bh.EigenInput1<T>().array();
+      }};
+
+  UntypedBroadcastTwo(*context, funcs, 1.0);
+  return Status::OK();
 }
 
 template <typename T>
 Status Greater<T>::Compute(OpKernelContext* context) const {
-  return BroadcastTwo<T, bool>(
-      *context,
-      [](EigenVectorMap<bool> output, T input0, ConstEigenVectorMap<T> input1) { output = input1.array() < input0; },
-      [](EigenVectorMap<bool> output, ConstEigenVectorMap<T> input0, T input1) { output = input0.array() > input1; },
-      [](EigenVectorMap<bool> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0.array() > input1.array(); },
-      1.0f);
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<bool>() = per_iter_bh.EigenInput1<T>().array() < per_iter_bh.ScalarInput0<T>();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<bool>() = per_iter_bh.EigenInput0<T>().array() > per_iter_bh.ScalarInput1<T>();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<bool>() =
+            per_iter_bh.EigenInput0<T>().array() > per_iter_bh.EigenInput1<T>().array();
+      }};
+
+  UntypedBroadcastTwo(*context, funcs, 1.0);
+  return Status::OK();
 }
 
 template <>
@@ -601,17 +734,31 @@ Status Mean_6<float>::Compute(OpKernelContext* ctx) const {
 
 template <>
 Status Mean_8<float>::Compute(OpKernelContext* context) const {
+  const auto typed_allocator = [](const TensorAllocator& tensor_allocator, const TensorShape& shape) {
+    return tensor_allocator.Allocate<float>(shape);
+  };
+
   // Do a sum exactly the same as in Sum_8
-  Status status = BroadcastVariadic<float, float>(
-      Node(), *context,
-      [](EigenVectorMap<float> output, float input0, ConstEigenVectorMap<float> input1) { output = input0 + input1.array(); },
-      [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, float input1) { output = input0.array() + input1; },
-      [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, ConstEigenVectorMap<float> input1) { output = input0 + input1; });
-  if (!status.IsOK())
-    return status;
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<float>() =
+            per_iter_bh.ScalarInput0<float>() + per_iter_bh.EigenInput1<float>().array();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<float>() =
+            per_iter_bh.EigenInput0<float>().array() + per_iter_bh.ScalarInput1<float>();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<float>() =
+            per_iter_bh.EigenInput0<float>() + per_iter_bh.EigenInput1<float>();
+      }};
+
+  int input_count = Node().InputArgCount().front();
+  UntypedBroadcastVariadic(input_count, *context, typed_allocator, funcs);
 
   // Now divide by the input count to get the mean
-  EigenMap<float>(*context->Output<Tensor>(0)) *= 1.0f / static_cast<float>(Node().InputArgCount().front());
+  EigenMap<float>(*context->Output<Tensor>(0)) *= 1.0f / static_cast<float>(input_count);
+
   return Status::OK();
 }
 
@@ -631,11 +778,14 @@ BitShift<T>::BitShift(const OpKernelInfo& info) : OpKernel(info) {
 
 template <typename T>
 Status BitShift<T>::Compute(OpKernelContext* context) const {
-  return BroadcastTwo<T, T>(
-      *context,
-      [this](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) {
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        bool shift_left = per_iter_bh.GetUserData();
+        const T& input0 = per_iter_bh.ScalarInput0<T>();
+        auto input1 = per_iter_bh.EigenInput1<T>();
+        auto output = per_iter_bh.OutputEigen<T>();
         int64_t i = 0;
-        if (shift_left_) {
+        if (shift_left) {
           for (const auto& input : input1.array()) {
             output[i++] = input0 << input;
           }
@@ -645,9 +795,13 @@ Status BitShift<T>::Compute(OpKernelContext* context) const {
           }
         }
       },
-      [this](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1) {
+      [](BroadcastHelper& per_iter_bh) {
+        bool shift_left = per_iter_bh.GetUserData();
+        auto input0 = per_iter_bh.EigenInput0<T>();
+        const T& input1 = per_iter_bh.ScalarInput1<T>();
+        auto output = per_iter_bh.OutputEigen<T>();
         int64_t i = 0;
-        if (shift_left_) {
+        if (shift_left) {
           for (const auto& input : input0.array()) {
             output[i++] = input << input1;
           }
@@ -657,11 +811,16 @@ Status BitShift<T>::Compute(OpKernelContext* context) const {
           }
         }
       },
-      [this](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) {
+      [](BroadcastHelper& per_iter_bh) {
+        bool shift_left = per_iter_bh.GetUserData();
+        auto input0 = per_iter_bh.EigenInput0<T>();
+        auto input1 = per_iter_bh.EigenInput1<T>();
+        auto output = per_iter_bh.OutputEigen<T>();
+
         auto cur0 = input0.begin(), end0 = input0.end();
         auto cur1 = input1.begin(), end1 = input1.end();
         auto cur_out = output.begin(), end_out = output.end();
-        if (shift_left_) {
+        if (shift_left) {
           for (; cur0 != end0; ++cur0, ++cur1, ++cur_out) {
             *cur_out = *cur0 << *cur1;
           }
@@ -673,8 +832,15 @@ Status BitShift<T>::Compute(OpKernelContext* context) const {
 
         ORT_ENFORCE(cur1 == end1);
         ORT_ENFORCE(cur_out == end_out);
-      },
-      1.0f);
+      }};
+
+  // set void* to value of bool (doesn't need to be address of) so it can be passed through to the lambdas via
+  // BroadcastHelper::GetUserData. This is required as we use raw function pointers for the functors to reduce
+  // the binary size, and doing so prevents using any captures in the lambdas.
+  void* user_data = reinterpret_cast<void*>(shift_left_);
+
+  UntypedBroadcastTwo(*context, funcs, 1.0, user_data);
+  return Status::OK();
 }
 
 template <typename T>
@@ -943,21 +1109,27 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 template <>
 Status PRelu<float>::Compute(OpKernelContext* context) const {
-  return BroadcastTwo<float, float>(
-      *context,
-      [](EigenVectorMap<float> output, float input0, ConstEigenVectorMap<float> input1) {
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        float input0 = per_iter_bh.ScalarInput0<float>();
         if (input0 > 0)
-          output.array() = input0;
+          per_iter_bh.OutputEigen<float>().array() = input0;
         else
-          output = input0 * input1.array();
+          per_iter_bh.OutputEigen<float>() = input0 * per_iter_bh.EigenInput1<float>().array();
       },
-      [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, float input1) {
-        output = (input0.array() > 0).select(input0, input0 * input1);
+      [](BroadcastHelper& per_iter_bh) {
+        auto input0 = per_iter_bh.EigenInput0<float>();
+        float input1 = per_iter_bh.ScalarInput1<float>();
+        per_iter_bh.OutputEigen<float>() = (input0.array() > 0).select(input0, input0 * input1);
       },
-      [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, ConstEigenVectorMap<float> input1) {
-        output = (input0.array() > 0).select(input0, input0.cwiseProduct(input1));
-      },
-      1.0f);
+      [](BroadcastHelper& per_iter_bh) {
+        auto input0 = per_iter_bh.EigenInput0<float>();
+        auto input1 = per_iter_bh.EigenInput1<float>();
+        per_iter_bh.OutputEigen<float>() = (input0.array() > 0).select(input0, input0.cwiseProduct(input1));
+      }};
+
+  UntypedBroadcastTwo(*context, funcs, 1.0);
+  return Status::OK();
 }
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -967,55 +1139,59 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     PRelu<float>);
 
-// This is a special case version of TBroadcaster just for Expand that only has a shape as the second parameter
-template <typename T>
-struct TBroadcasterExpand {
-  TBroadcasterExpand(const Tensor& input, const std::vector<int64_t>& shape)
-      : input_tensor_(input),
-        broadcaster_(input.Shape().GetDims(), shape) {
+static void ExpandBroadcastLooper(BroadcastHelper& helper, const ProcessBroadcastSpanFuncs& functors) {
+  ORT_ENFORCE(!helper.HaveTwoTensorInputs(), "ExpandBroadcastLooper should only have a shape for the second input.");
+
+  if (helper.IsInput0Scalar()) {
+    while (helper.NeedMoreOutput()) {
+      functors.input0scalar(helper);
+      helper.Next();
+    }
+    /*
+  } else if (helper.IsInput0Scalar()) {
+    // not possible as we only have one tensor as input
+  */
+  } else {
+    while (helper.NeedMoreOutput()) {
+      functors.general(helper);
+      helper.Next();
+    }
   }
+}
 
-  TensorShape GetOutputShape() const { return TensorShape(broadcaster_.output_shape_); }
-  size_t GetSpanSize() const { return span_size_; }
+// Split out the untyped processing from the type specific work to minimize binary size
+static void UntypedExpand(OpKernelContext& context, const ProcessBroadcastSpanFuncs& funcs) {
+  // Input 1 is a 1-dimensional tensor containing the dimension values to exapnd to
+  const auto& shape_data_tensor = *context.Input<Tensor>(1);
+  ORT_ENFORCE(shape_data_tensor.Shape().GetDims().size() == 1,
+              "Tensor with shape information must be 1 dimensional.");
 
-  bool IsInput0Scalar() const { return broadcaster_.iterator1_.deltas_.front() == 0; }
+  // Turn the shape tensor data into an actual shape
+  const auto* p_dims = shape_data_tensor.Data<int64_t>();
+  TensorShape shape(std::vector<int64_t>{p_dims, p_dims + shape_data_tensor.Shape().Size()});
 
-  T NextScalar() { return *Next(); }
+  InputBroadcaster input_broadcaster(*context.Input<Tensor>(0), shape);
+  OutputBroadcaster output_broadcaster(input_broadcaster.GetSpanSize(),
+                                       *context.Output(0, input_broadcaster.GetOutputShape()));
+  BroadcastHelper broadcast_helper(input_broadcaster, output_broadcaster);
 
-  ConstEigenVectorMap<T> NextEigen() { return ConstEigenVectorMap<T>(Next(), span_size_); }
-
- private:
-  const T* Next() { return input_ + broadcaster_.iterator1_.AdvanceBy(span_size_); }
-
-  const Tensor& input_tensor_;
-  Broadcaster broadcaster_;
-  size_t span_size_{broadcaster_.GetSpanSize()};
-
-  const T* input_{input_tensor_.template Data<T>()};
-};
+  ExpandBroadcastLooper(broadcast_helper, funcs);
+}
 
 template <typename T>
 Status Expand_8<T>::Compute(OpKernelContext* context) const {
-  auto& tensor_shape = *context->Input<Tensor>(1);
-  ORT_ENFORCE(tensor_shape.Shape().GetDims().size() == 1, "Shape must be 1 dimensional as it's tensor data is a shape");
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<T>().array() = per_iter_bh.ScalarInput0<T>();
+      },
+      [](BroadcastHelper&) {
+        ORT_THROW("Invalid usage. Input 1 is a shape with no data.");
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>();
+      }};
 
-  // Turn the shape tensor data into an actual shape
-  const auto* p_shape = tensor_shape.template Data<int64_t>();
-  std::vector<int64_t> shape{p_shape, p_shape + tensor_shape.Shape().Size()};
-
-  TBroadcasterExpand<T> bc(*context->Input<Tensor>(0), shape);
-  TBroadcastOutput<T> output(bc.GetSpanSize(), *context->Output(0, bc.GetOutputShape()));
-
-  // This doesn't use BroadcastLoop since there is no second tensor, just duplicating the first
-  if (bc.IsInput0Scalar()) {
-    // Input0 being a scalar is the only special case here, since we're duplicating a single value
-    while (output)
-      output.NextEigenOutput().array() = bc.NextScalar();
-  } else {
-    // Input1 being a scalar doesn't matter (as there's no actual input1). We're still duplicating Input0 in the same sized chunks
-    while (output)
-      output.NextEigenOutput() = bc.NextEigen();
-  }
+  UntypedExpand(*context, funcs);
   return Status::OK();
 }
 
@@ -1095,34 +1271,40 @@ ONNX_CPU_OPERATOR_KERNEL(
 namespace mod_internal {
 
 template <class T>
-void BroadCastFMod(const Tensor& X, const Tensor& Y, OpKernelContext* context) {
-  TBroadcaster<T, T> mod_broadcaster{X, Y};
-  Tensor* const output = context->Output(0, mod_broadcaster.GetOutputShape());
-  ORT_ENFORCE(output, "failed to get first output!");
-  TBroadcastOutput<T> mod_broadcast_output{
-      mod_broadcaster.GetSpanSize(), *output};
+void BroadCastFMod(OpKernelContext* context) {
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        const T& X = per_iter_bh.ScalarInput0<T>();
+        auto Y = per_iter_bh.SpanInput1<T>();
+        auto output = per_iter_bh.OutputSpan<T>();
 
-  BroadcastLoopSpan(
-      mod_broadcaster, mod_broadcast_output,
-      [](gsl::span<T> output, const T& X, gsl::span<const T> Y) {
         std::transform(Y.cbegin(), Y.cend(), output.begin(),
                        [X](T y) {
                          return static_cast<T>(std::fmod(X, y));
                        });
       },
-      [](gsl::span<T> output, gsl::span<const T> X, const T& Y) {
+      [](BroadcastHelper& per_iter_bh) {
+        auto X = per_iter_bh.SpanInput0<T>();
+        const T& Y = per_iter_bh.ScalarInput1<T>();
+        auto output = per_iter_bh.OutputSpan<T>();
+
         std::transform(X.cbegin(), X.cend(), output.begin(),
                        [Y](T x) {
                          return static_cast<T>(std::fmod(x, Y));
                        });
       },
-      [](gsl::span<T> output, gsl::span<const T> X, gsl::span<const T> Y) {
-        std::transform(
-            X.cbegin(), X.cend(), Y.cbegin(), output.begin(),
-            [](T x, T y) {
-              return static_cast<T>(std::fmod(x, y));
-            });
-      });
+      [](BroadcastHelper& per_iter_bh) {
+        auto X = per_iter_bh.SpanInput0<T>();
+        auto Y = per_iter_bh.SpanInput1<T>();
+        auto output = per_iter_bh.OutputSpan<T>();
+
+        std::transform(X.cbegin(), X.cend(), Y.cbegin(), output.begin(),
+                       [](T x, T y) {
+                         return static_cast<T>(std::fmod(x, y));
+                       });
+      }};
+
+  UntypedBroadcastTwo(*context, funcs);
 }
 
 template <class T>
@@ -1135,79 +1317,88 @@ inline T Modulus(T x, T y) {
 }
 
 template <class T>
-void BroadCastMod(const Tensor& X, const Tensor& Y, OpKernelContext* context) {
-  TBroadcaster<T, T> mod_broadcaster{X, Y};
-  Tensor* const output = context->Output(0, mod_broadcaster.GetOutputShape());
-  ORT_ENFORCE(output, "failed to get first output!");
-  TBroadcastOutput<T> mod_broadcast_output{
-      mod_broadcaster.GetSpanSize(), *output};
+void BroadCastMod(OpKernelContext* context) {
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        const T& X = per_iter_bh.ScalarInput0<T>();
+        auto Y = per_iter_bh.SpanInput1<T>();
+        auto output = per_iter_bh.OutputSpan<T>();
 
-  // static_cast below are necessary when small types such as
-  // int16_t and int8_t are converted to integers to perform remainder
-  // operation. This cast is safe with respect to data loss.
-  BroadcastLoopSpan(
-      mod_broadcaster, mod_broadcast_output,
-      [](gsl::span<T> output, const T& X, gsl::span<const T> Y) {
         std::transform(Y.cbegin(), Y.cend(), output.begin(),
                        [X](T y) {
                          return Modulus(X, y);
                        });
       },
-      [](gsl::span<T> output, gsl::span<const T> X, const T& Y) {
+      [](BroadcastHelper& per_iter_bh) {
+        auto X = per_iter_bh.SpanInput0<T>();
+        const T& Y = per_iter_bh.ScalarInput1<T>();
+        auto output = per_iter_bh.OutputSpan<T>();
+
         std::transform(X.cbegin(), X.cend(), output.begin(),
                        [Y](T x) {
                          return Modulus(x, Y);
                        });
       },
-      [](gsl::span<T> output, gsl::span<const T> X, gsl::span<const T> Y) {
-        std::transform(
-            X.cbegin(), X.cend(), Y.cbegin(), output.begin(),
-            [](T x, T y) {
-              return Modulus(x, y);
-            });
-      });
+      [](BroadcastHelper& per_iter_bh) {
+        auto X = per_iter_bh.SpanInput0<T>();
+        auto Y = per_iter_bh.SpanInput1<T>();
+        auto output = per_iter_bh.OutputSpan<T>();
+
+        std::transform(X.cbegin(), X.cend(), Y.cbegin(), output.begin(),
+                       [](T x, T y) {
+                         return Modulus(x, y);
+                       });
+      }};
+
+  UntypedBroadcastTwo(*context, funcs);
 }
 
-void BroadCastMFloat16FMod(const Tensor& X, const Tensor& Y, OpKernelContext* context) {
-  TBroadcaster<MLFloat16, MLFloat16> mod_broadcaster{X, Y};
-  Tensor* const output = context->Output(0, mod_broadcaster.GetOutputShape());
-  ORT_ENFORCE(output, "failed to get first output!");
-  TBroadcastOutput<MLFloat16> mod_broadcast_output{
-      mod_broadcaster.GetSpanSize(), *output};
+void BroadCastMFloat16FMod(OpKernelContext* context) {
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        const auto X = per_iter_bh.ScalarInput0<MLFloat16>();
+        auto Y = per_iter_bh.SpanInput1<MLFloat16>();
+        auto output = per_iter_bh.OutputSpan<MLFloat16>();
 
-  BroadcastLoopSpan(
-      mod_broadcaster, mod_broadcast_output,
-      [](gsl::span<MLFloat16> output, const MLFloat16& X, gsl::span<const MLFloat16> Y) {
         std::transform(Y.cbegin(), Y.cend(), output.begin(),
                        [X_fl = math::halfToFloat(X.val)](const MLFloat16& y) {
                          return MLFloat16(math::floatToHalf(std::fmod(X_fl, math::halfToFloat(y.val))));
                        });
       },
-      [](gsl::span<MLFloat16> output, gsl::span<const MLFloat16> X, const MLFloat16& Y) {
+      [](BroadcastHelper& per_iter_bh) {
+        auto X = per_iter_bh.SpanInput0<MLFloat16>();
+        const MLFloat16 Y = per_iter_bh.ScalarInput1<MLFloat16>();
+        auto output = per_iter_bh.OutputSpan<MLFloat16>();
+
         std::transform(X.cbegin(), X.cend(), output.begin(),
                        [Y_fl = math::halfToFloat(Y.val)](const MLFloat16& x) {
                          return MLFloat16(math::floatToHalf(std::fmod(math::halfToFloat(x.val), Y_fl)));
                        });
       },
-      [](gsl::span<MLFloat16> output, gsl::span<const MLFloat16> X, gsl::span<const MLFloat16> Y) {
-        std::transform(
-            X.cbegin(), X.cend(), Y.cbegin(), output.begin(),
-            [](const MLFloat16& x, const MLFloat16& y) {
-              auto x_fl = math::halfToFloat(x.val);
-              auto y_fl = math::halfToFloat(y.val);
-              return MLFloat16(math::floatToHalf(std::fmod(x_fl, y_fl)));
-            });
-      });
+      [](BroadcastHelper& per_iter_bh) {
+        auto X = per_iter_bh.SpanInput0<MLFloat16>();
+        auto Y = per_iter_bh.SpanInput1<MLFloat16>();
+        auto output = per_iter_bh.OutputSpan<MLFloat16>();
+
+        std::transform(X.cbegin(), X.cend(), Y.cbegin(), output.begin(),
+                       [](const MLFloat16& x, const MLFloat16& y) {
+                         auto x_fl = math::halfToFloat(x.val);
+                         auto y_fl = math::halfToFloat(y.val);
+                         return MLFloat16(math::floatToHalf(std::fmod(x_fl, y_fl)));
+                       });
+      }};
+
+  UntypedBroadcastTwo(*context, funcs);
 }
 
 // Generic implementation of Mod kernel
 template <class T>
 struct CallModImpl {
-  void operator()(bool fmod, const Tensor& X, const Tensor& Y, OpKernelContext* ctx) const {
+  void operator()(bool fmod, OpKernelContext* ctx) const {
     if (fmod) {
-      BroadCastFMod<T>(X, Y, ctx);
+      BroadCastFMod<T>(ctx);
     } else {
-      BroadCastMod<T>(X, Y, ctx);
+      BroadCastMod<T>(ctx);
     }
   }
 };
@@ -1215,43 +1406,141 @@ struct CallModImpl {
 }  // namespace mod_internal
 
 Status Mod::Compute(OpKernelContext* context) const {
-  Status s;
-
   const auto& X = *context->Input<Tensor>(0);
-  const auto& Y = *context->Input<Tensor>(1);
-
-  auto dtype = X.DataType();
-  if (dtype != Y.DataType()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "X and Y input types do not match: ",
-                           dtype, " vs ", Y.DataType());
-  }
-
-  using namespace mod_internal;
-
-  namespace on = ONNX_NAMESPACE;
   auto dt_type = X.GetElementType();
+
   switch (dt_type) {
-    case on::TensorProto_DataType_FLOAT:
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       ORT_ENFORCE(fmod_, "fmod attribute must be true for float, float16 and double types");
-      BroadCastFMod<float>(X, Y, context);
+      mod_internal::BroadCastFMod<float>(context);
       break;
-    case on::TensorProto_DataType_DOUBLE:
+    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
       ORT_ENFORCE(fmod_, "fmod attribute must be true for float, float16 and double types");
-      BroadCastFMod<double>(X, Y, context);
+      mod_internal::BroadCastFMod<double>(context);
       break;
-    case on::TensorProto_DataType_FLOAT16:
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
       ORT_ENFORCE(fmod_, "fmod attribute must be true for float, float16 and double types");
-      BroadCastMFloat16FMod(X, Y, context);
+      mod_internal::BroadCastMFloat16FMod(context);
       break;
     default:
       utils::MLTypeCallDispatcher<mod_internal::CallModImpl, uint8_t, int8_t, uint16_t, int16_t,
                                   uint32_t, int32_t, uint64_t, int64_t>
           t_disp(dt_type);
-      t_disp.Invoke(fmod_, X, Y, context);
+      t_disp.Invoke(fmod_, context);
       break;
   }
-  return s;
+
+  return Status::OK();
+}
+
+// Broadcast two inputs with no parallelization.
+//
+// This function is type agnostic, and uses function pointers instead of std::function, to minimize binary size.
+// Type specific logic is plugged in via the functions in ProcessBroadcastSpanFuncs.
+// Optional user_data can be provided, and will be available to the ProcessSpanFunc implementations
+// via BroadcastHelper.GetUserData().
+void UntypedBroadcastTwo(OpKernelContext& context, const ProcessBroadcastSpanFuncs& funcs, void* user_data) {
+  InputBroadcaster input_broadcaster(*context.Input<Tensor>(0), *context.Input<Tensor>(1));
+  OutputBroadcaster output_broadcaster(input_broadcaster.GetSpanSize(),
+                                       *context.Output(0, input_broadcaster.GetOutputShape()));
+  BroadcastHelper broadcast_helper(input_broadcaster, output_broadcaster, user_data);
+
+  BroadcastLooper(broadcast_helper, funcs);
+}
+
+// Variant of UntypedBroadcastTwo that will parallelize.
+// Operator usage is the same as the parallelization is opaque to the operator.
+// unit_cost must be a valid cost value.
+void UntypedBroadcastTwo(OpKernelContext& context, const ProcessBroadcastSpanFuncs& funcs, double unit_cost,
+                         void* user_data) {
+  const Tensor& input0_tensor = *context.Input<Tensor>(0);
+  const Tensor& input1_tensor = *context.Input<Tensor>(1);
+  InputBroadcaster input_broadcaster(input0_tensor, input1_tensor);
+
+  Tensor& output_tensor = *context.Output(0, input_broadcaster.GetOutputShape());
+
+  size_t span_size = input_broadcaster.GetSpanSize();
+  size_t output_size = output_tensor.Shape().Size();
+
+  // one or more zero dimensions so nothing more to do
+  if (output_size == 0) {
+    return;
+  }
+
+  concurrency::ThreadPool* tp = context.GetOperatorThreadPool();
+
+  if (span_size == output_size) {  // Input data will be processed in a single span, so parallelize within the span
+    OutputBroadcaster output_broadcaster(span_size, output_tensor);
+    BroadcastHelper broadcast_helper(input_broadcaster, output_broadcaster, user_data, tp, unit_cost);
+    BroadcastLooper(broadcast_helper, funcs);
+  } else {
+    // Input data will be processed in multiple spans, so parallelize across spans.
+
+    // enforce const on input broadcaster we copy from
+    const InputBroadcaster& const_input_broadcaster = input_broadcaster;
+
+    concurrency::ThreadPool::TryParallelFor(
+        tp, output_size / span_size,
+        TensorOpCost{static_cast<float>(input_broadcaster.Input0ElementSize() * span_size),
+                     static_cast<float>(output_tensor.DataType()->Size() * span_size),
+                     unit_cost * span_size},
+        [span_size, &const_input_broadcaster, &output_tensor, &funcs, user_data](std::ptrdiff_t first_span,
+                                                                                 std::ptrdiff_t last_span) {
+          // copy original input_broadcaster (which is at start of all input) and advance to this segment
+          InputBroadcaster segment_input_broadcaster(const_input_broadcaster);
+          segment_input_broadcaster.AdvanceBy(first_span * span_size);
+
+          // create broadcaster for this segment of output
+          OutputBroadcaster segment_output_broadcaster(span_size, output_tensor,
+                                                       first_span * span_size, last_span * span_size);
+
+          BroadcastHelper segment_helper(segment_input_broadcaster, segment_output_broadcaster, user_data);
+          BroadcastLooper(segment_helper, funcs);
+        });
+  }
+}
+
+// allocate_tensor should allocate a tensor of the output type with the given shape
+static void UntypedBroadcastVariadic(int input_count, OpKernelContext& context,
+                                     AllocateTensorFunc allocate_tensor,
+                                     const ProcessBroadcastSpanFuncs& funcs) {
+  const auto& input0 = *context.Input<Tensor>(0);
+
+  // One item is trivial, just copy and exit
+  if (input_count == 1) {
+    auto& output = *context.Output(0, input0.Shape());
+    CopyCpuTensor(&input0, &output);
+    return;
+  }
+
+  TensorAllocator tensor_allocator(context);
+  std::unique_ptr<Tensor> temp_input;
+  std::unique_ptr<Tensor> temp_output;
+
+  // For more than 2 tensors, we combine the the current two inputs into a temporary tensor,
+  // and combine the next input with that
+  for (int i = 0; i < input_count - 1; i++) {
+    auto& tensor0 = temp_input ? *temp_input : input0;
+    auto& tensor1 = *context.Input<Tensor>(i + 1);
+
+    InputBroadcaster input_broadcaster(tensor0, tensor1);
+
+    // Create a temporary output for all but the last iteration, which goes to the real output
+    Tensor* p_output = nullptr;
+    if (i == input_count - 2) {
+      p_output = context.Output(0, input_broadcaster.GetOutputShape());
+    } else {
+      temp_output = allocate_tensor(tensor_allocator, input_broadcaster.GetOutputShape());
+      p_output = temp_output.get();
+    }
+
+    OutputBroadcaster output_broadcaster(input_broadcaster.GetSpanSize(), *p_output);
+    BroadcastHelper broadcast_helper(input_broadcaster, output_broadcaster);
+
+    BroadcastLooper(broadcast_helper, funcs);
+
+    temp_input = std::move(temp_output);
+  }
 }
 
 }  // namespace onnxruntime

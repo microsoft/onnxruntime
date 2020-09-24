@@ -303,13 +303,13 @@ struct OrtApi {
   /**
      * \param out Should be freed by `OrtReleaseEnv` after use
      */
-  ORT_API2_STATUS(CreateEnv, OrtLoggingLevel default_logging_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
+  ORT_API2_STATUS(CreateEnv, OrtLoggingLevel logging_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
 
   /**
    * \param out Should be freed by `OrtReleaseEnv` after use
    */
   ORT_API2_STATUS(CreateEnvWithCustomLogger, OrtLoggingFunction logging_function, _In_opt_ void* logger_param,
-                  OrtLoggingLevel default_warning_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
+                  OrtLoggingLevel logging_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
 
   // Platform telemetry events are on by default since they are lightweight.  You can manually turn them off.
   ORT_API2_STATUS(EnableTelemetryEvents, _In_ const OrtEnv* env);
@@ -833,10 +833,8 @@ struct OrtApi {
   * Use this in conjunction with DisablePerSessionThreads API or else the session will use
   * its own thread pools.
   */
-  ORT_API2_STATUS(CreateEnvWithGlobalThreadPools, OrtLoggingLevel default_logging_level, _In_ const char* logid,
+  ORT_API2_STATUS(CreateEnvWithGlobalThreadPools, OrtLoggingLevel logging_level, _In_ const char* logid,
                   _In_ const OrtThreadingOptions* t_options, _Outptr_ OrtEnv** out);
-
-  /* TODO: Should there be a version of CreateEnvWithGlobalThreadPools with custom logging function? */
 
   /*
   * Calling this API will make the session use the global threadpools shared across sessions.
@@ -1049,6 +1047,7 @@ struct OrtApi {
   ORT_API2_STATUS(SessionGetProfilingStartTimeNs, _In_ const OrtSession* sess, _Outptr_ uint64_t* out);
 
   /**
+<<<<<<< HEAD
   * Append CUDA execution provider
   */
   ORT_API2_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA,
@@ -1056,6 +1055,47 @@ struct OrtApi {
 
 
 
+=======
+ * Use this API to configure the global thread pool options to be used in the call to CreateEnvWithGlobalThreadPools.
+ * A value of 0 means ORT will pick the default.
+ * A value of 1 means the invoking thread will be used; no threads will be created in the thread pool.
+ */
+  ORT_API2_STATUS(SetGlobalIntraOpNumThreads, _Inout_ OrtThreadingOptions* tp_options, int intra_op_num_threads);
+  ORT_API2_STATUS(SetGlobalInterOpNumThreads, _Inout_ OrtThreadingOptions* tp_options, int inter_op_num_threads);
+
+  /**
+   * Use this API to configure the global thread pool options to be used in the call to CreateEnvWithGlobalThreadPools.
+   * Allow spinning of thread pools when their queues are empty. This API will set the value for both
+   * inter_op and intra_op threadpools.
+   * \param allow_spinning valid values are 1 and 0.
+   * 1: threadpool will spin to wait for queue to become non-empty, 0: it won't spin.
+   * Prefer a value of 0 if your CPU usage is very high.
+   */
+  ORT_API2_STATUS(SetGlobalSpinControl, _Inout_ OrtThreadingOptions* tp_options, int allow_spinning);
+
+  /**
+   * Add a pre-allocated initializer to a session. If a model contains an initializer with a name
+   * that is same as the name passed to this API call, ORT will use this initializer instance
+   * instead of deserializing one from the model file. This is useful when you want to share
+   * the same initializer across sessions.
+   * \param name name of the initializer
+   * \param val OrtValue containing the initializer. Lifetime of 'val' and the underlying initializer buffer must be
+   * managed by the user (created using the CreateTensorWithDataAsOrtValue API) and it must outlive the session object
+   * to which it is added.
+   */
+  ORT_API2_STATUS(AddInitializer, _Inout_ OrtSessionOptions* options, _In_z_ const char* name,
+                  _In_ const OrtValue* val);
+  
+  /**
+   * Creates a custom environment with global threadpools and logger that will be shared across sessions.
+   * Use this in conjunction with DisablePerSessionThreads API or else the session will use
+   * its own thread pools.
+   * 
+   * \param out should be freed by `OrtReleaseEnv` after use
+   */
+  ORT_API2_STATUS(CreateEnvWithCustomLoggerAndGlobalThreadPools, OrtLoggingFunction logging_function, _In_opt_ void* logger_param, OrtLoggingLevel logging_level,
+                  _In_ const char* logid, _In_ const struct OrtThreadingOptions* tp_options, _Outptr_ OrtEnv** out);
+>>>>>>> master
 };
 
 /*

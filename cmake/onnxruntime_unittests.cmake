@@ -397,9 +397,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${ONNXRUNTIME_INTEROP_TEST_LIBS}
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
-# These providers are shared libraries now, so aren't linked this way anymore:
-    ${PROVIDERS_DNNL}
-    ${PROVIDERS_TENSORRT}
+    # TENSORRT and DNNL are explicitly linked at runtime
     ${PROVIDERS_MIGRAPHX}
     ${PROVIDERS_NGRAPH}
     ${PROVIDERS_OPENVINO}
@@ -433,7 +431,6 @@ if(onnxruntime_USE_TENSORRT)
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/tensorrt/*)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_tensorrt)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_tensorrt onnxruntime_providers_shared)
-  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_tensorrt)
 endif()
 
 if(onnxruntime_USE_NNAPI_BUILTIN)
@@ -484,34 +481,11 @@ target_include_directories(onnxruntime_test_utils PUBLIC "${TEST_SRC_DIR}/util/i
 set_target_properties(onnxruntime_test_utils PROPERTIES FOLDER "ONNXRuntimeTest")
 
 set(onnx_test_runner_src_dir ${TEST_SRC_DIR}/onnx)
-set(onnx_test_runner_common_srcs
-        ${onnx_test_runner_src_dir}/TestResultStat.cc
-        ${onnx_test_runner_src_dir}/TestResultStat.h
-        ${onnx_test_runner_src_dir}/testenv.h
-        ${onnx_test_runner_src_dir}/FixedCountFinishCallback.h
-        ${onnx_test_runner_src_dir}/TestCaseResult.cc
-        ${onnx_test_runner_src_dir}/TestCaseResult.h
-        ${onnx_test_runner_src_dir}/testenv.cc
-        ${onnx_test_runner_src_dir}/heap_buffer.h
-        ${onnx_test_runner_src_dir}/heap_buffer.cc
-        ${onnx_test_runner_src_dir}/OrtValueList.h
-        ${onnx_test_runner_src_dir}/runner.h
-        ${onnx_test_runner_src_dir}/runner.cc
-        ${onnx_test_runner_src_dir}/TestCase.cc
-        ${onnx_test_runner_src_dir}/TestCase.h
-        ${onnx_test_runner_src_dir}/onnxruntime_event.h
-        ${onnx_test_runner_src_dir}/sync_api.h
-        ${onnx_test_runner_src_dir}/sync_api.cc
-        ${onnx_test_runner_src_dir}/callback.h
-        ${onnx_test_runner_src_dir}/callback.cc
-        ${onnx_test_runner_src_dir}/pb_helper.h
-        ${onnx_test_runner_src_dir}/pb_helper.cc
-        ${onnx_test_runner_src_dir}/mem_buffer.h
-        ${onnx_test_runner_src_dir}/tensorprotoutils.h
-        ${onnx_test_runner_src_dir}/tensorprotoutils.cc
-        ${onnx_test_runner_src_dir}/onnx_model_info.h
-        ${onnx_test_runner_src_dir}/onnx_model_info.cc)
+file(GLOB onnx_test_runner_common_srcs CONFIGURE_DEPENDS
+    ${onnx_test_runner_src_dir}/*.h
+    ${onnx_test_runner_src_dir}/*.cc)
 
+list(REMOVE_ITEM onnx_test_runner_common_srcs ${onnx_test_runner_src_dir}/main.cc)
 
 add_library(onnx_test_runner_common ${onnx_test_runner_common_srcs})
 if(MSVC)
