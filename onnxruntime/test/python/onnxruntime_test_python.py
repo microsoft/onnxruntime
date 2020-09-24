@@ -515,23 +515,18 @@ class TestInferenceSession(unittest.TestCase):
             self.assertTrue(']' in lines[8])
 
     def testProfilerGetStartTimeNs(self):
+        def getSingleSessionProfilingStartTime():
+            so = onnxrt.SessionOptions()
+            so.enable_profiling = True
+            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so)
+            return sess.get_profiling_start_time_ns()
+
         # Get current nanoseconds
         start = time.monotonic_ns()
-        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
-        
         # Get 1st profiling's start time
-        so = onnxrt.SessionOptions()
-        so.enable_profiling = True
-        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so)
-        sess.run([], {'X': x})
-        start_time_1 = sess.get_profiling_start_time_ns()
-        
+        start_time_1 = getSingleSessionProfilingStartTime()
         # Get 2nd profiling's start time
-        so = onnxrt.SessionOptions()
-        so.enable_profiling = True
-        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so)
-        sess.run([], {'X': x})
-        start_time_2 = sess.get_profiling_start_time_ns()
+        start_time_2 = getSingleSessionProfilingStartTime()
 
         # Chronological profiling's start time
         self.assertTrue(start <= start_time_1 <= start_time_2)

@@ -366,6 +366,24 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
         }
 
+        [Fact]
+        public void InferenceSessionGetProfilingStartTimeNs()
+        {
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
+            SessionOptions options = new SessionOptions();
+            options.EnableProfiling = true;
+
+            // Get 1st profiling's start time
+            var session = new InferenceSession(modelPath, options);
+            var startTime_1 = session.GetProfilingStartTimeNs();
+
+            // Get 2nd profiling's start time
+            session = new InferenceSession(modelPath, options);
+            var startTime_2 = session.GetProfilingStartTimeNs();
+
+            Assert.True( startTime_1 <= startTime_2);
+        }
+
         private void validateRunResults(IReadOnlyCollection<NamedOnnxValue> results)
         {
             // validate the results
