@@ -235,7 +235,6 @@ Status TrainingSession::ConfigureForTraining(
   ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers, config.graph_transformer_config));
 
   if (IsRootNode(config) && config.model_with_loss_function_path.has_value()) {
-    std::cout << "Saving transformed model \n";
     ORT_IGNORE_RETURN_VALUE(Save(
         config.model_with_loss_function_path.value(), SaveOption::NO_RELOAD));
   }
