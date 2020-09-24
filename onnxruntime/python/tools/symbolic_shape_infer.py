@@ -991,7 +991,7 @@ class SymbolicShapeInference:
                         e = sympy.Min(e, new_sympy_shape[i])
                     else:
                         try:
-                            if e >= new_sympy_shape[i]:
+                            if (e - new_sympy_shape[i]) >= 0:
                                 e = new_sympy_shape[i]
                         except Exception:
                             print('Unable to determine if {} <= {}, treat as equal'.format(e, new_sympy_shape[i]))
@@ -1224,8 +1224,14 @@ class SymbolicShapeInference:
 
                         if out_rank >= 0:
                             new_shape = self._new_symbolic_shape(out_rank, node, i_o)
+                            if out_type_undefined:
+                                # guess output data type from input vi if not defined
+                                out_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+                            else:
+                                # otherwise, use original data type
+                                out_dtype = vi.type.tensor_type.elem_type
                             vi.CopyFrom(helper.make_tensor_value_info(vi.name,
-                                                                      self.known_vi_[node.input[0]].type.tensor_type.elem_type,
+                                                                      out_dtype,
                                                                       get_shape_from_sympy_shape(new_shape)))
 
                             if self.verbose_ > 0:
