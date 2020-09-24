@@ -50,7 +50,9 @@ Status TransformerLayerRecompute::IdentifyTransformerLayerEdges(
     }
   }
 
-  ORT_RETURN_IF_NOT(layer_start_edges.size() == layer_end_edges.size(), "Number of start and end edges doesn't match!");
+  ORT_RETURN_IF_NOT(layer_start_edges.size() == layer_end_edges.size(),
+                    "Number of start and end edges doesn't match!, #start=", layer_start_edges.size(),
+                    ", #end=", layer_end_edges.size());
 
   start_end_edges.clear();
 
@@ -164,7 +166,12 @@ void TransformerLayerRecompute::InsertRecomputeNodes(Graph& graph, const std::ve
 
 Status TransformerLayerRecompute::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, const logging::Logger& logger) const {
   std::vector<std::pair<const NodeArg*, const NodeArg*>> start_end_edges;
-  ORT_RETURN_IF_ERROR(IdentifyTransformerLayerEdges(graph, start_end_edges, logger));
+
+  Status s = IdentifyTransformerLayerEdges(graph, start_end_edges, logger);
+  if (!s.IsOK()) {
+    modified = false;
+    return Status::OK();
+  }
 
   // insert recompute nodes expect for the last transformer layer
   // latter recompute layers have higher execution priorty
