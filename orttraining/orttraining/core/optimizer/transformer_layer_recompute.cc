@@ -113,6 +113,8 @@ void TransformerLayerRecompute::InsertRecomputeNodes(Graph& graph, const std::ve
   for (const Node* n : nodes) {
     Node* node = graph.GetNode(n->Index());
 
+    // recomputed Dropout need to produce the same output as original dropout
+    // currently reusing original dropout's mask to achieve this 
     if (node->OpType() == "Dropout") {
       const NodeArg* input = node->InputDefs()[0];
       const Node* p_node = graph.GetProducerNode(input->Name());

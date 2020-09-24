@@ -749,7 +749,7 @@ TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_CompressDecompr
 
   // TOPOLOGICAL order
   {
-    auto& order = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::TOPOLOGICAL);
+    auto& order = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::DEFAULT);
     const std::vector<std::string> expected_topological_order = {
         "node_0", "node_1", "node_4", "compress", "decompress", "node_5"};
     for (size_t i = 0; i < order.size(); ++i) {

@@ -25,11 +25,8 @@ struct PriorityNodeCompare {
   // If return true, n2 will be output first
   bool operator()(const Node* n1, const Node* n2) const {
     // nodes in global high priorty list will be output first
-    if (IsHighPri(n1) && !IsHighPri(n2)) {
-      return false;
-    }
-    if (!IsHighPri(n1) && IsHighPri(n2)) {
-      return true;
+    if (IsHighPri(n1) != IsHighPri(n2)) {
+      return IsHighPri(n2);
     }
 
     // nodes with lower priority value will be output first
@@ -55,10 +52,6 @@ GraphViewer::GraphViewer(const Graph& graph) {
       root_nodes_.push_back(node.Index());
     }
   }
-
-  // Reverse the order of input vector, such that forward nodes are visted in ReverseDFS first
-  // This results in an execution order that forward nodes is always ran before the backward nodes
-  // std::reverse(leaf_nodes.begin(), leaf_nodes.end());
 
   graph.ReverseDFSFrom(
       leaf_nodes,
@@ -131,7 +124,7 @@ int GraphViewer::MaxNodeIndex() const noexcept {
 
 const std::vector<NodeIndex>& GraphViewer::GetNodesInTopologicalOrder(ExecutionOrder order) const {
   switch (order) {
-    case ExecutionOrder::TOPOLOGICAL:
+    case ExecutionOrder::DEFAULT:
       return nodes_in_topological_order_;
     case ExecutionOrder::PRIORITY_BASED:
       return nodes_in_topological_order_with_priority_;

@@ -12,7 +12,7 @@
 namespace onnxruntime {
 
 enum class ExecutionOrder {
-  TOPOLOGICAL = 0,    // basic topological sort
+  DEFAULT = 0,        // default topological sort
   PRIORITY_BASED = 1  // priority-based topological sort
 };
 
@@ -43,7 +43,7 @@ struct SessionOptions {
   ExecutionMode execution_mode = ExecutionMode::ORT_SEQUENTIAL;
 
   // set the execution order of the graph
-  ExecutionOrder execution_order = ExecutionOrder::TOPOLOGICAL;
+  ExecutionOrder execution_order = ExecutionOrder::DEFAULT;
 
   // enable profiling for this session.
   bool enable_profiling = false;

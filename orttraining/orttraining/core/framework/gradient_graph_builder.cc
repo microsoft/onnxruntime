@@ -78,14 +78,17 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
     std::string grad_arg_name = GradientBuilderBase::GradientName(name);
     pending_[grad_arg_name] = 0;
 
+    std::string unreachable_nodes;
     for (const Node* node : nodes) {
       if (IsReachable(node)) {
         pending_[grad_arg_name] += 1;
         x_nodes_.insert(node);
       } else {
-        LOGS(logger_, WARNING) << node->Name() << " is unreachable for gradient back propagation.";
+        unreachable_nodes.append(node->Name() + ", ");
       }
     }
+    LOGS(logger_, WARNING) <<"Following nodes are unreachable for gradient back propagation: " << unreachable_nodes;
+    
   }
 }
 

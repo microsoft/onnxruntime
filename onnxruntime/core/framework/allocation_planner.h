@@ -29,7 +29,7 @@ class ISequentialPlannerContext {
   // see PlannerImpl::ComputeReusePlan
   virtual bool IsParallelExecutionEnabled() const { return false; }
 
-  virtual ExecutionOrder GetExecutionOrder() const { return ExecutionOrder::TOPOLOGICAL; }
+  virtual ExecutionOrder GetExecutionOrder() const { return ExecutionOrder::DEFAULT; }
 };
 
 class SequentialPlannerContext : public ISequentialPlannerContext {
@@ -49,7 +49,7 @@ class SequentialPlannerContext : public ISequentialPlannerContext {
 
  private:
   ExecutionMode execution_mode_ = ExecutionMode::ORT_SEQUENTIAL;
-  ExecutionOrder exection_order_ = ExecutionOrder::TOPOLOGICAL;
+  ExecutionOrder exection_order_ = ExecutionOrder::DEFAULT;
 };
 
 class SequentialPlanner {
