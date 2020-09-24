@@ -89,14 +89,14 @@ void DumpTensorToStdOut(const Tensor& tensor) {
   std::cout << std::endl;
 }
 
-PathString MakeTensorFileName(const std::string& tensor_name) {
+PathString MakeTensorFileName(const std::string& tensor_name, const NodeDumpOptions& dump_options) {
   auto make_valid_name = [](std::string name) {
     std::replace_if(
         name.begin(), name.end(), [](char c) { return !std::isalnum(c); }, '_');
     return name;
   };
 
-  return path_utils::MakePathString(make_valid_name(tensor_name), ".tensorproto");
+  return path_utils::MakePathString(make_valid_name(tensor_name)+ dump_options.file_suffix, ".tensorproto");
 }
 
 void DumpTensorToFile(const Tensor& tensor, const std::string& tensor_name, const Path& file_path) {
@@ -124,7 +124,7 @@ void DumpCpuTensor(
       break;
     }
     case NodeDumpOptions::DataDestination::TensorProtoFiles: {
-      const Path tensor_file = dump_options.output_dir / Path::Parse(MakeTensorFileName(tensor_name));
+      const Path tensor_file = dump_options.output_dir / Path::Parse(MakeTensorFileName(tensor_name, dump_options));
       DumpTensorToFile(tensor, tensor_name, tensor_file);
       break;
     }
@@ -200,6 +200,16 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables() {
 
     if (get_bool_env_var(env_vars::kDumpDataToFiles)) {
       opts.data_destination = NodeDumpOptions::DataDestination::TensorProtoFiles;
+    }
+
+    if (get_bool_env_var(env_vars::kRankToFileName)) {
+      char const* tmp = getenv("OMPI_COMM_WORLD_RANK");
+      if ( tmp == NULL ) {
+        opts.file_suffix = "_default_rank_0";
+      } else {
+          std::string s(tmp);
+        opts.file_suffix = "_rank_" + s;
+      }
     }
 
     opts.output_dir = Path::Parse(ToPathString(Env::Default().GetEnvironmentVar(env_vars::kOutputDir)));
