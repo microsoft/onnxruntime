@@ -700,9 +700,9 @@ TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_CompressDecompr
                           |
                   node_0 (Identity)
                       /      \
-        node_1 (Identity)   compress (pri = -10)
+        node_1 (Identity)   compress (pri = LOCAL_HIGH)
                     |         |
-        node_4 (Identity)  decompress (pri = 10)
+        node_4 (Identity)  decompress (pri = LOCAL_LOW)
                       \       /
                       node_5 (Merge)
                           |                   
@@ -767,7 +767,7 @@ TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_Recompute) {
                          |
                   node_0 (Identity)
                      /       \
-        node_1 (Identity)  recompute_node_1 (pri = 10)
+        node_1 (Identity)  recompute_node_1 (pri = LOCAL_LOW)
                     |         |
         node_4 (Identity)     |
                      \       /           
@@ -789,8 +789,8 @@ TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_Recompute) {
   graph.AddNode("node_0", "Identity_Fake", "node 0", {&input_arg0}, {&output_arg0});
   graph.AddNode("node_1", "Identity_Fake", "node 1", {&output_arg0}, {&output_arg1});
 
-  auto& compress_node = graph.AddNode("recompute_node_1", "Identity_Fake", "recompute node 1", {&output_arg0}, {&output_arg2});
-  compress_node.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_LOW));
+  auto& recompute_node = graph.AddNode("recompute_node_1", "Identity_Fake", "recompute node 1", {&output_arg0}, {&output_arg2});
+  recompute_node.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_LOW));
 
   graph.AddNode("node_4", "Identity_Fake", "node 4", {&output_arg1}, {&output_arg4});
   graph.AddNode("node_1_grad", "Merge_Fake", "node_1 gradient", {&output_arg4, &output_arg2}, {&output_arg5});
@@ -804,6 +804,104 @@ TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_Recompute) {
     auto& order = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
     const std::vector<std::string> expected_priority_based_order =
         {"node_0", "node_1", "node_4", "recompute_node_1", "node_1_grad"};
+    for (size_t i = 0; i < order.size(); ++i) {
+      auto node = graph.GetNode(order[i]);
+      EXPECT_TRUE(node->Name() == expected_priority_based_order[i]) << "Priority based execution order is wrong.";
+    }
+  }
+}
+
+TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_MultiLayerRecompute) {
+  Model model("graph_1", false, *logger_);
+  auto& graph = model.MainGraph();
+
+  /*
+                         |
+                  node_0 (Identity)
+                     /            \
+            node_1 (Identity)       \
+                    |        \        \
+           node_2 (Identity)   \        \
+                    |      \     \        \
+        node_3 (Identity)   \      \        \
+                    |    \   \       \        \
+          loss (Identity) \   \        \        \
+                    |     |    \         \        \
+             1            |     |         \        \
+               \         /      |          \        | 
+                loss_grad  recom_node_3    |        |
+                     \         /           |        |
+                     node_3_grad      recom_node_2  |
+                            \          /            |
+                             node_2_grad       recom_node_1
+                                   \           /
+                                    node_1_grad
+                                         |
+  */
+
+  TypeProto tensor_int32;
+  tensor_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
+  tensor_int32.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  // FW graph
+  auto& input_arg0 = graph.GetOrCreateNodeArg("node_0_in", &tensor_int32);
+  auto& output_arg0 = graph.GetOrCreateNodeArg("node_0_out", &tensor_int32);
+  auto& output_arg1 = graph.GetOrCreateNodeArg("node_1_out", &tensor_int32);
+  auto& output_arg2 = graph.GetOrCreateNodeArg("node_2_out", &tensor_int32);
+  auto& output_arg3 = graph.GetOrCreateNodeArg("node_3_out", &tensor_int32);
+  auto& output_loss = graph.GetOrCreateNodeArg("loss_out", &tensor_int32);
+
+  graph.AddNode("node_0", "Identity_Fake", "node 0", {&input_arg0}, {&output_arg0});
+  graph.AddNode("node_1", "Identity_Fake", "node 1", {&output_arg0}, {&output_arg1});
+  graph.AddNode("node_2", "Identity_Fake", "node 2", {&output_arg1}, {&output_arg2});
+  graph.AddNode("node_3", "Identity_Fake", "node 3", {&output_arg2}, {&output_arg3});
+  graph.AddNode("loss", "Identity_Fake", "loss node", {&output_arg3}, {&output_loss});
+
+  // Recompute graph
+  auto& recomputed_arg3 = graph.GetOrCreateNodeArg("node_3_out_recomputed", &tensor_int32);
+  auto& recomputed_arg2 = graph.GetOrCreateNodeArg("node_2_out_recomputed", &tensor_int32);
+  auto& recomputed_arg1 = graph.GetOrCreateNodeArg("node_1_out_recomputed", &tensor_int32);
+
+  auto& recompute_node3 = graph.AddNode("node_3_recompute", "Identity_Fake", "node 3 recompute", {&output_arg2}, {&recomputed_arg3});
+  auto& recompute_node2 = graph.AddNode("node_2_recompute", "Identity_Fake", "node 2 recompute", {&output_arg1}, {&recomputed_arg2});
+  auto& recompute_node1 = graph.AddNode("node_1_recompute", "Identity_Fake", "node 1 recompute", {&output_arg0}, {&recomputed_arg1});
+  recompute_node3.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_LOW));
+  recompute_node2.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_LOW));
+  recompute_node1.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_LOW));
+
+  // BW Graph
+  auto& gradient_start = graph.GetOrCreateNodeArg("gradient_start", &tensor_int32);
+  auto& loss_grad_output = graph.GetOrCreateNodeArg("loss_grad_output", &tensor_int32);
+  auto& node_3_grad_output = graph.GetOrCreateNodeArg("node_3_grad_output", &tensor_int32);
+  auto& node_2_grad_output = graph.GetOrCreateNodeArg("node_2_grad_output", &tensor_int32);
+  auto& node_1_grad_output = graph.GetOrCreateNodeArg("node_1_grad_output", &tensor_int32);
+
+  graph.AddNode("loss_grad", "Merge_Fake", "loss gradient", {&gradient_start, &output_arg3}, {&loss_grad_output});
+  graph.AddNode("node_3_grad", "Merge_Fake", "node 3 gradient", {&loss_grad_output, &recomputed_arg3}, {&node_3_grad_output});
+  graph.AddNode("node_2_grad", "Merge_Fake", "node 2 gradient", {&node_3_grad_output, &recomputed_arg2}, {&node_2_grad_output});
+  graph.AddNode("node_1_grad", "Merge_Fake", "node 1 gradient", {&node_2_grad_output, &recomputed_arg1}, {&node_1_grad_output});
+
+  auto status = graph.Resolve();
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  GraphViewer graph_viewer(graph);
+
+  // PRIORITY_BASED order
+  {
+    auto& order = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
+    const std::vector<std::string> expected_priority_based_order = {
+        "node_0",
+        "node_1",
+        "node_2",
+        "node_3",
+        "loss",
+        "loss_grad",
+        "node_3_recompute",
+        "node_3_grad",
+        "node_2_recompute",
+        "node_2_grad",
+        "node_1_recompute",
+        "node_1_grad",
+    };
     for (size_t i = 0; i < order.size(); ++i) {
       auto node = graph.GetNode(order[i]);
       EXPECT_TRUE(node->Name() == expected_priority_based_order[i]) << "Priority based execution order is wrong.";
