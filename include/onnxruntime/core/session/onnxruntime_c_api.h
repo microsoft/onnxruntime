@@ -270,7 +270,7 @@ typedef struct OrtCUDAProviderOptions {
   int device_id;  // cuda device with id=0 as default device.
   OrtCudnnConvAlgoSearch cudnn_conv_algo_search;  // cudnn conv algo search option
   size_t cuda_mem_limit;   //  default cuda memory limitation to maximum finite value of size_t.
-  int OrtArenaCfg::arena_extend_strategy;    // default area extend strategy to KNextPowerOfTwo.
+  int arena_extend_strategy;    // default area extend strategy to KNextPowerOfTwo.
 } OrtCUDAProviderOptions;
 
 struct OrtApi;
@@ -883,9 +883,6 @@ struct OrtApi {
   ORT_API2_STATUS(ReleaseAvailableProviders, _In_ char** ptr,
                   _In_ int providers_length);
 
-  ORT_API2_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA,
-                  _In_ OrtSessionOptions* options, _In_ OrtCUDAProviderOptions* cuda_options);
-
   /**
      * \param value - A tensor created from OrtCreateTensor... function.
      * \param index - index of string tensor element, length of element at index will be returned.
@@ -1050,6 +1047,14 @@ struct OrtApi {
    * \param out is set to the nanoseconds of profiling's start time
    */
   ORT_API2_STATUS(SessionGetProfilingStartTimeNs, _In_ const OrtSession* sess, _Outptr_ uint64_t* out);
+
+  /**
+  * Append CUDA execution provider
+  */
+  ORT_API2_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA,
+                  _In_ OrtSessionOptions* options, _In_ OrtCUDAProviderOptions* cuda_options);
+
+
 
 };
 

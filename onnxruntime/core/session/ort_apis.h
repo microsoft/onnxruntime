@@ -234,4 +234,7 @@ ORT_API_STATUS_IMPL(CreateAndRegisterAllocator, _Inout_ OrtEnv* env, _In_ const 
 
 ORT_API_STATUS_IMPL(SetLanguageProjection, _In_ const OrtEnv* ort_env, _In_ OrtLanguageProjection projection);
 ORT_API_STATUS_IMPL(SessionGetProfilingStartTimeNs, _In_ const OrtSession* sess, _Outptr_ uint64_t* out);
+
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CUDA,
+                _In_ OrtSessionOptions* options, _In_ OrtCUDAProviderOptions* cuda_options);
 }  // namespace OrtApis

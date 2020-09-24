@@ -6,6 +6,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "cuda_execution_provider.h"
 #include "core/session/abi_session_options_impl.h"
+#include "core/session/ort_apis.h"
 #include "core/framework/bfc_arena.h"
 
 using namespace onnxruntime;
@@ -51,16 +52,11 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(O
 }  // namespace onnxruntime
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, int device_id){
-  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_CUDA(device_id));
-  return nullptr;
-}
-/*
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CUDA_CONV_ALGO, _In_ OrtSessionOptions* options, int device_id, int conv_algo) {
   options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_CUDA(static_cast<OrtDevice::DeviceId>(device_id)));
   return nullptr;
-}*/
+}
 
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CUDA2,
+ORT_API_STATUS_IMPL(OrtApis::OrtSessionOptionsAppendExecutionProvider_CUDA,
                     _In_ OrtSessionOptions* options, _In_ OrtCUDAProviderOptions* cuda_options) {
   options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_CUDA(static_cast<OrtDevice::DeviceId>(cuda_options->device_id),
                                             cuda_options->cudnn_conv_algo_search, cuda_options->cuda_mem_limit, 
