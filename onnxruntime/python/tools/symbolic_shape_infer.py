@@ -201,17 +201,18 @@ class SymbolicShapeInference:
     def _merge_symbols(self, dims):
         if not all([type(d) == str for d in dims]):
             if self.auto_merge_:
-                assert len(dims) == 2 # only allow symbol->int merge in binary ops for now
-                is_int = [is_literal(d) for d in dims]
+                unique_dims = list(set(dims))
+                is_int = [is_literal(d) for d in unique_dims]
+                assert sum(is_int) <= 1 # if there are more than 1 unique ints, something is wrong
                 if sum(is_int) == 1:
                   int_dim = is_int.index(1)
                   if self.verbose_ > 0:
-                      print('dim {} has been merged with value {}'.format(dims[1 - int_dim], dims[int_dim]))
-                  self._check_merged_dims(dims, allow_broadcast=False)
-                  return dims[int_dim]
+                      print('dim {} has been merged with value {}'.format(unique_dims[:int_dim] + unique_dims[int_dim+1:], unique_dims[int_dim]))
+                  self._check_merged_dims(unique_dims, allow_broadcast=False)
+                  return unique_dims[int_dim]
                 else:
                   if self.verbose_ > 0:
-                      print('dim {} has been mergd with dim {}'.format(dims[0], dims[1]))
+                      print('dim {} has been mergd with dim {}'.format(unique_dims[1:], unique_dims[0]))
                   return dims[0]
             else:
                 return None
@@ -289,6 +290,8 @@ class SymbolicShapeInference:
             if not is_literal(new_dim) and not type(new_dim) == str:
                 str_dim = str(new_dim)
                 if str_dim in self.suggested_merge_:
+                    if is_literal(self.suggested_merge_[str_dim]):
+                        continue # no need to create dim for literals
                     new_sympy_shape[i] = self.symbolic_dims_[self.suggested_merge_[str_dim]]
                 else:
                     # add new_dim if it's a computational expression
