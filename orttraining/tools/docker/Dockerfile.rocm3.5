@@ -17,6 +17,9 @@ RUN apt-get -y install build-essential autotools-dev \
     g++ gcc \
     && apt-get autoremove
 
+# update existing packages to minimize security vulnerabilities
+RUN apt-get -y install unattended-upgrades && unattended-upgrade
+
 # ROCm library
 RUN apt-get -y install rocm-libs miopen-hip
 
