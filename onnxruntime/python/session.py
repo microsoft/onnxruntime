@@ -141,7 +141,7 @@ class Session:
         """
         return self._sess.end_profiling()
 
-    def get_profiling_start_timeNs(self):
+    def get_profiling_start_time_ns(self):
         """
         Return the nanoseconds of profiling's start time
         """
