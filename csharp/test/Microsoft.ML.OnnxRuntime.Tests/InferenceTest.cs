@@ -369,7 +369,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Fact]
         public void InferenceSessionGetProfilingStartTimeNs()
         {
-            public ulong getSingleSessionProfilingStartTime() {
+            ulong getSingleSessionProfilingStartTime()
+            {
                 string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
                 SessionOptions options = new SessionOptions();
                 options.EnableProfiling = true;
