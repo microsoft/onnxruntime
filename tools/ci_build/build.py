@@ -1080,6 +1080,12 @@ def run_android_tests(args, source_dir, config, cwd):
                                  'B] is bigger than threshold [' + str(bin_size_threshold) + 'B]')
 
 
+def run_ios_tests(args, source_dir, config, cwd):
+    run_subprocess(["xcodebuild", "test", "-project", "./onnxruntime.xcodeproj",
+                    "-scheme",  "onnxruntime_test_all",
+                    "-destination", "platform=iOS Simulator,OS=14.0,name=iPhone SE (2nd generation)"], cwd=cwd)
+
+
 def run_training_python_frontend_tests(cwd):
     run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer.py'], cwd=cwd)
     run_subprocess([sys.executable, 'onnxruntime_test_training_unit_tests.py'], cwd=cwd)
@@ -1213,6 +1219,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
         if args.android:
             run_android_tests(args, source_dir, config, cwd)
+            continue
+        elif args.ios:
+            run_ios_tests(args, source_dir, config, cwd)
             continue
         dll_path_list = []
         if args.use_nuphar:

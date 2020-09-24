@@ -87,18 +87,20 @@ function(AddTest)
   endif(onnxruntime_GENERATE_TEST_REPORTS)
 
   if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
+    target_sources(${_UT_TARGET} PRIVATE ${TEST_SRC_DIR}/xctest/orttestmain.m)
     set_target_properties(${_UT_TARGET} PROPERTIES FOLDER "ONNXRuntimeTest"
       MACOSX_BUNDLE_BUNDLE_NAME ${_UT_TARGET}
-      MACOSX_BUNDLE_GUI_IDENTIFIER com.microsoft.onnxruntime.utest.${_UT_TARGET}
+      MACOSX_BUNDLE_GUI_IDENTIFIER com.onnxruntime.utest.${_UT_TARGET}
       MACOSX_BUNDLE_LONG_VERSION_STRING ${ORT_VERSION}
       MACOSX_BUNDLE_BUNDLE_VERSION ${ORT_VERSION}
-      MACOSX_BUNDLE_SHORT_VERSION_STRING ${ORT_VERSION} )
+      MACOSX_BUNDLE_SHORT_VERSION_STRING ${ORT_VERSION}
+      XCODE_ATTRIBUTE_CLANG_ENABLE_MODULES "YES")
 
     xctest_add_bundle(${_UT_TARGET}_xc ${_UT_TARGET} ${TEST_SRC_DIR}/xctest/ortxctest.m)
 
     set_target_properties(${_UT_TARGET}_xc PROPERTIES FOLDER "ONNXRuntimeXCTest"
       MACOSX_BUNDLE_BUNDLE_NAME ${_UT_TARGET}_xc
-      MACOSX_BUNDLE_GUI_IDENTIFIER com.microsoft.onnxruntime.utest.${_UT_TARGET}
+      MACOSX_BUNDLE_GUI_IDENTIFIER com.onnxruntime.utest.${_UT_TARGET}
       MACOSX_BUNDLE_LONG_VERSION_STRING ${ORT_VERSION}
       MACOSX_BUNDLE_BUNDLE_VERSION ${ORT_VERSION}
       MACOSX_BUNDLE_SHORT_VERSION_STRING ${ORT_VERSION})
@@ -848,7 +850,7 @@ if (onnxruntime_BUILD_SHARED_LIB)
   )
 
   # test inference using global threadpools
-  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Android|iOS" AND NOT onnxruntime_MINIMAL_BUILD)
+  if (NOT CMAKE_SYSTEM_NAME MATCHES "Android|iOS" AND NOT onnxruntime_MINIMAL_BUILD)
   AddTest(DYN
           TARGET onnxruntime_global_thread_pools_test
           SOURCES ${onnxruntime_global_thread_pools_test_SRC}

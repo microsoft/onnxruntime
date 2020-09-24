@@ -3,6 +3,8 @@
 
 #import <UIKit/UIKit.h>
 
+int test_main(int argc, char** argv);
+
 @interface ViewController : UIViewController
 
 @end
@@ -73,7 +75,14 @@
 
 
 int main(int argc, char * argv[]) {
+    int ret = 0;
     @autoreleasepool {
-        return UIApplicationMain(argc, argv, nil, NSStringFromClass([AppDelegate class]));
+        ret = UIApplicationMain(argc, argv, nil, NSStringFromClass([AppDelegate class]));
     }
+
+    if (ret == 0) {
+        ret = test_main(argc, argv);
+    }
+
+    return ret;
 }
