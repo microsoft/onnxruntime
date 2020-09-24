@@ -138,6 +138,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ReleaseMapTypeInfo;
         public IntPtr ReleaseSequenceTypeInfo;
         public IntPtr SessionEndProfiling;
+        public IntPtr SessionGetProfilingStartTimeNs;
 
         public IntPtr SessionGetModelMetadata;
         public IntPtr ModelMetadataGetProducerName;
@@ -213,6 +214,7 @@ namespace Microsoft.ML.OnnxRuntime
             OrtSessionGetInputName = (DOrtSessionGetInputName)Marshal.GetDelegateForFunctionPointer(api_.SessionGetInputName, typeof(DOrtSessionGetInputName));
             OrtSessionGetOutputName = (DOrtSessionGetOutputName)Marshal.GetDelegateForFunctionPointer(api_.SessionGetOutputName, typeof(DOrtSessionGetOutputName));
             OrtSessionEndProfiling = (DOrtSessionEndProfiling)Marshal.GetDelegateForFunctionPointer(api_.SessionEndProfiling, typeof(DOrtSessionEndProfiling));
+            OrtSessionGetProfilingStartTimeNs = (DOrtSessionGetProfilingStartTimeNs)Marshal.GetDelegateForFunctionPointer(api_.SessionGetProfilingStartTimeNs, typeof(DOrtSessionGetProfilingStartTimeNs));
             OrtSessionGetOverridableInitializerName = (DOrtSessionGetOverridableInitializerName)Marshal.GetDelegateForFunctionPointer(api_.SessionGetOverridableInitializerName, typeof(DOrtSessionGetOverridableInitializerName));
             OrtSessionGetInputTypeInfo = (DOrtSessionGetInputTypeInfo)Marshal.GetDelegateForFunctionPointer(api_.SessionGetInputTypeInfo, typeof(DOrtSessionGetInputTypeInfo));
             OrtSessionGetOutputTypeInfo = (DOrtSessionGetOutputTypeInfo)Marshal.GetDelegateForFunctionPointer(api_.SessionGetOutputTypeInfo, typeof(DOrtSessionGetOutputTypeInfo));
@@ -414,6 +416,11 @@ namespace Microsoft.ML.OnnxRuntime
                                                 IntPtr /*(OrtAllocator*)*/ allocator,
                                                 out IntPtr /*(char**)*/profile_file);
         public static DOrtSessionEndProfiling OrtSessionEndProfiling;
+
+        public delegate IntPtr /*(OrtStatus*)*/DOrtSessionGetProfilingStartTimeNs(
+                                                IntPtr /*(const OrtSession*)*/ session,
+                                                out uint /*(uint* out)*/time);
+        public static DOrtSessionEndProfiling OrtSessionGetProfilingStartTimeNs;        
 
         public delegate IntPtr /*(OrtStatus*)*/DOrtSessionGetOverridableInitializerName(
                                                 IntPtr /*(OrtSession*)*/ session,

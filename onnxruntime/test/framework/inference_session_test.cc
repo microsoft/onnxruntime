@@ -683,7 +683,7 @@ TEST(InferenceSessionTests, CheckRunProfilerStartTime) {
   uint64_t before_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
       std::chrono::high_resolution_clock::now().time_since_epoch()).count(); // get current time
   session_object.StartProfiling("onnxruntime_profile_start");
-  uint64_t profiling_start_time = session_object.GetProfiling().GetStartTime();
+  uint64_t profiling_start_time = session_object.GetProfiling().GetStartTimeNs();
   uint64_t after_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
       std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 

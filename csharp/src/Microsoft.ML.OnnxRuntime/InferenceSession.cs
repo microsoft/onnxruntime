@@ -529,6 +529,17 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        /// <summary>
+        /// Return the nanoseconds of profiling's start time
+        /// 
+        public uint GetProfilingStartTimeNs()
+        {
+            uint startTime = 0;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetProfilingStartTimeNs(_nativeHandle,
+                                                                   out startTime));
+            return startTime;
+        }        
+
         // Delegate for string extraction from an arbitrary input/output object
         private delegate string NameExtractor<in TInput>(TInput input);
 
