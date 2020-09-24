@@ -88,7 +88,7 @@ class GraphViewer {
   int MaxNodeIndex() const noexcept;
 
   /** Gets the NodeIndex values for the Graph nodes, sorted into topological order. */
-  const std::vector<NodeIndex>& GetNodesInTopologicalOrder(ExecutionOrder order = ExecutionOrder::TOPOLOGICAL) const;
+  const std::vector<NodeIndex>& GetNodesInTopologicalOrder(ExecutionOrder order = ExecutionOrder::DEFAULT) const;
 
   /**
   Gets the NodeIndex values for the root nodes in the Graph.
