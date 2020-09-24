@@ -3,8 +3,11 @@
 
 #include "flatbuffers_utils.h"
 #include "schema/ort.fbs.h"
-#include <core/graph/graph.h>
-#include "core/framework/tensorprotoutils.h"
+
+#include "core/common/common.h"
+#include "core/graph/constants.h"
+#include "core/graph/onnx_protobuf.h"
+#include "gsl/gsl-lite.hpp"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;

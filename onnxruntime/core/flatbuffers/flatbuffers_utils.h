@@ -21,19 +21,10 @@ class Vector;
 
 namespace onnxruntime {
 
-class Graph;
-class Node;
-
-namespace logging {
-class Logger;
-}
-
 namespace experimental {
 
 namespace fbs {
-struct Attribute;
 struct OperatorSetId;
-struct Tensor;
 struct ValueInfo;
 }  // namespace fbs
 

@@ -6,6 +6,7 @@
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/framework/tensorprotoutils.h"
 #include "graph_flatbuffers_utils.h"
+#include "flatbuffers/flatbuffers.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;

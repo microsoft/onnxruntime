@@ -3,7 +3,11 @@
 
 #pragma once
 
-#include "flatbuffers/flatbuffers.h"
+namespace flatbuffers {
+class FlatBufferBuilder;
+template <typename T>
+struct Offset;
+}  // namespace flatbuffers
 
 namespace onnxruntime {
 
@@ -19,7 +23,6 @@ namespace experimental {
 namespace fbs {
 struct Attribute;
 struct Tensor;
-struct ValueInfo;
 }  // namespace fbs
 
 namespace utils {
