@@ -43,7 +43,16 @@
 
 std::unique_ptr<Ort::Env> ort_env;
 
+#if defined(__APPLE__)
+    #include <TargetConditionals.h>
+    #if TARGET_IPHONE_SIMULATOR || TARGET_OS_IPHONE
+      extern "C" int test_main(int argc, char** argv) {
+    #else
+      int main(int argc, char** argv) {
+    #endif
+#else
 int main(int argc, char** argv) {
+#endif
   int status = 0;
 
   ORT_TRY {
