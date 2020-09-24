@@ -144,6 +144,7 @@ class Session:
     def get_profiling_start_time_ns(self):
         """
         Return the nanoseconds of profiling's start time
+        Comparable to time.monotonic_ns() after Python 3.3
         """
         return self._sess.get_profiling_start_time_ns
 

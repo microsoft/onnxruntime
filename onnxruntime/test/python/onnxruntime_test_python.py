@@ -521,15 +521,15 @@ class TestInferenceSession(unittest.TestCase):
             sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so)
             return sess.get_profiling_start_time_ns()
 
-        # Get current nanoseconds
-        start = time.monotonic_ns()
         # Get 1st profiling's start time
         start_time_1 = getSingleSessionProfilingStartTime()
         # Get 2nd profiling's start time
         start_time_2 = getSingleSessionProfilingStartTime()
+        # Get 3rd profiling's start time
+        start_time_3 = getSingleSessionProfilingStartTime()
 
         # Chronological profiling's start time
-        self.assertTrue(start <= start_time_1 <= start_time_2)
+        self.assertTrue(start_time_1 <= start_time_2 <= start_time_3)
 
     def testGraphOptimizationLevel(self):
         opt = onnxrt.SessionOptions()
