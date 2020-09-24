@@ -200,9 +200,9 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
 
   if (optype == "MaxPool") {
     //MaxPool "indices" output is not currently supported.
-    /*if (node->OutputDefs().size() > 1) {
+    if (node->OutputDefs().size() > 1) {
       return true;
-    }*/
+    }
 
     const auto& attributes = node->GetAttributes();
     //auto pad null value is not supported
@@ -210,13 +210,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     if (auto_attr->second.s() == "") {
       return true;
     }
-    /* ceil_mode and dilations attrs are not supported in nGraph
-    const auto ceil_attr = attributes.find("ceil_mode");
-    // default value of ceil_mode (0) is supported.
-    if (ceil_attr != attributes.end() && ceil_attr->second.i() != 0) {
-      return true;
-    }*/
-
+    // dilations attrs are not supported in nGraph
     if (attributes.find("dilations") != attributes.end()) {
       return true;
     }
