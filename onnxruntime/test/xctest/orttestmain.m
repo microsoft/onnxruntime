@@ -75,13 +75,13 @@ int test_main(int argc, char** argv);
 
 
 int main(int argc, char * argv[]) {
-    int ret = 0;
-    @autoreleasepool {
-        ret = UIApplicationMain(argc, argv, nil, NSStringFromClass([AppDelegate class]));
-    }
+    
+    int ret = test_main(argc, argv);
 
     if (ret == 0) {
-        ret = test_main(argc, argv);
+        @autoreleasepool {
+            ret = UIApplicationMain(argc, argv, nil, NSStringFromClass([AppDelegate class]));
+        }
     }
 
     return ret;
