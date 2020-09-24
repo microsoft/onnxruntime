@@ -532,9 +532,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Return the nanoseconds of profiling's start time
         /// 
-        public uint GetProfilingStartTimeNs()
+        public ulong GetProfilingStartTimeNs()
         {
-            uint startTime = 0;
+            ulong startTime = 0;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetProfilingStartTimeNs(_nativeHandle,
                                                                    out startTime));
             return startTime;

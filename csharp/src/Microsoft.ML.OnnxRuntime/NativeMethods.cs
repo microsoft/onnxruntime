@@ -419,7 +419,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         public delegate IntPtr /*(OrtStatus*)*/DOrtSessionGetProfilingStartTimeNs(
                                                 IntPtr /*(const OrtSession*)*/ session,
-                                                out uint /*(uint* out)*/time);
+                                                out ulong /*(ulong* out)*/time);
         public static DOrtSessionGetProfilingStartTimeNs OrtSessionGetProfilingStartTimeNs;        
 
         public delegate IntPtr /*(OrtStatus*)*/DOrtSessionGetOverridableInitializerName(
