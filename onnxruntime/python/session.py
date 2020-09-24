@@ -145,7 +145,7 @@ class Session:
         """
         Return the nanoseconds of profiling's start time
         """
-        return self._sess.get_profiling_start_timeNs()
+        return self._sess.get_profiling_start_time_ns
 
     def io_binding(self):
         "Return an onnxruntime.IOBinding object`."
@@ -218,7 +218,7 @@ class InferenceSession(Session):
         self._model_meta = self._sess.model_meta
         self._providers = self._sess.get_providers()
         self._provider_options = self._sess.get_provider_options()
-        self._profiling_start_timeNs = self._sess.get_profiling_start_timeNs
+        self._profiling_start_time_ns = self._sess.get_profiling_start_time_ns
 
         # Tensorrt can fall back to CUDA. All others fall back to CPU.
         if 'TensorrtExecutionProvider' in C.get_available_providers():
@@ -237,7 +237,7 @@ class InferenceSession(Session):
         self._model_meta = None
         self._providers = None
         self._provider_options = None
-        self._profiling_start_timeNs = None
+        self._profiling_start_time_ns = None
 
         # create a new C.InferenceSession
         self._sess = None

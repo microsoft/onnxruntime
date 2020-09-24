@@ -9,6 +9,7 @@ import onnxruntime as onnxrt
 import threading
 import sys
 from helper import get_name
+import time
 
 class TestInferenceSession(unittest.TestCase):
 
@@ -512,6 +513,28 @@ class TestInferenceSession(unittest.TestCase):
                 for tag in tags:
                     self.assertTrue(tag in lines[i])
             self.assertTrue(']' in lines[8])
+
+    def testProfilerGetStartTimeNs(self):
+        # Get current nanoseconds
+        start = time.monotonic_ns()
+        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        
+        # Get 1st profiling's start time
+        so = onnxrt.SessionOptions()
+        so.enable_profiling = True
+        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so)
+        sess.run([], {'X': x})
+        start_time_1 = sess.get_profiling_start_time_ns()
+        
+        # Get 2nd profiling's start time
+        so = onnxrt.SessionOptions()
+        so.enable_profiling = True
+        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so)
+        sess.run([], {'X': x})
+        start_time_2 = sess.get_profiling_start_time_ns()
+
+        # Chronological profiling's start time
+        self.assertTrue(start <= start_time_1 <= start_time_2)
 
     def testGraphOptimizationLevel(self):
         opt = onnxrt.SessionOptions()
