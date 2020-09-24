@@ -111,7 +111,7 @@ class ONNXModel:
         Find out if a node exists in a graph or a node is in the 
         new set of nodes created during quantization. Return the node found.
         '''
-        graph_nodes_list = list(graph.node)  # deep copy
+        graph_nodes_list = list(graph.node)  #deep copy
         graph_nodes_list.extend(new_nodes_list)
         node = find_by_name(node_name, graph_nodes_list)
         return node

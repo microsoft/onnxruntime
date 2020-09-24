@@ -26,11 +26,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -789,18 +791,68 @@ public class InferenceTest {
         float[] resultBufferArray = new float[flatInput.length];
         ((OnnxTensor) res.get(0)).getFloatBuffer().get(resultBufferArray);
         assertArrayEquals(flatInput, resultBufferArray, 1e-6f);
-        OnnxValue.close(container);
       }
-      container.clear();
+      OnnxValue.close(container);
+    }
+  }
 
-      // Now test loading from buffer
-      FloatBuffer buffer = FloatBuffer.wrap(flatInput);
-      OnnxTensor newTensor = OnnxTensor.createTensor(env, buffer, shape);
-      container.put(inputName, newTensor);
-      try (OrtSession.Result res = session.run(container)) {
-        resultArray = TestHelpers.flattenFloat(res.get(0).getValue());
-        assertArrayEquals(flatInput, resultArray, 1e-6f);
-        OnnxValue.close(container);
+  @Test
+  public void testModelInputBuffer() throws OrtException {
+    // model takes 1x5 input of fixed type, echoes back
+    String modelPath = getResourcePath("/test_types_FLOAT.pb").toString();
+
+    try (OrtEnvironment env = OrtEnvironment.getEnvironment("testModelInputFLOAT");
+        SessionOptions options = new SessionOptions();
+        OrtSession session = env.createSession(modelPath, options)) {
+      String inputName = session.getInputNames().iterator().next();
+      long[] shape = new long[] {1, 5};
+      Map<String, OnnxTensor> container = new HashMap<>();
+      float[] inputArr =
+          new float[] {
+            1.0f, -2.0f, 3.0f, -4.0f, 5.0f, -6.0f, 7.0f, -8.0f, 9.0f, -10.0f, 11.0f, -12.0f, 13.0f,
+            -14.0f, 15
+          };
+      FloatBuffer buffer = FloatBuffer.wrap(inputArr);
+      FloatBuffer directBuffer =
+          ByteBuffer.allocateDirect(inputArr.length * 4)
+              .order(ByteOrder.nativeOrder())
+              .asFloatBuffer()
+              .put(buffer);
+      buffer.rewind();
+      directBuffer.rewind();
+      float[] resultArray;
+
+      // Test loading from buffer
+      for (int i = 0; i < 3; i++) {
+        // Set limits
+        buffer.position(i * 5);
+        buffer.limit((i + 1) * 5);
+        directBuffer.position(i * 5);
+        directBuffer.limit((i + 1) * 5);
+
+        // Check regular buffer (copies to direct)
+        OnnxTensor newTensor = OnnxTensor.createTensor(env, buffer, shape);
+        container.put(inputName, newTensor);
+        try (OrtSession.Result res = session.run(container)) {
+          resultArray = TestHelpers.flattenFloat(res.get(0).getValue());
+          assertArrayEquals(Arrays.copyOfRange(inputArr, i * 5, (i + 1) * 5), resultArray, 1e-6f);
+          OnnxValue.close(container);
+        }
+        container.clear();
+        // buffer should be unchanged
+        assertEquals(i * 5, buffer.position());
+
+        // Check direct buffer (no-copy)
+        newTensor = OnnxTensor.createTensor(env, directBuffer, shape);
+        container.put(inputName, newTensor);
+        try (OrtSession.Result res = session.run(container)) {
+          resultArray = TestHelpers.flattenFloat(res.get(0).getValue());
+          assertArrayEquals(Arrays.copyOfRange(inputArr, i * 5, (i + 1) * 5), resultArray, 1e-6f);
+          OnnxValue.close(container);
+        }
+        container.clear();
+        // direct buffer should be unchanged
+        assertEquals(i * 5, directBuffer.position());
       }
     }
   }
@@ -852,6 +904,17 @@ public class InferenceTest {
         options.setLoggerId("monkeys");
         options.setSessionLogLevel(OrtLoggingLevel.ORT_LOGGING_LEVEL_FATAL);
         options.setSessionLogVerbosityLevel(5);
+        Map<String, String> configEntries = options.getConfigEntries();
+        assertTrue(configEntries.isEmpty());
+        options.addConfigEntry("key", "value");
+        assertEquals("value", configEntries.get("key"));
+        try {
+          options.addConfigEntry("", "invalid key");
+          fail("Add config entry with empty key should have failed");
+        } catch (OrtException e) {
+          assertTrue(e.getMessage().contains("Config key is empty"));
+          assertEquals(OrtException.OrtErrorCode.ORT_INVALID_ARGUMENT, e.getCode());
+        }
         try (OrtSession session = env.createSession(modelPath, options)) {
           String inputName = session.getInputNames().iterator().next();
           Map<String, OnnxTensor> container = new HashMap<>();
