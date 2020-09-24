@@ -55,7 +55,6 @@ int main(int argc, char** argv) {
 #endif
   int status = 0;
 
-
   ORT_TRY {
     ::testing::InitGoogleTest(&argc, argv);
    char cwd[PATH_MAX];
