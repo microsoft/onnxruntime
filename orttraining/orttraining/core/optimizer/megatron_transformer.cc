@@ -62,24 +62,24 @@ struct NodeInfo {
 static bool IsExpectedOpAndProvider(const Node& node,
                                     const OpInfo& op_info,
                                     ProviderType provider_type) {
-  if(node.OpType() == "Mul"){
-    std::cout<<"Extra debug:"<< node.Name() <<"\n";
+  if (node.OpType() == "Mul") {
+    std::cout << "Extra debug:" << node.Name() << "\n";
     bool is_true = graph_utils::IsSupportedOptypeVersionAndDomain(node, op_info.op_type, op_info.supported_versions, op_info.domain);
-    if(!is_true){
-      std::cout<<"Mismatch in IsSupportedOptypeVersionAndDomain:\n";
+    if (!is_true) {
+      std::cout << "Mismatch in IsSupportedOptypeVersionAndDomain:\n";
       return is_true;
     }
     is_true = node.GetExecutionProviderType() == provider_type;
-    if(!is_true){
-      std::cout<<"Mismatch in ExecutionProviderType:\n";
+    if (!is_true) {
+      std::cout << "Mismatch in ExecutionProviderType:\n";
       return is_true;
     }
     is_true = node.GetOutputEdgesCount() == op_info.output_count;
-    if(!is_true){
-      std::cout<<"Mismatch in IsSupportedOptypeVersionAndDomain:\n";
+    if (!is_true) {
+      std::cout << "Mismatch in IsSupportedOptypeVersionAndDomain:\n";
       return is_true;
     }
-    return true;    
+    return true;
   }
   return graph_utils::IsSupportedOptypeVersionAndDomain(node, op_info.op_type, op_info.supported_versions, op_info.domain) &&
          node.GetExecutionProviderType() == provider_type &&
@@ -452,7 +452,7 @@ Status MegatronTransformer::TransformT5MLP(Graph& graph, bool& modified, int gra
     // LOGS_DEFAULT(WARNING) << " T5MLP " << node.Name() << " Transpose2 ";
     nodes_to_clear_shape.insert(nodes_to_clear_shape.end(), {&node, second_op, &relu_node, &dropout_node,
                                                              &matmul2_node, transpose_op});
-                                                            //  &matmul2_node, &dropout2_node, transpose_op});
+    //  &matmul2_node, &dropout2_node, transpose_op});
 
     auto dense_wi_weight_arg = second_op->MutableInputDefs()[0];
     NodeArg& dense_wi_weight_partition_arg = PartitionWeightByRow(graph, *dense_wi_weight_arg);
@@ -510,9 +510,9 @@ DenseWeight -- Transpose \
                MatMul -- BiasGelu -- Dropout -- MatMul -- Add -- Dropout
 */
 Status MegatronTransformer::TransformBARTMLP(Graph& graph, bool& modified, int graph_level,
-                                           const logging::Logger& logger,
-                                           std::vector<Node*>& nodes_to_clear_shape,
-                                           std::unordered_set<Node*>& self_attention_dropout_nodes, int32_t& counter) const {
+                                             const logging::Logger& logger,
+                                             std::vector<Node*>& nodes_to_clear_shape,
+                                             std::unordered_set<Node*>& self_attention_dropout_nodes, int32_t& counter) const {
   GraphViewer graph_viewer(graph);
   LOGS_DEFAULT(WARNING) << "BARTMLP Enter TransformBARTMLP";
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
@@ -1250,13 +1250,14 @@ Status MegatronTransformer::TransformT5SelfAttention(Graph& graph, bool& modifie
 }
 
 Status MegatronTransformer::TransformBARTSelfAttention(Graph& graph, bool& modified, int graph_level,
-                                                     const logging::Logger& logger,
-                                                     std::vector<Node*>& nodes_to_clear_shape,
-                                                     std::unordered_set<Node*>& self_attention_dropout_nodes,
-                                                     int32_t& counter) const {
+                                                       const logging::Logger& logger,
+                                                       std::vector<Node*>& nodes_to_clear_shape,
+                                                       std::unordered_set<Node*>& self_attention_dropout_nodes,
+                                                       int32_t& counter) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   LOGS_DEFAULT(WARNING) << " Enter BART Attention ";
+
   // Self attention sub-graph.
   //
   // MatMul->Add->Mul->Reshape->Transpose->MatMul->Reshape->Where->Reshape->Softmax->Dropout->MatMul->Transpose->Reshape->MatMul->Add->Droupout
@@ -1285,8 +1286,8 @@ Status MegatronTransformer::TransformBARTSelfAttention(Graph& graph, bool& modif
         NodeInfo({mul_info}),
         NodeInfo({reshape_info}),
         NodeInfo({transpose_info}),
-        NodeInfo({matmul_info}),  
-        NodeInfo({add_info}, false), // -13
+        NodeInfo({matmul_info}),
+        NodeInfo({add_info}, false),  // -13
         NodeInfo({reshape_info}),
         NodeInfo({where_info}),
         NodeInfo({reshape_info}),
@@ -1296,7 +1297,7 @@ Status MegatronTransformer::TransformBARTSelfAttention(Graph& graph, bool& modif
         NodeInfo({add_info}, false),
         NodeInfo({transpose_info}),
         NodeInfo({reshape_info}),
-        NodeInfo({matmul_info}), // -3
+        NodeInfo({matmul_info}),  // -3
         NodeInfo({add_info}),
         NodeInfo({dropout_info}, false)};  // -1
     if (!MatchLinearPattern(graph, &node, provider_type, linear_pattern, sub_graph_node_ptrs)) {
@@ -1322,8 +1323,8 @@ Status MegatronTransformer::TransformBARTSelfAttention(Graph& graph, bool& modif
     // std::vector<Node*> reshape_node_ptrs;  // To keep the reshape node that need to change the shape constant.
     std::unordered_map<Node*, int64_t> reshape_node_ptrs;
     reshape_node_ptrs[sub_graph_node_ptrs[sub_graph_node_ptrs.size() - 16]] = 1;
-    reshape_node_ptrs[sub_graph_node_ptrs[sub_graph_node_ptrs.size() - 12]] = 1; //dont need change
-    reshape_node_ptrs[sub_graph_node_ptrs[sub_graph_node_ptrs.size() - 10]] = 0; //dont need change
+    reshape_node_ptrs[sub_graph_node_ptrs[sub_graph_node_ptrs.size() - 12]] = 1;  //dont need change
+    reshape_node_ptrs[sub_graph_node_ptrs[sub_graph_node_ptrs.size() - 10]] = 0;  //dont need change
     reshape_node_ptrs[sub_graph_node_ptrs[sub_graph_node_ptrs.size() - 4]] = 2;
     // till now node should be k matmul operation
 
@@ -1333,7 +1334,7 @@ Status MegatronTransformer::TransformBARTSelfAttention(Graph& graph, bool& modif
     Node* q_transpose_ptr = const_cast<Node*>(graph.GetProducerNode(node.MutableInputDefs()[1]->Name()));
     ORT_ENFORCE(q_transpose_ptr->OpType().compare("Transpose") == 0);
     weight_transpose_node_ptrs.push_back(q_transpose_ptr);
-    sub_graph_node_ptrs.push_back(q_transpose_ptr);    
+    sub_graph_node_ptrs.push_back(q_transpose_ptr);
     bias_add_node_ptrs.push_back(q_biasadd_node_ptr);
 
     LOGS_DEFAULT(WARNING) << " BART Attention: q info done. ";
@@ -1342,7 +1343,7 @@ Status MegatronTransformer::TransformBARTSelfAttention(Graph& graph, bool& modif
     ORT_ENFORCE(k_transpose_ptr->OpType().compare("Transpose") == 0);
     sub_graph_node_ptrs.push_back(k_transpose_ptr);
     Node* k_reshape = const_cast<Node*>(graph.GetProducerNode(k_transpose_ptr->MutableInputDefs()[0]->Name()));
-    reshape_node_ptrs[k_reshape]=1;
+    reshape_node_ptrs[k_reshape] = 1;
     sub_graph_node_ptrs.push_back(k_reshape);
     // specific to BART, there is a lingering transpose, need to debug but temp code:
     // if(k_reshape->GetOutputEdgesCount() == 2)
@@ -1361,7 +1362,7 @@ Status MegatronTransformer::TransformBARTSelfAttention(Graph& graph, bool& modif
     // Node* k_mul = const_cast<Node*>(graph.GetProducerNode(k_reshape->MutableInputDefs()[0]->Name()));
     // sub_graph_node_ptrs.push_back(k_mul);
     Node* k_add = const_cast<Node*>(graph.GetProducerNode(k_reshape->MutableInputDefs()[0]->Name()));
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(*k_add, "Add", {7})){
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(*k_add, "Add", {7})) {
       continue;
     }
     sub_graph_node_ptrs.push_back(k_add);
@@ -1379,10 +1380,10 @@ Status MegatronTransformer::TransformBARTSelfAttention(Graph& graph, bool& modif
     sub_graph_node_ptrs.push_back(v_transpose_ptr);
     Node* v_reshape = const_cast<Node*>(graph.GetProducerNode(v_transpose_ptr->MutableInputDefs()[0]->Name()));
     ORT_ENFORCE(v_reshape != nullptr);
-    reshape_node_ptrs[v_reshape]=1;
+    reshape_node_ptrs[v_reshape] = 1;
     sub_graph_node_ptrs.push_back(v_reshape);
     Node* v_add = const_cast<Node*>(graph.GetProducerNode(v_reshape->MutableInputDefs()[0]->Name()));
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(*v_add, "Add", {7})){
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(*v_add, "Add", {7})) {
       continue;
     }
     sub_graph_node_ptrs.push_back(v_add);
@@ -1460,7 +1461,6 @@ Status MegatronTransformer::TransformBARTSelfAttention(Graph& graph, bool& modif
       continue;
     }
 
-    
     // Partition weights. If any of them fails, skip transforming this sub-graph.
     for (auto trans_ptr : weight_transpose_node_ptrs) {
       auto qkv_weight_arg = trans_ptr->MutableInputDefs()[0];

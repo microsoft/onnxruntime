@@ -44,7 +44,10 @@ mul_initializer = numpy_helper.from_array(mul_np_vals, "mul_const")
 
 qk_shape_initializer = numpy_helper.from_array(np.asarray([batch, attention_head , input_len, input_len], dtype=np.int64), 'qk_shape')
 
-dummy_condition_initializer = numpy_helper.from_array(np.zeros((batch, input_len), dtype=bool), 'dummy_cond')
+a = np.zeros((batch, input_len), dtype=bool)
+a[:,6:] = True
+
+dummy_condition_initializer = numpy_helper.from_array(a, 'dummy_cond')
 inf_const_initializer = numpy_helper.from_array(np.asarray([-np.inf], dtype=np.float32), 'inf_const')
 
 where_shape_initializer = numpy_helper.from_array(np.asarray([batch*attention_head , input_len, input_len], dtype=np.int64), 'where_shape')

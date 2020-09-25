@@ -79,7 +79,7 @@ Status SetupOptimizerParams(
         loss_scale_input_name.has_value() ? loss_scale_input_name.value() : "";
     opt_node_config.use_fp16_moments = optimizer_config.use_fp16_moments;
 
-    const auto fp16_weight_name_it = fp32_weight_names_to_fp16_node_args.find(w_n);
+    const auto fp16_weight_name_it = fp32_weight_names_to_fp16_node_args.find(weight_name);
     if (fp16_weight_name_it != fp32_weight_names_to_fp16_node_args.end()) {
       opt_node_config.fp16_weight_arg = fp16_weight_name_it->second;
     }
@@ -161,9 +161,7 @@ Status TrainingSession::ConfigureForTraining(
                                          config.distributed_config.horizontal_parallel_size,
                                          config.distributed_config.pipeline_parallel_size});
 
-  const int32_t pipeline_stage_id = config.pipeline_config.has_value() ?
-                              DistributedRunContext::RankInGroup(WorkerGroupType::ModelParallel) :
-                              -1;
+  const int32_t pipeline_stage_id = config.pipeline_config.has_value() ? DistributedRunContext::RankInGroup(WorkerGroupType::ModelParallel) : -1;
 
   if (config.pipeline_config.has_value() && config.pipeline_config.value().do_partition) {
     // Apply online pipeline partition to graph obj. This needs to be done first before any graph
@@ -335,12 +333,12 @@ Status TrainingSession::ConfigureForTraining(
   // All non-float tensors are not trainable. Remove those weights.
   // TODO: this is a temp workaround for removing rank tensor before adding optimizer.
   // Re-visit after we port logic for model splitting and hence know the rank tensor name.
-  for (auto it = weights_to_train_.begin(); it != weights_to_train_.end();) {
+  for (auto it = weight_names_to_train.begin(); it != weight_names_to_train.end();) {
     const auto* node_arg = model_->MainGraph().GetNodeArg(*it);
     ORT_RETURN_IF_NOT(node_arg, "Failed to get NodeArg with name ", *it);
     if (node_arg->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
         node_arg->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-      it = weights_to_train_.erase(it);
+      it = weight_names_to_train.erase(it);
     } else {
       ++it;
     }
@@ -351,17 +349,17 @@ Status TrainingSession::ConfigureForTraining(
     OptimizerGraphConfig opt_graph_config{};
     std::unordered_map<std::string, OptimizerNodeConfig> opt_node_configs{};
     ORT_RETURN_IF_ERROR(SetupOptimizerParams(
-        weights_to_train_, fp32_weight_name_to_fp16_node_arg,
+        weight_names_to_train, fp32_weight_name_to_fp16_node_arg,
         loss_scale_input_name, config, opt_graph_config, opt_node_configs, config_result.updated_weight_names));
     TrainingConfigurationResult::OptimizerConfigurationResult optimizer_config_result{};
     ORT_RETURN_IF_ERROR(BuildOptimizer(
         opt_graph_config, opt_node_configs,
-        optimizer_config_result.output_key_to_graph_output_name));
+        optimizer_config_result.output_key_to_graph_output_name, weight_names_to_train));
 
     config_result.opt_config_result = optimizer_config_result;
   } else {
     if (config.gradient_accumulation_steps > 1) {
-      ORT_RETURN_IF_ERROR(BuildAccumulationNode(weights_to_train_));
+      ORT_RETURN_IF_ERROR(BuildAccumulationNode(weight_names_to_train));
     }
   }
 
@@ -750,12 +748,12 @@ Status TrainingSession::BuildAccumulationNode(const std::unordered_set<std::stri
 Status TrainingSession::BuildOptimizer(
     const OptimizerGraphConfig& opt_graph_config,
     const std::unordered_map<std::string, OptimizerNodeConfig>& opt_configs,
-    OptimizerOutputKeyMap<std::string>& opt_graph_outputs) {
+    OptimizerOutputKeyMap<std::string>& opt_graph_outputs, const std::unordered_set<std::string>& weights_to_train) {
   ORT_RETURN_IF_NOT(
-      opt_configs.size() == weights_to_train_.size(),
+      opt_configs.size() == weights_to_train.size(),
       "Number of optimizer configurations does not match number of weights to train.")
 
-  for (const auto& weight_name : weights_to_train_) {
+  for (const auto& weight_name : weights_to_train) {
     ORT_RETURN_IF_NOT(
         opt_configs.find(weight_name) != opt_configs.end(),
         "Optimizer configuration was not found for weight to train: ", weight_name);
