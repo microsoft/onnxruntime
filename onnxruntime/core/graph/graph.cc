@@ -11,6 +11,7 @@
 #include <iostream>
 #include <numeric>
 #include <stack>
+#include <queue>
 
 #include "gsl/gsl"
 #include "core/common/logging/logging.h"
@@ -420,6 +421,10 @@ const Node* Node::NodeConstIterator::operator->() const {
   return &(operator*());
 }
 
+void Node::SetPriority(int priority) noexcept {
+  priority_ = priority;
+}
+
 #if !defined(ORT_MINIMAL_BUILD)
 
 void Node::SetNodeType(Node::Type node_type) noexcept {
@@ -677,6 +682,7 @@ void Node::Init(const std::string& name,
   definitions_.input_defs = input_args;
   definitions_.output_defs = output_args;
   domain_ = domain;
+  priority_ = 0;
   if (kOnnxDomainAlias == domain_) {
     domain_ = kOnnxDomain;
   }
@@ -1560,6 +1566,44 @@ void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
   }
 }
 
+void Graph::KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
+                                 const std::function<bool(const Node*, const Node*)>& comp) const {
+  std::unordered_map<NodeIndex, size_t> in_degree;
+  std::priority_queue<const Node*, std::vector<const Node*>, decltype(comp)> to_visit(comp);
+  std::vector<NodeIndex> topo_order;
+
+  for (auto& node : Nodes()) {
+    size_t input_edge_count = node.GetInputEdgesCount();
+    in_degree.insert({node.Index(), input_edge_count});
+    if (input_edge_count == 0) {
+      to_visit.push(&node);
+    }
+  }
+
+  while (!to_visit.empty()) {
+    const Node* current = to_visit.top();
+    to_visit.pop();
+
+    if (!current) continue;
+
+    if (enter) {
+      enter(current);
+    }
+
+    for (auto node_it = current->OutputNodesBegin(); node_it != current->OutputNodesEnd(); ++node_it) {
+      in_degree[node_it->Index()]--;
+
+      if (in_degree[node_it->Index()] == 0) {
+        to_visit.push(&*node_it);
+      }
+    }
+    topo_order.push_back(current->Index());
+  }
+
+  if (NumberOfNodes() != static_cast<int>(topo_order.size())) {   
+    ORT_THROW("Some nodes are not included in the topological sort, graph have a cycle.");
+  }
+}
 #if !defined(ORT_MINIMAL_BUILD)
 
 GSL_SUPPRESS(es .84)  // noisy warning about ignoring return value from insert(...)
