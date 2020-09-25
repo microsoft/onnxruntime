@@ -264,7 +264,7 @@ typedef enum OrtCudnnConvAlgoSearch {
   EXHAUSTIVE,   // expensive exhaustive benchmarking using cudnnFindConvolutionForwardAlgorithmEx
   HEURISTIC,    // lightweight heuristic based search using cudnnGetConvolutionForwardAlgorithm_v7
   DEFAULT,      // default algorithm using CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM
-} CudnnConvAlgoSearch;
+} OrtCudnnConvAlgoSearch;
 
 typedef struct OrtCUDAProviderOptions {
   int device_id;  // cuda device with id=0 as default device.
@@ -1046,16 +1046,8 @@ struct OrtApi {
    */
   ORT_API2_STATUS(SessionGetProfilingStartTimeNs, _In_ const OrtSession* sess, _Outptr_ uint64_t* out);
 
-  /**
-<<<<<<< HEAD
-  * Append CUDA execution provider
-  */
-  ORT_API2_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA,
-                  _In_ OrtSessionOptions* options, _In_ OrtCUDAProviderOptions* cuda_options);
 
-
-
-=======
+/**
  * Use this API to configure the global thread pool options to be used in the call to CreateEnvWithGlobalThreadPools.
  * A value of 0 means ORT will pick the default.
  * A value of 1 means the invoking thread will be used; no threads will be created in the thread pool.
@@ -1095,7 +1087,12 @@ struct OrtApi {
    */
   ORT_API2_STATUS(CreateEnvWithCustomLoggerAndGlobalThreadPools, OrtLoggingFunction logging_function, _In_opt_ void* logger_param, OrtLoggingLevel logging_level,
                   _In_ const char* logid, _In_ const struct OrtThreadingOptions* tp_options, _Outptr_ OrtEnv** out);
->>>>>>> master
+
+ /**
+  * Append CUDA execution provider
+  */
+  ORT_API2_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA,
+                  _In_ OrtSessionOptions* options, _In_ OrtCUDAProviderOptions* cuda_options);
 };
 
 /*

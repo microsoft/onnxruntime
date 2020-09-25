@@ -121,7 +121,7 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
       device_id_(info.device_id),
       cuda_mem_limit_(info.cuda_mem_limit),
       arena_extend_strategy_(info.arena_extend_strategy),
-      cudnn_conv_algo_(info.cudnn_conv_algo){
+      cudnn_conv_algo_(info.cudnn_conv_algo) {
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
 
   // must wait GPU idle, otherwise cudaGetDeviceProperties might fail

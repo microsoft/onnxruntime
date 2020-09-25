@@ -1,2 +1,1 @@
 OrtSessionOptionsAppendExecutionProvider_CUDA
-OrtSessionOptionsAppendExecutionProvider_CUDA_CONV_ALGO

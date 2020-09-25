@@ -256,7 +256,7 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
                 &perf.memory));
             if (std::is_same<T, MLFloat16>::value) {
                 perf.mathType = CUDNN_TENSOR_OP_MATH;              
-                }
+            }
             else {
                 perf.mathType = CUDNN_DEFAULT_MATH;              
             }
