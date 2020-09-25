@@ -201,17 +201,18 @@ class SymbolicShapeInference:
     def _merge_symbols(self, dims):
         if not all([type(d) == str for d in dims]):
             if self.auto_merge_:
-                assert len(dims) == 2 # only allow symbol->int merge in binary ops for now
-                is_int = [is_literal(d) for d in dims]
+                unique_dims = list(set(dims))
+                is_int = [is_literal(d) for d in unique_dims]
+                assert sum(is_int) <= 1 # if there are more than 1 unique ints, something is wrong
                 if sum(is_int) == 1:
                   int_dim = is_int.index(1)
                   if self.verbose_ > 0:
-                      print('dim {} has been merged with value {}'.format(dims[1 - int_dim], dims[int_dim]))
-                  self._check_merged_dims(dims, allow_broadcast=False)
-                  return dims[int_dim]
+                      print('dim {} has been merged with value {}'.format(unique_dims[:int_dim] + unique_dims[int_dim+1:], unique_dims[int_dim]))
+                  self._check_merged_dims(unique_dims, allow_broadcast=False)
+                  return unique_dims[int_dim]
                 else:
                   if self.verbose_ > 0:
-                      print('dim {} has been mergd with dim {}'.format(dims[0], dims[1]))
+                      print('dim {} has been mergd with dim {}'.format(unique_dims[1:], unique_dims[0]))
                   return dims[0]
             else:
                 return None
@@ -289,6 +290,8 @@ class SymbolicShapeInference:
             if not is_literal(new_dim) and not type(new_dim) == str:
                 str_dim = str(new_dim)
                 if str_dim in self.suggested_merge_:
+                    if is_literal(self.suggested_merge_[str_dim]):
+                        continue # no need to create dim for literals
                     new_sympy_shape[i] = self.symbolic_dims_[self.suggested_merge_[str_dim]]
                 else:
                     # add new_dim if it's a computational expression
@@ -988,7 +991,7 @@ class SymbolicShapeInference:
                         e = sympy.Min(e, new_sympy_shape[i])
                     else:
                         try:
-                            if e >= new_sympy_shape[i]:
+                            if (e - new_sympy_shape[i]) >= 0:
                                 e = new_sympy_shape[i]
                         except Exception:
                             print('Unable to determine if {} <= {}, treat as equal'.format(e, new_sympy_shape[i]))
@@ -1221,8 +1224,14 @@ class SymbolicShapeInference:
 
                         if out_rank >= 0:
                             new_shape = self._new_symbolic_shape(out_rank, node, i_o)
+                            if out_type_undefined:
+                                # guess output data type from input vi if not defined
+                                out_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+                            else:
+                                # otherwise, use original data type
+                                out_dtype = vi.type.tensor_type.elem_type
                             vi.CopyFrom(helper.make_tensor_value_info(vi.name,
-                                                                      self.known_vi_[node.input[0]].type.tensor_type.elem_type,
+                                                                      out_dtype,
                                                                       get_shape_from_sympy_shape(new_shape)))
 
                             if self.verbose_ > 0:

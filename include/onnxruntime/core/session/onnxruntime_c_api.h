@@ -289,13 +289,13 @@ struct OrtApi {
   /**
      * \param out Should be freed by `OrtReleaseEnv` after use
      */
-  ORT_API2_STATUS(CreateEnv, OrtLoggingLevel default_logging_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
+  ORT_API2_STATUS(CreateEnv, OrtLoggingLevel logging_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
 
   /**
    * \param out Should be freed by `OrtReleaseEnv` after use
    */
   ORT_API2_STATUS(CreateEnvWithCustomLogger, OrtLoggingFunction logging_function, _In_opt_ void* logger_param,
-                  OrtLoggingLevel default_warning_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
+                  OrtLoggingLevel logging_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
 
   // Platform telemetry events are on by default since they are lightweight.  You can manually turn them off.
   ORT_API2_STATUS(EnableTelemetryEvents, _In_ const OrtEnv* env);
@@ -819,10 +819,8 @@ struct OrtApi {
   * Use this in conjunction with DisablePerSessionThreads API or else the session will use
   * its own thread pools.
   */
-  ORT_API2_STATUS(CreateEnvWithGlobalThreadPools, OrtLoggingLevel default_logging_level, _In_ const char* logid,
+  ORT_API2_STATUS(CreateEnvWithGlobalThreadPools, OrtLoggingLevel logging_level, _In_ const char* logid,
                   _In_ const OrtThreadingOptions* t_options, _Outptr_ OrtEnv** out);
-
-  /* TODO: Should there be a version of CreateEnvWithGlobalThreadPools with custom logging function? */
 
   /*
   * Calling this API will make the session use the global threadpools shared across sessions.
@@ -1064,6 +1062,16 @@ struct OrtApi {
    */
   ORT_API2_STATUS(AddInitializer, _Inout_ OrtSessionOptions* options, _In_z_ const char* name,
                   _In_ const OrtValue* val);
+  
+  /**
+   * Creates a custom environment with global threadpools and logger that will be shared across sessions.
+   * Use this in conjunction with DisablePerSessionThreads API or else the session will use
+   * its own thread pools.
+   * 
+   * \param out should be freed by `OrtReleaseEnv` after use
+   */
+  ORT_API2_STATUS(CreateEnvWithCustomLoggerAndGlobalThreadPools, OrtLoggingFunction logging_function, _In_opt_ void* logger_param, OrtLoggingLevel logging_level,
+                  _In_ const char* logid, _In_ const struct OrtThreadingOptions* tp_options, _Outptr_ OrtEnv** out);
 };
 
 /*

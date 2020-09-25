@@ -360,7 +360,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
       } else {
         ArgDef pre_reduce_grad_1 = IA("PreReduceGrad1");
         result.push_back(
-            NodeDef(OpDef{"TransposeMatMul", kMSDomain, 1},
+            NodeDef(OpDef{"FusedMatMul", kMSDomain, 1},
                     {A, GO(0)},
                     {pre_reduce_grad_1},
                     {{"transA", MakeAttribute("transA", int64_t(1))}}));
