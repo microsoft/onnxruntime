@@ -8,17 +8,8 @@
 
 int main(int argc, char** argv) {
   int status = 0;
-   char cwd[PATH_MAX];
-   if (getcwd(cwd, sizeof(cwd)) != NULL) {
-       printf("Current working dir: %s\n", cwd);
-   } else {
-       perror("getcwd() error");
-       return 1;
-   }
 
   ORT_TRY {
-    printf("")
-
     onnxruntime::test::TestEnvironment test_environment{argc, argv};
 
     status = RUN_ALL_TESTS();
