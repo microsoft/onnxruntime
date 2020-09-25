@@ -663,9 +663,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetReshapeGradient) {
     }
   }
   return std::vector<NodeDef>{
-      NodeDef("ReshapeGrad",
-              {I(0), GO(0)},
-              {GI(0)})};
+      NodeDef("Shape", {I(0)}, {IA("x_shape")}),
+      NodeDef("Reshape", {GO(0), IA("x_shape")}, {GI(0)})};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetTransposeGradient) {

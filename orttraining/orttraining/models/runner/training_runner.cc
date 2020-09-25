@@ -34,6 +34,7 @@ namespace training {
 static std::vector<FreeDimensionOverride> overrides = {};
 static SessionOptions SESSION_OPTION = {
     ExecutionMode::ORT_SEQUENTIAL,     //execution_mode
+    ExecutionOrder::PRIORITY_BASED,    //execution_order
     false,                             //enable_profiling
     ORT_TSTR(""),                      //optimized_model_filepath
     true,                              //enable_mem_pattern
@@ -183,8 +184,9 @@ Status TrainingRunner::Initialize() {
   {
     TrainingSession::TrainingConfiguration::GraphTransformerConfiguration gt_config{};
     gt_config.enable_gelu_approximation = params_.enable_gelu_approximation;
-    gt_config.attn_dropout_checkpoint = params_.attn_dropout_checkpoint;
-    gt_config.gelu_checkpoint = params_.gelu_checkpoint;
+    gt_config.attn_dropout_recompute = params_.attn_dropout_recompute;
+    gt_config.gelu_recompute = params_.gelu_recompute;
+    gt_config.transformer_layer_recompute = params_.transformer_layer_recompute;
 
     config.graph_transformer_config = gt_config;
   }
