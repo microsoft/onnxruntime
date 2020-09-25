@@ -28,8 +28,10 @@ __global__ void transposeNoOverlap(half* odata, const half* idata, const int m, 
   int x = blockIdx.x * TRANS_TILE_DIM + threadIdx.x;
   int y = blockIdx.y * TRANS_TILE_DIM + threadIdx.y;
 
-  for (int j = 0; j < TRANS_TILE_DIM; j += BLOCK_ROWS)
+  for (int j = 0; j < TRANS_TILE_DIM; j += BLOCK_ROWS) {
+    if (x >= m || (y + j) >= n) continue;
     tile[threadIdx.y + j][threadIdx.x] = idata[(y + j) * m + x];
+  }
 
   __syncthreads();
 
