@@ -3,9 +3,13 @@
 
 #pragma once
 
+#include <unordered_map>
 #include <core/common/status.h>
-#include <core/graph/basic_types.h>
 #include <core/session/onnxruntime_c_api.h>
+
+namespace ONNX_NAMESPACE {
+class ValueInfoProto;
+}
 
 namespace flatbuffers {
 class FlatBufferBuilder;

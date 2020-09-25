@@ -3,6 +3,11 @@
 
 #pragma once
 
+namespace ONNX_NAMESPACE {
+class TensorProto;
+class AttributeProto;
+}  // namespace ONNX_NAMESPACE
+
 namespace flatbuffers {
 class FlatBufferBuilder;
 template <typename T>

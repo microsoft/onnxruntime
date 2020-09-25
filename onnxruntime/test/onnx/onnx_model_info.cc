@@ -134,14 +134,14 @@ void OnnxModelInfo::InitOrtModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {
     domain_to_version_[entry.first] = entry.second;
 
   // Load all node args from fbs_graph
-  std::unordered_map<std::string, NodeArgInfo> _node_args;
+  std::unordered_map<std::string, ONNX_NAMESPACE::ValueInfoProto> _node_args;
   auto fbs_node_args = fbs_graph->node_args();
   if (fbs_node_args) {
     _node_args.reserve(fbs_node_args->size());
     for (const auto* fbs_value_info : *fbs_node_args) {
       if (nullptr == fbs_value_info)
         ORT_THROW("NodeArg is missing. Invalid ORT format model.");
-      NodeArgInfo node_arg_info;
+      ONNX_NAMESPACE::ValueInfoProto node_arg_info;
       ORT_THROW_IF_ERROR(experimental::utils::LoadValueInfoOrtFormat(*fbs_value_info, node_arg_info));
       // NodeArg ctor is private, cannot use make_unique
       _node_args[fbs_value_info->name()->str()] = std::move(node_arg_info);
@@ -160,7 +160,7 @@ void OnnxModelInfo::InitOrtModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {
   }
   // Load input and output node args
   auto add_node_args = [&](const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>* fbs_node_args,
-                           std::vector<NodeArgInfo> node_args) -> Status {
+                           std::vector<ONNX_NAMESPACE::ValueInfoProto> node_args) -> Status {
     if (fbs_node_args != nullptr) {
       node_args.reserve(fbs_node_args->size());
       for (const auto* fbs_node_arg_name : *fbs_node_args) {
