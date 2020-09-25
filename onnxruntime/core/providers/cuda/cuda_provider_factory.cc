@@ -6,6 +6,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "cuda_execution_provider.h"
 #include "core/session/abi_session_options_impl.h"
+#include "core/session/onnxruntime_c_api.h"
 #include "core/session/ort_apis.h"
 #include "core/framework/bfc_arena.h"
 
@@ -17,11 +18,11 @@ struct CUDAProviderFactory : IExecutionProviderFactory {
   CUDAProviderFactory(OrtDevice::DeviceId device_id,
                       size_t cuda_mem_limit = std::numeric_limits<size_t>::max(),
                       ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo,
-                      int cudnn_conv_algo_search = 1) 
+                      OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE) 
       : device_id_(device_id), 
         cuda_mem_limit_(cuda_mem_limit), 
         arena_extend_strategy_(arena_extend_strategy),
-        cudnn_conv_algo_search_(cudnn_conv_algo_search){}
+        cudnn_conv_algo_search_(cudnn_conv_algo_search) {}
   ~CUDAProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
@@ -30,7 +31,7 @@ struct CUDAProviderFactory : IExecutionProviderFactory {
   OrtDevice::DeviceId device_id_;
   size_t cuda_mem_limit_;
   ArenaExtendStrategy arena_extend_strategy_;
-  int cudnn_conv_algo_search_;
+  OrtCudnnConvAlgoSearch cudnn_conv_algo_search_;
 };
 
 std::unique_ptr<IExecutionProvider> CUDAProviderFactory::CreateProvider() {
