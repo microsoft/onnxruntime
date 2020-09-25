@@ -44,12 +44,17 @@
 std::unique_ptr<Ort::Env> ort_env;
 
 #if defined(__APPLE__)
-    #include <TargetConditionals.h>
-    #if TARGET_IPHONE_SIMULATOR || TARGET_OS_IPHONE
-      extern "C" int test_main(int argc, char** argv) {
-    #else
-      int main(int argc, char** argv) {
-    #endif
+  #include <TargetConditionals.h>
+  #if TARGET_IPHONE_SIMULATOR || TARGET_OS_IPHONE
+    void ortenv_setup(){
+      OrtThreadingOptions tpo;
+      ort_env.reset(new Ort::Env(&tpo, ORT_LOGGING_LEVEL_WARNING, "Default"));
+    }
+
+    int test_main(int argc, char** argv) {
+  #else
+    int main(int argc, char** argv) {
+  #endif
 #else
 int main(int argc, char** argv) {
 #endif

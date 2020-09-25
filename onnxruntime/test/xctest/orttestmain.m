@@ -3,7 +3,22 @@
 
 #import <UIKit/UIKit.h>
 
-int test_main(int argc, char** argv);
+static void set_test_rootdir(const char* image_path){
+    size_t n = strlen(image_path);
+    for (; n >=0; n--) {
+        if (image_path[n] == '/') {
+            break;
+        }
+    }
+
+    char* bundle_dir = (char*)malloc(n + 1);
+    if (bundle_dir != NULL) {
+        strncpy(bundle_dir, image_path, n);
+        bundle_dir[n] = 0;
+        chdir(bundle_dir);
+        free(bundle_dir);
+    }
+}
 
 @interface ViewController : UIViewController
 
@@ -75,14 +90,11 @@ int test_main(int argc, char** argv);
 
 
 int main(int argc, char * argv[]) {
-    
-    int ret = test_main(argc, argv);
-
-    if (ret == 0) {
-        @autoreleasepool {
-            ret = UIApplicationMain(argc, argv, nil, NSStringFromClass([AppDelegate class]));
-        }
+    set_test_rootdir(argv[0]);
+    int ret = 0;
+    @autoreleasepool {
+        ret = UIApplicationMain(argc, argv, nil, NSStringFromClass([AppDelegate class]));
     }
-
+    
     return ret;
 }
