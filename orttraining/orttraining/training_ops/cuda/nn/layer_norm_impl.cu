@@ -329,7 +329,7 @@ __global__ void cuApplyLayerNorm(
     const int thrx = threadIdx.x + threadIdx.y * blockDim.x;
     for (int i = thrx; i < n2; i += numx) {
       U curr = static_cast<U>(lvals[i]);
-      T gamma_i = (gamma != NULL) ? gamma[i]: (T)0;
+      T gamma_i = (gamma != NULL) ? gamma[i]: (T)1;
       //beta is nullptr for t5 layer norm
       T beta_i = (beta != NULL) ? beta[i] : (T) 0;
       if (simplified) {
@@ -422,8 +422,8 @@ __device__ void cuLoadWriteStridedInputs(
           warp_buf2[write_idx] = curr_dout * (curr_input - curr_mean) * curr_invvar;
         } else {
           U curr_gamma = static_cast<U>(gamma[i2]);
-          U curr_beta = beta != nullptr ? static_cast<U>(beta[i2]) : U(0);
-          U curr_output = output != nullptr ? static_cast<U>(output[load_idx]) : U(0);
+          U curr_beta = static_cast<U>(beta[i2]);
+          U curr_output = static_cast<U>(output[load_idx]);
           warp_buf2[write_idx] = curr_dout * (curr_output - curr_beta) / curr_gamma;
         }
       } else {
@@ -475,8 +475,8 @@ __device__ void cuLoadAddStridedInputs(
           warp_buf2[write_idx] += curr_dout * (curr_input - curr_mean) * curr_invvar;
         } else {
           U curr_gamma = static_cast<U>(gamma[i2]);
-          U curr_beta = beta != nullptr ? static_cast<U>(beta[i2]) : U(0);
-          U curr_output = output != nullptr ? static_cast<U>(output[load_idx]) : U(0);
+          U curr_beta = static_cast<U>(beta[i2]);
+          U curr_output = static_cast<U>(output[load_idx]);
           warp_buf2[write_idx] += curr_dout * (curr_output - curr_beta) / curr_gamma;
         }
       }
