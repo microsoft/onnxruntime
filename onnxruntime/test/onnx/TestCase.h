@@ -69,9 +69,12 @@ class TestModelInfo {
 
 #if !defined(ORT_MINIMAL_BUILD)
   static std::unique_ptr<TestModelInfo> LoadOnnxModel(_In_ const PATH_CHAR_TYPE* model_url);
-#else
+#endif
+
+#if defined(ENABLE_ORT_FORMAT_LOAD)
   static std::unique_ptr<TestModelInfo> LoadOrtModel(_In_ const PATH_CHAR_TYPE* model_url);
 #endif
+
   static const std::string unknown_version;
 };
 

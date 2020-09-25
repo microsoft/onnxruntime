@@ -1,12 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/tensorprotoutils.h"
-#include "core/graph/graph_flatbuffers_utils.h"
-#include "core/graph/model.h"
-#include "core/graph/model_load_utils.h"
 #include <memory>
 #include "core/common/logging/logging.h"
+#include "core/flatbuffers/schema/ort.fbs.h"
+#include "core/flatbuffers/flatbuffers_utils.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/graph/model.h"
+#include "core/graph/model_load_utils.h"
 
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -606,22 +607,7 @@ common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
 #endif
 
   std::unordered_map<std::string, int> domain_to_version;
-  auto fbs_op_set_ids = fbs_model.opset_import();
-  ORT_RETURN_IF(nullptr == fbs_op_set_ids, "Model must have opset imports. Invalid ORT format model.");
-
-  for (const auto* entry : *fbs_op_set_ids) {
-    const auto* fbs_domain = entry->domain();
-    ORT_RETURN_IF(nullptr == fbs_domain, "opset import domain is null. Invalid ORT format model.");
-
-    std::string domain = fbs_domain->str();
-
-    // perform same aliasing that we do when loading an ONNX format model
-    if (domain == kOnnxDomainAlias) {
-      domain_to_version[kOnnxDomain] = gsl::narrow_cast<int>(entry->version());
-    } else {
-      domain_to_version[domain] = gsl::narrow_cast<int>(entry->version());
-    }
-  }
+  ORT_RETURN_IF_ERROR(experimental::utils::LoadOpsetImportOrtFormat(fbs_model.opset_import(), domain_to_version));
 
   auto fbs_graph = fbs_model.graph();
   ORT_RETURN_IF(nullptr == fbs_graph, "Graph is null. Invalid ORT format model.");
