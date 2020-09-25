@@ -15,7 +15,6 @@
 #include "core/common/path.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
-#include "core/flatbuffers/ort.fbs.h"
 #include "core/graph/basic_types.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph_nodes.h"
@@ -24,11 +23,25 @@
 #include "core/graph/function.h"
 #include "gsl/gsl"
 
+namespace flatbuffers {
+class FlatBufferBuilder;
+template <typename T>
+struct Offset;
+}  // namespace flatbuffers
+
 namespace onnxruntime {
 class Graph;
 struct IndexedSubGraph;
 class Model;
 class OpSignature;
+
+namespace experimental {
+namespace fbs {
+struct Graph;
+struct Node;
+struct NodeEdge;
+}  // namespace fbs
+}  // namespace experimental
 
 /**
 @class Node
