@@ -20,7 +20,7 @@ namespace utils {
 #if !defined(ORT_MINIMAL_BUILD)
 static Status SaveTypeInfoOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                     const TypeProto& type_proto,
-                                    flatbuffers::Offset<fbs::TypeInfo>& fbs_type_info) ORT_MUST_USE_RESULT;
+                                    flatbuffers::Offset<fbs::TypeInfo>& fbs_type_info);
 
 static flatbuffers::Offset<fbs::Dimension> SaveTensorDimensionOrtFormat(
     flatbuffers::FlatBufferBuilder& builder,
@@ -163,7 +163,7 @@ void LoadStringFromOrtFormat(std::string& dst, const flatbuffers::String* fbs_st
 }
 
 static Status LoadTypeInfoOrtFormat(const fbs::TypeInfo& fbs_type_info,
-                                    TypeProto& type_proto) ORT_MUST_USE_RESULT;
+                                    TypeProto& type_proto);
 
 static Status LoadTensorDimensionOrtFormat(const fbs::Dimension& fbs_dim,
                                            TensorShapeProto_Dimension& dim) {

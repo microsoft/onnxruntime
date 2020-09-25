@@ -32,9 +32,10 @@ struct Tensor;
 
 namespace utils {
 
+// TODO, add ORT_MUST_USE_RESULT when it is moved to a different header
 onnxruntime::common::Status SaveInitializerOrtFormat(
     flatbuffers::FlatBufferBuilder& builder, const ONNX_NAMESPACE::TensorProto& initializer,
-    flatbuffers::Offset<fbs::Tensor>& fbs_tensor) ORT_MUST_USE_RESULT;
+    flatbuffers::Offset<fbs::Tensor>& fbs_tensor);
 
 // Convert a given AttributeProto into fbs::Attribute
 // Note, we current do not support graphs, and sparse_tensor(s)
@@ -42,12 +43,12 @@ onnxruntime::common::Status SaveInitializerOrtFormat(
 //       instead of the GraphProto in attr_proto
 onnxruntime::common::Status SaveAttributeOrtFormat(
     flatbuffers::FlatBufferBuilder& builder, const ONNX_NAMESPACE::AttributeProto& attr_proto,
-    flatbuffers::Offset<fbs::Attribute>& fbs_attr, const onnxruntime::Graph* graph) ORT_MUST_USE_RESULT;
+    flatbuffers::Offset<fbs::Attribute>& fbs_attr, const onnxruntime::Graph* graph);
 
 #if defined(ENABLE_ORT_FORMAT_LOAD)
 
 onnxruntime::common::Status LoadInitializerOrtFormat(
-    const fbs::Tensor& fbs_tensor, ONNX_NAMESPACE::TensorProto& initializer) ORT_MUST_USE_RESULT;
+    const fbs::Tensor& fbs_tensor, ONNX_NAMESPACE::TensorProto& initializer);
 
 // Load a give fbs::Attribute into AttributeProto
 // Note, If the attribute type is a graph, we will leave an empty graph in attr_proto,
@@ -56,7 +57,7 @@ onnxruntime::common::Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_att
                                                    ONNX_NAMESPACE::AttributeProto& attr_proto,
                                                    std::unique_ptr<onnxruntime::Graph>& sub_graph,
                                                    Graph& graph, Node& node,
-                                                   const logging::Logger& logger) ORT_MUST_USE_RESULT;
+                                                   const logging::Logger& logger);
 
 #endif
 

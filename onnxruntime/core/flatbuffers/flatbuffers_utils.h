@@ -5,7 +5,6 @@
 
 #include <unordered_map>
 #include <core/common/status.h>
-#include <core/session/onnxruntime_c_api.h>
 
 namespace ONNX_NAMESPACE {
 class ValueInfoProto;
@@ -34,20 +33,21 @@ struct ValueInfo;
 
 namespace utils {
 
+// TODO, add ORT_MUST_USE_RESULT when it is moved to a different header
 onnxruntime::common::Status SaveValueInfoOrtFormat(
     flatbuffers::FlatBufferBuilder& builder, const ONNX_NAMESPACE::ValueInfoProto& value_info_proto,
-    flatbuffers::Offset<fbs::ValueInfo>& fbs_value_info) ORT_MUST_USE_RESULT;
+    flatbuffers::Offset<fbs::ValueInfo>& fbs_value_info);
 
 #if defined(ENABLE_ORT_FORMAT_LOAD)
 
 void LoadStringFromOrtFormat(std::string& dst, const flatbuffers::String* fbs_string);
 
 onnxruntime::common::Status LoadValueInfoOrtFormat(
-    const fbs::ValueInfo& fbs_value_info, ONNX_NAMESPACE::ValueInfoProto& value_info_proto) ORT_MUST_USE_RESULT;
+    const fbs::ValueInfo& fbs_value_info, ONNX_NAMESPACE::ValueInfoProto& value_info_proto);
 
 onnxruntime::common::Status LoadOpsetImportOrtFormat(
     const flatbuffers::Vector<flatbuffers::Offset<fbs::OperatorSetId>>* fbs_op_set_ids,
-    std::unordered_map<std::string, int>& domain_to_version) ORT_MUST_USE_RESULT;
+    std::unordered_map<std::string, int>& domain_to_version);
 
 #endif
 
