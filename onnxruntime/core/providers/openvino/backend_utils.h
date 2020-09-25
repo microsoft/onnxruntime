@@ -39,11 +39,24 @@ void FillOutputHelper(Ort::CustomOpApi& ort, OrtValue* out_tensor, std::shared_p
 InferenceEngine::Precision
 ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type, std::string device);
 
-std::vector<OrtValue*> GetOutputTensors(Ort::CustomOpApi& ort,
-                                        OrtKernelContext* context, size_t batch_size,
-                                        InferenceEngine::InferRequest::Ptr infer_request,
-                                        std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network,
-                                        std::unordered_map<std::string, int> output_names, std::map<std::string, std::shared_ptr<ngraph::Node>> const_output_map);
+OrtValue*
+GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_size,
+                 InferenceEngine::InferRequest::Ptr infer_request,
+                 std::string output_name,
+                 std::unordered_map<std::string, int> output_names);
+
+OrtValue*
+GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context,
+                 std::string output_name,
+                 std::unordered_map<std::string, int> output_names,
+                 std::shared_ptr<ngraph::Node> node);
+
+void FillInputBlob(InferenceEngine::Blob::Ptr& inputBlob, size_t request_id, size_t batch_slice_idx,
+                   std::string input_name, Ort::CustomOpApi& ort, OrtKernelContext* context,
+                   InferenceEngine::Precision precision, const SubGraphContext& subgraph_context);
+
+void FillOutputBlob(InferenceEngine::Blob::Ptr& outputBlob, OrtValue* output_tensor,
+                    Ort::CustomOpApi& ort, InferenceEngine::Precision precision, size_t batch_slice_idx);
 
 }  // namespace backend_utils
 }  // namespace openvino_ep
