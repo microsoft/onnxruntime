@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
-#include "onnxruntime_session_options_config_keys.h"
+#include <core/common/common_c_api.h>
 
 // This value is used in structures passed to ORT so that a newer version of ORT will still work with them
 #define ORT_API_VERSION 5
@@ -51,12 +51,10 @@ extern "C" {
 #define ORT_EXPORT
 #endif
 #define ORT_API_CALL _stdcall
-#define ORT_MUST_USE_RESULT
 #define ORTCHAR_T wchar_t
 #else
 #define ORT_EXPORT
 #define ORT_API_CALL
-#define ORT_MUST_USE_RESULT __attribute__((warn_unused_result))
 #define ORTCHAR_T char
 #endif
 
@@ -1062,12 +1060,12 @@ struct OrtApi {
    */
   ORT_API2_STATUS(AddInitializer, _Inout_ OrtSessionOptions* options, _In_z_ const char* name,
                   _In_ const OrtValue* val);
-  
+
   /**
    * Creates a custom environment with global threadpools and logger that will be shared across sessions.
    * Use this in conjunction with DisablePerSessionThreads API or else the session will use
    * its own thread pools.
-   * 
+   *
    * \param out should be freed by `OrtReleaseEnv` after use
    */
   ORT_API2_STATUS(CreateEnvWithCustomLoggerAndGlobalThreadPools, OrtLoggingFunction logging_function, _In_opt_ void* logger_param, OrtLoggingLevel logging_level,

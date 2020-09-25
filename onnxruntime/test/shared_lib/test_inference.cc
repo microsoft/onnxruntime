@@ -4,6 +4,7 @@
 #include <core/common/make_unique.h>
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/graph/constants.h"
 #include "providers.h"
 #include <memory>
@@ -665,7 +666,7 @@ TEST(CApiTest, create_tensor_with_data) {
 TEST(CApiTest, access_tensor_data_elements) {
   /**
    * Create a 2x3 data blob that looks like:
-   *  
+   *
    *  0 1 2
    *  3 4 5
    */
@@ -780,14 +781,16 @@ TEST(CApiTest, get_profiling_start_time) {
 #endif
 
   uint64_t before_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
-      std::chrono::high_resolution_clock::now().time_since_epoch()).count(); // get current time
+                                   std::chrono::high_resolution_clock::now().time_since_epoch())
+                                   .count();  // get current time
   Ort::Session session_1(*ort_env, MODEL_WITH_CUSTOM_MODEL_METADATA, session_options);
   uint64_t profiling_start_time = session_1.GetProfilingStartTimeNs();
   uint64_t after_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
-      std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-      
+                                  std::chrono::high_resolution_clock::now().time_since_epoch())
+                                  .count();
+
   // the profiler's start time needs to be between before_time and after_time
-  ASSERT_TRUE(before_start_time <= profiling_start_time && profiling_start_time <= after_start_time);  
+  ASSERT_TRUE(before_start_time <= profiling_start_time && profiling_start_time <= after_start_time);
 }
 
 TEST(CApiTest, model_metadata) {

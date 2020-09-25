@@ -32,6 +32,7 @@
 #include <chrono>
 
 #include "core/common/code_location.h"
+#include "core/common/common_c_api.h"
 #include "core/common/exceptions.h"
 #include "core/common/make_unique.h"
 #include "core/common/status.h"

@@ -35,6 +35,7 @@
 #include "core/session/IOBinding.h"
 #include "core/session/device_allocator.h"
 #include "core/session/allocator_impl.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "dummy_provider.h"
 #include "test_utils.h"
 #include "test/capturing_sink.h"
@@ -681,11 +682,13 @@ TEST(InferenceSessionTests, CheckRunProfilerStartTime) {
   ASSERT_STATUS_OK(session_object.Initialize());
 
   uint64_t before_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
-      std::chrono::high_resolution_clock::now().time_since_epoch()).count(); // get current time
+                                   std::chrono::high_resolution_clock::now().time_since_epoch())
+                                   .count();  // get current time
   session_object.StartProfiling("onnxruntime_profile_start");
   uint64_t profiling_start_time = session_object.GetProfiling().GetStartTime();
   uint64_t after_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
-      std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+                                  std::chrono::high_resolution_clock::now().time_since_epoch())
+                                  .count();
 
   // the profiler's start time needs to be between before_time and after_time
   ASSERT_TRUE(before_start_time <= profiling_start_time && profiling_start_time <= after_start_time);
