@@ -99,7 +99,7 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId devi
   if (external_allocator_info.UseExternalAllocator()) {
     AllocatorCreationInfo default_memory_info(
         [external_allocator_info](OrtDevice::DeviceId id) {
-          return std::make_unique<CUDAExternalAllocator>(id, CUDA, external_allocator_info.alloc, external_allocator_info.free, external_allocator_info.empty_cache);
+          return std::make_unique<CUDAExternalAllocator>(id, onnxruntime::GPU, external_allocator_info.alloc, external_allocator_info.free, external_allocator_info.empty_cache);
         },
         device_id,
         false);
@@ -109,7 +109,7 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId devi
   } else {
     AllocatorCreationInfo default_memory_info(
         [](OrtDevice::DeviceId id) {
-          return std::make_unique<CUDAAllocator>(id, CUDA);
+          return std::make_unique<CUDAAllocator>(id, onnxruntime::GPU);
         },
         device_id,
         true,
@@ -2312,7 +2312,7 @@ void CUDAExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> 
   if (nullptr == cuda_pinned_alloc) {
     AllocatorCreationInfo pinned_memory_info(
         [](OrtDevice::DeviceId device_id) {
-          return std::make_unique<CUDAPinnedAllocator>(device_id, CUDA_PINNED);
+          return std::make_unique<CUDAPinnedAllocator>(device_id, onnxruntime::GPU_PINNED);
         },
         DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
 

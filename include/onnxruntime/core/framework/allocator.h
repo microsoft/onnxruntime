@@ -35,8 +35,8 @@ struct OrtArenaCfg {
 
 namespace onnxruntime {
 constexpr const char* CPU = "Cpu";
-constexpr const char* CUDA = "Cuda";
-constexpr const char* CUDA_PINNED = "CudaPinned";
+constexpr const char* GPU = "Gpu";
+constexpr const char* GPU_PINNED = "GpuPinned";
 constexpr const char* DML = "DML";
 constexpr const char* OpenVINO_CPU = "OpenVINO_CPU";
 constexpr const char* OpenVINO_GPU = "OpenVINO_GPU";

@@ -362,7 +362,7 @@ void setup_training_params(GPT2Parameters& params) {
     info.device_id=gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
     info.do_copy_in_default_stream=true;
     params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_Cuda(&info));
-    params.input_allocator = CreateCUDAPinnedAllocator(info.device_id, CUDA_PINNED);
+    params.input_allocator = CreateCUDAPinnedAllocator(info.device_id, GPU_PINNED);
   }
 #endif
 
@@ -372,7 +372,7 @@ void setup_training_params(GPT2Parameters& params) {
     info.device_id=gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
     info.do_copy_in_default_stream=true;
     params.providers.emplace(kRocmExecutionProvider, CreateExecutionProviderFactory_Rocm(&info));
-    params.input_allocator = CreateROCMPinnedAllocator(info.device_id, CUDA_PINNED);
+    params.input_allocator = CreateROCMPinnedAllocator(info.device_id, GPU_PINNED);
   }
 #endif
 

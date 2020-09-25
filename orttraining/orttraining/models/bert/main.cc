@@ -621,7 +621,7 @@ void setup_training_params(BertParameters& params) {
     info.cudnn_conv_algo_search = OrtCudnnConvAlgoSearchExhaustive;
 
     params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_Cuda(&info));
-    params.input_allocator = CreateCUDAPinnedAllocator(info.device_id, CUDA_PINNED);
+    params.input_allocator = CreateCUDAPinnedAllocator(info.device_id, GPU_PINNED);
   }
 #endif
 
@@ -637,7 +637,7 @@ void setup_training_params(BertParameters& params) {
     info.miopen_conv_exhaustive_search = true; // true, exhaustive search (slow)
 
     params.providers.emplace(kRocmExecutionProvider, CreateExecutionProviderFactory_Rocm(&info));
-    params.input_allocator = CreateROCMPinnedAllocator(info.device_id, CUDA_PINNED);
+    params.input_allocator = CreateROCMPinnedAllocator(info.device_id, GPU_PINNED);
   }
 #endif
 

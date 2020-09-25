@@ -91,7 +91,7 @@ void addOrtValueMethods(pybind11::module& m) {
         AllocatorPtr allocator;
         if (strcmp(GetDeviceName(device), CPU) == 0) {
           allocator = GetAllocator();
-        } else if (strcmp(GetDeviceName(device), CUDA) == 0) {
+        } else if (strcmp(GetDeviceName(device), GPU) == 0) {
 #ifdef USE_CUDA
           if (!IsCudaDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
             throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
