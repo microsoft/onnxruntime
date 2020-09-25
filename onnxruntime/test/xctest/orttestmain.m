@@ -62,7 +62,7 @@ static void set_test_rootdir(const char* image_path){
     self.window.backgroundColor = [UIColor whiteColor];
     self.window.clipsToBounds = NO;
     [self.window makeKeyAndVisible];
-    
+
     return YES;
 }
 
@@ -95,6 +95,6 @@ int main(int argc, char * argv[]) {
     @autoreleasepool {
         ret = UIApplicationMain(argc, argv, nil, NSStringFromClass([AppDelegate class]));
     }
-    
+
     return ret;
 }

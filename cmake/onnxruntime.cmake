@@ -70,7 +70,6 @@ endif()
 if (NOT WIN32)
   if (APPLE OR ${CMAKE_SYSTEM_NAME} MATCHES "^iOS")
     if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
-      set(ONNXRUNTIME_SO_LINK_FLAG " -exported_symbols_list ${SYMBOL_FILE}")
       set_target_properties(onnxruntime PROPERTIES
         SOVERSION ${ORT_VERSION}
         MACOSX_RPATH TRUE

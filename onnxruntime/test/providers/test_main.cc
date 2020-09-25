@@ -43,6 +43,8 @@
 
 std::unique_ptr<Ort::Env> ort_env;
 
+#define TEST_MAIN main
+
 #if defined(__APPLE__)
   #include <TargetConditionals.h>
   #if TARGET_IPHONE_SIMULATOR || TARGET_OS_IPHONE
@@ -51,30 +53,15 @@ std::unique_ptr<Ort::Env> ort_env;
       ort_env.reset(new Ort::Env(&tpo, ORT_LOGGING_LEVEL_WARNING, "Default"));
     }
 
-    int test_main(int argc, char** argv) {
-  #else
-    int main(int argc, char** argv) {
+    #define TEST_MAIN main_no_link_  // there is a UI test app for iOS.
   #endif
-#else
-int main(int argc, char** argv) {
 #endif
+
+int TEST_MAIN(int argc, char** argv) {
   int status = 0;
 
   ORT_TRY {
     ::testing::InitGoogleTest(&argc, argv);
-   char cwd[PATH_MAX];
-   if (getcwd(cwd, sizeof(cwd)) != NULL) {
-       printf("Current working dir: %s\n", cwd);
-   } else {
-       perror("getcwd() error");
-       return 1;
-   }
-
-   printf("the exec dir: %s\n", argv[0]);
-   std::string exe_dir(argv[0]);
-   auto bundle_dir = exe_dir.substr(0, exe_dir.find_last_of('/'));
-   chdir(bundle_dir.c_str());
-
 
     OrtThreadingOptions tpo;
     ort_env.reset(new Ort::Env(&tpo, ORT_LOGGING_LEVEL_WARNING, "Default"));

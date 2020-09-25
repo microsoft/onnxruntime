@@ -4,7 +4,6 @@
 #import <Foundation/Foundation.h>
 #import <XCTest/XCTest.h>
 
-#import <XCTest/XCTest.h>
 
 // This is the stub test cases which will let the xcode command line tool start testing on Simulator 
 @interface ONNXRuntimeTestXCWrapper : XCTestCase
