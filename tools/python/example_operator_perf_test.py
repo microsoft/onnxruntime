@@ -103,7 +103,7 @@ def run_perf_tests(model_path, num_threads=1):
             total_iters += iters
 
         # Adjust the output you want as needed
-        print(f'n={n},items={num_items},k={k},avg:{total / total_iters:.4f}')
+        print('n={},items={},k={},avg:{:.4f}'.format(n, num_items, k, total / total_iters))
 
     # combine the various input parameters and create input for each test
     for n in batches:
