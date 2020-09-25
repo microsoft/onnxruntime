@@ -22,6 +22,7 @@ namespace Microsoft.ML.OnnxRuntime
         private RunOptions _builtInRunOptions = null;
         private ModelMetadata _modelMetadata = null;
         private bool _disposed = false;
+        private ulong profilingStartTimeNs = 0;
 
         #region Public API
 
@@ -534,10 +535,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// 
         public ulong GetProfilingStartTimeNs()
         {
-            ulong startTime = 0;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetProfilingStartTimeNs(_nativeHandle,
-                                                                   out startTime));
-            return startTime;
+            return profilingStartTimeNs;
         }        
 
         // Delegate for string extraction from an arbitrary input/output object
@@ -735,6 +733,11 @@ namespace Microsoft.ML.OnnxRuntime
                 {
                     _overridableInitializerMetadata[GetOverridableInitializerName(i)] = GetOverridableInitializerMetadata(i);
                 }
+                // set profiling's start time
+                UIntPtr startTime = UIntPtr.Zero;
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetProfilingStartTimeNs(_nativeHandle,
+                                                                    out startTime)); 
+                profilingStartTimeNs = (ulong) startTime;
 
             }
             catch (OnnxRuntimeException e)
@@ -747,7 +750,7 @@ namespace Microsoft.ML.OnnxRuntime
                 throw e;
             }
 
-            _builtInRunOptions = new RunOptions();  // create a default built-in run option, and avoid creating a new one every run() call
+            _builtInRunOptions = new RunOptions();  // create a default built-in run option, and avoid creating a new one every run() call  
         }
 
 
