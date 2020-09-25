@@ -17,20 +17,36 @@ For a list of available dockerfiles and published images to help with getting st
 * [Azure SQL Edge and Managed Instance](#azure-sql)
 * [Windows Machine Learning](#windows-machine-learning)
 * [ML.NET](#mlnet)
+* [Huggingface](#huggingface)
 
 ***
- 
+# General
+
 ## Python
 **Inference only**
-* [CPU: Basic](https://github.com/onnx/onnx-docker/blob/master/onnx-ecosystem/inference_demos/simple_onnxruntime_inference.ipynb)
-* [CPU: Resnet50](https://github.com/onnx/onnx-docker/blob/master/onnx-ecosystem/inference_demos/resnet50_modelzoo_onnxruntime_inference.ipynb)
-* [ONNX-Ecosystem Docker image](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem/inference_demos)
+* [Basic](https://microsoft.github.io/onnxruntime/python/tutorial.html)
+* [Resnet50](https://github.com/onnx/onnx-docker/blob/master/onnx-ecosystem/inference_demos/resnet50_modelzoo_onnxruntime_inference.ipynb)
+* [ONNX-Ecosystem Docker image samples](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem/inference_demos)
 * [ONNX Runtime Server: SSD Single Shot MultiBox Detector](https://github.com/onnx/tutorials/blob/master/tutorials/OnnxRuntimeServerSSDModel.ipynb)
 * [NUPHAR EP samples](../docs/python/notebooks/onnxruntime-nuphar-tutorial.ipynb)
 
 **Inference with model conversion**
-* [SKL Pipeline: Train, Convert, and Inference](https://microsoft.github.io/onnxruntime/python/tutorial.html)
-* [Keras: Convert and Inference](https://microsoft.github.io/onnxruntime/python/auto_examples/plot_dl_keras.html#sphx-glr-auto-examples-plot-dl-keras-py)
+* [SKL tutorials](http://onnx.ai/sklearn-onnx/index_tutorial.html)
+* [Keras - Basic](https://microsoft.github.io/onnxruntime/python/auto_examples/plot_dl_keras.html#sphx-glr-auto-examples-plot-dl-keras-py)
+* [SSD Mobilenet (Tensorflow)](https://github.com/onnx/tensorflow-onnx/blob/master/tutorials/ConvertingSSDMobilenetToONNX.ipynb)
+* [BERT-SQuAD (PyTorch) on CPU](../onnxruntime/python/tools/transformers/notebooks/PyTorch_Bert-Squad_OnnxRuntime_CPU.ipynb)
+* [BERT-SQuAD (PyTorch) on GPU](../onnxruntime/python/tools/transformers/notebooks/PyTorch_Bert-Squad_OnnxRuntime_GPU.ipynb)
+* [BERT-SQuAD (Keras)](../onnxruntime/python/tools/transformers/notebooks/Tensorflow_Keras_Bert-Squad_OnnxRuntime_CPU.ipynb)
+* [BERT-SQuAD (Tensorflow)](https://github.com/onnx/tensorflow-onnx/blob/master/tutorials/BertTutorial.ipynb)
+* [GPT2 (PyTorch)](../onnxruntime/python/tools/transformers/notebooks/Inference_GPT2_with_OnnxRuntime_on_CPU.ipynb)
+* [EfficientDet (Tensorflow)](https://github.com/onnx/tensorflow-onnx/blob/master/tutorials/efficientdet.ipynb)
+* [EfficientNet-Edge (Tensorflow)](https://github.com/onnx/tensorflow-onnx/blob/master/tutorials/efficientnet-edge.ipynb)
+* [EfficientNet-Lite (Tensorflow)](https://github.com/onnx/tensorflow-onnx/blob/master/tutorials/efficientnet-lite.ipynb)
+* [EfficientNet(Keras)](https://github.com/onnx/keras-onnx/blob/master/tutorial/TensorFlow_Keras_EfficientNet.ipynb)
+* [MNIST (Keras)](https://github.com/onnx/keras-onnx/blob/master/tutorial/TensorFlow_Keras_MNIST.ipynb)
+
+**Quantization**
+* [BERT Quantization on CPU](../onnxruntime/python/tools/quantization/notebooks/Bert-GLUE_OnnxRuntime_quantization.ipynb)
 
 **Other**
 * [Running ONNX model tests](../docs/Model_Test.md)
@@ -56,6 +72,7 @@ For a list of available dockerfiles and published images to help with getting st
 * [Inference with Nodejs](./nodejs)
 
 ---
+# Integrations
 
 ## Azure Machine Learning
 
@@ -68,6 +85,7 @@ For a list of available dockerfiles and published images to help with getting st
   * [Resnet50 Image Classification](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-modelzoo-aml-deploy-resnet50.ipynb)
 * Inferencing on **CPU** with **PyTorch** model training:
   * [MNIST](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-train-pytorch-aml-deploy-mnist.ipynb)
+  * [BERT](../onnxruntime/python/tools/transformers/notebooks/Inference_Bert_with_OnnxRuntime_on_AzureML.ipynb)
 * Inferencing on **CPU** with model conversion for existing (CoreML) model:
   * [TinyYolo](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-convert-aml-deploy-tinyyolo.ipynb)
 * Inferencing on **GPU** with **TensorRT** Execution Provider (AKS):
@@ -91,4 +109,5 @@ For a list of available dockerfiles and published images to help with getting st
 ## ML.NET
 [Object Detection with ONNX Runtime in ML.NET](https://docs.microsoft.com/en-us/dotnet/machine-learning/tutorials/object-detection-onnx)
   
-  
+## Huggingface
+[Export Tranformer models](https://github.com/huggingface/transformers/blob/master/notebooks/04-onnx-export.ipynb)
