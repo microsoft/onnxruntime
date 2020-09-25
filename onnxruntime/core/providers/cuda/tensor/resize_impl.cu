@@ -694,10 +694,12 @@ void ResizeImpl(
     div_output_image = (rank > 3) ? output_div_pitches[rank - 4] : fast_divmod(gsl::narrow_cast<int>(N));
   }
 
-  int64_t output_depth = is_3D ? output_shape[rank - 3] : -1;
+  int64_t output_depth = is_3D ? output_shape[rank - 3] : 0;
   int64_t output_height = output_shape[rank - 2];
   int64_t output_width = output_shape[rank - 1];
-  int blocksPerDimsMappingGrid = is_3D ? static_cast<int>(ceil((output_depth + output_height + output_width) / 32.0)) : static_cast<int>(ceil((output_height + output_width) / 32.0));
+  int blocksPerDimsMappingGrid =
+      static_cast<int>(ceil((output_depth + output_height + output_width) / 32.0));
+
   switch (upsample_mode) {
     case UpsampleMode::LINEAR:
       if (is_2D) {
