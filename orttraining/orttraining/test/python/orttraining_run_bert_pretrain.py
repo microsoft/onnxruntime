@@ -5,19 +5,20 @@ from __future__ import print_function
 # ==================
 import os
 import logging
-import argparse
 import random
 import h5py
 from tqdm import tqdm
 import numpy as np
+from dataclasses import dataclass, field
+from typing import Optional
+
+import unittest
+
 import torch
 from torch.utils.data import DataLoader, RandomSampler, Dataset
+import torch.distributed as dist
 
-from transformers import BertForPreTraining, BertConfig
-
-from modeling import BertForPreTraining as NV_BertForPreTraining, BertConfig as NV_BertConfig
-
-from utils import is_main_process
+from transformers import BertForPreTraining, BertConfig, HfArgumentParser
 
 from concurrent.futures import ProcessPoolExecutor
 
@@ -33,23 +34,20 @@ logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message
                     level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+def get_rank():
+    if not dist.is_available():
+        return 0
+    if not dist.is_initialized():
+        return 0
+    return dist.get_rank()
+
+def is_main_process(args):
+    if hasattr(args, 'world_rank'):
+        return args.world_rank == 0
+    else:
+        return get_rank() == 0
 
 def bert_model_description(config):
-    vocab_size = config.vocab_size
-    input_ids_desc = IODescription('input_ids', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes = vocab_size)
-    attention_mask_desc = IODescription('attention_mask', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes = 2)
-    token_type_ids_desc = IODescription('token_type_ids', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes = 2)
-    masked_lm_labels_desc = IODescription('masked_lm_labels', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes = vocab_size)
-    next_sentence_label_desc = IODescription('next_sentence_label', ['batch',], torch.int64, num_classes = 2)
-    loss_desc = IODescription('loss', [], torch.float32)
-    prediction_scores_desc = IODescription('prediction_scores', ['batch', 'max_seq_len_in_batch', vocab_size], torch.float32)
-    seq_relationship_scores_desc = IODescription('seq_relationship_scores', ['batch', 2], torch.float32)
-    return ModelDescription(
-        [input_ids_desc, attention_mask_desc, token_type_ids_desc, masked_lm_labels_desc, next_sentence_label_desc],
-        [loss_desc, prediction_scores_desc, seq_relationship_scores_desc])
-
-
-def new_bert_model_description(config):
     vocab_size = config.vocab_size
     new_model_desc = {
         'inputs': [
@@ -106,158 +104,167 @@ class pretraining_dataset(Dataset):
         return [input_ids, segment_ids, input_mask,
                 masked_lm_labels, next_sentence_labels]
 
+@dataclass
+class PretrainArguments:
+    """
+    Arguments pertaining to which model/config/tokenizer we are going to fine-tune from.
+    """
 
-def parse_arguments():
+    input_dir: str = field(
+        default=None, metadata={"help": "The input data dir. Should contain .hdf5 files  for the task"}
+    )
 
-    parser = argparse.ArgumentParser()
+    bert_model: str = field(
+        default=None, metadata={"help": "Bert pre-trained model selected in the list: bert-base-uncased, \
+            bert-large-uncased, bert-base-cased, bert-base-multilingual, bert-base-chinese."}
+    )
 
-    ## Required parameters
-    parser.add_argument("--input_dir",
-                        default=None,
-                        type=str,
-                        required=True,
-                        help="The input data dir. Should contain .hdf5 files  for the task.")
+    output_dir: str = field(
+        default=None, metadata={"help": "The output directory where the model checkpoints will be written."}
+    )
 
-    parser.add_argument("--config_file",
-                        default=None,
-                        type=str,
-                        required=True,
-                        help="The BERT model config")
+    max_seq_length: Optional[int] = field(
+        default=512,
+        metadata={"help": "The maximum total input sequence length after tokenization. Sequences longer \
+            than this will be truncated, sequences shorter will be padded."}
+    )
 
-    parser.add_argument("--bert_model", default="bert-large-uncased", type=str,
-                        help="Bert pre-trained model selected in the list: bert-base-uncased, "
-                             "bert-large-uncased, bert-base-cased, bert-base-multilingual, bert-base-chinese.")
+    max_predictions_per_seq: Optional[int] = field(
+        default=80,
+        metadata={"help": "The maximum total of masked tokens in input sequence."}
+    )
 
-    parser.add_argument("--output_dir",
-                        default=None,
-                        type=str,
-                        required=True,
-                        help="The output directory where the model checkpoints will be written.")
+    train_batch_size: Optional[int] = field(
+        default=32,
+        metadata={"help": "Batch size for training."}
+    )
 
-    ## Other parameters
-    parser.add_argument("--max_seq_length",
-                        default=512,
-                        type=int,
-                        help="The maximum total input sequence length after WordPiece tokenization. \n"
-                             "Sequences longer than this will be truncated, and sequences shorter \n"
-                             "than this will be padded.")
-    parser.add_argument("--max_predictions_per_seq",
-                        default=80,
-                        type=int,
-                        help="The maximum total of masked tokens in input sequence")
-    parser.add_argument("--train_batch_size",
-                        default=32,
-                        type=int,
-                        help="Total batch size for training.")
-    parser.add_argument("--learning_rate",
-                        default=5e-5,
-                        type=float,
-                        help="The initial learning rate for Adam.")
-    parser.add_argument("--num_train_epochs",
-                        default=3.0,
-                        type=float,
-                        help="Total number of training epochs to perform.")
-    parser.add_argument("--max_steps",
-                        default=1000,
-                        type=float,
-                        help="Total number of training steps to perform.")
-    parser.add_argument("--warmup_proportion",
-                        default=0.01,
-                        type=float,
-                        help="Proportion of training to perform linear learning rate warmup for. "
-                             "E.g., 0.1 = 10%% of training.")
-    parser.add_argument("--local_rank",
-                        type=int,
-                        default=-1,
-                        help="local_rank for distributed training on gpus")
-    parser.add_argument('--seed',
-                        type=int,
-                        default=42,
-                        help="random seed for initialization")
-    parser.add_argument('--gradient_accumulation_steps',
-                        type=int,
-                        default=1,
-                        help="Number of updates steps to accumualte before performing a backward/update pass.")
-    parser.add_argument('--fp16',
-                        default=False,
-                        action='store_true',
-                        help="Whether to use 16-bit float precision instead of 32-bit")
-    parser.add_argument('--loss_scale',
-                        type=float, default=0.0,
-                        help='Loss scaling, positive power of 2 values can improve fp16 convergence.')
-    parser.add_argument('--log_freq',
-                        type=float, default=1.0,
-                        help='frequency of logging loss.')
-    parser.add_argument('--checkpoint_activations',
-                        default=False,
-                        action='store_true',
-                        help="Whether to use gradient checkpointing")
-    parser.add_argument("--resume_from_checkpoint",
-                        default=False,
-                        action='store_true',
-                        help="Whether to resume training from checkpoint.")
-    parser.add_argument('--resume_step',
-                        type=int,
-                        default=-1,
-                        help="Step to resume training from.")
-    parser.add_argument('--num_steps_per_checkpoint',
-                        type=int,
-                        default=100,
-                        help="Number of update steps until a model checkpoint is saved to disk.")
-    parser.add_argument('--phase2',
-                        default=False,
-                        action='store_true',
-                        help="Whether to train with seq len 512")
-    parser.add_argument('--allreduce_post_accumulation',
-                        default=False,
-                        action='store_true',
-                        help="Whether to do allreduces during gradient accumulation steps.")
-    parser.add_argument('--allreduce_post_accumulation_fp16',
-                        default=False,
-                        action='store_true',
-                        help="Whether to do fp16 allreduce post accumulation.")
-    parser.add_argument('--accumulate_into_fp16',
-                        default=False,
-                        action='store_true',
-                        help="Whether to use fp16 gradient accumulators.")
-    parser.add_argument('--phase1_end_step',
-                        type=int,
-                        default=7038,
-                        help="Number of training steps in Phase1 - seq len 128")
-    parser.add_argument("--do_train",
-                        default=False,
-                        action='store_true',
-                        help="Whether to run training.")
-    parser.add_argument('--tensorboard_dir',
-                        default=None,
-                        type=str)
-    parser.add_argument('--use_ort_trainer',
-                        default=False,
-                        action='store_true',
-                        help="Whether to run with ort in fully optimized mode (run optimization in ort as opposed in pytorch).")
-    parser.add_argument('--schedule',
-                        default='warmup_poly',
-                        type=str)
-    parser.add_argument('--use_ort_trainer_nccl',
-                        default=False,
-                        action='store_true',
-                        help="Whether to run with ort trainer with NCCL instead of Horovod.")
-    parser.add_argument('--use_ib',
-                        default=False,
-                        help='Whether to enable IB or not')                    
-    args = parser.parse_args()
-    return args
+    learning_rate: Optional[float] = field(
+        default=5e-5,
+        metadata={"help": "The initial learning rate for Lamb."}
+    )
+
+    num_train_epochs: Optional[float] = field(
+        default=3.0,
+        metadata={"help": "Total number of training epochs to perform."}
+    )
+
+    max_steps: Optional[float] = field(
+        default=1000,
+        metadata={"help": "Total number of training steps to perform."}
+    )
+
+    warmup_proportion: Optional[float] = field(
+        default=0.01,
+        metadata={"help": "Proportion of training to perform linear learning rate warmup for. \
+            E.g., 0.1 = 10%% of training."}
+    )
+
+    local_rank: Optional[int] = field(
+        default=-1,
+        metadata={"help": "local_rank for distributed training on gpus."}
+    )
+
+    world_rank: Optional[int] = field(
+        default=-1
+    )
+
+    world_size: Optional[int] = field(
+        default=1
+    )
+
+    seed: Optional[int] = field(
+        default=42,
+        metadata={"help": "random seed for initialization."}
+    )
+
+    gradient_accumulation_steps: Optional[int] = field(
+        default=1,
+        metadata={"help": "Number of updates steps to accumualte before performing a backward/update pass."}
+    )
+
+    fp16: bool = field(
+        default=False,
+        metadata={"help": "Whether to use 16-bit float precision instead of 32-bit."}
+    )
+
+    loss_scale: Optional[float] = field(
+        default=0.0,
+        metadata={"help": "Loss scaling, positive power of 2 values can improve fp16 convergence."}
+    )
+
+    log_freq: Optional[float] = field(
+        default=1.0,
+        metadata={"help": "frequency of logging loss."}
+    )
+
+    checkpoint_activations: bool = field(
+        default=False,
+        metadata={"help": "Whether to use gradient checkpointing."}
+    )
+
+    resume_from_checkpoint: bool = field(
+        default=False,
+        metadata={"help": "Whether to resume training from checkpoint."}
+    )
+
+    resume_step: Optional[int] = field(
+        default=-1,
+        metadata={"help": "Step to resume training from."}
+    )
+
+    num_steps_per_checkpoint: Optional[int] = field(
+        default=100,
+        metadata={"help": "Number of update steps until a model checkpoint is saved to disk."}
+    )
+
+    phase2: bool = field(
+        default=False,
+        metadata={"help": "Whether to train with seq len 512."}
+    )
+
+    allreduce_post_accumulation: bool = field(
+        default=False,
+        metadata={"help": "Whether to do allreduces during gradient accumulation steps."}
+    )
+
+    allreduce_post_accumulation_fp16: bool = field(
+        default=False,
+        metadata={"help": "Whether to do fp16 allreduce post accumulation."}
+    )
+
+    accumulate_into_fp16: bool = field(
+        default=False,
+        metadata={"help": "Whether to use fp16 gradient accumulators."}
+    )
+
+    phase1_end_step: Optional[int] = field(
+        default=7038,
+        metadata={"help": "Whether to use fp16 gradient accumulators."}
+    )
+
+    tensorboard_dir: Optional[str] = field(
+        default=None,
+    )
+
+    schedule: Optional[str] = field(
+        default='warmup_poly',
+    )
+
 
 def setup_training(args):
 
     assert (torch.cuda.is_available())
 
-    args.local_rank = 0
+    if args.local_rank == -1:
+        args.local_rank = 0
+
+    print("args.local_rank: ", args.local_rank)
     torch.cuda.set_device(args.local_rank)
     device = torch.device("cuda", args.local_rank)
     args.n_gpu = 1
 
-    from onnxruntime.capi._pybind_state import set_cuda_device_id 
+    from onnxruntime.capi._pybind_state import set_cuda_device_id
     set_cuda_device_id(args.local_rank)
 
     if args.gradient_accumulation_steps < 1:
@@ -271,68 +278,12 @@ def setup_training(args):
 
     return device, args
 
-def prepare_model(args, device):
-    # config = NV_BertConfig.from_json_file(args.config_file)
-    # if config.vocab_size % 8 != 0:
-    #     config.vocab_size += 8 - (config.vocab_size % 8)
-    # model = NV_BertForPreTraining(config)
 
+def prepare_model(args, device):
     config = BertConfig.from_pretrained('bert-base-uncased')
     model = BertForPreTraining(config)
     model_desc = bert_model_description(config)
 
-    def map_optimizer_attributes(name):
-        no_decay_keys = ["bias", "gamma", "beta", "LayerNorm"]
-        no_decay = False
-        for no_decay_key in no_decay_keys:
-            if no_decay_key in name:
-                no_decay = True
-                break
-        if no_decay:
-            return {"alpha": 0.9, "beta": 0.999, "lambda": 0.0, "epsilon": 1e-6}
-        else:
-            return {"alpha": 0.9, "beta": 0.999, "lambda": 0.01, "epsilon": 1e-6}
-
-    from train_with_ort_trainer import get_lr
-
-    def get_lr_this_step(global_step):
-        return get_lr(args, global_step, args.schedule)
-    loss_scaler = LossScaler('loss_scale_input_name', True, up_scale_window=2000) if args.fp16 else None
-
-    model = ORTTrainer(
-        model,
-        None,
-        model_desc,
-        "LambOptimizer",
-        map_optimizer_attributes=map_optimizer_attributes,
-        learning_rate_description=IODescription('Learning_Rate', [1,], torch.float32),
-        device=device,
-        gradient_accumulation_steps=args.gradient_accumulation_steps,
-        use_mixed_precision=args.fp16,
-        allreduce_post_accumulation=args.allreduce_post_accumulation,
-        get_lr_this_step=get_lr_this_step,
-        loss_scaler=loss_scaler,
-        _opset_version=12)
-
-    return model
-
-def new_prepare_model(args, device):
-    config = BertConfig.from_pretrained('bert-base-uncased')
-    model = BertForPreTraining(config)
-    model_desc = new_bert_model_description(config)
-
-    from train_with_ort_trainer import get_lr
-
-    # class WrapLRScheduler(_LRScheduler):
-    #     def __init__(self, args, args_schedule):
-    #         super().__init__()
-    #         self.args_ = args
-    #         self.args_schedule_ = args_schedule
-
-    #     def get_lr(self, train_step_info):
-    #         return [get_lr(args, train_step_info.optimization_step, args.schedule)]
-
-    # lr_scheduler = WrapLRScheduler(args, args.schedule)
     lr_scheduler = PolyWarmupLRScheduler(total_steps=int(args.max_steps))
 
     loss_scaler = amp.DynamicLossScaler() if args.fp16 else None
@@ -364,10 +315,24 @@ def new_prepare_model(args, device):
 
     return model
 
+def get_data_file(f_id, world_rank, world_size, files):
+    num_files = len(files)
+    if world_size > num_files:
+        remainder = world_size % num_files
+        return files[(f_id * world_size + world_rank + remainder * f_id) % num_files]
+    elif world_size > 1:
+        return files[(f_id * world_size + world_rank) % num_files]
+    else:
+        return files[f_id % num_files]
+
 
 def main():
+    parser = HfArgumentParser(PretrainArguments)
+    args = parser.parse_args_into_dataclasses()[0]
+    do_pretrain(args)
 
-    args = parse_arguments()
+
+def do_pretrain(args):
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -375,11 +340,11 @@ def main():
 
     device, args = setup_training(args)
 
-    model = new_prepare_model(args, device)
+    model = prepare_model(args, device)
 
     logger.info("Running training: Batch size = %d, initial LR = %f", args.train_batch_size, args.learning_rate)
 
-    global_step = 0
+    most_recent_ckpts_paths = []
     average_loss = 0.0
     epoch = 0
     training_steps = 0
@@ -392,12 +357,20 @@ def main():
         files.sort()
         random.shuffle(files)
 
-        train_dataloader, data_file = create_pretraining_dataset(files[0], args.max_predictions_per_seq, args)
+        f_id = 0
+        train_dataloader, data_file = create_pretraining_dataset(
+            get_data_file(f_id, args.world_rank, args.world_size, files),
+            args.max_predictions_per_seq,
+            args)
 
         for f_id in range(1 , len(files)):
             logger.info("data file %s" % (data_file))
 
-            dataset_future = pool.submit(create_pretraining_dataset, files[f_id], args.max_predictions_per_seq, args)
+            dataset_future = pool.submit(
+                create_pretraining_dataset,
+                get_data_file(f_id, args.world_rank, args.world_size, files),
+                args.max_predictions_per_seq,
+                args)
 
             train_iter = tqdm(train_dataloader, desc="Iteration") if is_main_process(args) else train_dataloader
             for step, batch in enumerate(train_iter):
@@ -407,7 +380,9 @@ def main():
 
                 loss, _, _ = model.train_step(input_ids, input_mask, segment_ids, masked_lm_labels, next_sentence_labels)
 
-                global_step += 1
+                # This is an approximation which misses gradient overflow. 
+                # TODO: ORTTrainer to expose global_step.
+                global_step = training_steps / args.gradient_accumulation_steps
 
                 average_loss += loss.item()
 
@@ -417,20 +392,79 @@ def main():
                     average_loss = torch.tensor(average_loss, dtype=torch.float32).cuda()
                     average_loss = average_loss / (last_num_steps * args.gradient_accumulation_steps)
                     logger.info("Total Steps:{} Final Loss = {}".format(training_steps, average_loss.item()))
-                    return 
+                    return
                 elif training_steps % (args.log_freq * args.gradient_accumulation_steps) == 0:
                     if is_main_process(args):
-                        print("Step:{} Average Loss = {}".format(global_step, average_loss / (
-                                    args.log_freq * args.gradient_accumulation_steps)))
+                        print("Step:{} Average Loss = {}".format(global_step, average_loss / (args.log_freq * args.gradient_accumulation_steps)))
                     average_loss = 0
 
             del train_dataloader
-            # Make sure pool has finished and switch train_dataloader
-            # NOTE: Will block until complete
+
             train_dataloader, data_file = dataset_future.result(timeout=None)
 
         epoch += 1
 
 
+class ORTGlueTest(unittest.TestCase):
+    def setUp(self):
+        self.output_dir = '/bert_data/hf_data/test_out/bert_pretrain_results'
+        self.bert_model = 'bert-base-uncased'
+        self.warmup_proportion = 0,
+        self.num_steps_per_checkpoint = 200
+        self.seed = 42
+        self.max_steps = 300000
+        self.learning_rate = 5e-4
+        self.max_seq_length = 128
+        self.max_predictions_per_seq = 20
+        self.train_batch_size = 4096
+        self.gradient_accumulation_steps = 64
+        self.input_dir = '/bert_data/hdf5_lower_case_1_seq_len_128_max_pred_20_masked_lm_prob_0.15_random_seed_12345_dupe_factor_5/books_wiki_en_corpus/train'
+        self.fp16 = True
+        self.allreduce_post_accumulation = True
+
+    def test_pretrain(self):
+        args = PretrainArguments(
+            output_dir=self.output_dir,
+            bert_model=self.bert_model,
+            warmup_proportion=self.warmup_proportion,
+            local_rank=self.local_rank,
+            world_rank=self.world_rank,
+            world_size=self.world_size,
+            num_steps_per_checkpoint=self.num_steps_per_checkpoint,
+            seed=self.seed,
+            max_steps=self.max_steps,
+            learning_rate=self.learning_rate,
+            max_seq_length=self.max_seq_length,
+            max_predictions_per_seq=self.max_predictions_per_seq,
+            train_batch_size=self.train_batch_size,
+            gradient_accumulation_steps=self.gradient_accumulation_steps,
+            input_dir=self.input_dir,
+            fp16=self.fp16,
+            allreduce_post_accumulation=self.allreduce_post_accumulation)
+        do_pretrain(args)
+
+# to do parallel training:
+# python -m torch.distributed.launch --nproc_per_node 4 orttraining_run_bert_pretrain.py
 if __name__ == "__main__":
-    main()
+    import sys
+    logger.warning("sys.argv: %s", sys.argv)
+    if len(sys.argv) >= 2 and sys.argv[1].startswith('--local_rank='):
+        # torch.parallel.launch
+        local_rank = int(sys.argv[1][len('--local_rank='):])
+        world_size = int(os.environ['WORLD_SIZE'])
+        print("torch.parallel.launch, local_rank/world_size: ", local_rank, '/', world_size)
+
+        from onnxruntime.capi._pybind_state import set_cuda_device_id
+        set_cuda_device_id(local_rank)
+
+        test = ORTGlueTest()
+        test.setUp()
+        test.local_rank = local_rank
+        test.world_rank = local_rank
+        test.world_size = world_size
+
+        test.gradient_accumulation_steps = 128
+
+        test.test_pretrain()
+    else:
+        unittest.main()
