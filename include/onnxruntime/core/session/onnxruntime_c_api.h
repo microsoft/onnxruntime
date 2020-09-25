@@ -1088,12 +1088,14 @@ struct OrtApi {
   ORT_API2_STATUS(CreateEnvWithCustomLoggerAndGlobalThreadPools, OrtLoggingFunction logging_function, _In_opt_ void* logger_param, OrtLoggingLevel logging_level,
                   _In_ const char* logid, _In_ const struct OrtThreadingOptions* tp_options, _Outptr_ OrtEnv** out);
 
+ #ifdef USE_CUDA
  /**
   * Append CUDA execution provider
   */
   ORT_API2_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA,
                   _In_ OrtSessionOptions* options, _In_ OrtCUDAProviderOptions* cuda_options);
 };
+#endif  // USE_CUDA
 
 /*
  * Steps to use a custom op:
