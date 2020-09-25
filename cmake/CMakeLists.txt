@@ -130,6 +130,7 @@ option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests."
 option(onnxruntime_USE_HOROVOD "Build with HOROVOD support" OFF)
 option(onnxruntime_USE_NCCL "Build with NCCL support" ON)
 #A special option just for debugging and sanitize check. Please do not enable in option in retail builds.
+#The option has no effect on Windows.
 option(onnxruntime_USE_VALGRIND "Build with valgrind hacks" OFF)
 
 # A special build option only used for gathering code coverage info
@@ -147,7 +148,7 @@ if(MSVC AND WIN32 AND onnxruntime_FUZZ_TEST AND onnxruntime_BUILD_SHARED_LIB AND
   set(onnxruntime_FUZZ_ENABLED ON)
 endif()
 
-if(onnxruntime_USE_VALGRIND)
+if(onnxruntime_USE_VALGRIND AND NOT WIN32)
   add_definitions(-DRE2_ON_VALGRIND=1)
 endif()
 
