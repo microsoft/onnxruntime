@@ -23,7 +23,7 @@ namespace contrib {
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       LayerNorm<T, false>);                                       \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      SimplifiedLayerNormalization,                                       \
+      SimplifiedLayerNormalization,                               \
       kOnnxDomain,                                                \
       1,                                                          \
       T,                                                          \

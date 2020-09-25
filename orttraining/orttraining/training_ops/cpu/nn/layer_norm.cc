@@ -22,7 +22,7 @@ namespace contrib {
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       LayerNormGrad<T, false>);                                   \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      SimplifiedLayerNormalizationGrad,                                   \
+      SimplifiedLayerNormalizationGrad,                           \
       kMSDomain,                                                  \
       1,                                                          \
       T,                                                          \
@@ -63,9 +63,6 @@ Status LayerNormGrad<T, simplified>::Compute(OpKernelContext* op_kernel_context)
   ORT_ENFORCE(M != 1);
   
   const Tensor* scale = op_kernel_context->Input<Tensor>(input_index++);
-  // Set mean to 0 for t5 layer norm
-  //const Tensor* mean =  std::vector<float>(N, float(0));
-  //std::vector<T> mean(N, T(0));
   const Tensor* mean;
   if (!simplified) {
     mean = op_kernel_context->Input<Tensor>(input_index++);
@@ -83,8 +80,6 @@ Status LayerNormGrad<T, simplified>::Compute(OpKernelContext* op_kernel_context)
   ConstEigenArrayMap<T> X_arr{X->Data<T>(), M, N};
   ConstEigenVectorArrayMap<T> scale_vec{scale->Data<T>(), M};
   ConstEigenVectorArrayMap<float> mean_vec{simplified ? nullptr : mean->Data<float>(), N};
-  //ConstEigenVectorArrayMap<float> mean_vec{simplified ? std::vector<float>(N, float(0)) : mean->Data<float>(), N};
-  //ConstEigenVectorArrayMap<float> mean_vec{mean->Data<float>(), N};
   ConstEigenVectorArrayMap<float> inv_std_var_vec{inv_std_var->Data<float>(), N};
 
   EigenArrayMap<T> X_grad_arr{X_grad->MutableData<T>(), M, N};
@@ -98,7 +93,8 @@ Status LayerNormGrad<T, simplified>::Compute(OpKernelContext* op_kernel_context)
   // A = Y_grad * (X - mean(X)) * inv_std_var
   // B = Y_grad * scale * inv_std_var
   // C = Y_grad * scale * inv_std_var * (X - mean(X)) * inv_std_var
-  // T5 Layer Norm
+
+  // Simplified Layer Norm
   // A = Y_grad * X * inv_std_var
   // B = Y_grad * scale * inv_std_var
   // C = Y_grad * scale * inv_std_var * X * inv_std_var
@@ -115,23 +111,16 @@ Status LayerNormGrad<T, simplified>::Compute(OpKernelContext* op_kernel_context)
   Array B = (Y_grad_arr.colwise() * scale_vec).rowwise() * inv_std_var_vec.cast<T>().transpose();
   Array C = B * X_mean_difference_over_std_var;
 
-  // mean_B = mean(Y_grad * scale * inv_std_var)
   RowVector mean_B = B.colwise().mean();  // 1 x N
 
-  // mean_C = mean(Y_grad * scale * inv_std_var * (X - mean(X)) * inv_std_var)
   RowVector mean_C = C.colwise().mean();  // 1 x N
 
-  // X_grad = Y_grad * scale * inv_std_var - mean_B - (X - mean(X)) * inv_std_var * mean_C
-  //        = B - mean_B - (X - mean(X)) * inv_std_var * mean_c
   X_grad_arr = B.rowwise() - mean_B - X_mean_difference_over_std_var.rowwise() * mean_C;
 
   if (!simplified) {
-    // bias_grad = sum(Y_grad)
     bias_grad_vec = Y_grad_arr.rowwise().sum();
   }
 
-  // scale_grad = sum(Y_grad * (X - mean(X)) * inv_std_var)
-  //            = sum(A)
   scale_grad_vec = A.rowwise().sum();
 
   return Status::OK();

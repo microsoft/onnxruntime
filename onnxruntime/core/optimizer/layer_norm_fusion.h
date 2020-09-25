@@ -25,7 +25,7 @@ class LayerNormFusion : public GraphTransformer {
 };
 
 /**
-@Class LayerNormSimplifiedFusion
+@Class SimplifiedLayerNormFusion
 
 Rewrite graph fusing Layer Normalization subgraph to a single LayerNormalization node.
 
@@ -33,10 +33,10 @@ The formula corresponding to LayerNorm activation subgraph:
 (x ) / sqrt(var(x, axis)) * scale, where x is the input, and var() is given by mean(x^2, axis).
 
 */
-class LayerNormSimplifiedFusion : public GraphTransformer {
+class SimplifiedLayerNormFusion : public GraphTransformer {
  public:
-  LayerNormSimplifiedFusion(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
-      : GraphTransformer("LayerNormSimplifiedFusion", compatible_execution_providers) {}
+  SimplifiedLayerNormFusion(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
+      : GraphTransformer("SimplifiedLayerNormFusion", compatible_execution_providers) {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 };

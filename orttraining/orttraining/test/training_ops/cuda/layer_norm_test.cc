@@ -11,7 +11,7 @@ namespace test {
 constexpr auto k_epsilon_default = 1e-5f;
 constexpr auto k_random_data_min = -10.0f;
 constexpr auto k_random_data_max = 10.0f;
-const std::string T5_LAYER_NORM_GRAD_OP = "SimplifiedLayerNormalizationGrad";
+const std::string SIMPLIFIED_LAYER_NORM_GRAD_OP = "SimplifiedLayerNormalizationGrad";
 const std::string LAYER_NORM_GRAD_OP = "LayerNormalizationGrad";
 
 // The dimensions are split at the specified axis into N (before, exclusive) and M (after, inclusive).
@@ -58,8 +58,8 @@ static void TestLayerNormGrad(
     EigenRowVectorArrayMap mean{mean_data.data(), N};
     EigenRowVectorArrayMap inv_std_var{inv_std_var_data.data(), N};
 
-    mean = X.colwise().mean();
-    if (op.compare(T5_LAYER_NORM_GRAD_OP) != 0) {
+    if (op.compare(SIMPLIFIED_LAYER_NORM_GRAD_OP) != 0) {
+      mean = X.colwise().mean();
       inv_std_var = ((X.colwise().squaredNorm() / X.rows()) - mean.square() + k_epsilon_default).rsqrt();
     } else {
       inv_std_var = ((X.colwise().squaredNorm() / X.rows()) + k_epsilon_default).rsqrt();
@@ -69,7 +69,7 @@ static void TestLayerNormGrad(
   test.AddInput("Y_grad", n_x_m_dims, Y_grad_data);
   test.AddInput("X", n_x_m_dims, X_data);
   test.AddInput("scale", m_dims, scale_data, true);
-  if (op.compare(T5_LAYER_NORM_GRAD_OP) != 0) {
+  if (op.compare(SIMPLIFIED_LAYER_NORM_GRAD_OP) != 0) {
     test.AddInput("mean", n_dims, mean_data);
   }
   test.AddInput("inv_std_var", n_dims, inv_std_var_data);
@@ -80,7 +80,7 @@ static void TestLayerNormGrad(
 
   test.AddOutput("X_grad", n_x_m_dims, X_grad_data);
   test.AddOutput("scale_grad_data", m_dims, scale_grad_data);
-  if (op.compare(T5_LAYER_NORM_GRAD_OP) != 0) {
+  if (op.compare(SIMPLIFIED_LAYER_NORM_GRAD_OP) != 0) {
     test.AddOutput("bias_grad_data", m_dims, bias_grad_data);
   }
 
@@ -110,23 +110,23 @@ TEST(CudaKernelTest, LayerNormGrad_LargeSizeTensor) {
 
 TEST(CudaKernelTest, SimplifiedLayerNormGrad_SmallSizeTensor) {
   const std::vector<int64_t> X_dims{4, 20, 128};
-  TestLayerNormGrad(X_dims, T5_LAYER_NORM_GRAD_OP);
+  TestLayerNormGrad(X_dims, SIMPLIFIED_LAYER_NORM_GRAD_OP);
 }
 
 TEST(CudaKernelTest, SimplifiedLayerNormGrad_SmallSizeTensor_IntermediateAxis) {
   const std::vector<int64_t> X_dims{4, 20, 16, 8};
   const int64_t axis = -2;
-  TestLayerNormGrad(X_dims, T5_LAYER_NORM_GRAD_OP, axis);
+  TestLayerNormGrad(X_dims, SIMPLIFIED_LAYER_NORM_GRAD_OP, axis);
 }
 
 TEST(CudaKernelTest, SimplifiedLayerNormGrad_MidSizeTensor) {
   const std::vector<int64_t> X_dims{8, 80, 768};
-  TestLayerNormGrad(X_dims, T5_LAYER_NORM_GRAD_OP);
+  TestLayerNormGrad(X_dims, SIMPLIFIED_LAYER_NORM_GRAD_OP);
 }
 
 TEST(CudaKernelTest, SimplifiedLayerNormGrad_LargeSizeTensor) {
   const std::vector<int64_t> X_dims{16, 512, 1024};
-  TestLayerNormGrad(X_dims, T5_LAYER_NORM_GRAD_OP, -1, 5e-3);
+  TestLayerNormGrad(X_dims, SIMPLIFIED_LAYER_NORM_GRAD_OP, -1, 5e-3);
 }
 
 static void TestInvertibleLayerNormGrad(

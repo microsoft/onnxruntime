@@ -31,7 +31,7 @@ namespace cuda {
           .TypeConstraint("U", DataTypeImpl::GetTensorType<U>()), \
       InvertibleLayerNormGrad<T, U>);                             \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      SimplifiedLayerNormalizationGrad,                                     \
+      SimplifiedLayerNormalizationGrad,                           \
       kMSDomain,                                                  \
       1,                                                          \
       T##_##U,                                                    \

@@ -23,7 +23,7 @@ namespace cuda {
           .TypeConstraint("U", DataTypeImpl::GetTensorType<U>()), \
       LayerNorm<T, U, false>);                                    \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      SimplifiedLayerNormalization,                                       \
+      SimplifiedLayerNormalization,                               \
       kOnnxDomain,                                                \
       1,                                                          \
       T##_##U,                                                    \

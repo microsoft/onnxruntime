@@ -107,7 +107,7 @@ __device__ void cuWelfordMuSigma2(
     for (; l + 3 < n2; l += 4 * numx) {
       for (int k = 0; k < 4; ++k) {
         U curr = static_cast<U>(lvals[l + k]);
-          cuWelfordOnlineSum<U, simplified>(curr, mu, sigma2, count);
+        cuWelfordOnlineSum<U, simplified>(curr, mu, sigma2, count);
       }
     }
     for (; l < n2; ++l) {
@@ -332,7 +332,7 @@ __global__ void cuApplyLayerNorm(
     const int thrx = threadIdx.x + threadIdx.y * blockDim.x;
     for (int i = thrx; i < n2; i += numx) {
       U curr = static_cast<U>(lvals[i]);
-      T gamma_i = (gamma != NULL) ? gamma[i]: (T)0;
+      T gamma_i = (gamma != NULL) ? gamma[i]: (T)1;
       T beta_i = (beta != NULL) ? beta[i] : (T) 0;
       if (simplified) {
         ovals[i] = gamma_i * static_cast<T>(c_invvar * curr);

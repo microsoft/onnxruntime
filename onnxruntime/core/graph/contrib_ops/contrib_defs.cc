@@ -2764,7 +2764,6 @@ Example 4:
       .AllowUncheckedAttributes()
       .Input(0, "X", "Input data tensor from the previous layer.", "T")
       .Input(1, "scale", "Scale tensor.", "T")
-      //.Input(2, "B", "Bias tensor.", "T")
       .Output(0, "Y", "Output data tensor.", "T")
       .Output(1, "inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation.", "U", OpSchema::Optional)
       .TypeConstraint(
@@ -2793,13 +2792,7 @@ Example 4:
         }
 
         if (ctx.getNumOutputs() > 1) {
-          auto saved_mean_shape = ctx.getOutputType(1)->mutable_tensor_type()->mutable_shape();
-          saved_mean_shape->CopyFrom(input_shape);
-          saved_mean_shape->mutable_dim(static_cast<int>(axis))->set_dim_value(1);
-        }
-
-        if (ctx.getNumOutputs() > 2) {
-          auto saved_inv_std_var_shape = ctx.getOutputType(2)->mutable_tensor_type()->mutable_shape();
+          auto saved_inv_std_var_shape = ctx.getOutputType(1)->mutable_tensor_type()->mutable_shape();
           saved_inv_std_var_shape->CopyFrom(input_shape);
           saved_inv_std_var_shape->mutable_dim(static_cast<int>(axis))->set_dim_value(1);
         }
