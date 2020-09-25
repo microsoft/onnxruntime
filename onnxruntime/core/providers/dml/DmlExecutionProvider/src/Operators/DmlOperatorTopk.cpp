@@ -58,7 +58,10 @@ public:
         std::vector<IMLOperatorTensor*> inputTensors = GetInputTensorsForExecute(kernelContext);
         std::vector<IMLOperatorTensor*> outputTensors = GetOutputTensorsForExecute(kernelContext);
 
-        ExecuteZeroInt64Tensor(m_zeroOperator.Get(), outputTensors[1]);
+        if (m_zeroOperator)
+        {
+            ExecuteZeroInt64Tensor(m_zeroOperator.Get(), outputTensors[1]);
+        }
 
         THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
             m_compiledOperator.Get(),

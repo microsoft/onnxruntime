@@ -7,9 +7,9 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                  \
+#define REGISTER_KERNEL_TYPED(op_name, T)                         \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      TransposeMatMul,                                       \
+      op_name,                                                    \
       kMSDomain,                                                  \
       1,                                                          \
       T,                                                          \
@@ -18,9 +18,13 @@ namespace cuda {
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       onnxruntime::cuda::MatMul<T>);
 
-REGISTER_KERNEL_TYPED(float)
-REGISTER_KERNEL_TYPED(double)
-REGISTER_KERNEL_TYPED(MLFloat16)
+REGISTER_KERNEL_TYPED(TransposeMatMul, float)
+REGISTER_KERNEL_TYPED(TransposeMatMul, double)
+REGISTER_KERNEL_TYPED(TransposeMatMul, MLFloat16)
+
+REGISTER_KERNEL_TYPED(FusedMatMul, float)
+REGISTER_KERNEL_TYPED(FusedMatMul, double)
+REGISTER_KERNEL_TYPED(FusedMatMul, MLFloat16)
 
 }  // namespace cuda
 }  // namespace contrib

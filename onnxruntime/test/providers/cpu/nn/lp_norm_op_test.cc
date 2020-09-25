@@ -107,5 +107,34 @@ TEST(LpNormalizationTest, L1NormalizationWithValidNegativeAxis) {
   test.Run();
 }
 
+TEST(LpNormalizationTest, L1NormalizationWithZeroNorm) {
+  OpTester test("LpNormalization");
+  test.AddAttribute("p", static_cast<int64_t>(1));
+
+  // With default axis (axis = -1), one of the norms will be evaluated to zero
+  // for the following input
+  vector<float> input = {2.f, 2.f, 0.f, 0.f};
+  vector<int64_t> input_dims = {2, 2};
+  test.AddInput<float>("input", input_dims, input);
+
+  vector<float> expected_output = {0.5f, 0.5f, 0.f, 0.f};
+  test.AddOutput<float>("Y", input_dims, expected_output);
+  test.Run();
+}
+
+TEST(LpNormalizationTest, L2NormalizationWithZeroNorm) {
+  OpTester test("LpNormalization");
+
+  // With default axis (axis = -1), one of the norms will be evaluated to zero
+  // for the following input
+  vector<float> input = {1.f, 0.f, 0.f, 0.f};
+  vector<int64_t> input_dims = {2, 2};
+  test.AddInput<float>("input", input_dims, input);
+
+  vector<float> expected_output = {1.f, 0.f, 0.f, 0.f};
+  test.AddOutput<float>("Y", input_dims, expected_output);
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime
