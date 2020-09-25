@@ -167,9 +167,11 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
         cxxopts::value<bool>()->default_value("true"))
       ("enable_gelu_approximation", "Specify whether to enable GELU approximation.",
         cxxopts::value<bool>()->default_value("true"))
-      ("attn_dropout_checkpoint", "Enable checkpointing of attention dropout to save memory.",
+      ("attn_dropout_recompute", "Enable checkpointing of attention dropout to save memory.",
         cxxopts::value<bool>()->default_value("false"))
-      ("gelu_checkpoint", "Enable checkpointing of Gelu activation output to save memory.",
+      ("gelu_recompute", "Enable checkpointing of Gelu activation output to save memory.",
+        cxxopts::value<bool>()->default_value("false"))
+      ("transformer_layer_recompute", "Enable checkpointing of transformer layer output to save memory.",
         cxxopts::value<bool>()->default_value("false"))
       ("use_invertible_layernorm_grad", "Specify whether to use invertible laynorm(dropping the input activation)",
         cxxopts::value<bool>()->default_value("false"));
@@ -458,8 +460,9 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     }
 
     params.enable_gelu_approximation = flags["enable_gelu_approximation"].as<bool>();
-    params.attn_dropout_checkpoint = flags["attn_dropout_checkpoint"].as<bool>();
-    params.gelu_checkpoint = flags["gelu_checkpoint"].as<bool>();
+    params.attn_dropout_recompute = flags["attn_dropout_recompute"].as<bool>();
+    params.gelu_recompute = flags["gelu_recompute"].as<bool>();
+    params.transformer_layer_recompute = flags["transformer_layer_recompute"].as<bool>();
 
     ort_params.log_severity = static_cast<logging::Severity>(flags["ort_log_severity"].as<int>());
     ORT_RETURN_IF_NOT(
