@@ -102,8 +102,12 @@ cd /tmp/src
 unzip gradle-6.3-bin.zip
 mv /tmp/src/gradle-6.3 /usr/local/gradle
 
+if ! [ -x "$(command -v protoc)" ]; then
+  source ${0/%install_deps\.sh/install_protobuf\.sh}
+fi
 
-#Don't update 'wheel' to the latest version. see: https://github.com/pypa/auditwheel/issues/102
+export ONNX_ML=1
+export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
 ${PYTHON_EXE} -m pip install -r ${0/%install_deps\.sh/requirements\.txt}
 if [ $DEVICE_TYPE = "gpu" ]; then
     if [[ $BUILD_EXTR_PAR = *--enable_training* ]]; then

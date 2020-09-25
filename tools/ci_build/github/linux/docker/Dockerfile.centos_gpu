@@ -1,4 +1,4 @@
-FROM centos:7
+FROM nvcr.io/nvidia/cuda:10.2-cudnn8-devel-centos7
 
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_centos.sh && /tmp/scripts/manylinux/install_deps.sh && rm -rf /tmp/scripts
