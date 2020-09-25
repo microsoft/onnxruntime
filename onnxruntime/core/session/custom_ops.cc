@@ -12,6 +12,7 @@
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/tensor_type_and_shape.h"
+#include <unordered_set>
 
 ONNXTensorElementDataType MLDataTypeToOnnxRuntimeTensorElementDataType(const onnxruntime::DataTypeImpl* cpp_type);
 
@@ -117,21 +118,38 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
       ONNX_NAMESPACE::OpSchema schema(op->GetName(op), "unknown", 0);
 
       auto input_count = op->GetInputTypeCount(op);
+      std::unordered_set<int32_t> type_set;
+      
       for (size_t i = 0; i < input_count; i++) {
         auto type = op->GetInputType(op, i);
-
+        type_set.insert(type);
+      }
+      if(type_set.size()==1) {
+        for(size_t i=0;i<input_count;i++){
+          schema.Input(i, "A", "Description", "T");
+        }
+      }else{
+        for (size_t i = 0; i < input_count; i++) {
+        auto type = op->GetInputType(op, i);
         schema.Input(i, "A", "Description",
                      DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
+        }
       }
 
       auto output_count = op->GetOutputTypeCount(op);
       for (size_t i = 0; i < output_count; i++) {
         auto type = op->GetOutputType(op, i);
-
-        schema.Output(i, "A", "Description",
+        if(type_set.size()==1 && type==ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED){
+          schema.Output(i, "A", "Description", "T");
+        }else{
+          schema.Output(i, "A", "Description",
                       DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
+        }
       }
-
+      schema.TypeConstraint(
+            "T",
+            ONNX_NAMESPACE::OpSchema::all_tensor_types_with_bfloat(),
+            "Constrain input and output types to high-precision numeric tensors.");
       schema.SetDomain(domain->domain_);
       schema.SinceVersion(1);
       schema.AllowUncheckedAttributes();
