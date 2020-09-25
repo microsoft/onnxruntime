@@ -935,3 +935,47 @@ TEST(CApiTest, TestSharedAllocatorUsingCreateAndRegisterAllocator) {
                     expected_values_y,
                     nullptr);
 }
+
+TEST(CApiTest, TestSharingOfInitializer) {
+  // simple inference test
+  // prepare inputs
+  std::vector<Input> inputs(1);
+  Input& input = inputs.back();
+  input.name = "X";
+  input.dims = {3, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_y = {3, 2};
+  std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
+
+  Ort::SessionOptions session_options;
+  Ort::MemoryInfo mem_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+  float data[] = {1., 2., 3., 4., 5., 6.};
+  const int data_len = sizeof(data) / sizeof(data[0]);
+  const int64_t shape[] = {3, 2};
+  const size_t shape_len = sizeof(shape) / sizeof(shape[0]);
+  Ort::Value val = Ort::Value::CreateTensor<float>(mem_info, data, data_len, shape, shape_len);
+  session_options.AddInitializer("W", val);
+
+  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+  // create session 1
+  Ort::Session session1(*ort_env, MODEL_URI, session_options);
+  RunSession<float>(default_allocator.get(),
+                    session1,
+                    inputs,
+                    "Y",
+                    expected_dims_y,
+                    expected_values_y,
+                    nullptr);
+
+  // create session 2
+  Ort::Session session2(*ort_env, MODEL_URI, session_options);
+  RunSession<float>(default_allocator.get(),
+                    session2,
+                    inputs,
+                    "Y",
+                    expected_dims_y,
+                    expected_values_y,
+                    nullptr);
+}

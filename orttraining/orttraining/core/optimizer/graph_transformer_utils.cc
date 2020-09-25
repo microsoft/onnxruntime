@@ -43,6 +43,7 @@
 #include "orttraining/core/optimizer/localized_recompute.h"
 #include "orttraining/core/optimizer/megatron_transformer.h"
 #include "orttraining/core/optimizer/nonzero_shape_setter.h"
+#include "orttraining/core/optimizer/transformer_layer_recompute.h"
 
 namespace onnxruntime {
 namespace training {
@@ -73,10 +74,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       rule_transformer->Register(make_unique<CastElimination>());
       rule_transformer->Register(make_unique<NonZeroShapeSetter>());
       rule_transformer->Register(make_unique<InsertSoftmaxCrossEntropyLossOutput>());
-      if (config.gelu_checkpoint) {
+      if (config.gelu_recompute) {
         rule_transformer->Register(make_unique<GeluRecompute>());
       }
-      if (config.attn_dropout_checkpoint) {
+      if (config.attn_dropout_recompute) {
         rule_transformer->Register(make_unique<AttentionDropoutRecompute>());
       }
 
@@ -104,6 +105,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
             horizontal_parallel_size, compatible_eps));
       }
       transformers.emplace_back(onnxruntime::make_unique<ComputationReductionTransformer>(compatible_eps));
+
+      if (config.transformer_layer_recompute) {
+        transformers.emplace_back(onnxruntime::make_unique<TransformerLayerRecompute>(compatible_eps));
+      }
     } break;
 
     case TransformerLevel::Level2: {

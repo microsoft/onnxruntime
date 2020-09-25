@@ -175,10 +175,11 @@ class TrainingRunner {
     // Enable GELU approximation
     bool enable_gelu_approximation = false;
     // Enable checkpointing of attention dropout to save memory
-    bool attn_dropout_checkpoint = false;
+    bool attn_dropout_recompute = false;
     // Enable checkpointing of Gelu activation output to save memory
-    bool gelu_checkpoint = false;
-
+    bool gelu_recompute = false;
+    // Enable checkpointing of transformer layer output to save memory
+    bool transformer_layer_recompute = false;
     // Use invertible layernorm grad
     bool use_invertible_layernorm_grad = false;
   };

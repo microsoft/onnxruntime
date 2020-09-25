@@ -10,6 +10,8 @@ import onnxruntime as ort
 from . import _utils, amp, checkpoint, optim, postprocess, ORTTrainerOptions
 from .model_desc_validation import _ORTTrainerModelDesc
 
+from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
+
 class TrainStepInfo(object):
     r"""Private class used to store runtime information from current train step.
 
@@ -670,6 +672,9 @@ class ORTTrainer(object):
     def _init_session(self):
         if self._onnx_model is None:
             return
+
+        if self.options.utils.run_symbolic_shape_infer:
+            self._onnx_model = SymbolicShapeInference.infer_shapes(self._onnx_model, auto_merge=True, guess_output_rank=True)
 
         # Create training session used by train_step
         self._create_ort_training_session()

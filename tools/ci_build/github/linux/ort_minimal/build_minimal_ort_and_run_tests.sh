@@ -19,7 +19,7 @@ cp /onnxruntime_src/onnxruntime/test/testdata/ort_github_issue_4031.onnx /home/o
 
 # Build a minimal build with included ops and models
 # then run ORT minimal UTs
-/opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+python3 /onnxruntime_src/tools/ci_build/build.py \
     --build_dir /build --cmake_generator Ninja \
     --config Debug \
     --skip_submodule_sync \

@@ -2,11 +2,12 @@
 # Licensed under the MIT License.
 
 # -*- coding: UTF-8 -*-
-import unittest
+import onnx
 import os
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
-import sys
 from pathlib import Path
+import sys
+import unittest
 
 class TestSymbolicShapeInference(unittest.TestCase):
     def test_symbolic_shape_infer(self):
@@ -17,8 +18,7 @@ class TestSymbolicShapeInference(unittest.TestCase):
                 continue  # skip some bad model files
             print("Running symbolic shape inference on : " + str(filename))
             SymbolicShapeInference.infer_shapes(
-                input_model=str(filename),
-                output_model=None,
+                in_mp=onnx.load(str(filename)),
                 auto_merge=True,
                 int_max=100000,
                 guess_output_rank=True)
