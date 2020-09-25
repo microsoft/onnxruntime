@@ -102,6 +102,10 @@ Status TrainingRunner::Initialize() {
 
   config.gradient_accumulation_steps = params_.gradient_accumulation_steps;
 
+  // config.distributed_config.world_rank = 0;
+  // config.distributed_config.world_size = 3;
+  // config.distributed_config.local_size = 0;
+  // config.distributed_config.local_rank = 3;
   config.distributed_config.world_rank = MPIContext::GetInstance().GetWorldRank();
   config.distributed_config.world_size = MPIContext::GetInstance().GetWorldSize();
   config.distributed_config.local_size = MPIContext::GetInstance().GetLocalSize();
