@@ -173,6 +173,10 @@ Nuget packages are created under <native_build_dir>\nuget-artifacts
 
 ## Execution Providers
 
+*NOTE:* 
+When building with **DNNL** or **TensorRT** EPs, ORT builds them into their own separate DLLs and dynamically links them with the core ORT shared libary (onnxruntime.dll/libonnxruntime.so/libonnxruntime.dylib). Other EPs are still linked statically and may updated in future releases. There is no runtime cost to this and it removes the hardcoded dependency of the EPs from the core ORT DLL and makes it easier to choose an EP at runtime based on the deployment target's capabilities. Dependencies are resolved lazily when loading the EP DLLs.
+
+
 ### CUDA
 #### Prerequisites
 * Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn)
