@@ -347,7 +347,8 @@ __global__ void _ResizeTrilinearCoordinateMapping(
     LinearMappingInfo* dims_mapping) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, SumDHW);
   if (id < output_depth) {  //  z = id
-    float input_z = transform_coordinate(static_cast<float>(id), scale_depth,
+    float input_z = scale_depth == 1 ? static_cast<float>(id)  :
+		                                 transform_coordinate(static_cast<float>(id), scale_depth,
                                          static_cast<float>(output_depth), static_cast<float>(input_depth),
                                          roi_depth_start, roi_depth_end);
     dims_mapping[id].extrapolate_ = (int)(extrapolation_enabled && (input_z < 0 || input_z > static_cast<float>(input_depth - 1)));
@@ -356,16 +357,19 @@ __global__ void _ResizeTrilinearCoordinateMapping(
     dims_mapping[id].origin_ = z_int;
     dims_mapping[id].weight_ = (z_int >= input_depth - 1) ? 0.5f : input_z - z_int;
   } else if (id >= output_depth && id < (output_depth + output_height)) {  //  y = id - output_depth
-    float input_y = transform_coordinate(static_cast<float>(id - output_depth), scale_height,
-                                         static_cast<float>(output_height), static_cast<float>(input_height),
-                                         roi_height_start, roi_height_end);
+    float input_y = scale_height == 1 ? static_cast<float>(id - output_depth) : 
+		                                transform_coordinate(static_cast<float>(id - output_depth), scale_height, 
+								        static_cast<float>(output_height), static_cast<float>(input_height), 
+						                roi_height_start, roi_height_end);
+
     dims_mapping[id].extrapolate_ = (int)(extrapolation_enabled && (input_y < 0 || input_y > static_cast<float>(input_height - 1)));
     input_y = max(0.0f, min(input_y, static_cast<float>(input_height - 1)));
     int y_int = static_cast<int>(input_y);
     dims_mapping[id].origin_ = y_int;
     dims_mapping[id].weight_ = (y_int >= input_height - 1) ? 0.5f : input_y - y_int;
   } else {  //x = id - output_depth - output_height
-    float input_x = transform_coordinate(static_cast<float>(id - output_depth - output_height), scale_width,
+    float input_x = scale_width == 1 ? static_cast<float>(id - output_depth - output_height) :
+		                                 transform_coordinate(static_cast<float>(id - output_depth - output_height), scale_width,
                                          static_cast<float>(output_width), static_cast<float>(input_width),
                                          roi_width_start, roi_width_end);
     dims_mapping[id].extrapolate_ = (int)(extrapolation_enabled && (input_x < 0 || input_x > static_cast<float>(input_width - 1)));

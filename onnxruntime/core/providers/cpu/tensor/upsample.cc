@@ -504,9 +504,10 @@ void UpsampleTrilinear(int64_t batch_size,
   auto roi_z_start = roi.size() / 2 - 3;
   auto roi_z_end = roi.size() - 3;
   for (int64_t z = 0; z < output_depth; ++z) {
-    float in_z = get_original_coordinate(static_cast<float>(z), depth_scale,
-                                         static_cast<float>(output_depth), static_cast<float>(input_depth),
-                                         roi[roi_z_start], roi[roi_z_end]);
+    float in_z = depth_scale == 1 ? static_cast<float>(z)
+                                  : get_original_coordinate(static_cast<float>(z), depth_scale,
+                                                            static_cast<float>(output_depth), static_cast<float>(input_depth),
+                                                            roi[roi_z_start], roi[roi_z_end]);
     z_original.emplace_back(in_z);
     in_z = std::max(0.0f, std::min(in_z, static_cast<float>(input_depth - 1)));
 
@@ -527,9 +528,10 @@ void UpsampleTrilinear(int64_t batch_size,
   auto roi_y_start = roi.size() / 2 - 2;
   auto roi_y_end = roi.size() - 2;
   for (int64_t y = 0; y < output_height; ++y) {
-    float in_y = get_original_coordinate(static_cast<float>(y), height_scale,
-                                         static_cast<float>(output_height), static_cast<float>(input_height),
-                                         roi[roi_y_start], roi[roi_y_end]);
+    float in_y = height_scale == 1 ? static_cast<float>(y)
+                                   : get_original_coordinate(static_cast<float>(y), height_scale,
+                                                             static_cast<float>(output_height), static_cast<float>(input_height),
+                                                             roi[roi_y_start], roi[roi_y_end]);
     y_original.emplace_back(in_y);
     in_y = std::max(0.0f, std::min(in_y, static_cast<float>(input_height - 1)));
 
@@ -550,9 +552,10 @@ void UpsampleTrilinear(int64_t batch_size,
   auto roi_x_start = roi.size() / 2 - 1;
   auto roi_x_end = roi.size() - 1;
   for (int64_t x = 0; x < output_width; ++x) {
-    float in_x = get_original_coordinate(static_cast<float>(x), width_scale,
-                                         static_cast<float>(output_width), static_cast<float>(input_width),
-                                         roi[roi_x_start], roi[roi_x_end]);
+    float in_x = width_scale == 1 ? static_cast<float>(x)
+                                  : get_original_coordinate(static_cast<float>(x), width_scale,
+                                                            static_cast<float>(output_width), static_cast<float>(input_width),
+                                                            roi[roi_x_start], roi[roi_x_end]);
     x_original.emplace_back(in_x);
     in_x = std::max(0.0f, std::min(in_x, static_cast<float>(input_width - 1)));
 
@@ -687,7 +690,11 @@ void ResizeBiCubic(
     T* Ydata,
     GetOriginalCoordinateFunc get_original_coordinate) {
   std::vector<float> y_original;
+  y_original.reserve(output_height);
+
   std::vector<float> x_original;
+  x_original.reserve(output_width);
+
   std::unordered_map<float, std::array<float, CubicModeGridLength>> cubic_coeffs;
   std::unordered_map<float, std::unordered_map<int64_t, float>> coeff_to_1Dinterpolation_map;
   auto roi_y_start = roi.size() / 2 - 2;
