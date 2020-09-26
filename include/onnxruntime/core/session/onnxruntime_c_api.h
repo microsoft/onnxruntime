@@ -1096,6 +1096,7 @@ struct OrtApi {
                   _In_ OrtSessionOptions* options, _In_ OrtCUDAProviderOptions* cuda_options);
 #endif  // USE_CUDA
 };
+#endif  // USE_CUDA
 
 /*
  * Steps to use a custom op:
