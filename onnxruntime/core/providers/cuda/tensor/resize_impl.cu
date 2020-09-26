@@ -149,21 +149,35 @@ __global__ void _ResizeNearestMappingKernel2D(
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, output_height + output_width);
   if (id >= 0 && id < output_height) {  // for Height
     int dim = id;
-    float orig_coord = transform_coordinate(static_cast<float>(dim), scales_height, static_cast<float>(output_height),
-                                            static_cast<float>(input_height), roi_start_height, roi_end_height);
-    dims_mapping[id].extrapolate_ = (int)(extrapolation_enabled && (orig_coord < 0.f || orig_coord > static_cast<float>(input_height - 1)));
-    dim = calc_nearest_pixel(orig_coord, scales_height < 1);
-    if (dim >= input_height) dim = input_height - 1;
-    if (dim < 0) dim = 0;
+
+    // only apply co-ordinate transformation if scale != 1.0
+    if (scales_height == 1.0f) {
+        dims_mapping[id].extrapolate_ = 0;
+    } else {
+      float orig_coord = transform_coordinate(static_cast<float>(dim), scales_height, static_cast<float>(output_height),
+                                              static_cast<float>(input_height), roi_start_height, roi_end_height);
+      dims_mapping[id].extrapolate_ = (int)(extrapolation_enabled && (orig_coord < 0.f || orig_coord > static_cast<float>(input_height - 1)));
+      dim = calc_nearest_pixel(orig_coord, scales_height < 1);
+      if (dim >= input_height) dim = input_height - 1;
+      if (dim < 0) dim = 0;    
+    }
+
     dims_mapping[id].origin_ = dim;
   } else {
     int dim = id - output_height;
-    float orig_coord = transform_coordinate(static_cast<float>(dim), scales_width, static_cast<float>(output_width),
-                                            static_cast<float>(input_width), roi_start_width, roi_end_width);
-    dims_mapping[id].extrapolate_ = (int)(extrapolation_enabled && (orig_coord < 0.f || orig_coord > static_cast<float>(input_width - 1)));
-    dim = calc_nearest_pixel(orig_coord, scales_width < 1);
-    if (dim >= input_width) dim = input_width - 1;
-    if (dim < 0) dim = 0;
+
+    // only apply co-ordinate transformation if scale != 1.0
+    if (scales_width == 1.0f) {
+      dims_mapping[id].extrapolate_ = 0;
+    } else {
+      float orig_coord = transform_coordinate(static_cast<float>(dim), scales_width, static_cast<float>(output_width),
+                                              static_cast<float>(input_width), roi_start_width, roi_end_width);
+      dims_mapping[id].extrapolate_ = (int)(extrapolation_enabled && (orig_coord < 0.f || orig_coord > static_cast<float>(input_width - 1)));
+      dim = calc_nearest_pixel(orig_coord, scales_width < 1);
+      if (dim >= input_width) dim = input_width - 1;
+      if (dim < 0) dim = 0; 
+    }
+
     dims_mapping[id].origin_ = dim;
     return;
   }
@@ -190,12 +204,19 @@ __global__ void _ResizeNearestMappingKernel(
     }
     if (id >= dim_sum && id < dim_sum + output_shape[axis]) {
       int dim = id - dim_sum;
-      float orig_coord = transform_coordinate(static_cast<float>(dim), scales[axis], static_cast<float>(output_shape[axis]),
-                                              static_cast<float>(input_shape[axis]), roi[axis], roi[axis + rank]);
-      dims_mapping[id].extrapolate_ = (int)(extrapolation_enabled && (orig_coord < 0.f || orig_coord > static_cast<float>(input_shape[axis] - 1)));
-      dim = calc_nearest_pixel(orig_coord, scales[axis] < 1);
-      if (dim >= input_shape[axis]) dim = input_shape[axis] - 1;
-      if (dim < 0) dim = 0;
+
+      // only apply co-ordinate transformation if scale != 1.0
+      if (scales[axis] == 1.0f) {
+        dims_mapping[id].extrapolate_ = 0;
+      } else {
+        float orig_coord = transform_coordinate(static_cast<float>(dim), scales[axis], static_cast<float>(output_shape[axis]),
+                                                static_cast<float>(input_shape[axis]), roi[axis], roi[axis + rank]);
+        dims_mapping[id].extrapolate_ = (int)(extrapolation_enabled && (orig_coord < 0.f || orig_coord > static_cast<float>(input_shape[axis] - 1)));
+        dim = calc_nearest_pixel(orig_coord, scales[axis] < 1);
+        if (dim >= input_shape[axis]) dim = input_shape[axis] - 1;
+        if (dim < 0) dim = 0;      
+	  }
+
       dims_mapping[id].origin_ = dim;
       return;
     }

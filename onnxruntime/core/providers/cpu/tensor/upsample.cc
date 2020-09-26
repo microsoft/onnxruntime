@@ -114,6 +114,17 @@ Status UpsampleNearest(const T* input,
   auto CalculateInputMapping =
       [n_dim, &input_shape, &output_shape, &input_dim_factor, &scales, &roi, extrapolation_enabled, &get_original_coordinate, &get_nearest_pixel](
           std::vector<int64_t>& input_mapping, const int64_t axis) {
+        // When scale is 1.0, there is a one-to-one mapping between the dimension
+        // in the input and the output and there is no need to apply the co-ordinate
+        // transformation which should only be done when there is "resizing" required
+        if (scales[axis] == 1.0f) {
+          for (int64_t dim = 0; dim < output_shape[axis]; dim++) {
+            input_mapping[dim] = dim * input_dim_factor[axis];
+          }
+          return;
+        }
+
+        // scale = 1.0
         const int64_t input_size = input_dim_factor[0] * input_shape[0];
         for (int64_t dim = 0; dim < output_shape[axis]; dim++) {
           float original_dim = get_original_coordinate(static_cast<float>(dim), scales[axis], static_cast<float>(output_shape[axis]),
@@ -211,7 +222,7 @@ Status UpsampleNearest(const T* input,
         break;
       }
       output_dim_counter[dim_idx] = 0;
-      input_idx += input_mappings[dim_idx][0 /* output_dim_counter[dim_idx] */ ];
+      input_idx += input_mappings[dim_idx][0 /* output_dim_counter[dim_idx] */];
     }
   }
 
