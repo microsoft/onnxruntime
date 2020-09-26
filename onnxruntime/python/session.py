@@ -192,14 +192,45 @@ class InferenceSession(Session):
         self._enable_fallback = True
         self._read_config_from_model = os.environ.get('ORT_LOAD_CONFIG_FROM_MODEL') == '1'
 
-        self._create_inference_session(providers, provider_options)
+        try:
+            self._create_inference_session(providers, provider_options)
+        except:
+            if self._enable_fallback:
+                # Collect fallback providers matching user's order
+                fallback_providers = []
+                fallback_providers_options = []
+                providers = providers or []
+
+                # Is there any user providers are from default fallback list?
+                for i, provider in enumerate(providers):
+                    if provider in self._fallback_providers:
+                        fallback_providers.append(provider)
+                        try:
+                            fallback_providers_options.append(provider_options[i])
+                        except:
+                            fallback_providers_options.append(None)
+
+                # Include the rest of the fallback providers
+                for provider in self._fallback_providers:
+                    if provider not in fallback_providers:
+                        fallback_providers.append(provider)
+                        fallback_providers_options.append(None)
+                self._create_inference_session(fallback_providers, fallback_provider_options)
+            else:
+                raise
 
     def _create_inference_session(self, providers, provider_options):
+        # Default fall back is set before C.InferenceSession() since it can raise an exception
+        self._fallback_providers = ['CPUExecutionProvider']
         session_options = self._sess_options if self._sess_options else C.get_default_session_options()
         if self._model_path:
             sess = C.InferenceSession(session_options, self._model_path, True, self._read_config_from_model)
         else:
             sess = C.InferenceSession(session_options, self._model_bytes, False, self._read_config_from_model)
+
+        # Tensorrt can fall back to CUDA. All others fall back to CPU.
+        if 'TensorrtExecutionProvider' in C.get_available_providers():
+            self._fallback_providers.insert(0, 'CUDAExecutionProvider')
 
         # initialize the C++ InferenceSession
         sess.initialize_session(providers or [], provider_options or [])
@@ -213,11 +244,6 @@ class InferenceSession(Session):
         self._providers = self._sess.get_providers()
         self._provider_options = self._sess.get_provider_options()
 
-        # Tensorrt can fall back to CUDA. All others fall back to CPU.
-        if 'TensorrtExecutionProvider' in C.get_available_providers():
-            self._fallback_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
-        else:
-            self._fallback_providers = ['CPUExecutionProvider']
 
     def _reset_session(self, providers, provider_options):
         "release underlying session object."
