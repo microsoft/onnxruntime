@@ -112,7 +112,7 @@ The following are required for usage of the official published packages.
 
 * Default GPU (CUDA)
   * The default GPU build requires CUDA runtime libraries being installed on the system:
-    * Version: **CUDA 10.1** and **cuDNN 7.6.5**
+    * Version: **CUDA 10.2** and **cuDNN 8.0.3**
   * Version dependencies from older ONNX Runtime releases can be found in [prior release notes](https://github.com/microsoft/onnxruntime/releases).
 
 ### Build from Source
