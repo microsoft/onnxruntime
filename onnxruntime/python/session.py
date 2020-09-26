@@ -220,17 +220,17 @@ class InferenceSession(Session):
                 raise
 
     def _create_inference_session(self, providers, provider_options):
-        # Default fall back is set before C.InferenceSession() since it can raise an exception
-        self._fallback_providers = ['CPUExecutionProvider']
+        # Tensorrt can fall back to CUDA. All others fall back to CPU.
+        if 'TensorrtExecutionProvider' in C.get_available_providers():
+            self._fallback_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        else:
+            self._fallback_providers = ['CPUExecutionProvider']
+
         session_options = self._sess_options if self._sess_options else C.get_default_session_options()
         if self._model_path:
             sess = C.InferenceSession(session_options, self._model_path, True, self._read_config_from_model)
         else:
             sess = C.InferenceSession(session_options, self._model_bytes, False, self._read_config_from_model)
-
-        # Tensorrt can fall back to CUDA. All others fall back to CPU.
-        if 'TensorrtExecutionProvider' in C.get_available_providers():
-            self._fallback_providers.insert(0, 'CUDAExecutionProvider')
 
         # initialize the C++ InferenceSession
         sess.initialize_session(providers or [], provider_options or [])
