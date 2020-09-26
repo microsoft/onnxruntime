@@ -156,7 +156,8 @@ __global__ void _ResizeNearestMappingKernel2D(
     } else {
       float orig_coord = transform_coordinate(static_cast<float>(dim), scales_height, static_cast<float>(output_height),
                                               static_cast<float>(input_height), roi_start_height, roi_end_height);
-      dims_mapping[id].extrapolate_ = (int)(extrapolation_enabled && (orig_coord < 0.f || orig_coord > static_cast<float>(input_height - 1)));
+      dims_mapping[id].extrapolate_ = static_cast<int>(
+          extrapolation_enabled && (orig_coord < 0.f || orig_coord > static_cast<float>(input_height - 1)));
       dim = calc_nearest_pixel(orig_coord, scales_height < 1);
       if (dim >= input_height) dim = input_height - 1;
       if (dim < 0) dim = 0;    
@@ -172,7 +173,8 @@ __global__ void _ResizeNearestMappingKernel2D(
     } else {
       float orig_coord = transform_coordinate(static_cast<float>(dim), scales_width, static_cast<float>(output_width),
                                               static_cast<float>(input_width), roi_start_width, roi_end_width);
-      dims_mapping[id].extrapolate_ = (int)(extrapolation_enabled && (orig_coord < 0.f || orig_coord > static_cast<float>(input_width - 1)));
+      dims_mapping[id].extrapolate_ = static_cast<int>(
+          extrapolation_enabled && (orig_coord < 0.f || orig_coord > static_cast<float>(input_width - 1)));
       dim = calc_nearest_pixel(orig_coord, scales_width < 1);
       if (dim >= input_width) dim = input_width - 1;
       if (dim < 0) dim = 0; 
@@ -211,7 +213,7 @@ __global__ void _ResizeNearestMappingKernel(
       } else {
         float orig_coord = transform_coordinate(static_cast<float>(dim), scales[axis], static_cast<float>(output_shape[axis]),
                                                 static_cast<float>(input_shape[axis]), roi[axis], roi[axis + rank]);
-        dims_mapping[id].extrapolate_ = (int)(extrapolation_enabled && (orig_coord < 0.f || orig_coord > static_cast<float>(input_shape[axis] - 1)));
+        dims_mapping[id].extrapolate_ = static_cast<int>(extrapolation_enabled && (orig_coord < 0.f || orig_coord > static_cast<float>(input_shape[axis] - 1)));
         dim = calc_nearest_pixel(orig_coord, scales[axis] < 1);
         if (dim >= input_shape[axis]) dim = input_shape[axis] - 1;
         if (dim < 0) dim = 0;      
