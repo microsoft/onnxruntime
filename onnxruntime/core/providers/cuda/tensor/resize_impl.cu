@@ -215,7 +215,7 @@ __global__ void _ResizeNearestMappingKernel(
         dim = calc_nearest_pixel(orig_coord, scales[axis] < 1);
         if (dim >= input_shape[axis]) dim = input_shape[axis] - 1;
         if (dim < 0) dim = 0;      
-	  }
+      }
 
       dims_mapping[id].origin_ = dim;
       return;
