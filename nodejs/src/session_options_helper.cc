@@ -1,13 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "onnxruntime_cxx_api.h"
-#include <napi.h>
-
 #include <cmath>
+#include <napi.h>
 #include <unordered_map>
 
 #include "common.h"
+#include "core/session/onnxruntime_cxx_api.h"
 #include "session_options_helper.h"
 
 const std::unordered_map<std::string, GraphOptimizationLevel> GRAPH_OPT_LEVEL_NAME_TO_ID_MAP = {

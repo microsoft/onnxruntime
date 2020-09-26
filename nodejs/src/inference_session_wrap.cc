@@ -1,10 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "onnxruntime_cxx_api.h"
-
-#include "common.h"
 #include "inference_session_wrap.h"
+#include "common.h"
+#include "core/session/onnxruntime_cxx_api.h"
 #include "run_options_helper.h"
 #include "session_options_helper.h"
 #include "tensor_helper.h"

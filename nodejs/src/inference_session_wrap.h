@@ -3,8 +3,7 @@
 
 #pragma once
 
-#include "onnxruntime_cxx_api.h"
-
+#include "core/session/onnxruntime_cxx_api.h"
 #include <memory>
 #include <napi.h>
 
