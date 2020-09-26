@@ -342,9 +342,11 @@ void UpsampleBilinear(int64_t batch_size,
   auto roi_y_start = roi.size() / 2 - 2;
   auto roi_y_end = roi.size() - 2;
   for (int64_t y = 0; y < output_height; ++y) {
-    float in_y = get_original_coordinate(static_cast<float>(y), height_scale,
-                                         static_cast<float>(output_height), static_cast<float>(input_height),
-                                         roi[roi_y_start], roi[roi_y_end]);
+    float in_y = height_scale == 1 ? static_cast<float>(y)
+                                   : get_original_coordinate(static_cast<float>(y), height_scale,
+                                                             static_cast<float>(output_height),
+                                                             static_cast<float>(input_height),
+                                                             roi[roi_y_start], roi[roi_y_end]);
     y_original.emplace_back(in_y);
     in_y = std::max(0.0f, std::min(in_y, static_cast<float>(input_height - 1)));
 
@@ -365,9 +367,12 @@ void UpsampleBilinear(int64_t batch_size,
   auto roi_x_start = roi.size() / 2 - 1;
   auto roi_x_end = roi.size() - 1;
   for (int64_t x = 0; x < output_width; ++x) {
-    float in_x = get_original_coordinate(static_cast<float>(x), width_scale,
-                                         static_cast<float>(output_width), static_cast<float>(input_width),
-                                         roi[roi_x_start], roi[roi_x_end]);
+    float in_x = width_scale == 1 ? static_cast<float>(x)
+                                  : get_original_coordinate(static_cast<float>(x),
+                                                            width_scale,
+                                                            static_cast<float>(output_width),
+                                                            static_cast<float>(input_width),
+                                                            roi[roi_x_start], roi[roi_x_end]);
     x_original.emplace_back(in_x);
     in_x = std::max(0.0f, std::min(in_x, static_cast<float>(input_width - 1)));
 
@@ -496,9 +501,11 @@ void ResizeBiCubic(
 
   // generate coefficients in y direction
   for (int64_t y = 0; y < output_height; ++y) {
-    float in_y = get_original_coordinate(static_cast<float>(y), height_scale,
-                                         static_cast<float>(output_height), static_cast<float>(input_height),
-                                         roi[roi_y_start], roi[roi_y_end]);
+    float in_y = height_scale == 1 ? static_cast<float>(y)
+                                   : get_original_coordinate(static_cast<float>(y), height_scale,
+                                                             static_cast<float>(output_height),
+                                                             static_cast<float>(input_height),
+                                                             roi[roi_y_start], roi[roi_y_end]);
     y_original.emplace_back(in_y);
     auto s = y_original[y] - std::floor(y_original[y]);
     if (cubic_coeffs.find(s) == cubic_coeffs.end()) {
@@ -509,9 +516,12 @@ void ResizeBiCubic(
 
   // generate coefficients in x direction
   for (int64_t x = 0; x < output_width; ++x) {
-    float in_x = get_original_coordinate(static_cast<float>(x), width_scale,
-                                         static_cast<float>(output_width), static_cast<float>(input_width),
-                                         roi[roi_x_start], roi[roi_x_end]);
+    float in_x = width_scale == 1 ? static_cast<float>(x)
+                                  : get_original_coordinate(static_cast<float>(x),
+                                                            width_scale,
+                                                            static_cast<float>(output_width),
+                                                            static_cast<float>(input_width),
+                                                            roi[roi_x_start], roi[roi_x_end]);
     x_original.emplace_back(in_x);
     auto s = x_original[x] - std::floor(x_original[x]);
     if (cubic_coeffs.find(s) == cubic_coeffs.end()) {

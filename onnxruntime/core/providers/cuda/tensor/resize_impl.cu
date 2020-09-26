@@ -294,18 +294,20 @@ __global__ void _ResizeBilinearCoordinateMapping(
     BilinearMappingInfo* dims_mapping) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, SumHW);
   if (id < output_height) {  //  y = id
-    float input_y = transform_coordinate(static_cast<float>(id), scale_height,
-                                         static_cast<float>(output_height), static_cast<float>(input_height),
-                                         roi_height_start, roi_height_end);
+    float input_y = scale_height == 1 ? static_cast<float>(id) :
+                                        transform_coordinate(static_cast<float>(id), scale_height,
+                                        static_cast<float>(output_height), static_cast<float>(input_height),
+                                        roi_height_start, roi_height_end);
     dims_mapping[id].extrapolate_ = (int)(extrapolation_enabled && (input_y < 0 || input_y > static_cast<float>(input_height - 1)));
     input_y = max(0.0f, min(input_y, static_cast<float>(input_height - 1)));
     int y_int = static_cast<int>(input_y);
     dims_mapping[id].origin_ = y_int;
     dims_mapping[id].weight_ = (y_int >= input_height - 1) ? 0.5f : input_y - y_int;
   } else {  //x = id - output_height
-    float input_x = transform_coordinate(static_cast<float>(id - output_height), scale_width,
-                                         static_cast<float>(output_width), static_cast<float>(input_width),
-                                         roi_width_start, roi_width_end);
+    float input_x = scale_width == 1 ? static_cast<float>(id - output_height) :
+                                       transform_coordinate(static_cast<float>(id - output_height), scale_width,
+                                       static_cast<float>(output_width), static_cast<float>(input_width),
+                                       roi_width_start, roi_width_end);
     dims_mapping[id].extrapolate_ = (int)(extrapolation_enabled && (input_x < 0 || input_x > static_cast<float>(input_width - 1)));
     input_x = max(0.0f, min(input_x, static_cast<float>(input_width - 1)));
     int x_int = static_cast<int>(input_x);
@@ -393,9 +395,11 @@ __global__ void _ResizeCubicCoordinateMapping(
   bool is_y_axis = (id < output_height);
   int max_input_coord = static_cast<int>(is_y_axis ? input_height : input_width);
 
-  float input_coordinat = transform_coordinate(
+  float scale = is_y_axis ? scale_height : scale_width;
+  float input_coordinat = scale == 1 ? (is_y_axis ? id : id - output_height) :
+      transform_coordinate(
       static_cast<float>(is_y_axis ? id : id - output_height),
-      (is_y_axis ? scale_height : scale_width),
+      scale,
       static_cast<float>(is_y_axis ? output_height : output_width),
       static_cast<float>(max_input_coord),
       (is_y_axis ? roi_height_start : roi_width_start),
