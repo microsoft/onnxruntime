@@ -8,6 +8,7 @@
 * [Supported architectures and build environments](#supported-architectures-and-build-environments)
 * [Common Build Instructions](#common-build-instructions)
 * Additional Build Instructions - complete list: `./build.sh (or .\build.bat) --help`
+  * [Reduced Operator Kernel Build](#Reduced-Operator-Kernel-Build)
   * [ONNX Runtime Server (Linux)](#Build-ONNX-Runtime-Server-on-Linux)
   * Execution Providers
     * [NVIDIA CUDA](#CUDA)
@@ -143,6 +144,9 @@ GCC 4.x and below are not supported.
 |**Node.js**|--build_nodejs|Build Node.js binding. Implies `--build_shared_lib`|
 
 ---
+## Reduced Operator Kernel Build
+Custom Reduced Operator Kernel builds can provide smaller binary sizes - [see instructions](./docs/Reduced_Operator_Kernel_build.md). Note: if you are looking for mobile-compatible builds, refer to the [Android](#Android) and [iOS](#iOS) sections on this page.
+
 
 ## Build ONNX Runtime Server on Linux
 Read more about ONNX Runtime Server [here](./docs/ONNX_Runtime_Server_Usage.md).
@@ -172,10 +176,6 @@ Nuget packages are created under <native_build_dir>\nuget-artifacts
 ---
 
 ## Execution Providers
-
-*NOTE:* 
-When building with **DNNL** or **TensorRT** EPs, ORT builds them into their own separate DLLs and dynamically links them with the core ORT shared libary (onnxruntime.dll/libonnxruntime.so/libonnxruntime.dylib). Other EPs are still linked statically and may updated in future releases. There is no runtime cost to this and it removes the hardcoded dependency of the EPs from the core ORT DLL and makes it easier to choose an EP at runtime based on the deployment target's capabilities. Dependencies are resolved lazily when loading the EP DLLs.
-
 
 ### CUDA
 #### Prerequisites
