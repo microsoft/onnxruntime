@@ -22,7 +22,7 @@ namespace Microsoft.ML.OnnxRuntime
         private RunOptions _builtInRunOptions = null;
         private ModelMetadata _modelMetadata = null;
         private bool _disposed = false;
-        private ulong profilingStartTimeNs = 0;
+        private ulong _profilingStartTimeNs = 0;
 
         #region Public API
 
@@ -528,15 +528,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 return NativeOnnxValueHelper.StringFromNativeUtf8(nameHandle);
             }
-        }
-
-        /// <summary>
-        /// Return the nanoseconds of profiling's start time
-        /// 
-        public ulong GetProfilingStartTimeNs()
-        {
-            return profilingStartTimeNs;
-        }        
+        }      
 
         // Delegate for string extraction from an arbitrary input/output object
         private delegate string NameExtractor<in TInput>(TInput input);
@@ -665,6 +657,19 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        /// <summary>
+        /// Return the nanoseconds of profiling's start time
+        /// 
+        public ulong GetProfilingStartTimeNs()
+        {
+            // set profiling's start time
+            UIntPtr startTime = UIntPtr.Zero;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetProfilingStartTimeNs(_nativeHandle,
+                                                                out startTime)); 
+            _profilingStartTimeNs = (ulong) startTime;
+            return _profilingStartTimeNs;
+        }  
+
         #endregion
 
         #region private methods
@@ -733,12 +738,6 @@ namespace Microsoft.ML.OnnxRuntime
                 {
                     _overridableInitializerMetadata[GetOverridableInitializerName(i)] = GetOverridableInitializerMetadata(i);
                 }
-                // set profiling's start time
-                UIntPtr startTime = UIntPtr.Zero;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetProfilingStartTimeNs(_nativeHandle,
-                                                                    out startTime)); 
-                profilingStartTimeNs = (ulong) startTime;
-
             }
             catch (OnnxRuntimeException e)
             {

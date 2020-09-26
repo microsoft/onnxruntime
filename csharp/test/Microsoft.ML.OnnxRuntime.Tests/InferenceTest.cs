@@ -371,11 +371,31 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             ulong getSingleSessionProfilingStartTime()
             {
-                string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
-                SessionOptions options = new SessionOptions();
-                options.EnableProfiling = true;
-                var session = new InferenceSession(modelPath, options);
-                return session.GetProfilingStartTimeNs();
+                ulong startTime = 0;
+                using (SessionOptions options = new SessionOptions())
+                {
+                    options.EnableProfiling = true;
+                    string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
+                    using (var session = new InferenceSession(modelPath, options))
+                    {
+                        
+                        var inputMeta = session.InputMetadata;
+                        var container = new List<NamedOnnxValue>();
+
+                        float[] inputData = LoadTensorFromFile(@"bench.in"); // this is the data for only one input tensor for this model
+
+                        foreach (var name in inputMeta.Keys)
+                        {
+                            Assert.Equal(typeof(float), inputMeta[name].ElementType);
+                            Assert.True(inputMeta[name].IsTensor);
+                            var tensor = new DenseTensor<float>(inputData, inputMeta[name].Dimensions);
+                            container.Add(NamedOnnxValue.CreateFromTensor<float>(name, tensor));
+                        }
+                        session.Run(container);
+                        startTime = session.GetProfilingStartTimeNs();
+                    }
+                }
+                return startTime;
             }
 
             // Get 1st profiling's start time

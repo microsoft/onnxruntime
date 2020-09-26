@@ -9,7 +9,6 @@ import onnxruntime as onnxrt
 import threading
 import sys
 from helper import get_name
-import time
 
 class TestInferenceSession(unittest.TestCase):
 
