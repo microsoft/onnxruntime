@@ -48,5 +48,6 @@ class MaxPoolV8 : public OpKernel, public PoolBase {
   Status ComputeImpl(OpKernelContext* context) const;
   template <typename T>
   Status ComputeImplOptimized(OpKernelContext* context) const;
+  bool OptimizeWorthy1D(int64_t total_height, int64_t pooled_height, int64_t pool_size) const;
 };
 }  // namespace onnxruntime
