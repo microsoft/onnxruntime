@@ -6,7 +6,6 @@
 #include <functional>
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
-#include "core/session/onnxruntime_c_api.h"
 
 // onnxruntime internal OpKernelContext derived class to provide additional
 // APIs that aren't desirable to add to the public OpKernelContext API
@@ -40,7 +39,7 @@ class OpKernelContextInternal : public OpKernelContext {
   bool GetUseDeterministicCompute() const {
     return session_state_.GetUseDeterministicCompute();
   }
-  
+
   const SessionState* SubgraphSessionState(const std::string& attribute_name) {
     return session_state_.GetSubgraphSessionState(GetNodeIndex(), attribute_name);
   }

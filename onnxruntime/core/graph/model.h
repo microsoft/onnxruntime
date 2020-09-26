@@ -9,7 +9,6 @@
 #include <string>
 #include "core/common/path.h"
 #include "core/graph/graph_viewer.h"
-#include "core/session/onnxruntime_c_api.h"
 #include "gsl/gsl"
 
 namespace flatbuffers {

@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <core/session/onnxruntime_c_api.h>
+#include <core/common/common.h>
 
 namespace onnxruntime {
 namespace perftest {

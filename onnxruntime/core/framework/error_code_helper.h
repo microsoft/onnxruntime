@@ -5,7 +5,6 @@
 
 #include "core/common/status.h"
 #include "core/common/exceptions.h"
-#include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
 _Ret_notnull_ OrtStatus* ToOrtStatus(const onnxruntime::common::Status& st);

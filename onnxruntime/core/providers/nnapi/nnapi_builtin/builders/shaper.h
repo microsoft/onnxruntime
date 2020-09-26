@@ -3,7 +3,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <core/session/onnxruntime_c_api.h>
+#include <core/common/common.h>
 
 namespace onnxruntime {
 namespace nnapi {

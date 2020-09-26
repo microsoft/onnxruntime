@@ -7,7 +7,6 @@
 #include <type_traits>
 
 #include "core/common/common.h"
-#include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
 
