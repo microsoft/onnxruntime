@@ -124,7 +124,7 @@ Status UpsampleNearest(const T* input,
           return;
         }
 
-        // scale = 1.0
+        // scale != 1.0
         const int64_t input_size = input_dim_factor[0] * input_shape[0];
         for (int64_t dim = 0; dim < output_shape[axis]; dim++) {
           float original_dim = get_original_coordinate(static_cast<float>(dim), scales[axis], static_cast<float>(output_shape[axis]),
