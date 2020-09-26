@@ -201,7 +201,7 @@ class InferenceSession(Session):
                 fallback_providers_options = []
                 providers = providers or []
 
-                # Is there any user providers are from default fallback list?
+                # Are there any user providers from the default fallback list?
                 for i, provider in enumerate(providers):
                     if provider in self._fallback_providers:
                         fallback_providers.append(provider)
