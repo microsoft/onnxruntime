@@ -225,7 +225,8 @@ Status MaxPoolV8::ComputeImpl(OpKernelContext* context) const {
   return Status::OK();
 }
 
-bool MaxPoolV8::OptimizeWorthy1D(int64_t total_height, int64_t pooled_height, int64_t pool_size) const {
+bool MaxPoolV8::Optimizable1D(int64_t total_height, int64_t pooled_height, int64_t pool_size) {
+
   float layer_1_weight [8][3] =
     {{-0.4044543 ,  0.5032941 ,  0.60934484},
      {-0.20548528,  0.593789  ,  0.4940056 },
@@ -235,8 +236,8 @@ bool MaxPoolV8::OptimizeWorthy1D(int64_t total_height, int64_t pooled_height, in
      { 0.45919985,  0.03440802, -0.0537789 },
      {-0.29694313, -0.39878082, -0.56551826},
      { 0.2505781 , -0.505424  , -0.09284496}};
-  float layer_1_bias[8] = {-1.9949601, -15.046263, -11.331387, -5.585094 ,  
-                           16.095648, -6.071184 , -0.5011854,  -4.4836655};
+  float layer_1_bias[8] = {-1.9949601, -15.046263, -11.331387,  -5.585094 ,  
+                           16.095648,   -6.071184 , -0.5011854, -4.4836655};
   float layer_1_output[8];
   for (int64_t i = 0; i < 8; i++) {
     layer_1_output[i] = layer_1_weight[i][0] * total_height +
@@ -277,6 +278,69 @@ bool MaxPoolV8::OptimizeWorthy1D(int64_t total_height, int64_t pooled_height, in
   return std::round(sigmoid) > 0.9;
 }
 
+bool MaxPoolV8::Optimizable2D(int64_t total_height, int64_t total_width,
+                              int64_t pooled_height, int64_t pooled_width,
+                              int64_t pool_height, int64_t pool_width) {
+
+  float layer_1_weight [10][6] =
+    {{-3.6831051e-01, -3.6247692e-01,  2.9945856e-01, -2.7339315e-01, -3.2982734e-01,  1.2428343e-01},
+     { 4.2411339e-02,  7.3652379e-02, -1.1140941e-01,  1.9908203e-01,  6.4203119e-01,  7.2492361e-01},
+     {-4.3322185e-01,  1.3085116e-02,  3.9197430e-01,  6.1275326e-02,  4.0028703e-01,  1.2761176e+00},
+     { 1.3293332e-01,  1.4291838e-01,  3.2274619e-01, -1.9370590e-01,  9.8541480e-01,  1.1948491e+00},
+     { 2.5940394e-02,  3.8113617e-03, -3.4423352e-03,  1.4519133e-01, -7.7429314e+00, -5.7754173e+00},
+     {-2.0399491e-01, -3.1316891e-01,  3.2469466e-01,  3.0748990e-01,  4.2247924e-01, -1.4207372e-01},
+     { 2.3843075e-01,  2.5791006e-02,  3.8117608e-01,  8.0572687e-02,  1.2876539e+00,  7.6808077e-01},
+     { 1.9901858e-01,  4.5600232e-02, -9.8639183e-02, -5.6079019e-02, -2.5981524e+00,  7.9628939e-05},
+     { 1.5695563e-01,  2.5528669e-03, -1.2300680e+00,  4.4656624e-03,  6.9656110e-01,  1.7935342e-01},
+     { 1.7079201e-01, -2.7161598e-02, -1.3937990e-01,  8.6947553e-02,  2.2510707e+00,  8.4009208e-02}};
+  float layer_1_bias[10] = {-0.3770961, -2.3918433,  1.8521361, -4.5703444, -2.7904446,
+                             6.6001234, -2.1826804,  3.2673945,  9.796883 , -1.8809853};
+  float layer_1_output[10];
+  for (int64_t i = 0; i < 10; i++) {
+    layer_1_output[i] = layer_1_weight[i][0] * total_height +
+                        layer_1_weight[i][1] * total_width + 
+                        layer_1_weight[i][2] * pooled_height +
+                        layer_1_weight[i][3] * pooled_width +
+                        layer_1_weight[i][4] * pool_height +
+                        layer_1_weight[i][5] * pool_width +
+                        layer_1_bias[i];
+    if (layer_1_output[i] < 0) {
+      layer_1_output[i] = 0;
+    }
+  }//for
+
+  float layer_2_weight[8][10] = 
+     {{-0.06003293,   0.21225819, -0.27200642, -0.02082756, -0.0701707,  -0.20068413, -0.50153553,  0.00336754,  0.6702372 ,  0.05447913},
+      { 0.23352525,  -0.08489721,  0.19231986, -0.27247515, -0.15134875,  0.49599656,  0.11655813, -0.02076937,  0.17092028, -0.07972863},
+      {-0.06445351,  0.1792246 ,  0.16155557, -0.07104914, -0.50501835,  -1.741571  ,  0.11375787, -0.10069937, -0.09629883,  0.0153533 },
+      {-0.28012472,  0.19438729, -0.05561933,  0.05643161, -0.48072016,  -0.10830858,  0.03165498, -0.29761288, -0.7303268 ,  0.23473336},
+      { 0.06735539,  0.10022206,  0.64842635, -0.009133  , -0.6126588 ,  -0.10844892,  0.07485867, -0.10075383, -0.04458744,  0.07074562},
+      { 0.1900272 , -0.09800401, -0.21638612, -0.18487929, -0.13792641,  -0.25938094, -0.15732956, -0.01412544,  0.05573884, -0.09582533},
+      {-0.14016639, -0.03206995, -0.1200158 ,  0.07844546, -0.28183854,  -0.04650053, -0.19275935, -0.2222099 ,  0.29764298, -0.18808417},
+      {-0.30399063,  0.18053997, -0.3222996 , -0.01604891, -0.44561228,  -0.22320613, -0.09742685, -0.28637683, -0.5639017 , -0.05816495}};
+  float layer_2_bias[8] = {4.5093737 ,  7.8021812 , -3.8440096 ,  1.0618207 , -3.847487, 0.2664036 , -0.11398777,  0.15493515};
+  float layer_2_output[8];
+  for (int64_t i = 0; i < 8; i++) {
+    layer_2_output[i] = 0;
+    for (int64_t j = 0; j < 10; j++) {
+      layer_2_output[i] += layer_2_weight[i][j] * layer_1_output[j];
+    }
+    layer_2_output[i] += layer_2_bias[i];
+    if (layer_2_output[i] < 0) {
+      layer_2_output[i] = 0;
+    }
+  }
+  float layer_3_weight[8] = {-0.3139295, -0.5689301, 0.04450566, 0.05143051, 0.03166565, -0.02240658, -0.18378934, 0.8769102};
+  float layer_3_bias = -1.4846476;
+  float layer_3_output = 0;
+  for (int64_t i = 0; i < 8; i++) {
+    layer_3_output += layer_2_output[i] * layer_3_weight[i];
+  }
+  layer_3_output += layer_3_bias;
+  float sigmoid = 1.0 / (1 + std::pow(2.718, -layer_3_output));
+  return std::round(sigmoid) > 0.9;
+}
+
 template <typename T>
 Status MaxPoolV8::ComputeImplOptimized(OpKernelContext* context) const {
 
@@ -291,14 +355,17 @@ Status MaxPoolV8::ComputeImplOptimized(OpKernelContext* context) const {
   if (dilations[0] != stride_h() ||
       pool_size.size() > 1 && dilations[1] != stride_w() || 
       pool_size.size() > 2 && dilations[2] != stride_d() ||
-      context->Output(1, output_dims)) {
+      context->Output(1, output_dims) ||
+      pool_size.size() == 1 &&
+      !Optimizable1D(x_shape[2] + pads[0] + pads[1], output_dims[2], pool_size[0]) ||
+      pool_size.size() == 2 &&
+      !Optimizable2D(x_shape[2] + pads[0] + pads[2],
+                     x_shape[3] + pads[1] + pads[3],
+                     output_dims[2], output_dims[3],
+                     pool_size[0], pool_size[1])) {
 
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Arguments are not optimizable.");
-  }
-
-  if (pool_size.size() == 1 && !OptimizeWorthy1D(x_shape[2] + pads[0] + pads[1], output_dims[2], pool_size[0])) {
     std::cout << "case should go with naive." << std::endl;
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Arguments should not be optimized.");
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Arguments are not optimizable.");
   }
 
   Tensor* Y = context->Output(0, output_dims);
