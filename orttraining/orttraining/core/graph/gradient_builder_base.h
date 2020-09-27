@@ -95,6 +95,15 @@ class GradientBuilderBase {
   // i-th output of forward op
   ArgDef O(const size_t i) const {
     ORT_ENFORCE(i < node_->OutputDefs().size());
+
+    const std::string& name = node_->OutputDefs()[i]->Name();
+    const NodeArg* recomputed_nodearg = graph_->GetNodeArg(graph_utils::RecomputeName(name));
+    if (recomputed_nodearg) {
+      const Node* producer_node = graph_->GetProducerNode(name);
+      LOGS(logger_, INFO) << "Recomputed node arg found for " << producer_node->Name();
+      return ArgDef(recomputed_nodearg->Name(), recomputed_nodearg->TypeAsProto());
+    }
+
     return ArgDef(node_->OutputDefs()[i]->Name(), node_->OutputDefs()[i]->TypeAsProto());
   }
 

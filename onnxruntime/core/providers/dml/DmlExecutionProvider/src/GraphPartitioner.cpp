@@ -483,7 +483,7 @@ namespace Dml
                             (requiredInputCount == std::nullopt || *requiredInputCount == node.InputDefs().size()))
                         {
                             *isDmlGraphNode = true;
-                             graphNodeProperty.first->second.internalRegInfo = internalRegInfo;
+                            graphNodeProperty.first->second.internalRegInfo = internalRegInfo;
                         }
                     }
                 }

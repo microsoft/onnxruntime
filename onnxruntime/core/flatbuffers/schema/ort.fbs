@@ -1,0 +1,230 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+namespace onnxruntime.experimental.fbs;
+
+// Attribute
+enum AttributeType : int32 {
+  UNDEFINED = 0,
+  FLOAT = 1,
+  INT = 2,
+  STRING = 3,
+  TENSOR = 4,
+  GRAPH = 5,
+  FLOATS = 6,
+  INTS = 7,
+  STRINGS = 8,
+  TENSORS = 9,
+  GRAPHS = 10,
+  SPARSE_TENSOR = 11,
+  SPARSE_TENSORS = 12,
+}
+
+// Shape
+table Shape {
+dim:[Dimension];
+}
+
+table Dimension {
+  value:DimensionValue;
+  denotation:string;
+}
+
+enum DimensionValueType : int8 {
+  UNKNOWN = 0,
+  VALUE = 1,
+  PARAM = 2,
+}
+
+table DimensionValue {
+  dim_type:DimensionValueType;
+  dim_value:int64;
+  dim_param:string;
+}
+
+// Tensor
+enum TensorDataType : int32 {
+  UNDEFINED = 0,
+  FLOAT = 1,
+  UINT8 = 2,
+  INT8 = 3,
+  UINT16 = 4,
+  INT16 = 5,
+  INT32 = 6,
+  INT64 = 7,
+  STRING = 8,
+  BOOL = 9,
+  FLOAT16 = 10,
+  DOUBLE = 11,
+  UINT32 = 12,
+  UINT64 = 13,
+  COMPLEX64 = 14,
+  COMPLEX128 = 15,
+  BFLOAT16 = 16,
+}
+
+table TensorTypeAndShape{
+  elem_type:TensorDataType;
+  shape:Shape;
+}
+
+table MapType{
+  key_type:TensorDataType;
+  value_type:onnxruntime.experimental.fbs.TypeInfo;
+}
+
+table SequenceType{
+  elem_type:onnxruntime.experimental.fbs.TypeInfo;
+}
+
+// Node
+enum NodeType : int32 {
+  Primitive = 0,
+  Fused = 1,
+}
+
+struct EdgeEnd {
+  node_index:uint32;
+  src_arg_index:int32;
+  dst_arg_index:int32;
+}
+
+table NodeEdge {
+  node_index:uint32;
+  input_edges:[EdgeEnd];
+  output_edges:[EdgeEnd];
+}
+
+table Node {
+  name:string;
+  doc_string:string;
+  domain:string;
+  since_version:int32;
+
+  index:uint32;
+  op_type:string;
+  type:NodeType;
+  execution_provider_type:string;
+
+  inputs:[string];
+  outputs:[string];
+  attributes:[onnxruntime.experimental.fbs.Attribute];
+
+  input_arg_counts:[int32];
+  implicit_inputs:[string];
+}
+
+// ValueInfo
+table ValueInfo {
+  name:string;
+  doc_string:string;
+  type:TypeInfo;
+}
+
+// TODO add support of SparseTensor/Opaque
+union TypeInfoValue {
+  tensor_type:TensorTypeAndShape,
+  sequence_type:SequenceType,
+  map_type:MapType,
+}
+
+table TypeInfo {
+  denotation:string;
+  value:TypeInfoValue;
+}
+
+// OpSetId
+table OperatorSetId {
+  domain:string;
+  version:int64;
+}
+
+// For simplicity, we will have only two data fields
+// - string_data for string
+// - raw_data for all other types
+table Tensor {
+  name:string;
+  doc_string:string;
+
+  dims:[int64];
+  data_type:TensorDataType;
+
+  raw_data:[uint8];
+
+  // string_data is least used, leave it at the end
+  string_data:[string];
+}
+
+table Attribute{
+  name:string;
+  doc_string:string;
+
+  type:AttributeType;
+
+  f:float32;
+  i:int64;
+  s:string;
+  t:Tensor;
+  g:Graph;
+
+  floats:[float32];
+  ints:[int64];
+  strings:[string];
+  tensors:[Tensor];
+  graphs:[Graph];
+}
+
+table Graph{
+  initializers:[Tensor];
+
+  node_args:[ValueInfo];
+  nodes:[Node];
+  max_node_index:uint32;
+
+  node_edges:[NodeEdge];
+
+  inputs:[string];
+  outputs:[string];
+}
+
+table Model {
+  ir_version:int64;
+  opset_import:[OperatorSetId];
+  producer_name:string;
+  producer_version:string;
+  domain:string;
+  model_version:int64;
+  doc_string:string;
+
+  graph:Graph;
+}
+
+table KernelCreateInfos {
+  node_indices:[uint32];
+  kernel_def_hashes:[uint64];
+}
+
+table SubGraphSessionState {
+  // graph_id can be used to binary search SubGraphSessionState in SessionState.sub_graph_session_states
+  graph_id:string (key);
+
+  session_state:SessionState;
+}
+
+table SessionState {
+  kernels:KernelCreateInfos;
+  sub_graph_session_states:[SubGraphSessionState];
+}
+
+table InferenceSession {
+  // This is the ORT format model version
+  // The version number is defined as kOrtModelVersion in <repo root>/onnxruntime/core/session/inference_session.cc
+  // Please update it when there is a change to this schema which will break the compatibilites
+  ort_version:string;
+
+  model:Model;
+  session_state:SessionState;
+}
+
+root_type InferenceSession;
+file_identifier "ORTM";

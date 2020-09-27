@@ -1,11 +1,10 @@
-ARG OS_VERSION=16.04
+ARG OS_VERSION=18.04
 FROM ubuntu:${OS_VERSION}
 
 ARG PYTHON_VERSION=3.5
 ARG OPENVINO_VERSION=2020.4
 
 ADD scripts /tmp/scripts
-ENV PATH="/opt/cmake/bin:${PATH}"
 RUN /tmp/scripts/install_ubuntu.sh -p $PYTHON_VERSION -d EdgeDevice && \
     /tmp/scripts/install_deps.sh -p $PYTHON_VERSION -d EdgeDevice
 

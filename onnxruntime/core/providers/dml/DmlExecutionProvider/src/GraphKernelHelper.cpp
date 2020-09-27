@@ -133,7 +133,7 @@ namespace GraphKernelHelper
         return true;
     };
 
-    std::vector<std::vector<std::byte>> PopulateInputBindings(
+    void ProcessInputData(
         Dml::IExecutionProvider* provider,
         IWinmlExecutionProvider* winmlProvider,
         const std::vector<uint8_t>& inputsConstant,
@@ -145,10 +145,9 @@ namespace GraphKernelHelper
         _Out_ std::vector<ComPtr<ID3D12Resource>>& initInputResources,
         _Out_ std::vector<ComPtr<ID3D12Resource>>& nonOwnedGraphInputsFromInitializers,
         _Out_ std::vector<ComPtr<ID3D12Resource>>& initializeResourceRefs,
+        _Out_opt_ std::vector<std::vector<std::byte>>* inputRawData,
         _Inout_ std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap)
     {
-        std::vector<std::vector<std::byte>> inputRawData;
-
         const uint32_t graphInputCount = kernelInfo.GetInputCount();
         // Determine the last input which uses an initializer, so initializers can be freed incrementally
         // while processing each input in order.
@@ -166,6 +165,7 @@ namespace GraphKernelHelper
         for (const DML_INPUT_GRAPH_EDGE_DESC& edge : graphDesc.inputEdges) {
             inputsUsed[edge.GraphInputIndex] = true;
         }
+
         for (uint32_t i = 0; i < initInputBindings.size(); i++)
         {
             // If the input isn't actually used by the graph, nothing ever needs to be bound (either for
@@ -173,7 +173,12 @@ namespace GraphKernelHelper
             if (!inputsUsed[i])
             {
                 transferredInitializerMap.erase(fusedNodeInputDefs[i]->Name());
-                inputRawData.push_back(std::vector<std::byte>());
+
+                if (inputRawData)
+                {
+                    inputRawData->push_back(std::vector<std::byte>());
+                }
+
                 continue;
             }
 
@@ -202,7 +207,10 @@ namespace GraphKernelHelper
                 // Tensor sizes in DML must be a multiple of 4 bytes large.
                 tensorByteSize = AlignToPow2<size_t>(tensorByteSize, 4);
 
-                inputRawData.push_back(std::vector<std::byte>(tensorPtr, tensorPtr + tensorByteSize));
+                if (inputRawData)
+                {
+                    inputRawData->push_back(std::vector<std::byte>(tensorPtr, tensorPtr + tensorByteSize));
+                }
 
                 if (!inputsConstant[i])
                 {
@@ -243,8 +251,12 @@ namespace GraphKernelHelper
                 THROW_HR_IF(E_UNEXPECTED, !kernelInfo.TryGetConstantInput(i, &inputTensor));
 
                 const std::byte* tensorData = reinterpret_cast<const std::byte*>(inputTensor->DataRaw());
-                inputRawData.push_back(
-                    std::vector<std::byte>(tensorData, tensorData + inputTensor->SizeInBytes()));
+
+                if (inputRawData)
+                {
+                    inputRawData->push_back(
+                        std::vector<std::byte>(tensorData, tensorData + inputTensor->SizeInBytes()));
+                }
 
                 uint64_t allocId;
                 UnwrapTensor(winmlProvider, inputTensor, &initInputBindings[i].Buffer, &allocId);
@@ -253,15 +265,14 @@ namespace GraphKernelHelper
                 initInputBindings[i].Buffer->Release(); // Avoid holding an additional reference
                 initInputResources.push_back(initInputBindings[i].Buffer);
             } 
-            else 
+            else if (inputRawData)
             {
-                inputRawData.push_back(std::vector<std::byte>());
+                inputRawData->push_back(std::vector<std::byte>());
             }
         }
 
         // All initializers should have been consumed and freed above
         assert(transferredInitializerMap.empty());
-        return inputRawData;
     }
 
     void ConvertGraphDesc(

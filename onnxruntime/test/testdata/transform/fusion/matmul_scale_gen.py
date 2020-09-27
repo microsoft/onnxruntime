@@ -31,7 +31,7 @@ def save(model_path, nodes, inputs, outputs, initializers):
 def gen(model_path,
         use_transpose_matmul,
         scale_input_0, scale_input_1, scale_output):
-    matmul_op = "TransposeScaleMatMul" if use_transpose_matmul else "MatMul"
+    matmul_op = "FusedMatMul" if use_transpose_matmul else "MatMul"
     matmul_domain = "com.microsoft" if use_transpose_matmul else ""
     matmul_attrs = {"alpha": scale_value} if use_transpose_matmul else {}
 
@@ -184,3 +184,37 @@ def gen_reused_input_scale(model_path):
 
 
 gen_reused_input_scale("matmul_scale_reused_input_scale.onnx")
+
+
+def gen_int32(model_path):
+    matmul_op = "MatMul"
+
+    nodes = [
+        helper.make_node(
+            "Mul", ["input_0", "scale"], ["scaled_input_0"],
+            "scale input_0"),
+        helper.make_node(
+            matmul_op, ["scaled_input_0", "input_1"], ["output_0"],
+            "MatMul input_0 and input_1"),
+    ]
+
+    initializers = [
+        helper.make_tensor("scale", TensorProto.INT32, [], [int(scale_value)])
+    ]
+
+    inputs = [
+        helper.make_tensor_value_info(
+            "input_0", TensorProto.INT32, [2, 'M', 'K']),
+        helper.make_tensor_value_info(
+            "input_1", TensorProto.INT32, [2, 'K', 'N']),
+    ]
+
+    outputs = [
+        helper.make_tensor_value_info(
+            "output_0", TensorProto.INT32, [2, 'M', 'N']),
+    ]
+
+    save(model_path, nodes, inputs, outputs, initializers)
+
+
+gen_int32("matmul_scale_int32.onnx")

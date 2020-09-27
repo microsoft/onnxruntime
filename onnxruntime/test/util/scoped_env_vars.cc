@@ -3,9 +3,9 @@
 
 #include "test/util/include/scoped_env_vars.h"
 
-#ifndef WIN32
+#ifndef _WIN32
 #include <stdlib.h>
-#else  // WIN32
+#else  // _WIN32
 #include <Windows.h>
 #endif
 
@@ -13,7 +13,7 @@ namespace onnxruntime {
 namespace test {
 
 namespace {
-#ifndef WIN32
+#ifndef _WIN32
 Status SetEnvironmentVar(const std::string& name, const optional<std::string>& value) {
   if (value.has_value()) {
     ORT_RETURN_IF_NOT(
@@ -32,7 +32,7 @@ Status GetEnvironmentVar(const std::string& name, optional<std::string>& value) 
   value = val == nullptr ? optional<std::string>{} : optional<std::string>{std::string{val}};
   return Status::OK();
 }
-#else  // WIN32
+#else  // _WIN32
 Status SetEnvironmentVar(const std::string& name, const optional<std::string>& value) {
   ORT_RETURN_IF_NOT(
       SetEnvironmentVariableA(name.c_str(), value.has_value() ? value.value().c_str() : nullptr) != 0,
