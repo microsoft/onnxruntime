@@ -17,7 +17,7 @@
 #include <PathCch.h>
 #pragma comment(lib, "PathCch.lib")
 // Desktop apps need to support back to Windows 7, so we can't use PathCch.lib as it was added in Windows 8
-#elif WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
+#elif WINVER < _WIN32_WINNT_WIN8
 #include <shlwapi.h>
 #pragma comment(lib, "Shlwapi.lib")
 #else
@@ -37,7 +37,7 @@ namespace {
 
 Status RemoveFileSpec(PWSTR pszPath, size_t cchPath) {
   assert(pszPath != nullptr && pszPath[0] != L'\0');
-#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP) && !defined(USE_PATHCCH_LIB)
+#if WINVER < _WIN32_WINNT_WIN8 && !defined(USE_PATHCCH_LIB)
   (void)cchPath;
   for (PWSTR t = L"\0"; *t == L'\0'; t = PathRemoveBackslashW(pszPath))
     ;

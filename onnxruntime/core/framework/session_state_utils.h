@@ -33,7 +33,9 @@ common::Status SaveInitializedTensors(
     ITensorAllocator& planner,
     const std::function<Status(int idx, const OrtValue& value, const OrtCallback& d, bool constant)>& save_tensor_func,
     const logging::Logger& logger,
-    const DataTransferManager& data_transfer_mgr);
+    const DataTransferManager& data_transfer_mgr,
+    const ExecutionPlanBase& exec_plan,
+    const SessionOptions& session_options);
 
 common::Status SaveInputOutputNamesToNodeMapping(const GraphViewer& graph,
                                                  SessionState& session_state,

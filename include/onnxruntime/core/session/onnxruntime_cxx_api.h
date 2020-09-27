@@ -177,9 +177,11 @@ struct ModelMetadata;
 
 struct Env : Base<OrtEnv> {
   Env(std::nullptr_t) {}
-  Env(OrtLoggingLevel default_logging_level = ORT_LOGGING_LEVEL_WARNING, _In_ const char* logid = "");
-  Env(const OrtThreadingOptions* tp_options, OrtLoggingLevel default_logging_level = ORT_LOGGING_LEVEL_WARNING, _In_ const char* logid = "");
-  Env(OrtLoggingLevel default_logging_level, const char* logid, OrtLoggingFunction logging_function, void* logger_param);
+  Env(OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING, _In_ const char* logid = "");
+  Env(const OrtThreadingOptions* tp_options, OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING, _In_ const char* logid = "");
+  Env(OrtLoggingLevel logging_level, const char* logid, OrtLoggingFunction logging_function, void* logger_param);
+  Env(const OrtThreadingOptions* tp_options, OrtLoggingFunction logging_function, void* logger_param,
+      OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING, _In_ const char* logid = "");
   explicit Env(OrtEnv* p) : Base<OrtEnv>{p} {}
 
   Env& EnableTelemetryEvents();
@@ -248,6 +250,8 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& DisablePerSessionThreads();
 
   SessionOptions& AddConfigEntry(const char* config_key, const char* config_value);
+
+  SessionOptions& AddInitializer(const char* name, const OrtValue* ort_val);
 };
 
 struct ModelMetadata : Base<OrtModelMetadata> {
@@ -285,6 +289,7 @@ struct Session : Base<OrtSession> {
   char* GetOutputName(size_t index, OrtAllocator* allocator) const;
   char* GetOverridableInitializerName(size_t index, OrtAllocator* allocator) const;
   char* EndProfiling(OrtAllocator* allocator) const;
+  uint64_t GetProfilingStartTimeNs() const;
   ModelMetadata GetModelMetadata() const;
 
   TypeInfo GetInputTypeInfo(size_t index) const;
@@ -329,7 +334,6 @@ struct TypeInfo : Base<OrtTypeInfo> {
   Unowned<SequenceTypeInfo> GetSequenceTypeInfo() const;
   Unowned<MapTypeInfo> GetMapTypeInfo() const;
 
-
   ONNXType GetONNXType() const;
 };
 
@@ -370,7 +374,7 @@ struct Value : Base<OrtValue> {
   const T* GetTensorData() const;
 
   template <typename T>
-  T At(const std::initializer_list<size_t>& location);
+  T& At(const std::vector<int64_t>& location);
 
   TypeInfo GetTypeInfo() const;
   TensorTypeAndShapeInfo GetTensorTypeAndShapeInfo() const;

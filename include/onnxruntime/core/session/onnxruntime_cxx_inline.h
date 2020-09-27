@@ -286,18 +286,24 @@ inline void IoBinding::ClearBoundOutputs() {
   GetApi().ClearBoundOutputs(p_);
 }
 
-inline Env::Env(OrtLoggingLevel default_warning_level, _In_ const char* logid) {
-  ThrowOnError(GetApi().CreateEnv(default_warning_level, logid, &p_));
+inline Env::Env(OrtLoggingLevel logging_level, _In_ const char* logid) {
+  ThrowOnError(GetApi().CreateEnv(logging_level, logid, &p_));
   ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_CPLUSPLUS));
 }
 
-inline Env::Env(OrtLoggingLevel default_warning_level, const char* logid, OrtLoggingFunction logging_function, void* logger_param) {
-  ThrowOnError(GetApi().CreateEnvWithCustomLogger(logging_function, logger_param, default_warning_level, logid, &p_));
+inline Env::Env(OrtLoggingLevel logging_level, const char* logid, OrtLoggingFunction logging_function, void* logger_param) {
+  ThrowOnError(GetApi().CreateEnvWithCustomLogger(logging_function, logger_param, logging_level, logid, &p_));
   ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_CPLUSPLUS));
 }
 
-inline Env::Env(const OrtThreadingOptions* tp_options, OrtLoggingLevel default_warning_level, _In_ const char* logid) {
-  ThrowOnError(GetApi().CreateEnvWithGlobalThreadPools(default_warning_level, logid, tp_options, &p_));
+inline Env::Env(const OrtThreadingOptions* tp_options, OrtLoggingLevel logging_level, _In_ const char* logid) {
+  ThrowOnError(GetApi().CreateEnvWithGlobalThreadPools(logging_level, logid, tp_options, &p_));
+  ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_CPLUSPLUS));
+}
+
+inline Env::Env(const OrtThreadingOptions* tp_options, OrtLoggingFunction logging_function, void* logger_param,
+                OrtLoggingLevel logging_level, _In_ const char* logid) {
+  ThrowOnError(GetApi().CreateEnvWithCustomLoggerAndGlobalThreadPools(logging_function, logger_param, logging_level, logid, tp_options, &p_));
   ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_CPLUSPLUS));
 }
 
@@ -450,6 +456,11 @@ inline SessionOptions& SessionOptions::AddConfigEntry(const char* config_key, co
   return *this;
 }
 
+inline SessionOptions& SessionOptions::AddInitializer(const char* name, const OrtValue* ort_val) {
+  ThrowOnError(GetApi().AddInitializer(p_, name, ort_val));
+  return *this;
+}
+
 inline Session::Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options) {
   ThrowOnError(GetApi().CreateSession(env, model_path, options, &p_));
 }
@@ -519,6 +530,12 @@ inline char* Session::EndProfiling(OrtAllocator* allocator) const {
   char* out;
   ThrowOnError(GetApi().SessionEndProfiling(p_, allocator, &out));
   return out;
+}
+
+inline uint64_t Session::GetProfilingStartTimeNs() const {
+  uint64_t out;
+  ThrowOnError(GetApi().SessionGetProfilingStartTimeNs(p_, &out));
+  return out;  
 }
 
 inline ModelMetadata Session::GetModelMetadata() const {
@@ -771,10 +788,10 @@ const T* Value::GetTensorData() const {
 }
 
 template <typename T>
-inline T Value::At(const std::initializer_list<size_t>& location) {
+inline T& Value::At(const std::vector<int64_t>& location) {
+  static_assert(!std::is_same<T, std::string>::value, "this api does not support std::string");
   T* out;
-  std::vector<size_t> location_ = location;
-  ThrowOnError(GetApi().TensorAt(p_, location_.data(), location_.size(), (void**)&out));
+  ThrowOnError(GetApi().TensorAt(p_, location.data(), location.size(), (void**)&out));
   return *out;
 }
 
@@ -921,4 +938,7 @@ inline std::vector<std::string> GetAvailableProviders() {
   ThrowOnError(api.ReleaseAvailableProviders(providers, len));
   return available_providers;
 }
+
+SessionOptions& AddInitializer(const char* name, const OrtValue* ort_val);
+
 }  // namespace Ort

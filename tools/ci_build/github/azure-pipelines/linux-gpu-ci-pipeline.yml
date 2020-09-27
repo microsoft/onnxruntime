@@ -28,8 +28,8 @@ jobs:
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
-          onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimegpubuild:ch35 \
-            /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+          onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecentosgpubuild:ch5h \
+            python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build --cmake_generator Ninja \
               --config Debug Release \
               --skip_submodule_sync \
@@ -38,7 +38,7 @@ jobs:
               --build_wheel \
               --enable_onnx_tests --use_cuda --cuda_version=10.2 --cuda_home=/usr/local/cuda-10.2 --cudnn_home=/usr/local/cuda-10.2 \
               --enable_pybind --build_java --build_nodejs \
-              --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp37-cp37m/include/python3.7m PYTHON_LIBRARY=/usr/lib64/librt.so CMAKE_CUDA_ARCHITECTURES=52
+              --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=52
       workingDirectory: $(Build.SourcesDirectory)
   - task: Docker@2
     displayName: logout

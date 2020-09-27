@@ -132,6 +132,10 @@ class ORTTrainerOptions(object):
                         'invertible_layer_norm_gradient' : {
                             'type' : 'boolean',
                             'default' : False
+                        },
+                        'run_symbolic_shape_infer' : {
+                            'type' : 'boolean',
+                            'default' : False
                         }
                     }
                 },
@@ -225,12 +229,14 @@ class ORTTrainerOptions(object):
             enables gradient norm clipping for 'AdamOptimizer' and 'LambOptimizer'
         utils.invertible_layer_norm_gradient (bool, default is False):
             enables use of invertible layer norm gradients
+        utils.run_symbolic_shape_infer (bool, default is False):
+            runs symbolic shape inference on the model
         debug (dict):
             debug options
         debug.deterministic_compute (bool, default is False)
             forces compute to be deterministic accross runs
         debug.check_model_export (bool, default is False)
-            compares PyTorch outputs with InferenceSession outputs before the first
+            compares PyTorch model outputs with ONNX model outputs in inference before the first
             train step to ensure successful model export
         _internal_use (dict):
             internal options, possibly undocumented, that might be removed without notice
@@ -443,6 +449,10 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'default': True
             },
             'invertible_layer_norm_gradient' : {
+                'type': 'boolean',
+                'default': False
+            },
+            'run_symbolic_shape_infer' : {
                 'type': 'boolean',
                 'default': False
             }

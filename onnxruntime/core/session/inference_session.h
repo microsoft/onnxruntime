@@ -372,6 +372,11 @@ class InferenceSession {
     @return the name of the profile file.
     */
   std::string EndProfiling();
+  /**
+    * Return the profiler to access its attributes
+    @return the profiler object
+    */
+  const profiling::Profiler& GetProfiling() const;
 
   /**
     * Search registered execution providers for an allocator that has characteristics

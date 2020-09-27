@@ -8,12 +8,14 @@ namespace test {
 
 static void TestSoftmax(const std::vector<int64_t>& X_dims,
                         const std::vector<int64_t>& Y_dims,
+                        int axis = 1,
                         bool is_log_softmax=false,
                         double per_sample_tolerance = 1e-4,
                         double relative_per_sample_tolerance = 1e-4) {
                       
   const char* op = is_log_softmax? "LogSoftmax" : "Softmax";
   CompareOpTester test(op);
+  test.AddAttribute<int64_t>("axis", axis);
 
   // create rand inputs
   RandomValueGenerator random{};
@@ -26,39 +28,72 @@ static void TestSoftmax(const std::vector<int64_t>& X_dims,
   test.CompareWithCPU(kCudaExecutionProvider, per_sample_tolerance, relative_per_sample_tolerance);
 }
 
-TEST(CudaKernelTest, Softmax_SmallTensor) {
-  std::vector<int64_t> X_dims{8, 2, 128, 128};
-  std::vector<int64_t> Y_dims{8, 2, 128, 128};
-  TestSoftmax(X_dims, Y_dims, false);
+// small tensor to check softmax_warp_forward
+// note: keep nelem <= 1024 to invoke softmax_warp_forward!
+TEST(CudaKernelTest, Softmax_SmallTensor_LastAxis) {
+  std::vector<int64_t> X_dims{4, 2, 128};
+  std::vector<int64_t> Y_dims{4, 2, 128};
+  TestSoftmax(X_dims, Y_dims, 2, false);
 }
 
-TEST(CudaKernelTest, Softmax_LargeTensor) {
-  std::vector<int64_t> X_dims{8, 16, 512, 512};
-  std::vector<int64_t> Y_dims{8, 16, 512, 512};
-  TestSoftmax(X_dims, Y_dims, false);
+TEST(CudaKernelTest, Softmax_SmallTensor_AllAxis) {
+  std::vector<int64_t> X_dims{4, 2, 128};
+  std::vector<int64_t> Y_dims{4, 2, 128};
+  TestSoftmax(X_dims, Y_dims, 0, false);
+  TestSoftmax(X_dims, Y_dims, 1, false);
 }
 
-TEST(CudaKernelTest, LogSoftmax_SmallTensor) {
-  std::vector<int64_t> X_dims{8, 2, 128, 128};
-  std::vector<int64_t> Y_dims{8, 2, 128, 128};
-  TestSoftmax(X_dims, Y_dims, true);
+// large tensor to check cuda DNN softmax forward
+TEST(CudaKernelTest, Softmax_LargeTensor_LastAxis) {
+  std::vector<int64_t> X_dims{8, 16, 2048};
+  std::vector<int64_t> Y_dims{8, 16, 2048};
+  TestSoftmax(X_dims, Y_dims, 2, false);
 }
 
-TEST(CudaKernelTest, LogSoftmax_LargeTensor) {
-  std::vector<int64_t> X_dims{8, 16, 512, 512};
-  std::vector<int64_t> Y_dims{8, 16, 512, 512};
-  TestSoftmax(X_dims, Y_dims, true);
+TEST(CudaKernelTest, Softmax_LargeTensor_AllAxis) {
+  std::vector<int64_t> X_dims{8, 16, 512};
+  std::vector<int64_t> Y_dims{8, 16, 512};
+  TestSoftmax(X_dims, Y_dims, 0, false);
+  TestSoftmax(X_dims, Y_dims, 1, false);
+}
+
+TEST(CudaKernelTest, LogSoftmax_SmallTensor_LastAxis) {
+  std::vector<int64_t> X_dims{4, 2, 128};
+  std::vector<int64_t> Y_dims{4, 2, 128};
+  TestSoftmax(X_dims, Y_dims, 2, true);
+}
+
+TEST(CudaKernelTest, LogSoftmax_SmallTensor_AllAxis) {
+  std::vector<int64_t> X_dims{4, 2, 128};
+  std::vector<int64_t> Y_dims{4, 2, 128};
+  TestSoftmax(X_dims, Y_dims, 0, true);
+  TestSoftmax(X_dims, Y_dims, 1, true);
+}
+
+TEST(CudaKernelTest, LogSoftmax_LargeTensor_LastAxis) {
+  std::vector<int64_t> X_dims{8, 16, 2048};
+  std::vector<int64_t> Y_dims{8, 16, 2048};
+  TestSoftmax(X_dims, Y_dims, 2, true);
+}
+
+TEST(CudaKernelTest, LogSoftmax_LargeTensor_AllAxis) {
+  std::vector<int64_t> X_dims{8, 16, 512};
+  std::vector<int64_t> Y_dims{8, 16, 512};
+  TestSoftmax(X_dims, Y_dims, 0, true);
+  TestSoftmax(X_dims, Y_dims, 1, true);
 }
 
 static void TestSoftmaxGrad(const std::vector<int64_t>& dY_dims,
                             const std::vector<int64_t>& Y_dims,
                             const std::vector<int64_t>& dX_dims,
+                            int axis = 1,
                             bool is_log_softmax = false,
                             double per_sample_tolerance = 1e-4,
                             double relative_per_sample_tolerance = 1e-4) {  
 
   const char* op = is_log_softmax? "LogSoftmaxGrad" : "SoftmaxGrad";
   CompareOpTester test(op, 1, kMSDomain);
+  test.AddAttribute<int64_t>("axis", axis);
 
   // create rand inputs
   RandomValueGenerator random{};
@@ -75,32 +110,67 @@ static void TestSoftmaxGrad(const std::vector<int64_t>& dY_dims,
   test.CompareWithCPU(kCudaExecutionProvider, per_sample_tolerance, relative_per_sample_tolerance);
 }
 
-TEST(CudaKernelTest, SoftmaxGrad_SmallTensor) {
-  std::vector<int64_t> dY_dims{8, 2, 128, 128};
-  std::vector<int64_t> Y_dims{8, 2, 128, 128};
-  std::vector<int64_t> dX_dims{8, 2, 128, 128};
-  TestSoftmaxGrad(dY_dims, Y_dims, dX_dims);
+// small tensor to check dispatch_softmax_backward
+TEST(CudaKernelTest, SoftmaxGrad_SmallTensor_LastAxis) {
+  std::vector<int64_t> dY_dims{4, 2, 128};
+  std::vector<int64_t> Y_dims{4, 2, 128};
+  std::vector<int64_t> dX_dims{4, 2, 128};
+  TestSoftmaxGrad(dY_dims, Y_dims, dX_dims, 2);
 }
 
-TEST(CudaKernelTest, SoftmaxGrad_LargeTensor) {
-  std::vector<int64_t> dY_dims{8, 16, 512, 512};
-  std::vector<int64_t> Y_dims{8, 16, 512, 512};
-  std::vector<int64_t> dX_dims{8, 16, 512, 512};
-  TestSoftmaxGrad(dY_dims, Y_dims, dX_dims);
+TEST(CudaKernelTest, SoftmaxGrad_SmallTensor_AllAxis) {
+  std::vector<int64_t> dY_dims{4, 2, 128};
+  std::vector<int64_t> Y_dims{4, 2, 128};
+  std::vector<int64_t> dX_dims{4, 2, 128};
+  TestSoftmaxGrad(dY_dims, Y_dims, dX_dims, 0);
+  TestSoftmaxGrad(dY_dims, Y_dims, dX_dims, 1);
 }
 
-TEST(CudaKernelTest, LogSoftmaxGrad_SmallTensor) {
-  std::vector<int64_t> dY_dims{8, 2, 128, 128};
-  std::vector<int64_t> Y_dims{8, 2, 128, 128};
-  std::vector<int64_t> dX_dims{8, 2, 128, 128};
-  TestSoftmaxGrad(dY_dims, Y_dims, dX_dims, true);
+// large tensor to check cuda DNN softmax backward
+TEST(CudaKernelTest, SoftmaxGrad_LargeTensor_LastAxis) {
+  std::vector<int64_t> dY_dims{8, 16, 2048};
+  std::vector<int64_t> Y_dims{8, 16, 2048};
+  std::vector<int64_t> dX_dims{8, 16, 2048};
+  TestSoftmaxGrad(dY_dims, Y_dims, dX_dims, 2);
 }
 
-TEST(CudaKernelTest, LogSoftmaxGrad_LargeTensor) {
-  std::vector<int64_t> dY_dims{8, 16, 512, 512};
-  std::vector<int64_t> Y_dims{8, 16, 512, 512};
-  std::vector<int64_t> dX_dims{8, 16, 512, 512};
-  TestSoftmaxGrad(dY_dims, Y_dims, dX_dims, true);
+// large tensor to check cuda DNN softmax backward
+TEST(CudaKernelTest, SoftmaxGrad_LargeTensor_AllAxis) {
+  std::vector<int64_t> dY_dims{8, 16, 512};
+  std::vector<int64_t> Y_dims{8, 16, 512};
+  std::vector<int64_t> dX_dims{8, 16, 512};
+  TestSoftmaxGrad(dY_dims, Y_dims, dX_dims, 0);
+  TestSoftmaxGrad(dY_dims, Y_dims, dX_dims, 1);
+}
+
+TEST(CudaKernelTest, LogSoftmaxGrad_SmallTensor_LastAxis) {
+  std::vector<int64_t> dY_dims{4, 2, 128};
+  std::vector<int64_t> Y_dims{4, 2, 128};
+  std::vector<int64_t> dX_dims{4, 2, 128};
+  TestSoftmaxGrad(dY_dims, Y_dims, dX_dims, 2, true);
+}
+
+TEST(CudaKernelTest, LogSoftmaxGrad_SmallTensor_AllAxis) {
+  std::vector<int64_t> dY_dims{4, 2, 128};
+  std::vector<int64_t> Y_dims{4, 2, 128};
+  std::vector<int64_t> dX_dims{4, 2, 128};
+  TestSoftmaxGrad(dY_dims, Y_dims, dX_dims, 0, true);
+  TestSoftmaxGrad(dY_dims, Y_dims, dX_dims, 1, true);
+}
+
+TEST(CudaKernelTest, LogSoftmaxGrad_LargeTensor_LastAxis) {
+  std::vector<int64_t> dY_dims{8, 16, 2048};
+  std::vector<int64_t> Y_dims{8, 16, 2048};
+  std::vector<int64_t> dX_dims{8, 16, 2048};
+  TestSoftmaxGrad(dY_dims, Y_dims, dX_dims, 2, true);
+}
+
+TEST(CudaKernelTest, LogSoftmaxGrad_LargeTensor_AllAxis) {
+  std::vector<int64_t> dY_dims{8, 16, 512};
+  std::vector<int64_t> Y_dims{8, 16, 512};
+  std::vector<int64_t> dX_dims{8, 16, 512};
+  TestSoftmaxGrad(dY_dims, Y_dims, dX_dims, 0, true);
+  TestSoftmaxGrad(dY_dims, Y_dims, dX_dims, 1, true);
 }
 
 }  // namespace test

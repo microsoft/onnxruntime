@@ -37,12 +37,22 @@ Status InPlaceAccumulator<T>::Compute(OpKernelContext* context) const {
   }
 
   //Copy from Add CPU kernel
-  return BroadcastTwo<T, T>(
-      *context,
-      [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) { output = input0 + input1.array(); },
-      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1) { output = input0.array() + input1; },
-      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0 + input1; });
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<T>() = per_iter_bh.ScalarInput0<T>() + per_iter_bh.EigenInput1<T>().array();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>().array() + per_iter_bh.ScalarInput1<T>();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>() + per_iter_bh.EigenInput1<T>();
+      }};
+
+  UntypedBroadcastTwo(*context, funcs);
+
+  return Status::OK();
 }
+
 template <typename T>
 Status ZeroGradient<T>::Compute(OpKernelContext* context) const {
   const Tensor& old_gradient = *context->Input<Tensor>(0);
