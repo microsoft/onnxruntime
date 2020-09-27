@@ -125,8 +125,8 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
         //     - if the next cast's output type is equal to cast's input type, remove these two casts.
         //     - otherwise, remove the first cast.
         // Below are some exception cases for this optimization:
-        //     - handle numeric types only.
-        //     - if the casts are for (low precision -> high precision ->low precision), since there is actual loss of precision.
+        //     - it's for non-numeric type casting.
+        //     - if the casts are for (high precision -> low precision -> high precision), since there is actual loss of precision.
         // Other cases are OK for this optimization, including below two cases, which are not actual loss of precision:
         //     - (low precision -> high precision ->low precision)
         //     - (high precision -> low precision -> lower precision)
