@@ -38,7 +38,7 @@
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
-#include "core/flatbuffers/ort.fbs.h"
+#include "core/flatbuffers/flatbuffers_utils.h"
 #ifdef USE_DML  // TODO: This is necessary for the workaround in TransformGraph
 #include "core/providers/dml/DmlExecutionProvider/src/GraphTransformer.h"
 #endif
@@ -576,7 +576,7 @@ common::Status InferenceSession::Load(const std::string& model_uri) {
   bool has_explicit_type = !model_type.empty();
 
   if ((has_explicit_type && model_type == "ORT") ||
-      (!has_explicit_type && inference_session_utils::IsOrtFormatModel(model_uri))) {
+      (!has_explicit_type && experimental::utils::IsOrtFormatModel(model_uri))) {
 #if defined(ENABLE_ORT_FORMAT_LOAD)
     return LoadOrtModel(model_uri);
 #else
@@ -603,7 +603,7 @@ common::Status InferenceSession::Load(const std::wstring& model_uri) {
   bool has_explicit_type = !model_type.empty();
 
   if ((has_explicit_type && model_type == "ORT") ||
-      (!has_explicit_type && inference_session_utils::IsOrtFormatModel(model_uri))) {
+      (!has_explicit_type && experimental::utils::IsOrtFormatModel(model_uri))) {
 #if defined(ENABLE_ORT_FORMAT_LOAD)
     return LoadOrtModel(model_uri);
 #else
@@ -631,7 +631,7 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
 
   if ((has_explicit_type && model_type == "ORT") ||
       (!has_explicit_type &&
-       inference_session_utils::IsOrtFormatModelBytes(model_data, model_data_len))) {
+       experimental::utils::IsOrtFormatModelBytes(model_data, model_data_len))) {
 #if defined(ENABLE_ORT_FORMAT_LOAD)
     return LoadOrtModel(model_data, model_data_len);
 #else
@@ -1146,7 +1146,7 @@ common::Status InferenceSession::Initialize() {
 
       if ((has_explicit_type && model_type == "ORT") ||
           (!has_explicit_type &&
-           inference_session_utils::IsOrtFormatModel(session_options_.optimized_model_filepath))) {
+           experimental::utils::IsOrtFormatModel(session_options_.optimized_model_filepath))) {
         ORT_RETURN_IF_ERROR_SESSIONID_(SaveToOrtFormat(session_options_.optimized_model_filepath));
       } else {
         ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(*model_, session_options_.optimized_model_filepath));
@@ -1154,676 +1154,676 @@ common::Status InferenceSession::Initialize() {
     }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-    session_state_->ResolveMemoryPatternFlag();
-    is_inited_ = true;
+      session_state_->ResolveMemoryPatternFlag();
+      is_inited_ = true;
 
-    // we don't directly use the ORT format bytes currently, so free those now
-    std::vector<uint8_t>().swap(ort_format_model_bytes_);
+      // we don't directly use the ORT format bytes currently, so free those now
+      std::vector<uint8_t>().swap(ort_format_model_bytes_);
 
-    // and log telemetry
-    bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
-    env.GetTelemetryProvider().LogSessionCreation(
-        session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(), model_->Domain(),
-        model_->MainGraph().DomainToVersionMap(), model_->MainGraph().Name(), model_->MetaData(),
-        telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs);
-    LOGS(*session_logger_, INFO) << "Session successfully initialized.";
-  }
-  ORT_CATCH(const NotImplementedException& ex) {
-    ORT_HANDLE_EXCEPTION([&]() {
-      status = ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Exception during initialization: ", ex.what());
+      // and log telemetry
+      bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
+      env.GetTelemetryProvider().LogSessionCreation(
+          session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(), model_->Domain(),
+          model_->MainGraph().DomainToVersionMap(), model_->MainGraph().Name(), model_->MetaData(),
+          telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs);
+      LOGS(*session_logger_, INFO) << "Session successfully initialized.";
+    }
+    ORT_CATCH(const NotImplementedException& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        status = ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Exception during initialization: ", ex.what());
+        LOGS(*session_logger_, ERROR) << status.ErrorMessage();
+      });
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "Exception during initialization: ", ex.what());
+        LOGS(*session_logger_, ERROR) << status.ErrorMessage();
+      });
+    }
+    ORT_CATCH(...) {
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "Encountered unknown exception in Initialize()");
       LOGS(*session_logger_, ERROR) << status.ErrorMessage();
-    });
-  }
-  ORT_CATCH(const std::exception& ex) {
-    ORT_HANDLE_EXCEPTION([&]() {
-      status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "Exception during initialization: ", ex.what());
-      LOGS(*session_logger_, ERROR) << status.ErrorMessage();
-    });
-  }
-  ORT_CATCH(...) {
-    status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "Encountered unknown exception in Initialize()");
-    LOGS(*session_logger_, ERROR) << status.ErrorMessage();
+    }
+
+    if (session_profiler_.IsEnabled()) {
+      session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "session_initialization", tp);
+    }
+
+    if (status.IsOK()) {
+      for (auto& xp : execution_providers_) {
+        auto end_status = xp->OnSessionInitializationEnd();
+        if (status.IsOK()) {
+          status = end_status;
+        }
+      }
+    }
+
+    return status;
   }
 
-  if (session_profiler_.IsEnabled()) {
-    session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "session_initialization", tp);
-  }
-
-  if (status.IsOK()) {
-    for (auto& xp : execution_providers_) {
-      auto end_status = xp->OnSessionInitializationEnd();
-      if (status.IsOK()) {
-        status = end_status;
+  // This method should be called from within Initialize() only and before the creation of the session state.
+  // This ensures all providers have been registered in the session and the session state is consistent with the providers.
+  void InferenceSession::UpdateProvidersWithSharedAllocators() {
+    using namespace std;
+    const auto& provider_ids = execution_providers_.GetIds();
+    for (const auto& one_shared_alloc : environment_.GetRegisteredSharedAllocators()) {
+      for (const auto& id : provider_ids) {
+        auto* provider_ptr = execution_providers_.Get(id);
+        provider_ptr->ReplaceAllocator(one_shared_alloc);
       }
     }
   }
 
-  return status;
-}
-
-// This method should be called from within Initialize() only and before the creation of the session state.
-// This ensures all providers have been registered in the session and the session state is consistent with the providers.
-void InferenceSession::UpdateProvidersWithSharedAllocators() {
-  using namespace std;
-  const auto& provider_ids = execution_providers_.GetIds();
-  for (const auto& one_shared_alloc : environment_.GetRegisteredSharedAllocators()) {
-    for (const auto& id : provider_ids) {
-      auto* provider_ptr = execution_providers_.Get(id);
-      provider_ptr->ReplaceAllocator(one_shared_alloc);
-    }
-  }
-}
-
-int InferenceSession::GetCurrentNumRuns() const {
-  return current_num_runs_.load();
-}
-
-const std::vector<std::string>& InferenceSession::GetRegisteredProviderTypes() const {
-  return execution_providers_.GetIds();
-}
-
-const ProviderOptionsMap& InferenceSession::GetAllProviderOptions() const {
-  return execution_providers_.GetAllProviderOptions();
-}
-
-const SessionOptions& InferenceSession::GetSessionOptions() const {
-  return session_options_;
-}
-
-const DataTransferManager& InferenceSession::GetDataTransferManager() const {
-  return data_transfer_mgr_;
-}
-
-common::Status InferenceSession::CheckShapes(const std::string& input_name, const TensorShape& input_shape,
-                                             const TensorShape& expected_shape) const {
-  auto input_shape_sz = input_shape.NumDimensions();
-  auto expected_shape_sz = expected_shape.NumDimensions();
-  if (input_shape_sz != expected_shape_sz) {
-    std::ostringstream ostr;
-    ostr << "Invalid rank for input: " << input_name << " Got: " << input_shape_sz << " Expected: " << expected_shape_sz
-         << " Please fix either the inputs or the model.";
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, ostr.str());
+  int InferenceSession::GetCurrentNumRuns() const {
+    return current_num_runs_.load();
   }
 
-  std::vector<size_t> invalid_dim_indices;
-  for (size_t i = 0; i < input_shape_sz; ++i) {
-    if (expected_shape[i] < 0) {
-      continue;  // this represents a symbolic shape dimension
-    }
-    if (input_shape[i] != expected_shape[i]) {
-      invalid_dim_indices.push_back(i);
-    }
+  const std::vector<std::string>& InferenceSession::GetRegisteredProviderTypes() const {
+    return execution_providers_.GetIds();
   }
 
-  if (!invalid_dim_indices.empty()) {
-    std::ostringstream ostr;
-    ostr << "Got invalid dimensions for input: " << input_name << " for the following indices\n";
-    for (size_t i = 0, end = invalid_dim_indices.size(); i < end; ++i) {
-      size_t idx = invalid_dim_indices[i];
-      ostr << " index: " << idx << " Got: " << input_shape[idx] << " Expected: " << expected_shape[idx] << "\n";
-    }
-    ostr << " Please fix either the inputs or the model.";
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, ostr.str());
+  const ProviderOptionsMap& InferenceSession::GetAllProviderOptions() const {
+    return execution_providers_.GetAllProviderOptions();
   }
 
-  return Status::OK();
-}
+  const SessionOptions& InferenceSession::GetSessionOptions() const {
+    return session_options_;
+  }
 
-static common::Status CheckTypes(MLDataType actual, MLDataType expected) {
-  if (actual == expected) {
+  const DataTransferManager& InferenceSession::GetDataTransferManager() const {
+    return data_transfer_mgr_;
+  }
+
+  common::Status InferenceSession::CheckShapes(const std::string& input_name, const TensorShape& input_shape,
+                                               const TensorShape& expected_shape) const {
+    auto input_shape_sz = input_shape.NumDimensions();
+    auto expected_shape_sz = expected_shape.NumDimensions();
+    if (input_shape_sz != expected_shape_sz) {
+      std::ostringstream ostr;
+      ostr << "Invalid rank for input: " << input_name << " Got: " << input_shape_sz << " Expected: " << expected_shape_sz
+           << " Please fix either the inputs or the model.";
+      return Status(ONNXRUNTIME, INVALID_ARGUMENT, ostr.str());
+    }
+
+    std::vector<size_t> invalid_dim_indices;
+    for (size_t i = 0; i < input_shape_sz; ++i) {
+      if (expected_shape[i] < 0) {
+        continue;  // this represents a symbolic shape dimension
+      }
+      if (input_shape[i] != expected_shape[i]) {
+        invalid_dim_indices.push_back(i);
+      }
+    }
+
+    if (!invalid_dim_indices.empty()) {
+      std::ostringstream ostr;
+      ostr << "Got invalid dimensions for input: " << input_name << " for the following indices\n";
+      for (size_t i = 0, end = invalid_dim_indices.size(); i < end; ++i) {
+        size_t idx = invalid_dim_indices[i];
+        ostr << " index: " << idx << " Got: " << input_shape[idx] << " Expected: " << expected_shape[idx] << "\n";
+      }
+      ostr << " Please fix either the inputs or the model.";
+      return Status(ONNXRUNTIME, INVALID_ARGUMENT, ostr.str());
+    }
+
     return Status::OK();
   }
+
+  static common::Status CheckTypes(MLDataType actual, MLDataType expected) {
+    if (actual == expected) {
+      return Status::OK();
+    }
 #ifdef ORT_NO_RTTI
-  return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Unexpected input data type");
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Unexpected input data type");
 #else
   auto actual_name = std::string(typeid(*actual).name());
   auto expected_name = std::string(typeid(*expected).name());
   return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                 "Unexpected input data type. Actual: (" + actual_name + ") , expected: (" + expected_name + ")");
 #endif
-}
-
-common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& feed_names,
-                                                const std::vector<OrtValue>& feeds) const {
-  if (feed_names.size() != feeds.size()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Size mismatch: feed_names has ", feed_names.size(),
-                           "elements, but feeds has ", feeds.size(), " elements.");
   }
 
-  for (size_t i = 0; i < feeds.size(); ++i) {
-    const auto& feed_name = feed_names[i];
-
-    auto iter = input_def_map_.find(feed_name);
-    if (input_def_map_.end() == iter) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid Feed Input Name:", feed_name);
+  common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& feed_names,
+                                                  const std::vector<OrtValue>& feeds) const {
+    if (feed_names.size() != feeds.size()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Size mismatch: feed_names has ", feed_names.size(),
+                             "elements, but feeds has ", feeds.size(), " elements.");
     }
 
-    auto expected_type = iter->second.ml_data_type;
-    auto& input_ml_value = feeds.at(i);
-    if (input_ml_value.IsTensor()) {
-      // check for type
-      if (!expected_type->IsTensorType()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name: ", feed_name,
-                               " is not expected to be of type tensor.");
-      }
-      auto expected_element_type = expected_type->AsTensorType()->GetElementType();
-      auto input_element_type = input_ml_value.Get<Tensor>().DataType();
-      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type));
+    for (size_t i = 0; i < feeds.size(); ++i) {
+      const auto& feed_name = feed_names[i];
 
-      // check for shape
-      const auto& expected_shape = iter->second.tensor_shape;
-      if (expected_shape.NumDimensions() > 0) {
-        const auto& input_shape = input_ml_value.Get<Tensor>().Shape();
-        ORT_RETURN_IF_ERROR_SESSIONID_(CheckShapes(feed_name, input_shape, expected_shape));
+      auto iter = input_def_map_.find(feed_name);
+      if (input_def_map_.end() == iter) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid Feed Input Name:", feed_name);
       }
-    } else if (input_ml_value.IsSparseTensor()) {
+
+      auto expected_type = iter->second.ml_data_type;
+      auto& input_ml_value = feeds.at(i);
+      if (input_ml_value.IsTensor()) {
+        // check for type
+        if (!expected_type->IsTensorType()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name: ", feed_name,
+                                 " is not expected to be of type tensor.");
+        }
+        auto expected_element_type = expected_type->AsTensorType()->GetElementType();
+        auto input_element_type = input_ml_value.Get<Tensor>().DataType();
+        ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type));
+
+        // check for shape
+        const auto& expected_shape = iter->second.tensor_shape;
+        if (expected_shape.NumDimensions() > 0) {
+          const auto& input_shape = input_ml_value.Get<Tensor>().Shape();
+          ORT_RETURN_IF_ERROR_SESSIONID_(CheckShapes(feed_name, input_shape, expected_shape));
+        }
+      } else if (input_ml_value.IsSparseTensor()) {
 #if !defined(ORT_MINIMAL_BUILD)
-      if (!expected_type->IsSparseTensorType()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name: ", feed_name,
-                               " is not expected to be of type sparse tensor.");
-      }
-      auto expected_element_type = expected_type->AsSparseTensorType()->GetElementType();
-      auto input_element_type = input_ml_value.Get<SparseTensor>().Values().DataType();
-      // TODO: In the future, when sparsetensors are in use, find out how to properly verify the shape
-      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type));
+        if (!expected_type->IsSparseTensorType()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name: ", feed_name,
+                                 " is not expected to be of type sparse tensor.");
+        }
+        auto expected_element_type = expected_type->AsSparseTensorType()->GetElementType();
+        auto input_element_type = input_ml_value.Get<SparseTensor>().Values().DataType();
+        // TODO: In the future, when sparsetensors are in use, find out how to properly verify the shape
+        ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type));
 #else
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name ", feed_name,
                              " is a sparse tensor, which is not supported in this build.");
 #endif
 
-    } else if (input_ml_value.IsTensorSequence()) {
-      if (!expected_type->IsTensorSequenceType()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name: ", feed_name,
-                               " is not expected to be of type tensor sequence.");
+      } else if (input_ml_value.IsTensorSequence()) {
+        if (!expected_type->IsTensorSequenceType()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name: ", feed_name,
+                                 " is not expected to be of type tensor sequence.");
+        }
+        auto expected_element_type = expected_type->AsSequenceTensorBase()->GetElementType();
+        auto input_element_type = input_ml_value.Get<TensorSeq>().DataType();
+        ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type));
+      } else {
+        auto input_type = input_ml_value.Type();
+        ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_type, expected_type));
       }
-      auto expected_element_type = expected_type->AsSequenceTensorBase()->GetElementType();
-      auto input_element_type = input_ml_value.Get<TensorSeq>().DataType();
-      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type));
-    } else {
-      auto input_type = input_ml_value.Type();
-      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_type, expected_type));
     }
+
+    return Status::OK();
   }
 
-  return Status::OK();
-}
-
-common::Status InferenceSession::ValidateOutputs(const std::vector<std::string>& output_names,
-                                                 const std::vector<OrtValue>* p_fetches) const {
-  if (p_fetches == nullptr) {
-    return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Output vector pointer is NULL");
-  }
-
-  if (output_names.empty()) {
-    return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "At least one output should be requested.");
-  }
-
-  if (!p_fetches->empty() && (output_names.size() != p_fetches->size())) {
-    std::ostringstream ostr;
-    ostr << "Output vector incorrectly sized: output_names.size(): " << output_names.size()
-         << "p_fetches->size(): " << p_fetches->size();
-    return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, ostr.str());
-  }
-
-  for (const auto& name : output_names) {
-    if (model_output_names_.find(name) == model_output_names_.end()) {
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Invalid Output Name:" + name);
+  common::Status InferenceSession::ValidateOutputs(const std::vector<std::string>& output_names,
+                                                   const std::vector<OrtValue>* p_fetches) const {
+    if (p_fetches == nullptr) {
+      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Output vector pointer is NULL");
     }
+
+    if (output_names.empty()) {
+      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "At least one output should be requested.");
+    }
+
+    if (!p_fetches->empty() && (output_names.size() != p_fetches->size())) {
+      std::ostringstream ostr;
+      ostr << "Output vector incorrectly sized: output_names.size(): " << output_names.size()
+           << "p_fetches->size(): " << p_fetches->size();
+      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, ostr.str());
+    }
+
+    for (const auto& name : output_names) {
+      if (model_output_names_.find(name) == model_output_names_.end()) {
+        return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Invalid Output Name:" + name);
+      }
+    }
+
+    // TODO add more validation here like checking shape of the allocated buffers
+
+    return common::Status::OK();
   }
 
-  // TODO add more validation here like checking shape of the allocated buffers
-
-  return common::Status::OK();
-}
-
-Status InferenceSession::Run(const RunOptions& run_options,
-                             const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds,
-                             const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches,
-                             const std::vector<OrtDevice>* p_fetches_device_info) {
-  TimePoint tp;
-  if (session_profiler_.IsEnabled()) {
-    tp = session_profiler_.StartTime();
-  }
+  Status InferenceSession::Run(const RunOptions& run_options,
+                               const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds,
+                               const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches,
+                               const std::vector<OrtDevice>* p_fetches_device_info) {
+    TimePoint tp;
+    if (session_profiler_.IsEnabled()) {
+      tp = session_profiler_.StartTime();
+    }
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
-  TraceLoggingActivity<telemetry_provider_handle> ortrun_activity;
-  ortrun_activity.SetRelatedActivity(session_activity);
-  TraceLoggingWriteStart(ortrun_activity, "OrtRun");
+    TraceLoggingActivity<telemetry_provider_handle> ortrun_activity;
+    ortrun_activity.SetRelatedActivity(session_activity);
+    TraceLoggingWriteStart(ortrun_activity, "OrtRun");
 #endif
-  Status retval = Status::OK();
-  const Env& env = Env::Default();
+    Status retval = Status::OK();
+    const Env& env = Env::Default();
 
-  std::vector<IExecutionProvider*> exec_providers_to_stop;
-  exec_providers_to_stop.reserve(execution_providers_.NumProviders());
+    std::vector<IExecutionProvider*> exec_providers_to_stop;
+    exec_providers_to_stop.reserve(execution_providers_.NumProviders());
 
-  ORT_TRY {
-    if (!is_inited_) {
-      LOGS(*session_logger_, ERROR) << "Session was not initialized";
-      return Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
-    }
-
-    // log evaluation start to trace logging provider
-    env.GetTelemetryProvider().LogEvaluationStart();
-
-    ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
-    ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches));
-
-    FeedsFetchesInfo info(feed_names, output_names, session_state_->GetOrtValueNameIdxMap());
-    FeedsFetchesManager feeds_fetches_manager{std::move(info)};
-
-    if (p_fetches_device_info) {
-      // populate the target device info. ignored if pre-allocated fetches are provided
-      const auto& fetch_device_info = *p_fetches_device_info;
-      auto& fetch_info = feeds_fetches_manager.GetMutableFetchesDeviceCopyInfo();
-
-      for (size_t i = 0, end = output_names.size(); i < end; ++i) {
-        fetch_info[i].target_device = fetch_device_info[i];
+    ORT_TRY {
+      if (!is_inited_) {
+        LOGS(*session_logger_, ERROR) << "Session was not initialized";
+        return Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
       }
-    }
 
-    if (!run_options.run_tag.empty()) {
-      LOGS(*session_logger_, INFO) << "Running with tag: " << run_options.run_tag;
-    }
+      // log evaluation start to trace logging provider
+      env.GetTelemetryProvider().LogEvaluationStart();
 
-    ++current_num_runs_;
+      ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
+      ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches));
 
-    // TODO should we add this exec to the list of executors? i guess its not needed now?
+      FeedsFetchesInfo info(feed_names, output_names, session_state_->GetOrtValueNameIdxMap());
+      FeedsFetchesManager feeds_fetches_manager{std::move(info)};
 
-    // scope of owned_run_logger is just the call to Execute.
-    // If Execute ever becomes async we need a different approach
-    std::unique_ptr<logging::Logger> owned_run_logger;
-    auto run_logger = CreateLoggerForRun(run_options, owned_run_logger);
+      if (p_fetches_device_info) {
+        // populate the target device info. ignored if pre-allocated fetches are provided
+        const auto& fetch_device_info = *p_fetches_device_info;
+        auto& fetch_info = feeds_fetches_manager.GetMutableFetchesDeviceCopyInfo();
 
-    // info all execution providers InferenceSession:Run started
-    // TODO: only call OnRunStart for all providers in-use
-    for (auto& xp : execution_providers_) {
-      // call OnRunStart and add to exec_providers_to_stop if successful
-      auto start_func = [&xp, &exec_providers_to_stop]() {
-        auto status = xp->OnRunStart();
-        if (status.IsOK())
-          exec_providers_to_stop.push_back(xp.get());
+        for (size_t i = 0, end = output_names.size(); i < end; ++i) {
+          fetch_info[i].target_device = fetch_device_info[i];
+        }
+      }
 
-        return status;
-      };
+      if (!run_options.run_tag.empty()) {
+        LOGS(*session_logger_, INFO) << "Running with tag: " << run_options.run_tag;
+      }
 
-      ORT_CHECK_AND_SET_RETVAL(start_func());
-    }
+      ++current_num_runs_;
+
+      // TODO should we add this exec to the list of executors? i guess its not needed now?
+
+      // scope of owned_run_logger is just the call to Execute.
+      // If Execute ever becomes async we need a different approach
+      std::unique_ptr<logging::Logger> owned_run_logger;
+      auto run_logger = CreateLoggerForRun(run_options, owned_run_logger);
+
+      // info all execution providers InferenceSession:Run started
+      // TODO: only call OnRunStart for all providers in-use
+      for (auto& xp : execution_providers_) {
+        // call OnRunStart and add to exec_providers_to_stop if successful
+        auto start_func = [&xp, &exec_providers_to_stop]() {
+          auto status = xp->OnRunStart();
+          if (status.IsOK())
+            exec_providers_to_stop.push_back(xp.get());
+
+          return status;
+        };
+
+        ORT_CHECK_AND_SET_RETVAL(start_func());
+      }
 
 #if !defined(ORT_MINIMAL_BUILD)
-    if (run_options.only_execute_path_to_fetches) {
-      session_state_->UpdateToBeExecutedNodes(feeds_fetches_manager.GetFeedsFetchesInfo().fetches_mlvalue_idxs);
-    }
+      if (run_options.only_execute_path_to_fetches) {
+        session_state_->UpdateToBeExecutedNodes(feeds_fetches_manager.GetFeedsFetchesInfo().fetches_mlvalue_idxs);
+      }
 #endif
 
-    // execute the graph
-    ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
-                                                 session_options_.execution_mode, run_options.terminate, run_logger,
-                                                 run_options.only_execute_path_to_fetches));
-  }
-  ORT_CATCH(const std::exception& e) {
-    ORT_HANDLE_EXCEPTION([&]() {
-      retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
-    });
-  }
-  ORT_CATCH(...) {
-    retval = Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Run()");
-  }
+      // execute the graph
+      ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
+                                                   session_options_.execution_mode, run_options.terminate, run_logger,
+                                                   run_options.only_execute_path_to_fetches));
+    }
+    ORT_CATCH(const std::exception& e) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
+      });
+    }
+    ORT_CATCH(...) {
+      retval = Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Run()");
+    }
 
-  // info all execution providers InferenceSession:Run ended
-  for (auto* xp : exec_providers_to_stop) {
-    auto status = xp->OnRunEnd();
-    ORT_CHECK_AND_SET_RETVAL(status);
-  }
+    // info all execution providers InferenceSession:Run ended
+    for (auto* xp : exec_providers_to_stop) {
+      auto status = xp->OnRunEnd();
+      ORT_CHECK_AND_SET_RETVAL(status);
+    }
 
-  --current_num_runs_;
+    --current_num_runs_;
 
-  // keep track of telemetry
-  ++telemetry_.total_runs_since_last_;
-  telemetry_.total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
+    // keep track of telemetry
+    ++telemetry_.total_runs_since_last_;
+    telemetry_.total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
 
-  // time to send telemetry?
-  if (TimeDiffMicroSeconds(telemetry_.time_sent_last_) > telemetry_.kDurationBetweenSending) {
-    // send the telemetry
-    env.GetTelemetryProvider().LogRuntimePerf(session_id_, telemetry_.total_runs_since_last_,
-                                              telemetry_.total_run_duration_since_last_);
-    // reset counters
-    telemetry_.time_sent_last_ = std::chrono::high_resolution_clock::now();
-    telemetry_.total_runs_since_last_ = 0;
-    telemetry_.total_run_duration_since_last_ = 0;
-  }
+    // time to send telemetry?
+    if (TimeDiffMicroSeconds(telemetry_.time_sent_last_) > telemetry_.kDurationBetweenSending) {
+      // send the telemetry
+      env.GetTelemetryProvider().LogRuntimePerf(session_id_, telemetry_.total_runs_since_last_,
+                                                telemetry_.total_run_duration_since_last_);
+      // reset counters
+      telemetry_.time_sent_last_ = std::chrono::high_resolution_clock::now();
+      telemetry_.total_runs_since_last_ = 0;
+      telemetry_.total_run_duration_since_last_ = 0;
+    }
 
-  // log evaluation stop to trace logging provider
-  env.GetTelemetryProvider().LogEvaluationStop();
+    // log evaluation stop to trace logging provider
+    env.GetTelemetryProvider().LogEvaluationStop();
 
-  // send out profiling events (optional)
-  if (session_profiler_.IsEnabled()) {
-    session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_run", tp);
-  }
+    // send out profiling events (optional)
+    if (session_profiler_.IsEnabled()) {
+      session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_run", tp);
+    }
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
-  TraceLoggingWriteStop(ortrun_activity, "OrtRun");
+    TraceLoggingWriteStop(ortrun_activity, "OrtRun");
 #endif
-  return retval;
-}
-
-common::Status InferenceSession::Run(const NameMLValMap& feeds, const std::vector<std::string>& output_names,
-                                     std::vector<OrtValue>* p_fetches) {
-  return Run(RunOptions(), feeds, output_names, p_fetches);
-}
-
-common::Status InferenceSession::Run(const RunOptions& run_options, const NameMLValMap& feeds_map,
-                                     const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches) {
-  std::vector<std::string> feed_names;
-  std::vector<OrtValue> feeds;
-
-  auto num_feeds = feeds_map.size();
-  feed_names.reserve(num_feeds);
-  feeds.reserve(num_feeds);
-
-  for (auto& pair : feeds_map) {
-    feed_names.push_back(pair.first);
-    feeds.push_back(pair.second);
+    return retval;
   }
 
-  return Run(run_options, feed_names, feeds, output_names, p_fetches, nullptr);
-}
+  common::Status InferenceSession::Run(const NameMLValMap& feeds, const std::vector<std::string>& output_names,
+                                       std::vector<OrtValue>* p_fetches) {
+    return Run(RunOptions(), feeds, output_names, p_fetches);
+  }
 
-std::pair<common::Status, const ModelMetadata*> InferenceSession::GetModelMetadata() const {
-  {
-    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
-    if (!is_model_loaded_) {
-      LOGS(*session_logger_, ERROR) << "Model was not loaded";
-      return std::make_pair(common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded."), nullptr);
+  common::Status InferenceSession::Run(const RunOptions& run_options, const NameMLValMap& feeds_map,
+                                       const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches) {
+    std::vector<std::string> feed_names;
+    std::vector<OrtValue> feeds;
+
+    auto num_feeds = feeds_map.size();
+    feed_names.reserve(num_feeds);
+    feeds.reserve(num_feeds);
+
+    for (auto& pair : feeds_map) {
+      feed_names.push_back(pair.first);
+      feeds.push_back(pair.second);
     }
+
+    return Run(run_options, feed_names, feeds, output_names, p_fetches, nullptr);
   }
 
-  return std::make_pair(common::Status::OK(), &model_metadata_);
-}
-
-std::pair<common::Status, const InputDefList*> InferenceSession::GetModelInputs() const {
-  {
-    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
-    if (!is_model_loaded_) {
-      LOGS(*session_logger_, ERROR) << "Model was not loaded";
-      return std::make_pair(common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded."), nullptr);
+  std::pair<common::Status, const ModelMetadata*> InferenceSession::GetModelMetadata() const {
+    {
+      std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+      if (!is_model_loaded_) {
+        LOGS(*session_logger_, ERROR) << "Model was not loaded";
+        return std::make_pair(common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded."), nullptr);
+      }
     }
+
+    return std::make_pair(common::Status::OK(), &model_metadata_);
   }
 
-  // return required inputs (excludes any inputs used for overriding initializers)
-  return std::make_pair(common::Status::OK(), &model_->MainGraph().GetInputs());
-}
-
-std::pair<common::Status, const InputDefList*> InferenceSession::GetOverridableInitializers() const {
-  {
-    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
-    if (!is_model_loaded_) {
-      LOGS(*session_logger_, ERROR) << "Model was not loaded";
-      return std::make_pair(common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded."), nullptr);
+  std::pair<common::Status, const InputDefList*> InferenceSession::GetModelInputs() const {
+    {
+      std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+      if (!is_model_loaded_) {
+        LOGS(*session_logger_, ERROR) << "Model was not loaded";
+        return std::make_pair(common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded."), nullptr);
+      }
     }
+
+    // return required inputs (excludes any inputs used for overriding initializers)
+    return std::make_pair(common::Status::OK(), &model_->MainGraph().GetInputs());
   }
 
-  // returns a list of initializers that can be overriden.
-  return std::make_pair(common::Status::OK(), &model_->MainGraph().GetOverridableInitializers());
-}
-
-std::pair<common::Status, const OutputDefList*> InferenceSession::GetModelOutputs() const {
-  {
-    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
-    if (!is_model_loaded_) {
-      LOGS(*session_logger_, ERROR) << "Model was not loaded";
-      return std::make_pair(common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded."), nullptr);
+  std::pair<common::Status, const InputDefList*> InferenceSession::GetOverridableInitializers() const {
+    {
+      std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+      if (!is_model_loaded_) {
+        LOGS(*session_logger_, ERROR) << "Model was not loaded";
+        return std::make_pair(common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded."), nullptr);
+      }
     }
+
+    // returns a list of initializers that can be overriden.
+    return std::make_pair(common::Status::OK(), &model_->MainGraph().GetOverridableInitializers());
   }
 
-  return std::make_pair(common::Status::OK(), &output_def_list_);
-}
-
-common::Status InferenceSession::NewIOBinding(std::unique_ptr<IOBinding>* io_binding) {
-  {
-    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
-    if (!is_inited_) {
-      LOGS(*session_logger_, ERROR) << "Session was not initialized";
-      return common::Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
+  std::pair<common::Status, const OutputDefList*> InferenceSession::GetModelOutputs() const {
+    {
+      std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+      if (!is_model_loaded_) {
+        LOGS(*session_logger_, ERROR) << "Model was not loaded";
+        return std::make_pair(common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded."), nullptr);
+      }
     }
+
+    return std::make_pair(common::Status::OK(), &output_def_list_);
   }
 
-  // private constructor, can't use make_unique
-  *io_binding = std::unique_ptr<IOBinding>(new IOBinding(*session_state_));
-  return Status::OK();
-}
+  common::Status InferenceSession::NewIOBinding(std::unique_ptr<IOBinding>* io_binding) {
+    {
+      std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+      if (!is_inited_) {
+        LOGS(*session_logger_, ERROR) << "Session was not initialized";
+        return common::Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
+      }
+    }
 
-common::Status InferenceSession::Run(const RunOptions& run_options, IOBinding& io_binding) {
-  // TODO should Run() call io_binding.SynchronizeInputs() or should it let the callers do it?
-  // io_binding.SynchronizeInputs();
-  return Run(run_options, io_binding.GetInputNames(), io_binding.GetInputs(), io_binding.GetOutputNames(),
-             &io_binding.GetOutputs(), &io_binding.GetOutputsDeviceInfo());
-}
+    // private constructor, can't use make_unique
+    *io_binding = std::unique_ptr<IOBinding>(new IOBinding(*session_state_));
+    return Status::OK();
+  }
 
-common::Status InferenceSession::Run(IOBinding& io_binding) {
-  RunOptions run_options;
-  return Run(run_options, io_binding);
-}
+  common::Status InferenceSession::Run(const RunOptions& run_options, IOBinding& io_binding) {
+    // TODO should Run() call io_binding.SynchronizeInputs() or should it let the callers do it?
+    // io_binding.SynchronizeInputs();
+    return Run(run_options, io_binding.GetInputNames(), io_binding.GetInputs(), io_binding.GetOutputNames(),
+               &io_binding.GetOutputs(), &io_binding.GetOutputsDeviceInfo());
+  }
 
-template <typename T>
-void InferenceSession::StartProfiling(const std::basic_string<T>& file_prefix) {
-  std::basic_ostringstream<T> ss;
-  ss << file_prefix << "_" << GetCurrentTimeString<T>() << ".json";
-  session_profiler_.StartProfiling(ss.str());
-}
+  common::Status InferenceSession::Run(IOBinding& io_binding) {
+    RunOptions run_options;
+    return Run(run_options, io_binding);
+  }
 
-void InferenceSession::StartProfiling(const std::string& file_prefix) {
-  StartProfiling<char>(file_prefix);
-}
+  template <typename T>
+  void InferenceSession::StartProfiling(const std::basic_string<T>& file_prefix) {
+    std::basic_ostringstream<T> ss;
+    ss << file_prefix << "_" << GetCurrentTimeString<T>() << ".json";
+    session_profiler_.StartProfiling(ss.str());
+  }
+
+  void InferenceSession::StartProfiling(const std::string& file_prefix) {
+    StartProfiling<char>(file_prefix);
+  }
 
 #ifdef _WIN32
-void InferenceSession::StartProfiling(const std::wstring& file_prefix) {
-  StartProfiling<PATH_CHAR_TYPE>(file_prefix);
-}
+  void InferenceSession::StartProfiling(const std::wstring& file_prefix) {
+    StartProfiling<PATH_CHAR_TYPE>(file_prefix);
+  }
 #endif
 
-void InferenceSession::StartProfiling(const logging::Logger* logger_ptr) {
-  session_profiler_.StartProfiling(logger_ptr);
-}
-
-std::string InferenceSession::EndProfiling() {
-  if (is_model_loaded_) {
-    if (session_profiler_.IsEnabled()) {
-      return session_profiler_.EndProfiling();
-    } else {
-      LOGS(*session_logger_, VERBOSE) << "Profiler is disabled.";
-      return std::string();
-    }
+  void InferenceSession::StartProfiling(const logging::Logger* logger_ptr) {
+    session_profiler_.StartProfiling(logger_ptr);
   }
-  LOGS(*session_logger_, ERROR) << "Could not write a profile because no model was loaded.";
-  return std::string();
-}
 
-const profiling::Profiler& InferenceSession::GetProfiling() const {
-  return session_profiler_;
-}
+  std::string InferenceSession::EndProfiling() {
+    if (is_model_loaded_) {
+      if (session_profiler_.IsEnabled()) {
+        return session_profiler_.EndProfiling();
+      } else {
+        LOGS(*session_logger_, VERBOSE) << "Profiler is disabled.";
+        return std::string();
+      }
+    }
+    LOGS(*session_logger_, ERROR) << "Could not write a profile because no model was loaded.";
+    return std::string();
+  }
 
-AllocatorPtr InferenceSession::GetAllocator(const OrtMemoryInfo& mem_info) const {
-  return session_state_->GetAllocator(mem_info);
-}
+  const profiling::Profiler& InferenceSession::GetProfiling() const {
+    return session_profiler_;
+  }
+
+  AllocatorPtr InferenceSession::GetAllocator(const OrtMemoryInfo& mem_info) const {
+    return session_state_->GetAllocator(mem_info);
+  }
 
 #if !defined(ORT_MINIMAL_BUILD)
-// assumes model has already been loaded before
-common::Status InferenceSession::DoPostLoadProcessing(onnxruntime::Model& model) {
-  // TODO add other post load processing here
-  common::Status status = SaveModelMetadata(model);
-  return status;
-}
+  // assumes model has already been loaded before
+  common::Status InferenceSession::DoPostLoadProcessing(onnxruntime::Model& model) {
+    // TODO add other post load processing here
+    common::Status status = SaveModelMetadata(model);
+    return status;
+  }
 #endif
 
-common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& model) {
-  VLOGS(*session_logger_, 1) << "Saving model metadata";
-  const onnxruntime::Graph& graph = model.MainGraph();
+  common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& model) {
+    VLOGS(*session_logger_, 1) << "Saving model metadata";
+    const onnxruntime::Graph& graph = model.MainGraph();
 
-  // save model metadata
-  model_metadata_.producer_name = model.ProducerName();
-  model_metadata_.description = model.DocString();
-  model_metadata_.domain = model.Domain();
-  model_metadata_.version = model.ModelVersion();
-  model_metadata_.custom_metadata_map = model.MetaData();
-  model_metadata_.graph_name = graph.Name();
+    // save model metadata
+    model_metadata_.producer_name = model.ProducerName();
+    model_metadata_.description = model.DocString();
+    model_metadata_.domain = model.Domain();
+    model_metadata_.version = model.ModelVersion();
+    model_metadata_.custom_metadata_map = model.MetaData();
+    model_metadata_.graph_name = graph.Name();
 
-  required_inputs_.clear();
-  for (auto input : graph.GetInputs()) {
-    required_inputs_.insert(input->Name());
-  }
-
-  auto add_inputs = [this](const InputDefList& inputs) {
-    input_def_map_.clear();
-    input_def_map_.reserve(inputs.size());
-    for (auto elem : inputs) {
-      auto elem_type = utils::GetMLDataType(*elem);
-      auto elem_shape_proto = elem->Shape();
-      input_def_map_.insert(
-          {elem->Name(),
-           InputDefMetaData(
-               elem, elem_type,
-               elem_shape_proto ? utils::GetTensorShapeFromTensorShapeProto(*elem_shape_proto) : TensorShape())});
-    }
-  };
-
-  if (graph.CanOverrideInitializer()) {
-    // for IR 4 or higher it is optional to have a matching graph input for an initializer, and if one exists the
-    // initializer is explicitly overridable.
-    add_inputs(graph.GetInputsIncludingInitializers());
-  } else {
-    // for IR < 4 we don't allow overriding initializers so that they can be treated as constant. exclude them from
-    // the list of valid inputs by just using the GetInputs() list.
-    add_inputs(graph.GetInputs());
-  }
-
-  // save outputs
-  const auto& outputs = graph.GetOutputs();
-  output_def_list_ = outputs;  // A direct copy of outputs
-
-  model_output_names_.clear();
-  model_output_names_.reserve(outputs.size());
-  for (const auto& elem : outputs) {
-    model_output_names_.insert(elem->Name());
-  }
-
-  VLOGS(*session_logger_, 1) << "Done saving model metadata";
-  return common::Status::OK();
-}
-
-// Create a Logger for a single execution if possible. Otherwise use the default logger.
-// If a new logger is created, it will also be stored in new_run_logger,
-// which must remain valid for the duration of the execution.
-// If the default logger is used, new_run_logger will remain empty.
-// The returned value should be used in the execution.
-const logging::Logger& InferenceSession::CreateLoggerForRun(const RunOptions& run_options,
-                                                            std::unique_ptr<logging::Logger>& new_run_logger) {
-  const logging::Logger* run_logger;
-
-  // create a per-run logger if we can
-  if (logging_manager_ != nullptr) {
-    std::string run_log_id{session_options_.session_logid};
-
-    if (!session_options_.session_logid.empty() && !run_options.run_tag.empty()) {
-      run_log_id += ":";
+    required_inputs_.clear();
+    for (auto input : graph.GetInputs()) {
+      required_inputs_.insert(input->Name());
     }
 
-    run_log_id += run_options.run_tag;
+    auto add_inputs = [this](const InputDefList& inputs) {
+      input_def_map_.clear();
+      input_def_map_.reserve(inputs.size());
+      for (auto elem : inputs) {
+        auto elem_type = utils::GetMLDataType(*elem);
+        auto elem_shape_proto = elem->Shape();
+        input_def_map_.insert(
+            {elem->Name(),
+             InputDefMetaData(
+                 elem, elem_type,
+                 elem_shape_proto ? utils::GetTensorShapeFromTensorShapeProto(*elem_shape_proto) : TensorShape())});
+      }
+    };
 
-    logging::Severity severity = logging::Severity::kWARNING;
-    if (run_options.run_log_severity_level == -1) {
-      severity = session_logger_->GetSeverity();
+    if (graph.CanOverrideInitializer()) {
+      // for IR 4 or higher it is optional to have a matching graph input for an initializer, and if one exists the
+      // initializer is explicitly overridable.
+      add_inputs(graph.GetInputsIncludingInitializers());
     } else {
-      ORT_ENFORCE(run_options.run_log_severity_level >= 0 &&
-                      run_options.run_log_severity_level <= static_cast<int>(logging::Severity::kFATAL),
-                  "Invalid run log severity level. Not a valid onnxruntime::logging::Severity value: ",
-                  run_options.run_log_severity_level);
-      severity = static_cast<logging::Severity>(run_options.run_log_severity_level);
+      // for IR < 4 we don't allow overriding initializers so that they can be treated as constant. exclude them from
+      // the list of valid inputs by just using the GetInputs() list.
+      add_inputs(graph.GetInputs());
     }
 
-    new_run_logger = logging_manager_->CreateLogger(run_log_id, severity, false, run_options.run_log_verbosity_level);
+    // save outputs
+    const auto& outputs = graph.GetOutputs();
+    output_def_list_ = outputs;  // A direct copy of outputs
 
-    run_logger = new_run_logger.get();
-    VLOGS(*run_logger, 1) << "Created logger for run with id of " << run_log_id;
-  } else {
-    // fallback to using default logger. this does NOT have any session or run specific id/tag in it
-    run_logger = session_logger_;
-    VLOGS(*run_logger, 1) << "Using default logger for run " << run_options.run_tag;
+    model_output_names_.clear();
+    model_output_names_.reserve(outputs.size());
+    for (const auto& elem : outputs) {
+      model_output_names_.insert(elem->Name());
+    }
+
+    VLOGS(*session_logger_, 1) << "Done saving model metadata";
+    return common::Status::OK();
   }
 
-  return *run_logger;
-}
+  // Create a Logger for a single execution if possible. Otherwise use the default logger.
+  // If a new logger is created, it will also be stored in new_run_logger,
+  // which must remain valid for the duration of the execution.
+  // If the default logger is used, new_run_logger will remain empty.
+  // The returned value should be used in the execution.
+  const logging::Logger& InferenceSession::CreateLoggerForRun(const RunOptions& run_options,
+                                                              std::unique_ptr<logging::Logger>& new_run_logger) {
+    const logging::Logger* run_logger;
 
-void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
-  // create logger for session, using provided logging manager if possible
-  if (logging_manager != nullptr) {
-    logging::Severity severity = logging::Severity::kWARNING;
-    if (session_options_.session_log_severity_level == -1) {
-      severity = logging::LoggingManager::DefaultLogger().GetSeverity();
+    // create a per-run logger if we can
+    if (logging_manager_ != nullptr) {
+      std::string run_log_id{session_options_.session_logid};
+
+      if (!session_options_.session_logid.empty() && !run_options.run_tag.empty()) {
+        run_log_id += ":";
+      }
+
+      run_log_id += run_options.run_tag;
+
+      logging::Severity severity = logging::Severity::kWARNING;
+      if (run_options.run_log_severity_level == -1) {
+        severity = session_logger_->GetSeverity();
+      } else {
+        ORT_ENFORCE(run_options.run_log_severity_level >= 0 &&
+                        run_options.run_log_severity_level <= static_cast<int>(logging::Severity::kFATAL),
+                    "Invalid run log severity level. Not a valid onnxruntime::logging::Severity value: ",
+                    run_options.run_log_severity_level);
+        severity = static_cast<logging::Severity>(run_options.run_log_severity_level);
+      }
+
+      new_run_logger = logging_manager_->CreateLogger(run_log_id, severity, false, run_options.run_log_verbosity_level);
+
+      run_logger = new_run_logger.get();
+      VLOGS(*run_logger, 1) << "Created logger for run with id of " << run_log_id;
     } else {
-      ORT_ENFORCE(session_options_.session_log_severity_level >= 0 &&
-                      session_options_.session_log_severity_level <= static_cast<int>(logging::Severity::kFATAL),
-                  "Invalid session log severity level. Not a valid onnxruntime::logging::Severity value: ",
-                  session_options_.session_log_severity_level);
-      severity = static_cast<logging::Severity>(session_options_.session_log_severity_level);
+      // fallback to using default logger. this does NOT have any session or run specific id/tag in it
+      run_logger = session_logger_;
+      VLOGS(*run_logger, 1) << "Using default logger for run " << run_options.run_tag;
     }
 
-    owned_session_logger_ = logging_manager_->CreateLogger(session_options_.session_logid, severity, false,
-                                                           session_options_.session_log_verbosity_level);
-    session_logger_ = owned_session_logger_.get();
-  } else {
-    session_logger_ = &logging::LoggingManager::DefaultLogger();
+    return *run_logger;
   }
-}
+
+  void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
+    // create logger for session, using provided logging manager if possible
+    if (logging_manager != nullptr) {
+      logging::Severity severity = logging::Severity::kWARNING;
+      if (session_options_.session_log_severity_level == -1) {
+        severity = logging::LoggingManager::DefaultLogger().GetSeverity();
+      } else {
+        ORT_ENFORCE(session_options_.session_log_severity_level >= 0 &&
+                        session_options_.session_log_severity_level <= static_cast<int>(logging::Severity::kFATAL),
+                    "Invalid session log severity level. Not a valid onnxruntime::logging::Severity value: ",
+                    session_options_.session_log_severity_level);
+        severity = static_cast<logging::Severity>(session_options_.session_log_severity_level);
+      }
+
+      owned_session_logger_ = logging_manager_->CreateLogger(session_options_.session_logid, severity, false,
+                                                             session_options_.session_log_verbosity_level);
+      session_logger_ = owned_session_logger_.get();
+    } else {
+      session_logger_ = &logging::LoggingManager::DefaultLogger();
+    }
+  }
 
 #if !defined(ORT_MINIMAL_BUILD)
 
-// Registers all the predefined transformers with transformer manager
-void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                                 TransformerLevel graph_optimization_level,
-                                                 const std::vector<std::string>& custom_list) {
-  auto add_transformers = [&](TransformerLevel level) {
-    // Generate and register transformers for level
-    auto transformers_to_register =
-        optimizer_utils::GenerateTransformers(level, session_options_.free_dimension_overrides,
-                                              *execution_providers_.Get(onnxruntime::kCpuExecutionProvider),
-                                              custom_list);
-    for (auto& entry : transformers_to_register) {
-      transformer_manager.Register(std::move(entry), level);
-    }
-  };
+  // Registers all the predefined transformers with transformer manager
+  void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
+                                                   TransformerLevel graph_optimization_level,
+                                                   const std::vector<std::string>& custom_list) {
+    auto add_transformers = [&](TransformerLevel level) {
+      // Generate and register transformers for level
+      auto transformers_to_register =
+          optimizer_utils::GenerateTransformers(level, session_options_.free_dimension_overrides,
+                                                *execution_providers_.Get(onnxruntime::kCpuExecutionProvider),
+                                                custom_list);
+      for (auto& entry : transformers_to_register) {
+        transformer_manager.Register(std::move(entry), level);
+      }
+    };
 
-  ORT_ENFORCE(graph_optimization_level <= TransformerLevel::MaxLevel,
-              "Exceeded max transformer level. Current level is set to " +
-                  std::to_string(static_cast<uint32_t>(graph_optimization_level)));
+    ORT_ENFORCE(graph_optimization_level <= TransformerLevel::MaxLevel,
+                "Exceeded max transformer level. Current level is set to " +
+                    std::to_string(static_cast<uint32_t>(graph_optimization_level)));
 
-  for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
-    TransformerLevel level = static_cast<TransformerLevel>(i);
-    if ((graph_optimization_level >= level) || !custom_list.empty()) {
-      add_transformers(level);
+    for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
+      TransformerLevel level = static_cast<TransformerLevel>(i);
+      if ((graph_optimization_level >= level) || !custom_list.empty()) {
+        add_transformers(level);
+      }
     }
   }
-}
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-common::Status InferenceSession::WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms) {
-  if (timeout_in_ms > 0) {
-    ORT_NOT_IMPLEMENTED(__FUNCTION__, "timeout_in_ms >0 is not supported");  // TODO
+  common::Status InferenceSession::WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms) {
+    if (timeout_in_ms > 0) {
+      ORT_NOT_IMPLEMENTED(__FUNCTION__, "timeout_in_ms >0 is not supported");  // TODO
+    }
+    p_executor_done->Wait();
+
+    return Status::OK();
   }
-  p_executor_done->Wait();
 
-  return Status::OK();
-}
+  SessionIOBinding::SessionIOBinding(InferenceSession* session) : sess_(session) {
+    ORT_ENFORCE(session->NewIOBinding(&binding_).IsOK());
+  }
 
-SessionIOBinding::SessionIOBinding(InferenceSession* session) : sess_(session) {
-  ORT_ENFORCE(session->NewIOBinding(&binding_).IsOK());
-}
+  InferenceSession* SessionIOBinding::GetInferenceSession() {
+    return sess_;
+  }
 
-InferenceSession* SessionIOBinding::GetInferenceSession() {
-  return sess_;
-}
-
-IOBinding* SessionIOBinding::Get() {
-  return binding_.get();
-}
+  IOBinding* SessionIOBinding::Get() {
+    return binding_.get();
+  }
 
 }  // namespace onnxruntime

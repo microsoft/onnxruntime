@@ -28,7 +28,6 @@
 #include <map>
 #include <regex>
 
-
 using namespace onnxruntime;
 using namespace onnxruntime::common;
 using google::protobuf::RepeatedPtrField;
@@ -41,21 +40,20 @@ namespace {
 
 template <typename T>
 inline Ort::Value CreateTensorWithDataAsOrtValue(const Ort::MemoryInfo& info,
-                                                  OrtAllocator*,
-                                                  const std::vector<int64_t>& dims,
+                                                 OrtAllocator*,
+                                                 const std::vector<int64_t>& dims,
                                                  std::vector<T>& input) {
-    return Ort::Value::CreateTensor<T>(static_cast<const OrtMemoryInfo*>(info), input.data(), input.size() * sizeof(T),
-                                       dims.data(), dims.size());
+  return Ort::Value::CreateTensor<T>(static_cast<const OrtMemoryInfo*>(info), input.data(), input.size() * sizeof(T),
+                                     dims.data(), dims.size());
 }
 
-template<>
+template <>
 inline Ort::Value CreateTensorWithDataAsOrtValue(const Ort::MemoryInfo&,
                                                  OrtAllocator* allocator,
                                                  const std::vector<int64_t>& dims,
                                                  std::vector<std::string>& input) {
-
-  auto tensor_value = Ort::Value::CreateTensor(allocator, dims.data(), dims.size(), 
-     ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+  auto tensor_value = Ort::Value::CreateTensor(allocator, dims.data(), dims.size(),
+                                               ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
 
   std::vector<const char*> p_str;
   for (const auto& s : input) {
@@ -268,9 +266,11 @@ void LoopDataFile(int test_data_pb_fd, bool is_input, const TestModelInfo& model
 std::unique_ptr<TestModelInfo> TestModelInfo::LoadOnnxModel(_In_ const PATH_CHAR_TYPE* model_url) {
   return std::unique_ptr<TestModelInfo>(new OnnxModelInfo(model_url));
 }
-#else
+#endif
+
+#if defined(ENABLE_ORT_FORMAT_LOAD)
 std::unique_ptr<TestModelInfo> TestModelInfo::LoadOrtModel(_In_ const PATH_CHAR_TYPE* model_url) {
-  return std::unique_ptr<TestModelInfo>(new OrtModelInfo(model_url));
+  return std::unique_ptr<TestModelInfo>(new OnnxModelInfo(model_url, true));
 }
 #endif
 
@@ -586,13 +586,19 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
       }
 
       std::basic_string<PATH_CHAR_TYPE> filename_str = filename;
+      bool is_onnx_format = HasExtensionOf(filename_str, ORT_TSTR("onnx"));
+      bool is_ort_format = HasExtensionOf(filename_str, ORT_TSTR("ort"));
+      bool is_valid_model = false;
+
 #if !defined(ORT_MINIMAL_BUILD)
-      if (!HasExtensionOf(filename_str, ORT_TSTR("onnx")))
-        return true;
-#else
-      if( !HasExtensionOf(filename_str, ORT_TSTR("ort")) )
-         return true;
+      is_valid_model = is_onnx_format;
 #endif
+
+#if defined(ENABLE_ORT_FORMAT_LOAD)
+      is_valid_model = is_valid_model || is_ort_format;
+#endif
+      if (!is_valid_model)
+        return true;
 
       std::basic_string<PATH_CHAR_TYPE> test_case_name = my_dir_name;
       if (test_case_name.compare(0, 5, ORT_TSTR("test_")) == 0) test_case_name = test_case_name.substr(5);
@@ -606,11 +612,22 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
       std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent<PATH_CHAR_TYPE>(node_data_root_path, filename_str);
 
       std::unique_ptr<TestModelInfo> model_info;
+
+      if (is_onnx_format) {
 #if !defined(ORT_MINIMAL_BUILD)
-      model_info = TestModelInfo::LoadOnnxModel(p.c_str());
+        model_info = TestModelInfo::LoadOnnxModel(p.c_str());
 #else
-      model_info = TestModelInfo::LoadOrtModel(p.c_str());
+        ORT_THROW("onnx model is not supported in this build");
 #endif
+      } else if (is_ort_format) {
+#if defined(ENABLE_ORT_FORMAT_LOAD)
+        model_info = TestModelInfo::LoadOrtModel(p.c_str());
+#else
+        ORT_THROW("ort model is not supported in this build");
+#endif
+      } else {
+        ORT_NOT_IMPLEMENTED(ToMBString(filename_str), " is not supported");
+      }
 
       std::unique_ptr<ITestCase> l = CreateOnnxTestCase(ToMBString(test_case_name), std::move(model_info),
                                                         default_per_sample_tolerance,
