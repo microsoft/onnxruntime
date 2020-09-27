@@ -12,8 +12,11 @@ namespace contrib {
 template <typename T, typename ScaleT>
 class Scale final : public OpKernel {
  public:
-  Scale(const OpKernelInfo& info) : OpKernel(info) {}
+  Scale(const OpKernelInfo& info);
   Status Compute(OpKernelContext* context) const override;
+
+ private:
+  bool scale_down_;
 };
 
 }  // namespace contrib

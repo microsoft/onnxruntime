@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include "scale.h"
+#include "orttraining/training_ops/cuda/math/scale.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -10,7 +10,7 @@ namespace cuda {
 template <typename T, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void _Scale(
     const T* input_data,
-    const T inverse_scale_value,
+    const T scale_value,
     T* output_data,
     CUDA_LONG N) {
   CUDA_LONG start = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
@@ -28,7 +28,7 @@ __global__ void _Scale(
 #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
-      output_data[id] = input_value[i] * inverse_scale_value;
+      output_data[id] = input_value[i] * scale_value;
       id += NumThreadsPerBlock;
     }
   }
@@ -37,14 +37,14 @@ __global__ void _Scale(
 template <typename T>
 void Impl_Scale(
     const T* input_data,
-    const float inverse_scale_value,
+    const float scale_value,
     T* output_data,
     size_t count) {
   int blocksPerGrid = static_cast<int>(CeilDiv(count, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
   _Scale<T, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
       input_data,
-      static_cast<T>(inverse_scale_value),
+      static_cast<T>(scale_value),
       output_data,
       N);
 }
@@ -52,12 +52,13 @@ void Impl_Scale(
 #define SPECIALIZE_SCALE_IMPL(T)        \
 template void Impl_Scale<T>(            \
     const T* input_data,                \
-    const float inverse_scale_value,    \
+    const float scale_value,            \
     T* output_data,                     \
     size_t count);
 
 SPECIALIZE_SCALE_IMPL(half)
 SPECIALIZE_SCALE_IMPL(float)
+SPECIALIZE_SCALE_IMPL(double)
 
 }  // namespace cuda
 }  // namespace onnxruntime

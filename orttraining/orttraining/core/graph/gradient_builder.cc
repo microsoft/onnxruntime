@@ -1067,7 +1067,10 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceMeanGradient) {
   result.push_back(NodeDef("Size", {I(0)}, {IA("Sized_X")}));
   result.push_back(NodeDef("Size", {GO(0)}, {IA("Sized_Grad")}));
   result.push_back(NodeDef("Div",{IA("Sized_X"), IA("Sized_Grad")}, {IA("Scale")}));
-  result.push_back(NodeDef(OpDef{"Scale", kMSDomain, 1}, {grad, IA("Scale")}, {IA("Scaled_Grad")}));
+  result.push_back(NodeDef(OpDef{"Scale", kMSDomain, 1},
+                           {grad, IA("Scale")},
+                           {IA("Scaled_Grad")},
+                           {MakeAttribute("scale_down", int64_t(1))}));
   result.push_back(NodeDef("Shape", {I(0)}, {IA("Shaped_X")}));
   result.push_back(NodeDef("Expand", {IA("Scaled_Grad"), IA("Shaped_X")}, {GI(0)}));
   return result;

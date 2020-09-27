@@ -19,15 +19,18 @@ struct GetScaleValueImpl {
 template <typename T>
 void Impl_Scale(
     const T* input_data,
-    const float inverse_scale_value,
+    const float scale_value,
     T* output_data,
     size_t count);
 
 template <typename T>
 class Scale final : public CudaKernel {
  public:
-  Scale(const OpKernelInfo& info) : CudaKernel(info) {}
+  Scale(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  bool scale_down_;
 };
 
 }  // namespace cuda

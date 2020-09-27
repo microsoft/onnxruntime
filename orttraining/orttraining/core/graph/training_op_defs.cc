@@ -1802,14 +1802,20 @@ Return true if all elements are true and false otherwise.
       .SetDoc("Scale")
       .Input(0, "input", "Input tensor.", "T")
       .Input(1, "scale", "Scale scalar tensor.", "ScaleT")
-      .Output(0, "output", "Output tensor which is input tensor devided by scale.", "T")
+      .Output(0, "output", "The scaled output tensor.", "T")
+      .Attr("scale_down",
+            "If true, the output tensor is input tensor devided by scale, "
+            "otherwise, it's input tensor multiplied by scale. "
+            "The default value is false.",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input types to float tensors.")
       .TypeConstraint(
           "ScaleT",
-          {"tensor(float16)", "tensor(float)", "tensor(int64)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(int64)", "tensor(int32)"},
           "Constrain scale types to float and int64 tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
