@@ -65,7 +65,7 @@ public:
         _testCase(testCase) {}
 
     void OnTestPartResult(const TestPartResult& test_part_result) {
-        if (test_part_result.passed())
+        if (test_part_result.passed() || test_part_result.skipped())
             return;
 
         int lineNumber = test_part_result.line_number();
@@ -154,12 +154,12 @@ static void RunTest(id self, SEL _cmd) {
     XCTAssertNotNil(testFilter, @"No test filter found for test %@", testKey);
 
     testing::GTEST_FLAG(filter) = [testFilter UTF8String];
-    ortenv_setup();
     (void)RUN_ALL_TESTS();
 
     delete googleTest->listeners().Release(listener);
 
-    int totalTestsRun = googleTest->successful_test_count() + googleTest->failed_test_count();
+    int totalTestsRun = googleTest->successful_test_count() +
+        googleTest->failed_test_count() + googleTest->skipped_test_count();
     XCTAssertEqual(totalTestsRun, 1, @"Expected to run a single test for filter \"%@\"", testFilter);
 }
 
@@ -177,6 +177,7 @@ static void RunTest(id self, SEL _cmd) {
 + (void)load {
     NSBundle *bundle = [NSBundle bundleForClass:self];
     [[NSNotificationCenter defaultCenter] addObserverForName:NSBundleDidLoadNotification object:bundle queue:nil usingBlock:^(NSNotification *notification) {
+        ortenv_setup();
         [self registerTestClasses];
     }];
 }
