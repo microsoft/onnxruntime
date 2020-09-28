@@ -37,4 +37,4 @@ jobs:
       #parameters :
         #condition : 'ci_only'
 
-    #- template: templates/clean-agent-build-directory-step.yml
+    - template: templates/clean-agent-build-directory-step.yml
