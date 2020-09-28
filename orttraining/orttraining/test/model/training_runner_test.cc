@@ -60,11 +60,12 @@ TEST(TrainingRunnerTest, Basic) {
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 }
 
-TEST(TrainingRunnerTest, PipelineRun) {
+// This test verifies a simple pipeline run with 3 partitions.
+// TODO: enable this test after distributed run is not enabled in CI.
+TEST(TrainingRunnerTest, DISABLED_PipelineRun) {
   TrainingRunner::Parameters params{};
   params.model_path = k_original_model_path;
   params.model_with_training_graph_path = k_backward_model_path;
-//   params.output_dir = k_output_directory;
   params.is_perf_test = false;
   params.batch_size = 1;
   params.eval_batch_size = 1;
@@ -75,18 +76,12 @@ TEST(TrainingRunnerTest, PipelineRun) {
 
   params.loss_func_info = LossFunctionInfo(OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
 
-//   TrainingSession::TrainingConfiguration::PipelineConfiguration pipe{};
-//   pipe.do_partition = true;
-
   // cut model in 3 partitions
   TrainingSession::TrainingConfiguration::CutInfo cut0 = {
       onnxruntime::training::TrainingSession::TrainingConfiguration::CutEdge("T3")};
 
   TrainingSession::TrainingConfiguration::CutInfo cut1 = {
       onnxruntime::training::TrainingSession::TrainingConfiguration::CutEdge("T6")};
-
-//   pipe.cut_list.emplace_back(cut0);
-//   pipe.cut_list.emplace_back(cut1);
 
   params.pipeline_partition_cut_list.emplace_back(cut0);
   params.pipeline_partition_cut_list.emplace_back(cut1);

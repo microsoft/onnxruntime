@@ -146,10 +146,10 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
       }
     }
 #ifdef USE_CUDA
-    // bool use_cuda = flags.count("use_cuda") > 0;
-    // if (use_cuda) {
-    //   params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(0));
-    // }
+    bool use_cuda = flags.count("use_cuda") > 0;
+    if (use_cuda) {
+      params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(0));
+    }
 #endif
   } catch (const exception& e) {
     const std::string msg = "Failed to parse the command line arguments";
@@ -272,5 +272,5 @@ int main(int argc, char* args[]) {
   auto runner = onnxruntime::make_unique<TrainingRunner>(params, *env);
   RETURN_IF_FAIL(runner->Initialize());
   RETURN_IF_FAIL(runner->Run(training_data_loader.get(), test_data_loader.get()));
-  // RETURN_IF_FAIL(runner->EndTraining(test_data_loader.get()));
+  RETURN_IF_FAIL(runner->EndTraining(test_data_loader.get()));
 }
