@@ -14,11 +14,16 @@ jobs:
       displayName: 'Command Line Script'
       workingDirectory: '/home/hcsuser/perf/'
 
-    - task: CmdLine@2
-      displayName: 'Prepare artifacts'
-      inputs:
-        script: 'mkdir $(Build.SourceDirectory)\Artifact && cp /home/hcsuser/perf/result/onnx_model_zoo/`echo $DATE` $(Build.SourceDirectory)\Artifact' 
+    #- task: CmdLine@2
+      #displayName: 'Prepare artifacts'
+      #inputs:
+        #script: 'mkdir $(Build.SourceDirectory)\Artifact && cp /home/hcsuser/perf/result/onnx_model_zoo/`echo $DATE` $(Build.SourceDirectory)\Artifact' 
 
+      #workingDirectory: '/home/hcsuser/perf/'
+    #- script: 'export DATE=`date +"%m-%d-%Y"`&&/home/hcsuser/perf/perf.sh `echo $DATE`'
+
+    - script: 'mkdir $(Build.SourceDirectory)\Artifact && cp /home/hcsuser/perf/result/onnx_model_zoo/`echo $DATE` $(Build.SourceDirectory)\Artifact' 
+      displayName: 'Prepare artifacts'
       workingDirectory: '/home/hcsuser/perf/'
 
     - task: PublishBuildArtifacts@1
