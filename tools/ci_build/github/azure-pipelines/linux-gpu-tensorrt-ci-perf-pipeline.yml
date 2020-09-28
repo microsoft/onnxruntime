@@ -12,6 +12,7 @@ jobs:
     - script: '/home/hcsuser/perf/perf.sh'
 
       displayName: 'Command Line Script'
+      workingDirectory: '/home/hcsuser/perf/'
 
     #- template: templates/component-governance-component-detection-steps.yml
       #parameters :
