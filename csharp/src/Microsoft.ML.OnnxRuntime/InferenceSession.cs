@@ -598,7 +598,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
 
-    private DisposableList<OrtValue> RunImpl(RunOptions options, IntPtr[] inputNames, IntPtr[] inputValues, IntPtr[] outputNames,
+         private DisposableList<OrtValue> RunImpl(RunOptions options, IntPtr[] inputNames, IntPtr[] inputValues, IntPtr[] outputNames,
             DisposableList<IDisposable> cleanupList)
         {
             var ortValues = new DisposableList<OrtValue>(outputNames.Length);
@@ -662,11 +662,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public ulong GetProfilingStartTimeNs()
         {
-            // set profiling's start time
-            UIntPtr startTime = UIntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetProfilingStartTimeNs(_nativeHandle,
-                                                                out startTime)); 
-            _profilingStartTimeNs = (ulong) startTime;
             return _profilingStartTimeNs;
         }  
 
@@ -738,6 +733,11 @@ namespace Microsoft.ML.OnnxRuntime
                 {
                     _overridableInitializerMetadata[GetOverridableInitializerName(i)] = GetOverridableInitializerMetadata(i);
                 }
+                // set profiling's start time
+                UIntPtr startTime = UIntPtr.Zero;
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetProfilingStartTimeNs(_nativeHandle,
+                                                                    out startTime)); 
+                _profilingStartTimeNs = (ulong) startTime;
             }
             catch (OnnxRuntimeException e)
             {

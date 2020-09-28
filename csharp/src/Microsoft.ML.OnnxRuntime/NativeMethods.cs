@@ -178,6 +178,9 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr CreateAndRegisterAllocator;
         public IntPtr SetLanguageProjection;
         public IntPtr SessionGetProfilingStartTimeNs;
+        public IntPtr SetGlobalIntraOpNumThreads;
+        public IntPtr SetGlobalInterOpNumThreads;
+        public IntPtr SetGlobalSpinControl;
         public IntPtr AddInitializer;
     }
 
