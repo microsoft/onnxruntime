@@ -226,7 +226,7 @@ Status MaxPoolV8::ComputeImpl(OpKernelContext* context) const {
 
 bool MaxPoolV8::Optimizable1D(int64_t total_height, int64_t pooled_height, int64_t pool_size) {
 
-  float layer_1_weight [8][3] =
+  double layer_1_weight [8][3] =
     {{-0.4044543 ,  0.5032941 ,  0.60934484},
      {-0.20548528,  0.593789  ,  0.4940056 },
      { 0.11417829, -0.46909815,  0.1906032 },
@@ -235,9 +235,9 @@ bool MaxPoolV8::Optimizable1D(int64_t total_height, int64_t pooled_height, int64
      { 0.45919985,  0.03440802, -0.0537789 },
      {-0.29694313, -0.39878082, -0.56551826},
      { 0.2505781 , -0.505424  , -0.09284496}};
-  float layer_1_bias[8] = {-1.9949601, -15.046263, -11.331387,  -5.585094 ,  
+  double layer_1_bias[8] = {-1.9949601, -15.046263, -11.331387,  -5.585094 ,  
                            16.095648,   -6.071184 , -0.5011854, -4.4836655};
-  float layer_1_output[8];
+  double layer_1_output[8];
   for (int64_t i = 0; i < 8; i++) {
     layer_1_output[i] = layer_1_weight[i][0] * total_height +
                         layer_1_weight[i][1] * pooled_height + 
@@ -247,15 +247,15 @@ bool MaxPoolV8::Optimizable1D(int64_t total_height, int64_t pooled_height, int64
       layer_1_output[i] = 0;
     }
   }//for
-  float layer_2_weight[6][8] = 
+  double layer_2_weight[6][8] = 
     {{-0.1791764 ,  0.12306077, -0.2359769 ,  0.272206  , -0.0967816 , -0.23264278, -0.22643457, -0.27852008},
      { 0.20220038,  0.08625653, -0.07199997,  0.00175294, -0.37816948,  0.10361968,  0.04760075, -0.1257332  },
      { 0.2817652 , -0.16080262, -0.34706196,  0.10345992, -0.08791664, -0.32266164,  0.35026613, -0.2816986  },
      {-0.18292245,  0.3425173 , -0.28006834,  0.12972653, -0.46211034,  0.03205561, -0.0626438 , -0.10230546},
      {-0.31267866, -0.18372081,  0.06138921, -0.24455047,  0.10364124, -0.30473444, -0.11504889,  0.3488299 },
      {-0.03049979, -0.3484844 , -0.09377559,  0.2814676 ,  0.14773709, -0.26475713,  0.30883536, -0.08175805}};
-  float layer_2_bias[6] = {0.0548716 , -5.820129  , -0.14218597, -6.267937  , -0.21381079, -0.14634752};
-  float layer_2_output[6];
+  double layer_2_bias[6] = {0.0548716 , -5.820129  , -0.14218597, -6.267937  , -0.21381079, -0.14634752};
+  double layer_2_output[6];
   for (int64_t i = 0; i < 6; i++) {
     layer_2_output[i] = 0;
     for (int64_t j = 0; j < 8; j++) {
@@ -266,14 +266,14 @@ bool MaxPoolV8::Optimizable1D(int64_t total_height, int64_t pooled_height, int64
       layer_2_output[i] = 0;
     }
   }
-  float layer_3_weight[6] = {-0.09621256,  0.03613849, -0.0679929 , 0.03177442,  0.04737011, -0.07048248};
-  float layer_3_bias = -2.2467241;
-  float layer_3_output = 0;
+  double layer_3_weight[6] = {-0.09621256,  0.03613849, -0.0679929 , 0.03177442,  0.04737011, -0.07048248};
+  double layer_3_bias = -2.2467241;
+  double layer_3_output = 0;
   for (int64_t i = 0; i < 6; i++) {
     layer_3_output += layer_2_output[i] * layer_3_weight[i];
   }
   layer_3_output += layer_3_bias;
-  float sigmoid = 1.0 / (1 + std::pow(2.718, -layer_3_output));
+  double sigmoid = 1.0 / (1 + std::pow(2.718, -layer_3_output));
   return std::round(sigmoid) > 0.9;
 }
 
@@ -281,7 +281,7 @@ bool MaxPoolV8::Optimizable2D(int64_t total_height, int64_t total_width,
                               int64_t pooled_height, int64_t pooled_width,
                               int64_t pool_height, int64_t pool_width) {
 
-  float layer_1_weight [10][6] =
+  double layer_1_weight [10][6] =
     {{-3.6831051e-01, -3.6247692e-01,  2.9945856e-01, -2.7339315e-01, -3.2982734e-01,  1.2428343e-01},
      { 4.2411339e-02,  7.3652379e-02, -1.1140941e-01,  1.9908203e-01,  6.4203119e-01,  7.2492361e-01},
      {-4.3322185e-01,  1.3085116e-02,  3.9197430e-01,  6.1275326e-02,  4.0028703e-01,  1.2761176e+00},
@@ -292,9 +292,9 @@ bool MaxPoolV8::Optimizable2D(int64_t total_height, int64_t total_width,
      { 1.9901858e-01,  4.5600232e-02, -9.8639183e-02, -5.6079019e-02, -2.5981524e+00,  7.9628939e-05},
      { 1.5695563e-01,  2.5528669e-03, -1.2300680e+00,  4.4656624e-03,  6.9656110e-01,  1.7935342e-01},
      { 1.7079201e-01, -2.7161598e-02, -1.3937990e-01,  8.6947553e-02,  2.2510707e+00,  8.4009208e-02}};
-  float layer_1_bias[10] = {-0.3770961, -2.3918433,  1.8521361, -4.5703444, -2.7904446,
+  double layer_1_bias[10] = {-0.3770961, -2.3918433,  1.8521361, -4.5703444, -2.7904446,
                              6.6001234, -2.1826804,  3.2673945,  9.796883 , -1.8809853};
-  float layer_1_output[10];
+  double layer_1_output[10];
   for (int64_t i = 0; i < 10; i++) {
     layer_1_output[i] = layer_1_weight[i][0] * total_height +
                         layer_1_weight[i][1] * total_width + 
@@ -308,7 +308,7 @@ bool MaxPoolV8::Optimizable2D(int64_t total_height, int64_t total_width,
     }
   }//for
 
-  float layer_2_weight[8][10] = 
+  double layer_2_weight[8][10] = 
      {{-0.06003293,   0.21225819, -0.27200642, -0.02082756, -0.0701707,  -0.20068413, -0.50153553,  0.00336754,  0.6702372 ,  0.05447913},
       { 0.23352525,  -0.08489721,  0.19231986, -0.27247515, -0.15134875,  0.49599656,  0.11655813, -0.02076937,  0.17092028, -0.07972863},
       {-0.06445351,  0.1792246 ,  0.16155557, -0.07104914, -0.50501835,  -1.741571  ,  0.11375787, -0.10069937, -0.09629883,  0.0153533 },
@@ -317,8 +317,8 @@ bool MaxPoolV8::Optimizable2D(int64_t total_height, int64_t total_width,
       { 0.1900272 , -0.09800401, -0.21638612, -0.18487929, -0.13792641,  -0.25938094, -0.15732956, -0.01412544,  0.05573884, -0.09582533},
       {-0.14016639, -0.03206995, -0.1200158 ,  0.07844546, -0.28183854,  -0.04650053, -0.19275935, -0.2222099 ,  0.29764298, -0.18808417},
       {-0.30399063,  0.18053997, -0.3222996 , -0.01604891, -0.44561228,  -0.22320613, -0.09742685, -0.28637683, -0.5639017 , -0.05816495}};
-  float layer_2_bias[8] = {4.5093737 ,  7.8021812 , -3.8440096 ,  1.0618207 , -3.847487, 0.2664036 , -0.11398777,  0.15493515};
-  float layer_2_output[8];
+  double layer_2_bias[8] = {4.5093737 ,  7.8021812 , -3.8440096 ,  1.0618207 , -3.847487, 0.2664036 , -0.11398777,  0.15493515};
+  double layer_2_output[8];
   for (int64_t i = 0; i < 8; i++) {
     layer_2_output[i] = 0;
     for (int64_t j = 0; j < 10; j++) {
@@ -329,14 +329,14 @@ bool MaxPoolV8::Optimizable2D(int64_t total_height, int64_t total_width,
       layer_2_output[i] = 0;
     }
   }
-  float layer_3_weight[8] = {-0.3139295, -0.5689301, 0.04450566, 0.05143051, 0.03166565, -0.02240658, -0.18378934, 0.8769102};
-  float layer_3_bias = -1.4846476;
-  float layer_3_output = 0;
+  double layer_3_weight[8] = {-0.3139295, -0.5689301, 0.04450566, 0.05143051, 0.03166565, -0.02240658, -0.18378934, 0.8769102};
+  double layer_3_bias = -1.4846476;
+  double layer_3_output = 0;
   for (int64_t i = 0; i < 8; i++) {
     layer_3_output += layer_2_output[i] * layer_3_weight[i];
   }
   layer_3_output += layer_3_bias;
-  float sigmoid = 1.0 / (1 + std::pow(2.718, -layer_3_output));
+  double sigmoid = 1.0 / (1 + std::pow(2.718, -layer_3_output));
   return std::round(sigmoid) > 0.9;
 }
 
@@ -344,7 +344,7 @@ bool MaxPoolV8::Optimizable3D(int64_t total_height, int64_t total_width, int64_t
                               int64_t pooled_height, int64_t pooled_width, int64_t pooled_depth,
                               int64_t pool_height, int64_t pool_width, int64_t pool_depth) {
 
-  float layer_1_weight [24][9] =
+  double layer_1_weight [24][9] =
     {{-2.62563792e-03, -5.30446507e-02,  2.34065652e-01,
        5.46038374e-02, -3.45419914e-01, -3.37030739e-01,
       -1.68257964e+00, -3.75687337e+00,  6.25928283e-01},
@@ -417,13 +417,13 @@ bool MaxPoolV8::Optimizable3D(int64_t total_height, int64_t total_width, int64_t
      { 5.45598157e-02, -4.91183847e-01,  3.82780731e-01,
       -2.34775975e-01,  1.23290317e-02,  5.79094231e-01,
        2.74773240e+00,  6.63134813e-01,  7.92681575e-02}};
-  float layer_1_bias[24] = 
+  double layer_1_bias[24] = 
     { 0.07245271, -0.17032284,  0.03332921, -0.51800644,  0.09215787,
      -0.3023607 ,  0.8202663 ,  0.56285465,  0.24442022,  0.16603865,
      -0.9463791 ,  1.0399476 , -0.2339435 ,  0.07585597,  2.997388  ,
      -0.7557977 , -0.08628041, -0.26461753, -0.37879473,  0.37767094,
       0.09888637,  0.0759401 ,  0.49256304,  0.7478588}; 
-  float layer_1_output[24];
+  double layer_1_output[24];
   for (int64_t i = 0; i < 24; i++) {
     layer_1_output[i] = layer_1_weight[i][0] * total_height +
                         layer_1_weight[i][1] * total_width + 
@@ -439,7 +439,7 @@ bool MaxPoolV8::Optimizable3D(int64_t total_height, int64_t total_width, int64_t
       layer_1_output[i] = 0;
     }
   }//for
-  float layer_2_weight[18][24] = 
+  double layer_2_weight[18][24] = 
     {{ 3.25579375e-01, -1.43363506e-01,  2.91126639e-01,
        8.70179292e-03,  1.45740807e-01,  6.25467420e-01,
        1.26648888e-01,  2.02801764e-01,  1.59520030e-01,
@@ -584,12 +584,12 @@ bool MaxPoolV8::Optimizable3D(int64_t total_height, int64_t total_width, int64_t
        6.46478683e-03,  3.87815684e-01,  6.14425242e-02,
        5.77934086e-02,  2.02642858e-01,  9.71483588e-02,
        1.90722704e-01, -2.74714738e-01, -2.56136447e-01}};
-  float layer_2_bias[18] = 
+  double layer_2_bias[18] = 
     { 0.05490978, -0.5855493 ,  0.11810035, -0.28029796, -0.207425  ,
       0.86734784, -0.89562637, -0.16912879,  0.15428719, -0.37533942,
      -0.323099  , -0.23854022, -0.46981212,  1.0469478 ,  0.8655093 ,
      -0.49080566, -0.82833606, -0.28620005};
-  float layer_2_output[18];
+  double layer_2_output[18];
   for (int64_t i = 0; i < 18; i++) {
     layer_2_output[i] = 0;
     for (int64_t j = 0; j < 24; j++) {
@@ -600,18 +600,18 @@ bool MaxPoolV8::Optimizable3D(int64_t total_height, int64_t total_width, int64_t
       layer_2_output[i] = 0;
     }
   }
-  float layer_3_weight[18] =
+  double layer_3_weight[18] =
     {-0.16637668, -0.22794755, -0.00432279,  0.3353056 , -0.1794299 ,
       0.79640424, -0.15697755,  0.19460405, -0.13104641, -0.2885915 ,
      -0.445572  , -0.14337765, -0.44539693,  1.243302  ,  0.90636724,
      -0.14549503, -0.26912656, -0.30170223};
-  float layer_3_bias = 1.3415898;
-  float layer_3_output = 0;
+  double layer_3_bias = 1.3415898;
+  double layer_3_output = 0;
   for (int64_t i = 0; i < 18; i++) {
     layer_3_output += layer_2_output[i] * layer_3_weight[i];
   }
   layer_3_output += layer_3_bias;
-  float sigmoid = 1.0 / (1 + std::pow(2.718, -layer_3_output));
+  double sigmoid = 1.0 / (1 + std::pow(2.718, -layer_3_output));
   return std::round(sigmoid) > 0.9;
 }
 
