@@ -210,7 +210,7 @@ static std::unordered_map<std::string, Handler> handlers = {
     {"Add", BinaryElementwiseHandler},
     {"Div", BinaryElementwiseHandler},
     {"Gelu", SimpleHandler},
-    {"LayerNormalization", SimpleHandler},
+    //{"LayerNormalization", SimpleHandler},
     {"MatMul", MatMulHandler}};
 
 static Status Delegate(Graph& graph, Node& gathernd_node, Node& target_node) {
