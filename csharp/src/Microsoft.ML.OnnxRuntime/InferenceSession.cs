@@ -660,9 +660,12 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Return the nanoseconds of profiling's start time
         /// </summary>
-        public ulong GetProfilingStartTimeNs()
+        public ulong ProfilingStartTimeNs
         {
-            return _profilingStartTimeNs;
+           get
+           {
+               return _profilingStartTimeNs;
+           }
         }  
 
         #endregion
