@@ -528,7 +528,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 return NativeOnnxValueHelper.StringFromNativeUtf8(nameHandle);
             }
-        }      
+        }
 
         // Delegate for string extraction from an arbitrary input/output object
         private delegate string NameExtractor<in TInput>(TInput input);
