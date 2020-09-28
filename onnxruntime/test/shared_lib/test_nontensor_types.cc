@@ -179,11 +179,13 @@ TEST(CApiTest, TypeInfoMap) {
 #if !defined(DISABLE_ML_OPS)
   Ort::Value map_ort = Ort::Value::CreateMap(keys_tensor, values_tensor);
   Ort::TypeInfo type_info = map_ort.GetTypeInfo();
+  //It doesn't own the pointer
   Ort::MapTypeInfo map_type_info = type_info.GetMapTypeInfo();
 
   //Check key type
   ASSERT_EQ(map_type_info.GetMapKeyType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
 
+  //It owns the pointer
   Ort::TypeInfo map_value_type_info = map_type_info.GetMapValueType();
 
   //Check value type and shape
@@ -192,7 +194,7 @@ TEST(CApiTest, TypeInfoMap) {
   // ASSERT_EQ(map_value_type_info.GetTensorTypeAndShapeInfo().GetShape(), dims);
   ASSERT_EQ(map_value_type_info.GetTensorTypeAndShapeInfo().GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
 
-  map_value_type_info.release();
+  //As it doesn't own the pointer, we should release the ownership, otherwise the pointer will be double freed.
   map_type_info.release();
 #else
 
