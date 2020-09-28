@@ -296,6 +296,9 @@ TEST(CApiTest, TypeInfoSequence) {
 
   Ort::Value seq_ort = Ort::Value::CreateSequence(in);
   Ort::TypeInfo type_info = seq_ort.GetTypeInfo();
+
+  //It doesn't own the pointer -
+  //The destructor of the "Unowned" struct will release the ownership (and thus prevent the pointer from being double freed)
   auto seq_type_info = type_info.GetSequenceTypeInfo();
 
   ASSERT_EQ(seq_type_info.GetSequenceElementType().GetONNXType(), ONNX_TYPE_TENSOR);
