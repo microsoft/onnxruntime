@@ -26,8 +26,8 @@ import onnxruntime as ort
 from onnxruntime.capi.ort_trainer import ORTTrainer, IODescription, ModelDescription
 from onnxruntime.capi.ort_trainer import LossScaler
 
-from onnxruntime.experimental import amp, optim, orttrainer
-from onnxruntime.experimental.optim import _LRScheduler, PolyWarmupLRScheduler
+from onnxruntime.training import amp, optim, orttrainer
+from onnxruntime.training.optim import _LRScheduler, PolyWarmupLRScheduler
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                     datefmt='%m/%d/%Y %H:%M:%S',
@@ -43,7 +43,7 @@ def get_rank():
 
 def is_main_process(args):
     if hasattr(args, 'world_rank'):
-        return args.world_rank == 0
+        return args.world_rank in [-1, 0]
     else:
         return get_rank() == 0
 
@@ -251,6 +251,12 @@ class PretrainArguments:
         default='warmup_poly',
     )
 
+    # this argument is test specific. to run a full bert model will take too long to run. instead, we reduce
+    # number of hidden layers so that it can show convergence to an extend to help detect any regression.
+    force_num_hidden_layers: Optional[int] = field(
+        default=None,
+        metadata={"help": "Whether to use fp16 gradient accumulators."}
+    )
 
 def setup_training(args):
 
@@ -274,13 +280,21 @@ def setup_training(args):
         raise ValueError("Invalid gradient_accumulation_steps parameter: {}, batch size {} should be divisible".format(
             args.gradient_accumulation_steps, args.train_batch_size))
 
+    # args.train_batch_size is per global step (optimization step) batch size
+    # now make it a per gpu batch size
     args.train_batch_size = args.train_batch_size // args.gradient_accumulation_steps
+    args.train_batch_size = args.train_batch_size // args.world_size
 
+    logger.info("setup_training: args.train_batch_size = %d", args.train_batch_size)
     return device, args
 
 
 def prepare_model(args, device):
     config = BertConfig.from_pretrained('bert-base-uncased')
+    if args.force_num_hidden_layers:
+        logger.info("Modifying model config with num_hidden_layers to %d", args.force_num_hidden_layers)
+        config.num_hidden_layers = args.force_num_hidden_layers
+
     model = BertForPreTraining(config)
     model_desc = bert_model_description(config)
 
@@ -386,16 +400,14 @@ def do_pretrain(args):
 
                 average_loss += loss.item()
 
-                if global_step >= args.max_steps:
-                    last_num_steps = global_step % args.log_freq
-                    last_num_steps = args.log_freq if last_num_steps == 0 else last_num_steps
-                    average_loss = torch.tensor(average_loss, dtype=torch.float32).cuda()
-                    average_loss = average_loss / (last_num_steps * args.gradient_accumulation_steps)
-                    logger.info("Total Steps:{} Final Loss = {}".format(training_steps, average_loss.item()))
-                    return
-                elif training_steps % (args.log_freq * args.gradient_accumulation_steps) == 0:
+                if training_steps % (args.log_freq * args.gradient_accumulation_steps) == 0:
                     if is_main_process(args):
                         print("Step:{} Average Loss = {}".format(global_step, average_loss / (args.log_freq * args.gradient_accumulation_steps)))
+
+                    if global_step >= args.max_steps:
+                        final_loss = average_loss / (args.log_freq * args.gradient_accumulation_steps)
+                        return final_loss
+
                     average_loss = 0
 
             del train_dataloader
@@ -405,33 +417,49 @@ def do_pretrain(args):
         epoch += 1
 
 
-class ORTGlueTest(unittest.TestCase):
+class ORTBertPretrainTest(unittest.TestCase):
     def setUp(self):
         self.output_dir = '/bert_data/hf_data/test_out/bert_pretrain_results'
         self.bert_model = 'bert-base-uncased'
-        self.warmup_proportion = 0,
-        self.num_steps_per_checkpoint = 200
-        self.seed = 42
+        self.local_rank = -1
+        self.world_rank = -1
+        self.world_size = 1
         self.max_steps = 300000
         self.learning_rate = 5e-4
         self.max_seq_length = 128
         self.max_predictions_per_seq = 20
+        self.input_dir = '/bert_data/hdf5_lower_case_1_seq_len_128_max_pred_20_masked_lm_prob_0.15_random_seed_12345_dupe_factor_5/books_wiki_en_corpus/train'
         self.train_batch_size = 4096
         self.gradient_accumulation_steps = 64
-        self.input_dir = '/bert_data/hdf5_lower_case_1_seq_len_128_max_pred_20_masked_lm_prob_0.15_random_seed_12345_dupe_factor_5/books_wiki_en_corpus/train'
         self.fp16 = True
         self.allreduce_post_accumulation = True
 
-    def test_pretrain(self):
+    def test_pretrain_throughput(self):
+        # setting train_batch_size and gradient_accumulation_steps to maximize per gpu memory usage under 16GB
+        # to validate throughput regression.
+        # train_batch_size is initially configured as per optimization batch size,
+        # taking into consideration of world_size and gradient_accumulation_steps:
+        # train_batch_size = world_size * gradient_accumulation_steps * batch_size_per_gpu
+        # in the code later train_batch_size is translated to per gpu batch size:
+        # args.train_batch_size = args.train_batch_size // args.gradient_accumulation_steps // args.world_size
+
+        # the LAMB batch size of 64k
+        optimization_batch_size = 64 * 1024
+        per_gpu_batch_size = 32
+
+        self.train_batch_size = optimization_batch_size
+        self.gradient_accumulation_steps = optimization_batch_size // per_gpu_batch_size // self.world_size
+
+        logger.info("self.gradient_accumulation_steps = %d", self.gradient_accumulation_steps)
+
+        # only to run on  optimization step because we only want to make sure there is no throughput regression
+        self.max_steps = 1
         args = PretrainArguments(
             output_dir=self.output_dir,
             bert_model=self.bert_model,
-            warmup_proportion=self.warmup_proportion,
             local_rank=self.local_rank,
             world_rank=self.world_rank,
             world_size=self.world_size,
-            num_steps_per_checkpoint=self.num_steps_per_checkpoint,
-            seed=self.seed,
             max_steps=self.max_steps,
             learning_rate=self.learning_rate,
             max_seq_length=self.max_seq_length,
@@ -442,6 +470,29 @@ class ORTGlueTest(unittest.TestCase):
             fp16=self.fp16,
             allreduce_post_accumulation=self.allreduce_post_accumulation)
         do_pretrain(args)
+
+    def test_pretrain_convergence(self):
+        self.max_steps = 200
+        self.force_num_hidden_layers = 8
+        args = PretrainArguments(
+            output_dir=self.output_dir,
+            bert_model=self.bert_model,
+            local_rank=self.local_rank,
+            world_rank=self.world_rank,
+            world_size=self.world_size,
+            max_steps=self.max_steps,
+            learning_rate=self.learning_rate,
+            max_seq_length=self.max_seq_length,
+            max_predictions_per_seq=self.max_predictions_per_seq,
+            train_batch_size=self.train_batch_size,
+            gradient_accumulation_steps=self.gradient_accumulation_steps,
+            input_dir=self.input_dir,
+            fp16=self.fp16,
+            allreduce_post_accumulation=self.allreduce_post_accumulation,
+            force_num_hidden_layers=self.force_num_hidden_layers)
+        final_loss = do_pretrain(args)
+        return final_loss
+
 
 # to do parallel training:
 # python -m torch.distributed.launch --nproc_per_node 4 orttraining_run_bert_pretrain.py
@@ -457,14 +508,23 @@ if __name__ == "__main__":
         from onnxruntime.capi._pybind_state import set_cuda_device_id
         set_cuda_device_id(local_rank)
 
-        test = ORTGlueTest()
+        test = ORTBertPretrainTest()
         test.setUp()
         test.local_rank = local_rank
         test.world_rank = local_rank
         test.world_size = world_size
 
-        test.gradient_accumulation_steps = 128
-
-        test.test_pretrain()
+        if sys.argv[2] == 'ORTBertPretrainTest.test_pretrain_throughput':
+            logger.info("running ORTBertPretrainTest.test_pretrain_throughput()...")
+            test.test_pretrain_throughput()
+            logger.info("ORTBertPretrainTest.test_pretrain_throughput() passed")
+        else:
+            logger.info("running ORTBertPretrainTest.test_pretrain_convergence()...")
+            final_loss = test.test_pretrain_convergence()
+            logger.info("ORTBertPretrainTest.test_pretrain_convergence() final loss = %f", final_loss)
+            test.assertLess(final_loss, 8.5)
+            logger.info("ORTBertPretrainTest.test_pretrain_convergence() passed")
     else:
         unittest.main()
+
+    # unittest.main()
