@@ -17,9 +17,7 @@ jobs:
     - task: CmdLine@2
       displayName: 'Prepare artifacts'
       inputs:
-        script: |
-        mkdir $(Build.SourceDirectory)\Artifact
-        cp /home/hcsuser/perf/result/onnx_model_zoo/`echo $DATE` $(Build.SourceDirectory)\Artifact 
+        script: 'mkdir $(Build.SourceDirectory)\Artifact && cp /home/hcsuser/perf/result/onnx_model_zoo/`echo $DATE` $(Build.SourceDirectory)\Artifact' 
 
       displayName: 'Prepare Artifact'
       workingDirectory: '/home/hcsuser/perf/'
