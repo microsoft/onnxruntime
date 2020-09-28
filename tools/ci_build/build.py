@@ -1103,13 +1103,13 @@ def run_training_python_frontend_e2e_tests(cwd):
     ngpus = torch.cuda.device_count()
     if ngpus > 1:
         log.debug('RUN: {} -m torch.distributed.launch --nproc_per_node {} orttraining_run_bert_pretrain.py ORTBertPretrainTest.test_pretrain_throughput'.format(
-            sys.executable, ngpus)
+            sys.executable, ngpus))
         run_subprocess([
             sys.executable, '-m', 'torch.distributed.launch', '--nproc_per_node', str(ngpus),
             'orttraining_run_bert_pretrain.py', 'ORTBertPretrainTest.test_pretrain_throughput'], cwd=cwd)
 
         log.debug('RUN: {} -m torch.distributed.launch --nproc_per_node {} orttraining_run_bert_pretrain.py ORTBertPretrainTest.test_pretrain_convergence'.format(
-            sys.executable, ngpus)
+            sys.executable, ngpus))
         run_subprocess([
             sys.executable, '-m', 'torch.distributed.launch', '--nproc_per_node', str(ngpus),
             'orttraining_run_bert_pretrain.py', 'ORTBertPretrainTest.test_pretrain_convergence'], cwd=cwd)
