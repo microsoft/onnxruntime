@@ -9,7 +9,6 @@ file(GLOB onnxruntime_flatbuffers_srcs CONFIGURE_DEPENDS
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_flatbuffers_srcs})
 
 add_library(onnxruntime_flatbuffers ${onnxruntime_flatbuffers_srcs})
-install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/flatbuffers  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
 onnxruntime_add_include_to_target(onnxruntime_flatbuffers onnx flatbuffers)
 if(onnxruntime_ENABLE_INSTRUMENT)
   target_compile_definitions(onnxruntime_flatbuffers PUBLIC ONNXRUNTIME_ENABLE_INSTRUMENT)
