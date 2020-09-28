@@ -435,13 +435,13 @@ static void TestModelBuilding() {
             .CreateModel();
     */
 
-    std::vector<int64_t> shape = {4};
-    std::vector<int64_t> output_shape = {4, 2};
+    std::vector<int64_t> shape = {8, 2};
+    std::vector<int64_t> output_shape = {8, 2};
     auto model = 
         LearningModelBuilder::Create()
                 .Inputs().Add(TensorFeatureDescriptor(L"Input", L"The input time domain signal", TensorKind::Float, shape))
                 .Outputs().Add(TensorFeatureDescriptor(L"Output", L"The output frequency domain spectra", TensorKind::Float, shape))
-                .Operators().Add(Operator(L"Fft", L"Fft0", L"com.microsoft").SetInput(L"X", L"Input").SetOutput(L"Y", L"Output"))
+                .Operators().Add(Operator(L"Fft", L"Fft0", L"com.microsoft").SetInput(L"input", L"Input").SetOutput(L"output", L"Output"))
                 .CreateModel();
         
 
@@ -449,7 +449,7 @@ static void TestModelBuilding() {
     LearningModelBinding binding(session);
 
     // Populate binding
-    std::vector<float> x = { 1, 2, 3, 4 };
+    std::vector<float> x = {1, 0, 2, 0, 3, 0, 4, 0, 5, 0, 6, 0, 7, 0, 8, 0};
     binding.Bind(L"Input", TensorFloat::CreateFromShapeArrayAndDataArray(shape, x));
 
     // Evaluate
@@ -458,7 +458,7 @@ static void TestModelBuilding() {
     // Check results
     auto y_tensor = result.Outputs().Lookup(L"Output").as<TensorFloat>();
     auto y_ivv = y_tensor.GetAsVectorView();
-    for (int i = 0; i < 8; i += 2) {
+    for (int i = 0; i < 16; i += 2) {
       printf("(%f + i*", y_ivv.GetAt(i));
       printf("%f)\n", y_ivv.GetAt(i+1));
     }

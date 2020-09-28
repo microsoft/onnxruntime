@@ -8,6 +8,8 @@
 #include "fft.h"
 #include <functional>
 
+#include <complex>
+
 namespace onnxruntime {
 namespace contrib {
 
@@ -29,6 +31,22 @@ auto next_power_of_2(uint32_t input)
     input |= input >> 16;
     return input + 1;
 }
+
+template <typename T>
+struct output_container {
+  std::complex<T>* data_;
+  std::vector<unsigned> mapping_;
+
+  output_container(size_t size, std::complex<T>* data) : mapping_(size)
+  {
+    data_ = data;
+  }
+
+  std::complex<T>& operator[](size_t i) {
+    std::complex<T>* value = (data_ + mapping_[i]);
+    return *value;
+  }
+};
 
 struct samples_container {
     uint8_t* data_;
@@ -129,91 +147,96 @@ auto make_fft_samples_container(T* data, size_t length) {
     return samples_container(data, length, power_of_2);
 }
 
-template <typename T>
-struct complex {
-    T real;
-    T imaginary;
-};
-
-template <typename T = float>
+template <typename T = float, typename U = float>
 auto fft_internal(
     const samples_container& samples,
-    complex<T>* x_begin) {
-
-    std::vector<complex<T>> output(samples.size());
+    std::complex<T>* x_begin,
+    output_container<T>& optimized_container,
+    size_t begin,
+    size_t end) {
 
     if (samples.size() == 1)
     {
-        output[0].real = samples.at<T>(0) * x_begin[0].real;
-        output[0].imaginary = samples.at<T>(0) * x_begin[0].imaginary;
-        return output;
+      optimized_container[begin] = x_begin[0] * samples.at<U>(0);
+      return;
     }
 
     auto next_number_of_samples = samples.size() / 2;
     auto evens = samples.evens();
     auto odds = samples.odds();
     
-    auto evens_output = fft_internal<T>(evens, x_begin);
-    auto odds_output = fft_internal<T>(odds, x_begin);
+    size_t midpoint = static_cast<size_t>((end + begin) / 2);
+    fft_internal<T, U>(evens, x_begin, optimized_container, begin, midpoint);
+    fft_internal<T, U>(odds, x_begin, optimized_container, midpoint, end);
 
-    auto output_index = 0;
-    auto odds_it = odds_output.begin();
-    auto evens_it = evens_output.begin();
-    while (evens_it != evens_output.end())
-    {
-        output[output_index].real = evens_it->real + (x_begin[output_index].real * odds_it->real - x_begin[output_index].imaginary * odds_it->imaginary);
-        output[output_index].imaginary = evens_it->imaginary + (x_begin[output_index].real * odds_it->imaginary + x_begin[output_index].imaginary * odds_it->real);
-        output_index++;
+    for (size_t index = begin; index < midpoint; index++) {
+      auto i = index - begin;
 
-        output[output_index].real = evens_it->real + (x_begin[output_index].real * odds_it->real - x_begin[output_index].imaginary * odds_it->imaginary);
-        output[output_index].imaginary = evens_it->imaginary + (x_begin[output_index].real * odds_it->imaginary + x_begin[output_index].imaginary * odds_it->real);
-        output_index++;
+      auto even = optimized_container[begin + i];
+      auto odd = optimized_container[midpoint + i];
 
-        evens_it++;
-        odds_it++;
+      auto first = begin + (2 * i);
+      auto second = begin + (2 * i) + 1;
+      
+      auto first_val = even + (x_begin[(2*i)] * odd);
+      optimized_container[first]  = even + (x_begin[(2*i)] * odd);
+
+      auto second_val = even + (x_begin[(2*i)+1] * odd);
+      optimized_container[second] = even + (x_begin[(2*i)+1] * odd);
     }
-
-    return output;
 }
 
-template <typename T>
-auto fft(const samples_container& samples) {
+template <typename T, typename U>
+void fft(const samples_container& samples, std::complex<T>* output) {
+    size_t number_of_samples = samples.size();
 
-    auto number_of_samples = samples.size();
-    auto x = std::vector<complex<T>>(number_of_samples); // e^(i *2*pi / N * k)
-    x[0].real = 1;
-    x[0].imaginary = 0;
+    float increment = 2.f / number_of_samples;  // in pi radians
+    
+    output_container<T> optimized_output(number_of_samples, output);
+    optimized_output.mapping_[0] = 0;
+    optimized_output.mapping_[1] = static_cast<unsigned>(1 / increment);
 
-    double nth_root_level = log2(number_of_samples);
+    auto x = std::vector<std::complex<T>>(number_of_samples); // e^(i *2*pi / N * k)
+    x[0].real(1);     x[0].imag(0);
+    x[1].real(-1);    x[1].imag(0);
 
-    size_t index = 1;
-    for (size_t level = 1; level < nth_root_level + 1; level++)
-    {
-        auto num_in_level = pow(2, level);
-        for (size_t k = 0; k < num_in_level; k++)
-        {
-            auto tau_over_N = 3.14159265 * 2 * k / num_in_level;
-            if (k % 2 != 0)
-            {
-                x[index].real = static_cast<T>(cos(tau_over_N));
-                x[index].imaginary = static_cast<T>(-sin(tau_over_N));
-                index++;
-            }
-        }
+    auto angles = std::vector<float>(number_of_samples);
+    angles[0] = 0;  // 0pi
+    angles[1] = 1;  // 1pi
+
+    float pi = -3.14159265;
+    for (unsigned i = 1; ((i * 2) + 1) <= number_of_samples; i++) {
+      unsigned half_angle_index = i * 2;
+      unsigned half_angle_plus_pi_index = half_angle_index + 1;
+
+      auto& angle_in_radians = angles[i];
+      auto half_angle = angle_in_radians / 2;
+      auto reflected_half_angle = half_angle + 1;
+
+      angles[half_angle_index] = half_angle;
+      angles[half_angle_plus_pi_index] = reflected_half_angle;
+
+      x[half_angle_index].real(static_cast<T>(cos(half_angle * pi)));
+      x[half_angle_index].imag(static_cast<T>(sin(half_angle * pi)));
+      optimized_output.mapping_[half_angle_index] = static_cast<unsigned>(half_angle / increment);
+
+      x[half_angle_plus_pi_index].real(static_cast<T>(cos(reflected_half_angle * pi)));
+      x[half_angle_plus_pi_index].imag(static_cast<T>(sin(reflected_half_angle * pi)));
+      optimized_output.mapping_[half_angle_plus_pi_index] = static_cast<unsigned>(reflected_half_angle / increment);
     }
 
-    return fft_internal<T>(samples, x.data());
+    fft_internal<T, U>(samples, x.data(), optimized_output, 0, number_of_samples);
 }
 
-template <typename T>
+template <typename T, typename U>
 static Status FftImpl(const Tensor* X, Tensor* Y) {
   const auto& X_shape = X->Shape();
-  auto* X_data = const_cast<T*>(reinterpret_cast<const T*>(X->DataRaw()));
-  auto* Y_data = reinterpret_cast<T*>(Y->MutableDataRaw());
+  auto* X_data = const_cast<U*>(reinterpret_cast<const U*>(X->DataRaw()));
+  auto* Y_data = reinterpret_cast<std::complex<T>*>(Y->MutableDataRaw());
+
 
   const auto samples = make_fft_samples_container(X_data, static_cast<uint32_t>(X_shape[0]));
-  auto output = fft<T>(samples);
-  memcpy(Y_data, output.data(), output.size() * 2 * sizeof(T));
+  fft<T, U>(samples, Y_data);
 
   return Status::OK();
 }
@@ -235,10 +258,18 @@ Status Fft::Compute(OpKernelContext* ctx) const {
   const auto element_size = data_type->Size();
   switch (element_size) {
     case sizeof(float):
-      status = FftImpl<float>(X, Y);
+      if (X_shape.NumDimensions() == 1) {
+        status = FftImpl<float, float>(X, Y);
+      } else if (X_shape.NumDimensions() == 2 && X_shape[1] == 2) {
+        status = FftImpl<float, std::complex<float>>(X, Y);
+      }
       break;
     case sizeof(double):
-      status = FftImpl<double>(X, Y);
+      if (X_shape.NumDimensions() == 1) {
+        status = FftImpl<double, double>(X, Y);
+      } else if (X_shape.NumDimensions() == 2 && X_shape[1] == 2) {
+        status = FftImpl<double, std::complex<double>>(X, Y);
+      }
       break;
     default:
       ORT_THROW("Unsupported input data type of ", data_type);
