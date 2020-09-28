@@ -7,14 +7,19 @@ import os
 import glob
 
 TFMODELS = {
-    "bert_base_uncased": ("bert", "BertConfig", "", "https://storage.googleapis.com/bert_models/2018_10_18/uncased_L-12_H-768_A-12.zip"),
-    "bert_base_cased": ("bert", "BertConfig", "", "https://storage.googleapis.com/bert_models/2019_05_30/wwm_cased_L-24_H-1024_A-16.zip"),
-    "bert_large_uncased": ("bert", "BertConfig", "", "https://storage.googleapis.com/bert_models/2018_10_18/uncased_L-24_H-1024_A-16.zip"),
+    "bert_base_uncased":
+    ("bert", "BertConfig", "", "https://storage.googleapis.com/bert_models/2018_10_18/uncased_L-12_H-768_A-12.zip"),
+    "bert_base_cased":
+    ("bert", "BertConfig", "", "https://storage.googleapis.com/bert_models/2019_05_30/wwm_cased_L-24_H-1024_A-16.zip"),
+    "bert_large_uncased":
+    ("bert", "BertConfig", "", "https://storage.googleapis.com/bert_models/2018_10_18/uncased_L-24_H-1024_A-16.zip"),
     "albert_base": ("albert", "AlbertConfig", "", "https://storage.googleapis.com/albert_models/albert_base_v1.tar.gz"),
-    "albert_large": ("albert", "AlbertConfig", "", "https://storage.googleapis.com/albert_models/albert_large_v1.tar.gz"),
+    "albert_large":
+    ("albert", "AlbertConfig", "", "https://storage.googleapis.com/albert_models/albert_large_v1.tar.gz"),
     "gpt-2-117M": ("gpt2", "GPT2Config", "GPT2Model", "https://storage.googleapis.com/gpt-2/models/117M"),
     "gpt-2-124M": ("gpt2", "GPT2Config", "GPT2Model", "https://storage.googleapis.com/gpt-2/models/124M")
 }
+
 
 def download_tf_checkpoint(model_name, tf_models_dir="tf_models"):
     import pathlib
@@ -44,7 +49,7 @@ def download_tf_checkpoint(model_name, tf_models_dir="tf_models"):
         # get prefix
         for o in os.listdir(ckpt_dir):
             folder_dir = os.path.join(ckpt_dir, o)
-            break;
+            break
         unique_file_name = str(glob.glob(folder_dir + "/*data-00000-of-00001"))
         prefix = (unique_file_name.rpartition('.')[0]).split("/")[-1]
 
@@ -65,7 +70,7 @@ def download_tf_checkpoint(model_name, tf_models_dir="tf_models"):
         # get prefix
         for o in os.listdir(ckpt_dir):
             folder_dir = os.path.join(ckpt_dir, o)
-            break;
+            break
         unique_file_name = str(glob.glob(folder_dir + "/*data-00000-of-00001"))
         prefix = (unique_file_name.rpartition('.')[0]).split("/")[-1]
 
@@ -104,6 +109,7 @@ def init_pytorch_model(model_name, tf_checkpoint_path):
         init_model = model_categroy(config)
     return config, init_model
 
+
 def convert_tf_checkpoint_to_pytorch(config, init_model, tf_checkpoint_path):
     load_tf_weight_func_name = "load_tf_weights_in_" + TFMODELS[model_name][0]
 
@@ -114,12 +120,14 @@ def convert_tf_checkpoint_to_pytorch(config, init_model, tf_checkpoint_path):
     model.eval()
     return model
 
+
 def pipeline(model_name):
     if model_name not in TFMODELS:
         raise NotImplementedError()
     tf_checkpoint_path = download_tf_checkpoint(model_name)
     config, init_model = init_pytorch_model(model_name, tf_checkpoint_path)
     model = convert_tf_checkpoint_to_pytorch(config, init_model, tf_checkpoint_path)
+
 
 if __name__ == '__main__':
     # For test
