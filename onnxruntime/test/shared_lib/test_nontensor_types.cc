@@ -179,7 +179,7 @@ TEST(CApiTest, TypeInfoMap) {
 #if !defined(DISABLE_ML_OPS)
   Ort::Value map_ort = Ort::Value::CreateMap(keys_tensor, values_tensor);
   Ort::TypeInfo type_info = map_ort.GetTypeInfo();
-  Ort::MapTypeInfo map_type_info = type_info.GetMapTypeInfo();
+  auto map_type_info = type_info.GetMapTypeInfo();
 
   //Check key type
   ASSERT_EQ(map_type_info.GetMapKeyType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
@@ -192,8 +192,7 @@ TEST(CApiTest, TypeInfoMap) {
   // ASSERT_EQ(map_value_type_info.GetTensorTypeAndShapeInfo().GetShape(), dims);
   ASSERT_EQ(map_value_type_info.GetTensorTypeAndShapeInfo().GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
 
-  map_value_type_info.release();
-  map_type_info.release();
+  //map_type_info.release();
 #else
 
 #if !defined(ORT_NO_EXCEPTIONS)
@@ -294,7 +293,7 @@ TEST(CApiTest, TypeInfoSequence) {
 
   Ort::Value seq_ort = Ort::Value::CreateSequence(in);
   Ort::TypeInfo type_info = seq_ort.GetTypeInfo();
-  Ort::SequenceTypeInfo seq_type_info = type_info.GetSequenceTypeInfo();
+  auto seq_type_info = type_info.GetSequenceTypeInfo();
 
   ASSERT_EQ(seq_type_info.GetSequenceElementType().GetONNXType(), ONNX_TYPE_TENSOR);
   // No shape present, as sequence allows different shapes for each element
@@ -302,5 +301,5 @@ TEST(CApiTest, TypeInfoSequence) {
   ASSERT_EQ(seq_type_info.GetSequenceElementType().GetTensorTypeAndShapeInfo().GetElementType(),
             ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
 
-  seq_type_info.release();
+  //seq_type_info.release();
 }
