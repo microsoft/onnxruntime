@@ -158,7 +158,7 @@ void TestPoolCreation(const std::string&, int iter) {
                       ctr += e - s;
                     });
   }
-  ASSERT_EQ(ctr == iter * per_iter);
+  ASSERT_EQ(ctr, iter * per_iter);
 }
 
 }  // namespace
