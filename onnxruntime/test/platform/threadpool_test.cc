@@ -144,8 +144,8 @@ void TestPoolCreation(const std::string&, int iter) {
   //  valgrind --leak-check=full ./onnxruntime_test_all --gtest_filter=ThreadPoolTest.TestPoolCreation_10Iter
   //
   // We create #iter thread pools, and within each of them run a loop of #per_iter steps.
-  std::atomic<int> ctr{0};
-  constexpr int per_iter = 1024;
+  std::atomic<std::ptrdiff_t> ctr{0};
+  constexpr std::ptrdiff_t per_iter = 1024;
   constexpr int num_threads = 4;
   for (auto i = 0; i < iter; i++) {
     auto tp = onnxruntime::make_unique<ThreadPool>(&onnxruntime::Env::Default(),
