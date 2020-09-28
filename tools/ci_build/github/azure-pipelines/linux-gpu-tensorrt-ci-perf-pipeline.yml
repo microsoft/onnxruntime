@@ -22,7 +22,7 @@ jobs:
       #workingDirectory: '/home/hcsuser/perf/'
     #- script: 'export DATE=`date +"%m-%d-%Y"`&&/home/hcsuser/perf/perf.sh `echo $DATE`'
 
-    - script: 'mkdir $(Build.SourceDirectory)\Artifact && cp /home/hcsuser/perf/result/onnx_model_zoo/`echo $DATE` $(Build.SourceDirectory)\Artifact' 
+    - script: 'mkdir $(Build.SourcesDirectory)\Artifact && cp -r /home/hcsuser/perf/result/onnx_model_zoo/`echo $DATE` $(Build.SourcesDirectory)\Artifact' 
       displayName: 'Prepare artifacts'
       workingDirectory: '/home/hcsuser/perf/'
 
