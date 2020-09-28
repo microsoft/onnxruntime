@@ -4,56 +4,17 @@
 #if defined(USE_NCCL) || defined(USE_HOROVOD)
 
 #include "orttraining/training_ops/cuda/communication/recv.h"
-#include "orttraining/training_ops/cuda/communication/common.h"
+#include "orttraining/training_ops/communication_common.h"
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #include "core/profile/profile.h"
 #include "core/profile/context.h"
 #include "core/providers/cuda/cuda_common.h"
-#include <string>
 #include <mpi.h>
 
 #include "orttraining/core/framework/mpi_context.h"
 
 namespace onnxruntime {
 namespace cuda {
-
-void Recv::ReceiveShapeInfo(
-    const int src,
-    const int num_tensors,
-    size_t& aggregated_aligned_tensor_bytes,
-    std::vector<size_t>& prefix_tensor_shape_sizes,
-    std::vector<int64_t>& aggregated_tensor_shapes) const {
-  // Resize vector so that the following .data() returns meaningful pointer.
-  prefix_tensor_shape_sizes.resize(num_tensors);
-  CommInfo_t info_shape_sizes{prefix_tensor_shape_sizes.data(),
-                              num_tensors * static_cast<int>(sizeof(size_t)),
-                              src,
-                              static_cast<int>(tag_)};
-  CommInfo_t info_aggregated_size{&aggregated_aligned_tensor_bytes,
-                                  static_cast<int>(sizeof(size_t)),
-                                  src,
-                                  static_cast<int>(tag_)};
-  // Directly use CPU to wait MPI_Recv. We cannot use GPU callback because
-  // MPI_Recv may block the entire GPU until it returns.
-  MPI_CHECK(MPI_Recv(
-      info_shape_sizes.buffer, info_shape_sizes.size, MPI_CHAR,
-      info_shape_sizes.rank, info_shape_sizes.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
-
-  MPI_CHECK(MPI_Recv(
-      info_aggregated_size.buffer, info_aggregated_size.size, MPI_CHAR,
-      info_aggregated_size.rank, info_aggregated_size.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
-
-  // prefix_tensor_shape_sizes's last element is the number of total dimensions.
-  // If a 3-D tensor and a 2-D tensor are sent, its value is 2 + 3 = 5.
-  aggregated_tensor_shapes.resize(prefix_tensor_shape_sizes[num_tensors - 1]);
-  CommInfo_t info_shapes{aggregated_tensor_shapes.data(),
-                         static_cast<int>(aggregated_tensor_shapes.size()) * static_cast<int>(sizeof(int64_t)),
-                         src,
-                         static_cast<int>(tag_)};
-  MPI_CHECK(MPI_Recv(
-      info_shapes.buffer, info_shapes.size, MPI_CHAR,
-      info_shapes.rank, info_shapes.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
-}
 
 void Recv::ReceiveData(
     const int num_tensors,
@@ -237,6 +198,7 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
   } else {
     ReceiveShapeInfo(
         src,
+        tag_,
         num_tensors,
         aggregated_aligned_tensor_bytes,
         prefix_tensor_shape_sizes,

@@ -20,12 +20,6 @@ public:
   Status ComputeInternal(OpKernelContext* context) const override;
 
 private:
-  void ReceiveShapeInfo(
-      const int src,
-      const int num_tensors,
-      size_t& aggregated_aligned_tensor_bytes,
-      std::vector<size_t>& prefix_tensor_shape_sizes,
-      std::vector<int64_t>& aggregated_tensor_shapes) const;
   void ReceiveData(
     const int num_tensors,
     std::vector<Tensor*> received_tensors,
