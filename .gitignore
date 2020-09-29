@@ -49,3 +49,10 @@ java/hs_*.log
 /tools/perf_util/send_perf_metrics.iml
 /tools/perf_util/target/classes
 /tools/perf_util/src/main/resources
+cmake/external/eigen
+cmake/external/tvm
+cmake/external/SafeInt/safeint
+cmake/external/onnx-tensorrt
+cmake/external/onnx
+cmake/external/libprotobuf-mutator/
+cmake/external/flatbuffers/
