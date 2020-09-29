@@ -25,7 +25,9 @@ T DuplicateContainer(const T& container) {
 
 static void RunLstmTest(const std::vector<float>& X_data,
                         const std::vector<float>& W_data,
+                        bool is_initializer_W,
                         const std::vector<float>& R_data,
+                        bool is_initializer_R,
                         const std::vector<float>& Y_data,
                         const std::vector<float>& Y_h_data,
                         const std::vector<float>& Y_c_data,
@@ -78,8 +80,8 @@ static void RunLstmTest(const std::vector<float>& X_data,
   std::vector<int64_t> R_dims = {num_directions, 4 * hidden_size, hidden_size};
 
   test.AddInput<float>("X", X_dims, X_data);
-  test.AddInput<float>("W", W_dims, W_data);
-  test.AddInput<float>("R", R_dims, R_data);
+  test.AddInput<float>("W", W_dims, W_data, is_initializer_W);
+  test.AddInput<float>("R", R_dims, R_data, is_initializer_R);
 
   if (B_data) {
     std::vector<int64_t> B_dims = {num_directions, 8 * hidden_size};
@@ -169,14 +171,14 @@ void SimpleWeightsNoBiasTwoRows(std::string direction,
     W_data = DuplicateContainer(W_data);
   }
 
-  RunLstmTest(X_data, W_data, R_data, Y_data, Y_h_data, Y_c_data,
+  RunLstmTest(X_data, W_data, false, R_data, false, Y_data, Y_h_data, Y_c_data,
               input_size, batch_size, hidden_size, seq_length,
               nullptr, nullptr, nullptr, nullptr, seq_lengths, direction);
 
   // need at least one output, so we need Y_h or Y_c to be requested (non-empty output to compare against) in order
   // to test Y not being returned (output_sequence == false)
   if (!Y_h_data.empty() || !Y_c_data.empty())
-    RunLstmTest(X_data, W_data, R_data, Y_data, Y_h_data, Y_c_data,
+    RunLstmTest(X_data, W_data, false, R_data, false, Y_data, Y_h_data, Y_c_data,
                 input_size, batch_size, hidden_size, seq_length,
                 nullptr, nullptr, nullptr, nullptr, seq_lengths, direction, 999.f, /* output_sequence*/ false);
 }
@@ -367,8 +369,12 @@ TEST(LSTMTest, BatchParallelFalseSeqLengthGreaterThanOne) {
   std::vector<float> Y_c_data{
       1.02721067f, 1.15254318f};
 
-  RunLstmTest(X_data, W_data, R_data, Y_data, {}, Y_c_data,
-              input_size, batch_size, hidden_size, seq_length);
+  for (bool is_initializer_W : std::initializer_list<bool>{false, true}) {
+    for (bool is_initializer_R : std::initializer_list<bool>{false, true}) {
+      RunLstmTest(X_data, W_data, is_initializer_W, R_data, is_initializer_R,
+                  Y_data, {}, Y_c_data, input_size, batch_size, hidden_size, seq_length);
+    }
+  }
 }
 
 // make sure GateComputations works correctly if batch_parallel_ is true due to large batch size
@@ -393,9 +399,13 @@ static void LargeBatchWithClip(const std::vector<float>& Y_h_data, float clip = 
 
   std::vector<float> R_data(num_directions * 4 * hidden_size * hidden_size, 0.1f);
 
-  RunLstmTest(X_data, W_data, R_data, {}, Y_h_data, {},
-              input_size, batch_size, hidden_size, seq_length,
-              nullptr, nullptr, nullptr, nullptr, nullptr, direction, clip);
+  for (bool is_initializer_W : std::initializer_list<bool>{false, true}) {
+    for (bool is_initializer_R : std::initializer_list<bool>{false, true}) {
+      RunLstmTest(X_data, W_data, is_initializer_W, R_data, is_initializer_R, {},
+                  Y_h_data, {}, input_size, batch_size, hidden_size, seq_length,
+                  nullptr, nullptr, nullptr, nullptr, nullptr, direction, clip);
+    }
+  }
 }
 
 TEST(LSTMTest, LargeBatchNoClipping) {
@@ -613,37 +623,25 @@ class LstmOpContext2x1x2x2 {
                bool input_forget = false,
                bool hasClip = true) {
     // run with and without output_sequence to test UniDirectionalLstm handling when Y isn't returned
-    ::onnxruntime::test::RunLstmTest(X, input_weights_, recurrent_weights_,
-                                     expected_Y, expected_Y_h, expected_Y_c,
-                                     input_size_, batch_size, hidden_size_, seq_length,
-                                     use_bias ? &bias_ : nullptr,
-                                     use_peepholes ? &peephole_weights_ : nullptr,
-                                     initial_h, initial_c,
-                                     sequence_lens,
-                                     direction_,
-                                     clip,
-                                     /*output_sequence*/ true,
-                                     input_forget,
-                                     activation_func_names_,
-                                     activation_alphas_,
-                                     activation_betas_,
-                                     hasClip);
-
-    ::onnxruntime::test::RunLstmTest(X, input_weights_, recurrent_weights_,
-                                     expected_Y, expected_Y_h, expected_Y_c,
-                                     input_size_, batch_size, hidden_size_, seq_length,
-                                     use_bias ? &bias_ : nullptr,
-                                     use_peepholes ? &peephole_weights_ : nullptr,
-                                     initial_h, initial_c,
-                                     sequence_lens,
-                                     direction_,
-                                     clip,
-                                     /*output_sequence*/ false,
-                                     input_forget,
-                                     activation_func_names_,
-                                     activation_alphas_,
-                                     activation_betas_,
-                                     hasClip);
+    for (bool output_sequence : std::initializer_list<bool>{false, true}) {
+      ::onnxruntime::test::RunLstmTest(X,
+                                       input_weights_, false,
+                                       recurrent_weights_, false,
+                                       expected_Y, expected_Y_h, expected_Y_c,
+                                       input_size_, batch_size, hidden_size_, seq_length,
+                                       use_bias ? &bias_ : nullptr,
+                                       use_peepholes ? &peephole_weights_ : nullptr,
+                                       initial_h, initial_c,
+                                       sequence_lens,
+                                       direction_,
+                                       clip,
+                                       output_sequence,
+                                       input_forget,
+                                       activation_func_names_,
+                                       activation_alphas_,
+                                       activation_betas_,
+                                       hasClip);
+    }
   }
 
  private:
@@ -669,10 +667,8 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMForwardPeepHole) {
   std::vector<float> Y_h_data = {-0.03277518f, 0.05935364f};
   std::vector<float> Y_c_data = {-0.0780206f, 0.098829f};
 
-  std::string direction = "forward";
-
   //Run Test
-  LstmOpContext2x1x2x2 context(direction);
+  LstmOpContext2x1x2x2 context("forward");
   context.RunTest(input, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data);
 }
 
