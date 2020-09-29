@@ -22,7 +22,7 @@ jobs:
       #workingDirectory: '/home/hcsuser/perf/'
     #- script: 'export DATE=`date +"%m-%d-%Y"`&&/home/hcsuser/perf/perf.sh `echo $DATE`'
 
-    - script: 'mkdir $(Build.SourcesDirectory)/Artifact && cp -r /home/hcsuser/perf/result/* $(Build.SourcesDirectory)/Artifact' 
+    - script: 'mkdir $(Build.SourcesDirectory)/Artifact && cp -r /home/hcsuser/perf/result/`echo $DATE` $(Build.SourcesDirectory)/Artifact' 
       displayName: 'Prepare artifacts'
       workingDirectory: '/home/hcsuser/perf/'
 
