@@ -1,6 +1,6 @@
 jobs:
 - job: Linux_CI_GPU_TENSORRT_PERF
-  pool: ARM64 with GPU
+  pool: Linux-GPU-TensorRT-Perf 
   variables:
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
   timeoutInMinutes: 1200 
