@@ -60,7 +60,8 @@ class Profiler {
     return enabled_;
   }
   /*
-  Return the stored start time of profiler
+  Return the stored start time of profiler.
+  On Windows and Mac, this timer is not as precise as nanoseconds.
   */
   uint64_t GetStartTimeNs() const {
     return std::chrono::duration_cast<std::chrono::nanoseconds>(
