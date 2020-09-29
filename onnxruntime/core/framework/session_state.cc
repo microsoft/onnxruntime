@@ -7,6 +7,7 @@
 
 #include "core/common/logging/logging.h"
 #include "core/common/safeint.h"
+#include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/framework/allocator.h"
 #include "core/framework/node_index_info.h"
 #include "core/framework/op_kernel.h"
