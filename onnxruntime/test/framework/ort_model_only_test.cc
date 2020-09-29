@@ -13,7 +13,7 @@
 #include "test_utils.h"
 #include "test/util/include/asserts.h"
 
-#include "core/flatbuffers/ort.fbs.h"
+#include "core/flatbuffers/schema/ort.fbs.h"
 #include "flatbuffers/idl.h"
 #include "flatbuffers/util.h"
 

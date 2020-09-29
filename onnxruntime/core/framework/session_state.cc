@@ -7,6 +7,7 @@
 
 #include "core/common/logging/logging.h"
 #include "core/common/safeint.h"
+#include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/framework/allocator.h"
 #include "core/framework/node_index_info.h"
 #include "core/framework/op_kernel.h"
@@ -832,7 +833,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                   });
   }
 
-  SequentialPlannerContext context(session_options.execution_mode);
+  SequentialPlannerContext context(session_options.execution_mode, session_options.execution_order);
   ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
                                                     execution_providers_, kernel_create_info_map_,
                                                     ort_value_name_idx_map_, context, p_seq_exec_plan_));
@@ -852,7 +853,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
           [this](int idx, const OrtValue& value, const OrtCallback& d, bool constant) -> Status {
             return AddInitializedTensor(idx, value, &d, constant);
           },
-          logger_, data_transfer_mgr_));
+          logger_, data_transfer_mgr_, *p_seq_exec_plan_.get(), session_options));
 
   // remove weights from the graph now to save memory but in many cases it won't save memory, if the tensor was
   // preallocated with the some other tensors in a single 'allocate' call, which is very common.

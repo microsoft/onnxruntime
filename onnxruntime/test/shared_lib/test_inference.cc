@@ -725,8 +725,7 @@ TEST(CApiTest, override_initializer) {
   ort_inputs.push_back(std::move(f11_input_tensor));
 
   std::vector<const char*> input_names = {"Label", "F2", "F1"};
-
-  const char* const output_names[] = {"Label0", "F20", "F11"};
+  const char* output_names[] = {"Label0", "F20", "F11"};
   std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, input_names.data(),
                                                     ort_inputs.data(), ort_inputs.size(),
                                                     output_names, countof(output_names));
@@ -756,7 +755,7 @@ TEST(CApiTest, end_profiling) {
   char* profile_file = session_1.EndProfiling(allocator.get());
 
   ASSERT_TRUE(std::string(profile_file).find("profile_prefix") != std::string::npos);
-
+  allocator->Free(profile_file);
   // Create session with profiling disabled
   Ort::SessionOptions session_options_2;
 #ifdef _WIN32
@@ -766,8 +765,8 @@ TEST(CApiTest, end_profiling) {
 #endif
   Ort::Session session_2(*ort_env, MODEL_WITH_CUSTOM_MODEL_METADATA, session_options_2);
   profile_file = session_2.EndProfiling(allocator.get());
-
   ASSERT_TRUE(std::string(profile_file) == std::string());
+  allocator->Free(profile_file);
 }
 
 TEST(CApiTest, get_profiling_start_time) {
@@ -781,14 +780,16 @@ TEST(CApiTest, get_profiling_start_time) {
 #endif
 
   uint64_t before_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
-      std::chrono::high_resolution_clock::now().time_since_epoch()).count(); // get current time
+                                   std::chrono::high_resolution_clock::now().time_since_epoch())
+                                   .count();  // get current time
   Ort::Session session_1(*ort_env, MODEL_WITH_CUSTOM_MODEL_METADATA, session_options);
   uint64_t profiling_start_time = session_1.GetProfilingStartTimeNs();
   uint64_t after_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
-      std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-      
+                                  std::chrono::high_resolution_clock::now().time_since_epoch())
+                                  .count();
+
   // the profiler's start time needs to be between before_time and after_time
-  ASSERT_TRUE(before_start_time <= profiling_start_time && profiling_start_time <= after_start_time);  
+  ASSERT_TRUE(before_start_time <= profiling_start_time && profiling_start_time <= after_start_time);
 }
 
 TEST(CApiTest, model_metadata) {
@@ -900,8 +901,8 @@ TEST(CApiTest, TestSharedAllocatorUsingCreateAndRegisterAllocator) {
 
   OrtMemoryInfo* mem_info = nullptr;
   const auto& api = Ort::GetApi();
-  std::unique_ptr<OrtMemoryInfo, decltype(api.ReleaseMemoryInfo)> rel_info(mem_info, api.ReleaseMemoryInfo);
   ASSERT_TRUE(api.CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &mem_info) == nullptr);
+  std::unique_ptr<OrtMemoryInfo, decltype(api.ReleaseMemoryInfo)> rel_info(mem_info, api.ReleaseMemoryInfo);
 
   OrtArenaCfg arena_cfg{0, -1, -1, -1};
   ASSERT_TRUE(api.CreateAndRegisterAllocator(env_ptr, mem_info, &arena_cfg) == nullptr);
@@ -916,6 +917,50 @@ TEST(CApiTest, TestSharedAllocatorUsingCreateAndRegisterAllocator) {
   auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
   session_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
 
+  // create session 1
+  Ort::Session session1(*ort_env, MODEL_URI, session_options);
+  RunSession<float>(default_allocator.get(),
+                    session1,
+                    inputs,
+                    "Y",
+                    expected_dims_y,
+                    expected_values_y,
+                    nullptr);
+
+  // create session 2
+  Ort::Session session2(*ort_env, MODEL_URI, session_options);
+  RunSession<float>(default_allocator.get(),
+                    session2,
+                    inputs,
+                    "Y",
+                    expected_dims_y,
+                    expected_values_y,
+                    nullptr);
+}
+
+TEST(CApiTest, TestSharingOfInitializer) {
+  // simple inference test
+  // prepare inputs
+  std::vector<Input> inputs(1);
+  Input& input = inputs.back();
+  input.name = "X";
+  input.dims = {3, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_y = {3, 2};
+  std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
+
+  Ort::SessionOptions session_options;
+  Ort::MemoryInfo mem_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+  float data[] = {1., 2., 3., 4., 5., 6.};
+  const int data_len = sizeof(data) / sizeof(data[0]);
+  const int64_t shape[] = {3, 2};
+  const size_t shape_len = sizeof(shape) / sizeof(shape[0]);
+  Ort::Value val = Ort::Value::CreateTensor<float>(mem_info, data, data_len, shape, shape_len);
+  session_options.AddInitializer("W", val);
+
+  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
   // create session 1
   Ort::Session session1(*ort_env, MODEL_URI, session_options);
   RunSession<float>(default_allocator.get(),

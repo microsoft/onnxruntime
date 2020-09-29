@@ -76,6 +76,8 @@ class TrainingSession : public InferenceSession {
       bool use_mixed_precision_initializers{};
       MixedPrecisionDataType mixed_precision_type{MixedPrecisionDataType::FP16};
 
+      bool layernorm_stash_as_fp32{true};
+      
       ONNX_NAMESPACE::TensorProto_DataType TensorProtoDataType() const {
         switch (mixed_precision_type) {
           case MixedPrecisionDataType::FP16: return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
@@ -192,10 +194,12 @@ class TrainingSession : public InferenceSession {
     struct GraphTransformerConfiguration {
       // Whether to enable GELU approximation which is faster but produces different results.
       bool enable_gelu_approximation{false};
-      // Enable checkpointing of attention dropout to save memory
-      bool attn_dropout_checkpoint{false};
-      // Enable checkpointing of Gelu activation output to save memory
-      bool gelu_checkpoint{false};
+      // Enable recompute of attention dropout to save memory
+      bool attn_dropout_recompute{false};
+      // Enable recompute of Gelu activation output to save memory
+      bool gelu_recompute{false};
+      // Enable recompute of transformer layer ouput to save memory
+      bool transformer_layer_recompute{false};
     };
 
     GraphTransformerConfiguration graph_transformer_config{};
