@@ -890,6 +890,21 @@ MlasCastToInt32x4(MLAS_FLOAT32X4 Vector)
 }
 
 MLAS_FORCEINLINE
+MLAS_FLOAT32X4
+MlasCastToFloat32x4(MLAS_INT32X4 Vector)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return vcvtq_f32_s32(Vector);
+#elif defined(MLAS_SSE2_INTRINSICS)
+    return _mm_cvtepi32_ps(Vector);
+#elif defined(MLAS_VSX_INTRINSICS)
+    return vec_ctf(Vector, 0);
+#else
+    return MLAS_FLOAT32X4{float(Vector[0]), float(Vector[1]), float(Vector[2]), float(Vector[3])};
+#endif
+}
+
+MLAS_FORCEINLINE
 MLAS_INT32X4
 MlasBroadcastInt32x4(int32_t Value)
 {

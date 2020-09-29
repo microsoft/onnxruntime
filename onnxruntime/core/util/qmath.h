@@ -8,8 +8,12 @@
 #include <cfenv>
 #include <cmath>
 
-#if defined(_M_AMD64) || defined(__x86_64__) || defined(_M_IX86) || defined(__i386__)
+#if defined(_M_AMD64) || defined(__x86_64__) || defined(_M_IX86) || defined(__i386__) || defined(__aarch64__)
 #define MLAS_SUPPORTS_GEMM_U8X8
+#endif
+
+#if defined(_M_AMD64) || defined(__x86_64__) || defined(_M_IX86) || defined(__i386__)
+#define MLAS_SUPPORTS_GEMM_U8X8_AND_REQUANTIZE_OUTPUT
 #endif
 
 #if defined(_M_AMD64) || defined(__x86_64__)
