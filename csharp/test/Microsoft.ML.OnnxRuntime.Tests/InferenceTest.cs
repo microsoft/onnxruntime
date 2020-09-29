@@ -378,7 +378,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
                     using (var session = new InferenceSession(modelPath, options))
                     {
-                        startTime = session.GetProfilingStartTimeNs();
+                        startTime = session.ProfilingStartTimeNs;
                     }
                 }
                 return startTime;
