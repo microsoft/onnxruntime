@@ -123,6 +123,10 @@ class PretrainArguments:
         default=None, metadata={"help": "The output directory where the model checkpoints will be written."}
     )
 
+    cache_dir: str = field(
+        default='/tmp/bert_pretrain/',
+        metadata={"help": "The output directory where the model checkpoints will be written."}
+    )
     max_seq_length: Optional[int] = field(
         default=512,
         metadata={"help": "The maximum total input sequence length after tokenization. Sequences longer \
@@ -290,7 +294,7 @@ def setup_training(args):
 
 
 def prepare_model(args, device):
-    config = BertConfig.from_pretrained('bert-base-uncased')
+    config = BertConfig.from_pretrained('bert-base-uncased', cache_dir=args.cache_dir)
     if args.force_num_hidden_layers:
         logger.info("Modifying model config with num_hidden_layers to %d", args.force_num_hidden_layers)
         config.num_hidden_layers = args.force_num_hidden_layers
