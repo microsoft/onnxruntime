@@ -1,5 +1,8 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
+  find_package(XCTest REQUIRED)
+endif()
 
 set(TEST_SRC_DIR ${ONNXRUNTIME_ROOT}/test)
 set(TEST_INC_DIR ${ONNXRUNTIME_ROOT})
@@ -26,7 +29,11 @@ function(AddTest)
     list(REMOVE_DUPLICATES _UT_DEPENDS)
   endif(_UT_DEPENDS)
 
-  add_executable(${_UT_TARGET} ${_UT_SOURCES})
+  if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
+    add_executable(${_UT_TARGET} ${TEST_SRC_DIR}/xctest/orttestmain.m)
+  else()
+    add_executable(${_UT_TARGET} ${_UT_SOURCES})
+  endif()
 
   source_group(TREE ${REPO_ROOT} FILES ${_UT_SOURCES})
 
@@ -84,10 +91,41 @@ function(AddTest)
       "--gtest_output=xml:$<SHELL_PATH:$<TARGET_FILE:${_UT_TARGET}>.$<CONFIG>.results.xml>")
   endif(onnxruntime_GENERATE_TEST_REPORTS)
 
-  add_test(NAME ${_UT_TARGET}
-    COMMAND ${_UT_TARGET} ${TEST_ARGS}
-    WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>
-  )
+  if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
+    # target_sources(${_UT_TARGET} PRIVATE ${TEST_SRC_DIR}/xctest/orttestmain.m)
+    set_target_properties(${_UT_TARGET} PROPERTIES FOLDER "ONNXRuntimeTest"
+      MACOSX_BUNDLE_BUNDLE_NAME ${_UT_TARGET}
+      MACOSX_BUNDLE_GUI_IDENTIFIER com.onnxruntime.utest.${_UT_TARGET}
+      MACOSX_BUNDLE_LONG_VERSION_STRING ${ORT_VERSION}
+      MACOSX_BUNDLE_BUNDLE_VERSION ${ORT_VERSION}
+      MACOSX_BUNDLE_SHORT_VERSION_STRING ${ORT_VERSION}
+      XCODE_ATTRIBUTE_CLANG_ENABLE_MODULES "YES")
+
+    xctest_add_bundle(${_UT_TARGET}_xc ${_UT_TARGET}
+      ${TEST_SRC_DIR}/xctest/ortxctest.m
+      ${TEST_SRC_DIR}/xctest/xcgtest.mm
+      ${_UT_SOURCES})
+
+    target_link_libraries(${_UT_TARGET}_xc PRIVATE ${_UT_LIBS} GTest::gtest GTest::gmock ${onnxruntime_EXTERNAL_LIBRARIES})
+    onnxruntime_add_include_to_target(${_UT_TARGET}_xc date_interface flatbuffers)
+    target_include_directories(${_UT_TARGET}_xc PRIVATE ${TEST_INC_DIR})
+    get_target_property(${_UT_TARGET}_DEFS ${_UT_TARGET} COMPILE_DEFINITIONS)
+    target_compile_definitions(${_UT_TARGET}_xc PRIVATE ${_UT_TARGET}_DEFS)
+
+    set_target_properties(${_UT_TARGET}_xc PROPERTIES FOLDER "ONNXRuntimeXCTest"
+      MACOSX_BUNDLE_BUNDLE_NAME ${_UT_TARGET}_xc
+      MACOSX_BUNDLE_GUI_IDENTIFIER com.onnxruntime.utest.${_UT_TARGET}
+      MACOSX_BUNDLE_LONG_VERSION_STRING ${ORT_VERSION}
+      MACOSX_BUNDLE_BUNDLE_VERSION ${ORT_VERSION}
+      MACOSX_BUNDLE_SHORT_VERSION_STRING ${ORT_VERSION})
+
+    xctest_add_test(xctest.${_UT_TARGET} ${_UT_TARGET}_xc)
+  else()
+    add_test(NAME ${_UT_TARGET}
+      COMMAND ${_UT_TARGET} ${TEST_ARGS}
+      WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>
+    )
+  endif()
 endfunction(AddTest)
 
 #Do not add '${TEST_SRC_DIR}/util/include' to your include directories directly
@@ -397,9 +435,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${ONNXRUNTIME_INTEROP_TEST_LIBS}
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
-# These providers are shared libraries now, so aren't linked this way anymore:
-    ${PROVIDERS_DNNL}
-    ${PROVIDERS_TENSORRT}
+    # TENSORRT and DNNL are explicitly linked at runtime
     ${PROVIDERS_MIGRAPHX}
     ${PROVIDERS_NGRAPH}
     ${PROVIDERS_OPENVINO}
@@ -418,6 +454,7 @@ set(ONNXRUNTIME_TEST_LIBS
     onnxruntime_graph
     onnxruntime_common
     onnxruntime_mlas
+    onnxruntime_flatbuffers
 )
 
 if (onnxruntime_ENABLE_TRAINING)
@@ -433,7 +470,6 @@ if(onnxruntime_USE_TENSORRT)
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/tensorrt/*)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_tensorrt)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_tensorrt onnxruntime_providers_shared)
-  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_tensorrt)
 endif()
 
 if(onnxruntime_USE_NNAPI_BUILTIN)
@@ -484,34 +520,11 @@ target_include_directories(onnxruntime_test_utils PUBLIC "${TEST_SRC_DIR}/util/i
 set_target_properties(onnxruntime_test_utils PROPERTIES FOLDER "ONNXRuntimeTest")
 
 set(onnx_test_runner_src_dir ${TEST_SRC_DIR}/onnx)
-set(onnx_test_runner_common_srcs
-        ${onnx_test_runner_src_dir}/TestResultStat.cc
-        ${onnx_test_runner_src_dir}/TestResultStat.h
-        ${onnx_test_runner_src_dir}/testenv.h
-        ${onnx_test_runner_src_dir}/FixedCountFinishCallback.h
-        ${onnx_test_runner_src_dir}/TestCaseResult.cc
-        ${onnx_test_runner_src_dir}/TestCaseResult.h
-        ${onnx_test_runner_src_dir}/testenv.cc
-        ${onnx_test_runner_src_dir}/heap_buffer.h
-        ${onnx_test_runner_src_dir}/heap_buffer.cc
-        ${onnx_test_runner_src_dir}/OrtValueList.h
-        ${onnx_test_runner_src_dir}/runner.h
-        ${onnx_test_runner_src_dir}/runner.cc
-        ${onnx_test_runner_src_dir}/TestCase.cc
-        ${onnx_test_runner_src_dir}/TestCase.h
-        ${onnx_test_runner_src_dir}/onnxruntime_event.h
-        ${onnx_test_runner_src_dir}/sync_api.h
-        ${onnx_test_runner_src_dir}/sync_api.cc
-        ${onnx_test_runner_src_dir}/callback.h
-        ${onnx_test_runner_src_dir}/callback.cc
-        ${onnx_test_runner_src_dir}/pb_helper.h
-        ${onnx_test_runner_src_dir}/pb_helper.cc
-        ${onnx_test_runner_src_dir}/mem_buffer.h
-        ${onnx_test_runner_src_dir}/tensorprotoutils.h
-        ${onnx_test_runner_src_dir}/tensorprotoutils.cc
-        ${onnx_test_runner_src_dir}/onnx_model_info.h
-        ${onnx_test_runner_src_dir}/onnx_model_info.cc)
+file(GLOB onnx_test_runner_common_srcs CONFIGURE_DEPENDS
+    ${onnx_test_runner_src_dir}/*.h
+    ${onnx_test_runner_src_dir}/*.cc)
 
+list(REMOVE_ITEM onnx_test_runner_common_srcs ${onnx_test_runner_src_dir}/main.cc)
 
 add_library(onnx_test_runner_common ${onnx_test_runner_common_srcs})
 if(MSVC)
@@ -577,6 +590,9 @@ set(all_dependencies ${onnxruntime_test_providers_dependencies} )
   # the default logger tests conflict with the need to have an overall default logger
   # so skip in this type of
   target_compile_definitions(onnxruntime_test_all PUBLIC -DSKIP_DEFAULT_LOGGER_TESTS)
+  if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
+      target_compile_definitions(onnxruntime_test_all_xc PUBLIC -DSKIP_DEFAULT_LOGGER_TESTS)
+  endif()
   if(onnxruntime_RUN_MODELTEST_IN_DEBUG_MODE)
     target_compile_definitions(onnxruntime_test_all PUBLIC -DRUN_MODELTEST_IN_DEBUG_MODE)
   endif()
@@ -709,6 +725,7 @@ endif()
 install(TARGETS onnx_test_runner
         ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
         LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        BUNDLE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
         RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 if(onnxruntime_BUILD_BENCHMARKS)
@@ -786,15 +803,9 @@ if (WIN32)
 endif()
 
 if (onnxruntime_BUILD_SHARED_LIB)
-  set(onnxruntime_perf_test_libs onnx_test_runner_common onnxruntime_test_utils  onnxruntime_common re2::re2
-          onnx_test_data_proto onnx_proto ${PROTOBUF_LIB} ${GETOPT_LIB_WIDE} onnxruntime ${SYS_PATH_LIB}
-          ${CMAKE_DL_LIBS})
-  # We want to enable onnx_test_runner/perf_test for ort minimal builds, which will need the following
-  # ort lib statically linked, this is a temporary solution and is tracked by,
-  # Product Backlog Item 895235: Re-work onnx_test_runner/perf_test for ort/onnx model
-  if (onnxruntime_MINIMAL_BUILD)
-    list(APPEND onnxruntime_perf_test_libs onnxruntime_graph onnx onnxruntime_framework onnxruntime_mlas)
-  endif()
+  set(onnxruntime_perf_test_libs onnx_test_runner_common onnxruntime_test_utils onnxruntime_common re2::re2
+          onnx_test_data_proto onnx_proto ${PROTOBUF_LIB} ${GETOPT_LIB_WIDE} onnxruntime onnxruntime_flatbuffers
+          ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
   if(NOT WIN32)
     list(APPEND onnxruntime_perf_test_libs nsync_cpp)
   endif()
@@ -843,15 +854,17 @@ if (onnxruntime_BUILD_SHARED_LIB)
   if (CMAKE_SYSTEM_NAME STREQUAL "Android")
     list(APPEND onnxruntime_shared_lib_test_LIBS ${android_shared_libs})
   endif()
-  AddTest(DYN
-          TARGET onnxruntime_shared_lib_test
-          SOURCES ${onnxruntime_shared_lib_test_SRC} ${TEST_SRC_DIR}/providers/test_main.cc
-          LIBS ${onnxruntime_shared_lib_test_LIBS}
-          DEPENDS ${all_dependencies}
-  )
+  if (NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    AddTest(DYN
+            TARGET onnxruntime_shared_lib_test
+            SOURCES ${onnxruntime_shared_lib_test_SRC} ${TEST_SRC_DIR}/providers/test_main.cc
+            LIBS ${onnxruntime_shared_lib_test_LIBS}
+            DEPENDS ${all_dependencies}
+    )
+  endif()
 
   # test inference using global threadpools
-  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Android" AND NOT onnxruntime_MINIMAL_BUILD)
+  if (NOT CMAKE_SYSTEM_NAME MATCHES "Android|iOS" AND NOT onnxruntime_MINIMAL_BUILD)
   AddTest(DYN
           TARGET onnxruntime_global_thread_pools_test
           SOURCES ${onnxruntime_global_thread_pools_test_SRC}
@@ -861,7 +874,7 @@ if (onnxruntime_BUILD_SHARED_LIB)
   endif()
 
  # A separate test is needed to test the APIs that don't rely on the env being created first.
-  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
+  if (NOT CMAKE_SYSTEM_NAME MATCHES "Android|iOS")
   AddTest(DYN
           TARGET onnxruntime_api_tests_without_env
           SOURCES ${onnxruntime_api_tests_without_env_SRC}

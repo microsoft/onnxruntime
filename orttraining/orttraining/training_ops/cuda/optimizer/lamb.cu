@@ -169,7 +169,7 @@ SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, half, float)
 SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, float, half)
 SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, float, float)
 
-template <typename T1, typename T2, typename T3>
+template <typename T1, typename T2, typename T3, typename T_MIXED_PRECISION_FP>
 __device__ __forceinline__ void _LambUpdateRule(
     const T1 eta,
     const float ratio_min,
@@ -180,7 +180,7 @@ __device__ __forceinline__ void _LambUpdateRule(
     const T3 d,
     T2* w_new,
     T3* g_new,
-    half* w_fp16_new) {
+    T_MIXED_PRECISION_FP* w_mixed_precision_new) {
   // Confidence coefficeint of this update. 
   const T2 ratio = (w_norm != T2(0.0f) && r_norm != T2(0.0f)) ?
     T2(eta) * _Max(T2(ratio_min), _Min(T2(ratio_max), _Sqrt(w_norm / r_norm))) : T2(eta);
@@ -195,8 +195,8 @@ __device__ __forceinline__ void _LambUpdateRule(
     }
     if (w_new) {
       *w_new = w_new_tmp;
-      if (w_fp16_new) {
-        *w_fp16_new = half(w_new_tmp);
+      if (w_mixed_precision_new) {
+        *w_mixed_precision_new = T_MIXED_PRECISION_FP(w_new_tmp);
       }
     }
   } else {
@@ -205,14 +205,14 @@ __device__ __forceinline__ void _LambUpdateRule(
     }
     if (w_new) {
       *w_new = w;
-      if (w_fp16_new) {
-        *w_fp16_new = half(w);
+      if (w_mixed_precision_new) {
+        *w_mixed_precision_new = T_MIXED_PRECISION_FP(w);
       }
     }
   }
 }
 
-template <typename T1, typename T2, typename T3>
+template <typename T1, typename T2, typename T3, typename T_MIXED_PRECISION_FP>
 __global__ void _LambUpdateImpl(
     const T1* eta,
     const float ratio_min,
@@ -223,7 +223,7 @@ __global__ void _LambUpdateImpl(
     const T3* update_direction,
     T2* weights_out,
     T3* gradients_out,
-    half* fp16_weights_out,
+    T_MIXED_PRECISION_FP* mixed_precision_weights_out,
     CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
 
@@ -237,10 +237,10 @@ __global__ void _LambUpdateImpl(
       update_direction[id],
       weights_out != nullptr ? weights_out + id : nullptr,
       gradients_out != nullptr ? gradients_out + id : nullptr,
-      fp16_weights_out != nullptr ? fp16_weights_out + id : nullptr);
+      mixed_precision_weights_out != nullptr ? mixed_precision_weights_out + id : nullptr);
 }
 
-template <typename T1, typename T2, typename T3>
+template <typename T1, typename T2, typename T3, typename T_MIXED_PRECISION_FP>
 void LambUpdate(
     const T1* eta,
     const float ratio_min,
@@ -251,12 +251,12 @@ void LambUpdate(
     const T3* update_direction,
     T2* weights_out,
     T3* gradients_out,
-    half* fp16_weights_out,
+    T_MIXED_PRECISION_FP* mixed_precision_weights_out,
     size_t count) {
   int blocksPerGrid =
       (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
-  _LambUpdateImpl<T1, T2, T3><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _LambUpdateImpl<T1, T2, T3, T_MIXED_PRECISION_FP><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
       eta,
       ratio_min,
       ratio_max,
@@ -266,28 +266,28 @@ void LambUpdate(
       update_direction,
       weights_out,
       gradients_out,
-      fp16_weights_out,
+      mixed_precision_weights_out,
       N);
 }
 
-#define INSTANTIATE_LAMB_UPDATE(T1, T2, T3) \
-  template void LambUpdate(                     \
-      const T1* eta,                            \
-      const float ratio_min,                    \
-      const float ratio_max,                    \
-      const T2* r_norm,                         \
-      const T2* w_norm,                         \
-      const T2* weights,                        \
-      const T3* update_direction,               \
-      T2* weights_out,                          \
-      T3* gradients_out,                        \
-      half* fp16_weights_out,                   \
+#define INSTANTIATE_LAMB_UPDATE(T1, T2, T3, T_MIXED_PRECISION_FP) \
+  template void LambUpdate(                                       \
+      const T1* eta,                                              \
+      const float ratio_min,                                      \
+      const float ratio_max,                                      \
+      const T2* r_norm,                                           \
+      const T2* w_norm,                                           \
+      const T2* weights,                                          \
+      const T3* update_direction,                                 \
+      T2* weights_out,                                            \
+      T3* gradients_out,                                          \
+      T_MIXED_PRECISION_FP* mixed_precision_weights_out,          \
       size_t count);
 
-INSTANTIATE_LAMB_UPDATE(float, float, float)
-INSTANTIATE_LAMB_UPDATE(double, double, double)
-INSTANTIATE_LAMB_UPDATE(half, float, half)
-INSTANTIATE_LAMB_UPDATE(float, float, half)
+INSTANTIATE_LAMB_UPDATE(float, float, float, half)
+INSTANTIATE_LAMB_UPDATE(double, double, double, half)
+INSTANTIATE_LAMB_UPDATE(half, float, half, half)
+INSTANTIATE_LAMB_UPDATE(float, float, half, half)
 
 template <typename T1, typename T2, typename T3, typename T_GRAD_NORM>
 __global__ void LambMultiTensorComputeDirectionImpl(
@@ -377,7 +377,7 @@ INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, half, float)
 INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, float, half)
 INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, float, float)
 
-template <typename T1, typename T2, typename T3>
+template <typename T1, typename T2, typename T3, typename T_MIXED_PRECISION_FP>
 __global__ void LambMultiTensorUpdateImpl(
     ChunkGroup<7> chunk_group,
     const T1* eta,
@@ -394,7 +394,7 @@ __global__ void LambMultiTensorUpdateImpl(
   const T3* d = reinterpret_cast<const T3*>(chunk_group.tensor_ptrs[3][group_index]) + chunk_start;
   T2* w_new = chunk_group.tensor_ptrs[4][group_index] != nullptr ? reinterpret_cast<T2*>(chunk_group.tensor_ptrs[4][group_index]) + chunk_start : nullptr;
   T3* g_new = chunk_group.tensor_ptrs[5][group_index] != nullptr ? reinterpret_cast<T3*>(chunk_group.tensor_ptrs[5][group_index]) + chunk_start : nullptr;
-  half* w_fp16_new = chunk_group.tensor_ptrs[6][group_index] != nullptr ? reinterpret_cast<half*>(chunk_group.tensor_ptrs[6][group_index]) + chunk_start : nullptr;
+  T_MIXED_PRECISION_FP* w_mixed_precision_new = chunk_group.tensor_ptrs[6][group_index] != nullptr ? reinterpret_cast<T_MIXED_PRECISION_FP*>(chunk_group.tensor_ptrs[6][group_index]) + chunk_start : nullptr;
 
   for (int i = threadIdx.x; i < chunk_size && i + chunk_start < tensor_size; i += blockDim.x) {
     _LambUpdateRule(
@@ -407,12 +407,12 @@ __global__ void LambMultiTensorUpdateImpl(
         d[i],
         w_new != nullptr ? w_new + i : nullptr,
         g_new != nullptr ? g_new + i : nullptr,
-        w_fp16_new != nullptr ? w_fp16_new + i : nullptr);
+        w_mixed_precision_new != nullptr ? w_mixed_precision_new + i : nullptr);
   }
 }
 
-template <typename T1, typename T2, typename T3>
-void LambMultiTensorUpdateFunctor<T1, T2, T3>::operator()(
+template <typename T1, typename T2, typename T3, typename T_MIXED_PRECISION_FP>
+void LambMultiTensorUpdateFunctor<T1, T2, T3, T_MIXED_PRECISION_FP>::operator()(
     ChunkGroup<7> chunk_group,
     const T1* eta,
     const float ratio_min,
@@ -420,24 +420,24 @@ void LambMultiTensorUpdateFunctor<T1, T2, T3>::operator()(
   const int thread_count = ChunkGroup<7>::thread_count_per_block;
   const int block_count = chunk_group.chunk_count;
 
-  LambMultiTensorUpdateImpl<T1, T2, T3><<<block_count, thread_count, 0>>>(
+  LambMultiTensorUpdateImpl<T1, T2, T3, T_MIXED_PRECISION_FP><<<block_count, thread_count, 0>>>(
       chunk_group,
       eta,
       ratio_min,
       ratio_max);
 }
 
-#define INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(T1, T2, T3)      \
-  template void LambMultiTensorUpdateFunctor<T1, T2, T3>::operator()( \
-      ChunkGroup<7> chunk_group,                                      \
-      const T1* eta,                                                  \
-      const float ratio_min,                                          \
+#define INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(T1, T2, T3, T_MIXED_PRECISION_FP)      \
+  template void LambMultiTensorUpdateFunctor<T1, T2, T3, T_MIXED_PRECISION_FP>::operator()( \
+      ChunkGroup<7> chunk_group,                                                            \
+      const T1* eta,                                                                        \
+      const float ratio_min,                                                                \
       const float ratio_max);
 
-INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(float, float, float)
-INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(double, double, double)
-INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(half, float, half)
-INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(float, float, half)
+INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(float, float, float, half)
+INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(double, double, double, half)
+INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(half, float, half, half)
+INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(float, float, half, half)
 
 template <typename TIn1, typename TIn2, typename TOut1, typename TOut2, typename TBuf>
 __global__ void LambMultiTensorReductionImpl(ChunkGroup<4> chunk_group) {

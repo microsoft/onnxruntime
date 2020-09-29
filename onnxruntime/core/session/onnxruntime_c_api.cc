@@ -83,30 +83,41 @@ using namespace onnxruntime;
   auto tensor = v->GetMutable<onnxruntime::Tensor>();
 
 ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithCustomLogger, OrtLoggingFunction logging_function,
-                    _In_opt_ void* logger_param, OrtLoggingLevel default_warning_level, _In_ const char* logid,
+                    _In_opt_ void* logger_param, OrtLoggingLevel logging_level, _In_ const char* logid,
                     _Outptr_ OrtEnv** out) {
   API_IMPL_BEGIN
-  OrtEnv::LoggingManagerConstructionInfo lm_info{logging_function, logger_param, default_warning_level, logid};
+  OrtEnv::LoggingManagerConstructionInfo lm_info{logging_function, logger_param, logging_level, logid};
   Status status;
   *out = OrtEnv::GetInstance(lm_info, status);
   return ToOrtStatus(status);
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CreateEnv, OrtLoggingLevel default_warning_level,
+ORT_API_STATUS_IMPL(OrtApis::CreateEnv, OrtLoggingLevel logging_level,
                     _In_ const char* logid, _Outptr_ OrtEnv** out) {
   API_IMPL_BEGIN
-  OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, default_warning_level, logid};
+  OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, logging_level, logid};
   Status status;
   *out = OrtEnv::GetInstance(lm_info, status);
   return ToOrtStatus(status);
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithGlobalThreadPools, OrtLoggingLevel default_warning_level,
+ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithGlobalThreadPools, OrtLoggingLevel logging_level,
                     _In_ const char* logid, _In_ const struct OrtThreadingOptions* tp_options, _Outptr_ OrtEnv** out) {
   API_IMPL_BEGIN
-  OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, default_warning_level, logid};
+  OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, logging_level, logid};
+  Status status;
+  *out = OrtEnv::GetInstance(lm_info, status, tp_options);
+  return ToOrtStatus(status);
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithCustomLoggerAndGlobalThreadPools, OrtLoggingFunction logging_function, _In_opt_ void* logger_param,
+                    OrtLoggingLevel logging_level, _In_ const char* logid, _In_ const struct OrtThreadingOptions* tp_options,
+                    _Outptr_ OrtEnv** out) {
+  API_IMPL_BEGIN
+  OrtEnv::LoggingManagerConstructionInfo lm_info{logging_function, logger_param, logging_level, logid};
   Status status;
   *out = OrtEnv::GetInstance(lm_info, status, tp_options);
   return ToOrtStatus(status);
@@ -1727,27 +1738,45 @@ ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char** ptr,
   return NULL;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::TensorAt, _Inout_ OrtValue* value, size_t* location_values, size_t location_values_count,
+ORT_API_STATUS_IMPL(OrtApis::TensorAt, _Inout_ OrtValue* value, const int64_t* location_values, size_t location_values_count,
                     _Outptr_ void** out) {
   TENSOR_READWRITE_API_BEGIN
-  //TODO: test if it's a string tensor
-  if (location_values_count != tensor->Shape().NumDimensions())
+
+  if (tensor->IsDataTypeString()) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "this API does not support strings");
+  }
+
+  const auto& tensor_shape = tensor->Shape();
+  const auto num_dimensions = tensor_shape.NumDimensions();
+  if (location_values_count != num_dimensions) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "location dimensions do not match shape size");
-  std::vector<size_t> location(location_values_count);
+  }
+
   for (size_t i = 0; i < location_values_count; i++) {
-    if (location_values[i] >= (size_t)tensor->Shape()[i])
+    if (location_values[i] >= tensor_shape[i] || location_values[i] < 0) {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "invalid location range");
-    location[i] = location_values[i];
+    }
   }
-  // data has row-major format
-  size_t offset = 0;
-  for (size_t i = 1; i <= tensor->Shape().NumDimensions(); i++) {
-    size_t sum = 1;
-    for (size_t j = i + 1; j <= tensor->Shape().NumDimensions(); j++) sum *= (size_t)tensor->Shape()[j - 1];
-    offset += location[i - 1] * sum;
+
+  // compute strides
+  // TensorPitches p;
+  std::vector<int64_t> strides(num_dimensions);
+  {
+    int64_t stride = 1;
+    for (size_t dim = num_dimensions; dim > 0; --dim) {
+      strides[dim - 1] = stride;
+      stride *= tensor_shape[dim - 1];
+    }
   }
-  auto data = ((char*)tensor->MutableDataRaw()) + (tensor->DataType()->Size() * offset);
-  *out = (void*)data;
+
+  // For Scalers the offset would always be zero
+  int64_t offset = 0;
+  for (size_t i = 0; i < num_dimensions; i++) {
+    offset += location_values[i] * strides[i];
+  }
+
+  auto data = reinterpret_cast<char*>(tensor->MutableDataRaw()) + tensor->DataType()->Size() * offset;
+  *out = data;
   return nullptr;
   API_IMPL_END
 }
@@ -1758,6 +1787,15 @@ ORT_API_STATUS_IMPL(OrtApis::SetLanguageProjection, _In_ const OrtEnv* ort_env, 
   // note telemetry is controlled via the platform Env object, not the OrtEnv object instance
   const Env& env = Env::Default();
   env.GetTelemetryProvider().SetLanguageProjection(static_cast<uint32_t>(projection));
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionGetProfilingStartTimeNs, _In_ const OrtSession* sess, _Outptr_ uint64_t* out) {
+  API_IMPL_BEGIN
+  const auto* session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
+  auto profiling_start_time = session->GetProfiling().GetStartTime();
+  *out = static_cast<uint64_t>(profiling_start_time);
   return nullptr;
   API_IMPL_END
 }
@@ -1808,7 +1846,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
 	In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_5 = {
+static constexpr OrtApi ort_api_1_to_6 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -1959,8 +1997,6 @@ static constexpr OrtApi ort_api_1_to_5 = {
     &OrtApis::ReleaseAvailableProviders,
     // End of Version 4 - DO NOT MODIFY ABOVE (see above text for more information)
 
-    // Version 5 - In development, feel free to add/remove/rearrange here
-
     &OrtApis::GetStringTensorElementLength,
     &OrtApis::GetStringTensorElement,
     &OrtApis::FillStringTensorElement,
@@ -1983,6 +2019,15 @@ static constexpr OrtApi ort_api_1_to_5 = {
     &OrtApis::TensorAt,
     &OrtApis::CreateAndRegisterAllocator,
     &OrtApis::SetLanguageProjection,
+    &OrtApis::SessionGetProfilingStartTimeNs,
+    &OrtApis::SetGlobalIntraOpNumThreads,
+    &OrtApis::SetGlobalInterOpNumThreads,
+    &OrtApis::SetGlobalSpinControl,
+    // End of Version 5 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    // Version 6 - In development, feel free to add/remove/rearrange here
+    &OrtApis::AddInitializer,
+    &OrtApis::CreateEnvWithCustomLoggerAndGlobalThreadPools,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
@@ -1990,8 +2035,8 @@ static constexpr OrtApi ort_api_1_to_5 = {
 static_assert(offsetof(OrtApi, ReleaseCustomOpDomain) / sizeof(void*) == 101, "Size of version 1 API cannot change");
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
-  if (version >= 1 && version <= 5)
-    return &ort_api_1_to_5;
+  if (version >= 1 && version <= 6)
+    return &ort_api_1_to_6;
 
   return nullptr;  // Unsupported version
 }

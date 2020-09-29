@@ -89,7 +89,7 @@ namespace Dml
             m_nonOwnedGraphInputsFromInitializers.resize(graphInputCount);
             std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> initializeResourceRefs;
             
-            GraphKernelHelper::PopulateInputBindings(
+            GraphKernelHelper::ProcessInputData(
                 m_provider.Get(),
                 m_winmlProvider.Get(),
                 m_inputsConstant,
@@ -101,6 +101,7 @@ namespace Dml
                 initInputResources,
                 m_nonOwnedGraphInputsFromInitializers,
                 initializeResourceRefs,
+                nullptr,
                 transferredInitializerMap);
 
             DML_GRAPH_DESC dmlGraphDesc = {};

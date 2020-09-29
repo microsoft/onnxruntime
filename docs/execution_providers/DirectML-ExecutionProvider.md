@@ -6,7 +6,7 @@ When used standalone, the DirectML API is a low-level DirectX 12 library and is 
 
 The *DirectML Execution Provider* is an optional component of ONNX Runtime that uses DirectML to accelerate inference of ONNX models. The DirectML execution provider is capable of greatly improving evaluation time of models using commodity GPU hardware, without sacrificing broad hardware support or requiring vendor-specific extensions to be installed.
 
-The DirectML Execution Provider currently uses DirectML version 2.1.0.
+The DirectML Execution Provider currently uses DirectML version 1.3.0.
 
 ## Table of contents
 

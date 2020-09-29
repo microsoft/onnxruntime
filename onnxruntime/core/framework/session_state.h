@@ -13,7 +13,6 @@
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/profiler.h"
-#include "core/flatbuffers/ort.fbs.h"
 #include "core/framework/allocation_planner.h"
 #include "core/framework/callback.h"
 #include "core/framework/data_transfer_manager.h"
@@ -33,7 +32,19 @@
 #include "core/platform/path_lib.h"
 #include "core/platform/threadpool.h"
 
+namespace flatbuffers {
+class FlatBufferBuilder;
+template <typename T>
+struct Offset;
+}  // namespace flatbuffers
+
 namespace onnxruntime {
+
+namespace experimental {
+namespace fbs {
+struct SessionState;
+}  // namespace fbs
+}  // namespace experimental
 
 class ExecutionProviders;
 class KernelDef;
@@ -257,8 +268,10 @@ class SessionState {
                          flatbuffers::Offset<onnxruntime::experimental::fbs::SessionState>& fbs_session_state) const;
 #endif
 
+#if defined(ENABLE_ORT_FORMAT_LOAD)
   Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::SessionState& fbs_session_state,
                            const KernelRegistryManager& kernel_registry_manager);
+#endif
 
   Status FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                               KernelRegistryManager& kernel_registry_manager,

@@ -32,6 +32,7 @@
     * [x86](#x86)
     * [ARM](#ARM)
     * [Android](#Android)
+    * [iOS](#iOS)
 
 **[Training](#Training)**
 
@@ -57,12 +58,24 @@ Open Developer Command Prompt for Visual Studio version you are going to use. Th
 The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to `.\build.bat`
 
 
-#### Linux/Mac OS X
+#### Linux/macOS
 ```
 ./build.sh --config RelWithDebInfo --build_shared_lib --parallel
 ```
-By default, ORT is configured to be built for a minimum target Mac OS X version of 10.12.
-The shared library in the release Nuget(s) and the Python wheel may be installed on Mac OS X versions of 10.12+.
+##### macOS
+By default, ORT is configured to be built for a minimum target macOS version of 10.12.
+The shared library in the release Nuget(s) and the Python wheel may be installed on macOS versions of 10.12+.
+
+If you would like to use [Xcode](https://developer.apple.com/xcode/) to build the onnxruntime for x86_64 macOS, use
+* With Xcode 11
+   ```
+   ./build.sh --config RelWithDebInfo --build_shared_lib --parallel --use_xcode
+   ```
+* With Xcode 12
+   ```
+   ./build.sh --config RelWithDebInfo --build_shared_lib --parallel --use_xcode \
+              --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=x86_64
+   ```
 
 #### Notes
 
@@ -88,7 +101,7 @@ The shared library in the release Nuget(s) and the Python wheel may be installed
 |-----------|:------------:|:------------:|:------------:|:------------:|
 |Windows    | YES          | YES          |  YES         | YES          |
 |Linux      | YES          | YES          |  YES         | YES          |
-|Mac OS X   | NO           | YES          |  NO          | NO           |
+|macOS      | NO           | YES          |  NO          | NO           |
 
 ### Environments
 
@@ -97,7 +110,7 @@ The shared library in the release Nuget(s) and the Python wheel may be installed
 |Windows 10   | YES          | YES         | VS2019 through the latest VS2015 are supported |
 |Windows 10 <br/> Subsystem for Linux | YES         | NO        |         |
 |Ubuntu 16.x  | YES          | YES         | Also supported on ARM32v7 (experimental) |
-|Mac OS X  | YES          | NO         |    |
+|macOS        | YES          | NO         |    |
 
 GCC 4.x and below are not supported.
 
@@ -107,7 +120,7 @@ GCC 4.x and below are not supported.
 |-------------|:------------:|:----------------:|:----------------:|
 |Windows 10   | YES          | Not tested       | Not tested       |
 |Linux        | NO           | YES(gcc>=4.8)    | Not tested       |
-|Mac OS X     | NO           | Not tested       | YES (Minimum version required not ascertained)|
+|macOS        | NO           | Not tested       | YES (Minimum version required not ascertained)|
 
 
 ---
@@ -142,7 +155,7 @@ Currently only supported on Windows and Linux.
 * dotnet is required for building csharp bindings and creating managed nuget package. Follow the instructions [here](https://dotnet.microsoft.com/download) to download dotnet. Tested with versions 2.1 and 3.1.
 * nuget.exe. Follow the instructions [here](https://docs.microsoft.com/en-us/nuget/install-nuget-client-tools#nugetexe-cli) to download nuget
   * On Windows, downloading nuget is straightforward and simply following the instructions above should work.
-  * On Linux, nuget relies on Mono runtime and therefore this needs to be setup too. Above link has all the information to setup Mono and nuget. The instructions can directly be found [here](https://www.mono-project.com/docs/getting-started/install/). In some cases it is required to run `sudo apt-get install mono-complete` after installing mono. 
+  * On Linux, nuget relies on Mono runtime and therefore this needs to be setup too. Above link has all the information to setup Mono and nuget. The instructions can directly be found [here](https://www.mono-project.com/docs/getting-started/install/). In some cases it is required to run `sudo apt-get install mono-complete` after installing mono.
 
 ### Build Instructions
 #### Windows
@@ -163,8 +176,8 @@ Nuget packages are created under <native_build_dir>\nuget-artifacts
 ### CUDA
 #### Prerequisites
 * Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn)
-  * ONNX Runtime is built and tested with CUDA 10.1 and cuDNN 7.6 using the Visual Studio 2019 14.12 toolset (i.e. Visual Studio 2019 v16.5).
-    ONNX Runtime can also be built with CUDA versions from 9.1 up to 10.1, and cuDNN versions from 7.1 up to 7.4.
+  * ONNX Runtime is built and tested with CUDA 10.2 and cuDNN 8.0.3 using Visual Studio 2019 version 16.7.
+    ONNX Runtime can also be built with CUDA versions from 10.1 up to 11.0, and cuDNN versions from 7.6 up to 8.0.
   * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home` parameter
   * The path to the cuDNN installation (include the `cuda` folder in the path) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home` parameter. The cuDNN path should contain `bin`, `include` and `lib` directories.
   * The path to the cuDNN bin directory must be added to the PATH environment variable so that cudnn64_7.dll is found.
@@ -207,12 +220,12 @@ See more information on the TensorRT Execution Provider [here](./docs/execution_
 
 #### Prerequisites
 * Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn)
-   * The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 10.2 and cuDNN 7.6.5.
+   * The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 11.0 and cuDNN 8.0.
    * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home` parameter. The CUDA path should contain `bin`, `include` and `lib` directories.
    * The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
    * The path to the cuDNN installation (path to folder that contains libcudnn.so) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home` parameter.
  * Install [TensorRT](https://developer.nvidia.com/nvidia-tensorrt-download)
-   * The TensorRT execution provider for ONNX Runtime is built on TensorRT 7.x and is tested with TensorRT 7.0.0.11.
+   * The TensorRT execution provider for ONNX Runtime is built on TensorRT 7.1 and is tested with TensorRT 7.1.3.4.
    * The path to TensorRT installation must be provided via the `--tensorrt_home` parameter.
 
 #### Build Instructions
@@ -604,7 +617,7 @@ The Vitis-AI execution provider is only supported on Linux.
 .\build.bat --use_openmp
 ```
 
-##### Linux/Mac OS X
+##### Linux/macOS
 ```
 ./build.sh --use_openmp
 
@@ -1036,6 +1049,51 @@ Android NNAPI Execution Provider can be built using building commands in [Androi
 
 ---
 
+### iOS
+
+#### Prerequisites
+* A Mac computer with latest macOS
+* Xcode, https://developer.apple.com/xcode/
+* CMake, https://cmake.org/download/
+* Python 3, https://www.python.org/downloads/mac-osx/
+
+#### General Info:
+* iOS Platforms
+
+   The following two platforms are supported
+   * iOS device (iPhone, iPad) with arm64 architecture
+   * iOS simulator with x86_64 architecture
+
+   armv7, armv7s and i386 architectures are not currently supported.
+
+   tvOS and watchOS platforms are not currently supported.
+* apple_deploy_target
+
+   Specify the minimum version of the target platform (iOS) on which the target binaries are to be deployed.
+* Code Signing
+
+   If the development team ID which has a valid code signing certificate is specified, Xcode will code sign the onnxruntime library in the building process, otherwise, the onnxruntime will be built without code signing. It may be required or desired to code sign the library for iOS devices. For more information, see [Code Signing](https://developer.apple.com/support/code-signing/).
+
+#### Build Instructions
+Run one of the following build scripts from the ONNX Runtime repository root,
+##### Cross build for iOS simulator
+```
+./build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
+           --ios --ios_sysroot iphonesimulator --osx_arch x86_64 --apple_deploy_target <minimal iOS version>
+```
+##### Cross build for iOS device
+```
+./build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
+           --ios --ios_sysroot iphoneos --osx_arch arm64 --apple_deploy_target <minimal iOS version>
+```
+##### Cross build for iOS device and code sign the library
+```
+./build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
+           --ios --ios_sysroot iphoneos --osx_arch arm64 --apple_deploy_target <minimal iOS version> \
+           --xcode_code_signing_team_id <Your Apple developmemt team ID>
+```
+---
+
 ### AMD MIGraphX
 
 See more information on the MIGraphX Execution Provider [here](./docs/execution_providers/MIGraphX-ExecutionProvider.md).
@@ -1063,19 +1121,14 @@ Dockerfile instructions are available [here](./dockerfiles#migraphx)
 
 The default NVIDIA GPU build requires CUDA runtime libraries installed on the system:
 
-* CUDA 10.1
-* cuDNN 7.6.2
-* NCCL v2.4.8 (download v2.4.8 from the Legacy downloads page)
-* OpenMPI 4.0.0.0
-```
-wget https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.0.tar.gz
-tar zxf openmpi-4.0.0.tar.gz
-cd openmpi-4.0.0
-./configure --enable-orterun-prefix-by-default
-make -j $(nproc) all
-sudo make install
-sudo ldconfig
-```
+* [CUDA](https://developer.nvidia.com/cuda-toolkit) 10.2
+* [cuDNN](https://developer.nvidia.com/cudnn) 8.0
+* [NCCL](https://developer.nvidia.com/nccl) 2.7
+* [OpenMPI](https://www.open-mpi.org/) 4.0.4
+  * See [install_openmpi.sh](./tools/ci_build/github/linux/docker/scripts/install_openmpi.sh)
+
+These dependency versions should reflect what is in [Dockerfile.training](./dockerfiles/Dockerfile.training).
+
 ## Build instructions
 
 1. Checkout this code repo with `git clone https://github.com/microsoft/onnxruntime`

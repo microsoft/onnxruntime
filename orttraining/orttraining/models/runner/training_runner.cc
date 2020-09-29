@@ -34,6 +34,7 @@ namespace training {
 static std::vector<FreeDimensionOverride> overrides = {};
 static SessionOptions SESSION_OPTION = {
     ExecutionMode::ORT_SEQUENTIAL,     //execution_mode
+    ExecutionOrder::PRIORITY_BASED,    //execution_order
     false,                             //enable_profiling
     ORT_TSTR(""),                      //optimized_model_filepath
     true,                              //enable_mem_pattern
@@ -51,6 +52,7 @@ static SessionOptions SESSION_OPTION = {
     true,                              //thread_pool_allow_spinning
     false,                             //use_deterministic_compute
     {},                                //session_configurations
+    {},                                // initializers_to_share_map
 };
 
 TrainingRunner::TrainingRunner(Parameters params, const Environment& env)
@@ -112,9 +114,11 @@ Status TrainingRunner::Initialize() {
 
   if (params_.use_mixed_precision) {
     TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mp{};
-    mp.use_fp16_initializers = params_.use_fp16_initializer;
-    if (params_.use_bfloat16)
-      mp.fp16_type = ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
+    mp.use_mixed_precision_initializers = params_.use_mixed_precision_initializer;
+    if (params_.use_bfloat16) {
+      mp.mixed_precision_type = MixedPrecisionDataType::BF16;
+    }
+    mp.layernorm_stash_as_fp32 = params_.layernorm_stash_as_fp32;
     config.mixed_precision_config = mp;
   }
 
@@ -137,8 +141,8 @@ Status TrainingRunner::Initialize() {
     opt.learning_rate_input_name = params_.lr_params.feed_name;
     opt.weight_attributes_generator = params_.optimizer_attributes;
     opt.weight_int_attributes_generator = params_.optimizer_int_attributes;
-    opt.use_fp16_moments = params_.use_fp16_moments;
-    opt.do_all_reduce_in_fp16 = params_.allreduce_in_fp16;
+    opt.use_mixed_precision_moments = params_.use_mixed_precision_moments;
+    opt.do_all_reduce_in_mixed_precision_type = params_.allreduce_in_mixed_precision_type;
     opt.use_nccl = params_.use_nccl;
     opt.deepspeed_zero = params_.deepspeed_zero;
     opt.adasum_reduction_type = params_.GetAdasumReductionType();
@@ -180,8 +184,9 @@ Status TrainingRunner::Initialize() {
   {
     TrainingSession::TrainingConfiguration::GraphTransformerConfiguration gt_config{};
     gt_config.enable_gelu_approximation = params_.enable_gelu_approximation;
-    gt_config.attn_dropout_checkpoint = params_.attn_dropout_checkpoint;
-    gt_config.gelu_checkpoint = params_.gelu_checkpoint;
+    gt_config.attn_dropout_recompute = params_.attn_dropout_recompute;
+    gt_config.gelu_recompute = params_.gelu_recompute;
+    gt_config.transformer_layer_recompute = params_.transformer_layer_recompute;
 
     config.graph_transformer_config = gt_config;
   }
@@ -213,7 +218,7 @@ Status TrainingRunner::Initialize() {
     pipeline_context_.pipeline_tensor_names = config_result.pipeline_config_result.value().pipeline_tensor_names;
 
     // Create a local function to append non-empty name to fetch_names list.
-    auto append_non_empty_name = [&] (const std::string& name) {
+    auto append_non_empty_name = [&](const std::string& name) {
       if (!name.empty()) {
         fetch_names.push_back(name);
       }
@@ -276,7 +281,6 @@ Status TrainingRunner::Initialize() {
 Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_data_loader,
                            const MapStringToString& mapped_dimensions) {
   if (MPIContext::GetInstance().GetWorldRank() == 0 && !params_.model_actual_running_graph_path.empty()) {
-
     session_.Save(params_.model_actual_running_graph_path, TrainingSession::SaveOption::NO_RELOAD);
   }
 
@@ -465,7 +469,7 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const SessionMode mode,
     // TODO: create a list of must-to-fetch tensors and pass it to all graph transformer.
     if (params_.pipeline_parallel_size > 1) {
       // Create a local function to append non-empty name to fetch_names list.
-      auto append_non_empty_name = [&] (const std::string& name) {
+      auto append_non_empty_name = [&](const std::string& name) {
         if (!name.empty()) {
           fetch_names.push_back(name);
         }

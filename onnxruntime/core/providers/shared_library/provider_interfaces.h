@@ -5,7 +5,6 @@
 // In the future the internal implementations could derive from these to remove the need for the wrapper implementations
 
 #include "core/framework/func_api.h"
-#include "core/framework/fence.h"  // For FencePtr
 
 #define PROVIDER_DISALLOW_ALL(TypeName)     \
   TypeName() = delete;                      \
@@ -26,7 +25,8 @@ using DataType = const std::string*;
 
 namespace onnxruntime {
 
-// onnx Protobuf types
+// onnx Protobuf types (all of these are actually just Provider_<type> -> ONNX_NAMESPACE::<type>)
+#ifndef PROVIDER_BRIDGE_ORT
 struct Provider_AttributeProto;
 struct Provider_GraphProto;
 struct Provider_ModelProto;
@@ -40,16 +40,15 @@ struct Provider_TypeProto_Tensor;
 struct Provider_TypeProto;
 struct Provider_ValueInfoProto;
 struct Provider_ValueInfoProtos;
+#endif
 
-// OnnxRuntime Types
-struct ProviderHost;
+// OnnxRuntime Types (all of these are actually just Provider_<type> -> <type>)
+#ifndef PROVIDER_BRIDGE_ORT
 struct Provider_ComputeCapability;
 struct Provider_DataTransferManager;
 struct Provider_IDataTransfer;
-struct Provider_IExecutionProvider;
 struct Provider_IndexedSubGraph;
 struct Provider_IndexedSubGraph_MetaDef;
-struct Provider_KernelCreateInfo;
 struct Provider_KernelDef;
 struct Provider_KernelDefBuilder;
 struct Provider_KernelRegistry;
@@ -60,11 +59,15 @@ struct Provider_Model;
 struct Provider_Node;
 struct Provider_NodeArg;
 struct Provider_NodeAttributes;
-struct Provider_OpKernel_Base;
 struct Provider_OpKernelContext;
 struct Provider_OpKernelInfo;
-struct Provider_SessionState;
 struct Provider_Tensor;
+#endif
+
+struct Provider_IExecutionProvider;
+struct Provider_KernelCreateInfo;
+struct Provider_OpKernel_Base;
+struct ProviderHost;
 class TensorShape;
 
 template <typename T, typename TResult>
@@ -118,8 +121,6 @@ struct Provider_IAllocator {
   virtual void* Alloc(size_t size) = 0;
   virtual void Free(void* p) = 0;
   const OrtMemoryInfo& Info() const { return memory_info_; };
-
-  virtual FencePtr CreateFence(const Provider_SessionState* /*session_state*/) { return nullptr; }
 
   virtual bool IsProviderInterface() const { return true; }
 
@@ -181,7 +182,7 @@ using Provider_NodeArgInfo = Provider_ValueInfoProto;
 // We can't just reinterpret_cast this one, since it's an unordered_map of object BY VALUE (can't do anything by value on the real types)
 //using Provider_NodeAttributes = std::unordered_map<std::string, ONNX_NAMESPACE::Provider_AttributeProto_Copyable>;
 
-using Provider_InitializedTensorSet = std::unordered_map<std::string, const ONNX_NAMESPACE::Provider_TensorProto*>;
+using Provider_InitializedTensorSet = std::unordered_map<std::string, const Provider_TensorProto*>;
 
 struct Provider_Node__NodeIterator {
   virtual ~Provider_Node__NodeIterator() {}
@@ -259,17 +260,6 @@ struct Provider_IExecutionProvider {
   void operator=(const Provider_IExecutionProvider&) = delete;
 };
 
-struct Provider_IDataTransfer {
-  Provider_IDataTransfer() = default;
-  virtual ~Provider_IDataTransfer() {}
-
-  virtual bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const = 0;
-  virtual common::Status CopyTensor(const Provider_Tensor& src, Provider_Tensor& dst, int exec_queue_id) const = 0;
-
-  Provider_IDataTransfer(const Provider_IDataTransfer&) = delete;
-  void operator=(const Provider_IDataTransfer&) = delete;
-};
-
 struct Provider {
   virtual std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(int device_id) = 0;
 };
@@ -285,6 +275,18 @@ struct ProviderHost {
   virtual logging::Logger* LoggingManager_GetDefaultLogger() = 0;
 
   virtual std::unique_ptr<Provider_IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info) = 0;
+
+#ifdef USE_TENSORRT
+  virtual std::unique_ptr<Provider_IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) = 0;
+  virtual std::unique_ptr<Provider_IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) = 0;
+  virtual std::unique_ptr<Provider_IDataTransfer> CreateGPUDataTransfer() = 0;
+
+  virtual void cuda__Impl_Cast(const int64_t* input_data, int32_t* output_data, size_t count) = 0;
+  virtual void cuda__Impl_Cast(const int32_t* input_data, int64_t* output_data, size_t count) = 0;
+
+  virtual bool CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
+  virtual bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
+#endif
 
   virtual std::unique_ptr<Provider_IExecutionProvider_Router> Create_IExecutionProvider_Router(Provider_IExecutionProvider* outer, const std::string& type) = 0;
 
@@ -384,7 +386,9 @@ struct ProviderHost {
 
   // Provider_DataTransferManager
   virtual Status Provider_DataTransferManager__CopyTensor(const Provider_DataTransferManager* p, const Provider_Tensor& src, Provider_Tensor& dst, int exec_queue_id) = 0;
-  virtual const Provider_IDataTransfer* Provider_DataTransferManager__GetProviderDataTransfer(const Provider_DataTransferManager* p, const OrtDevice& src_device, const OrtDevice& dst_device) = 0;
+
+  // Provider_IDataTransfer
+  virtual void Provider_IDataTransfer__operator_delete(Provider_IDataTransfer* p) = 0;
 
   // Provider_IndexedSubGraph_MetaDef
   virtual std::unique_ptr<Provider_IndexedSubGraph_MetaDef> Provider_IndexedSubGraph_MetaDef__construct() = 0;
@@ -467,7 +471,7 @@ struct ProviderHost {
   virtual ONNX_NAMESPACE::DataType Provider_NodeArg__Type(const Provider_NodeArg* p) noexcept = 0;
   virtual const Provider_NodeArgInfo& Provider_NodeArg__ToProto(const Provider_NodeArg* p) noexcept = 0;
   virtual bool Provider_NodeArg__Exists(const Provider_NodeArg* p) const noexcept = 0;
-  virtual const ONNX_NAMESPACE::Provider_TypeProto* Provider_NodeArg__TypeAsProto(const Provider_NodeArg* p) noexcept = 0;
+  virtual const Provider_TypeProto* Provider_NodeArg__TypeAsProto(const Provider_NodeArg* p) noexcept = 0;
 
   // Provider_NodeAttributes
   virtual std::unique_ptr<Provider_NodeAttributes> Provider_NodeAttributes__construct() = 0;
@@ -541,9 +545,6 @@ struct ProviderHost {
   virtual const Provider_DataTransferManager& Provider_OpKernelInfo__GetDataTransferManager(const Provider_OpKernelInfo* p) noexcept = 0;
   virtual int Provider_OpKernelInfo__GetKernelDef_ExecQueueId(const Provider_OpKernelInfo* p) noexcept = 0;
 
-  // Provider_SessionState
-  virtual const Provider_DataTransferManager& Provider_SessionState__GetDataTransferManager(const Provider_SessionState* p) = 0;
-
   // Provider_Tensor
   virtual float* Provider_Tensor__MutableData_float(Provider_Tensor* p) = 0;
   virtual const float* Provider_Tensor__Data_float(const Provider_Tensor* p) = 0;
@@ -557,6 +558,8 @@ struct ProviderHost {
 };
 
 extern ProviderHost* g_host;
+
+#ifndef PROVIDER_BRIDGE_ORT
 
 struct Provider_TypeProto_Tensor {
   int32_t elem_type() const { return g_host->Provider_TypeProto_Tensor__elem_type(this); }
@@ -613,8 +616,8 @@ struct Provider_ModelProto {
   bool SerializeToString(std::string& string) const { return g_host->Provider_ModelProto__SerializeToString(this, string); }
   bool SerializeToOstream(std::ostream& output) const { return g_host->Provider_ModelProto__SerializeToOstream(this, output); }
 
-  const ONNX_NAMESPACE::Provider_GraphProto& graph() const { return g_host->Provider_ModelProto__graph(this); }
-  ONNX_NAMESPACE::Provider_GraphProto* mutable_graph() { return g_host->Provider_ModelProto__mutable_graph(this); }
+  const Provider_GraphProto& graph() const { return g_host->Provider_ModelProto__graph(this); }
+  Provider_GraphProto* mutable_graph() { return g_host->Provider_ModelProto__mutable_graph(this); }
 
   void set_ir_version(int64_t value) { return g_host->Provider_ModelProto__set_ir_version(this, value); }
 
@@ -686,9 +689,16 @@ struct Provider_ComputeCapability {
 
 struct Provider_DataTransferManager {
   Status CopyTensor(const Provider_Tensor& src, Provider_Tensor& dst, int exec_queue_id) const { return g_host->Provider_DataTransferManager__CopyTensor(this, src, dst, exec_queue_id); }
-  const Provider_IDataTransfer* GetProviderDataTransfer(const OrtDevice& src_device, const OrtDevice& dst_device) const { return g_host->Provider_DataTransferManager__GetProviderDataTransfer(this, src_device, dst_device); }
 
   PROVIDER_DISALLOW_ALL(Provider_DataTransferManager)
+};
+
+struct Provider_IDataTransfer {
+  static void operator delete(void* p) { g_host->Provider_IDataTransfer__operator_delete(reinterpret_cast<Provider_IDataTransfer*>(p)); }
+
+  Provider_IDataTransfer() = delete;
+  Provider_IDataTransfer(const Provider_IDataTransfer&) = delete;
+  void operator=(const Provider_IDataTransfer&) = delete;
 };
 
 struct Provider_IndexedSubGraph_MetaDef {
@@ -738,6 +748,7 @@ struct Provider_KernelDef {
   Provider_KernelDef(const Provider_KernelDef*) = delete;
   void operator=(const Provider_KernelDef&) = delete;
 };
+#endif
 
 using Provider_KernelCreateFn = std::function<Provider_OpKernel*(const Provider_OpKernelInfo& info)>;
 using Provider_KernelCreatePtrFn = std::add_pointer<Provider_OpKernel*(const Provider_OpKernelInfo& info)>::type;
@@ -758,6 +769,7 @@ struct Provider_KernelCreateInfo {
 
 using Provider_BuildKernelCreateInfoFn = Provider_KernelCreateInfo (*)();
 
+#ifndef PROVIDER_BRIDGE_ORT
 struct Provider_KernelDefBuilder {
   static std::unique_ptr<Provider_KernelDefBuilder> Create() { return g_host->Provider_KernelDefBuilder__construct(); }
   static void operator delete(void* p) { g_host->Provider_KernelDefBuilder__operator_delete(reinterpret_cast<Provider_KernelDefBuilder*>(p)); }
@@ -969,6 +981,7 @@ struct Provider_GraphViewer {
   Provider_GraphViewer(const Provider_GraphViewer&) = delete;
   void operator=(const Provider_GraphViewer&) = delete;
 };
+#endif
 
 struct Provider_OpKernel_Base {
   const Provider_OpKernelInfo& GetInfo() const { return g_host->Provider_OpKernel_Base__GetInfo(this); }
@@ -976,6 +989,7 @@ struct Provider_OpKernel_Base {
   PROVIDER_DISALLOW_ALL(Provider_OpKernel_Base)
 };
 
+#ifndef PROVIDER_BRIDGE_ORT
 struct Provider_OpKernelContext {
   const Provider_Tensor* Input_Tensor(int index) const { return g_host->Provider_OpKernelContext__Input_Tensor(this, index); }
 
@@ -1015,10 +1029,6 @@ inline Status Provider_OpKernelInfo::GetAttr<float>(const std::string& name, flo
   return GetAttr(name, value);
 }
 
-struct Provider_SessionState {
-  const Provider_DataTransferManager& GetDataTransferManager() const { return g_host->Provider_SessionState__GetDataTransferManager(this); }
-};
-
 struct Provider_Tensor {
   float* MutableData_float() { return g_host->Provider_Tensor__MutableData_float(this); }
   const float* Data_float() const { return g_host->Provider_Tensor__Data_float(this); }
@@ -1044,5 +1054,6 @@ inline float* Provider_Tensor::MutableData<float>() { return MutableData_float()
 
 template <>
 inline const float* Provider_Tensor::Data<float>() const { return Data_float(); }
+#endif
 
 }  // namespace onnxruntime

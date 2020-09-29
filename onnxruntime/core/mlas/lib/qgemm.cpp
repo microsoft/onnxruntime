@@ -157,7 +157,7 @@ Return Value:
 
     for (size_t k = 0; k < K; k += CountK) {
 
-        CountK = (std::min)(K - k, Strides.K);
+        CountK = std::min(K - k, Strides.K);
 
         //
         // Step through each slice of matrix B along the N dimension.
@@ -167,7 +167,7 @@ Return Value:
 
         for (size_t n = 0; n < N; n += CountN) {
 
-            CountN = (std::min)(N - n, Strides.N);
+            CountN = std::min(N - n, Strides.N);
 
             //
             // Copy a panel of matrix B to a local packed buffer.
@@ -191,7 +191,7 @@ Return Value:
 
             for (size_t m = 0; m < M; m += CountM) {
 
-                CountM = (std::min)(M - m, Strides.M);
+                CountM = std::min(M - m, Strides.M);
 
                 //
                 // Copy a panel of matrix A to a local packed buffer.
@@ -311,7 +311,7 @@ Return Value:
 
     for (size_t k = 0; k < K; k += CountK) {
 
-        CountK = (std::min)(K - k, Strides.K);
+        CountK = std::min(K - k, Strides.K);
 
         const size_t PackedCountK = (CountK + KernelType::PackedK - 1) /
             KernelType::PackedK;
@@ -328,7 +328,7 @@ Return Value:
 
         for (size_t n = 0; n < N; n += CountN) {
 
-            CountN = (std::min)(N - n, Strides.N);
+            CountN = std::min(N - n, Strides.N);
 
             if (k == 0) {
                 MlasGemmU8X8ScaleSumBuffer(ColumnSumBuffer, PackedColumnSumBuffer + n,
@@ -347,7 +347,7 @@ Return Value:
 
             for (size_t m = 0; m < M; m += CountM) {
 
-                CountM = (std::min)(M - m, Strides.M);
+                CountM = std::min(M - m, Strides.M);
 
                 //
                 // Copy a panel of matrix A to a local packed buffer.
@@ -2126,7 +2126,7 @@ Return Value:
 
     for (size_t k = 0; k < K; k += CountK) {
 
-        CountK = (std::min)(K - k, StrideK);
+        CountK = std::min(K - k, StrideK);
 
         //
         // Step through each slice of matrix B along the N dimension.
@@ -2141,7 +2141,7 @@ Return Value:
             constexpr size_t BatchedN = 128;
             MLAS_DECLSPEC_ALIGN(int32_t ColumnSumBuffer[BatchedN], 64);
 
-            CountN = (std::min)(N - n, BatchedN);
+            CountN = std::min(N - n, BatchedN);
 
             if (GemmU8X8Operation == &MlasGemmU8X8PackedOperation<MLAS_GEMM_U8S8_KERNEL_AVX2>) {
                 MLAS_GEMM_U8S8_KERNEL_AVX2::CopyPackB(pb, B + n, ldb, CountN, CountK, ColumnSumBuffer, BIsSigned);

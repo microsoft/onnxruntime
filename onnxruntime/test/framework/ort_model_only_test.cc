@@ -1,5 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+
+// if we can't load an ORT format model we can't really test anything
+#if defined(ENABLE_ORT_FORMAT_LOAD)
+
 #include "core/framework/data_types.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
@@ -9,7 +13,7 @@
 #include "test_utils.h"
 #include "test/util/include/asserts.h"
 
-#include "core/flatbuffers/ort.fbs.h"
+#include "core/flatbuffers/schema/ort.fbs.h"
 #include "flatbuffers/idl.h"
 #include "flatbuffers/util.h"
 
@@ -361,7 +365,9 @@ TEST(OrtModelOnlyTests, LoadOrtFormatModelMLOps) {
 
   RunOrtModel(test_info);
 }
-#endif
+#endif  // !defined(DISABLE_ML_OPS)
 
 }  // namespace test
 }  // namespace onnxruntime
+
+#endif  //  defined(ENABLE_ORT_FORMAT_LOAD)

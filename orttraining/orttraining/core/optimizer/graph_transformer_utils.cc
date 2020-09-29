@@ -5,6 +5,7 @@
 
 #include "core/mlas/inc/mlas.h"
 #include "core/optimizer/bias_gelu_fusion.h"
+#include "core/optimizer/bias_softmax_fusion.h"
 #include "core/optimizer/cast_elimination.h"
 #include "core/optimizer/computation_reduction.h"
 #include "core/optimizer/constant_folding.h"
@@ -42,6 +43,7 @@
 #include "orttraining/core/optimizer/localized_recompute.h"
 #include "orttraining/core/optimizer/megatron_transformer.h"
 #include "orttraining/core/optimizer/nonzero_shape_setter.h"
+#include "orttraining/core/optimizer/transformer_layer_recompute.h"
 
 namespace onnxruntime {
 namespace training {
@@ -72,10 +74,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       rule_transformer->Register(make_unique<CastElimination>());
       rule_transformer->Register(make_unique<NonZeroShapeSetter>());
       rule_transformer->Register(make_unique<InsertSoftmaxCrossEntropyLossOutput>());
-      if (config.gelu_checkpoint) {
+      if (config.gelu_recompute) {
         rule_transformer->Register(make_unique<GeluRecompute>());
       }
-      if (config.attn_dropout_checkpoint) {
+      if (config.attn_dropout_recompute) {
         rule_transformer->Register(make_unique<AttentionDropoutRecompute>());
       }
 
@@ -103,6 +105,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
             horizontal_parallel_size, compatible_eps));
       }
       transformers.emplace_back(onnxruntime::make_unique<ComputationReductionTransformer>(compatible_eps));
+
+      if (config.transformer_layer_recompute) {
+        transformers.emplace_back(onnxruntime::make_unique<TransformerLayerRecompute>(compatible_eps));
+      }
     } break;
 
     case TransformerLevel::Level2: {
@@ -158,7 +164,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
   switch (level) {
     case TransformerLevel::Level1: {
       std::unordered_set<std::string> l1_execution_providers = {};
-      std::unordered_set<std::string> cpu_cuda_execution_providers = {onnxruntime::kCpuExecutionProvider, onnxruntime::kCudaExecutionProvider};
+      std::unordered_set<std::string> cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};
 
       // TODO hack - constant folding currently doesn't work after mixed precision transformation so it's disabled for now
       //             ORT uses CPU kernels to evaluate constant values but some of them don't support fp16
@@ -166,7 +172,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(onnxruntime::make_unique<MatMulAddFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));
       transformers.emplace_back(onnxruntime::make_unique<MatmulTransposeFusion>(l1_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<BiasDropoutFusion>(cpu_cuda_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<BiasDropoutFusion>(cuda_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<BiasSoftmaxFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<MatMulScaleFusion>(l1_execution_providers, weights_to_train));
 
       rule_transformer = optimizer_utils::GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable, l1_execution_providers);

@@ -14,7 +14,13 @@ endif()
 # Support OS X versions 10.12+
 # This variable is ignored on non-Apple platforms and needs to be set prior to the first project(...) invocation
 # TODO: Make the miniumum deployment target MacOSX version configurable
-set(CMAKE_OSX_DEPLOYMENT_TARGET "10.12" CACHE STRING "Minimum OS X deployment version for ORT" FORCE)
+# If the CMAKE_OSX_DEPLOYMENT_TARGET was set (currently valid only for iOS build),
+# we will cache its value instead of the default "10.12"
+if (NOT DEFINED CMAKE_OSX_DEPLOYMENT_TARGET)
+  set(CMAKE_OSX_DEPLOYMENT_TARGET "10.12" CACHE STRING "Minimum OS X deployment version for ORT" FORCE)
+else()
+  set(CMAKE_OSX_DEPLOYMENT_TARGET ${CMAKE_OSX_DEPLOYMENT_TARGET} CACHE STRING "Minimum OS X deployment version for ORT" FORCE)
+endif()
 
 # Project
 project(onnxruntime C CXX)
@@ -36,6 +42,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # Enable CTest
 enable_testing()
+include(Dart)
 
 if(NOT CMAKE_BUILD_TYPE)
   message(STATUS "Build type not set - using RelWithDebInfo")
@@ -106,7 +113,7 @@ option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 #It's default OFF because it's experimental now.
 option(onnxruntime_PREFER_SYSTEM_LIB "Experimental: Build with the preinstalled libraries in your system" OFF)
 
-# Options to reduce build size
+# Options related to reducing the binary size produced by the build
 option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
 option(onnxruntime_DISABLE_ML_OPS "Disable traditional ML ops" OFF)
 option(onnxruntime_DISABLE_RTTI "Disable RTTI" OFF)
@@ -114,6 +121,7 @@ option(onnxruntime_DISABLE_RTTI "Disable RTTI" OFF)
 option(onnxruntime_DISABLE_EXCEPTIONS "Disable exception handling. Requires onnxruntime_MINIMAL_BUILD currently." OFF)
 option(onnxruntime_MINIMAL_BUILD "Exclude as much as possible from the build. Support ORT format models. No support for ONNX format models." OFF)
 option(onnxruntime_REDUCED_OPS_BUILD "Reduced set of kernels are registered in build via modification of the kernel registration source files." OFF)
+option(onnxruntime_DISABLE_ORT_FORMAT_LOAD "Disable loading an ORT format model when onnxruntime_MINIMAL_BUILD=OFF (i.e. in a full build)." OFF)
 
 # training options
 option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
@@ -121,6 +129,9 @@ option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
 option(onnxruntime_USE_HOROVOD "Build with HOROVOD support" OFF)
 option(onnxruntime_USE_NCCL "Build with NCCL support" ON)
+#A special option just for debugging and sanitize check. Please do not enable in option in retail builds.
+#The option has no effect on Windows.
+option(onnxruntime_USE_VALGRIND "Build with valgrind hacks" OFF)
 
 # A special build option only used for gathering code coverage info
 option(onnxruntime_RUN_MODELTEST_IN_DEBUG_MODE "Run model tests even in debug mode" OFF)
@@ -135,6 +146,10 @@ if(MSVC AND WIN32 AND onnxruntime_FUZZ_TEST AND onnxruntime_BUILD_SHARED_LIB AND
   # Fuzz test library dependency, protobuf-mutator,
   # needs the onnx message to be compiled using "non-lite protobuf version"
   set(onnxruntime_FUZZ_ENABLED ON)
+endif()
+
+if(onnxruntime_USE_VALGRIND AND NOT WIN32)
+  add_definitions(-DRE2_ON_VALGRIND=1)
 endif()
 
 if (onnxruntime_ENABLE_NVTX_PROFILE)
@@ -202,6 +217,8 @@ endif()
 # Will expose option in build.py when all pieces are available
 if(onnxruntime_MINIMAL_BUILD)
   add_compile_definitions(ORT_MINIMAL_BUILD)
+  add_compile_definitions(ENABLE_ORT_FORMAT_LOAD)
+
   set(onnxruntime_REDUCED_OPS_BUILD ON)
 
   if (NOT onnxruntime_ENABLE_PYTHON)
@@ -233,6 +250,11 @@ if(onnxruntime_MINIMAL_BUILD)
       string(APPEND CMAKE_CXX_FLAGS " -g")
       string(APPEND CMAKE_C_FLAGS " -g")
     endif()
+  endif()
+else()
+  # support ORT format model loading unless onnxruntime_DISABLE_ORT_FORMAT_LOAD is set
+  if (NOT onnxruntime_DISABLE_ORT_FORMAT_LOAD)
+    add_compile_definitions(ENABLE_ORT_FORMAT_LOAD)
   endif()
 endif()
 
@@ -730,7 +752,7 @@ else()
 endif()
 
 if (NOT onnxruntime_MINIMAL_BUILD)
-  add_subdirectory(external/onnx)
+  add_subdirectory(external/onnx EXCLUDE_FROM_ALL)
 else()
   include(onnx_minimal)
 endif()
@@ -829,12 +851,16 @@ if (WIN32)
     if (MSVC)
       foreach(type EXE STATIC SHARED)
         if (NOT type MATCHES STATIC)
-          set(CMAKE_${type}_LINKER_FLAGS_RELEASE "${CMAKE_${type}_LINKER_FLAGS_RELEASE} /OPT:REF,ICF,LBR")
-          set(CMAKE_${type}_LINKER_FLAGS_RELEASE "${CMAKE_${type}_LINKER_FLAGS_RELEASE} /INCREMENTAL:NO")
-          set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /OPT:REF,ICF,LBR")
-          set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /INCREMENTAL:NO")
-          set(CMAKE_${type}_LINKER_FLAGS_MINSIZEREL "${CMAKE_${type}_LINKER_FLAGS_MINSIZEREL} /OPT:REF,ICF,LBR")
-          set(CMAKE_${type}_LINKER_FLAGS_MINSIZEREL "${CMAKE_${type}_LINKER_FLAGS_MINSIZEREL} /INCREMENTAL:NO")
+          # The WinML internal toolchain does not allow link's "additional options" to contain optimization
+          # flags (/OPT#); these are already specified using msbuild properties.
+          if (NOT DEFINED onnxruntime_DISABLE_LINKER_OPT_FLAGS)
+            set(CMAKE_${type}_LINKER_FLAGS_RELEASE "${CMAKE_${type}_LINKER_FLAGS_RELEASE} /OPT:REF,ICF,LBR")
+            set(CMAKE_${type}_LINKER_FLAGS_RELEASE "${CMAKE_${type}_LINKER_FLAGS_RELEASE} /INCREMENTAL:NO")
+            set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /OPT:REF,ICF,LBR")
+            set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /INCREMENTAL:NO")
+            set(CMAKE_${type}_LINKER_FLAGS_MINSIZEREL "${CMAKE_${type}_LINKER_FLAGS_MINSIZEREL} /OPT:REF,ICF,LBR")
+            set(CMAKE_${type}_LINKER_FLAGS_MINSIZEREL "${CMAKE_${type}_LINKER_FLAGS_MINSIZEREL} /INCREMENTAL:NO")
+          endif()
         endif()
         if (onnxruntime_ENABLE_LTO AND NOT onnxruntime_USE_CUDA)
           set(CMAKE_${type}_LINKER_FLAGS_RELEASE "${CMAKE_${type}_LINKER_FLAGS_RELEASE} /LTCG")
@@ -1230,7 +1256,7 @@ endif()
 
 #names in this var must match the directory names under onnxruntime/core/providers
 set(ONNXRUNTIME_PROVIDER_NAMES cpu)
-foreach(target_name onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas)
+foreach(target_name onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas onnxruntime_flatbuffers)
   include(${target_name}.cmake)
   if (MSVC)
     target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
@@ -1273,7 +1299,7 @@ else()
 endif()
 
 if (WIN32)
-  if (onnxruntime_BUILD_FOR_WINDOWS_STORE)
+  if (WINDOWS_STORE)
     # Setting WINAPI_FAMILY, WINVER and _WIN32_WINNT restrict the APIs exposed in Windows headers to those available
     # in store or desktop, and that support at least the version of Windows specified
     # add_compile_definitions(WINAPI_FAMILY=2)
@@ -1351,10 +1377,7 @@ if (onnxruntime_BUILD_CSHARP)
   include(onnxruntime_csharp.cmake)
 endif()
 
-if (onnxruntime_BUILD_FOR_WINDOWS_STORE)
-  set_target_properties(onnxruntime PROPERTIES VS_GLOBAL_AppContainerApplication true)
-  set_target_properties(winml_dll PROPERTIES VS_GLOBAL_AppContainerApplication true)
-
+if (WINDOWS_STORE)
   target_link_options(onnxruntime PRIVATE /DYNAMICBASE /NXCOMPAT /APPCONTAINER)
   target_link_options(winml_dll PRIVATE /DYNAMICBASE /NXCOMPAT /APPCONTAINER)
 
