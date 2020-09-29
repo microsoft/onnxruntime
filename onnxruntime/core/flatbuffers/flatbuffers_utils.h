@@ -46,10 +46,12 @@ onnxruntime::common::Status SaveValueInfoOrtFormat(
 
 void LoadStringFromOrtFormat(std::string& dst, const flatbuffers::String* fbs_string);
 
-#define LOAD_STR_FROM_ORT_FORMAT(dst, name, fbs_string) \
-  {                                                     \
-    if (fbs_string)                                     \
-      dst.set_##name(fbs_string->c_str());              \
+// This macro is to be used on a protobuf message (protobug_msg), which will not create an empty string field (str_field)
+// if fbs_string is null
+#define LOAD_STR_FROM_ORT_FORMAT(protobug_msg, str_field, fbs_string) \
+  {                                                                   \
+    if (fbs_string)                                                   \
+      protobug_msg.set_##str_field(fbs_string->c_str());              \
   }
 
 onnxruntime::common::Status LoadValueInfoOrtFormat(
