@@ -633,9 +633,16 @@ class ORTTrainer(object):
         ort_parameters.optimizer_attributes_map = optimizer_attributes_map
         ort_parameters.optimizer_int_attributes_map = optimizer_int_attributes_map
 
+        ort_parameters.attn_dropout_recompute = self.options.recompte.attn_dropout
+        ort_parameters.gelu_recompute = self.options.recompute.gelu
+        ort_parameters.transformer_layer_recompute = self.options.recompute.transformer_layer
+        ort_parameters.number_recompute_layers = self.options.recompute.number_layers
+
         # SessionOptions
         session_options = ort.SessionOptions()
         session_options.use_deterministic_compute = self.options.debug.deterministic_compute
+        if (self.options.recompte.attn_dropout or self.options.recompute.gelu or self.options.recompute.transformer_layer):
+            session_options.execution_order = ort.ExecutionOrder.PRIORITY_BASED
 
         # TrainingSession
         self._training_session = ort.TrainingSession(self._onnx_model.SerializeToString(),

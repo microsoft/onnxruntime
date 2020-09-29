@@ -107,7 +107,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       transformers.emplace_back(onnxruntime::make_unique<ComputationReductionTransformer>(compatible_eps));
 
       if (config.transformer_layer_recompute) {
-        transformers.emplace_back(onnxruntime::make_unique<TransformerLayerRecompute>(compatible_eps));
+        transformers.emplace_back(onnxruntime::make_unique<TransformerLayerRecompute>(
+            config.number_recompute_layers, compatible_eps));
       }
     } break;
 
