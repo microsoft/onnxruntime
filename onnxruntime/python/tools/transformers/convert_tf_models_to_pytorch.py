@@ -7,7 +7,6 @@ import glob
 import os
 import requests
 
-
 TFMODELS = {
     "bert-base-uncased":
     ("bert", "BertConfig", "", "https://storage.googleapis.com/bert_models/2018_10_18/uncased_L-12_H-768_A-12.zip"),
@@ -108,28 +107,53 @@ def init_pytorch_model(model_name, tf_checkpoint_path):
     return config, init_model
 
 
-def convert_tf_checkpoint_to_pytorch(model_name, config, init_model, tf_checkpoint_path):
+def convert_tf_checkpoint_to_pytorch(model_name, config, init_model, tf_checkpoint_path, is_tf2):
     load_tf_weight_func_name = "load_tf_weights_in_" + TFMODELS[model_name][0]
 
     module = __import__("transformers", fromlist=[load_tf_weight_func_name])
-    load_tf_weight_func = getattr(module, load_tf_weight_func_name)
 
-    model = load_tf_weight_func(init_model, config, tf_checkpoint_path)
+    if is_tf2 is False:
+        load_tf_weight_func = getattr(module, load_tf_weight_func_name)
+    else:
+        if TFMODELS[model_name][0] is not "bert":
+            raise NotImplementedError("Only support tf2 ckeckpoint for Bert model")
+        from transformers import convert_bert_original_tf2_checkpoint_to_pytorch
+        load_tf_weight_func = convert_bert_original_tf2_checkpoint_to_pytorch.load_tf2_weights_in_bert
+
+    # Expect transformers team will unify the order of signature in the future
+    model = load_tf_weight_func(init_model, config, tf_checkpoint_path) if is_tf2 is False else load_tf_weight_func(
+        init_model, tf_checkpoint_path, config)
     model.eval()
     return model
 
 
-def tf2pt_pipeline(model_name):
+def tf2pt_pipeline(model_name, is_tf2=False):
     if model_name not in TFMODELS:
         raise NotImplementedError(model_name + " not implemented")
     tf_checkpoint_path = download_tf_checkpoint(model_name)
     config, init_model = init_pytorch_model(model_name, tf_checkpoint_path)
-    model = convert_tf_checkpoint_to_pytorch(model_name, config, init_model, tf_checkpoint_path)
+    model = convert_tf_checkpoint_to_pytorch(model_name, config, init_model, tf_checkpoint_path, is_tf2)
     # Could then use the model in Benchmark
     return config, model
 
-
-if __name__ == '__main__':
+def tf2pt_pipeline_test():
     # For test on linux only
+    import logging
+    import torch
+    logger = logging.getLogger('')
     for model_name in TFMODELS.keys():
         config, model = tf2pt_pipeline(model_name)
+        assert(config.model_type is TFMODELS[model_name][0])
+
+        input = torch.randint(low=0,
+                              high=config.vocab_size - 1,
+                              size=(4, 128),
+                              dtype=torch.long)
+        try:
+            model(input)
+        except RuntimeError as e:
+            logger.exception(e)
+
+
+if __name__ == '__main__':
+    tf2pt_pipeline_test()
