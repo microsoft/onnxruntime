@@ -209,23 +209,10 @@ def run_pytorch(use_gpu, model_names, model_class, precision, batch_sizes, seque
                                           dtype=torch.long,
                                           device=device)
                 try:
-                    inference_model = torch.jit.trace(model, input_ids) if torchscript else model
+                    inference = torch.jit.trace(model, input_ids) if torchscript else model
+                    inference(input_ids)
 
-                    def encoder_decoder_forward():
-                        # T5 not yet supported on torch trace
-                        # https://github.com/huggingface/transformers/issues/5647
-                        with torch.no_grad():
-                            outputs = inference_model(input_ids, decoder_input_ids=input_ids)
-
-                    def encoder_forward():
-                        with torch.no_grad():
-                            outputs = inference_model(input_ids)
-
-                    inference = encoder_decoder_forward if config.is_encoder_decoder else encoder_forward
-
-                    inference()
-
-                    runtimes = timeit.repeat(lambda: inference(), repeat=repeat_times, number=1)
+                    runtimes = timeit.repeat(lambda: inference(input_ids), repeat=repeat_times, number=1)
 
                     result = {
                         "engine": "torchscript" if torchscript else "torch",
