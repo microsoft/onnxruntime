@@ -24,8 +24,8 @@ namespace detail {
 using namespace ::onnxruntime::common;
 
 Status ValidateCommonRnnInputs(const Tensor& X,
-                               const Tensor& W,
-                               const Tensor& R,
+                               const TensorShape& W_shape,
+                               const TensorShape& R_shape,
                                const Tensor* B,
                                int WRB_dim_1_multipler,
                                const Tensor* sequence_lens,
@@ -33,8 +33,6 @@ Status ValidateCommonRnnInputs(const Tensor& X,
                                int64_t num_directions,
                                int64_t hidden_size) {
   auto& X_shape = X.Shape();
-  auto& W_shape = W.Shape();
-  auto& R_shape = R.Shape();
 
   int64_t seq_length = X_shape[0];
   int64_t batch_size = X_shape[1];

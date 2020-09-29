@@ -164,7 +164,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
   switch (level) {
     case TransformerLevel::Level1: {
       std::unordered_set<std::string> l1_execution_providers = {};
-      std::unordered_set<std::string> cpu_cuda_execution_providers = {onnxruntime::kCpuExecutionProvider, onnxruntime::kCudaExecutionProvider};
+      std::unordered_set<std::string> cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};
 
       // TODO hack - constant folding currently doesn't work after mixed precision transformation so it's disabled for now
       //             ORT uses CPU kernels to evaluate constant values but some of them don't support fp16
@@ -172,7 +172,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(onnxruntime::make_unique<MatMulAddFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));
       transformers.emplace_back(onnxruntime::make_unique<MatmulTransposeFusion>(l1_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<BiasDropoutFusion>(cpu_cuda_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<BiasDropoutFusion>(cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<BiasSoftmaxFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<MatMulScaleFusion>(l1_execution_providers, weights_to_train));
 
