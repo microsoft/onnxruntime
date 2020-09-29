@@ -179,11 +179,15 @@ TEST(CApiTest, TypeInfoMap) {
 #if !defined(DISABLE_ML_OPS)
   Ort::Value map_ort = Ort::Value::CreateMap(keys_tensor, values_tensor);
   Ort::TypeInfo type_info = map_ort.GetTypeInfo();
-  Ort::MapTypeInfo map_type_info = type_info.GetMapTypeInfo();
+
+  //It doesn't own the pointer -
+  //The destructor of the "Unowned" struct will release the ownership (and thus prevent the pointer from being double freed)
+  auto map_type_info = type_info.GetMapTypeInfo();
 
   //Check key type
   ASSERT_EQ(map_type_info.GetMapKeyType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
 
+  //It owns the pointer
   Ort::TypeInfo map_value_type_info = map_type_info.GetMapValueType();
 
   //Check value type and shape
@@ -192,8 +196,6 @@ TEST(CApiTest, TypeInfoMap) {
   // ASSERT_EQ(map_value_type_info.GetTensorTypeAndShapeInfo().GetShape(), dims);
   ASSERT_EQ(map_value_type_info.GetTensorTypeAndShapeInfo().GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
 
-  map_value_type_info.release();
-  map_type_info.release();
 #else
 
 #if !defined(ORT_NO_EXCEPTIONS)
@@ -294,13 +296,14 @@ TEST(CApiTest, TypeInfoSequence) {
 
   Ort::Value seq_ort = Ort::Value::CreateSequence(in);
   Ort::TypeInfo type_info = seq_ort.GetTypeInfo();
-  Ort::SequenceTypeInfo seq_type_info = type_info.GetSequenceTypeInfo();
+
+  //It doesn't own the pointer -
+  //The destructor of the "Unowned" struct will release the ownership (and thus prevent the pointer from being double freed)
+  auto seq_type_info = type_info.GetSequenceTypeInfo();
 
   ASSERT_EQ(seq_type_info.GetSequenceElementType().GetONNXType(), ONNX_TYPE_TENSOR);
   // No shape present, as sequence allows different shapes for each element
   // ASSERT_EQ(seq_type_info.GetSequenceElementType().GetTensorTypeAndShapeInfo().GetShape(), dims);
   ASSERT_EQ(seq_type_info.GetSequenceElementType().GetTensorTypeAndShapeInfo().GetElementType(),
             ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
-
-  seq_type_info.release();
 }

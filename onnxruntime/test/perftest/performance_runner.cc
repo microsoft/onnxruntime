@@ -237,7 +237,9 @@ static std::unique_ptr<TestModelInfo> CreateModelInfo(const PerformanceTestConfi
     if (HasExtensionOf(file_path, ORT_TSTR("onnx"))) {
       return TestModelInfo::LoadOnnxModel(performance_test_config_.model_info.model_file_path.c_str());
     }
-#else
+#endif
+
+#if defined(ENABLE_ORT_FORMAT_LOAD)
     if (HasExtensionOf(file_path, ORT_TSTR("ort"))) {
       return TestModelInfo::LoadOrtModel(performance_test_config_.model_info.model_file_path.c_str());
     }
