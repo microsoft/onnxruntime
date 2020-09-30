@@ -1,0 +1,196 @@
+//
+// Main nav, breadcrumb, etc...
+//
+// stylelint-disable selector-no-type, max-nesting-depth, selector-max-compound-selectors, selector-max-type, selector-max-specificity
+
+.nav-list {
+  padding: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+  list-style: none;
+
+  .nav-list-item {
+    @include fs-4;
+    position: relative;
+    margin: 0;
+
+    @include mq(md) {
+      @include fs-3;
+    }
+
+    .nav-list-link {
+      display: block;
+      min-height: $nav-list-item-height-sm;
+      padding-top: $sp-1;
+      padding-bottom: $sp-1;
+      line-height: #{$nav-list-item-height-sm - 2 * $sp-1};
+      @if $nav-list-expander-right {
+        padding-right: $nav-list-item-height-sm;
+        padding-left: $gutter-spacing-sm;
+      } @else {
+        padding-right: $gutter-spacing-sm;
+        padding-left: $nav-list-item-height-sm;
+      }
+
+      @include mq(md) {
+        min-height: $nav-list-item-height;
+        line-height: #{$nav-list-item-height - 2 * $sp-1};
+        @if $nav-list-expander-right {
+          padding-right: $nav-list-item-height;
+          padding-left: $gutter-spacing;
+        } @else {
+          padding-right: $gutter-spacing;
+          padding-left: $nav-list-item-height;
+        }
+      }
+
+      &.active {
+        font-weight: 600;
+        text-decoration: none;
+      }
+
+      &:hover,
+      &.active {
+        background-image: linear-gradient(
+          -90deg,
+          rgba($feedback-color, 1) 0%,
+          rgba($feedback-color, 0.8) 80%,
+          rgba($feedback-color, 0) 100%
+        );
+      }
+    }
+
+    .nav-list-expander {
+      position: absolute;
+      @if $nav-list-expander-right {
+        right: 0;
+      }
+      width: $nav-list-item-height-sm;
+      height: $nav-list-item-height-sm;
+      padding-top: #{$nav-list-item-height-sm / 4};
+      padding-right: #{$nav-list-item-height-sm / 4};
+      padding-bottom: #{$nav-list-item-height-sm / 4};
+      padding-left: #{$nav-list-item-height-sm / 4};
+      color: $link-color;
+
+      @include mq(md) {
+        width: $nav-list-item-height;
+        height: $nav-list-item-height;
+        padding-top: #{$nav-list-item-height / 4};
+        padding-right: #{$nav-list-item-height / 4};
+        padding-bottom: #{$nav-list-item-height / 4};
+        padding-left: #{$nav-list-item-height / 4};
+      }
+
+      &:hover {
+        background-image: linear-gradient(
+          -90deg,
+          rgba($feedback-color, 1) 0%,
+          rgba($feedback-color, 0.8) 100%
+        );
+      }
+
+      @if $nav-list-expander-right {
+        svg {
+          transform: rotate(90deg);
+        }
+      }
+    }
+
+    > .nav-list {
+      display: none;
+      padding-left: $sp-3;
+      list-style: none;
+
+      .nav-list-item {
+        position: relative;
+
+        .nav-list-link {
+          color: $nav-child-link-color;
+        }
+
+        .nav-list-expander {
+          color: $nav-child-link-color;
+        }
+      }
+    }
+
+    &.active {
+      > .nav-list-expander svg {
+        @if $nav-list-expander-right {
+          transform: rotate(-90deg);
+        } @else {
+          transform: rotate(90deg);
+        }
+      }
+
+      > .nav-list {
+        display: block;
+      }
+    }
+  }
+}
+
+// Aux nav
+
+.aux-nav {
+  height: 100%;
+  overflow-x: auto;
+  @include fs-2;
+
+  .aux-nav-list {
+    display: flex;
+    height: 100%;
+    padding: 0;
+    margin: 0;
+    list-style: none;
+  }
+
+  .aux-nav-list-item {
+    display: inline-block;
+    height: 100%;
+    padding: 0;
+    margin: 0;
+  }
+
+  @include mq(md) {
+    padding-right: $gutter-spacing-sm;
+  }
+}
+
+// Breadcrumb nav
+
+.breadcrumb-nav {
+  @include mq(md) {
+    margin-top: -$sp-4;
+  }
+}
+
+.breadcrumb-nav-list {
+  padding-left: 0;
+  margin-bottom: $sp-3;
+  list-style: none;
+}
+
+.breadcrumb-nav-list-item {
+  display: table-cell;
+  @include fs-2;
+
+  &::before {
+    display: none;
+  }
+
+  &::after {
+    display: inline-block;
+    margin-right: $sp-2;
+    margin-left: $sp-2;
+    color: $grey-dk-000;
+    content: "/";
+  }
+
+  &:last-child {
+    &::after {
+      content: "";
+    }
+  }
+}

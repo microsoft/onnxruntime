@@ -1,0 +1,70 @@
+{
+  "_args": [
+    [
+      "normalize.scss",
+      "/Users/pmarsceill/_projects/just-the-docs"
+    ]
+  ],
+  "_from": "normalize.scss@*",
+  "_id": "normalize.scss@0.1.0",
+  "_inCache": true,
+  "_installable": true,
+  "_location": "/normalize.scss",
+  "_nodeVersion": "0.10.32",
+  "_npmUser": {
+    "email": "alexguerrero1092@gmail.com",
+    "name": "alexguerrero"
+  },
+  "_npmVersion": "2.0.2",
+  "_phantomChildren": {},
+  "_requested": {
+    "name": "normalize.scss",
+    "raw": "normalize.scss",
+    "rawSpec": "",
+    "scope": null,
+    "spec": "*",
+    "type": "range"
+  },
+  "_requiredBy": [
+    "#DEV:/"
+  ],
+  "_resolved": "https://registry.npmjs.org/normalize.scss/-/normalize.scss-0.1.0.tgz",
+  "_shasum": "4a21dc25bd4c019c857785f829b658aba2a8f9ab",
+  "_shrinkwrap": null,
+  "_spec": "normalize.scss",
+  "_where": "/Users/pmarsceill/_projects/just-the-docs",
+  "author": "",
+  "bugs": {
+    "url": "https://github.com/guerrero/normalize.scss/issues"
+  },
+  "dependencies": {},
+  "description": "Normalize.scss as a node packaged module",
+  "devDependencies": {},
+  "directories": {},
+  "dist": {
+    "shasum": "4a21dc25bd4c019c857785f829b658aba2a8f9ab",
+    "tarball": "https://registry.npmjs.org/normalize.scss/-/normalize.scss-0.1.0.tgz"
+  },
+  "files": [
+    "normalize.scss"
+  ],
+  "gitHead": "d67d517e28615a873066438af1d4845c157c9baf",
+  "homepage": "https://github.com/guerrero/normalize.scss",
+  "license": "MIT",
+  "maintainers": [
+    {
+      "name": "alexguerrero",
+      "email": "alexguerrero1092@gmail.com"
+    }
+  ],
+  "name": "normalize.scss",
+  "optionalDependencies": {},
+  "readme": "ERROR: No README data found!",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/guerrero/normalize.scss.git"
+  },
+  "scripts": {},
+  "style": "normalize.scss",
+  "version": "0.1.0"
+}

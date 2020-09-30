@@ -1,0 +1,95 @@
+// stylelint-disable primer/selector-no-utility, primer/no-override
+//
+// Utility classes for layout
+//
+
+// Display
+
+.d-block {
+  display: block !important;
+}
+.d-flex {
+  display: flex !important;
+}
+.d-inline {
+  display: inline !important;
+}
+.d-inline-block {
+  display: inline-block !important;
+}
+.d-none {
+  display: none !important;
+}
+
+@each $media-query in map-keys($media-queries) {
+  @for $i from 1 through length($spacers) {
+    @include mq($media-query) {
+      $size: #{map-get($spacers, sp-#{$i - 1})};
+      $scale: #{$i - 1};
+
+      // .d-sm-block, .d-md-none, .d-lg-inline
+      .d-#{$media-query}-block {
+        display: block !important;
+      }
+      .d-#{$media-query}-flex {
+        display: flex !important;
+      }
+      .d-#{$media-query}-inline {
+        display: inline !important;
+      }
+      .d-#{$media-query}-inline-block {
+        display: inline-block !important;
+      }
+      .d-#{$media-query}-none {
+        display: none !important;
+      }
+    }
+  }
+}
+
+// Horizontal alignment
+
+.float-left {
+  float: left !important;
+}
+
+.float-right {
+  float: right !important;
+}
+
+.flex-justify-start {
+  justify-content: flex-start !important;
+}
+
+.flex-justify-end {
+  justify-content: flex-end !important;
+}
+
+.flex-justify-between {
+  justify-content: space-between !important;
+}
+
+.flex-justify-around {
+  justify-content: space-around !important;
+}
+
+// Vertical alignment
+
+.v-align-baseline {
+  vertical-align: baseline !important;
+}
+.v-align-bottom {
+  vertical-align: bottom !important;
+}
+.v-align-middle {
+  vertical-align: middle !important;
+}
+.v-align-text-bottom {
+  vertical-align: text-bottom !important;
+}
+.v-align-text-top {
+  vertical-align: text-top !important;
+}
+.v-align-top {
+  vertical-align: top !important;
+}

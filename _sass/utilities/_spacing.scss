@@ -1,0 +1,165 @@
+//
+// Utility classes for margins and padding
+//
+
+// scss-lint:disable SpaceAfterPropertyName
+// stylelint-disable block-opening-brace-space-after, block-opening-brace-space-before, primer/selector-no-utility, primer/no-override
+
+// Margin spacer utilities
+
+.mx-auto {
+  margin-right: auto !important;
+  margin-left: auto !important;
+}
+
+@for $i from 1 through length($spacers) {
+  $size: #{map-get($spacers, sp-#{$i - 1})};
+  $scale: #{$i - 1};
+
+  // .m-0, .m-1, .m-2...
+  .m-#{$scale} {
+    margin: #{$size} !important;
+  }
+  .mt-#{$scale} {
+    margin-top: #{$size} !important;
+  }
+  .mr-#{$scale} {
+    margin-right: #{$size} !important;
+  }
+  .mb-#{$scale} {
+    margin-bottom: #{$size} !important;
+  }
+  .ml-#{$scale} {
+    margin-left: #{$size} !important;
+  }
+
+  .mx-#{$scale} {
+    margin-right: #{$size} !important;
+    margin-left: #{$size} !important;
+  }
+
+  .my-#{$scale} {
+    margin-top: #{$size} !important;
+    margin-bottom: #{$size} !important;
+  }
+
+  .mxn-#{$scale} {
+    margin-right: -#{$size} !important;
+    margin-left: -#{$size} !important;
+  }
+  .mx-#{$scale}-auto {
+    margin-right: auto !important;
+    margin-left: auto !important;
+  }
+}
+
+@each $media-query in map-keys($media-queries) {
+  @for $i from 1 through length($spacers) {
+    @include mq($media-query) {
+      $size: #{map-get($spacers, sp-#{$i - 1})};
+      $scale: #{$i - 1};
+
+      // .m-sm-0, .m-md-1, .m-lg-2...
+      .m-#{$media-query}-#{$scale} {
+        margin: #{$size} !important;
+      }
+      .mt-#{$media-query}-#{$scale} {
+        margin-top: #{$size} !important;
+      }
+      .mr-#{$media-query}-#{$scale} {
+        margin-right: #{$size} !important;
+      }
+      .mb-#{$media-query}-#{$scale} {
+        margin-bottom: #{$size} !important;
+      }
+      .ml-#{$media-query}-#{$scale} {
+        margin-left: #{$size} !important;
+      }
+
+      .mx-#{$media-query}-#{$scale} {
+        margin-right: #{$size} !important;
+        margin-left: #{$size} !important;
+      }
+
+      .my-#{$media-query}-#{$scale} {
+        margin-top: #{$size} !important;
+        margin-bottom: #{$size} !important;
+      }
+
+      .mxn-#{$media-query}-#{$scale} {
+        margin-right: -#{$size} !important;
+        margin-left: -#{$size} !important;
+      }
+    }
+  }
+}
+
+// Padding spacer utilities
+
+@for $i from 1 through length($spacers) {
+  $size: #{map-get($spacers, sp-#{$i - 1})};
+  $scale: #{$i - 1};
+
+  // .p-0, .p-1, .p-2...
+  .p-#{$scale} {
+    padding: #{$size} !important;
+  }
+  .pt-#{$scale} {
+    padding-top: #{$size} !important;
+  }
+  .pr-#{$scale} {
+    padding-right: #{$size} !important;
+  }
+  .pb-#{$scale} {
+    padding-bottom: #{$size} !important;
+  }
+  .pl-#{$scale} {
+    padding-left: #{$size} !important;
+  }
+
+  .px-#{$scale} {
+    padding-right: #{$size} !important;
+    padding-left: #{$size} !important;
+  }
+
+  .py-#{$scale} {
+    padding-top: #{$size} !important;
+    padding-bottom: #{$size} !important;
+  }
+}
+
+@each $media-query in map-keys($media-queries) {
+  @include mq($media-query) {
+    @for $i from 1 through length($spacers) {
+      $size: #{map-get($spacers, sp-#{$i - 1})};
+      $scale: #{$i - 1};
+
+      // .p-sm-0, .p-md-1, .p-lg-2...
+      .p-#{$media-query}-#{$scale} {
+        padding: #{$size} !important;
+      }
+      .pt-#{$media-query}-#{$scale} {
+        padding-top: #{$size} !important;
+      }
+      .pr-#{$media-query}-#{$scale} {
+        padding-right: #{$size} !important;
+      }
+      .pb-#{$media-query}-#{$scale} {
+        padding-bottom: #{$size} !important;
+      }
+      .pl-#{$media-query}-#{$scale} {
+        padding-left: #{$size} !important;
+      }
+
+      .px-#{$media-query}-#{$scale} {
+        padding-right: #{$size} !important;
+        padding-left: #{$size} !important;
+      }
+
+      .py-#{$media-query}-#{$scale} {
+        padding-top: #{$size} !important;
+        padding-bottom: #{$size} !important;
+      }
+    }
+  }
+}

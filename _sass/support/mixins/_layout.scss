@@ -1,0 +1,34 @@
+// Media query
+
+// Media query mixin
+// Usage:
+// @include mq(md) {
+//   ..medium and up styles
+// }
+@mixin mq($name) {
+  // Retrieves the value from the key
+  $value: map-get($media-queries, $name);
+
+  // If the key exists in the map
+  @if $value != null {
+    // Prints a media query based on the value
+    @media (min-width: rem($value)) {
+      @content;
+    }
+  } @else {
+    @warn "No value could be retrieved from `#{$media-query}`. "
+      + "Please make sure it is defined in `$media-queries` map.";
+  }
+}
+
+// Responsive container
+
+@mixin container {
+  padding-right: $gutter-spacing-sm;
+  padding-left: $gutter-spacing-sm;
+
+  @include mq(md) {
+    padding-right: $gutter-spacing;
+    padding-left: $gutter-spacing;
+  }
+}
