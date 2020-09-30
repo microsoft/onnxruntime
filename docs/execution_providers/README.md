@@ -33,15 +33,12 @@ The same ONNX Runtime API is used across all EPs. This provides the consistent i
 ``` python
 import onnxruntime as rt
 
-# initialize the model.onnx
-sess = rt.InferenceSession("model.onnx")
-
 #define the priority order for the execution providers
+# prefer CUDA Execution Provider over CPU Execution Provider
 EP_list = ['CUDAExecutionProvider', 'CPUExecutionProvider']
 
-# set the EP priority
-sess.set_providers(EP_list)
-
+# initialize the model.onnx
+sess = rt.InferenceSession("model.onnx", providers=EP_list)
 
 # get the outputs metadata as a list of :class:`onnxruntime.NodeArg`
 output_name = sess.get_outputs()[0].name
@@ -58,5 +55,10 @@ print("Output shape:", detections.shape)
 image = post.image_postprocess(original_image, input_size, detections)
 image = Image.fromarray(image)
 image.save("kite-with-objects.jpg")
+
+# Update EP priority to only CPUExecutionProvider
+sess.set_providers('CPUExecutionProvider')
+
+cpu_detection = sess.run(...)
 
 ```
