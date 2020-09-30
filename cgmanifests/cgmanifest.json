@@ -467,6 +467,16 @@
             },
             "comments": "MurmurHash3"
          }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "b89da3c5a0aa18fb2c6163ad9984f81ab65b22e3",
+               "repositoryUrl": "https://github.com/mestevens/gtest-ios-framework"
+            },
+            "comments": "gtest-ios-framework"
+         }
       }
    ],
    "Version": 1
