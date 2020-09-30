@@ -1,11 +1,10 @@
-# docker build --network=host --file Dockerfile.rocm3.7.pytorch --tag ort:rocm3.7-pytorch .
+# docker build --network=host --file Dockerfile.rocm3.8.pytorch --tag ort:rocm3.8-pytorch .
 
-FROM rocm/pytorch:rocm3.7_ubuntu18.04_py3.6_pytorch
-#FROM rocm/pytorch:rocm3.7_ubuntu18.04_py3.6_pytorch_gcc
+FROM rocm/pytorch:rocm3.8_ubuntu18.04_py3.6_pytorch
 
 RUN curl https://bazel.build/bazel-release.pub.gpg | apt-key add -
 RUN cat /dev/null > /etc/apt/sources.list.d/rocm.list
-RUN echo 'deb [arch=amd64] http://repo.radeon.com/rocm/apt/3.7/ xenial main' | tee /etc/apt/sources.list.d/rocm.list
+RUN echo 'deb [arch=amd64] http://repo.radeon.com/rocm/apt/3.8/ xenial main' | tee /etc/apt/sources.list.d/rocm.list
 
 RUN apt-get -y update
 RUN apt-get -y install apt-utils
