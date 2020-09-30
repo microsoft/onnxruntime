@@ -465,7 +465,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     params.attn_dropout_recompute = flags["attn_dropout_recompute"].as<bool>();
     params.gelu_recompute = flags["gelu_recompute"].as<bool>();
     params.transformer_layer_recompute = flags["transformer_layer_recompute"].as<bool>();
-    params.number_recompute_layers = flags["number_recompute_layers"].as<bool>();
+    params.number_recompute_layers = flags["number_recompute_layers"].as<int>();
 
     ort_params.log_severity = static_cast<logging::Severity>(flags["ort_log_severity"].as<int>());
     ORT_RETURN_IF_NOT(
