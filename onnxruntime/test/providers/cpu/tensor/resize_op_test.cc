@@ -135,7 +135,7 @@ TEST(ResizeOpTest, ResizeOpLineartDownSampleTest_2DBilinear_pytorch_half_pixel) 
   std::vector<float> Y = {1.6666666f, 7.0f, 12.333333f};
 
   test.AddOutput<float>("Y", {sizes[0], sizes[1]}, Y);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); // TensorRT: results mismatch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: results mismatch
 }
 
 TEST(ResizeOpTest, ResizeOpLineartUpSampleTest_4DBilinear_asymmetric) {
@@ -438,7 +438,6 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample5dTest_WithSizes_CeilMode) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider});
 }
 
-
 TEST(ResizeOpTest, ResizeOpNearestUpSample_Floor_Align_Corners) {
   OpTester test("Resize", 11);
 
@@ -470,6 +469,34 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample_Floor_Align_Corners) {
                           13.0f, 13.0f, 13.0f, 14.0f, 14.0f, 15.0f, 15.0f, 16.0f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
+  test.Run();
+}
+
+TEST(ResizeOpTest, ResizeOpNearest_OneToOneMappingBetweenInputAndOutputDataDims) {
+  OpTester test("Resize", 11);
+
+  std::vector<float> roi{};
+  // There is one-to-one mapping in the outermost dim.
+  // This test is to ensure that the co-ordinate transformation is not applied to the
+  // outermost dim as there is no "resizing".
+  // If it were applied using the provided attributes ,it would result in result mismatch
+  std::vector<float> scales{1.0f, 0.5f};
+
+  test.AddAttribute("mode", "nearest");
+  test.AddAttribute("coordinate_transformation_mode", "tf_half_pixel_for_nn");
+  test.AddAttribute("nearest_mode", "ceil");
+
+  const int64_t C = 2, D = 3;
+  std::vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  test.AddInput<float>("X", {C, D}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {2}, scales);
+
+  // would produce {5.0f, 5.0f} if co-ordinate transformation was applied
+  // to the outermost dim
+  std::vector<float> Y = {2.0f, 5.0f};
+  test.AddOutput<float>("Y", {2, 1}, Y);
   test.Run();
 }
 
@@ -573,7 +600,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample_Nearest2xOptimization_Sizes) {
                             3.0f, 3.0f, 4.0f, 4.0f};
 
     test.AddOutput<float>("Y", {N, C, sizes[2], sizes[3]}, Y);
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); // TensorRT: results mismatch
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: results mismatch
   };
 
   run_test(false);
