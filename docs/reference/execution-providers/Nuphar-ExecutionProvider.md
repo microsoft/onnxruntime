@@ -23,13 +23,13 @@ For build instructions, please see the [BUILD page](../../how-to/build.md#nuphar
 
 ## Using the Nuphar execution provider
 ### C/C++
-The Nuphar execution provider needs to be registered with ONNX Runtime to enable in the inference session. The C API details are [here](../api/c-api.md.md).
+The Nuphar execution provider needs to be registered with ONNX Runtime to enable in the inference session. The C API details are [here](../api/c-api.md).
 
 ### Python
 You can use the Nuphar execution provider via the python wheel from the ONNX Runtime build. The Nuphar execution provider will be automatically prioritized over the default CPU execution providers, thus no need to separately register the execution provider. Python APIs details are [here](../python/api_summary.rst#api-summary).
 
 ## Performance and Accuracy Testing
-You can test your ONNX model's performance with [onnxruntime_perf_test](../../onnxruntime/test/perftest/README.md), or test accuracy with [onnx_test_runner](../../onnxruntime/test/onnx/README.txt). To run these tools with the Nuphar execution provider, please pass `-e nuphar` in command line options.
+You can test your ONNX model's performance with [onnxruntime_perf_test](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/test/perftest/README.md), or test accuracy with [onnx_test_runner](../../onnxruntime/test/onnx/README.txt). To run these tools with the Nuphar execution provider, please pass `-e nuphar` in command line options.
 
 Please note that Nuphar uses TVM thread pool and parallel schedule for multi-thread inference performance. When building with OpenMP or MKLML, TVM thread pool would use gomp or iomp as its implementation; otherwise, TVM creates its own thread pool. Because of this, the current default parallel schedule policy is:
 - Default to on for USE_OPENMP or USE_MKLML. User can use OMP_NUM_THREADS/MKL_NUM_THREADS to control TVM thread pool, as well as TVM_NUM_THREADS

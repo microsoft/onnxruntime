@@ -47,7 +47,7 @@ InferenceSession session_object{so,env};
 session_object.RegisterExecutionProvider(std::make_unique<::onnxruntime:: DNNLExecutionProvider >());
 status = session_object.Load(model_file_name);
 ```
-The C API details are [here](../api/c-api.md.md).
+The C API details are [here](../api/c-api.md).
 
 ### Python
 When using the python wheel from the ONNX Runtime built with DNNL execution provider, it will be automatically prioritized over the CPU execution provider. Python APIs details are [here](https://aka.ms/onnxruntime-python).

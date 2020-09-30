@@ -65,7 +65,7 @@ The C API details are [here](../api/c-api.md).
 
 ### Python
 
-When using the python wheel from the ONNX Runtime built with nGraph execution provider, it will be automatically prioritized over the CPU execution provider. Python APIs details are [here](../python/api_summary.rst#api-summary).
+When using the python wheel from the ONNX Runtime built with nGraph execution provider, it will be automatically prioritized over the CPU execution provider. Python APIs details are [here](/python/api_summary).
 
 ## Performance Tuning
 

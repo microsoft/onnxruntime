@@ -28,9 +28,9 @@ InferenceSession session_object{so, env};
 session_object.RegisterExecutionProvider(std::make_unique<::onnxruntime::ArmNNExecutionProvider>());
 status = session_object.Load(model_file_name);
 ```
-The C API details are [here](../api/c-api.md.md).
+The C API details are [here](../api/c-api.md).
 
 ### Performance Tuning
 For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../../how-to/tune-performance.md)
 
-When/if using [onnxruntime_perf_test](../../onnxruntime/test/perftest), use the flag -e armnn
+When/if using [onnxruntime_perf_test](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/test/perftest), use the flag -e armnn
