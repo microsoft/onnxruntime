@@ -195,13 +195,13 @@ _NOTE: The current API is experimental and expected to see significant changes i
   from onnxruntime.training import ORTTrainer, optim
 
   # Model definition
-  class Net(torch.nn.Module):
-    def __init__(self, D_in, H, D_out):
+  class NeuralNet(torch.nn.Module):
+    def __init__(self, input_size, hidden_size, num_classes):
       ...
-    def forward(self, x):
+    def forward(self, data):
       ...
 
-  model = Net(D_in, H, D_out)
+  model = NeuralNet(input_size=784, hidden_size=500, num_classes=10)
   criterion = torch.nn.Functional.cross_entropy 
   model_description = {'inputs':  [('data', ['in', 'batch_size']),
                                    ('target', ['label_x_batch_size'])],
