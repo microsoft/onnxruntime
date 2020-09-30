@@ -9,11 +9,11 @@ jobs:
     
     - script: 'export DATE=`date +"%m-%d-%Y-%H-%M"` && echo $DATE > date.txt && $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/perf.sh `echo $DATE`'
       displayName: 'Command Line Script'
-      workingDirectory: '/home/hcsuser/perf/'
+      #workingDirectory: '/home/hcsuser/perf/'
 
     - script: 'mkdir $(Build.SourcesDirectory)/Artifact && cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result/`cat date.txt` $(Build.SourcesDirectory)/Artifact' 
       displayName: 'Prepare Artifacts'
-      workingDirectory: '/home/hcsuser/perf/'
+      #workingDirectory: '/home/hcsuser/perf/'
 
     - task: PublishBuildArtifacts@1
       inputs:
