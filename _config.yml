@@ -7,15 +7,15 @@ kramdown:
 logo: "/images/ONNX-Runtime-logo.svg"
 aux_links:
   "Get started":
-    - "/docs/get-started"
+    - "/docs/get-started/"
   "Tutorials":
-    - "/docs/tutorials"
+    - "/docs/tutorials/"
   "Recipes":
-    - "/docs/how-to"
+    - "/docs/how-to/"
   "Reference":
-    - "/docs/reference"
+    - "/docs/reference/"
   "Resources":
-    - "/docs/resources"
+    - "/docs/resources/"
   "GitHub":
     - "https://github.com/microsoft/onnxruntime"
 ga_tracking: UA-156955408-1    
