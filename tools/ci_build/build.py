@@ -429,7 +429,7 @@ def get_config_build_dir(build_dir, config):
 
 def run_subprocess(args, cwd=None, capture=False, dll_path=None,
                    shell=False, env={}):
-    log.debug("Running subprocess in '{0}'\n{1}".format(
+    log.info("Running subprocess in '{0}'\n{1}".format(
         cwd or os.getcwd(), args))
     my_env = os.environ.copy()
     if dll_path:
@@ -768,7 +768,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             cmake_args += [
                 "-DCMAKE_SYSTEM_NAME=iOS",
                 "-Donnxruntime_BUILD_SHARED_LIB=ON",
-                "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
                 "-DCMAKE_OSX_SYSROOT=" + args.ios_sysroot,
                 "-DCMAKE_OSX_ARCHITECTURES=" + args.osx_arch,
                 "-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target,
@@ -782,7 +781,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             if args.xcode_code_signing_team_id:
                 cmake_args += ["-DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=" + args.xcode_code_signing_team_id]
         else:
-            # We are cross comppiling on linux
+            # TODO: the cross compiling on Linux is not officially supported by Apple
+            #   and is already broken with the latest codebase, so it should be removed.
+            # We are cross compiling on Linux
             needed_args = [
                 args.ios_sysroot,
                 args.arm64 or args.arm,
@@ -1079,6 +1080,12 @@ def run_android_tests(args, source_dir, config, cwd):
                                  'B] is bigger than threshold [' + str(bin_size_threshold) + 'B]')
 
 
+def run_ios_tests(args, source_dir, config, cwd):
+    run_subprocess(["xcodebuild", "test", "-project", "./onnxruntime.xcodeproj",
+                    "-scheme",  "onnxruntime_test_all_xc",
+                    "-destination", "platform=iOS Simulator,OS=14.0,name=iPhone SE (2nd generation)"], cwd=cwd)
+
+
 def run_training_python_frontend_tests(cwd):
     run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer.py'], cwd=cwd)
     run_subprocess([sys.executable, 'onnxruntime_test_training_unit_tests.py'], cwd=cwd)
@@ -1213,6 +1220,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
         if args.android:
             run_android_tests(args, source_dir, config, cwd)
+            continue
+        elif args.ios:
+            run_ios_tests(args, source_dir, config, cwd)
             continue
         dll_path_list = []
         if args.use_nuphar:
