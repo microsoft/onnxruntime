@@ -117,10 +117,10 @@ class ORTGlueTest(unittest.TestCase):
             expected_acc_and_f1 = 0.8762126578380043
             expected_loss = 0.42737212419217707
         elif self.local_rank == 0:
-            expected_acc = 0.8235294117647058
-            expected_f1 = 0.8775510204081631
-            expected_acc_and_f1 = 0.8505402160864345
-            expected_loss = 0.429875893627896
+			expected_acc = 0.8308823529411765
+            expected_f1 = 0.881646655231561
+            expected_acc_and_f1 = 0.8562645040863688
+            expected_loss = 0.42491564023144107
 
         if self.local_rank == -1:
             # not parallel case, we can run both new and old api tests

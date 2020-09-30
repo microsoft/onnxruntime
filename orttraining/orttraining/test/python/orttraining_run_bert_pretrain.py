@@ -26,6 +26,13 @@ import onnxruntime as ort
 from onnxruntime.training import amp, optim, orttrainer
 from onnxruntime.training.optim import _LRScheduler, PolyWarmupLRScheduler
 
+# need to override torch.onnx.symbolic_opset12.nll_loss to handle ignore_index == -100 cases.
+# the fix for ignore_index == -100 cases is already in pytorch master.
+# however to use current torch master is causing computation changes in many tests.
+# eventually we will use pytorch with fixed nll_loss once computation
+# issues are understood and solved.
+import onnxruntime.capi.pt_patch
+
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                     datefmt='%m/%d/%Y %H:%M:%S',
                     level=logging.INFO)
@@ -271,9 +278,6 @@ def setup_training(args):
     device = torch.device("cuda", args.local_rank)
     args.n_gpu = 1
 
-    from onnxruntime.capi._pybind_state import set_cuda_device_id
-    set_cuda_device_id(args.local_rank)
-
     if args.gradient_accumulation_steps < 1:
         raise ValueError("Invalid gradient_accumulation_steps parameter: {}, should be >= 1".format(
             args.gradient_accumulation_steps))
@@ -505,9 +509,6 @@ if __name__ == "__main__":
         local_rank = int(sys.argv[1][len('--local_rank='):])
         world_size = int(os.environ['WORLD_SIZE'])
         print("torch.parallel.launch, local_rank/world_size: ", local_rank, '/', world_size)
-
-        from onnxruntime.capi._pybind_state import set_cuda_device_id
-        set_cuda_device_id(local_rank)
 
         test = ORTBertPretrainTest()
         test.setUp()
