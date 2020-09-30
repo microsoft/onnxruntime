@@ -196,26 +196,11 @@ class InferenceSession(Session):
             self._create_inference_session(providers, provider_options)
         except:
             if self._enable_fallback:
-                # Collect fallback providers matching user's order
-                fallback_providers = []
-                fallback_providers_options = []
-                providers = providers or []
-
-                # Are there any user providers from the default fallback list?
-                for i, provider in enumerate(providers):
-                    if provider in self._fallback_providers:
-                        fallback_providers.append(provider)
-                        try:
-                            fallback_providers_options.append(provider_options[i])
-                        except:
-                            fallback_providers_options.append(None)
-
-                # Include the rest of the fallback providers
-                for provider in self._fallback_providers:
-                    if provider not in fallback_providers:
-                        fallback_providers.append(provider)
-                        fallback_providers_options.append(None)
-                self._create_inference_session(fallback_providers, fallback_provider_options)
+                print("EP Error using {}".format(self._providers))
+                print("Falling back to {} and retrying.".format(self._fallback_providers))
+                self._create_inference_session(self._fallback_providers)
+                # Fallback only once.
+                self.disable_fallback()
             else:
                 raise
 
