@@ -738,7 +738,7 @@ def testORTTrainerMixedPrecisionLossScaler(seed, device, expected_loss, fetches)
     (True, False, False, 0, [10.5774, 10.4403, 10.4175, 10.2886, 10.2760]),
     (False, True, False, 0, [10.5774, 10.4403, 10.4175, 10.2886, 10.2760]),
     (False, False, True, 0, [10.5774, 10.4403, 10.4175, 10.2886, 10.2760]),
-    (False, False, True, 2, [10.5774, 10.4403, 10.4175, 10.2886, 10.2760]),
+    (False, False, True, 1, [10.5774, 10.4403, 10.4175, 10.2886, 10.2760]),
 ])
 def testORTTrainerRecompute(attn_dropout, gelu, transformer_layer, number_layers, expected_loss):
     seed = 321

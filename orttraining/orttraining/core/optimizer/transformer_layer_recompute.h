@@ -17,6 +17,8 @@ class TransformerLayerRecompute : public GraphTransformer {
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 
+  bool ShouldOnlyApplyOnce() const override { return true; }
+
  private:
   Status IdentifyTransformerLayerEdges(const Graph& graph,
                                        std::vector<std::pair<const NodeArg*, const NodeArg*>>& start_end_edges,
