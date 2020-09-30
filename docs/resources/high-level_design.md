@@ -104,7 +104,7 @@ Starting with the ONNX Runtime 1.2 release we are bringing a new layered archite
 
 The high level design looks like this
 
-![ONNX + WinML layered architecture](images/layered-architecture.png)
+![ONNX + WinML layered architecture](/images/layered-architecture.png)
 
 You can see we replaced the embedded ONNX runtime with the new ONNXRuntime.dll.  With this new approach customers have flexibility on which API they choose to use and on how they want to distribute the binaries.
 

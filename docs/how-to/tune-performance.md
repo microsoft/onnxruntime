@@ -126,15 +126,18 @@ DirectML is the hardware-accelerated DirectX 12 library for machine learning on 
 ## Tuning performance for specific Execution Providers
 
 ### Thread management
+
 * If ORT is built with OpenMP, use the OpenMP env variable to control the number of intra op num threads.
 * If ORT is not built with OpenMP, use the appropriate ORT API to control intra op num threads.
 * Inter op num threads (used only when parallel execution is enabled) is not affected by OpenMP settings and should
 always be set using the ORT APIs.
 
 ### Default CPU Execution Provider (MLAS)
+
 The default execution provider uses different knobs to control the thread number.
 
 For the default CPU execution provider, you can try following knobs in the Python API:
+
 ```python
 import onnxruntime as rt
 
@@ -155,6 +158,7 @@ number of threads used to parallelize the execution of the graph (across nodes).
 * sess_options.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL. Default is already ORT_ENABLE_ALL(99). Please see [onnxruntime_c_api.h](https://github.com/microsoft/onnxruntime/tree/master/include/onnxruntime/core/session/onnxruntime_c_api.h#L241)  (enum GraphOptimizationLevel) for the full list of all optimization levels. For details regarding available optimizations and usage please refer to the [Graph Optimizations Doc](../resources/graph-optimizations.md).
 
 ### MKL_DNN/nGraph/MKL_ML Execution Provider
+
 MKL_DNN, MKL_ML and nGraph all depends on openmp for parallelization. For those execution providers, we need to use the openmp environment variable to tune the performance.
 
 The most widely used environment variables are:

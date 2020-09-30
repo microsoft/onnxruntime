@@ -37,7 +37,7 @@ status = session_object.Load(model_file_name);
 ```
 You can check [here](https://github.com/scxiao/ort_test/tree/master/char_rnn) for a specific c/c++ program.
 
-The C API details are [here](../C_API.md#c-api).
+The C API details are [here](../api/c-api.md.md).
 
 ### Python
 When using the Python wheel from the ONNX Runtime build with MIGraphX execution provider, it will be automatically
@@ -48,7 +48,7 @@ You can check [here](https://github.com/scxiao/ort_test/tree/master/python/run_o
 model on either the CPU or MIGraphX Execution Provider.
 
 ## Performance Tuning
-For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../ONNX_Runtime_Perf_Tuning.md)
+For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../../how-to/tune-performance.md)
 
 When/if using [onnxruntime_perf_test](../../onnxruntime/test/perftest#onnxruntime-performance-test), use the flag `-e migraphx` 
 

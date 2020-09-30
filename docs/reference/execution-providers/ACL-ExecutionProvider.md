@@ -33,10 +33,10 @@ session_object.RegisterExecutionProvider(std::make_unique<::onnxruntime::ACLExec
 status = session_object.Load(model_file_name);
 ```
 
-The C API details are [here](../api/c-api.md).
+The C API details are [here](../api/c-api.md.md).
 
 ## Performance Tuning
 
-For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../ONNX_Runtime_Perf_Tuning.md)
+For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../../how-to/tune-performance.md)
 
 When/if using [onnxruntime_perf_test](../../onnxruntime/test/perftest), use the flag -e acl

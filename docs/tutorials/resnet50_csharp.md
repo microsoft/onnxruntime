@@ -162,7 +162,7 @@ dotnet run ~/Downloads/resnet50-v2-7.onnx ~/Downloads/dog.jpeg
 
 Running this on the following image:
 
-![](dog.jpeg)
+![](/images/dog.jpeg)
 
 We get the following output:
 

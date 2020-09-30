@@ -9,7 +9,7 @@ nav_order: 13
 {: .no_toc }
 
 <p align="center">
-  <img src="./images/Vitis-AI.png">
+  <img src="/images/Vitis-AI.png">
 </p>
 
 [Vitis-AI](https://github.com/Xilinx/Vitis-AI) is Xilinx's development stack for hardware-accelerated AI inference on Xilinx platforms, including both edge devices and Alveo cards. It consists of optimized IP, tools, libraries, models, and example designs. It is designed with high efficiency and ease of use in mind, unleashing the full potential of AI acceleration on Xilinx FPGA and ACAP.

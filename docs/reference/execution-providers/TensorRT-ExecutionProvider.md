@@ -40,7 +40,7 @@ InferenceSession session_object{so,env};
 session_object.RegisterExecutionProvider(std::make_unique<::onnxruntime::TensorrtExecutionProvider>());
 status = session_object.Load(model_file_name);
 ```
-The C API details are [here](../C_API.md#c-api).
+The C API details are [here](../api/c-api.md.md).
 
 #### Shape Inference for TensorRT Subgraphs
 If some operators in the model are not supported by TensorRT, ONNX Runtime will partition the graph and only send supported subgraphs to TensorRT execution provider. Because TensorRT requires that all inputs of the subgraphs have shape specified, ONNX Runtime will throw error if there is no input shape info. In this case please run shape inference for the entire model first by running script [here](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/providers/nuphar/scripts/symbolic_shape_infer.py).
@@ -67,7 +67,7 @@ When using the Python wheel from the ONNX Runtime build with TensorRT execution 
 Please see [this Notebook](../python/notebooks/onnx-inference-byoc-gpu-cpu-aks.ipynb) for an example of running a model on GPU using ONNX Runtime through Azure Machine Learning Services.
 
 ## Performance Tuning
-For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../ONNX_Runtime_Perf_Tuning.md)
+For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../../how-to/tune-performance.md)
 
 When/if using [onnxruntime_perf_test](../../onnxruntime/test/perftest#onnxruntime-performance-test), use the flag `-e tensorrt` 
 

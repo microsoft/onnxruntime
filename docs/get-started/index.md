@@ -15,8 +15,3 @@ You can benefit from ONNX Runtime if you want to:
 * Train in Python but deploy into a C#/C++/Java app
 * Run on different hardware and operating systems
 * Support models created in several different frameworks
-
-
-
-
-

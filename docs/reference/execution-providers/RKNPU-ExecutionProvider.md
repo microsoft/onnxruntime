@@ -41,7 +41,7 @@ InferenceSession session_object{so,env};
 session_object.RegisterExecutionProvider(std::make_unique<::onnxruntime::RknpuExecutionProvider>());
 status = session_object.Load(model_file_name);
 ```
-The C API details are [here](../C_API.md#c-api).
+The C API details are [here](../api/c-api.md.md).
 
 
 ## Supported Operators

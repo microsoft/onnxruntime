@@ -47,13 +47,13 @@ InferenceSession session_object{so,env};
 session_object.RegisterExecutionProvider(std::make_unique<::onnxruntime:: DNNLExecutionProvider >());
 status = session_object.Load(model_file_name);
 ```
-The C API details are [here](../C_API.md#c-api).
+The C API details are [here](../api/c-api.md.md).
 
 ### Python
 When using the python wheel from the ONNX Runtime built with DNNL execution provider, it will be automatically prioritized over the CPU execution provider. Python APIs details are [here](https://aka.ms/onnxruntime-python).
 
 ## Performance Tuning
-For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../ONNX_Runtime_Perf_Tuning.md)
+For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../../how-to/tune-performance.md)
 
 ## Subgraph Optimization
 
@@ -72,7 +72,7 @@ Unique id for subgraph is set as an attribute.
 
 DnnlNode has an index to its inputs and outputs and pointer to its parent nodes. DnnlNode directly reads blocked memory from its parent to avoid data reordering.
 
-<p align="left"><img src="images/mkl-dnn_node.png" /></p>
+<p align="left"><img src="/images/mkl-dnn_node.png" /></p>
 
 
 ### Subgraph Classes
@@ -80,7 +80,7 @@ Primitive like DnnlConv, DnnlPool, etc are derived from DnnlKernel base class.
 
 The following UML diagram captures Subgraph classes.
 
-<p align="left"><img src="images/mkl-dnn_subgraph.png" /></p>
+<p align="left"><img src="/images/mkl-dnn_subgraph.png" /></p>
 
 
 ### Subgraph Execution

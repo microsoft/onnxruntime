@@ -169,16 +169,16 @@ For each box prediction, we're using ImageSharp to draw red lines to create the 
 
 Now the program is created, we can run it will the following command:
 
-```
+```bash
 dotnet run [path-to-model] [path-to-image] [path-to-output-image]
 ```
 
 e.g. running:
 
-```
+```bash
 dotnet run ~/Downloads/FasterRCNN-10.onnx ~/Downloads/demo.jpg ~/Downloads/out.jpg
 ```
 
 detects the following objects in the image:
 
-![](out.jpg)
+![](/images/out.jpg)

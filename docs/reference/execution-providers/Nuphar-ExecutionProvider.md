@@ -23,7 +23,7 @@ For build instructions, please see the [BUILD page](../../how-to/build.md#nuphar
 
 ## Using the Nuphar execution provider
 ### C/C++
-The Nuphar execution provider needs to be registered with ONNX Runtime to enable in the inference session. The C API details are [here](../C_API.md#c-api).
+The Nuphar execution provider needs to be registered with ONNX Runtime to enable in the inference session. The C API details are [here](../api/c-api.md.md).
 
 ### Python
 You can use the Nuphar execution provider via the python wheel from the ONNX Runtime build. The Nuphar execution provider will be automatically prioritized over the default CPU execution providers, thus no need to separately register the execution provider. Python APIs details are [here](../python/api_summary.rst#api-summary).

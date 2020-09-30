@@ -226,7 +226,7 @@ SetSessionExecutionMode(ExecutionMode execution_mode);
 ```
  * ORT_SEQUENTIAL - execute operators in the graph sequentially.
  * ORT_PARALLEL - execute operators in the graph in parallel.   
-See [ONNX_Runtime_Perf_Tuning.md] for more details.
+See [../how-to/tune-performance.md] for more details.
 
 ### NodeMetadata
 Container of metadata for a model graph node, used for communicating the shape and type of the input and output nodes.
