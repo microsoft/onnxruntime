@@ -20,9 +20,10 @@ This document covers basic tools and knobs that can be leveraged to find the bes
 {:toc}
 
 ## Performance Tuning Tools
-The [ONNX Go Live "OLive" tool](https://github.com/microsoft/OLive) is an easy-to-use pipeline for converting models to ONNX and optimizing performance with ONNX Runtime. The tool can help identify the optimal runtime configuration to get the best performance on the target hardware for the model.
-As a quickstart, please see the notebooks: [Python](https://github.com/microsoft/OLive/blob/master/notebook/Convert_Models_and_Tune_Performance_with_OLive_Python_SDK.ipynb), [Docker images](https://github.com/microsoft/OLive/blob/master/notebook/Convert_Models_and_Tune_Performance_with_OLive_Docker_Images.ipynb)
 
+The [ONNX Go Live "OLive" tool](https://github.com/microsoft/OLive) is an easy-to-use pipeline for converting models to ONNX and optimizing performance with ONNX Runtime. The tool can help identify the optimal runtime configuration to get the best performance on the target hardware for the model.
+
+As a quickstart, please see the notebooks: [Python](https://github.com/microsoft/OLive/blob/master/notebook/Convert_Models_and_Tune_Performance_with_OLive_Python_SDK.ipynb), [Docker images](https://github.com/microsoft/OLive/blob/master/notebook/Convert_Models_and_Tune_Performance_with_OLive_Docker_Images.ipynb)
 
 ### Profiling and Performance Report
 
@@ -36,27 +37,31 @@ import onnxruntime as rt
 sess_options = rt.SessionOptions()
 sess_options.enable_profiling = True
 ```
+
 If you are using the onnxruntime_perf_test.exe tool, you can add `-p [profile_file]` to enable performance profiling.
 
 In both cases, you will get a JSON file which contains the detailed performance data (threading, latency of each operator, etc). This file is a standard performance tracing file, and to view it in a user friendly way, you can open it by using chrome://tracing:
+
 * Open chrome browser
 * Type chrome://tracing in the address bar
 * Load the generated JSON file
 
 ## Using different Execution Providers
+
 To learn more about different Execution Providers, see [docs/exeuction_providers](../reference/execution-providers).
 
 ### Python API
-Official Python packages on Pypi only support the default CPU (MLAS) and default GPU (CUDA) execution providers. For other execution providers, you need to build from source. Please refer to the [build instructions](../BUILD.md). The recommended instructions build the wheel with debug info in parallel.
 
-For example: 
+Official Python packages on Pypi only support the default CPU (MLAS) and default GPU (CUDA) execution providers. For other execution providers, you need to build from source. Please refer to the [build instructions](../how-to/build.md). The recommended instructions build the wheel with debug info in parallel.
+
+For example:
 
 `DNNL:		 ./build.sh --config RelWithDebInfo --use_dnnl --build_wheel --parallel`
 
 ` CUDA:	     ./build.sh --config RelWithDebInfo --use_cuda  --build_wheel --parallel`
 
-
 ### C and C# API
+
 Official release (nuget package) supports default (MLAS) and MKL-ML for CPU, and CUDA for GPU. For other execution providers, you need to build from source. Append `--build_csharp` to the instructions to build both C# and C packages.
 
 For example:
@@ -68,6 +73,7 @@ For example:
 In order to use DNNL, nGraph, CUDA, or TensorRT execution provider, you need to call the C API OrtSessionOptionsAppendExecutionProvider. Here is an example for the CUDA execution provider:
 
 C API Example:
+
 ```c
   const OrtApi* g_ort = OrtGetApi(ORT_API_VERSION);
   OrtEnv* env;
@@ -80,6 +86,7 @@ C API Example:
 ```
 
 C# API Example:
+
 ```c#
 SessionOptions so = new SessionOptions();
 so.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_EXTENDED;
@@ -88,6 +95,7 @@ var session = new InferenceSession(modelPath, so);
 ```
 
 Python API Example:
+
 ```python
 import onnxruntime as rt
 
@@ -98,17 +106,21 @@ session.set_providers(['CUDAExecutionProvider'])
 ```
 
 ## Which Execution Provider will provide the best performance? 
+
 Performance is dependent on the specific model you're trying to run, the session and run options you've selected, and of course, your specific hardware target. Below you'll find some more information that may be helpful to select the right Execution Provider.
 
 ### CUDA (Default GPU) or CPU?
-The CPU version of ONNX Runtime provides a complete implementation of all operators in the ONNX spec. This ensures that your ONNX-compliant model can execute successfully. In order to keep the binary size small, common data types are supported for the ops. If you are using an uncommon data type that is not supported, you can file an issue and/or contribute a PR (see examples - [PR #2112](https://github.com/microsoft/onnxruntime/pull/2112), [PR #2034](https://github.com/microsoft/onnxruntime/pull/2034), [PR #1565](https://github.com/microsoft/onnxruntime/pull/1565)). Please make sure you provide details on usage justification. 
+
+The CPU version of ONNX Runtime provides a complete implementation of all operators in the ONNX spec. This ensures that your ONNX-compliant model can execute successfully. In order to keep the binary size small, common data types are supported for the ops. If you are using an uncommon data type that is not supported, you can file an issue and/or contribute a PR (see examples - [PR #2112](https://github.com/microsoft/onnxruntime/pull/2112), [PR #2034](https://github.com/microsoft/onnxruntime/pull/2034), [PR #1565](https://github.com/microsoft/onnxruntime/pull/1565)). Please make sure you provide details on usage justification.
 
 Additionally, not all CUDA kernels are implemented, as these have been prioritized on an as-needed basis. This means that if your model contains operators that do not have a CUDA implementation, it will fall back to CPU. Switching between CPU and GPU can cause significant performance impact. If you require a specific operator that is not currently supported, please consider [contributing](https://github.com/microsoft/onnxruntime/tree/master/CONTRIBUTING.md) and/or [file an issue](https://github.com/microsoft/onnxruntime/issues) clearly describing your use case and share your model if possible.
 
 ### TensorRT or CUDA?
-TensorRT and CUDA are separate execution providers for ONNX Runtime. On the same hardware, TensorRT will generally provide better performance; however, this depends on the specific model and whether the operators in the model can be supported by TensorRT. In cases where TensorRT cannot handle the subgraph(s), it will fall back to CUDA. Note that the TensorRT EP may depend on a different version of CUDA than the CUDA EP. 
+
+TensorRT and CUDA are separate execution providers for ONNX Runtime. On the same hardware, TensorRT will generally provide better performance; however, this depends on the specific model and whether the operators in the model can be supported by TensorRT. In cases where TensorRT cannot handle the subgraph(s), it will fall back to CUDA. Note that the TensorRT EP may depend on a different version of CUDA than the CUDA EP.
 
 ### TensorRT/CUDA or DirectML? 
+
 DirectML is the hardware-accelerated DirectX 12 library for machine learning on Windows and supports all DirectX 12 capable devices (Nvidia, Intel, AMD). This means that if you are targeting Windows GPUs, using the DirectML Execution Provider is likely your best bet. This can be used with both the ONNX Runtime as well as [WinML APIs](../reference/api/winrt-api.md).
 
 ## Tuning performance for specific Execution Providers

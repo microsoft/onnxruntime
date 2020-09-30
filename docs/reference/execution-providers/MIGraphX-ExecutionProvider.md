@@ -17,7 +17,7 @@ ONNX Runtime's [MIGraphX](https://github.com/ROCmSoftwarePlatform/AMDMIGraphX/) 
 {:toc}
 
 ## Build
-For build instructions, please see the [BUILD page](../../BUILD.md#AMD-MIGraphX). 
+For build instructions, please see the [BUILD page](../../how-to/build.md#AMD-MIGraphX). 
 
 ## Using the MIGraphX execution provider
 ### C/C++

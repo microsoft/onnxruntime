@@ -19,7 +19,7 @@ Developers can tap into the power of Nuphar through ONNX Runtime to accelerate i
 {:toc}
 
 ## Build
-For build instructions, please see the [BUILD page](../../BUILD.md#nuphar).
+For build instructions, please see the [BUILD page](../../how-to/build.md#nuphar).
 
 ## Using the Nuphar execution provider
 ### C/C++

@@ -19,7 +19,7 @@ supported.
 
 
 ## Build
-For build instructions, please see the [BUILD page](../../BUILD.md#openvino).
+For build instructions, please see the [BUILD page](../../how-to/build.md#openvino).
 
 ## Onnxruntime Graph Optimization level
 OpenVINO backend performs both hardware dependent as well as independent optimizations to the graph to infer it with on the target hardware with best possible performance. In most of the cases it has been observed that passing in the graph from the input model as is would lead to best possible optimizations by OpenVINO. For this reason, it is advised to turn off high level optimizations performed by ONNX Runtime before handing the graph over to OpenVINO backend. This can be done using Session options as shown below:-

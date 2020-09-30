@@ -26,7 +26,7 @@ Therefore, ONNX RT Execution Provider for **nGraph** will be deprecated starting
 [nGraph](https://github.com/NervanaSystems/ngraph) is a deep learning compiler from Intel®. The integration of nGraph as an execution provider (EP) into ONNX Runtime accelerates performance of ONNX model workloads across wide range of hardware offerings. Microsoft and Intel worked closely to integrate the nGraph EP with ONNX Runtime to showcase the benefits of quantization (int8). The nGraph EP leverages Intel® DL Boost and delivers performance increase with minimal loss of accuracy relative to FP32 ONNX models. With the nGraph EP, the ONNX Runtime delivers better inference performance across range of Intel hardware including Intel® Xeon® Processors compared to a generic CPU execution provider.
 
 ## Build
-For build instructions, please see the [BUILD page](../../BUILD.md#nGraph).
+For build instructions, please see the [BUILD page](../../how-to/build.md#nGraph).
 
 ## Supported OS
 While the nGraph Compiler stack supports various operating systems and backends ([full list available here](https://www.ngraph.ai/ecosystem)), the nGraph execution provider for ONNX Runtime is validated for the following:  

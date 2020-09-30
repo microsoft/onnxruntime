@@ -21,7 +21,7 @@ For information on how DNNL optimizes subgraphs, see [Subgraph Optimization](./M
 {:toc}
 
 ## Build
-For build instructions, please see the [BUILD page](../../BUILD.md#dnnl-and-mklml).
+For build instructions, please see the [BUILD page](../../how-to/build.md#dnnl-and-mklml).
 
 ## Supported OS
 * Ubuntu 16.04

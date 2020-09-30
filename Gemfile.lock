@@ -282,7 +282,6 @@ DEPENDENCIES
   jekyll-toc
   just-the-docs
   kramdown-parser-gfm
-  minima (~> 2.0)
   rake
   tzinfo (~> 1.2)
   tzinfo-data

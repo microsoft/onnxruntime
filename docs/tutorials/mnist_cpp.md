@@ -8,7 +8,7 @@ nav_order: 4
 
 This sample uses the MNIST model from the Model Zoo: https://github.com/onnx/models/tree/master/vision/classification/mnist
 
-![Screenshot](Screenshot.png)
+![Screenshot](/images/mnist-screenshot.png)
 
 ## Contents
 {: .no_toc }
