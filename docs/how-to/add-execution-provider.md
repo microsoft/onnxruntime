@@ -4,8 +4,16 @@ parent: Recipes
 nav_order: 3
 ---
 
-
 # Add a new Execution Provider to ONNX Runtime
+{: .no_toc }
+
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
+
+## Create the Execution Provider
 
 * Create a folder under onnxruntime/core/providers
 * Create a folder under include/onnxruntime/core/providers, it should has the same name as the first step.
@@ -15,22 +23,19 @@ nav_order: 3
 * Add your provider in onnxruntime_providers.cmake. Build it as a static lib.
 * Add one line in cmake/onnxruntime.cmake, to the 'target_link_libraries' function call. Put your provider there.
 
+Examples:
 
-Examples:     
+* [CPU Execution Provider](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/providers/cpu/cpu_execution_provider.h)
+* [CUDA Execution Provider](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/providers/cuda/cuda_execution_provider.h)               
+* [DNNL Execution Provider](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/providers/dnnl/dnnl_execution_provider.h)               
 
- * [CPU Execution
-       Provider](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/providers/cpu/cpu_execution_provider.h)               
- * [CUDA Execution
-       Provider](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/providers/cuda/cuda_execution_provider.h)               
- * [DNNL Execution
-       Provider](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/providers/dnnl/dnnl_execution_provider.h)               
+## Use the execution provider
 
+* Create a factory for that provider, by using the c function you exported in 'symbols.txt'
+* Put the provider factory into session options
+* Create session from that session option
 
-# Using the execution provider
-1. Create a factory for that provider, by using the c function you exported in 'symbols.txt'
-2. Put the provider factory into session options
-3. Create session from that session option
-e.g.
+Example:
 
 ```c
   OrtEnv* env;

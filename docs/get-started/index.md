@@ -17,6 +17,12 @@ You can benefit from ONNX Runtime if you want to:
 * Run on different hardware and operating systems
 * Support models created in several different frameworks
 
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
+
 ## Use ONNX Runtime for Inference
 
 ### Docker Images
@@ -125,8 +131,3 @@ _NOTE: The current API is experimental and expected to see significant changes i
 
 To use ONNX Runtime training in a custom environment, like on-prem NVIDIA DGX-2 clusters, you can use these [build instructions](../how-to/build.md#training) to generate the Python package to integrate into existing trainer code.
 
-## TABLE OF CONTENTS
-{: .no_toc }
-
-* TOC placeholder
-{:toc}

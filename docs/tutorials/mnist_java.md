@@ -4,6 +4,7 @@ nav_order: 5
 ---
 
 # Character recognition with MNIST in Java
+{: .no_toc }
 
 Here is simple tutorial for getting started with running inference on an existing ONNX model for a given input data. The model is typically trained using any of the well-known training frameworks and exported into the ONNX format. 
 Note the code presented below uses syntax available from Java 10 onwards. The Java 8 syntax is similar but more verbose.

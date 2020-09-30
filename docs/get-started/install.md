@@ -5,6 +5,13 @@ nav_order: 1
 ---
 
 # Install ONNX Runtime
+{: .no_toc }
+
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
 
 Use this guide to install ONNX Runtime and its dependencies, for your target operating system, hardware, accelerator, and language.
 

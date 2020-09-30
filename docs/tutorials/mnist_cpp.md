@@ -4,10 +4,17 @@ nav_order: 4
 ---
 
 # Number recognition with MNIST in C++
+{: .no_toc }
 
 This sample uses the MNIST model from the Model Zoo: https://github.com/onnx/models/tree/master/vision/classification/mnist
 
 ![Screenshot](Screenshot.png)
+
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
 
 ## Requirements
 

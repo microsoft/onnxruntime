@@ -9,6 +9,12 @@ nav_order: 2
 
 This page catalogs code samples for ONNX Runtime, running locally, and on Azure, both cloud and edge.  
 
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
+
 ## Python
 
 * [CPU: Basic Inference](https://github.com/onnx/onnx-docker/blob/master/onnx-ecosystem/inference_demos/simple_onnxruntime_inference.ipynb)
@@ -75,8 +81,3 @@ This page catalogs code samples for ONNX Runtime, running locally, and on Azure,
   
 --- 
 
-## TABLE OF CONTENTS
-{: .no_toc }
-
-* TOC placeholder
-{:toc}

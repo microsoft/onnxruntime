@@ -7,8 +7,15 @@ nav_order: 7
 
 
 # NNAPI Execution Provider
+{: .no_toc }
 
 [Android Neural Networks API (NNAPI)](https://developer.android.com/ndk/guides/neuralnetworks) is a unified interface to CPU, GPU, and NN accelerators on Android.
+
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
 
 ## Minimum requirements
 

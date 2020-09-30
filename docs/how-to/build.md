@@ -7,6 +7,12 @@ nav_order: 5
 # Build ONNX Runtime from source
 {: .no_toc }
 
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
+
 ## Inference
 
 ## Start: Baseline CPU
@@ -837,7 +843,7 @@ pip3 install --upgrade setuptools
 pip3 install --upgrade wheel
 pip3 install numpy
 
-# Build the latest cmake
+* Build the latest cmake
 mkdir /code
 cd /code
 wget https://cmake.org/files/v3.13/cmake-3.13.5.tar.gz;
@@ -848,21 +854,21 @@ cd /code/cmake-3.13.5
 make
 sudo make install
 
-# Prepare onnxruntime Repo
+* Prepare onnxruntime Repo
 cd /code
 git clone --recursive https://github.com/Microsoft/onnxruntime
 
-# Start the basic build
+* Start the basic build
 cd /code/onnxruntime
 ./build.sh --config MinSizeRel --update --build
 
-# Build Shared Library
+* Build Shared Library
 ./build.sh --config MinSizeRel --build_shared_lib
 
-# Build Python Bindings and Wheel
+* Build Python Bindings and Wheel
 ./build.sh --config MinSizeRel --enable_pybind --build_wheel
 
-# Build Output
+* Build Output
 ls -l /code/onnxruntime/build/Linux/MinSizeRel/*.so
 ls -l /code/onnxruntime/build/Linux/MinSizeRel/dist/*.whl
 ```
@@ -1043,8 +1049,3 @@ sudo ldconfig
 
     This produces the .whl file in `./build/Linux/RelWithDebInfo/dist` for ONNX Runtime Training.
 
-## TABLE OF CONTENTS
-{: .no_toc }
-
-* TOC placeholder
-{:toc}

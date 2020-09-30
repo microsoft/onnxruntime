@@ -4,4 +4,5 @@ has_children: true
 nav_order: 2
 ---
 
-# These are ONNX Runtime Tutorials
+# ONNX Runtime Tutorials
+{: .no_toc }

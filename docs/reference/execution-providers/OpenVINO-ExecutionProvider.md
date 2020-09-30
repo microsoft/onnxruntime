@@ -6,8 +6,17 @@ nav_order: 9
 ---
 
 # OpenVINO Execution Provider
+{: .no_toc }
 
-OpenVINO Execution Provider enables deep learning inference on Intel CPUs, Intel integrated GPUs and Intel<sup>®</sup> Movidius<sup>TM</sup> Vision Processing Units (VPUs). Please refer to [this](https://software.intel.com/en-us/openvino-toolkit/hardware) page for details on the Intel hardware supported.
+OpenVINO Execution Provider enables deep learning inference on Intel CPUs, Intel integrated GPUs and Intel<sup>®</sup> Movidius<sup>TM</sup> Vision Processing Units (VPUs). Please refer to [this](https://software.intel.com/en-us/openvino-toolkit/hardware) page for details on the Intel hardware 
+supported.
+
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
+
 
 ## Build
 For build instructions, please see the [BUILD page](../../BUILD.md#openvino).
@@ -31,14 +40,18 @@ SessionOptions::SetGraphOptimizationLevel(ORT_DISABLE_ALL);
 When ONNX Runtime is built with OpenVINO Execution Provider, a target hardware option needs to be provided. This build time option becomes the default target harware the EP schedules inference on. However, this target may be overriden at runtime to schedule inference on a different hardware as shown below.
 
 Note. This dynamic hardware selection is optional. The EP falls back to the build-time default selection if no dynamic hardware option value is specified.
+
 1. Python API
-```
+
+```python
 import onnxruntime
 onnxruntime.capi._pybind_state.set_openvino_device("<harware_option>")
 # Create session after this
 ```
+
 2. C/C++ API
-```
+
+```c
 Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, "<hardware_option>"));
 ```
 

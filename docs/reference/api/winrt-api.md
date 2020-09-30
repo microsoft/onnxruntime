@@ -6,6 +6,7 @@ nav_order: 5
 ---
 
 # Windows Machine Learning WinRT API
+{: .no_toc }
 
 New in the ONNX Runtime Nuget package is the ability to use the full [WinML API](https://docs.microsoft.com/en-us/windows/ai/windows-ml/api-reference).
 
@@ -16,6 +17,12 @@ The WinML API is a WinRT API that shipped inside the Windows OS starting with bu
 Many customers have asked for a way to use this offering as an application redistributable package.
 
 With our new [layered architecture](InferenceHighLevelDesign.md#the-onnx-runtime-and-windows-os-integration) you can now do this, with some limitations. The WinML APIs have been lifted and mirrored into the Microsoft.AI.MachineLearning namespace in the redistributable.
+
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
 
 ## NuGet Package
 

@@ -6,6 +6,7 @@ nav_order: 1
 ---
 
 # ONNX Runtime C API
+{: .no_toc }
 
 ## Features
 
@@ -28,6 +29,13 @@ is as follows
    * Create env using ```CreateEnvWithGlobalThreadPools()```
    * Create session and call ```DisablePerSessionThreads()``` on the session options object
    * Call ```Run()``` as usual
+
+
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
 
 ## Usage Overview
 

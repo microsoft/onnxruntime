@@ -6,12 +6,19 @@ nav_order: 4
 ---
 
 # DNNL Execution Provider
+{: .no_toc }
 
 Intel® Math Kernel Library for Deep Neural Networks (Intel® DNNL) is an open-source performance library for deep-learning applications. The library accelerates deep-learning applications and frameworks on Intel® architecture and Intel® Processor Graphics Architecture. Intel DNNL contains vectorized and threaded building blocks that you can use to implement deep neural networks (DNN) with C and C++ interfaces. For more, please see the DNNL documentation on (https://intel.github.io/mkl-dnn/).
 
 Intel and Microsoft have developed DNNL Execution Provider (EP) for ONNX Runtime to accelerate performance of ONNX Runtime using Intel® Math Kernel Library for Deep Neural Networks (Intel® DNNL) optimized primitives.
 
 For information on how DNNL optimizes subgraphs, see [Subgraph Optimization](./MKL-DNN-Subgraphs.md)
+
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
 
 ## Build
 For build instructions, please see the [BUILD page](../../BUILD.md#dnnl-and-mklml).

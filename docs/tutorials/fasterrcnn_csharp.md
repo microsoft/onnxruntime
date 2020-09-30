@@ -4,10 +4,17 @@ nav_order: 3
 ---
 
 # Object detection with Faster RCNN in C#
+{: .no_toc }
 
 The sample walks through how to run a pretrained Faster R-CNN object detection ONNX model using the ONNX Runtime C# API.
 
 The source code for this sample is available [here](Program.cs).
+
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
 
 ## Prerequisites
 

@@ -6,8 +6,15 @@ nav_order: 5
 ---
 
 # MIGraphX Execution Provider
+{: .no_toc }
 
-ONNX Runtime's [MIGraphX](https://github.com/ROCmSoftwarePlatform/AMDMIGraphX/) execution provider uses AMD's Deep Learning graph optimization engine to accelerate ONNX model on AMD GPUs. 
+ONNX Runtime's [MIGraphX](https://github.com/ROCmSoftwarePlatform/AMDMIGraphX/) execution provider uses AMD's Deep Learning graph optimization engine to accelerate ONNX model on AMD GPUs.
+
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
 
 ## Build
 For build instructions, please see the [BUILD page](../../BUILD.md#AMD-MIGraphX). 

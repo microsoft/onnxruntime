@@ -5,10 +5,17 @@ nav_order: 2
 
 
 # Image recognition with ResNet50v2 in C#
+{: .no_toc }
 
 The sample walks through how to run a pretrained ResNet50 v2 ONNX model using the Onnx Runtime C# API.
 
 The source code for this sample is available [here](Program.cs).
+
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
 
 ## Prerequisites
 

@@ -6,10 +6,18 @@ nav_order: 12
 ---
 
 # TensortRT Execution Provider
+{: .no_toc }
 
 The TensorRT execution provider in the ONNX Runtime makes use of NVIDIA's [TensortRT](https://developer.nvidia.com/tensorrt) Deep Learning inferencing engine to accelerate ONNX model in their family of GPUs. Microsoft and NVIDIA worked closely to integrate the TensorRT execution provider with ONNX Runtime.
 
 With the TensorRT execution provider, the ONNX Runtime delivers better inferencing performance on the same hardware compared to generic GPU acceleration. 
+
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
+
 
 ## Build
 For build instructions, please see the [BUILD page](../../BUILD.md#tensorrt). 

@@ -5,6 +5,7 @@ nav_order: 1
 ---
 
 # ONNX and operator compatibility
+{: .no_toc }
 
 Supporting models based on the standard [ONNX](https://onnx.ai) format, the runtime is compatible with PyTorch, scikit-learn, TensorFlow, Keras, and all other frameworks and tools that support the interoperable format.
 

@@ -6,6 +6,7 @@ nav_order: 6
 ---
 
 # nGraph Execution Provider
+{: .no_toc }
 
 <p align="center">
   <img src="../images/ngraph-logo.png">

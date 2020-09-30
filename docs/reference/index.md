@@ -4,4 +4,5 @@ has_children: true
 nav_order: 4
 ---
 
-# This is ONNX Runtime Reference
+# ONNX Runtime Reference
+{: .no_toc }

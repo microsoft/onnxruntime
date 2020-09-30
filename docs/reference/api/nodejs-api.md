@@ -6,8 +6,15 @@ nav_order: 4
 ---
 
 # ONNX Runtime Node.js API
+{: .no_toc }
 
 ONNX Runtime Node.js binding enables Node.js applications to run ONNX model inference.
+
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
 
 ## Usage
 

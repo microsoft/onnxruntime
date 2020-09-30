@@ -5,6 +5,13 @@ nav_order: 2
 ---
 
 # Add a new operator to ONNX Runtime
+{: .no_toc }
+
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
 
 ## A new op can be written and registered with ONNXRuntime in the following 3 ways
 

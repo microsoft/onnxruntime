@@ -5,18 +5,24 @@ grand_parent: Reference
 nav_order: 13
 ---
 
+# Vitis-AI Execution Provider
+{: .no_toc }
 
 <p align="center">
   <img src="./images/Vitis-AI.png">
 </p>
-
-# Vitis-AI Execution Provider
 
 [Vitis-AI](https://github.com/Xilinx/Vitis-AI) is Xilinx's development stack for hardware-accelerated AI inference on Xilinx platforms, including both edge devices and Alveo cards. It consists of optimized IP, tools, libraries, models, and example designs. It is designed with high efficiency and ease of use in mind, unleashing the full potential of AI acceleration on Xilinx FPGA and ACAP.
 
 The current Vitis-AI execution provider inside ONNXRuntime enables acceleration of Neural Network model inference using DPUv1. DPUv1 is a hardware accelerator for Convolutional Neural Networks (CNN) on top of the Xilinx [Alveo](https://www.xilinx.com/products/boards-and-kits/alveo.html) platform and targets U200 and U250 accelerator cards.
 
 On this page you will find information on how to [build](#Build) ONNXRuntime with Vitis-AI and on how to [get started](#Getting-started) with an example.
+
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
 
 ## Build
 
@@ -97,7 +103,7 @@ A couple of environment variables can be used to customize the Vitis-AI executio
 
 When using python, you can base yourself on the following example:
 
-```
+```python
 # Import pyxir before onnxruntime
 import pyxir
 import pyxir.frontend.onnx
@@ -105,7 +111,7 @@ import pyxir.contrib.dpuv1.dpuv1
 
 import onnxruntime
 
-# Add other imports 
+# Add other imports
 # ...
 
 # Load inputs and do preprocessing

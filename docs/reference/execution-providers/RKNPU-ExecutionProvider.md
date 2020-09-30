@@ -8,6 +8,13 @@ nav_order: 10
 # RKNPU Execution Provider (preview)
 RKNPU DDK is an advanced interface to access Rockchip NPU. RKNPU Execution Provider enables deep learning inference on Rockchip NPU via RKNPU DDK.
 
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
+
+
 ## Supported platforms
 
 * RK1808 Linux

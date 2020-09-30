@@ -6,8 +6,15 @@ nav_order: 2
 ---
 
 # ONNX Runtime C# API
+{: .no_toc }
 
 The ONNX runtime provides a C# .Net binding for running inference on ONNX models in any of the .Net standard platforms. The API is .Net standard 1.1 compliant for maximum portability. This document describes the API. 
+
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
 
 ## NuGet Package
 The Microsoft.ML.OnnxRuntime Nuget package includes the precompiled binaries for ONNX runtime, and includes libraries for Windows and Linux platforms with X64 CPUs. The APIs conform to .Net Standard 1.1.

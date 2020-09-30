@@ -5,8 +5,8 @@ grand_parent: Reference
 nav_order: 3
 ---
 
-
 # DirectML Execution Provider
+{: .no_toc }
 
 DirectML is a high-performance, hardware-accelerated DirectX 12 library for machine learning on Windows.  DirectML provides GPU acceleration for common machine learning tasks across a broad range of supported hardware and drivers.
 
@@ -16,19 +16,11 @@ The *DirectML Execution Provider* is an optional component of ONNX Runtime that 
 
 The DirectML Execution Provider currently uses DirectML version 2.1.0.
 
-## Table of contents
+## Contents
+{: .no_toc }
 
-- [DirectML Execution Provider](#directml-execution-provider)
-  - [Table of contents](#table-of-contents)
-  - [Minimum requirements](#minimum-requirements)
-  - [Building from source](#building-from-source)
-  - [Using the DirectML execution provider](#using-the-directml-execution-provider)
-    - [`OrtSessionOptionsAppendExecutionProvider_DML` function](#ortsessionoptionsappendexecutionproviderdml-function)
-    - [`OrtSessionOptionsAppendExecutionProviderEx_DML` function](#ortsessionoptionsappendexecutionproviderexdml-function)
-    - [ONNX opset support](#onnx-opset-support)
-    - [Multi-threading and supported session options](#multi-threading-and-supported-session-options)
-  - [Samples](#samples)
-  - [See also](#see-also)
+* TOC placeholder
+{:toc}
 
 ## Minimum requirements
 

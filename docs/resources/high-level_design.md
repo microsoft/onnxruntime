@@ -5,11 +5,18 @@ nav_order: 2
 ---
 
 # ONNX Runtime High Level Design
+{: .no_toc }
 
-This document outlines the high level design of
-ONNX Runtime - a high performance, cross platform engine.
+This document outlines the high level design of ONNX Runtime - a high performance, cross platform engine.
+
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
 
 ## Key objectives
+
 * Maximally and automatically leverage the custom accelerators and runtimes
 available on disparate platforms.
 * Provide the right abstraction and runtime support for custom accelerators and

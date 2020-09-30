@@ -10,6 +10,12 @@ nav_order: 3
 
 The ONNX runtime provides a Java binding for running inference on ONNX models on a JVM, using Java 8 or newer.
 
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
+
 ## Pre-requisites
 
 Two jar files are created during the build process, one contains the onnxruntime shared library, the JNI binding and the Java class files, and the other only contains the class files. By default the shared libraries are loaded from the classpath in a folder called `/lib`, if you wish to have them load from `java.library.path` then supply `-DORT_LOAD_FROM_LIBRARY_PATH` to the JVM at runtime.
@@ -79,8 +85,3 @@ The unit tests contain several examples of loading models, inspecting input/outp
 
 The Javadoc is available [here](https://microsoft.github.io/onnxruntime/java/index.html).
 
-## TABLE OF CONTENTS
-{: .no_toc }
-
-* TOC placeholder
-{:toc}

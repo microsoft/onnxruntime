@@ -5,6 +5,7 @@ nav_order: 1
 ---
 
 # ONNX Runtime Performance Tuning
+{: .no_toc }
 
 ONNX Runtime gives high performance across a range of hardware options by providing "Execution Providers" to interface to different execution environments. See: [design overview](../resources/high-level-design.md), [supported execution providers](https://github.com/microsoft/onnxruntime#supported-accelerators).
 
@@ -12,13 +13,11 @@ Along with this flexibility comes decisions for tuning and usage. For each model
 
 This document covers basic tools and knobs that can be leveraged to find the best performance for your model and hardware.
 
-**Topics**
-* [Performance Tuning Tools](#Performance-Tuning-Tools)
-* [Using different Execution Providers](#Using-different-Execution-Providers)
-* [Which Execution Provider will provide the best performance?](#Which-Execution-Provider-will-provide-the-best-performance)
-* [Tuning performance for specific Execution Providers](#Tuning-performance-for-specific-Execution-Providers)
-* [Troubleshooting model performance issues](#Troubleshooting-model-performance-issues)
-***
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
 
 ## Performance Tuning Tools
 The [ONNX Go Live "OLive" tool](https://github.com/microsoft/OLive) is an easy-to-use pipeline for converting models to ONNX and optimizing performance with ONNX Runtime. The tool can help identify the optimal runtime configuration to get the best performance on the target hardware for the model.
