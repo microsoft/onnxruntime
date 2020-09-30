@@ -23,6 +23,7 @@ Abstract:
 #include <limits>
 #include <cmath>
 #include <type_traits>
+#include <stdexcept>
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
