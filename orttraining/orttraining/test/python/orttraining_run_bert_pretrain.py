@@ -23,9 +23,6 @@ from transformers import BertForPreTraining, BertConfig, HfArgumentParser
 from concurrent.futures import ProcessPoolExecutor
 
 import onnxruntime as ort
-from onnxruntime.capi.ort_trainer import ORTTrainer, IODescription, ModelDescription
-from onnxruntime.capi.ort_trainer import LossScaler
-
 from onnxruntime.training import amp, optim, orttrainer
 from onnxruntime.training.optim import _LRScheduler, PolyWarmupLRScheduler
 
