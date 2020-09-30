@@ -735,10 +735,11 @@ def testORTTrainerMixedPrecisionLossScaler(seed, device, expected_loss, fetches)
 
 
 @pytest.mark.parametrize("attn_dropout, gelu, transformer_layer, number_layers, expected_loss", [
-    (True, False, False, 0, [10.5774, 10.4403, 10.4175, 10.2886, 10.2760]),
-    (False, True, False, 0, [10.5774, 10.4403, 10.4175, 10.2886, 10.2760]),
-    (False, False, True, 0, [10.5774, 10.4403, 10.4175, 10.2886, 10.2760]),
-    (False, False, True, 1, [10.5774, 10.4403, 10.4175, 10.2886, 10.2760]),
+    (False, False, False, 0, [10.577394, 10.444777, 10.425666, 10.299958, 10.290016]),    # no recompute
+    (True, False, False, 0, [10.577394, 10.444777, 10.425666, 10.299958, 10.290016]),     # attn_dropout recompute
+    (False, True, False, 0, [10.577394, 10.444777, 10.425666, 10.299958, 10.290016]),     # gelu recompute
+    (False, False, True, 0, [10.577394, 10.444777, 10.425666, 10.299958, 10.290016]),     # transformer_layer recompute
+    (False, False, True, 1, [10.577394, 10.444777, 10.425666, 10.299958, 10.290016]),     # transformer_layer recompute with 1 layer
 ])
 def testORTTrainerRecompute(attn_dropout, gelu, transformer_layer, number_layers, expected_loss):
     seed = 321
@@ -751,9 +752,6 @@ def testORTTrainerRecompute(attn_dropout, gelu, transformer_layer, number_layers
     # Setup ORTTrainer
     loss_scaler = amp.DynamicLossScaler()
     options = orttrainer.ORTTrainerOptions({'device' : {'id' : device},
-                                            'mixed_precision' : {
-                                                'enabled' : True,
-                                                'loss_scaler' : loss_scaler},
                                             'recompute' : {
                                                 'attn_dropout': attn_dropout,
                                                 'gelu': gelu,
