@@ -31,6 +31,9 @@ ep_to_provider_list = {
     "TensorrtExecutionProvider_fp16": ["TensorrtExecutionProvider", "CUDAExecutionProvider"],
 }
 
+# List the models that known to cause script to quit or core dump
+skip_models = ["mlperf_ssd_mobilenet_300_opset10", "mlperf_ssd_resnet34_1200_opset10"]
+
 def run_trt_standalone(trtexec, model_path, ort_inputs, all_inputs_shape, fp16):
     model_path = "--onnx=" + model_path
     input_shape = []
@@ -110,7 +113,7 @@ def get_ort_session_inputs_and_outptus(name, session, ort_input):
     sess_inputs = {}
     sess_outputs = None
 
-    if name == 'BERT-Squad':
+    if 'bert_squad' in name.lower() or 'bert-squad' in name.lower():
         unique_ids_raw_output = ort_input[0]
         input_ids = ort_input[1]
         input_mask = ort_input[2]
@@ -123,7 +126,7 @@ def get_ort_session_inputs_and_outptus(name, session, ort_input):
                 "segment_ids:0": segment_ids[0:1]}
         sess_outputs = ["unique_ids:0", "unstack:0", "unstack:1"]
 
-    elif name == 'BiDAF':
+    elif 'bidaf' in name.lower():
         sess_inputs = {
                 "context_word": ort_input[0],
                 "context_char": ort_input[2],
@@ -131,11 +134,11 @@ def get_ort_session_inputs_and_outptus(name, session, ort_input):
                 "query_char": ort_input[3]}
         sess_outputs = ["start_pos","end_pos"]
 
-    elif name == 'Yolov4':
+    elif 'yolov4' in name.lower():
         sess_inputs[session.get_inputs()[0].name] = ort_input[0]
         sess_outputs = ['Identity:0']
 
-    elif name == 'Shufflenet-v2':
+    elif 'shufflenet-v2' in name.lower() or 'shufflenet_v2' in name.lower():
         sess_inputs[session.get_inputs()[0].name] = ort_input
 
     else:
@@ -150,10 +153,12 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
     runtimes = []
     for ort_input in ort_inputs:
         sess_inputs, sess_outputs = get_ort_session_inputs_and_outptus(name, session, ort_input)
-        print("sess_inputs:")
-        print(sess_inputs)
-        print("sess_outputs:")
-        print(sess_outputs)
+        if debug:
+            logger.info("ORT session inputs:")
+            logger.info(sess_inputs)
+            logger.info("ORT session outputs:")
+            logger.info(sess_outputs)
+
         try:
             if args.input_data == "random":
                 repeat_times = 1 # warn-up run is included in ort_inputs
@@ -182,23 +187,25 @@ def inference_ort_and_get_prediction(name, session, ort_inputs):
     ort_outputs = []
     for ort_input in ort_inputs:
         sess_inputs, sess_outputs = get_ort_session_inputs_and_outptus(name, session, ort_input)
-        print("sess_inputs:")
-        print(sess_inputs)
-        print("sess_outputs:")
-        print(sess_outputs)
-        try:
-            result = session.run(sess_outputs, sess_inputs)
+        if debug:
+            logger.info("ORT session inputs:")
+            logger.info(sess_inputs)
+            logger.info("ORT session outputs:")
+            logger.info(sess_outputs)
 
-            # handle shape of output differently
-            if name == 'BERT-Squad':
-                ort_outputs.append([result])
-            elif name == 'Shufflenet-v2':
-                ort_outputs.append(result[0])
-            else:
-                ort_outputs.append(result)
-        except Exception as e:
-            logger.error(e)
-            return None
+        result = session.run(sess_outputs, sess_inputs)
+
+        if debug:
+            logger.info("ORT session output results:")
+            logger.info(result)
+
+        # handle shape of output differently
+        if 'bert_squad' in name.lower():
+            ort_outputs.append([result])
+        elif 'shufflenet-v2' in name.lower() or 'shufflenet_v2' in name.lower():
+            ort_outputs.append(result[0])
+        else:
+            ort_outputs.append(result)
 
     return ort_outputs
 
@@ -432,17 +439,24 @@ def generate_onnx_model_random_input(test_times, ref_input):
                 new_tensor = np.random.randint(0, np.max(tensor)+1, shape, dtype)
             else:
                 new_tensor = np.random.random_sample(shape).astype(dtype)
-            print("original tensor:")
-            print(tensor)
-            print("new random tensor:")
-            print(new_tensor)
-            print("\n")
+
+            if debug:
+                logger.info("original tensor:")
+                logger.info(tensor)
+                logger.info("new random tensor:")
+                logger.info(new_tensor)
+                logger.info("\n")
+
             input_data.append(new_tensor)
         inputs.append(input_data)
 
     return inputs
 
 def validate(all_ref_outputs, all_outputs, decimal):
+    if len(all_ref_outputs) == 0:
+        print("No reference output provided.")
+        return True, None
+
     print('Reference {} results.'.format(len(all_ref_outputs)))
     print('Predicted {} results.'.format(len(all_outputs)))
     print('decimal {}'.format(decimal))
@@ -538,10 +552,8 @@ def update_fail_model(model_ep_fail_map, fail_results, args, model_name, ep, e_t
 
 
 def skip_ep(model_name, ep, model_ep_fail_map):
-    if model_name == 'vision-yolov3' and "fp16" in ep:
-        return True
 
-    if model_name == 'speech' and "fp16" in ep:
+    if model_name in skip_models:
         return True
 
     if model_name not in model_ep_fail_map:
@@ -565,7 +577,7 @@ def read_model_ep_fail_map_from_file(map_file):
 
 def write_model_ep_fail_map_to_file(model_ep_fail_map):
     with open('.model_ep_fail_map.json', 'w') as file:
-     file.write(json.dumps(model_ep_fail_map)) # use `json.loads` to do the reverse
+        file.write(json.dumps(model_ep_fail_map)) # use `json.loads` to do the reverse
 
 def get_system_info(info):
     info["cuda"] = get_cuda_version()
@@ -616,13 +628,85 @@ def get_system_info(info):
             infos.append(row)
     info["memory"] = infos
 
-def parse_models_info(path):
-    models = {}
+def find_model_path(path):
+    p1 = subprocess.Popen(["find", path, "-name", "*.onnx"], stdout=subprocess.PIPE)
+    stdout, sterr = p1.communicate()
+    stdout = stdout.decode("ascii").strip()
+    model_path = stdout.split("\n")
+    print(model_path)
+
+    if model_path == ['']:
+        return None
+
+    return model_path[0]
+
+def find_model_directory(path):
+    p1 = subprocess.Popen(["find", path, "-maxdepth", "1", "-mindepth", "1", "-name", "*", "-type", "d"], stdout=subprocess.PIPE)
+    stdout, sterr = p1.communicate()
+    stdout = stdout.decode("ascii").strip()
+    model_dir = stdout.split("\n")
+    # print(model_dir)
+
+    if model_dir == ['']:
+        return None
+
+    return model_dir
+
+def find_test_data_directory(path):
+    p1 = subprocess.Popen(["find", path, "-maxdepth", "1", "-name", "test_data*", "-type", "d"], stdout=subprocess.PIPE)
+    p2 = subprocess.Popen(["sort"], stdin=p1.stdout, stdout=subprocess.PIPE)
+    stdout, sterr = p2.communicate()
+    stdout = stdout.decode("ascii").strip()
+    test_data_dir = stdout.split("\n")
+    print(test_data_dir)
+
+    if test_data_dir == ['']:
+        return None
+
+    return test_data_dir
+
+def parse_models_info_from_directory(path, models):
+
+    test_data_dir = find_test_data_directory(path) 
+
+    if test_data_dir:
+        model_name = os.path.split(path)[-1]
+        model_name = model_name + '_' + os.path.split(os.path.split(path)[0])[-1] # get opset version as model_name
+        model_path = find_model_path(path)
+
+        if not model_path:
+            logger.info("Can't find model in " + path)
+            return
+
+        model = {}
+        model["model_name"] = model_name
+        model["model_path"] = model_path 
+        model["working_directory"] = path 
+        model["test_data_path"] = path 
+
+        models[model_name] = model 
+
+        print(model)
+        return
+    
+    model_dir = find_model_directory(path)
+    
+    if model_dir:
+        for dir in model_dir:
+            parse_models_info_from_directory(os.path.join(path, dir), models)
+    
+
+def parse_models_info_from_file(path, models):
+
+    root_working_directory = "/home/hcsuser/perf/"
 
     with open(path) as f:
         data = json.load(f)
 
         for row in data:
+
+            if 'root_working_directory' in row:
+                root_working_directory = row['root_working_directory']
 
             if 'model_name' in row:
                 models[row['model_name']] = {}
@@ -633,7 +717,7 @@ def parse_models_info(path):
             model = models[row['model_name']]
 
             if 'working_directory' in row:
-                model['working_directory'] = row['working_directory']
+                model['working_directory'] = os.path.join(root_working_directory + row['working_directory'])
             else:
                 logger.error('Model path must be provided in models_info.json')
                 raise
@@ -650,7 +734,11 @@ def parse_models_info(path):
                 logger.error('Test data path must be provided in models_info.json')
                 raise
 
-    return models
+            if 'model_path_fp16' in row:
+                model['model_path_fp16'] = row['model_path_fp16']
+
+            if 'test_data_path_fp16' in row:
+                model['test_data_path_fp16'] = row['test_data_path_fp16']
 
 def convert_model_from_float_to_float16(model_path):
     # from onnxmltools.utils.float16_converter import convert_float_to_float16
@@ -674,8 +762,10 @@ def create_session(model_path, providers, session_options):
     try:
         new_model_path = model_path[:].replace(".onnx", "_new.onnx")
 
+        exec = os.environ["SYMBOLIC_SHAPE_INFER"]
+
         if not os.path.exists(new_model_path):
-            subprocess.run("python3 -m onnxruntime.tools.symbolic_shape_infer --input " + model_path + " --output " + new_model_path + " --auto_merge", shell=True, check=True)
+            subprocess.run("python3 " + exec +" --input " + model_path + " --output " + new_model_path + " --auto_merge", shell=True, check=True)
         session = onnxruntime.InferenceSession(new_model_path, providers=providers, sess_options=session_options)
         return session
     except Exception as e:
@@ -706,9 +796,9 @@ def run_onnxruntime(args, models):
     #######################
     # iterate model
     #######################
-    for name, info in models.items():
+    for name, model_info in models.items():
         latency_result = {}
-        path = info["working_directory"]
+        path = model_info["working_directory"]
 
         pwd = os.getcwd()
         if not os.path.exists(path):
@@ -744,26 +834,42 @@ def run_onnxruntime(args, models):
                 logger.error("No {} support".format(ep_))
                 continue
 
-            model_path = info["model_path"]
+            model_path = model_info["model_path"]
+            test_data_dir = model_info["test_data_path"]
 
             if "fp16" in ep:
+                logger.info("\nInitializing {} with float16 enabled to run on {} ...".format(name, ep))
+
                 fp16 = True
                 os.environ["ORT_TENSORRT_FP16_ENABLE"] = "1"
 
+                
+                # We need to convert FP32 model to FP16 inputs as well as input data when using CUDA EP to run FP16 data.
                 if ep == "CUDAExecutionProvider_fp16":
-                    model_path = convert_model_from_float_to_float16(model_path)
+                    if "model_path_fp16" in model_info:
+                        model_path = model_info["model_path_fp16"]
 
-                logger.info("\nInitializing {} with float16 enabled to run on {} ...".format(name, ep))
+                    else:
+                        try:
+                            model_path = convert_model_from_float_to_float16(model_path)
+
+                        except Exception as e:
+                            logger.error(e)
+                            update_fail_model(model_ep_fail_map, fail_results, args, name, ep, 'script error', e)
+                            continue
+
+                    if "test_data_path_fp16" in model_info:
+                        test_data_dir = model_info["test_data_path_fp16"]
+
             else:
-                fp16 = False
-                os.environ["ORT_TENSORRT_FP16_ENABLE"] = "0"
                 logger.info("\nInitializing {} to run on {} ...".format(name, ep))
 
+                fp16 = False
+                os.environ["ORT_TENSORRT_FP16_ENABLE"] = "0"
 
-            test_data_dir = info["test_data_path"]
 
             # read input/output of test data
-            if fp16 and ep == "CUDAExecutionProvider_fp16":
+            if fp16 and ep == "CUDAExecutionProvider_fp16" and "test_data_path_fp16" not in model_info:
                 if not inputs_fp16 or not ref_outputs_fp16:
                     inputs_fp16, ref_outputs_fp16 = load_onnx_model_zoo_test_data(test_data_dir, all_inputs_shape, "fp16")
 
@@ -888,7 +994,6 @@ def run_onnxruntime(args, models):
                         ort_outputs = inference_ort_and_get_prediction(name, sess, inputs)
 
                         decimal = 0
-
                         status = validate(ref_outputs, ort_outputs, decimal)
                         if not status[0]:
                             update_fail_model(model_ep_fail_map, fail_results, args, name, ep, 'result accuracy issue', status[1])
@@ -1161,11 +1266,13 @@ def output_system_info(result, csv_filename):
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("-m", "--model_list_file", required=False, default="model_list.json", help="Model list file.")
+    parser.add_argument("-m", "--model_source", required=False, default="model_list.json", help="Model source: (1) model list file (2) model directory.")
 
     parser.add_argument("-r", "--running_mode", required=False, default="benchmark", choices=["validate", "benchmark"], help="Testing mode.")
 
-    parser.add_argument("-i", "--input_data", required=False, default="zoo", choices=["zoo", "random"], help="source of input data.")
+    parser.add_argument("-i", "--input_data", required=False, default="fix", choices=["fix", "random"], help="Type of input data.")
+
+    parser.add_argument("-o", "--perf_result_path", required=False, default="result", help="Directory for perf result.")
 
     parser.add_argument("--fp16", required=False, default=True, action="store_true", help="Inlcude Float16 into benchmarking.")
 
@@ -1193,26 +1300,31 @@ def main():
     setup_logger(False)
     pp = pprint.PrettyPrinter(indent=4)
 
-    models = parse_models_info(args.model_list_file)
+    models = {}
+    if ".json" in args.model_source:
+        logger.info("Parsing model information from json file ...\n")
+        parse_models_info_from_file(args.model_source, models)
+    else:
+        logger.info("Parsing model information from specified directory ...\n")
+        parse_models_info_from_directory(args.model_source, models)
+
+    os.environ["SYMBOLIC_SHAPE_INFER"] = os.path.join(os.getcwd(), "symbolic_shape_infer.py")
 
     perf_start_time = datetime.now()
     success_results, fail_results, latency_comparison_map, failing_models, profile_metrics_map = run_onnxruntime(args, models)
     perf_end_time = datetime.now()
 
-    logger.info("\nTotal time for running/profiling all models: {}".format(perf_end_time - perf_start_time))
+    logger.info("\nTotal time for benchmarking all models: {}".format(perf_end_time - perf_start_time))
     logger.info(list(models.keys()))
 
     logger.info("\nTotal models: {}".format(len(models)))
     logger.info("Fail models: {}".format(len(failing_models)))
     logger.info("Models FAIL/SUCCESS: {}/{}".format(len(failing_models), len(models) - len(failing_models)))
 
-    path = "result"
+    path = os.path.join(os.getcwd(), args.perf_result_path)
     if not os.path.exists(path):
-        os.mkdir(path)
-
-    path = os.path.join(os.getcwd(), path)
-    if not os.path.exists(path):
-        os.mkdir(path)
+        from pathlib import Path
+        Path(path).mkdir(parents=True, exist_ok=True)
 
     time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 
@@ -1249,8 +1361,9 @@ def main():
     info = {}
     get_system_info(info)
     pp.pprint(info)
-    csv_filename = os.path.join(path, f"system_info_{time_stamp}.csv")
-    output_system_info(info, csv_filename)
+    if args.running_mode == "benchmark":
+        csv_filename = os.path.join(path, f"system_info_{time_stamp}.csv")
+        output_system_info(info, csv_filename)
 
     if fail_results:
         csv_filename = f"benchmark_fail_{time_stamp}.csv"

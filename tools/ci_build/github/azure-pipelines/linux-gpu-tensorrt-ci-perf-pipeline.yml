@@ -7,34 +7,17 @@ jobs:
   steps:
     #- template: templates/set-test-data-variables-step.yml
     
-    # Latest TensorRT container only supports ubuntu18.04
-    #- script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu18.04 -d tensorrt -r $(Build.BinariesDirectory) -p 3.6 -x "--build_wheel"'
-    - script: 'export DATE=`date +"%m-%d-%Y-%H-%M"`&&echo $DATE > date.txt&&/home/hcsuser/perf/perf.sh `echo $DATE`'
-
+    - script: 'export DATE=`date +"%m-%d-%Y-%H-%M"` && echo $DATE > date.txt && $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/perf.sh `echo $DATE`'
       displayName: 'Command Line Script'
       workingDirectory: '/home/hcsuser/perf/'
 
-    #- task: CmdLine@2
-      #displayName: 'Prepare artifacts'
-      #inputs:
-        #script: 'mkdir $(Build.SourceDirectory)\Artifact && cp /home/hcsuser/perf/result/onnx_model_zoo/`echo $DATE` $(Build.SourceDirectory)\Artifact' 
-
-      #workingDirectory: '/home/hcsuser/perf/'
-    #- script: 'export DATE=`date +"%m-%d-%Y"`&&/home/hcsuser/perf/perf.sh `echo $DATE`'
-
-    - script: 'mkdir $(Build.SourcesDirectory)/Artifact && cp -r /home/hcsuser/perf/result/`cat date.txt` $(Build.SourcesDirectory)/Artifact' 
-      displayName: 'Prepare artifacts'
+    - script: 'mkdir $(Build.SourcesDirectory)/Artifact && cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result/`cat date.txt` $(Build.SourcesDirectory)/Artifact' 
+      displayName: 'Prepare Artifacts'
       workingDirectory: '/home/hcsuser/perf/'
 
     - task: PublishBuildArtifacts@1
       inputs:
         pathtoPublish: '$(Build.SourcesDirectory)/Artifact'
-        artifactName: 'drop'
-
-
-
-    #- template: templates/component-governance-component-detection-steps.yml
-      #parameters :
-        #condition : 'ci_only'
+        artifactName: 'result'
 
     - template: templates/clean-agent-build-directory-step.yml
