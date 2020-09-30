@@ -6,7 +6,8 @@ parameters:
 
 variables:
   docker_image_prefix: onnxruntime-training
-  linux_gpu_dockerfile: dockerfiles/Dockerfile.training
+  linux_gpu_dockerfile: '$(Build.SourcesDirectory)/dockerfiles/Dockerfile.training'
+  docker_build_context: '$(Build.SourcesDirectory)/dockerfiles'
   build_config: Release
 
 name: $(Date:yyyyMMdd)$(Rev:.r)
@@ -28,7 +29,8 @@ jobs:
           --no-cache \
           --build-arg COMMIT="$(Build.SourceVersion)" \
           --build-arg BUILD_CONFIG="${{ variables.build_config }}" \
-          -f ${{ variables.linux_gpu_dockerfile }} .
+          -f ${{ variables.linux_gpu_dockerfile }} \
+          ${{ variables.docker_build_context }}
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
@@ -53,7 +55,8 @@ jobs:
       containerRegistry: 'ortrelease'
       repository: 'onnxruntime-training'
       arguments: --build-arg COMMIT="$(Build.SourceVersion)" --build-arg BUILD_CONFIG="${{ variables.build_config }}"
-      Dockerfile: ${{ variables.linux_gpu_dockerfile }}
+      Dockerfile: '${{ variables.linux_gpu_dockerfile }}'
+      buildContext: '${{ variables.docker_build_context }}'
       tags: |
         $(Build.BuildNumber)
         ${{ parameters.image_tag }}
