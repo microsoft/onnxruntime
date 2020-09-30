@@ -16,11 +16,11 @@ Developers of specialized HW acceleration solutions can integrate with ONNX Runt
 
 ### Building ONNX Runtime package with EPs
 
-The ONNX Runtime package can be built with any combination of the EPs along with the default CPU execution provider. **Note** that if multiple EPs are combined into the same ONNX Runtime package then all the dependent librariers must be present in the execution environment. The steps for producing the ONNX Runtime package with different EPs is documented [here](../../BUILD.md#execution-providers).
+The ONNX Runtime package can be built with any combination of the EPs along with the default CPU execution provider. **Note** that if multiple EPs are combined into the same ONNX Runtime package then all the dependent libraries must be present in the execution environment. The steps for producing the ONNX Runtime package with different EPs is documented [here](../../BUILD.md#execution-providers).
 
 ### APIs for Execution Provider
 
-The same ONNX Runtime API is used across all EPs. This provides the consistent interface for applications to run with different HW acceleration platforms. The APIs to set EP options are available across Python, C/C++, Java and node.js. **Note** we are updating our API support to get parity across all language binding and will update specifics here.
+The same ONNX Runtime API is used across all EPs. This provides the consistent interface for applications to run with different HW acceleration platforms. The APIs to set EP options are available across Python, C/C++/C#, Java and node.js. **Note** we are updating our API support to get parity across all language binding and will update specifics here.
 
     `get_providers`: Return list of registered execution providers.
     `get_provider_options`: Return the registered execution providers' configurations.
