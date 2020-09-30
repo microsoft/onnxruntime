@@ -1,3 +1,4 @@
+remote_theme: pmarsceill/just-the-docs
 color_scheme: onnxruntime
 plugins:
   - jekyll-toc
