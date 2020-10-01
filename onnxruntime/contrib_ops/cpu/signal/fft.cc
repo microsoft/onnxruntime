@@ -21,6 +21,14 @@ ONNX_OPERATOR_KERNEL_EX(
     KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", BuildKernelDefConstraints<float, double>()),
     Fft);
 
+ONNX_OPERATOR_KERNEL_EX(
+    Ifft,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
+    KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", BuildKernelDefConstraints<float, double>()),
+    Ifft);
+
 auto next_power_of_2(uint32_t input)
 {
     input--;
@@ -36,8 +44,9 @@ template <typename T>
 struct output_container {
   std::complex<T>* data_;
   std::vector<unsigned> mapping_;
+  std::vector<std::complex<T>> temp_;
 
-  output_container(size_t size, std::complex<T>* data) : mapping_(size)
+  output_container(size_t size, std::complex<T>* data) : mapping_(size), temp_(size)
   {
     data_ = data;
   }
@@ -165,29 +174,27 @@ auto fft_internal(
     auto evens = samples.evens();
     auto odds = samples.odds();
     
-    size_t midpoint = static_cast<size_t>((end + begin) / 2);
+    int midpoint = static_cast<size_t>((end + begin) / 2);
     fft_internal<T, U>(evens, x_begin, optimized_container, begin, midpoint);
     fft_internal<T, U>(odds, x_begin, optimized_container, midpoint, end);
 
     for (size_t index = begin; index < midpoint; index++) {
       auto i = index - begin;
-
-      auto even = optimized_container[begin + i];
+      auto even = optimized_container[index];
       auto odd = optimized_container[midpoint + i];
+      optimized_container.temp_[begin + 2 * i] = even + (x_begin[2 * i] * odd);
+      optimized_container.temp_[begin + 2 * i + 1] = even + (x_begin[2 * i + 1] * odd);
+    }
 
-      auto first = begin + (2 * i);
-      auto second = begin + (2 * i) + 1;
-      
-      auto first_val = even + (x_begin[(2*i)] * odd);
-      optimized_container[first]  = even + (x_begin[(2*i)] * odd);
-
-      auto second_val = even + (x_begin[(2*i)+1] * odd);
-      optimized_container[second] = even + (x_begin[(2*i)+1] * odd);
+    // unscramble
+    for (size_t i = begin; i < end; i++) {
+      auto temp = optimized_container.temp_[i];
+      optimized_container[i] = optimized_container.temp_[i];
     }
 }
 
 template <typename T, typename U>
-void fft(const samples_container& samples, std::complex<T>* output) {
+void fft(const samples_container& samples, std::complex<T>* output, bool inverse) {
     size_t number_of_samples = samples.size();
 
     float increment = 2.f / number_of_samples;  // in pi radians
@@ -218,25 +225,39 @@ void fft(const samples_container& samples, std::complex<T>* output) {
 
       x[half_angle_index].real(static_cast<T>(cos(half_angle * pi)));
       x[half_angle_index].imag(static_cast<T>(sin(half_angle * pi)));
-      optimized_output.mapping_[half_angle_index] = static_cast<unsigned>(half_angle / increment);
+
+      optimized_output.mapping_[half_angle_index] =
+          inverse ? 
+            number_of_samples - static_cast<unsigned>(half_angle / increment) : 
+            static_cast<unsigned>(half_angle / increment);
 
       x[half_angle_plus_pi_index].real(static_cast<T>(cos(reflected_half_angle * pi)));
       x[half_angle_plus_pi_index].imag(static_cast<T>(sin(reflected_half_angle * pi)));
-      optimized_output.mapping_[half_angle_plus_pi_index] = static_cast<unsigned>(reflected_half_angle / increment);
+      optimized_output.mapping_[half_angle_plus_pi_index] =
+          inverse ? 
+            number_of_samples - static_cast<unsigned>(reflected_half_angle / increment) : 
+            static_cast<unsigned>(reflected_half_angle / increment);
     }
 
     fft_internal<T, U>(samples, x.data(), optimized_output, 0, number_of_samples);
 }
 
 template <typename T, typename U>
-static Status FftImpl(const Tensor* X, Tensor* Y) {
+static Status FftImpl(const Tensor* X, Tensor* Y, bool inverse) {
   const auto& X_shape = X->Shape();
   auto* X_data = const_cast<U*>(reinterpret_cast<const U*>(X->DataRaw()));
   auto* Y_data = reinterpret_cast<std::complex<T>*>(Y->MutableDataRaw());
 
 
   const auto samples = make_fft_samples_container(X_data, static_cast<uint32_t>(X_shape[0]));
-  fft<T, U>(samples, Y_data);
+  fft<T, U>(samples, Y_data, inverse);
+
+  if (inverse) {
+    for (int i = 0; i < samples.size(); i++) {
+      std::complex<T>& val = *(Y_data + i);
+      val /= static_cast<T>(samples.size());
+    }
+  }
 
   return Status::OK();
 }
@@ -259,16 +280,53 @@ Status Fft::Compute(OpKernelContext* ctx) const {
   switch (element_size) {
     case sizeof(float):
       if (X_shape.NumDimensions() == 1) {
-        status = FftImpl<float, float>(X, Y);
+        status = FftImpl<float, float>(X, Y, false);
       } else if (X_shape.NumDimensions() == 2 && X_shape[1] == 2) {
-        status = FftImpl<float, std::complex<float>>(X, Y);
+        status = FftImpl<float, std::complex<float>>(X, Y, false);
       }
       break;
     case sizeof(double):
       if (X_shape.NumDimensions() == 1) {
-        status = FftImpl<double, double>(X, Y);
+        status = FftImpl<double, double>(X, Y, false);
       } else if (X_shape.NumDimensions() == 2 && X_shape[1] == 2) {
-        status = FftImpl<double, std::complex<double>>(X, Y);
+        status = FftImpl<double, std::complex<double>>(X, Y, false);
+      }
+      break;
+    default:
+      ORT_THROW("Unsupported input data type of ", data_type);
+  }
+  return status;
+}
+
+
+Status Ifft::Compute(OpKernelContext* ctx) const {
+  Status status;
+  const auto* X = ctx->Input<Tensor>(0);
+  const auto& X_shape = X->Shape();
+  onnxruntime::TensorShape Y_shape({X_shape[0], 2});
+  auto* Y = ctx->Output(0, Y_shape);
+
+  int64_t X_num_dims = static_cast<int64_t>(X_shape.NumDimensions());
+  ORT_ENFORCE(X_num_dims >= signal_ndim_, "signal_ndim cannot be greater than the dimension of Input: ", signal_ndim_, " > ", X_num_dims);
+
+  int64_t Y_num_dims = static_cast<int64_t>(Y_shape.NumDimensions());
+  ORT_ENFORCE(Y_num_dims == 2, "complex output of fft is returned in a 2D array. But output shape is not 2D.");
+
+  MLDataType data_type = X->DataType();
+  const auto element_size = data_type->Size();
+  switch (element_size) {
+    case sizeof(float):
+      if (X_shape.NumDimensions() == 1) {
+        status = FftImpl<float, float>(X, Y, true);
+      } else if (X_shape.NumDimensions() == 2 && X_shape[1] == 2) {
+        status = FftImpl<float, std::complex<float>>(X, Y, true);
+      }
+      break;
+    case sizeof(double):
+      if (X_shape.NumDimensions() == 1) {
+        status = FftImpl<double, double>(X, Y, true);
+      } else if (X_shape.NumDimensions() == 2 && X_shape[1] == 2) {
+        status = FftImpl<double, std::complex<double>>(X, Y, true);
       }
       break;
     default:
