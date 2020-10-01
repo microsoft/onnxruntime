@@ -244,6 +244,7 @@ class IOBinding:
     '''
     def __init__(self, session):
         self._iobinding = C.SessionIOBinding(session._sess)
+        self._numpy_obj_references = []
 
     def bind_cpu_input(self, name, arr_on_cpu):
         '''
@@ -334,8 +335,6 @@ class IOBinding:
 
     def clear_binding_outputs(self):
         self._iobinding.clear_binding_outputs()
-
-    _numpy_obj_references = []
 
 
 class OrtValue:

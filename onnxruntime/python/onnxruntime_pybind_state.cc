@@ -568,15 +568,15 @@ static AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id) {
   return id_to_allocator_map[id];
 }
 
-void CpuToCudaMemCpy(void* dst, const void* src, size_t num_bytes) {
+static void CpuToCudaMemCpy(void* dst, const void* src, size_t num_bytes) {
   CUDA_CALL_THROW(cudaMemcpy(dst, src, num_bytes, cudaMemcpyHostToDevice));
 }
 
-void CudaToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
+static void CudaToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
   CUDA_CALL_THROW(cudaMemcpy(dst, src, num_bytes, cudaMemcpyDeviceToHost));
 }
 
-static const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCudaToHostMemCpyFunction() {
+std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCudaToHostMemCpyFunction() {
   static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
       {OrtDevice::GPU, CudaToCpuMemCpy},
   };
@@ -777,7 +777,7 @@ static bool CheckIfTensor(const std::vector<const NodeArg*>& def_list,
 }
 
 static bool IsNumericNumpyType(int npy_type) {
-  return npy_type != NPY_STRING && npy_type != NPY_UNICODE && npy_type != NPY_VOID && npy_type != NPY_OBJECT;
+  return npy_type < NPY_OBJECT || npy_type == NPY_HALF;
 }
 
 static bool IsNumericNumpyArray(py::object& py_object) {
