@@ -226,7 +226,9 @@ def load_pretrained_model(model_name, config, cache_dir, custom_model_class, is_
     transformers_module = __import__("transformers", fromlist=[model_class_name])
     model_class = getattr(transformers_module, model_class_name)
 
-    return model_class.from_pretrained(model_name, config=config, cache_dir=cache_dir)
+    use_cdn = False if model_name == 't5-11b' else True
+
+    return model_class.from_pretrained(model_name, config=config, cache_dir=cache_dir, use_cdn=use_cdn)
 
 
 def validate_and_optimize_onnx(model_name, use_external_data_format, model_type, onnx_dir, input_names, use_gpu,
