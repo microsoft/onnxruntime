@@ -190,7 +190,7 @@ class OrtPybindSingleUseAllocator : public IAllocator {
 
 using OrtPybindSingleUseAllocatorPtr = std::shared_ptr<OrtPybindSingleUseAllocator>;
 
-bool PyObjectCheck_Array(PyObject* o) {
+bool PyObjectCheck_NumpyArray(PyObject* o) {
   return PyObject_HasAttrString(o, "__array_finalize__");
 }
 
@@ -331,7 +331,7 @@ void CreateSequenceOfTensors(AllocatorPtr alloc, const std::string& name_input,
     tensors.resize(list_size);
     for (Py_ssize_t i = 0; i < list_size; ++i) {
       auto* py_obj = PyList_GetItem(pylist_obj, i);
-      if (!PyObjectCheck_Array(py_obj)) {
+      if (!PyObjectCheck_NumpyArray(py_obj)) {
         throw std::runtime_error("CreateSequenceOfTensors: Input is not a tensor");
       }
       auto p_tensor = CreateTensor(alloc, name_input, reinterpret_cast<PyArrayObject*>(py_obj));
@@ -574,7 +574,7 @@ void CreateGenericIterableMLValue(PyObject* iterator, AllocatorPtr alloc, const 
   if (item == NULL) {
     throw std::runtime_error("Input '" + name_input + "' must not be empty.");
   }
-  if (PyObjectCheck_Array(item)) {
+  if (PyObjectCheck_NumpyArray(item)) {
     PyObject* pType = PyObject_Type(item);
     PyObject* pStr = PyObject_Str(pType);
     py::str spyType = py::reinterpret_borrow<py::str>(pStr);
@@ -603,14 +603,14 @@ void CreateGenericIterableMLValue(PyObject* iterator, AllocatorPtr alloc, const 
 // as the backing data buffer for the ORT Tensor where applicable (for numeric tensors)
 // The numpy object owns the memory and needs to be alive until the corresponding OrtValue is in scope
 void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, const AllocatorPtr& alloc, const std::string& name_input,
-                          py::object& value, OrtValue* p_mlvalue, bool parse_numpy_only,
+                          py::object& value, OrtValue* p_mlvalue, bool accept_only_numpy_array,
                           bool use_numpy_data_memory, MemCpyFunc mem_cpy_to_device) {
   onnx::TypeProto type_proto;
-  if (PyObjectCheck_Array(value.ptr())) {
+  if (PyObjectCheck_NumpyArray(value.ptr())) {
     // The most frequent case: input comes as an array.
     PyArrayObject* arr = reinterpret_cast<PyArrayObject*>(value.ptr());
     CreateTensorMLValue(alloc, name_input, arr, p_mlvalue, use_numpy_data_memory, mem_cpy_to_device);
-  } else if (!parse_numpy_only &&
+  } else if (!accept_only_numpy_array &&
              PyList_Check(value.ptr()) &&
              !CheckIfInputIsSequenceType(name_input, input_def_list, type_proto)) {
     // This is not a sequence tensor. This is just a regular tensor fed through as a list.
@@ -633,10 +633,10 @@ void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, const
     // or when destroyed
     auto pybind_alloc = std::make_shared<OrtPybindSingleUseAllocator>(arr, name_input, alloc->Info());
     CreateTensorMLValueOwned(pybind_alloc, alloc, p_mlvalue);
-  } else if (!parse_numpy_only && PyList_Check(value.ptr())) {
+  } else if (!accept_only_numpy_array && PyList_Check(value.ptr())) {
     auto* seq_tensors = reinterpret_cast<PyObject*>(value.ptr());
     CreateSequenceOfTensors(alloc, name_input, input_def_list, seq_tensors, p_mlvalue);
-  } else if (!parse_numpy_only && PyDict_Check(value.ptr())) {
+  } else if (!accept_only_numpy_array && PyDict_Check(value.ptr())) {
 #if !defined(DISABLE_ML_OPS)
     CreateMapMLValue_AgnosticVectorMap((PyObject*)NULL, value.ptr(), alloc, name_input, p_mlvalue);
 #else
@@ -644,15 +644,13 @@ void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, const
     throw std::runtime_error("Map type is not supported in this build.");
 #endif
 
-  } else if (!parse_numpy_only && strcmp(Py_TYPE(value.ptr())->tp_name, "OrtValue") == 0) {
+  } else if (!accept_only_numpy_array && strcmp(Py_TYPE(value.ptr())->tp_name, "OrtValue") == 0) {
     // This is an OrtValue coming in directly from Python, so assign the underlying native OrtValue handle
     // to the OrtValue object that we are going to use for Run().
     // This should just increase the ref counts of the underlying shared_ptrs in the native OrtValue
     // and the ref count will be decreased when the OrtValue used for Run() is destroyed upon exit.
-    py::object native_ortvalue_handle = value.attr("_ortvalue");
-    auto native_ort_value = native_ortvalue_handle.cast<OrtValue>();
-    *p_mlvalue = native_ort_value;
-  } else if (!parse_numpy_only) {
+    *p_mlvalue = value.attr("_ortvalue").cast<OrtValue>();
+  } else if (!accept_only_numpy_array) {
     auto iterator = PyObject_GetIter(value.ptr());
     if (iterator == NULL) {
       // The pype cannot be handled.

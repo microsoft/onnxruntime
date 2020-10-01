@@ -251,6 +251,10 @@ class IOBinding:
         :param name: input name
         :param arr_on_cpu: input values as a python array on CPU
         '''
+        # Hold a reference to the numpy object as the bound OrtValue is backed 
+        # directly by the data buffer of the numpy object and so the numpy object
+        # must be around until this IOBinding instance is around
+        self._numpy_obj_references.append(arr_on_cpu)
         self._iobinding.bind_input(name, arr_on_cpu)
 
     def bind_input(self, name, device_type, device_id, element_type, shape, buffer_ptr):
@@ -312,7 +316,7 @@ class IOBinding:
     def get_outputs(self):
         '''
         Returns the output OrtValues from the Run() that preceded the call.
-        The data buffer of the obtained OrtValues may rnot reside on CPU memory
+        The data buffer of the obtained OrtValues may not reside on CPU memory
         '''
         returned_ortvalues = []
 
@@ -331,44 +335,51 @@ class IOBinding:
     def clear_binding_outputs(self):
         self._iobinding.clear_binding_outputs()
 
+    _numpy_obj_references = []
 
 class OrtValue:
     '''
     This class provides APIs to construct and deal with OrtValues.
     '''
-    def __init__(self, ortvalue):
+    def __init__(self, ortvalue, numpy_obj = None):
         if isinstance(ortvalue, C.OrtValue):
             self._ortvalue = ortvalue
+            # Hold a ref count to the numpy object if the OrtValue is backed directly
+            # by its data buffer so that it isn't destroyed when the OrtValue is in use
+            self._numpy_obj = numpy_obj
         else:
             # An end user won't hit this error
             raise ValueError("`Provided ortvalue` needs to be of type " +
                              "`onnxruntime.capi.onnxruntime_pybind11_state.OrtValue`")
 
     @staticmethod
-    def tensor_from_numpy(numpy_obj, device_type='cpu', device_id=0):
+    def ortvalue_from_numpy(numpy_obj, device_type='cpu', device_id=0):
         '''
         Factory method to construct an OrtValue (which holds a Tensor) from a given Numpy object
-        A copy of the data in the Numpy object is held by the OrtValue
-        :param numpy_obj: The Numpy object to construct the Tensor from
+        A copy of the data in the Numpy object is held by the OrtValue only if the device is NOT cpu
+        :param numpy_obj: The Numpy object to construct the OrtValue from
         :param device_type: e.g. cpu, cuda, cpu by default
         :param device_id: device id, e.g. 0
         '''
-        return OrtValue(C.OrtValue.tensor_from_numpy(numpy_obj, C.OrtDevice(get_ort_device_type(device_type),
-                        C.OrtDevice.default_memory(), device_id)))
+        # Hold a reference to the numpy object (if device_type is 'cpu') as the OrtValue
+        # is backed directly by the data buffer of the numpy object and so the numpy object
+        # must be around until this OrtValue instance is around
+        return OrtValue(C.OrtValue.ortvalue_from_numpy(numpy_obj, C.OrtDevice(get_ort_device_type(device_type),
+                        C.OrtDevice.default_memory(), device_id)), numpy_obj if device_type.lower() == 'cpu' else None)
 
     @staticmethod
-    def tensor_from_shape_and_type(shape=None, element_type=None, device_type='cpu', device_id=0):
+    def ortvalue_from_shape_and_type(shape=None, element_type=None, device_type='cpu', device_id=0):
         '''
         Factory method to construct an OrtValue (which holds a Tensor) from given shape and element_type
-        :param shape: List of integers indicating the shape of the Tensor
-        :param element_type: The data type of the elements in the Tensor (numpy type)
+        :param shape: List of integers indicating the shape of the OrtValue
+        :param element_type: The data type of the elements in the OrtValue (numpy type)
         :param device_type: e.g. cpu, cuda, cpu by default
         :param device_id: device id, e.g. 0
         '''
         if shape is None or element_type is None:
             raise ValueError("`element_type` and `shape` are to be provided if pre-allocated memory is provided")
 
-        return OrtValue(C.OrtValue.tensor_from_shape_and_type(shape, element_type,
+        return OrtValue(C.OrtValue.ortvalue_from_shape_and_type(shape, element_type,
                         C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(), device_id)))
 
     def data_ptr(self):

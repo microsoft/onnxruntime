@@ -716,7 +716,7 @@ class TestInferenceSession(unittest.TestCase):
         numpy_arr_input = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         numpy_arr_output = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
 
-        ortvalue1 = onnxrt.OrtValue.tensor_from_numpy(numpy_arr_input)
+        ortvalue1 = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr_input)
         self.assertEqual(ortvalue1.device_name(), "cpu")
         self.assertEqual(ortvalue1.shape(), [3, 2])
         self.assertEqual(ortvalue1.data_type(), "tensor(float)")
@@ -735,7 +735,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertTrue(np.array_equal(ortvalue1.numpy(), numpy_arr_input))
 
         if 'CUDAExecutionProvider' in onnxrt.get_available_providers():
-            ortvalue2 = onnxrt.OrtValue.tensor_from_numpy(numpy_arr_input, 'cuda', 0)
+            ortvalue2 = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr_input, 'cuda', 0)
             self.assertEqual(ortvalue2.device_name(), "cuda")
             self.assertEqual(ortvalue2.shape(), [3, 2])
             self.assertEqual(ortvalue2.data_type(), "tensor(float)")

@@ -21,7 +21,7 @@ namespace python {
 
 namespace py = pybind11;
 
-bool PyObjectCheck_Array(PyObject* o);
+bool PyObjectCheck_NumpyArray(PyObject* o);
 
 int OnnxRuntimeTensorToNumpyType(const DataTypeImpl* tensor_type);
 
@@ -31,7 +31,7 @@ using MemCpyFunc = void (*)(void*, const void*, size_t);
 void CpuToCpuMemCpy(void*, const void*, size_t);
 void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, const AllocatorPtr& alloc,
                           const std::string& name_input, py::object& value, OrtValue* p_mlvalue,
-                          bool parse_numpy_only = false, bool use_numpy_data_memory = true, MemCpyFunc mem_cpy_to_device = CpuToCpuMemCpy);
+                          bool accept_only_numpy_array = false, bool use_numpy_data_memory = true, MemCpyFunc mem_cpy_to_device = CpuToCpuMemCpy);
 
 void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj,
                         const DataTransferManager* data_transfer_manager = nullptr,

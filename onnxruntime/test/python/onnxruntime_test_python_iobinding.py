@@ -9,13 +9,13 @@ from helper import get_name
 class TestIOBinding(unittest.TestCase):
 
     def create_ortvalue_input_on_gpu(self):
-        return onnxruntime.OrtValue.tensor_from_numpy(np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32), 'cuda', 0)
+        return onnxruntime.OrtValue.ortvalue_from_numpy(np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32), 'cuda', 0)
 
     def create_ortvalue_alternate_input_on_gpu(self):
-        return onnxruntime.OrtValue.tensor_from_numpy(np.array([[2.0, 4.0], [6.0, 8.0], [10.0, 12.0]], dtype=np.float32), 'cuda', 0)
+        return onnxruntime.OrtValue.ortvalue_from_numpy(np.array([[2.0, 4.0], [6.0, 8.0], [10.0, 12.0]], dtype=np.float32), 'cuda', 0)
 
     def create_uninitialized_ortvalue_input_on_gpu(self):
-        return onnxruntime.OrtValue.tensor_from_shape_and_type([3, 2], np.float32, 'cuda', 0)
+        return onnxruntime.OrtValue.ortvalue_from_shape_and_type([3, 2], np.float32, 'cuda', 0)
 
     def create_numpy_input(self):
         return np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
@@ -53,7 +53,7 @@ class TestIOBinding(unittest.TestCase):
         session = onnxruntime.InferenceSession(get_name("mul_1.onnx"))
         io_binding = session.io_binding()
         
-        # Bind Numpy object (input) to CUDA
+        # Bind Numpy object (input) that's on CPU to wherever the model needs it
         io_binding.bind_cpu_input('X', self.create_numpy_input())
         
         # Bind output to CPU
