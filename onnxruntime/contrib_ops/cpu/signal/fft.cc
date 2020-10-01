@@ -29,36 +29,22 @@ ONNX_OPERATOR_KERNEL_EX(
     KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", BuildKernelDefConstraints<float, double>()),
     Ifft);
 
-auto next_power_of_2(uint32_t input)
-{
-    input--;
-    input |= input >> 1;
-    input |= input >> 2;
-    input |= input >> 4;
-    input |= input >> 8;
-    input |= input >> 16;
-    return input + 1;
-}
-
 struct samples_container {
     uint8_t* data_;
     size_t length_;
-    size_t max_length_;
     size_t element_length_;
 
     template <typename T>
-    samples_container(T* data, size_t length, size_t max_length) :
+    samples_container(T* data, size_t length) :
         data_(reinterpret_cast<uint8_t*>(data)),
         length_(length),
-        max_length_(max_length),
         element_length_(sizeof(T))
     {}
     
     template <typename T>
-    samples_container(T* data, size_t length, size_t max_length, size_t element_length) :
+    samples_container(T* data, size_t length, size_t element_length) :
         data_(reinterpret_cast<uint8_t*>(data)),
         length_(length),
-        max_length_(max_length),
         element_length_(element_length)
     {}
 
@@ -72,20 +58,20 @@ struct samples_container {
         return T{ 0 };
     }
 
-    auto size() const { return max_length_; }
+    auto size() const { return length_; }
 
     auto evens() const {
-        return samples_container(data_, static_cast<size_t>(ceil(length_ / 2.f)), static_cast<size_t>(ceil(max_length_ / 2.f)), element_length_ * 2);
+        return samples_container(data_, static_cast<size_t>(ceil(length_ / 2.f)), element_length_ * 2);
     }
 
     auto odds() const {
-        if (max_length_ > 1)
+        if (length_ > 1)
         {
-            return samples_container(data_ + element_length_, static_cast<size_t>(ceil((length_ - 1) / 2.f)), static_cast<size_t>(ceil((max_length_ - 1) / 2.f)), element_length_ * 2);
+            return samples_container(data_ + element_length_, static_cast<size_t>(ceil((length_ - 1) / 2.f)), element_length_ * 2);
         }
         else
         {
-            return samples_container(data_ + element_length_, 0, 0, element_length_ * 2);
+            return samples_container(data_ + element_length_, 0, element_length_ * 2);
         }
     }
 
@@ -133,86 +119,83 @@ struct samples_container {
     };
 };
 
-template <typename T>
-auto make_fft_samples_container(T* data, size_t length) {
-    auto power_of_2 = next_power_of_2(length);
-    return samples_container(data, length, power_of_2);
-}
-
-template <typename T = float, typename U = float>
-auto fft_internal(
-    const samples_container& samples,
-    std::vector<std::complex<T>>& x,
-    std::complex<T>* output,
-    size_t size) {
-
-    if (samples.size() == 1)
-    {
-      *(output) = x[0] * samples.at<U>(0);
-      return;
-    }
-
-    auto evens = samples.evens();
-    auto odds = samples.odds();
-    
-    int midpoint = static_cast<size_t>((size) / 2);
-    fft_internal<T, U>(evens, x, output, midpoint);
-    fft_internal<T, U>(odds, x, output + midpoint, midpoint);
-
-    unsigned significant_bits = static_cast<unsigned>(log2(size));
-
-    for (size_t i = 0; i < midpoint; i++) {
-      std::complex<T>* even = output + i;
-      std::complex<T>* odd = output + (midpoint + i);
-      std::complex<T> first = *even + (x[bit_reverse(i, significant_bits)] * *odd);
-      std::complex<T> second = *even + (x[bit_reverse(midpoint + i, significant_bits)] * *odd);
-      *even = first;
-      *odd = second;
-    }
-}
-
-unsigned bit_reverse(unsigned num, unsigned significant_bits) {
+size_t bit_reverse(size_t num, unsigned significant_bits) {
   unsigned output = 0;
   for (unsigned i = 0; i < significant_bits; i++) {
-
-      output += ((num >> i) & 1) << (significant_bits - 1 - i);
+    output += ((num >> i) & 1) << (significant_bits - 1 - i);
   }
   return output;
 }
 
 template <typename T, typename U>
-void fft(const samples_container& samples, std::complex<T>* output, bool inverse) {
-  static const double pi = 3.14159265;
-  static const double tau = 2 * pi;
+auto fft(
+    const samples_container& samples,
+    std::vector<std::complex<T>>& V,
+    std::complex<T>* output,
+    size_t size) {
 
-  size_t number_of_samples = samples.size();
-  auto x = std::vector<std::complex<T>>(number_of_samples); // e^(i *2*pi / N * k)
+    if (size == 1)
+    {
+      *output = V[0] * samples.at<U>(0);
+      return;
+    }
 
-  T inverse_switch = inverse ? 1.f : -1.f;
-  T increment_in_radians = inverse_switch * tau / number_of_samples;
-  unsigned significant_bits = static_cast<unsigned>(log2(number_of_samples));
-  for (unsigned i = 0; i < number_of_samples; i++) {
-    unsigned bit_reversed_index = bit_reverse(i, significant_bits);
-    x[bit_reversed_index] = std::complex<T>(cos(i * increment_in_radians), sin(i * increment_in_radians));
-  }
+    size_t midpoint = static_cast<size_t>(size / 2);
+    unsigned significant_bits = static_cast<unsigned>(log2(size));
 
-  fft_internal<T, U>(samples, x, output, number_of_samples);
+    // Get evens and odds
+    auto evens = samples.evens();
+    auto odds = samples.odds();
+
+    fft<T, U>(evens, V, output, midpoint);
+    fft<T, U>(odds, V, output + midpoint, midpoint);
+
+    for (size_t i = 0; i < midpoint; i++) {
+      std::complex<T>* even = output + i;
+      std::complex<T>* odd = output + (midpoint + i);
+      std::complex<T> first = *even + (V[bit_reverse(i, significant_bits)] * *odd);
+      std::complex<T> second = *even + (V[bit_reverse(midpoint + i, significant_bits)] * *odd);
+      *even = first;
+      *odd = second;
+    }
 }
 
 template <typename T, typename U>
 static Status FftImpl(const Tensor* X, Tensor* Y, bool inverse) {
+
+  // Get shape and significant bits
   const auto& X_shape = X->Shape();
+  size_t number_of_samples = static_cast<size_t>(X_shape[0]);
+  unsigned significant_bits = static_cast<unsigned>(log2(number_of_samples));
+
+  // Get data
   auto* X_data = const_cast<U*>(reinterpret_cast<const U*>(X->DataRaw()));
   auto* Y_data = reinterpret_cast<std::complex<T>*>(Y->MutableDataRaw());
 
+  // Calculate fundamental angular velocity
+  static const T pi = 3.14159265;
+  static const T tau = 2 * pi;
+  T inverse_switch = inverse ? 1.f : -1.f;
+  T angular_velocity = inverse_switch * tau / number_of_samples;
 
-  const auto samples = make_fft_samples_container(X_data, static_cast<uint32_t>(X_shape[0]));
-  fft<T, U>(samples, Y_data, inverse);
+  // Pad samples to power of 2
+  const auto X_samples = samples_container(X_data, number_of_samples);
 
+  // Create vandermonde matrix V ordered with the bit-reversed permutation
+  auto V = std::vector<std::complex<T>>(number_of_samples);  // e^(i *2*pi / N * k)
+  for (size_t i = 0; i < number_of_samples; i++) {
+    size_t bit_reversed_index = bit_reverse(i, significant_bits);
+    V[bit_reversed_index] = std::complex<T>(cos(i * angular_velocity), sin(i * angular_velocity));
+  }
+
+  // Run fft
+  fft<T, U>(X_samples, V, Y_data, number_of_samples);
+
+  // Scale the output if inverse fft
   if (inverse) {
-    for (int i = 0; i < samples.size(); i++) {
+    for (int i = 0; i < number_of_samples; i++) {
       std::complex<T>& val = *(Y_data + i);
-      val /= static_cast<T>(samples.size());
+      val /= static_cast<T>(number_of_samples);
     }
   }
 
