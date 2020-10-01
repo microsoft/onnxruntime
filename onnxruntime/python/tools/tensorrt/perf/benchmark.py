@@ -31,8 +31,6 @@ ep_to_provider_list = {
     "TensorrtExecutionProvider_fp16": ["TensorrtExecutionProvider", "CUDAExecutionProvider"],
 }
 
-# List the models that known to cause script to quit or core dump
-skip_models = ["mlperf_ssd_mobilenet_300_opset10", "mlperf_ssd_resnet34_1200_opset10"]
 
 def run_trt_standalone(trtexec, model_path, ort_inputs, all_inputs_shape, fp16):
     model_path = "--onnx=" + model_path
@@ -522,7 +520,7 @@ def remove_profiling_files(path):
         subprocess.Popen(["rm","-rf", f], stdout=subprocess.PIPE)
 
 
-def update_fail_report(fail_results, args, model, ep, e_type, e):
+def update_fail_report(fail_results, model, ep, e_type, e):
     result = {}
 
     result["model"] = model
@@ -541,19 +539,23 @@ def update_fail_model(model_ep_fail_map, fail_results, args, model_name, ep, e_t
         if ep not in model_ep_fail_map[model_name]:
             model_ep_fail_map[model_name].append(ep)
 
-    update_fail_report(fail_results, args, model_name, ep, e_type, e)
+    update_fail_report(fail_results, model_name, ep, e_type, e)
 
     # If TRT fails, TRT FP16 should fail as well
     if ep == 'TensorrtExecutionProvider':
         ep_ = "TensorrtExecutionProvider_fp16"
         e_ = "Not benchmarking TRT FP16 since TRT failed already."
-        update_fail_report(fail_results, args, model_name, ep_, e_type, e_)
+        update_fail_report(fail_results, model_name, ep_, e_type, e_)
         model_ep_fail_map[model_name].append(ep_)
 
 
-def skip_ep(model_name, ep, model_ep_fail_map):
+def skip_ep(model_name, ep, model_ep_fail_map, failing_models, args):
 
-    if model_name in skip_models:
+    # List the models that known to cause script to quit or core dump
+    # skip_models = ["mlperf_ssd_mobilenet_300_opset10", "mlperf_ssd_resnet34_1200_opset10"]
+
+    if model_name in failing_models:
+        logger.info("Skip testing " + model_name + " since it has some issues.")
         return True
 
     if model_name not in model_ep_fail_map:
@@ -562,6 +564,7 @@ def skip_ep(model_name, ep, model_ep_fail_map):
     ep_fail_list = model_ep_fail_map[model_name]
 
     if ep in ep_fail_list:
+        logger.info("Skip testing " + model_name + " using " + ep + " since it has some issues.")
         return True
 
     return False
@@ -698,6 +701,7 @@ def parse_models_info_from_directory(path, models):
 
 def parse_models_info_from_file(path, models):
 
+    # default working directory
     root_working_directory = "/home/hcsuser/perf/"
 
     with open(path) as f:
@@ -707,6 +711,7 @@ def parse_models_info_from_file(path, models):
 
             if 'root_working_directory' in row:
                 root_working_directory = row['root_working_directory']
+                continue
 
             if 'model_name' in row:
                 models[row['model_name']] = {}
@@ -715,6 +720,14 @@ def parse_models_info_from_file(path, models):
                 raise
 
             model = models[row['model_name']]
+
+            if 'is_failing' in row and row['is_failing'] != "false":
+                model['is_failing'] = 'true'
+                if 'error_type' in row:
+                    model['error_type'] = row['error_type']
+                if 'error_message' in row:
+                    model['error_message'] = row['error_message']
+                continue
 
             if 'working_directory' in row:
                 model['working_directory'] = os.path.join(root_working_directory + row['working_directory'])
@@ -739,6 +752,7 @@ def parse_models_info_from_file(path, models):
 
             if 'test_data_path_fp16' in row:
                 model['test_data_path_fp16'] = row['test_data_path_fp16']
+
 
 def convert_model_from_float_to_float16(model_path):
     # from onnxmltools.utils.float16_converter import convert_float_to_float16
@@ -779,12 +793,18 @@ def run_onnxruntime(args, models):
     latency_comparison_map = {} # model -> CUDA/TRT latency
     profile_metrics_map = {} # model -> metrics from profiling file
     model_ep_fail_map = {} # model -> failing ep
+    failing_models = {} # models that previously known for some issues and need to skip
 
 
     # read failing ep information if file exists
     if args.running_mode == 'benchmark':
         if os.path.exists('.model_ep_fail_map.json'):
             model_ep_fail_map = read_model_ep_fail_map_from_file('.model_ep_fail_map.json')
+
+    if args.failing_models:
+        parse_models_info_from_file(args.failing_models, failing_models)
+        for key, value in failing_models.items():
+            update_fail_report(fail_results, key, "All", value["error_type"], value["error_message"])
 
     if args.fp16:
         ep_list = ["CUDAExecutionProvider", "TensorrtExecutionProvider", "CUDAExecutionProvider_fp16", "TensorrtExecutionProvider_fp16"]
@@ -826,7 +846,7 @@ def run_onnxruntime(args, models):
         #######################
         for ep in ep_list:
 
-            if skip_ep(name, ep, model_ep_fail_map):
+            if skip_ep(name, ep, model_ep_fail_map, failing_models, args):
                 continue
 
             ep_ = ep_to_provider_list[ep][0]
@@ -1267,6 +1287,8 @@ def parse_arguments():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("-m", "--model_source", required=False, default="model_list.json", help="Model source: (1) model list file (2) model directory.")
+
+    parser.add_argument("-e", "--failing_models", required=False, default=None, help="List of already known failing models")
 
     parser.add_argument("-r", "--running_mode", required=False, default="benchmark", choices=["validate", "benchmark"], help="Testing mode.")
 

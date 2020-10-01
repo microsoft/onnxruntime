@@ -11,14 +11,14 @@ else
 fi
 
 ## many models 
-#python3 benchmark.py -r validate -m /home/hcsuser/mount/ -o result/$DATE/many_models
-#python3 benchmark.py -r benchmark -i random -t 10 -m /home/hcsuser/mount -o result/$DATE/many_models
+python3 benchmark.py -r validate -m /home/hcsuser/mount/ -o result/$DATE/many_models -e /home/hcsuser/perf/failing_model_list.json
+python3 benchmark.py -r benchmark -i random -t 10 -m /home/hcsuser/mount -o result/$DATE/many_models -e /home/hcsuser/failing_model_list.json
 
-## ONNX model zoo
-#python3 benchmark.py -r validate -m model_list.json -o result/$DATE/onnx_model_zoo
-#python3 benchmark.py -r benchmark -i random -t 10 -m model_list.json -o result/$DATE/onnx_model_zoo
+# ONNX model zoo
+python3 benchmark.py -r validate -m model_list.json -o result/$DATE/onnx_model_zoo
+python3 benchmark.py -r benchmark -i random -t 10 -m model_list.json -o result/$DATE/onnx_model_zoo
 
-# 1P models 
+ 1P models 
 python3 benchmark.py -r validate -m partner_model_list.json -o result/$DATE/partner_models
 python3 benchmark.py -r benchmark -i random -t 10 -m /home/hcsuser/perf/partner_model_list.json -o result/$DATE/partner_models
 
