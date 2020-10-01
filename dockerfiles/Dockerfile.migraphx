@@ -17,7 +17,6 @@ RUN locale-gen en_US.UTF-8
 RUN update-locale LANG=en_US.UTF-8
 ENV LC_ALL C.UTF-8
 ENV LANG C.UTF-8
-ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/rocm/lib
 
 # Install rocm
 RUN apt-get update && apt-get install -y gnupg2 --no-install-recommends curl && \
@@ -41,17 +40,11 @@ RUN rm -rf /migraphx
 
 WORKDIR /code
 
-# Workaround for broken cmake in hip's binary package
-#RUN sed -i -e 's/hcc::hccrt;hcc::hc_am//g' /opt/rocm/hip/lib/cmake/hip/hip-targets-release.cmake
-#ENV CXXFLAGS "-D__HIP_PLATFORM_HCC__=1"
-
 # Prepare onnxruntime repository & build onnxruntime
 RUN git clone --single-branch --branch ${ONNXRUNTIME_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime &&\
     /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh &&\
-    cd onnxruntime 
-#    &&\
-#    /bin/sh ./build.sh --config Release --build_wheel --update --build --parallel --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER) --use_migraphx 
-#    &&\
-#    pip install /code/onnxruntime/build/Linux/Release/dist/*.whl &&\
-#    cd .. &&\
-#    rm -rf onnxruntime cmake-3.14.3-Linux-x86_64
+    cd onnxruntime &&\
+    /bin/sh ./build.sh --config Release --build_wheel --update --build --parallel --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER) --use_migraphx &&\
+    pip install /code/onnxruntime/build/Linux/Release/dist/*.whl &&\
+    cd .. &&\
+    rm -rf onnxruntime cmake-3.14.3-Linux-x86_64
