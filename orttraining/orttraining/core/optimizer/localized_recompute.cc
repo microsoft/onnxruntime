@@ -27,12 +27,16 @@ Status GeluRecompute::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*
   GraphViewer graph_viewer(graph);
   const auto& order = graph_viewer.GetNodesInTopologicalOrder();
 
+  std::vector<Node*> target_nodes;
   for (NodeIndex i : order) {
-    Node& node = *graph.GetNode(i);
-
-    if (!SatisfyCondition(node)) {
-      continue;
+    Node* node = graph.GetNode(i);
+    if (SatisfyCondition(*node)) {
+      target_nodes.push_back(node);
     }
+  }
+
+  for (size_t i = 0; i < target_nodes.size(); ++i) {
+    Node& node = *target_nodes[i];
 
     const auto& output = node.OutputDefs()[0];
 
@@ -47,7 +51,7 @@ Status GeluRecompute::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*
                                          &node.GetAttributes(),
                                          node.Domain());
 
-    recompute_node.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_LOW));
+    recompute_node.SetPriority(static_cast<int>(target_nodes.size() - i));
 
     modified = true;
   }
@@ -72,16 +76,17 @@ Status AttentionDropoutRecompute::ApplyImpl(Graph& graph, bool& modified, int /*
   GraphViewer graph_viewer(graph);
   const auto& order = graph_viewer.GetNodesInTopologicalOrder();
 
+  std::vector<Node*> target_nodes;
   for (NodeIndex i : order) {
-    Node& node = *graph.GetNode(i);
-
-    if (!SatisfyCondition(node)) {
-      continue;
+    Node* node = graph.GetNode(i);
+    if (SatisfyCondition(*node)) {
+      target_nodes.push_back(node);
     }
+  }
 
-    Node& recompute_node = InsertDropoutRecompute(graph, node, /*use_original_input*/ true);
-    recompute_node.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_LOW));
-
+  for (size_t i = 0; i < target_nodes.size(); ++i) {
+    Node& recompute_node = InsertDropoutRecompute(graph, *target_nodes[i], /*use_original_input*/ true);
+    recompute_node.SetPriority(static_cast<int>(target_nodes.size() - i));
     modified = true;
   }
   return Status::OK();
