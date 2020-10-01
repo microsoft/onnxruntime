@@ -94,11 +94,11 @@ def testORTTrainerOptionsDefaultValues(test_input):
             'enabled': False,
             'loss_scaler': None
         },
-        'recompute': {
-            'attn_dropout': False,
-            'gelu': False,
-            'transformer_layer': False,
-            'number_layers': 0
+        'graph_transformer': {
+            'attn_dropout_recompute': False,
+            'gelu_recompute': False,
+            'transformer_layer_recompute': False,
+            'number_recompute_layers': 0
         },
         'utils': {
             'frozen_weights': [],
@@ -766,11 +766,11 @@ def testORTTrainerRecompute(attn_dropout, gelu, transformer_layer, number_layers
     # Setup ORTTrainer
     loss_scaler = amp.DynamicLossScaler()
     options = orttrainer.ORTTrainerOptions({'device' : {'id' : device},
-                                            'recompute' : {
-                                                'attn_dropout': attn_dropout,
-                                                'gelu': gelu,
-                                                'transformer_layer': transformer_layer,
-                                                'number_layers': number_layers
+                                            'graph_transformer' : {
+                                                'attn_dropout_recompute': attn_dropout,
+                                                'gelu_recompute': gelu,
+                                                'transformer_layer_recompute': transformer_layer,
+                                                'number_recompute_layers': number_layers
                                             },
                                             'debug' : {'deterministic_compute' : True}})
     model, model_desc, my_loss, batcher_fn, train_data, val_data, _ = _load_pytorch_transformer_model(device)
