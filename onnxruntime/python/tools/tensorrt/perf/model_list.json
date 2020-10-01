@@ -238,11 +238,5 @@
         "working_directory": "./models/Fast-Neural",
         "model_path": "./mosaic/mosaic.onnx",
         "test_data_path": "./mosaic/"
-    },
-    {
-        "model_name": "BiDAF",
-        "working_directory": "./models/BiDAF",
-        "model_path": "./bidaf/bidaf.onnx",
-        "test_data_path": "./bidaf/"
     }
 ]
