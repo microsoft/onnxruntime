@@ -39,9 +39,10 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCudaExecutionProvider,
     KernelDefBuilder()
-        // launch on the default compute stream synchronously 
-        // to ensure copy is complete before being accessed by the next node.   
         .InputMemoryType<OrtMemTypeCPUInput>(0)
+#ifndef ENABLE_TRAINING
+        .ExecQueueId(kCudaStreamCopyIn)
+#endif  // launch on the default compute stream synchronously for training
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Memcpy);
 
@@ -51,10 +52,15 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCudaExecutionProvider,
     KernelDefBuilder()
-        // properly force CPU/GPU synch inside the kernel, 
-        // launch on the default compute stream synchronously 
-        // to ensure copy is complete before being accessed by the next node.      
+#ifndef ENABLE_TRAINING
+        .OutputMemoryType<OrtMemTypeCPUOutput>(0)
+        .ExecQueueId(kCudaStreamCopyOut)
+#else
+        // for training, properly force CPU/GPU synch inside the kernel,
+        // launch on the default compute stream synchronously
+        // to ensure copy is complete before being accessed by the next node.
         .OutputMemoryType<OrtMemTypeCPUInput>(0)
+#endif
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Memcpy);
 
