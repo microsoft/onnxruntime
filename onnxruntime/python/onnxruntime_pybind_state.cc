@@ -852,66 +852,66 @@ void addGlobalMethods(py::module& m, const Environment& env) {
       "Return a vector of OpSchema all registed operators");
   m.def(
       "get_all_opkernel_def", []() -> const std::vector<onnxruntime::KernelDef> {
-    std::vector<onnxruntime::KernelDef> result;
+        std::vector<onnxruntime::KernelDef> result;
 
-    std::vector<std::shared_ptr<onnxruntime::IExecutionProviderFactory>> factories = {
-      onnxruntime::CreateExecutionProviderFactory_CPU(0),
+        std::vector<std::shared_ptr<onnxruntime::IExecutionProviderFactory>> factories = {
+            onnxruntime::CreateExecutionProviderFactory_CPU(0),
 #ifdef USE_CUDA
-      onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id, cuda_mem_limit, arena_extend_strategy),
+            onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id, cuda_mem_limit, arena_extend_strategy),
 #endif
 #ifdef USE_DNNL
-      onnxruntime::CreateExecutionProviderFactory_Dnnl(1),
+            onnxruntime::CreateExecutionProviderFactory_Dnnl(1),
 #endif
 #ifdef USE_NGRAPH
-      onnxruntime::CreateExecutionProviderFactory_NGraph("CPU"),
+            onnxruntime::CreateExecutionProviderFactory_NGraph("CPU"),
 #endif
 #ifdef USE_OPENVINO
-      onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device_type, false, "");
+            onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device_type, false, ""),
 #endif
 #ifdef USE_TENSORRT
-    onnxruntime::CreateExecutionProviderFactory_Tensorrt(0),
+            onnxruntime::CreateExecutionProviderFactory_Tensorrt(0),
 #endif
 #ifdef USE_MIGRAPHX
-        onnxruntime::CreateExecutionProviderFactory_MIGraphX(0)
+            onnxruntime::CreateExecutionProviderFactory_MIGraphX(0),
 #endif
 #ifdef USE_VITISAI
             onnxruntime::CreateExecutionProviderFactory_VitisAI("DPU", 0),
 #endif
 #ifdef USE_ACL
-        onnxruntime::CreateExecutionProviderFactory_ACL(0)
+            onnxruntime::CreateExecutionProviderFactory_ACL(0),
 #endif
 #ifdef USE_ARMNN
-            onnxruntime::CreateExecutionProviderFactory_ArmNN(0)
+            onnxruntime::CreateExecutionProviderFactory_ArmNN(0),
 #endif
 #ifdef USE_DML
-                onnxruntime::CreateExecutionProviderFactory_DML(0)
+            onnxruntime::CreateExecutionProviderFactory_DML(0)
 #endif
         };
 
         for (const auto& f : factories) {
-    for (const auto& m : f->CreateProvider()
-                             ->GetKernelRegistry()
-                             ->GetKernelCreateMap()) {
-      result.emplace_back(*(m.second.kernel_def));
-    }
+          for (const auto& m : f->CreateProvider()
+                                   ->GetKernelRegistry()
+                                   ->GetKernelCreateMap()) {
+            result.emplace_back(*(m.second.kernel_def));
+          }
         }
 
         return result;
-},
+      },
       "Return a vector of KernelDef for all registered OpKernels");
 #endif  //onnxruntime_PYBIND_EXPORT_OPSCHEMA
 
 #ifdef USE_CUDA
-/*
+  /*
    * The following set_* methods are deprecated.
    *
    * To achieve same result, please use the following python api:
    * InferenceSession.set_providers(list_of_providers, list_of_provider_option_dicts)
    *
    */
-m.def("set_cuda_device_id", [](const int id) { cuda_device_id = static_cast<OrtDevice::DeviceId>(id); });
-m.def("set_cuda_mem_limit", [](const int64_t limit) { cuda_mem_limit = static_cast<size_t>(limit); });
-m.def("set_arena_extend_strategy", [](const onnxruntime::ArenaExtendStrategy strategy) { arena_extend_strategy = strategy; });
+  m.def("set_cuda_device_id", [](const int id) { cuda_device_id = static_cast<OrtDevice::DeviceId>(id); });
+  m.def("set_cuda_mem_limit", [](const int64_t limit) { cuda_mem_limit = static_cast<size_t>(limit); });
+  m.def("set_arena_extend_strategy", [](const onnxruntime::ArenaExtendStrategy strategy) { arena_extend_strategy = strategy; });
 #endif
 }
 
