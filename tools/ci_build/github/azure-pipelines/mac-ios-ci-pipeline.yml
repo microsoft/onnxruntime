@@ -4,5 +4,5 @@ jobs:
     vmImage: 'macOS-10.15'
   timeoutInMinutes: 120
   steps:
-    - script: 'python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --skip_submodule_sync --ios --ios_sysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk --osx_arch x86_64 --apple_deploy_target 12.1 --use_xcode --config RelWithDebInfo'
-      displayName: Build arm64 absolutely minimal build and verify the library size
+    - script: 'python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir iOS --skip_submodule_sync --ios --ios_sysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk --osx_arch x86_64 --apple_deploy_target 12.1 --use_xcode --config RelWithDebInfo'
+      displayName: build iOS test cases and run them.
