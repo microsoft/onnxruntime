@@ -174,6 +174,10 @@ class ORTTrainerOptions(object):
                             'type' : 'boolean',
                             'default' : True
                         }
+                        'enable_gelu_approximation' : {
+                            'type' : 'boolean',
+                            'default' : False
+                        }
                     }
                 }
              }
@@ -486,6 +490,10 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
             'enable_onnx_contrib_ops' : {
                 'type' : 'boolean',
                 'default' : True
+            },
+            'enable_gelu_approximation' : {
+                'type' : 'boolean',
+                'default' : False
             }
         }
     }

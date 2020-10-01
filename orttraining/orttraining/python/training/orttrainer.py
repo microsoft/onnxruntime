@@ -623,6 +623,7 @@ class ORTTrainer(object):
         ort_parameters.allreduce_post_accumulation = self.options.distributed.allreduce_post_accumulation
         ort_parameters.deepspeed_zero_stage = self.options.distributed.deepspeed_zero_optimization.stage
         ort_parameters.enable_grad_norm_clip = self.options.utils.grad_norm_clip
+        ort_parameters.enable_gelu_approximation = self.options._internal_use.enable_gelu_approximation
         ort_parameters.set_gradients_as_graph_outputs = False
         ort_parameters.use_invertible_layernorm_grad = self.options.utils.invertible_layer_norm_gradient
         ort_parameters.training_optimizer_name = self.optim_config.name
@@ -787,7 +788,9 @@ class ORTTrainer(object):
         outputs_desc_resolved = self._resolve_symbolic_dimensions(inputs, inputs_desc, outputs_desc)
         result = {}
         for output_desc in outputs_desc_resolved:
-            torch_tensor = torch.zeros(output_desc.shape, device=self.options.device.id,
+            target_device = self._select_device_if_general_or_cpu_if_allfinite(
+                self.options.device.id, output_desc.name)
+            torch_tensor = torch.zeros(output_desc.shape, device=target_device,
                                        dtype=output_desc.dtype_amp if output_desc.dtype_amp else output_desc.dtype)
             iobinding.bind_output(output_desc.name, torch_tensor.device.type, _utils.get_device_index(self.options.device.id),
                                   _utils.dtype_torch_to_numpy(torch_tensor.dtype),
@@ -818,3 +821,9 @@ class ORTTrainer(object):
         for w_i in replace_indices:
             del self._onnx_model.graph.initializer[w_i]
         self._onnx_model.graph.initializer.extend(new_weights)
+
+    def _select_device_if_general_or_cpu_if_allfinite(self, device, name):
+        if self.options.mixed_precision.enabled:
+            if output_name == self.model_desc.all_finite.name:
+                return torch.device('cpu')
+        return device
