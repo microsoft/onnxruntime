@@ -734,7 +734,7 @@ def testORTTrainerMixedPrecisionLossScaler(seed, device, expected_loss, fetches)
     assert trainer._onnx_model is not None
 
 
-def recompute_test_data():
+def _recompute_data():
     device_capability_major = torch.cuda.get_device_capability()[0] 
     if device_capability_major == 7:    # V100 for Dev machine
         expected_loss = [10.577394, 10.444777, 10.425666, 10.299958, 10.290016]
@@ -754,7 +754,7 @@ def recompute_test_data():
             (False, False, True, 0, expected_loss),     # transformer_layer recompute
             (False, False, True, 1, expected_loss),     # transformer_layer recompute with 1 layer            
         ]
-@pytest.mark.parametrize("attn_dropout, gelu, transformer_layer, number_layers, expected_loss", recompute_test_data())
+@pytest.mark.parametrize("attn_dropout, gelu, transformer_layer, number_layers, expected_loss", _recompute_data())
 def testORTTrainerRecompute(attn_dropout, gelu, transformer_layer, number_layers, expected_loss):
     seed = 321
     device = 'cuda'

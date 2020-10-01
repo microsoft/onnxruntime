@@ -116,24 +116,24 @@ class ORTTrainerOptions(object):
                         }
                     }
                 },
-                'recompute': {
+                'graph_transformer': {
                     'type': 'dict',
                     'required': False,
                     'default': {},
                     'schema': {
-                        'attn_dropout': {
+                        'attn_dropout_recompute': {
                             'type': 'boolean',
                             'default': False
                         },
-                        'gelu': {
+                        'gelu_recompute': {
                             'type': 'boolean',
                             'default': False
                         },
-                        'transformer_layer': {
+                        'transformer_layer_recompute': {
                             'type': 'boolean',
                             'default': False
                         }, 
-                        'number_layers': {
+                        'number_recompute_layers': {
                             'type': 'integer',
                             'min': 0,
                             'default': 0
@@ -245,16 +245,17 @@ class ORTTrainerOptions(object):
             Users can also instantiate :py:class:`.DynamicLossScaler` and
             override its parameters. Lastly, a completely new implementation
             can be specified by extending :py:class:`.LossScaler` class from scratch
-        recompute (dict):
-            recompute options 
-        recompute.attn_dropout (bool, default is False):
-            enable attention dropout recompute
-        recompute.gelu (bool, default is False):
-            enable gelu recompute
-        recompute.transformer_layer (bool, default is False):
-            enable transformer layerwise recompute 
-        recompute.number_layers (int, default is 0)
-            number of layers to apply recompute
+        graph_transformer (dict):
+            graph transformer related configurations
+        attn_dropout_recompute (bool, default is False):
+            enable recomputing attention dropout to save memory
+        gelu_recompute (bool, default is False):
+            enable recomputing Gelu activation output to save memory
+        transformer_layer_recompute (bool, default is False):
+            enable recomputing transformer layerwise to save memory
+        number_recompute_layers (int, default is 0)
+            number of layers to apply transformer_layer_recompute, by default system will
+            apply recompute to all the layers, except for the last one
         utils (dict):
             miscellaneous options
         utils.frozen_weights (list of str, []):
@@ -469,24 +470,24 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
             }
         }
     },
-    'recompute': {
+    'graph_transformer': {
         'type': 'dict',
         'default_setter': lambda _: {},
         'required': False,
         'schema': {
-            'attn_dropout': {
+            'attn_dropout_recompute': {
                 'type': 'boolean',
                 'default': False
             },
-            'gelu': {
+            'gelu_recompute': {
                 'type': 'boolean',
                 'default': False
             },
-            'transformer_layer': {
+            'transformer_layer_recompute': {
                 'type': 'boolean',
                 'default': False
             }, 
-            'number_layers': {
+            'number_recompute_layers': {
                 'type': 'integer',
                 'min': 0,
                 'default': 0
