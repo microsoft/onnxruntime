@@ -33,6 +33,10 @@ struct ValueInfo;
 
 namespace utils {
 
+// Will only create string in flatbuffers when has_string is true
+flatbuffers::Offset<flatbuffers::String> SaveStringToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
+                                                               bool has_string, const std::string& src);
+
 // TODO, add ORT_MUST_USE_RESULT when it is moved to a different header
 onnxruntime::common::Status SaveValueInfoOrtFormat(
     flatbuffers::FlatBufferBuilder& builder, const ONNX_NAMESPACE::ValueInfoProto& value_info_proto,
@@ -41,6 +45,14 @@ onnxruntime::common::Status SaveValueInfoOrtFormat(
 #if defined(ENABLE_ORT_FORMAT_LOAD)
 
 void LoadStringFromOrtFormat(std::string& dst, const flatbuffers::String* fbs_string);
+
+// This macro is to be used on a protobuf message (protobug_msg), which will not create an empty string field (str_field)
+// if fbs_string is null
+#define LOAD_STR_FROM_ORT_FORMAT(protobug_msg, str_field, fbs_string) \
+  {                                                                   \
+    if (fbs_string)                                                   \
+      protobug_msg.set_##str_field(fbs_string->c_str());              \
+  }
 
 onnxruntime::common::Status LoadValueInfoOrtFormat(
     const fbs::ValueInfo& fbs_value_info, ONNX_NAMESPACE::ValueInfoProto& value_info_proto);
