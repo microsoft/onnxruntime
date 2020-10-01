@@ -69,14 +69,14 @@ header.scrolled .navbar-custom .navbar-nav .nav-item:not(:last-child) .nav-link{
     border-right: 2px solid #1a1a1a;
 }
 .navbar-toggler .navbar-toggler-icon {
-    background-image: url('../images/svg/menu-icon.svg');
+    background-image: url('/images/svg/menu-icon.svg');
     width: 3em;
     height: 3em;
     -webkit-transition:0.2s;
     transition:0.2s;
 }
 header.header-collapse .navbar-toggler .navbar-toggler-icon {
-    background-image: url('../images/svg/menu-cross-icon.svg');
+    background-image: url('/images/svg/menu-cross-icon.svg');
     width: 2.5em;
     height: 2.5em;
     -webkit-transition:0.2s;
@@ -563,7 +563,7 @@ a .abbr[data-original-title], a abbr[title]{
 }
 .resources-img::before{
     content: '';
-    background-image: url(../images/youtube-logo.png);
+    background-image: url(/images/youtube-logo.png);
     background-position: center;
     background-size: 50%;
     background-repeat: no-repeat;
