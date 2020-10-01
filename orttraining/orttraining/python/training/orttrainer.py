@@ -824,6 +824,6 @@ class ORTTrainer(object):
 
     def _select_device_if_general_or_cpu_if_allfinite(self, device, name):
         if self.options.mixed_precision.enabled:
-            if output_name == self.model_desc.all_finite.name:
+            if name == self.model_desc.all_finite.name:
                 return torch.device('cpu')
         return device
