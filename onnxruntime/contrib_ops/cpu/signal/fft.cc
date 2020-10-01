@@ -40,23 +40,6 @@ auto next_power_of_2(uint32_t input)
     return input + 1;
 }
 
-template <typename T>
-struct output_container {
-  std::complex<T>* data_;
-  std::vector<unsigned> mapping_;
-  std::vector<std::complex<T>> temp_;
-
-  output_container(size_t size, std::complex<T>* data) : mapping_(size), temp_(size)
-  {
-    data_ = data;
-  }
-
-  std::complex<T>& operator[](size_t i) {
-    std::complex<T>* value = (data_ + mapping_[i]);
-    return *value;
-  }
-};
-
 struct samples_container {
     uint8_t* data_;
     size_t length_;
@@ -159,87 +142,61 @@ auto make_fft_samples_container(T* data, size_t length) {
 template <typename T = float, typename U = float>
 auto fft_internal(
     const samples_container& samples,
-    std::complex<T>* x_begin,
-    output_container<T>& optimized_container,
-    size_t begin,
-    size_t end) {
+    std::vector<std::complex<T>>& x,
+    std::complex<T>* output,
+    size_t size) {
 
     if (samples.size() == 1)
     {
-      optimized_container[begin] = x_begin[0] * samples.at<U>(0);
+      *(output) = x[0] * samples.at<U>(0);
       return;
     }
 
-    auto next_number_of_samples = samples.size() / 2;
     auto evens = samples.evens();
     auto odds = samples.odds();
     
-    int midpoint = static_cast<size_t>((end + begin) / 2);
-    fft_internal<T, U>(evens, x_begin, optimized_container, begin, midpoint);
-    fft_internal<T, U>(odds, x_begin, optimized_container, midpoint, end);
+    int midpoint = static_cast<size_t>((size) / 2);
+    fft_internal<T, U>(evens, x, output, midpoint);
+    fft_internal<T, U>(odds, x, output + midpoint, midpoint);
 
-    for (size_t index = begin; index < midpoint; index++) {
-      auto i = index - begin;
-      auto even = optimized_container[index];
-      auto odd = optimized_container[midpoint + i];
-      optimized_container.temp_[begin + 2 * i] = even + (x_begin[2 * i] * odd);
-      optimized_container.temp_[begin + 2 * i + 1] = even + (x_begin[2 * i + 1] * odd);
-    }
+    unsigned significant_bits = static_cast<unsigned>(log2(size));
 
-    // unscramble
-    for (size_t i = begin; i < end; i++) {
-      auto temp = optimized_container.temp_[i];
-      optimized_container[i] = optimized_container.temp_[i];
+    for (size_t i = 0; i < midpoint; i++) {
+      std::complex<T>* even = output + i;
+      std::complex<T>* odd = output + (midpoint + i);
+      std::complex<T> first = *even + (x[bit_reverse(i, significant_bits)] * *odd);
+      std::complex<T> second = *even + (x[bit_reverse(midpoint + i, significant_bits)] * *odd);
+      *even = first;
+      *odd = second;
     }
+}
+
+unsigned bit_reverse(unsigned num, unsigned significant_bits) {
+  unsigned output = 0;
+  for (unsigned i = 0; i < significant_bits; i++) {
+
+      output += ((num >> i) & 1) << (significant_bits - 1 - i);
+  }
+  return output;
 }
 
 template <typename T, typename U>
 void fft(const samples_container& samples, std::complex<T>* output, bool inverse) {
-    size_t number_of_samples = samples.size();
+  static const double pi = 3.14159265;
+  static const double tau = 2 * pi;
 
-    float increment = 2.f / number_of_samples;  // in pi radians
-    
-    output_container<T> optimized_output(number_of_samples, output);
-    optimized_output.mapping_[0] = 0;
-    optimized_output.mapping_[1] = static_cast<unsigned>(1 / increment);
+  size_t number_of_samples = samples.size();
+  auto x = std::vector<std::complex<T>>(number_of_samples); // e^(i *2*pi / N * k)
 
-    auto x = std::vector<std::complex<T>>(number_of_samples); // e^(i *2*pi / N * k)
-    x[0].real(1);     x[0].imag(0);
-    x[1].real(-1);    x[1].imag(0);
+  T inverse_switch = inverse ? 1.f : -1.f;
+  T increment_in_radians = inverse_switch * tau / number_of_samples;
+  unsigned significant_bits = static_cast<unsigned>(log2(number_of_samples));
+  for (unsigned i = 0; i < number_of_samples; i++) {
+    unsigned bit_reversed_index = bit_reverse(i, significant_bits);
+    x[bit_reversed_index] = std::complex<T>(cos(i * increment_in_radians), sin(i * increment_in_radians));
+  }
 
-    auto angles = std::vector<float>(number_of_samples);
-    angles[0] = 0;  // 0pi
-    angles[1] = 1;  // 1pi
-
-    float pi = -3.14159265;
-    for (unsigned i = 1; ((i * 2) + 1) <= number_of_samples; i++) {
-      unsigned half_angle_index = i * 2;
-      unsigned half_angle_plus_pi_index = half_angle_index + 1;
-
-      auto& angle_in_radians = angles[i];
-      auto half_angle = angle_in_radians / 2;
-      auto reflected_half_angle = half_angle + 1;
-
-      angles[half_angle_index] = half_angle;
-      angles[half_angle_plus_pi_index] = reflected_half_angle;
-
-      x[half_angle_index].real(static_cast<T>(cos(half_angle * pi)));
-      x[half_angle_index].imag(static_cast<T>(sin(half_angle * pi)));
-
-      optimized_output.mapping_[half_angle_index] =
-          inverse ? 
-            number_of_samples - static_cast<unsigned>(half_angle / increment) : 
-            static_cast<unsigned>(half_angle / increment);
-
-      x[half_angle_plus_pi_index].real(static_cast<T>(cos(reflected_half_angle * pi)));
-      x[half_angle_plus_pi_index].imag(static_cast<T>(sin(reflected_half_angle * pi)));
-      optimized_output.mapping_[half_angle_plus_pi_index] =
-          inverse ? 
-            number_of_samples - static_cast<unsigned>(reflected_half_angle / increment) : 
-            static_cast<unsigned>(reflected_half_angle / increment);
-    }
-
-    fft_internal<T, U>(samples, x.data(), optimized_output, 0, number_of_samples);
+  fft_internal<T, U>(samples, x, output, number_of_samples);
 }
 
 template <typename T, typename U>
