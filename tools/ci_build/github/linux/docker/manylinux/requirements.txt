@@ -1,6 +1,0 @@
-numpy==1.16.6
-mypy
-pytest
-onnx==1.7.0
-protobuf
-sympy==1.1.1

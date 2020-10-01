@@ -137,6 +137,30 @@ void TestBurstScheduling(const std::string& name, int num_tasks) {
   }
 }
 
+void TestPoolCreation(const std::string&, int iter) {
+  // Test creating and destroying thread pools.  This can be used with Valgrind to help
+  // check for memory leaks related to the initialization and clean-up code.  For instance
+  //
+  //  valgrind --leak-check=full ./onnxruntime_test_all --gtest_filter=ThreadPoolTest.TestPoolCreation_10Iter
+  //
+  // We create #iter thread pools, and within each of them run a loop of #per_iter steps.
+  std::atomic<std::ptrdiff_t> ctr{0};
+  constexpr std::ptrdiff_t per_iter = 1024;
+  constexpr int num_threads = 4;
+  for (auto i = 0; i < iter; i++) {
+    auto tp = onnxruntime::make_unique<ThreadPool>(&onnxruntime::Env::Default(),
+                                                   onnxruntime::ThreadOptions(),
+                                                   nullptr,
+                                                   num_threads,
+                                                   true);
+    tp->ParallelFor(per_iter, 0.0,
+                    [&](std::ptrdiff_t s, std::ptrdiff_t e) {
+                      ctr += e - s;
+                    });
+  }
+  ASSERT_EQ(ctr, iter * per_iter);
+}
+
 }  // namespace
 
 namespace onnxruntime {
@@ -253,6 +277,19 @@ TEST(ThreadPoolTest, TestBurstScheduling_65536Task) {
   // buffer tasks.
   TestBurstScheduling("TestBurstScheduling_65536Tasks", 65536);
 }
+
+TEST(ThreadPoolTest, TestPoolCreation_1Iter) {
+  TestPoolCreation("TestPoolCreation_1Iter", 1);
+}
+
+TEST(ThreadPoolTest, TestPoolCreation_10Iter) {
+  TestPoolCreation("TestPoolCreation_10Iter", 10);
+}
+
+TEST(ThreadPoolTest, TestPoolCreation_100Iter) {
+  TestPoolCreation("TestPoolCreation_100Iter", 100);
+}
+
 #ifdef _WIN32
 TEST(ThreadPoolTest, TestStackSize) {
   ThreadOptions to;
