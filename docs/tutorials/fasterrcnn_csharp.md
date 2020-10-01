@@ -22,9 +22,9 @@ To run this sample, you'll need the following things:
 
 1. Install [.NET Core 3.1](https://dotnet.microsoft.com/download/dotnet-core/3.1) or higher for you OS (Mac, Windows or Linux).
 2. Download the [Faster R-CNN](https://github.com/onnx/models/blob/master/vision/object_detection_segmentation/faster-rcnn/model/FasterRCNN-10.onnx) ONNX model to your local system.
-3. Download [this demo image](demo.jpg) to test the model. You can also use any image you like.
+3. Download [this demo image](/images/demo.jpg) to test the model. You can also use any image you like.
 
-## Getting Started
+## Get started
 
 Now we have everything set up, we can start adding code to run the model on the image. We'll do this in the main method of the program for simplicity.
 

@@ -7,7 +7,7 @@ nav_order: 1
 # ONNX Runtime Performance Tuning
 {: .no_toc }
 
-ONNX Runtime gives high performance across a range of hardware options by providing "Execution Providers" to interface to different execution environments. See: [design overview](../resources/high-level-design.md), [supported execution providers](../resources/execution-providers).
+ONNX Runtime gives high performance across a range of hardware options by providing "Execution Providers" to interface to different execution environments. See: [design overview](../resources/high-level-design.md), [supported execution providers](../reference/execution-providers).
 
 Along with this flexibility comes decisions for tuning and usage. For each model running with each execution provider, there are settings that can be tuned (e.g. thread number, wait policy, etc) to improve performance.
 

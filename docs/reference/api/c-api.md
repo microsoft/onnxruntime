@@ -18,8 +18,8 @@ nav_order: 1
 * Converting an in-memory ONNX Tensor encoded in protobuf format to a pointer that can be used as model input.
 * Setting the thread pool size for each session.
 * Setting graph optimization level for each session.
-* Dynamically loading custom ops. [Instructions](/docs/AddingCustomOp.md)
-* Ability to load a model from a byte array. See ```OrtCreateSessionFromArray``` in [onnxruntime_c_api.h](/include/onnxruntime/core/session/onnxruntime_c_api.h).
+* Dynamically loading custom ops. [Instructions](../../how-to/add-custom-op.md)
+* Ability to load a model from a byte array. See ```OrtCreateSessionFromArray``` in [onnxruntime_c_api.h](https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/onnxruntime_c_api.h).
 * **Global/shared threadpools:** By default each session creates its own set of threadpools. In situations where multiple
 sessions need to be created (to infer different models) in the same process, you end up with several threadpools created
 by each session. In order to address this inefficiency we introduce a new feature called global/shared threadpools.
@@ -52,7 +52,7 @@ is as follows
 
 The example below shows a sample run using the SqueezeNet model from ONNX model zoo, including dynamically reading model inputs, outputs, shape and type information, as well as running a sample vector and fetching the resulting class probabilities for inspection.
 
-* [../csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp](../csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp)
+* [C_Api_Sample.cpp](https://github.com/microsoft/onnxruntime/blob/master/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp)
 
 ## Deployment
 
@@ -64,8 +64,8 @@ Your installer should put the onnxruntime.dll into the same folder as your appli
 
 This is an important article on how Windows finds supporting dlls: [Dynamic Link Library Search Order](https://docs.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-search-order).
 
-There are some cases where the app is not directly consuming the onnxruntime but instead calling into a DLL that is consuming the onnxruntime.    People building these DLLs that consume the onnxruntime need to take care about folder structures.  Do not modify the system %path% variable to add your folders.  This can conflict with other software on the machine that is also using the onnxruntme.  Instead place your DLL and the onnxruntime DLL in the same folder and use [run-time dynamic linking](https://docs.microsoft.com/en-us/windows/win32/dlls/using-run-time-dynamic-linking) to bind explicity to that copy.  You can use code like this sample does in [GetModulePath()](https://github.com/microsoft/Windows-Machine-Learning/blob/master/Samples/SampleSharedLib/SampleSharedLib/FileHelper.cpp) to find out what folder your dll is loaded from.
+There are some cases where the app is not directly consuming the onnxruntime but instead calling into a DLL that is consuming the onnxruntime. People building these DLLs that consume the onnxruntime need to take care about folder structures.  Do not modify the system %path% variable to add your folders.  This can conflict with other software on the machine that is also using the onnxruntme.  Instead place your DLL and the onnxruntime DLL in the same folder and use [run-time dynamic linking](https://docs.microsoft.com/en-us/windows/win32/dlls/using-run-time-dynamic-linking) to bind explicitly to that copy.  You can use code like this sample does in [GetModulePath()](https://github.com/microsoft/Windows-Machine-Learning/blob/master/Samples/SampleSharedLib/SampleSharedLib/FileHelper.cpp) to find out what folder your dll is loaded from.
 
 ## Telemetry
 
-To turn on/off telemetry collection on official Windows builds, please use Enable/DisableTelemetryEvents() in the C API. See the [Privacy](./Privacy.md) page for more information on telemetry collection and Microsoft's privacy policy.
+To turn on/off telemetry collection on official Windows builds, please use Enable/DisableTelemetryEvents() in the C API. See the [Privacy](https://github.com/microsoft/onnxruntime/blob/master/docs/Privacy.md) page for more information on telemetry collection and Microsoft's privacy policy.

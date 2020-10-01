@@ -33,7 +33,7 @@ To start a scoring session, first create the `OrtEnvironment`, then open a sessi
     var session = env.createSession("model.onnx",new OrtSession.SessionOptions());
 ```
 
-Once a session is created, you can execute queries using the `run` method of the `OrtSession` object. 
+Once a session is created, you can execute queries using the `run` method of the `OrtSession` object.
 
 ONNX Runtime supports `OnnxTensor` inputs, and models can produce `OnnxTensor`, `OnnxSequence` or `OnnxMap` outputs. The latter two are more likely when scoring models produced by frameworks like scikit-learn.
 
@@ -56,11 +56,11 @@ You can load your input data into OnnxTensor objects in several ways. The most e
     long[] dimensions;       // and the dimensions of the input are stored here
     var tensorFromBuffer = OnnxTensor.createTensor(env,sourceData,dimensions);
 
-    float[][] sourceArray = new float[28][28];  // assume your data is loaded into a float array 
+    float[][] sourceArray = new float[28][28];  // assume your data is loaded into a float array
     var tensorFromArray = OnnxTensor.createTensor(env,sourceArray);
 ```
 
-Here is a [complete sample program](../java/sample/ScoreMNIST.java) that runs inference on a pretrained MNIST model.
+Here is a [complete sample program](https://github.com/microsoft/onnxruntime/blob/master/java/src/test/java/sample/ScoreMNIST.java) that runs inference on a pretrained MNIST model.
 
 ## Running on a GPU or with another provider (Optional)
 
@@ -73,13 +73,11 @@ To enable other execution providers like GPUs simply turn on the appropriate fla
 
 The execution providers are preferred in the order they were enabled.
 
-
-
 ## Sample Code
 
 The unit tests contain several examples of loading models, inspecting input/output node shapes and types, as well as constructing tensors for scoring. 
 
-* [../java/src/test/java/ai/onnxruntime/InferenceTest.java#L66](../java/src/test/java/ai/onnxruntime/InferenceTest.java#L66)
+* [../java/src/test/java/ai/onnxruntime/InferenceTest.java#L66](https://github.com/microsoft/onnxruntime/blob/master/java/src/test/java/ai/onnxruntime/InferenceTest.java#L66)
 
 ## API Reference
 
