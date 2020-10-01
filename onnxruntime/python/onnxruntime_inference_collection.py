@@ -251,7 +251,7 @@ class IOBinding:
         :param name: input name
         :param arr_on_cpu: input values as a python array on CPU
         '''
-        # Hold a reference to the numpy object as the bound OrtValue is backed 
+        # Hold a reference to the numpy object as the bound OrtValue is backed
         # directly by the data buffer of the numpy object and so the numpy object
         # must be around until this IOBinding instance is around
         self._numpy_obj_references.append(arr_on_cpu)
@@ -337,11 +337,12 @@ class IOBinding:
 
     _numpy_obj_references = []
 
+
 class OrtValue:
     '''
     This class provides APIs to construct and deal with OrtValues.
     '''
-    def __init__(self, ortvalue, numpy_obj = None):
+    def __init__(self, ortvalue, numpy_obj=None):
         if isinstance(ortvalue, C.OrtValue):
             self._ortvalue = ortvalue
             # Hold a ref count to the numpy object if the OrtValue is backed directly
