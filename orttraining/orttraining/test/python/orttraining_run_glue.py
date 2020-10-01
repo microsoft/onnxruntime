@@ -117,7 +117,7 @@ class ORTGlueTest(unittest.TestCase):
             expected_acc_and_f1 = 0.8762126578380043
             expected_loss = 0.42737212419217707
         elif self.local_rank == 0:
-			expected_acc = 0.8308823529411765
+            expected_acc = 0.8308823529411765
             expected_f1 = 0.881646655231561
             expected_acc_and_f1 = 0.8562645040863688
             expected_loss = 0.42491564023144107
