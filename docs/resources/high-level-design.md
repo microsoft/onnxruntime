@@ -73,8 +73,9 @@ the default execution provider or other registered execution
 providers. The ONNXRuntime execution engine is responsible for running this graph.
 
 ## Key design decisions
+
 * Multiple threads can invoke the Run() method on the same
-inference session object. See [API doc](C_API.md) for more details.
+inference session object. See [API doc](../reference/api/c-api.md) for more details.
 * To facilitate this, the Compute() function of all kernels is const
 implying the kernels are stateless.
 * Implementations of the operators by execution providers are called

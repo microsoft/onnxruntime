@@ -30,8 +30,8 @@ This page catalogs code samples for ONNX Runtime, running locally, and on Azure,
 ## C/C++
 
 * [C: SqueezeNet](https://github.com/microsoft/onnxruntime/tree/master/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp)
-* [C++: model-explorer](https://github.com/microsoft/onnxruntime/tree/master/c_cxx/model-explorer) - single and batch processing
-* [C++: SqueezeNet](https://github.com/microsoft/onnxruntime/tree/mastercsharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/CXX_Api_Sample.cpp)
+* [C++: model-explorer](https://github.com/microsoft/onnxruntime/tree/master/samples/c_cxx/model-explorer) - single and batch processing
+* [C++: SqueezeNet](https://github.com/microsoft/onnxruntime/tree/master/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/CXX_Api_Sample.cpp)
 
 ## Java
 
@@ -40,7 +40,6 @@ This page catalogs code samples for ONNX Runtime, running locally, and on Azure,
 ## Node.js
 
 * [Inference with Nodejs](https://github.com/microsoft/onnxruntime/tree/master/samples/nodejs)
-
 
 ---
 
@@ -58,7 +57,7 @@ This page catalogs code samples for ONNX Runtime, running locally, and on Azure,
 * Inferencing on **CPU** with model conversion for existing (CoreML) model:
   * [TinyYolo](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-convert-aml-deploy-tinyyolo.ipynb)
 * Inferencing on **GPU** with **TensorRT** Execution Provider (AKS):
-  * [FER+](.https://github.com/microsoft/onnxruntime/tree/master/docs/python/notebooks/onnx-inference-byoc-gpu-cpu-aks.ipynb)
+  * [FER+](https://github.com/microsoft/onnxruntime/tree/master/docs/python/notebooks/onnx-inference-byoc-gpu-cpu-aks.ipynb)
   
 ## Azure IoT Edge
 
@@ -79,5 +78,4 @@ This page catalogs code samples for ONNX Runtime, running locally, and on Azure,
 ## ML.NET
 [Object Detection with ONNX Runtime in ML.NET](https://docs.microsoft.com/en-us/dotnet/machine-learning/tutorials/object-detection-onnx)
   
---- 
-
+---

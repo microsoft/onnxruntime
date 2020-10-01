@@ -10,7 +10,7 @@ nav_order: 12
 
 The TensorRT execution provider in the ONNX Runtime makes use of NVIDIA's [TensortRT](https://developer.nvidia.com/tensorrt) Deep Learning inferencing engine to accelerate ONNX model in their family of GPUs. Microsoft and NVIDIA worked closely to integrate the TensorRT execution provider with ONNX Runtime.
 
-With the TensorRT execution provider, the ONNX Runtime delivers better inferencing performance on the same hardware compared to generic GPU acceleration. 
+With the TensorRT execution provider, the ONNX Runtime delivers better inferencing performance on the same hardware compared to generic GPU acceleration.
 
 ## Contents
 {: .no_toc }
@@ -18,16 +18,19 @@ With the TensorRT execution provider, the ONNX Runtime delivers better inferenci
 * TOC placeholder
 {:toc}
 
-
 ## Build
-For build instructions, please see the [BUILD page](../../how-to/build.md#tensorrt). 
+
+For build instructions, please see the [BUILD page](../../how-to/build.md#tensorrt).
 
 The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 7.1.3.4.
 
 ## Using the TensorRT execution provider
+
 ### C/C++
+
 The TensorRT execution provider needs to be registered with ONNX Runtime to enable in the inference session. 
-```
+
+```c++
 string log_id = "Foo";
 auto logging_manager = std::make_unique<LoggingManager>
 (std::unique_ptr<ISink>{new CLogSink{}},
@@ -40,38 +43,47 @@ InferenceSession session_object{so,env};
 session_object.RegisterExecutionProvider(std::make_unique<::onnxruntime::TensorrtExecutionProvider>());
 status = session_object.Load(model_file_name);
 ```
+
 The C API details are [here](../api/c-api.md).
 
 #### Shape Inference for TensorRT Subgraphs
+
 If some operators in the model are not supported by TensorRT, ONNX Runtime will partition the graph and only send supported subgraphs to TensorRT execution provider. Because TensorRT requires that all inputs of the subgraphs have shape specified, ONNX Runtime will throw error if there is no input shape info. In this case please run shape inference for the entire model first by running script [here](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/providers/nuphar/scripts/symbolic_shape_infer.py).
 
 #### Sample
+
 This example shows how to run Faster R-CNN model on TensorRT execution provider,
 
 First, download Faster R-CNN onnx model from onnx model zoo [here](https://github.com/onnx/models/tree/master/vision/object_detection_segmentation/faster-rcnn).
 
 Second, infer shapes in the model by running shape inference script [here](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/providers/nuphar/scripts/symbolic_shape_infer.py),
-```
+
+```bash
 python symbolic_shape_infer.py --input /path/to/onnx/model/model.onnx --output /path/to/onnx/model/new_model.onnx --auto_merge
 ```
 
 Third, replace original model with the new model and run onnx_test_runner tool under ONNX Runtime build directory,
-```
+
+```bash
 ./onnx_test_runner -e tensorrt /path/to/onnx/model/
 ```
 
 ### Python
+
 When using the Python wheel from the ONNX Runtime build with TensorRT execution provider, it will be automatically prioritized over the default GPU or CPU execution providers. There is no need to separately register the execution provider. Python APIs details are .
 
-#### Sample
-Please see [this Notebook](../python/notebooks/onnx-inference-byoc-gpu-cpu-aks.ipynb) for an example of running a model on GPU using ONNX Runtime through Azure Machine Learning Services.
+#### Python Sample
+
+Please see [this Notebook](https://github.com/microsoft/onnxruntime/blob/master/docs/python/notebooks/onnx-inference-byoc-gpu-cpu-aks.ipynb) for an example of running a model on GPU using ONNX Runtime through Azure Machine Learning Services.
 
 ## Performance Tuning
+
 For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../../how-to/tune-performance.md)
 
 When/if using [onnxruntime_perf_test](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/test/perftest#onnxruntime-performance-test), use the flag `-e tensorrt` 
 
 ## Configuring environment variables
+
 There are four environment variables for TensorRT execution provider.
 
 ORT_TENSORRT_MAX_WORKSPACE_SIZE: maximum workspace size for TensorRT engine.

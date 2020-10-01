@@ -17,13 +17,14 @@ The ONNX runtime provides a C# .Net binding for running inference on ONNX models
 {:toc}
 
 ## NuGet Package
+
 The Microsoft.ML.OnnxRuntime Nuget package includes the precompiled binaries for ONNX runtime, and includes libraries for Windows and Linux platforms with X64 CPUs. The APIs conform to .Net Standard 1.1.
 
 ## Sample Code
 
 The unit tests contain several examples of loading models, inspecting input/output node shapes and types, as well as constructing tensors for scoring. 
 
-* [../csharp/test/Microsoft.ML.OnnxRuntime.Tests/InferenceTest.cs#L166](../csharp/test/Microsoft.ML.OnnxRuntime.Tests/InferenceTest.cs#L166)
+* [Microsoft.ML.OnnxRuntime.Tests/InferenceTest.cs](https://github.com/microsoft/onnxruntime/tree/master/csharp/test/Microsoft.ML.OnnxRuntime.Tests/InferenceTest.cs#L166)
 
 ## Getting Started
 Here is simple tutorial for getting started with running inference on an existing ONNX model for a given input data. The model is typically trained using any of the well-known training frameworks and exported into the ONNX format. To start scoring using the model, open a session using the `InferenceSession` class, passing in the file path to the model as a parameter.
@@ -96,9 +97,10 @@ using (var outputs1 = session1.Run(inputs1))
 If the model have fixed sized inputs and outputs of numeric tensors, you can use "FixedBufferOnnxValue" to accelerate the inference speed. By using "FixedBufferOnnxValue", the container objects only need to be allocated/disposed one time during multiple InferenceSession.Run() calls. This avoids some overhead which may be beneficial for smaller models where the time is noticeable in the overall running time.
 
 An example can be found at `TestReusingFixedBufferOnnxValueNonStringTypeMultiInferences()`:
-* [../csharp/test/Microsoft.ML.OnnxRuntime.Tests/InferenceTest.cs#L1047](../csharp/test/Microsoft.ML.OnnxRuntime.Tests/InferenceTest.cs#L1047)
+* [Microsoft.ML.OnnxRuntime.Tests/InferenceTest.cs#L1047](https://github.com/microsoft/onnxruntime/tree/master/csharp/test/Microsoft.ML.OnnxRuntime.Tests/InferenceTest.cs#L1047)
 
 ## Running on GPU (Optional)
+
 If using the GPU package, simply use the appropriate SessionOptions when creating an InferenceSession.
 
 ```cs
@@ -253,6 +255,3 @@ class OnnxRuntimeException: Exception;
 ```
 
 The type of Exception that is thrown in most of the error conditions related to Onnx Runtime.
-
-
-

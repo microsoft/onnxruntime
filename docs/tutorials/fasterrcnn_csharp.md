@@ -8,7 +8,7 @@ nav_order: 3
 
 The sample walks through how to run a pretrained Faster R-CNN object detection ONNX model using the ONNX Runtime C# API.
 
-The source code for this sample is available [here](Program.cs).
+The source code for this sample is available [here](https://github.com/microsoft/onnxruntime/blob/master/csharp/sample/Microsoft.ML.OnnxRuntime.FasterRcnnSample/Program.cs).
 
 ## Contents
 {: .no_toc }

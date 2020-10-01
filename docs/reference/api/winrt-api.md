@@ -16,7 +16,7 @@ The WinML API is a WinRT API that shipped inside the Windows OS starting with bu
 
 Many customers have asked for a way to use this offering as an application redistributable package.
 
-With our new [layered architecture](InferenceHighLevelDesign.md#the-onnx-runtime-and-windows-os-integration) you can now do this, with some limitations. The WinML APIs have been lifted and mirrored into the Microsoft.AI.MachineLearning namespace in the redistributable.
+With our [layered architecture](../../resources/high-level-design.md#the-onnx-runtime-and-windows-os-integration) you can now do this, with some limitations. The WinML APIs have been lifted and mirrored into the Microsoft.AI.MachineLearning namespace in the redistributable.
 
 ## Contents
 {: .no_toc }
