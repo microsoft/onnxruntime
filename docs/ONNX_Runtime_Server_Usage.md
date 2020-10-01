@@ -84,7 +84,7 @@ A simple Jupyter notebook demonstrating the usage of ONNX Runtime server to host
 
 ## GRPC Endpoint
 
-If you prefer using the GRPC endpoint, the protobuf could be found [here](../onnxruntime/server/protobuf/prediction_service.proto). You could generate your client and make a GRPC call to it. To learn more about how to generate the client code and call to the server, please refer to [the tutorials of GRPC](https://grpc.io/docs/tutorials/).
+If you prefer using the GRPC endpoint, the protobuf could be found [here](../server/protobuf/prediction_service.proto). You could generate your client and make a GRPC call to it. To learn more about how to generate the client code and call to the server, please refer to [the tutorials of GRPC](https://grpc.io/docs/tutorials/).
 
 ## Advanced Topics
 
