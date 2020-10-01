@@ -1,7 +1,7 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef NDEBUG  // disable for debug builds because some of these tests are slow
+#ifndef NDEBUG  // disable for debug builds because some of these tests are slow
 
 #include <algorithm>
 #include <bitset>
@@ -1736,6 +1736,23 @@ TEST(GradientCheckerTest, LayerNormGrad) {
 
     OpDef op_def{"LayerNormalization"};
     gradient_checker.ComputeGradientError(op_def, {x_info, scale_info, B_info}, {shape, mean_info, var_info}, &max_error);
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
+}
+
+TEST(GradientCheckerTest, SimplifiedLayerNormGrad) {
+  GradientChecker<float, float, float> gradient_checker;
+  {
+    TensorShape shape({2, 3, 512});
+    TensorInfo x_info{shape, true};
+    TensorInfo scale_info{{512}, true};
+    TensorInfo var_info{{2, 3, 1}, false};
+
+    float max_error;
+    float error_tolerance = 1e-2f;
+
+    OpDef op_def{"SimplifiedLayerNormalization"};
+    gradient_checker.ComputeGradientError(op_def, {x_info, scale_info}, {shape, var_info}, &max_error);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 }
