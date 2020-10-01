@@ -21,7 +21,7 @@ This document outlines the high level design of ONNX Runtime - a high performanc
 available on disparate platforms.
 * Provide the right abstraction and runtime support for custom accelerators and
 runtimes. We call this abstraction an [execution
-provider](.https://github.com/microsoft/onnxruntime/tree/master/include//onnxruntime/core/framework/execution_provider.h). It defines and exposes a set of
+provider](https://github.com/microsoft/onnxruntime/tree/master/include//onnxruntime/core/framework/execution_provider.h). It defines and exposes a set of
 its capabilities to ONNXRuntime: a set of single or fused nodes it can
 execute, its memory allocator, and more. Custom accelerators and runtimes are
 instances of execution providers.
@@ -30,13 +30,14 @@ on its device. This means that ONNXRuntime must be able to execute a single
 model in a heterogeneous environment involving multiple execution providers.
 * Provide support for high-level optimizations that can be expressed as
 model-to-model transformations via a [graph-transformation
-API](.https://github.com/microsoft/onnxruntime/tree/master/include//onnxruntime/core/optimizer/graph_transformer.h). Such
+API](https://github.com/microsoft/onnxruntime/tree/master/include//onnxruntime/core/optimizer/graph_transformer.h). Such
 transformations fall into two categories: global transformations, those that
 require analysis and transformation of the entire graph, and local
 transformations, which can be captured as simple (algebraic) [rewriting
-rules](.https://github.com/microsoft/onnxruntime/tree/master/include//onnxruntime/core/optimizer/rewrite_rule.h).
+rules](https://github.com/microsoft/onnxruntime/tree/master/include//onnxruntime/core/optimizer/rewrite_rule.h).
 
 ## High-level system architecture
+
 The flow is quite simple. Starting from an ONNX model, ONNXRuntime first
 converts the model graph into its in-memory graph representation. It then
 applies a number of graph transformations that a) perform a set of provider
@@ -49,6 +50,7 @@ provider using the GetCapability() API.
 ![ONNXRuntime high level system architecture](https://azurecomcdn.azureedge.net/mediahandler/acomblog/media/Default/blog/228d22d3-6e3e-48b1-811c-1d48353f031c.png)
 
 ### More about partitioning
+
 ONNXRuntime partitions a model graph into subgraphs based on the available execution providers, one for each distinct provider. ONNXRuntime provides
 a default execution provider that is used as the fallback execution for the
 operators that cannot be pushed onto the more specialized but more efficient
@@ -90,11 +92,12 @@ convert the values from/to the standard representation at the boundaries of
 their subgraph.
 
 ## Extensibility Options
-* [Add a custom operator/kernel](AddingCustomOp.md)
-* [Add an execution provider](AddingExecutionProvider.md)
+
+* [Add a custom operator/kernel](../how-to/add-custom-op.md)
+* [Add an execution provider](../how-to/add-execution-provider.md)
 * [Add a new graph
-transform](.https://github.com/microsoft/onnxruntime/tree/master/include//onnxruntime/core/optimizer/graph_transformer.h)
-* [Add a new rewrite rule](.https://github.com/microsoft/onnxruntime/tree/master/include//onnxruntime/core/optimizer/rewrite_rule.h)
+transform](https://github.com/microsoft/onnxruntime/tree/master/include//onnxruntime/core/optimizer/graph_transformer.h)
+* [Add a new rewrite rule](https://github.com/microsoft/onnxruntime/tree/master/include//onnxruntime/core/optimizer/rewrite_rule.h)
 
 ## The ONNX Runtime and Windows OS integration
 
@@ -128,5 +131,5 @@ You can also choose to use runtimes included in the Windows OS, or use the redis
 |Disk footprint| Included in the OS| Included in the App|
 |Servicing fixes| Serviced by OS updates| Serviced by the App|
 |Execution Providers| CPU & DirectML EP | App chosen EP|
-|Compatability testing| Tested with OS flights against supported GPU's and CPU's | App performs compatibility testing|
+|Compatability testing| Tested with OS flights against supported GPUs and CPU's | App performs compatibility testing|
 |Opset| Refreshed in OS updates| App chooses|

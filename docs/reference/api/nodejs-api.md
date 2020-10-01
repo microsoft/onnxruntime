@@ -30,7 +30,7 @@ Install the latest dev version:
 npm install onnxruntime@dev
 ```
 
-Refer to [Node.js samples](.https://github.com/microsoft/onnxruntime/tree/master/samples/nodejs) for samples and tutorials.
+Refer to [Node.js samples](https://github.com/microsoft/onnxruntime/tree/master/samples/nodejs) for samples and tutorials.
 
 ## Requirements
 
@@ -44,6 +44,3 @@ Following platforms are supported with pre-built binaries:
 
 To use on platforms without pre-built binaries, you can build Node.js binding from source and consume it by `npm install <onnxruntime_repo_root>/nodejs/`. See also [BUILD.MD](../how-to/build.md#apis-and-language-bindings) for building ONNX Runtime Node.js binding locally.
 
-## License
-
-License information can be found [here](../README.md#license).
