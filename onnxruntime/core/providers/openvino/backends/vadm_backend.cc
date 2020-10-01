@@ -15,7 +15,11 @@
 #include "../contexts.h"
 #include "../backend_utils.h"
 #include "vadm_backend.h"
+#if defined(OPENVINO_2021_1)
 #include <vpu/hddl_config.hpp>
+#else
+#include <vpu/hddl_plugin_config.hpp>
+#endif
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -59,7 +63,11 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   if(global_context_.is_wholly_supported_graph && subgraph_context_.enable_batching){
     for(int j = 0; j < 8; j++){
       InferenceEngine::ExecutableNetwork exe_network;
+    #if defined(OPENVINO_2021_1)
       config[InferenceEngine::HDDL_DEVICE_TAG] = global_context_.deviceTags[j];
+    #else
+      config[VPU_HDDL_CONFIG_KEY(DEVICE_TAG)] = global_context_.deviceTags[j];
+    #endif
       try {
         exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, "HDDL", config);
       } catch (InferenceEngine::details::InferenceEngineException e) {
@@ -88,7 +96,11 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   else {
     i = GetFirstAvailableDevice(global_context);
     LOGS_DEFAULT(INFO) << log_tag << "Device Tag is: " << i;
+  #if defined(OPENVINO_2021_1)
     config[InferenceEngine::HDDL_DEVICE_TAG] = global_context_.deviceTags[i];
+  #else
+    config[VPU_HDDL_CONFIG_KEY(DEVICE_TAG)] = global_context_.deviceTags[i];
+  #endif
     InferenceEngine::ExecutableNetwork exe_network;
     try {
       exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, "HDDL", config);
@@ -187,7 +199,7 @@ void VADMBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext
 
       auto out_name = item.first;
       auto node = item.second;
-      auto output_tensor = GetOutputTensor(ort, context, out_name, subgraph_context_.output_names, node)
+      auto output_tensor = GetOutputTensor(ort, context, out_name, subgraph_context_.output_names, node);
       FillOutputsWithConstantData(ort,node,output_tensor);
     }
   }
