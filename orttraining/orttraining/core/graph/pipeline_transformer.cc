@@ -621,7 +621,54 @@ Status TransformGraphForPipeline(
     ResolveForTraining(graph, weights_to_train);
   }
 
+  // TODO: Insert nodes to capture top-level graph outputs from different stages.
+  if (is_first_stage) {
+    std::cout << "---------------------------------------------" << std::endl;
+    std::cout << "---------------------------------------------" << std::endl;
+    std::cout << "---------------------------------------------" << std::endl;
+    std::cout << "Pipeline stage 0's sub-graph to generate loss" << std::endl;
+    std::cout << "---------------------------------------------" << std::endl;
+    std::cout << "---------------------------------------------" << std::endl;
+    std::cout << "---------------------------------------------" << std::endl;
+    /*
+    auto fake_loss_node_arg = graph.GetNodeArg("loss");
+    auto& fake_loss_node = graph.AddNode("constant", "Constant", "Constant with value 1", {}, {fake_loss_node_arg});
+
+    TensorProto fake_loss_value;
+    //fake_loss_value.add_dims(1);
+    fake_loss_value.add_float_data(1.0f);
+    fake_loss_value.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    fake_loss_node.AddAttribute("value", fake_loss_value);
+    */
+
+    TypeProto t;
+    t.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+    auto& fake_loss_value_seed = graph.GetOrCreateNodeArg("fake_loss_value_seed", &t);
+
+    TensorProto proto_data;
+    proto_data.set_name(fake_loss_value_seed.Name());
+    proto_data.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    proto_data.add_float_data(1.0f);
+    graph.AddInitializedTensor(proto_data);
+
+    auto loss_node_arg = graph.GetNodeArg("loss");
+
+    std::vector<NodeArg*> input_args{&fake_loss_value_seed, &fake_loss_value_seed};
+    std::vector<NodeArg*> output_args{loss_node_arg};
+    graph.AddNode("constant", "Add", "Fake loss node.", input_args, output_args);
+    new_output_names.push_back("loss");
+  }
+
+  for (auto* original_graph_input : graph.GetInputs()) {
+    std::cout << "[pipeline_transformer.cc] original input before: " << original_graph_input->Name() << std::endl;
+  }
+
   ORT_RETURN_IF_ERROR(SetInputsOutputsAndResolve(graph, weights_to_train, new_input_names, new_output_names));
+
+  for (auto* original_graph_input : graph.GetInputs()) {
+    std::cout << "[pipeline_transformer.cc] original input after: " << original_graph_input->Name() << std::endl;
+  }
   return Status::OK();
 }
 
@@ -1010,9 +1057,21 @@ common::Status SplitGraph(Graph& graph,
 
       element_types.add_ints(static_cast<int64_t>(dtype));
 
+      std::cout << "original NodeArg name: " << original_node_arg->Name()
+                << ", new NodeArg name: " << updated_node_arg->Name()
+                << ", new NodeArg: " << updated_node_arg->TypeAsProto()->DebugString()
+                << ", new NodeArg shape: " << updated_node_arg->Shape()
+                << std::endl;
+      //bool gdb_flag = true;
+      //while (gdb_flag) {
+      //  gdb_flag = gdb_flag;
+      //}
+
       auto& new_receive_output = CreateNodeArg(graph, *updated_node_arg);
-      const auto old_shape = *(updated_node_arg->Shape());
-      new_receive_output.SetShape(old_shape);
+      auto old_shape = updated_node_arg->Shape();
+      if (old_shape) {
+        new_receive_output.SetShape(*old_shape);
+      }
       recv_output_args.push_back(&new_receive_output);
 
       // add value info for this newly added receive_output, for shape propagation
@@ -1029,7 +1088,8 @@ common::Status SplitGraph(Graph& graph,
       std::vector<Node*> consumer_nodes;
       if (id.consumer_nodes.has_value()) {
         for (auto& consumer_node_id : id.consumer_nodes.value()) {
-          consumer_nodes.push_back(graph.GetMutableProducerNode(consumer_node_id));
+          auto producer_node = graph.GetMutableProducerNode(consumer_node_id);
+          consumer_nodes.push_back(producer_node);
         }
       } else {
         consumer_nodes = graph.GetMutableConsumerNodes(output_edge_name);
@@ -1071,6 +1131,7 @@ common::Status SplitGraph(Graph& graph,
   }
 
   ORT_RETURN_IF_ERROR(SetInputsOutputsAndResolve(graph, {} /* weights_to_train */, new_input_names, new_output_names));
+  std::cout << "[pipeline_transformer.cc] SplitGraph done" << std::endl;
   return Status::OK();
 }
 
@@ -1124,7 +1185,6 @@ Status ApplyPipelinePartitionToMainGraph(
     size_t pipeline_stage_id,
     size_t num_pipeline_stage) {
   size_t split_count = cut_info.size();
-
   if (num_pipeline_stage != split_count + 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Wrong pipeline partition cutting info. Total pipeline stage number is ",
                            num_pipeline_stage,
@@ -1187,6 +1247,7 @@ Status ApplyPipelinePartitionToMainGraph(
     ORT_RETURN_IF_NOT(send_node == send_nodes[pipeline_stage_id],
                 "Error: stage ", pipeline_stage_id, " doesn't contain the right Send node. Possibly CutInfo data is wrong.");
   }
+
 
   return Status::OK();
 }

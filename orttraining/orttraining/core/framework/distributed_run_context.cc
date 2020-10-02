@@ -16,6 +16,10 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
                                              int32_t pipeline_stage_size) {
   // We only check world_size and world_rank since local_size and local_rank might not be set if using NCCL.
   // TODO tix, refactor the mpi related code to populate all fields correctly by default.
+  // bool gdb_flag = true;
+  // while (gdb_flag) {
+  //   gdb_flag = gdb_flag;
+  // }
   ORT_ENFORCE(world_rank >= 0 && world_size > 0,
               "Fail to initialize DistributedRunContext due to invalid distributed run config");
 

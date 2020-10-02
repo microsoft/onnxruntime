@@ -952,6 +952,7 @@ void addObjectMethods(py::module& m, Environment& env) {
         return sess_io_binding;
       }))
       .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, py::object arr_on_cpu) -> void {
+        std::cout << "[onnxruntime_pybind_state.cc] 1st bind_input" << std::endl;
         OrtValue mlvalue;
 
         InferenceSession* sess = io_binding->GetInferenceSession();
@@ -986,8 +987,14 @@ void addObjectMethods(py::module& m, Environment& env) {
         auto status = io_binding->Get()->BindInput(name, mlvalue);
         if (!status.IsOK())
           throw std::runtime_error("Error when bind input: " + status.ErrorMessage());
+        std::cout << "[onnxruntime_pybind_state.cc] 1st bind_input done" << std::endl;
       })
       .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, py::object element_type, std::vector<int64_t> shape, int64_t data_ptr) -> void {
+        std::cout << "[onnxruntime_pybind_state.cc] 2nd bind_input for " << name << std::endl;
+        // bool gdb_flag = true;
+        // while (gdb_flag) {
+        //   gdb_flag = gdb_flag;
+        // }
         PyArray_Descr* dtype;
         if (!PyArray_DescrConverter(element_type.ptr(), &dtype))
           throw std::runtime_error("Not a valid numpy type");
@@ -1004,6 +1011,7 @@ void addObjectMethods(py::module& m, Environment& env) {
         auto status = io_binding->Get()->BindInput(name, mlvalue);
         if (!status.IsOK())
           throw std::runtime_error("Error when bind input: " + status.ErrorMessage());
+        std::cout << "[onnxruntime_pybind_state.cc] 2nd bind_input for " << name << " done" << std::endl;
       })
       .def("bind_output", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, py::object element_type, std::vector<int64_t> shape, int64_t data_ptr) -> void {
         PyArray_Descr* dtype;

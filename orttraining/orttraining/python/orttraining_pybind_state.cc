@@ -59,6 +59,7 @@ struct TrainingConfigurationResult {
 // TODO: this method does not handle parallel optimization.
 TrainingConfigurationResult ConfigureSessionForTraining(
     training::TrainingSession* sess, TrainingParameters& parameters) {
+  std::cout << "[ConfigureSessionForTraining]" << std::endl;
   //TODO tix, refactor the mpi related code to populate all fields correctly by default.
   ORT_ENFORCE(parameters.horizontal_parallel_size <= parameters.world_size);
   ORT_ENFORCE(parameters.data_parallel_size <= parameters.world_size);
@@ -66,7 +67,8 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     throw std::runtime_error("Cannot split horizontal parallel group because world_size is not divisible");
   }
 
-  auto data_group_size = parameters.world_size / parameters.horizontal_parallel_size;
+  std::cout << "[ConfigureSessionForTraining] data_group_size" << std::endl;
+  auto data_group_size = parameters.world_size / (parameters.horizontal_parallel_size * parameters.pipeline_parallel_size);
   if (data_group_size != parameters.data_parallel_size) {
     LOGS(*(sess->GetLogger()), WARNING) << "data_parallel_size is not correct, tuned automatically to "
                                         << data_group_size;
@@ -87,6 +89,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   config.distributed_config.local_size = parameters.local_size;
   config.distributed_config.data_parallel_size = parameters.data_parallel_size;
   config.distributed_config.horizontal_parallel_size = parameters.horizontal_parallel_size;
+  config.distributed_config.pipeline_parallel_size = parameters.pipeline_parallel_size;
 
   if (parameters.use_mixed_precision) {
     training::TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mp{};
@@ -136,11 +139,22 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     config.optimizer_config = opt;
   }
 
+  std::cout << "[ConfigureSessionForTraining] pipeline_config" << std::endl;
+  training::TrainingSession::TrainingConfiguration::PipelineConfiguration pipeline_config;
+  pipeline_config.do_partition = true;
+  training::TrainingSession::TrainingConfiguration::CutEdge cut_edge0("208");
+  training::TrainingSession::TrainingConfiguration::CutEdge cut_edge1("426");
+  training::TrainingSession::TrainingConfiguration::CutEdge cut_edge2("89", {"501"});
+  training::TrainingSession::TrainingConfiguration::CutInfo cut_info{cut_edge0, cut_edge1, cut_edge2};
+  pipeline_config.cut_list.push_back(cut_info);
+  config.pipeline_config = pipeline_config;
+
   config.gradient_graph_config.use_invertible_layernorm_grad = parameters.use_invertible_layernorm_grad;
   config.gradient_graph_config.set_gradients_as_graph_outputs = parameters.set_gradients_as_graph_outputs;
 
   training::TrainingSession::TrainingConfigurationResult config_result{};
 
+  std::cout << "[ConfigureSessionForTraining] sess->ConfigureForTraining" << std::endl;
   OrtPybindThrowIfError(sess->ConfigureForTraining(config, config_result));
 
   TrainingConfigurationResult python_config_result{};

@@ -27,6 +27,10 @@ ONNX_OPERATOR_KERNEL_EX(
     WaitEvent);
 
 Status WaitEvent::ComputeInternal(OpKernelContext* ctx) const {
+  //bool gdb_flag = true;
+  //while(gdb_flag) {
+  //  gdb_flag = gdb_flag;
+  //}
 #ifdef ENABLE_NVTX_PROFILE
   const Tensor* event_id_tensor = ctx->Input<Tensor>(0);
   const int64_t event_id = *(event_id_tensor->template Data<int64_t>());

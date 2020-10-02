@@ -1399,6 +1399,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetSendGradient) {
 IMPLEMENT_GRADIENT_BUILDER(GetRecvGradient) {
   // Recv inputs: signal A, remote; outputs: signal B, data
   // Send inputs: signal B, remote, data'; outputs: signal A'
+  std::cout << "[gradient_builder.cc] GetRecvGradient" << std::endl;
 
   std::vector<ArgDef> in_args;
   in_args.push_back(O(0));  // Signal

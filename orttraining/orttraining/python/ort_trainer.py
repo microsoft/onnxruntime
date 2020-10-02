@@ -98,6 +98,8 @@ def get_group_accumulated_gradients_output_node_arg_name(session):
 
 def ort_training_session_run_helper(session, iobinding, inputs, input_descs, output_descs, device, run_options=None):
     for input, input_desc in zip(inputs, input_descs):
+        if input_desc.name_ is None:
+            continue
         device_index = input_get_device_index(input)
         iobinding.bind_input(input_desc.name_, input.device.type, device_index, dtype_torch_to_numpy(input.dtype),
                              list(input.size()), input.data_ptr())
@@ -454,9 +456,13 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     ort_parameters.use_invertible_layernorm_grad = use_invertible_layernorm_grad
     ort_parameters.output_model_path = output_model_path
     ort_parameters.use_external_data_format = use_external_data_format
-
+    print ('-----------------------------------------------------------------------------')
+    print ('-----------------------------------------------------------------------------')
+    print ('data parallel size: ', ort_parameters.data_parallel_size, ' pipeline parallle size: ', ort_parameters.pipeline_parallel_size, ' horizontal parallel size: ', ort_parameters.horizontal_parallel_size)
     if ort_parameters.data_parallel_size > world_size or ort_parameters.horizontal_parallel_size > world_size:
         raise ValueError("data_parallel_size or horizontal_parallel_size large than world size")
+    print ('-----------------------------------------------------------------------------')
+    print ('-----------------------------------------------------------------------------')
 
     if world_size % ort_parameters.data_parallel_size != 0 or world_size % ort_parameters.horizontal_parallel_size != 0:
         raise ValueError("Cannot split data/horizontal parallel group because world size is not divisible")

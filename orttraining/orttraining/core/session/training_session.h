@@ -148,6 +148,11 @@ class TrainingSession : public InferenceSession {
     // corresponding partition.
     struct CutEdge {
       std::string node_arg_name;
+      // consumer_nodes[i] is the first output name of the i-th cut consumer node.
+      // If we have a graph
+      //   tensor_X, tensor_Y -> Add -> tensor_Z
+      // and we want to cut the edge between tensor_X and Add, then node_arg_name
+      // would be "tensor_X" and consumer_nodes[0] would be "tensor_Z".
       optional<std::vector<std::string>> consumer_nodes;
 
       // If the edge is unique, i.e. only have one consumer node, or all the edges
@@ -475,6 +480,8 @@ class TrainingSession : public InferenceSession {
   GradientGraphConfiguration gradient_graph_config_;
   static const std::string training_mode_string_;
   std::string model_output_path = "";
+  
+  TrainingConfigurationResult config_result_;
 };
 }  // namespace training
 }  // namespace onnxruntime

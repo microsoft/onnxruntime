@@ -21,6 +21,7 @@ void OptimizerGraphBuilderRegistry::RegisterGraphBuilders() {
 }
 
 std::string OptimizerGraphBuilderRegistry::GetNameFromConfig(const OptimizerGraphConfig& config) const {
+  std::cout << "[optimizer_graph_builder_registry.cc] config.data_parallel_group_size: " << config.data_parallel_group_size << std::endl;
   if (config.data_parallel_group_size > 1) {
     if (config.deepspeed_zero.stage != 0) {
       return "ZeRO";

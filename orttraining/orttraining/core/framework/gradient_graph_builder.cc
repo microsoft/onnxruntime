@@ -61,6 +61,11 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
     y_nodes_.insert(node);
   }
 
+  //bool gdb_flag = true;
+  //while (gdb_flag) {
+  //  gdb_flag = gdb_flag;
+  //}
+
   for (const auto& name : x_node_arg_names) {
     const NodeArg* node_arg = graph->GetNodeArg(name);
     if (!node_arg) {
@@ -184,6 +189,7 @@ Status GradientGraphBuilder::Build() {
   // so far, visited are the minimum node in between
   // visited_node_args are the node_args involved
   for (auto node : visited) {
+    std::cout << "[gradient_graph_builder.cc] Backward for node " << node->Name() << std::endl;
     //TODO: might not need two sets, the union of them might be enough
     unordered_set<string> input_args_need_grad, output_args_need_grad;
     for (auto arg : node->InputDefs()) {

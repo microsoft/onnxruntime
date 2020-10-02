@@ -47,11 +47,15 @@ Status SetupOptimizerParams(
     std::unordered_map<std::string, std::string>& updated_weight_names) {
   ORT_RETURN_IF_NOT(config.optimizer_config.has_value());
   const auto& optimizer_config = config.optimizer_config.value();
-
   std::unordered_map<std::string, std::string> reversed_weight_names_map;
   for (auto& p : updated_weight_names) {
+    std::cout << "[training_session.cc] updated_weight_name: " << p.second << ", " << p.first << std::endl;
     reversed_weight_names_map.insert({p.second, p.first});
   }
+  //bool gdb_flag = true;
+  //while (gdb_flag) {
+  //  gdb_flag = gdb_flag;
+  //}
 
   std::unordered_map<std::string, OptimizerNodeConfig> opt_node_configs{};
   for (const auto& weight_name : weight_names_to_train) {
@@ -170,11 +174,19 @@ Status TrainingSession::ConfigureForTraining(
     // transportation which may alter node_arg and invalidate cut_list info from the original graph.
     ORT_ENFORCE(pipeline_stage_id >= 0, "invalid pipelie stage id (", pipeline_stage_id, ") before doing online partition.");
 
+    //if (config.distributed_config.world_rank == 0) {
+    //  Save("pipeline_before_partition.onnx", SaveOption::NO_RELOAD);
+    //}
     ORT_RETURN_IF_ERROR(ApplyPipelinePartitionToMainGraph(model_->MainGraph(),
                                                           config.pipeline_config.value().cut_list,
                                                           pipeline_stage_id,
                                                           config.distributed_config.pipeline_parallel_size));
 
+    //if (config.distributed_config.world_rank == 0) {
+    //  Save("pipeline_0.onnx", SaveOption::NO_RELOAD);
+    //} else if (config.distributed_config.world_rank == 1) {
+    //  Save("pipeline_1.onnx", SaveOption::NO_RELOAD);
+    //}
     if (config.pipeline_config.value().partitioned_model_path.has_value()) {
       // Save the partitioned file out.
       // To avoid writing conflict, only the ranks in first pipeline group write the partition file out.
@@ -228,9 +240,9 @@ Status TrainingSession::ConfigureForTraining(
         config.model_with_loss_function_path.value(), SaveOption::NO_RELOAD));
   }
 
-  if (IsRootNode(config)) {
-    Save("before_opt.onnx", SaveOption::NO_RELOAD);
-  }
+  //if (IsRootNode(config)) {
+  //  Save("before_opt.onnx", SaveOption::NO_RELOAD);
+  //}
   // We need to get trainable weights to prevent constant folding from them. This works well if trainable weights are passed from config.
   // For case we use GetTrainableModelInitializers to get trainable weights such as C++ frontend, it may get more initializers
   // than trainable weights here as it's before transformers. So the constant folding may miss some nodes we actually can fold.
@@ -284,16 +296,49 @@ Status TrainingSession::ConfigureForTraining(
                                  << weight_names_stream.str();
   }
 
-  if (IsRootNode(config)) {
-    Save("before_grad_builder.onnx", SaveOption::NO_RELOAD);
+  std::vector<std::string> floating_weight_names;
+  for (const auto& weight_name : weight_names_to_train) {
+    std::vector<const Node*> nodes = model_->MainGraph().GetConsumerNodes(weight_name);
+    if (nodes.empty()) {
+      floating_weight_names.push_back(weight_name);
+    }
   }
 
+  for (const auto& weight_name : floating_weight_names) {
+    std::cout << "[training_session.cc] Remove trainable weight " << weight_name << std::endl;
+    weight_names_to_train.erase(weight_name);
+  }
+
+  for (const auto& weight_name : weight_names_to_train) {
+    std::cout << "[training_session.cc] Train " << weight_name << "\n";
+  }
+
+  if (config.distributed_config.world_rank == 0) {
+    Save("pipeline_before_grad_builder_0.onnx", SaveOption::NO_RELOAD);
+  } else if (config.distributed_config.world_rank == 1) {
+    Save("pipeline_before_grad_builder_1.onnx", SaveOption::NO_RELOAD);
+  }
+
+  //if (IsRootNode(config)) {
+  //  Save("before_grad_builder.onnx", SaveOption::NO_RELOAD);
+  //}
+
+  auto weight_names_to_train_copy = weight_names_to_train;
+  if (config.distributed_config.world_rank == 1) {
+    weight_names_to_train_copy.insert("recv_input_signal0");
+  }
   ORT_RETURN_IF_ERROR(BuildGradientGraph(
-      weight_names_to_train, loss_name, config.gradient_graph_config, *session_logger_));
+      weight_names_to_train_copy, loss_name, config.gradient_graph_config, *session_logger_));
 
-  if (IsRootNode(config)) {
-    Save("before_mixed_precision.onnx", SaveOption::NO_RELOAD);
-  }
+  //if (config.distributed_config.world_rank == 0) {
+  //  Save("pipeline_after_grad_builder_0.onnx", SaveOption::NO_RELOAD);
+  //} else if (config.distributed_config.world_rank == 1) {
+  //  Save("pipeline_after_grad_builder_1.onnx", SaveOption::NO_RELOAD);
+  //}
+
+  //if (IsRootNode(config)) {
+  //  Save("before_mixed_precision.onnx", SaveOption::NO_RELOAD);
+  //}
 
   // transform for mixed precision
   std::unordered_map<std::string, NodeArg*> fp32_weight_name_to_fp16_node_arg{};
@@ -303,9 +348,9 @@ Status TrainingSession::ConfigureForTraining(
         weight_names_to_train, mixed_precision_config.use_fp16_initializers, fp32_weight_name_to_fp16_node_arg, mixed_precision_config.fp16_type));
   }
 
-  if (IsRootNode(config)) {
-    Save("after_mixed_precision.onnx", SaveOption::NO_RELOAD);
-  }
+  //if (IsRootNode(config)) {
+  //  Save("after_mixed_precision.onnx", SaveOption::NO_RELOAD);
+  //}
   if (config.pipeline_config.has_value()) {
     TrainingConfigurationResult::PipelineConfigurationResult pipeline_result{};
     ORT_RETURN_IF_ERROR(InsertPipelineOps(weight_names_to_train,
@@ -367,9 +412,9 @@ Status TrainingSession::ConfigureForTraining(
 
   // Set eval feed names for nodes that differ between training and inferencing.
   ORT_RETURN_IF_ERROR(SetEvalFeedNames());
-  if (IsRootNode(config)) {
-    Save("after_build_optimizer.onnx", SaveOption::NO_RELOAD);
-  }
+  //if (IsRootNode(config)) {
+  //  Save("after_build_optimizer.onnx", SaveOption::NO_RELOAD);
+  //}
   // add Tensorboard
   if (config.tensorboard_config.has_value()) {
     const auto& tensorboard_config = config.tensorboard_config.value();
@@ -417,8 +462,21 @@ Status TrainingSession::ConfigureForTraining(
   if ((IsRootNode(config) || (config.pipeline_config.has_value() &&
                               DistributedRunContext::GroupId(WorkerGroupType::ModelParallel) == 0)) &&
       config.model_with_training_graph_path.has_value()) {
-    ORT_IGNORE_RETURN_VALUE(Save(
-        config.model_with_training_graph_path.value(), SaveOption::NO_RELOAD));
+    ORT_IGNORE_RETURN_VALUE(Save(std::string("final_pipeline_") + std::to_string(config.distributed_config.world_rank) + std::string(".onnx")
+        , SaveOption::NO_RELOAD));
+  }
+
+  std::cout << "[training_session.cc] Save final model @ rank " << config.distributed_config.world_rank << std::endl;
+  if (config.distributed_config.world_rank == 0) {
+    Save("pipeline_after_other_trans_0.onnx", SaveOption::NO_RELOAD);
+  } else if (config.distributed_config.world_rank == 1) {
+    Save("pipeline_after_other_trans_1.onnx", SaveOption::NO_RELOAD);
+  }
+  std::cout << "[training_session.cc] Save final model @ rank " << config.distributed_config.world_rank << " done" << std::endl;
+
+  bool gdb_flag = true;
+  while (gdb_flag) {
+    gdb_flag = gdb_flag;
   }
 
   if (config.model_with_training_graph_path.has_value())
@@ -441,6 +499,7 @@ Status TrainingSession::ConfigureForTraining(
   config_result_out = std::move(config_result);
   is_configured_ = true;
 
+  config_result_ = config_result_out;
   return Status::OK();
 }
 
@@ -892,6 +951,12 @@ bool TrainingSession::IsGraphOutputFp32Node(const std::string& output_name) cons
 }
 
 common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io_binding) {
+  /*
+  bool gdb_flag = true;
+  while (gdb_flag) {
+    gdb_flag = gdb_flag;
+  }
+  */
   // Override initializers in eval mode.
   if (!run_options.training_mode) {
     std::vector<std::pair<std::string, OrtValue>> new_feeds;
@@ -920,6 +985,20 @@ common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io
         new_feeds.emplace_back(training_mode_string_, training_mode_feed_value);
       }
     }
+
+    // Create a local function to append non-empty name to fetch_names list.
+    auto create_dummy_event_values = [&] (const std::string& name) {
+      const auto* cpu_ep = GetSessionState().GetExecutionProviders().Get(onnxruntime::kCpuExecutionProvider);
+      const auto cpu_allocator = cpu_ep->GetAllocator(0, OrtMemTypeDefault);
+      int64_t event = -1;
+      OrtValue event_value = onnxruntime::MakeScalarMLValue<int64_t>(cpu_allocator, event, false);
+      std::cout << "[training_session.cc] feed name: " << name << ", value: " << event << std::endl;
+      new_feeds.emplace_back(name, event_value);
+    };
+
+    std::cout << "[training_session.cc] Add event feeds" << std::endl;
+    config_result_.pipeline_config_result.value().pipeline_tensor_names.ForEachEventName(create_dummy_event_values);
+
     for (auto& new_feed : new_feeds) {
       // Bind new feed to graph input.
       ORT_RETURN_IF_ERROR(io_binding.BindInput(new_feed.first, new_feed.second));
@@ -1111,6 +1190,7 @@ std::unordered_set<std::string> TrainingSession::GetTrainableModelInitializers(
           IsImmutableWeight(immutable_weights, node, initialized_tensors.at(initializer_name), session_logger_))
         continue;
 
+      std::cout << "[training_session.cc] Reach node " << node->Name() << ", Add trainable tensor " << initializer_name << std::endl;
       trainable_initializers.insert(initializer_name);
     }
   };
