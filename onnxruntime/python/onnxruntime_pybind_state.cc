@@ -18,6 +18,7 @@
 #include "core/framework/random_seed.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/TensorSeq.h"
+#include "core/framework/ortdevice.h"
 #include "core/graph/graph_viewer.h"
 #include "core/session/IOBinding.h"
 #include "core/session/abi_session_options_impl.h"
@@ -576,7 +577,7 @@ static void CudaToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
   CUDA_CALL_THROW(cudaMemcpy(dst, src, num_bytes, cudaMemcpyDeviceToHost));
 }
 
-const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCudaToHostMemCpyFunction() {
+static const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCudaToHostMemCpyFunction() {
   static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
       {OrtDevice::GPU, CudaToCpuMemCpy},
   };
