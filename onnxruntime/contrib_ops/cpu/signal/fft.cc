@@ -8,6 +8,8 @@
 #include "fft.h"
 #include <functional>
 
+#include "core/platform/threadpool.h"
+
 #include <complex>
 
 namespace onnxruntime {
@@ -29,95 +31,6 @@ ONNX_OPERATOR_KERNEL_EX(
     KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", BuildKernelDefConstraints<float, double>()),
     Ifft);
 
-struct even_odd_container {
-    uint8_t* data_;
-    size_t length_;
-    size_t element_length_;
-
-    template <typename T>
-    even_odd_container(T* data, size_t length) :
-        data_(reinterpret_cast<uint8_t*>(data)),
-        length_(length),
-        element_length_(sizeof(T))
-    {}
-    
-    template <typename T>
-    even_odd_container(T* data, size_t length, size_t element_length) :
-        data_(reinterpret_cast<uint8_t*>(data)),
-        length_(length),
-        element_length_(element_length)
-    {}
-
-    template <typename T>
-    const T at(size_t index) const
-    {
-        if (index < length_)
-        {
-            return *reinterpret_cast<T*>(data_ + index * element_length_);
-        }
-        return T{ 0 };
-    }
-
-    auto size() const { return length_; }
-
-    auto evens() const {
-        return even_odd_container(data_, static_cast<size_t>(ceil(length_ / 2.f)), element_length_ * 2);
-    }
-
-    auto odds() const {
-        if (length_ > 1)
-        {
-            return even_odd_container(data_ + element_length_, static_cast<size_t>(ceil((length_ - 1) / 2.f)), element_length_ * 2);
-        }
-        else
-        {
-            return even_odd_container(data_ + element_length_, 0, element_length_ * 2);
-        }
-    }
-
-    auto begin() { return iterator(*this); }
-    auto end() { return iterator(*this).end(); }
-
-    struct iterator {
-        even_odd_container& container_;
-        size_t read_ = 0;
-
-        iterator& end() {
-            read_ = container_.size();
-            return *this;
-        }
-
-        iterator(even_odd_container& container) :
-            container_(container) {}
-
-        iterator operator++() {
-            read_++;
-            return *this;
-        }
-
-        iterator operator+=(int step) {
-            read_+=step;
-            return *this;
-        }
-
-        iterator operator+(int step) {
-            return operator+=(step);
-        }
-
-        bool operator==(iterator other) {
-            return this->read_ == other.read_;
-        }
-
-        bool operator!=(iterator other) {
-            return !(this->operator==(other));
-        }
-
-        template <typename T>
-        const T get() {
-            return container_.at<T>(read_);
-        }
-    };
-};
 
 size_t bit_reverse(size_t num, unsigned significant_bits) {
   unsigned output = 0;
@@ -128,40 +41,7 @@ size_t bit_reverse(size_t num, unsigned significant_bits) {
 }
 
 template <typename T, typename U>
-auto fft(
-    const even_odd_container& samples,
-    std::vector<std::complex<T>>& V,
-    std::complex<T>* output,
-    size_t size) {
-
-    if (size == 1)
-    {
-      *output = V[0] * samples.at<U>(0);
-      return;
-    }
-
-    size_t midpoint = static_cast<size_t>(size / 2);
-    unsigned significant_bits = static_cast<unsigned>(log2(size));
-
-    // Get evens and odds
-    auto evens = samples.evens();
-    auto odds = samples.odds();
-
-    fft<T, U>(evens, V, output, midpoint);
-    fft<T, U>(odds, V, output + midpoint, midpoint);
-
-    for (size_t i = 0; i < midpoint; i++) {
-      std::complex<T>* even = output + i;
-      std::complex<T>* odd = output + (midpoint + i);
-      std::complex<T> first = *even + (V[bit_reverse(i, significant_bits)] * *odd);
-      std::complex<T> second = *even + (V[bit_reverse(midpoint + i, significant_bits)] * *odd);
-      *even = first;
-      *odd = second;
-    }
-}
-
-template <typename T, typename U>
-static Status FftImpl(const Tensor* X, Tensor* Y, bool inverse) {
+static Status fft(OpKernelContext* ctx, const Tensor* X, Tensor* Y, bool inverse) {
   // Get shape and significant bits
   const auto& X_shape = X->Shape();
   size_t number_of_samples = static_cast<size_t>(X_shape[0]);
@@ -182,13 +62,44 @@ static Status FftImpl(const Tensor* X, Tensor* Y, bool inverse) {
   for (size_t i = 0; i < number_of_samples; i++) {
     size_t bit_reversed_index = bit_reverse(i, significant_bits);
     V[bit_reversed_index] = std::complex<T>(cos(i * angular_velocity), sin(i * angular_velocity));
+
+    auto x = *(X_data + bit_reversed_index);
+    *(Y_data + i) = std::complex<T>(1, 0) * x;
   }
 
-  // Wrap samples into the even_odd_container which allows the selection of evens/odds/even evens/odd evens/etc.
-  const auto X_samples = even_odd_container(X_data, number_of_samples);
-
   // Run fft
-  fft<T, U>(X_samples, V, Y_data, number_of_samples);
+  unsigned current_significant_bits = 0;
+  for (size_t i = 2; i <= number_of_samples; i *= 2) {
+    size_t midpoint = i >> 1;
+    current_significant_bits++;
+
+    if (current_significant_bits < significant_bits) {
+      ctx->GetOperatorThreadPool()->SimpleParallelFor(
+        static_cast<int32_t>(number_of_samples/i),
+        [=, &V](ptrdiff_t task_idx) {
+          size_t j = task_idx * i;
+          for (size_t k = 0; k < midpoint; k++) {
+            std::complex<T>* even = (Y_data + j) + k;
+            std::complex<T>* odd = (Y_data + j) + (midpoint + k);
+            std::complex<T> first = *even + (V[bit_reverse(k, current_significant_bits)] * *odd);
+            std::complex<T> second = *even + (V[bit_reverse(midpoint + k, current_significant_bits)] * *odd);
+            *even = first;
+            *odd = second;
+          }
+        });
+    } else {
+      for (size_t j = 0; j < number_of_samples; j += i) {
+        for (size_t k = 0; k < midpoint; k++) {
+          std::complex<T>* even = (Y_data + j) + k;
+          std::complex<T>* odd = (Y_data + j) + (midpoint + k);
+          std::complex<T> first = *even + (V[bit_reverse(k, current_significant_bits)] * *odd);
+          std::complex<T> second = *even + (V[bit_reverse(midpoint + k, current_significant_bits)] * *odd);
+          *even = first;
+          *odd = second;
+        }
+      }
+    }
+  }
 
   // Scale the output if inverse fft
   if (inverse) {
@@ -219,16 +130,16 @@ Status Fft::Compute(OpKernelContext* ctx) const {
   switch (element_size) {
     case sizeof(float):
       if (X_shape.NumDimensions() == 1) {
-        status = FftImpl<float, float>(X, Y, false);
+        status = fft<float, float>(ctx, X, Y, false);
       } else if (X_shape.NumDimensions() == 2 && X_shape[1] == 2) {
-        status = FftImpl<float, std::complex<float>>(X, Y, false);
+        status = fft<float, std::complex<float>>(ctx, X, Y, false);
       }
       break;
     case sizeof(double):
       if (X_shape.NumDimensions() == 1) {
-        status = FftImpl<double, double>(X, Y, false);
+        status = fft<double, double>(ctx, X, Y, false);
       } else if (X_shape.NumDimensions() == 2 && X_shape[1] == 2) {
-        status = FftImpl<double, std::complex<double>>(X, Y, false);
+        status = fft<double, std::complex<double>>(ctx, X, Y, false);
       }
       break;
     default:
@@ -256,16 +167,16 @@ Status Ifft::Compute(OpKernelContext* ctx) const {
   switch (element_size) {
     case sizeof(float):
       if (X_shape.NumDimensions() == 1) {
-        status = FftImpl<float, float>(X, Y, true);
+        status = fft<float, float>(ctx, X, Y, true);
       } else if (X_shape.NumDimensions() == 2 && X_shape[1] == 2) {
-        status = FftImpl<float, std::complex<float>>(X, Y, true);
+        status = fft<float, std::complex<float>>(ctx, X, Y, true);
       }
       break;
     case sizeof(double):
       if (X_shape.NumDimensions() == 1) {
-        status = FftImpl<double, double>(X, Y, true);
+        status = fft<double, double>(ctx, X, Y, true);
       } else if (X_shape.NumDimensions() == 2 && X_shape[1] == 2) {
-        status = FftImpl<double, std::complex<double>>(X, Y, true);
+        status = fft<double, std::complex<double>>(ctx, X, Y, true);
       }
       break;
     default:
