@@ -1465,13 +1465,13 @@ def derive_linux_build_property():
         return "/p:IsLinuxBuild=\"true\""
 
 
-def build_nuget_package(configs, use_cuda, use_openvino, use_tensorrt, use_dnnl, use_mklml):
+def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, use_tensorrt, use_dnnl, use_mklml):
     if not (is_windows() or is_linux()):
         raise BuildError(
             'Currently csharp builds and nuget package creation is only supportted '
             'on Windows and Linux platforms.')
 
-    build_dir = os.path.join(os.getcwd(), 'csharp')
+    csharp_build_dir = os.path.join(source_dir, 'csharp')
     is_linux_build = derive_linux_build_property()
 
     # derive package name and execution provider based on the build args
@@ -1493,33 +1493,38 @@ def build_nuget_package(configs, use_cuda, use_openvino, use_tensorrt, use_dnnl,
     else:
         pass
 
+    # set build directory based on build_dir arg
+    native_dir = os.path.normpath(os.path.join(source_dir, build_dir))
+    ort_build_dir = "/p:OnnxRuntimeBuildDirectory=\"" + native_dir + "\""
+
     # dotnet restore
     cmd_args = ["dotnet", "restore", "OnnxRuntime.CSharp.sln", "--configfile", "Nuget.CSharp.config"]
-    run_subprocess(cmd_args, cwd=build_dir)
+    run_subprocess(cmd_args, cwd=csharp_build_dir)
 
     # build csharp bindings and create nuget package for each config
     for config in configs:
         if is_linux():
-            native_build_dir = os.path.join(os.getcwd(), 'build//Linux//', config)
+            native_build_dir = os.path.join(native_dir, config)
             cmd_args = ["make", "install", "DESTDIR=.//nuget-staging"]
             run_subprocess(cmd_args, cwd=native_build_dir)
 
         configuration = "/p:Configuration=\"" + config + "\""
 
-        cmd_args = ["dotnet", "msbuild", "OnnxRuntime.CSharp.sln", configuration, package_name, is_linux_build]
-        run_subprocess(cmd_args, cwd=build_dir)
+        cmd_args = ["dotnet", "msbuild", "OnnxRuntime.CSharp.sln", configuration, package_name, is_linux_build,
+                    ort_build_dir]
+        run_subprocess(cmd_args, cwd=csharp_build_dir)
 
         cmd_args = [
             "dotnet", "msbuild", "OnnxRuntime.CSharp.proj", "/t:CreatePackage",
-            package_name, configuration, execution_provider, is_linux_build]
-        run_subprocess(cmd_args, cwd=build_dir)
+            package_name, configuration, execution_provider, is_linux_build, ort_build_dir]
+        run_subprocess(cmd_args, cwd=csharp_build_dir)
 
 
-def run_csharp_tests(use_cuda, use_openvino, use_tensorrt, use_dnnl):
+def run_csharp_tests(source_dir, build_dir, use_cuda, use_openvino, use_tensorrt, use_dnnl):
     # Currently only running tests on windows.
     if not is_windows():
         return
-    build_dir = os.path.join(os.getcwd(), 'csharp')
+    csharp_source_dir = os.path.join(source_dir, 'csharp')
     is_linux_build = derive_linux_build_property()
 
     # define macros based on build args
@@ -1537,12 +1542,16 @@ def run_csharp_tests(use_cuda, use_openvino, use_tensorrt, use_dnnl):
     if macros != "":
         define_constants = "/p:DefineConstants=\"" + macros + "\""
 
+    # set build directory based on build_dir arg
+    native_build_dir = os.path.normpath(os.path.join(source_dir, build_dir))
+    ort_build_dir = "/p:OnnxRuntimeBuildDirectory=\"" + native_build_dir + "\""
+
     # Skip pretrained models test. Only run unit tests as part of the build
-    # "/property:DefineConstants=\"USE_CUDA;USE_OPENVINO\"",
+    # add "--verbosity", "detailed" to this command if required
     cmd_args = ["dotnet", "test", "test\\Microsoft.ML.OnnxRuntime.Tests\\Microsoft.ML.OnnxRuntime.Tests.csproj",
                 "--filter", "FullyQualifiedName!=Microsoft.ML.OnnxRuntime.Tests.InferenceTest.TestPreTrainedModels",
-                is_linux_build, define_constants, "--verbosity", "detailed"]
-    run_subprocess(cmd_args, cwd=build_dir)
+                is_linux_build, define_constants, ort_build_dir]
+    run_subprocess(cmd_args, cwd=csharp_source_dir)
 
 
 def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
@@ -1866,6 +1875,8 @@ def main():
             )
         if args.build_nuget:
             build_nuget_package(
+                source_dir,
+                build_dir,
                 configs,
                 args.use_cuda,
                 args.use_openvino,
@@ -1876,6 +1887,8 @@ def main():
 
     if args.test and args.build_nuget:
         run_csharp_tests(
+            source_dir,
+            build_dir,
             args.use_cuda,
             args.use_openvino,
             args.use_tensorrt,
