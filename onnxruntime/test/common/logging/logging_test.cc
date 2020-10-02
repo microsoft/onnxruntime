@@ -123,7 +123,7 @@ TEST_F(LoggingTestsFixture, TestLoggerFiltering) {
   MockSink* sink_ptr = new MockSink();
 
   int num_expected_calls = 2;
-#ifndef NDEBUG
+#if !defined(NDEBUG)
   ++num_expected_calls;  // VLOG output enabled in DEBUG
 #endif
   EXPECT_CALL(*sink_ptr, SendImpl(testing::_, HasSubstr(logid), testing::_))  // Property(&Capture::Severity, Ge(min_log_level))))
