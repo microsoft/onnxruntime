@@ -1075,6 +1075,12 @@ def run_android_tests(args, source_dir, config, cwd):
             bin_size_threshold = 1100000
             bin_actual_size = os.path.getsize(os.path.join(cwd, 'libonnxruntime.so'))
             log.info('Android arm64 minsizerel libonnxruntime.so size [' + str(bin_actual_size) + 'B]')
+            # Write the binary size to a file for uploading later
+            with open(os.path.join(cwd, 'binary_size_data.txt'), 'w') as file:
+                file.writelines([
+                    'os,arch,build_config,size\n',
+                    'android,arm64-v8a,minimal-baseline,' + str(bin_actual_size) + '\n'
+                ])
             if bin_actual_size > bin_size_threshold:
                 raise BuildError('Android arm64 minsizerel libonnxruntime.so size [' + str(bin_actual_size) +
                                  'B] is bigger than threshold [' + str(bin_size_threshold) + 'B]')
