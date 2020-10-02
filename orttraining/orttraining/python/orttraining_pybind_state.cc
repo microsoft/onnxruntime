@@ -47,6 +47,12 @@ struct TrainingParameters {
   bool enable_grad_norm_clip = true;
   bool set_gradients_as_graph_outputs = false;
   bool use_invertible_layernorm_grad = false;
+
+  // recompute
+  bool attn_dropout_recompute = false;
+  bool gelu_recompute = false;
+  bool transformer_layer_recompute = false;
+  int number_recompute_layers = 0;
 };
 
 struct TrainingConfigurationResult {
@@ -130,6 +136,11 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   config.gradient_graph_config.use_invertible_layernorm_grad = parameters.use_invertible_layernorm_grad;
   config.gradient_graph_config.set_gradients_as_graph_outputs = parameters.set_gradients_as_graph_outputs;
 
+  config.graph_transformer_config.attn_dropout_recompute = parameters.attn_dropout_recompute;
+  config.graph_transformer_config.gelu_recompute = parameters.gelu_recompute;
+  config.graph_transformer_config.transformer_layer_recompute = parameters.transformer_layer_recompute;
+  config.graph_transformer_config.number_recompute_layers = parameters.number_recompute_layers;
+
   training::TrainingSession::TrainingConfigurationResult config_result{};
 
   OrtPybindThrowIfError(sess->ConfigureForTraining(config, config_result));
@@ -186,7 +197,11 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("deepspeed_zero_stage", &TrainingParameters::deepspeed_zero_stage)
       .def_readwrite("enable_grad_norm_clip", &TrainingParameters::enable_grad_norm_clip)
       .def_readwrite("set_gradients_as_graph_outputs", &TrainingParameters::set_gradients_as_graph_outputs)
-      .def_readwrite("use_invertible_layernorm_grad", &TrainingParameters::use_invertible_layernorm_grad);
+      .def_readwrite("use_invertible_layernorm_grad", &TrainingParameters::use_invertible_layernorm_grad)
+      .def_readwrite("attn_dropout_recompute", &TrainingParameters::attn_dropout_recompute)
+      .def_readwrite("gelu_recompute", &TrainingParameters::gelu_recompute)
+      .def_readwrite("transformer_layer_recompute", &TrainingParameters::transformer_layer_recompute)
+      .def_readwrite("number_recompute_layers", &TrainingParameters::number_recompute_layers);
 
 #if defined(USE_NCCL)
   m.def("get_mpi_context_local_rank", []() -> int { return MPIContext::GetInstance().GetLocalRank(); });
