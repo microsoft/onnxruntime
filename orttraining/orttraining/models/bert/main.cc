@@ -173,6 +173,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
         cxxopts::value<bool>()->default_value("false"))
       ("transformer_layer_recompute", "Enable checkpointing of transformer layer output to save memory.",
         cxxopts::value<bool>()->default_value("false"))
+      ("number_recompute_layers", "Number of layers to apply recompute.",
+        cxxopts::value<int>()->default_value("0"))
       ("use_invertible_layernorm_grad", "Specify whether to use invertible laynorm(dropping the input activation)",
         cxxopts::value<bool>()->default_value("false"));
   options
@@ -463,6 +465,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     params.attn_dropout_recompute = flags["attn_dropout_recompute"].as<bool>();
     params.gelu_recompute = flags["gelu_recompute"].as<bool>();
     params.transformer_layer_recompute = flags["transformer_layer_recompute"].as<bool>();
+    params.number_recompute_layers = flags["number_recompute_layers"].as<int>();
 
     ort_params.log_severity = static_cast<logging::Severity>(flags["ort_log_severity"].as<int>());
     ORT_RETURN_IF_NOT(
