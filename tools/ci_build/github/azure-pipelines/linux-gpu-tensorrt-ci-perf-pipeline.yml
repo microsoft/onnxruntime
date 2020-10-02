@@ -11,7 +11,7 @@ jobs:
       displayName: 'Upgrade ORT wheel'
       workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
     
-    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/perf.sh "onnx-models"'
+    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/perf.sh "onnx-zoo-models"'
       displayName: 'Command Line Script 1'
       workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
