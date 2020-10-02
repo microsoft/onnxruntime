@@ -240,4 +240,3 @@ def run_test_dir(model_or_dir):
             raise ValueError('FAILED due to output mismatch.')
         else:
             print('PASS')
-
