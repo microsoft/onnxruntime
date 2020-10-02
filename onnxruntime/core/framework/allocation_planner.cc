@@ -611,6 +611,8 @@ class PlannerImpl {
         if (std::find(graph_outputs.begin(), graph_outputs.end(), node_output) != graph_outputs.end()) {
           // node_output is graph's output, so we can't reuse intermediate buffer
           AllocPlan(current).alloc_kind = AllocKind::kAllocateOutput;
+          AllocPlan(current).life_interval.second = execution_plan.size();
+          AllocPlan(current).allocate_interval.second = execution_plan.size();
 
           // hacky perf optimization to not copy a pre-existing value to an output if this is a Loop subgraph and
           // the value is not being changed in the subgraph.
@@ -648,12 +650,13 @@ class PlannerImpl {
           // we do not try sharing-optimization for non-tensors
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
         } else if (FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused)) {
-          AllocPlan(reused).life_interval.second = program_counter;
           // Reuse one of this node's input buffers as the output buffer (for in-place update)
+          //In this case, we dont kill the "reused" tensor
           Reuse(reused, current, AllocKind::kReuse);
         } else if (!context_.IsParallelExecutionEnabled() &&
                    FindReusableTensor(*node_output, &reused)) {
           // Reuse an available (dead) buffer for this output, this is only for sequential execution.
+          AllocPlan(reused).life_interval.second = program_counter;
           Reuse(reused, current, AllocKind::kReuse);
         } else {
           // otherwise: allocate a new buffer for this output
@@ -665,9 +668,15 @@ class PlannerImpl {
       for (auto node_input : pnode->InputDefs()) {
         if (node_input->Exists()) {
           auto& sym = node_input->Name();
+          auto current = Index(sym);
           auto original = Buffer(Index(sym));
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
+          if (original != current) {
+            if ((original != -1) && (0 == DecrementUseCount(current))) {
+              AllocPlan(current).life_interval.second = program_counter;
+            }
+          }
           if ((original != -1) && (0 == DecrementUseCount(original))) {
             freelist_.push_front(FreeBufferInfo(original, program_counter));
             if (AllocPlan(original).life_interval.second == 0) {
@@ -676,6 +685,7 @@ class PlannerImpl {
             } else {
               AllocPlan(original).allocate_interval.second = program_counter;
             }
+            AllocPlan(Index(sym)).life_interval.second = program_counter;
           }
         }
       }
@@ -683,7 +693,15 @@ class PlannerImpl {
       for (auto node_input : pnode->ImplicitInputDefs()) {
         if (node_input->Exists()) {
           auto& sym = node_input->Name();
+          auto current = Index(sym);
           auto original = Buffer(Index(sym));
+          // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
+          // See comments in the OrtValueInfo definition.
+          if (original != current) {
+            if ((original != -1) && (0 == DecrementUseCount(current))) {
+              AllocPlan(current).life_interval.second = program_counter;
+            }
+          }
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
           if ((original != -1) && (0 == DecrementUseCount(original))) {
@@ -702,7 +720,15 @@ class PlannerImpl {
       for (auto node_output : pnode->OutputDefs()) {
         if (node_output->Exists()) {
           auto& sym = node_output->Name();
+          auto current = Index(sym);
           auto original = Buffer(Index(sym));
+          // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
+          // See comments in the OrtValueInfo definition.
+          if (original != current) {
+            if ((original != -1) && (0 == DecrementUseCount(current))) {
+              AllocPlan(current).life_interval.second = program_counter;
+            }
+          }
           if (0 == DecrementUseCount(original)) {
             freelist_.push_front(FreeBufferInfo(original, program_counter));
             if (AllocPlan(original).life_interval.second == 0) {

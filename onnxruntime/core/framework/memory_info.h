@@ -21,8 +21,8 @@ enum MLValueTensorType {
 struct MemoryInfoPerTensor {
   MemoryInfoPerTensor() = default;
   MLValueTensorType tensor_type{Unknown};
-  OrtValueIndex mlvalue_index;
-  OrtValueName mlvalue_name;
+  OrtValueIndex mlvalue_index{0};
+  OrtValueName mlvalue_name{""};
 
   AllocPlanPerValue alloc_plan;
 

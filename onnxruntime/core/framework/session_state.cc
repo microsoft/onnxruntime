@@ -838,10 +838,10 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                                     execution_providers_, kernel_create_info_map_,
                                                     ort_value_name_idx_map_, context, p_seq_exec_plan_));
   //Record the allocation plan
-  memory_info_.GenerateMemoryMap(GetExecutionPlan(), GetOrtValueNameIdxMap());
 
   // Uncomment the below to dump the allocation plan to std::cout
   // LOGS(logger_, VERBOSE) << std::make_pair(p_seq_exec_plan_.get(), this);
+  memory_info_.GenerateMemoryMap(GetExecutionPlan(), GetOrtValueNameIdxMap());
 
   std::unique_ptr<ITensorAllocator> tensor_allocator_(
       ITensorAllocator::Create(enable_mem_pattern_, *p_seq_exec_plan_, *this, weights_buffers_));

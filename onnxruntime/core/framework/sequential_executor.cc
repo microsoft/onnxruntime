@@ -431,6 +431,8 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   ORT_RETURN_IF_ERROR(frame.GetOutputs(fetches));
   VLOGS(logger, 1) << "Done with execution.";
 
+  session_state.GetMutableMemoryInfo().PrintMemoryInfoForLocation(session_state.Logger(), OrtDevice::GPU);
+
   if (frame.HasMemoryPatternPlanner()) {
     std::vector<std::reference_wrapper<const TensorShape>> input_shapes;
     bool all_tensors = true;

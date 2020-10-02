@@ -93,6 +93,7 @@ class SessionState {
         data_transfer_mgr_(data_transfer_mgr),
         use_deterministic_compute_(use_deterministic_compute) {
     SetupAllocators();
+
   }
 
   ~SessionState() {
