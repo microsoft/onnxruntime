@@ -1469,7 +1469,7 @@ def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, 
 
     # set build directory based on build_dir arg
     native_dir = os.path.normpath(os.path.join(source_dir, build_dir))
-    OnnxRuntimeBuildDirectory = "/p:OnnxRuntimeBuildDirectory=\"" + native_dir + "\""
+    ort_build_dir = "/p:OnnxRuntimeBuildDirectory=\"" + native_dir + "\""
 
     # dotnet restore
     cmd_args = ["dotnet", "restore", "OnnxRuntime.CSharp.sln", "--configfile", "Nuget.CSharp.config"]
@@ -1485,12 +1485,12 @@ def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, 
         configuration = "/p:Configuration=\"" + config + "\""
 
         cmd_args = ["dotnet", "msbuild", "OnnxRuntime.CSharp.sln", configuration, package_name, is_linux_build,
-                    OnnxRuntimeBuildDirectory]
+                    ort_build_dir]
         run_subprocess(cmd_args, cwd=csharp_build_dir)
 
         cmd_args = [
             "dotnet", "msbuild", "OnnxRuntime.CSharp.proj", "/t:CreatePackage",
-            package_name, configuration, execution_provider, is_linux_build, OnnxRuntimeBuildDirectory]
+            package_name, configuration, execution_provider, is_linux_build, ort_build_dir]
         run_subprocess(cmd_args, cwd=csharp_build_dir)
 
 
@@ -1518,13 +1518,13 @@ def run_csharp_tests(source_dir, build_dir, use_cuda, use_openvino, use_tensorrt
 
     # set build directory based on build_dir arg
     native_build_dir = os.path.normpath(os.path.join(source_dir, build_dir))
-    OnnxRuntimeBuildDirectory = "/p:OnnxRuntimeBuildDirectory=\"" + native_build_dir + "\""
+    ort_build_dir = "/p:OnnxRuntimeBuildDirectory=\"" + native_build_dir + "\""
 
     # Skip pretrained models test. Only run unit tests as part of the build
     # add "--verbosity", "detailed" to this command if required
     cmd_args = ["dotnet", "test", "test\\Microsoft.ML.OnnxRuntime.Tests\\Microsoft.ML.OnnxRuntime.Tests.csproj",
                 "--filter", "FullyQualifiedName!=Microsoft.ML.OnnxRuntime.Tests.InferenceTest.TestPreTrainedModels",
-                is_linux_build, define_constants, OnnxRuntimeBuildDirectory]
+                is_linux_build, define_constants, ort_build_dir]
     run_subprocess(cmd_args, cwd=csharp_source_dir)
 
 
