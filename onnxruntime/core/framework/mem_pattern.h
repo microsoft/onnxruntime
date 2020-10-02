@@ -42,6 +42,10 @@ class MemoryPattern {
     return &it->second;
   }
 
+  const std::unordered_map<int, MemoryBlock>& GetPatternsMap() const {
+    return patterns_;
+  }
+
  private:
   // allow move
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(MemoryPattern);

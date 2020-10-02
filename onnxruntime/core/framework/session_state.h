@@ -31,6 +31,7 @@
 #include "core/platform/ort_mutex.h"
 #include "core/platform/path_lib.h"
 #include "core/platform/threadpool.h"
+#include "core/framework/memory_info.h"
 
 namespace flatbuffers {
 class FlatBufferBuilder;
@@ -52,6 +53,7 @@ class OpKernel;
 class NodeIndexInfo;
 struct SequentialExecutionPlan;
 struct MemoryPatternGroup;
+class MemoryInfo;
 
 /**
  * SessionState should be modified by the inference session class only.
@@ -169,6 +171,10 @@ class SessionState {
   */
   NameMLValMap GetInitializedTensors(const std::unordered_set<std::string>& interested_weights) const;
 #endif
+
+  MemoryInfo& GetMutableMemoryInfo() const {
+    return const_cast<MemoryInfo&>(memory_info_);
+  }
 
   // execution plan. nullptr until FinalizeSessionState is called
   const SequentialExecutionPlan* GetExecutionPlan() const;
@@ -391,6 +397,7 @@ class SessionState {
   // lock for the mem_patterns_
   mutable OrtMutex mem_patterns_lock_;
 
+  MemoryInfo memory_info_;
   // cache for the generated mem_patterns. key is calculated based on input shapes.
   mutable std::map<int64_t, std::unique_ptr<MemoryPatternGroup>> mem_patterns_;
   mutable std::map<int64_t, std::unordered_map<int, TensorShape>> shape_patterns_;
