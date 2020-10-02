@@ -579,8 +579,7 @@ static void CudaToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
 
 static const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCudaToHostMemCpyFunction() {
   static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
-      {static_cast<int8_t>(1), CudaToCpuMemCpy},
-  };
+      {OrtDevice::GPU, CudaToCpuMemCpy}};
 
   return &map;
 }
