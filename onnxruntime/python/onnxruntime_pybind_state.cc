@@ -576,7 +576,7 @@ static void CudaToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
   CUDA_CALL_THROW(cudaMemcpy(dst, src, num_bytes, cudaMemcpyDeviceToHost));
 }
 
-std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCudaToHostMemCpyFunction() {
+const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCudaToHostMemCpyFunction() {
   static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
       {OrtDevice::GPU, CudaToCpuMemCpy},
   };
@@ -774,19 +774,6 @@ static bool CheckIfTensor(const std::vector<const NodeArg*>& def_list,
   }
 
   return type_proto.has_tensor_type();
-}
-
-static bool IsNumericNumpyType(int npy_type) {
-  return npy_type < NPY_OBJECT || npy_type == NPY_HALF;
-}
-
-static bool IsNumericNumpyArray(py::object& py_object) {
-  if (PyObjectCheck_NumpyArray(py_object.ptr())) {
-    int npy_type = PyArray_TYPE(reinterpret_cast<PyArrayObject*>(py_object.ptr()));
-    return IsNumericNumpyType(npy_type);
-  }
-
-  return false;
 }
 
 void addGlobalMethods(py::module& m, const Environment& env) {

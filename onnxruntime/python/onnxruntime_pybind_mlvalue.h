@@ -21,7 +21,9 @@ namespace python {
 
 namespace py = pybind11;
 
-bool PyObjectCheck_NumpyArray(PyObject* o);
+bool IsNumericNumpyType(int npy_type);
+
+bool IsNumericNumpyArray(py::object& py_object);
 
 int OnnxRuntimeTensorToNumpyType(const DataTypeImpl* tensor_type);
 
