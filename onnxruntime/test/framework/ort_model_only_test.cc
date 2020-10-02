@@ -325,8 +325,7 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormatMLOps) {
 #endif  // #if !defined(DISABLE_ML_OPS)
 #endif  // #if !defined(ORT_MINIMAL_BUILD)
 
-// test that we can deserialize and run a previously saved ORT format model
-TEST(OrtModelOnlyTests, LoadOrtFormatModel) {
+OrtModelTestInfo GetTestInfoForLoadOrtFormatModel() {
   OrtModelTestInfo test_info;
   test_info.model_filename = ORT_TSTR("testdata/ort_github_issue_4031.onnx.ort");
   test_info.logid = "LoadOrtFormatModel";
@@ -344,29 +343,18 @@ TEST(OrtModelOnlyTests, LoadOrtFormatModel) {
     ASSERT_TRUE(output.Data<float>()[0] == 125.f);
   };
 
-  RunOrtModel(test_info);
+  return test_info;
 }
 
 // test that we can deserialize and run a previously saved ORT format model
+TEST(OrtModelOnlyTests, LoadOrtFormatModel) {
+  OrtModelTestInfo test_info = GetTestInfoForLoadOrtFormatModel();
+  RunOrtModel(test_info);
+}
+
 // Load the model from a buffer instead of a file path
 TEST(OrtModelOnlyTests, LoadOrtFormatModelFromBuffer) {
-  OrtModelTestInfo test_info;
-  test_info.model_filename = ORT_TSTR("testdata/ort_github_issue_4031.onnx.ort");
-  test_info.logid = "LoadOrtFormatModelFromBuffer";
-
-  OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), {1}, {123.f},
-                       &ml_value);
-  test_info.inputs.insert(std::make_pair("state_var_in", ml_value));
-
-  // prepare outputs
-  test_info.output_names = {"state_var_out"};
-  test_info.output_verifier = [](const std::vector<OrtValue>& fetches) {
-    const auto& output = fetches[0].Get<Tensor>();
-    ASSERT_TRUE(output.Shape().Size() == 1);
-    ASSERT_TRUE(output.Data<float>()[0] == 125.f);
-  };
-
+  OrtModelTestInfo test_info = GetTestInfoForLoadOrtFormatModel();
   test_info.run_use_buffer = true;
   RunOrtModel(test_info);
 }
@@ -374,7 +362,7 @@ TEST(OrtModelOnlyTests, LoadOrtFormatModelFromBuffer) {
 #if !defined(DISABLE_ML_OPS)
 // test that we can deserialize and run a previously saved ORT format model
 // for a model with sequence and map outputs
-TEST(OrtModelOnlyTests, LoadOrtFormatModelMLOps) {
+OrtModelTestInfo GetTestInfoForLoadOrtFormatModelMLOps() {
   OrtModelTestInfo test_info;
   test_info.model_filename = ORT_TSTR("testdata/sklearn_bin_voting_classifier_soft.ort");
   test_info.logid = "LoadOrtFormatModelMLOps";
@@ -408,8 +396,23 @@ TEST(OrtModelOnlyTests, LoadOrtFormatModelMLOps) {
     }
   };
 
+  return test_info;
+}
+
+// test that we can deserialize and run a previously saved ORT format model
+// for a model with sequence and map outputs
+TEST(OrtModelOnlyTests, LoadOrtFormatModelMLOps) {
+  OrtModelTestInfo test_info = GetTestInfoForLoadOrtFormatModelMLOps();
   RunOrtModel(test_info);
 }
+
+// Load the model from a buffer instead of a file path
+TEST(OrtModelOnlyTests, LoadOrtFormatModelMLOpsFromBuffer) {
+  OrtModelTestInfo test_info = GetTestInfoForLoadOrtFormatModelMLOps();
+  test_info.run_use_buffer = true;
+  RunOrtModel(test_info);
+}
+
 #endif  // !defined(DISABLE_ML_OPS)
 
 }  // namespace test
