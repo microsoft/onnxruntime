@@ -236,5 +236,8 @@ def run_test_dir(model_or_dir):
                     if not np.equal(expected, actual).all():
                         print('Mismatch for {}:\nExpected:{}\nGot:{}'.format(output_names[idx], expected, actual))
                         failed = True
+        if failed:
+            raise ValueError('FAILED due to output mismatch.')
+        else:
+            print('PASS')
 
-        print('FAILED' if failed else 'PASS')
