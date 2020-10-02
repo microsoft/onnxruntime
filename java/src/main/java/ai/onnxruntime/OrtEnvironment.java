@@ -6,6 +6,7 @@ package ai.onnxruntime;
 
 import ai.onnxruntime.OrtSession.SessionOptions;
 import java.io.IOException;
+import java.util.EnumSet;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Logger;
 
@@ -252,6 +253,15 @@ public class OrtEnvironment implements AutoCloseable {
         INSTANCE = null;
       }
     }
+  }
+
+  /**
+   * Gets the providers available in this environment.
+   *
+   * @return An enum set of the available execution providers.
+   */
+  public static EnumSet<OrtProvider> getAvailableProviders() {
+    return OnnxRuntime.providers.clone();
   }
 
   /**

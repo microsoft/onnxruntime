@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.EnumSet;
 import java.util.Locale;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -41,6 +42,9 @@ final class OnnxRuntime {
 
   /** The API handle. */
   static long ortApiHandle;
+
+  /** The available runtime providers */
+  static EnumSet<OrtProvider> providers;
 
   private OnnxRuntime() {}
 
@@ -87,6 +91,7 @@ final class OnnxRuntime {
       load(tempDirectory, ONNXRUNTIME_LIBRARY_NAME);
       load(tempDirectory, ONNXRUNTIME_JNI_LIBRARY_NAME);
       ortApiHandle = initialiseAPIBase(ORT_API_VERSION_3);
+      providers = initialiseProviders(ortApiHandle);
       loaded = true;
     } finally {
       if (!IS_ANDROID) {
@@ -205,10 +210,40 @@ final class OnnxRuntime {
   }
 
   /**
+   * Extracts the providers array from the C API, converts it into an EnumSet.
+   *
+   * <p>Throws IllegalArgumentException if a provider isn't recognised (note this exception should
+   * only happen during development of ONNX Runtime, if it happens at any other point, file an issue
+   * on Github).
+   *
+   * @param ortApiHandle The API Handle.
+   * @return The enum set.
+   */
+  private static EnumSet<OrtProvider> initialiseProviders(long ortApiHandle) {
+    String[] providersArray = getAvailableProviders(ortApiHandle);
+
+    EnumSet<OrtProvider> providers = EnumSet.noneOf(OrtProvider.class);
+
+    for (String provider : providersArray) {
+      providers.add(OrtProvider.mapFromName(provider));
+    }
+
+    return providers;
+  }
+
+  /**
    * Get a reference to the API struct.
    *
    * @param apiVersionNumber The API version to use.
    * @return A pointer to the API struct.
    */
   private static native long initialiseAPIBase(int apiVersionNumber);
+
+  /**
+   * Gets the array of available providers.
+   *
+   * @param ortApiHandle The API handle
+   * @return The array of providers
+   */
+  private static native String[] getAvailableProviders(long ortApiHandle);
 }
