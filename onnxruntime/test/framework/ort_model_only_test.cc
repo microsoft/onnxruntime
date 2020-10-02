@@ -64,10 +64,10 @@ static void RunOrtModel(const OrtModelTestInfo& test_info) {
   if (test_info.run_use_buffer) {
     // Load the file into a buffer and use the buffer to create inference session
     size_t num_bytes = 0;
-    ORT_THROW_IF_ERROR(Env::Default().GetFileLength(test_info.model_filename.c_str(), num_bytes));
+    ASSERT_STATUS_OK(Env::Default().GetFileLength(test_info.model_filename.c_str(), num_bytes));
     model_data.resize(num_bytes);
     std::ifstream bytes_stream(test_info.model_filename, std::ifstream::in | std::ifstream::binary);
-    bytes_stream.read(reinterpret_cast<char*>(model_data.data()), num_bytes);
+    bytes_stream.read(model_data.data(), num_bytes);
     bytes_stream.close();
     ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(num_bytes)));
   } else {
