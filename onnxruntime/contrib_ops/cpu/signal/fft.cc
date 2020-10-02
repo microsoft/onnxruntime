@@ -74,7 +74,8 @@ static Status fft(OpKernelContext* ctx, const Tensor* X, Tensor* Y, bool inverse
     current_significant_bits++;
 
     if (current_significant_bits < significant_bits) {
-      ctx->GetOperatorThreadPool()->SimpleParallelFor(
+      onnxruntime::concurrency::ThreadPool::TryBatchParallelFor(
+        ctx->GetOperatorThreadPool(),
         static_cast<int32_t>(number_of_samples/i),
         [=, &V](ptrdiff_t task_idx) {
           size_t j = task_idx * i;
@@ -86,7 +87,7 @@ static Status fft(OpKernelContext* ctx, const Tensor* X, Tensor* Y, bool inverse
             *even = first;
             *odd = second;
           }
-        });
+        }, 0);
     } else {
       for (size_t j = 0; j < number_of_samples; j += i) {
         for (size_t k = 0; k < midpoint; k++) {
