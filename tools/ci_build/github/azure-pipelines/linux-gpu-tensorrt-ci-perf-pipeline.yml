@@ -6,20 +6,24 @@ jobs:
   timeoutInMinutes: 1200 
   steps:
     #- template: templates/set-test-data-variables-step.yml
+    #
+    - script: 'python3 ort_build_latest.py'
+      displayName: 'Upgrade ORT wheel'
+      workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
     
-    - script: 'export DATE=`date +"%m-%d-%Y-%H-%M"` && echo $DATE > date.txt && $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/perf.sh "onnx-models" `echo $DATE`'
+    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/perf.sh "onnx-models"'
       displayName: 'Command Line Script 1'
       workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
-    - script: 'export DATE=`date +"%m-%d-%Y-%H-%M"` && echo $DATE > date.txt && $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/perf.sh "many-models" `echo $DATE`'
+    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/perf.sh "many-models"'
       displayName: 'Command Line Script 2'
       workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
-    - script: 'export DATE=`date +"%m-%d-%Y-%H-%M"` && echo $DATE > date.txt && $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/perf.sh "partner-models" `echo $DATE`'
+    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/perf.sh "partner-models"'
       displayName: 'Command Line Script 3'
       workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
-    - script: 'mkdir $(Build.SourcesDirectory)/Artifact && cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result/`cat date.txt` $(Build.SourcesDirectory)/Artifact' 
+    - script: 'mkdir $(Build.SourcesDirectory)/Artifact && cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result/ $(Build.SourcesDirectory)/Artifact' 
       displayName: 'Prepare Artifacts'
       workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 

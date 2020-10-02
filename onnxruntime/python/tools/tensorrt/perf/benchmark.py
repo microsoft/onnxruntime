@@ -170,9 +170,9 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
             logger.error(e)
             return None
 
-    print(runtimes)
+    logger.info(runtimes)
     runtimes[:] = runtimes[1:]
-    print(runtimes)
+    logger.info(runtimes)
 
     result = {}
     result.update(result_template)
@@ -339,14 +339,14 @@ def tmp_get_trt_version():
 # outputs: [[test_data_0_output_0.pb, test_data_0_output_1.pb ...], [test_data_1_output_0.pb, test_data_1_output_1.pb ...] ...]
 #
 def load_onnx_model_zoo_test_data(path, all_inputs_shape, data_type="fp32"):
-    print("Parsing test data in {} ...".format(path))
+    logger.info("Parsing test data in {} ...".format(path))
     # p1 = subprocess.Popen(["find", path, "-name", "test_data_set*", "-type", "d"], stdout=subprocess.PIPE)
     p1 = subprocess.Popen(["find", path, "-name", "test_data*", "-type", "d"], stdout=subprocess.PIPE)
     p2 = subprocess.Popen(["sort"], stdin=p1.stdout, stdout=subprocess.PIPE)
     stdout, sterr = p2.communicate()
     stdout = stdout.decode("ascii").strip()
     test_data_set_dir = stdout.split("\n")
-    print(test_data_set_dir)
+    logger.info(test_data_set_dir)
 
     inputs = []
     outputs = []
@@ -367,7 +367,7 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, data_type="fp32"):
         stdout, sterr = p2.communicate()
         stdout = stdout.decode("ascii").strip()
         input_data = stdout.split("\n")
-        print(input_data)
+        logger.info(input_data)
 
         input_data_pb = []
         for data in input_data:
@@ -384,9 +384,9 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, data_type="fp32"):
                 # print(np.array(input_data_pb[-1]).shape)
                 if not shape_flag:
                     all_inputs_shape.append(input_data_pb[-1].shape)
-                print(all_inputs_shape[-1])
+                logger.info(all_inputs_shape[-1])
         inputs.append(input_data_pb)
-        print('Loaded {} inputs successfully.'.format(len(inputs)))
+        logger.info('Loaded {} inputs successfully.'.format(len(inputs)))
 
         # load outputs
         p1 = subprocess.Popen(["find", ".", "-name", "output*"], stdout=subprocess.PIPE)
@@ -394,7 +394,7 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, data_type="fp32"):
         stdout, sterr = p2.communicate()
         stdout = stdout.decode("ascii").strip()
         output_data = stdout.split("\n")
-        print(output_data)
+        logger.info(output_data)
 
         if len(output_data) > 0 and output_data[0] != '':
             output_data_pb = []
@@ -409,9 +409,9 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, data_type="fp32"):
                         tensor_to_array = tensor_to_array.astype(np.float16)
                     output_data_pb.append(tensor_to_array)
 
-                    print(np.array(output_data_pb[-1]).shape)
+                    logger.info(np.array(output_data_pb[-1]).shape)
             outputs.append(output_data_pb)
-            print('Loaded {} outputs successfully.'.format(len(outputs)))
+            logger.info('Loaded {} outputs successfully.'.format(len(outputs)))
 
         os.chdir(pwd)
 
@@ -452,12 +452,12 @@ def generate_onnx_model_random_input(test_times, ref_input):
 
 def validate(all_ref_outputs, all_outputs, decimal):
     if len(all_ref_outputs) == 0:
-        print("No reference output provided.")
+        logger.info("No reference output provided.")
         return True, None
 
-    print('Reference {} results.'.format(len(all_ref_outputs)))
-    print('Predicted {} results.'.format(len(all_outputs)))
-    print('decimal {}'.format(decimal))
+    logger.info('Reference {} results.'.format(len(all_ref_outputs)))
+    logger.info('Predicted {} results.'.format(len(all_outputs)))
+    logger.info('decimal {}'.format(decimal))
     # print(np.array(all_ref_outputs).shape)
     # print(np.array(all_outputs).shape)
 
@@ -480,7 +480,7 @@ def validate(all_ref_outputs, all_outputs, decimal):
         logger.error(e)
         return False, e
 
-    print('ONNX Runtime outputs are similar to reference outputs!')
+    logger.info('ONNX Runtime outputs are similar to reference outputs!')
     return True, None
 
 # not use for this script
@@ -503,7 +503,7 @@ def cleanup_files():
 
     for f in files:
         if "custom_test_data" in f:
-            print(f)
+            logger.info(f)
             continue
         subprocess.Popen(["rm","-rf", f], stdout=subprocess.PIPE)
 
@@ -636,7 +636,7 @@ def find_model_path(path):
     stdout, sterr = p1.communicate()
     stdout = stdout.decode("ascii").strip()
     model_path = stdout.split("\n")
-    print(model_path)
+    logger.info(model_path)
 
     if model_path == ['']:
         return None
@@ -661,7 +661,7 @@ def find_test_data_directory(path):
     stdout, sterr = p2.communicate()
     stdout = stdout.decode("ascii").strip()
     test_data_dir = stdout.split("\n")
-    print(test_data_dir)
+    logger.info(test_data_dir)
 
     if test_data_dir == ['']:
         return None
@@ -689,7 +689,7 @@ def parse_models_info_from_directory(path, models):
 
         models[model_name] = model 
 
-        print(model)
+        logger.info(model)
         return
     
     model_dir = find_model_directory(path)
@@ -783,7 +783,7 @@ def create_session(model_path, providers, session_options):
         session = onnxruntime.InferenceSession(new_model_path, providers=providers, sess_options=session_options)
         return session
     except Exception as e:
-        print(e)
+        logger.info(e)
         raise
 
 def run_onnxruntime(args, models):
@@ -1034,9 +1034,9 @@ def run_onnxruntime(args, models):
                 sess.end_profiling()
 
                 # get metrics from profiling file
-                metrics = get_profile_metrics(path, profile_already_parsed)
+                metrics = get_profile_metrics(path, profile_already_parsed, logger)
                 if metrics:
-                    print(ep)
+                    logger.info(ep)
                     ep_to_ep_op_map[ep] = metrics
 
         ####################
@@ -1092,13 +1092,13 @@ def run_onnxruntime(args, models):
 
             if debug:
                 pp = pprint.PrettyPrinter(indent=4)
-                print('CUDA operator map:')
+                logger.info('CUDA operator map:')
                 pp.pprint(cuda_op_map)
-                print('TRT operator map:')
+                logger.info('TRT operator map:')
                 pp.pprint(trt_op_map)
-                print('CUDA FP16 operator map:')
+                logger.info('CUDA FP16 operator map:')
                 pp.pprint(cuda_fp16_op_map)
-                print('TRT FP16 operator map:')
+                logger.info('TRT FP16 operator map:')
                 pp.pprint(trt_fp16_op_map)
 
         # cleanup_files()
