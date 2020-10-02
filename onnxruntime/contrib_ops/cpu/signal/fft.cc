@@ -29,20 +29,20 @@ ONNX_OPERATOR_KERNEL_EX(
     KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", BuildKernelDefConstraints<float, double>()),
     Ifft);
 
-struct samples_container {
+struct even_odd_container {
     uint8_t* data_;
     size_t length_;
     size_t element_length_;
 
     template <typename T>
-    samples_container(T* data, size_t length) :
+    even_odd_container(T* data, size_t length) :
         data_(reinterpret_cast<uint8_t*>(data)),
         length_(length),
         element_length_(sizeof(T))
     {}
     
     template <typename T>
-    samples_container(T* data, size_t length, size_t element_length) :
+    even_odd_container(T* data, size_t length, size_t element_length) :
         data_(reinterpret_cast<uint8_t*>(data)),
         length_(length),
         element_length_(element_length)
@@ -61,17 +61,17 @@ struct samples_container {
     auto size() const { return length_; }
 
     auto evens() const {
-        return samples_container(data_, static_cast<size_t>(ceil(length_ / 2.f)), element_length_ * 2);
+        return even_odd_container(data_, static_cast<size_t>(ceil(length_ / 2.f)), element_length_ * 2);
     }
 
     auto odds() const {
         if (length_ > 1)
         {
-            return samples_container(data_ + element_length_, static_cast<size_t>(ceil((length_ - 1) / 2.f)), element_length_ * 2);
+            return even_odd_container(data_ + element_length_, static_cast<size_t>(ceil((length_ - 1) / 2.f)), element_length_ * 2);
         }
         else
         {
-            return samples_container(data_ + element_length_, 0, element_length_ * 2);
+            return even_odd_container(data_ + element_length_, 0, element_length_ * 2);
         }
     }
 
@@ -79,7 +79,7 @@ struct samples_container {
     auto end() { return iterator(*this).end(); }
 
     struct iterator {
-        samples_container& container_;
+        even_odd_container& container_;
         size_t read_ = 0;
 
         iterator& end() {
@@ -87,7 +87,7 @@ struct samples_container {
             return *this;
         }
 
-        iterator(samples_container& container) :
+        iterator(even_odd_container& container) :
             container_(container) {}
 
         iterator operator++() {
@@ -129,7 +129,7 @@ size_t bit_reverse(size_t num, unsigned significant_bits) {
 
 template <typename T, typename U>
 auto fft(
-    const samples_container& samples,
+    const even_odd_container& samples,
     std::vector<std::complex<T>>& V,
     std::complex<T>* output,
     size_t size) {
@@ -162,7 +162,6 @@ auto fft(
 
 template <typename T, typename U>
 static Status FftImpl(const Tensor* X, Tensor* Y, bool inverse) {
-
   // Get shape and significant bits
   const auto& X_shape = X->Shape();
   size_t number_of_samples = static_cast<size_t>(X_shape[0]);
@@ -173,13 +172,10 @@ static Status FftImpl(const Tensor* X, Tensor* Y, bool inverse) {
   auto* Y_data = reinterpret_cast<std::complex<T>*>(Y->MutableDataRaw());
 
   // Calculate fundamental angular velocity
-  static const T pi = 3.14159265;
+  static const T pi = static_cast<T>(3.14159265);
   static const T tau = 2 * pi;
   T inverse_switch = inverse ? 1.f : -1.f;
   T angular_velocity = inverse_switch * tau / number_of_samples;
-
-  // Pad samples to power of 2
-  const auto X_samples = samples_container(X_data, number_of_samples);
 
   // Create vandermonde matrix V ordered with the bit-reversed permutation
   auto V = std::vector<std::complex<T>>(number_of_samples);  // e^(i *2*pi / N * k)
@@ -187,6 +183,9 @@ static Status FftImpl(const Tensor* X, Tensor* Y, bool inverse) {
     size_t bit_reversed_index = bit_reverse(i, significant_bits);
     V[bit_reversed_index] = std::complex<T>(cos(i * angular_velocity), sin(i * angular_velocity));
   }
+
+  // Wrap samples into the even_odd_container which allows the selection of evens/odds/even evens/odd evens/etc.
+  const auto X_samples = even_odd_container(X_data, number_of_samples);
 
   // Run fft
   fft<T, U>(X_samples, V, Y_data, number_of_samples);
