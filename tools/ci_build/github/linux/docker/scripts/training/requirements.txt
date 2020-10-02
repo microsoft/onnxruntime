@@ -6,3 +6,4 @@ transformers==v2.10.0
 torch==1.6.0.dev20200610
 torchvision==0.7.0.dev20200610
 torchtext==0.6.0.dev20200610
+h5py

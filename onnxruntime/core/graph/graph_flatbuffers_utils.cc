@@ -21,8 +21,8 @@ namespace utils {
 Status SaveInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                 const TensorProto& initializer,
                                 flatbuffers::Offset<fbs::Tensor>& fbs_tensor) {
-  auto name = builder.CreateString(initializer.name());
-  auto doc_string = builder.CreateString(initializer.doc_string());
+  auto name = SaveStringToOrtFormat(builder, initializer.has_name(), initializer.name());
+  auto doc_string = SaveStringToOrtFormat(builder, initializer.has_doc_string(), initializer.doc_string());
   std::vector<int64_t> dims_data(initializer.dims().size());
   std::copy(initializer.dims().cbegin(), initializer.dims().cend(), dims_data.begin());
   auto dims = builder.CreateVector(dims_data);
@@ -72,8 +72,8 @@ Status SaveAttributeOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                               const AttributeProto& attr_proto,
                               flatbuffers::Offset<fbs::Attribute>& fbs_attr,
                               const onnxruntime::Graph* graph) {
-  auto name = builder.CreateString(attr_proto.name());
-  auto doc_string = builder.CreateString(attr_proto.doc_string());
+  auto name = SaveStringToOrtFormat(builder, attr_proto.has_name(), attr_proto.name());
+  auto doc_string = SaveStringToOrtFormat(builder, attr_proto.has_doc_string(), attr_proto.doc_string());
   auto type = static_cast<fbs::AttributeType>(attr_proto.type());
   switch (type) {
     case fbs::AttributeType::FLOAT: {
@@ -145,8 +145,8 @@ Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor,
                                 TensorProto& initializer) {
   initializer.Clear();
 
-  LoadStringFromOrtFormat(*initializer.mutable_name(), fbs_tensor.name());
-  LoadStringFromOrtFormat(*initializer.mutable_doc_string(), fbs_tensor.doc_string());
+  LOAD_STR_FROM_ORT_FORMAT(initializer, name, fbs_tensor.name());
+  LOAD_STR_FROM_ORT_FORMAT(initializer, doc_string, fbs_tensor.doc_string());
 
   auto fbs_dims = fbs_tensor.dims();
   ORT_RETURN_IF(nullptr == fbs_dims, "Missing dimensions for initializer. Invalid ORT format model.");
@@ -179,8 +179,9 @@ Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
                               Graph& graph, Node& node,
                               const logging::Logger& logger) {
   attr_proto.Clear();
-  LoadStringFromOrtFormat(*attr_proto.mutable_name(), fbs_attr.name());
-  LoadStringFromOrtFormat(*attr_proto.mutable_doc_string(), fbs_attr.doc_string());
+  LOAD_STR_FROM_ORT_FORMAT(attr_proto, name, fbs_attr.name());
+  LOAD_STR_FROM_ORT_FORMAT(attr_proto, doc_string, fbs_attr.doc_string());
+
   auto type = static_cast<AttributeProto_AttributeType>(fbs_attr.type());
   attr_proto.set_type(type);
   switch (type) {

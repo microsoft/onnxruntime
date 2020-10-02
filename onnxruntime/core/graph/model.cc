@@ -544,10 +544,13 @@ Status Model::Save(Model& model, int p_fd) {
 
 common::Status Model::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                       flatbuffers::Offset<fbs::Model>& fbs_model) const {
-  auto producer_name = builder.CreateString(model_proto_.producer_name());
-  auto producer_version = builder.CreateString(model_proto_.producer_version());
+  auto producer_name = experimental::utils::SaveStringToOrtFormat(
+      builder, model_proto_.has_producer_name(), model_proto_.producer_name());
+  auto producer_version = experimental::utils::SaveStringToOrtFormat(
+      builder, model_proto_.has_producer_version(), model_proto_.producer_version());
   auto domain = builder.CreateSharedString(model_proto_.domain());
-  auto doc_string = builder.CreateString(model_proto_.doc_string());
+  auto doc_string = experimental::utils::SaveStringToOrtFormat(
+      builder, model_proto_.has_doc_string(), model_proto_.doc_string());
 
   std::vector<flatbuffers::Offset<fbs::OperatorSetId>> op_set_ids_vec;
   op_set_ids_vec.reserve(model_proto_.opset_import().size());
@@ -591,10 +594,10 @@ common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
   model.reset(new Model());
 
 #if !defined(ORT_MINIMAL_BUILD)
-  experimental::utils::LoadStringFromOrtFormat(*model->model_proto_.mutable_producer_name(), fbs_model.producer_name());
-  experimental::utils::LoadStringFromOrtFormat(*model->model_proto_.mutable_producer_version(), fbs_model.producer_version());
-  experimental::utils::LoadStringFromOrtFormat(*model->model_proto_.mutable_domain(), fbs_model.domain());
-  experimental::utils::LoadStringFromOrtFormat(*model->model_proto_.mutable_doc_string(), fbs_model.doc_string());
+  LOAD_STR_FROM_ORT_FORMAT(model->model_proto_, producer_name, fbs_model.producer_name());
+  LOAD_STR_FROM_ORT_FORMAT(model->model_proto_, producer_version, fbs_model.producer_version());
+  LOAD_STR_FROM_ORT_FORMAT(model->model_proto_, domain, fbs_model.domain());
+  LOAD_STR_FROM_ORT_FORMAT(model->model_proto_, doc_string, fbs_model.doc_string());
   model->model_proto_.set_model_version(fbs_model.model_version());
   model->model_proto_.set_ir_version(fbs_model.ir_version());
 #else
