@@ -50,6 +50,7 @@ struct OrtModelTestInfo {
   std::vector<std::string> output_names;
   std::function<void(const std::vector<OrtValue>&)> output_verifier;
   std::vector<std::pair<std::string, std::string>> configs;
+  bool run_use_buffer{false};
 };
 
 static void RunOrtModel(const OrtModelTestInfo& test_info) {
@@ -58,8 +59,21 @@ static void RunOrtModel(const OrtModelTestInfo& test_info) {
   for (const auto& config : test_info.configs)
     so.AddConfigEntry(config.first.c_str(), config.second.c_str());
 
+  std::vector<char> model_data;
   InferenceSessionGetGraphWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.Load(test_info.model_filename));  // infer type from filename
+  if (test_info.run_use_buffer) {
+    // Load the file into a buffer and use the buffer to create inference session
+    size_t num_bytes = 0;
+    ORT_THROW_IF_ERROR(Env::Default().GetFileLength(test_info.model_filename.c_str(), num_bytes));
+    model_data.resize(num_bytes);
+    std::ifstream bytes_stream(test_info.model_filename, std::ifstream::in | std::ifstream::binary);
+    bytes_stream.read(reinterpret_cast<char*>(model_data.data()), num_bytes);
+    bytes_stream.close();
+    ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(num_bytes)));
+  } else {
+    ASSERT_STATUS_OK(session_object.Load(test_info.model_filename));  // infer type from filename
+  }
+
   ASSERT_STATUS_OK(session_object.Initialize());
 
   std::vector<OrtValue> fetches;
@@ -330,6 +344,30 @@ TEST(OrtModelOnlyTests, LoadOrtFormatModel) {
     ASSERT_TRUE(output.Data<float>()[0] == 125.f);
   };
 
+  RunOrtModel(test_info);
+}
+
+// test that we can deserialize and run a previously saved ORT format model
+// Load the model from a buffer instead of a file path
+TEST(OrtModelOnlyTests, LoadOrtFormatModelFromBuffer) {
+  OrtModelTestInfo test_info;
+  test_info.model_filename = ORT_TSTR("testdata/ort_github_issue_4031.onnx.ort");
+  test_info.logid = "LoadOrtFormatModelFromBuffer";
+
+  OrtValue ml_value;
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), {1}, {123.f},
+                       &ml_value);
+  test_info.inputs.insert(std::make_pair("state_var_in", ml_value));
+
+  // prepare outputs
+  test_info.output_names = {"state_var_out"};
+  test_info.output_verifier = [](const std::vector<OrtValue>& fetches) {
+    const auto& output = fetches[0].Get<Tensor>();
+    ASSERT_TRUE(output.Shape().Size() == 1);
+    ASSERT_TRUE(output.Data<float>()[0] == 125.f);
+  };
+
+  test_info.run_use_buffer = true;
   RunOrtModel(test_info);
 }
 
