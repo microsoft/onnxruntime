@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2020, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -589,7 +589,6 @@ public class InferenceTest {
     assertEquals(providersSize, OrtEnvironment.getAvailableProviders().size());
   }
 
-
   @Test
   public void testSymbolicDimensionAssignment() throws OrtException {
     // model takes 1x5 input of fixed type, echoes back
@@ -601,16 +600,16 @@ public class InferenceTest {
         try (OrtSession session = env.createSession(modelPath, options)) {
           Map<String, NodeInfo> infoMap = session.getInputInfo();
           TensorInfo aInfo = (TensorInfo) infoMap.get("A").getInfo();
-          assertArrayEquals(new long[]{-1, 2}, aInfo.shape);
+          assertArrayEquals(new long[] {-1, 2}, aInfo.shape);
         }
       }
       // Check that when the options are assigned it overrides the symbolic dimension
       try (SessionOptions options = new SessionOptions()) {
-        options.setSymbolicDimensionValue("n",5);
+        options.setSymbolicDimensionValue("n", 5);
         try (OrtSession session = env.createSession(modelPath, options)) {
-          Map<String,NodeInfo> infoMap = session.getInputInfo();
+          Map<String, NodeInfo> infoMap = session.getInputInfo();
           TensorInfo aInfo = (TensorInfo) infoMap.get("A").getInfo();
-          assertArrayEquals(new long[]{5,2},aInfo.shape);
+          assertArrayEquals(new long[] {5, 2}, aInfo.shape);
         }
       }
     }

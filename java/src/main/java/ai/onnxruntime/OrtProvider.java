@@ -38,6 +38,21 @@ public enum OrtProvider {
     this.name = name;
   }
 
+  /**
+   * Accessor for the internal name of this provider.
+   *
+   * @return The internal provider name.
+   */
+  public String getName() {
+    return name;
+  }
+
+  /**
+   * Maps from the name string used by ONNX Runtime into the enum.
+   *
+   * @param name The provider name string.
+   * @return The enum constant.
+   */
   public static OrtProvider mapFromName(String name) {
     OrtProvider provider = valueMap.get(name);
     if (provider == null) {
