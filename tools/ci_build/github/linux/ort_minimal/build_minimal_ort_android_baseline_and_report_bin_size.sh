@@ -32,9 +32,9 @@ python3 /onnxruntime_src/tools/ci_build/build.py \
 python3 -m pip install --user mysql-connector-python
 
 # Post the binary size info to ort mysql DB
-# The report script failure will not fail the pipeline
+# The report script's DB connection failure will not fail the pipeline
 python3 /onnxruntime_src/tools/ci_build/github/windows/post_binary_sizes_to_dashboard.py \
-    --ignore_error \
+    --ignore_db_error \
     --commit_hash=$BUILD_SOURCEVERSION \
     --size_data_file=/build/MinSizeRel/binary_size_data.txt \
     --build_project=onnxruntime \
