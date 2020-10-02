@@ -229,7 +229,6 @@ class InferenceSession(Session):
         self._providers = self._sess.get_providers()
         self._provider_options = self._sess.get_provider_options()
 
-
     def _reset_session(self, providers, provider_options):
         "release underlying session object."
         # meta data references session internal structures
