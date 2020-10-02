@@ -26,7 +26,7 @@ The ONNX Runtime team will review the proposal and either approve or close the i
 If the feature adds new APIs then we'll start an API review.
 All new public APIs must be reviewed before merging.  
 For making changes to the C API refer to guidance [here](onnxruntime/core/session/onnxruntime_c_api.cc#L1326).
-For making changes to the WinRT API someone from the ONNX Runtime team will workwith you.
+For making changes to the WinRT API someone from the ONNX Runtime team will work with you.
 
 1. **Implementation**
 * A feature can be implemented by you, the ONNX Runtime team, or other community members.  Code contributions are greatly appreciated: feel free to work on any reviewed feature you proposed, or choose one in the backlog and send us a PR. If you are new to the project and want to work on an existing issue, we recommend starting with issues that are tagged with “good first issue”. Please let us know in the issue comments if you are actively working on implementing a feature so we can ensure it's assigned to you.  

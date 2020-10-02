@@ -231,6 +231,34 @@ def load_pretrained_model(model_name, config, cache_dir, custom_model_class, is_
     return model_class.from_pretrained(model_name, config=config, cache_dir=cache_dir, use_cdn=use_cdn)
 
 
+def load_pt_model(model_name, model_class, cache_dir):
+    config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
+    if hasattr(config, 'return_dict'):
+        config.return_dict = False
+
+    model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir, custom_model_class=model_class)
+
+    return config, model
+
+
+def load_tf_model(model_name, model_class, cache_dir):
+    config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
+
+    model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir, custom_model_class=model_class, is_tf_model=True)
+
+    return config, model
+
+
+# For test only
+def load_pt_model_from_tf(model_name):
+    # Note that we could get pt model from tf, but model source and its structure in this case is different from directly using
+    # load_pt_model() and load_tf_model() even with the same name. Therefore it should not be used for comparing with them
+    from convert_tf_models_to_pytorch import tf2pt_pipeline
+    config, model = tf2pt_pipeline(model_name)
+
+    return config, model
+
+
 def validate_and_optimize_onnx(model_name, use_external_data_format, model_type, onnx_dir, input_names, use_gpu,
                                precision, optimize_onnx, validate_onnx, use_raw_attention_mask, overwrite, config,
                                model_fusion_statistics, onnx_model_path, example_inputs, example_outputs_flatten):
@@ -269,11 +297,8 @@ def export_onnx_model_from_pt(model_name, opset_version, use_external_data_forma
                               input_names, use_gpu, precision, optimize_onnx, validate_onnx, use_raw_attention_mask, overwrite,
                               model_fusion_statistics):
 
-    config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
-    if hasattr(config, 'return_dict'):
-        config.return_dict = False
-
-    model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir, custom_model_class=model_class)
+    config, model = load_pt_model(model_name, model_class, cache_dir)
+    # config, model = load_pt_model_from_tf(model_name)
     model.cpu()
 
     tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
@@ -326,9 +351,7 @@ def export_onnx_model_from_tf(model_name, opset_version, use_external_data_forma
                               input_names, use_gpu, precision, optimize_onnx, validate_onnx, use_raw_attention_mask, overwrite,
                               model_fusion_statistics):
 
-    config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
-
-    model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir, custom_model_class=model_class, is_tf_model=True)
+    config, model = load_tf_model(model_name, model_class, cache_dir)
 
     model._saved_model_inputs_spec = None
 
