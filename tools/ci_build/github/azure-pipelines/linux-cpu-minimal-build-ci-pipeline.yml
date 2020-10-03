@@ -1,4 +1,4 @@
-# This CI has 3 major steps
+# This CI has 4 major steps
 # 1. Build full ORT, install the full ORT python wheel and use it to generate ort format test models
 #    and include ops config file for step 3
 # 2. Build minimal ORT including all the kernels and disable exceptions.
@@ -7,6 +7,8 @@
 #    and the models from <repo root>/onnxruntime/test/testdata/, run UT, and use onnx_test_runner to
 #    test the ort format models generated in step 1.
 #    Exceptions are enabled in this step to help debugging in case of CI failure.
+# 4. Build baseline minimal ORT for Android arm64-v8a including no kernels and disable exceptions
+#    This step is to report the baseline binary size for Android
 jobs:
 - job: Linux_CPU_Minimal_Build_E2E
   timeoutInMinutes: 120
@@ -76,6 +78,26 @@ jobs:
           -e BUILD_BUILDNUMBER \
           onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecentoscpubuild:ch5g \
             /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_and_run_tests.sh
+      workingDirectory: $(Build.SourcesDirectory)
+  - task: CmdLine@2
+    displayName: Build onnxruntime minimal baseline for Android arm64-v8a and report binary size
+    inputs:
+      script: |
+        # Create a folder for all test data
+        mkdir -p $HOME/.test_data
+        docker run --rm \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume $ANDROID_HOME:/android_home \
+          --volume $HOME/.test_data:/home/onnxruntimedev/.test_data \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          -e BUILD_SOURCEVERSION=$(Build.SourceVersion) \
+          -e BUILD_ID=$(Build.BuildId) \
+          -e DASHBOARD_MYSQL_ORT_PASSWORD=$(dashboard-mysql-ort-password) \
+          onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecentoscpubuild:ch5g \
+            /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_android_baseline_and_report_bin_size.sh
       workingDirectory: $(Build.SourcesDirectory)
   - task: Docker@2
     displayName: logout
