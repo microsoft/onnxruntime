@@ -1089,7 +1089,7 @@ def run_android_tests(args, source_dir, config, cwd):
 def run_ios_tests(args, source_dir, config, cwd):
     run_subprocess(["xcodebuild", "test", "-project", "./onnxruntime.xcodeproj",
                     "-scheme",  "onnxruntime_test_all_xc",
-                    "-destination", "platform=iOS Simulator,OS=14.0,name=iPhone SE (2nd generation)"], cwd=cwd)
+                    "-destination", "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)"], cwd=cwd)
 
 
 def run_training_python_frontend_tests(cwd):
