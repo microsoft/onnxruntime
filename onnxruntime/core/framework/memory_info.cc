@@ -23,6 +23,7 @@ void MemoryInfo::GenerateMemoryMap(const SequentialExecutionPlan* execution_plan
   return;
 }
 
+//TODO: Certain tensors are not dynamically allocated, but I cannot find the planned allocation.  Need to investigate why.
 void MemoryInfo::RecordMemoryPatternInfo(const MemoryPatternGroup& mem_patterns) {
   for (const auto& location : mem_patterns.locations) {
     for (const auto& p : mem_patterns.GetPatterns(location)->GetPatternsMap()) {
@@ -39,6 +40,19 @@ void MemoryInfo::RecordDeviceAllocInfo(const std::unordered_map<int, OrtValue>& 
   }
 }
 
+//Comment: Need to add in the memory information for input
+//void MemoryInfo::RecordInputMemoryInfo(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds) {
+//  for (auto value_idx : feed_mlvalue_idxs) {
+//    ORT_ENFORCE(tensor_memoryinfo_map_.find(value_idx) != tensor_memoryinfo_map_.end());
+//    const OrtValue& feed = feeds[value_idx];
+//    auto& tensor = feed.Get<Tensor>();
+//    auto sizeinbytes = tensor.SizeInBytes() % 256 ? tensor.SizeInBytes() + 256 - tensor.SizeInBytes() % 256 : tensor.SizeInBytes();
+//    tensor_memoryinfo_map_[value_idx].block.offset_ = size_t(tensor.DataRaw());
+//    tensor_memoryinfo_map_[value_idx].block.size_ = sizeinbytes;
+//  }
+//}
+
+//Record the planned memory information
 void MemoryInfo::RecordActivationPatternInfo(const MemoryPatternGroup& mem_patterns) {
   RecordMemoryPatternInfo(mem_patterns);
   for (auto& item : tensor_memoryinfo_map_) {
@@ -48,11 +62,13 @@ void MemoryInfo::RecordActivationPatternInfo(const MemoryPatternGroup& mem_patte
     }
   }
 }
+
 void MemoryInfo::SetDynamicAllocation(const OrtValueIndex idx) {
   ORT_ENFORCE(tensor_memoryinfo_map_.find(idx) != tensor_memoryinfo_map_.end());
   tensor_memoryinfo_map_[idx].dynamic_allocation = true;
 }
 
+//Record the actual allocated tensor in the device
 void MemoryInfo::RecordTensorDeviceAllocInfo(const OrtValueIndex idx, const OrtValue& value) {
   ORT_ENFORCE(tensor_memoryinfo_map_.find(idx) != tensor_memoryinfo_map_.end());
   auto& tensor = value.Get<Tensor>();

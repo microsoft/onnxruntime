@@ -12,6 +12,7 @@ namespace onnxruntime {
 using IntervalT = std::pair<size_t, size_t>;
 using OrtValueIndex = int;
 using OrtValueName = std::string;
+//TODO: need to extend this enum to include finner-grained decomposition
 enum MLValueTensorType {
   WEIGHT = 0,
   GRADIENT,
@@ -43,12 +44,11 @@ class MemoryInfo {
   void SetDynamicAllocation(const OrtValueIndex idx);
   void RecordTensorDeviceAllocInfo(const OrtValueIndex idx, const OrtValue& value);
 
-  //  void RecordMemoryInfo(const SessionState& session_state, const MemoryPatternGroup* mem_patterns,
-  //                        const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds);
   void PrintMemoryInfoForLocation(const logging::Logger& /*logger*/, const OrtDevice::DeviceType location);
 
  private:
   std::unordered_map<OrtValueIndex, MemoryInfoPerTensor> tensor_memoryinfo_map_;
+  //TODO: The dynamic and statically planned alignments may not be the same, need to check
   static const int alignment = 256;
 };
 
