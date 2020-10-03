@@ -51,9 +51,7 @@ void QGemm(
     concurrency::ThreadPool* thread_pool);
 
 inline float RoundHalfToEven(float input) {
-  std::fesetround(FE_TONEAREST);
-  auto result = std::nearbyintf(input);
-  return result;
+  return input - std::remainderf(input, 1.f);
 }
 
 }  // namespace onnxruntime
