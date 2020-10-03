@@ -7,4 +7,4 @@ jobs:
     - script: |
         sdkpath=`xcrun --sdk iphonesimulator --show-sdk-path`
         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir iOS --ios --ios_sysroot $sdkpath --osx_arch x86_64 --apple_deploy_target 12.1 --use_xcode --config RelWithDebInfo --parallel
-      displayName: build iOS test cases and run them
+      displayName: Build onnxruntime for iOS x86_64 and run tests using simulator
