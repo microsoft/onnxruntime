@@ -178,6 +178,9 @@ std::string nuphar_settings;
 
 #define PYBIND_UNREFERENCED_PARAMETER(parameter) ((void)(parameter))
 
+const OrtDevice::DeviceType OrtDevice::CPU;
+const OrtDevice::DeviceType OrtDevice::GPU;
+
 namespace onnxruntime {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
