@@ -68,3 +68,7 @@ inline bool operator==(const OrtDevice& left, const OrtDevice& other) {
 inline bool operator!=(const OrtDevice& left, const OrtDevice& other) {
   return !(left == other);
 }
+
+const OrtDevice::DeviceType OrtDevice::CPU;
+const OrtDevice::DeviceType OrtDevice::GPU;
+const OrtDevice::DeviceType OrtDevice::FPGA;
