@@ -588,7 +588,7 @@ static const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCudaToHos
 
 static const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCpuToHostMemCpyFunction() {
   static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
-      {OrtDevice::CPU, CudaToCpuMemCpy}};
+      {OrtDevice::CPU, CpuToCpuMemCpy}};
 
   return &map;
 }
