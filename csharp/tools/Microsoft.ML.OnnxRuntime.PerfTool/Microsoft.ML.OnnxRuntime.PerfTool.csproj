@@ -8,18 +8,23 @@
     <SignAssembly>false</SignAssembly>
     <Configurations>Debug;Release;RelWithDebInfo</Configurations>
     <IsLinuxBuild Condition="'$(IsLinuxBuild)' == ''">false</IsLinuxBuild>
+    <ProtoSrc>$(OnnxRuntimeCsharpRoot)\..\onnxruntime\core\protobuf</ProtoSrc>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(IsLinuxBuild)'=='true'">
     <!--internal build related properties for Linux -->
     <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Linux</OnnxRuntimeBuildDirectory>
     <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)</NativeBuildOutputDir>
+    <ProtocDirectory Condition="'$(ProtocDirectory)'==''">$(OnnxRuntimeBuildDirectory)\$(Configuration)\external\protobuf\cmake</ProtocDirectory>
+    <ProtocExe>$(ProtocDirectory)\protoc.exe</ProtocExe>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(IsLinuxBuild)'=='false'">
     <!--internal build related properties for Windows -->
     <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</OnnxRuntimeBuildDirectory>
     <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>    
+    <ProtocDirectory Condition="'$(ProtocDirectory)'==''">$(OnnxRuntimeBuildDirectory)\$(Configuration)\external\protobuf\cmake\$(Configuration)</ProtocDirectory>
+    <ProtocExe>$(ProtocDirectory)\protoc.exe</ProtocExe>
   </PropertyGroup>
 
   <ItemGroup>
@@ -53,7 +58,11 @@
   <ItemGroup>
     <ProjectReference Include="$(OnnxRuntimeCSharpRoot)\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj" />
     <PackageReference Include="CommandLineParser" Version="2.4.3" />
+    <PackageReference Include="Google.Protobuf" Version="3.13.0" />
   </ItemGroup>
 
+  <Target Name="ProtoGen" BeforeTargets="Build">
+    <Exec Command="$(ProtocExe) -I=$(ProtoSrc) --csharp_out=. $(ProtoSrc)\onnx-ml.proto3" ContinueOnError="false"></Exec>
+  </Target>
 
 </Project>
