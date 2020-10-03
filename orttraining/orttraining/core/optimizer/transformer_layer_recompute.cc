@@ -116,7 +116,7 @@ void TransformerLayerRecompute::InsertRecomputeNodes(Graph& graph, const std::ve
     Node* node = graph.GetNode(n->Index());
 
     // recomputed Dropout need to produce the same output as original dropout
-    // currently reusing original dropout's mask to achieve this 
+    // currently reusing original dropout's mask to achieve this
     if (node->OpType() == "Dropout") {
       const NodeArg* input = node->InputDefs()[0];
       const Node* p_node = graph.GetProducerNode(input->Name());
@@ -175,9 +175,25 @@ Status TransformerLayerRecompute::ApplyImpl(Graph& graph, bool& modified, int /*
     return Status::OK();
   }
 
-  // insert recompute nodes expect for the last transformer layer
+  // by default, apply recompute expect for the last transformer layer
+  // otherwise, take user specified 'number_recompute_layers_'
+
+  int n_layers;
+  const int n_layers_limit = static_cast<int>(start_end_edges.size() - 1); 
+  if (number_recompute_layers_ > n_layers_limit) {
+    LOGS(logger, WARNING) << "User specified number_recompute_layers " << number_recompute_layers_
+                          << " is larger than limit " << n_layers_limit << "."
+                          << "number_recompute_layers is now cliped to limit.";
+    n_layers = n_layers_limit;
+  } else if (number_recompute_layers_ > 0) {
+    n_layers = number_recompute_layers_;
+  } else {
+    LOGS(logger, INFO) << "number_recompute_layers is not set by user, using default " << n_layers_limit << ".";
+    n_layers = n_layers_limit;
+  }
+
   // latter recompute layers have higher execution priorty
-  for (size_t i = 0; i < start_end_edges.size() - 1; ++i) {
+  for (int i = 0; i < n_layers; ++i) {
     std::vector<const Node*> nodes = NodesBetweenEdges(graph, start_end_edges[i].first, start_end_edges[i].second);
     InsertRecomputeNodes(graph, nodes, static_cast<int>(start_end_edges.size() - i));
   }

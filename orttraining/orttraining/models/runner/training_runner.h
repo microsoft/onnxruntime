@@ -180,6 +180,8 @@ class TrainingRunner {
     bool gelu_recompute = false;
     // Enable checkpointing of transformer layer output to save memory
     bool transformer_layer_recompute = false;
+    // Number of layers to apply recompute
+    int number_recompute_layers = 0;
     // Use invertible layernorm grad
     bool use_invertible_layernorm_grad = false;
   };
