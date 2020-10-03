@@ -31,3 +31,9 @@ static const char* const kOrtSessionOptionsConfigLoadModelFormat = "session.load
 // Set to 'ORT' (case sensitive) to save optimized model in ORT format when SessionOptions.optimized_model_path is set.
 // If unset, format will default to ONNX unless optimized_model_filepath ends in '.ort'.
 static const char* const kOrtSessionOptionsConfigSaveModelFormat = "session.save_model_format";
+
+// Key for disable the verification of the flatbuffers buffer of the ort format file
+// If the config value is set to "1" then an ort format file's buffer will not be verified before accessing data,
+// otherwise the verification is by default enabled.
+static const char* const kOrtSessionOptionsConfigDisableVerifyORTFormatBuffer =
+    "session.disable_verify_ort_format_buffer";
