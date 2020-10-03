@@ -334,6 +334,7 @@ ONNX_CPU_OPERATOR_KERNEL(
                                           DataTypeImpl::GetTensorType<float>(),
                                           DataTypeImpl::GetTensorType<double>(),
                                           DataTypeImpl::GetTensorType<int32_t>(),
+                                          DataTypeImpl::GetTensorType<int64_t>(),
                                           DataTypeImpl::GetTensorType<std::string>()})
         .TypeConstraint("S", DataTypeImpl::AllSequenceTensorTypes())
         .TypeConstraint("I", std::vector<MLDataType>{
@@ -358,6 +359,8 @@ Status SplitToSequence::Compute(OpKernelContext* context) const {
     status = ComputeImpl<double>(*context, input, p_split_input);
   else if (input.IsDataType<int32_t>())
     status = ComputeImpl<int32_t>(*context, input, p_split_input);
+  else if (input.IsDataType<int64_t>())
+    status = ComputeImpl<int64_t>(*context, input, p_split_input);
   else if (input.IsDataTypeString())
     status = ComputeImpl<std::string>(*context, input, p_split_input);
   else
