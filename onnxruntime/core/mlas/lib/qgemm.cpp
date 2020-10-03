@@ -262,15 +262,17 @@ Return Value:
     // signed types and the matrix B data is unsigned.
     //
 
+#if defined(MLAS_SSE2_INTRINSICS)
     if (std::is_signed<typename KernelType::OffsetBType>::value) {
         if (!WorkBlock->BIsSigned) {
             offb = typename KernelType::OffsetBType(offb ^ 0x80);
         }
     }
-
+#elif defined(MLAS_NEON64_INTRINSICS)
     if (WorkBlock->BIsSigned) {
-            offb = typename KernelType::OffsetBType(offb ^ 0x80);
+        offb = typename KernelType::OffsetBType(offb ^ 0x80);
     }
+#endif
 
     //
     // Step through each slice of matrix B along the K dimension.
@@ -410,11 +412,17 @@ Return Value:
     // signed types and the matrix B data is unsigned.
     //
 
+#if defined(MLAS_SSE2_INTRINSICS)
     if (std::is_signed<typename KernelType::OffsetBType>::value) {
         if (!WorkBlock->BIsSigned) {
             offb = typename KernelType::OffsetBType(offb ^ 0x80);
         }
     }
+#elif defined(MLAS_NEON64_INTRINSICS)
+    if (WorkBlock->BIsSigned) {
+        offb = typename KernelType::OffsetBType(offb ^ 0x80);
+    }
+#endif
 
     //
     // Extract the pointer to the column sum buffer from the packed matrix.
@@ -1913,7 +1921,11 @@ Return Value:
 #elif defined(MLAS_SSE2_INTRINSICS)
     MlasGemmU8X8Operation<MLAS_GEMM_U8X8_KERNEL_SSE>(&WorkBlock);
 #elif defined(MLAS_NEON64_INTRINSICS)
-    MlasGemmU8X8Operation<MLAS_GEMM_U8X8_KERNEL_NEON>(&WorkBlock);
+    if (WorkBlock.BIsPacked) {
+        MlasGemmU8X8PackedOperation<MLAS_GEMM_U8X8_KERNEL_NEON>(&WorkBlock);
+    } else {
+        MlasGemmU8X8Operation<MLAS_GEMM_U8X8_KERNEL_NEON>(&WorkBlock);
+    }
 #endif
 }
 
@@ -2189,7 +2201,7 @@ Return Value:
     MlasGemmU8X8Schedule(&WorkBlock, ThreadPool);
 }
 
-#ifdef MLAS_TARGET_AMD64
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_NEON64_INTRINSICS)
 
 void
 MLASCALL
@@ -2405,17 +2417,14 @@ Return Value:
 --*/
 {
     //
-    // Retrieve the address of the packed operation function for the platform.
-    //
-
-    PMLAS_GEMM_U8X8_OPERATION GemmU8X8Operation = BIsSigned ?
-        MlasPlatform.GemmU8S8PackedOperation : MlasPlatform.GemmU8U8PackedOperation;
-
-    //
     // Retrieve the packing parameters based on the packed operation function.
     //
 
     size_t PackedK;
+
+#if defined(MLAS_TARGET_AMD64)
+    PMLAS_GEMM_U8X8_OPERATION GemmU8X8Operation = BIsSigned ?
+        MlasPlatform.GemmU8S8PackedOperation : MlasPlatform.GemmU8U8PackedOperation;
 
     if (GemmU8X8Operation == &MlasGemmU8X8PackedOperation<MLAS_GEMM_U8S8_KERNEL_AVX2>) {
         PackedK = MLAS_GEMM_U8S8_KERNEL_AVX2::PackedK;
@@ -2424,6 +2433,13 @@ Return Value:
     } else {
         return 0;
     }
+#elif defined(MLAS_NEON64_INTRINSICS)
+    MLAS_UNREFERENCED_PARAMETER(BIsSigned);
+
+    PackedK = MLAS_GEMM_U8X8_KERNEL_NEON::PackedK;
+#else
+#error Unknown architecture.
+#endif
 
     //
     // Compute the number of bytes required to hold the packed buffer.
@@ -2481,18 +2497,15 @@ Return Value:
 --*/
 {
     //
-    // Retrieve the address of the packed operation function for the platform.
-    //
-
-    PMLAS_GEMM_U8X8_OPERATION GemmU8X8Operation = BIsSigned ?
-        MlasPlatform.GemmU8S8PackedOperation : MlasPlatform.GemmU8U8PackedOperation;
-
-    //
     // Retrieve the packing parameters based on the packed operation function.
     //
 
     size_t PackedK;
     size_t StrideK;
+
+#if defined(MLAS_TARGET_AMD64)
+    PMLAS_GEMM_U8X8_OPERATION GemmU8X8Operation = BIsSigned ?
+        MlasPlatform.GemmU8S8PackedOperation : MlasPlatform.GemmU8U8PackedOperation;
 
     if (GemmU8X8Operation == &MlasGemmU8X8PackedOperation<MLAS_GEMM_U8S8_KERNEL_AVX2>) {
         PackedK = MLAS_GEMM_U8S8_KERNEL_AVX2::PackedK;
@@ -2507,6 +2520,12 @@ Return Value:
         throw std::runtime_error("packing unavailable");
 #endif
     }
+#elif defined(MLAS_NEON64_INTRINSICS)
+    PackedK = MLAS_GEMM_U8X8_KERNEL_NEON::PackedK;
+    StrideK = MLAS_GEMM_U8X8_KERNEL_NEON::PackedStrides.K;
+#else
+#error Unknown architecture.
+#endif
 
     //
     // Reserve and initialize storage for the column sum buffer to hold the sums
@@ -2545,11 +2564,17 @@ Return Value:
 
             CountN = std::min(N - n, BatchedN);
 
+#if defined(MLAS_TARGET_AMD64)
             if (GemmU8X8Operation == &MlasGemmU8X8PackedOperation<MLAS_GEMM_U8S8_KERNEL_AVX2>) {
                 MLAS_GEMM_U8S8_KERNEL_AVX2::CopyPackB(pb, B + n, ldb, CountN, CountK, ColumnSumBuffer, BIsSigned);
             } else {
                 MLAS_GEMM_U8U8_KERNEL_AVX2::CopyPackB(pb, B + n, ldb, CountN, CountK, ColumnSumBuffer, BIsSigned);
             }
+#elif defined(MLAS_NEON64_INTRINSICS)
+            MLAS_GEMM_U8X8_KERNEL_NEON::CopyPackB(pb, B + n, ldb, CountN, CountK, ColumnSumBuffer, BIsSigned);
+#else
+#error Unknown architecture.
+#endif
 
             //
             // Accumulate this batch of the column sum buffer into the packed
