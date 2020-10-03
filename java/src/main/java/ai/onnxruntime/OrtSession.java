@@ -496,7 +496,7 @@ public class OrtSession implements AutoCloseable {
 
     private final List<Long> customLibraryHandles;
 
-    private Map<String, String> configEntries;
+    private final Map<String, String> configEntries;
 
     private boolean closed = false;
 
@@ -692,7 +692,11 @@ public class OrtSession implements AutoCloseable {
       configEntries.put(configKey, configValue);
     }
 
-    /** Returns an unmodifiable view of the map contains all session configuration entries. */
+    /**
+     * Returns an unmodifiable view of the map contains all session configuration entries.
+     *
+     * @return All session configuration entries
+     */
     public Map<String, String> getConfigEntries() {
       checkClosed();
       return Collections.unmodifiableMap(configEntries);
