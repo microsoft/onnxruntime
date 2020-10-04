@@ -38,7 +38,6 @@ def main():
         logger.info("\n\n================= " + model +" =====================")
 
         model_info["model_name"] = model 
-        model_info["working_directory"] = os.path.relpath(model_info["working_directory"], os.getcwd())
         
         tmp_directory = os.path.join(os.getcwd(), "tmp")
         if not os.path.exists(tmp_directory):
