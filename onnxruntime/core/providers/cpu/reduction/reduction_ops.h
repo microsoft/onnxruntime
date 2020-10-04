@@ -13,6 +13,18 @@
 
 namespace onnxruntime {
 
+bool NeedsTransposeForReduce(const Tensor* input_tensor_ptr,
+                             const std::vector<int64_t>& axes_,
+                             std::vector<int64_t>& axes,
+                             const TensorShape* input_shape_override);
+
+void ExperimentalPrepareForReduceSum(const Tensor& input, const std::vector<int64_t>& reduced_axes,
+                                     std::vector<int64_t>& projected_index, std::vector<int64_t>& unprojected_index);
+
+template <typename T>
+void ExperimentalReduceSum(Tensor* output, const Tensor& input, const std::vector<int64_t>& reduced_axes,
+                           concurrency::ThreadPool* tp);
+
 template <typename T>
 bool PrepareForReduce(const Tensor* input_tensor_ptr,
                       FastAllocVector<T>& transposed_input_data,
@@ -22,7 +34,8 @@ bool PrepareForReduce(const Tensor* input_tensor_ptr,
                       bool keepdims_,
                       /*out*/ std::vector<int64_t>& reduced_dims,
                       bool check_no_transpose = false,
-                      const TensorShape* input_shape_override = nullptr);
+                      const TensorShape* input_shape_override = nullptr,
+                      concurrency::ThreadPool* tp = nullptr);
 
 template <typename T>
 void ReduceSumCore(const T* input_data, T* output_data, bool no_transpose,
