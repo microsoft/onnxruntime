@@ -149,13 +149,13 @@ common::Status SaveInitializedTensors(
     }
     ORT_RETURN_IF_ERROR(planner.Trace(entry.first, entry.second));
   }
-  memory_info.RecordMemoryPatternInfo(planner.GetMemPatterns());
   //2. allocate weight buffer on different locations
   // planned_initializers_memory_size_in_byte is not actual physical size.
   // It's the virtual size computed by planner.
   std::unordered_map<std::string, size_t> planned_initializers_memory_sizes_in_byte;
   ORT_RETURN_IF_ERROR(
       planner.FinalizePlan(planned_initializers_memory_sizes_in_byte));
+  memory_info.RecordMemoryPatternInfo(planner.GetMemPatterns());
 
   for (auto i : planned_initializers_memory_sizes_in_byte) {
     LOGS(logger, INFO) << "[Memory] SessionStateInitializer statically allocates "

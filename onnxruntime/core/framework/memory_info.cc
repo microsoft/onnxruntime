@@ -81,6 +81,7 @@ std::ostream& operator<<(std::ostream& out, const MemoryInfoPerTensor& mem_info_
   out << "Tensor name: " << mem_info_per_tensor.mlvalue_name << ", ";
   out << "Index: " << mem_info_per_tensor.mlvalue_index << ", ";
   out << "Type: " << mem_info_per_tensor.tensor_type << ", ";
+  out << "Alloc type " << mem_info_per_tensor.alloc_plan.alloc_kind << ", ";
   out << "Location: " << mem_info_per_tensor.alloc_plan.location.name << ", ";
   out << "lifetime: (" << mem_info_per_tensor.alloc_plan.life_interval.first << ", " << mem_info_per_tensor.alloc_plan.life_interval.second << "), ";
   out << "alloc time: (" << mem_info_per_tensor.alloc_plan.allocate_interval.first << ", " << mem_info_per_tensor.alloc_plan.allocate_interval.second << "), ";
