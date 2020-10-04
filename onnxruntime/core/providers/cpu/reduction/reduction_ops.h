@@ -34,8 +34,7 @@ bool PrepareForReduce(const Tensor* input_tensor_ptr,
                       bool keepdims_,
                       /*out*/ std::vector<int64_t>& reduced_dims,
                       bool check_no_transpose = false,
-                      const TensorShape* input_shape_override = nullptr,
-                      concurrency::ThreadPool* tp = nullptr);
+                      const TensorShape* input_shape_override = nullptr);
 
 template <typename T>
 void ReduceSumCore(const T* input_data, T* output_data, bool no_transpose,

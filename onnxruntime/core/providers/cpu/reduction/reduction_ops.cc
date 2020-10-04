@@ -208,8 +208,14 @@ bool PrepareForReduce(const Tensor* input_tensor_ptr,
                       bool keepdims_,
                       /*out*/ std::vector<int64_t>& reduced_dims,
                       bool check_no_transpose,
-                      const TensorShape* input_shape_override,
-                      concurrency::ThreadPool*) {
+                      const TensorShape* input_shape_override) {
+  ORT_ENFORCE(input_tensor_ptr != nullptr, "Input to be reduced is null");
+
+  if (input_shape_override) {
+    ORT_ENFORCE(input_tensor_ptr->Shape().Size() == input_shape_override->Size(),
+                "The input shape override's size does not match the input tensor's shape size");
+  }
+
   const Tensor& input = *input_tensor_ptr;
   const auto& input_shape = input_shape_override ? *input_shape_override : input.Shape();
 
@@ -389,7 +395,7 @@ Status ReduceL1<T>::Compute(OpKernelContext* ctx) const {
 
   const Tensor* input = ctx->Input<Tensor>(0);
 
-  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true, nullptr, ctx->GetOperatorThreadPool());
+  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true, nullptr);
 
   Tensor* reduced = ctx->Output(0, reduced_dims);
 
@@ -418,7 +424,7 @@ Status ReduceL2<T>::Compute(OpKernelContext* ctx) const {
 
   const Tensor* input = ctx->Input<Tensor>(0);
 
-  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true, nullptr, ctx->GetOperatorThreadPool());
+  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true, nullptr);
 
   Tensor* reduced = ctx->Output(0, reduced_dims);
 
@@ -447,7 +453,7 @@ Status ReduceLogSum<T>::Compute(OpKernelContext* ctx) const {
 
   const Tensor* input = ctx->Input<Tensor>(0);
 
-  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true, nullptr, ctx->GetOperatorThreadPool());
+  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true, nullptr);
 
   Tensor* reduced = ctx->Output(0, reduced_dims);
 
@@ -508,7 +514,7 @@ Status ReduceMax<T>::Compute(OpKernelContext* ctx) const {
   std::vector<int64_t> reduced_dims;
   const Tensor* input = ctx->Input<Tensor>(0);
 
-  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true, nullptr, ctx->GetOperatorThreadPool());
+  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true, nullptr);
 
   Tensor* reduced = ctx->Output(0, reduced_dims);
 
@@ -536,7 +542,7 @@ Status ReduceMean<T>::Compute(OpKernelContext* ctx) const {
   std::vector<int64_t> reduced_dims;
   const Tensor* input = ctx->Input<Tensor>(0);
 
-  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true, nullptr, ctx->GetOperatorThreadPool());
+  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true, nullptr);
 
   Tensor* reduced = ctx->Output(0, reduced_dims);
 
@@ -564,7 +570,7 @@ Status ReduceMin<T>::Compute(OpKernelContext* ctx) const {
   std::vector<int64_t> reduced_dims;
   const Tensor* input = ctx->Input<Tensor>(0);
 
-  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true, nullptr, ctx->GetOperatorThreadPool());
+  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true, nullptr);
 
   Tensor* reduced = ctx->Output(0, reduced_dims);
 
@@ -592,7 +598,7 @@ Status ReduceProd<T>::Compute(OpKernelContext* ctx) const {
   std::vector<int64_t> reduced_dims;
   const Tensor* input = ctx->Input<Tensor>(0);
 
-  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true, nullptr, ctx->GetOperatorThreadPool());
+  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true, nullptr);
 
   Tensor* reduced = ctx->Output(0, reduced_dims);
 
@@ -638,8 +644,7 @@ Tensor ReduceSum<T>::Impl(const Tensor& input, const std::vector<int64_t>& reduc
   std::vector<int64_t> reduced_dims;
 
   bool no_transpose = PrepareForReduce<T>(&input, transposed_input_data, block_size, blocks,
-                                          reduce_axes, keep_dims, reduced_dims, true, input_shape_override,
-                                          tp);
+                                          reduce_axes, keep_dims, reduced_dims, true, input_shape_override);
 
   Tensor output(input.DataType(), reduced_dims, allocator);
 
@@ -749,7 +754,7 @@ Status ReduceSum<T>::Compute(OpKernelContext* ctx) const {
   const Tensor* input = ctx->Input<Tensor>(0);
 
   std::vector<int64_t> axes;
-  if (NeedsTransposeForReduce(input, axes_, axes, nullptr)) {
+  if (input == nullptr && NeedsTransposeForReduce(input, axes_, axes, nullptr)) {
     auto reduced_dims = input->Shape().GetDims();
     for (auto i : axes) {
       reduced_dims[i] = 1;
@@ -773,7 +778,7 @@ Status ReduceSum<T>::Compute(OpKernelContext* ctx) const {
     ExperimentalReduceSum<T>(output, *input, axes, ctx->GetOperatorThreadPool());
   } else {
     std::vector<int64_t> reduced_dims;
-    bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true, nullptr, ctx->GetOperatorThreadPool());
+    bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true, nullptr);
 
     auto* output = ctx->Output(0, reduced_dims);
 
@@ -791,7 +796,7 @@ Status ReduceSumSquare<T>::Compute(OpKernelContext* ctx) const {
   std::vector<int64_t> reduced_dims;
   const Tensor* input = ctx->Input<Tensor>(0);
 
-  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true, nullptr, ctx->GetOperatorThreadPool());
+  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true, nullptr);
 
   Tensor* reduced = ctx->Output(0, reduced_dims);
 
@@ -820,7 +825,7 @@ Status ArgMax<T>::Compute(OpKernelContext* ctx) const {
   std::vector<int64_t> reduced_dims;
   const Tensor* input = ctx->Input<Tensor>(0);
 
-  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true, nullptr, ctx->GetOperatorThreadPool());
+  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true, nullptr);
 
   Tensor* reduced = ctx->Output(0, reduced_dims);
   int64_t* output_data = reduced->template MutableData<int64_t>();
@@ -884,7 +889,7 @@ Status ArgMin<T>::Compute(OpKernelContext* ctx) const {
   std::vector<int64_t> reduced_dims;
   const Tensor* input = ctx->Input<Tensor>(0);
 
-  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true, nullptr, ctx->GetOperatorThreadPool());
+  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true, nullptr);
 
   Tensor* reduced = ctx->Output(0, reduced_dims);
   int64_t* output_data = reduced->template MutableData<int64_t>();
