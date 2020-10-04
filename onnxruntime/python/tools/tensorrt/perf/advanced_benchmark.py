@@ -51,7 +51,7 @@ def main():
         ep_list = ["CUDAExecutionProvider", "TensorrtExecutionProvider", "CUDAExecutionProvider_fp16", "TensorrtExecutionProvider_fp16"]
 
         for ep in ep_list:
-            p = subprocess.run(["python3", "benchmark.py", "-r", "validate", "-m", model_list_file, "--ep", "-s", args.symbolic_shape_infer, ep, "-o", args.perf_result_path, "--benchmark_fail_csv", benchmark_fail_csv, "--benchmark_ratio_csv", benchmark_ratio_csv])
+            p = subprocess.run(["python3", "benchmark.py", "-r", "validate", "-m", model_list_file, "--ep", ep,  "-s", args.symbolic_shape_infer, "-o", args.perf_result_path, "--benchmark_fail_csv", benchmark_fail_csv, "--benchmark_ratio_csv", benchmark_ratio_csv])
             print(p)
 
             if p.returncode != 0:
