@@ -623,6 +623,7 @@ class ORTTrainer(object):
         ort_parameters.allreduce_post_accumulation = self.options.distributed.allreduce_post_accumulation
         ort_parameters.deepspeed_zero_stage = self.options.distributed.deepspeed_zero_optimization.stage
         ort_parameters.enable_grad_norm_clip = self.options.utils.grad_norm_clip
+        ort_parameters.enable_gelu_approximation = self.options._internal_use.enable_gelu_approximation
         ort_parameters.set_gradients_as_graph_outputs = False
         ort_parameters.use_invertible_layernorm_grad = self.options.utils.invertible_layer_norm_gradient
         ort_parameters.training_optimizer_name = self.optim_config.name

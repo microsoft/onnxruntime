@@ -45,6 +45,7 @@ struct TrainingParameters {
   int horizontal_parallel_size = 1;
   int deepspeed_zero_stage = 0;
   bool enable_grad_norm_clip = true;
+  bool enable_gelu_approximation = false;
   bool set_gradients_as_graph_outputs = false;
   bool use_invertible_layernorm_grad = false;
 };
@@ -130,6 +131,8 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   config.gradient_graph_config.use_invertible_layernorm_grad = parameters.use_invertible_layernorm_grad;
   config.gradient_graph_config.set_gradients_as_graph_outputs = parameters.set_gradients_as_graph_outputs;
 
+  config.graph_transformer_config.enable_gelu_approximation = parameters.enable_gelu_approximation;
+
   training::TrainingSession::TrainingConfigurationResult config_result{};
 
   OrtPybindThrowIfError(sess->ConfigureForTraining(config, config_result));
@@ -185,6 +188,7 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("gradient_accumulation_steps", &TrainingParameters::gradient_accumulation_steps)
       .def_readwrite("deepspeed_zero_stage", &TrainingParameters::deepspeed_zero_stage)
       .def_readwrite("enable_grad_norm_clip", &TrainingParameters::enable_grad_norm_clip)
+      .def_readwrite("enable_gelu_approximation", &TrainingParameters::enable_gelu_approximation)
       .def_readwrite("set_gradients_as_graph_outputs", &TrainingParameters::set_gradients_as_graph_outputs)
       .def_readwrite("use_invertible_layernorm_grad", &TrainingParameters::use_invertible_layernorm_grad);
 
