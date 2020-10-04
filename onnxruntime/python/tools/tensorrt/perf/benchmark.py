@@ -709,6 +709,8 @@ def parse_models_info_from_file(path, models):
     with open(path) as f:
         data = json.load(f)
 
+        print(data)
+
         for row in data:
 
             if 'root_working_directory' in row:
@@ -735,8 +737,10 @@ def parse_models_info_from_file(path, models):
 
             if 'working_directory' in row:
                 if os.path.isabs(row['working_directory']):
+                    print(1)
                     model['working_directory'] = row['working_directory']
                 else:
+                    print(2)
                     model['working_directory'] = os.path.join(root_working_directory + row['working_directory'])
                 logger.info(model['working_directory'])
             else:
