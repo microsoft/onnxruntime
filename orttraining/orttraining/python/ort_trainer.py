@@ -99,7 +99,12 @@ def ort_training_session_run_helper(session, iobinding, inputs, input_descs, out
     output_descs_resolved = resolve_symbolic_dimensions(inputs, input_descs, output_descs)
     torch_outputs = {}
     for output_desc in output_descs_resolved:
-        torch_tensor = torch.zeros(output_desc.shape_, device=device,
+        target_device = self.options.device.id
+        if self.options.mixed_precision.enabled and name == self.model_desc.all_finite.name:
+            # Keep all finite flag on CPU to match backend implementation
+            # This prevents CPU -> GPU -> CPU copies between frontend and backend
+            target_device = 'cpu'
+        torch_tensor = torch.zeros(output_desc.shape_, device=target_device,
                                    dtype=output_desc.eval_dtype_ if hasattr(output_desc, 'eval_dtype_')
                                    else output_desc.dtype_)
         iobinding.bind_output(output_desc.name_, torch_tensor.device.type, get_device_index(device),
