@@ -738,6 +738,7 @@ def parse_models_info_from_file(path, models):
                     model['working_directory'] = row['working_directory']
                 else:
                     model['working_directory'] = os.path.join(root_working_directory + row['working_directory'])
+                logger.info(model['working_directory'])
             else:
                 logger.error('Model path must be provided in models_info.json')
                 raise
