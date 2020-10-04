@@ -336,7 +336,6 @@ bool PrepareForReduce(const Tensor* input_tensor_ptr,
   int64_t from_index;
   int i;
   int64_t expected_dim;
-  std::vector<int64_t>::const_iterator it1, it2;
   from_index = 0;
 
   if (blocksize > 1) {
