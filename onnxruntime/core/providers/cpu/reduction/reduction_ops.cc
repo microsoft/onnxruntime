@@ -687,7 +687,7 @@ void ExperimentalPrepareForReduceSum(const Tensor& input, const std::vector<int6
 
   // Builds the list of indices for the projected sum.
   std::vector<int64_t> unreduced_axes;
-  for (auto i = 0; i < cumulative_shape.size(); ++i) {
+  for (int64_t i = 0; i < static_cast<int64_t>(cumulative_shape.size()); ++i) {
     if (std::find(reduced_axes.begin(), reduced_axes.end(), i) != reduced_axes.end())
       continue;
     unreduced_axes.push_back(i);
