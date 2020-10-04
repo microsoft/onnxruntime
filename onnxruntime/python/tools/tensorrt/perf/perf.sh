@@ -14,7 +14,8 @@ fi
 if [ "$1" == "onnx-zoo-models" ]
 then
     MODEL_LIST="model_list.json"
-    python3 benchmark.py -r validate -m $MODEL_LIST -s $SYMBOLIC_SHAPE_INFER -o result/"$1"
+    #python3 benchmark.py -r validate -m $MODEL_LIST -s $SYMBOLIC_SHAPE_INFER -o result/"$1"
+    python3 advanced_benchmark.py -r validate -m $MODEL_LIST -s $SYMBOLIC_SHAPE_INFER -o result/"$1"
     python3 benchmark.py -r benchmark -i random -t 10 -m $MODEL_LIST -s $SYMBOLIC_SHAPE_INFER -o result/"$1"
 fi
 
