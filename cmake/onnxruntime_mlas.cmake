@@ -45,6 +45,8 @@ if(MSVC)
               cl.exe /P ${asm_filename} /Fi${preprocess_filename}
           COMMAND
               armasm64.exe ${ARMASM_FLAGS} ${preprocess_filename} ${obj_filename}
+        DEPENDS ${asm_filename}
+        BYPRODUCTS ${preprocess_filename}
       )
       list(APPEND mlas_platform_srcs ${obj_filename})
     endforeach()
