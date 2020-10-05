@@ -26,15 +26,15 @@ class TestIOBinding(unittest.TestCase):
     def create_expected_output_alternate(self):
         return np.array([[2.0, 8.0], [18.0, 32.0], [50.0, 72.0]], dtype=np.float32)
 
-    def test_bind_input_only(self):
-        input = self.create_ortvalue_input_on_gpu()
+    def test_bind_input_to_cpu_arr(self):
+        input = self.create_numpy_input()
 
         session = onnxruntime.InferenceSession(get_name("mul_1.onnx"))
         io_binding = session.io_binding()
         
-        # Bind input to CUDA
-        io_binding.bind_input('X', 'cuda', 0, np.float32, [3, 2], input.data_ptr())
-
+        # Bind Numpy object (input) that's on CPU to wherever the model needs it
+        io_binding.bind_cpu_input('X', self.create_numpy_input())
+        
         # Bind output to CPU
         io_binding.bind_output('Y')
         
@@ -47,15 +47,15 @@ class TestIOBinding(unittest.TestCase):
         # Validate results
         self.assertTrue(np.array_equal(self.create_expected_output(), ort_output))
 
-    def test_bind_input_to_cpu_arr(self):
-        input = self.create_numpy_input()
+    def test_bind_input_only(self):
+        input = self.create_ortvalue_input_on_gpu()
 
         session = onnxruntime.InferenceSession(get_name("mul_1.onnx"))
         io_binding = session.io_binding()
         
-        # Bind Numpy object (input) that's on CPU to wherever the model needs it
-        io_binding.bind_cpu_input('X', self.create_numpy_input())
-        
+        # Bind input to CUDA
+        io_binding.bind_input('X', 'cuda', 0, np.float32, [3, 2], input.data_ptr())
+
         # Bind output to CPU
         io_binding.bind_output('Y')
         
