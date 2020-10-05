@@ -24,6 +24,7 @@ struct CUDAExecutionProviderInfo {
   OrtDevice::DeviceId device_id{0};
   size_t cuda_mem_limit{std::numeric_limits<size_t>::max()};
   ArenaExtendStrategy arena_extend_strategy{ArenaExtendStrategy::kNextPowerOfTwo};
+  OrtCudnnConvAlgoSearch cudnn_conv_algo{OrtCudnnConvAlgoSearch::EXHAUSTIVE};
 };
 
 // Logical device representation.
@@ -77,13 +78,15 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   int GetDeviceId() const { return device_id_; }
   const cudaDeviceProp& GetDeviceProp() const { return device_prop_; };
+  int GetCudnnConvAlgo() const { return cudnn_conv_algo_; }
   void UpdateProviderOptionsInfo();
 
- private:
+private:
   OrtDevice::DeviceId device_id_;
   cudaDeviceProp device_prop_;
   size_t cuda_mem_limit_;
   ArenaExtendStrategy arena_extend_strategy_;
+  int cudnn_conv_algo_;
 
   struct DeferredReleaseCPUPtrs {
     bool recorded = false;
