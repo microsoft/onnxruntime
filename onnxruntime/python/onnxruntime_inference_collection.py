@@ -349,6 +349,8 @@ class IOBinding:
 
 class OrtValue:
     '''
+    A data structure that supports all ONNX data formats (tensors and non-tensors) that allows users
+....to place the data backing these on a device, for example, on a CUDA supported device.
     This class provides APIs to construct and deal with OrtValues.
     '''
     def __init__(self, ortvalue, numpy_obj=None):

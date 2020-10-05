@@ -15,18 +15,16 @@ OrtValue
 Numpy arrays (tensors), dictionaries (maps), and a list of Numpy arrays (sequences).
 The data backing these are on CPU.
 
-*ONNX Runtime* supports a custom data structure that supports all ONNX structures that allows users
-to place the data baking these on a device, for example, on a CUDA supported device. This allows for
-interesting *IOBinding* (discussed below) scenarios. In addition, *ONNX Runtime* supports directly
-working with *OrtValue* while inferencing a model if provided as part of the input feed.
+*ONNX Runtime* supports a custom data structure that supports all ONNX data formats that allows users
+to place the data backing these on a device, for example, on a CUDA supported device. This allows for
+interesting *IOBinding* scenarios (discussed below). In addition, *ONNX Runtime* supports directly
+working with *OrtValue*(s) while inferencing a model if provided as part of the input feed.
 
-Scenario 1:
-
-Creating an *OrtValue* from a Numpy array while placing its contents on a CUDA device
+Creating an *OrtValue* from a Numpy array while placing its backing memory on a CUDA device
 
 .. code-block:: python
 
-	#X is numpy array on cpu 
+	#X is numpy array on cpu, create an OrtValue and place it on cuda device id = 0
 	ortvalue = onnxruntime.OrtValue.ortvalue_from_numpy(X, 'cuda', 0)
 	ortvalue.device_name()  # 'cuda'
 	ortvalue.shape()  # shape of the numpy array X

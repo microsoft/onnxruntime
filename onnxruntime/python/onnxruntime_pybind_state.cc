@@ -18,7 +18,6 @@
 #include "core/framework/random_seed.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/TensorSeq.h"
-#include "core/framework/ortdevice.h"
 #include "core/graph/graph_viewer.h"
 #include "core/session/IOBinding.h"
 #include "core/session/abi_session_options_impl.h"
@@ -178,8 +177,9 @@ std::string nuphar_settings;
 
 #define PYBIND_UNREFERENCED_PARAMETER(parameter) ((void)(parameter))
 
-// Provide a definition for the static const var 'GPU' in the OrtDevice struct
-// as without it, it seems to trigger something in GCC 4.8.5 and it breaks the CI builds
+// Explicitly provide a definition for the static const var 'GPU' in the OrtDevice struct,
+// GCC 4.x doesn't seem to define this and it breaks the pipelines based on CentOS as it uses
+// GCC 4.x.
 // (This static var is referenced in GetCudaToHostMemCpyFunction())
 const OrtDevice::DeviceType OrtDevice::GPU;
 
