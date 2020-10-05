@@ -6,7 +6,7 @@ trigger: none
 jobs:
 - job: Onnxruntime_Linux_GPU_Training_FrontEnd
 
-  timeoutInMinutes: 960
+  timeoutInMinutes: 240
 
   steps:
   - checkout: self
