@@ -470,6 +470,15 @@ def is_sudo():
     return 'SUDO_UID' in os.environ.keys()
 
 
+def is_using_xcode_12():
+    try:
+        cmd_output = subprocess.check_output(['xcodebuild', '-version'])
+        return cmd_output.startswith(b'Xcode 12')
+    except Exception as e:
+        log.warning('Error trying execute xcodebuild, ' + str(e))
+        return False
+
+
 def install_apt_package(package):
     have = package in str(run_subprocess(
         ["apt", "list", "--installed", package], capture=True).stdout)
@@ -569,6 +578,20 @@ def setup_test_data(build_dir, configs):
                                 src_model_dir], shell=True)
 
 
+def use_dev_mode(args):
+    if args.use_acl or args.use_armnn:
+        return 'OFF'
+    if is_macOS():
+        if args.ios:
+            return 'OFF'
+        if args.enable_pybind and is_using_xcode_12():
+            # pybind11 warning if use AppleClang 12 to compile
+            # https://github.com/pybind/pybind11/pull/2522
+            # TODO, remove this after switch to pybind11 2.6.0+
+            return 'OFF'
+    return 'ON'
+
+
 def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home,
                         mpi_home, nccl_home, tensorrt_home, migraphx_home,
                         path_to_protoc_exe, configs, cmake_extra_defines, args, cmake_extra_args):
@@ -584,9 +607,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_BUILD_WINML_TESTS=" + (
             "OFF" if args.skip_winml_tests else "ON"),
         "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
-        "-Donnxruntime_DEV_MODE=" + (
-            "OFF" if args.use_acl or args.use_armnn or
-            (args.ios and is_macOS()) else "ON"),
+        "-Donnxruntime_DEV_MODE=" + use_dev_mode(args),
         "-DPYTHON_EXECUTABLE=" + sys.executable,
         "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
         "-Donnxruntime_CUDNN_HOME=" + (cudnn_home if args.use_cuda else ""),
