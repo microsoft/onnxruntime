@@ -678,23 +678,12 @@ class PlannerImpl {
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
           // Compute lifetime
-          if((current != -1) && (0 == --ort_value_usecount[current])){
-               AllocPlan(current).life_interval.second = program_counter;
-          }
-          if (original != current) {
-            if ((original != -1) && (0 == DecrementUseCount(current))) {
-              AllocPlan(current).life_interval.second = program_counter;
-            }
+          if ((current != -1) && (0 == --ort_value_usecount[current])) {
+            AllocPlan(current).life_interval.second = program_counter;
           }
           if ((original != -1) && (0 == DecrementUseCount(original))) {
             freelist_.push_front(FreeBufferInfo(original, program_counter));
-            if (AllocPlan(original).life_interval.second == 0) {
-              AllocPlan(original).life_interval.second = program_counter;
-              AllocPlan(original).allocate_interval.second = program_counter;
-            } else {
-              AllocPlan(original).allocate_interval.second = program_counter;
-            }
-            AllocPlan(Index(sym)).life_interval.second = program_counter;
+            AllocPlan(original).allocate_interval.second = program_counter;
           }
         }
       }
@@ -706,21 +695,15 @@ class PlannerImpl {
           auto original = Buffer(Index(sym));
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
-          if (original != current) {
-            if ((original != -1) && (0 == DecrementUseCount(current))) {
-              AllocPlan(current).life_interval.second = program_counter;
-            }
+          // Compute lifetime
+          if ((current != -1) && (0 == --ort_value_usecount[current])) {
+            AllocPlan(current).life_interval.second = program_counter;
           }
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
           if ((original != -1) && (0 == DecrementUseCount(original))) {
             freelist_.push_front(FreeBufferInfo(original, program_counter));
-            if (AllocPlan(original).life_interval.second == 0) {
-              AllocPlan(original).life_interval.second = program_counter;
-              AllocPlan(original).allocate_interval.second = program_counter;
-            } else {
-              AllocPlan(original).allocate_interval.second = program_counter;
-            }
+            AllocPlan(original).allocate_interval.second = program_counter;
           }
         }
       }
@@ -733,19 +716,12 @@ class PlannerImpl {
           auto original = Buffer(Index(sym));
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
-          if (original != current) {
-            if ((original != -1) && (0 == DecrementUseCount(current))) {
-              AllocPlan(current).life_interval.second = program_counter;
-            }
+          if ((current != -1) && (0 == --ort_value_usecount[current])) {
+            AllocPlan(current).life_interval.second = program_counter;
           }
           if (0 == DecrementUseCount(original)) {
             freelist_.push_front(FreeBufferInfo(original, program_counter));
-            if (AllocPlan(original).life_interval.second == 0) {
-              AllocPlan(original).life_interval.second = program_counter;
-              AllocPlan(original).allocate_interval.second = program_counter;
-            } else {
-              AllocPlan(original).allocate_interval.second = program_counter;
-            }
+            AllocPlan(original).allocate_interval.second = program_counter;
           }
         }
       }
