@@ -128,7 +128,7 @@ Users can bind *OrtValue*(s) directly.
 	session = onnxruntime.InferenceSession('model.onnx')
 	io_binding = session.io_binding()
 	io_binding.bind_ortvalue_input('input', X_ortvalue)
-	io_binding.bind_ortvalue_output('input', Y_ortvalue)
+	io_binding.bind_ortvalue_output('output', Y_ortvalue)
 	session.run_with_iobinding(io_binding)
 
 Device
