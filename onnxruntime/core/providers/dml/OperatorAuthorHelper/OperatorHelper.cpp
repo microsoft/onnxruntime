@@ -550,6 +550,13 @@ namespace OperatorHelper
                 ++inDim1Iter;
             }
 
+            // 0-sized dimensions indicate an empty tensor and shouldn't be broadcasted to higher dimensions
+            if (inDimension0 == 0 || inDimension1 == 0)
+            {
+                inDimension0 = 0;
+                inDimension1 = 0;
+            }
+
             ML_CHECK_VALID_ARGUMENT((inDimension0 == inDimension1) || (inDimension0 == 1) || (inDimension1 == 1));
             *outDimIter = std::max(inDimension0, inDimension1);
         }
