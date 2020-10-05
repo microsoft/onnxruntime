@@ -364,6 +364,9 @@ def export_onnx_model_from_pt(model_name, opset_version, use_external_data_forma
 def export_onnx_model_from_tf(model_name, opset_version, use_external_data_format, model_type, model_class, cache_dir,
                               onnx_dir, input_names, use_gpu, precision, optimize_onnx, validate_onnx,
                               use_raw_attention_mask, overwrite, model_fusion_statistics):
+    # Use CPU to export
+    import tensorflow as tf
+    tf.config.set_visible_devices([], 'GPU')
 
     config, model = load_tf_model(model_name, model_class, cache_dir)
 
