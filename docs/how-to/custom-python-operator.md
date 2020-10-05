@@ -10,7 +10,9 @@ nav_order: 4
 The Python Operator provides the capability to easily invoke any custom Python code within a single node of an ONNX graph using ONNX Runtime. This can be useful for quicker experimentation when a model requires operators that are not officially supported in ONNX and ONNX Runtime, particularly if there is already a Python implementation for the required functionality. This should be used with discretion in production scenarios, and all security or other risks should be considered beforehand.
 
 ## Design Overview
-The feature can be found under [onnxruntime/core/language_interop_ops](../onnxruntime/core/language_interop_ops).
+
+The feature can be in [language_interop_ops](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/core/language_interop_ops).
+
 Here is a chart of calling sequence:
 <pre>
 onnxruntime                        python capi                         script

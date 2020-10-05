@@ -16,6 +16,9 @@ nav_order: 2
 A new op can be written and registered with ONNXRuntime in the following 3 ways
 
 1. Using the experimental custom op API in the C API (onnxruntime_c_api.h)
+Note: These APIs are experimental and will change in the next release. They're released now for feedback and experimentation.
+
+1. Using the experimental custom op API in the C API (onnxruntime_c_api.h)
 
 Note: These APIs are experimental and will change in the next release. They're released now for feedback and experimentation.
 
