@@ -68,7 +68,7 @@ static void RegisterMIGraphXKernels(KernelRegistry& kernel_registry) {
   };
 
   for (auto& function_table_entry : function_table) {
-    auto status = kernel_registry.Register(function_table_entry());
+    ORT_ENFORCE(kernel_registry.Register(function_table_entry()).IsOK());
   }
 }
 
