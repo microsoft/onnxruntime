@@ -178,7 +178,9 @@ std::string nuphar_settings;
 
 #define PYBIND_UNREFERENCED_PARAMETER(parameter) ((void)(parameter))
 
-const OrtDevice::DeviceType OrtDevice::CPU;
+// Provide a definition for the static const var 'GPU' in the OrtDevice struct
+// as without it, it seems to trigger something in GCC 4.8.5 and it breaks the CI builds
+// (This static var is referenced in GetCudaToHostMemCpyFunction())
 const OrtDevice::DeviceType OrtDevice::GPU;
 
 namespace onnxruntime {
@@ -588,13 +590,6 @@ static const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCudaToHos
 }
 
 #endif
-
-static const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCpuToHostMemCpyFunction() {
-  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
-      {OrtDevice::CPU, CpuToCpuMemCpy}};
-
-  return &map;
-}
 
 /*
  * Register execution provider with options.
@@ -1192,7 +1187,7 @@ void addObjectMethods(py::module& m, Environment& env) {
 #ifdef USE_CUDA
         GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetCudaToHostMemCpyFunction());
 #else
-        GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetCpuToHostMemCpyFunction());
+        GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, nullptr);
 #endif
         return obj;
       });
