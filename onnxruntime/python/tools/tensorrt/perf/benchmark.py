@@ -531,7 +531,7 @@ def update_fail_report(fail_results, model, ep, e_type, e):
     fail_results.append(result)
 
 
-def update_fail_model(model_ep_fail_map, fail_results, model_name, ep, e_type, e):
+def update_fail_model_ori(model_ep_fail_map, fail_results, model_name, ep, e_type, e):
 
     if model_name in model_ep_fail_map and ep in model_ep_fail_map[model_name]:
         return
@@ -549,6 +549,24 @@ def update_fail_model(model_ep_fail_map, fail_results, model_name, ep, e_type, e
         update_fail_report(fail_results, model_name, ep_, e_type, error_message_)
         model_ep_fail_map[model_name].append(ep_)
 
+def update_fail_model(model_ep_fail_map, fail_results, model_name, ep, e_type, e):
+
+    if model_name in model_ep_fail_map and ep in model_ep_fail_map[model_name]:
+        return
+
+    if model_name not in model_ep_fail_map:
+        model_ep_fail_map[model_name] = {} 
+    
+    model_ep_fail_map[model_name][ep] = e_type
+    update_fail_report(fail_results, model_name, ep, e_type, e)
+
+    # If TRT fails, TRT FP16 should fail as well
+    if ep == 'TensorrtExecutionProvider':
+        ep_ = "TensorrtExecutionProvider_fp16"
+        error_message_ = "skip benchmarking since TRT failed already."
+        update_fail_report(fail_results, model_name, ep_, e_type, error_message_)
+        model_ep_fail_map[model_name][ep_] = e_type
+
 
 
 def skip_ep(model_name, ep, model_ep_fail_map):
@@ -561,13 +579,13 @@ def skip_ep(model_name, ep, model_ep_fail_map):
 
     ep_fail_list = model_ep_fail_map[model_name]
 
-    if ep in ep_fail_list:
+    if ep in ep_fail_list and ep_fail_list[ep] == "runtime error":
         logger.info("Skip testing " + model_name + " using " + ep + " since it has some issues.")
         return True
 
     return False
 
-def read_model_ep_fail_map_from_file(map_file):
+def read_map_from_file(map_file):
     with open(map_file) as f:
         try:
             data = json.load(f)
@@ -576,15 +594,24 @@ def read_model_ep_fail_map_from_file(map_file):
 
     return data
 
-def write_model_ep_fail_map_to_file(model_ep_fail_map):
+def write_map_to_file(model_ep_fail_map, file_name):
     existed_model_ep_fail_map = {}
-    if os.path.exists('.model_ep_fail_map.json'):
-        existed_model_ep_fail_map = read_model_ep_fail_map_from_file('.model_ep_fail_map.json')
-    model_ep_fail_map = {** existed_model_ep_fail_map, **model_ep_fail_map}
-    with open('.model_ep_fail_map.json', 'w') as file:
-        file.write(json.dumps(model_ep_fail_map)) # use `json.loads` to do the reverse
+    if os.path.exists(file_name):
+        existed_model_ep_fail_map = read_map_from_file(file_name)
+    
+    for model, ep_list in model_ep_fail_map.items():
+        if model in existed_model_ep_fail_map:
+            existed_model_ep_fail_map[model] = {** existed_model_ep_fail_map[model], ** model_ep_fail_map[model]} 
+        else:
+            existed_model_ep_fail_map[model] = model_ep_fail_map[model]
 
-def get_system_info(info):
+    with open(file_name, 'w') as file:
+        file.write(json.dumps(existed_model_ep_fail_map)) # use `json.loads` to do the reverse
+
+
+def get_system_info():
+    info = {}
+
     info["cuda"] = get_cuda_version()
     info["trt"] = get_trt_version()
 
@@ -632,6 +659,11 @@ def get_system_info(info):
             row = re.sub(': +', ':  ', row)
             infos.append(row)
     info["memory"] = infos
+
+    pp = pprint.PrettyPrinter(indent=4)
+    pp.pprint(info)
+
+    return info
 
 def find_model_path(path):
     p1 = subprocess.Popen(["find", path, "-name", "*.onnx"], stdout=subprocess.PIPE)
@@ -875,7 +907,7 @@ def run_onnxruntime(args, models):
             test_data_dir = model_info["test_data_path"]
 
             if "fp16" in ep:
-                logger.info("\nInitializing {} with float16 enabled to run on {} ...".format(name, ep))
+                logger.info("Initializing {} with float16 enabled to run on {} ...".format(name, ep))
 
                 fp16 = True
                 os.environ["ORT_TENSORRT_FP16_ENABLE"] = "1"
@@ -899,7 +931,7 @@ def run_onnxruntime(args, models):
                         test_data_dir = model_info["test_data_path_fp16"]
 
             else:
-                logger.info("\nInitializing {} to run on {} ...".format(name, ep))
+                logger.info("Initializing {} to run on {} ...".format(name, ep))
 
                 fp16 = False
                 os.environ["ORT_TENSORRT_FP16_ENABLE"] = "0"
@@ -1012,7 +1044,7 @@ def run_onnxruntime(args, models):
 
                 sess.disable_fallback()
 
-                logger.info("Start to inference {} with {} ...".format(name, ep))
+                logger.info("[start] Begin to inference {} with {} ...".format(name, ep))
                 logger.info(sess.get_providers())
 
                 if sess:
@@ -1142,6 +1174,10 @@ def add_improvement_information(latency_comparison_map):
             value["Tensorrt_fp16_gain(%)"] = "{:.2f} %".format(gain)
 
 def output_details(results, csv_filename):
+    need_write_header = True 
+    if os.path.exists(csv_filename):
+        need_write_header = False 
+
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = [
             "engine", "version", "device", "fp16", "io_binding", "model_name", "inputs", "batch_size",
@@ -1150,16 +1186,17 @@ def output_details(results, csv_filename):
         ]
 
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
-        csv_writer.writeheader()
+        if need_write_header:
+            csv_writer.writeheader()
         for result in results:
             csv_writer.writerow(result)
 
     logger.info(f"Detail results are saved to csv file: {csv_filename}")
 
 def output_fail(results, csv_filename):
-    need_write_column = True 
+    need_write_header = True 
     if os.path.exists(csv_filename):
-        need_write_column = False 
+        need_write_header = False 
 
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = [
@@ -1167,14 +1204,20 @@ def output_fail(results, csv_filename):
         ]
 
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
-        if need_write_column:
+
+        if need_write_header:
             csv_writer.writeheader()
+
         for result in results:
             csv_writer.writerow(result)
 
     logger.info(f"Failing results are saved to csv file: {csv_filename}")
 
 def output_latency(results, csv_filename):
+    need_write_header = True 
+    if os.path.exists(csv_filename):
+        need_write_header = False 
+
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = ["Model",
                         "CUDA \nmean (ms)",
@@ -1192,7 +1235,9 @@ def output_latency(results, csv_filename):
                         "TRT EP \ngain (mean) (%)",
                         "TRT EP fp16 \ngain (mean) (%)"]
         csv_writer = csv.writer(csv_file)
-        csv_writer.writerow(column_names)
+
+        if need_write_header:
+            csv_writer.writerow(column_names)
 
         for key, value in results.items():
             cuda_average = ""
@@ -1266,9 +1311,9 @@ def output_latency(results, csv_filename):
     logger.info(f"CUDA/TRT latency comparison are saved to csv file: {csv_filename}")
 
 def output_ratio(results, csv_filename):
-    need_write_column = True 
+    need_write_header = True 
     if os.path.exists(csv_filename):
-        need_write_column = False 
+        need_write_header = False 
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = ["Model",
                         "% CUDA operators (not fall back to CPU)",
@@ -1279,7 +1324,7 @@ def output_ratio(results, csv_filename):
                         "Total execution time",
                         "% TRT execution time"]
         csv_writer = csv.writer(csv_file)
-        if need_write_column:
+        if need_write_header:
             csv_writer.writerow(column_names)
 
         for key, value in results.items():
@@ -1308,6 +1353,15 @@ def output_system_info(result, csv_filename):
 
     logger.info(f"System information are saved to csv file: {csv_filename}")
 
+def str2bool(v):
+    if isinstance(v, bool):
+       return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
@@ -1337,10 +1391,12 @@ def parse_arguments():
                         type=int,
                         help="Number of repeat times to get average inference latency.")
 
+    parser.add_argument("--need_write_result", type=str2bool, required=False, default=True, help="")
     parser.add_argument("--benchmark_fail_csv", required=False, default=None, help="")
     parser.add_argument("--benchmark_success_csv", required=False, default=None, help="")
     parser.add_argument("--benchmark_latency_csv", required=False, default=None, help="")
     parser.add_argument("--benchmark_ratio_csv", required=False, default=None, help="")
+    parser.add_argument("--system_info_csv", required=False, default=None, help="")
 
     args = parser.parse_args()
     return args
@@ -1358,11 +1414,14 @@ def main():
     pp = pprint.PrettyPrinter(indent=4)
 
     models = {}
+
+    logger.info("\nstart perf run ...\n")
+
     if ".json" in args.model_source:
-        logger.info("Parsing model information from json file ...\n")
+        logger.info("Parsing model information from json file ...")
         parse_models_info_from_file(args.model_source, models)
     else:
-        logger.info("Parsing model information from specified directory ...\n")
+        logger.info("Parsing model information from specified directory ...")
         parse_models_info_from_directory(args.model_source, models)
 
     if args.symbolic_shape_infer:
@@ -1389,11 +1448,11 @@ def main():
     time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 
     if len(model_ep_fail_map) > 0:
-        logger.info("\n============================================")
-        logger.info("========== Failing Models/EPs ==============")
-        logger.info("============================================")
+        logger.info("\n======================================================")
+        logger.info("========== Failing Models/EPs (accumulated) ==============")
+        logger.info("==========================================================")
         logger.info(model_ep_fail_map)
-        write_model_ep_fail_map_to_file(model_ep_fail_map)
+        write_map_to_file(model_ep_fail_map, ".model_ep_fail_map")
 
     if latency_comparison_map:
         logger.info("\n=========================================")
@@ -1401,36 +1460,43 @@ def main():
         logger.info("=========================================")
         add_improvement_information(latency_comparison_map)
         pp.pprint(latency_comparison_map)
-        csv_filename = args.benchmark_latency_csv if args.benchmark_latency_csv else f"benchmark_latency_{time_stamp}.csv"
-        csv_filename = os.path.join(path, csv_filename)
-        output_latency(latency_comparison_map, csv_filename)
+
+        write_map_to_file(latency_comparison_map, ".benchmark_latency_map")
+
+        if args.need_write_result:
+            csv_filename = args.benchmark_latency_csv if args.benchmark_latency_csv else f"benchmark_latency_{time_stamp}.csv"
+            csv_filename = os.path.join(path, csv_filename)
+            output_latency(latency_comparison_map, csv_filename)
 
     if len(profile_metrics_map) > 0:
         logger.info("\n========================================")
         logger.info("========== TRT detail metrics ==========")
         logger.info("========================================")
         pp.pprint(profile_metrics_map)
-        csv_filename = args.benchmark_ratio_csv if args.benchmark_ratio_csv else f"benchmark_ratio_{time_stamp}.csv"
+
+        if args.need_write_result:
+            csv_filename = args.benchmark_ratio_csv if args.benchmark_ratio_csv else f"benchmark_ratio_{time_stamp}.csv"
+            csv_filename = os.path.join(path, csv_filename)
+            output_ratio(profile_metrics_map, csv_filename)
+
+
+    if False:
+        logger.info("\n===========================================")
+        logger.info("=========== System information  ===========")
+        logger.info("===========================================")
+        # info = {}
+        info = get_system_info()
+        pp.pprint(info)
+        csv_filename = args.benchmark_fail_csv if args.benchmark_fail_csv else f"system_info_csv{time_stamp}.csv"
         csv_filename = os.path.join(path, csv_filename)
-        output_ratio(profile_metrics_map, csv_filename)
-
-
-    logger.info("\n===========================================")
-    logger.info("=========== System information  ===========")
-    logger.info("===========================================")
-    info = {}
-    get_system_info(info)
-    pp.pprint(info)
-    if args.running_mode == "benchmark":
-        csv_filename = os.path.join(path, f"system_info_{time_stamp}.csv")
         output_system_info(info, csv_filename)
 
-    if fail_results:
+    if fail_results and args.need_write_result:
         csv_filename = args.benchmark_fail_csv if args.benchmark_fail_csv else f"benchmark_fail_{time_stamp}.csv"
         csv_filename = os.path.join(path, csv_filename)
         output_fail(fail_results, csv_filename)
 
-    if success_results:
+    if success_results and args.need_write_result:
         csv_filename = args.benchmark_success_csv if args.benchmark_success_csv else f"benchmark_success_{time_stamp}.csv"
         csv_filename = os.path.join(path, csv_filename)
         output_details(success_results, csv_filename)
