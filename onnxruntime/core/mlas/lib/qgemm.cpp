@@ -1671,7 +1671,7 @@ Return Value:
     }
 
     //
-    // Process two rows of matrix A.
+    // Process one row of matrix A.
     //
     // The buffer is packed as a series of 4 byte with the following pattern:
     //
