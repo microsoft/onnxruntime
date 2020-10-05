@@ -940,14 +940,9 @@ Status InferenceSession::LoadOrtModel(std::function<Status()> load_ort_format_mo
 
   ORT_RETURN_IF_ERROR(load_ort_format_model_bytes());
 
-  const std::string disable_verify_fbs_buffer =
-      session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigDisableVerifyORTFormatBuffer, "0");
-
-  if (disable_verify_fbs_buffer != "1") {
-    // Verify the ort_format_model_bytes_ is a valid InferenceSessionBuffer before we access the data
-    flatbuffers::Verifier verifier(ort_format_model_bytes_.data(), ort_format_model_bytes_.size());
-    ORT_RETURN_IF_NOT(fbs::VerifyInferenceSessionBuffer(verifier));
-  }
+  // Verify the ort_format_model_bytes_ is a valid InferenceSessionBuffer before we access the data
+  flatbuffers::Verifier verifier(ort_format_model_bytes_.data(), ort_format_model_bytes_.size());
+  ORT_RETURN_IF_NOT(fbs::VerifyInferenceSessionBuffer(verifier));
 
   const auto* fbs_session = fbs::GetInferenceSession(ort_format_model_bytes_.data());
   ORT_RETURN_IF(nullptr == fbs_session, "InferenceSession is null. Invalid ORT format model.");
